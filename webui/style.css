@@ -517,7 +517,9 @@ html, body {
   margin-right: 2px;
 }
 
-.opt-target-chips {
+.opt-target-chips,
+.opt-jump-tags,
+.branch-loop-tags {
   margin-top: 4px;
   display: flex;
   flex-wrap: wrap;
@@ -567,6 +569,64 @@ a.opt-target-chip { cursor: pointer; }
   background: rgba(232, 96, 96, 0.16);
   border-color: rgba(232, 96, 96, 0.45);
 }
+.opt-target-chip-line {
+  color: #d9eef8;
+  background: rgba(84, 173, 194, 0.16);
+  border-color: rgba(84, 173, 194, 0.45);
+}
+.opt-target-chip-line:hover { background: rgba(84, 173, 194, 0.30); }
+.opt-target-chip-line.is-tree,
+.opt-target-chip-merge.is-tree {
+  color: #c8f0d8;
+  background: rgba(96, 200, 130, 0.16);
+  border-color: rgba(96, 200, 130, 0.45);
+}
+.opt-target-chip-line.is-tree:hover,
+.opt-target-chip-merge.is-tree:hover {
+  background: rgba(96, 200, 130, 0.30);
+}
+.opt-target-chip-line.is-timeline,
+.opt-target-chip-merge.is-timeline {
+  color: #cfe1ff;
+  background: rgba(108, 162, 232, 0.16);
+  border-color: rgba(108, 162, 232, 0.45);
+}
+.opt-target-chip-line.is-timeline:hover,
+.opt-target-chip-merge.is-timeline:hover {
+  background: rgba(108, 162, 232, 0.30);
+}
+.opt-target-chip-line.is-shared,
+.opt-target-chip-merge.is-shared {
+  color: #d8c8f0;
+  background: rgba(150, 110, 220, 0.16);
+  border-color: rgba(150, 110, 220, 0.45);
+}
+.opt-target-chip-line.is-shared:hover,
+.opt-target-chip-merge.is-shared:hover {
+  background: rgba(150, 110, 220, 0.30);
+}
+.opt-target-chip-line.is-inferred,
+.opt-target-chip-merge.is-inferred {
+  color: #ffe8b0;
+  background: rgba(232, 185, 79, 0.14);
+  border-color: rgba(232, 185, 79, 0.45);
+}
+.opt-target-chip-line.is-inferred:hover,
+.opt-target-chip-merge.is-inferred:hover {
+  background: rgba(232, 185, 79, 0.26);
+}
+.opt-target-chip-loop {
+  color: #ffe2c2;
+  background: rgba(232, 168, 96, 0.16);
+  border-color: rgba(232, 168, 96, 0.45);
+}
+.opt-target-chip-loop:hover { background: rgba(232, 168, 96, 0.30); }
+.opt-target-chip-merge {
+  color: #d9e8ff;
+  background: rgba(130, 160, 220, 0.16);
+  border-color: rgba(130, 160, 220, 0.45);
+}
+.opt-target-chip-merge:hover { background: rgba(130, 160, 220, 0.30); }
 .opt-target-chip-source {
   color: #cfe1ff;
   background: rgba(108, 162, 232, 0.12);
@@ -609,6 +669,14 @@ a.opt-target-chip { cursor: pointer; }
 }
 .opt-group.opt-group-flash {
   animation: opt-group-flash 1.4s ease-out 1;
+}
+@keyframes line-flash {
+  0%   { box-shadow: 0 0 0 2px rgba(84, 173, 194, 0.85); }
+  100% { box-shadow: 0 0 0 2px rgba(84, 173, 194, 0); }
+}
+.line.line-flash,
+.branch-line.line-flash {
+  animation: line-flash 1.4s ease-out 1;
 }
 
 .line {
@@ -901,6 +969,28 @@ a.opt-target-chip { cursor: pointer; }
 }
 .summary-text { font-size: 13px; color: var(--text); }
 .summary-text + .summary-text { margin-top: 4px; }
+.source-link-row {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.source-link-more {
+  color: var(--muted);
+}
+.narrative-video-box {
+  border-left-color: #5f9ea0;
+}
+.narrative-video-box .summary-label {
+  color: #aee8ea;
+}
+.narrative-video-grid {
+  margin-top: 8px;
+}
+.narrative-video-more {
+  color: var(--muted);
+  font-style: italic;
+  margin-top: 6px;
+}
 .wiki-media-box {
   border-left-color: #7fb98e;
 }
@@ -1447,12 +1537,6 @@ a.opt-target-chip { cursor: pointer; }
 .opt-block { margin-top: 12px; }
 .opt-block-inline { margin: -4px 0 4px 122px; }
 .opt-block-inline .opt-group { margin-bottom: 4px; }
-.opt-block-branch-inline {
-  margin: 8px 0 0;
-}
-.opt-block-branch-inline .opt-group {
-  margin-bottom: 4px;
-}
 .opt-group {
   margin-bottom: 10px; padding: 8px 10px;
   background: var(--bg-3); border-radius: 3px;
@@ -1493,6 +1577,12 @@ a.opt-target-chip { cursor: pointer; }
   text-align: center; letter-spacing: 0.5px;
   text-transform: uppercase;
 }
+.branch-merge .opt-target-chip {
+  margin-left: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
 
 .flow-dlg-ref {
   border: 0;
@@ -1519,6 +1609,9 @@ a.opt-target-chip { cursor: pointer; }
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.branch-common-lines {
+  margin-top: 8px;
 }
 .branch-line {
   padding-top: 8px;
@@ -1612,6 +1705,13 @@ mark { background: #5c4d1f; color: #ffe79b; padding: 0 2px; border-radius: 2px; 
 }
 
 .inline-image-tag.is-emoji {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  line-height: 1;
+  vertical-align: -0.2em;
   cursor: default;
 }
 
@@ -1624,11 +1724,17 @@ mark { background: #5c4d1f; color: #ffe79b; padding: 0 2px; border-radius: 2px; 
 }
 
 .inline-image-tag.is-emoji .inline-image-thumb {
-  width: 1.6em;
-  height: 1.6em;
+  width: 1.45em;
+  height: 1.45em;
+  border-radius: 0;
+}
+
+.inline-image-tag.is-emoji .inline-image-popover {
+  display: none !important;
 }
 
 .inline-image-tag.is-sns-image {
+  padding: 4px;
   border-radius: 6px;
   vertical-align: top;
 }
@@ -1668,6 +1774,8 @@ mark { background: #5c4d1f; color: #ffe79b; padding: 0 2px; border-radius: 2px; 
   bottom: calc(100% + 10px);
   transform: translateX(-50%);
   display: none;
+  box-sizing: border-box;
+  max-width: min(260px, calc(100vw - 24px));
   padding: 8px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -1685,7 +1793,7 @@ mark { background: #5c4d1f; color: #ffe79b; padding: 0 2px; border-radius: 2px; 
 
 .inline-image-popover img {
   display: block;
-  max-width: min(220px, 40vw);
+  max-width: 100%;
   max-height: min(220px, 35vh);
   width: auto;
   height: auto;
@@ -1708,6 +1816,7 @@ body.inline-image-modal-open {
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   padding: 28px;
   background: rgba(7, 10, 14, 0.76);
   backdrop-filter: blur(6px);
@@ -1718,8 +1827,11 @@ body.inline-image-modal-open {
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: min(94vw, 1120px);
-  max-height: 92vh;
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: min(100%, 1120px);
+  max-height: 100%;
+  min-width: 0;
   padding: 18px;
   border: 1px solid rgba(149, 177, 214, 0.28);
   border-radius: 8px;
@@ -1729,8 +1841,9 @@ body.inline-image-modal-open {
 
 .inline-image-modal-img {
   display: block;
-  max-width: calc(94vw - 64px);
-  max-height: calc(92vh - 88px);
+  max-width: 100%;
+  max-height: calc(100vh - 148px);
+  min-width: 0;
   width: auto;
   height: auto;
   object-fit: contain;

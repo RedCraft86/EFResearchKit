@@ -14,11 +14,14 @@ Reads:
   export_full/structured/StreamingAssets/Table/RemoteCommonTable.json    (remote comm story calls)
   export_full/structured/StreamingAssets/Table/EnvTalkTable.json         (ambient / environment talk)
 
-Falls back to the legacy top-level export_full/StreamingAssets/... layout when needed.
+Uses the structured export_full layout produced by the current WebUI export.
 
 Writes:
   webui/data/manifest.json                 (available language bundles)
   webui/data/lang/<code>/index.json        (lightweight conversation list)
+  webui/data/lang/<code>/actors.json       (actor display names)
+  webui/data/lang/<code>/missions.json     (mission display names)
+  webui/data/lang/<code>/search.json       (lazy full-text search text)
   webui/data/lang/<code>/conv/<key>.json
   webui/data/lang/<code>/mission/<id>.json (lazy mission context/flow)
   webui/data/lang/<code>/reference/...     (raw localized table reference)
@@ -38,22 +41,37 @@ import re
 import shutil
 import sys
 import time
+from bisect import bisect_left
 from collections import Counter, defaultdict, deque
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+from common import (
+    ASSET_DIR,
+    EXPORT_ROOT,
+    LANG_DIR,
+    OUT_DIR,
+    REPORTS_DIR,
+    ROOT,
+    first_string_field as _first_string_field,
+    is_present,
+    rel_path as repo_rel,
+    unique_preserve as _unique_preserve,
+    unique_strings,
+    walk_const_values as _walk_const_values,
+    walk_field_values as _walk_field_values,
+    write_json,
+)
+
 SCRIPTS_DIR = ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from build_story_asset_index import build_asset_index as shared_build_asset_index
 from build_story_paths import _existing_unique_paths, _resolve_recovered_dir, _resolve_structured_source_dir
 from build_story_reports import (
-    build_scene_order_gap_summary as shared_build_scene_order_gap_summary,
-    collect_scene_order_gap_rows as shared_collect_scene_order_gap_rows,
     write_inferred_option_anchors_report as shared_write_inferred_option_anchors_report,
     write_scene_order_gap_reports as shared_write_scene_order_gap_reports,
 )
+from build_story_source_links import build_source_links as build_story_source_links
 from recover_timeline_line_orders import (
     TimelineRecoveryConfig,
     default_order_out as timeline_recovery_order_out,
@@ -72,11 +90,14 @@ from recover_mission_timelines import (
     summarize as summarize_mission_timeline_recovery,
     write_json as write_mission_timeline_recovery_json,
 )
-from scene_order_gap_shared import build_scene_order_disorder_warning as shared_build_scene_order_disorder_warning
+from scene_order_gap_shared import (
+    build_runtime_registry_debug as shared_build_runtime_registry_debug,
+    build_scene_order_disorder_warning as shared_build_scene_order_disorder_warning,
+    load_dialog_id_registry as shared_load_dialog_id_registry,
+)
 
 
-REPORTS_DIR = ROOT / "reports"
-EXPORT_ROOT = ROOT / "export_full"
+STORY_SOURCE_LINKS_PATH = EXPORT_ROOT / "recovered" / "story_source_links.json"
 
 
 STREAMING_ASSETS_DIR = _resolve_structured_source_dir(EXPORT_ROOT, "StreamingAssets")
@@ -96,12 +117,10 @@ ANIME_TREE_DIRS = [
     _resolve_recovered_dir(
         EXPORT_ROOT,
         ("recovered", "AnimeStudio-net9-extracted"),
-        ("AnimeStudio-net9-extracted",),
     ),
     _resolve_recovered_dir(
         EXPORT_ROOT,
         ("recovered", "AnimeStudio", "main", "TextAsset"),
-        ("AnimeStudio", "main", "TextAsset"),
     ),
 ]
 ANIME_RESOURCE_DIRS = _existing_unique_paths([
@@ -111,10 +130,6 @@ ANIME_RESOURCE_DIRS = _existing_unique_paths([
     EXPORT_ROOT / "recovered" / "AnimeStudio-cli" / "StreamingAssets" / "json_by_type" / "MonoBehaviour",
     EXPORT_ROOT / "recovered" / "AnimeStudio-cli" / "Persistent" / "json_by_type" / "MonoBehaviour",
 ])
-EXPORTED_DIR = EXPORT_ROOT
-OUT_DIR = ROOT / "webui" / "data"
-LANG_DIR = OUT_DIR / "lang"
-ASSET_DIR = OUT_DIR / "assets"
 DEFAULT_LANGUAGE = "CN"
 BUILD_PROFILES = ("lean", "full")
 DEFAULT_BUILD_PROFILE = "lean"
@@ -246,6 +261,15 @@ CUTSCENE_TEXT_ROW_RE = re.compile(
 )
 PRINTABLE_ASCII_MIN = 32
 PRINTABLE_ASCII_MAX = 126
+NARRATIVE_VIDEO_EXTENSIONS = {
+    ".mp4",
+    ".webm",
+    ".mov",
+    ".avi",
+    ".m4v",
+    ".ogv",
+    ".usm",
+}
 
 
 _MISSION_FLOW_CACHE: dict[str, dict | None] = {}
@@ -267,6 +291,7 @@ _JSON_FILE_CACHE: dict[str, dict] = {}
 _MISSION_AREA_CACHE: dict[str, dict] | None = None
 _NPC_PROXY_TABLE_CACHE: dict[str, dict] | None = None
 _CUTSCENE_ASSET_CACHE: dict[str, dict] | None = None
+_NARRATIVE_VIDEO_CACHE: list[dict] | None = None
 _DIALOG_REF_FIELDS = ("_dialogId", "snsDialogId")
 _CUTSCENE_REF_FIELDS = ("_cutsceneId",)
 _REMOTECOMM_REF_FIELDS = ("_remoteCommId",)
@@ -318,6 +343,16 @@ def _get_anime_tree_path_index() -> dict[str, Path]:
     return _ANIME_TREE_PATH_INDEX
 
 
+def _iter_sorted_stems_with_prefix(sorted_stems: list[str], prefix: str):
+    index = bisect_left(sorted_stems, prefix)
+    while index < len(sorted_stems):
+        stem = sorted_stems[index]
+        if not stem.startswith(prefix):
+            break
+        yield stem
+        index += 1
+
+
 def _iter_related_dialog_tree_paths(conv_key: str):
     seen: set[str] = set()
     exact_stems = [conv_key]
@@ -348,9 +383,7 @@ def _iter_related_dialog_tree_paths(conv_key: str):
     all_stems = _ANIME_TREE_SORTED_STEMS or sorted(path_index.keys())
     for stem in prefix_stems:
         prefix = f"{stem}_"
-        for candidate_stem in all_stems:
-            if not candidate_stem.startswith(prefix):
-                continue
+        for candidate_stem in _iter_sorted_stems_with_prefix(all_stems, prefix):
             path = path_index[candidate_stem]
             key = str(path).lower()
             if key in seen:
@@ -383,63 +416,12 @@ def _load_anime_resource_payload(path: Path):
     return decoded_payload
 
 
-def _walk_const_values(node, field_name):
-    if isinstance(node, dict):
-        for k, v in node.items():
-            if k == field_name:
-                if isinstance(v, dict) and "constValue" in v:
-                    yield v["constValue"]
-                elif isinstance(v, str):
-                    yield v
-            else:
-                yield from _walk_const_values(v, field_name)
-    elif isinstance(node, list):
-        for item in node:
-            yield from _walk_const_values(item, field_name)
-
-
-def _extract_dialog_refs(quest) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for field in _DIALOG_REF_FIELDS:
-        for val in _walk_const_values(quest, field):
-            if isinstance(val, str) and val and val not in seen:
-                seen.add(val)
-                out.append(val)
-    return out
-
-
-def _extract_cutscene_refs(quest) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for field in _CUTSCENE_REF_FIELDS:
-        for val in _walk_const_values(quest, field):
-            if isinstance(val, str) and val and val not in seen:
-                seen.add(val)
-                out.append(val)
-    return out
-
-
-def _extract_remotecomm_refs(quest) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for field in _REMOTECOMM_REF_FIELDS:
-        for val in _walk_const_values(quest, field):
-            if isinstance(val, str) and val and val not in seen:
-                seen.add(val)
-                out.append(val)
-    return out
-
-
-def _extract_radio_refs(quest) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for field in _RADIO_REF_FIELDS:
-        for val in _walk_const_values(quest, field):
-            if isinstance(val, str) and val and val not in seen:
-                seen.add(val)
-                out.append(val)
-    return out
+def _extract_ref_strings(node, field_names: tuple[str, ...]) -> list[str]:
+    return unique_strings(
+        value
+        for field_name in field_names
+        for value in _walk_const_values(node, field_name)
+    )
 
 
 def _extract_client_action_refs(raw: dict, field_names: tuple[str, ...]) -> dict[str, list[str]]:
@@ -449,13 +431,7 @@ def _extract_client_action_refs(raw: dict, field_names: tuple[str, ...]) -> dict
         action_id = action.get("_ID")
         if not isinstance(action_id, int):
             continue
-        refs: list[str] = []
-        seen: set[str] = set()
-        for field_name in field_names:
-            for val in _walk_const_values(action, field_name):
-                if isinstance(val, str) and val and val not in seen:
-                    seen.add(val)
-                    refs.append(val)
+        refs = _extract_ref_strings(action, field_names)
         if refs:
             refs_by_action_id[action_id] = refs
 
@@ -596,21 +572,6 @@ def _extract_objective_tracking_hints(obj: dict) -> list[dict]:
     return _extract_tracking_hints(quest_like)
 
 
-def _walk_field_values(node, field_name):
-    if isinstance(node, dict):
-        for k, v in node.items():
-            if k == field_name:
-                if isinstance(v, dict) and "constValue" in v:
-                    yield v["constValue"]
-                else:
-                    yield v
-            else:
-                yield from _walk_field_values(v, field_name)
-    elif isinstance(node, list):
-        for item in node:
-            yield from _walk_field_values(item, field_name)
-
-
 def _extract_condition_anchor_leaves(cond) -> list[dict]:
     if not isinstance(cond, dict):
         return []
@@ -622,19 +583,18 @@ def _extract_condition_anchor_leaves(cond) -> list[dict]:
         return out
 
     leaf: dict = {"type": short or "Unknown"}
-    story_refs: list[str] = []
-    for field_name in (*_DIALOG_REF_FIELDS, *_CUTSCENE_REF_FIELDS, *_REMOTECOMM_REF_FIELDS, *_RADIO_REF_FIELDS):
-        for value in _walk_field_values(cond, field_name):
-            if isinstance(value, str) and value and value not in story_refs:
-                story_refs.append(value)
+    story_refs = _extract_ref_strings(
+        cond,
+        (*_DIALOG_REF_FIELDS, *_CUTSCENE_REF_FIELDS, *_REMOTECOMM_REF_FIELDS, *_RADIO_REF_FIELDS),
+    )
     if story_refs:
         leaf["storyRefs"] = story_refs
 
-    level_ids: list[str] = []
-    for field_name in ("_sceneId", "_levelId"):
-        for value in _walk_field_values(cond, field_name):
-            if isinstance(value, str) and value and value not in level_ids:
-                level_ids.append(value)
+    level_ids = unique_strings(
+        value
+        for field_name in ("_sceneId", "_levelId")
+        for value in _walk_field_values(cond, field_name)
+    )
     if level_ids:
         leaf["sceneIds"] = level_ids
 
@@ -659,13 +619,10 @@ def _extract_condition_anchor_leaves(cond) -> list[dict]:
         leaf["logicIds"] = logic_ids
 
     quest_refs: list[dict] = []
-    quest_ids = [
-        value for value in _walk_field_values(cond, "_questId")
-        if isinstance(value, str) and value
-    ]
+    quest_ids = unique_strings(_walk_field_values(cond, "_questId"))
     target_states = list(_walk_field_values(cond, "_targetQuestState"))
     target_state = target_states[0] if target_states else None
-    for quest_id in _unique_preserve(quest_ids):
+    for quest_id in quest_ids:
         quest_ref = {"questId": quest_id}
         if isinstance(target_state, (int, float, str)):
             quest_ref["targetState"] = target_state
@@ -673,12 +630,9 @@ def _extract_condition_anchor_leaves(cond) -> list[dict]:
     if quest_refs:
         leaf["questStateRefs"] = quest_refs
 
-    compare_keys = [
-        value for value in _walk_field_values(cond, "_key")
-        if isinstance(value, str) and value
-    ]
+    compare_keys = unique_strings(_walk_field_values(cond, "_key"))
     if compare_keys:
-        leaf["keys"] = _unique_preserve(compare_keys)
+        leaf["keys"] = compare_keys
     compare_values = list(_walk_field_values(cond, "_compareValue"))
     if compare_values:
         leaf["compareValues"] = _unique_preserve(compare_values)
@@ -1021,6 +975,133 @@ def _infer_cutscene_mission_and_scene(
     return canonical_key, "0"
 
 
+def _relative_asset_ref(label: str, source_root: Path, path: Path) -> str:
+    try:
+        rel_suffix = path.relative_to(source_root).as_posix()
+    except ValueError:
+        rel_suffix = path.name
+    return f"{label}/{rel_suffix}" if rel_suffix else label
+
+
+def _iter_narrative_video_roots(kind_dir: str):
+    structured_roots = (
+        ("StreamingAssets-structured", STREAMING_ASSETS_DIR),
+        ("Persistent-structured", PERSISTENT_ASSETS_DIR),
+    )
+    for label, source_root in structured_roots:
+        video_dir = source_root / "Data" / "Video" / "PC" / "Narrative" / kind_dir
+        if video_dir.exists():
+            yield label, source_root, video_dir
+
+    raw_vfs_root = EXPORT_ROOT / "raw_vfs"
+    for source in ("StreamingAssets", "Persistent"):
+        files_root = raw_vfs_root / source / "files"
+        if not files_root.exists():
+            continue
+        for bucket_dir in sorted(files_root.iterdir()):
+            if not bucket_dir.is_dir():
+                continue
+            video_dir = bucket_dir / "Data" / "Video" / "PC" / "Narrative" / kind_dir
+            if video_dir.exists():
+                yield "raw_vfs", raw_vfs_root, video_dir
+
+
+def _strip_gender_video_prefix(stem: str) -> tuple[str, str]:
+    value = str(stem or "").strip()
+    if match := re.match(r"^(?P<gender>f|m)_(?P<rest>.+)$", value, re.IGNORECASE):
+        return match.group("gender").lower(), match.group("rest")
+    return "", value
+
+
+def _narrative_video_key_candidates(kind: str, stem: str) -> list[str]:
+    _, base = _strip_gender_video_prefix(stem)
+    candidates: list[str] = []
+
+    def add(candidate: str) -> None:
+        candidate = str(candidate or "").strip()
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+
+    def letter_suffix_alias(value: str) -> str:
+        match = re.match(r"^(.+_\d+)[a-z]+$", str(value or ""), re.IGNORECASE)
+        return match.group(1) if match else ""
+
+    if kind == "cutscene":
+        raw = base
+        if raw.startswith("cs_video_"):
+            raw = raw[len("cs_video_"):]
+        raw_alias = letter_suffix_alias(raw)
+        if raw.startswith("dlg_"):
+            add(raw)
+            add(raw_alias)
+            add(f"misc_{raw}")
+            if raw_alias:
+                add(f"misc_{raw_alias}")
+        if raw.startswith("cutscene_"):
+            add(_canonical_cutscene_key(raw) or raw)
+            if raw_alias:
+                add(_canonical_cutscene_key(raw_alias) or raw_alias)
+        else:
+            add(_canonical_cutscene_key(f"cutscene_{raw}") or f"cutscene_{raw}")
+            if raw_alias:
+                add(_canonical_cutscene_key(f"cutscene_{raw_alias}") or f"cutscene_{raw_alias}")
+            if not raw.startswith("dlg_"):
+                add(f"dlg_{raw}")
+                if raw_alias:
+                    add(f"dlg_{raw_alias}")
+        add(raw)
+        add(raw_alias)
+    elif kind == "remotecomm":
+        add(base)
+        if not base.startswith("remotecomm_"):
+            add(f"remotecomm_{base}")
+    return candidates
+
+
+def _load_narrative_video_assets() -> list[dict]:
+    global _NARRATIVE_VIDEO_CACHE
+    if _NARRATIVE_VIDEO_CACHE is not None:
+        return _NARRATIVE_VIDEO_CACHE
+
+    out: list[dict] = []
+    for kind, kind_dir in (("cutscene", "Cutscene"), ("remotecomm", "RemoteComm")):
+        for label, source_root, video_dir in _iter_narrative_video_roots(kind_dir):
+            for path in sorted(video_dir.iterdir()):
+                if not path.is_file() or path.suffix.lower() not in NARRATIVE_VIDEO_EXTENSIONS:
+                    continue
+                gender, base_stem = _strip_gender_video_prefix(path.stem)
+                candidates = _narrative_video_key_candidates(kind, path.stem)
+                if not candidates:
+                    continue
+                try:
+                    size = path.stat().st_size
+                except OSError:
+                    size = 0
+                out.append({
+                    "kind": kind,
+                    "name": path.name,
+                    "stem": path.stem,
+                    "baseStem": base_stem,
+                    "gender": gender,
+                    "format": path.suffix.lower().lstrip("."),
+                    "size": size,
+                    "source": label,
+                    "rel": _relative_asset_ref(label, source_root, path),
+                    "keyCandidates": candidates,
+                })
+
+    out.sort(key=lambda ref: (
+        str(ref.get("kind") or ""),
+        str((ref.get("keyCandidates") or [""])[0]),
+        str(ref.get("baseStem") or ""),
+        str(ref.get("gender") or ""),
+        str(ref.get("source") or ""),
+        str(ref.get("name") or ""),
+    ))
+    _NARRATIVE_VIDEO_CACHE = out
+    return out
+
+
 def _load_cutscene_assets() -> dict[str, dict]:
     global _CUTSCENE_ASSET_CACHE
     if _CUTSCENE_ASSET_CACHE is not None:
@@ -1061,7 +1142,7 @@ def _load_cutscene_assets() -> dict[str, dict]:
         entry["variants"].append({
             "name": path.stem,
             "part": part,
-            "file": str(path.relative_to(ROOT)).replace("\\", "/"),
+            "file": repo_rel(path),
             "path": str(payload.get("path") or ""),
             "version": str(payload.get("version") or raw.get("m_Version") or ""),
         })
@@ -1092,7 +1173,7 @@ def _load_cutscene_assets() -> dict[str, dict]:
             "noUIDispatch",
             "npcVisibleRuleType",
         ):
-            if meta_key in payload and payload.get(meta_key) not in (None, "", [], {}):
+            if meta_key in payload and is_present(payload.get(meta_key)):
                 entry["metadata"][meta_key].append(payload[meta_key])
         keep_camera_path = str(payload.get("keepCameraPath") or "")
         if keep_camera_path:
@@ -1355,7 +1436,7 @@ def _load_mission_levelscript_dialogs(mission_id: str, level_ids: list[str]) -> 
             if dialogs:
                 hints.append({
                     "levelId": level_id,
-                    "file": path.relative_to(ROOT).as_posix(),
+                    "file": repo_rel(path),
                     "fileOrder": _levelscript_file_sort_key(path),
                     "dialogs": dialogs,
                 })
@@ -1655,7 +1736,7 @@ def _load_levelscript_binding_data(level_id: str) -> dict:
                 break
 
         out["files"].append({
-            "file": path.relative_to(ROOT).as_posix(),
+            "file": repo_rel(path),
             "records": records,
         })
 
@@ -2094,20 +2175,20 @@ def load_mission_flow(mission_id: str) -> dict | None:
         }
         quest_story_node = dict(quest)
         quest_story_node.pop("failedCondition", None)
-        dialogs = _extract_dialog_refs(quest_story_node)
+        dialogs = _extract_ref_strings(quest_story_node, _DIALOG_REF_FIELDS)
         if dialogs:
             entry["dialogs"] = dialogs
         cutscenes = [
             canonical
-            for cutscene_id in _extract_cutscene_refs(quest_story_node)
+            for cutscene_id in _extract_ref_strings(quest_story_node, _CUTSCENE_REF_FIELDS)
             if (canonical := _canonical_cutscene_key(cutscene_id))
         ]
         if cutscenes:
             entry["cutscenes"] = _unique_preserve(cutscenes)
-        remotecomms = _extract_remotecomm_refs(quest_story_node)
+        remotecomms = _extract_ref_strings(quest_story_node, _REMOTECOMM_REF_FIELDS)
         if remotecomms:
             entry["remotecomms"] = _unique_preserve(remotecomms)
-        radios = _extract_radio_refs(quest_story_node)
+        radios = _extract_ref_strings(quest_story_node, _RADIO_REF_FIELDS)
         if radios:
             entry["radios"] = _unique_preserve(radios)
         tracking = _extract_tracking_hints(quest)
@@ -2197,45 +2278,6 @@ def load_mission_flow(mission_id: str) -> dict | None:
 def _node_short_type(node: dict) -> str:
     t = node.get("$type", "")
     return t.split(",", 1)[0].rsplit(".", 1)[-1]
-
-
-def _first_string_field(obj, field_name) -> str | None:
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if k == field_name and isinstance(v, str):
-                return v
-            found = _first_string_field(v, field_name)
-            if found is not None:
-                return found
-    elif isinstance(obj, list):
-        for it in obj:
-            found = _first_string_field(it, field_name)
-            if found is not None:
-                return found
-    return None
-
-
-def _all_string_fields(obj, field_name):
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if k == field_name and isinstance(v, str):
-                yield v
-            else:
-                yield from _all_string_fields(v, field_name)
-    elif isinstance(obj, list):
-        for it in obj:
-            yield from _all_string_fields(it, field_name)
-
-
-def _unique_preserve(seq):
-    out = []
-    seen = set()
-    for item in seq:
-        if item in seen:
-            continue
-        seen.add(item)
-        out.append(item)
-    return out
 
 
 def _scene_graph_runtime_payload_key(
@@ -2979,7 +3021,7 @@ def _load_dialog_tree_extra_config(tree_key: str) -> dict | None:
             continue
         result = {
             "sourceKey": tree_key,
-            "file": path.relative_to(ROOT).as_posix(),
+            "file": repo_rel(path),
             "lineIds": line_ids,
         }
     _DIALOG_TREE_EXTRA_CONFIG_CACHE[tree_key] = result
@@ -3159,6 +3201,10 @@ def _normalize_dialog_timeline_lines(value, line_ids: list[str]) -> list[dict]:
         actor = str(raw.get("actor") or "").strip()
         if actor:
             record["actor"] = actor
+        for field in ("clipOptionIndex",):
+            value_for_field = raw.get(field)
+            if isinstance(value_for_field, int):
+                record[field] = value_for_field
         out.append(record)
     out.sort(key=lambda item: (item["start"], item["id"]))
     return out
@@ -3208,13 +3254,33 @@ def _normalize_dialog_timeline_option_rows(value) -> list[dict]:
             "anchorLineId",
             "track",
             "trackName",
+            "sourceFile",
             "assetName",
             "assetTrack",
+            "trunkId",
+            "dialogId",
+            "overrideOptionIconType",
         ):
             value_for_field = str(raw.get(field) or "").strip()
             if value_for_field:
                 record[field] = value_for_field
-        for field in ("index", "optionIndex", "clipOptionIndex", "assetPathId"):
+        for field in (
+            "index",
+            "optionIndex",
+            "clipOptionIndex",
+            "trackPathId",
+            "assetPathId",
+            "logicId",
+            "selectedFlag",
+            "setGreyed",
+            "main",
+            "isChat",
+            "changeFinishNum",
+            "targetFinishNum",
+            "useExOptionColor",
+            "overrideOptionIcon",
+            "conditionRid",
+        ):
             value_for_field = raw.get(field)
             if isinstance(value_for_field, int):
                 record[field] = value_for_field
@@ -3230,6 +3296,75 @@ def _normalize_dialog_timeline_option_rows(value) -> list[dict]:
         item.get("anchorMode") or "",
     ))
     return out
+
+
+def _normalize_dialog_timeline_option_routes(value) -> dict[str, dict]:
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, dict] = {}
+    for raw_option_id, raw in value.items():
+        if not isinstance(raw, dict):
+            continue
+        option_id = str(raw_option_id or raw.get("id") or "").strip()
+        if not option_id:
+            continue
+        path_line_ids = _normalize_line_order_ids(raw.get("pathLineIds"))
+        skipped_line_ids = _normalize_line_order_ids(raw.get("skippedLineIds"))
+        if not path_line_ids:
+            continue
+        record: dict = {
+            "source": str(raw.get("source") or "runtimeJumpTrack"),
+            "pathLineIds": path_line_ids,
+            "skippedLineIds": skipped_line_ids,
+        }
+        reverse_range_line_ids = _normalize_line_order_ids(raw.get("reverseRangeLineIds"))
+        if reverse_range_line_ids:
+            record["reverseRangeLineIds"] = reverse_range_line_ids
+        for field in ("groupKey", "continuationGroupKey"):
+            value_for_field = str(raw.get(field) or "").strip()
+            if value_for_field:
+                record[field] = value_for_field
+        continuation_option_ids = _normalize_line_order_ids(raw.get("continuationOptionIds"))
+        if continuation_option_ids:
+            record["continuationOptionIds"] = continuation_option_ids
+        for field in ("optionIndex",):
+            value_for_field = raw.get(field)
+            if isinstance(value_for_field, int):
+                record[field] = value_for_field
+        for field in ("start", "end"):
+            value_for_field = raw.get(field)
+            if isinstance(value_for_field, (int, float)):
+                record[field] = round(float(value_for_field), 3)
+        def normalize_ranges(raw_ranges) -> list[dict]:
+            ranges: list[dict] = []
+            for raw_range in raw_ranges or []:
+                if not isinstance(raw_range, dict):
+                    continue
+                range_record: dict = {}
+                for field in ("start", "end", "duration", "crossFadeDurationAfterJump"):
+                    value_for_field = raw_range.get(field)
+                    if isinstance(value_for_field, (int, float)):
+                        range_record[field] = round(float(value_for_field), 3)
+                for field in ("track", "trackName", "assetTrack", "displayName"):
+                    value_for_field = str(raw_range.get(field) or "").strip()
+                    if value_for_field:
+                        range_record[field] = value_for_field
+                for field in ("isReverseJump", "needChangeOptionAfterJump", "optionIndexAfterJump", "isJumpFirst"):
+                    value_for_field = raw_range.get(field)
+                    if isinstance(value_for_field, int):
+                        range_record[field] = value_for_field
+                if range_record:
+                    ranges.append(range_record)
+            return ranges
+
+        skip_ranges = normalize_ranges(raw.get("skipRanges"))
+        reverse_ranges = normalize_ranges(raw.get("reverseRanges"))
+        if skip_ranges:
+            record["skipRanges"] = skip_ranges
+        if reverse_ranges:
+            record["reverseRanges"] = reverse_ranges
+        out[option_id] = record
+    return dict(sorted(out.items()))
 
 
 def _index_dialog_timeline_entry(index: dict[str, list[dict]], raw_key: str, entry: dict) -> None:
@@ -3251,6 +3386,7 @@ def _index_dialog_timeline_entry(index: dict[str, list[dict]], raw_key: str, ent
     ] if timed_line_ids else line_ids
     option_positions = _normalize_dialog_timeline_option_positions(entry.get("optionPositions"))
     option_rows = _normalize_dialog_timeline_option_rows(entry.get("options"))
+    option_routes = _normalize_dialog_timeline_option_routes(entry.get("optionRoutes"))
     normalized = {
         "sourceKey": timeline or raw_key,
         "timeline": timeline,
@@ -3261,6 +3397,7 @@ def _index_dialog_timeline_entry(index: dict[str, list[dict]], raw_key: str, ent
         "lineTimings": line_timings,
         "optionPositions": option_positions,
         "optionRows": option_rows,
+        "optionRoutes": option_routes,
     }
     identity = (
         normalized["sourceKey"],
@@ -3269,6 +3406,7 @@ def _index_dialog_timeline_entry(index: dict[str, list[dict]], raw_key: str, ent
         tuple(option_ids),
         json.dumps(option_anchors, sort_keys=True, ensure_ascii=False),
         json.dumps(option_rows, sort_keys=True, ensure_ascii=False),
+        json.dumps(option_routes, sort_keys=True, ensure_ascii=False),
     )
     for alias in _dialog_timeline_aliases(raw_key, entry, ordered_line_ids, option_ids):
         bucket = index.setdefault(alias, [])
@@ -3324,6 +3462,8 @@ def _load_dialog_timeline_line_order_index() -> dict[str, list[dict]]:
                 public["optionPositions"] = entry["optionPositions"]
             if entry.get("optionRows"):
                 public["optionRows"] = entry["optionRows"]
+            if entry.get("optionRoutes"):
+                public["optionRoutes"] = entry["optionRoutes"]
             public_entries.append(public)
         public_entries.sort(key=lambda item: (-len(item["lineIds"]), item["sourceKey"], item["file"]))
         cleaned[key] = public_entries
@@ -3566,7 +3706,7 @@ def _load_dialog_tree_source(tree_key: str) -> dict | None:
             action_path = _find_anime_tree_path(f"{candidate_name}.json")
             if not action_path.exists():
                 continue
-            rel_path = action_path.relative_to(ROOT).as_posix()
+            rel_path = repo_rel(action_path)
             dedup = (action_name, rel_path)
             if dedup in seen_action_assets:
                 continue
@@ -3828,6 +3968,42 @@ def _load_dialog_tree_source(tree_key: str) -> dict | None:
 
     source_scene_keys = sorted(scene_line_ids_by_prefix)
 
+    cinematic_timeline_anchors: list[dict] = []
+    seen_cinematic_timeline_anchors: set[tuple[str, str]] = set()
+    for node in nodes:
+        if not isinstance(node, dict) or _node_short_type(node) != "DialogTreeCinematicNode":
+            continue
+        node_id = str(node.get("$id") or "")
+        action = node.get("_actionData") or {}
+        if not node_id or not isinstance(action, dict):
+            continue
+        action_name = str(action.get("name") or "").strip()
+        if not action_name:
+            continue
+        identity = (node_id, action_name)
+        if identity in seen_cinematic_timeline_anchors:
+            continue
+        seen_cinematic_timeline_anchors.add(identity)
+        anchor: dict[str, object] = {
+            "sourceKey": tree_key,
+            "file": repo_rel(tree_path),
+            "nodeId": node_id,
+            "timeline": action_name,
+        }
+        target_node_ids = [
+            str(target_id)
+            for target_id in _unique_preserve(succs.get(node_id, []))
+            if target_id
+        ]
+        if target_node_ids:
+            anchor["targetNodeIds"] = target_node_ids
+            anchor["targetCount"] = len(target_node_ids)
+            if before := first_trunk_on_path(target_node_ids[0]):
+                anchor["before"] = before
+        if after := nearest_trunk_id(node_id):
+            anchor["after"] = after
+        cinematic_timeline_anchors.append(anchor)
+
     cinematic_finish_groups: list[dict] = []
     for node in nodes:
         if not isinstance(node, dict) or _node_short_type(node) != "DialogTreeCinematicNode":
@@ -3857,7 +4033,7 @@ def _load_dialog_tree_source(tree_key: str) -> dict | None:
                 finish_nums.append(value)
         finish_group: dict[str, object] = {
             "sourceKey": tree_key,
-            "file": tree_path.relative_to(ROOT).as_posix(),
+            "file": repo_rel(tree_path),
             "nodeId": node_id,
             "timeline": action_name,
             "finishNums": finish_nums,
@@ -3949,7 +4125,7 @@ def _load_dialog_tree_source(tree_key: str) -> dict | None:
             fragment = {
                 "sourceKey": tree_key,
                 "targetKey": target_key,
-                "file": tree_path.relative_to(ROOT).as_posix(),
+                "file": repo_rel(tree_path),
                 "lineIds": list(scene_line_ids_by_prefix.get(target_key, [])),
                 "optionGroups": [],
                 "terminalCounts": {"openUi": 0, "finish": 0},
@@ -4131,7 +4307,7 @@ def _load_dialog_tree_source(tree_key: str) -> dict | None:
             scene_link_builders[target_key].append({
                 "sourceKey": tree_key,
                 "sceneKey": target_key,
-                "file": tree_path.relative_to(ROOT).as_posix(),
+                "file": repo_rel(tree_path),
                 "after": group_after or "",
                 "options": option_summaries,
                 **({"position": "pre"} if group_is_pre else {}),
@@ -4249,7 +4425,7 @@ def _load_dialog_tree_source(tree_key: str) -> dict | None:
 
     source = {
         "sourceKey": tree_key,
-        "file": tree_path.relative_to(ROOT).as_posix(),
+        "file": repo_rel(tree_path),
         "lineIds": line_ids,
         "lineGraph": line_graph,
         "lineOrder": {
@@ -4265,6 +4441,7 @@ def _load_dialog_tree_source(tree_key: str) -> dict | None:
         "pre": pre_option_ids,
         "actionAssets": action_assets,
         "cinematicOnly": bool(action_assets) and not line_ids,
+        "cinematicTimelineAnchors": cinematic_timeline_anchors,
         "cinematicFinishGroups": cinematic_finish_groups,
         "targetFragments": target_fragments,
         "sceneLinks": scene_links,
@@ -4304,6 +4481,7 @@ def _load_dialog_tree_file(tree_key: str) -> dict | None:
         "pre": source.get("pre") or [],
         "actionAssets": source.get("actionAssets") or [],
         "cinematicOnly": bool(source.get("cinematicOnly")),
+        "cinematicTimelineAnchors": source.get("cinematicTimelineAnchors") or [],
         "cinematicFinishGroups": source.get("cinematicFinishGroups") or [],
     }
     _DIALOG_TREE_FILE_CACHE[tree_key] = result
@@ -4350,6 +4528,7 @@ def _load_related_dialog_tree_files(conv_key: str, original_line_ids: list[str] 
             "pre": source.get("pre") or [],
             "actionAssets": source.get("actionAssets") or [],
             "cinematicOnly": bool(source.get("cinematicOnly")),
+            "cinematicTimelineAnchors": source.get("cinematicTimelineAnchors") or [],
             "cinematicFinishGroups": source.get("cinematicFinishGroups") or [],
         })
 
@@ -4552,7 +4731,8 @@ def resolve_scene_line_order(conv_key: str, original_line_ids: list[str]) -> tup
             )
             seen_candidate_files.add(identity)
 
-    for timeline in load_dialog_timeline_line_orders(conv_key):
+    timeline_entries = load_dialog_timeline_line_orders(conv_key)
+    for timeline in timeline_entries:
         add_candidate(
             "dialogTimeline",
             timeline.get("sourceKey") or timeline.get("timeline") or conv_key,
@@ -4560,6 +4740,99 @@ def resolve_scene_line_order(conv_key: str, original_line_ids: list[str]) -> tup
             timeline.get("lineIds") or [],
             1,
         )
+
+    def resolve_cinematic_timeline_stitch() -> tuple[list[str], dict] | None:
+        if not tree_file:
+            return None
+        anchors = [
+            anchor
+            for anchor in (tree_file.get("cinematicTimelineAnchors") or [])
+            if isinstance(anchor, dict) and anchor.get("timeline")
+        ]
+        if not anchors or not timeline_entries:
+            return None
+        tree_line_ids = [
+            line_id
+            for line_id in (tree_file.get("lineIds") or [])
+            if line_id in available_set
+        ]
+        if not tree_line_ids:
+            return None
+
+        timeline_by_name: dict[str, list[dict]] = defaultdict(list)
+        for entry in timeline_entries:
+            for name in (
+                str(entry.get("timeline") or ""),
+                str(entry.get("sourceKey") or ""),
+            ):
+                if name and entry not in timeline_by_name[name]:
+                    timeline_by_name[name].append(entry)
+
+        inserted_by_after: dict[str, list[str]] = defaultdict(list)
+        contributing_sources: list[dict] = [{
+            "kind": "dialogTree",
+            "sourceKey": tree_file.get("sourceKey") or conv_key,
+            "file": tree_file.get("file") or "",
+            "coverage": len(tree_line_ids),
+            "matchedLineIds": tree_line_ids,
+            "addedLineIds": list(tree_line_ids),
+        }]
+        used_anchor_details: list[dict] = []
+        seen_line_ids: set[str] = set(tree_line_ids)
+        for anchor in anchors:
+            timeline_name = str(anchor.get("timeline") or "")
+            after_line_id = str(anchor.get("after") or "")
+            if not timeline_name or after_line_id not in tree_line_ids:
+                continue
+            for entry in timeline_by_name.get(timeline_name, []):
+                matched = [
+                    line_id
+                    for line_id in (entry.get("lineIds") or [])
+                    if line_id in available_set
+                ]
+                added = [line_id for line_id in matched if line_id not in seen_line_ids]
+                if not added:
+                    continue
+                seen_line_ids.update(added)
+                inserted_by_after[after_line_id].extend(added)
+                contributing_sources.append({
+                    "kind": "dialogTimeline",
+                    "sourceKey": entry.get("sourceKey") or entry.get("timeline") or timeline_name,
+                    "file": entry.get("file") or "",
+                    "coverage": len(matched),
+                    "matchedLineIds": matched,
+                    "addedLineIds": added,
+                })
+                used_anchor_details.append({
+                    "timeline": timeline_name,
+                    "nodeId": str(anchor.get("nodeId") or ""),
+                    "after": after_line_id,
+                    "before": str(anchor.get("before") or ""),
+                    "addedLineIds": added,
+                })
+
+        if not used_anchor_details:
+            return None
+        ordered: list[str] = []
+        for line_id in tree_line_ids:
+            if line_id not in ordered:
+                ordered.append(line_id)
+            for inserted_id in inserted_by_after.get(line_id, []):
+                if inserted_id not in ordered:
+                    ordered.append(inserted_id)
+        if set(ordered) != available_set or len(ordered) != len(available_set):
+            return None
+        return ordered, {
+            "mode": "dialogTreeCinematicTimeline",
+            "originalLineIds": available_line_ids,
+            "orderedLineIds": ordered,
+            "sources": contributing_sources,
+            "stitch": "dialogTreeCinematicAnchors",
+            "cinematicTimelineAnchors": used_anchor_details,
+        }
+
+    if cinematic_stitch := resolve_cinematic_timeline_stitch():
+        return cinematic_stitch
 
     for fragment in load_dialog_tree_fragments(conv_key):
         add_candidate(
@@ -5119,11 +5392,15 @@ def language_info(code: str) -> dict:
     }
 
 
-def load(name: str) -> dict:
-    path = TABLE_DIR / name
-    print(f"  loading {name} ({path.stat().st_size/1024/1024:.1f} MB)")
+def _read_json_with_size_log(path: Path, label: str | None = None):
+    name = label or path.name
+    print(f"  loading {name} ({path.stat().st_size / 1024 / 1024:.1f} MB)")
     with path.open(encoding="utf-8") as f:
         return json.load(f)
+
+
+def load(name: str) -> dict:
+    return _read_json_with_size_log(TABLE_DIR / name, name)
 
 
 def load_optional_table_json(table_dir: Path, name: str, label: str | None = None) -> dict:
@@ -5137,20 +5414,35 @@ def load_json_path(path: Path, label: str | None = None) -> dict:
     cache_key = str(path)
     if cache_key in _JSON_FILE_CACHE:
         return _JSON_FILE_CACHE[cache_key]
-    name = label or path.name
-    print(f"  loading {name} ({path.stat().st_size/1024/1024:.1f} MB)")
-    with path.open(encoding="utf-8") as f:
-        data = json.load(f)
+    data = _read_json_with_size_log(path, label)
     _JSON_FILE_CACHE[cache_key] = data if isinstance(data, dict) else {}
     return _JSON_FILE_CACHE[cache_key]
 
 
 def load_json_path_uncached(path: Path, label: str | None = None) -> dict:
-    name = label or path.name
-    print(f"  loading {name} ({path.stat().st_size/1024/1024:.1f} MB)")
-    with path.open(encoding="utf-8") as f:
-        data = json.load(f)
+    data = _read_json_with_size_log(path, label)
     return data if isinstance(data, dict) else {}
+
+
+def load_story_source_links() -> dict[str, list[dict]]:
+    """Load or build the language-independent story source-link index."""
+    if not STORY_SOURCE_LINKS_PATH.exists():
+        print("  building story source links")
+        build_story_source_links(output=STORY_SOURCE_LINKS_PATH)
+    if not STORY_SOURCE_LINKS_PATH.exists():
+        return {}
+    try:
+        payload = load_json_path_uncached(STORY_SOURCE_LINKS_PATH, "story_source_links.json")
+    except (OSError, json.JSONDecodeError):
+        return {}
+    links = payload.get("links") if isinstance(payload, dict) else {}
+    if not isinstance(links, dict):
+        return {}
+    return {
+        str(key): rows
+        for key, rows in links.items()
+        if key and isinstance(rows, list)
+    }
 
 
 def parse_mission(mission: str) -> tuple[str, int]:
@@ -5237,12 +5529,51 @@ def build_language_bundle(
     mission_dir = out_dir / "mission"
     out_dir.mkdir(parents=True, exist_ok=True)
     conv_dir.mkdir(parents=True, exist_ok=True)
+    if write_reference:
+        reference_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        shutil.rmtree(reference_dir, ignore_errors=True)
+    dialog_id_registry = shared_load_dialog_id_registry()
+    story_source_links = load_story_source_links()
+    narrative_video_assets = _load_narrative_video_assets()
+    written_conv_paths: set[str] = set()
+    written_reference_paths: set[str] = set()
+    written_mission_paths: set[str] = set()
 
-    # Wipe old conv files so renamed/removed groups don't linger.
-    for old in conv_dir.glob("*.json"):
-        old.unlink()
-    shutil.rmtree(reference_dir, ignore_errors=True)
-    shutil.rmtree(mission_dir, ignore_errors=True)
+    def written_path_key(path: Path) -> str:
+        return str(path).lower()
+
+    def remember_written(path: Path, bucket: set[str]) -> Path:
+        bucket.add(written_path_key(path))
+        return path
+
+    def write_conv_payload(out_key: str, payload: dict) -> Path:
+        path = conv_dir / f"{out_key}.json"
+        write_json(path, payload)
+        return remember_written(path, written_conv_paths)
+
+    def write_reference_payload(rel_file: str, payload: dict) -> Path:
+        path = reference_dir / rel_file
+        write_json(path, payload)
+        return remember_written(path, written_reference_paths)
+
+    def write_mission_payload(rel_file: str, payload: dict) -> Path:
+        path = out_dir / rel_file
+        write_json(path, payload)
+        return remember_written(path, written_mission_paths)
+
+    def cleanup_stale_json(root: Path, written_paths: set[str]) -> None:
+        if not root.exists():
+            return
+        for path in sorted(root.rglob("*.json")):
+            if written_path_key(path) not in written_paths:
+                path.unlink()
+        for path in sorted(root.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+            if path.is_dir():
+                try:
+                    path.rmdir()
+                except OSError:
+                    pass
 
     print(f"\n[{language_code}] Loading tables...")
     i18n_by_source = {
@@ -5442,7 +5773,7 @@ def build_language_bundle(
             "source": source,
         }
         for k, v in extra.items():
-            if v not in (None, "", [], {}):
+            if is_present(v):
                 out[k] = v
         return out
 
@@ -5745,6 +6076,17 @@ def build_language_bundle(
             "trace": named_text_trace("SNSChatTable", chat_id, "name", row.get("name")),
         }
 
+    def chat_type(chat_id: str) -> int:
+        if not chat_id:
+            return 0
+        row = sns_chats.get(chat_id)
+        if not isinstance(row, dict):
+            return 0
+        try:
+            return int(row.get("chatType") or 0)
+        except (TypeError, ValueError):
+            return 0
+
     def topic_name(topic_id: str) -> str:
         """Resolve an SNS topic id like `topic_chr_0004_pelica` to its localized title."""
         if not topic_id:
@@ -5809,6 +6151,38 @@ def build_language_bundle(
         for candidate in {template_row_id, template_id, norm_template_id(template_id)}:
             if candidate:
                 npc_templates_by_template_id[candidate].append(template_row_id)
+
+    npc_data_key_by_id: dict[str, str] = {}
+    npc_data_keys_by_group: dict[str, list[str]] = defaultdict(list)
+    for npc_row_id, row in npc_rows.items():
+        if not isinstance(row, dict):
+            continue
+        data_key = str(row.get("dataKey") or "").strip()
+        if not data_key:
+            continue
+        for key in (
+            str(npc_row_id or "").strip(),
+            str(row.get("npcId") or "").strip(),
+            str(row.get("normalCfg") or "").strip(),
+        ):
+            if key and key not in npc_data_key_by_id:
+                npc_data_key_by_id[key] = data_key
+        group_id = str(row.get("npcGroupId") or "").strip()
+        if group_id and data_key not in npc_data_keys_by_group[group_id]:
+            npc_data_keys_by_group[group_id].append(data_key)
+
+    def npc_template_row_id_for_candidate(value: str) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return ""
+        candidates = _unique_preserve([raw, norm_template_id(raw)])
+        for candidate in candidates:
+            if candidate in npc_templates:
+                return candidate
+            template_row_ids = npc_templates_by_template_id.get(candidate) or []
+            if template_row_ids:
+                return template_row_ids[0]
+        return ""
 
     def resolve_npc_template_row(row_id: str, row: dict) -> tuple[str, dict | None]:
         candidates: list[str] = []
@@ -5987,16 +6361,52 @@ def build_language_bundle(
         EnvTalk actor ids sometimes encode the speaker as a scoped proxy such
         as `chen_map01_e2m5`. The prefix is still the real speaker id, while
         the suffix only tells us which map/mission proxy emitted the bark.
+        Some ids instead use NPC template/group ids, such as
+        `npc_spl_andrew_01_g01_map01_lv001_e1m3_001`; resolve those through
+        NpcTable and NpcTemplateGroupTable so the browser can show the real
+        display name.
         """
         raw = str(actor_id or "").strip()
         if not raw:
             return []
         out: list[str] = []
-        for marker in ("_map", "_base"):
+
+        def add_candidate(value: str) -> None:
+            value = str(value or "").strip()
+            if value and value not in out:
+                out.append(value)
+
+        add_candidate(raw)
+        for marker in ("_map", "_base", "_dung", "_data_sub"):
             idx = raw.find(marker)
             if idx > 0:
-                out.append(raw[:idx])
-        return _unique_preserve(out)
+                add_candidate(raw[:idx])
+
+        index = 0
+        while index < len(out):
+            current = out[index]
+            index += 1
+
+            if current.startswith("npc_tpl_"):
+                add_candidate(norm_template_id(current))
+
+            data_key = npc_data_key_by_id.get(current)
+            if data_key:
+                add_candidate(data_key)
+            for data_key in npc_data_keys_by_group.get(current, []):
+                add_candidate(data_key)
+
+            group_base = re.sub(r"_g\d+$", "", current)
+            if group_base != current:
+                add_candidate(group_base)
+
+            template_row_id = npc_template_row_id_for_candidate(current)
+            if template_row_id:
+                add_candidate(template_row_id)
+                template_row = npc_templates.get(template_row_id) or {}
+                add_candidate(str(template_row.get("npcNameId") or ""))
+
+        return out
 
     def npc_proxy_actor_candidates(proxy_id: str) -> list[str]:
         raw = str(proxy_id or "").strip()
@@ -6017,11 +6427,16 @@ def build_language_bundle(
     def add_actor_template_name(aid: str) -> None:
         if not aid:
             return
-        row = npc_templates.get(aid)
+        template_row_id = npc_template_row_id_for_candidate(aid)
+        row = npc_templates.get(template_row_id) if template_row_id else None
         if not isinstance(row, dict):
             return
-        add_actor_text(aid, named_text(str(row.get("name") or "")))
-        add_actor_text(aid, named_text(str(row.get("title") or "")))
+        canonical_aid = str(row.get("npcNameId") or "").strip()
+        for target_aid in _unique_preserve([aid, canonical_aid]):
+            add_actor_text(target_aid, named_text(str(row.get("name") or "")))
+            add_actor_text(target_aid, named_text(str(row.get("title") or "")))
+        if canonical_aid and actor_name_sets.get(canonical_aid):
+            actor_name_sets[aid].update(actor_name_sets[canonical_aid])
 
     for entry in dialogs.values():
         add_actor_name(entry.get("actorNameId") or "", entry.get("actorName", {}).get("id"))
@@ -6377,10 +6792,10 @@ def build_language_bundle(
                 "levelId": level_id,
                 "hostType": level_host_type(level_id),
                 "kind": ref_meta["kind"],
-                "file": path.relative_to(ROOT).as_posix(),
+                "file": repo_rel(path),
                 "_debug": {
                     "source": {
-                        "file": path.relative_to(ROOT).as_posix(),
+                        "file": repo_rel(path),
                         "levelId": level_id,
                         "kind": ref_meta["kind"],
                         "missionId": mission_id,
@@ -6480,6 +6895,7 @@ def build_language_bundle(
         })
 
     options_by_key: dict[str, dict[int, list[dict]]] = defaultdict(lambda: defaultdict(list))
+    dialog_option_text_by_id: dict[str, str] = {}
     dialog_option_signature_by_id: dict[str, tuple[str, str]] = {}
     dialog_option_ids_by_scene_group: dict[tuple[str, int], list[tuple[int, str]]] = defaultdict(list)
     option_orphans = 0
@@ -6492,6 +6908,7 @@ def build_language_bundle(
         option_text = t(entry.get("optionText", {}).get("id"))
         option_icon = entry.get("iconType", "") or ""
         option_scene_key = f"dlg_{mission}_{scene}"
+        dialog_option_text_by_id[oid] = option_text
         dialog_option_signature_by_id[oid] = (_option_text_signature(option_text), option_icon)
         dialog_option_ids_by_scene_group[(option_scene_key, grp)].append((idx, oid))
         target = attach_target(mission, scene)
@@ -6646,7 +7063,9 @@ def build_language_bundle(
         timeline_entries: list[dict] = []
         timeline_after: dict[str, str] = {}
         timeline_after_line_ids: dict[str, list[str]] = {}
+        timeline_after_line_timings: dict[str, dict[str, dict]] = {}
         timeline_option_rows: dict[str, list[dict]] = defaultdict(list)
+        timeline_option_routes: dict[str, list[dict]] = defaultdict(list)
         timeline_pre: set[str] = set()
         timeline_authored_option_ids: set[str] = set()
         timeline_sources: set[str] = set()
@@ -6692,6 +7111,11 @@ def build_language_bundle(
                     for line_id in (timeline.get("lineIds") or [])
                     if str(line_id).strip()
                 ]
+                timeline_line_timing_by_id = {
+                    str(row.get("id") or ""): row
+                    for row in (timeline.get("lineTimings") or [])
+                    if isinstance(row, dict) and str(row.get("id") or "").strip()
+                }
                 if source_key:
                     timeline_sources.add(source_key)
                 if file_path:
@@ -6703,6 +7127,11 @@ def build_language_bundle(
                     if _dialog_tree_option_prefix(opt_id) != conv_key:
                         continue
                     timeline_option_rows[opt_id].append(row)
+                for opt_id, route in (timeline.get("optionRoutes") or {}).items():
+                    if _dialog_tree_option_prefix(opt_id) != conv_key:
+                        continue
+                    if isinstance(route, dict):
+                        timeline_option_routes[opt_id].append(route)
                 for opt_id, anchor in (timeline.get("optionAnchors") or {}).items():
                     if _dialog_tree_option_prefix(opt_id) != conv_key:
                         continue
@@ -6714,6 +7143,7 @@ def build_language_bundle(
                         timeline_after.setdefault(opt_id, after_id)
                         if timeline_line_ids and opt_id not in timeline_after_line_ids:
                             timeline_after_line_ids[opt_id] = timeline_line_ids
+                            timeline_after_line_timings[opt_id] = timeline_line_timing_by_id
                     elif anchor.get("position") == "pre":
                         timeline_authored_option_ids.add(opt_id)
                         timeline_pre.add(opt_id)
@@ -6946,6 +7376,7 @@ def build_language_bundle(
         unanchored_group_count = 0
         fallback_group_labels: list[str] = []
         group_details: list[dict] = []
+        option_response_risks: list[dict] = []
 
         def preferred_timeline_option_row(opt_id: str) -> dict:
             rows = timeline_option_rows.get(opt_id) or []
@@ -6960,6 +7391,92 @@ def build_language_bundle(
                     row.get("assetTrack") or "",
                 ),
             )
+
+        def preferred_timeline_option_route(opt_id: str) -> dict:
+            routes = timeline_option_routes.get(opt_id) or []
+            if not routes:
+                return {}
+            return max(
+                routes,
+                key=lambda route: (
+                    len(route.get("pathLineIds") or []),
+                    -float(route.get("start") or 0.0),
+                    str(route.get("source") or ""),
+                ),
+            )
+
+        def timeline_route_branch_for_group(group_opt_ids: list[str], after_id: str) -> dict:
+            if len(group_opt_ids) < 2 or not after_id:
+                return {}
+            if any(tree_branches.get(opt_id) for opt_id in group_opt_ids):
+                return {}
+            anchors = [timeline_after.get(opt_id) or "" for opt_id in group_opt_ids]
+            if not all(anchor == after_id for anchor in anchors):
+                return {}
+            routes = [preferred_timeline_option_route(opt_id) for opt_id in group_opt_ids]
+            if not all(route.get("pathLineIds") for route in routes):
+                return {}
+            branch_line_ids_by_option: dict[str, list[str]] = {}
+            skipped_line_ids_by_option: dict[str, list[str]] = {}
+            reverse_range_line_ids_by_option: dict[str, list[str]] = {}
+            for opt_id, route in zip(group_opt_ids, routes):
+                path_line_ids = [
+                    str(line_id)
+                    for line_id in (route.get("pathLineIds") or [])
+                    if line_id in valid_line_ids
+                ]
+                if not path_line_ids:
+                    return {}
+                branch_line_ids_by_option[opt_id] = path_line_ids
+                skipped_line_ids_by_option[opt_id] = [
+                    str(line_id)
+                    for line_id in (route.get("skippedLineIds") or [])
+                    if line_id in valid_line_ids
+                ]
+                reverse_range_line_ids_by_option[opt_id] = [
+                    str(line_id)
+                    for line_id in (route.get("reverseRangeLineIds") or [])
+                    if line_id in valid_line_ids
+                ]
+            if len({tuple(value) for value in branch_line_ids_by_option.values()}) < 2:
+                return {}
+            continuation_option_ids = _unique_preserve([
+                str(option_id)
+                for route in routes
+                for option_id in (route.get("continuationOptionIds") or [])
+                if str(option_id or "").strip()
+            ])
+            return {
+                "code": "timelineRouteBranches",
+                "reason": "runtimeJumpTrack",
+                "detail": (
+                    "Runtime Jump Track clips in the dialog Timeline mark "
+                    "which time ranges each selected optionIndex skips or "
+                    "re-enters; branch lines are recovered from those "
+                    "directional route windows."
+                ),
+                "after": after_id,
+                "optionIds": group_opt_ids,
+                "branchLineIdsByOption": branch_line_ids_by_option,
+                "skippedLineIdsByOption": skipped_line_ids_by_option,
+                "reverseRangeLineIdsByOption": {
+                    opt_id: line_ids
+                    for opt_id, line_ids in reverse_range_line_ids_by_option.items()
+                    if line_ids
+                },
+                "continuationOptionIds": continuation_option_ids,
+                "source": "dialogTimeline",
+                "optionIndex": [
+                    route.get("optionIndex")
+                    for route in routes
+                ],
+                "assetTracks": _unique_preserve([
+                    str(raw_range.get("track") or raw_range.get("assetTrack") or "")
+                    for route in routes
+                    for raw_range in ((route.get("skipRanges") or []) + (route.get("reverseRanges") or []))
+                    if str(raw_range.get("track") or raw_range.get("assetTrack") or "").strip()
+                ]),
+            }
 
         def following_line_risk_for_group(group_opt_ids: list[str], after_id: str) -> dict:
             if len(group_opt_ids) < 2 or not after_id:
@@ -6992,10 +7509,12 @@ def build_language_bundle(
                             "source": "dialogTree",
                         }
             timeline_line_ids: list[str] = []
+            timeline_line_timing_by_id: dict[str, dict] = {}
             for opt_id in group_opt_ids:
                 candidate_order = timeline_after_line_ids.get(opt_id) or []
                 if after_id in candidate_order:
                     timeline_line_ids = candidate_order
+                    timeline_line_timing_by_id = timeline_after_line_timings.get(opt_id) or {}
                     break
             if not timeline_line_ids or after_id not in timeline_line_ids:
                 return {}
@@ -7013,14 +7532,56 @@ def build_language_bundle(
                     common_continuation_id = line_id
                     break
             preferred_rows = [preferred_timeline_option_row(opt_id) for opt_id in group_opt_ids]
-            return {
-                "code": "inferredFollowingLines",
-                "reason": "optionTargetsMissing",
-                "detail": (
+            option_indices = [
+                row.get("optionIndex") if isinstance(row.get("optionIndex"), int) else None
+                for row in preferred_rows
+            ]
+            candidate_clip_indices = [
+                (timeline_line_timing_by_id.get(line_id) or {}).get("clipOptionIndex")
+                for line_id in candidate_line_ids
+            ]
+            candidate_mapping = ""
+            if (
+                len(candidate_clip_indices) == len(candidate_line_ids) == len(option_indices)
+                and all(isinstance(value, int) for value in candidate_clip_indices)
+                and all(isinstance(value, int) for value in option_indices)
+                and len(set(candidate_clip_indices)) == len(candidate_clip_indices)
+                and set(candidate_clip_indices) == set(option_indices)
+            ):
+                line_id_by_clip_index = {
+                    clip_index: line_id
+                    for line_id, clip_index in zip(candidate_line_ids, candidate_clip_indices)
+                }
+                reordered_candidate_line_ids = [
+                    line_id_by_clip_index.get(option_index)
+                    for option_index in option_indices
+                ]
+                if (
+                    len(reordered_candidate_line_ids) == len(candidate_line_ids)
+                    and all(line_id in valid_line_ids for line_id in reordered_candidate_line_ids)
+                ):
+                    candidate_line_ids = [str(line_id) for line_id in reordered_candidate_line_ids]
+                    candidate_mapping = "trunkClipOptionIndex"
+                    candidate_clip_indices = [
+                        (timeline_line_timing_by_id.get(line_id) or {}).get("clipOptionIndex")
+                        for line_id in candidate_line_ids
+                    ]
+            detail = (
+                "Timeline option metadata anchors this group to a trunk line, "
+                "but the option entries do not name explicit target trunk ids; "
+                "the following line candidates are inferred from Timeline order."
+            )
+            if candidate_mapping:
+                detail = (
                     "Timeline option metadata anchors this group to a trunk line, "
                     "but the option entries do not name explicit target trunk ids; "
-                    "the following line candidates are inferred from Timeline order."
-                ),
+                    "candidate response lines are matched to options by the raw "
+                    "trunk clip optionIndex values."
+                )
+            risk = {
+                "code": "inferredFollowingLines",
+                "reason": "optionTargetsMissing",
+                "detail": detail,
                 "after": after_id,
                 "optionIds": group_opt_ids,
                 "candidateLineIds": candidate_line_ids,
@@ -7036,6 +7597,27 @@ def build_language_bundle(
                     if row.get("assetTrack")
                 ]),
             }
+            if candidate_mapping:
+                risk["candidateMapping"] = candidate_mapping
+                risk["candidateLineIdsByOption"] = {
+                    opt_id: line_id
+                    for opt_id, line_id in zip(group_opt_ids, candidate_line_ids)
+                }
+                risk["candidateLineClipOptionIndex"] = candidate_clip_indices
+            return risk
+
+        def option_risk_line_ids(following_line_risk: dict, option_count: int) -> list[str]:
+            candidate_line_ids = [
+                str(line_id)
+                for line_id in (following_line_risk.get("candidateLineIds") or [])
+                if line_id in valid_line_ids
+            ]
+            if len(candidate_line_ids) == option_count:
+                return candidate_line_ids
+            common_line_id = str(following_line_risk.get("commonContinuationLineId") or "")
+            if common_line_id in valid_line_ids:
+                return [common_line_id for _ in range(option_count)]
+            return []
 
         for order, g in enumerate(sorted(groups_map), start=1):
             opts = sorted(groups_map[g], key=lambda o: o["i"])
@@ -7182,15 +7764,38 @@ def build_language_bundle(
                 group["after"] = after
             elif used_group_fallback and fallback_anchor_id:
                 group["after"] = fallback_anchor_id
-            following_line_risk = following_line_risk_for_group(group_opt_ids, group.get("after") or "")
+            timeline_route_branch = timeline_route_branch_for_group(group_opt_ids, group.get("after") or "")
+            route_branch_lines_by_option = timeline_route_branch.get("branchLineIdsByOption") or {}
+            if timeline_route_branch.get("continuationOptionIds"):
+                group["continuationOptionIds"] = timeline_route_branch["continuationOptionIds"]
+            for opt in opts:
+                opt_id = opt.get("id") or ""
+                if opt.get("branchLines"):
+                    continue
+                route_branch_lines = [
+                    line_id
+                    for line_id in (route_branch_lines_by_option.get(opt_id) or [])
+                    if line_id in valid_line_ids
+                ]
+                if route_branch_lines:
+                    opt["branchLines"] = route_branch_lines
+                    rendered_branch_paths.append(tuple(route_branch_lines))
+            following_line_risk = timeline_route_branch or following_line_risk_for_group(group_opt_ids, group.get("after") or "")
             if following_line_risk:
                 group["optionBranchRisk"] = following_line_risk
-                for opt, line_id in zip(opts, following_line_risk.get("candidateLineIds") or []):
-                    opt.setdefault("riskTags", []).append({
-                        "code": "inferredFollowingLine",
-                        "lineId": line_id,
-                        "reason": following_line_risk["reason"],
+                if following_line_risk.get("code") == "inferredFollowingLines":
+                    option_response_risks.append({
+                        "group": g,
+                        **following_line_risk,
                     })
+                    for opt, line_id in zip(opts, option_risk_line_ids(following_line_risk, len(opts))):
+                        opt.setdefault("riskTags", []).append({
+                            "code": "inferredFollowingLine",
+                            "lineId": line_id,
+                            "reason": following_line_risk["reason"],
+                            "branchRiskCode": following_line_risk.get("code") or "",
+                            "source": following_line_risk.get("source") or "",
+                        })
             if sibling_anchor_record and sibling_anchor_record.get("siblingScenes"):
                 group["branchHint"] = {
                     "scenes": sibling_anchor_record["siblingScenes"],
@@ -7276,13 +7881,50 @@ def build_language_bundle(
                 "textAliasSources": sorted(text_alias_sources),
                 "authoredOptionCount": len(authored_option_ids),
             })
+        if option_response_risks:
+            warnings.append({
+                "code": "inferredOptionResponse",
+                "reason": "optionTargetsMissing",
+                "detail": (
+                    "one or more option responses are inferred from Timeline order "
+                    "because the option metadata does not name explicit target trunk ids"
+                ),
+                "groups": option_response_risks,
+                "optionIds": _unique_preserve([
+                    option_id
+                    for risk in option_response_risks
+                    for option_id in (risk.get("optionIds") or [])
+                    if option_id
+                ]),
+                "lineIds": _unique_preserve([
+                    line_id
+                    for risk in option_response_risks
+                    for line_id in (risk.get("candidateLineIds") or [])
+                    if line_id
+                ]),
+            })
         return {
             "groups": out,
             "warnings": warnings,
         }
 
+    def attach_runtime_registry_debug(payload: dict) -> None:
+        debug = payload.setdefault("_debug", {})
+        if not isinstance(debug, dict):
+            debug = {}
+            payload["_debug"] = debug
+        block = shared_build_runtime_registry_debug(
+            payload, dialog_id_registry=dialog_id_registry
+        )
+        if block is None:
+            debug.pop("runtimeRegistry", None)
+            return
+        debug["runtimeRegistry"] = block
+
     def attach_scene_order_warning(payload: dict) -> None:
-        warning = shared_build_scene_order_disorder_warning(payload)
+        warning = shared_build_scene_order_disorder_warning(
+            payload, dialog_id_registry=dialog_id_registry
+        )
         if warning is None:
             return
         existing_warnings = [
@@ -7299,23 +7941,26 @@ def build_language_bundle(
         return f"{minutes}:{remaining:04.1f}"
 
     def build_duplicate_timestamp_warning(payload: dict) -> dict | None:
-        buckets: dict[str, list[dict]] = defaultdict(list)
+        buckets: dict[tuple[str, str], list[dict]] = defaultdict(list)
         for line in payload.get("lines") or []:
             if not isinstance(line, dict):
                 continue
             ts = line.get("ts")
             if not isinstance(ts, (int, float)):
                 continue
-            buckets[format_webui_timeline_seconds(ts)].append(line)
+            debug = line.get("_debug") if isinstance(line.get("_debug"), dict) else {}
+            timing_debug = debug.get("timelineTiming") if isinstance(debug, dict) else {}
+            timeline = str(timing_debug.get("timeline") or "") if isinstance(timing_debug, dict) else ""
+            buckets[(timeline, format_webui_timeline_seconds(ts))].append(line)
 
         groups: list[dict] = []
-        for label, lines_for_ts in sorted(
+        for (timeline, label), lines_for_ts in sorted(
             buckets.items(),
             key=lambda item: min(float(line.get("ts") or 0.0) for line in item[1]),
         ):
             if len(lines_for_ts) < 2:
                 continue
-            groups.append({
+            group = {
                 "timestamp": label,
                 "lineIds": [str(line.get("id") or "") for line in lines_for_ts if line.get("id")],
                 "lines": [
@@ -7328,7 +7973,10 @@ def build_language_bundle(
                     for line in lines_for_ts
                     if line.get("id")
                 ],
-            })
+            }
+            if timeline:
+                group["timeline"] = timeline
+            groups.append(group)
         if not groups:
             return None
         line_ids: list[str] = []
@@ -7339,7 +7987,7 @@ def build_language_bundle(
         return {
             "code": "duplicateTimestamps",
             "reason": "duplicateDisplayTimestamp",
-            "detail": "two or more lines share the same WebUI timeline timestamp label",
+            "detail": "two or more lines share the same WebUI timeline timestamp label within one timeline segment",
             "groups": groups,
             "lineIds": line_ids,
         }
@@ -7368,6 +8016,8 @@ def build_language_bundle(
         if out_key in options_by_key:
             for opts in options_by_key[out_key].values():
                 for o in opts:
+                    if o.get("id"):
+                        parts.append(str(o["id"]))
                     if o["text"]:
                         parts.append(o["text"])
         return " ".join(parts)
@@ -7422,7 +8072,60 @@ def build_language_bundle(
                 parts.extend(str(line_id) for line_id in (opt.get("pathLineIds") or []) if line_id)
                 parts.extend(str(scene_key) for scene_key in (opt.get("sceneKeys") or []) if scene_key)
                 parts.extend(str(scene_key) for scene_key in (opt.get("submenuSceneKeys") or []) if scene_key)
+                for target in opt.get("submenuTargets") or []:
+                    if not isinstance(target, dict):
+                        continue
+                    parts.extend(
+                        str(target.get(key) or "")
+                        for key in ("sceneKey", "optionId", "text")
+                        if target.get(key)
+                    )
         return " ".join(parts)
+
+    def attach_submenu_targets(links: list[dict]) -> None:
+        for link in links or []:
+            for opt in link.get("options") or []:
+                if not isinstance(opt, dict):
+                    continue
+                submenu_scene_keys = [
+                    str(scene_key)
+                    for scene_key in (opt.get("submenuSceneKeys") or [])
+                    if str(scene_key).strip()
+                ]
+                if not submenu_scene_keys:
+                    continue
+                debug = opt.get("_debug") if isinstance(opt.get("_debug"), dict) else {}
+                return_option_ids = [
+                    str(option_id)
+                    for option_id in (debug.get("returnOptionIds") or [])
+                    if str(option_id).strip()
+                ]
+                targets: list[dict] = []
+                seen_targets: set[tuple[str, str]] = set()
+                for idx, option_id in enumerate(return_option_ids):
+                    scene_key = _dialog_tree_option_prefix(option_id) or ""
+                    if not scene_key and idx < len(submenu_scene_keys):
+                        scene_key = submenu_scene_keys[idx]
+                    if not scene_key:
+                        continue
+                    key = (scene_key, option_id)
+                    if key in seen_targets:
+                        continue
+                    seen_targets.add(key)
+                    target = {
+                        "sceneKey": scene_key,
+                        "optionId": option_id,
+                    }
+                    if text := dialog_option_text_by_id.get(option_id):
+                        target["text"] = text
+                    targets.append(target)
+                for scene_key in submenu_scene_keys:
+                    if any(target.get("sceneKey") == scene_key for target in targets):
+                        continue
+                    target = {"sceneKey": scene_key}
+                    targets.append(target)
+                if targets:
+                    opt["submenuTargets"] = targets
 
     def dialog_story_issue_codes(payload: dict) -> list[str]:
         codes: list[str] = []
@@ -7438,8 +8141,13 @@ def build_language_bundle(
             line_order = warning.get("lineOrder") if isinstance(warning.get("lineOrder"), dict) else {}
             option_layout = warning.get("optionLayout") if isinstance(warning.get("optionLayout"), dict) else {}
 
-            if str(line_order.get("status") or "") not in {"", "direct"}:
+            line_order_status = str(line_order.get("status") or "")
+            if line_order_status == "missing":
                 codes.append("missingLineOrder")
+            elif line_order_status == "partial":
+                codes.append("partialLineOrder")
+            elif line_order_status == "fallback":
+                codes.append("fallbackLineOrder")
             if int(line_order.get("uncoveredLineCount") or 0) > 0:
                 codes.append("uncoveredLines")
             if str(option_layout.get("status") or "") == "inferred":
@@ -7449,6 +8157,11 @@ def build_language_bundle(
             for item in (payload.get("warnings") or [])
         ):
             codes.append("duplicateTimestamps")
+        if any(
+            isinstance(item, dict) and item.get("code") == "inferredOptionResponse"
+            for item in (payload.get("warnings") or [])
+        ):
+            codes.append("inferredOptionResponse")
         return codes
 
     print(
@@ -7554,6 +8267,13 @@ def build_language_bundle(
                     line["ts"] = timing["start"]
                 if isinstance(timing.get("duration"), (int, float)):
                     line["dur"] = timing["duration"]
+                timing_debug = {
+                    key: timing[key]
+                    for key in ("timeline", "start", "duration")
+                    if timing.get(key) not in (None, "")
+                }
+                if timing_debug:
+                    line.setdefault("_debug", {})["timelineTiming"] = timing_debug
         # Cross-link with other dialog scenes that share this scene's Unity
         # Timeline. Surfaces cases like dlg_e2m6_11 + dlg_e2m6_19 where a single
         # cinematic recording is split into two DialogTextTable scenes.
@@ -7578,13 +8298,14 @@ def build_language_bundle(
             payload["graphFragments"] = graph_fragments
         scene_graph_links = build_dialog_tree_scene_link_payload(out_key)
         if scene_graph_links:
+            attach_submenu_targets(scene_graph_links)
             payload["sceneGraphLinks"] = scene_graph_links
             scene_graph_links_by_key[out_key] = scene_graph_links
+        attach_runtime_registry_debug(payload)
         attach_scene_order_warning(payload)
         attach_duplicate_timestamp_warning(payload)
         story_issue_codes = dialog_story_issue_codes(payload)
-        with (conv_dir / f"{out_key}.json").open("w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_conv_payload(out_key, payload)
 
         entry = {
             "k": out_key,                # key
@@ -7626,9 +8347,10 @@ def build_language_bundle(
         m = SNS_RE.match(sns_id)
         mission = m.group(1) if m else sns_id
         scene = int(m.group(2)) if m else 0
-        is_topic_chat = sns_id.startswith("sns_topic_") and bool(entry.get("chatId"))
+        chat_id = str(entry.get("chatId") or "")
+        is_topic_chat = sns_id.startswith("sns_topic_") and bool(chat_id)
         if is_topic_chat:
-            mission = f"topic_{entry.get('chatId')}"
+            mission = f"topic_{chat_id}"
         type_, act = parse_mission(mission)
 
         # Reconstruct order by following nextContentId from -1's preContentId backwards,
@@ -7782,22 +8504,41 @@ def build_language_bundle(
         out_key = sns_id
         title_topic_id = entry.get("topicId") or mission.removeprefix("topic_")
         topic_title_trace = topic_name_trace(title_topic_id)
-        chat_title_trace = chat_name_trace(entry.get("chatId", "")) if is_topic_chat else None
+        chat_title_trace = chat_name_trace(chat_id)
         mission_title_trace = mission_name_trace(mission)
-        chat_title = chat_name(entry.get("chatId", "")) if is_topic_chat else ""
+        chat_title = chat_name(chat_id)
+        chat_type_value = chat_type(chat_id)
         mission_title = mission_name(mission)
         topic_title = topic_name(title_topic_id)
-        display_title = topic_title or chat_title or mission_title or sns_raw_title(out_key)
-        display_title_debug = (
-            topic_title_trace
-            or chat_title_trace
-            or mission_title_trace
-            or {"source": sns_raw_title(out_key)}
-        )
+
+        title_choices: list[tuple[str, dict | None]] = []
+        if is_topic_chat:
+            title_choices.extend([
+                (topic_title, topic_title_trace),
+                (chat_title, chat_title_trace),
+            ])
+        else:
+            title_choices.append((topic_title, topic_title_trace))
+        title_choices.extend([
+            (mission_title, mission_title_trace),
+            (chat_title, chat_title_trace),
+            (sns_raw_title(out_key), {"source": sns_raw_title(out_key)}),
+        ])
+
+        display_title = ""
+        display_title_debug: dict | None = None
+        for title_value, title_debug in title_choices:
+            if title_value:
+                display_title = title_value
+                display_title_debug = title_debug or {"source": title_value}
+                break
+        if not display_title:
+            display_title = sns_raw_title(out_key)
+            display_title_debug = {"source": display_title}
+
         def is_admin_sns_speaker(speaker_id: str) -> bool:
             return (speaker_actor_id(speaker_id) or speaker_id).lower() in ADMIN_ACTOR_IDS
 
-        chat_id = str(entry.get("chatId") or "")
         primary_speaker = speakers[0] if speakers else ""
         if primary_speaker and is_admin_sns_speaker(primary_speaker):
             primary_speaker = speakers[1] if len(speakers) > 1 else ""
@@ -7820,6 +8561,8 @@ def build_language_bundle(
             "scene": scene,
             "title": display_title,
             "chatId": chat_id,
+            "chatTitle": chat_title,
+            "chatType": chat_type_value,
             "chatGroupSpeaker": primary_speaker,
             "relatedMissionId": entry.get("relatedMissionId", ""),
             "lines": lines,
@@ -7830,10 +8573,10 @@ def build_language_bundle(
                     pick_fields(entry, "chatId", "relatedMissionId", "topicId", "dialogContentData"),
                 ),
                 "title": display_title_debug,
+                "chat": chat_title_trace,
             },
         }
-        with (conv_dir / f"{out_key}.json").open("w", encoding="utf-8") as f:
-            json.dump(sns_payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_conv_payload(out_key, sns_payload)
 
         entry = {
             "k": out_key,
@@ -7844,6 +8587,8 @@ def build_language_bundle(
             "a": act,
             "title": display_title,
             "chatId": chat_id,
+            "chatTitle": chat_title,
+            "chatType": chat_type_value,
             "chatGroupSpeaker": primary_speaker,
             "c": index_speakers,
             "n": len(lines),
@@ -7858,10 +8603,11 @@ def build_language_bundle(
             for option in (line.get("options") or [])
             if option.get("text")
         )
-        entry["x"] = merge_search_text(
-            display_title,
-            sns_line_text,
-        )
+        entry["x"] = display_title
+        for title_text in (chat_title, topic_title, mission_title):
+            if title_text and title_text != display_title:
+                entry["x"] = merge_search_text(entry["x"], title_text)
+        entry["x"] = merge_search_text(entry["x"], sns_line_text)
         entry["x"] = merge_search_text(
             entry["x"],
             sns_option_text,
@@ -7905,8 +8651,7 @@ def build_language_bundle(
                     "key": radio["target"],
                 }
             }
-        with (conv_dir / f"{out_key}.json").open("w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_conv_payload(out_key, payload)
         radio_out_keys.add(out_key)
 
         entry = {
@@ -7992,8 +8737,7 @@ def build_language_bundle(
                 "title": mission_name_trace(mission),
             },
         }
-        with (conv_dir / f"{out_key}.json").open("w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_conv_payload(out_key, payload)
         black_out_keys.add(out_key)
 
         entry = {
@@ -8130,8 +8874,7 @@ def build_language_bundle(
                 "title": mission_name_trace(remote["mission"]),
             },
         }
-        with (conv_dir / f"{remote['key']}.json").open("w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_conv_payload(remote["key"], payload)
         remotecomm_out_keys.add(remote["key"])
 
         entry = {
@@ -8407,8 +9150,7 @@ def build_language_bundle(
                 },
             },
         }
-        with (conv_dir / f"{cutscene_key}.json").open("w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_conv_payload(cutscene_key, payload)
         cutscene_out_keys.add(cutscene_key)
 
         search_text = " ".join(part for part in [
@@ -8604,8 +9346,7 @@ def build_language_bundle(
         if env_npc:
             env_payload["npc"] = env_npc
             env_payload["_debug"]["npc"] = env_npc["_debug"]
-        with (conv_dir / f"{out_key}.json").open("w", encoding="utf-8") as f:
-            json.dump(env_payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_conv_payload(out_key, env_payload)
 
         index_entry = {
             "k": out_key,
@@ -8942,8 +9683,7 @@ def build_language_bundle(
                 "groupId": group_id,
                 "groupName": group_name,
             }
-        with (conv_dir / f"{row_id}.json").open("w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_conv_payload(row_id, payload)
         entry = {
             "k": row_id,
             "d": "wiki",
@@ -9085,8 +9825,7 @@ def build_language_bundle(
         }
         if summary_rows:
             payload["summary"] = summary_rows
-        with (conv_dir / f"{out_key}.json").open("w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_conv_payload(out_key, payload)
         entry = {
             "k": out_key,
             "d": "table_charactertable",
@@ -9226,8 +9965,7 @@ def build_language_bundle(
             payload["summary"] = summary_rows
         if debug_extra:
             payload["_debug"].update(debug_extra)
-        with (conv_dir / f"{out_key}.json").open("w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_conv_payload(out_key, payload)
         entry = {
             "k": out_key,
             "d": ref_kind,
@@ -9775,7 +10513,7 @@ def build_language_bundle(
                 for nested in value:
                     visit(nested)
 
-        for conv_path in conv_dir.glob("*.json"):
+        for conv_path in sorted(written_conv_paths):
             if conv_path.stem.startswith("wiki_collection_texttable_"):
                 continue
             try:
@@ -10723,6 +11461,8 @@ def build_language_bundle(
         reference_dir.mkdir(parents=True, exist_ok=True)
         generated = int(time.time())
         table_index: list[dict] = []
+        base_reference_rows: dict[str, list[dict]] = {}
+        base_reference_files: dict[str, str] = {}
         total_rows = 0
         total_texts = 0
         total_bytes = 0
@@ -10788,7 +11528,6 @@ def build_language_bundle(
                     continue
 
                 rel_file = f"{table_source}/{table_path.stem}.json"
-                out_path = reference_dir / rel_file
                 out_payload = {
                     "generated": generated,
                     "language": language_code,
@@ -10797,13 +11536,54 @@ def build_language_bundle(
                     "label": collection_display_name(table_path.stem),
                     "rows": row_payloads,
                 }
-                with out_path.open("w", encoding="utf-8") as f:
-                    json.dump(out_payload, f, ensure_ascii=False, separators=(",", ":"))
-                file_bytes = out_path.stat().st_size
+                storage = "full"
+                base_file = ""
+                overlay_rows = 0
+                removed_rows = 0
+
+                if table_source == "persistent" and table_name in base_reference_rows:
+                    base_rows = base_reference_rows.get(table_name) or []
+                    base_file = base_reference_files.get(table_name) or ""
+                    base_by_id = {str(row.get("id") or ""): row for row in base_rows}
+                    current_by_id = {str(row.get("id") or ""): row for row in row_payloads}
+                    removed_ids = sorted(row_id for row_id in base_by_id if row_id not in current_by_id)
+                    changed_rows = [
+                        row for row in row_payloads
+                        if base_by_id.get(str(row.get("id") or "")) != row
+                    ]
+                    overlay_rows = len(changed_rows)
+                    removed_rows = len(removed_ids)
+                    if not changed_rows and not removed_ids and base_file:
+                        rel_file = base_file
+                        storage = "shared"
+                        file_bytes = 0
+                    else:
+                        rel_file = f"overlays/{table_source}/{table_path.stem}.json"
+                        out_payload = {
+                            "generated": generated,
+                            "language": language_code,
+                            "source": collection_source_label(table_source),
+                            "table": table_name,
+                            "label": collection_display_name(table_path.stem),
+                            "baseFile": base_file,
+                            "rowOrder": [str(row.get("id") or "") for row in row_payloads],
+                            "removedRows": removed_ids,
+                            "rows": changed_rows,
+                        }
+                        out_path = write_reference_payload(rel_file, out_payload)
+                        file_bytes = out_path.stat().st_size
+                        storage = "overlay"
+                else:
+                    out_path = write_reference_payload(rel_file, out_payload)
+                    file_bytes = out_path.stat().st_size
+                    if table_source == "streaming":
+                        base_reference_rows[table_name] = row_payloads
+                        base_reference_files[table_name] = rel_file
+
                 total_bytes += file_bytes
                 total_rows += len(row_payloads)
                 total_texts += table_texts
-                table_index.append({
+                table_row = {
                     "source": table_source,
                     "sourceLabel": collection_source_label(table_source),
                     "table": table_name,
@@ -10812,7 +11592,15 @@ def build_language_bundle(
                     "rows": len(row_payloads),
                     "texts": table_texts,
                     "bytes": file_bytes,
-                })
+                    "storage": storage,
+                }
+                if base_file:
+                    table_row["baseFile"] = base_file
+                if overlay_rows:
+                    table_row["overlayRows"] = overlay_rows
+                if removed_rows:
+                    table_row["removedRows"] = removed_rows
+                table_index.append(table_row)
 
         table_index.sort(key=lambda row: (row["source"], row["label"], row["table"]))
         index_payload = {
@@ -10826,8 +11614,7 @@ def build_language_bundle(
                 "bytes": total_bytes,
             },
         }
-        with (reference_dir / "index.json").open("w", encoding="utf-8") as f:
-            json.dump(index_payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_reference_payload("index.json", index_payload)
 
         print(
             f"Raw reference bundle written: {len(table_index)} tables; "
@@ -11258,7 +12045,7 @@ def build_language_bundle(
                 if isinstance(row, dict):
                     for field in ("groupId", "categoryId", "type", "gameCategory", "charId", "profession", "weaponType", "owner"):
                         value = row.get(field)
-                        if value not in (None, "", [], {}):
+                        if is_present(value):
                             search_parts.append(str(value))
                 page_tags = collection_tags(
                     table_name,
@@ -11379,8 +12166,7 @@ def build_language_bundle(
                 sender_id,
                 pick_fields(sender_row, "id", "senderIcon", "senderName"),
             )
-        with (conv_dir / f"{out_key}.json").open("w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_conv_payload(out_key, payload)
         entry = {
             "k": out_key,
             "d": "mail",
@@ -11503,12 +12289,12 @@ def build_language_bundle(
             content_param = node.get("contentParam")
             if isinstance(content_param, list):
                 values.extend(str(value) for value in content_param if str(value))
-            elif content_param not in (None, "", [], {}):
+            elif is_present(content_param):
                 values.append(str(content_param))
             content_params = node.get("contentParams")
             if isinstance(content_params, list):
                 values.extend(str(value) for value in content_params if str(value))
-            elif content_params not in (None, "", [], {}):
+            elif is_present(content_params):
                 values.append(str(content_params))
             for value in values:
                 for alias in prts_attachment_aliases(value):
@@ -11658,8 +12444,7 @@ def build_language_bundle(
                 pick_fields(page_row, "icon", "name", "pageType"),
             )
         payload["_debug"].update(debug_extra)
-        with (conv_dir / f"{row_id}.json").open("w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_conv_payload(row_id, payload)
         entry = {
             "k": row_id,
             "d": "prts",
@@ -11733,8 +12518,7 @@ def build_language_bundle(
         }
         if summary_rows:
             payload["summary"] = summary_rows
-        with (conv_dir / f"{note_id}.json").open("w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_conv_payload(note_id, payload)
         note_tags = ["note"]
         if note_category:
             note_tags.extend([note_category, f"category_{collection_slug(note_category)}"])
@@ -11970,8 +12754,7 @@ def build_language_bundle(
                 },
             },
         }
-        with (conv_dir / f"{out_key}.json").open("w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+        write_conv_payload(out_key, payload)
         entry = {
             "k": out_key,
             "d": "responsive",
@@ -12098,9 +12881,9 @@ def build_language_bundle(
             if scene_graph_links:
                 payload["sceneGraphLinks"] = scene_graph_links
                 scene_graph_links_by_key[out_key] = scene_graph_links
+            attach_runtime_registry_debug(payload)
             attach_scene_order_warning(payload)
-            with (conv_dir / f"{out_key}.json").open("w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+            write_conv_payload(out_key, payload)
             entry = {
                 "k": out_key, "d": "dlg", "m": mission, "s": scene,
                 "t": type_, "a": act, "c": sorted(actors),
@@ -12211,6 +12994,479 @@ def build_language_bundle(
 
     for entry in index_entries:
         merge_conv_hint_search_text(entry)
+
+    def compact_story_source_link(link: dict) -> dict:
+        source = str(link.get("source") or "")
+        file_ref = str(link.get("file") or "")
+        path_ref = str(link.get("path") or "")
+        raw = str(link.get("raw") or "")
+        context = link.get("context") if isinstance(link.get("context"), dict) else {}
+        compact = {
+            "source": source,
+            "file": file_ref,
+            "path": path_ref,
+            "raw": raw,
+            "kind": str(link.get("kind") or ""),
+            "context": context,
+            "_debug": {
+                "source": {
+                    "source": source,
+                    "file": file_ref,
+                    "path": path_ref,
+                    "raw": raw,
+                    "kind": str(link.get("kind") or ""),
+                    "matchKind": str(link.get("matchKind") or ""),
+                    "context": context,
+                },
+            },
+        }
+        for optional in ("sourceKey", "mission", "levelId", "scriptId", "templateGroup", "templateId"):
+            if link.get(optional):
+                compact[optional] = link[optional]
+                compact["_debug"]["source"][optional] = link[optional]
+        return compact
+
+    def story_source_link_search_text(links: list[dict]) -> str:
+        parts: list[str] = []
+        for link in links:
+            for field in ("raw", "source", "file", "path", "mission", "levelId", "scriptId", "templateId"):
+                value = link.get(field)
+                if value:
+                    parts.append(str(value))
+            context = link.get("context") if isinstance(link.get("context"), dict) else {}
+            owner = context.get("owner") if isinstance(context.get("owner"), dict) else {}
+            for value in owner.values():
+                if value:
+                    parts.append(str(value))
+        return " ".join(parts)
+
+    def story_source_link_index_summary(links: list[dict]) -> dict:
+        source_counts = Counter(str(link.get("source") or "") for link in links)
+        files = _unique_preserve(str(link.get("file") or "") for link in links if link.get("file"))
+        return {
+            "n": len(links),
+            "sources": {
+                key: source_counts[key]
+                for key in sorted(source_counts)
+                if key
+            },
+            "files": files[:5],
+        }
+
+    def story_source_link_report_rows(keys: set[str]) -> list[dict]:
+        rows: list[dict] = []
+        for key in sorted(keys):
+            links = story_source_links.get(key) or []
+            source_counts = Counter(str(link.get("source") or "") for link in links)
+            rows.append({
+                "key": key,
+                "kind": str((links[0] if links else {}).get("kind") or ""),
+                "references": len(links),
+                "sources": {
+                    source: source_counts[source]
+                    for source in sorted(source_counts)
+                    if source
+                },
+                "files": _unique_preserve(
+                    str(link.get("file") or "")
+                    for link in links
+                    if link.get("file")
+                )[:8],
+            })
+        return rows
+
+    def render_story_source_link_report_md(report: dict) -> str:
+        summary = report.get("summary") or {}
+        lines = [
+            f"# Story Source Links ({language_code})",
+            "",
+            "## Summary",
+            "",
+            f"- Source-link keys: `{summary.get('sourceLinkKeys', 0)}`",
+            f"- Source references: `{summary.get('sourceReferences', 0)}`",
+            f"- Attached WebUI keys: `{summary.get('attachedKeys', 0)}`",
+            f"- Attached references: `{summary.get('attachedReferences', 0)}`",
+            f"- Referenced but missing in WebUI: `{summary.get('referencedMissingKeys', 0)}`",
+            f"- Story entries without source links: `{summary.get('storyEntriesWithoutSourceLinks', 0)}`",
+            "",
+            "## Missing Referenced Keys",
+            "",
+        ]
+        for row in (report.get("referencedMissing") or [])[:80]:
+            lines.append(f"- `{row.get('key')}` ({row.get('kind')}, `{row.get('references')}` refs)")
+        if not report.get("referencedMissing"):
+            lines.append("- None")
+        lines.extend(["", "## Story Entries Without Source Links", ""])
+        for row in (report.get("storyEntriesWithoutSourceLinks") or [])[:80]:
+            label = row.get("mission") or ""
+            lines.append(f"- `{row.get('key')}` ({row.get('kind')}{', ' + label if label else ''})")
+        if not report.get("storyEntriesWithoutSourceLinks"):
+            lines.append("- None")
+        lines.append("")
+        return "\n".join(lines)
+
+    def attach_story_source_links_to_outputs() -> dict:
+        if not story_source_links:
+            return {}
+        available_keys = {
+            str(entry.get("k") or "")
+            for entry in index_entries
+            if entry.get("k")
+        }
+        def resolve_source_link_key(source_key: str) -> str:
+            if source_key in available_keys:
+                return source_key
+            if source_key.startswith("dlg_"):
+                misc_key = f"misc_{source_key}"
+                if misc_key in available_keys:
+                    return misc_key
+                match = re.match(r"^(dlg_.+_\d+)d\d+$", source_key)
+                if match and match.group(1) in available_keys:
+                    return match.group(1)
+            if source_key.startswith("cutscene_") and source_key.endswith("_start"):
+                base_key = source_key.removesuffix("_start")
+                if base_key in available_keys:
+                    return base_key
+            return ""
+
+        resolved_source_links: dict[str, list[dict]] = defaultdict(list)
+        unresolved_source_keys: set[str] = set()
+        for source_key, links in story_source_links.items():
+            resolved_key = resolve_source_link_key(source_key)
+            if not resolved_key:
+                unresolved_source_keys.add(source_key)
+                continue
+            for link in links:
+                resolved_link = dict(link)
+                if source_key != resolved_key:
+                    resolved_link["sourceKey"] = source_key
+                resolved_source_links[resolved_key].append(resolved_link)
+
+        attached_keys: set[str] = set()
+        attached_refs = 0
+        for entry in index_entries:
+            key = str(entry.get("k") or "")
+            links = resolved_source_links.get(key) or []
+            if not links:
+                continue
+            attached_keys.add(key)
+            attached_refs += len(links)
+            compact_links = [compact_story_source_link(link) for link in links[:12]]
+            omitted = max(0, len(links) - len(compact_links))
+            entry["src"] = story_source_link_index_summary(links)
+            entry["x"] = merge_search_text(entry.get("x", ""), story_source_link_search_text(links))
+            tags = entry.setdefault("tags", [])
+            if "sourceLinked" not in tags:
+                tags.append("sourceLinked")
+
+            conv_path = conv_dir / f"{key}.json"
+            if not conv_path.exists():
+                continue
+            try:
+                payload = json.loads(conv_path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            payload["sourceLinks"] = compact_links
+            if omitted:
+                payload["sourceLinksOmitted"] = omitted
+            debug = payload.setdefault("_debug", {})
+            debug["sourceLinks"] = {
+                "source": {
+                    "index": repo_rel(STORY_SOURCE_LINKS_PATH),
+                    "key": key,
+                    "count": len(links),
+                    "shown": len(compact_links),
+                    "omitted": omitted,
+                },
+            }
+            write_json(conv_path, payload)
+            remember_written(conv_path, written_conv_paths)
+
+        referenced_missing = unresolved_source_keys
+        source_link_candidate_kinds = set(MISSION_SCENE_ENTRY_KINDS) | {"env", "misc"}
+        story_entries_without_links = [
+            {
+                "key": str(entry.get("k") or ""),
+                "kind": str(entry.get("d") or ""),
+                "mission": str(entry.get("m") or ""),
+            }
+            for entry in index_entries
+            if entry.get("k")
+            and entry.get("d") in source_link_candidate_kinds
+            and entry.get("k") not in resolved_source_links
+        ]
+        report = {
+            "generated": int(time.time()),
+            "language": language_code,
+            "sourceIndex": repo_rel(STORY_SOURCE_LINKS_PATH),
+            "summary": {
+                "sourceLinkKeys": len(story_source_links),
+                "sourceReferences": sum(len(rows) for rows in story_source_links.values()),
+                "attachedKeys": len(attached_keys),
+                "attachedReferences": attached_refs,
+                "referencedMissingKeys": len(referenced_missing),
+                "storyEntriesWithoutSourceLinks": len(story_entries_without_links),
+            },
+            "referencedMissing": sorted(
+                story_source_link_report_rows(referenced_missing),
+                key=lambda row: (-int(row.get("references") or 0), row.get("key") or ""),
+            )[:300],
+            "storyEntriesWithoutSourceLinks": story_entries_without_links[:500],
+        }
+        report_json = REPORTS_DIR / f"story_source_links_{language_code}.json"
+        report_md = REPORTS_DIR / f"story_source_links_{language_code}.md"
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        write_json(report_json, report, indent=2, compact=False)
+        report_md.write_text(render_story_source_link_report_md(report), encoding="utf-8")
+        report["report"] = {
+            "json": repo_rel(report_json),
+            "markdown": repo_rel(report_md),
+        }
+        return report
+
+    story_source_link_report = attach_story_source_links_to_outputs()
+
+    def compact_narrative_video_ref(ref: dict) -> dict:
+        compact = {
+            "name": str(ref.get("name") or ""),
+            "rel": str(ref.get("rel") or ""),
+            "source": str(ref.get("source") or ""),
+            "format": str(ref.get("format") or ""),
+            "size": int(ref.get("size") or 0),
+            "stem": str(ref.get("stem") or ""),
+            "baseStem": str(ref.get("baseStem") or ""),
+            "kind": str(ref.get("kind") or ""),
+            "_debug": {
+                "source": {
+                    "rel": str(ref.get("rel") or ""),
+                    "source": str(ref.get("source") or ""),
+                    "name": str(ref.get("name") or ""),
+                    "kind": str(ref.get("kind") or ""),
+                    "keyCandidates": list(ref.get("keyCandidates") or []),
+                },
+            },
+        }
+        if ref.get("gender"):
+            compact["gender"] = str(ref["gender"])
+            compact["_debug"]["source"]["gender"] = str(ref["gender"])
+        if ref.get("resolvedKey"):
+            compact["_debug"]["source"]["resolvedKey"] = str(ref["resolvedKey"])
+        return compact
+
+    def narrative_video_sort_key(ref: dict) -> tuple:
+        source = str(ref.get("source") or "")
+        fmt = str(ref.get("format") or "")
+        source_rank = {
+            "StreamingAssets-structured": 0,
+            "Persistent-structured": 1,
+            "raw_vfs": 2,
+        }.get(source, 9)
+        format_rank = {
+            "mp4": 0,
+            "webm": 1,
+            "ogv": 2,
+            "mov": 3,
+            "m4v": 4,
+            "avi": 5,
+            "usm": 6,
+        }.get(fmt, 9)
+        gender = str(ref.get("gender") or "")
+        gender_rank = {"": 0, "m": 1, "f": 2}.get(gender, 9)
+        return (
+            str(ref.get("baseStem") or ""),
+            gender_rank,
+            format_rank,
+            source_rank,
+            str(ref.get("rel") or ""),
+        )
+
+    def narrative_video_search_text(refs: list[dict]) -> str:
+        parts: list[str] = []
+        for ref in refs:
+            for field in ("name", "rel", "source", "stem", "baseStem", "gender", "format", "kind"):
+                value = ref.get(field)
+                if value:
+                    parts.append(str(value))
+        return " ".join(parts)
+
+    def narrative_video_index_summary(refs: list[dict]) -> dict:
+        source_counts = Counter(str(ref.get("source") or "") for ref in refs)
+        format_counts = Counter(str(ref.get("format") or "") for ref in refs)
+        names = _unique_preserve(str(ref.get("name") or "") for ref in refs if ref.get("name"))
+        return {
+            "n": len(refs),
+            "sources": {
+                key: source_counts[key]
+                for key in sorted(source_counts)
+                if key
+            },
+            "formats": {
+                key: format_counts[key]
+                for key in sorted(format_counts)
+                if key
+            },
+            "files": names[:5],
+        }
+
+    def render_narrative_video_report_md(report: dict) -> str:
+        summary = report.get("summary") or {}
+        lines = [
+            f"# Narrative Videos ({language_code})",
+            "",
+            "## Summary",
+            "",
+            f"- Scanned video files: `{summary.get('scannedVideos', 0)}`",
+            f"- Attached WebUI keys: `{summary.get('attachedKeys', 0)}`",
+            f"- Attached video refs: `{summary.get('attachedVideos', 0)}`",
+            f"- Unresolved video refs: `{summary.get('unresolvedVideos', 0)}`",
+            "",
+            "## Attached Keys",
+            "",
+        ]
+        for row in (report.get("attached") or [])[:120]:
+            names = ", ".join((row.get("files") or [])[:4])
+            lines.append(f"- `{row.get('key')}` ({row.get('kind')}, `{row.get('videos')}` refs): {names}")
+        if not report.get("attached"):
+            lines.append("- None")
+        lines.extend(["", "## Unresolved Videos", ""])
+        for row in (report.get("unresolved") or [])[:120]:
+            candidates = ", ".join(f"`{candidate}`" for candidate in (row.get("keyCandidates") or [])[:4])
+            lines.append(f"- `{row.get('name')}` ({row.get('kind')}) -> {candidates}")
+        if not report.get("unresolved"):
+            lines.append("- None")
+        lines.append("")
+        return "\n".join(lines)
+
+    def attach_narrative_videos_to_outputs() -> dict:
+        if not narrative_video_assets:
+            return {}
+        available_keys = {
+            str(entry.get("k") or "")
+            for entry in index_entries
+            if entry.get("k")
+        }
+
+        def resolve_video_key(ref: dict) -> str:
+            for candidate in ref.get("keyCandidates") or []:
+                candidate = str(candidate or "")
+                if candidate in available_keys:
+                    return candidate
+                if candidate.startswith("dlg_"):
+                    misc_key = f"misc_{candidate}"
+                    if misc_key in available_keys:
+                        return misc_key
+                    match = re.match(r"^(dlg_.+_\d+)d\d+$", candidate)
+                    if match and match.group(1) in available_keys:
+                        return match.group(1)
+            return ""
+
+        resolved_videos: dict[str, list[dict]] = defaultdict(list)
+        unresolved_videos: list[dict] = []
+        for ref in narrative_video_assets:
+            resolved_key = resolve_video_key(ref)
+            if not resolved_key:
+                unresolved_videos.append(ref)
+                continue
+            resolved_ref = dict(ref)
+            resolved_ref["resolvedKey"] = resolved_key
+            resolved_videos[resolved_key].append(resolved_ref)
+
+        attached_rows: list[dict] = []
+        attached_refs = 0
+        for entry in index_entries:
+            key = str(entry.get("k") or "")
+            refs = sorted(resolved_videos.get(key) or [], key=narrative_video_sort_key)
+            if not refs:
+                continue
+            attached_refs += len(refs)
+            compact_refs = [compact_narrative_video_ref(ref) for ref in refs[:16]]
+            omitted = max(0, len(refs) - len(compact_refs))
+            entry["vid"] = narrative_video_index_summary(refs)
+            entry["x"] = merge_search_text(entry.get("x", ""), narrative_video_search_text(refs))
+            tags = entry.setdefault("tags", [])
+            if "narrativeVideo" not in tags:
+                tags.append("narrativeVideo")
+
+            conv_path = conv_dir / f"{key}.json"
+            if conv_path.exists():
+                try:
+                    payload = json.loads(conv_path.read_text(encoding="utf-8"))
+                except Exception:
+                    payload = None
+                if isinstance(payload, dict):
+                    payload["narrativeVideos"] = compact_refs
+                    if omitted:
+                        payload["narrativeVideosOmitted"] = omitted
+                    if isinstance(payload.get("cutscene"), dict):
+                        payload["cutscene"]["videoRefs"] = compact_refs
+                    debug = payload.setdefault("_debug", {})
+                    debug["narrativeVideos"] = {
+                        "source": {
+                            "key": key,
+                            "count": len(refs),
+                            "shown": len(compact_refs),
+                            "omitted": omitted,
+                        },
+                    }
+                    write_json(conv_path, payload)
+                    remember_written(conv_path, written_conv_paths)
+
+            source_counts = Counter(str(ref.get("source") or "") for ref in refs)
+            attached_rows.append({
+                "key": key,
+                "kind": str(entry.get("d") or ""),
+                "mission": str(entry.get("m") or ""),
+                "videos": len(refs),
+                "sources": {
+                    source: source_counts[source]
+                    for source in sorted(source_counts)
+                    if source
+                },
+                "files": _unique_preserve(
+                    str(ref.get("name") or "")
+                    for ref in refs
+                    if ref.get("name")
+                )[:12],
+            })
+
+        unresolved_rows = [
+            {
+                "name": str(ref.get("name") or ""),
+                "kind": str(ref.get("kind") or ""),
+                "rel": str(ref.get("rel") or ""),
+                "keyCandidates": list(ref.get("keyCandidates") or []),
+            }
+            for ref in unresolved_videos
+        ]
+        report = {
+            "generated": int(time.time()),
+            "language": language_code,
+            "summary": {
+                "scannedVideos": len(narrative_video_assets),
+                "attachedKeys": len(attached_rows),
+                "attachedVideos": attached_refs,
+                "unresolvedVideos": len(unresolved_videos),
+                "cutsceneVideoFiles": sum(1 for ref in narrative_video_assets if ref.get("kind") == "cutscene"),
+                "remotecommVideoFiles": sum(1 for ref in narrative_video_assets if ref.get("kind") == "remotecomm"),
+            },
+            "attached": sorted(
+                attached_rows,
+                key=lambda row: (-int(row.get("videos") or 0), row.get("key") or ""),
+            )[:500],
+            "unresolved": unresolved_rows[:500],
+        }
+        report_json = REPORTS_DIR / f"narrative_videos_{language_code}.json"
+        report_md = REPORTS_DIR / f"narrative_videos_{language_code}.md"
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        write_json(report_json, report, indent=2, compact=False)
+        report_md.write_text(render_narrative_video_report_md(report), encoding="utf-8")
+        report["report"] = {
+            "json": repo_rel(report_json),
+            "markdown": repo_rel(report_md),
+        }
+        return report
+
+    narrative_video_report = attach_narrative_videos_to_outputs()
 
     def normalize_index_entry_defaults(entry: dict) -> None:
         type_key = str(entry.get("t") or "").strip()
@@ -13170,8 +14426,8 @@ def build_language_bundle(
         encoding="utf-8",
     )
     mission_timeline_report = {
-        "json": str(mission_timeline_json.relative_to(ROOT)).replace("\\", "/"),
-        "markdown": str(mission_timeline_md.relative_to(ROOT)).replace("\\", "/"),
+        "json": repo_rel(mission_timeline_json),
+        "markdown": repo_rel(mission_timeline_md),
         "summary": mission_timeline_recovery_payload["summary"],
         "evidencePolicy": MISSION_TIMELINE_EVIDENCE_POLICY,
     }
@@ -13212,42 +14468,82 @@ def build_language_bundle(
                 payload["flow"] = mission_flows_payload[mission]
             if mission in mission_timelines_by_mission:
                 payload["timelineRecovery"] = mission_timelines_by_mission[mission]
-            out_path = out_dir / rel_file
-            with out_path.open("w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+            out_path = write_mission_payload(rel_file, payload)
             mission_data_files[mission] = rel_file
             mission_data_bytes += out_path.stat().st_size
 
-    with (out_dir / "index.json").open("w", encoding="utf-8") as f:
-        index_payload = {
-            "generated": int(time.time()),
-            "profile": profile,
-            "actorNames": actor_names,
-            "missionNames": mission_names,
-            "entries": index_entries,
+    generated = int(time.time())
+    search_entries: list[dict] = []
+    for entry in index_entries:
+        search_text = str(entry.pop("x", "") or "").strip()
+        if search_text:
+            search_entries.append({
+                "k": str(entry.get("k") or ""),
+                "x": search_text,
+            })
+
+    write_json(out_dir / "actors.json", {
+        "generated": generated,
+        "language": language_code,
+        "actorNames": actor_names,
+    })
+    write_json(out_dir / "missions.json", {
+        "generated": generated,
+        "language": language_code,
+        "missionNames": mission_names,
+    })
+    write_json(out_dir / "search.json", {
+        "generated": generated,
+        "language": language_code,
+        "entries": search_entries,
+    })
+
+    index_payload = {
+        "generated": generated,
+        "profile": profile,
+        "actors": "actors.json",
+        "missions": "missions.json",
+        "search": "search.json",
+        "entries": index_entries,
+    }
+    if write_reference and reference_stats:
+        index_payload["reference"] = {
+            "index": "reference/index.json",
+            "stats": reference_stats,
         }
-        if write_reference and reference_stats:
-            index_payload["reference"] = {
-                "index": "reference/index.json",
-                "stats": reference_stats,
-            }
-        if mission_data_files:
-            index_payload["missionData"] = {
-                "files": mission_data_files,
-                "missions": len(mission_data_files),
-                "bytes": mission_data_bytes,
-            }
-        index_payload["missionTimelineRecovery"] = mission_timeline_report
-        if include_reference_in_story_index:
-            index_payload["missionExtras"] = mission_extras_payload
-            index_payload["missionFlows"] = mission_flows_payload
-        json.dump(index_payload, f, ensure_ascii=False, separators=(",", ":"))
+    if mission_data_files:
+        index_payload["missionData"] = {
+            "files": mission_data_files,
+            "missions": len(mission_data_files),
+            "bytes": mission_data_bytes,
+        }
+    index_payload["missionTimelineRecovery"] = mission_timeline_report
+    if story_source_link_report:
+        index_payload["storySourceLinks"] = {
+            "sourceIndex": story_source_link_report.get("sourceIndex"),
+            "summary": story_source_link_report.get("summary"),
+            "report": story_source_link_report.get("report"),
+        }
+    if narrative_video_report:
+        index_payload["narrativeVideos"] = {
+            "summary": narrative_video_report.get("summary"),
+            "report": narrative_video_report.get("report"),
+        }
+    if include_reference_in_story_index:
+        index_payload["missionExtras"] = mission_extras_payload
+        index_payload["missionFlows"] = mission_flows_payload
+    write_json(out_dir / "index.json", index_payload)
+
+    cleanup_stale_json(conv_dir, written_conv_paths)
+    cleanup_stale_json(mission_dir, written_mission_paths)
+    if write_reference:
+        cleanup_stale_json(reference_dir, written_reference_paths)
 
     total_size = sum(p.stat().st_size for p in conv_dir.glob("*.json"))
     conv_count = len(list(conv_dir.glob("*.json")))
     index_path = out_dir / "index.json"
-    scene_order_report = write_scene_order_gap_reports(language_code, conv_dir)
-    inferred_anchor_report = write_inferred_option_anchors_report(language_code, conv_dir)
+    scene_order_report = shared_write_scene_order_gap_reports(ROOT, REPORTS_DIR, language_code, conv_dir)
+    inferred_anchor_report = shared_write_inferred_option_anchors_report(REPORTS_DIR, language_code, conv_dir)
     print(f"\n[{language_code}] Done in {time.time()-t0:.1f}s")
     print(f"  profile:       {profile}")
     print(f"  conversations: {len(index_entries)}")
@@ -13260,6 +14556,20 @@ def build_language_bundle(
         f"{mission_timeline_recovery_payload['summary']['missionCount']} missions, "
         f"{mission_timeline_recovery_payload['summary']['questCount']} quests"
     )
+    if story_source_link_report:
+        source_summary = story_source_link_report.get("summary") or {}
+        print(
+            "  source links:  "
+            f"{source_summary.get('attachedKeys', 0)} keys, "
+            f"{source_summary.get('attachedReferences', 0)} refs attached"
+        )
+    if narrative_video_report:
+        video_summary = narrative_video_report.get("summary") or {}
+        print(
+            "  narrative vid: "
+            f"{video_summary.get('attachedKeys', 0)} keys, "
+            f"{video_summary.get('attachedVideos', 0)} refs attached"
+        )
     if reference_stats:
         print(f"  reference:     {reference_stats.get('bytes', 0)/1024/1024:.1f} MB across {reference_stats.get('tables', 0)} tables")
     print(f"  index:         {index_path.stat().st_size/1024:.1f} KB")
@@ -13280,33 +14590,18 @@ def build_language_bundle(
         "referenceTables": int(reference_stats.get("tables", 0)) if reference_stats else 0,
         "referenceRows": int(reference_stats.get("rows", 0)) if reference_stats else 0,
         "indexBytes": index_path.stat().st_size,
-        "sceneOrderGapReport": str(scene_order_report["markdown"].relative_to(ROOT)).replace("\\", "/"),
-        "sceneOrderGapData": str(scene_order_report["json"].relative_to(ROOT)).replace("\\", "/"),
+        "sceneOrderGapReport": repo_rel(scene_order_report["markdown"]),
+        "sceneOrderGapData": repo_rel(scene_order_report["json"]),
         "sceneOrderGapCount": scene_order_report["summary"]["totalFlaggedScenes"],
-        "inferredOptionAnchorsReport": str(inferred_anchor_report["markdown"].relative_to(ROOT)).replace("\\", "/"),
-        "inferredOptionAnchorsData": str(inferred_anchor_report["json"].relative_to(ROOT)).replace("\\", "/"),
+        "inferredOptionAnchorsReport": repo_rel(inferred_anchor_report["markdown"]),
+        "inferredOptionAnchorsData": repo_rel(inferred_anchor_report["json"]),
         "inferredOptionAnchorsScenes": inferred_anchor_report["summary"]["totalScenes"],
         "inferredOptionAnchorsGroups": inferred_anchor_report["summary"]["totalInferredGroups"],
+        "narrativeVideoReport": str((narrative_video_report.get("report") or {}).get("markdown") or ""),
+        "narrativeVideoData": str((narrative_video_report.get("report") or {}).get("json") or ""),
+        "narrativeVideoKeys": int((narrative_video_report.get("summary") or {}).get("attachedKeys", 0)),
+        "narrativeVideoRefs": int((narrative_video_report.get("summary") or {}).get("attachedVideos", 0)),
     }
-
-
-def build_asset_index(out_path: Path, export_root: Path = EXPORTED_DIR) -> dict:
-    return shared_build_asset_index(out_path, root=ROOT, export_root=export_root)
-
-def collect_scene_order_gap_rows(conv_dir: Path) -> list[dict]:
-    return shared_collect_scene_order_gap_rows(ROOT, conv_dir)
-
-
-def build_scene_order_gap_summary(rows: list[dict], language: str) -> dict:
-    return shared_build_scene_order_gap_summary(rows, language)
-
-
-def write_scene_order_gap_reports(language: str, conv_dir: Path) -> dict:
-    return shared_write_scene_order_gap_reports(ROOT, REPORTS_DIR, language, conv_dir)
-
-
-def write_inferred_option_anchors_report(language: str, conv_dir: Path) -> dict:
-    return shared_write_inferred_option_anchors_report(REPORTS_DIR, language, conv_dir)
 
 
 def recover_timeline_orders_for_build(mode: str, force: bool = False) -> None:
@@ -13352,7 +14647,7 @@ def main(argv: list[str] | None = None) -> None:
     if not available_languages:
         raise SystemExit(
             "No I18nTextTable_*.json files found in export_full/structured/StreamingAssets/Table "
-            "(or the legacy export_full/StreamingAssets/Table fallback)."
+            "from the current WebUI export."
         )
 
     target_languages = normalize_language_selection(args.languages, available_languages)
@@ -13364,7 +14659,6 @@ def main(argv: list[str] | None = None) -> None:
         )
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    shutil.rmtree(LANG_DIR, ignore_errors=True)
     LANG_DIR.mkdir(parents=True, exist_ok=True)
     shutil.rmtree(OUT_DIR / "conv", ignore_errors=True)
     for stale_file in ("manifest.json", "index.json", "actors.json"):
@@ -13389,6 +14683,9 @@ def main(argv: list[str] | None = None) -> None:
                 write_reference=not args.skip_reference,
             )
         )
+    for language_dir in LANG_DIR.iterdir():
+        if language_dir.is_dir() and language_dir.name not in target_languages:
+            shutil.rmtree(language_dir, ignore_errors=True)
 
     manifest = {
         "generated": int(time.time()),
@@ -13398,14 +14695,9 @@ def main(argv: list[str] | None = None) -> None:
         "languages": [language_info(code) for code in target_languages],
         "stats": stats,
     }
-    with (OUT_DIR / "manifest.json").open("w", encoding="utf-8") as f:
-        json.dump(manifest, f, ensure_ascii=False, indent=2)
-
-    default_dir = LANG_DIR / default_language
-    shutil.copy2(default_dir / "index.json", OUT_DIR / "index.json")
+    write_json(OUT_DIR / "manifest.json", manifest, indent=2, compact=False)
 
     print("\nManifest written to", OUT_DIR / "manifest.json")
-    print("Default root copy:", OUT_DIR / "index.json")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,24 @@ Main controls:
 - inline tag display toggle
 - gender variant toggle
 
+Inline image behavior:
+
+- SNS emoji images such as `sns_emoji_*` are treated as regular inline emoji.
+  They do not open hover popovers or the full-screen modal.
+- Non-emoji SNS media such as `sns_image_*`, `sns_sticker_*`,
+  `deco_sns_tweet_decorate_*`, `bg_sns_tweet_decorate_*`, and related
+  `cg_image_*` assets render with normal image proportions instead of the
+  compact emoji treatment.
+- Hover popovers and the modal preview should stay inside their visible border
+  and within the viewport.
+
+Narrative video behavior:
+
+- The Story page selects the best playable active-gender/source variant for
+  each distinct narrative video. Hidden duplicate files such as alternate
+  sources, raw `.usm` exports, or inactive gender variants should not be
+  counted as additional user-facing videos.
+
 ## Builder
 
 Primary command:
@@ -124,10 +142,20 @@ The current Story recovery combines several classes of data:
 - mission context files for lazy flow/context display
 - source traces and warnings where recovery is partial
 
+Rendered inline media is resolved from the asset index at browser time. The
+frontend classifies SNS emoji separately from non-emoji SNS media so phone chat
+emoji stays inline while SNS stickers/photos keep their normal image shape.
+
 The page should surface recovery uncertainty instead of hiding it. When ordering
 or option placement is incomplete, keep the warning/issue metadata in the
 generated payload and expose it through the existing Story issue filter and
 conversation warning area.
+
+For Timeline-inferred option responses, the builder can use raw trunk
+`clipOptionIndex` values only when every candidate response clip has a distinct
+value that exactly matches the group's option indices. The first recovered case
+is `dlg_c28m3_10` group 1; most remaining adjacent response layouts still carry
+only default `0` values and stay marked as inferred.
 
 ## Verification
 
@@ -146,3 +174,7 @@ Check:
 - `webui/data/lang/CN/mission/` contains mission context files.
 - the Story tab loads, filters, opens a conversation, and shows raw/source
   traces when the raw toggle is enabled.
+- `test_sns_emojicomment` keeps `sns_emoji_*` inline with no popup/modal.
+- `test_sns_sticker` renders `sns_sticker_*` with normal image proportions.
+- `sns_topic_map02_lv005_12002` renders `sns_image_*` as bounded previews and
+  keeps the preview/modal image inside its frame.

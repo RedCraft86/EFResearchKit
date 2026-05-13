@@ -5,7 +5,7 @@ Agent notes for this repo. User-facing usage belongs in `README.md`.
 Keep root-level docs and workflow guidance focused on:
 
 - the static WebUI in `webui/`
-- the Unity shader lab in `unity_endfield_graph_shader_lab/`
+- the Unity character recovery lab in `unity_endfield_graph_shader_lab/`
 
 Move observations, conclusions, older exploration notes, and status snapshots to
 `memory/`. Do not use `reports/` for investigation conclusions.
@@ -14,33 +14,49 @@ Move observations, conclusions, older exploration notes, and status snapshots to
 
 ```bat
 .\export.bat
+.\export.bat --init-build
+.\export.bat --fast-assets
 python serve.py
 python serve.py 9000
 ```
 
 `export.bat` is the canonical WebUI refresh. It exports only data needed by the
 browser, skips raw VFS and source inventory, builds the Updates feed, builds CN
-story/reference data by default, and rebuilds the asset index.
+story/reference data by default, and rebuilds the asset index. It also verifies
+that `export_full/` matches the current installed `Endfield_Data` fingerprints
+before the long WebUI builders run.
+Use `--init-build` for first-time/baseline-only builds where the Updates feed
+should be baselined instead of reporting changes.
+Use `--fast-assets` for local refreshes that can reuse existing asset indexes
+and skip demo bundle zip generation.
 
 Useful direct commands:
 
 ```bat
 python scripts\webui\build_updates.py
+python scripts\webui\build_updates.py --baseline-only
+python scripts\webui\build_updates.py --skip-asset-updates
 python scripts\webui\build_updates.py --reset-baseline
+python scripts\webui\verify_export_freshness.py
+python scripts\webui\build_story_source_links.py
 python scripts\webui\build_story.py --languages CN --default-language CN
 python scripts\webui\build_story.py --languages CN EN JP --default-language CN
 python scripts\webui\build_assets.py
+python scripts\webui\build_assets.py --fast
 python scripts\webui\package_webui.py
 ```
 
-Shader lab:
+`scripts/webui/build_story.py` currently takes about 3 minutes for the default
+CN lean build on this checkout. Multi-language builds or forced timeline
+recovery can take longer; when Codex runs this command directly, use a longer
+shell timeout, such as 10-15 minutes (`timeout_ms` of at least `900000`).
+
+Unity character recovery lab:
 
 ```bat
 cd unity_endfield_graph_shader_lab
-.\open_shader_lab.bat
-.\build_shader_lab_scene.bat
-.\build_wulfa_scene.bat
-.\build_wulfa_animations.bat
+.\open_character_recovery_lab.bat
+.\build_all_character_recovery.bat
 ```
 
 The Python tooling is intended to stay stdlib-only unless a task explicitly
@@ -58,6 +74,23 @@ current source of truth instead:
 - WebUI frontend scope: `webui/README.md`
 - detailed WebUI recovery notes: `memory/webui_recovery/`
 - shader/animation recovery snapshots: dedicated files in `memory/`
+
+## Project Local Skills
+
+Project-only Codex skills live under `.codex/skills/`. When a task matches one
+of these workflows, open the matching `SKILL.md` before acting:
+
+- `.codex/skills/endfield-webui-workflow/`: WebUI refresh, serving, packaging,
+  Updates tab, and static frontend scope, including current SNS inline-image
+  behavior.
+- `.codex/skills/endfield-source-graph/`: source graph build/query and
+  graph-backed follow-up reports.
+
+The current checkout does not ship separate `endfield-story-recovery` or
+`endfield-character-recovery-lab` skill folders. For those workflows, use the
+active docs (`README.md`, `scripts/README.md`, `webui/README.md`, and
+`unity_endfield_graph_shader_lab/README.md`) plus the existing source-graph
+skill when graph evidence is relevant.
 
 The retired exploration snapshots were collapsed because they mixed active
 workflow guidance with stale conclusions, obsolete package behavior based on
@@ -78,6 +111,9 @@ D:\Program Files\Endfield Game\Endfield_Data
 by default and stores state under `.game-data-tracker/`. Do not point this
 tracker at `webui/`, `export_full/`, `reports/`, `memory/`, or `scratch/`.
 WebUI edits and generated output must not appear as game-data updates.
+Local CrashSight telemetry files under
+`Plugins/x86_64/wesight/crashsight_data/` are ignored as volatile local runtime
+state, not installed content updates.
 
 The builder may scan exported assets under `export_full/` to add image/model/video
 asset-level entries to the Updates page, but it must only report those entries
@@ -89,7 +125,7 @@ local rebuild noise and baselined silently.
 
 - Prefer the layout rooted at `serve.py`, `export.bat`, `webui/`,
   `scripts/webui/`, and `unity_endfield_graph_shader_lab/`.
-- Keep `README.md` focused on active WebUI and shader-lab usage.
+- Keep `README.md` focused on active WebUI and Unity character recovery usage.
 - Keep observations, conclusions, investigation notes, and status snapshots in
   `memory/`.
 - Keep `reports/` for durable generated reports only, not agent conclusions or
@@ -99,6 +135,8 @@ local rebuild noise and baselined silently.
 - Use `tmp/` for temporary results, intermediate output, and disposable files.
 - Put durable shared tools under `tools/`. Existing tools there may be used and
   patched as needed.
+- For `tools/Ruri.ShaderDecompiler`, regularly pull upstream before rebuild or
+  recovery work: `git -C tools\Ruri.ShaderDecompiler pull --ff-only`.
 - Keep `ue5_*` and `unity_*` directories self-contained. Code, assets, generated
   files, and helpers related to those projects should live inside the matching
   project folder.
@@ -113,6 +151,7 @@ WebUI:
 - `scripts/export_full_from_game.py`
 - `scripts/track_export_changes.py`
 - `scripts/webui/build_updates.py`
+- `scripts/webui/build_story_source_links.py`
 - `scripts/webui/build_story.py`
 - `scripts/webui/build_assets.py`
 - `scripts/webui/package_webui.py`
@@ -124,7 +163,7 @@ Story reconstruction helpers used by WebUI builders:
 - `scripts/recover_mission_timelines.py`
 - `scripts/scene_order_gap_shared.py`
 
-Unity shader lab:
+Unity character recovery lab:
 
 - project-local scripts under `unity_endfield_graph_shader_lab/`
 

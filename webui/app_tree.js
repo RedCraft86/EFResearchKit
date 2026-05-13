@@ -8,6 +8,24 @@ function searchTextIncludes(value, q) {
   return normalizeSearchText(value).includes(q);
 }
 
+function entrySearchAliasBaseKey(key) {
+  const raw = String(key || "");
+  if (raw.startsWith("misc_")) return raw.slice(5);
+  return raw;
+}
+
+function entryMatchesOptionIdSearch(entry, q) {
+  if (!entry || !q || !q.includes("option_")) return false;
+  const keys = [
+    String(entry.k || ""),
+    entrySearchAliasBaseKey(entry.k),
+  ].filter(Boolean);
+  for (const key of new Set(keys)) {
+    if (q.includes(`option_${normalizeSearchText(key)}_`)) return true;
+  }
+  return false;
+}
+
 function entryTreeDataType(entry) {
   const types = entryTreeDataTypes(entry);
   return types[0] || DEFAULT_DATA_TYPE_KEY;
@@ -45,6 +63,17 @@ function simTreeGroupInfo(entry) {
 
 function topicTreeGroupInfo(entry) {
   if (!entry || String(entry.d || "") !== "sns") return null;
+  const chatTitle = snsChannelDisplayTitle(entry);
+  const chatId = String(entry.chatId || "").trim();
+  if (chatTitle) {
+    return {
+      key: `snschat:${(chatId || chatTitle).toLowerCase()}`,
+      label: chatTitle,
+      raw: chatId && chatId !== chatTitle ? chatId : "",
+      mono: false,
+    };
+  }
+
   const actorId = String(entry.chatGroupSpeaker || (entry.c && entry.c[0]) || "").trim();
   if (!actorId) return null;
   if (SPECIAL_SIM_ACTOR_IDS.has(actorId.toLowerCase())) return null;
@@ -441,6 +470,11 @@ function applyFilters() {
   if (f.issues.size) out = out.filter((e) => entryMatchesStoryIssueFilters(e, f.issues));
   if (f.q) {
     const q = f.q;
+    if (typeof ensureStorySearchIndexLoaded === "function" && !STATE.storySearchLoaded) {
+      void ensureStorySearchIndexLoaded().then(() => {
+        if (STATE.filters.q && STATE.storySearchLoaded) applyFilters();
+      });
+    }
     out = out.filter((e) => {
       if (searchTextIncludes(e.k, q)) return true;
       if (searchTextIncludes(e.m, q)) return true;
@@ -458,6 +492,7 @@ function applyFilters() {
         if (searchTextIncludes(tag, q)) return true;
         if (searchTextIncludes(metadataTagLabel(tag), q)) return true;
       }
+      if (entryMatchesOptionIdSearch(e, q)) return true;
       if (e.p && searchTextIncludes(e.p, q)) return true;
       if (e.x && searchTextIncludes(e.x, q)) return true;
       for (const aid of e.c) {

@@ -481,12 +481,36 @@ def option_entries_from_payload(payload) -> list[dict]:
             option_id = str(value.get("_optionId") or "").strip()
             if looks_like_dialog_option_id(option_id) and option_id not in seen:
                 seen.add(option_id)
-                entries.append({
+                entry = {
                     "id": option_id,
                     "groupKey": option_group_key(option_id),
                     "index": as_int(value.get("index")),
                     "optionIndex": as_int(value.get("optionIndex")),
-                })
+                }
+                for field in ("trunkId", "dialogId", "overrideOptionIconType"):
+                    field_value = str(value.get(field) or "").strip()
+                    if field_value:
+                        entry[field] = field_value
+                for field in (
+                    "logicId",
+                    "selectedFlag",
+                    "setGreyed",
+                    "main",
+                    "isChat",
+                    "changeFinishNum",
+                    "targetFinishNum",
+                    "useExOptionColor",
+                    "overrideOptionIcon",
+                ):
+                    field_value = as_int(value.get(field))
+                    if field_value is not None:
+                        entry[field] = field_value
+                condition_data = value.get("conditionData")
+                if isinstance(condition_data, dict):
+                    condition_rid = as_int(condition_data.get("rid"))
+                    if condition_rid is not None:
+                        entry["conditionRid"] = condition_rid
+                entries.append(entry)
             for child in value.values():
                 visit(child)
         elif isinstance(value, list):
@@ -620,6 +644,7 @@ def clip_line_identity(
 
 
 TINY_LINE_CLIP_SECONDS = 0.05
+ROUTE_TIME_EPSILON = 0.05
 
 
 def line_clip_source_priority(row: dict) -> int:
@@ -712,11 +737,469 @@ def option_clip_rows(
     return rows
 
 
+def runtime_jump_clip_rows(
+    timeline: str,
+    records: list[dict],
+    records_by_key: dict[tuple[str, int], dict],
+) -> list[dict]:
+    rows: list[dict] = []
+    for record in records:
+        if not str(record.get("name") or "").startswith("Runtime Jump Track"):
+            continue
+        payload = record.get("payload") or {}
+        clips = payload.get("m_Clips")
+        if not isinstance(clips, list):
+            continue
+        track_option_index = as_int(payload.get("OptionIndex"))
+        for clip in clips:
+            if not isinstance(clip, dict):
+                continue
+            option_index = as_int(clip.get("optionIndex"))
+            if option_index is None:
+                option_index = track_option_index
+            if option_index is None:
+                continue
+            start = as_float(clip.get("m_Start"))
+            duration = as_float(clip.get("m_Duration"))
+            if duration <= 0.0:
+                continue
+            asset = clip_asset_record(record, clip, records_by_key)
+            asset_payload = asset.get("payload") if asset else {}
+            row = {
+                "kind": "runtimeJump",
+                "optionIndex": option_index,
+                "start": round(start, 3),
+                "duration": round(duration, 3),
+                "end": round(start + duration, 3),
+                "track": rel_path(record["path"]),
+                "trackName": record["name"],
+                "trackPathId": record["pathId"],
+                "sourceFile": record["sourceFile"],
+                "timeline": timeline,
+                "displayName": str(clip.get("m_DisplayName") or ""),
+            }
+            if asset:
+                row["assetName"] = asset["name"]
+                row["assetPathId"] = asset["pathId"]
+                row["assetTrack"] = rel_path(asset["path"])
+            for field in (
+                "isReverseJump",
+                "needChangeOptionAfterJump",
+                "optionIndexAfterJump",
+                "isJumpFirst",
+            ):
+                value = as_int(asset_payload.get(field)) if isinstance(asset_payload, dict) else None
+                if value is not None:
+                    row[field] = value
+            if isinstance(asset_payload, dict) and "crossFadeDurationAfterJump" in asset_payload:
+                row["crossFadeDurationAfterJump"] = round(
+                    as_float(asset_payload.get("crossFadeDurationAfterJump")),
+                    3,
+                )
+            rows.append(row)
+    rows.sort(key=lambda row: (row["start"], row["optionIndex"], row.get("track") or ""))
+    return rows
+
+
+def _line_is_in_time_range(line: dict, start: float, end: float) -> bool:
+    line_start = as_float(line.get("start"))
+    return line_start >= start - ROUTE_TIME_EPSILON and line_start < end - ROUTE_TIME_EPSILON
+
+
+def _time_ranges_for_option(jump_clips: list[dict], option_index: int) -> list[dict]:
+    return [
+        clip
+        for clip in jump_clips
+        if clip.get("optionIndex") == option_index
+        and not clip.get("isReverseJump")
+        and "<" not in str(clip.get("displayName") or "")
+    ]
+
+
+def _reverse_time_ranges_for_option(jump_clips: list[dict], option_index: int) -> list[dict]:
+    return [
+        clip
+        for clip in jump_clips
+        if clip.get("optionIndex") == option_index
+        and (
+            clip.get("isReverseJump")
+            or "<" in str(clip.get("displayName") or "")
+        )
+    ]
+
+
+def _is_reverse_jump_clip(clip: dict) -> bool:
+    return bool(clip.get("isReverseJump")) or "<" in str(clip.get("displayName") or "")
+
+
+def _clip_in_option_route_window(clip: dict, slot: dict, route_end: float) -> bool:
+    clip_start = as_float(clip.get("start"))
+    clip_end = as_float(clip.get("end"))
+    if _is_reverse_jump_clip(clip):
+        starts_in_slot = clip_start >= slot["start"] - ROUTE_TIME_EPSILON and clip_start <= slot["end"] + ROUTE_TIME_EPSILON
+        overlaps_route = clip_end > slot["end"] + ROUTE_TIME_EPSILON
+        return starts_in_slot and overlaps_route and (not route_end or clip_start < route_end + ROUTE_TIME_EPSILON)
+    return (
+        clip_start >= slot["end"] - ROUTE_TIME_EPSILON
+        and (not route_end or clip_start < route_end + ROUTE_TIME_EPSILON)
+    )
+
+
+def _compact_jump_range(clip: dict) -> dict:
+    out = {
+        "start": clip.get("start"),
+        "end": clip.get("end"),
+        "duration": clip.get("duration"),
+        "track": clip.get("track") or "",
+        "trackName": clip.get("trackName") or "",
+        "assetTrack": clip.get("assetTrack") or "",
+        "displayName": clip.get("displayName") or "",
+    }
+    for field in (
+        "isReverseJump",
+        "needChangeOptionAfterJump",
+        "optionIndexAfterJump",
+        "isJumpFirst",
+        "crossFadeDurationAfterJump",
+    ):
+        if field in clip:
+            out[field] = clip[field]
+    return out
+
+
+def _build_runtime_jump_candidate_routes(
+    slot: dict,
+    route_end: float,
+    line_rows: list[dict],
+    group_jump_clips: list[dict],
+    continuation_slot: dict | None = None,
+    source: str = "runtimeJumpTrack",
+) -> dict[str, dict]:
+    if not group_jump_clips:
+        return {}
+    if not route_end:
+        route_end = max(as_float(clip.get("end")) for clip in group_jump_clips)
+    if route_end <= slot["end"]:
+        return {}
+
+    scene_lines = [
+        line
+        for line in line_rows
+        if line_stem(str(line.get("id") or "")) == slot["sceneKey"]
+        and _line_is_in_time_range(line, slot["end"], route_end)
+    ]
+    if not scene_lines:
+        return {}
+
+    candidate_routes: dict[str, dict] = {}
+    for row in slot["optionRows"]:
+        option_id = str(row.get("id") or "")
+        option_index = as_int(row.get("optionIndex"))
+        if not option_id or option_index is None:
+            continue
+        skip_ranges = _time_ranges_for_option(group_jump_clips, option_index)
+        skipped_line_ids: list[str] = []
+        path_line_ids: list[str] = []
+        for line in scene_lines:
+            line_id = str(line.get("id") or "")
+            if not line_id:
+                continue
+            if any(_line_is_in_time_range(line, as_float(skip.get("start")), as_float(skip.get("end"))) for skip in skip_ranges):
+                skipped_line_ids.append(line_id)
+            else:
+                path_line_ids.append(line_id)
+        if not path_line_ids or not skip_ranges:
+            continue
+        route = {
+            "source": source,
+            "groupKey": slot["groupKey"],
+            "optionIndex": option_index,
+            "start": round(slot["start"], 3),
+            "end": round(route_end, 3),
+            "pathLineIds": path_line_ids,
+            "skippedLineIds": skipped_line_ids,
+            "skipRanges": [
+                _compact_jump_range(skip)
+                for skip in skip_ranges
+            ],
+        }
+        if continuation_slot:
+            route["continuationGroupKey"] = continuation_slot["groupKey"]
+            route["continuationOptionIds"] = [
+                str(next_row.get("id") or "")
+                for next_row in continuation_slot["optionRows"]
+                if str(next_row.get("id") or "")
+            ]
+        candidate_routes[option_id] = route
+
+    if len(candidate_routes) != len(slot["optionRows"]):
+        return {}
+    distinct_paths = {tuple(route.get("pathLineIds") or []) for route in candidate_routes.values()}
+    if len(distinct_paths) < 2:
+        return {}
+    return candidate_routes
+
+
+def _build_directional_runtime_jump_candidate_routes(
+    slot: dict,
+    route_end: float,
+    line_rows: list[dict],
+    group_jump_clips: list[dict],
+    continuation_slot: dict | None = None,
+) -> dict[str, dict]:
+    if not group_jump_clips:
+        return {}
+    if not route_end:
+        route_end = max(as_float(clip.get("end")) for clip in group_jump_clips)
+    if route_end <= slot["end"]:
+        return {}
+
+    scene_lines = [
+        line
+        for line in line_rows
+        if line_stem(str(line.get("id") or "")) == slot["sceneKey"]
+        and _line_is_in_time_range(line, slot["end"], route_end)
+    ]
+    if not scene_lines:
+        return {}
+
+    has_forward = False
+    has_reverse = False
+    candidate_routes: dict[str, dict] = {}
+    for row in slot["optionRows"]:
+        option_id = str(row.get("id") or "")
+        option_index = as_int(row.get("optionIndex"))
+        if not option_id or option_index is None:
+            continue
+        skip_ranges = _time_ranges_for_option(group_jump_clips, option_index)
+        reverse_ranges = _reverse_time_ranges_for_option(group_jump_clips, option_index)
+        has_forward = has_forward or bool(skip_ranges)
+        has_reverse = has_reverse or bool(reverse_ranges)
+        if not skip_ranges and not reverse_ranges:
+            continue
+
+        skipped_line_ids: list[str] = []
+        reverse_range_line_ids: list[str] = []
+        path_line_ids: list[str] = []
+        for line in scene_lines:
+            line_id = str(line.get("id") or "")
+            if not line_id:
+                continue
+            in_skip = any(
+                _line_is_in_time_range(line, as_float(skip.get("start")), as_float(skip.get("end")))
+                for skip in skip_ranges
+            )
+            if in_skip:
+                skipped_line_ids.append(line_id)
+                continue
+            path_line_ids.append(line_id)
+            if any(
+                _line_is_in_time_range(line, as_float(reverse.get("start")), as_float(reverse.get("end")))
+                for reverse in reverse_ranges
+            ):
+                reverse_range_line_ids.append(line_id)
+
+        if not path_line_ids:
+            continue
+        if reverse_ranges:
+            if not reverse_range_line_ids:
+                continue
+            if path_line_ids[0] != reverse_range_line_ids[0]:
+                continue
+
+        route = {
+            "source": "runtimeJumpTrackDirectional",
+            "groupKey": slot["groupKey"],
+            "optionIndex": option_index,
+            "start": round(slot["start"], 3),
+            "end": round(route_end, 3),
+            "pathLineIds": path_line_ids,
+            "skippedLineIds": skipped_line_ids,
+            "skipRanges": [_compact_jump_range(skip) for skip in skip_ranges],
+            "reverseRangeLineIds": reverse_range_line_ids,
+            "reverseRanges": [_compact_jump_range(reverse) for reverse in reverse_ranges],
+        }
+        if continuation_slot:
+            route["continuationGroupKey"] = continuation_slot["groupKey"]
+            route["continuationOptionIds"] = [
+                str(next_row.get("id") or "")
+                for next_row in continuation_slot["optionRows"]
+                if str(next_row.get("id") or "")
+            ]
+        candidate_routes[option_id] = route
+
+    if not has_forward or not has_reverse:
+        return {}
+    if len(candidate_routes) != len(slot["optionRows"]):
+        return {}
+    first_lines = [route["pathLineIds"][0] for route in candidate_routes.values() if route.get("pathLineIds")]
+    if len(set(first_lines)) != len(slot["optionRows"]):
+        return {}
+    distinct_paths = {tuple(route.get("pathLineIds") or []) for route in candidate_routes.values()}
+    if len(distinct_paths) < 2:
+        return {}
+    return candidate_routes
+
+
+def build_option_routes(
+    lines: list[dict],
+    options: list[dict],
+    jump_clips: list[dict],
+) -> dict[str, dict]:
+    if not lines or not options or not jump_clips:
+        return {}
+
+    line_rows = sorted(lines, key=lambda row: (as_float(row.get("start")), row.get("id") or ""))
+    grouped: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for row in options:
+        option_id = str(row.get("id") or "")
+        scene_key = option_scene_key(option_id)
+        group_key = str(row.get("groupKey") or option_group_key(option_id) or "")
+        if scene_key and group_key:
+            grouped[(scene_key, group_key)].append(row)
+
+    all_slots: list[dict] = []
+    route_slots: list[dict] = []
+    for (scene_key, group_key), rows in grouped.items():
+        best_by_id: dict[str, dict] = {}
+        for row in rows:
+            option_id = str(row.get("id") or "")
+            if not option_id:
+                continue
+            previous = best_by_id.get(option_id)
+            rank = (
+                0 if row.get("anchorMode") == "trunkBinding" else 1,
+                as_float(row.get("start")),
+                as_int(row.get("optionIndex")) if as_int(row.get("optionIndex")) is not None else 10**9,
+                str(row.get("track") or ""),
+            )
+            previous_rank = (
+                0 if previous and previous.get("anchorMode") == "trunkBinding" else 1,
+                as_float(previous.get("start")) if previous else 0.0,
+                as_int(previous.get("optionIndex")) if previous and as_int(previous.get("optionIndex")) is not None else 10**9,
+                str(previous.get("track") or "") if previous else "",
+            ) if previous is not None else None
+            if previous is None or rank < previous_rank:
+                best_by_id[option_id] = row
+        option_rows = sorted(
+            best_by_id.values(),
+            key=lambda item: (
+                as_float(item.get("start")),
+                as_int(item.get("optionIndex")) if as_int(item.get("optionIndex")) is not None else 10**9,
+                item.get("id") or "",
+            ),
+        )
+        option_indices = [as_int(row.get("optionIndex")) for row in option_rows]
+        if any(value is None for value in option_indices):
+            continue
+        if len(option_rows) < 2:
+            all_slots.append({
+                "sceneKey": scene_key,
+                "groupKey": group_key,
+                "optionRows": option_rows,
+                "optionIndices": option_indices,
+                "start": min(as_float(row.get("start")) for row in option_rows),
+                "end": max(as_float(row.get("start")) + as_float(row.get("duration")) for row in option_rows),
+                "sourceFiles": {
+                    str(row.get("sourceFile") or "")
+                    for row in option_rows
+                    if str(row.get("sourceFile") or "")
+                },
+            })
+            continue
+        start = min(as_float(row.get("start")) for row in option_rows)
+        end = max(as_float(row.get("start")) + as_float(row.get("duration")) for row in option_rows)
+        slot = {
+            "sceneKey": scene_key,
+            "groupKey": group_key,
+            "optionRows": option_rows,
+            "optionIndices": option_indices,
+            "start": start,
+            "end": end,
+            "sourceFiles": {
+                str(row.get("sourceFile") or "")
+                for row in option_rows
+                if str(row.get("sourceFile") or "")
+            },
+        }
+        all_slots.append(slot)
+        route_slots.append(slot)
+
+    routes: dict[str, dict] = {}
+    for slot in sorted(route_slots, key=lambda item: (item["start"], item["sceneKey"], item["groupKey"])):
+        next_slots = [
+            other
+            for other in all_slots
+            if other is not slot
+            and other["sceneKey"] == slot["sceneKey"]
+            and other["start"] > slot["start"] + ROUTE_TIME_EPSILON
+        ]
+        next_slot = min(next_slots, key=lambda item: item["start"]) if next_slots else None
+        route_end = next_slot["start"] if next_slot else 0.0
+        option_index_set = set(slot["optionIndices"])
+        group_jump_clips = [
+            clip
+            for clip in jump_clips
+            if clip.get("optionIndex") in option_index_set
+            and (not slot["sourceFiles"] or str(clip.get("sourceFile") or "") in slot["sourceFiles"])
+            and _clip_in_option_route_window(clip, slot, route_end)
+        ]
+        if not group_jump_clips:
+            continue
+
+        candidate_routes = _build_runtime_jump_candidate_routes(
+            slot,
+            route_end,
+            line_rows,
+            group_jump_clips,
+            next_slot,
+        )
+        if candidate_routes:
+            routes.update(candidate_routes)
+            continue
+
+        candidate_routes = _build_directional_runtime_jump_candidate_routes(
+            slot,
+            route_end,
+            line_rows,
+            group_jump_clips,
+            next_slot,
+        )
+        if candidate_routes:
+            routes.update(candidate_routes)
+            continue
+
+        if not next_slot or len(next_slot["optionRows"]) != 1:
+            continue
+        extended_jump_clips = [
+            clip
+            for clip in jump_clips
+            if clip.get("optionIndex") in option_index_set
+            and (not slot["sourceFiles"] or str(clip.get("sourceFile") or "") in slot["sourceFiles"])
+            and _clip_in_option_route_window(clip, slot, next_slot["end"])
+        ]
+        if not extended_jump_clips:
+            continue
+        extended_route_end = max(as_float(clip.get("end")) for clip in extended_jump_clips)
+        candidate_routes = _build_runtime_jump_candidate_routes(
+            slot,
+            extended_route_end,
+            line_rows,
+            extended_jump_clips,
+            next_slot,
+            source="runtimeJumpTrackSingleOptionBoundary",
+        )
+        if candidate_routes:
+            routes.update(candidate_routes)
+
+    return dict(sorted(routes.items()))
+
+
 def collect_timeline_signals(
     timeline: str,
     records: list[dict],
     records_by_key: dict[tuple[str, int], dict],
-) -> tuple[list[dict], list[dict], int, int]:
+) -> tuple[list[dict], list[dict], dict[str, dict], int, int]:
     raw_lines: list[dict] = []
     raw_options: list[dict] = []
     for record in records:
@@ -749,6 +1232,9 @@ def collect_timeline_signals(
                     row["assetPathId"] = line_identity["assetPathId"]
                     row["assetName"] = line_identity.get("assetName") or ""
                     row["assetTrack"] = line_identity.get("assetTrack") or ""
+                clip_option_index = as_int(clip.get("optionIndex"))
+                if clip_option_index is not None:
+                    row["clipOptionIndex"] = clip_option_index
                 display_line_id = line_identity.get("displayLineId") or ""
                 if display_line_id and display_line_id != line_id:
                     row["displayLineId"] = display_line_id
@@ -827,7 +1313,9 @@ def collect_timeline_signals(
         ),
     )
     duplicate_option_count = len(raw_options) - len(options)
-    return lines, options, duplicate_count, duplicate_option_count
+    jump_clips = runtime_jump_clip_rows(timeline, records, records_by_key)
+    option_routes = build_option_routes(lines, options, jump_clips)
+    return lines, options, option_routes, duplicate_count, duplicate_option_count
 
 
 def primary_dialog_key(timeline: str, line_ids: list[str]) -> str:
@@ -1009,7 +1497,7 @@ def parse_extract_dir(mono_dir: Path, timeline_filter: re.Pattern | None = None)
         if timeline_filter and not timeline_filter.search(timeline):
             continue
         records = walk_track_tree(roots, records_by_key, children_by_parent)
-        lines, options, duplicate_count, duplicate_option_count = collect_timeline_signals(timeline, records, records_by_key)
+        lines, options, option_routes, duplicate_count, duplicate_option_count = collect_timeline_signals(timeline, records, records_by_key)
         if not lines and not options:
             continue
         line_ids = [line["id"] for line in lines]
@@ -1038,6 +1526,8 @@ def parse_extract_dir(mono_dir: Path, timeline_filter: re.Pattern | None = None)
             entry["optionGroups"] = build_option_groups(options, option_anchors)
             entry["optionPositions"] = derive_option_positions(options)
             entry["duplicateOptionClipCount"] = duplicate_option_count
+            if option_routes:
+                entry["optionRoutes"] = option_routes
         entries.append(entry)
     return entries
 
@@ -1061,6 +1551,7 @@ def collapse_by_dialog_key(entries: list[dict]) -> dict:
                 for option_id in (entry.get("optionIds") or [])
             }),
             "optionAnchorCount": sum(len(entry.get("optionAnchors") or {}) for entry in entries),
+            "optionRouteCount": sum(len(entry.get("optionRoutes") or {}) for entry in entries),
         }
     }
     for key, variants in sorted(grouped.items()):
@@ -1099,11 +1590,25 @@ def timeline_entry_has_line_sources(entry: dict) -> bool:
     )
 
 
+def timeline_entry_has_line_clip_option_indices(entry: dict) -> bool:
+    return any(
+        isinstance(line, dict) and isinstance(line.get("clipOptionIndex"), int)
+        for line in (entry.get("lines") or [])
+    )
+
+
+def timeline_entry_option_route_count(entry: dict) -> int:
+    routes = entry.get("optionRoutes")
+    return len(routes) if isinstance(routes, dict) else 0
+
+
 def timeline_entry_rank(entry: dict) -> tuple:
     return (
         -len(entry.get("lineIds") or []),
         0 if entry.get("optionAnchors") else 1,
+        -timeline_entry_option_route_count(entry),
         0 if timeline_entry_has_line_sources(entry) else 1,
+        0 if timeline_entry_has_line_clip_option_indices(entry) else 1,
         str(entry.get("timeline") or ""),
         str(entry.get("source") or ""),
     )
@@ -1127,6 +1632,7 @@ def merge_timeline_payloads(base_payload: dict, update_payload: dict) -> dict:
     option_timeline_count = 0
     option_ids: set[str] = set()
     option_anchor_count = 0
+    option_route_count = 0
     for key, entries in sorted(grouped.items()):
         deduped: dict[tuple, dict] = {}
         for entry in entries:
@@ -1147,6 +1653,7 @@ def merge_timeline_payloads(base_payload: dict, update_payload: dict) -> dict:
         for entry in variants:
             option_ids.update(str(opt_id) for opt_id in (entry.get("optionIds") or []) if opt_id)
             option_anchor_count += len(entry.get("optionAnchors") or {})
+            option_route_count += timeline_entry_option_route_count(entry)
 
     merged["_meta"].update({
         "timelineCount": timeline_count,
@@ -1154,6 +1661,7 @@ def merge_timeline_payloads(base_payload: dict, update_payload: dict) -> dict:
         "optionTimelineCount": option_timeline_count,
         "optionCount": len(option_ids),
         "optionAnchorCount": option_anchor_count,
+        "optionRouteCount": option_route_count,
     })
     return merged
 

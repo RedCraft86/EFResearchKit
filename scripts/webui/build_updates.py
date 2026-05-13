@@ -26,8 +26,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from common import EXPORT_ROOT, OUT_DIR, REPORTS_DIR, ROOT, display_extension, normalize_posix, read_json, write_json
 
-ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
@@ -37,15 +37,20 @@ from build_story_paths import resolve_asset_source_roots
 
 DEFAULT_GAME_ROOT = Path(r"D:\Program Files\Endfield Game\Endfield_Data")
 DEFAULT_STATE_DIR = ROOT / ".game-data-tracker"
-DEFAULT_EXPORT_ROOT = ROOT / "export_full"
-DEFAULT_OUT = ROOT / "webui" / "data" / "updates" / "latest.json"
-DEFAULT_REPORT_JSON = ROOT / "reports" / "game-data-change-summary.json"
-DEFAULT_REPORT_MD = ROOT / "reports" / "game-data-change-summary.md"
+DEFAULT_EXPORT_ROOT = EXPORT_ROOT
+DEFAULT_OUT = OUT_DIR / "updates" / "latest.json"
+DEFAULT_REPORT_JSON = REPORTS_DIR / "game-data-change-summary.json"
+DEFAULT_REPORT_MD = REPORTS_DIR / "game-data-change-summary.md"
 TRACKER = ROOT / "scripts" / "track_export_changes.py"
 SCHEMA_VERSION = 1
 ASSET_STATE_SCHEMA_VERSION = 1
 STATUS_ORDER = {"added": 0, "modified": 1, "deleted": 2}
 ASSET_HASH_CHUNK_SIZE = 1024 * 1024
+IGNORED_GAME_PATH_PREFIXES = (
+    # CrashSight writes local crash/telemetry state under the game install.
+    # These files churn between runs but are not installed content updates.
+    "plugins/x86_64/wesight/crashsight_data/",
+)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -106,19 +111,28 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Delete existing tracker state, rescan, and write an empty baseline feed.",
     )
     parser.add_argument(
+        "--skip-asset-updates",
+        dest="skip_asset_updates",
+        action="store_true",
+        help=(
+            "Skip the exported image/model/video asset diff. Useful for initial "
+            "WebUI builds where only a game-data baseline/feed is needed."
+        ),
+    )
+    parser.add_argument(
+        "--baseline-only",
+        action="store_true",
+        help=(
+            "Update the game-data tracker state but suppress reported changes "
+            "and skip exported asset diffing. Use for initial WebUI data builds."
+        ),
+    )
+    parser.add_argument(
         "--no-history",
         action="store_true",
         help="Do not write timestamped raw tracker history under the state directory.",
     )
     return parser.parse_args(argv)
-
-
-def normalize_posix(path: str) -> str:
-    return path.replace("\\", "/").strip("/")
-
-
-def display_extension(value: str) -> str:
-    return str(value or "").strip() or "[no extension]"
 
 
 def tracker_has_baseline(state_dir: Path) -> bool:
@@ -162,6 +176,11 @@ def classify_game_data_path(path: str) -> str:
     return lower.split("/", 1)[0] or "other"
 
 
+def is_ignored_game_update_path(path: str) -> bool:
+    lower = normalize_posix(path).lower()
+    return any(lower.startswith(prefix) for prefix in IGNORED_GAME_PATH_PREFIXES)
+
+
 def normalized_entry(status: str, raw: dict[str, Any]) -> dict[str, Any]:
     path = normalize_posix(str(raw.get("path") or ""))
     extension = str(raw.get("extension") or "")
@@ -183,6 +202,26 @@ def normalized_entry(status: str, raw: dict[str, Any]) -> dict[str, Any]:
         if raw.get(key) is not None:
             entry[key] = raw[key]
     return entry
+
+
+def filtered_game_entries(
+    samples: dict[str, Any],
+    *,
+    suppress_changes: bool,
+) -> tuple[list[dict[str, Any]], Counter[str]]:
+    entries: list[dict[str, Any]] = []
+    ignored_counts: Counter[str] = Counter()
+    if suppress_changes:
+        return entries, ignored_counts
+    for status in ("added", "modified", "deleted"):
+        for raw_entry in samples.get(status, []) or []:
+            if not isinstance(raw_entry, dict):
+                continue
+            if is_ignored_game_update_path(str(raw_entry.get("path") or "")):
+                ignored_counts[status] += 1
+                continue
+            entries.append(normalized_entry(status, raw_entry))
+    return entries, ignored_counts
 
 
 def asset_kind_for_suffix(suffix: str) -> str:
@@ -249,12 +288,7 @@ def build_asset_snapshot(
 
 
 def load_asset_state(path: Path) -> dict[str, dict[str, Any]]:
-    if not path.exists():
-        return {}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+    payload = read_json(path, default={})
     if int(payload.get("schemaVersion") or 0) != ASSET_STATE_SCHEMA_VERSION:
         return {}
     assets = payload.get("assets")
@@ -270,8 +304,7 @@ def write_asset_state(path: Path, assets: dict[str, dict[str, Any]], *, export_r
         "sourceRoot": str(export_root),
         "assets": assets,
     }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    write_json(path, payload)
 
 
 def asset_update_entry(status: str, asset: dict[str, Any], old_asset: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -366,25 +399,24 @@ def build_update_payload(
     *,
     game_root: Path,
     baseline_initialized: bool,
+    baseline_only: bool,
     sample_limit: int,
 ) -> dict[str, Any]:
     changes = raw_payload.get("changes") or {}
     samples = raw_payload.get("samples") or {}
     now = dt.datetime.now(dt.timezone.utc).astimezone()
+    suppress_changes = baseline_initialized or baseline_only
 
-    entries: list[dict[str, Any]] = []
-    if not baseline_initialized:
-        for status in ("added", "modified", "deleted"):
-            for raw_entry in samples.get(status, []) or []:
-                if isinstance(raw_entry, dict):
-                    entries.append(normalized_entry(status, raw_entry))
+    entries, ignored_counts = filtered_game_entries(samples, suppress_changes=suppress_changes)
 
     entries.sort(key=lambda entry: (STATUS_ORDER.get(str(entry.get("status")), 99), str(entry.get("path", "")).lower()))
 
     totals = {
-        "added": 0 if baseline_initialized else int(changes.get("added") or 0),
-        "modified": 0 if baseline_initialized else int(changes.get("modified") or 0),
-        "deleted": 0 if baseline_initialized else int(changes.get("deleted") or 0),
+        status: max(
+            0,
+            0 if suppress_changes else int(changes.get(status) or 0) - int(ignored_counts.get(status) or 0),
+        )
+        for status in ("added", "modified", "deleted")
     }
     totals["changed"] = totals["added"] + totals["modified"] + totals["deleted"]
 
@@ -406,6 +438,7 @@ def build_update_payload(
         "source": "original_game_data",
         "sourceRoot": str(game_root),
         "baselineInitialized": baseline_initialized,
+        "baselineOnly": baseline_only,
         "gameTotals": game_totals,
         "totals": totals,
         "tracker": {
@@ -413,11 +446,18 @@ def build_update_payload(
             "finishedAt": raw_payload.get("finished_at"),
             "durationSeconds": raw_payload.get("duration_seconds"),
             "scannedFiles": raw_payload.get("scanned_files"),
-            "metadataOnlyUpdates": 0 if baseline_initialized else int(changes.get("metadata_only_updates") or 0),
+            "metadataOnlyUpdates": 0 if suppress_changes else int(changes.get("metadata_only_updates") or 0),
             "reusedMetadataMatches": int(changes.get("reused_metadata_matches") or 0),
             "sampleLimit": sample_limit,
             "truncated": truncated,
+            "ignoredVolatileChanges": dict(ignored_counts),
+            "ignoredVolatilePathPrefixes": list(IGNORED_GAME_PATH_PREFIXES),
             "suppressedInitialAdded": int(changes.get("added") or 0) if baseline_initialized else 0,
+            "suppressedBaselineOnly": {
+                "added": int(changes.get("added") or 0) if baseline_only else 0,
+                "modified": int(changes.get("modified") or 0) if baseline_only else 0,
+                "deleted": int(changes.get("deleted") or 0) if baseline_only else 0,
+            },
         },
         "breakdown": {
             "byCategory": dict(categories.most_common()),
@@ -434,10 +474,34 @@ def attach_asset_updates(
     export_root: Path,
     state_dir: Path,
     sample_limit: int,
+    skip_asset_updates: bool = False,
 ) -> None:
     asset_state_path = state_dir / "asset-state.json"
     old_assets = load_asset_state(asset_state_path)
     asset_scan_available = export_root.exists()
+    if skip_asset_updates:
+        payload["assetTotals"] = zero_totals()
+        payload["totals"] = combine_totals(payload.get("gameTotals") or zero_totals())
+        payload["assets"] = {
+            "source": "exported_assets",
+            "sourceRoot": str(export_root),
+            "statePath": str(asset_state_path),
+            "available": asset_scan_available,
+            "skipped": True,
+            "skipReason": "skip_asset_updates",
+            "stateUpdated": False,
+            "baselineInitialized": False,
+            "existingBaseline": bool(old_assets),
+            "reported": False,
+            "reportedOnlyWhenGameDataChanges": True,
+            "scannedAssets": 0,
+            "sampleLimit": sample_limit,
+            "totals": zero_totals(),
+            "truncated": {"added": 0, "modified": 0, "deleted": 0},
+            "breakdown": {"byKind": {}, "byExtension": {}},
+        }
+        return
+
     if not asset_scan_available:
         payload["assetTotals"] = zero_totals()
         payload["totals"] = combine_totals(payload.get("gameTotals") or zero_totals())
@@ -562,7 +626,7 @@ def main(argv: list[str] | None = None) -> int:
         report_md=report_md,
         sample_limit=args.sample_limit,
         top_line_limit=args.top_line_limit,
-        write_history=bool(had_baseline and not args.no_history),
+        write_history=bool(had_baseline and not args.no_history and not args.baseline_only),
     )
 
     raw_payload = json.loads(report_json.read_text(encoding="utf-8"))
@@ -570,6 +634,7 @@ def main(argv: list[str] | None = None) -> int:
         raw_payload,
         game_root=game_root,
         baseline_initialized=not had_baseline,
+        baseline_only=args.baseline_only,
         sample_limit=args.sample_limit,
     )
     attach_asset_updates(
@@ -577,26 +642,37 @@ def main(argv: list[str] | None = None) -> int:
         export_root=export_root,
         state_dir=state_dir,
         sample_limit=args.sample_limit,
+        skip_asset_updates=bool(args.skip_asset_updates or args.baseline_only),
     )
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(webui_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_json(out_path, webui_payload, indent=2, compact=False)
 
     totals = webui_payload["gameTotals"]
     if webui_payload["baselineInitialized"]:
         print(f"[build_updates] Baseline initialized from {game_root}")
+    elif webui_payload.get("baselineOnly"):
+        suppressed = (webui_payload.get("tracker") or {}).get("suppressedBaselineOnly") or {}
+        print(
+            "[build_updates] Baseline-only feed:"
+            f" suppressed added={int(suppressed.get('added') or 0)},"
+            f" modified={int(suppressed.get('modified') or 0)},"
+            f" deleted={int(suppressed.get('deleted') or 0)}"
+        )
     else:
         print(
             "[build_updates] Game-data changes:"
             f" added={totals['added']}, modified={totals['modified']}, deleted={totals['deleted']}"
         )
     asset_totals = webui_payload.get("assetTotals") or {}
-    print(
-        "[build_updates] Asset changes:"
-        f" added={int(asset_totals.get('added') or 0)},"
-        f" modified={int(asset_totals.get('modified') or 0)},"
-        f" deleted={int(asset_totals.get('deleted') or 0)}"
-    )
+    if (webui_payload.get("assets") or {}).get("skipped"):
+        print("[build_updates] Asset changes: skipped (--skip-asset-updates)")
+    else:
+        print(
+            "[build_updates] Asset changes:"
+            f" added={int(asset_totals.get('added') or 0)},"
+            f" modified={int(asset_totals.get('modified') or 0)},"
+            f" deleted={int(asset_totals.get('deleted') or 0)}"
+        )
     print(f"[build_updates] WebUI feed: {out_path}")
     return 0
 

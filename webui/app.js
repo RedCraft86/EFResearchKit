@@ -1,5 +1,5 @@
 // Endfield conversation browser - single-file vanilla JS.
-// Loads data/index.json once, lazy-loads data/conv/<key>.json on demand.
+// Loads data/manifest.json and language sidecars, then lazy-loads conversations.
 // Left pane is a 3-level tree (kind / story-line / mission) with a
 // virtualized scroll that supports mixed row heights.
 
@@ -8,6 +8,7 @@ const ROW_ITEM_H = 50;
 const OVERSCAN_PX = 200;
 const WIKI_MEDIA_MAX_IMAGES = 12;
 const WIKI_MEDIA_MAX_VIDEOS = 8;
+const NARRATIVE_VIDEO_DISPLAY_LIMIT = 4;
 // Change to "raw" to show source text with angle-bracket tags instead of rendered rich text.
 const DEFAULT_INLINE_TAG_DISPLAY_MODE = "rendered";
 var WEBUI_INLINE_TAG_DISPLAY_MODE = DEFAULT_INLINE_TAG_DISPLAY_MODE;
@@ -15,11 +16,13 @@ const INLINE_TAG_DISPLAY_MODE_STORAGE_KEY = "webui_inline_tag_mode";
 const LANGUAGE_STORAGE_KEY = "webui_lang";
 const UI_LOCALE_STORAGE_KEY = "webui_ui_locale";
 const GENDER_VARIANT_STORAGE_KEY = "webui_gender_variant";
+const DEFAULT_GENDER_VARIANT = "f";
 const FILTER_PANEL_STORAGE_KEY = "webui_filters_collapsed";
 const STORY_SPLITTER_STORAGE_KEY = "webui_story_splitter_width";
 const ASSET_SPLITTER_STORAGE_KEY = "webui_asset_splitter_width";
 const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
-const LEGACY_LANGUAGE = {
+const WEBUI_DATA_CACHE_TAG = "20260512-risk-branch-render";
+const DEFAULT_LANGUAGE_INFO = {
   code: "CN",
   label: "Chinese (Simplified)",
   nativeLabel: "\u7b80\u4f53\u4e2d\u6587",
@@ -30,7 +33,7 @@ const STATE = {
   manifest: null,
   index: null,
   language: null,
-  languageInfo: LEGACY_LANGUAGE,
+  languageInfo: DEFAULT_LANGUAGE_INFO,
   uiLocale: "zh",
   actorNames: {},        // aid -> [name, ...]
   missionNames: {},      // mission id -> display name
@@ -48,6 +51,11 @@ const STATE = {
   archiveMetadataByKey: new Map(),
   archiveResearchById: new Map(),
   archiveMetadataLanguage: "",
+  storySearchLoaded: false,
+  storySearchPromise: null,
+  storySearchLanguage: "",
+  storyMediaPayload: null,
+  storyMediaPromise: null,
   expanded: new Set(),   // group paths the user opened
   filters: createDefaultFilters(),
   sortMode: "natural",
@@ -68,8 +76,7 @@ const STATE = {
   inlineTagDisplayMode: DEFAULT_INLINE_TAG_DISPLAY_MODE,
 };
 
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+const { $, $$, storageGet, storageSet, normalizeUiLocale, escapeHtml, exportFullHref } = window.WebUI;
 
 function createDefaultFilters() {
   return {
@@ -272,13 +279,6 @@ function setupPaneSplitter({ container, pane, splitter, storageKey, minRightWidt
   syncWidth();
 }
 
-function storageGet(key) {
-  try { return localStorage.getItem(key); } catch (_) { return null; }
-}
-function storageSet(key, value) {
-  try { localStorage.setItem(key, value); } catch (_) {}
-}
-
 function persistFiltersCollapsed(collapsed) {
   storageSet(FILTER_PANEL_STORAGE_KEY, collapsed ? "1" : "0");
 }
@@ -292,17 +292,12 @@ function resolveInitialFiltersCollapsed() {
 
 
 function getLanguageInfo(code) {
-  if (!STATE.manifest || !Array.isArray(STATE.manifest.languages)) return LEGACY_LANGUAGE;
-  return STATE.manifest.languages.find((lang) => lang.code === code) || LEGACY_LANGUAGE;
+  if (!STATE.manifest || !Array.isArray(STATE.manifest.languages)) return DEFAULT_LANGUAGE_INFO;
+  return STATE.manifest.languages.find((lang) => lang.code === code) || STATE.manifest.languages[0] || DEFAULT_LANGUAGE_INFO;
 }
 
 function resolveUiLocale(info) {
   return info && info.uiLocale ? info.uiLocale : "en";
-}
-
-function normalizeUiLocale(locale) {
-  const value = String(locale || "").toLowerCase();
-  return value === "zh" || value === "en" ? value : "";
 }
 
 function persistUiLocaleSelection(locale) {
@@ -353,10 +348,102 @@ function setUiLocale(locale, { persist = true, refresh = true } = {}) {
 
 
 function dataPath(relativePath, languageCode = STATE.language) {
-  if (STATE.manifest && STATE.manifest.legacyRoot) {
-    return `data/${relativePath}`;
-  }
   return `data/lang/${encodeURIComponent(languageCode)}/${relativePath}`;
+}
+
+function cacheBustedPath(path, token = WEBUI_DATA_CACHE_TAG) {
+  const sep = String(path).includes("?") ? "&" : "?";
+  return `${path}${sep}v=${encodeURIComponent(token)}`;
+}
+
+function fetchJson(path, { fresh = false } = {}) {
+  const token = fresh ? `${WEBUI_DATA_CACHE_TAG}-${Date.now()}` : WEBUI_DATA_CACHE_TAG;
+  return fetch(cacheBustedPath(path, token), {
+    cache: fresh ? "no-store" : "no-cache",
+  });
+}
+
+async function loadLanguageSidecar(index, key, languageCode) {
+  const rel = index && typeof index[key] === "string" ? index[key] : "";
+  if (!rel) throw new Error(`index.json missing ${key} sidecar`);
+  const res = await fetchJson(dataPath(rel, languageCode), { fresh: true });
+  if (!res.ok) throw new Error(`${rel} HTTP ${res.status}`);
+  return res.json();
+}
+
+function applyStorySearchPayload(payload) {
+  const byKey = new Map();
+  for (const row of (payload && payload.entries) || []) {
+    const key = String(row && row.k || "");
+    const text = String(row && row.x || "").trim();
+    if (key && text) byKey.set(key, text);
+  }
+
+  if (!byKey.size) return;
+  for (const entry of STATE.entries || []) {
+    const text = byKey.get(String(entry && entry.k || ""));
+    if (text) entry.x = text;
+  }
+}
+
+async function ensureStorySearchIndexLoaded(languageCode = STATE.language, token = STATE.indexRequestToken) {
+  if (STATE.storySearchLoaded && STATE.storySearchLanguage === languageCode) return true;
+  if (STATE.storySearchPromise) return STATE.storySearchPromise;
+
+  const rel = STATE.index && typeof STATE.index.search === "string" ? STATE.index.search : "";
+  if (!rel) {
+    STATE.storySearchLoaded = true;
+    STATE.storySearchLanguage = languageCode;
+    return true;
+  }
+
+  STATE.storySearchPromise = fetchJson(dataPath(rel, languageCode), { fresh: true })
+    .then((res) => {
+      if (!res.ok) throw new Error(`${rel} HTTP ${res.status}`);
+      return res.json();
+    })
+    .then((payload) => {
+      if (token !== STATE.indexRequestToken || STATE.language !== languageCode) return false;
+      applyStorySearchPayload(payload);
+      STATE.storySearchLoaded = true;
+      STATE.storySearchLanguage = languageCode;
+      STATE.storySearchPromise = null;
+      return true;
+    })
+    .catch((_error) => {
+      if (token === STATE.indexRequestToken && STATE.language === languageCode) {
+        STATE.storySearchLoaded = true;
+        STATE.storySearchLanguage = languageCode;
+      }
+      STATE.storySearchPromise = null;
+      return false;
+    });
+
+  return STATE.storySearchPromise;
+}
+
+function loadStoryMediaPayload() {
+  if (STATE.storyMediaPayload) return Promise.resolve(STATE.storyMediaPayload);
+  if (STATE.storyMediaPromise) return STATE.storyMediaPromise;
+  STATE.storyMediaPromise = fetchJson("data/assets/story_media.json")
+    .then((res) => {
+      if (!res.ok) throw new Error(`assets/story_media.json HTTP ${res.status}`);
+      return res.json();
+    })
+    .then((payload) => {
+      STATE.storyMediaPayload = payload || {};
+      STATE.storyMediaPromise = null;
+      return STATE.storyMediaPayload;
+    })
+    .catch((error) => {
+      STATE.storyMediaPromise = null;
+      throw error;
+    });
+  return STATE.storyMediaPromise;
+}
+
+function storyMediaEntries(payload, kind) {
+  return ((payload && payload.entries) || []).filter((entry) => entry && entry.k === kind && entry.r);
 }
 
 function clearArchiveClassificationCaches(entries = STATE.entries) {
@@ -553,7 +640,7 @@ async function ensureArchiveMetadataIndex(languageCode, token = STATE.indexReque
     try {
       const cached = STATE.convCache.get(entry.k);
       if (cached) return archiveMetadataFromConv(entry, cached);
-      const res = await fetch(dataPath(`conv/${encodeURIComponent(entry.k)}.json`, languageCode));
+      const res = await fetchJson(dataPath(`conv/${encodeURIComponent(entry.k)}.json`, languageCode));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const conv = await res.json();
       return archiveMetadataFromConv(entry, conv);
@@ -617,7 +704,7 @@ async function ensureMissionData(mission, languageCode = STATE.language) {
   }
 
   try {
-    const res = await fetch(dataPath(file, languageCode));
+    const res = await fetchJson(dataPath(file, languageCode));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (STATE.language === languageCode) {
@@ -692,19 +779,14 @@ function ensureInlineImageAssetLookup() {
   if (STATE.inlineImageLookupLoaded) return Promise.resolve();
   if (STATE.inlineImageLookupPromise) return STATE.inlineImageLookupPromise;
 
-  STATE.inlineImageLookupPromise = fetch("data/assets/index.json")
-    .then((res) => {
-      if (!res.ok) throw new Error(`assets/index.json HTTP ${res.status}`);
-      return res.json();
-    })
+  STATE.inlineImageLookupPromise = loadStoryMediaPayload()
     .then((payload) => {
       const byStem = new Map();
       const byNumber = new Map();
       STATE.inlineImageSourceRoots = payload && payload.sourceRoots ? payload.sourceRoots : {};
       STATE.inlineImageExportRoot = String(payload && payload.root ? payload.root : "export_full");
 
-      for (const raw of payload.entries || []) {
-        if (!raw || raw.k !== "image" || !raw.r) continue;
+      for (const raw of storyMediaEntries(payload, "image")) {
         const rel = String(raw.r || "");
         const parts = rel.split("/").filter(Boolean);
         const name = parts[parts.length - 1] || rel;
@@ -772,11 +854,7 @@ function ensureWikiVideoAssetLookup() {
   if (STATE.wikiVideoLookupLoaded) return Promise.resolve();
   if (STATE.wikiVideoLookupPromise) return STATE.wikiVideoLookupPromise;
 
-  STATE.wikiVideoLookupPromise = fetch("data/assets/videos.json")
-    .then((res) => {
-      if (!res.ok) throw new Error(`assets/videos.json HTTP ${res.status}`);
-      return res.json();
-    })
+  STATE.wikiVideoLookupPromise = loadStoryMediaPayload()
     .then((payload) => {
       const byStem = new Map();
       if (payload && payload.sourceRoots) {
@@ -787,8 +865,7 @@ function ensureWikiVideoAssetLookup() {
       }
       STATE.inlineImageExportRoot = String(payload && payload.root ? payload.root : STATE.inlineImageExportRoot || "export_full");
 
-      for (const raw of payload.entries || []) {
-        if (!raw || raw.k !== "video" || !raw.r) continue;
+      for (const raw of storyMediaEntries(payload, "video")) {
         const rel = String(raw.r || "");
         const parts = rel.split("/").filter(Boolean);
         const name = parts[parts.length - 1] || rel;
@@ -1138,6 +1215,110 @@ function renderWikiMediaBlock(conv) {
   return box;
 }
 
+function formatAssetBytes(size) {
+  const bytes = Number(size) || 0;
+  if (bytes <= 0) return "";
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+function scoreNarrativeVideoRef(ref) {
+  const rel = String(ref && ref.rel || "");
+  const source = String(ref && ref.source || "");
+  const format = String(ref && ref.format || "").toLowerCase();
+  const gender = String(ref && ref.gender || "").toLowerCase();
+  const activeGender = resolveGenderVariant();
+  let score = 0;
+  if (isBrowserPlayableVideo(rel)) score += 1000;
+  if (format === "mp4") score += 100;
+  else if (format === "webm" || format === "ogv") score += 80;
+  else if (format === "usm") score += 10;
+  if (source === "StreamingAssets-structured") score += 60;
+  else if (source === "Persistent-structured") score += 50;
+  else if (source === "raw_vfs") score += 5;
+  if (gender === activeGender) score += 90;
+  else if (!gender) score += 60;
+  return score;
+}
+
+function narrativeVideoRefsForConv(conv) {
+  const refs = Array.isArray(conv && conv.narrativeVideos)
+    ? conv.narrativeVideos.filter((ref) => ref && ref.rel)
+    : [];
+  return narrativeVideoSelectionForRefs(refs).refs;
+}
+
+function narrativeVideoSelectionForRefs(refs) {
+  if (!Array.isArray(refs) || !refs.length) {
+    return { refs: [], omitted: 0 };
+  }
+
+  const byStem = new Map();
+  for (const ref of refs) {
+    const key = String(ref.baseStem || ref.stem || ref.name || ref.rel);
+    const current = byStem.get(key);
+    if (!current || scoreNarrativeVideoRef(ref) > scoreNarrativeVideoRef(current)) {
+      byStem.set(key, ref);
+    }
+  }
+  const distinctRefs = Array.from(byStem.values())
+    .sort((a, b) => scoreNarrativeVideoRef(b) - scoreNarrativeVideoRef(a)
+      || String(a.name || a.rel).localeCompare(String(b.name || b.rel)));
+  return {
+    refs: distinctRefs.slice(0, NARRATIVE_VIDEO_DISPLAY_LIMIT),
+    omitted: Math.max(0, distinctRefs.length - NARRATIVE_VIDEO_DISPLAY_LIMIT),
+  };
+}
+
+function narrativeVideoSelectionForConv(conv) {
+  const refs = Array.isArray(conv && conv.narrativeVideos)
+    ? conv.narrativeVideos.filter((ref) => ref && ref.rel)
+    : [];
+  return narrativeVideoSelectionForRefs(refs);
+}
+
+function renderNarrativeVideosBlock(conv) {
+  if (!STATE.wikiVideoLookupLoaded) return null;
+  const selection = narrativeVideoSelectionForConv(conv);
+  const refs = selection.refs;
+  if (!refs.length) return null;
+
+  const box = document.createElement("div");
+  box.className = "summary-box narrative-video-box";
+
+  const label = document.createElement("div");
+  label.className = "summary-label";
+  label.textContent = uiText("narrativeVideo");
+  box.appendChild(label);
+
+  const grid = document.createElement("div");
+  grid.className = "wiki-image-grid narrative-video-grid";
+  for (const ref of refs) {
+    const size = formatAssetBytes(ref.size);
+    const gender = ref.gender ? ref.gender.toUpperCase() : "";
+    const suffix = [gender, size].filter(Boolean).join(", ");
+    grid.appendChild(renderWikiVideoItem({
+      rel: ref.rel,
+      name: ref.name,
+      label: suffix ? `${ref.name} (${suffix})` : ref.name,
+      size: ref.size,
+    }));
+  }
+  box.appendChild(grid);
+
+  const omitted = selection.omitted;
+  if (omitted > 0) {
+    const row = document.createElement("div");
+    row.className = "summary-text narrative-video-more";
+    row.textContent = uiText("narrativeVideoMore").replace("{count}", String(omitted));
+    box.appendChild(row);
+  }
+
+  appendDebugTrace(box, conv && conv._debug && conv._debug.narrativeVideos, "narrative videos");
+  return box;
+}
+
 function persistLanguageSelection(languageCode) {
   storageSet(LANGUAGE_STORAGE_KEY, languageCode);
 }
@@ -1150,7 +1331,7 @@ function resolveInitialLanguage() {
   const stored = (storageGet(LANGUAGE_STORAGE_KEY) || "").toUpperCase();
   if (stored && getLanguageInfo(stored).code === stored) return stored;
 
-  return (STATE.manifest && STATE.manifest.defaultLanguage) || LEGACY_LANGUAGE.code;
+  return (STATE.manifest && STATE.manifest.defaultLanguage) || DEFAULT_LANGUAGE_INFO.code;
 }
 
 function applyUiStrings() {
@@ -1223,9 +1404,7 @@ function buildLanguageSelect() {
 
   const select = $("#language");
   select.innerHTML = "";
-  const languages = (STATE.manifest && STATE.manifest.languages && STATE.manifest.languages.length)
-    ? STATE.manifest.languages
-    : [LEGACY_LANGUAGE];
+  const languages = STATE.manifest.languages;
 
   for (const language of languages) {
     const option = document.createElement("option");
@@ -1275,21 +1454,13 @@ function showFatalError(error) {
 }
 
 async function loadManifest() {
-  try {
-    const res = await fetch("data/manifest.json");
-    if (!res.ok) throw new Error(`manifest.json HTTP ${res.status}`);
-    const manifest = await res.json();
-    if (!manifest.languages || !manifest.languages.length) {
-      manifest.languages = [LEGACY_LANGUAGE];
-    }
-    return manifest;
-  } catch (_error) {
-    return {
-      defaultLanguage: LEGACY_LANGUAGE.code,
-      languages: [LEGACY_LANGUAGE],
-      legacyRoot: true,
-    };
+  const res = await fetchJson("data/manifest.json", { fresh: true });
+  if (!res.ok) throw new Error(`manifest.json HTTP ${res.status}`);
+  const manifest = await res.json();
+  if (!Array.isArray(manifest.languages) || !manifest.languages.length) {
+    throw new Error("manifest.json does not list any languages");
   }
+  return manifest;
 }
 
 async function switchLanguage(languageCode, { preserveSelection = true } = {}) {
@@ -1306,19 +1477,28 @@ async function switchLanguage(languageCode, { preserveSelection = true } = {}) {
   applyUiStrings();
 
   try {
-    const res = await fetch(dataPath("index.json", info.code));
+    const res = await fetchJson(dataPath("index.json", info.code), { fresh: true });
     if (!res.ok) throw new Error(`index.json HTTP ${res.status}`);
     const index = await res.json();
     if (token !== STATE.indexRequestToken) return;
 
+    const [actorsPayload, missionsPayload] = await Promise.all([
+      loadLanguageSidecar(index, "actors", info.code),
+      loadLanguageSidecar(index, "missions", info.code),
+    ]);
+    if (token !== STATE.indexRequestToken) return;
+
     STATE.index = index;
-    STATE.actorNames = normalizeActorNames(index.actorNames || {});
-    STATE.missionNames = index.missionNames || {};
+    STATE.actorNames = normalizeActorNames(actorsPayload.actorNames || {});
+    STATE.missionNames = missionsPayload.missionNames || {};
     STATE.entries = normalizeLoadedEntries(index.entries || []);
     STATE.entryByKey = new Map(STATE.entries.map((entry) => [entry.k, entry]));
     STATE.archiveMetadataByKey = new Map();
     STATE.archiveResearchById = new Map();
     STATE.archiveMetadataLanguage = "";
+    STATE.storySearchLoaded = false;
+    STATE.storySearchPromise = null;
+    STATE.storySearchLanguage = "";
     STATE.simActorIds = computeSimActorIds(STATE.entries);
     STATE.rawStoryTypes = computeRawStoryTypes(STATE.entries);
     await ensureArchiveMetadataIndex(info.code, token);
@@ -1546,13 +1726,14 @@ function renderItem(row) {
 }
 
 // ---------- conversation pane ----------
-async function loadConv(key) {
+async function loadConv(key, { force = false } = {}) {
   const languageCode = STATE.language;
+  const wasSelected = STATE.selectedKey === key;
   STATE.selectedKey = key;
   $$(".item").forEach((n) => n.classList.toggle("selected", n.dataset.key === key));
   syncRevealCurrentButton();
 
-  if (STATE.convCache.has(key)) {
+  if (!force && !wasSelected && STATE.convCache.has(key)) {
     const cached = STATE.convCache.get(key);
     await ensureMissionData(cached && cached.mission, languageCode);
     if (STATE.selectedKey === key && STATE.language === languageCode) {
@@ -1574,7 +1755,9 @@ async function loadConv(key) {
   $("#conv-lines").innerHTML = "";
 
   try {
-    const res = await fetch(dataPath(`conv/${encodeURIComponent(key)}.json`, languageCode));
+    const res = await fetchJson(dataPath(`conv/${encodeURIComponent(key)}.json`, languageCode), {
+      fresh: force || wasSelected,
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const conv = await res.json();
     if (STATE.selectedKey === key && STATE.language === languageCode) {
@@ -1792,6 +1975,44 @@ function isSameConversationSceneKey(sceneKey, conv) {
   return conversationAliasBaseKey(raw) === conversationAliasBaseKey(current);
 }
 
+function lineAnchorId(convKey, lineId) {
+  const convPart = encodeURIComponent(String(convKey || ""));
+  const linePart = encodeURIComponent(String(lineId || ""));
+  return `line-${convPart}-${linePart}`;
+}
+
+function setLineAnchor(node, convKey, lineId) {
+  const id = String(lineId || "");
+  if (!node || !convKey || !id) return;
+  node.id = lineAnchorId(convKey, id);
+  node.dataset.lineId = id;
+}
+
+function scrollToLineAnchor(convKey, lineId) {
+  const anchor = document.getElementById(lineAnchorId(convKey, lineId));
+  if (!anchor) return false;
+  anchor.scrollIntoView({ block: "center", behavior: "smooth" });
+  anchor.classList.remove("line-flash");
+  void anchor.offsetWidth;
+  anchor.classList.add("line-flash");
+  return true;
+}
+
+function createLineJumpChip(conv, lineId, labelKey, className, titleKey) {
+  const line = String(lineId || "");
+  if (!line) return null;
+  const chip = document.createElement("a");
+  chip.className = className;
+  chip.textContent = uiText(labelKey).replace("{line}", line);
+  chip.href = `#${lineAnchorId(conv && conv.key, line)}`;
+  chip.title = uiText(titleKey || "optJumpLineTitle").replace("{line}", line);
+  chip.addEventListener("click", (event) => {
+    event.preventDefault();
+    scrollToLineAnchor(conv && conv.key, line);
+  });
+  return chip;
+}
+
 function optionGroupNumberFromOptionId(optionId, convKey) {
   const raw = String(optionId || "");
   const candidates = new Set([
@@ -1806,6 +2027,184 @@ function optionGroupNumberFromOptionId(optionId, convKey) {
     if (m) return parseInt(m[1], 10);
   }
   return null;
+}
+
+function sameSceneOptionOutcomes(option, conv, outcomesByOptionId) {
+  if (!option || !outcomesByOptionId) return [];
+  return (outcomesByOptionId.get(option.id) || []).filter((outcome) => {
+    const firstSceneKey = String(outcome.firstSceneKey || "");
+    return !firstSceneKey || isSameConversationSceneKey(firstSceneKey, conv);
+  });
+}
+
+function optionRiskLineInfos(option) {
+  const out = [];
+  for (const tag of Array.isArray(option && option.riskTags) ? option.riskTags : []) {
+    const lineId = String(tag && tag.lineId || "");
+    if (!lineId || out.some((item) => item.lineId === lineId)) continue;
+    const branchRiskCode = String(tag.branchRiskCode || "");
+    const source = branchRiskCode === "cosmeticChoice"
+      ? "shared"
+      : (branchRiskCode === "inferredFollowingLines" || tag.source === "dialogTimeline" ? "inferred" : "tree");
+    out.push({ lineId, source });
+  }
+  return out;
+}
+
+function optionGroupHasTimelineRouteBranches(group) {
+  const risk = group && group.optionBranchRisk;
+  return Boolean(risk && risk.code === "timelineRouteBranches");
+}
+
+function optionBranchRiskJumpInfo(risk) {
+  const lineId = String(risk && risk.commonContinuationLineId || "");
+  if (!lineId) return null;
+  const code = String(risk && risk.code || "");
+  return {
+    lineId,
+    source: code === "cosmeticChoice" ? "shared" : "inferred",
+  };
+}
+
+function firstOptionJumpInfo(option, group, conv, outcomesByOptionId) {
+  const branchLines = normalizeLineOrderIdList(option && option.branchLines);
+  if (branchLines.length) {
+    return {
+      lineId: branchLines[0],
+      source: optionGroupHasTimelineRouteBranches(group) ? "timeline" : "tree",
+    };
+  }
+
+  for (const outcome of sameSceneOptionOutcomes(option, conv, outcomesByOptionId)) {
+    const lineId = String(outcome.firstLineId || "");
+    if (lineId) return { lineId, source: "tree" };
+  }
+
+  const riskLineInfos = optionRiskLineInfos(option);
+  if (riskLineInfos.length) return riskLineInfos[0];
+
+  return optionBranchRiskJumpInfo(group && group.optionBranchRisk) || { lineId: "", source: "" };
+}
+
+function optionJumpLabelKey(source) {
+  if (source === "tree") return "optJumpLineTree";
+  if (source === "timeline") return "optJumpLineTimeline";
+  if (source === "shared") return "optJumpLineShared";
+  if (source === "inferred") return "optJumpLineInferred";
+  return "optJumpLine";
+}
+
+function optionJumpTitleKey(source) {
+  if (source === "tree") return "optJumpLineTitleTree";
+  if (source === "timeline") return "optJumpLineTitleTimeline";
+  if (source === "shared") return "optJumpLineTitleShared";
+  if (source === "inferred") return "optJumpLineTitleInferred";
+  return "optJumpLineTitle";
+}
+
+function optionJumpSourceClass(source) {
+  return source ? ` is-${source}` : "";
+}
+
+function optionGroupForOptionId(conv, optionId) {
+  const targetGroup = optionGroupNumberFromOptionId(optionId, conv && conv.key);
+  if (targetGroup === null) return null;
+  for (const group of (conv && conv.optionGroups) || []) {
+    if (Number(group && group.g) === targetGroup) return group;
+  }
+  return null;
+}
+
+function timelineReverseRangeLineIdsForOption(option, group) {
+  const optionId = String(option && option.id || "");
+  const risk = group && group.optionBranchRisk && typeof group.optionBranchRisk === "object"
+    ? group.optionBranchRisk
+    : null;
+  if (!optionId || !risk || risk.code !== "timelineRouteBranches") return [];
+  const byOption = risk.reverseRangeLineIdsByOption && typeof risk.reverseRangeLineIdsByOption === "object"
+    ? risk.reverseRangeLineIdsByOption
+    : null;
+  return lineOrderUniqueList(byOption && byOption[optionId]);
+}
+
+function optionLoopLineIds(option, group, conv, outcomesByOptionId, lineOrderIndexById = null) {
+  const out = [];
+  const currentGroup = group && group.g != null
+    ? Number(group.g)
+    : optionGroupNumberFromOptionId(option && option.id, conv && conv.key);
+  const currentAfterLineId = String(group && group.after || "");
+  if (currentAfterLineId && timelineReverseRangeLineIdsForOption(option, group).length) {
+    out.push(currentAfterLineId);
+  }
+  const hasCurrentLineIdx = lineOrderIndexById instanceof Map && lineOrderIndexById.has(currentAfterLineId);
+  const currentLineIdx = hasCurrentLineIdx ? lineOrderIndexById.get(currentAfterLineId) : null;
+  for (const outcome of sameSceneOptionOutcomes(option, conv, outcomesByOptionId)) {
+    if (!outcome.loop) continue;
+    const debug = outcome._debug || {};
+    const returnOptionIds = (debug.returnOptionIds || []).filter(Boolean);
+    const targetGroupInfo = returnOptionIds.length ? optionGroupForOptionId(conv, returnOptionIds[0]) : null;
+    const targetGroup = returnOptionIds.length
+      ? optionGroupNumberFromOptionId(returnOptionIds[0], conv && conv.key)
+      : null;
+    const targetAfterLineId = String(targetGroupInfo && targetGroupInfo.after || "");
+    const hasTargetLineIdx = lineOrderIndexById instanceof Map && lineOrderIndexById.has(targetAfterLineId);
+    const targetLineIdx = hasTargetLineIdx ? lineOrderIndexById.get(targetAfterLineId) : null;
+    const sameMenuLoop = outcome.loop.kind === "sameOptionMenuReturn";
+    const backwardByLine = hasCurrentLineIdx && hasTargetLineIdx && targetLineIdx <= currentLineIdx;
+    const backwardByGroup = !hasCurrentLineIdx && !hasTargetLineIdx && targetGroup !== null
+      && currentGroup !== null
+      && targetGroup <= currentGroup;
+    const backwardLoop = backwardByLine || backwardByGroup;
+    if (!sameMenuLoop && !backwardLoop) continue;
+    const pathLineIds = normalizeLineOrderIdList(outcome.pathLineIds);
+    const lineId = String(targetGroupInfo && targetGroupInfo.after || "")
+      || pathLineIds[0]
+      || String(outcome.firstLineId || "");
+    if (lineId && !out.includes(lineId)) out.push(lineId);
+  }
+  return out;
+}
+
+function renderOptionJumpTags(option, group, conv, outcomesByOptionId) {
+  const jumpInfo = firstOptionJumpInfo(option, group, conv, outcomesByOptionId);
+  const jumpLineId = String(jumpInfo.lineId || "");
+  if (!jumpLineId) return null;
+
+  const wrap = document.createElement("div");
+  wrap.className = "opt-jump-tags";
+  const jumpChip = createLineJumpChip(
+    conv,
+    jumpLineId,
+    optionJumpLabelKey(jumpInfo.source),
+    "opt-target-chip opt-target-chip-line" + optionJumpSourceClass(jumpInfo.source),
+    optionJumpTitleKey(jumpInfo.source)
+  );
+  if (jumpChip) wrap.appendChild(jumpChip);
+  return wrap.childNodes.length ? wrap : null;
+}
+
+function renderOptionLoopTagsForLineIds(conv, loopLineIds) {
+  if (!loopLineIds.length) return null;
+
+  const wrap = document.createElement("div");
+  wrap.className = "branch-loop-tags";
+  for (const lineId of loopLineIds) {
+    const loopChip = createLineJumpChip(
+      conv,
+      lineId,
+      "optJumpLoopLine",
+      "opt-target-chip opt-target-chip-loop",
+      "optJumpLoopLineTitle"
+    );
+    if (loopChip) wrap.appendChild(loopChip);
+  }
+  return wrap.childNodes.length ? wrap : null;
+}
+
+function optionGroupMergeInfo(group) {
+  const mergeLineId = String(group && group.branchMerge || "");
+  if (mergeLineId) return { lineId: mergeLineId, source: "tree" };
+  return optionBranchRiskJumpInfo(group && group.optionBranchRisk);
 }
 
 function summarizeOptionTargets(option, conv, outcomesByOptionId) {
@@ -1829,8 +2228,23 @@ function summarizeOptionTargets(option, conv, outcomesByOptionId) {
       continue;
     }
 
+    const seenSubmenuScenes = new Set();
+    for (const submenuTarget of outcome.submenuTargets || []) {
+      if (!submenuTarget || typeof submenuTarget !== "object") continue;
+      const sk = String(submenuTarget.sceneKey || "");
+      if (!sk || isSameConversationSceneKey(sk, conv)) continue;
+      const optionId = String(submenuTarget.optionId || "");
+      const optionText = String(submenuTarget.text || "");
+      seenSubmenuScenes.add(sk);
+      push(`submenu:${sk}:${optionId || optionText}`, {
+        kind: "sceneSubmenu",
+        sceneKey: sk,
+        optionId,
+        optionText,
+      });
+    }
     for (const sk of outcome.submenuSceneKeys || []) {
-      if (sk && !isSameConversationSceneKey(sk, conv)) {
+      if (sk && !seenSubmenuScenes.has(sk) && !isSameConversationSceneKey(sk, conv)) {
         push(`submenu:${sk}`, { kind: "sceneSubmenu", sceneKey: sk });
       }
     }
@@ -1936,6 +2350,7 @@ function renderOptionTargetChips(option, conv, outcomesByOptionId, options = {})
     if (grp && grp.g != null) groupByG.set(grp.g, grp);
   }
   const isReturnOverride = typeof options.isReturnTarget === "function" ? options.isReturnTarget : null;
+  const hideSelfMenu = Boolean(options.hideSelfMenu);
 
   const wrap = document.createElement("div");
   wrap.className = "opt-target-chips";
@@ -1953,7 +2368,7 @@ function renderOptionTargetChips(option, conv, outcomesByOptionId, options = {})
         label,
         "opt-target-chip opt-target-chip-menu" + (isReturn ? " is-return" : "")
       );
-    } else if (target.kind === "selfMenu") {
+    } else if (target.kind === "selfMenu" && !hideSelfMenu) {
       chip = document.createElement("span");
       chip.className = "opt-target-chip opt-target-chip-self";
       chip.textContent = uiText("optTargetSelfMenu");
@@ -1962,11 +2377,19 @@ function renderOptionTargetChips(option, conv, outcomesByOptionId, options = {})
       const resolvedSceneKey = resolveConversationEntryKey(rawSceneKey) || rawSceneKey;
       chip = document.createElement("a");
       chip.className = "opt-target-chip opt-target-chip-scene";
-      chip.textContent = (target.kind === "sceneSubmenu" ? uiText("optTargetSceneSubmenu") : uiText("optTargetScene"))
+      const sceneLabel = (target.kind === "sceneSubmenu" ? uiText("optTargetSceneSubmenu") : uiText("optTargetScene"))
         .replace("{key}", rawSceneKey);
+      chip.textContent = target.kind === "sceneSubmenu" && target.optionText
+        ? `${target.optionText} ${sceneLabel}`
+        : sceneLabel;
       chip.href = `#${encodeURIComponent(resolvedSceneKey)}`;
+      if (target.optionId) {
+        chip.title = `${target.optionId} -> ${rawSceneKey}`;
+      }
       if (resolvedSceneKey && resolvedSceneKey !== rawSceneKey) {
-        chip.title = `${rawSceneKey} -> ${resolvedSceneKey}`;
+        chip.title = chip.title
+          ? `${chip.title} (${resolvedSceneKey})`
+          : `${rawSceneKey} -> ${resolvedSceneKey}`;
       }
       chip.addEventListener("click", (event) => {
         event.preventDefault();
@@ -2273,6 +2696,7 @@ function renderSceneOrderWarningAspect(aspectKey, data) {
     );
     appendLineIdTagList(section, "", data.uncoveredLineIds);
   }
+  appendWarningEvidence(section, data.evidence);
   return section;
 }
 
@@ -2308,6 +2732,17 @@ function renderConvWarning(warning) {
   if (warning.code === "inferredOptionLayout") {
     title = uiText("warningInferredOptionLayoutTitle");
     body = uiText("warningInferredOptionLayoutBody");
+  }
+  if (warning.code === "inferredOptionResponse") {
+    title = uiText("warningInferredOptionResponseTitle");
+    body = uiText("warningInferredOptionResponseBody");
+    const lineIds = normalizeLineOrderIdList(warning.lineIds);
+    if (lineIds.length) {
+      const section = document.createElement("section");
+      section.className = "conv-warning-section";
+      appendLineIdTagList(section, "", lineIds);
+      detailSections.push(section);
+    }
   }
   if (warning.code === "duplicateTimestamps") {
     title = uiText("warningDuplicateTimestampsTitle");
@@ -2358,16 +2793,76 @@ function convHasWarning(conv, code) {
 
 function renderableConvWarnings(conv) {
   const warnings = getConvWarnings(conv);
+  let visible = warnings;
   if (warnings.some((warning) => warning.code === "sceneOrderDisorder")) {
-    return warnings.filter((warning) => warning.code !== "inferredOptionLayout");
+    visible = warnings.filter((warning) => warning.code !== "inferredOptionLayout");
   }
-  return warnings;
+  return visible;
+}
+
+function convRuntimeRegistry(conv) {
+  const debug = conv && conv._debug && typeof conv._debug === "object"
+    ? conv._debug
+    : null;
+  const registry = debug && debug.runtimeRegistry && typeof debug.runtimeRegistry === "object"
+    ? debug.runtimeRegistry
+    : null;
+  return registry;
+}
+
+function runtimeRegistryLinesByTrunk(registry) {
+  const raw = registry && registry.linesByTrunk && typeof registry.linesByTrunk === "object"
+    ? registry.linesByTrunk
+    : null;
+  if (!raw) return [];
+  return Object.entries(raw)
+    .map(([trunk, values]) => {
+      const lineIds = Array.isArray(values)
+        ? values.map((value) => String(value || "").trim()).filter(Boolean)
+        : [];
+      if (!lineIds.length) return "";
+      return `trunk ${trunk}: ${lineIds.join(", ")}`;
+    })
+    .filter(Boolean);
+}
+
+function runtimeRegistryOptionsByGroup(registry) {
+  const raw = registry && registry.optionsByGroup && typeof registry.optionsByGroup === "object"
+    ? registry.optionsByGroup
+    : null;
+  if (!raw) return [];
+  return Object.entries(raw)
+    .map(([group, values]) => {
+      const optionIds = Array.isArray(values)
+        ? values.map((value) => String(value || "").trim()).filter(Boolean)
+        : [];
+      if (!optionIds.length) return "";
+      return `option group ${group}: ${optionIds.join(", ")}`;
+    })
+    .filter(Boolean);
+}
+
+function lineOrderRegistryTitle(registry, fallback = "") {
+  if (!registry) return "";
+  const parts = [];
+  const primary = fallback
+    ? String(fallback)
+    : (registry.reason ? String(registry.reason) : "");
+  if (primary) parts.push(primary);
+  if (registry.sceneKey) parts.push(`sceneKey: ${registry.sceneKey}`);
+  if (registry.webuiKey && registry.webuiKey !== registry.sceneKey) {
+    parts.push(`webuiKey: ${registry.webuiKey}`);
+  }
+  for (const line of runtimeRegistryLinesByTrunk(registry)) parts.push(line);
+  for (const line of runtimeRegistryOptionsByGroup(registry)) parts.push(line);
+  return parts.join("\n");
 }
 
 function lineOrderModeText(mode) {
   if (mode === "dialogTree") return uiText("lineOrderModeDialogTree");
   if (mode === "dialogTreeFragment") return uiText("lineOrderModeDialogTreeFragment");
   if (mode === "dialogTreeExtraConfig") return uiText("lineOrderModeDialogTreeExtraConfig");
+  if (mode === "dialogTreeCinematicTimeline") return uiText("lineOrderModeDialogTreeCinematicTimeline");
   if (mode === "authoredBlend") return uiText("lineOrderModeAuthoredBlend");
   if (mode === "dialogTimeline") return uiText("lineOrderModeDialogTimeline");
   if (mode === "lineIdSuffix") return uiText("lineOrderModeLineIdSuffix");
@@ -2388,10 +2883,86 @@ function lineOrderTone(mode) {
   return "missing";
 }
 
+function lineOrderRuntimeMode(conv, lineOrder, originalLineIds, orderedLineIds) {
+  const registry = convRuntimeRegistry(conv);
+  if (!registry || !lineOrder || lineOrder.mode !== "lineIdSuffix") return null;
+  if (!originalLineIds.length || !orderedLineIds.length) return null;
+  if (!lineOrderIdListEquals(originalLineIds, orderedLineIds)) return null;
+  const title = lineOrderRegistryTitle(registry);
+  if (registry.registered === false) {
+    return {
+      text: uiText("lineOrderModeUnregisteredScene"),
+      tone: "neutral",
+      title,
+    };
+  }
+  if (registry.registered === true) {
+    return {
+      text: uiText("lineOrderModeRuntimeRowIteration"),
+      tone: "success",
+      title,
+    };
+  }
+  return null;
+}
+
+function lineOrderRegistryChip(registry) {
+  if (!registry) return null;
+  const title = lineOrderRegistryTitle(registry);
+  if (registry.registered === false) {
+    return {
+      text: uiText("lineOrderRegistryUnregistered"),
+      tone: "neutral",
+      title,
+    };
+  }
+  if (registry.registered === true) {
+    const trunks = Number(registry.trunkCount) || 0;
+    const lines = Number(registry.lineCount) || 0;
+    if (trunks || lines) {
+      return {
+        text: uiText("lineOrderRegistryTrunks")
+          .replace("{trunks}", String(trunks))
+          .replace("{lines}", String(lines)),
+        tone: "success",
+        title,
+      };
+    }
+    return {
+      text: uiText("lineOrderRegistryRegistered"),
+      tone: "success",
+      title,
+    };
+  }
+  return null;
+}
+
+function lineOrderRegistryDeltaChip(registry) {
+  if (!registry || registry.registered !== true) return null;
+  const raw = registry.lineCountDelta;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw === 0) return null;
+  const absText = String(Math.abs(raw));
+  const labelKey = raw > 0
+    ? "lineOrderRegistryDeltaPositive"
+    : "lineOrderRegistryDeltaNegative";
+  const text = uiText(labelKey).replace("{count}", absText);
+  const title = lineOrderRegistryTitle(registry, registry.note || registry.reason || "");
+  // Negative delta = webui shows fewer lines than the runtime registry
+  // addresses. That's a stronger signal (something missing) than positive
+  // delta (extra summary/hint rows in webui that the runtime doesn't
+  // address by trunk id), so colour them differently.
+  return {
+    text,
+    tone: raw > 0 ? "neutral" : "fallback",
+    title,
+  };
+}
+
 function lineOrderModeDetailText(mode) {
   if (mode === "dialogTree") return uiText("lineOrderModeDetailDialogTree");
   if (mode === "dialogTreeFragment") return uiText("lineOrderModeDetailDialogTreeFragment");
   if (mode === "dialogTreeExtraConfig") return uiText("lineOrderModeDetailDialogTreeExtraConfig");
+  if (mode === "dialogTreeCinematicTimeline") return uiText("lineOrderModeDetailDialogTreeCinematicTimeline");
   if (mode === "authoredBlend") return uiText("lineOrderModeDetailAuthoredBlend");
   if (mode === "dialogTimeline") return uiText("lineOrderModeDetailDialogTimeline");
   if (mode === "lineIdSuffix") return uiText("lineOrderModeDetailLineIdSuffix");
@@ -2420,10 +2991,11 @@ function buildLineIdReferenceOrder(lineIds) {
   return rows.map((row) => row.lineId);
 }
 
-function createLineOrderStatChip(text, tone = "") {
+function createLineOrderStatChip(text, tone = "", title = "") {
   const chip = document.createElement("span");
   chip.className = "line-order-chip" + (tone ? ` is-${tone}` : "");
   chip.textContent = text;
+  if (title) chip.title = title;
   return chip;
 }
 
@@ -2489,13 +3061,23 @@ function findLineOrderContinuationGroups(group, ctx) {
   }
   const groups = [];
   const seen = new Set();
+  const pushGroup = (candidate) => {
+    if (!candidate || candidate === group || seen.has(candidate)) return;
+    groups.push(candidate);
+    seen.add(candidate);
+  };
+  for (const optionId of normalizeLineOrderIdList(group.continuationOptionIds)) {
+    pushGroup(optionGroupForOptionId(ctx.conv, optionId));
+  }
+  for (const optionId of normalizeLineOrderIdList(group.optionBranchRisk && group.optionBranchRisk.continuationOptionIds)) {
+    pushGroup(optionGroupForOptionId(ctx.conv, optionId));
+  }
   for (const option of group.options || []) {
     for (const lineId of normalizeLineOrderIdList(option.branchLines)) {
       for (const candidate of ctx.groupsByLineId.get(lineId) || []) {
         if (!candidate || candidate === group || seen.has(candidate)) continue;
         if (!isLineOrderSharedContinuationGroup(group, candidate, ctx.outcomesByOptionId, ctx.conv.key)) continue;
-        groups.push(candidate);
-        seen.add(candidate);
+        pushGroup(candidate);
       }
     }
   }
@@ -2663,6 +3245,45 @@ function renderCutsceneInfoPanel(conv) {
   return box;
 }
 
+function renderSourceLinksBlock(conv) {
+  const links = Array.isArray(conv && conv.sourceLinks)
+    ? conv.sourceLinks.filter((link) => link && typeof link === "object")
+    : [];
+  if (!links.length) return null;
+
+  const box = document.createElement("div");
+  box.className = "summary-box source-links-box";
+
+  const label = document.createElement("div");
+  label.className = "summary-label";
+  label.textContent = uiText("sourceEvidence");
+  box.appendChild(label);
+
+  for (const link of links.slice(0, 8)) {
+    const row = document.createElement("div");
+    row.className = "summary-text source-link-row";
+    const bits = [];
+    if (link.source) bits.push(String(link.source));
+    if (link.file) bits.push(String(link.file));
+    if (link.path) bits.push(String(link.path));
+    if (link.raw) bits.push(String(link.raw));
+    row.textContent = bits.join(" · ");
+    box.appendChild(row);
+    appendDebugTrace(row, link._debug, "source link");
+  }
+
+  const omitted = Number(conv.sourceLinksOmitted || 0);
+  if (omitted > 0) {
+    const row = document.createElement("div");
+    row.className = "summary-text source-link-row source-link-more";
+    row.textContent = uiText("sourceEvidenceMore").replace("{count}", String(omitted));
+    box.appendChild(row);
+  }
+
+  appendDebugTrace(box, conv && conv._debug && conv._debug.sourceLinks, "source links");
+  return box;
+}
+
 function summaryLabelForConv(conv) {
   return conv && (
     ["wiki", "mail", "prts", "responsive"].includes(conv.kind)
@@ -2712,7 +3333,25 @@ function renderLineOrderRecovery(conv) {
 
   const strip = document.createElement("div");
   strip.className = "line-order-summary line-order-summary-flat";
-  strip.appendChild(createLineOrderStatChip(lineOrderModeText(lineOrder.mode), lineOrderTone(lineOrder.mode)));
+  const registry = convRuntimeRegistry(conv);
+  const runtimeMode = lineOrderRuntimeMode(conv, lineOrder, originalLineIds, orderedLineIds);
+  strip.appendChild(createLineOrderStatChip(
+    runtimeMode ? runtimeMode.text : lineOrderModeText(lineOrder.mode),
+    runtimeMode ? runtimeMode.tone : lineOrderTone(lineOrder.mode),
+    runtimeMode ? runtimeMode.title : ""
+  ));
+  const registryChip = lineOrderRegistryChip(registry);
+  if (registryChip && !(runtimeMode && registry && registry.registered === false)) {
+    strip.appendChild(createLineOrderStatChip(
+      registryChip.text,
+      registryChip.tone,
+      registryChip.title
+    ));
+  }
+  const deltaChip = lineOrderRegistryDeltaChip(registry);
+  if (deltaChip) {
+    strip.appendChild(createLineOrderStatChip(deltaChip.text, deltaChip.tone, deltaChip.title));
+  }
   if (differsFromLineIdOrder) {
     strip.appendChild(createLineOrderStatChip(uiText("lineOrderDiffersFromLineIdOrder"), "success"));
   }
@@ -2727,9 +3366,10 @@ function renderLineOrderRecovery(conv) {
   return strip;
 }
 
-function renderDialogBranchLine(line, inlineGroups = [], renderOptGroup = null) {
+function renderDialogBranchLine(line, convKey = "") {
   const item = document.createElement("div");
   item.className = "branch-line";
+  setLineAnchor(item, convKey, line && line.id);
 
   const actor = document.createElement("div");
   actor.className = "branch-line-speaker";
@@ -2754,15 +3394,6 @@ function renderDialogBranchLine(line, inlineGroups = [], renderOptGroup = null) 
   appendLineId(item, line, "branch-line-id");
 
   appendDebugTrace(item, line._debug, "branch line");
-
-  if (inlineGroups.length && typeof renderOptGroup === "function") {
-    const block = document.createElement("div");
-    block.className = "opt-block opt-block-branch-inline";
-    for (const group of inlineGroups) {
-      block.appendChild(renderOptGroup(group));
-    }
-    if (block.childNodes.length) item.appendChild(block);
-  }
 
   return item;
 }
@@ -2930,6 +3561,8 @@ function renderConv(conv) {
   if (conv.mission) meta.push(`mission=${conv.mission}`);
   if (conv.scene !== undefined) meta.push(`scene=${conv.scene}`);
   if (conv.chatId) meta.push(`chat=${conv.chatId}`);
+  if (conv.chatTitle) meta.push(`chatTitle=${conv.chatTitle}`);
+  if (conv.chatType !== undefined) meta.push(`chatType=${conv.chatType}`);
   if (conv.relatedMissionId) meta.push(`related=${conv.relatedMissionId}`);
   if (conv.cooldown !== undefined) meta.push(`cooldown=${conv.cooldown}`);
   meta.push(`lines=${conv.lines.length}`);
@@ -3009,7 +3642,13 @@ function renderConv(conv) {
     : null;
   const snsBranchData = buildSnsBranchGroups(conv);
   const dlgLineById = new Map(conv.lines.map((ln) => [ln.id, ln]));
+  const lineOrderIndexById = new Map(
+    conv.lines
+      .map((ln, idx) => [String(ln && ln.id || ""), idx])
+      .filter(([lineId]) => lineId)
+  );
   const dlgBranchSkipIds = new Set();
+  const renderedDlgLineIds = new Set();
   const uncertainOptionLayout = convHasWarning(conv, "inferredOptionLayout");
   const uncoveredLineIdSet = getConvUncoveredLineIdSet(conv);
   const duplicateTimestampLineIdSet = getConvDuplicateTimestampLineIdSet(conv);
@@ -3028,6 +3667,12 @@ function renderConv(conv) {
 
   const archiveLinksBlock = renderArchiveLinksBlock(entry, conv);
   if (archiveLinksBlock) frag.appendChild(archiveLinksBlock);
+
+  const sourceLinksBlock = renderSourceLinksBlock(conv);
+  if (sourceLinksBlock) frag.appendChild(sourceLinksBlock);
+
+  const narrativeVideoBlock = renderNarrativeVideosBlock(conv);
+  if (narrativeVideoBlock) frag.appendChild(narrativeVideoBlock);
 
   const wikiMediaBlock = renderWikiMediaBlock(conv);
   if (wikiMediaBlock) frag.appendChild(wikiMediaBlock);
@@ -3069,6 +3714,13 @@ function renderConv(conv) {
     if (!ln || !ln.id) return null;
     const m = /_(\d+)$/.exec(ln.id);
     return m ? parseInt(m[1], 10) : null;
+  };
+  const lineRenderIdx = (lineOrId) => {
+    const id = typeof lineOrId === "string"
+      ? lineOrId
+      : String(lineOrId && lineOrId.id || "");
+    if (id && lineOrderIndexById.has(id)) return lineOrderIndexById.get(id);
+    return lineRawIdx({ id });
   };
   const lineIdxs = conv.lines.map(lineRawIdx).filter((x) => x !== null);
   const lineIdxSet = new Set(lineIdxs);
@@ -3122,9 +3774,9 @@ function renderConv(conv) {
 
   const continuationOptGroups = new Set();
   const renderedOptGroups = new Set();
-  // Groups pinned to a specific dialog line by `after`; these always render at
-  // their anchor, so other callers should never pull them inline (which would
-  // otherwise duplicate the group at the caller's position).
+  // Groups pinned to a specific dialog line by `after`; trunk anchors render
+  // inline, while branch-owned anchors render as flat siblings in the owning
+  // branch chain so option columns show evidence order without nested menus.
   const anchoredOptGroups = new Set();
   for (const grps of groupsByLineId.values()) for (const g of grps) anchoredOptGroups.add(g);
   const optionLayoutCtx = {
@@ -3146,9 +3798,352 @@ function renderConv(conv) {
   const attachedGroupsForLine = (lineId) => {
     return (groupsByLineId.get(lineId) || []).filter(isAnchorRenderEligible);
   };
+  const uniqueOptionGroups = (groups) => {
+    const out = [];
+    const seen = new Set();
+    for (const group of groups || []) {
+      if (!group || seen.has(group)) continue;
+      out.push(group);
+      seen.add(group);
+    }
+    return out;
+  };
+  const isBackLoopAnchorLineForGroup = (ownerGroup, lineId) => {
+    if (!lineId) return false;
+    const anchorsOtherGroup = (groupsByLineId.get(lineId) || [])
+      .some((other) => other && other !== ownerGroup);
+    if (!anchorsOtherGroup) return false;
+    const afterIdx = lineRenderIdx((ownerGroup && ownerGroup.after) || "") ?? -1;
+    const lidIdx = lineRenderIdx(lineId) ?? -1;
+    return lidIdx <= afterIdx;
+  };
+  const branchAnchoredGroupsForLineIds = (lineIds, ownerGroup) => {
+    const out = [];
+    const seen = new Set();
+    for (const lineId of lineIds || []) {
+      if (isBackLoopAnchorLineForGroup(ownerGroup, lineId)) continue;
+      for (const group of groupsByLineId.get(lineId) || []) {
+        if (!group || group === ownerGroup || seen.has(group)) continue;
+        out.push(group);
+        seen.add(group);
+      }
+    }
+    return out;
+  };
+  const isBranchAnchoredPullEligible = (target, lineIds) => {
+    if (!target || continuationOptGroups.has(target) || renderedOptGroups.has(target)) return false;
+    if (isPullEligible(target)) return true;
+    return anchoredOptGroups.has(target)
+      && lineIds.has(String(target.after || ""));
+  };
   const chipOptions = { isReturnTarget: (target) => renderedOptGroups.has(target) };
 
-  const renderOptGroup = (grp) => {
+  const renderDialogFlowLine = (ln) => {
+    const row = document.createElement("div");
+    row.className = "line"
+      + (ln.text ? "" : " empty")
+      + (ln.id && uncoveredLineIdSet.has(ln.id) ? " line-uncovered" : "")
+      + (ln.id && duplicateTimestampLineIdSet.has(ln.id) ? " line-duplicate-timestamp" : "");
+    setLineAnchor(row, conv.key, ln.id);
+
+    const actor = document.createElement("div");
+    actor.className = "actor";
+    const speaker = resolveRenderedSpeaker(ln);
+    if (speaker.display || speaker.aid) {
+      appendSpeakerLabel(actor, speaker.display, {
+        originalName: speaker.original,
+        aid: speaker.aid,
+      });
+    }
+    row.appendChild(actor);
+
+    const body = document.createElement("div");
+    body.className = "body";
+    if (typeof ln.ts === "number") {
+      const ts = document.createElement("div");
+      ts.className = "line-timestamp";
+      ts.title = `${formatTimelineSeconds(ln.ts)}` + (typeof ln.dur === "number" ? `  +${formatTimelineSeconds(ln.dur)}` : "");
+      ts.textContent = formatTimelineSeconds(ln.ts);
+      body.appendChild(ts);
+    }
+    if (ln.text) {
+      const text = document.createElement("div");
+      text.className = "text";
+      text.innerHTML = highlight(ln.text, STATE.filters.q);
+      body.appendChild(text);
+      appendDebugTrace(body, ln._debug, "line");
+    }
+    appendLineId(body, ln);
+    if (ln.id && uncoveredLineIdSet.has(ln.id)) {
+      appendUncoveredLineBadge(body);
+    }
+    if (ln.id && duplicateTimestampLineIdSet.has(ln.id)) {
+      appendDuplicateTimestampBadge(body);
+    }
+    row.appendChild(body);
+    return row;
+  };
+
+  const optionLineUsageByGroup = new WeakMap();
+  const optionCandidateLineIdsByOption = new WeakMap();
+  const branchColumnLineIdsByOption = new WeakMap();
+  const branchDisplayModelByGroup = new WeakMap();
+
+  const optionListForGroup = (grp) => {
+    const opts = grp && grp.options ? grp.options : [];
+    return Array.isArray(opts) ? opts : (opts ? [opts] : []);
+  };
+
+  const optionPathLineIds = (opt) => {
+    const out = [];
+    for (const outcome of sameSceneOptionOutcomes(opt, conv, outcomesByOptionId)) {
+      for (const lineId of normalizeLineOrderIdList(outcome.pathLineIds)) {
+        if (lineIdSet.has(lineId) && !out.includes(lineId)) out.push(lineId);
+      }
+    }
+    return out;
+  };
+
+  const optionRiskMappedLineIds = (grp, opt) => {
+    const risk = grp && grp.optionBranchRisk && typeof grp.optionBranchRisk === "object"
+      ? grp.optionBranchRisk
+      : null;
+    const optionId = String(opt && opt.id || "");
+    if (!risk || !optionId) return [];
+    if (risk.code !== "inferredFollowingLines" || risk.candidateMapping !== "trunkClipOptionIndex") {
+      return [];
+    }
+    const byOption = risk.candidateLineIdsByOption && typeof risk.candidateLineIdsByOption === "object"
+      ? risk.candidateLineIdsByOption
+      : null;
+    const mapped = byOption && byOption[optionId];
+    if (Array.isArray(mapped)) return lineOrderUniqueList(mapped);
+    return mapped ? [String(mapped)] : [];
+  };
+
+  const optionCandidateLineIds = (opt, grp = null) => {
+    if (optionCandidateLineIdsByOption.has(opt)) return optionCandidateLineIdsByOption.get(opt);
+    const out = [];
+    const push = (lineId) => {
+      if (lineId && lineIdSet.has(lineId) && !out.includes(lineId)) out.push(lineId);
+    };
+    for (const lineId of normalizeLineOrderIdList(opt && opt.branchLines)) push(lineId);
+    for (const lineId of optionRiskMappedLineIds(grp, opt)) push(lineId);
+    for (const lineId of optionPathLineIds(opt)) push(lineId);
+    optionCandidateLineIdsByOption.set(opt, out);
+    return out;
+  };
+
+  const optionLineUsageForGroup = (grp) => {
+    if (optionLineUsageByGroup.has(grp)) return optionLineUsageByGroup.get(grp);
+    const usage = new Map();
+    for (const opt of optionListForGroup(grp)) {
+      for (const lineId of optionCandidateLineIds(opt, grp)) {
+        usage.set(lineId, (usage.get(lineId) || 0) + 1);
+      }
+    }
+    optionLineUsageByGroup.set(grp, usage);
+    return usage;
+  };
+
+  const branchColumnLineIdsForOption = (grp, opt) => {
+    if (branchColumnLineIdsByOption.has(opt)) return branchColumnLineIdsByOption.get(opt);
+    const out = [];
+    const push = (lineId) => {
+      if (lineId && lineIdSet.has(lineId) && !out.includes(lineId)) out.push(lineId);
+    };
+    const usage = optionLineUsageForGroup(grp);
+    for (const lineId of optionCandidateLineIds(opt, grp)) {
+      if ((usage.get(lineId) || 0) === 1) push(lineId);
+    }
+    branchColumnLineIdsByOption.set(opt, out);
+    return out;
+  };
+
+  const sharedSuffixLineIdsFromLists = (lists) => {
+    if (!lists.length) return [];
+    if (lists.some((list) => !list.length)) return [];
+    const suffix = [];
+    let offset = 1;
+    while (true) {
+      const candidate = lists[0][lists[0].length - offset];
+      if (!candidate) break;
+      if (!lists.every((list) => list[list.length - offset] === candidate)) break;
+      suffix.unshift(candidate);
+      offset += 1;
+    }
+    return suffix;
+  };
+
+  const sharedRouteSuffixLineIds = (opts, grp = null) => {
+    if (!opts.length) return [];
+    return sharedSuffixLineIdsFromLists(opts.map((opt) => optionCandidateLineIds(opt, grp)));
+  };
+
+  const collectBranchColumnLineIds = (grp, opt, seenGroups = new Set()) => {
+    const out = [];
+    const push = (lineId) => {
+      if (lineId && lineIdSet.has(lineId) && !out.includes(lineId)) out.push(lineId);
+    };
+    if (!grp || seenGroups.has(grp)) return out;
+    seenGroups.add(grp);
+    for (const lineId of optionCandidateLineIds(opt, grp)) {
+      push(lineId);
+      for (const childGroup of groupsByLineId.get(lineId) || []) {
+        if (!childGroup || childGroup === grp || seenGroups.has(childGroup)) continue;
+        if (isLineOrderSharedContinuationGroup(grp, childGroup, outcomesByOptionId, conv.key)) continue;
+        for (const childOpt of optionListForGroup(childGroup)) {
+          for (const childLineId of collectBranchColumnLineIds(childGroup, childOpt, seenGroups)) {
+            push(childLineId);
+          }
+        }
+      }
+    }
+    seenGroups.delete(grp);
+    return out;
+  };
+
+  const collectSingleOptionClosureLineIds = (grp, seenGroups = new Set()) => {
+    const out = [];
+    const push = (lineId) => {
+      if (lineId && lineIdSet.has(lineId) && !out.includes(lineId)) out.push(lineId);
+    };
+    if (!grp || seenGroups.has(grp)) return out;
+    const opts = optionListForGroup(grp);
+    if (opts.length !== 1) return out;
+    seenGroups.add(grp);
+    for (const lineId of optionCandidateLineIds(opts[0], grp)) {
+      push(lineId);
+      for (const childGroup of groupsByLineId.get(lineId) || []) {
+        if (!childGroup || childGroup === grp || seenGroups.has(childGroup)) continue;
+        if (optionListForGroup(childGroup).length !== 1) continue;
+        for (const childLineId of collectSingleOptionClosureLineIds(childGroup, seenGroups)) {
+          push(childLineId);
+        }
+      }
+    }
+    seenGroups.delete(grp);
+    return out;
+  };
+
+  const branchDisplayModelForGroup = (grp) => {
+    if (branchDisplayModelByGroup.has(grp)) return branchDisplayModelByGroup.get(grp);
+    const opts = optionListForGroup(grp);
+    if (optionGroupHasTimelineRouteBranches(grp)) {
+      const commonLineIds = sharedRouteSuffixLineIds(opts, grp);
+      const commonCount = commonLineIds.length;
+      const optionLineIds = new WeakMap();
+      for (const opt of opts) {
+        const routeLineIds = optionCandidateLineIds(opt, grp);
+        optionLineIds.set(opt, commonCount ? routeLineIds.slice(0, routeLineIds.length - commonCount) : routeLineIds);
+      }
+      const model = { optionLineIds, commonLineIds };
+      branchDisplayModelByGroup.set(grp, model);
+      return model;
+    }
+    const usage = optionLineUsageForGroup(grp);
+    const commonDirect = new Set(
+      [...usage.entries()]
+        .filter(([, count]) => count > 1)
+        .map(([lineId]) => lineId)
+    );
+    const recursiveByOption = new WeakMap();
+    const recursiveUsage = new Map();
+    for (const opt of opts) {
+      const recursive = [];
+      const push = (lineId) => {
+        if (lineId && lineIdSet.has(lineId) && !recursive.includes(lineId)) recursive.push(lineId);
+      };
+      for (const lineId of optionCandidateLineIds(opt, grp)) {
+        if (commonDirect.has(lineId)) continue;
+        for (const childGroup of groupsByLineId.get(lineId) || []) {
+          if (!childGroup || childGroup === grp) continue;
+          if (isLineOrderSharedContinuationGroup(grp, childGroup, outcomesByOptionId, conv.key)) continue;
+          for (const childOpt of optionListForGroup(childGroup)) {
+            for (const childLineId of collectBranchColumnLineIds(childGroup, childOpt)) {
+              push(childLineId);
+            }
+          }
+        }
+      }
+      recursiveByOption.set(opt, recursive);
+      for (const lineId of recursive) {
+        recursiveUsage.set(lineId, (recursiveUsage.get(lineId) || 0) + 1);
+      }
+    }
+    const commonRecursive = new Set(
+      [...recursiveUsage.entries()]
+        .filter(([, count]) => count > 1)
+        .map(([lineId]) => lineId)
+    );
+    const optionLineIds = new WeakMap();
+    const commonLineIds = [];
+    const pushCommon = (lineId) => {
+      if (lineId && lineIdSet.has(lineId) && !commonLineIds.includes(lineId)) commonLineIds.push(lineId);
+    };
+    for (const opt of opts) {
+      const direct = [];
+      for (const lineId of optionCandidateLineIds(opt, grp)) {
+        if (commonDirect.has(lineId)) {
+          pushCommon(lineId);
+        } else if ((usage.get(lineId) || 0) === 1 && !direct.includes(lineId)) {
+          direct.push(lineId);
+        }
+      }
+      for (const lineId of recursiveByOption.get(opt) || []) {
+        if (commonRecursive.has(lineId)) pushCommon(lineId);
+      }
+      optionLineIds.set(opt, direct);
+    }
+    const model = { optionLineIds, commonLineIds };
+    branchDisplayModelByGroup.set(grp, model);
+    return model;
+  };
+
+  const renderBranchPathLines = (lineIds, ownerGroup, renderCtx) => {
+    const lines = document.createElement("div");
+    lines.className = "branch-lines";
+    const suppressedLineIds = renderCtx && renderCtx.suppressedLineIds
+      ? renderCtx.suppressedLineIds
+      : new Set();
+    for (const lid of lineIds) {
+      if (suppressedLineIds.has(lid)) continue;
+      if (renderedDlgLineIds.has(lid)) continue;
+      const line = dlgLineById.get(lid);
+      if (!line) continue;
+      if (isBackLoopAnchorLineForGroup(ownerGroup, lid)) continue;
+      renderedDlgLineIds.add(lid);
+      lines.appendChild(renderDialogBranchLine(line, conv.key));
+    }
+    return lines.childNodes.length ? lines : null;
+  };
+
+  const renderSingleOptionPathLines = (lineIds, ownerGroup, renderCtx) => {
+    const lines = document.createDocumentFragment();
+    const suppressedLineIds = renderCtx && renderCtx.suppressedLineIds
+      ? renderCtx.suppressedLineIds
+      : new Set();
+    const stopBeforeLineIds = renderCtx && renderCtx.stopBeforeLineIds
+      ? renderCtx.stopBeforeLineIds
+      : new Set();
+    for (const lid of lineIds) {
+      if (suppressedLineIds.has(lid)) continue;
+      if (stopBeforeLineIds.has(lid)) continue;
+      if (renderedDlgLineIds.has(lid)) continue;
+      if (isBackLoopAnchorLineForGroup(ownerGroup, lid)) continue;
+      const line = dlgLineById.get(lid);
+      if (!line || isResearchHintLine(line)) continue;
+      renderedDlgLineIds.add(lid);
+      lines.appendChild(
+        renderCtx && renderCtx.branchColumn
+          ? renderDialogBranchLine(line, conv.key)
+          : renderDialogFlowLine(line)
+      );
+    }
+    return lines.childNodes.length ? lines : null;
+  };
+
+  const renderOptGroup = (grp, renderCtx = {}) => {
     const frag = document.createDocumentFragment();
     if (!grp || renderedOptGroups.has(grp)) return frag;
     renderedOptGroups.add(grp);
@@ -3206,41 +4201,141 @@ function renderConv(conv) {
       g.appendChild(hint);
     }
 
-    const opts = grp.options || [];
+    const opts = optionListForGroup(grp);
     const multi = opts.length >= 2;
-    const showBranchContent = optionGroupHasBranchContent(grp);
+    const branchModel = branchDisplayModelForGroup(grp);
+    const showBranchContent = optionGroupHasBranchContent(grp)
+      || opts.some((opt) => (branchModel.optionLineIds.get(opt) || []).length)
+      || branchModel.commonLineIds.length;
 
     if (!multi) {
-      const singleFollowups = findOutcomeMenuTargetGroups(grp, conv, outcomesByOptionId)
-        .filter(isPullEligible);
-      for (const followup of singleFollowups) continuationOptGroups.add(followup);
+      const singleOutcomeTargets = findOutcomeMenuTargetGroups(grp, conv, outcomesByOptionId);
+      const singleRenderedBranchLineIds = new Set();
+      const singlePathLineFragments = [];
       for (const opt of opts) {
         const o = document.createElement("div");
         o.className = "option";
         const icon = opt.icon && opt.icon !== "Default"
           ? ` <span class="opt-icon">[${escapeHtml(opt.icon)}]</span>` : "";
         o.innerHTML = `- ${highlight(opt.text || "(empty)", STATE.filters.q)}${icon}`;
-        const targetChips = renderOptionTargetChips(opt, conv, outcomesByOptionId, chipOptions);
+        const loopLineIds = optionLoopLineIds(opt, grp, conv, outcomesByOptionId, lineOrderIndexById);
+        const showLoopTags = renderCtx.branchColumn || !optionCandidateLineIds(opt, grp).length;
+        const targetChips = renderOptionTargetChips(
+          opt,
+          conv,
+          outcomesByOptionId,
+          { ...chipOptions, hideSelfMenu: showLoopTags && loopLineIds.length > 0 }
+        );
         if (targetChips) o.appendChild(targetChips);
+        const jumpTags = renderOptionJumpTags(opt, grp, conv, outcomesByOptionId);
+        if (jumpTags) o.appendChild(jumpTags);
         const riskTags = renderOptionRiskTags(opt);
         if (riskTags) o.appendChild(riskTags);
         appendOptionId(o, opt);
         appendDebugTrace(o, opt._debug, "option");
         g.appendChild(o);
+        if (renderCtx.branchColumn) {
+          // Single-option prompts should only absorb lines that the trunk has
+          // already hidden as branch-specific content.
+          const branchLineIds = branchColumnLineIdsForOption(grp, opt)
+            .filter((lineId) => dlgBranchSkipIds.has(lineId))
+            .filter((lineId) => !(renderCtx.stopBeforeLineIds && renderCtx.stopBeforeLineIds.has(lineId)));
+          for (const lineId of branchLineIds) singleRenderedBranchLineIds.add(lineId);
+          const pathLines = renderSingleOptionPathLines(branchLineIds, grp, renderCtx);
+          if (pathLines) singlePathLineFragments.push(pathLines);
+        }
+        if (showLoopTags) {
+          const loopTags = renderOptionLoopTagsForLineIds(conv, loopLineIds);
+          if (loopTags) g.appendChild(loopTags);
+        }
       }
+      for (const pathLines of singlePathLineFragments) {
+        frag.appendChild(pathLines);
+      }
+      const singleBranchFollowups = branchAnchoredGroupsForLineIds(singleRenderedBranchLineIds, grp)
+        .filter((target) => isBranchAnchoredPullEligible(target, singleRenderedBranchLineIds));
+      const singleBranchFollowupSet = new Set(singleBranchFollowups);
+      const singleFollowups = uniqueOptionGroups(
+        singleOutcomeTargets.filter(isPullEligible).concat(singleBranchFollowups)
+      );
+      for (const followup of singleFollowups) continuationOptGroups.add(followup);
       for (const followup of singleFollowups) {
-        frag.appendChild(renderOptGroup(followup));
+        const followupCtx = singleBranchFollowupSet.has(followup)
+          ? { ...renderCtx, branchColumn: true }
+          : renderCtx;
+        frag.appendChild(renderOptGroup(followup, followupCtx));
       }
       return frag;
     }
 
     g.classList.add("opt-group-branches");
-    const continuationGroups = findLineOrderContinuationGroups(grp, optionLayoutCtx);
+    const renderedBranchLineIds = new Set(branchModel.commonLineIds);
+    for (const opt of opts) {
+      for (const lineId of branchModel.optionLineIds.get(opt) || []) {
+        renderedBranchLineIds.add(lineId);
+      }
+    }
+    const isContinuationPullEligible = (target) => {
+      if (!target || continuationOptGroups.has(target) || renderedOptGroups.has(target)) return false;
+      if (isPullEligible(target)) return true;
+      const targetAnchor = String(target.after || "");
+      return anchoredOptGroups.has(target)
+        && renderedBranchLineIds.has(targetAnchor)
+        && !isBackLoopAnchorLineForGroup(grp, targetAnchor);
+    };
+    const continuationGroups = findLineOrderContinuationGroups(grp, optionLayoutCtx)
+      .filter(isContinuationPullEligible);
     const continuationGroupSet = new Set(continuationGroups);
     const outcomeMenuTargets = findOutcomeMenuTargetGroups(grp, conv, outcomesByOptionId)
       .filter((target) => !continuationGroupSet.has(target) && isPullEligible(target));
-    const allFollowupGroups = continuationGroups.concat(outcomeMenuTargets);
+    const branchAnchoredFollowupGroups = branchAnchoredGroupsForLineIds(renderedBranchLineIds, grp)
+      .filter((target) => !continuationGroupSet.has(target))
+      .filter((target) => isBranchAnchoredPullEligible(target, renderedBranchLineIds));
+    const branchAnchoredFollowupSet = new Set(branchAnchoredFollowupGroups);
+    const branchFollowupMergeLineIds = branchAnchoredFollowupGroups.length >= 2
+      ? sharedSuffixLineIdsFromLists(
+          branchAnchoredFollowupGroups.map((group) => collectSingleOptionClosureLineIds(group))
+        )
+      : [];
+    const branchFollowupStopLineIds = branchFollowupMergeLineIds.length
+      ? new Set([branchFollowupMergeLineIds[0]])
+      : new Set();
+    const allFollowupGroups = uniqueOptionGroups(
+      continuationGroups.concat(outcomeMenuTargets)
+        .filter((group) => !branchAnchoredFollowupSet.has(group))
+    );
     for (const group of allFollowupGroups) continuationOptGroups.add(group);
+    for (const group of branchAnchoredFollowupGroups) continuationOptGroups.add(group);
+    const commonLineIdSet = new Set(branchModel.commonLineIds);
+    const isCommonTailFollowup = (group) => {
+      if (!commonLineIdSet.size) return false;
+      const groupLineIds = [];
+      const push = (lineId) => {
+        if (lineId && !groupLineIds.includes(lineId)) groupLineIds.push(lineId);
+      };
+      for (const opt of optionListForGroup(group)) {
+        for (const lineId of collectBranchColumnLineIds(group, opt)) push(lineId);
+      }
+      return groupLineIds.length > 0 && groupLineIds.every((lineId) => commonLineIdSet.has(lineId));
+    };
+    const followupGroupsToRender = [];
+    const absorbedFollowupGroups = new Set();
+    for (const group of allFollowupGroups) {
+      if (isCommonTailFollowup(group)) {
+        absorbedFollowupGroups.add(group);
+      } else {
+        followupGroupsToRender.push(group);
+      }
+    }
+
+    const inheritedSuppressedLineIds = renderCtx.suppressedLineIds || new Set();
+    const branchSuppressedLineIds = new Set(inheritedSuppressedLineIds);
+    for (const lineId of branchModel.commonLineIds) branchSuppressedLineIds.add(lineId);
+    const branchRenderCtx = {
+      ...renderCtx,
+      branchColumn: true,
+      suppressedLineIds: branchSuppressedLineIds,
+    };
 
     const cols = document.createElement("div");
     cols.className = "branch-columns";
@@ -3253,47 +4348,105 @@ function renderConv(conv) {
       const head = document.createElement("div");
       head.className = "branch-head";
       head.innerHTML = `- ${highlight(opt.text || "(empty)", STATE.filters.q)}${icon}`;
-      const targetChips = renderOptionTargetChips(opt, conv, outcomesByOptionId, chipOptions);
+      const loopLineIds = optionLoopLineIds(opt, grp, conv, outcomesByOptionId, lineOrderIndexById);
+      const targetChips = renderOptionTargetChips(
+        opt,
+        conv,
+        outcomesByOptionId,
+        { ...chipOptions, hideSelfMenu: loopLineIds.length > 0 }
+      );
       if (targetChips) head.appendChild(targetChips);
+      const jumpTags = renderOptionJumpTags(opt, grp, conv, outcomesByOptionId);
+      if (jumpTags) head.appendChild(jumpTags);
       const riskTags = renderOptionRiskTags(opt);
       if (riskTags) head.appendChild(riskTags);
       appendOptionId(head, opt);
       col.appendChild(head);
-      if (showBranchContent && opt.branchLines && opt.branchLines.length) {
-        const lines = document.createElement("div");
-        lines.className = "branch-lines";
-        for (const lid of opt.branchLines) {
-          const line = dlgLineById.get(lid);
-          if (!line) continue;
-          // If this branchLine is another group's anchor (e.g. a back-loop
-          // pointing at a menu's lead-in line), skip it: the line already
-          // renders in the trunk where that group is anchored, so duplicating
-          // it inside this column would just clutter the column.
-          const anchorsOtherGroup = (groupsByLineId.get(lid) || [])
-            .some((other) => other && other !== grp);
-          if (anchorsOtherGroup) continue;
-          lines.appendChild(renderDialogBranchLine(
-            line,
-            attachedGroupsForLine(lid),
-            renderOptGroup
-          ));
-        }
-        if (lines.childNodes.length) col.appendChild(lines);
+      const branchLineIds = branchModel.optionLineIds.get(opt) || [];
+      if (showBranchContent && branchLineIds.length) {
+        const lines = renderBranchPathLines(branchLineIds, grp, branchRenderCtx);
+        if (lines) col.appendChild(lines);
       }
+      const branchLineIdSet = new Set(branchLineIds);
+      const optionFollowups = branchAnchoredGroupsForLineIds(branchLineIdSet, grp)
+        .filter((target) => branchAnchoredFollowupSet.has(target));
+      for (const followup of optionFollowups) {
+        col.appendChild(renderOptGroup(followup, {
+          ...branchRenderCtx,
+          stopBeforeLineIds: branchFollowupStopLineIds,
+        }));
+      }
+      const loopTags = renderOptionLoopTagsForLineIds(conv, loopLineIds);
+      if (loopTags) col.appendChild(loopTags);
       appendDebugTrace(col, opt._debug, "option");
       cols.appendChild(col);
     }
     g.appendChild(cols);
 
-    if (!showBranchContent || grp.branchMerge) {
+    let commonLinesAfterGroup = null;
+    if (branchModel.commonLineIds.length) {
       const merge = document.createElement("div");
       merge.className = "branch-merge";
       merge.textContent = "-> " + uiText("commonContinues");
+      const mergeLineId = branchModel.commonLineIds[0];
+      if (mergeLineId) {
+        merge.appendChild(document.createTextNode(" "));
+        const mergeChip = createLineJumpChip(
+          conv,
+          mergeLineId,
+          "optJumpMergeLine",
+          "opt-target-chip opt-target-chip-merge is-tree",
+          "optJumpMergeLineTitle"
+        );
+        if (mergeChip) merge.appendChild(mergeChip);
+      }
+      g.appendChild(merge);
+
+      commonLinesAfterGroup = renderBranchPathLines(
+        branchModel.commonLineIds,
+        grp,
+        { ...renderCtx, branchColumn: true }
+      );
+      if (commonLinesAfterGroup) {
+        commonLinesAfterGroup.classList.add("branch-common-lines");
+      }
+    } else if (!showBranchContent || grp.branchMerge) {
+      const merge = document.createElement("div");
+      merge.className = "branch-merge";
+      merge.textContent = "-> " + uiText("commonContinues");
+      const mergeInfo = optionGroupMergeInfo(grp);
+      if (mergeInfo && mergeInfo.lineId) {
+        merge.appendChild(document.createTextNode(" "));
+        const mergeChip = createLineJumpChip(
+          conv,
+          mergeInfo.lineId,
+          optionJumpLabelKey(mergeInfo.source),
+          "opt-target-chip opt-target-chip-merge" + optionJumpSourceClass(mergeInfo.source),
+          optionJumpTitleKey(mergeInfo.source)
+        );
+        if (mergeChip) merge.appendChild(mergeChip);
+      }
       g.appendChild(merge);
     }
 
-    for (const group of allFollowupGroups) {
-      frag.appendChild(renderOptGroup(group));
+    for (const group of absorbedFollowupGroups) renderedOptGroups.add(group);
+    if (commonLinesAfterGroup) frag.appendChild(commonLinesAfterGroup);
+    for (const group of followupGroupsToRender) {
+      const followupCtx = branchAnchoredFollowupSet.has(group)
+        ? { ...renderCtx, branchColumn: true, stopBeforeLineIds: branchFollowupStopLineIds }
+        : {};
+      frag.appendChild(renderOptGroup(group, followupCtx));
+    }
+    if (branchFollowupMergeLineIds.length) {
+      const mergeLineId = branchFollowupMergeLineIds[0];
+      const mergeLine = dlgLineById.get(mergeLineId);
+      if (mergeLine && !renderedDlgLineIds.has(mergeLineId)) {
+        renderedDlgLineIds.add(mergeLineId);
+        frag.appendChild(renderDialogFlowLine(mergeLine));
+      }
+      for (const group of attachedGroupsForLine(mergeLineId)) {
+        frag.appendChild(renderOptGroup(group));
+      }
     }
     return frag;
   };
@@ -3312,19 +4465,25 @@ function renderConv(conv) {
 
   if (conv.kind === "dlg") {
     for (const grp of conv.optionGroups || []) {
-      if (!optionGroupHasBranchContent(grp)) continue;
-      const afterIdx = lineRawIdx({ id: grp.after || "" }) ?? -1;
-      for (const opt of grp.options || []) {
-        for (const lid of opt.branchLines || []) {
-          const lidIdx = lineRawIdx({ id: lid }) ?? -1;
-          if (lidIdx <= afterIdx) continue;
+      const opts = optionListForGroup(grp);
+      if (opts.length < 2) continue;
+      const branchModel = branchDisplayModelForGroup(grp);
+      const groupHasColumnContent = optionGroupHasBranchContent(grp)
+        || opts.some((opt) => (branchModel.optionLineIds.get(opt) || []).length)
+        || branchModel.commonLineIds.length;
+      if (!groupHasColumnContent) continue;
+      const afterIdx = lineRenderIdx(grp.after || "") ?? -1;
+      for (const opt of opts) {
+        for (const lid of collectBranchColumnLineIds(grp, opt)) {
+          const lidIdx = lineRenderIdx(lid) ?? -1;
           // A branchLine that points at *another* group's anchor is a
           // back-loop indicator (the option returns the player to that menu's
           // prompt). Skipping the anchor line from the trunk would prevent
           // the anchored group from ever rendering at its real position.
           const anchorsOtherGroup = (groupsByLineId.get(lid) || [])
             .some((other) => other && other !== grp);
-          if (anchorsOtherGroup) continue;
+          const isBackLoopAnchor = anchorsOtherGroup && lidIdx <= afterIdx;
+          if (isBackLoopAnchor) continue;
           dlgBranchSkipIds.add(lid);
         }
       }
@@ -3336,6 +4495,9 @@ function renderConv(conv) {
       continue;
     }
     if (conv.kind === "dlg" && ln.id && dlgBranchSkipIds.has(ln.id)) {
+      continue;
+    }
+    if (conv.kind === "dlg" && ln.id && renderedDlgLineIds.has(ln.id)) {
       continue;
     }
     if (conv.kind === "sns" && Number.isInteger(ln.cid) && snsBranchData.skipCids.has(ln.cid)) {
@@ -3358,6 +4520,8 @@ function renderConv(conv) {
         + (ln.text ? "" : " empty")
         + (ln.id && uncoveredLineIdSet.has(ln.id) ? " line-uncovered" : "")
         + (ln.id && duplicateTimestampLineIdSet.has(ln.id) ? " line-duplicate-timestamp" : "");
+      setLineAnchor(row, conv.key, ln.id);
+      if (conv.kind === "dlg" && ln.id) renderedDlgLineIds.add(ln.id);
 
     const actor = document.createElement("div");
     actor.className = "actor";
@@ -3444,12 +4608,35 @@ function renderConv(conv) {
     }
 
     // Inline option groups attached to this line (heuristic: option group
-    // number matches the line's raw index).
+    // number matches the line's raw index). The option widget is indented
+    // under its anchor line, but recovered dialogue rows emitted by nested
+    // single-option follow-ups are regular rows and must escape that wrapper.
     if (inlineGroups && inlineGroups.length) {
-      const block = document.createElement("div");
-      block.className = "opt-block opt-block-inline";
-      for (const grp of inlineGroups) block.appendChild(renderOptGroup(grp));
-      frag.appendChild(block);
+      let block = null;
+      const ensureBlock = () => {
+        if (!block) {
+          block = document.createElement("div");
+          block.className = "opt-block opt-block-inline";
+        }
+        return block;
+      };
+      const flushBlock = () => {
+        if (block && block.childNodes.length) frag.appendChild(block);
+        block = null;
+      };
+      for (const grp of inlineGroups) {
+        const rendered = renderOptGroup(grp);
+        while (rendered.firstChild) {
+          const child = rendered.firstChild;
+          if (child.nodeType === 1 && child.classList.contains("line")) {
+            flushBlock();
+            frag.appendChild(child);
+          } else {
+            ensureBlock().appendChild(child);
+          }
+        }
+      }
+      flushBlock();
     }
   }
 
@@ -3909,6 +5096,8 @@ function renderMissionTimelineSceneOrder(sceneGraph, flowKeyMap, currentKey) {
   const allNodes = missionTimelineArray(sceneGraph && sceneGraph.nodes)
     .filter((node) => node && String(node.key || "").trim());
   if (!allNodes.length) return null;
+  const sceneEdges = missionTimelineArray(sceneGraph && sceneGraph.edges)
+    .filter((edge) => edge && String(edge.from || "").trim() && String(edge.to || "").trim());
 
   const confirmed = allNodes
     .filter((node) => node.orderConfirmed !== false)
@@ -3921,25 +5110,43 @@ function renderMissionTimelineSceneOrder(sceneGraph, flowKeyMap, currentKey) {
 
   const details = document.createElement("details");
   details.className = "mission-timeline-details";
-  details.open = true;
   const summary = document.createElement("summary");
   summary.textContent = `${uiText("missionTimelineSceneOrder")} (${confirmed.length}${unconfirmed.length ? ` + ${unconfirmed.length} ${uiText("missionTimelineOrderUnknown")}` : ""})`;
   details.appendChild(summary);
 
-  const row = document.createElement("div");
-  row.className = "mission-timeline-edge";
-  for (const [index, node] of confirmed.entries()) {
-    if (index) {
-      const arrow = document.createElement("span");
-      arrow.className = "mission-timeline-arrow";
-      arrow.textContent = "->";
-      row.appendChild(arrow);
-    }
-    const chip = createFlowSceneChip(node.key || "?", flowKeyMap, currentKey);
-    if (node.kind) chip.title = [chip.title, node.kind].filter(Boolean).join("\n");
-    row.appendChild(chip);
+  const sceneOrderMap = buildMissionTimelineSceneOrderMap(sceneGraph);
+  const graph = renderMissionTimelineSceneEdgeGraph(sceneEdges, flowKeyMap, currentKey, { sceneOrderMap });
+  if (graph) {
+    details.appendChild(graph);
   }
-  details.appendChild(row);
+
+  if (!graph || confirmed.length <= 30) {
+    const row = document.createElement("div");
+    row.className = "mission-timeline-edge" + (graph ? " mission-timeline-order-reference" : "");
+    if (graph) {
+      const label = document.createElement("span");
+      label.className = "mission-timeline-unknown-label";
+      label.textContent = uiText("missionTimelineOrderReference");
+      row.appendChild(label);
+    }
+    for (const [index, node] of confirmed.entries()) {
+      if (index) {
+        const arrow = document.createElement("span");
+        arrow.className = "mission-timeline-arrow";
+        arrow.textContent = "->";
+        row.appendChild(arrow);
+      }
+      const chip = createFlowSceneChip(node.key || "?", flowKeyMap, currentKey);
+      if (node.kind) chip.title = [chip.title, node.kind].filter(Boolean).join("\n");
+      row.appendChild(chip);
+    }
+    details.appendChild(row);
+  } else if (confirmed.length) {
+    const more = document.createElement("div");
+    more.className = "mission-timeline-more";
+    more.textContent = uiText("missionTimelineOrderReferenceHidden").replace("{count}", String(confirmed.length));
+    details.appendChild(more);
+  }
 
   if (unconfirmed.length) {
     const unknownRow = document.createElement("div");
@@ -4387,13 +5594,6 @@ function speakerName(speaker) {
   return stripBraceSegments(speaker) || speaker;
 }
 
-// ---------- helpers ----------
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  }[c]));
-}
-
 function formatTimelineSeconds(value) {
   if (typeof value !== "number" || !isFinite(value)) return "";
   const seconds = Math.max(0, value);
@@ -4403,25 +5603,7 @@ function formatTimelineSeconds(value) {
 }
 
 function exportedAssetHref(relPath) {
-  const normalizedRel = String(relPath || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-  if (!normalizedRel) return "/exported/";
-
-  const [source, ...rest] = normalizedRel.split("/").filter(Boolean);
-  const relWithinSource = rest.join("/");
-  let exportedRel = normalizedRel;
-  const sourceRoot = STATE.inlineImageSourceRoots && STATE.inlineImageSourceRoots[source];
-  if (sourceRoot) {
-    let normalizedRoot = String(sourceRoot || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-    const exportRoot = String(STATE.inlineImageExportRoot || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-    if (exportRoot && normalizedRoot.startsWith(`${exportRoot}/`)) {
-      normalizedRoot = normalizedRoot.slice(exportRoot.length + 1);
-    } else if (normalizedRoot === exportRoot) {
-      normalizedRoot = "";
-    }
-    exportedRel = [normalizedRoot, relWithinSource].filter(Boolean).join("/");
-  }
-
-  return `/exported/${exportedRel.split("/").map(encodeURIComponent).join("/")}`;
+  return exportFullHref(relPath, STATE.inlineImageSourceRoots, STATE.inlineImageExportRoot);
 }
 
 function highlightTextFragment(text, q) {
@@ -4456,7 +5638,35 @@ function extractInlineImageIdFromTag(rawTag) {
 function isInlineEmojiImageId(imageId, asset = null) {
   const normalized = normalizeInlineImageId(imageId);
   const rel = String(asset && asset.rel ? asset.rel : "").toLowerCase();
-  return normalized.includes("emoji") || normalized.includes("emoiji") || rel.includes("emoji") || rel.includes("emoiji");
+  const stem = String(asset && asset.stem ? asset.stem : "").toLowerCase();
+  return (
+    normalized.includes("emoji")
+    || normalized.includes("emoiji")
+    || stem.includes("emoji")
+    || stem.includes("emoiji")
+    || rel.includes("emoji")
+    || rel.includes("emoiji")
+  );
+}
+
+function isInlineSnsMediaImageId(rawId, normalized, asset = null) {
+  if (isInlineEmojiImageId(normalized || rawId, asset)) return false;
+
+  const raw = cleanInlineImageIdValue(rawId).replace(/\\/g, "/").toLowerCase();
+  const stem = String(asset && asset.stem ? asset.stem : normalizeInlineImageId(normalized || rawId)).toLowerCase();
+  const rel = String(asset && asset.rel ? asset.rel : "").toLowerCase();
+  return (
+    raw.startsWith("sns_")
+    || raw.startsWith("cg_image_")
+    || stem.startsWith("sns_")
+    || stem.startsWith("cg_image_")
+    || stem.startsWith("deco_sns_tweet_decorate_")
+    || stem.startsWith("bg_sns_tweet_decorate_")
+    || rel.includes("/sns_")
+    || rel.includes("/cg_image_")
+    || rel.includes("/deco_sns_tweet_decorate_")
+    || rel.includes("/bg_sns_tweet_decorate_")
+  );
 }
 
 function isInlineContentImageId(rawId, normalized, asset = null) {
@@ -4478,14 +5688,17 @@ function renderInlineImageTagHtml(imageId, q, rawTag = "") {
   const classes = ["inline-image-tag"];
   const attrs = [`data-inline-image-id="${escapeHtml(normalized || rawId)}"`];
   const src = asset ? exportedAssetHref(asset.rel) : "";
+  const isEmoji = asset ? isInlineEmojiImageId(normalized, asset) : false;
 
   if (asset) {
     classes.push("has-preview");
-    if (isInlineEmojiImageId(normalized, asset)) classes.push("is-emoji");
-    if (/^(?:sns_image|cg_image)_/i.test(normalized)) classes.push("is-sns-image");
+    if (isEmoji) classes.push("is-emoji");
+    if (isInlineSnsMediaImageId(rawId, normalized, asset)) classes.push("is-sns-image");
     if (isInlineContentImageId(rawId, normalized, asset)) classes.push("is-content-image");
-    attrs.push(`tabindex="0"`);
-    attrs.push(`title="${escapeHtml(asset.name)}"`);
+    if (!isEmoji) {
+      attrs.push(`tabindex="0"`);
+      attrs.push(`title="${escapeHtml(asset.name)}"`);
+    }
     attrs.push(`data-inline-image-src="${escapeHtml(src)}"`);
     attrs.push(`data-inline-image-name="${escapeHtml(asset.name)}"`);
   }
@@ -4494,7 +5707,7 @@ function renderInlineImageTagHtml(imageId, q, rawTag = "") {
   const thumb = asset
     ? `<img class="inline-image-thumb" src="${escapeHtml(src)}" alt="${escapeHtml(rawId)}" loading="lazy">`
     : "";
-  const preview = asset
+  const preview = asset && !isEmoji
     ? `<span class="inline-image-popover"><img src="${escapeHtml(src)}" alt="${escapeHtml(rawId)}" loading="lazy"></span>`
     : "";
 
@@ -4599,7 +5812,7 @@ function normalizeGenderVariant(value) {
 }
 
 function persistGenderVariant(value) {
-  storageSet(GENDER_VARIANT_STORAGE_KEY, normalizeGenderVariant(value) || "m");
+  storageSet(GENDER_VARIANT_STORAGE_KEY, normalizeGenderVariant(value) || DEFAULT_GENDER_VARIANT);
 }
 
 function resolveStoredGenderVariant() {
@@ -4615,7 +5828,7 @@ function syncGenderVariantControl() {
 }
 
 function setGenderVariant(value, { persist = true, refresh = true } = {}) {
-  const next = normalizeGenderVariant(value) || "m";
+  const next = normalizeGenderVariant(value) || DEFAULT_GENDER_VARIANT;
   STATE.genderVariant = next;
   if (persist) persistGenderVariant(next);
   syncGenderVariantControl();
@@ -4710,14 +5923,14 @@ function resolveGenderVariant(preferred = "") {
     return stored;
   }
 
-  const fallback = normalizeGenderVariant(preferred);
+  const fallback = normalizeGenderVariant(DEFAULT_GENDER_VARIANT) || normalizeGenderVariant(preferred);
   if (fallback) {
     STATE.genderVariant = fallback;
     return fallback;
   }
 
-  STATE.genderVariant = "m";
-  return "m";
+  STATE.genderVariant = "f";
+  return "f";
 }
 
 function hasInlineRichTextTag(text) {
@@ -4799,7 +6012,7 @@ function renderGenderVariantHtml(text, q) {
 
 function syncGenderToggle(node) {
   if (!node) return;
-  const active = resolveGenderVariant(node.dataset.genderInitial || node.dataset.genderActive || "m");
+  const active = resolveGenderVariant(node.dataset.genderInitial || node.dataset.genderActive || DEFAULT_GENDER_VARIANT);
   const encoded = active === "f" ? node.dataset.genderTextF : node.dataset.genderTextM;
   node.dataset.genderActive = active;
   node.setAttribute("aria-pressed", active === "f" ? "true" : "false");
@@ -4814,7 +6027,7 @@ function syncAllGenderToggles(root = $("#conv-lines")) {
 }
 
 function toggleGenderToggle(node) {
-  const active = resolveGenderVariant(node && (node.dataset.genderInitial || node.dataset.genderActive || "m"));
+  const active = resolveGenderVariant(node && (node.dataset.genderInitial || node.dataset.genderActive || DEFAULT_GENDER_VARIANT));
   setGenderVariant(active === "f" ? "m" : "f");
 }
 
