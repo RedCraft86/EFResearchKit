@@ -52,7 +52,8 @@ Primary command:
 python scripts\webui\build_story.py --languages CN --default-language CN
 ```
 
-`export.bat` runs this command after the export and Updates feed build.
+`export.bat` runs this command after export freshness verification,
+DialogIdTable recovery, story source-link rebuilding, and the Updates feed.
 
 For extra language bundles:
 
@@ -95,10 +96,18 @@ export_full/recovered/AnimeStudio-cli/*/json_by_type/MonoBehaviour
 Story order helpers imported by the builder:
 
 ```text
+scripts/recover_dialog_id_registry.py
 scripts/recover_timeline_line_orders.py
 scripts/recover_mission_timelines.py
 scripts/scene_order_gap_shared.py
 scripts/webui/build_story_reports.py
+```
+
+Prebuilt evidence inputs used by the builder:
+
+```text
+export_full/recovered/dialog_id_table_index.json
+export_full/recovered/story_source_links.json
 ```
 
 ## Outputs
@@ -156,6 +165,33 @@ For Timeline-inferred option responses, the builder can use raw trunk
 value that exactly matches the group's option indices. The first recovered case
 is `dlg_c28m3_10` group 1; most remaining adjacent response layouts still carry
 only default `0` values and stay marked as inferred.
+
+The `inferred_option_anchors_CN.md` report lists ~97 scenes where no
+DialogTree / scene-link / dialog Timeline source names the option group's
+anchor and the builder falls back to `lineNumber` / `sparseGap` / `lastLine`
+ordinal heuristics. These remain genuinely inferred — do NOT promote them
+to source-backed. Empirical cross-check against tree-authored scenes shows
+the `option_<scene>_<g>_<n>` key encoding is closer to a trunk index than a
+flat DialogTextTable line index, and 73% of registered tree-authored
+option groups disagree with the `g = flat line index` rule (e.g.
+`dlg_a1m10_1` tree anchors group 2 at `_003`, group 3 at `_007`, not
+`_002` and `_003`). The runtime trunk → flat mapping that converts the
+registry's per-trunk line ids to flat DialogTextTable rows is not in the
+exported source data; recovering the correct anchor for these unregistered
+or no-tree scenes would require additional runtime evidence. The 97
+inferred scenes also have zero matching `au_dlg_<scene>_*.wem` paths in
+`AudioDialog.json`, which is itself a signal that the runtime may never
+present them through the standard dialog loader.
+
+LevelScript story/hash singleton cases are exposed as diagnostics, not scene
+ordering. Current source-backed hash-terminal evidence uses terminal records
+with `code=0x0e34`, `kind=0x00`, and `nextId=-1`; examples include
+`dlg_e2m6_11 -> #e2e0953a`, `dlg_c17m2_1 -> #e2e0953a`, and
+`dlg_e2m5_2 -> #43792b8d`. Treat these as terminal trigger/event-argument
+nodes unless a separate source later links the hash to another story scene.
+The 2026-05-13 CN mission timeline catalog has `855` such terminals across
+`582` unique hashes, all matching `story->hash plain 0x0e34 0x00 nextId=-1`;
+`#e2e0953a` is the broad shared sentinel (`259` scenes across `88` missions).
 
 ## Verification
 

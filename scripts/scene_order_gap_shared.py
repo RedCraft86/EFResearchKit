@@ -229,6 +229,7 @@ def build_runtime_registry_debug(
 
 AUTHORED_LINE_ORDER_MODES = {
     "authoredBlend",
+    "authoredNumericStitch",
     "dialogTimeline",
     "dialogTree",
     "dialogTreeCinematicTimeline",
@@ -431,6 +432,34 @@ def _line_order_output_ids(conv: dict, line_order: dict | None) -> list[str]:
         if ordered:
             return ordered
     return _line_order_input_ids(conv, line_order)
+
+
+def _option_branch_line_ids(conv: dict) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(values) -> None:
+        for line_id in _normalize_line_ids(values):
+            if line_id not in seen:
+                seen.add(line_id)
+                out.append(line_id)
+
+    for group in (conv.get("optionGroups") or []):
+        if not isinstance(group, dict):
+            continue
+        risk = group.get("optionBranchRisk")
+        if isinstance(risk, dict):
+            add(risk.get("lineIds"))
+            by_option = risk.get("branchLineIdsByOption")
+            if isinstance(by_option, dict):
+                for values in by_option.values():
+                    add(values)
+        for option in (group.get("options") or []):
+            if not isinstance(option, dict):
+                continue
+            add(option.get("branchLines"))
+            add(option.get("pathLineIds"))
+    return out
 
 
 def _moved_line_ids(original_ids: list[str], ordered_ids: list[str]) -> list[str]:
@@ -754,6 +783,22 @@ def analyze_line_order(conv: dict, *, dialog_id_registry: dict | None = None) ->
         for line_id in input_line_ids
         if line_id and line_id not in seen_covered
     ]
+    branch_line_ids = set(_option_branch_line_ids(conv))
+    branch_covered_line_ids = [
+        line_id for line_id in uncovered_line_ids if line_id in branch_line_ids
+    ]
+    if branch_covered_line_ids:
+        for line_id in branch_covered_line_ids:
+            if line_id not in seen_covered:
+                seen_covered.add(line_id)
+                covered_line_ids.append(line_id)
+        uncovered_line_ids = [
+            line_id for line_id in uncovered_line_ids if line_id not in branch_line_ids
+        ]
+        evidence.append(
+            f"{len(branch_covered_line_ids)} line(s) are covered by option branch payloads: "
+            f"{_summarize_items(branch_covered_line_ids, limit=8)}"
+        )
     if uncovered_line_ids:
         evidence.append(
             f"{len(uncovered_line_ids)} line(s) not covered by authored sources: "
@@ -780,6 +825,7 @@ def analyze_line_order(conv: dict, *, dialog_id_registry: dict | None = None) ->
                 "originalLineIds": input_line_ids,
                 "coveredLineIds": covered_line_ids,
                 "uncoveredLineIds": uncovered_line_ids,
+                "branchCoveredLineIds": branch_covered_line_ids,
                 "coveredLineCount": len(covered_line_ids),
                 "uncoveredLineCount": len(uncovered_line_ids),
             }
@@ -802,6 +848,7 @@ def analyze_line_order(conv: dict, *, dialog_id_registry: dict | None = None) ->
             "originalLineIds": input_line_ids,
             "coveredLineIds": covered_line_ids,
             "uncoveredLineIds": uncovered_line_ids,
+            "branchCoveredLineIds": branch_covered_line_ids,
             "coveredLineCount": len(covered_line_ids),
             "uncoveredLineCount": len(uncovered_line_ids),
         }
@@ -1461,6 +1508,7 @@ def build_scene_order_disorder_warning(
             "uncoveredLineCount": _as_int(line_order_analysis.get("uncoveredLineCount")),
             "coveredLineIds": _normalize_line_ids(line_order_analysis.get("coveredLineIds")),
             "uncoveredLineIds": _normalize_line_ids(line_order_analysis.get("uncoveredLineIds")),
+            "branchCoveredLineIds": _normalize_line_ids(line_order_analysis.get("branchCoveredLineIds")),
         },
         "optionLayout": {
             "status": option_layout_analysis["status"],
@@ -1473,8 +1521,157 @@ def build_scene_order_disorder_warning(
     }
 
 
+_PLACEMENT_COUNT_FIELDS = {
+    "storyRefCount",
+    "clientActionCount",
+    "sourceBackedEdgeCount",
+    "incomingEdgeCount",
+    "outgoingEdgeCount",
+    "sourceBackedSequenceCount",
+    "sequenceNeighborCount",
+    "sourceBackedStoryCallContextCount",
+    "sourceBackedHashTerminalCount",
+    "timelineEvidenceCount",
+}
+
+_PLACEMENT_LIST_FIELDS = {
+    "evidenceKinds",
+    "questIds",
+    "storyRefKinds",
+    "storyRefSources",
+    "clientActionTypes",
+    "clientActionSources",
+    "incomingEdges",
+    "outgoingEdges",
+    "sequenceNeighbors",
+    "storyCallContexts",
+    "hashTerminals",
+    "timelines",
+    "timelineEvidence",
+    "missions",
+    "missionFiles",
+}
+
+
+def _append_unique_values(bucket: list, values: list, limit: int = 32) -> None:
+    seen = {
+        json.dumps(value, ensure_ascii=False, sort_keys=True)
+        for value in bucket
+    }
+    for value in values:
+        signature = json.dumps(value, ensure_ascii=False, sort_keys=True)
+        if signature in seen:
+            continue
+        seen.add(signature)
+        bucket.append(value)
+        if len(bucket) >= limit:
+            return
+
+
+def _merge_scene_placement_row(existing: dict, incoming: dict) -> dict:
+    out = dict(existing)
+    out.setdefault("sceneKey", incoming.get("sceneKey") or existing.get("sceneKey") or "")
+    out.setdefault("kind", incoming.get("kind") or existing.get("kind") or "")
+    for field in _PLACEMENT_COUNT_FIELDS:
+        out[field] = _as_int(out.get(field)) + _as_int(incoming.get(field))
+    for field in _PLACEMENT_LIST_FIELDS:
+        values = incoming.get(field)
+        if values in (None, "", [], {}):
+            continue
+        if not isinstance(values, list):
+            values = [values]
+        bucket = out.setdefault(field, [])
+        if not isinstance(bucket, list):
+            bucket = [bucket]
+            out[field] = bucket
+        _append_unique_values(bucket, values)
+    return {
+        key: value
+        for key, value in out.items()
+        if value not in (None, "", [], {}, 0)
+        or key in {"sceneKey", "kind", "evidenceKinds"}
+    }
+
+
+def _load_scene_placement_index(root: Path, conv_dir: Path) -> dict[str, dict]:
+    """Load per-scene mission placement signals emitted by build_story.py."""
+    mission_dir = conv_dir.parent / "mission"
+    if not mission_dir.is_dir():
+        return {}
+    out: dict[str, dict] = {}
+    for path in sorted(mission_dir.glob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        timeline = payload.get("timelineRecovery")
+        if not isinstance(timeline, dict):
+            continue
+        scene_placement = timeline.get("scenePlacement")
+        if not isinstance(scene_placement, dict):
+            continue
+        mission = str(payload.get("mission") or timeline.get("mission") or path.stem)
+        for scene_key, placement in scene_placement.items():
+            if not isinstance(placement, dict):
+                continue
+            key = runtime_dialog_scene_key(scene_key)
+            row = dict(placement)
+            row.setdefault("sceneKey", key)
+            row["missions"] = [mission]
+            try:
+                mission_file = path.relative_to(root)
+            except ValueError:
+                mission_file = path
+            row["missionFiles"] = [str(mission_file).replace("\\", "/")]
+            if key in out:
+                out[key] = _merge_scene_placement_row(out[key], row)
+            else:
+                out[key] = row
+    return out
+
+
+def _placement_has_story_ref(placement: dict | None) -> bool:
+    if not isinstance(placement, dict):
+        return False
+    return bool(
+        int(placement.get("storyRefCount") or 0)
+        or int(placement.get("clientActionCount") or 0)
+    )
+
+
+def _placement_has_source_edge(placement: dict | None) -> bool:
+    if not isinstance(placement, dict):
+        return False
+    return bool(int(placement.get("sourceBackedEdgeCount") or 0))
+
+
+def _placement_has_source_sequence(placement: dict | None) -> bool:
+    if not isinstance(placement, dict):
+        return False
+    return bool(int(placement.get("sourceBackedSequenceCount") or 0))
+
+
+def _placement_has_story_call_context(placement: dict | None) -> bool:
+    if not isinstance(placement, dict):
+        return False
+    return bool(int(placement.get("sourceBackedStoryCallContextCount") or 0))
+
+
+def _placement_has_hash_terminal(placement: dict | None) -> bool:
+    if not isinstance(placement, dict):
+        return False
+    return bool(int(placement.get("sourceBackedHashTerminalCount") or 0))
+
+
+def _placement_has_timeline(placement: dict | None) -> bool:
+    if not isinstance(placement, dict):
+        return False
+    return bool(int(placement.get("timelineEvidenceCount") or 0))
+
+
 def collect_scene_order_gap_rows(root: Path, conv_dir: Path) -> list[dict]:
     dialog_id_registry = load_dialog_id_registry()
+    scene_placement_index = _load_scene_placement_index(root, conv_dir)
     rows: list[dict] = []
     for path in sorted(conv_dir.glob("dlg_*.json")):
         try:
@@ -1496,6 +1693,8 @@ def collect_scene_order_gap_rows(root: Path, conv_dir: Path) -> list[dict]:
         inferred_responses = inferred_option_response_warning(conv) is not None
         if line_order_analysis["status"] == "direct" and not inferred_options and not inferred_responses:
             continue
+        scene_key = runtime_dialog_scene_key(conv.get("key") or path.stem)
+        scene_placement = scene_placement_index.get(scene_key) or {}
 
         option_groups = [
             group
@@ -1515,6 +1714,14 @@ def collect_scene_order_gap_rows(root: Path, conv_dir: Path) -> list[dict]:
             "lineOrderAnalysis": line_order_analysis,
             "lineOrderPatternCode": line_order_pattern["code"],
             "lineOrderPattern": line_order_pattern,
+            "scenePlacement": scene_placement,
+            "scenePlacementEvidenceKinds": scene_placement.get("evidenceKinds") or [],
+            "scenePlacementHasStoryRef": _placement_has_story_ref(scene_placement),
+            "scenePlacementHasSourceEdge": _placement_has_source_edge(scene_placement),
+            "scenePlacementHasSourceSequence": _placement_has_source_sequence(scene_placement),
+            "scenePlacementHasStoryCallContext": _placement_has_story_call_context(scene_placement),
+            "scenePlacementHasHashTerminal": _placement_has_hash_terminal(scene_placement),
+            "scenePlacementHasTimeline": _placement_has_timeline(scene_placement),
             "inferredOptionLayout": inferred_options,
             "inferredOptionResponse": inferred_responses,
             "optionLayoutStatus": option_layout_analysis["status"],
@@ -1560,6 +1767,7 @@ def build_scene_order_gap_summary(rows: list[dict], language: str) -> dict:
     option_reason_counts: dict[str, int] = {}
     line_pattern_counts: dict[str, int] = {}
     option_pattern_counts: dict[str, int] = {}
+    placement_kind_counts: dict[str, int] = {}
     for row in rows:
         if row.get("lineOrderStatus") != "direct":
             reason = str(row.get("lineOrderReasonCode") or "unknown")
@@ -1571,6 +1779,10 @@ def build_scene_order_gap_summary(rows: list[dict], language: str) -> dict:
             option_reason_counts[reason] = option_reason_counts.get(reason, 0) + 1
             pattern = str(row.get("optionPositionPatternCode") or "unknown")
             option_pattern_counts[pattern] = option_pattern_counts.get(pattern, 0) + 1
+        for kind in row.get("scenePlacementEvidenceKinds") or []:
+            kind = str(kind or "")
+            if kind:
+                placement_kind_counts[kind] = placement_kind_counts.get(kind, 0) + 1
     return {
         "language": language,
         "totalFlaggedScenes": len(rows),
@@ -1583,6 +1795,14 @@ def build_scene_order_gap_summary(rows: list[dict], language: str) -> dict:
         "lineOrderPatternCounts": line_pattern_counts,
         "optionLayoutReasonCounts": option_reason_counts,
         "optionPositionPatternCounts": option_pattern_counts,
+        "scenePlacementEvidenceCounts": placement_kind_counts,
+        "scenePlacementStoryRef": sum(1 for row in rows if row.get("scenePlacementHasStoryRef")),
+        "scenePlacementSourceEdge": sum(1 for row in rows if row.get("scenePlacementHasSourceEdge")),
+        "scenePlacementSourceSequence": sum(1 for row in rows if row.get("scenePlacementHasSourceSequence")),
+        "scenePlacementStoryCallContext": sum(1 for row in rows if row.get("scenePlacementHasStoryCallContext")),
+        "scenePlacementHashTerminal": sum(1 for row in rows if row.get("scenePlacementHasHashTerminal")),
+        "scenePlacementTimeline": sum(1 for row in rows if row.get("scenePlacementHasTimeline")),
+        "scenePlacementAny": sum(1 for row in rows if row.get("scenePlacementEvidenceKinds")),
         "bothMissingOrderAndInferredOptions": sum(
             1
             for row in rows
@@ -1616,6 +1836,99 @@ def _render_pattern_cell(pattern: dict) -> str:
     return "<br>".join(_escape_table_text(part) for part in parts if part)
 
 
+def _render_scene_placement_cell(row: dict) -> str:
+    placement = row.get("scenePlacement")
+    if not isinstance(placement, dict) or not placement:
+        return ""
+    parts: list[str] = []
+    kinds = [str(kind) for kind in (placement.get("evidenceKinds") or []) if str(kind or "")]
+    if kinds:
+        parts.append(", ".join(f"`{kind}`" for kind in kinds))
+    quest_ids = [str(value) for value in (placement.get("questIds") or []) if str(value or "")]
+    if quest_ids:
+        shown = ", ".join(f"`{value}`" for value in quest_ids[:4])
+        if len(quest_ids) > 4:
+            shown += f", +{len(quest_ids) - 4}"
+        parts.append(f"quests: {shown}")
+    story_ref_count = _as_int(placement.get("storyRefCount"))
+    client_action_count = _as_int(placement.get("clientActionCount"))
+    if story_ref_count or client_action_count:
+        bits = []
+        if story_ref_count:
+            bits.append(f"MRA refs={story_ref_count}")
+        if client_action_count:
+            bits.append(f"client actions={client_action_count}")
+        parts.append(", ".join(bits))
+    source_edge_count = _as_int(placement.get("sourceBackedEdgeCount"))
+    if source_edge_count:
+        parts.append(
+            "edges: "
+            f"in={_as_int(placement.get('incomingEdgeCount'))}, "
+            f"out={_as_int(placement.get('outgoingEdgeCount'))}"
+        )
+    source_sequence_count = _as_int(placement.get("sourceBackedSequenceCount"))
+    if source_sequence_count:
+        parts.append(f"sequences: {source_sequence_count}")
+        for neighbor in (placement.get("sequenceNeighbors") or [])[:2]:
+            if not isinstance(neighbor, dict):
+                continue
+            window = [
+                str(value)
+                for value in (neighbor.get("window") or [])
+                if str(value or "")
+            ]
+            if window:
+                parts.append("seq: " + " -> ".join(f"`{value}`" for value in window))
+    story_call_count = _as_int(placement.get("sourceBackedStoryCallContextCount"))
+    if story_call_count:
+        parts.append(f"story calls: {story_call_count}")
+        for context in (placement.get("storyCallContexts") or [])[:2]:
+            if not isinstance(context, dict):
+                continue
+            window = [
+                str(value)
+                for value in (context.get("window") or [])
+                if str(value or "")
+            ]
+            if window:
+                parts.append("calls: " + " -> ".join(f"`{value}`" for value in window))
+    hash_terminal_count = _as_int(placement.get("sourceBackedHashTerminalCount"))
+    if hash_terminal_count:
+        parts.append(f"hash terminals: {hash_terminal_count}")
+        for terminal in (placement.get("hashTerminals") or [])[:2]:
+            if not isinstance(terminal, dict):
+                continue
+            hash_key = str(terminal.get("hash") or "")
+            direction = str(terminal.get("direction") or "")
+            hash_step = terminal.get("hashStep")
+            if not isinstance(hash_step, dict):
+                hash_step = {}
+            source = hash_step.get("source")
+            if not isinstance(source, dict):
+                source = {}
+            bits = []
+            if direction:
+                bits.append(direction)
+            if hash_key:
+                bits.append(f"`{hash_key}`")
+            for label, key in (("code", "code"), ("kind", "kind")):
+                value = source.get(key)
+                if value not in (None, "", [], {}):
+                    bits.append(f"{label}={value}")
+            next_id = hash_step.get("nextId")
+            if next_id not in (None, "", [], {}):
+                bits.append(f"next={next_id}")
+            if bits:
+                parts.append("hash: " + " ".join(str(bit) for bit in bits))
+    timelines = [str(value) for value in (placement.get("timelines") or []) if str(value or "")]
+    if timelines:
+        shown = ", ".join(f"`{value}`" for value in timelines[:3])
+        if len(timelines) > 3:
+            shown += f", +{len(timelines) - 3}"
+        parts.append(f"timelines: {shown}")
+    return "<br>".join(parts)
+
+
 def render_scene_order_gap_markdown(summary: dict, rows: list[dict]) -> str:
     lines = [
         f"# Scene Order Gaps ({summary['language']})",
@@ -1632,6 +1945,12 @@ def render_scene_order_gap_markdown(summary: dict, rows: list[dict]) -> str:
         f"- inferred option response: `{summary.get('inferredOptionResponse', 0)}`",
         f"- missing line order + inferred option placement: `{summary['bothMissingOrderAndInferredOptions']}`",
         f"- fallback line order + inferred option placement: `{summary['bothFallbackOrderAndInferredOptions']}`",
+        f"- scenes with mission/story-ref placement evidence: `{summary.get('scenePlacementStoryRef', 0)}`",
+        f"- scenes with source-backed scene-edge evidence: `{summary.get('scenePlacementSourceEdge', 0)}`",
+        f"- scenes with source-backed scene-sequence evidence: `{summary.get('scenePlacementSourceSequence', 0)}`",
+        f"- scenes with source-backed story-call context: `{summary.get('scenePlacementStoryCallContext', 0)}`",
+        f"- scenes with source-backed hash-terminal evidence: `{summary.get('scenePlacementHashTerminal', 0)}`",
+        f"- scenes with timeline evidence: `{summary.get('scenePlacementTimeline', 0)}`",
     ]
 
     line_pattern_counts = summary.get("lineOrderPatternCounts") or {}
@@ -1653,6 +1972,16 @@ def render_scene_order_gap_markdown(summary: dict, rows: list[dict]) -> str:
         ])
         for pattern, count in sorted(option_pattern_counts.items(), key=lambda item: (-item[1], item[0])):
             lines.append(f"- `{pattern}`: `{count}`")
+
+    placement_counts = summary.get("scenePlacementEvidenceCounts") or {}
+    if placement_counts:
+        lines.extend([
+            "",
+            "### Scene Placement Evidence",
+            "",
+        ])
+        for kind, count in sorted(placement_counts.items(), key=lambda item: (-item[1], item[0])):
+            lines.append(f"- `{kind}`: `{count}`")
 
     lines.extend([
         "",
@@ -1690,11 +2019,12 @@ def render_scene_order_gap_markdown(summary: dict, rows: list[dict]) -> str:
         "",
         "## Scenes",
         "",
-        "| Scene | Mission | Line-Order Pattern | Option-Position Pattern | Option Response | Lines | Opt Groups | Path |",
-        "| --- | --- | --- | --- | --- | ---: | ---: | --- |",
+        "| Scene | Mission | Scene Placement | Line-Order Pattern | Option-Position Pattern | Option Response | Lines | Opt Groups | Path |",
+        "| --- | --- | --- | --- | --- | --- | ---: | ---: | --- |",
     ])
 
     for row in rows:
+        placement_cell = _render_scene_placement_cell(row)
         line_cell = _render_pattern_cell(row.get("lineOrderPattern") or {})
         option_cell = _render_pattern_cell(row.get("optionPositionPattern") or {})
         response_cell = (
@@ -1703,7 +2033,7 @@ def render_scene_order_gap_markdown(summary: dict, rows: list[dict]) -> str:
             else ""
         )
         lines.append(
-            f"| `{row['key']}` | `{row['mission']}` | {line_cell} | {option_cell} | {response_cell} | "
+            f"| `{row['key']}` | `{row['mission']}` | {placement_cell} | {line_cell} | {option_cell} | {response_cell} | "
             f"{row['lineCount']} | {row['optionGroupCount']} | `{_escape_table_text(row['path'])}` |"
         )
 
