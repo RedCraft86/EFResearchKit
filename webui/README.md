@@ -44,6 +44,9 @@ from `webui/data/` and keeps heavyweight recovery work in the Python builders.
   recovered Timeline order disagrees with numeric line suffix order. DialogIdTable
   recovery chips expose runtime trunk line refs and runtime option refs in
   their tooltip when that evidence is available.
+- Narrative videos without non-name binding evidence are emitted as standalone
+  `video` story files grouped by mission. Videos with recovered Timeline /
+  playable evidence stay attached to their proven dialog or cutscene.
 - `Reference`: raw localized rows from `data/lang/<code>/reference/`, with
   source/table filters and on-demand table loading.
 - `Updates`: latest change summary from `data/updates/latest.json`, generated
@@ -60,6 +63,10 @@ from `webui/data/` and keeps heavyweight recovery work in the Python builders.
   sidecars for display names and full-text search.
 - `data/lang/<code>/conv/` and `mission/`: conversation and mission payloads
   loaded on demand.
+- `data/lang/<code>/narrative_video_evidence.json`: timeline-backed video to
+  WebUI conversation evidence. These rows require recovered
+  `BeyondFMVPlayableAsset` / Timeline sources; heuristic filename matches are
+  not recorded as proof.
 - `data/lang/<code>/reference/`: Reference tables; persistent rows may share
   streaming payloads or use small overlay files for changed rows.
 - `data/assets/story_media.json`: compact Story inline image/video lookup using
@@ -70,10 +77,20 @@ from `webui/data/` and keeps heavyweight recovery work in the Python builders.
 
 - SNS emoji assets such as `sns_emoji_*` are rendered as regular inline emoji.
   They stay inline and do not open hover popovers or the full-screen modal.
+- EnvTalk emoji-only rows such as `envEmoji_common_*` render their line-level
+  `emoji` fields from the Unity emoji prefab aliases and recovered
+  RectTransform layer data in `story_media.json`. Recovered `AnimationClip`
+  enter curves drive the initial alpha flicker and squash/stretch when the
+  row scrolls into view, and replay on hover/focus. Standalone prefab variants
+  are normalized to the same visual scale as the bubble-backed common emoji.
 - Non-emoji SNS media such as `sns_image_*`, `sns_sticker_*`,
   `deco_sns_tweet_decorate_*`, `bg_sns_tweet_decorate_*`, and matching
   `cg_image_*` assets should render with their normal image proportions rather
   than the compact emoji treatment.
+- When a generated line has both an inline `<image=...>` tag and the matching
+  `image`/`images` metadata, the inline render is the canonical display; the
+  below-line media strip should not repeat the same asset, including when the
+  inline tag display is switched to raw text.
 - Inline image popovers and the modal preview should stay inside their visual
   border and the viewport.
 

@@ -22,7 +22,7 @@ const FILTER_SECTION_STORAGE_KEY = "webui_filter_sections_collapsed_v2";
 const STORY_SPLITTER_STORAGE_KEY = "webui_story_splitter_width";
 const ASSET_SPLITTER_STORAGE_KEY = "webui_asset_splitter_width";
 const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
-const WEBUI_DATA_CACHE_TAG = "20260513-merged-line-order-tags";
+const WEBUI_DATA_CACHE_TAG = "20260514-mission-order-strength";
 const DEFAULT_LANGUAGE_INFO = {
   code: "CN",
   label: "Chinese (Simplified)",
@@ -830,6 +830,212 @@ function inlineImageNumberKey(value) {
   return String(Number(match[1]));
 }
 
+// envEmoji prefab layer data is reconstructed from the original Unity prefabs at
+// `Assets/Beyond/DynamicAssets/Gameplay/UI/Prefabs/Emoji/emoji_*.prefab` by
+// scripts/recover_envemoji_prefabs.py (Image color + RectTransform fields), then
+// uniformly scaled so each prefab fits the 100×150 stage.
+const ENV_EMOJI_PREFAB_ALIASES = {
+  envemoji_common_adaptationwork: "emoji_adaptationwork",
+  envemoji_common_dislike: "emoji_newdislike",
+  envemoji_common_empty: "emoji_empty",
+  envemoji_common_exhaustion: "emoji_exhaustion",
+  envemoji_common_happy: "emoji_newhappy",
+  envemoji_common_love: "emoji_love",
+  envemoji_common_newworkhard: "emoji_newworkhard",
+  envemoji_common_normal: "emoji_normal",
+  envemoji_common_sad: "emoji_newsad",
+  envemoji_common_sigh: "emoji_newsigh",
+  envemoji_common_surprise: "emoji_newsurprise",
+  envemoji_common_think: "emoji_think",
+  envemoji_common_thumbsup: "emoji_thumbsup",
+  envemoji_common_unhappywork: "emoji_unhappywork",
+  envemoji_common_workhard: "emoji_newworkhard",
+};
+
+const ENV_EMOJI_PREFAB_STAGE = { width: 100, height: 150, cx: 50, cy: 72 };
+
+const ENV_EMOJI_PREFAB_ANIMATIONS = {
+  emoji_adaptationwork: "workhard",
+  emoji_empty: "sigh",
+  emoji_exhaustion: "sigh",
+  emoji_love: "workhard",
+  emoji_newdislike: "sigh",
+  emoji_newhappy: "workhard",
+  emoji_newsad: "sigh",
+  emoji_newsigh: "sigh",
+  emoji_newsurprise: "workhard",
+  emoji_newworkhard: "sigh",
+  emoji_normal: "sigh",
+  emoji_think: "workhard",
+  emoji_thumbsup: "workhard",
+  emoji_unhappywork: "sigh",
+};
+
+const ENV_EMOJI_PREFAB_RENDER = {
+  emoji_love: { scale: 0.74 },
+  emoji_newworkhard: { x: -2 },
+  emoji_think: { scale: 0.74 },
+};
+
+const ENV_EMOJI_PREFABS = {
+  emoji_adaptationwork: [
+    { stem: "emoji_newbg", x: 0, y: 16.25, w: 89.5, h: 109.5, px: 0.5, py: 0.5, color: "rgba(0, 0, 0, 0.698)" },
+    { stem: "emoji_workhardcircle", x: 0, y: -6.03, w: 62.44, h: 62.44, px: 0.5, py: 0, color: "rgba(237, 221, 79, 1)" },
+    { stem: "emoji_workhardcircleblue", x: 13.99, y: 25.19, w: 34.22, h: 61.69, px: 0.5, py: 0.5, color: "rgba(99, 209, 255, 1)" },
+    { stem: "emoji_newdeco", x: -5.36, y: -2.68, w: 16.61, h: 15.66, px: 0.5, py: 0.5, color: "rgba(99, 209, 255, 1)" },
+    { stem: "emoji_newdeco", x: -0.1, y: 54.21, w: 16.61, h: 15.66, px: 0.5, py: 0.5, color: "rgba(255, 237, 81, 1)" },
+    { stem: "emoji_workhardeye", x: -13.63, y: 23.54, w: 10.36, h: 17.02, px: 0.5, py: 0.5 },
+    { stem: "emoji_workhardeyeright", x: 5.37, y: 23.52, w: 9.99, h: 16.65, px: 0.5, py: 0.5 },
+    { stem: "emoji_workhardmouth", x: -4.07, y: 17.1, w: 11.47, h: 6.29, px: 0.5, py: 1 },
+  ],
+  emoji_empty: [
+    { stem: "emoji_newbg", x: 0, y: 16.25, w: 89.5, h: 109.5, px: 0.5, py: 0.5, color: "rgba(0, 0, 0, 0.698)" },
+    { stem: "emoji_surprisecircle", x: 0, y: 25.19, w: 48.45, h: 46.59, px: 0.5, py: 0.5 },
+    { stem: "emoji_surprisecircle", x: 0, y: -5.53, w: 64.44, h: 61.81, px: 0.5, py: 0 },
+    { stem: "emoji_emptyeye", x: -12.77, y: 21.54, w: 12.58, h: 17.02, px: 0.5, py: 0.5 },
+    { stem: "emoji_emptyeye", x: 5.99, y: 21.54, w: 12.58, h: 17.02, px: 0.5, py: 0.5 },
+  ],
+  emoji_exhaustion: [
+    { stem: "emoji_exhaustioncircle", x: 0, y: -4.72, w: 77.48, h: 77.48, px: 0.5, py: 0 },
+    { stem: "emoji_exhaustioneye", x: -15.1, y: 32.92, w: 16.2, h: 17.07, px: 0.5, py: 0.5 },
+    { stem: "emoji_exhaustioneye", x: 15.32, y: 33.14, w: 16.2, h: 17.07, px: 0.5, py: 0.5 },
+    { stem: "emoji_exhaustionmouth", x: 0, y: 20.23, w: 28.02, h: 6.57, px: 0.5, py: 0.5 },
+    { stem: "emoji_exhaustionmouth", x: 19.26, y: 20.23, w: 28.02, h: 6.57, px: 0.5, py: 0.5 },
+    { stem: "emoji_exhaustionmouth", x: -18.39, y: 20.23, w: 28.02, h: 6.57, px: 0.5, py: 0.5 },
+    { stem: "emoji_exhaustionmouth", x: -36.75, y: 20.23, w: 28.02, h: 6.57, px: 0.5, py: 0.5 },
+  ],
+  emoji_love: [
+    { stem: "emoji_love", x: -0.51, y: 34.69, w: 45.26, h: 41.19, px: 0.5, py: 0.5, color: "rgba(255, 123, 110, 1)" },
+    { stem: "emoji_circle_1", x: 0, y: -5.49, w: 89.5, h: 85.94, px: 0.5, py: 0, color: "rgba(254, 178, 103, 1)" },
+    { stem: "emoji_circle", x: 0, y: -1.04, w: 80.35, h: 77.8, px: 0.5, py: 0, color: "rgba(254, 123, 111, 1)" },
+  ],
+  emoji_newdislike: [
+    { stem: "emoji_newbg", x: 0, y: 16.25, w: 89.5, h: 109.5, px: 0.5, py: 0.5, color: "rgba(0, 0, 0, 0.698)" },
+    { stem: "emoji_unhappyworkcircle", x: 0, y: -5.95, w: 66, h: 66, px: 0.5, py: 0, color: "rgba(118, 152, 255, 1)" },
+    { stem: "emoji_sigheyenew", x: -10.74, y: 39.07, w: 11.79, h: 6.29, px: 0.5, py: 0.5, color: "rgba(118, 152, 255, 1)" },
+    { stem: "emoji_sigheyenew", x: 15.38, y: 37.69, w: 11.79, h: 6.29, px: 0.5, py: 0.5, color: "rgba(118, 152, 255, 1)", flipX: true },
+    { stem: "emoji_newdislike_mouth", x: 3.4, y: 31.05, w: 25.6, h: 8.8, px: 0.5, py: 1, color: "rgba(118, 152, 255, 1)" },
+  ],
+  emoji_newhappy: [
+    { stem: "emoji_newbg", x: 0, y: 16.25, w: 89.5, h: 109.5, px: 0.5, py: 0.5, color: "rgba(0, 0, 0, 0.698)" },
+    { stem: "emoji_circle_1", x: 0, y: -4.49, w: 65.12, h: 62.53, px: 0.5, py: 0, color: "rgba(255, 189, 56, 1)" },
+    { stem: "emoji_newhappyeye", x: -13.51, y: 28.62, w: 15.54, h: 9.25, px: 0.5, py: 0.5 },
+    { stem: "emoji_newhappyeye", x: 6.66, y: 28.62, w: 15.54, h: 9.25, px: 0.5, py: 0.5 },
+    { stem: "emoji_happymouth", x: -3.15, y: 20.3, w: 25.16, h: 14.8, px: 0.5, py: 1 },
+  ],
+  emoji_newsad: [
+    { stem: "emoji_newbg", x: 0, y: 16.25, w: 89.5, h: 109.5, px: 0.5, py: 0.5, color: "rgba(0, 0, 0, 0.698)" },
+    { stem: "emoji_newsad_circle", x: -0.07, y: -4.1, w: 64.44, h: 62.44, px: 0.5, py: 0 },
+    { stem: "emoji_newsad_eye", x: -13, y: 15.62, w: 12.32, h: 10.39, px: 0.5, py: 0 },
+    { stem: "emoji_newsad_eye", x: 8, y: 15.62, w: 12.32, h: 10.39, px: 0.5, py: 0 },
+    { stem: "emoji_newsad_deco", x: 25, y: 44.14, w: 15.84, h: 31.32, px: 0.5, py: 0.5 },
+    { stem: "emoji_newsad_decobg", x: 25, y: 44.14, w: 21.24, h: 36.72, px: 0.5, py: 0.5, color: "rgba(0, 0, 0, 0.8)" },
+  ],
+  emoji_newsigh: [
+    { stem: "emoji_newbg", x: 0, y: 16.25, w: 89.5, h: 109.5, px: 0.5, py: 0.5, color: "rgba(0, 0, 0, 0.698)" },
+    { stem: "emoji_sighcirclenew", x: 0, y: -5.95, w: 66, h: 66, px: 0.5, py: 0 },
+    { stem: "emoji_sigheyenew", x: -14.68, y: 17.67, w: 12.58, h: 6.29, px: 0.5, py: 0.5 },
+    { stem: "emoji_sigheyenew", x: 9.54, y: 17.13, w: 12.58, h: 6.29, px: 0.5, py: 0.5, flipX: true },
+    { stem: "emoji_sighmouthnew", x: -5, y: 9.05, w: 13.2, h: 6.6, px: 0.5, py: 1, color: "rgba(216, 216, 216, 1)" },
+  ],
+  emoji_newsurprise: [
+    { stem: "emoji_newbg", x: 0, y: 16.25, w: 89.5, h: 109.5, px: 0.5, py: 0.5, color: "rgba(0, 0, 0, 0.698)" },
+    { stem: "emoji_circle_1", x: -0.91, y: -3.65, w: 64.15, h: 61.6, px: 0.5, py: 0, color: "rgba(255, 237, 81, 1)" },
+    { stem: "emoji_newsurpriseeyebg", x: -10.07, y: 24.42, w: 12.34, h: 27.54, px: 1, py: 0.5, color: "rgba(0, 0, 0, 0.902)" },
+    { stem: "emoji_happyeye", x: -11.38, y: 24.5, w: 9.89, h: 25.42, px: 1, py: 0.5, color: "rgba(255, 237, 81, 1)" },
+    { stem: "emoji_happyeye", x: 5.8, y: 24.04, w: 9.85, h: 25.52, px: 1, py: 0.5, color: "rgba(255, 237, 81, 1)" },
+    { stem: "emoji_surprisemouthnew", x: -2.14, y: 7.21, w: 14.74, h: 4.5, px: 0.5, py: 0.5, color: "rgba(253, 236, 84, 1)" },
+  ],
+  emoji_newworkhard: [
+    { stem: "emoji_newbg", x: 0, y: 16.25, w: 89.5, h: 109.5, px: 0.5, py: 0.5, color: "rgba(0, 0, 0, 0.698)" },
+    { stem: "emoji_newworkhard_deco1", x: 3, y: 22.35, w: 29.12, h: 18.72, px: 0, py: 0.41, color: "rgba(0, 0, 0, 0.8)" },
+    { stem: "emoji_newworkhard_deco1", x: 18.5, y: 24.27, w: 22.4, h: 14.4, px: 0.5, py: 0.5, color: "rgba(98, 207, 255, 1)" },
+    { stem: "emoji_newworkhard_deco2", x: -7.58, y: 19.55, w: 24.96, h: 17.68, px: 0, py: 1, color: "rgba(0, 0, 0, 0.8)" },
+    { stem: "emoji_newworkhard_deco2", x: 5.73, y: 10.76, w: 19.2, h: 13.6, px: 0.5, py: 0.5, color: "rgba(98, 207, 255, 1)" },
+    { stem: "emoji_newworkhard_deco", x: -4, y: 18.99, w: 26, h: 31.72, px: 0.12, py: 0, color: "rgba(0, 0, 0, 0.8)" },
+    { stem: "emoji_newworkhard_deco", x: 5.56, y: 35.86, w: 20, h: 24.4, px: 0.5, py: 0.5, color: "rgba(98, 207, 255, 1)" },
+    { stem: "emoji_unhappyworkcircle", x: 0, y: -5.95, w: 66, h: 66, px: 0.5, py: 0, color: "rgba(98, 209, 255, 1)" },
+  ],
+  emoji_normal: [
+    { stem: "emoji_newbg", x: 0, y: 16.25, w: 89.5, h: 109.5, px: 0.5, py: 0.5, color: "rgba(0, 0, 0, 0.698)" },
+    { stem: "emoji_circle_1", x: 0, y: 26.69, w: 65.06, h: 62.47, px: 0.5, py: 0.5, color: "rgba(253, 243, 103, 1)" },
+    { stem: "emoji_circle", x: 0, y: 26.86, w: 65.5, h: 63.43, px: 0.5, py: 0.5, color: "rgba(253, 236, 84, 1)" },
+    { stem: "emoji_happyeye", x: -13.49, y: 23.61, w: 10.36, h: 17.76, px: 0.5, py: 0.5, color: "rgba(255, 237, 81, 1)" },
+    { stem: "emoji_happyeye", x: 5.99, y: 23.5, w: 10.36, h: 17.76, px: 0.5, py: 0.5, color: "rgba(255, 237, 81, 1)" },
+  ],
+  emoji_think: [
+    { stem: "emoji_workhardcircle", x: 0, y: -8.64, w: 89.5, h: 89.5, px: 0.5, py: 0, color: "rgba(255, 237, 81, 1)" },
+    { stem: "emoji_workhardcircleblue", x: 20.05, y: 37.08, w: 49.05, h: 88.43, px: 0.5, py: 0.5, color: "rgba(179, 199, 218, 1)" },
+    { stem: "emoji_thinkpoint", x: -22.01, y: 35.65, w: 11.14, h: 11.14, px: 0.5, py: 0.5 },
+    { stem: "emoji_thinkpoint", x: -7.69, y: 35.65, w: 11.14, h: 11.14, px: 0.5, py: 0.5 },
+    { stem: "emoji_thinkpoint", x: 7.69, y: 35.65, w: 11.14, h: 11.14, px: 0.5, py: 0.5 },
+    { stem: "emoji_thinkpoint", x: 22.01, y: 35.65, w: 11.14, h: 11.14, px: 0.5, py: 0.5 },
+  ],
+  emoji_thumbsup: [
+    { stem: "emoji_newbg", x: 0, y: 16.25, w: 89.5, h: 109.5, px: 0.5, py: 0.5, color: "rgba(0, 0, 0, 0.698)" },
+    { stem: "emoji_unhappyworkcircle", x: -0.05, y: -4.53, w: 64.69, h: 64.69, px: 0.5, py: 0, color: "rgba(255, 237, 81, 1)" },
+    { stem: "emoji_hand_2", x: -1.85, y: 22.46, w: 29.6, h: 28.12, px: 0.5, py: 0.5 },
+    { stem: "emoji_hand_1", x: 3.52, y: 39.3, w: 10.36, h: 19.98, px: 0.5, py: 0.5 },
+  ],
+  emoji_unhappywork: [
+    { stem: "emoji_newbg", x: 0, y: 16.25, w: 89.5, h: 109.5, px: 0.5, py: 0.5, color: "rgba(0, 0, 0, 0.698)" },
+    { stem: "emoji_unhappyworkcircle", x: -0.05, y: -4.53, w: 64.69, h: 64.69, px: 0.5, py: 0, color: "rgba(181, 181, 181, 1)" },
+    { stem: "emoji_circle_1", x: 0, y: -14.27, w: 80.84, h: 80.84, px: 0.5, py: 0, color: "rgba(226, 55, 67, 1)" },
+    { stem: "emoji_unhappyworkcircle_1", x: -0.27, y: 43.89, w: 63.68, h: 32.34, px: 0.5, py: 0.5, color: "rgba(226, 55, 67, 1)" },
+    { stem: "emoji_newdeco", x: -29.95, y: 28.86, w: 16.43, h: 15.49, px: 0.5, py: 0.5, color: "rgba(226, 55, 67, 1)" },
+    { stem: "emoji_sigheyenew", x: -8.58, y: 14.14, w: 12.43, h: 6.22, px: 0.5, py: 0 },
+    { stem: "emoji_sigheyenew", x: 15.63, y: 14.14, w: 12.43, h: 6.22, px: 0.5, py: 0 },
+  ],
+};
+
+function resolveEnvEmojiPrefabKey(value) {
+  const normalized = normalizeInlineImageId(value);
+  if (!normalized) return "";
+  const aliased = ENV_EMOJI_PREFAB_ALIASES[normalized] || normalized;
+  return ENV_EMOJI_PREFABS[aliased] ? aliased : "";
+}
+
+let envEmojiAnimationObserver = null;
+
+function replayEnvEmojiAnimation(node) {
+  if (!node || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  node.classList.remove("is-playing");
+  void node.offsetWidth;
+  node.classList.add("is-playing");
+}
+
+function ensureEnvEmojiAnimationObserver() {
+  if (!("IntersectionObserver" in window)) return null;
+  if (envEmojiAnimationObserver) return envEmojiAnimationObserver;
+
+  envEmojiAnimationObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      const node = entry.target;
+      if (!(node instanceof HTMLElement)) continue;
+      if (entry.isIntersecting) {
+        replayEnvEmojiAnimation(node);
+      } else {
+        node.classList.remove("is-playing");
+      }
+    }
+  }, { threshold: 0.45 });
+
+  return envEmojiAnimationObserver;
+}
+
+function queueEnvEmojiAnimation(node) {
+  if (!node || !node.classList.contains("is-animated")) return;
+  node.addEventListener("mouseenter", () => replayEnvEmojiAnimation(node));
+  node.addEventListener("focusin", () => replayEnvEmojiAnimation(node));
+
+  const observer = ensureEnvEmojiAnimationObserver();
+  if (observer) {
+    observer.observe(node);
+  } else {
+    requestAnimationFrame(() => replayEnvEmojiAnimation(node));
+  }
+}
+
 function scoreInlineImageAsset(rel, stem) {
   const relLower = String(rel || "").toLowerCase();
   let score = 1;
@@ -979,27 +1185,51 @@ function ensureWikiVideoAssetLookup() {
 }
 
 function resolveInlineImageAsset(imageId) {
+  return resolveInlineImageAssetCandidates(imageId)[0] || null;
+}
+
+function resolveInlineImageAssetCandidates(imageId) {
   const normalized = normalizeInlineImageId(imageId);
-  if (!normalized) return null;
+  if (!normalized) return [];
+
+  const matches = [];
+  const seen = new Set();
+  const add = (asset) => {
+    if (!asset || seen.has(asset.rel)) return;
+    seen.add(asset.rel);
+    matches.push(asset);
+  };
 
   const exact = STATE.inlineImageAssetByStem.get(normalized);
-  if (exact) return exact;
+  add(exact);
 
   const gender = resolveGenderVariant();
   const gendered = STATE.inlineImageAssetByStem.get(`${normalized}_${gender}`);
-  if (gendered) return gendered;
+  add(gendered);
   for (const suffix of ["m", "f"]) {
     const fallback = STATE.inlineImageAssetByStem.get(`${normalized}_${suffix}`);
-    if (fallback) return fallback;
+    add(fallback);
+  }
+
+  const prefabKey = resolveEnvEmojiPrefabKey(normalized);
+  if (prefabKey) {
+    for (const layer of ENV_EMOJI_PREFABS[prefabKey]) {
+      add(STATE.inlineImageAssetByStem.get(layer.stem));
+    }
+    return matches;
+  }
+
+  for (const [stem, asset] of STATE.inlineImageAssetByStem.entries()) {
+    if (stem.startsWith(`${normalized}_`)) add(asset);
   }
 
   if (normalized.startsWith("sns_image_")) {
     const cgImage = STATE.inlineImageAssetByStem.get(`cg_image_${normalized.slice("sns_image_".length)}`);
-    if (cgImage) return cgImage;
+    add(cgImage);
   }
 
   const numberKey = inlineImageNumberKey(normalized);
-  if (!numberKey) return null;
+  if (!numberKey) return matches;
 
   const padded2 = numberKey.padStart(2, "0");
   const preferredStems = [
@@ -1011,10 +1241,11 @@ function resolveInlineImageAsset(imageId) {
   ];
   for (const stem of preferredStems) {
     const match = STATE.inlineImageAssetByStem.get(stem);
-    if (match) return match;
+    add(match);
   }
 
-  return STATE.inlineImageAssetByNumber.get(numberKey) || null;
+  add(STATE.inlineImageAssetByNumber.get(numberKey));
+  return matches;
 }
 
 function resolveExactImageAsset(imageId) {
@@ -1362,10 +1593,91 @@ function narrativeVideoSelectionForConv(conv) {
   return narrativeVideoSelectionForRefs(refs);
 }
 
+function narrativeVideoTimelineRows(conv) {
+  if (!STATE.wikiVideoLookupLoaded) return [];
+  const allRefs = Array.isArray(conv && conv.narrativeVideos)
+    ? conv.narrativeVideos.filter((r) => r && r.rel)
+    : [];
+  if (!allRefs.length) return [];
+  const selection = narrativeVideoSelectionForRefs(allRefs);
+  const rows = [];
+  for (const ref of selection.refs) {
+    const clips = ref && ref.binding && Array.isArray(ref.binding.clips) ? ref.binding.clips : [];
+    for (const clip of clips) {
+      if (!clip || typeof clip.start !== "number" || !Number.isFinite(clip.start)) continue;
+      rows.push({
+        ref,
+        start: clip.start,
+        duration: typeof clip.duration === "number" && Number.isFinite(clip.duration) ? clip.duration : null,
+        optionIndex: Number.isInteger(clip.optionIndex) ? clip.optionIndex : null,
+        fmvId: String((ref.binding && ref.binding.fmvId) || ""),
+      });
+    }
+  }
+  rows.sort((a, b) => a.start - b.start || a.fmvId.localeCompare(b.fmvId));
+  return rows;
+}
+
+function renderNarrativeVideoTimelineRow(row) {
+  const el = document.createElement("div");
+  el.className = "line video-line";
+
+  const actor = document.createElement("div");
+  actor.className = "actor video-line-actor";
+  actor.textContent = uiText("narrativeVideoInlineLabel");
+  el.appendChild(actor);
+
+  const body = document.createElement("div");
+  body.className = "body video-line-body";
+
+  const ts = document.createElement("div");
+  ts.className = "line-timestamp";
+  const tsTitleParts = [formatTimelineSeconds(row.start)];
+  if (row.duration != null) tsTitleParts.push(`+${formatTimelineSeconds(row.duration)}`);
+  ts.title = tsTitleParts.join("  ");
+  ts.textContent = formatTimelineSeconds(row.start);
+  body.appendChild(ts);
+
+  const captionParts = [];
+  if (row.ref.gender) captionParts.push(row.ref.gender.toUpperCase());
+  if (row.duration != null) captionParts.push(`${formatTimelineSeconds(row.duration)}`);
+  const sizeText = formatAssetBytes(row.ref.size);
+  if (sizeText) captionParts.push(sizeText);
+  const captionSuffix = captionParts.join(", ");
+  body.appendChild(renderWikiVideoItem({
+    rel: row.ref.rel,
+    name: row.ref.name,
+    label: captionSuffix ? `${row.ref.name} (${captionSuffix})` : row.ref.name,
+    size: row.ref.size,
+  }));
+
+  if (Number.isInteger(row.optionIndex) && row.optionIndex > 0) {
+    const opt = document.createElement("div");
+    opt.className = "video-line-optidx mono";
+    opt.textContent = `optionIndex=${row.optionIndex}`;
+    body.appendChild(opt);
+  }
+
+  if (row.fmvId) {
+    const meta = document.createElement("div");
+    meta.className = "video-line-fmvid mono";
+    meta.textContent = row.fmvId;
+    body.appendChild(meta);
+  }
+
+  el.appendChild(body);
+  return el;
+}
+
+function narrativeVideoHasTimelineClip(ref) {
+  const clips = ref && ref.binding && Array.isArray(ref.binding.clips) ? ref.binding.clips : [];
+  return clips.some((clip) => clip && typeof clip.start === "number" && Number.isFinite(clip.start));
+}
+
 function renderNarrativeVideosBlock(conv) {
   if (!STATE.wikiVideoLookupLoaded) return null;
   const selection = narrativeVideoSelectionForConv(conv);
-  const refs = selection.refs;
+  const refs = selection.refs.filter((ref) => !narrativeVideoHasTimelineClip(ref));
   if (!refs.length) return null;
 
   const box = document.createElement("div");
@@ -1806,12 +2118,17 @@ function renderItem(row) {
 
   const kindCls = meta.cls;
   const kindNm = meta.name;
+  const orderStatus = entryMissionOrderStatus(e);
+  const orderBadge = orderStatus
+    ? `<span class="mission-order-badge is-${orderStatus.cls}" title="${escapeHtml(orderStatus.title)}">${escapeHtml(orderStatus.label)}</span>`
+    : "";
   const actorTxt = e.c.slice(0, 3).map(actorDisplay).join(" / ")
                  + (e.c.length > 3 ? `+${e.c.length - 3}` : "");
 
   div.innerHTML =
     `<div class="item-line1">` +
       `<span class="badge ${kindCls}">${escapeHtml(kindNm)}</span>` +
+      orderBadge +
       `<span class="item-key">${highlightTextFragment(displayEntryTitle(e), STATE.filters.q)}</span>` +
       `<span class="item-meta">${e.n} ${uiText("lineUnit")}${actorTxt ? " | " + escapeHtml(actorTxt) : ""}</span>` +
     `</div>` +
@@ -2884,6 +3201,24 @@ function renderConvWarning(warning) {
       detailSections.push(section);
     }
   }
+  if (warning.code === "narrativeVideoUnplaced") {
+    title = uiText("warningNarrativeVideoUnplacedTitle");
+    body = uiText("warningNarrativeVideoUnplacedBody");
+    const stems = Array.isArray(warning.videoStems) ? warning.videoStems : [];
+    if (stems.length) {
+      const section = document.createElement("section");
+      section.className = "conv-warning-section";
+      const list = document.createElement("ul");
+      list.className = "conv-warning-evidence";
+      for (const stem of stems) {
+        const li = document.createElement("li");
+        li.textContent = String(stem);
+        list.appendChild(li);
+      }
+      section.appendChild(list);
+      detailSections.push(section);
+    }
+  }
   if (warning.code === "duplicateTimestamps") {
     title = uiText("warningDuplicateTimestampsTitle");
     body = uiText("warningDuplicateTimestampsBody");
@@ -3436,17 +3771,25 @@ function summaryLabelForConv(conv) {
     : uiText("summary");
 }
 
+function isWikiCharacterArchiveConv(conv) {
+  return String(conv && conv.key || "").startsWith("wiki_chr_");
+}
+
 function resolveRenderedSpeaker(line, {
   fallback = "",
   allowFallback = false,
+  speakerOverride = "",
+  suppressAid = false,
 } = {}) {
   const aid = line && line.aid ? String(line.aid) : "";
+  const overrideName = String(speakerOverride || "").trim();
   const rawName = line && line.actor ? String(line.actor) : "";
-  const name = rawName || (aid ? actorDisplay(aid) : (allowFallback ? fallback : ""));
-  if (!name) return { aid, display: "", original: "" };
+  const name = overrideName || rawName || (aid ? actorDisplay(aid) : (allowFallback ? fallback : ""));
+  const displayAid = suppressAid ? "" : aid;
+  if (!name) return { aid: displayAid, display: "", original: "" };
   const speaker = formatDlgSpeakerName(name, allowFallback ? fallback : "");
   return {
-    aid,
+    aid: displayAid,
     display: speaker.display || "",
     original: speaker.original || "",
   };
@@ -3530,7 +3873,9 @@ function isResearchHintLine(line) {
 }
 
 function renderConversationHints(conv) {
-  const rows = conversationHintRows(conv);
+  const rows = conversationHintRows(conv).filter((row) => {
+    return !isWikiCharacterArchiveConv(conv) || row.isResearch;
+  });
   if (!rows.length) return null;
 
   const box = document.createElement("div");
@@ -3676,6 +4021,12 @@ function renderConv(conv) {
   if (conv.chatType !== undefined) meta.push(`chatType=${conv.chatType}`);
   if (conv.relatedMissionId) meta.push(`related=${conv.relatedMissionId}`);
   if (conv.cooldown !== undefined) meta.push(`cooldown=${conv.cooldown}`);
+  if (conv.kind === "cutscene" && conv.cutscene && Array.isArray(conv.cutscene.actorLabels)) {
+    const actors = conv.cutscene.actorLabels
+      .map((actor) => String(actor || "").trim())
+      .filter(Boolean);
+    if (actors.length) meta.push(`actors=${actors.join(", ")}`);
+  }
   meta.push(`lines=${conv.lines.length}`);
   if (entry) {
     const metadataTagSummary = entryMetadataTagSummary(entry);
@@ -3763,6 +4114,7 @@ function renderConv(conv) {
   const uncertainOptionLayout = convHasWarning(conv, "inferredOptionLayout");
   const uncoveredLineIdSet = getConvUncoveredLineIdSet(conv);
   const duplicateTimestampLineIdSet = getConvDuplicateTimestampLineIdSet(conv);
+  const useWikiCharacterHintsAsSpeakers = isWikiCharacterArchiveConv(conv);
 
   const missionContextBlock = renderMissionContext(missionExtras);
   if (missionContextBlock) frag.appendChild(missionContextBlock);
@@ -3985,6 +4337,7 @@ function renderConv(conv) {
       body.appendChild(text);
       appendDebugTrace(body, ln._debug, "line");
     }
+    appendLineMedia(body, ln);
     appendLineId(body, ln);
     if (ln.id && uncoveredLineIdSet.has(ln.id)) {
       appendUncoveredLineBadge(body);
@@ -4620,7 +4973,22 @@ function renderConv(conv) {
     }
   }
 
+  const videoTimelineRows = narrativeVideoTimelineRows(conv);
+  let pendingVideoIdx = 0;
+  const flushVideoRowsBefore = (cutoff) => {
+    while (
+      pendingVideoIdx < videoTimelineRows.length
+      && (cutoff == null || videoTimelineRows[pendingVideoIdx].start <= cutoff)
+    ) {
+      frag.appendChild(renderNarrativeVideoTimelineRow(videoTimelineRows[pendingVideoIdx]));
+      pendingVideoIdx += 1;
+    }
+  };
+
   for (const ln of conv.lines) {
+    if (typeof ln.ts === "number" && Number.isFinite(ln.ts)) {
+      flushVideoRowsBefore(ln.ts);
+    }
     if (isResearchHintLine(ln)) {
       continue;
     }
@@ -4638,7 +5006,8 @@ function renderConv(conv) {
     const snsBranchGroup = conv.kind === "sns" && Number.isInteger(ln.cid)
       ? snsBranchData.byAnchorCid.get(ln.cid)
       : null;
-    if (!STATE.showEmpty && !ln.text && !(ln.options && ln.options.length)
+    const hasLineMedia = Boolean(ln.image || ln.emoji || (Array.isArray(ln.images) && ln.images.length));
+    if (!STATE.showEmpty && !ln.text && !hasLineMedia && !(ln.options && ln.options.length)
         && !ln.linkMission && !(inlineGroups && inlineGroups.length)) continue;
     const branchOnlyNode = Boolean(snsBranchGroup && !ln.text && !ln.hint && !ln.linkMission);
 
@@ -4650,6 +5019,9 @@ function renderConv(conv) {
         + (ln.text ? "" : " empty")
         + (ln.id && uncoveredLineIdSet.has(ln.id) ? " line-uncovered" : "")
         + (ln.id && duplicateTimestampLineIdSet.has(ln.id) ? " line-duplicate-timestamp" : "");
+      if (conv.kind === "cutscene" && (ln.gender === "F" || ln.gender === "M")) {
+        row.dataset.genderOnly = ln.gender;
+      }
       setLineAnchor(row, conv.key, ln.id);
       if (conv.kind === "dlg" && ln.id) renderedDlgLineIds.add(ln.id);
 
@@ -4670,6 +5042,8 @@ function renderConv(conv) {
       const speaker = resolveRenderedSpeaker(ln, {
         fallback: conv.kind === "radio" ? uiText("radioSpeaker") : "",
         allowFallback: conv.kind === "radio",
+        speakerOverride: useWikiCharacterHintsAsSpeakers ? ln.hint : "",
+        suppressAid: useWikiCharacterHintsAsSpeakers && Boolean(String(ln.hint || "").trim()),
       });
       if (speaker.display || speaker.aid) {
         appendSpeakerLabel(actor, speaker.display, {
@@ -4705,6 +5079,7 @@ function renderConv(conv) {
       body.appendChild(t);
       appendDebugTrace(body, ln._debug, "line");
     }
+    appendLineMedia(body, ln);
     if (ln.options && ln.options.length && !snsBranchGroup) {
       const opts = document.createElement("div");
       opts.className = "options";
@@ -4769,6 +5144,8 @@ function renderConv(conv) {
       flushBlock();
     }
   }
+
+  flushVideoRowsBefore(null);
 
   if (sceneEnvTalk && sceneEnvTalk.length) {
     const block = document.createElement("div");
@@ -5844,6 +6221,150 @@ function renderInlineImageTagHtml(imageId, q, rawTag = "") {
   return `<span class="${classes.join(" ")}" ${attrs.join(" ")}>${thumb}${label}${preview}</span>`;
 }
 
+function inlineImageIdsInText(text) {
+  const ids = new Set();
+  const source = String(text || "");
+  const tokenRe = /<image\b(?!\s*=)[^>]*>[\s\S]*?<\/image>|<image\s*=[^>]+>|<image\b(?=[^>]*(?:src|source|path|name|id)\s*=)[^>]*>/gi;
+  let match;
+  while ((match = tokenRe.exec(source))) {
+    const normalized = normalizeInlineImageId(extractInlineImageIdFromTag(match[0] || ""));
+    if (normalized) ids.add(normalized);
+  }
+  return ids;
+}
+
+function lineMediaIds(line) {
+  const ids = [];
+  const inlineIds = inlineImageIdsInText(line && line.text);
+  const push = (value) => {
+    const normalized = normalizeInlineImageId(value);
+    if (inlineIds.has(normalized)) return;
+    if (normalized && !ids.includes(normalized)) ids.push(normalized);
+  };
+  if (line && Array.isArray(line.images)) {
+    for (const imageId of line.images) push(imageId);
+  }
+  if (line && line.image) push(line.image);
+  if (line && line.emoji) push(line.emoji);
+  return ids;
+}
+
+function createEnvEmojiPrefabNode(prefabKey, mediaId) {
+  const layers = ENV_EMOJI_PREFABS[prefabKey] || [];
+  const animationType = ENV_EMOJI_PREFAB_ANIMATIONS[prefabKey] || "";
+  const render = ENV_EMOJI_PREFAB_RENDER[prefabKey] || {};
+  const renderScale = render.scale || 1;
+  const renderX = render.x || 0;
+  const renderY = render.y || 0;
+  const normalized = normalizeInlineImageId(mediaId);
+  const node = document.createElement("span");
+  node.className = "line-media-emoji is-prefab";
+  if (animationType) {
+    node.classList.add("is-animated", `anim-${animationType}`);
+  }
+  node.dataset.inlineImageId = normalized || prefabKey;
+  node.title = normalized && normalized !== prefabKey ? `${normalized} (${prefabKey})` : prefabKey;
+
+  const stage = document.createElement("span");
+  stage.className = "line-media-emoji-prefab-stage";
+  stage.style.width = `${ENV_EMOJI_PREFAB_STAGE.width}px`;
+  stage.style.height = `${ENV_EMOJI_PREFAB_STAGE.height}px`;
+
+  const bgGroup = document.createElement("span");
+  bgGroup.className = "line-media-emoji-prefab-group line-media-emoji-bg-group";
+  const bodyGroup = document.createElement("span");
+  bodyGroup.className = "line-media-emoji-prefab-group line-media-emoji-body-group";
+
+  let rendered = 0;
+  for (const layer of layers) {
+    const asset = STATE.inlineImageAssetByStem.get(layer.stem);
+    if (!asset) continue;
+
+    const src = exportedAssetHref(asset.rel);
+    const element = layer.color ? document.createElement("span") : document.createElement("img");
+    element.className = "line-media-emoji-prefab-layer";
+    if (layer.flipX) element.classList.add("is-flipped");
+
+    if (layer.color) {
+      element.classList.add("is-mask");
+      element.style.backgroundColor = layer.color;
+      element.style.webkitMaskImage = `url("${src}")`;
+      element.style.maskImage = `url("${src}")`;
+      element.setAttribute("aria-hidden", "true");
+    } else {
+      element.src = src;
+      element.alt = normalized || prefabKey;
+      element.loading = "lazy";
+    }
+
+    const layerX = layer.x * renderScale + renderX;
+    const layerY = layer.y * renderScale + renderY;
+    const layerW = layer.w * renderScale;
+    const layerH = layer.h * renderScale;
+    const left = ENV_EMOJI_PREFAB_STAGE.cx + layerX - (layer.px ?? 0.5) * layerW;
+    const top = ENV_EMOJI_PREFAB_STAGE.cy - layerY - (1 - (layer.py ?? 0.5)) * layerH;
+    element.style.left = `${left}px`;
+    element.style.top = `${top}px`;
+    element.style.width = `${layerW}px`;
+    element.style.height = `${layerH}px`;
+    (layer.stem === "emoji_newbg" ? bgGroup : bodyGroup).appendChild(element);
+    rendered += 1;
+  }
+
+  if (!rendered) {
+    node.classList.add("missing");
+    node.textContent = normalized || prefabKey;
+    return node;
+  }
+
+  if (bgGroup.childElementCount) stage.appendChild(bgGroup);
+  if (bodyGroup.childElementCount) stage.appendChild(bodyGroup);
+  node.appendChild(stage);
+  queueEnvEmojiAnimation(node);
+  return node;
+}
+
+function createLineMediaNode(mediaId) {
+  const normalized = normalizeInlineImageId(mediaId);
+  if (!normalized) return null;
+  const prefabKey = resolveEnvEmojiPrefabKey(normalized);
+  if (prefabKey) return createEnvEmojiPrefabNode(prefabKey, normalized);
+
+  const assets = resolveInlineImageAssetCandidates(normalized);
+  const node = document.createElement("span");
+  node.className = "line-media-emoji";
+  node.dataset.inlineImageId = normalized;
+  if (!assets.length) {
+    node.classList.add("missing");
+    node.textContent = normalized;
+    return node;
+  }
+
+  node.classList.add(assets.length > 1 ? "is-layered" : "has-preview");
+  node.title = normalized;
+  for (const asset of assets) {
+    const img = document.createElement("img");
+    img.className = "line-media-emoji-layer";
+    img.src = exportedAssetHref(asset.rel);
+    img.alt = normalized;
+    img.loading = "lazy";
+    node.appendChild(img);
+  }
+  return node;
+}
+
+function appendLineMedia(parent, line) {
+  const ids = lineMediaIds(line);
+  if (!ids.length) return;
+  const wrap = document.createElement("div");
+  wrap.className = "line-media";
+  for (const id of ids) {
+    const node = createLineMediaNode(id);
+    if (node) wrap.appendChild(node);
+  }
+  if (wrap.childElementCount) parent.appendChild(wrap);
+}
+
 function ensureInlineImageModal() {
   let modal = $("#inline-image-modal");
   if (modal) return modal;
@@ -5955,6 +6476,14 @@ function syncGenderVariantControl() {
   if (checkbox) checkbox.checked = active === "f";
   const label = $("#gender-variant-label");
   if (label) label.textContent = uiText("genderVariant").replace("{gender}", active.toUpperCase());
+  applyGenderVariantBodyClass(active);
+}
+
+function applyGenderVariantBodyClass(value) {
+  if (typeof document === "undefined" || !document.body) return;
+  const normalized = normalizeGenderVariant(value) || DEFAULT_GENDER_VARIANT;
+  document.body.classList.toggle("gender-active-f", normalized === "f");
+  document.body.classList.toggle("gender-active-m", normalized === "m");
 }
 
 function setGenderVariant(value, { persist = true, refresh = true } = {}) {
@@ -5962,6 +6491,7 @@ function setGenderVariant(value, { persist = true, refresh = true } = {}) {
   STATE.genderVariant = next;
   if (persist) persistGenderVariant(next);
   syncGenderVariantControl();
+  applyGenderVariantBodyClass(next);
   if (refresh) {
     const cached = STATE.selectedKey ? STATE.convCache.get(STATE.selectedKey) : null;
     if (cached) renderConv(cached);

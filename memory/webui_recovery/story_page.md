@@ -30,12 +30,47 @@ Inline image behavior:
 
 - SNS emoji images such as `sns_emoji_*` are treated as regular inline emoji.
   They do not open hover popovers or the full-screen modal.
+- EnvTalk emoji-only rows such as `envEmoji_common_adaptationwork` and
+  `envEmoji_common_dislike` render their line-level `emoji` fields from
+  the Unity emoji prefab aliases and recovered RectTransform layer data in
+  `story_media.json`. The WebUI also plays recovered `AnimationClip` enter
+  curves for the background alpha flicker and body squash/stretch when the
+  row scrolls into view, with hover/focus replay for verification.
+- All 14 envEmoji variants (`adaptationwork`, `dislike`, `empty`,
+  `exhaustion`, `happy`, `love`, `newworkhard`, `normal`, `sad`, `sigh`,
+  `surprise`, `think`, `thumbsup`, `unhappywork`) render via
+  `ENV_EMOJI_PREFABS` in `webui/app.js`, which holds reconstructed
+  RectTransform-driven layer geometry, sprite colors, and pivot data.
+  The frontend applies a small display normalization for standalone variants
+  such as `emoji_think` and `emoji_love` so the `envEmoji_common_*` set keeps a
+  consistent visual size.
+  Regenerate that table with
+  `python scripts/recover_envemoji_prefabs.py` whenever the asset map or
+  emoji prefab bundles change; the script runs `AnimeStudio.CLI` in both
+  Dump and JSON modes against `prefabs/emoji/*.prefab` bundles, walks the
+  GameObject tree to compose nested transforms, and rescales prefabs whose
+  Unity canvas is larger than the WebUI's 100×150 stage.
 - Non-emoji SNS media such as `sns_image_*`, `sns_sticker_*`,
   `deco_sns_tweet_decorate_*`, `bg_sns_tweet_decorate_*`, and related
   `cg_image_*` assets render with normal image proportions instead of the
   compact emoji treatment.
+- If an SNS/media line carries both an inline `<image=...>` token and matching
+  line-level `image`/`images` metadata, the inline token owns the visible
+  display and the line-level media strip dedupes that asset, including in raw
+  inline-tag display mode.
 - Hover popovers and the modal preview should stay inside their visible border
   and within the viewport.
+
+EnvTalk emoji runtime evidence:
+
+- `HeadLabelCtrl.ShowEnvTalk` loads `UIConst.EMOJI_PREFAB_PATH` for
+  `envTalkSingleData.emojiId`; IL2CPP supplies the head-label host types, but
+  the visible emoji composition comes from
+  `Assets/Beyond/DynamicAssets/Gameplay/UI/Prefabs/Emoji/%s.prefab`.
+- The extracted clips for `emoji_adaptationwork`, `emoji_newdislike`, and
+  `emoji_newworkhard` include matching `*in` / `*out` animations. Static Story
+  rows use the `*in` curves and hold the final frame; `*out` is reserved for a
+  future UI hide/removal event.
 
 Narrative video behavior:
 
@@ -43,13 +78,20 @@ Narrative video behavior:
   each distinct narrative video. Hidden duplicate files such as alternate
   sources, raw `.usm` exports, or inactive gender variants should not be
   counted as additional user-facing videos.
+- The builder writes `webui/data/lang/<code>/narrative_video_evidence.json`
+  with only timeline-backed video links. A row is proof only when the recovered
+  Timeline FMV clip points at a `BeyondFMVPlayableAsset` whose `fmvId` matches
+  the video; filename-only matches stay out of this evidence file.
+- Filename-only narrative video matches are standalone `video` entries grouped
+  by mission. A dialog or cutscene keeps an inline video only when the builder
+  has stronger binding evidence, such as recovered Timeline/playable data.
 
 ## Builder
 
 Primary command:
 
 ```bat
-python scripts\webui\build_story.py --languages CN --default-language CN
+python scripts\story_builder\build.py --languages CN --default-language CN
 ```
 
 `export.bat` runs this command after export freshness verification,
@@ -58,7 +100,7 @@ DialogIdTable recovery, story source-link rebuilding, and the Updates feed.
 For extra language bundles:
 
 ```bat
-python scripts\webui\build_story.py --languages CN EN JP --default-language CN
+python scripts\story_builder\build.py --languages CN EN JP --default-language CN
 ```
 
 ## Inputs
@@ -96,11 +138,11 @@ export_full/recovered/AnimeStudio-cli/*/json_by_type/MonoBehaviour
 Story order helpers imported by the builder:
 
 ```text
-scripts/recover_dialog_id_registry.py
-scripts/recover_timeline_line_orders.py
-scripts/recover_mission_timelines.py
+scripts/story_builder/dialog_registry.py
+scripts/story_builder/timeline_recovery.py
+scripts/story_builder/mission_recovery.py
 scripts/scene_order_gap_shared.py
-scripts/webui/build_story_reports.py
+scripts/story_builder/reports.py
 ```
 
 Prebuilt evidence inputs used by the builder:
@@ -166,6 +208,22 @@ value that exactly matches the group's option indices. The first recovered case
 is `dlg_c28m3_10` group 1; most remaining adjacent response layouts still carry
 only default `0` values and stay marked as inferred.
 
+The 2026-05-14 final sweep confirms only three scenes in the CN export carry
+any non-zero `clipOptionIndex` on trunk lines (`dlg_c28m1_2` 2/16, `dlg_c28m3_10`
+4/25, `dlg_c28m3_23` 2/11), and none cover all responses in a group, so the
+exact-match rule already captures every source-backed case. The remaining 14
+`inferredOptionResponse` scenes (`dlg_c13m2_20`, `dlg_c17m2_1`, `dlg_c17m3_17`,
+`dlg_c27m5_4`, `dlg_c28m3_23`, `dlg_e1m10_5`, `dlg_e1m10_7`, `dlg_e2m5_2`,
+`dlg_e4m1_4`, `dlg_e4m1d5_6`, `dlg_e6m1_10`, `dlg_e6m3_14`, `dlg_e6m4_14`,
+`dlg_e9m2_14`) all have zero Runtime Jump clips, blank `trunkId`/`dialogId` on
+their DialogOptionPlayableAsset entries, and only a runtime `logicId` hook with
+no matching lookup table in the export — the per-option response branch is not
+in the source data. Of the 19 `inferredOptionLayout` `noTreeReference` scenes,
+18 have no dialog timeline data at all and the lone exception (`dlg_e2m6_11`)
+hosts a cross-scene option clip pointing at `dlg_e2m6_19`'s option ids, which
+the builder already labels with `position=pre`. No further source signals are
+available; do not promote any of these to source-backed.
+
 The `inferred_option_anchors_CN.md` report lists ~97 scenes where no
 DialogTree / scene-link / dialog Timeline source names the option group's
 anchor and the builder falls back to `lineNumber` / `sparseGap` / `lastLine`
@@ -198,7 +256,7 @@ The 2026-05-13 CN mission timeline catalog has `855` such terminals across
 After rebuilding:
 
 ```bat
-python scripts\webui\build_story.py --languages CN --default-language CN
+python scripts\story_builder\build.py --languages CN --default-language CN
 python serve.py
 ```
 

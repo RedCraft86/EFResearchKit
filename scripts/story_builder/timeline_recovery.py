@@ -1,6 +1,7 @@
 """Recover dialog line order from Unity Timeline assets in one pass.
 
-This script is the canonical Timeline recovery pipeline for the webui build:
+This module is the canonical Timeline recovery pipeline for the WebUI Story
+build:
 
 1. Discover AnimeStudio CLI AssetMaps under export_full/recovered/AnimeStudio-cli.
 2. Select dialog Timeline asset folders in a general way (`dlgtl_*`, `f_dlgtl_*`,
@@ -13,7 +14,7 @@ This script is the canonical Timeline recovery pipeline for the webui build:
 The main output is:
   export_full/recovered/AnimeStudio-cli/timeline_line_orders.json
 
-`scripts/webui/build_story.py` imports that JSON directly when present, using
+`scripts/story_builder/build.py` imports that JSON directly when present, using
 line clips for conversation order and option clips/bindings for authored choice
 placement.
 """
@@ -32,7 +33,7 @@ from pathlib import Path
 from typing import Callable
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 EXPORT_ROOT = ROOT / "export_full"
 DEFAULT_RECOVERY_ROOT = EXPORT_ROOT / "recovered" / "AnimeStudio-cli"
 DEFAULT_EXTRACT_DIR = DEFAULT_RECOVERY_ROOT / "timeline_extract"
@@ -45,6 +46,14 @@ TIMELINE_NO_SUB_NAME_RE = re.compile(r"^(?P<timeline>(?:[fm]_)?dlgtl_.+_\d+)(?:_
 LINE_ID_RE = re.compile(r"^.+_\d+(?:_\d+)?$")
 IGNORED_DISPLAY_PREFIXES = ("option_", "au_", "audio_", "bgm_", "se_")
 OPTION_ID_PREFIX = "option_dlg_"
+META_PATH_ID_RE = re.compile(r'"pathId"\s*:\s*(-?\d+)')
+META_SOURCE_FILE_RE = re.compile(r'"sourceFile"\s*:\s*"((?:\\.|[^"\\])*)"')
+META_NAME_RE = re.compile(r'"name"\s*:\s*"((?:\\.|[^"\\])*)"')
+TOP_LEVEL_NAME_RE = re.compile(r'(?m)^\s*"m_Name"\s*:\s*"((?:\\.|[^"\\])*)"')
+TOP_LEVEL_PARENT_RE = re.compile(
+    r'(?ms)^\s*"m_Parent"\s*:\s*\{\s*"m_FileID"\s*:\s*-?\d+\s*,\s*"m_PathID"\s*:\s*(-?\d+)'
+)
+TOP_LEVEL_TRACKS_RE = re.compile(r'(?m)^\s*"m_Tracks"\s*:')
 
 
 @dataclass
@@ -153,6 +162,54 @@ def load_json(path: Path):
     except (OSError, json.JSONDecodeError) as exc:
         log(f"skip {rel_path(path)}: {exc}")
         return None
+
+
+def decode_json_string_fragment(value: str) -> str:
+    try:
+        decoded = json.loads(f'"{value}"')
+    except json.JSONDecodeError:
+        return value
+    return decoded if isinstance(decoded, str) else value
+
+
+def extract_monobehaviour_metadata(path: Path) -> dict | None:
+    """Read just enough of a MonoBehaviour JSON file to build a lazy graph index."""
+    try:
+        text = path.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError as exc:
+        log(f"skip {rel_path(path)}: {exc}")
+        return None
+
+    path_match = META_PATH_ID_RE.search(text)
+    source_match = META_SOURCE_FILE_RE.search(text)
+    if not path_match or not source_match:
+        return None
+    path_id = as_path_id(path_match.group(1))
+    source_file = decode_json_string_fragment(source_match.group(1))
+    if path_id is None or not source_file:
+        return None
+
+    name_match = TOP_LEVEL_NAME_RE.search(text) or META_NAME_RE.search(text)
+    name = decode_json_string_fragment(name_match.group(1)) if name_match else path.stem
+    parent_match = TOP_LEVEL_PARENT_RE.search(text)
+    parent_id = as_path_id(parent_match.group(1)) if parent_match else None
+    return {
+        "pathId": path_id,
+        "sourceFile": source_file,
+        "name": name,
+        "parentId": parent_id,
+        "hasTracks": bool(TOP_LEVEL_TRACKS_RE.search(text)),
+    }
+
+
+def record_payload(record: dict) -> dict:
+    payload = record.get("payload")
+    if isinstance(payload, dict):
+        return payload
+    loaded = load_json(record["path"])
+    payload = loaded if isinstance(loaded, dict) else {}
+    record["payload"] = payload
+    return payload
 
 
 def load_entries(map_path: Path) -> list[dict]:
@@ -549,31 +606,30 @@ def load_monobehaviour_records(
     timeline_roots: dict[str, list[dict]] = defaultdict(list)
 
     for path in sorted(mono_dir.glob("*.json")):
-        payload = load_json(path)
-        if not isinstance(payload, dict):
+        meta = extract_monobehaviour_metadata(path)
+        if not meta:
             continue
-        meta = payload.get("$animestudio") if isinstance(payload.get("$animestudio"), dict) else {}
         path_id = as_path_id(meta.get("pathId"))
         source_file = str(meta.get("sourceFile") or "")
         if path_id is None or not source_file:
             continue
-        name = str(payload.get("m_Name") or payload.get("Name") or path.stem)
+        name = str(meta.get("name") or path.stem)
         record = {
             "key": (source_file, path_id),
             "sourceFile": source_file,
             "pathId": path_id,
             "path": path,
             "name": name,
-            "payload": payload,
+            "payload": None,
         }
         records_by_key.setdefault(record["key"], record)
 
-        parent_id = ref_path_id(payload.get("m_Parent"))
+        parent_id = as_path_id(meta.get("parentId"))
         if parent_id is not None:
             children_by_parent[(source_file, parent_id)].append(record)
 
         timeline = timeline_name_from_record_name(name)
-        if timeline and isinstance(payload.get("m_Tracks"), list):
+        if timeline and meta.get("hasTracks"):
             timeline_roots[timeline].append(record)
 
     return records_by_key, children_by_parent, timeline_roots
@@ -599,7 +655,7 @@ def walk_track_tree(
         out.append(record)
 
         source_file, _path_id = key
-        for child_id in iter_ref_ids(record["payload"]):
+        for child_id in iter_ref_ids(record_payload(record)):
             queue.append((source_file, child_id))
         for child in children_by_parent.get(key, []):
             queue.append(child["key"])
@@ -626,7 +682,7 @@ def clip_line_identity(
     asset = clip_asset_record(record, clip, records_by_key)
     asset_trunk_id = ""
     if asset:
-        asset_trunk_id = str(asset.get("payload", {}).get("_trunkId") or "").strip()
+        asset_trunk_id = str(record_payload(asset).get("_trunkId") or "").strip()
         if not looks_like_dialog_line_id(asset_trunk_id):
             asset_trunk_id = ""
 
@@ -672,7 +728,7 @@ def line_clip_duration_priority(row: dict) -> int:
 
 
 def binding_option_records(asset: dict, records_by_key: dict[tuple[str, int], dict]) -> list[dict]:
-    payload = asset.get("payload") or {}
+    payload = record_payload(asset)
     binding = payload.get("bindingOptionAssets")
     if not isinstance(binding, dict):
         return []
@@ -726,12 +782,12 @@ def option_clip_rows(
                 row["anchorLineId"] = anchor_line_id
             rows.append(row)
 
-    add_entries(asset, option_entries_from_payload(asset.get("payload") or {}), "timelineClip")
+    add_entries(asset, option_entries_from_payload(record_payload(asset)), "timelineClip")
     if line_id:
         for option_asset in binding_option_records(asset, records_by_key):
             add_entries(
                 option_asset,
-                option_entries_from_payload(option_asset.get("payload") or {}),
+                option_entries_from_payload(record_payload(option_asset)),
                 "trunkBinding",
                 line_id,
             )
@@ -747,7 +803,7 @@ def runtime_jump_clip_rows(
     for record in records:
         if not str(record.get("name") or "").startswith("Runtime Jump Track"):
             continue
-        payload = record.get("payload") or {}
+        payload = record_payload(record)
         clips = payload.get("m_Clips")
         if not isinstance(clips, list):
             continue
@@ -765,7 +821,7 @@ def runtime_jump_clip_rows(
             if duration <= 0.0:
                 continue
             asset = clip_asset_record(record, clip, records_by_key)
-            asset_payload = asset.get("payload") if asset else {}
+            asset_payload = record_payload(asset) if asset else {}
             row = {
                 "kind": "runtimeJump",
                 "optionIndex": option_index,
@@ -981,6 +1037,7 @@ def _build_directional_runtime_jump_candidate_routes(
 
         skipped_line_ids: list[str] = []
         reverse_range_line_ids: list[str] = []
+        out_of_reverse_line_ids: list[str] = []
         path_line_ids: list[str] = []
         for line in scene_lines:
             line_id = str(line.get("id") or "")
@@ -993,12 +1050,22 @@ def _build_directional_runtime_jump_candidate_routes(
             if in_skip:
                 skipped_line_ids.append(line_id)
                 continue
-            path_line_ids.append(line_id)
-            if any(
+            in_reverse = any(
                 _line_is_in_time_range(line, as_float(reverse.get("start")), as_float(reverse.get("end")))
                 for reverse in reverse_ranges
-            ):
+            )
+            if reverse_ranges:
+                # When the option has a reverse jump, the runtime loops within
+                # that range — only lines inside the range play. Lines outside
+                # the reverse range belong to other options' branches or to
+                # shared content reached after this slot.
+                if not in_reverse:
+                    out_of_reverse_line_ids.append(line_id)
+                    continue
+                path_line_ids.append(line_id)
                 reverse_range_line_ids.append(line_id)
+            else:
+                path_line_ids.append(line_id)
 
         # A forward-only option whose skip range covers every scene line in the
         # post-slot window terminates the slot — the runtime jumps past every
@@ -1010,11 +1077,6 @@ def _build_directional_runtime_jump_candidate_routes(
             if skip_ranges and not reverse_ranges:
                 terminates_slot = True
             else:
-                continue
-        elif reverse_ranges:
-            if not reverse_range_line_ids:
-                continue
-            if path_line_ids[0] != reverse_range_line_ids[0]:
                 continue
 
         route = {
@@ -1169,6 +1231,28 @@ def build_option_routes(
         if not group_jump_clips:
             continue
 
+        def build_single_option_boundary_routes() -> dict[str, dict]:
+            if not next_slot or len(next_slot["optionRows"]) != 1:
+                return {}
+            extended_jump_clips = [
+                clip
+                for clip in jump_clips
+                if clip.get("optionIndex") in option_index_set
+                and (not slot["sourceFiles"] or str(clip.get("sourceFile") or "") in slot["sourceFiles"])
+                and _clip_in_option_route_window(clip, slot, next_slot["end"])
+            ]
+            if not extended_jump_clips:
+                return {}
+            extended_route_end = max(as_float(clip.get("end")) for clip in extended_jump_clips)
+            return _build_runtime_jump_candidate_routes(
+                slot,
+                extended_route_end,
+                line_rows,
+                extended_jump_clips,
+                next_slot,
+                source="runtimeJumpTrackSingleOptionBoundary",
+            )
+
         candidate_routes = _build_runtime_jump_candidate_routes(
             slot,
             route_end,
@@ -1176,6 +1260,11 @@ def build_option_routes(
             group_jump_clips,
             next_slot,
         )
+        if candidate_routes:
+            routes.update(candidate_routes)
+            continue
+
+        candidate_routes = build_single_option_boundary_routes()
         if candidate_routes:
             routes.update(candidate_routes)
             continue
@@ -1191,29 +1280,6 @@ def build_option_routes(
             routes.update(candidate_routes)
             continue
 
-        if not next_slot or len(next_slot["optionRows"]) != 1:
-            continue
-        extended_jump_clips = [
-            clip
-            for clip in jump_clips
-            if clip.get("optionIndex") in option_index_set
-            and (not slot["sourceFiles"] or str(clip.get("sourceFile") or "") in slot["sourceFiles"])
-            and _clip_in_option_route_window(clip, slot, next_slot["end"])
-        ]
-        if not extended_jump_clips:
-            continue
-        extended_route_end = max(as_float(clip.get("end")) for clip in extended_jump_clips)
-        candidate_routes = _build_runtime_jump_candidate_routes(
-            slot,
-            extended_route_end,
-            line_rows,
-            extended_jump_clips,
-            next_slot,
-            source="runtimeJumpTrackSingleOptionBoundary",
-        )
-        if candidate_routes:
-            routes.update(candidate_routes)
-
     return dict(sorted(routes.items()))
 
 
@@ -1225,7 +1291,7 @@ def collect_timeline_signals(
     raw_lines: list[dict] = []
     raw_options: list[dict] = []
     for record in records:
-        payload = record["payload"]
+        payload = record_payload(record)
         clips = payload.get("m_Clips")
         if not isinstance(clips, list):
             continue
@@ -1563,7 +1629,7 @@ def collapse_by_dialog_key(entries: list[dict]) -> dict:
 
     payload: dict = {
         "_meta": {
-            "generatedBy": "scripts/recover_timeline_line_orders.py",
+            "generatedBy": "scripts/story_builder/timeline_recovery.py",
             "timelineCount": len(entries),
             "dialogKeyCount": len(grouped),
             "optionTimelineCount": sum(1 for entry in entries if entry.get("optionIds")),
@@ -1646,7 +1712,7 @@ def merge_timeline_payloads(base_payload: dict, update_payload: dict) -> dict:
 
     merged: dict = {
         "_meta": {
-            "generatedBy": "scripts/recover_timeline_line_orders.py",
+            "generatedBy": "scripts/story_builder/timeline_recovery.py",
             "merged": True,
         }
     }
@@ -1870,7 +1936,7 @@ def recover_timeline_line_orders(config: TimelineRecoveryConfig | None = None) -
         log(f"wrote {rel_path(order_out)} ({meta['timelineCount']} timeline(s), {meta['dialogKeyCount']} dialog key(s))")
 
     summary = {
-        "generatedBy": "scripts/recover_timeline_line_orders.py",
+        "generatedBy": "scripts/story_builder/timeline_recovery.py",
         "generatedAt": int(time.time()),
         "exportRoot": rel_path(export_root),
         "extractDir": rel_path(extract_dir),

@@ -16,9 +16,15 @@ Move observations, conclusions, older exploration notes, and status snapshots to
 .\export.bat
 .\export.bat --init-build
 .\export.bat --fast-assets
+.\export.bat --skip-export-full
 python serve.py
 python serve.py 9000
 ```
+
+Before starting a WebUI server, check whether the default
+`http://127.0.0.1:8765/` server is already running. Reuse the existing default
+server instead of starting another `serve.py` process on `8765` or a custom
+port, unless the user explicitly asks for a second server.
 
 `export.bat` is the canonical WebUI refresh. It exports only data needed by the
 browser, skips raw VFS and source inventory, builds the Updates feed, builds CN
@@ -29,27 +35,30 @@ Use `--init-build` for first-time/baseline-only builds where the Updates feed
 should be baselined instead of reporting changes.
 Use `--fast-assets` for local refreshes that can reuse existing asset indexes
 and skip demo bundle zip generation.
+Use `--skip-export-full` for WebUI rebuilds that should reuse the existing
+`export_full/`; the wrapper still verifies freshness before long builders run.
 
 Useful direct commands:
 
 ```bat
-python scripts\webui\build_updates.py
-python scripts\webui\build_updates.py --baseline-only
-python scripts\webui\build_updates.py --skip-asset-updates
-python scripts\webui\build_updates.py --reset-baseline
-python scripts\webui\verify_export_freshness.py
-python scripts\webui\build_story_source_links.py
-python scripts\webui\build_story.py --languages CN --default-language CN
-python scripts\webui\build_story.py --languages CN EN JP --default-language CN
-python scripts\webui\build_assets.py
-python scripts\webui\build_assets.py --fast
-python scripts\webui\package_webui.py
+python scripts\build_updates.py
+python scripts\build_updates.py --baseline-only
+python scripts\build_updates.py --skip-asset-updates
+python scripts\build_updates.py --reset-baseline
+python scripts\verify_export_freshness.py
+python scripts\story_builder\source_links.py
+python scripts\story_builder\build.py --languages CN --default-language CN
+python scripts\story_builder\build.py --languages CN EN JP --default-language CN
+python scripts\build_assets.py
+python scripts\build_assets.py --fast
+python scripts\package_webui.py
 ```
 
-`scripts/webui/build_story.py` currently takes about 3 minutes for the default
-CN lean build on this checkout. Multi-language builds or forced timeline
-recovery can take longer; when Codex runs this command directly, use a longer
-shell timeout, such as 10-15 minutes (`timeout_ms` of at least `900000`).
+`scripts/story_builder/build.py` currently takes about 3 minutes for the
+default CN lean build on this checkout. Multi-language builds or forced
+timeline recovery can take longer; when Codex runs this command directly, use a
+longer shell timeout, such as 10-15 minutes (`timeout_ms` of at least
+`900000`).
 
 Unity character recovery lab:
 
@@ -102,7 +111,7 @@ disposable experiments in `scratch/` or `tmp/`.
 
 The WebUI Updates tab must report only original installed game-data changes.
 
-`scripts/webui/build_updates.py` tracks:
+`scripts/build_updates.py` tracks:
 
 ```text
 D:\Program Files\Endfield Game\Endfield_Data
@@ -121,10 +130,18 @@ when the original `Endfield_Data` tracker reports a real game-data change. When
 there is no game-data change, exported asset differences should be treated as
 local rebuild noise and baselined silently.
 
+Zero-change reruns should not blank the Updates page. `build_updates.py`
+preserves the existing non-empty feed, or restores the latest non-empty feed
+snapshot from `.game-data-tracker/history/update-feed-*.json`. If no feed
+snapshot exists, it can fall back to the latest non-empty raw tracker report,
+which recovers game-data entries but not already-overwritten asset diffs. Use
+`--baseline-only` or `--reset-baseline` only when an empty baseline is
+intentional.
+
 ## Repo Rules
 
 - Prefer the layout rooted at `serve.py`, `export.bat`, `webui/`,
-  `scripts/webui/`, and `unity_endfield_graph_shader_lab/`.
+  `scripts/`, and `unity_endfield_graph_shader_lab/`.
 - Keep `README.md` focused on active WebUI and Unity character recovery usage.
 - Keep observations, conclusions, investigation notes, and status snapshots in
   `memory/`.
@@ -152,20 +169,25 @@ WebUI:
 
 - `scripts/export_full_from_game.py`
 - `scripts/track_export_changes.py`
-- `scripts/recover_dialog_id_registry.py`
-- `scripts/webui/verify_export_freshness.py`
-- `scripts/webui/build_updates.py`
-- `scripts/webui/build_story_source_links.py`
-- `scripts/webui/build_story.py`
-- `scripts/webui/build_assets.py`
-- `scripts/webui/package_webui.py`
-- supporting files in `scripts/webui/`
+- `scripts/story_builder/dialog_registry.py`
+- `scripts/story_builder/video_bindings.py`
+- `scripts/verify_export_freshness.py`
+- `scripts/build_updates.py`
+- `scripts/story_builder/source_links.py`
+- `scripts/story_builder/build.py`
+- `scripts/build_assets.py`
+- `scripts/package_webui.py`
+- supporting files in `scripts/` and `scripts/asset_builder/`
 
 Story reconstruction helpers used by WebUI builders:
 
-- `scripts/recover_timeline_line_orders.py`
-- `scripts/recover_mission_timelines.py`
+- `scripts/story_builder/timeline_recovery.py`
+- `scripts/story_builder/mission_recovery.py`
 - `scripts/scene_order_gap_shared.py`
+
+Story recovery audit/refresh tools, not run by `export.bat`:
+
+- `scripts/story_recovery/`
 
 Unity character recovery lab:
 

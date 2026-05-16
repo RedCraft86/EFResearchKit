@@ -61,12 +61,13 @@ image proportions with bounded hover/modal previews.
 `export.bat` is the normal browser-data refresh. It runs:
 
 - `scripts/export_full_from_game.py --skip-raw-vfs --skip-source-inventory`
-- `scripts/webui/verify_export_freshness.py`
-- `scripts/recover_dialog_id_registry.py --quiet`
-- `scripts/webui/build_story_source_links.py`
-- `scripts/webui/build_updates.py`
-- `scripts/webui/build_story.py --languages CN --default-language CN`
-- `scripts/webui/build_assets.py`
+- `scripts/verify_export_freshness.py`
+- `scripts/story_builder/dialog_registry.py --quiet`
+- `scripts/story_builder/video_bindings.py`
+- `scripts/story_builder/source_links.py`
+- `scripts/build_updates.py`
+- `scripts/story_builder/build.py --languages CN --default-language CN`
+- `scripts/build_assets.py`
 
 For an initial build where there is no useful update history yet:
 
@@ -81,16 +82,23 @@ skip demo bundle zip generation:
 .\export.bat --fast-assets
 ```
 
+For a WebUI rebuild from an existing export, skip the main extraction step while
+still checking that `export_full/` matches the installed game data:
+
+```bat
+.\export.bat --skip-export-full
+```
+
 CN is exported by default. To build more languages after the export:
 
 ```bat
-python scripts\webui\build_story.py --languages CN EN JP --default-language CN
+python scripts\story_builder\build.py --languages CN EN JP --default-language CN
 ```
 
 Package a shareable browser build with:
 
 ```bat
-python scripts\webui\package_webui.py
+python scripts\package_webui.py
 ```
 
 or:
@@ -99,12 +107,17 @@ or:
 .\package_webui.bat
 ```
 
+Packaging writes two zips by default: a smaller story zip with the WebUI,
+story/reference text data, and emoji images, plus a companion assets zip with
+larger story images and videos. Extract the story zip first, then extract the
+assets zip into the same directory when those media files are needed.
+
 ## Update Tracking
 
 The Updates tab is built by:
 
 ```bat
-python scripts\webui\build_updates.py
+python scripts\build_updates.py
 ```
 
 It tracks only the original installed data tree, defaulting to:
@@ -127,10 +140,17 @@ asset diffs are only reported when the `Endfield_Data` tracker sees a real
 source-data change; export or WebUI rebuild noise without a source-data change
 is silently absorbed into the asset baseline.
 
+If the tracker is run again after a game update has already been recorded,
+`build_updates.py` preserves the last non-empty feed instead of overwriting the
+Updates page with a zero-change report. It can also restore that feed from
+`.game-data-tracker/history/` if the current `latest.json` was already blanked.
+Full non-empty feed snapshots are also kept there as `update-feed-*.json`, so
+future recovery keeps asset-level entries as well as game-data entries.
+
 Write an empty baseline feed for a first-time or baseline-only build:
 
 ```bat
-python scripts\webui\build_updates.py --baseline-only
+python scripts\build_updates.py --baseline-only
 ```
 
 If you still want game-data changes but not the exported asset diff, use
@@ -140,7 +160,7 @@ Reset the baseline only when you intentionally want to treat the current
 installed game files as the new "no changes yet" state:
 
 ```bat
-python scripts\webui\build_updates.py --reset-baseline
+python scripts\build_updates.py --reset-baseline
 ```
 
 The WebUI feed is written to `webui/data/updates/latest.json`.
@@ -152,12 +172,15 @@ The WebUI feed is written to `webui/data/updates/latest.json`.
 check that guard directly:
 
 ```bat
-python scripts\webui\verify_export_freshness.py
+python scripts\verify_export_freshness.py
 ```
 
 If it reports stale source roots, rerun `.\export.bat` so future game-data
-changes are re-extracted before `build_story.py` or asset indexing reads
+changes are re-extracted before the Story builder or asset indexing reads
 `export_full/`.
+
+`.\export.bat --skip-export-full` uses this same guard before it rebuilds the
+WebUI from existing `export_full/` data.
 
 ## What The Browser Reads
 
@@ -242,7 +265,7 @@ matching docs and intentional tracking.
 ## Active Layout
 
 - `webui/`: static app and generated browser data.
-- `scripts/webui/`: WebUI builders and packaging tools.
+- `scripts/`: WebUI builders and packaging tools.
 - `scripts/`: WebUI/export helpers.
 - `unity_endfield_graph_shader_lab/`: Unity character recovery lab project.
 - `export_full/`: generated data exported from the installed client.

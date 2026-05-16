@@ -1,6 +1,6 @@
 ---
 name: endfield-webui-workflow
-description: Use this skill for the static WebUI workflow: refresh/export, local serving, packaging, Updates tab checks, asset/index refresh, and Story/Reference frontend behavior such as inline SNS image rendering.
+description: "Use this skill for the static WebUI workflow: refresh/export, local serving, packaging, Updates tab checks, asset/index refresh, and Story/Reference frontend behavior such as inline SNS image rendering."
 ---
 
 # Endfield WebUI Workflow
@@ -24,19 +24,22 @@ From the repo root:
 .\export.bat
 .\export.bat --init-build
 .\export.bat --fast-assets
+.\export.bat --skip-export-full
 python serve.py
 python serve.py 9000
-python scripts\webui\package_webui.py
+python scripts\package_webui.py
 ```
 
 Use `export.bat` as the default browser-data refresh path. It exports only the
 active WebUI inputs, verifies export freshness, rebuilds DialogIdTable and
 story source-link evidence, rebuilds the Updates feed, rebuilds CN
 story/reference data by default, and refreshes the asset index.
+Use `--skip-export-full` when you want to rebuild WebUI data from an existing
+`export_full/`; the wrapper still verifies freshness before long builders run.
 
-When running `python scripts\webui\build_story.py` directly, use a longer
-timeout. The default CN lean build currently takes about 3 minutes on this
-checkout, while multi-language builds or forced timeline recovery can take
+When running `python scripts\story_builder\build.py` directly, use a
+longer timeout. The default CN lean build currently takes about 3 minutes on
+this checkout, while multi-language builds or forced timeline recovery can take
 longer:
 
 ```text
@@ -45,18 +48,17 @@ timeout_ms >= 900000
 
 ## Recovery Investigation Commands
 
-Use these for story recovery quality work before changing `build_story.py`
-rules:
+Use these for story recovery quality work before changing Story builder rules:
 
 ```bat
 python tools\endfield_source_graph.py story dlg_c17m1_5 --limit-lines 8
 python tools\endfield_source_graph.py issues --code inferredOptionResponse --limit 20
-python scripts\webui\build_runtime_jump_option_route_audit.py --language CN --story dlg_e1m1_5 --group 3
-python scripts\webui\build_option_playable_semantics_audit.py --language CN --only-interesting
-python scripts\webui\build_option_logic_id_audit.py --language CN
-python scripts\webui\build_dialog_tree_option_route_audit.py --language CN
-python scripts\webui\build_timeline_option_flow_audit.py --language CN
-python scripts\webui\build_timeline_binding_audit.py --language CN --only-interesting
+python scripts\story_recovery\build_runtime_jump_option_route_audit.py --language CN --story dlg_e1m1_5 --group 3
+python scripts\story_recovery\build_option_playable_semantics_audit.py --language CN --only-interesting
+python scripts\story_recovery\build_option_logic_id_audit.py --language CN
+python scripts\story_recovery\build_dialog_tree_option_route_audit.py --language CN
+python scripts\story_recovery\build_timeline_option_flow_audit.py --language CN
+python scripts\story_recovery\build_timeline_binding_audit.py --language CN --only-interesting
 python tools\endfield-il2cpp\catalog_option_flow_metadata.py --cache-metadata
 python tools\endfield-il2cpp\map_body_targets_to_gameassembly.py
 ```
