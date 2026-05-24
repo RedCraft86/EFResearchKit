@@ -49,6 +49,11 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+if str(REPO / "scripts") not in sys.path:
+    sys.path.insert(0, str(REPO / "scripts"))
+
+from common import path_id_export_base_stem
+
 ASSET_MAP = REPO / "export_full" / "recovered" / "AnimeStudio-cli" / "StreamingAssets" / "maps" / "endfield_streamingassets_assets.json"
 BUNDLE_DIR = REPO / "export_full" / "raw_vfs" / "StreamingAssets" / "files" / "7064D8E2" / "Data" / "Bundles" / "Windows" / "main"
 ASSETBUNDLE_JSON_DIR = REPO / "export_full" / "recovered" / "AnimeStudio-cli" / "StreamingAssets" / "json_by_type" / "AssetBundle"
@@ -98,7 +103,8 @@ def find_bundles_for_prefabs(prefab_names):
     targets = set(prefab_names)
     found = {}
     for path in ASSETBUNDLE_JSON_DIR.iterdir():
-        if not path.name.endswith(".ab.json"):
+        stem = path_id_export_base_stem(path.stem)
+        if not stem or not stem.endswith(".ab"):
             continue
         try:
             data = path.read_bytes()
@@ -110,7 +116,7 @@ def find_bundles_for_prefabs(prefab_names):
             name = m.group(1).decode()
             if name not in targets or name in found:
                 continue
-            found[name] = path.stem  # main_xxx.ab.json → main_xxx.ab (stem strips one .json)
+            found[name] = stem
             if len(found) == len(targets):
                 return found
     return found
@@ -246,6 +252,12 @@ def parse_bundle(bundle_dump_dir: Path, bundle_json_dir: Path):
     json_cab = cab_dir(bundle_json_dir)
 
     gos = []
+    # AnimeStudio CLI emits JSON and Dump for the same GameObject with the
+    # same filename stem (e.g. emoji_love.json / emoji_love.txt and the
+    # patched dedup variant emoji_love_pXXX.json / emoji_love_pXXX.txt).
+    # Several emoji prefabs ship two distinct GameObjects with the same
+    # m_Name, so the stem is what differentiates them — not m_Name.
+    go_pid_by_stem: dict[str, int] = {}
     for path in json_cab.iterdir():
         if path.suffix != ".json":
             continue
@@ -264,19 +276,22 @@ def parse_bundle(bundle_dump_dir: Path, bundle_json_dir: Path):
             "comp_pids": comp_pids,
             "is_active": True,  # filled in by Dump pass below
         })
+        if go_pid:
+            go_pid_by_stem[path.stem] = go_pid
 
     rts_by_go_pid = {}
     images_by_go_pid = {}
     # Use Dump output to recover RT UI fields + GameObject m_IsActive (the JSON
     # exporter omits both).
-    active_by_name: dict[str, bool] = {}
+    active_by_go_pid: dict[int, bool] = {}
     for path in dump_cab.iterdir():
         if path.suffix != ".txt":
             continue
         type_name, body = parse_dump_text(path.read_text(encoding="utf-8"))
         if type_name == "GameObject":
-            name = body.get("m_Name") or ""
-            active_by_name[name] = bool(body.get("m_IsActive", True))
+            go_pid = go_pid_by_stem.get(path.stem)
+            if go_pid is not None:
+                active_by_go_pid[go_pid] = bool(body.get("m_IsActive", True))
         elif type_name == "RectTransform":
             pid = (body.get("m_GameObject") or {}).get("m_PathID")
             father = (body.get("m_Father") or {}).get("m_PathID", 0) or 0
@@ -290,7 +305,7 @@ def parse_bundle(bundle_dump_dir: Path, bundle_json_dir: Path):
                     images_by_go_pid.setdefault(int(pid), []).append(body)
 
     for g in gos:
-        g["is_active"] = active_by_name.get(g["name"], True)
+        g["is_active"] = active_by_go_pid.get(g["go_pid"], True)
 
     comp_to_go = {c: g for g in gos for c in g["comp_pids"]}
     parent_to_children: dict[int, list[int]] = {}

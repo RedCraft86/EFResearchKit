@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
+import struct
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -31,6 +33,37 @@ DEFAULT_TIMELINE_ORDERS = EXPORT_ROOT / "recovered" / "AnimeStudio-cli" / "timel
 DEFAULT_GENERATED_MISSION_DIR = ROOT / "webui" / "data" / "lang" / "CN" / "mission"
 DEFAULT_OUT_JSON = ROOT / "reports" / "mission_timeline_recovery_CN.json"
 DEFAULT_OUT_MD = ROOT / "reports" / "mission_timeline_recovery_CN.md"
+
+# Mission ID prefixes the WebUI builders treat as authored story missions.
+# Tutorial / debug buckets (db, dm, hidden, map*) are excluded.
+TARGET_MISSION_PREFIXES = ("e", "a", "gm", "c", "sm", "f", "m")
+
+# Edge-kind strength classification, mirroring scripts/story_builder/language_bundle.py.
+# Strong: authored/decoded chronological evidence.
+# Weak: file/byte-offset proximity, table-collection order, or share-only hints.
+STRONG_ORDER_EDGE_KINDS = frozenset({
+    "questSequence",
+    "questPrev",
+    "questFailGuard",
+    "authoredDirect",
+    "authoredMenu",
+    "levelscriptSceneChain",
+    "radioContinuation",
+})
+WEAK_ORDER_EDGE_KINDS = frozenset({
+    "levelscriptChain",
+    "levelscriptFileOrder",
+    "levelscriptCrossFileOrder",
+    "levelDataQuestRef",
+    "prtsCollectionOrder",
+    "timelineShare",
+})
+
+LEVELSCRIPT_SPATIAL_XZ_THRESHOLD = 25.0
+LEVELSCRIPT_SPATIAL_Y_THRESHOLD = 12.0
+LEVELSCRIPT_SPATIAL_MAX_ABS = 200000.0
+LEVELSCRIPT_SPATIAL_MAX_FILE_BYTES = 2_000_000
+LEVELSCRIPT_SPATIAL_MAX_VECTORS = 25000
 
 EVIDENCE_POLICY = {
     "uses": [
@@ -103,6 +136,7 @@ TRACKING_COPY_FIELDS = (
 
 _ROOT_RESOLVED = ROOT.resolve()
 _REL_PATH_CACHE: dict[str, str] = {}
+_LEVELSCRIPT_VECTOR_CACHE: dict[str, list[dict]] = {}
 
 
 def rel_path(path: Path) -> str:
@@ -368,7 +402,12 @@ def extract_objectives(quest: dict, source_path: Path, quest_field: str) -> list
             if isinstance(item, dict) and item.get("key")
         ]
         if multiple_description:
-            row["multipleDescriptionKeys"] = multiple_description
+            row["multipleDescriptionKeys"] = unique_preserve(multiple_description)
+            row["multipleDescriptionSources"] = [
+                source_ref(source_path, f"{obj_field}.multipleDescription[{item_index}].key")
+                for item_index, item in enumerate(obj.get("multipleDescription") or [])
+                if isinstance(item, dict) and item.get("key")
+            ]
         flags = {
             field_name: obj.get(field_name)
             for field_name in OBJECTIVE_FLAG_FIELDS
@@ -558,87 +597,6 @@ def build_quest_edges(quests: list[dict], source_path: Path) -> tuple[list[dict]
                 edge["guard"] = quest["failedCondition"]
             edges.append(edge)
     return edges, unresolved
-
-
-def build_quest_tree(quests: list[dict], edges: list[dict]) -> dict:
-    """Build an explicit prevQuestIdList tree without inventing chronology."""
-    quest_ids = {quest["questId"] for quest in quests if quest.get("questId")}
-    quest_order = [quest["questId"] for quest in quests if quest.get("questId")]
-    children_by_parent: dict[str, list[str]] = defaultdict(list)
-    edge_source_by_pair: dict[tuple[str, str], dict] = {}
-    for edge in edges:
-        if edge.get("kind") != "questPrev":
-            continue
-        parent = edge.get("from") or ""
-        child = edge.get("to") or ""
-        if parent not in quest_ids or child not in quest_ids:
-            continue
-        children_by_parent[parent].append(child)
-        if edge.get("source"):
-            edge_source_by_pair[(parent, child)] = edge["source"]
-
-    for parent, children in children_by_parent.items():
-        children_by_parent[parent] = sorted(unique_preserve(children), key=natural_key)
-
-    root_ids = [
-        quest["questId"]
-        for quest in quests
-        if quest.get("questId") and not quest.get("prevQuestIds")
-    ]
-    roots_seen = set(root_ids)
-    root_ids = [quest_id for quest_id in quest_order if quest_id in roots_seen]
-    expanded: set[str] = set()
-    loops: list[dict] = []
-    loop_keys: set[tuple[str, ...]] = set()
-
-    def walk(quest_id: str, path: list[str]) -> dict:
-        if quest_id in path:
-            loop_start = path.index(quest_id)
-            loop_path = path[loop_start:] + [quest_id]
-            loop_key = tuple(loop_path)
-            source = edge_source_by_pair.get((path[-1], quest_id)) if path else None
-            if loop_key not in loop_keys:
-                loop_keys.add(loop_key)
-                row = {
-                    "from": path[-1] if path else "",
-                    "to": quest_id,
-                    "questIds": loop_path,
-                    "source": source,
-                }
-                loops.append({key: value for key, value in row.items() if value})
-            node = {
-                "questId": quest_id,
-                "loop": True,
-                "loopPath": loop_path,
-            }
-            if source:
-                node["source"] = source
-            return node
-
-        node: dict[str, Any] = {"questId": quest_id}
-        children = children_by_parent.get(quest_id) or []
-        if quest_id in expanded:
-            node["reused"] = True
-            return node
-        expanded.add(quest_id)
-        if children:
-            node["children"] = [walk(child, [*path, quest_id]) for child in children]
-        return node
-
-    root_nodes = [walk(root_id, []) for root_id in root_ids]
-    unrooted_ids = [quest_id for quest_id in quest_order if quest_id not in expanded]
-    unrooted_nodes = [walk(quest_id, []) for quest_id in unrooted_ids]
-
-    return {
-        "source": "MissionRuntimeAsset.questDic[*].prevQuestIdList",
-        "rootSource": "quests with empty prevQuestIdList",
-        "rootQuestIds": root_ids,
-        "roots": root_nodes,
-        "unrootedQuestIds": unrooted_ids,
-        "unrootedRoots": unrooted_nodes,
-        "loops": loops,
-        "note": "Unrooted roots are coverage anchors for components without an explicit empty-prevQuestIdList entry; they are not promoted to chronology.",
-    }
 
 
 def build_branch_points(edges: list[dict], quests_by_id: dict[str, dict]) -> list[dict]:
@@ -1223,6 +1181,846 @@ def build_source_backed_scene_sequences(source_backed_scene_edges: list[dict]) -
     return sequences
 
 
+def _unwrap_const(value: Any) -> Any:
+    if isinstance(value, dict) and "constValue" in value:
+        return value.get("constValue")
+    return value
+
+
+def _safe_key(value: Any) -> str:
+    return str(value if value is not None else "").strip()
+
+
+def decode_mission_script_conditions(raw: dict) -> list[dict]:
+    """Decode MissionRuntime ``CheckLevelScriptProperty*`` conditions.
+
+    Walks the MissionRuntimeAsset tree, latching the enclosing ``questId`` as
+    it descends, and produces one record per node that carries a script id
+    (i.e. references a specific LevelScript file). Mirrors the audit's
+    ``collect_mission_runtime_script_conditions`` exactly so the two stay in
+    sync.
+    """
+    out: list[dict] = []
+
+    def walk(value: Any, quest_id: str = "") -> None:
+        if isinstance(value, dict):
+            next_quest_id = quest_id
+            if isinstance(value.get("questId"), str):
+                next_quest_id = value["questId"]
+            type_name = _safe_key(value.get("$type"))
+            has_script_id = "_scriptId" in value or "scriptId" in value
+            if "LevelScript" in type_name or has_script_id:
+                script_value = _unwrap_const(value.get("_scriptId", value.get("scriptId")))
+                if isinstance(script_value, dict):
+                    script_id = script_value.get("scriptId")
+                else:
+                    script_id = script_value
+                map_id = _unwrap_const(
+                    value.get(
+                        "_mapId",
+                        value.get(
+                            "mapId",
+                            value.get(
+                                "_levelId",
+                                value.get(
+                                    "levelId",
+                                    value.get("_sceneId", value.get("sceneId")),
+                                ),
+                            ),
+                        ),
+                    )
+                )
+                map_id_str = _safe_key(map_id)
+                script_id_str = _safe_key(script_id)
+                if map_id_str and script_id_str:
+                    out.append({
+                        "questId": next_quest_id,
+                        "type": type_name,
+                        "mapId": map_id_str,
+                        "scriptId": script_id_str,
+                        "key": _safe_key(_unwrap_const(value.get("_key", value.get("key")))),
+                        "value": _unwrap_const(value.get("_value", value.get("value"))),
+                    })
+            for child in value.values():
+                walk(child, next_quest_id)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child, quest_id)
+
+    walk(raw)
+    return out
+
+
+def build_script_condition_ownership(mra_files: list[Path]) -> dict[tuple[str, str], list[str]]:
+    """Pre-pass: map every (mapId, scriptId) to the missions whose quests
+    reference it via a CheckLevelScriptProperty condition.
+
+    Used by ``recover_mission`` to gate script-condition quest attachments —
+    we only attach when exactly one mission owns the referenced LevelScript,
+    so a shared script doesn't fan out to claim the same scene from multiple
+    missions.
+    """
+    ownership: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for path in mra_files:
+        try:
+            raw = load_json(path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        mission_id = raw.get("missionId") or path.stem
+        for condition in decode_mission_script_conditions(raw):
+            ownership[(condition["mapId"], condition["scriptId"])].add(mission_id)
+    return {key: sorted(values, key=natural_key) for key, values in ownership.items()}
+
+
+def levelscript_path_components(source_file: str) -> tuple[str, str]:
+    """Return ``(mapId, scriptId)`` parsed from a LevelScriptData JSON path.
+
+    Returns ``("", "")`` when the path is not a LevelScriptData file. The path
+    layout is ``.../LevelScriptData/<mapId>/<scriptId>.json``.
+    """
+    text = str(source_file or "").replace("\\", "/")
+    if "/LevelScriptData/" not in text:
+        return ("", "")
+    tail = text.split("/LevelScriptData/", 1)[1]
+    parts = tail.split("/")
+    if len(parts) < 2:
+        return ("", "")
+    map_id = parts[0]
+    script_stem = Path(parts[-1]).stem
+    return (map_id, script_stem)
+
+
+def build_levelscript_story_keys_map(
+    scene_edges: list[dict],
+) -> dict[tuple[str, str], set[str]]:
+    """Reconstruct the story keys present in each LevelScript file from the
+    mission's source-backed scene edges.
+
+    Every edge carries the LevelScriptData JSON path it was decoded from in
+    ``sourceFiles``. Both endpoints are story keys (or hash terminals) that
+    appear in that file.
+    """
+    out: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for edge in scene_edges or []:
+        if not isinstance(edge, dict):
+            continue
+        keys = [
+            str(edge.get("from") or "").strip(),
+            str(edge.get("to") or "").strip(),
+        ]
+        for source_file in edge.get("sourceFiles") or []:
+            map_id, script_id = levelscript_path_components(source_file)
+            if not (map_id and script_id):
+                continue
+            for key in keys:
+                if key:
+                    out[(map_id, script_id)].add(key)
+    return out
+
+
+def mission_id_matches_target_prefix(mission_id: str) -> bool:
+    """Return True when mission_id starts with one of TARGET_MISSION_PREFIXES.
+
+    The prefix list is the WebUI's authored-story-mission set. Longer prefixes
+    (gm, sm) are checked before single-letter ones so `gm0m0` is not classified
+    as starting with `g` (which isn't in the set anyway).
+    """
+    text = str(mission_id or "")
+    if not text:
+        return False
+    for prefix in sorted(TARGET_MISSION_PREFIXES, key=len, reverse=True):
+        if text.startswith(prefix):
+            tail = text[len(prefix) :]
+            if tail and (tail[0].isdigit() or tail[0] == "_"):
+                return True
+    return False
+
+
+def levelscript_source_sort_key(source_file: str) -> tuple:
+    map_id, script_id = levelscript_path_components(source_file)
+    script_num = int(script_id) if str(script_id).isdigit() else 10**18
+    return (
+        natural_key(map_id),
+        script_num,
+        natural_key(script_id),
+        natural_key(str(source_file or "")),
+    )
+
+
+def script_ref_from_levelscript_source(source_file: str) -> dict:
+    map_id, script_id = levelscript_path_components(source_file)
+    if not (map_id and script_id):
+        return {}
+    row: dict[str, Any] = {
+        "levelId": map_id,
+        "mapId": map_id,
+        "scriptId": script_id,
+        "file": source_file,
+    }
+    if script_id.isdigit():
+        row["scriptOrder"] = int(script_id)
+    return row
+
+
+def resolve_levelscript_source_path(source_file: str) -> Path | None:
+    text = str(source_file or "").strip().replace("\\", "/")
+    if not text:
+        return None
+    candidates: list[Path] = []
+    raw_path = Path(text)
+    if raw_path.is_absolute():
+        candidates.append(raw_path)
+    else:
+        candidates.append(ROOT / text)
+
+    map_id, script_id = levelscript_path_components(text)
+    if map_id and script_id:
+        rel_tail = Path("Data") / "Json" / "LevelScriptData" / map_id / f"{script_id}.json"
+        candidates.extend([
+            EXPORT_ROOT / "structured" / "StreamingAssets" / rel_tail,
+            EXPORT_ROOT / "structured" / "Persistent" / rel_tail,
+            EXPORT_ROOT / "raw_vfs" / "StreamingAssets" / "files" / "775A31D1" / rel_tail,
+            EXPORT_ROOT / "raw_vfs" / "Persistent" / "files" / "775A31D1" / rel_tail,
+        ])
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        marker = str(candidate)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        try:
+            if candidate.is_file():
+                return candidate
+        except OSError:
+            continue
+    return None
+
+
+def extract_levelscript_float_vectors(source_file: str) -> list[dict]:
+    """Extract plausible raw float32 xyz triples from one LevelScript file.
+
+    LevelScript exports are binary-ish TextAssets with embedded strings and raw
+    values. The useful trigger centers are not guaranteed to be 4-byte aligned,
+    so this intentionally scans every byte offset and keeps only finite,
+    world-scale triples. Callers still need a quest-pin proximity check before
+    treating a vector as meaningful.
+    """
+    cache_key = str(source_file or "")
+    if cache_key in _LEVELSCRIPT_VECTOR_CACHE:
+        return _LEVELSCRIPT_VECTOR_CACHE[cache_key]
+
+    path = resolve_levelscript_source_path(cache_key)
+    if path is None:
+        _LEVELSCRIPT_VECTOR_CACHE[cache_key] = []
+        return []
+    try:
+        if path.stat().st_size > LEVELSCRIPT_SPATIAL_MAX_FILE_BYTES:
+            _LEVELSCRIPT_VECTOR_CACHE[cache_key] = []
+            return []
+        data = path.read_bytes()
+    except OSError:
+        _LEVELSCRIPT_VECTOR_CACHE[cache_key] = []
+        return []
+
+    vectors: list[dict] = []
+    for offset in range(0, max(0, len(data) - 11)):
+        x, y, z = struct.unpack_from("<fff", data, offset)
+        values = (x, y, z)
+        if not all(math.isfinite(value) for value in values):
+            continue
+        if any(abs(value) > LEVELSCRIPT_SPATIAL_MAX_ABS for value in values):
+            continue
+        if abs(x) < 0.0001 and abs(z) < 0.0001:
+            continue
+        vectors.append({
+            "offset": offset,
+            "position": {
+                "x": round(float(x), 3),
+                "y": round(float(y), 3),
+                "z": round(float(z), 3),
+            },
+        })
+        if len(vectors) >= LEVELSCRIPT_SPATIAL_MAX_VECTORS:
+            break
+
+    _LEVELSCRIPT_VECTOR_CACHE[cache_key] = vectors
+    return vectors
+
+
+def collect_quest_spatial_pin_targets(mission_flow: dict | None) -> list[dict]:
+    if not isinstance(mission_flow, dict):
+        return []
+    targets: list[dict] = []
+    seen: set[tuple] = set()
+    for quest_index, quest in enumerate(mission_flow.get("quests") or []):
+        if not isinstance(quest, dict):
+            continue
+        quest_id = str(quest.get("id") or "").strip()
+        if not quest_id:
+            continue
+        flow_index = quest.get("flowIndex", quest_index)
+        pin_sources = [
+            pin for pin in quest.get("pins") or [] if isinstance(pin, dict)
+        ]
+        pin_sources.extend(
+            pin for pin in quest.get("tracking") or [] if isinstance(pin, dict)
+        )
+        for pin in pin_sources:
+            map_id = str(pin.get("scene") or "").strip()
+            position = compact_position(pin.get("position") or pin.get("trackingPos"))
+            if not (map_id and position):
+                continue
+            if abs(float(position.get("x", 0.0))) < 0.0001 and abs(float(position.get("z", 0.0))) < 0.0001:
+                continue
+            label = (
+                str(pin.get("missionAreaId") or "").strip()
+                or str(pin.get("npcProxyId") or "").strip()
+                or str(pin.get("jumpId") or "").strip()
+                or str(pin.get("trackingType") or pin.get("type") or "").strip()
+                or map_id
+            )
+            marker = (
+                quest_id,
+                map_id,
+                label,
+                position.get("x"),
+                position.get("y"),
+                position.get("z"),
+            )
+            if marker in seen:
+                continue
+            seen.add(marker)
+            row: dict[str, Any] = {
+                "questId": quest_id,
+                "flowIndex": flow_index,
+                "questOrder": quest_index,
+                "mapId": map_id,
+                "levelId": map_id,
+                "label": label,
+                "position": position,
+            }
+            for key in ("missionAreaId", "npcProxyId", "jumpId", "trackingType", "sourceType", "subDataParentId", "levelDataParentId"):
+                value = pin.get(key)
+                if value not in (None, "", [], {}):
+                    row[key] = value
+            if "trackingType" not in row and pin.get("type"):
+                row["trackingType"] = pin.get("type")
+            targets.append(row)
+    return targets
+
+
+def spatial_distance(candidate: dict, pin: dict) -> tuple[float, float, float] | None:
+    a = candidate.get("position") if isinstance(candidate, dict) else None
+    b = pin.get("position") if isinstance(pin, dict) else None
+    if not (isinstance(a, dict) and isinstance(b, dict)):
+        return None
+    try:
+        dx = float(a.get("x", 0.0)) - float(b.get("x", 0.0))
+        dy = float(a.get("y", 0.0)) - float(b.get("y", 0.0))
+        dz = float(a.get("z", 0.0)) - float(b.get("z", 0.0))
+    except (TypeError, ValueError):
+        return None
+    xz = (dx * dx + dz * dz) ** 0.5
+    distance_3d = (dx * dx + dy * dy + dz * dz) ** 0.5
+    return xz, abs(dy), distance_3d
+
+
+def find_levelscript_spatial_matches(source_file: str, pins: list[dict]) -> list[dict]:
+    if not pins:
+        return []
+    script_ref = script_ref_from_levelscript_source(source_file)
+    if not script_ref:
+        return []
+
+    best_by_quest: dict[str, dict] = {}
+    for vector in extract_levelscript_float_vectors(source_file):
+        for pin in pins:
+            distance = spatial_distance(vector, pin)
+            if distance is None:
+                continue
+            distance_xz, delta_y, distance_3d = distance
+            if distance_xz > LEVELSCRIPT_SPATIAL_XZ_THRESHOLD:
+                continue
+            if delta_y > LEVELSCRIPT_SPATIAL_Y_THRESHOLD:
+                continue
+            quest_id = str(pin.get("questId") or "").strip()
+            if not quest_id:
+                continue
+            candidate = {
+                "source": "levelscriptSpatialProximity",
+                "strength": "weak",
+                "questId": quest_id,
+                "flowIndex": pin.get("flowIndex"),
+                "questOrder": pin.get("questOrder"),
+                "levelId": script_ref.get("levelId"),
+                "mapId": script_ref.get("mapId"),
+                "scriptId": script_ref.get("scriptId"),
+                "file": source_file,
+                "offset": vector.get("offset"),
+                "distanceXZ": round(distance_xz, 3),
+                "distance3d": round(distance_3d, 3),
+                "yDelta": round(delta_y, 3),
+                "position": vector.get("position"),
+                "pin": {
+                    key: pin.get(key)
+                    for key in ("mapId", "label", "missionAreaId", "npcProxyId", "jumpId", "trackingType", "sourceType", "position")
+                    if pin.get(key) not in (None, "", [], {})
+                },
+                "note": "Weak diagnostic only; LevelScript vector proximity is not promoted to quest chronology.",
+            }
+            previous = best_by_quest.get(quest_id)
+            prev_key = (
+                float(previous.get("distanceXZ", 10**9)),
+                float(previous.get("yDelta", 10**9)),
+                int(previous.get("offset") or 10**9),
+            ) if previous else None
+            next_key = (
+                float(candidate.get("distanceXZ", 10**9)),
+                float(candidate.get("yDelta", 10**9)),
+                int(candidate.get("offset") or 10**9),
+            )
+            if previous is None or next_key < prev_key:
+                best_by_quest[quest_id] = candidate
+    return sorted(
+        best_by_quest.values(),
+        key=lambda item: (
+            float(item.get("distanceXZ", 10**9)),
+            float(item.get("yDelta", 10**9)),
+            natural_key(str(item.get("questId") or "")),
+        ),
+    )
+
+
+def spatial_candidate_key(candidate: dict) -> tuple:
+    return (
+        candidate.get("questId"),
+        candidate.get("mapId"),
+        candidate.get("scriptId"),
+        candidate.get("offset"),
+    )
+
+
+def attach_levelscript_spatial_proximity(
+    scene_placement: dict[str, dict],
+    mission_flow: dict | None,
+) -> list[dict]:
+    """Attach weak LevelScript-vector-to-quest-pin diagnostics to scenes.
+
+    This deliberately does not write to ``questIds``. It gives analysts and the
+    WebUI a recoverable placement clue while keeping quest-DAG ordering clean.
+    """
+    pin_targets = collect_quest_spatial_pin_targets(mission_flow)
+    if not pin_targets:
+        return []
+    pins_by_map: dict[str, list[dict]] = defaultdict(list)
+    for pin in pin_targets:
+        pins_by_map[str(pin.get("mapId") or "")].append(pin)
+
+    attached: list[dict] = []
+    for scene_key, row in scene_placement.items():
+        source_files = sorted(
+            scene_placement_source_files(row),
+            key=levelscript_source_sort_key,
+        )
+        if not source_files:
+            continue
+        scene_candidates: list[dict] = []
+        seen: set[tuple] = set()
+        for source_file in source_files:
+            map_id, _script_id = levelscript_path_components(source_file)
+            pins = pins_by_map.get(map_id) or []
+            if not pins:
+                continue
+            for candidate in find_levelscript_spatial_matches(source_file, pins):
+                marker = spatial_candidate_key(candidate)
+                if marker in seen:
+                    continue
+                seen.add(marker)
+                scene_candidates.append(candidate)
+        if not scene_candidates:
+            continue
+        scene_candidates.sort(
+            key=lambda item: (
+                float(item.get("distanceXZ", 10**9)),
+                float(item.get("yDelta", 10**9)),
+                natural_key(str(item.get("questId") or "")),
+                natural_key(str(item.get("scriptId") or "")),
+            )
+        )
+        row["spatialQuestCandidates"] = scene_candidates[:12]
+        evidence_kinds = row.setdefault("evidenceKinds", [])
+        if "levelscriptSpatialProximity" not in evidence_kinds:
+            evidence_kinds.append("levelscriptSpatialProximity")
+        for candidate in scene_candidates:
+            attached.append({
+                "sceneKey": scene_key,
+                **candidate,
+            })
+    return sorted(
+        attached,
+        key=lambda item: (
+            natural_key(str(item.get("sceneKey") or "")),
+            float(item.get("distanceXZ", 10**9)),
+            natural_key(str(item.get("questId") or "")),
+        ),
+    )
+
+
+def append_source_file(files: list[str], value: Any) -> None:
+    text = str(value or "").strip()
+    if text and text not in files:
+        files.append(text)
+
+
+def scene_placement_source_files(row: dict) -> list[str]:
+    files: list[str] = []
+    for edge in [
+        *list(row.get("incomingEdges") or []),
+        *list(row.get("outgoingEdges") or []),
+    ]:
+        if not isinstance(edge, dict):
+            continue
+        for source_file in edge.get("sourceFiles") or []:
+            append_source_file(files, source_file)
+    for item in [
+        *list(row.get("sequenceNeighbors") or []),
+        *list(row.get("storyCallContexts") or []),
+        *list(row.get("hashTerminals") or []),
+    ]:
+        if isinstance(item, dict):
+            append_source_file(files, item.get("sourceFile"))
+    for item in row.get("timelineEvidence") or []:
+        if isinstance(item, dict):
+            append_source_file(files, item.get("file"))
+    for item in [
+        *list(row.get("storyRefSources") or []),
+        *list(row.get("clientActionSources") or []),
+    ]:
+        if isinstance(item, dict):
+            append_source_file(files, item.get("file"))
+    return files
+
+
+def unique_dicts(rows: list[dict], key_fields: tuple[str, ...]) -> list[dict]:
+    seen: set[tuple] = set()
+    out: list[dict] = []
+    for row in rows:
+        key = tuple(row.get(field) for field in key_fields)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out
+
+
+def compact_position(value: Any) -> dict | None:
+    pos = vector3(value)
+    if pos is None:
+        return None
+    return {
+        axis: round(float(pos[axis]), 3)
+        for axis in ("x", "y", "z")
+    }
+
+
+def compact_flow_pin(pin: dict) -> dict:
+    row: dict[str, Any] = {}
+    for key in (
+        "scene",
+        "trackingType",
+        "sourceType",
+        "missionAreaId",
+        "npcProxyId",
+        "jumpId",
+        "radius",
+        "subDataParentId",
+        "levelDataParentId",
+        "activeOnTravelLine",
+        "needTrackingRoute",
+        "routePointCount",
+    ):
+        value = pin.get(key)
+        if value not in (None, "", [], {}):
+            row[key] = value
+    position = compact_position(pin.get("position") or pin.get("trackingPos"))
+    if position is not None:
+        row["position"] = position
+    return row
+
+
+def pins_centroid(pins: list[dict]) -> dict | None:
+    positions = [
+        pin.get("position")
+        for pin in pins
+        if isinstance(pin.get("position"), dict)
+    ]
+    if not positions:
+        return None
+    return {
+        axis: round(
+            sum(float(position.get(axis, 0.0)) for position in positions) / len(positions),
+            3,
+        )
+        for axis in ("x", "y", "z")
+    }
+
+
+def xz_distance(a: dict | None, b: dict | None) -> float | None:
+    if not (isinstance(a, dict) and isinstance(b, dict)):
+        return None
+    try:
+        dx = float(a.get("x", 0.0)) - float(b.get("x", 0.0))
+        dz = float(a.get("z", 0.0)) - float(b.get("z", 0.0))
+    except (TypeError, ValueError):
+        return None
+    return round((dx * dx + dz * dz) ** 0.5, 3)
+
+
+def compact_flow_resources(flow_quest: dict) -> list[dict]:
+    resources: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(kind: str, value: Any) -> None:
+        key = str(value or "").strip()
+        if not key:
+            return
+        marker = (kind, key)
+        if marker in seen:
+            return
+        seen.add(marker)
+        resources.append({"kind": kind, "key": key})
+
+    for field_name, kind in (
+        ("dialogs", "dlg"),
+        ("cutscenes", "cutscene"),
+        ("remotecomms", "remotecomm"),
+        ("radios", "radio"),
+        ("failStoryRefs", "storyRef"),
+    ):
+        for value in flow_quest.get(field_name) or []:
+            add(kind, value)
+    for anchor in flow_quest.get("objectiveAnchors") or []:
+        if not isinstance(anchor, dict):
+            continue
+        for value in anchor.get("storyRefs") or []:
+            add("objectiveStoryRef", value)
+    for item in flow_quest.get("levelDataStoryRefs") or []:
+        if isinstance(item, dict):
+            add("levelDataStoryRef", item.get("storyRef"))
+        else:
+            add("levelDataStoryRef", item)
+    for item in flow_quest.get("proxyDialogs") or []:
+        if isinstance(item, dict):
+            add("proxyDialog", item.get("dialogId"))
+        else:
+            add("proxyDialog", item)
+    return resources
+
+
+def compact_flow_script_refs(flow_quest: dict) -> list[dict]:
+    refs: list[dict] = []
+    for anchor in flow_quest.get("objectiveAnchors") or []:
+        if not isinstance(anchor, dict):
+            continue
+        scene_ids = [
+            str(value or "").strip()
+            for value in anchor.get("sceneIds") or []
+            if str(value or "").strip()
+        ]
+        for leaf in anchor.get("conditionLeaves") or []:
+            if not isinstance(leaf, dict):
+                continue
+            leaf_scene_ids = [
+                str(value or "").strip()
+                for value in leaf.get("sceneIds") or []
+                if str(value or "").strip()
+            ] or scene_ids
+            script_ids = [
+                str(value or "").strip()
+                for value in leaf.get("scriptIds") or []
+                if str(value or "").strip()
+            ]
+            keys = [
+                str(value or "").strip()
+                for value in leaf.get("keys") or []
+                if str(value or "").strip()
+            ]
+            for script_id in script_ids:
+                row: dict[str, Any] = {
+                    "type": leaf.get("type") or "",
+                    "scriptId": script_id,
+                }
+                if leaf_scene_ids:
+                    row["mapId"] = leaf_scene_ids[0]
+                    row["levelId"] = leaf_scene_ids[0]
+                if keys:
+                    row["key"] = keys[0]
+                refs.append({key: value for key, value in row.items() if value not in (None, "", [], {})})
+    return unique_dicts(refs, ("type", "mapId", "scriptId", "key"))
+
+
+def build_quest_spatial_track(
+    mission_flow: dict | None,
+    scene_placement: dict[str, dict],
+) -> list[dict]:
+    """Build quest-local map/resource diagnostics for visual placement.
+
+    Pins, resource lists, condition metadata, and weak spatial matches help a
+    human compare placed scenes with the quest route, but they are not treated
+    as proof by themselves.
+    """
+    if not isinstance(mission_flow, dict):
+        return []
+    scenes_by_quest: dict[str, set[str]] = defaultdict(set)
+    spatial_by_quest: dict[str, list[dict]] = defaultdict(list)
+    for scene_key, placement in scene_placement.items():
+        for quest_id in placement.get("questIds") or []:
+            quest_id = str(quest_id or "").strip()
+            if not quest_id:
+                continue
+            scenes_by_quest[quest_id].add(scene_key)
+        for candidate in placement.get("spatialQuestCandidates") or []:
+            if not isinstance(candidate, dict):
+                continue
+            quest_id = str(candidate.get("questId") or "").strip()
+            if not quest_id:
+                continue
+            match = {
+                key: candidate.get(key)
+                for key in (
+                    "mapId",
+                    "levelId",
+                    "scriptId",
+                    "distanceXZ",
+                    "distance3d",
+                    "yDelta",
+                    "offset",
+                )
+                if candidate.get(key) not in (None, "", [], {})
+            }
+            match["sceneKey"] = scene_key
+            if candidate.get("position"):
+                match["position"] = candidate.get("position")
+            pin = candidate.get("pin") if isinstance(candidate.get("pin"), dict) else {}
+            if pin:
+                match["pin"] = {
+                    key: pin.get(key)
+                    for key in ("label", "missionAreaId", "npcProxyId", "jumpId", "trackingType", "subDataParentId", "levelDataParentId", "position")
+                    if pin.get(key) not in (None, "", [], {})
+                }
+            spatial_by_quest[quest_id].append(match)
+
+    rows: list[dict] = []
+    previous_centroid: dict | None = None
+    for index, quest in enumerate(mission_flow.get("quests") or []):
+        if not isinstance(quest, dict):
+            continue
+        quest_id = str(quest.get("id") or "").strip()
+        if not quest_id:
+            continue
+        pins = [
+            compact_flow_pin(pin)
+            for pin in quest.get("pins") or []
+            if isinstance(pin, dict)
+        ]
+        if not pins:
+            pins = [
+                compact_flow_pin(pin)
+                for pin in quest.get("tracking") or []
+                if isinstance(pin, dict)
+                and compact_position(pin.get("position") or pin.get("trackingPos")) is not None
+            ]
+        centroid = pins_centroid(pins)
+        distance = xz_distance(previous_centroid, centroid)
+        if centroid is not None:
+            previous_centroid = centroid
+
+        row: dict[str, Any] = {
+            "questId": quest_id,
+            "flowIndex": quest.get("flowIndex", index),
+            "questOrder": index,
+            "prevQuestIds": [
+                str(value)
+                for value in quest.get("prev") or []
+                if str(value or "")
+            ],
+            "scenes": [
+                str(value)
+                for value in quest.get("scenes") or []
+                if str(value or "")
+            ][:8],
+            "note": "Map/resource metadata is a diagnostic placement hint, not standalone chronology evidence.",
+        }
+        if scenes_by_quest.get(quest_id):
+            row["attachedSceneKeys"] = sorted(scenes_by_quest[quest_id], key=natural_key)[:16]
+        if spatial_by_quest.get(quest_id):
+            row["spatialSourceMatches"] = unique_dicts(
+                sorted(
+                    spatial_by_quest[quest_id],
+                    key=lambda item: (
+                        float(item.get("distanceXZ", 10**9)),
+                        natural_key(str(item.get("sceneKey") or "")),
+                        natural_key(str(item.get("scriptId") or "")),
+                    ),
+                ),
+                ("sceneKey", "mapId", "scriptId", "offset"),
+            )[:16]
+        resources = compact_flow_resources(quest)
+        if resources:
+            row["resources"] = resources[:20]
+            if len(resources) > 20:
+                row["resourceCount"] = len(resources)
+        script_refs = compact_flow_script_refs(quest)
+        if script_refs:
+            row["scriptRefs"] = script_refs[:12]
+        condition_types = sorted({
+            str(value)
+            for anchor in quest.get("objectiveAnchors") or []
+            if isinstance(anchor, dict)
+            for value in (anchor.get("conditionTypes") or [])
+            if str(value or "")
+        })
+        if condition_types:
+            row["conditionTypes"] = condition_types
+        descriptions = []
+        objective_instructions = []
+        for anchor in quest.get("objectiveAnchors") or []:
+            if not isinstance(anchor, dict):
+                continue
+            if anchor.get("descriptionKey"):
+                descriptions.append(str(anchor.get("descriptionKey") or ""))
+            descriptions.extend(
+                str(key)
+                for key in (anchor.get("multipleDescriptionKeys") or [])
+                if str(key or "")
+            )
+            for instruction in anchor.get("objectiveInstructions") or []:
+                if isinstance(instruction, dict):
+                    objective_instructions.append(instruction)
+        if descriptions:
+            row["descriptionKeys"] = unique_preserve(descriptions)[:8]
+        if objective_instructions:
+            row["objectiveInstructions"] = unique_dicts(
+                objective_instructions,
+                ("key", "text"),
+            )[:12]
+        if pins:
+            row["pinCount"] = len(pins)
+            row["pins"] = pins[:8]
+        if centroid is not None:
+            row["centroid"] = centroid
+        if distance is not None:
+            row["distanceFromPrevious"] = distance
+        rows.append({
+            key: value
+            for key, value in row.items()
+            if value not in (None, "", [], {})
+            or key in {"questId", "flowIndex", "questOrder"}
+        })
+    return rows
+
+
 def source_backed_story_call_contexts_from_scene_graph(
     scene_graph: dict | None,
     source: dict | None = None,
@@ -1536,6 +2334,147 @@ def load_source_backed_story_call_contexts(mission_id: str, generated_mission_di
     )
 
 
+def load_mission_flow(mission_id: str, generated_mission_dir: Path | None) -> dict | None:
+    """Load the WebUI builder's per-mission flow payload, if available."""
+    if not generated_mission_dir:
+        return None
+    path = generated_mission_dir / f"{mission_id}.json"
+    if not path.exists():
+        return None
+    try:
+        payload = load_json(path)
+    except (OSError, json.JSONDecodeError):
+        return None
+    flow = payload.get("flow")
+    return flow if isinstance(flow, dict) else None
+
+
+def attach_variant_mission_runtime_quests(
+    scene_placement: dict[str, dict],
+    mission_flow: dict | None,
+) -> list[dict]:
+    """Attach variant-mission quest ids based on the WebUI scene graph.
+
+    Some missions reuse another mission's quest graph (the WebUI builder
+    records the foreign mission ids in ``flow.sceneGraphVariantMissions``).
+    Their decoded scene-graph edges carry ``questIds`` from those variant
+    missions; both endpoints of such edges are reachable from the variant
+    quest, so we attach the quest to the scene-placement entries.
+
+    Returns a diagnostic list of attachments.
+    """
+    attached: list[dict] = []
+    if not isinstance(mission_flow, dict):
+        return attached
+    variant_missions = {
+        str(value).strip()
+        for value in mission_flow.get("sceneGraphVariantMissions") or []
+        if str(value or "").strip()
+    }
+    if not variant_missions:
+        return attached
+    scene_graph = mission_flow.get("sceneGraph") or {}
+    for edge in scene_graph.get("edges") or []:
+        if not isinstance(edge, dict):
+            continue
+        edge_quest_ids = [
+            str(quest_id).strip()
+            for quest_id in edge.get("questIds") or []
+            if str(quest_id or "").strip()
+            and str(quest_id).split("_q#", 1)[0] in variant_missions
+        ]
+        if not edge_quest_ids:
+            continue
+        from_key = str(edge.get("from") or "").strip()
+        to_key = str(edge.get("to") or "").strip()
+        for scene_key in (from_key, to_key):
+            row = scene_placement.get(scene_key)
+            if row is None:
+                continue
+            quest_ids = row.setdefault("questIds", [])
+            sources = row.setdefault("questAttachSources", [])
+            for quest_id in edge_quest_ids:
+                already = quest_id in quest_ids
+                if not already:
+                    quest_ids.append(quest_id)
+                variant_mission = quest_id.split("_q#", 1)[0]
+                source_record = {
+                    "questId": quest_id,
+                    "source": "variantMissionRuntime",
+                    "variantMission": variant_mission,
+                    "kind": edge.get("kind") or "",
+                }
+                if source_record not in sources:
+                    sources.append(source_record)
+                attached.append({
+                    "sceneKey": scene_key,
+                    "questId": quest_id,
+                    "variantMission": variant_mission,
+                    "edgeKind": edge.get("kind") or "",
+                    "alreadyAttached": already,
+                })
+            kinds = row.setdefault("evidenceKinds", [])
+            if "variantMissionRuntimeQuestAttach" not in kinds:
+                kinds.append("variantMissionRuntimeQuestAttach")
+    return attached
+
+
+def attach_npc_proxy_dialog_quests(
+    scene_placement: dict[str, dict],
+    mission_flow: dict | None,
+) -> list[dict]:
+    """Attach quest ids based on NPC proxy dialog references.
+
+    The WebUI builder collects ``flow.quests[*].proxyDialogs[*]`` records
+    that bind an NPC proxy to a dialog scene key for a given quest. The
+    attached scene gets the quest id so scene placement and the quest map
+    track can use the relationship.
+    """
+    attached: list[dict] = []
+    if not isinstance(mission_flow, dict):
+        return attached
+    for quest in mission_flow.get("quests") or []:
+        if not isinstance(quest, dict):
+            continue
+        quest_id = str(quest.get("id") or "").strip()
+        if not quest_id:
+            continue
+        for proxy_ref in quest.get("proxyDialogs") or []:
+            if not isinstance(proxy_ref, dict):
+                continue
+            scene_key = str(proxy_ref.get("dialogId") or "").strip()
+            row = scene_placement.get(scene_key)
+            if row is None:
+                misc_key = f"misc_{scene_key}" if scene_key.startswith("dlg_") else scene_key
+                row = scene_placement.get(misc_key)
+                if row is None:
+                    continue
+                scene_key = misc_key
+            quest_ids = row.setdefault("questIds", [])
+            sources = row.setdefault("questAttachSources", [])
+            already = quest_id in quest_ids
+            if not already:
+                quest_ids.append(quest_id)
+            source_record = {
+                "questId": quest_id,
+                "source": "npcProxyDialog",
+                "npcProxyId": str(proxy_ref.get("npcProxyId") or ""),
+                "dialogId": str(proxy_ref.get("dialogId") or ""),
+            }
+            if source_record not in sources:
+                sources.append(source_record)
+            attached.append({
+                "sceneKey": scene_key,
+                "questId": quest_id,
+                "npcProxyId": str(proxy_ref.get("npcProxyId") or ""),
+                "alreadyAttached": already,
+            })
+            kinds = row.setdefault("evidenceKinds", [])
+            if "npcProxyDialogQuestAttach" not in kinds:
+                kinds.append("npcProxyDialogQuestAttach")
+    return attached
+
+
 def load_source_backed_hash_terminals(mission_id: str, generated_mission_dir: Path | None) -> list[dict]:
     """Load source-backed story/hash terminal diagnostics from generated mission bundles."""
     if not generated_mission_dir:
@@ -1598,6 +2537,72 @@ def extract_quest(raw_quest: dict, source_path: Path, quest_field: str) -> dict:
     return quest
 
 
+def attach_script_condition_quests(
+    scene_placement: dict[str, dict],
+    conditions: list[dict],
+    story_keys_map: dict[tuple[str, str], set[str]],
+    ownership: dict[tuple[str, str], list[str]] | None,
+    mission_id: str,
+) -> list[dict]:
+    """Attach quest ids to scene_placement entries based on script conditions.
+
+    For each (questId, mapId, scriptId) condition, look up the story keys that
+    appear in that LevelScript via the per-mission story_keys_map. When
+    ``ownership`` is supplied, only attach when exactly one mission owns the
+    referenced LevelScript and that mission matches ``mission_id`` — the
+    "scoped" attach policy that avoids letting shared LevelScripts pull a
+    scene into multiple missions' quest hierarchies.
+
+    Each attachment is recorded both on the placement row's ``questIds`` and
+    on its ``questAttachSources`` diagnostic for traceability. Returns the
+    list of attached records for auditing.
+    """
+    attached: list[dict] = []
+    if not conditions or not story_keys_map:
+        return attached
+    for condition in conditions:
+        quest_id = str(condition.get("questId") or "").strip()
+        map_id = str(condition.get("mapId") or "").strip()
+        script_id = str(condition.get("scriptId") or "").strip()
+        if not (quest_id and map_id and script_id):
+            continue
+        if ownership is not None:
+            owners = ownership.get((map_id, script_id)) or []
+            if len(owners) != 1 or owners[0] != mission_id:
+                continue
+        story_keys = story_keys_map.get((map_id, script_id)) or set()
+        if not story_keys:
+            continue
+        for scene_key in story_keys:
+            row = scene_placement.get(scene_key)
+            if row is None:
+                continue
+            quest_ids = row.setdefault("questIds", [])
+            already = quest_id in quest_ids
+            if not already:
+                quest_ids.append(quest_id)
+            sources = row.setdefault("questAttachSources", [])
+            source_record = {
+                "questId": quest_id,
+                "source": "scriptCondition",
+                "mapId": map_id,
+                "scriptId": script_id,
+                "key": condition.get("key") or "",
+            }
+            if source_record not in sources:
+                sources.append(source_record)
+            attached.append({
+                "sceneKey": scene_key,
+                "questId": quest_id,
+                "mapId": map_id,
+                "scriptId": script_id,
+                "alreadyAttached": already,
+            })
+            if "scriptConditionQuestAttach" not in (row.get("evidenceKinds") or []):
+                row.setdefault("evidenceKinds", []).append("scriptConditionQuestAttach")
+    return attached
+
+
 def recover_mission(
     path: Path,
     timeline_index: dict[str, list[dict]],
@@ -1605,6 +2610,8 @@ def recover_mission(
     source_backed_scene_edges: list[dict] | None = None,
     source_backed_story_call_contexts: list[dict] | None = None,
     source_backed_hash_terminals: list[dict] | None = None,
+    script_condition_ownership: dict[tuple[str, str], list[str]] | None = None,
+    mission_flow: dict | None = None,
 ) -> dict:
     raw = load_json(path)
     mission_id = raw.get("missionId") or path.stem
@@ -1693,6 +2700,30 @@ def recover_mission(
         story_call_contexts,
         hash_terminals,
     )
+    script_conditions = decode_mission_script_conditions(raw)
+    story_keys_by_script = build_levelscript_story_keys_map(scene_edges)
+    script_condition_attachments = attach_script_condition_quests(
+        scene_placement,
+        script_conditions,
+        story_keys_by_script,
+        script_condition_ownership,
+        mission_id,
+    )
+    if mission_flow is None:
+        mission_flow = load_mission_flow(mission_id, generated_mission_dir)
+    variant_mr_attachments = attach_variant_mission_runtime_quests(
+        scene_placement,
+        mission_flow,
+    )
+    npc_proxy_attachments = attach_npc_proxy_dialog_quests(
+        scene_placement,
+        mission_flow,
+    )
+    levelscript_spatial_proximity = attach_levelscript_spatial_proximity(
+        scene_placement,
+        mission_flow,
+    )
+    quest_spatial_track = build_quest_spatial_track(mission_flow, scene_placement)
     payload = {
         "mission": mission_id,
         "metadata": metadata,
@@ -1701,7 +2732,6 @@ def recover_mission(
         "entryQuestIds": entry_quests,
         "quests": quests,
         "questEdges": quest_edges,
-        "questTree": build_quest_tree(quests, quest_edges),
         "branchPoints": build_branch_points(quest_edges, quests_by_id),
         "sourceBackedSceneEdges": scene_edges,
         "sourceBackedSceneSequences": scene_sequences,
@@ -1710,6 +2740,11 @@ def recover_mission(
         "referencedScenes": referenced_scenes,
         "sceneTimelineEvidence": timeline_evidence,
         "scenePlacement": scene_placement,
+        "questSpatialTrack": quest_spatial_track,
+        "scriptConditionAttachments": script_condition_attachments,
+        "variantMissionRuntimeAttachments": variant_mr_attachments,
+        "npcProxyDialogAttachments": npc_proxy_attachments,
+        "levelscriptSpatialProximity": levelscript_spatial_proximity,
         "unresolved": unresolved,
     }
     return payload
@@ -1887,8 +2922,6 @@ def summarize(
     missions_with_scene_sequences = 0
     missions_with_story_call_contexts = 0
     missions_with_hash_terminals = 0
-    missions_with_quest_loops = 0
-    quest_loop_count = 0
     scene_edge_counter: Counter = Counter()
     scene_sequence_total = 0
     story_call_context_total = 0
@@ -1896,6 +2929,8 @@ def summarize(
     hash_terminal_catalog = build_hash_terminal_catalog(recovered)
     scene_placement_counter: Counter = Counter()
     scene_placement_total = 0
+    missions_with_levelscript_spatial = 0
+    levelscript_spatial_match_total = 0
     for mission in recovered:
         if mission.get("branchPoints"):
             missions_with_branches += 1
@@ -1912,16 +2947,16 @@ def summarize(
         if mission.get("sourceBackedHashTerminals"):
             missions_with_hash_terminals += 1
             hash_terminal_total += len(mission.get("sourceBackedHashTerminals") or [])
-        loops = ((mission.get("questTree") or {}).get("loops") or [])
-        if loops:
-            missions_with_quest_loops += 1
-            quest_loop_count += len(loops)
         for edge in mission.get("sourceBackedSceneEdges") or []:
             scene_edge_counter[edge.get("kind") or "edge"] += 1
         scene_placement_total += len(mission.get("scenePlacement") or {})
         for placement in (mission.get("scenePlacement") or {}).values():
             for kind in placement.get("evidenceKinds") or []:
                 scene_placement_counter[kind] += 1
+        spatial_matches = mission.get("levelscriptSpatialProximity") or []
+        if spatial_matches:
+            missions_with_levelscript_spatial += 1
+            levelscript_spatial_match_total += len(spatial_matches)
         for item in mission.get("unresolved") or []:
             unresolved_counter[item.get("kind") or "unknown"] += 1
         for quest in mission.get("quests") or []:
@@ -1938,8 +2973,6 @@ def summarize(
         "missionCount": len(recovered),
         "questCount": sum(len(mission.get("quests") or []) for mission in recovered),
         "missionWithBranchPoints": missions_with_branches,
-        "missionsWithQuestTreeLoops": missions_with_quest_loops,
-        "questTreeLoops": quest_loop_count,
         "missionsWithDialogTimelineEvidence": missions_with_timeline,
         "missionsWithSourceBackedSceneEdges": missions_with_scene_edges,
         "missionsWithSourceBackedSceneSequences": missions_with_scene_sequences,
@@ -1952,6 +2985,8 @@ def summarize(
         "sourceBackedHashTerminalExceptionCount": hash_terminal_catalog.get("exceptionCount", 0),
         "hashTerminalCatalog": hash_terminal_catalog,
         "scenePlacementEntries": scene_placement_total,
+        "missionsWithLevelscriptSpatialProximity": missions_with_levelscript_spatial,
+        "levelscriptSpatialProximityMatches": levelscript_spatial_match_total,
         "timelineEvidence": timeline_meta,
         "unresolvedByKind": dict(unresolved_counter.most_common()),
         "sourceBackedSceneEdgesByKind": dict(scene_edge_counter.most_common()),
@@ -1974,7 +3009,6 @@ def render_markdown(payload: dict) -> str:
         f"- missions: `{summary['missionCount']}`",
         f"- quests: `{summary['questCount']}`",
         f"- missions with branch points: `{summary['missionWithBranchPoints']}`",
-        f"- missions with quest-tree loops: `{summary.get('missionsWithQuestTreeLoops', 0)}`",
         f"- missions with dialog timeline evidence: `{summary['missionsWithDialogTimelineEvidence']}`",
         f"- missions with source-backed scene edges: `{summary['missionsWithSourceBackedSceneEdges']}`",
         f"- missions with source-backed scene sequences: `{summary.get('missionsWithSourceBackedSceneSequences', 0)}`",
@@ -1986,6 +3020,9 @@ def render_markdown(payload: dict) -> str:
         f"- unique source-backed terminal hashes: `{summary.get('sourceBackedHashTerminalUniqueHashes', 0)}`",
         f"- hash-terminal pattern exceptions: `{summary.get('sourceBackedHashTerminalExceptionCount', 0)}`",
         f"- scene placement entries: `{summary.get('scenePlacementEntries', 0)}`",
+        f"- LevelScript spatial proximity matches (weak): "
+        f"`{summary.get('levelscriptSpatialProximityMatches', 0)}` "
+        f"across `{summary.get('missionsWithLevelscriptSpatialProximity', 0)}` missions",
         f"- timeline evidence file: `{summary['timelineEvidence'].get('path', '')}`",
         "",
         "## Unresolved Evidence",
@@ -2175,7 +3212,17 @@ def main(argv: list[str] | None = None) -> int:
         missing = sorted(selected - found)
         raise SystemExit(f"MissionRuntimeAsset missing for: {', '.join(missing)}")
 
-    recovered = [recover_mission(path, timeline_index, generated_mission_dir) for path in files]
+    all_files = mission_files(mra_dir, set())
+    script_condition_ownership = build_script_condition_ownership(all_files)
+    recovered = [
+        recover_mission(
+            path,
+            timeline_index,
+            generated_mission_dir,
+            script_condition_ownership=script_condition_ownership,
+        )
+        for path in files
+    ]
     payload = {
         "evidencePolicy": EVIDENCE_POLICY,
         "summary": summarize(recovered, timeline_meta),

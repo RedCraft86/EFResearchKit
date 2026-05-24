@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Build split WebUI zips without the 3D asset browser payload.
 
-The primary package keeps the story/reference browser text data, code, and
-emoji image files. A companion assets package contains the larger exported
-image/video files that the story renderer can display from inline ``<image...>``
-tags or inferred wiki-entry media. OBJ/FBX files, Blender bundles, and the
-asset-browser data page are intentionally left out.
+The primary package keeps the story/reference browser text data, code, emoji
+image files, and decoded story audio. A companion assets package contains the
+larger exported image/video/audio files that the story renderer can display or
+play. OBJ/FBX
+files, Blender bundles, and the asset-browser data page are intentionally left
+out.
 """
 from __future__ import annotations
 
@@ -21,7 +22,14 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
-from common import EXPORT_ROOT, ROOT as PROJECT_ROOT, normalize_posix
+from common import (
+    EXPORT_ROOT,
+    ROOT as PROJECT_ROOT,
+    normalize_posix,
+    path_id_export_base_stem,
+    path_id_export_path_id,
+    rel_requires_path_id_export_name,
+)
 
 WEBUI_ROOT = PROJECT_ROOT / "webui"
 ZIP_NAME_PREFIX = "endfield-story-exported"
@@ -40,6 +48,8 @@ TEXT_EXTENSIONS = {
     ".yml",
     ".yaml",
 }
+
+AUDIO_EXTENSIONS = {".wav", ".wem"}
 
 IMAGE_TOKEN_RE = re.compile(
     r"<image\b(?!\s*=)[^>]*>[\s\S]*?</image>"
@@ -114,10 +124,10 @@ Run from this extracted directory:
 
 Then open the printed localhost URL.
 
-This package includes the story/reference text data, WebUI code, and emoji
-images. Larger story images and videos are in the companion assets zip. Extract
-that zip into the same directory after this one when you want inline/wiki media
-too.
+This package includes the story/reference text data, WebUI code, emoji images,
+and decoded story audio. Larger story images and videos are in the companion
+assets zip. Extract that zip into the same directory after this one when you
+want inline/wiki media too.
 
 The 3D asset browser, OBJ/FBX payloads, and Blender bundle downloads are
 intentionally excluded.
@@ -129,8 +139,9 @@ Extract this zip into the same directory as the matching story package, after
 the story package has been extracted.
 
 It contains larger exported image and video files used by inline/wiki media in
-the WebUI, plus the full media indexes that enable them. Emoji images, WebUI
-code, and story/reference text data are in the main story package.
+the WebUI, plus decoded story audio files and the full media/audio indexes that
+enable them. Emoji images, WebUI code, story/reference text data, and decoded
+story audio are in the main story package.
 """
 
 
@@ -156,6 +167,8 @@ class PackagePlan:
     filtered_video_payload: dict
     exported_images: list[ExportedImage]
     exported_videos: list[ExportedImage]
+    audio_files: list[ExportedImage]
+    audio_indexes: list[ExportedImage]
     image_refs: int
     video_refs: int
 
@@ -163,8 +176,8 @@ class PackagePlan:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Create split WebUI zips: a story/code/emoji zip and a companion "
-            "larger-media assets zip."
+            "Create split WebUI zips: a story/code/emoji/audio zip and a "
+            "companion larger-media assets zip."
         ),
     )
     parser.add_argument(
@@ -253,8 +266,37 @@ def iter_webui_text_files(webui_root: Path) -> Iterable[Path]:
             continue
         if "__pycache__" in path.parts:
             continue
+        if path.relative_to(webui_root).as_posix().startswith("data/audio/"):
+            continue
         if path.suffix.lower() in TEXT_EXTENSIONS:
             yield path
+
+
+def iter_exported_audio_files(export_root: Path) -> Iterable[Path]:
+    audio_root = export_root / "structured" / "Audio"
+    if not audio_root.exists():
+        return
+    for path in sorted(audio_root.rglob("*")):
+        if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS:
+            yield path
+
+
+def iter_exported_audio_indexes(export_root: Path) -> Iterable[Path]:
+    audio_root = export_root / "structured" / "Audio"
+    if not audio_root.exists():
+        return
+    for path in sorted(audio_root.rglob("index.json")):
+        if path.is_file():
+            yield path
+
+
+def exported_file(export_root: Path, path: Path) -> ExportedImage:
+    rel = normalize_posix(path.relative_to(export_root))
+    return ExportedImage(
+        rel=rel,
+        source_path=path,
+        archive_path=archive_name(Path(export_root.name) / path.relative_to(export_root)),
+    )
 
 
 def clean_inline_image_id_value(value: str) -> str:
@@ -689,10 +731,25 @@ def is_sns_inline_image_stem(stem: str) -> bool:
     return "sns" in normalized or "emoji" in normalized
 
 
+def media_lookup_stem(rel: str) -> tuple[str, str] | None:
+    name = normalize_posix(rel).split("/")[-1] or rel
+    stem = re.sub(r"\.[^.]+$", "", name, flags=re.IGNORECASE).lower()
+    base_stem = path_id_export_base_stem(stem).lower()
+    path_id = path_id_export_path_id(stem)
+    if rel_requires_path_id_export_name(rel):
+        if not base_stem:
+            return None
+        return base_stem, path_id
+    return base_stem or stem, path_id
+
+
 def is_story_emoji_asset(rel: str) -> bool:
     rel_normalized = normalize_posix(rel).lower()
     name = rel_normalized.split("/")[-1] or rel_normalized
-    stem = re.sub(r"\.[^.]+$", "", name, flags=re.IGNORECASE)
+    stem_info = media_lookup_stem(rel_normalized)
+    if stem_info is None:
+        return False
+    stem = stem_info[0]
     return (
         stem.startswith("emoji_")
         or stem.startswith("sns_emoji_")
@@ -725,7 +782,10 @@ def build_inline_image_lookup(entries: Iterable[dict]) -> tuple[dict[str, AssetC
         if not rel:
             continue
         name = rel.split("/")[-1] or rel
-        stem = re.sub(r"\.[^.]+$", "", name, flags=re.IGNORECASE).lower()
+        stem_info = media_lookup_stem(rel)
+        if stem_info is None:
+            continue
+        stem, path_id = stem_info
         if not stem:
             continue
 
@@ -736,6 +796,8 @@ def build_inline_image_lookup(entries: Iterable[dict]) -> tuple[dict[str, AssetC
             score=score_inline_image_asset(rel, stem),
             entry=raw,
         )
+        if path_id:
+            candidate.entry.setdefault("pid", path_id)
         remember_best(by_stem, stem, candidate)
 
         number_key = inline_image_number_key(stem)
@@ -755,7 +817,10 @@ def build_video_lookup(entries: Iterable[dict]) -> dict[str, list[AssetCandidate
         if not rel:
             continue
         name = rel.split("/")[-1] or rel
-        stem = re.sub(r"\.[^.]+$", "", name, flags=re.IGNORECASE).lower()
+        stem_info = media_lookup_stem(rel)
+        if stem_info is None:
+            continue
+        stem, path_id = stem_info
         if not stem:
             continue
         candidate = AssetCandidate(
@@ -765,6 +830,8 @@ def build_video_lookup(entries: Iterable[dict]) -> dict[str, list[AssetCandidate
             score=score_wiki_video_asset(rel),
             entry=raw,
         )
+        if path_id:
+            candidate.entry.setdefault("pid", path_id)
         by_stem.setdefault(stem, []).append(candidate)
 
     for candidates in by_stem.values():
@@ -1017,6 +1084,14 @@ def plan_package(args: argparse.Namespace) -> PackagePlan:
         resolve_exported_image(project_root, export_root, filtered_video_payload, rel)
         for rel in sorted(str(entry.get("r") or "") for entry in selected_videos)
     ]
+    audio_files = [
+        exported_file(export_root, path)
+        for path in iter_exported_audio_files(export_root)
+    ]
+    audio_indexes = [
+        exported_file(export_root, path)
+        for path in iter_exported_audio_indexes(export_root)
+    ]
     counts = story_media_payload.get("counts") if isinstance(story_media_payload.get("counts"), dict) else {}
 
     return PackagePlan(
@@ -1024,6 +1099,8 @@ def plan_package(args: argparse.Namespace) -> PackagePlan:
         filtered_video_payload=filtered_video_payload,
         exported_images=exported_images,
         exported_videos=exported_videos,
+        audio_files=audio_files,
+        audio_indexes=audio_indexes,
         image_refs=int(counts.get("imageIds") or len(selected_images)),
         video_refs=int(counts.get("videoRefs") or len(selected_videos)),
     )
@@ -1082,6 +1159,7 @@ def create_package(args: argparse.Namespace) -> int:
     print(f"Resolved image files: {len(existing_images):,} ({len(emoji_images):,} emoji, {len(asset_images):,} asset)")
     print(f"Wiki video refs: {plan.video_refs:,}")
     print(f"Resolved video files: {len(existing_videos):,}")
+    print(f"Decoded audio files: {len(plan.audio_files):,}")
     if missing_images:
         preview = ", ".join(image.rel for image in missing_images[:10])
         suffix = "..." if len(missing_images) > 10 else ""
@@ -1142,6 +1220,10 @@ def create_package(args: argparse.Namespace) -> int:
 
         for image in emoji_images:
             zip_write_file(zipf, written, image.source_path, image.archive_path)
+        for audio_path in plan.audio_files:
+            zip_write_file(zipf, written, audio_path.source_path, audio_path.archive_path)
+        for audio_index in plan.audio_indexes:
+            zip_write_file(zipf, written, audio_index.source_path, audio_index.archive_path)
 
     assets_written: set[str] = set()
     with zipfile.ZipFile(assets_output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
@@ -1154,6 +1236,10 @@ def create_package(args: argparse.Namespace) -> int:
             zip_write_file(zipf, assets_written, image.source_path, image.archive_path)
         for video in existing_videos:
             zip_write_file(zipf, assets_written, video.source_path, video.archive_path)
+        for audio_path in plan.audio_files:
+            zip_write_file(zipf, assets_written, audio_path.source_path, audio_path.archive_path)
+        for audio_index in plan.audio_indexes:
+            zip_write_file(zipf, assets_written, audio_index.source_path, audio_index.archive_path)
 
     size_mb = output.stat().st_size / (1024 * 1024)
     assets_size_mb = assets_output.stat().st_size / (1024 * 1024)

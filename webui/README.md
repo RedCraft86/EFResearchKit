@@ -1,28 +1,36 @@
 # WebUI Notes
 
 The `webui` frontend is intentionally small and static. It reads generated JSON
-from `webui/data/` and keeps heavyweight recovery work in the Python builders.
+from `webui/data/`, serves exported media/audio from `export_full/`, and keeps
+heavyweight recovery work in the Python builders.
 
 ## Browser Files
 
 - `index.html` and `style.css`: shared shell, tabs, and layout.
-- `shared.js`: small dependency-free browser utilities used by the static
-  views.
+- `src/core/`: small dependency-free browser utilities used by every tab.
+- `src/ui/media_player.js`: shared audio/video control wrapper.
 - `app_labels.js`: UI text, labels, and shared story formatting helpers.
 - `app_tree.js`: story filters, grouping, sorting, and sidebar tree rows.
 - `app.js`: story data loading and conversation rendering.
-- `reference.js`: raw localized table/reference browser.
-- `updates.js`: original game-data update browser.
+- `src/features/reference/`: raw localized table/reference browser.
+- `src/features/updates/`: original game-data update browser.
 - `assets.js`: exported asset browser and preview panel.
 
 ## Current Scope
 
-- `Story`: language switch, search, foldable media/recovery issue/method
-  filters, a Storyline filter for mission/story buckets, and Media chips for
-  entries with videos, non-emoji images, SNS stickers, or emoji,
-  conversation detail, summaries,
+- `Story`: language switch, search, foldable filters, a Storyline filter for
+  mission/story buckets, Media chips for entries with videos, non-emoji images,
+  SNS stickers, or emoji, recovered game-data story-order sorting with compact
+  evidence badges in mission lists, conversation detail, summaries,
   option groups, line-order notes, raw source traces, and inline media
-  rendering for SNS/content images. Narrative video blocks show the best
+  rendering for SNS/content images. Recovery issue/method filters, raw
+  source/debug blocks, mission timeline evidence, cutscene debug panels, and
+  manual order-edit controls are gated behind the `Show debug info` toggle so
+  normal browsing stays compact. Resetting filters returns to Story sort while
+  preserving expanded mission groups, and gender variant selection is a header
+  toggle. The current chrome uses a light neutral palette with muted teal and
+  orange accents while keeping category badges softly color-coded. Narrative
+  video blocks show the best
   playable active-gender/source variant for each distinct video, without
   counting hidden duplicate format/source variants as extra videos. Story
   search includes option ids as well as line ids/text. Option
@@ -43,10 +51,27 @@ from `webui/data/` and keeps heavyweight recovery work in the Python builders.
   and are removed from the trunk even when
   recovered Timeline order disagrees with numeric line suffix order. DialogIdTable
   recovery chips expose runtime trunk line refs and runtime option refs in
-  their tooltip when that evidence is available.
-- Narrative videos without non-name binding evidence are emitted as standalone
-  `video` story files grouped by mission. Videos with recovered Timeline /
-  playable evidence stay attached to their proven dialog or cutscene.
+  their tooltip when that evidence is available. Known option placement or
+  inferred-response gaps can be covered for WebUI display only through
+  `webui/overrides/options.json`; edit it and refresh the browser,
+  no Story rebuild needed. Affected option groups or rows show a manual
+  override tag. Mission Timeline Recovery shows the
+  quest map track, LevelScript spatial candidates, source-script hints, and
+  source-backed scene edges. Cutscene chips now include compact identifying labels, and cutscene
+  detail panels expose placement evidence plus variants, paths,
+  metadata, videos, audio events, and actor labels to make individual
+  cutscenes easier to identify. When `scripts/build_audio.py` has linked
+  decoded audio, dialog/cutscene lines with `audioSrc` and recoverable
+  cutscene audio events render WebUI audio controls with draggable seek bars;
+  playable Story and Updates videos use the same draggable progress control.
+- Narrative videos without a resolved story key are emitted as standalone
+  `video` story files grouped by mission. Videos that resolve to dialog,
+  cutscene, remotecomm, or another story file also attach to that file;
+  standalone video rows sort beside the attached file. Timeline / playable
+  evidence supplies authored inline placement when available. Manual
+  attachments and false-attachment suppressions live in
+  `webui/overrides/narrative_videos.json`; videos stay available as standalone
+  `video_*` rows after the Story builder is rerun.
 - `Reference`: raw localized rows from `data/lang/<code>/reference/`, with
   source/table filters and on-demand table loading.
 - `Updates`: latest change summary from `data/updates/latest.json`, generated
@@ -65,8 +90,23 @@ from `webui/data/` and keeps heavyweight recovery work in the Python builders.
   loaded on demand.
 - `data/lang/<code>/narrative_video_evidence.json`: timeline-backed video to
   WebUI conversation evidence. These rows require recovered
-  `BeyondFMVPlayableAsset` / Timeline sources; heuristic filename matches are
-  not recorded as proof.
+  `BeyondFMVPlayableAsset` / Timeline sources, including gameplay cutscene
+  playables from AnimeStudio `json_by_type/MonoBehaviour`; heuristic filename
+  matches are not recorded as proof.
+- `export_full/structured/Audio/<code>/index.json` and decoded `.wav`/`.wem`
+  files: optional audio generated by `scripts/build_audio.py`. Conversation
+  payloads keep the per-line `audio` id and gain `audioSrc` only when a
+  decoded file exists; cutscene `audioEvents` gain `audioFiles` only when Wwise
+  bank metadata links the event to decoded media. Story rebuilds run a
+  skip-decode audio relink automatically for languages with decoded audio
+  already present.
+- `overrides/story_order.json`: OCR-managed Story sort order. Each
+  `missions.<mission>.order` array is the complete file order for that
+  mission, and the WebUI treats this override as the only order source in
+  `按剧情排序` mode. `export.bat` leaves the file untouched. The OCR recovery
+  pipeline updates it when applied, and the Story sidebar can save row moves or
+  toggle a mission lock. `missions.<mission>.locked: true` freezes a mission so
+  OCR recovery and browser-side save logic preserve the saved list exactly.
 - `data/lang/<code>/reference/`: Reference tables; persistent rows may share
   streaming payloads or use small overlay files for changed rows.
 - `data/assets/story_media.json`: compact Story inline image/video lookup using
@@ -98,7 +138,9 @@ from `webui/data/` and keeps heavyweight recovery work in the Python builders.
 
 - no runtime graph atlas or binding explorer in the frontend
 - no mission-flow dashboard
-- no frontend-side recovery debugging surface
+- no broad frontend-side recovery workbench; the existing `Show debug info`
+  toggle only exposes generated evidence/debug blocks needed to audit the
+  current Story view
 
 If one of those views becomes useful again, rebuild it intentionally instead of
 letting the browser grow around recovery experiments.

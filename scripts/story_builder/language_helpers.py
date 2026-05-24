@@ -299,14 +299,20 @@ def dialog_story_issue_codes(payload: dict) -> list[str]:
     if isinstance(warning, dict):
         line_order = warning.get("lineOrder") if isinstance(warning.get("lineOrder"), dict) else {}
         option_layout = warning.get("optionLayout") if isinstance(warning.get("optionLayout"), dict) else {}
+        problematic_aspects = {
+            str(aspect)
+            for aspect in (warning.get("problematicAspects") or [])
+            if str(aspect)
+        }
 
         line_order_status = str(line_order.get("status") or "")
-        if line_order_status == "missing":
-            codes.append("missingLineOrder")
-        elif line_order_status == "fallback":
-            codes.append("fallbackLineOrder")
-        if int(line_order.get("uncoveredLineCount") or 0) > 0:
-            codes.append("uncoveredLines")
+        if "lineOrder" in problematic_aspects:
+            if line_order_status == "missing":
+                codes.append("missingLineOrder")
+            elif line_order_status == "fallback":
+                codes.append("fallbackLineOrder")
+            if int(line_order.get("uncoveredLineCount") or 0) > 0:
+                codes.append("uncoveredLines")
         if str(option_layout.get("status") or "") == "inferred":
             codes.append("inferredOptionLayout")
     if any(
@@ -319,7 +325,31 @@ def dialog_story_issue_codes(payload: dict) -> list[str]:
         for item in (payload.get("warnings") or [])
     ):
         codes.append("inferredOptionResponse")
+    if dialog_has_manual_option_override(payload):
+        codes.append("overrided")
     return codes
+
+def dialog_has_manual_option_override(payload: dict) -> bool:
+    for group in (payload.get("optionGroups") or []):
+        if not isinstance(group, dict):
+            continue
+        if isinstance(group.get("manualOverride"), dict) and group.get("manualOverride"):
+            return True
+        for option in (group.get("options") or []):
+            if isinstance(option, dict) and isinstance(option.get("manualOverride"), dict) and option.get("manualOverride"):
+                return True
+    for warning in (payload.get("warnings") or []):
+        if not isinstance(warning, dict):
+            continue
+        if isinstance(warning.get("manualOverride"), dict) and warning.get("manualOverride"):
+            return True
+        for detail in (warning.get("groupDetails") or []):
+            if isinstance(detail, dict) and isinstance(detail.get("manualOverride"), dict) and detail.get("manualOverride"):
+                return True
+        for group in (warning.get("groups") or []):
+            if isinstance(group, dict) and isinstance(group.get("manualOverride"), dict) and group.get("manualOverride"):
+                return True
+    return False
 
 def _line_id_list_equal(left: object, right: object) -> bool:
     if not isinstance(left, list) or not isinstance(right, list):
@@ -702,6 +732,9 @@ def compact_narrative_video_ref(ref: dict) -> dict:
         compact["_debug"]["source"]["binding"] = binding
     if ref.get("authoritativeKeys"):
         compact["_debug"]["source"]["authoritativeKeys"] = list(ref["authoritativeKeys"])
+    attachment_override = ref.get("attachmentOverride")
+    if isinstance(attachment_override, dict):
+        compact["_debug"]["source"]["attachmentOverride"] = attachment_override
     return compact
 
 def narrative_video_sort_key(ref: dict) -> tuple:
@@ -818,12 +851,15 @@ def build_mission_map_pins(flow: dict | None) -> list[dict]:
 
 def build_mission_timeline_recovery_report(
     scene_graphs: dict[str, dict],
+    mission_flows: dict[str, dict] | None = None,
 ) -> dict:
     timeline_index, timeline_meta = load_mission_timeline_index(
         timeline_recovery_order_out(EXPORT_ROOT)
     )
     recovered: list[dict] = []
     files = mission_timeline_files(MRA_DIR, set()) if MRA_DIR.is_dir() else []
+    script_condition_ownership = build_mission_script_condition_ownership(files)
+    mission_flows = mission_flows or {}
     for path in files:
         mission_id = path.stem
         recovered.append(
@@ -840,6 +876,8 @@ def build_mission_timeline_recovery_report(
                 source_backed_hash_terminals_from_scene_graph(
                     scene_graphs.get(mission_id)
                 ),
+                script_condition_ownership=script_condition_ownership,
+                mission_flow=mission_flows.get(mission_id),
             )
         )
     return {

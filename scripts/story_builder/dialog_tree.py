@@ -474,6 +474,39 @@ def _ordered_dialog_tree_trunk_ids(nodes: list[dict], conns: list[dict]) -> tupl
             if dst not in succs[src]:
                 succs[src].append(dst)
 
+    ignored_duplicate_node_ids: set[str] = set()
+    duplicate_line_nodes: dict[str, list[str]] = defaultdict(list)
+    for node_id, node in by_id.items():
+        trunk_id = _dialog_tree_node_line_id(node)
+        if trunk_id:
+            duplicate_line_nodes[trunk_id].append(node_id)
+    for node_ids in duplicate_line_nodes.values():
+        if len(node_ids) < 2:
+            continue
+        connected = {
+            node_id
+            for node_id in node_ids
+            if preds.get(node_id) or succs.get(node_id)
+        }
+        if not connected:
+            continue
+        ignored_duplicate_node_ids.update(
+            node_id
+            for node_id in node_ids
+            if node_id not in connected
+        )
+    if ignored_duplicate_node_ids:
+        by_id = {
+            node_id: node
+            for node_id, node in by_id.items()
+            if node_id not in ignored_duplicate_node_ids
+        }
+        node_index = {
+            node_id: index
+            for node_id, index in node_index.items()
+            if node_id in by_id
+        }
+
     def node_sort_key(node_id: str) -> tuple[float, float, int]:
         return _dialog_tree_node_position(by_id[node_id], node_index.get(node_id, 0))
 
@@ -619,6 +652,8 @@ def _ordered_dialog_tree_trunk_ids(nodes: list[dict], conns: list[dict]) -> tupl
     )
     if deferred_back_edge_count:
         debug["deferredBackEdgeCount"] = deferred_back_edge_count
+    if ignored_duplicate_node_ids:
+        debug["ignoredDuplicateNodeIds"] = sorted(ignored_duplicate_node_ids, key=str)
     if orphan_trunk_ids:
         debug["orphanTrunkIds"] = orphan_trunk_ids
     return ordered_line_ids, debug
@@ -2207,7 +2242,7 @@ def _load_related_dialog_tree_files(conv_key: str, original_line_ids: list[str] 
     seen_source_keys: set[str] = set()
 
     for path in _iter_related_dialog_tree_paths(conv_key):
-        source_key = path.stem
+        source_key = _anime_tree_logical_stem(path)
         if source_key == conv_key or source_key in seen_source_keys:
             continue
         source = _load_dialog_tree_source(source_key)
@@ -2255,7 +2290,7 @@ def load_dialog_tree_fragments(conv_key: str) -> list[dict]:
         for path in _iter_anime_tree_files("dlg_*.json"):
             if path.name.endswith("_extra_config.json"):
                 continue
-            source_key = path.stem
+            source_key = _anime_tree_logical_stem(path)
             source = _load_dialog_tree_source(source_key)
             if not source:
                 continue
@@ -2284,7 +2319,7 @@ def load_dialog_tree_scene_links(conv_key: str) -> list[dict]:
         for path in _iter_anime_tree_files("dlg_*.json"):
             if path.name.endswith("_extra_config.json"):
                 continue
-            source = _load_dialog_tree_source(path.stem)
+            source = _load_dialog_tree_source(_anime_tree_logical_stem(path))
             if not source:
                 continue
             for link in source.get("sceneLinks") or []:

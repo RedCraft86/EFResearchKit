@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json as _radio_cont_json
+import re as _radio_cont_re
 from functools import lru_cache as _radio_cont_lru_cache
 from pathlib import Path as _RadioContPath
 
@@ -18,6 +19,103 @@ _RADIO_CONTINUATION_REPORT_PATH = (
     _RadioContPath(__file__).resolve().parents[2]
     / "reports" / "mission_order" / "radio_continuation_CN.json"
 )
+
+_FMV_CLIP_BY_KEY_REPORT_PATH = (
+    _RadioContPath(__file__).resolve().parents[2]
+    / "reports" / "playable_director" / "fmv_clip_by_webui_key.json"
+)
+
+_NARRATIVE_VIDEO_OVERRIDES_PATH = (
+    _RadioContPath(__file__).resolve().parents[2]
+    / "webui" / "overrides" / "narrative_videos.json"
+)
+
+
+def _normalize_video_override_stem(value: object) -> str:
+    text = str(value or "").strip().replace("\\", "/")
+    if not text:
+        return ""
+    text = text.rsplit("/", 1)[-1]
+    return _radio_cont_re.sub(r"\.[^.]+$", "", text, flags=_radio_cont_re.IGNORECASE).lower()
+
+
+@_radio_cont_lru_cache(maxsize=2)
+def _load_narrative_video_overrides(path_str: str) -> dict[str, dict[str, list[dict]]]:
+    path = _RadioContPath(path_str)
+    if not path.is_file():
+        return {"suppressInline": {}, "attachInline": {}}
+    try:
+        payload = _radio_cont_json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, _radio_cont_json.JSONDecodeError):
+        return {"suppressInline": {}, "attachInline": {}}
+    if not isinstance(payload, dict):
+        return {"suppressInline": {}, "attachInline": {}}
+
+    out: dict[str, dict[str, list[dict]]] = {
+        "suppressInline": {},
+        "attachInline": {},
+    }
+
+    def add_rule(bucket: dict[str, list[dict]], target_key: object, raw_rule: object) -> None:
+        key = str(target_key or "").strip()
+        if not key:
+            return
+        note = ""
+        raw_stems: object = []
+        if isinstance(raw_rule, dict):
+            note = str(raw_rule.get("note") or "")
+            raw_stems = (
+                raw_rule.get("stems")
+                or raw_rule.get("videoStems")
+                or raw_rule.get("stem")
+                or raw_rule.get("videoStem")
+                or []
+            )
+        elif isinstance(raw_rule, list):
+            raw_stems = raw_rule
+        elif raw_rule:
+            raw_stems = [raw_rule]
+        if isinstance(raw_stems, (str, int, float)):
+            raw_stems = [raw_stems]
+        stems = sorted({
+            normalized
+            for normalized in (_normalize_video_override_stem(value) for value in (raw_stems or []))
+            if normalized
+        })
+        bucket.setdefault(key, []).append({
+            "targetKey": key,
+            "stems": stems,
+            "note": note,
+            "source": path,
+        })
+
+    def add_rules(bucket_name: str, raw_rules: object) -> None:
+        bucket = out[bucket_name]
+        if isinstance(raw_rules, dict):
+            for target_key, raw_rule in raw_rules.items():
+                add_rule(bucket, target_key, raw_rule)
+        elif isinstance(raw_rules, list):
+            for raw_rule in raw_rules:
+                if not isinstance(raw_rule, dict):
+                    continue
+                target_key = (
+                    raw_rule.get("targetKey")
+                    or raw_rule.get("key")
+                    or raw_rule.get("resolvedKey")
+                    or raw_rule.get("attachTo")
+                )
+                add_rule(bucket, target_key, raw_rule)
+
+    add_rules("suppressInline", payload.get("suppressInline"))
+    add_rules("attachInline", payload.get("attachInline") or payload.get("attachTo"))
+    return out
+
+
+def _manual_option_group_override(conv_key: str, group_id: int) -> dict:
+    # Runtime WebUI overrides now live in webui/overrides/options.json
+    # and are applied by webui/app.js so users can edit them without rebuilding
+    # generated conversation JSON.
+    return {}
 
 
 @_radio_cont_lru_cache(maxsize=2)
@@ -46,6 +144,27 @@ def _load_radio_continuation_candidates_by_mission(
     return out
 
 
+@_radio_cont_lru_cache(maxsize=2)
+def _load_fmv_clips_by_webui_key(path_str: str) -> dict[str, list[dict]]:
+    """Load `reports/playable_director/fmv_clip_by_webui_key.json`.
+
+    Returns `{webui_key: [{fmvId, clipStart, clipDuration, ...}, ...]}` or
+    an empty dict when the report has not been generated yet. The builder
+    surfaces these as per-conv `fmvClips` meta so the WebUI can display
+    authored FMV timing for cutscene/dialog stories that bind to a
+    `BeyondFMVPlayableAsset` clip.
+    """
+    path = _RadioContPath(path_str)
+    if not path.is_file():
+        return {}
+    try:
+        payload = _radio_cont_json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, _radio_cont_json.JSONDecodeError):
+        return {}
+    mappings = payload.get("mappings")
+    return mappings if isinstance(mappings, dict) else {}
+
+
 def build_language_bundle(
     language_code: str,
     out_dir: Path,
@@ -71,10 +190,16 @@ def build_language_bundle(
     dialog_id_registry = shared_load_dialog_id_registry()
     story_source_links = load_story_source_links()
     narrative_video_assets = _load_narrative_video_assets()
+    narrative_video_overrides = _load_narrative_video_overrides(str(_NARRATIVE_VIDEO_OVERRIDES_PATH))
+    narrative_video_suppress_overrides = narrative_video_overrides.get("suppressInline") or {}
+    narrative_video_attach_overrides = narrative_video_overrides.get("attachInline") or {}
+    fmv_clips_by_key = _load_fmv_clips_by_webui_key(str(_FMV_CLIP_BY_KEY_REPORT_PATH))
     written_conv_paths: set[str] = set()
     written_reference_paths: set[str] = set()
     written_mission_paths: set[str] = set()
     conv_media_tags_by_key: dict[str, set[str]] = defaultdict(set)
+    scene_order_analysis_by_payload_id: dict[int, dict] = {}
+    scene_order_gap_sources: dict[str, tuple[Path, dict, dict | None]] = {}
 
     inline_image_tag_re = re.compile(
         r"<image\b(?!\s*=)[^>]*>[\s\S]*?</image>"
@@ -228,6 +353,12 @@ def build_language_bundle(
     def write_conv_payload(out_key: str, payload: dict) -> Path:
         path = conv_dir / f"{out_key}.json"
         write_json(path, payload)
+        if path.stem.startswith("dlg_"):
+            scene_order_gap_sources[written_path_key(path)] = (
+                path,
+                payload,
+                scene_order_analysis_by_payload_id.get(id(payload)),
+            )
         media_tags = collect_payload_media_tags(payload)
         if media_tags:
             conv_media_tags_by_key[out_key].update(media_tags)
@@ -357,6 +488,17 @@ def build_language_bundle(
     audio_dialog = load("AudioDialog.json")
     responsive_dialog = load("ResponsiveDialog.json")
     rich_content = load("RichContentTable.json")
+    reading_popups = load("ReadingPopUpTable.json")
+    rich_content_persistent = load_optional_table_json(
+        PERSISTENT_TABLE_DIR,
+        "RichContentTable.json",
+        "Persistent/RichContentTable.json",
+    )
+    reading_popups_persistent = load_optional_table_json(
+        PERSISTENT_TABLE_DIR,
+        "ReadingPopUpTable.json",
+        "Persistent/ReadingPopUpTable.json",
+    )
     prts_all_items = load("PrtsAllItem.json")
     prts_first_lv = load("PrtsFirstLv.json")
     prts_page = load("PrtsPage.json")
@@ -772,6 +914,52 @@ def build_language_bundle(
             "value": named_text(name_key),
             "trace": text_trace("TextTable", name_key, "id", row.get("id")),
         }
+
+
+    def localized_objective_instruction(key: object) -> dict | None:
+        text_key = str(key or "").strip()
+        if not text_key:
+            return None
+        return {
+            "key": text_key,
+            "text": named_text(text_key),
+        }
+
+    def objective_instruction_keys(anchor: dict) -> list[str]:
+        keys: list[str] = []
+        if anchor.get("descriptionKey"):
+            keys.append(str(anchor.get("descriptionKey") or ""))
+        keys.extend(str(key) for key in (anchor.get("multipleDescriptionKeys") or []))
+        return _unique_preserve(key for key in keys if key)
+
+    def localize_mission_flow(flow: dict | None) -> dict | None:
+        if not isinstance(flow, dict):
+            return flow
+        localized = copy.deepcopy(flow)
+        for quest in localized.get("quests") or []:
+            if not isinstance(quest, dict):
+                continue
+            quest_instructions: list[dict] = []
+            for anchor in quest.get("objectiveAnchors") or []:
+                if not isinstance(anchor, dict):
+                    continue
+                instructions = [
+                    entry
+                    for key in objective_instruction_keys(anchor)
+                    if (entry := localized_objective_instruction(key))
+                ]
+                if not instructions:
+                    continue
+                anchor["objectiveInstructions"] = instructions
+                index = anchor.get("index")
+                for entry in instructions:
+                    row = dict(entry)
+                    if index not in (None, ""):
+                        row["objectiveIndex"] = index
+                    quest_instructions.append(row)
+            if quest_instructions:
+                quest["objectiveInstructions"] = quest_instructions
+        return localized
 
 
     npc_templates_by_template_id: dict[str, list[str]] = defaultdict(list)
@@ -2006,6 +2194,191 @@ def build_language_bundle(
                 }
             return {}
 
+        def sibling_scene_template_branch_for_group(
+            group_opt_ids: list[str],
+            after_id: str,
+            group_id: int,
+        ) -> dict:
+            if not group_opt_ids or len(group_opt_ids) < 2:
+                return {}
+            local_line_ids = [line_id for _idx, line_id in line_idxs if line_id in valid_line_ids]
+            if len(local_line_ids) < 3:
+                return {}
+            local_signature_by_line_id = {
+                line_id: _option_text_signature(str(line.get("text") or ""))
+                for line in (lines or [])
+                if (line_id := str(line.get("id") or "")) in valid_line_ids
+            }
+            if not local_signature_by_line_id:
+                return {}
+            local_option_signatures = option_signature_sequence(group_opt_ids)
+            if not local_option_signatures:
+                return {}
+            sibling_group_keys = [
+                key
+                for key in dialog_option_group_ids_by_key
+                if key[1] == group_id and key[0] != conv_key
+            ]
+            sibling_group_keys.sort(key=lambda key: key[0])
+            for sibling_scene, _sibling_group_id in sibling_group_keys:
+                sibling_opt_ids = dialog_option_group_ids_by_key.get((sibling_scene, group_id)) or []
+                if len(sibling_opt_ids) != len(group_opt_ids):
+                    continue
+                sibling_signatures = option_signature_sequence(sibling_opt_ids)
+                if not sibling_signatures:
+                    continue
+                compatible_positions = 0
+                icons_compatible = True
+                for (local_text, local_icon), (sibling_text, sibling_icon) in zip(local_option_signatures, sibling_signatures):
+                    if local_icon and sibling_icon and local_icon != sibling_icon:
+                        icons_compatible = False
+                        break
+                    if local_text == sibling_text or local_text in sibling_text or sibling_text in local_text:
+                        compatible_positions += 1
+                    elif SequenceMatcher(None, local_text, sibling_text).ratio() >= 0.92:
+                        compatible_positions += 1
+                if not icons_compatible or compatible_positions < max(2, len(group_opt_ids) - 1):
+                    continue
+
+                sibling_tree = load_dialog_tree(sibling_scene) or {}
+                sibling_branches = sibling_tree.get("branches") or {}
+                sibling_after = sibling_tree.get("after") or {}
+                if not sibling_branches:
+                    continue
+                sibling_after_ids = [
+                    str(sibling_after.get(opt_id) or "")
+                    for opt_id in sibling_opt_ids
+                    if str(sibling_after.get(opt_id) or "").strip()
+                ]
+                if len(set(sibling_after_ids)) != 1:
+                    continue
+                sibling_after_id = sibling_after_ids[0]
+                sibling_after_text = dialog_line_text_signature(sibling_after_id)
+                if not sibling_after_text:
+                    continue
+                local_after_candidates = [
+                    local_line_id
+                    for local_line_id in local_line_ids
+                    if (
+                        local_signature_by_line_id.get(local_line_id) == sibling_after_text
+                        or SequenceMatcher(
+                            None,
+                            local_signature_by_line_id.get(local_line_id) or "",
+                            sibling_after_text,
+                        ).ratio() >= 0.80
+                    )
+                ]
+                if not local_after_candidates:
+                    continue
+
+                branch_line_ids_by_option: dict[str, list[str]] = {}
+                sibling_line_ids_by_option: dict[str, list[str]] = {}
+                used_local_line_ids: set[str] = set()
+                missing_options: list[tuple[str, str, list[str]]] = []
+                for local_opt_id, sibling_opt_id in zip(group_opt_ids, sibling_opt_ids):
+                    sibling_branch_line_ids = [
+                        str(line_id)
+                        for line_id in (sibling_branches.get(sibling_opt_id) or [])
+                        if str(line_id or "").strip()
+                    ]
+                    if not sibling_branch_line_ids:
+                        branch_line_ids_by_option = {}
+                        break
+                    mapped_line_ids: list[str] = []
+                    for sibling_line_id in sibling_branch_line_ids:
+                        sibling_signature = dialog_line_text_signature(sibling_line_id)
+                        if not sibling_signature:
+                            mapped_line_ids = []
+                            break
+                        matches = [
+                            local_line_id
+                            for local_line_id in local_line_ids
+                            if local_line_id not in used_local_line_ids
+                            and local_signature_by_line_id.get(local_line_id) == sibling_signature
+                        ]
+                        if len(matches) != 1:
+                            mapped_line_ids = []
+                            break
+                        mapped_line_id = matches[0]
+                        used_local_line_ids.add(mapped_line_id)
+                        mapped_line_ids.append(mapped_line_id)
+                    if mapped_line_ids:
+                        branch_line_ids_by_option[local_opt_id] = mapped_line_ids
+                        sibling_line_ids_by_option[local_opt_id] = sibling_branch_line_ids
+                    else:
+                        missing_options.append((local_opt_id, sibling_opt_id, sibling_branch_line_ids))
+                if not branch_line_ids_by_option or len(missing_options) > 1:
+                    continue
+
+                mapped_indices = [
+                    local_line_ids.index(line_id)
+                    for mapped_lines in branch_line_ids_by_option.values()
+                    for line_id in mapped_lines
+                    if line_id in local_line_ids
+                ]
+                if not mapped_indices:
+                    continue
+                earliest_mapped_index = min(mapped_indices)
+                local_after_id = ""
+                for candidate in reversed(local_after_candidates):
+                    candidate_index = local_line_ids.index(candidate)
+                    if candidate_index < earliest_mapped_index:
+                        local_after_id = candidate
+                        break
+                if not local_after_id:
+                    continue
+                after_index = local_line_ids.index(local_after_id)
+                if after_id and after_id in local_line_ids and local_line_ids.index(after_id) > after_index:
+                    continue
+                if missing_options:
+                    local_opt_id, sibling_opt_id, sibling_branch_line_ids = missing_options[0]
+                    inferred_lines = [
+                        line_id
+                        for line_id in local_line_ids[after_index + 1:earliest_mapped_index]
+                        if line_id not in used_local_line_ids
+                    ]
+                    if not inferred_lines:
+                        continue
+                    branch_line_ids_by_option[local_opt_id] = inferred_lines
+                    sibling_line_ids_by_option[local_opt_id] = sibling_branch_line_ids
+                if len(branch_line_ids_by_option) != len(group_opt_ids):
+                    continue
+                if len({tuple(line_ids) for line_ids in branch_line_ids_by_option.values()}) < 2:
+                    continue
+                sibling_option_ids_by_option = {
+                    local_opt_id: sibling_opt_id
+                    for local_opt_id, sibling_opt_id in zip(group_opt_ids, sibling_opt_ids)
+                }
+                source_bits = _unique_preserve([
+                    str(value)
+                    for value in (
+                        sibling_scene,
+                        sibling_tree.get("sourceKey") or "",
+                        sibling_tree.get("file") or "",
+                    )
+                    if str(value or "").strip()
+                ])
+                return {
+                    "code": "siblingSceneTextBranches",
+                    "reason": "siblingSceneTemplate",
+                    "detail": (
+                        "A sibling scene has authored SceneGraph option branches "
+                        "with matching option layout and repeated local branch text; "
+                        "unmatched local lines between the sibling-matched anchor and "
+                        "the first matched branch are assigned to the remaining option."
+                    ),
+                    "after": local_after_id,
+                    "previousAfter": after_id,
+                    "optionIds": group_opt_ids,
+                    "branchLineIdsByOption": branch_line_ids_by_option,
+                    "siblingScene": sibling_scene,
+                    "siblingOptionIdsByOption": sibling_option_ids_by_option,
+                    "siblingBranchLineIdsByOption": sibling_line_ids_by_option,
+                    "source": "siblingSceneGraphText",
+                    "sources": source_bits,
+                }
+            return {}
+
         def source_bits_for_options(option_ids: list[str], source_map: dict[str, object]) -> list[str]:
             source_bits: list[str] = []
             for opt_id in option_ids:
@@ -2114,6 +2487,7 @@ def build_language_bundle(
         fallback_group_labels: list[str] = []
         group_details: list[dict] = []
         option_response_risks: list[dict] = []
+        manual_option_response_overrides: list[dict] = []
 
         def preferred_timeline_option_row(opt_id: str) -> dict:
             rows = timeline_option_rows.get(opt_id) or []
@@ -2524,10 +2898,126 @@ def build_language_bundle(
                         push(line_ids)
             return out
 
+        sorted_group_ids = sorted(groups_map)
+        sorted_group_index = {group_id: idx for idx, group_id in enumerate(sorted_group_ids)}
+        local_ordered_line_ids = [line_id for _idx, line_id in line_idxs if line_id in valid_line_ids]
+        local_line_order_index = {
+            line_id: idx for idx, line_id in enumerate(local_ordered_line_ids)
+        }
+        trusted_group_after_cache: dict[int, tuple[str, dict]] = {}
+        recovered_single_option_line_ids: set[str] = set()
+
+        def previous_visible_line_id(line_id: str) -> str:
+            idx = local_line_order_index.get(line_id)
+            if idx is None or idx <= 0:
+                return ""
+            return local_ordered_line_ids[idx - 1]
+
+        def trusted_recovered_group_after(group_id: int) -> tuple[str, dict]:
+            if group_id in trusted_group_after_cache:
+                return trusted_group_after_cache[group_id]
+            group_ids = group_option_ids_by_group.get(group_id, [])
+            result: tuple[str, dict] = ("", {})
+            if len(group_ids) >= 2:
+                candidate = sibling_scene_template_branch_for_group(
+                    group_ids,
+                    fallback_group_line_ids.get(group_id, ""),
+                    group_id,
+                )
+                candidate_after = str(candidate.get("after") or "")
+                if candidate_after in valid_line_ids:
+                    result = (candidate_after, candidate)
+            elif len(group_ids) == 1:
+                group_pos = sorted_group_index.get(group_id)
+                if group_pos is not None:
+                    for later_group_id in sorted_group_ids[group_pos + 1:]:
+                        later_after, later_risk = trusted_recovered_group_after(later_group_id)
+                        if later_after not in valid_line_ids:
+                            continue
+                        inferred_after = previous_visible_line_id(later_after)
+                        if inferred_after in valid_line_ids:
+                            result = (
+                                inferred_after,
+                                {
+                                    "code": "siblingSceneTextBranches",
+                                    "reason": "singleOptionSpanBeforeRecoveredAnchor",
+                                    "detail": (
+                                        "A later option group is recovered from sibling SceneGraph "
+                                        "branch evidence; this single-option group occupies the "
+                                        "contiguous line span immediately before that recovered anchor."
+                                    ),
+                                    "after": inferred_after,
+                                    "nextRecoveredGroup": later_group_id,
+                                    "nextRecoveredAfter": later_after,
+                                    "nextRecoveredReason": later_risk.get("reason") or "",
+                                    "source": later_risk.get("source") or "siblingSceneGraphText",
+                                    "sources": later_risk.get("sources") or [],
+                                },
+                            )
+                        break
+            trusted_group_after_cache[group_id] = result
+            return result
+
+        def single_option_span_before_recovered_anchor(
+            group_id: int,
+            group_opt_ids: list[str],
+            after_id: str,
+        ) -> dict:
+            if len(group_opt_ids) != 1 or after_id not in valid_line_ids:
+                return {}
+            group_pos = sorted_group_index.get(group_id)
+            if group_pos is None:
+                return {}
+            next_after = ""
+            next_group_id = 0
+            next_risk: dict = {}
+            for later_group_id in sorted_group_ids[group_pos + 1:]:
+                candidate_after, candidate_risk = trusted_recovered_group_after(later_group_id)
+                if candidate_after in valid_line_ids:
+                    next_after = candidate_after
+                    next_group_id = later_group_id
+                    next_risk = candidate_risk
+                    break
+            if next_after not in valid_line_ids:
+                return {}
+            start_index = local_line_order_index.get(after_id)
+            end_index = local_line_order_index.get(next_after)
+            if start_index is None or end_index is None or end_index <= start_index:
+                return {}
+            candidate_lines = [
+                line_id
+                for line_id in local_ordered_line_ids[start_index + 1:end_index + 1]
+                if line_id not in recovered_single_option_line_ids
+            ]
+            if not candidate_lines:
+                return {}
+            inferred_after = previous_visible_line_id(candidate_lines[0])
+            if inferred_after not in valid_line_ids:
+                return {}
+            return {
+                "code": "siblingSceneTextBranches",
+                "reason": "singleOptionSpanBeforeRecoveredAnchor",
+                "detail": (
+                    "A later option group is recovered from sibling SceneGraph "
+                    "branch evidence; this single-option group consumes the "
+                    "remaining contiguous line span before that recovered anchor."
+                ),
+                "after": inferred_after,
+                "previousAfter": after_id,
+                "optionIds": group_opt_ids,
+                "branchLineIdsByOption": {group_opt_ids[0]: candidate_lines},
+                "nextRecoveredGroup": next_group_id,
+                "nextRecoveredAfter": next_after,
+                "nextRecoveredReason": next_risk.get("reason") or "",
+                "source": next_risk.get("source") or "siblingSceneGraphText",
+                "sources": next_risk.get("sources") or [],
+            }
+
         for order, g in enumerate(sorted(groups_map), start=1):
             opts = sorted(groups_map[g], key=lambda o: o["i"])
             group_opt_ids = group_option_ids_by_group.get(g, [])
             placement_override = DIALOG_OPTION_GROUP_POSITION_OVERRIDES.get((conv_key or "", g), "")
+            manual_override = _manual_option_group_override(conv_key or "", g)
             cinematic_after_candidate = cinematic_after_by_group.get(g, "")
             cinematic_group_sources = cinematic_sources_by_group.get(g, [])
             text_alias_after_candidate = text_alias_after_by_group.get(g, "")
@@ -2669,6 +3159,36 @@ def build_language_bundle(
                 group["after"] = fallback_anchor_id
             elif used_group_fallback and fallback_anchor_id:
                 group["after"] = fallback_anchor_id
+            layout_override = (
+                manual_override.get("layout")
+                if isinstance(manual_override.get("layout"), dict)
+                else {}
+            )
+            manual_layout_applied = False
+            if layout_override:
+                override_after = str(layout_override.get("after") or "").strip()
+                override_position = str(layout_override.get("position") or "").strip()
+                can_apply_layout_override = (
+                    (after_is_authored or group_status in {"fallbackAfter", "keyedAfter", "unanchored"})
+                    and (
+                        override_position == "pre"
+                        or (override_after and override_after in valid_line_ids)
+                    )
+                )
+                if can_apply_layout_override:
+                    if override_position == "pre":
+                        group.pop("after", None)
+                        group["position"] = "pre"
+                    else:
+                        group.pop("position", None)
+                        group["after"] = override_after
+                        fallback_anchor_id = override_after
+                    manual_layout_applied = True
+                    group["manualOverride"] = {
+                        "kind": "optionLayout",
+                        "source": repo_rel(_MANUAL_OPTION_OVERRIDES_PATH),
+                        "note": str(manual_override.get("note") or layout_override.get("note") or ""),
+                    }
             timeline_route_branch = timeline_route_branch_for_group(group_opt_ids, group.get("after") or "")
             route_branch_lines_by_option = timeline_route_branch.get("branchLineIdsByOption") or {}
             sibling_text_branch = {}
@@ -2689,10 +3209,28 @@ def build_language_bundle(
                 sibling_text_branch = sibling_scene_text_branch_for_group(
                     group_opt_ids,
                     group.get("after") or "",
-                    sibling_anchor_record if inferred_anchor_mode == "siblingTimelinePosition" else None,
+                    sibling_anchor_record
+                    if not manual_layout_applied and inferred_anchor_mode == "siblingTimelinePosition"
+                    else None,
                     g,
                 )
+                if not sibling_text_branch:
+                    sibling_text_branch = sibling_scene_template_branch_for_group(
+                        group_opt_ids,
+                        group.get("after") or "",
+                        g,
+                    )
+                if not sibling_text_branch:
+                    sibling_text_branch = single_option_span_before_recovered_anchor(
+                        g,
+                        group_opt_ids,
+                        group.get("after") or "",
+                    )
                 sibling_branch_lines_by_option = sibling_text_branch.get("branchLineIdsByOption") or {}
+                sibling_after = str(sibling_text_branch.get("after") or "")
+                if sibling_after in valid_line_ids:
+                    group["after"] = sibling_after
+                    fallback_anchor_id = sibling_after
                 for opt in opts:
                     opt_id = opt.get("id") or ""
                     branch_lines = [
@@ -2702,6 +3240,8 @@ def build_language_bundle(
                     ]
                     if branch_lines:
                         opt["branchLines"] = branch_lines
+                        if sibling_text_branch.get("reason") == "singleOptionSpanBeforeRecoveredAnchor":
+                            recovered_single_option_line_ids.update(branch_lines)
             if placement_override == "pre":
                 corrected_opts_without_branch = [
                     opt
@@ -2733,19 +3273,79 @@ def build_language_bundle(
                 or sibling_text_branch
                 or following_line_risk_for_group(group_opt_ids, group.get("after") or "")
             )
-            if (
-                used_group_fallback
-                and inferred_anchor_mode == "siblingTimelinePosition"
-                and following_line_risk.get("code") == "siblingSceneTextBranches"
-            ):
-                used_group_fallback = False
+            original_following_line_risk = dict(following_line_risk) if following_line_risk else {}
+            response_override = (
+                manual_override.get("responses")
+                if isinstance(manual_override.get("responses"), dict)
+                else {}
+            )
+            manual_response_applied = False
+            if response_override:
+                option_set = {opt_id for opt_id in group_opt_ids if opt_id}
+                branch_line_ids_by_option: dict[str, list[str]] = {}
+                for raw_opt_id, raw_response in response_override.items():
+                    opt_id = str(raw_opt_id or "")
+                    if opt_id not in option_set or not isinstance(raw_response, dict):
+                        continue
+                    raw_lines = raw_response.get("branchLines")
+                    if raw_lines is None:
+                        raw_lines = raw_response.get("lineIds")
+                    if raw_lines is None:
+                        raw_lines = [raw_response.get("lineId")]
+                    if not isinstance(raw_lines, list):
+                        raw_lines = [raw_lines]
+                    line_ids = [
+                        str(line_id)
+                        for line_id in raw_lines
+                        if str(line_id or "") in valid_line_ids
+                    ]
+                    if line_ids:
+                        branch_line_ids_by_option[opt_id] = _unique_preserve(line_ids)
+                if branch_line_ids_by_option:
+                    override_detail = (
+                        "Manual WebUI-only override supplies option response "
+                        "line mapping for this group."
+                    )
+                    if following_line_risk.get("code") == "inferredFollowingLines":
+                        override_detail = (
+                            "Manual WebUI-only override supplies option response "
+                            "line mapping for a group that otherwise used inferred "
+                            "Timeline-order candidates."
+                        )
+                    following_line_risk = {
+                        **following_line_risk,
+                        "code": "manualOptionResponseOverride",
+                        "reason": "manualOverride",
+                        "detail": override_detail,
+                        "branchLineIdsByOption": branch_line_ids_by_option,
+                        "candidateLineIdsByOption": branch_line_ids_by_option,
+                        "manualOverride": {
+                            "kind": "optionResponse",
+                            "source": repo_rel(_MANUAL_OPTION_OVERRIDES_PATH),
+                            "note": str(manual_override.get("note") or ""),
+                        },
+                    }
+                    if original_following_line_risk:
+                        following_line_risk["overriddenRisk"] = original_following_line_risk
+                    for opt in opts:
+                        opt_id = opt.get("id") or ""
+                        if opt_id in branch_line_ids_by_option:
+                            opt["branchLines"] = branch_line_ids_by_option[opt_id]
+                    manual_response_applied = True
+            if following_line_risk.get("code") == "siblingSceneTextBranches":
+                if used_group_fallback:
+                    used_group_fallback = False
+                    if fallback_group_count > 0:
+                        fallback_group_count -= 1
+                    fallback_group_labels = [
+                        label for label in fallback_group_labels if label != f"g{g}"
+                    ]
+                if used_group_keyed:
+                    used_group_keyed = False
+                    if keyed_group_count > 0:
+                        keyed_group_count -= 1
                 group_status = "siblingSceneText"
                 sibling_text_group_count += 1
-                if fallback_group_count > 0:
-                    fallback_group_count -= 1
-                fallback_group_labels = [
-                    label for label in fallback_group_labels if label != f"g{g}"
-                ]
             if following_line_risk:
                 group["optionBranchRisk"] = following_line_risk
                 if following_line_risk.get("code") == "inferredFollowingLines":
@@ -2770,12 +3370,51 @@ def build_language_bundle(
                         if strong_raw_index_mapping:
                             tag["candidateMapping"] = following_line_risk.get("candidateMapping") or ""
                         opt.setdefault("riskTags", []).append(tag)
+                elif following_line_risk.get("code") == "manualOptionResponseOverride":
+                    manual_option_response_overrides.append({
+                        "group": g,
+                        **following_line_risk,
+                    })
+                    if original_following_line_risk.get("code") == "inferredFollowingLines":
+                        strong_raw_index_mapping = (
+                            original_following_line_risk.get("candidateMapping") == "trunkClipOptionIndex"
+                            and bool(original_following_line_risk.get("branchLineIdsByOption"))
+                        )
+                        if not strong_raw_index_mapping:
+                            option_response_risks.append({
+                                "group": g,
+                                **original_following_line_risk,
+                            })
+                        tag_code = "rawOptionIndexMatchedLine" if strong_raw_index_mapping else "inferredFollowingLine"
+                        for opt, line_id in zip(opts, option_risk_line_ids(original_following_line_risk, len(opts))):
+                            tag = {
+                                "code": tag_code,
+                                "lineId": line_id,
+                                "reason": original_following_line_risk["reason"],
+                                "branchRiskCode": original_following_line_risk.get("code") or "",
+                                "source": original_following_line_risk.get("source") or "",
+                            }
+                            if strong_raw_index_mapping:
+                                tag["candidateMapping"] = original_following_line_risk.get("candidateMapping") or ""
+                            opt.setdefault("riskTags", []).append(tag)
+                    for opt in opts:
+                        opt_id = opt.get("id") or ""
+                        line_ids = (following_line_risk.get("branchLineIdsByOption") or {}).get(opt_id) or []
+                        if not line_ids:
+                            continue
+                        opt.setdefault("riskTags", []).append({
+                            "code": "manualOptionResponseOverride",
+                            "lineId": line_ids[0],
+                            "reason": "manualOverride",
+                            "branchRiskCode": following_line_risk.get("code") or "",
+                            "source": repo_rel(_MANUAL_OPTION_OVERRIDES_PATH),
+                        })
             if sibling_anchor_record and sibling_anchor_record.get("siblingScenes"):
                 group["branchHint"] = {
                     "scenes": sibling_anchor_record["siblingScenes"],
                     "timeline": sibling_anchor_record.get("timeline") or "",
                 }
-            group_details.append({
+            group_detail = {
                 "group": g,
                 "status": group_status,
                 "after": after or fallback_anchor_id or "",
@@ -2797,7 +3436,17 @@ def build_language_bundle(
                 "positionOverride": placement_override,
                 "cinematicSources": cinematic_group_sources,
                 "textAliasSources": text_alias_group_sources,
-            })
+            }
+            group_manual_override = group.get("manualOverride") or (
+                following_line_risk.get("manualOverride") if manual_response_applied else {}
+            )
+            if group_manual_override:
+                group_detail["manualOverride"] = group_manual_override
+            if manual_layout_applied:
+                group_detail["manualLayoutOverride"] = True
+            if manual_response_applied:
+                group_detail["manualResponseOverride"] = True
+            group_details.append(group_detail)
             out.append(group)
         has_meaningful_option_text = any(
             str(opt.get("text") or "").strip()
@@ -2805,7 +3454,11 @@ def build_language_bundle(
             for opt in (group.get("options") or [])
             if isinstance(opt, dict)
         )
-        has_layout_warning_groups = fallback_group_count > 0 or unanchored_group_count > 0
+        has_layout_warning_groups = (
+            keyed_group_count > 0
+            or fallback_group_count > 0
+            or unanchored_group_count > 0
+        )
         warnings: list[dict] = []
         if has_meaningful_option_text and has_layout_warning_groups:
             total_groups = len(out)
@@ -2874,6 +3527,28 @@ def build_language_bundle(
                     if line_id
                 ]),
             })
+        if manual_option_response_overrides:
+            warnings.append({
+                "code": "manualOptionResponseOverride",
+                "reason": "manualOverride",
+                "detail": (
+                    "manual WebUI-only overrides supply option response line "
+                    "mappings for these groups"
+                ),
+                "groups": manual_option_response_overrides,
+                "optionIds": _unique_preserve([
+                    option_id
+                    for risk in manual_option_response_overrides
+                    for option_id in (risk.get("optionIds") or [])
+                    if option_id
+                ]),
+                "lineIds": _unique_preserve([
+                    line_id
+                    for risk in manual_option_response_overrides
+                    for line_id in all_option_response_risk_line_ids(risk)
+                    if line_id
+                ]),
+            })
         return {
             "groups": out,
             "warnings": warnings,
@@ -2893,9 +3568,11 @@ def build_language_bundle(
         debug["runtimeRegistry"] = block
 
     def attach_scene_order_warning(payload: dict) -> None:
-        warning = shared_build_scene_order_disorder_warning(
+        analysis = shared_analyze_scene_order_disorder(
             payload, dialog_id_registry=dialog_id_registry
         )
+        scene_order_analysis_by_payload_id[id(payload)] = analysis
+        warning = analysis.get("warning")
         if warning is None:
             return
         existing_warnings = [
@@ -3333,20 +4010,33 @@ def build_language_bundle(
             risk = group.get("optionBranchRisk") if isinstance(group.get("optionBranchRisk"), dict) else {}
             if not risk:
                 continue
-            if risk.get("code") == "timelineRouteBranches":
-                add("optionBranch:runtimeJump")
-            elif risk.get("code") == "siblingSceneTextBranches":
-                add("optionBranch:siblingSceneText")
-            elif risk.get("candidateMapping") == "trunkClipOptionIndex":
-                add("optionBranch:rawIndexMatched")
-            elif risk.get("code") == "inferredFollowingLines":
-                add("optionBranch:timelineAdjacent")
-            elif risk.get("code") == "sharedTimelineContinuation":
-                add("optionBranch:commonContinuation")
-            if risk.get("commonContinuationLineId"):
-                add("optionBranch:commonContinuation")
-            if risk.get("continuationOptionIds"):
-                add("optionBranch:continuationOption")
+
+            def add_option_branch_methods(branch_risk: dict) -> None:
+                if branch_risk.get("code") == "timelineRouteBranches":
+                    add("optionBranch:runtimeJump")
+                elif branch_risk.get("code") == "siblingSceneTextBranches":
+                    add("optionBranch:siblingSceneText")
+                elif branch_risk.get("candidateMapping") == "trunkClipOptionIndex":
+                    add("optionBranch:rawIndexMatched")
+                elif branch_risk.get("code") == "inferredFollowingLines":
+                    add("optionBranch:timelineAdjacent")
+                elif branch_risk.get("code") == "manualOptionResponseOverride":
+                    add("optionBranch:manualOverride")
+                elif branch_risk.get("code") == "sharedTimelineContinuation":
+                    add("optionBranch:commonContinuation")
+                if branch_risk.get("commonContinuationLineId"):
+                    add("optionBranch:commonContinuation")
+                if branch_risk.get("continuationOptionIds"):
+                    add("optionBranch:continuationOption")
+
+            overridden_risk = (
+                risk.get("overriddenRisk")
+                if isinstance(risk.get("overriddenRisk"), dict)
+                else {}
+            )
+            if overridden_risk:
+                add_option_branch_methods(overridden_risk)
+            add_option_branch_methods(risk)
 
         return methods
 
@@ -3493,6 +4183,8 @@ def build_language_bundle(
         attach_duplicate_timestamp_warning(payload)
         story_issue_codes = dialog_story_issue_codes(payload)
         recovery_methods = dialog_recovery_methods(payload)
+        if fmv_clips_by_key.get(out_key):
+            payload["fmvClips"] = fmv_clips_by_key[out_key]
         write_conv_payload(out_key, payload)
 
         entry = {
@@ -3938,6 +4630,204 @@ def build_language_bundle(
             entry.pop("x")
         index_entries.append(entry)
 
+    story_text_key_re = re.compile(
+        r"^text_(?P<mission>(?:gm|sm|db|dm|[acefm])\d+(?:[a-z]\d+)*(?:d\d+)?)(?:_(?P<scene>.+))?$",
+        re.IGNORECASE,
+    )
+
+    def story_text_key_parts(text_key: str) -> tuple[str, str] | None:
+        match = story_text_key_re.match(str(text_key or ""))
+        if not match:
+            return None
+        return match.group("mission"), match.group("scene") or "0"
+
+    def reading_popup_story_content_key(row_id: str, row: dict | None) -> str:
+        if not isinstance(row, dict):
+            return ""
+        candidates = [
+            str(row.get("contentId") or "").strip(),
+            str(row_id or "").strip(),
+        ]
+        for candidate in candidates:
+            if candidate.startswith("text_") and story_text_key_parts(candidate):
+                return candidate
+        return ""
+
+    def rich_content_story_row(content_key: str, preferred_source: str) -> tuple[str, dict]:
+        sources = [preferred_source, "streaming", "persistent"]
+        seen_sources: set[str] = set()
+        for source_name in sources:
+            if source_name in seen_sources:
+                continue
+            seen_sources.add(source_name)
+            payload = rich_content_persistent if source_name == "persistent" else rich_content
+            row = payload.get(content_key) if isinstance(payload, dict) else None
+            if isinstance(row, dict):
+                return source_name, row
+        return preferred_source or "streaming", {}
+
+    popup_rows_by_content: dict[str, list[tuple[str, str, dict]]] = defaultdict(list)
+    for source_name, popup_table in (
+        ("streaming", reading_popups),
+        ("persistent", reading_popups_persistent),
+    ):
+        if not isinstance(popup_table, dict):
+            continue
+        for row_id, row in popup_table.items():
+            content_key = reading_popup_story_content_key(str(row_id), row if isinstance(row, dict) else None)
+            if not content_key:
+                continue
+            popup_rows_by_content[content_key].append((source_name, str(row_id), row))
+
+    print(f"Writing {len(popup_rows_by_content)} reading-popup text conversations...")
+    for content_key, popup_rows in sorted(popup_rows_by_content.items()):
+        parts = story_text_key_parts(content_key)
+        if not parts:
+            continue
+        popup_rows.sort(key=lambda item: (0 if item[0] == "streaming" else 1, item[1]))
+        primary_source, primary_row_id, primary_row = popup_rows[0]
+        mission, scene = parts
+        type_, act = parse_mission(mission)
+        rich_source, rich_row = rich_content_story_row(content_key, primary_source)
+        rich_title = t((rich_row.get("title") or {}).get("id"), preferred_source=rich_source) if rich_row else ""
+        popup_title = t((primary_row.get("title") or {}).get("id"), preferred_source=primary_source)
+        title = brace_text(rich_title or popup_title) or content_key
+        lines: list[dict] = []
+        prev_text = ""
+        for idx, item in enumerate((rich_row.get("contentList") or []) if rich_row else [], start=1):
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content") or {}
+            text = t(content.get("id"), preferred_source=rich_source)
+            if text and not prev_text:
+                prev_text = text
+            lines.append({
+                "id": f"{content_key}_{idx}",
+                "text": text,
+                "_debug": {
+                    **source_ref(
+                        "RichContentTable.contentList",
+                        content_key,
+                        pick_fields(item, "content"),
+                        nodeId=idx,
+                        tableSource=rich_source,
+                    ),
+                    "fields": {
+                        "text": text_trace(
+                            "RichContentTable",
+                            content_key,
+                            "content",
+                            content,
+                            preferred_source=rich_source,
+                        ),
+                    },
+                },
+            })
+        if not lines and not title:
+            continue
+
+        popup_sources = [
+            source_ref(
+                "ReadingPopUpTable",
+                row_id,
+                pick_fields(row, "bgType", "contentId", "iconType", "id", "title"),
+                tableSource=source_name,
+            )
+            for source_name, row_id, row in popup_rows
+        ]
+        payload = {
+            "key": content_key,
+            "kind": "text",
+            "mission": mission,
+            "scene": scene,
+            "title": title,
+            "lines": lines,
+            "_debug": {
+                "source": popup_sources[0],
+                "readingPopupRows": popup_sources,
+            },
+        }
+        if rich_row:
+            payload["_debug"]["richContent"] = source_ref(
+                "RichContentTable",
+                content_key,
+                pick_fields(rich_row, "title", "contentList"),
+                tableSource=rich_source,
+            )
+        if len(popup_rows) > 1:
+            payload["summary"] = [{
+                "text": f"Reading popup source rows: {len(popup_rows)}",
+            }]
+        write_conv_payload(content_key, payload)
+
+        entry = {
+            "k": content_key,
+            "d": "text",
+            "m": mission,
+            "s": scene_sort_value(scene),
+            "t": type_,
+            "a": act,
+            "title": title,
+            "c": [],
+            "n": len(lines),
+            "p": preview(prev_text or title),
+            "tags": ["readingPopup", "text"],
+        }
+        search_text = " ".join(part for part in [
+            content_key,
+            primary_row_id,
+            title,
+            indexed_line_haystack(lines, "text"),
+            mission_context_text(mission),
+        ] if part)
+        if search_text:
+            entry["x"] = search_text
+        index_entries.append(entry)
+
+    remotecomm_video_owner_by_stem: dict[str, str] = {}
+    remotecomm_expected_video_stems_by_key: dict[str, list[str]] = {}
+    remotecomm_video_timeline_by_key: dict[str, list[dict]] = {}
+    remotecomm_available_video_stems = {
+        str(ref.get("baseStem") or ref.get("stem") or "").strip().lower()
+        for ref in narrative_video_assets
+        if ref.get("kind") == "remotecomm" and (ref.get("baseStem") or ref.get("stem"))
+    }
+    audio_dialog_duration_by_stem: dict[str, dict] = {}
+    for audio_row in audio_dialog.values():
+        if not isinstance(audio_row, dict):
+            continue
+        audio_path = str(audio_row.get("path") or "").replace("\\", "/")
+        if not audio_path:
+            continue
+        audio_stem = re.sub(r"\.[^.]+$", "", audio_path.rsplit("/", 1)[-1], flags=re.IGNORECASE).lower()
+        if audio_stem:
+            audio_dialog_duration_by_stem[audio_stem] = audio_row
+
+    def remotecomm_video_stem_from_middle_id(middle_id: object) -> str:
+        value = str(middle_id or "").strip().replace("\\", "/")
+        if not value:
+            return ""
+        stem = value.rsplit("/", 1)[-1].lower()
+        if stem in remotecomm_available_video_stems:
+            return stem
+        return ""
+
+    def remotecomm_voice_duration(voice_id: object) -> float | None:
+        row = audio_dialog_duration_by_stem.get(str(voice_id or "").strip().lower())
+        if not row:
+            return None
+        duration_keys: list[str] = []
+        if language_code and language_code != "CN":
+            duration_keys.append(f"wavDuration{language_code}")
+        duration_keys.append("wavDuration")
+        if language_code:
+            duration_keys.append(f"wavDuration{language_code}")
+        for key in _unique_preserve(duration_keys):
+            value = row.get(key)
+            if isinstance(value, (int, float)) and value >= 0:
+                return float(value)
+        return None
+
     remote_rows: list[dict] = []
     for remote_id, remote_entry in remote_common.items():
         m = REMOTECOMM_RE.match(remote_id)
@@ -3948,7 +4838,25 @@ def build_language_bundle(
         type_, act = parse_mission(mission)
         lines = []
         actors: set[str] = set()
+        audio_events: list[str] = []
+        expected_video_stems: list[str] = []
+        line_video_timing: list[dict] = []
+        elapsed_time: float | None = 0.0
         prev_text = ""
+
+        def add_audio_event(value: object) -> None:
+            event_id = str(value or "").strip()
+            if not event_id:
+                return
+            if event_id not in audio_events:
+                audio_events.append(event_id)
+
+        def add_expected_video_stem(video_stem: str) -> None:
+            if not video_stem:
+                return
+            if video_stem not in expected_video_stems:
+                expected_video_stems.append(video_stem)
+            remotecomm_video_owner_by_stem.setdefault(video_stem, remote_id)
 
         for item in sorted(
             remote_entry.get("remoteCommSingleDataList", []) or [],
@@ -3959,6 +4867,34 @@ def build_language_bundle(
             actor = t(item.get("actorName", {}).get("id"))
             text = t(item.get("remoteCommText", {}).get("id"))
             hint = t(item.get("hint", {}).get("id"))
+            audio_id = str(item.get("audioId") or "").strip()
+            music_id = str(item.get("musicId") or "").strip()
+            voice_id = str(item.get("voiceId") or "").strip()
+            video_stem = remotecomm_video_stem_from_middle_id(actor_id)
+            add_expected_video_stem(video_stem)
+            add_audio_event(audio_id)
+            add_audio_event(music_id)
+            voice_duration = remotecomm_voice_duration(voice_id)
+            line_start = elapsed_time
+            line_duration = (voice_duration + 1.0) if voice_duration is not None else None
+            line_end = (
+                line_start + line_duration
+                if line_start is not None and line_duration is not None
+                else None
+            )
+            line_video_timing.append({
+                "lineId": str(item.get("singleId") or remote_id),
+                "index": item.get("index"),
+                "middleId": actor_id,
+                "videoStem": video_stem,
+                "audioEvent": audio_id,
+                "voiceId": voice_id,
+                "voiceDuration": voice_duration,
+                "lineStart": line_start,
+                "lineEnd": line_end,
+                "isVideoLoop": bool(item.get("isVideoLoop")),
+            })
+            elapsed_time = line_end
             if actor_id:
                 actors.add(actor_id)
             lines.append({
@@ -3968,8 +4904,8 @@ def build_language_bundle(
                 "actor": actor,
                 "text": text,
                 "hint": hint,
-                "audio": item.get("audioId") or "",
-                "voice": item.get("voiceId") or "",
+                "audio": audio_id,
+                "voice": voice_id,
                 "_debug": {
                     **source_ref(
                         "RemoteCommonTable.remoteCommSingleDataList",
@@ -4015,6 +4951,58 @@ def build_language_bundle(
             })
             if not prev_text and text:
                 prev_text = text
+        add_audio_event(remote_entry.get("startAudioEvent"))
+        add_audio_event(remote_entry.get("endAudioEvent"))
+        if expected_video_stems:
+            remotecomm_expected_video_stems_by_key[remote_id] = expected_video_stems
+
+        video_segments: list[dict] = []
+        current_segment: dict | None = None
+        for timing in line_video_timing:
+            video_stem = str(timing.get("videoStem") or "")
+            if not video_stem:
+                if current_segment is not None:
+                    video_segments.append(current_segment)
+                    current_segment = None
+                continue
+            if current_segment is None or current_segment.get("videoStem") != video_stem:
+                if current_segment is not None:
+                    video_segments.append(current_segment)
+                current_segment = {
+                    "videoStem": video_stem,
+                    "middleId": str(timing.get("middleId") or ""),
+                    "startLine": str(timing.get("lineId") or ""),
+                    "endLine": str(timing.get("lineId") or ""),
+                    "startIndex": timing.get("index"),
+                    "endIndex": timing.get("index"),
+                    "startTime": timing.get("lineStart"),
+                    "endTime": timing.get("lineEnd"),
+                    "lineIds": [],
+                    "audioEvents": [],
+                    "isVideoLoop": bool(timing.get("isVideoLoop")),
+                    "timingBasis": "RemoteComm auto advance uses voice wavDuration + 1s per line",
+                }
+            current_segment["endLine"] = str(timing.get("lineId") or "")
+            current_segment["endIndex"] = timing.get("index")
+            current_segment["endTime"] = timing.get("lineEnd")
+            current_segment["lineIds"].append(str(timing.get("lineId") or ""))
+            if timing.get("audioEvent") and timing.get("audioEvent") not in current_segment["audioEvents"]:
+                current_segment["audioEvents"].append(str(timing["audioEvent"]))
+            if timing.get("lineStart") is not None and current_segment.get("startTime") is None:
+                current_segment["startTime"] = timing.get("lineStart")
+            if timing.get("lineEnd") is not None:
+                current_segment["endTime"] = timing.get("lineEnd")
+        if current_segment is not None:
+            video_segments.append(current_segment)
+        for segment in video_segments:
+            if isinstance(segment.get("startTime"), (int, float)):
+                segment["startTime"] = round(float(segment["startTime"]), 6)
+            if isinstance(segment.get("endTime"), (int, float)):
+                segment["endTime"] = round(float(segment["endTime"]), 6)
+            if isinstance(segment.get("startTime"), (int, float)) and isinstance(segment.get("endTime"), (int, float)):
+                segment["duration"] = round(float(segment["endTime"]) - float(segment["startTime"]), 6)
+        if video_segments:
+            remotecomm_video_timeline_by_key[remote_id] = video_segments
 
         remote_rows.append({
             "key": remote_id,
@@ -4024,6 +5012,9 @@ def build_language_bundle(
             "act": act,
             "actors": sorted(actors),
             "lines": lines,
+            "audioEvents": audio_events,
+            "expectedVideoStems": expected_video_stems,
+            "videoTimeline": video_segments,
             "preview": prev_text,
             "source": remote_entry,
         })
@@ -4049,11 +5040,41 @@ def build_language_bundle(
                 "source": source_ref(
                     "RemoteCommonTable",
                     remote["key"],
-                    pick_fields(remote["source"], "autoPlay", "endAudioEvent", "remoteCommSingleDataList"),
+                    pick_fields(remote["source"], "autoPlay", "startAudioEvent", "endAudioEvent", "remoteCommSingleDataList"),
                 ),
                 "title": mission_name_trace(remote["mission"]),
             },
         }
+        if remote["audioEvents"]:
+            payload["audioEvents"] = list(remote["audioEvents"])
+            payload["_debug"]["audioEvents"] = {
+                "source": {
+                    "table": "RemoteCommonTable",
+                    "rowId": remote["key"],
+                    "fields": ["startAudioEvent", "endAudioEvent", "remoteCommSingleDataList.audioId", "remoteCommSingleDataList.musicId"],
+                    "values": list(remote["audioEvents"]),
+                },
+            }
+        if remote["expectedVideoStems"]:
+            payload["_debug"]["remotecommVideos"] = {
+                "source": {
+                    "table": "RemoteCommonTable.remoteCommSingleDataList",
+                    "rowId": remote["key"],
+                    "evidence": "middleId video lookup: Narrative/RemoteComm/{middleId}",
+                    "expectedVideoStems": list(remote["expectedVideoStems"]),
+                },
+            }
+        if remote["videoTimeline"]:
+            payload["remotecommVideoTimeline"] = list(remote["videoTimeline"])
+            payload["_debug"].setdefault("remotecommVideos", {
+                "source": {
+                    "table": "RemoteCommonTable.remoteCommSingleDataList",
+                    "rowId": remote["key"],
+                    "evidence": "middleId video lookup: Narrative/RemoteComm/{middleId}",
+                    "expectedVideoStems": list(remote["expectedVideoStems"]),
+                },
+            })
+            payload["_debug"]["remotecommVideos"]["source"]["timeline"] = list(remote["videoTimeline"])
         write_conv_payload(remote["key"], payload)
         remotecomm_out_keys.add(remote["key"])
 
@@ -4089,6 +5110,14 @@ def build_language_bundle(
         key=lambda mission: (-len(mission), mission),
     )
 
+
+    def split_cutscene_parent_key(key: str) -> str:
+        match = re.match(r"^(cutscene_.+_\d+)_(\d+)$", str(key or ""))
+        return match.group(1) if match else ""
+
+    def split_cutscene_child_sort_key(key: str) -> tuple[int, str]:
+        match = re.match(r"^cutscene_.+_\d+_(\d+)$", str(key or ""))
+        return (int(match.group(1)) if match else 999999, str(key or ""))
 
     def resolve_cutscene_text_group(group: str, asset_keys: set[str], raw_groups: set[str]) -> str:
         if group in asset_keys:
@@ -4145,7 +5174,31 @@ def build_language_bundle(
             return 20 + audio_index if audio_index is not None else 80
         return 50
 
-    def subtitle_tracks_for_language(tracks: list[dict]) -> list[dict]:
+    # The CN e0m0_2 playable has two Chinese-looking subtitle families. The
+    # untagged F/M tracks match observed playback; the AU_CHI_ENV_CHI tracks are
+    # a different localized/audio variant with incompatible mid-scene lines.
+    cutscene_subtitle_parent_overrides = {
+        "CN": {
+            "cutscene_e0m0_2": {
+                "f_cutscene_e0m0_2_Others",
+                "m_cutscene_e0m0_2_Others",
+            },
+        },
+    }
+
+    def subtitle_tracks_for_language(cutscene_key: str, tracks: list[dict]) -> list[dict]:
+        parent_override = (
+            cutscene_subtitle_parent_overrides
+            .get(str(language_code or "").upper(), {})
+            .get(cutscene_key)
+        )
+        if parent_override:
+            selected = [
+                track for track in tracks
+                if str(track.get("parentName") or "") in parent_override
+            ]
+            if selected:
+                return selected
         scored = [
             (subtitle_track_language_score(track), track)
             for track in tracks
@@ -4163,6 +5216,14 @@ def build_language_bundle(
         asset_keys: set[str],
         subtitle_tracks_by_key: dict[str, list[dict]],
     ) -> dict[str, list[dict]]:
+        split_asset_children_by_parent: dict[str, list[str]] = defaultdict(list)
+        for asset_key in asset_keys:
+            parent_key = split_cutscene_parent_key(asset_key)
+            if parent_key and parent_key not in asset_keys:
+                split_asset_children_by_parent[parent_key].append(asset_key)
+        for children in split_asset_children_by_parent.values():
+            children.sort(key=split_cutscene_child_sort_key)
+
         raw_groups: set[str] = set()
         matched_rows: list[tuple[str, dict, re.Match[str]]] = []
         for row_id, text_entry in text_table.items():
@@ -4247,6 +5308,8 @@ def build_language_bundle(
                 "clipIndex": ref.get("clipIndex"),
                 "assetPathId": ref.get("assetPathId"),
             }
+            if ref.get("displayName"):
+                debug["displayName"] = ref.get("displayName")
             if track.get("gender"):
                 debug["assetGender"] = track["gender"]
             if track.get("pathId") not in (None, ""):
@@ -4273,6 +5336,15 @@ def build_language_bundle(
         def line_has_explicit_gender_switch(line: dict) -> bool:
             text = str(line.get("text") or "")
             return "{F}" in text or "{M}" in text
+
+        def normalize_subtitle_variant_text(text: object) -> str:
+            source = str(text or "")
+            source = re.sub(r"\{[FM]\}", "", source)
+            return "".join(
+                ch.casefold()
+                for ch in source
+                if not ch.isspace() and not unicodedata.category(ch).startswith("P")
+            )
 
         def subtitle_candidate_rank(cutscene_key: str, candidate: dict) -> tuple[int, int, int, int, str]:
             line = candidate.get("line") if isinstance(candidate.get("line"), dict) else {}
@@ -4355,7 +5427,7 @@ def build_language_bundle(
 
         merged_by_key: dict[str, list[dict]] = {}
         for cutscene_key, subtitle_tracks in subtitle_tracks_by_key.items():
-            subtitle_tracks = subtitle_tracks_for_language(subtitle_tracks)
+            subtitle_tracks = subtitle_tracks_for_language(cutscene_key, subtitle_tracks)
             slot_candidates: dict[tuple[float, float, int], list[dict]] = defaultdict(list)
             for track in subtitle_tracks:
                 timing_counts: dict[tuple[float, float], int] = defaultdict(int)
@@ -4427,7 +5499,11 @@ def build_language_bundle(
                         m_line = by_gender["M"].get("line") if isinstance(by_gender["M"].get("line"), dict) else {}
                         f_text = str(f_line.get("text") or "")
                         m_text = str(m_line.get("text") or "")
-                        if f_text != m_text:
+                        if (
+                            f_text != m_text
+                            and normalize_subtitle_variant_text(f_text)
+                            != normalize_subtitle_variant_text(m_text)
+                        ):
                             chosen_line["text"] = f"{{F}}{f_text}{{M}}{m_text}"
                             chosen_debug["subtitleGenderSwitch"] = {
                                 "source": "animeSubtitleTrackAlignment",
@@ -4452,12 +5528,111 @@ def build_language_bundle(
                     by_row_key[candidate["rowKey"]] = candidate
                     ordered_lines.append((candidate["sortKey"], candidate["line"]))
             if ordered_lines:
-                merged_by_key[cutscene_key] = [
+                subtitle_lines = [
                     line for _sort_key, line in sorted(ordered_lines, key=lambda item: item[0])
                 ]
+                text_rows = grouped.get(cutscene_key) or []
+                text_rows_have_text = any(
+                    str(line.get("text") or "").strip()
+                    for _sort_key, line in text_rows
+                    if isinstance(line, dict)
+                )
+                subtitle_lines_have_text = any(
+                    str(line.get("text") or "").strip()
+                    for line in subtitle_lines
+                    if isinstance(line, dict)
+                )
+                if text_rows_have_text and not subtitle_lines_have_text:
+                    subtitle_lines = merge_duplicate_cutscene_rows(text_rows)
+                    track_ids = [
+                        str(line.get("id") or "")
+                        for line in (
+                            candidate.get("line")
+                            for candidates in slot_candidates.values()
+                            for candidate in candidates
+                        )
+                        if isinstance(line, dict) and line.get("id")
+                    ]
+                    for line in subtitle_lines:
+                        line_debug = line.setdefault("_debug", {})
+                        line_debug["subtitleTrackTextTableFallback"] = {
+                            "source": "animeSubtitleTrack",
+                            "reason": "subtitle track textIds did not resolve to localized TextTable text",
+                            "trackTextIds": sorted(set(track_ids)),
+                        }
+                        remember_cutscene_line_usage(line)
+                merged_by_key[cutscene_key] = subtitle_lines
+
+        def lines_for_cutscene_key(cutscene_key: str) -> list[dict]:
+            if cutscene_key in merged_by_key:
+                return merged_by_key[cutscene_key]
+            return [
+                line
+                for _sort_key, line in grouped.get(cutscene_key, [])
+                if isinstance(line, dict)
+            ]
+
+        def matching_split_child_line(parent_key: str, parent_line: dict) -> dict | None:
+            cid = str(parent_line.get("cid") or "")
+            normalized_text = cutscene_pair_normalize(str(parent_line.get("text") or ""))
+            if not cid or not normalized_text:
+                return None
+            for child_key in split_asset_children_by_parent.get(parent_key) or []:
+                for child_line in lines_for_cutscene_key(child_key):
+                    if str(child_line.get("cid") or "") != cid:
+                        continue
+                    child_text = cutscene_pair_normalize(str(child_line.get("text") or ""))
+                    if child_text and child_text == normalized_text:
+                        return child_line
+            return None
+
+        def attach_text_only_parent_duplicate(parent_key: str, parent_line: dict, child_line: dict) -> None:
+            duplicate = {
+                "id": parent_line.get("id") or "",
+                "textGroup": parent_key,
+            }
+            if parent_line.get("text"):
+                duplicate["text"] = parent_line["text"]
+            if parent_line.get("sub"):
+                duplicate["sub"] = parent_line["sub"]
+            if parent_line.get("gender"):
+                duplicate["gender"] = parent_line["gender"]
+            child_line.setdefault("mergedDuplicateRows", []).append(duplicate)
+            child_debug = child_line.setdefault("_debug", {})
+            child_debug.setdefault("mergedDuplicateRows", []).append(duplicate)
+            child_source = child_debug.setdefault("source", {})
+            row_ids = child_source.setdefault("mergedDuplicateRowIds", [])
+            if duplicate["id"] and duplicate["id"] not in row_ids:
+                row_ids.append(duplicate["id"])
+            groups = child_source.setdefault("mergedDuplicateTextGroups", [])
+            if parent_key and parent_key not in groups:
+                groups.append(parent_key)
+            suppressed = child_source.setdefault("suppressedTextOnlyParentGroups", [])
+            if parent_key and parent_key not in suppressed:
+                suppressed.append(parent_key)
+            remember_cutscene_line_usage(child_line)
+
+        def suppress_text_only_split_parent(cutscene_key: str, rows: list[tuple[tuple[int, int, int, str, str], dict]]) -> bool:
+            if cutscene_key in asset_keys:
+                return False
+            if not split_asset_children_by_parent.get(cutscene_key):
+                return False
+            matches: list[tuple[dict, dict]] = []
+            for _sort_key, line in rows:
+                if not isinstance(line, dict):
+                    return False
+                child_line = matching_split_child_line(cutscene_key, line)
+                if child_line is None:
+                    return False
+                matches.append((line, child_line))
+            for parent_line, child_line in matches:
+                attach_text_only_parent_duplicate(cutscene_key, parent_line, child_line)
+            return bool(matches)
 
         for cutscene_key, rows in grouped.items():
             if cutscene_key in merged_by_key:
+                continue
+            if suppress_text_only_split_parent(cutscene_key, rows):
                 continue
             lines = merge_duplicate_cutscene_rows(rows)
             for line in lines:
@@ -4486,10 +5661,191 @@ def build_language_bundle(
             },
         )
 
+    def story_source_backed_cutscene_keys() -> set[str]:
+        backed: set[str] = set()
+        for raw_key in story_source_links:
+            key = str(raw_key or "").strip()
+            if not key:
+                continue
+            candidates = [key]
+            if key.endswith("_start"):
+                candidates.append(key.removesuffix("_start"))
+            for candidate in candidates:
+                canonical = _canonical_cutscene_key(candidate)
+                if canonical:
+                    backed.add(canonical)
+        return backed
+
+    def narrative_video_backed_cutscene_keys() -> set[str]:
+        """Return cutscene keys whose text-only file has video evidence.
+
+        Dialog-bound FMVs often carry names such as `cs_video_dlg_e0m2_5`.
+        Those should attach to the dialog, not promote a sibling
+        `cutscene_e0m2_5` TextTable group. Keep a text-only cutscene only when
+        the video does not already resolve to a previously written story key.
+        """
+        existing_story_keys = {
+            str(entry.get("k") or "")
+            for entry in index_entries
+            if entry.get("k")
+        }
+        backed: set[str] = set()
+        for ref in narrative_video_assets:
+            if ref.get("kind") != "cutscene":
+                continue
+            authoritative_keys = [
+                str(candidate or "").strip()
+                for candidate in (ref.get("authoritativeKeys") or [])
+                if str(candidate or "").strip()
+            ]
+            if authoritative_keys:
+                if any(candidate in existing_story_keys for candidate in authoritative_keys):
+                    continue
+                candidates = authoritative_keys
+            else:
+                candidates = [
+                    str(candidate or "").strip()
+                    for candidate in (ref.get("keyCandidates") or [])
+                    if str(candidate or "").strip()
+                ]
+            for candidate in candidates:
+                canonical = _canonical_cutscene_key(candidate)
+                if canonical:
+                    backed.add(canonical)
+        return backed
+
+    def cutscene_text_fingerprint(lines: list[dict]) -> tuple[str, ...]:
+        return tuple(
+            text
+            for line in lines
+            if isinstance(line, dict)
+            for text in [cutscene_pair_normalize(str(line.get("text") or ""))]
+            if text
+        )
+
+    def cutscene_text_similarity(left: tuple[str, ...], right: tuple[str, ...]) -> float:
+        if not left or not right:
+            return 0.0
+        if left == right:
+            return 1.0
+        return SequenceMatcher(None, "\n".join(left), "\n".join(right)).ratio()
+
+    def find_suppressed_cutscene_duplicate(
+        cutscene_key: str,
+        lines: list[dict],
+        kept_lines_by_key: dict[str, list[dict]],
+    ) -> dict:
+        fingerprint = cutscene_text_fingerprint(lines)
+        if not fingerprint:
+            return {}
+        mission, _scene = _infer_cutscene_mission_and_scene(cutscene_key, known_cutscene_missions)
+        best: tuple[float, str, int] = (0.0, "", 0)
+        for target_key, target_lines in kept_lines_by_key.items():
+            if target_key == cutscene_key:
+                continue
+            target_mission, _target_scene = _infer_cutscene_mission_and_scene(target_key, known_cutscene_missions)
+            if mission and target_mission and mission != target_mission:
+                continue
+            target_fingerprint = cutscene_text_fingerprint(target_lines)
+            score = cutscene_text_similarity(fingerprint, target_fingerprint)
+            if score > best[0]:
+                best = (score, target_key, len(target_fingerprint))
+        if best[0] < 0.98:
+            return {}
+        return {
+            "key": best[1],
+            "similarity": round(best[0], 4),
+            "lineCount": best[2],
+        }
+
+    def write_suppressed_cutscene_text_report(rows: list[dict]) -> dict:
+        report = {
+            "generated": int(time.time()),
+            "language": language_code,
+            "summary": {
+                "textOnlyCandidates": len(rows),
+                "emittedTextOnlyCandidates": sum(1 for row in rows if row.get("emitted")),
+                "suppressedTextOnlyCutscenes": sum(1 for row in rows if not row.get("emitted")),
+                "duplicateTextGroups": sum(1 for row in rows if row.get("duplicateOf")),
+            },
+            "rows": rows,
+        }
+        if not rows:
+            return report
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        report_json = REPORTS_DIR / f"cutscene_text_candidates_{language_code}.json"
+        write_json(report_json, report, indent=2, compact=False)
+        report["report"] = {
+            "json": repo_rel(report_json),
+        }
+        return report
+
     cutscene_assets = _load_cutscene_assets()
     cutscene_text_by_key = cutscene_text_lines(set(cutscene_assets), _load_cutscene_subtitle_tracks())
+    source_backed_cutscene_keys = story_source_backed_cutscene_keys()
+    video_backed_cutscene_keys = narrative_video_backed_cutscene_keys()
+    retained_text_only_cutscene_keys = source_backed_cutscene_keys | video_backed_cutscene_keys
+    unconfirmed_text_by_key: dict[str, list[dict]] = {
+        cutscene_key: lines
+        for cutscene_key, lines in cutscene_text_by_key.items()
+        if cutscene_key not in cutscene_assets
+        and cutscene_key not in retained_text_only_cutscene_keys
+    }
+    suppressed_text_by_key: dict[str, list[dict]] = {}
+
+    suppressed_duplicate_groups_by_target: dict[str, list[dict]] = defaultdict(list)
+    kept_cutscene_lines = {
+        key: lines
+        for key, lines in cutscene_text_by_key.items()
+        if key in cutscene_assets or key in retained_text_only_cutscene_keys
+    }
+    suppressed_report_rows: list[dict] = []
+    for cutscene_key, lines in sorted(unconfirmed_text_by_key.items()):
+        duplicate_of = find_suppressed_cutscene_duplicate(cutscene_key, lines, kept_cutscene_lines)
+        row = {
+            "key": cutscene_key,
+            "lineCount": len(lines),
+            "lineIds": [
+                str(line.get("id") or "")
+                for line in lines
+                if isinstance(line, dict) and line.get("id")
+            ],
+            "reason": "textOnlyWithoutAssetSourceOrVideo",
+            "emitted": True,
+        }
+        if duplicate_of:
+            suppressed_text_by_key[cutscene_key] = cutscene_text_by_key.pop(cutscene_key)
+            row["emitted"] = False
+            row["duplicateOf"] = duplicate_of
+            suppressed_duplicate_groups_by_target[duplicate_of["key"]].append({
+                "key": cutscene_key,
+                "lineCount": len(lines),
+                "similarity": duplicate_of["similarity"],
+            })
+        suppressed_report_rows.append(row)
+    write_suppressed_cutscene_text_report(suppressed_report_rows)
+
     for cutscene_key in cutscene_text_by_key:
-        ensure_cutscene_asset(cutscene_key)
+        cutscene = ensure_cutscene_asset(cutscene_key)
+        if cutscene_key in unconfirmed_text_by_key and cutscene_key not in suppressed_text_by_key:
+            cutscene["textOnlyUnconfirmed"] = True
+    for target_key, groups in suppressed_duplicate_groups_by_target.items():
+        if target_key in cutscene_assets:
+            existing = cutscene_assets[target_key].setdefault("suppressedTextOnlyGroups", [])
+            existing.extend(groups)
+    timeline_bound_cutscene_video_keys: set[str] = set()
+    for ref in narrative_video_assets:
+        if ref.get("kind") != "cutscene":
+            continue
+        binding = ref.get("binding") if isinstance(ref.get("binding"), dict) else {}
+        if not binding or binding.get("isHint"):
+            continue
+        if "timelinePlayable" not in set(binding.get("sourceKinds") or []):
+            continue
+        for candidate in ref.get("authoritativeKeys") or ref.get("keyCandidates") or []:
+            candidate_key = str(candidate or "")
+            if candidate_key in cutscene_assets:
+                timeline_bound_cutscene_video_keys.add(candidate_key)
     print(f"Writing {len(cutscene_assets)} cutscene conversations...")
     for cutscene_key, cutscene in sorted(cutscene_assets.items()):
         mission, scene = _infer_cutscene_mission_and_scene(cutscene_key, known_cutscene_missions)
@@ -4522,6 +5878,18 @@ def build_language_bundle(
             summary_rows.append({"text": f"Components: {component_summary}"})
         if cutscene.get("variants"):
             summary_rows.append({"text": f"Files: {len(cutscene['variants'])} exported asset(s)"})
+        if cutscene.get("suppressedTextOnlyGroups"):
+            names = ", ".join(
+                str(group.get("key") or "")
+                for group in (cutscene.get("suppressedTextOnlyGroups") or [])[:8]
+                if group.get("key")
+            )
+            if names:
+                summary_rows.append({"text": f"Suppressed duplicate text groups: {names}"})
+        if cutscene.get("textOnlyUnconfirmed"):
+            summary_rows.append({
+                "text": "Text-only candidate: no matching AnimeStudio cutscene asset, source link, or narrative video was found.",
+            })
         if cutscene.get("actorLabels"):
             summary_rows.append({
                 "text": "Actors: " + ", ".join(cutscene["actorLabels"]),
@@ -4537,6 +5905,17 @@ def build_language_bundle(
             flags.append("keep-camera")
         if flags:
             summary_rows.append({"text": "Flags: " + ", ".join(flags)})
+        if (
+            lines
+            and not cutscene.get("hasSubtitleTrack")
+            and (
+                cutscene_key in timeline_bound_cutscene_video_keys
+                or fmv_clips_by_key.get(cutscene_key)
+            )
+        ):
+            summary_rows.append({
+                "text": "Text rows: TextTable name matches only; no decoded subtitle track ties these rows to the FMV timeline.",
+            })
         if lines:
             summary_rows.append({"text": f"TextTable rows: {len(lines)} localized cutscene text row(s)"})
         if len(text_groups) > 1:
@@ -4565,6 +5944,8 @@ def build_language_bundle(
                 "useBlackScreen": bool(cutscene.get("useBlackScreen")),
                 "isTransition": bool(cutscene.get("isTransition")),
                 "hasSubtitleTrack": bool(cutscene.get("hasSubtitleTrack")),
+                "suppressedTextOnlyGroups": cutscene.get("suppressedTextOnlyGroups") or [],
+                "textOnlyUnconfirmed": bool(cutscene.get("textOnlyUnconfirmed")),
             },
             "_debug": {
                 "title": mission_name_trace(mission),
@@ -4574,6 +5955,8 @@ def build_language_bundle(
                 },
             },
         }
+        if fmv_clips_by_key.get(cutscene_key):
+            payload["fmvClips"] = fmv_clips_by_key[cutscene_key]
         write_conv_payload(cutscene_key, payload)
         cutscene_out_keys.add(cutscene_key)
 
@@ -4591,10 +5974,12 @@ def build_language_bundle(
             component_summary,
             " ".join(variant["name"] for variant in (cutscene.get("variants") or [])),
             " ".join(cutscene.get("keepCameraPaths") or []),
+            " ".join(
+                str(group.get("key") or "")
+                for group in (cutscene.get("suppressedTextOnlyGroups") or [])
+            ),
         ] if part)
-        line_preview = next((line.get("text") or "" for line in lines if line.get("sub")), "")
-        if not line_preview:
-            line_preview = next((line.get("text") or "" for line in lines if line.get("text")), "")
+        line_preview = next((line.get("text") or "" for line in lines if line.get("text")), "")
         entry = {
             "k": cutscene_key,
             "d": "cutscene",
@@ -4610,7 +5995,11 @@ def build_language_bundle(
                 (", ".join(cutscene.get("levels") or []) if cutscene.get("levels") else ""),
                 (", ".join(cutscene.get("actorLabels")[:3]) if cutscene.get("actorLabels") else ""),
             ) if part)),
-            "tags": ["cutscene", *(["cutsceneText"] if lines else [])],
+            "tags": [
+                "cutscene",
+                *(["cutsceneText"] if lines else []),
+                *(["cutsceneTextCandidate"] if cutscene.get("textOnlyUnconfirmed") else []),
+            ],
         }
         if search_text:
             entry["x"] = search_text
@@ -8350,6 +9739,20 @@ def build_language_bundle(
                     resolved_link["sourceKey"] = source_key
                 resolved_source_links[resolved_key].append(resolved_link)
 
+        def unique_story_source_link_mission(links: list[dict]) -> str:
+            missions: set[str] = set()
+            for link in links:
+                mission_id = str(link.get("mission") or "").strip()
+                if not mission_id:
+                    source = link.get("source") if isinstance(link.get("source"), dict) else {}
+                    mission_id = str(source.get("mission") or "").strip()
+                if not mission_id:
+                    continue
+                type_key, _act = parse_mission(mission_id)
+                if type_key in MISSION_STORY_TYPES:
+                    missions.add(mission_id)
+            return next(iter(missions)) if len(missions) == 1 else ""
+
         attached_keys: set[str] = set()
         attached_refs = 0
         for entry in index_entries:
@@ -8363,6 +9766,10 @@ def build_language_bundle(
             omitted = max(0, len(links) - len(compact_links))
             entry["src"] = story_source_link_index_summary(links)
             entry["x"] = merge_search_text(entry.get("x", ""), story_source_link_search_text(links))
+            if entry.get("d") == "sns":
+                story_mission = unique_story_source_link_mission(links)
+                if story_mission and story_mission != entry.get("m"):
+                    entry["storyMission"] = story_mission
             tags = entry.setdefault("tags", [])
             if "sourceLinked" not in tags:
                 tags.append("sourceLinked")
@@ -8392,6 +9799,7 @@ def build_language_bundle(
 
         referenced_missing = unresolved_source_keys
         source_link_candidate_kinds = set(MISSION_SCENE_ENTRY_KINDS) | {"env", "misc"}
+
         story_entries_without_links = [
             {
                 "key": str(entry.get("k") or ""),
@@ -8451,6 +9859,8 @@ def build_language_bundle(
             f"- Timeline-backed evidence rows: `{summary.get('authoritativeEvidenceRows', 0)}`",
             f"- Standalone video files: `{summary.get('standaloneVideoKeys', 0)}`",
             f"- Standalone video refs: `{summary.get('standaloneVideoRefs', 0)}`",
+            f"- Manual inline attach refs: `{summary.get('manualAttachedInlineVideos', 0)}`",
+            f"- Suppressed inline video refs: `{summary.get('suppressedInlineVideos', 0)}`",
             f"- Unresolved video refs: `{summary.get('unresolvedVideos', 0)}`",
             "",
             "## Attached Keys",
@@ -8473,6 +9883,18 @@ def build_language_bundle(
             lines.append(f"- `{row.get('name')}` ({row.get('kind')}) -> {candidates}")
         if not report.get("unresolved"):
             lines.append("- None")
+        lines.extend(["", "## Manual Inline Attachments", ""])
+        for row in (report.get("manualAttachedInline") or [])[:120]:
+            note = f" ({row.get('note')})" if row.get("note") else ""
+            lines.append(f"- `{row.get('name')}` -> `{row.get('targetKey')}`{note}")
+        if not report.get("manualAttachedInline"):
+            lines.append("- None")
+        lines.extend(["", "## Suppressed Inline Attachments", ""])
+        for row in (report.get("suppressedInline") or [])[:120]:
+            note = f" ({row.get('note')})" if row.get("note") else ""
+            lines.append(f"- `{row.get('name')}` -> `{row.get('targetKey')}`{note}")
+        if not report.get("suppressedInline"):
+            lines.append("- None")
         lines.append("")
         return "\n".join(lines)
 
@@ -8488,6 +9910,11 @@ def build_language_bundle(
         def resolve_video_key(ref: dict) -> str:
             authoritative_keys = list(ref.get("authoritativeKeys") or [])
             candidate_list = list(ref.get("keyCandidates") or [])
+            if str(ref.get("kind") or "") == "remotecomm":
+                for candidate in candidate_list:
+                    owner_key = remotecomm_video_owner_by_stem.get(str(candidate or "").lower())
+                    if owner_key in available_keys:
+                        return owner_key
             if authoritative_keys:
                 for candidate in authoritative_keys:
                     candidate = str(candidate or "")
@@ -8496,29 +9923,171 @@ def build_language_bundle(
                 return ""
             for candidate in candidate_list:
                 candidate = str(candidate or "")
+                if candidate.startswith(("dlg_", "misc_dlg_")):
+                    continue
                 if candidate in available_keys:
                     return candidate
-                if candidate.startswith("dlg_"):
-                    misc_key = f"misc_{candidate}"
-                    if misc_key in available_keys:
-                        return misc_key
-                    match = re.match(r"^(dlg_.+_\d+)d\d+$", candidate)
-                    if match and match.group(1) in available_keys:
-                        return match.group(1)
+            for candidate in candidate_list:
+                owner_key = remotecomm_video_owner_by_stem.get(str(candidate or "").lower())
+                if owner_key in available_keys:
+                    return owner_key
             return ""
+
+        def video_override_for(
+            rules_by_key: dict[str, list[dict]],
+            target_key: str,
+            ref: dict,
+            *,
+            require_stem: bool = False,
+        ) -> dict:
+            if not target_key:
+                return {}
+            rules = rules_by_key.get(target_key) or []
+            if not rules:
+                return {}
+            ref_stems = {
+                normalized
+                for normalized in (
+                    _normalize_video_override_stem(ref.get("stem")),
+                    _normalize_video_override_stem(ref.get("baseStem")),
+                    _normalize_video_override_stem(ref.get("name")),
+                )
+                if normalized
+            }
+            for rule in rules:
+                rule_stems = set(rule.get("stems") or [])
+                if require_stem and not rule_stems:
+                    continue
+                if rule_stems and not (rule_stems & ref_stems):
+                    continue
+                return {
+                    "source": repo_rel(rule.get("source") or _NARRATIVE_VIDEO_OVERRIDES_PATH),
+                    "targetKey": target_key,
+                    "stems": sorted(rule_stems),
+                    "note": str(rule.get("note") or ""),
+                }
+            return {}
+
+        def suppression_override_for(resolved_key: str, ref: dict) -> dict:
+            return video_override_for(narrative_video_suppress_overrides, resolved_key, ref)
+
+        def manual_attachment_override_for(ref: dict) -> dict:
+            for target_key in sorted(narrative_video_attach_overrides):
+                if target_key not in available_keys:
+                    continue
+                override = video_override_for(
+                    narrative_video_attach_overrides,
+                    target_key,
+                    ref,
+                    require_stem=True,
+                )
+                if override:
+                    return override
+            return {}
 
         resolved_videos: dict[str, list[dict]] = defaultdict(list)
         standalone_videos: dict[str, list[dict]] = defaultdict(list)
         unresolved_videos: list[dict] = []
+        suppressed_inline_videos: list[dict] = []
+        manual_attached_inline_videos: list[dict] = []
 
-        def video_has_authoritative_story_binding(ref: dict) -> bool:
-            return bool(ref.get("authoritativeKeys"))
-
+        # Index entry kind for each WebUI key. Authoritative bindings are used
+        # both for inline placement and for keeping standalone video rows near
+        # their bound story entry in Story sort.
+        entry_kind_by_key: dict[str, str] = {
+            str(entry.get("k") or ""): str(entry.get("d") or "")
+            for entry in index_entries
+            if entry.get("k")
+        }
         def standalone_video_key(ref: dict) -> str:
             stem = str(ref.get("baseStem") or ref.get("stem") or ref.get("name") or "").strip()
             stem = re.sub(r"\.[^.]+$", "", stem, flags=re.IGNORECASE)
             stem = re.sub(r"[^A-Za-z0-9_]+", "_", stem).strip("_").lower()
             return f"video_{stem or 'unknown'}"
+
+        def natural_name_key(value: object) -> tuple:
+            return tuple(
+                (1, int(part)) if part.isdigit() else (0, part.lower())
+                for part in re.split(r"(\d+)", str(value or ""))
+            )
+
+        def video_ref_sort_name(ref: dict) -> str:
+            return str(ref.get("name") or ref.get("baseStem") or ref.get("stem") or "").strip()
+
+        def video_ref_base_name(ref: dict) -> str:
+            return str(ref.get("baseStem") or ref.get("stem") or ref.get("name") or "").strip()
+
+        def video_ref_stem(ref: dict) -> str:
+            stem = video_ref_base_name(ref)
+            stem = re.sub(r"\.[^.]+$", "", stem, flags=re.IGNORECASE)
+            return stem.lower()
+
+        def narrative_video_name_sort_key(ref: dict) -> tuple:
+            return (
+                natural_name_key(video_ref_sort_name(ref)),
+                natural_name_key(video_ref_base_name(ref)),
+                narrative_video_sort_key(ref),
+            )
+
+        def timeline_clip_start(ref: dict) -> float | None:
+            binding = ref.get("binding") if isinstance(ref.get("binding"), dict) else {}
+            starts: list[float] = []
+            for clip in binding.get("clips") or []:
+                if not isinstance(clip, dict):
+                    continue
+                start = clip.get("start")
+                if isinstance(start, (int, float)):
+                    starts.append(float(start))
+            return min(starts) if starts else None
+
+        def remotecomm_timeline_order(key: str) -> dict[str, tuple]:
+            order: dict[str, tuple] = {}
+            for index, segment in enumerate(remotecomm_video_timeline_by_key.get(key) or []):
+                stem = str(segment.get("videoStem") or "").strip().lower()
+                if not stem or stem in order:
+                    continue
+                start = segment.get("startTime")
+                start_key = float(start) if isinstance(start, (int, float)) else float(index)
+                order[stem] = (index, start_key)
+            return order
+
+        def sort_refs_for_story_file(key: str, refs: list[dict]) -> list[dict]:
+            remote_order = remotecomm_timeline_order(key)
+            clip_timeline_present = any(timeline_clip_start(ref) is not None for ref in refs)
+            if remote_order or clip_timeline_present:
+                return sorted(
+                    refs,
+                    key=lambda ref: (
+                        0,
+                        remote_order[video_ref_stem(ref)],
+                        narrative_video_name_sort_key(ref),
+                    )
+                    if video_ref_stem(ref) in remote_order
+                    else (
+                        1,
+                        timeline_clip_start(ref),
+                        narrative_video_name_sort_key(ref),
+                    )
+                    if timeline_clip_start(ref) is not None
+                    else (
+                        2,
+                        narrative_video_name_sort_key(ref),
+                    ),
+                )
+            return sorted(refs, key=narrative_video_name_sort_key)
+
+        def note_attached_video_in_summary(payload: dict) -> None:
+            summary = payload.get("summary")
+            if not isinstance(summary, list):
+                return
+            stale_note = "Text-only candidate: no matching AnimeStudio cutscene asset, source link, or narrative video was found."
+            refreshed_note = (
+                "Text-only candidate: no matching AnimeStudio cutscene asset or source link was found; "
+                "narrative video is attached separately."
+            )
+            for row in summary:
+                if isinstance(row, dict) and row.get("text") == stale_note:
+                    row["text"] = refreshed_note
 
         def strip_video_gender_prefix(stem: str) -> tuple[str, str]:
             match = re.match(r"^(?P<gender>f|m|fm)_(?P<rest>cs_video_.+)$", stem or "", flags=re.IGNORECASE)
@@ -8528,18 +10097,32 @@ def build_language_bundle(
 
         def video_scene_hint(refs: list[dict]) -> str:
             for ref in refs:
+                override = ref.get("_videoAttachmentAttachOverride")
+                if not isinstance(override, dict):
+                    continue
+                target = str(override.get("targetKey") or ref.get("_resolvedKey") or "").strip()
+                if target:
+                    return strip_video_scene_prefix(target)
+            for ref in refs:
                 binding = ref.get("binding") if isinstance(ref.get("binding"), dict) else {}
                 scene = str(binding.get("scene") or "").strip()
                 if scene and not binding.get("isHint"):
-                    return scene.removeprefix("dlg_").removeprefix("cutscene_")
+                    return strip_video_scene_prefix(scene)
             for ref in refs:
                 _gender, base = strip_video_gender_prefix(str(ref.get("baseStem") or ref.get("stem") or ""))
                 for prefix in ("cs_video_dlg_", "cs_video_cutscene_", "cs_video_remotecomm_", "cs_video_"):
                     if base.startswith(prefix):
-                        return base[len(prefix):]
+                        return strip_video_scene_prefix(base[len(prefix):])
                 if base:
-                    return base
+                    return strip_video_scene_prefix(base)
             return ""
+
+        def strip_video_scene_prefix(scene: str) -> str:
+            value = str(scene or "")
+            for prefix in ("dlg_", "cutscene_", "remotecomm_", "radio_", "black_"):
+                if value.startswith(prefix):
+                    return value[len(prefix):]
+            return value
 
         def video_mission_scene(refs: list[dict]) -> tuple[str, int]:
             scene_hint = video_scene_hint(refs)
@@ -8563,15 +10146,80 @@ def build_language_bundle(
             names = _unique_preserve(str(ref.get("name") or "") for ref in refs if ref.get("name"))
             return names[0] if names else "Narrative video"
 
+        def video_text_candidate_rows(video_stem: str) -> list[dict]:
+            prefix = f"{video_stem}_"
+            rows: list[tuple[tuple[int, int, str], dict]] = []
+            for row_id, text_entry in text_table.items():
+                row_key = str(row_id or "")
+                if not row_key.startswith(prefix):
+                    continue
+                suffix = row_key[len(prefix):]
+                match = re.fullmatch(r"(?P<line>\d+)(?P<sub>d\d+)?(?:_[fm])?", suffix, flags=re.IGNORECASE)
+                if not match:
+                    continue
+                sub = match.group("sub") or ""
+                sub_order = int(sub[1:]) if sub else -1
+                text = t(text_entry.get("id") if isinstance(text_entry, dict) else text_entry)
+                line = {
+                    "id": row_key,
+                    "cid": f"{match.group('line')}{sub}",
+                    "text": text,
+                    "_debug": {
+                        **source_ref(
+                            "TextTable",
+                            row_key,
+                            pick_fields(text_entry, "id", "text") if isinstance(text_entry, dict) else {"value": text_entry},
+                            videoStem=video_stem,
+                            evidence="name-matched-video-text-candidate",
+                        ),
+                        "fields": {
+                            "text": text_trace("TextTable", row_key, "id", text_entry),
+                        },
+                    },
+                }
+                if sub:
+                    line["sub"] = sub
+                rows.append(((int(match.group("line")), sub_order, row_key), line))
+            return [line for _sort_key, line in sorted(rows, key=lambda item: item[0])]
+
         for ref in narrative_video_assets:
-            resolved_key = resolve_video_key(ref)
-            if resolved_key and video_has_authoritative_story_binding(ref):
+            original_resolved_key = resolve_video_key(ref)
+            suppress_override = suppression_override_for(original_resolved_key, ref)
+            attach_override = {} if suppress_override else manual_attachment_override_for(ref)
+            resolved_key = (
+                ""
+                if suppress_override
+                else str(attach_override.get("targetKey") or original_resolved_key or "")
+            )
+            resolved_kind = (
+                entry_kind_by_key.get(resolved_key, "")
+                if resolved_key
+                else ""
+            )
+            # Rule: a video is always emitted as a standalone `video_*` bundle.
+            # When story-key resolution maps it to another file, it also embeds
+            # there. Timeline-backed refs render at their authored positions.
+            standalone_ref = dict(ref)
+            standalone_ref["_resolvedKey"] = resolved_key
+            standalone_ref["_resolvedKind"] = resolved_kind
+            if suppress_override:
+                standalone_ref["_suppressedResolvedKey"] = original_resolved_key
+                standalone_ref["_videoAttachmentOverride"] = suppress_override
+            if attach_override:
+                standalone_ref["_videoAttachmentAttachOverride"] = attach_override
+            should_embed_inline = bool(resolved_key)
+            if should_embed_inline:
                 resolved_ref = dict(ref)
                 resolved_ref["resolvedKey"] = resolved_key
+                if attach_override:
+                    resolved_ref["attachmentOverride"] = attach_override
                 resolved_videos[resolved_key].append(resolved_ref)
-                continue
-            standalone_videos[standalone_video_key(ref)].append(dict(ref))
-            if not resolved_key:
+            standalone_videos[standalone_video_key(ref)].append(standalone_ref)
+            if suppress_override:
+                suppressed_inline_videos.append(standalone_ref)
+            elif attach_override:
+                manual_attached_inline_videos.append(standalone_ref)
+            elif not resolved_key:
                 unresolved_videos.append(ref)
 
         authoritative_evidence: list[dict] = []
@@ -8630,10 +10278,97 @@ def build_language_bundle(
                 })
             return rows
 
+        def standalone_binding_summary(refs: list[dict]) -> tuple[str, str]:
+            for ref in refs:
+                override = ref.get("_videoAttachmentOverride")
+                if not isinstance(override, dict):
+                    continue
+                target = str(override.get("targetKey") or ref.get("_suppressedResolvedKey") or "")
+                target_note = f" to `{target}`" if target else ""
+                return (
+                    f"Attachment status: manual override suppresses inline attachment{target_note}; kept standalone in WebUI",
+                    "standaloneVideoManualOverrideSuppressedInline",
+                )
+            for ref in refs:
+                override = ref.get("_videoAttachmentAttachOverride")
+                if not isinstance(override, dict):
+                    continue
+                target = str(override.get("targetKey") or ref.get("_resolvedKey") or "")
+                if not target:
+                    continue
+                resolved_kind = str(ref.get("_resolvedKind") or "")
+                label = {
+                    "cutscene": "cutscene",
+                    "dlg": "dialog",
+                    "remotecomm": "remotecomm",
+                }.get(resolved_kind, "story file")
+                return (
+                    f"Attachment status: manual override attaches inline to {label} `{target}`; kept standalone in WebUI",
+                    "standaloneVideoManualOverrideAttachedInline",
+                )
+            for ref in refs:
+                binding = ref.get("binding") if isinstance(ref.get("binding"), dict) else {}
+                if not binding or binding.get("isHint"):
+                    continue
+                scene = str(binding.get("scene") or "")
+                if not scene:
+                    continue
+                resolved_kind = str(ref.get("_resolvedKind") or "")
+                resolved_key = str(ref.get("_resolvedKey") or "")
+                if resolved_kind == "cutscene":
+                    label, target = "cutscene", resolved_key or scene
+                elif resolved_kind == "dlg":
+                    label, target = "dialog", resolved_key or scene
+                elif resolved_kind == "remotecomm":
+                    label, target = "remotecomm", resolved_key or scene
+                elif scene.startswith("cutscene_"):
+                    label, target = "cutscene", scene
+                elif scene.startswith("dlg_"):
+                    label, target = "dialog", scene
+                elif scene.startswith("remotecomm_"):
+                    label, target = "remotecomm", scene
+                else:
+                    label, target = "scene", scene
+                attached_note = " (also embedded inline)" if resolved_kind else ""
+                return (
+                    f"Attachment status: timeline-bound to {label} `{target}`{attached_note}; kept standalone in WebUI",
+                    "standaloneVideoBoundButKeptSeparate",
+                )
+            resolved_key = next(
+                (
+                    str(ref.get("_resolvedKey") or "")
+                    for ref in refs
+                    if ref.get("_resolvedKey")
+                ),
+                "",
+            )
+            resolved_kind = next(
+                (
+                    str(ref.get("_resolvedKind") or "")
+                    for ref in refs
+                    if ref.get("_resolvedKind")
+                ),
+                "",
+            )
+            if resolved_key:
+                label = {
+                    "cutscene": "cutscene",
+                    "dlg": "dialog",
+                    "remotecomm": "remotecomm",
+                }.get(resolved_kind, "story file")
+                return (
+                    f"Attachment status: filename-mapped to {label} `{resolved_key}` (also embedded inline); kept standalone in WebUI",
+                    "standaloneVideoFilenameMapped",
+                )
+            return (
+                "Attachment status: no non-name binding found for a dialog or cutscene",
+                "standaloneVideoNoAuthoritativeStoryBinding",
+            )
+
         def emit_standalone_video_outputs() -> list[dict]:
             entries: list[dict] = []
             for key, raw_refs in sorted(standalone_videos.items()):
-                refs = sorted(raw_refs, key=narrative_video_sort_key)
+                refs = sorted(raw_refs, key=narrative_video_name_sort_key)
                 if not refs:
                     continue
                 compact_refs = [compact_narrative_video_ref(ref) for ref in refs[:16]]
@@ -8644,19 +10379,55 @@ def build_language_bundle(
                 names = _unique_preserve(str(ref.get("name") or "") for ref in refs if ref.get("name"))
                 source_counts = Counter(str(ref.get("source") or "") for ref in refs)
                 format_counts = Counter(str(ref.get("format") or "") for ref in refs)
+                attachment_text, attachment_reason = standalone_binding_summary(refs)
+                attached_story_key = next(
+                    (
+                        str(ref.get("_resolvedKey") or "")
+                        for ref in refs
+                        if ref.get("_resolvedKey")
+                    ),
+                    "",
+                )
+                text_candidates = video_text_candidate_rows(title)
+                # `title` is the asset baseStem (e.g. cs_video_e0m0_3); the game
+                # ships no localized title for FMVs. Keep it as a search hint
+                # and as the lead summary label, but don't expose it as a
+                # `title` field — that would mislead the WebUI into treating
+                # the stem as a human-readable name. cutscene/dlg/radio bundles
+                # also omit the field.
+                #
+                # We do NOT promote `cs_video_<scene>_NN` TextTable rows to
+                # playable lines. They share a name with the FMV, but no
+                # decoded subtitle track carries those keys. Keep them as
+                # explicit candidates so the evidence level stays visible.
+                summary_rows = [
+                    {"text": f"Standalone narrative video: {title}"},
+                    {"text": f"Mission: {mission}"},
+                    {"text": f"Files: {len(refs)} exported variant(s)"},
+                    {"text": attachment_text},
+                ]
+                if text_candidates:
+                    candidate_preview = " / ".join(
+                        str(row.get("text") or "")
+                        for row in text_candidates[:4]
+                        if row.get("text")
+                    )
+                    summary_rows.append({
+                        "text": (
+                            "Name-matched TextTable candidates: "
+                            + (candidate_preview or f"{len(text_candidates)} row(s)")
+                        ),
+                    })
+                    summary_rows.append({
+                        "text": "Video text note: these rows share the FMV stem but are not tied by a decoded subtitle track.",
+                    })
                 payload = {
                     "key": key,
                     "kind": "video",
                     "mission": mission,
                     "scene": scene,
-                    "title": title,
                     "lines": [],
-                    "summary": [
-                        {"text": f"Standalone narrative video: {title}"},
-                        {"text": f"Mission: {mission}"},
-                        {"text": f"Files: {len(refs)} exported variant(s)"},
-                        {"text": "Attachment status: no non-name binding found for a dialog or cutscene"},
-                    ],
+                    "summary": summary_rows,
                     "narrativeVideos": compact_refs,
                     "_debug": {
                         "title": mission_name_trace(mission),
@@ -8666,11 +10437,13 @@ def build_language_bundle(
                                 "count": len(refs),
                                 "shown": len(compact_refs),
                                 "omitted": omitted,
-                                "reason": "standaloneVideoNoAuthoritativeStoryBinding",
+                                "reason": attachment_reason,
                             },
                         },
                     },
                 }
+                if text_candidates:
+                    payload["videoTextCandidates"] = text_candidates[:16]
                 if omitted:
                     payload["narrativeVideosOmitted"] = omitted
                 write_conv_payload(key, payload)
@@ -8681,7 +10454,6 @@ def build_language_bundle(
                     "s": scene,
                     "t": type_ if type_ != "?" else "other",
                     "a": act,
-                    "title": title,
                     "c": [],
                     "n": 0,
                     "p": preview(", ".join(names) or title),
@@ -8699,6 +10471,8 @@ def build_language_bundle(
                         mission_context_text(mission),
                     ),
                 }
+                if attached_story_key:
+                    entry["attachTo"] = attached_story_key
                 entry["videoSources"] = {
                     source: source_counts[source]
                     for source in sorted(source_counts)
@@ -8718,7 +10492,7 @@ def build_language_bundle(
         attached_refs = 0
         for entry in index_entries:
             key = str(entry.get("k") or "")
-            refs = sorted(resolved_videos.get(key) or [], key=narrative_video_sort_key)
+            refs = sort_refs_for_story_file(key, resolved_videos.get(key) or [])
             if not refs:
                 continue
             attached_refs += len(refs)
@@ -8740,10 +10514,21 @@ def build_language_bundle(
                     payload = None
                 if isinstance(payload, dict):
                     payload["narrativeVideos"] = compact_refs
+                    note_attached_video_in_summary(payload)
                     if omitted:
                         payload["narrativeVideosOmitted"] = omitted
                     if isinstance(payload.get("cutscene"), dict):
                         payload["cutscene"]["videoRefs"] = compact_refs
+                    clip_starts: list[float] = []
+                    if str(entry.get("d") or "") in ("cutscene", "remotecomm"):
+                        for ref in refs:
+                            binding = ref.get("binding") if isinstance(ref.get("binding"), dict) else {}
+                            for clip in binding.get("clips") or []:
+                                if not isinstance(clip, dict):
+                                    continue
+                                start = clip.get("start")
+                                if isinstance(start, (int, float)):
+                                    clip_starts.append(float(start))
                     debug = payload.setdefault("_debug", {})
                     debug["narrativeVideos"] = {
                         "source": {
@@ -8751,6 +10536,11 @@ def build_language_bundle(
                             "count": len(refs),
                             "shown": len(compact_refs),
                             "omitted": omitted,
+                            **(
+                                {"timelineAlignedWith": key}
+                                if clip_starts
+                                else {}
+                            ),
                         },
                     }
                     unplaced_video_stems = sorted({
@@ -8776,6 +10566,34 @@ def build_language_bundle(
                             "videoCount": len(unplaced_video_stems),
                         })
                         payload["warnings"] = existing_warnings
+                    expected_remotecomm_video_stems = remotecomm_expected_video_stems_by_key.get(key, [])
+                    if expected_remotecomm_video_stems and str(entry.get("d") or "") == "remotecomm":
+                        present_video_stems = {
+                            str(ref.get("baseStem") or ref.get("stem") or "").strip().lower()
+                            for ref in refs
+                            if ref.get("baseStem") or ref.get("stem")
+                        }
+                        missing_video_stems = [
+                            stem for stem in expected_remotecomm_video_stems
+                            if stem.lower() not in present_video_stems
+                        ]
+                        existing_warnings = [
+                            warning for warning in (payload.get("warnings") or [])
+                            if isinstance(warning, dict)
+                            and warning.get("code") != "remotecommNarrativeVideoMissing"
+                        ]
+                        if missing_video_stems:
+                            existing_warnings.append({
+                                "code": "remotecommNarrativeVideoMissing",
+                                "status": "missing",
+                                "videoStems": missing_video_stems,
+                                "videoCount": len(missing_video_stems),
+                                "evidence": "RemoteCommonTable middleId video lookup",
+                            })
+                        if existing_warnings:
+                            payload["warnings"] = existing_warnings
+                        else:
+                            payload.pop("warnings", None)
                     write_json(conv_path, payload)
                     remember_written(conv_path, written_conv_paths)
 
@@ -8818,6 +10636,8 @@ def build_language_bundle(
                 "scannedVideos": len(narrative_video_assets),
                 "attachedKeys": len(attached_rows),
                 "attachedVideos": attached_refs,
+                "manualAttachedInlineVideos": len(manual_attached_inline_videos),
+                "suppressedInlineVideos": len(suppressed_inline_videos),
                 "authoritativeEvidenceRows": len(authoritative_evidence),
                 "standaloneVideoKeys": len(standalone_entries),
                 "standaloneVideoRefs": sum(len(rows) for rows in standalone_videos.values()),
@@ -8839,6 +10659,30 @@ def build_language_bundle(
                 for entry in standalone_entries[:500]
             ],
             "unresolved": unresolved_rows[:500],
+            "manualAttachedInline": [
+                {
+                    "name": str(ref.get("name") or ""),
+                    "targetKey": str((ref.get("_videoAttachmentAttachOverride") or {}).get("targetKey") or ""),
+                    "stems": list((ref.get("_videoAttachmentAttachOverride") or {}).get("stems") or []),
+                    "note": str((ref.get("_videoAttachmentAttachOverride") or {}).get("note") or ""),
+                    "source": str((ref.get("_videoAttachmentAttachOverride") or {}).get("source") or ""),
+                }
+                for ref in manual_attached_inline_videos[:500]
+            ],
+            "suppressedInline": [
+                {
+                    "name": str(ref.get("name") or ""),
+                    "targetKey": str(
+                        ((ref.get("_videoAttachmentOverride") or {}).get("targetKey"))
+                        or ref.get("_suppressedResolvedKey")
+                        or ""
+                    ),
+                    "stems": list((ref.get("_videoAttachmentOverride") or {}).get("stems") or []),
+                    "note": str((ref.get("_videoAttachmentOverride") or {}).get("note") or ""),
+                    "source": str((ref.get("_videoAttachmentOverride") or {}).get("source") or ""),
+                }
+                for ref in suppressed_inline_videos[:500]
+            ],
         }
         report_json = REPORTS_DIR / f"narrative_videos_{language_code}.json"
         report_md = REPORTS_DIR / f"narrative_videos_{language_code}.md"
@@ -9945,6 +11789,29 @@ def build_language_bundle(
                         edge.setdefault("positions", [])
                         if pos not in edge["positions"]:
                             edge["positions"].append(pos)
+            for pair in _build_levelscript_cross_file_scene_pairs(
+                level_id, dialog_scene_out_key, mission
+            ):
+                src = pair.get("src") or ""
+                dst = pair.get("dst") or ""
+                if src not in available or dst not in available:
+                    continue
+                if edge := ensure_edge(src, dst, "levelscriptCrossFileOrder"):
+                    for key in ("fromFile", "toFile"):
+                        file_ref = pair.get(key) or ""
+                        if file_ref:
+                            refs = edge.setdefault("sourceFiles", [])
+                            if file_ref not in refs:
+                                refs.append(file_ref)
+                    pair_level_id = pair.get("levelId") or ""
+                    if pair_level_id:
+                        refs = edge.setdefault("levelIds", [])
+                        if pair_level_id not in refs:
+                            refs.append(pair_level_id)
+                    stems = edge.setdefault("fileStems", [])
+                    stem_pair = [pair.get("fromStem"), pair.get("toStem")]
+                    if stem_pair not in stems:
+                        stems.append(stem_pair)
 
         # PRTS collection rows expose authored page order inside a single
         # reading/collection item. Treat that as weak ordering only, and only
@@ -10054,6 +11921,7 @@ def build_language_bundle(
         }
         weak_order_edge_kinds = {
             "levelscriptFileOrder",
+            "levelscriptCrossFileOrder",
             "levelDataQuestRef",
             "prtsCollectionOrder",
         }
@@ -10147,31 +12015,32 @@ def build_language_bundle(
     mission_scene_graphs: dict[str, dict] = {}
     for mission in present_index_missions:
         flow = load_mission_flow(mission)
+        localized_flow = localize_mission_flow(flow)
         graph_flow = mission_graph_flow(mission, flow)
         scene_graph = build_mission_scene_graph(mission, graph_flow)
-        if not flow and not scene_graph:
+        if not localized_flow and not scene_graph:
             continue
-        payload = {"quests": (flow or {}).get("quests") or []}
-        if flow:
+        payload = {"quests": (localized_flow or {}).get("quests") or []}
+        if localized_flow:
             referenced: set[str] = set()
-            for q in flow["quests"]:
+            for q in localized_flow["quests"]:
                 referenced.update(q.get("dialogs") or [])
                 referenced.update(q.get("cutscenes") or [])
                 referenced.update(q.get("remotecomms") or [])
                 referenced.update(q.get("radios") or [])
             available = scene_keys_by_mission.get(mission, set())
-            for q in flow["quests"]:
+            for q in localized_flow["quests"]:
                 referenced.update(quest_area_scene_refs(q, available))
                 referenced.update(quest_leveldata_scene_refs(q, available))
             unlinked = sorted(available - referenced)
-            if flow.get("level"):
-                payload["level"] = flow["level"]
+            if localized_flow.get("level"):
+                payload["level"] = localized_flow["level"]
             if unlinked:
                 payload["unlinked"] = unlinked
-            map_pins = build_mission_map_pins(flow)
+            map_pins = build_mission_map_pins(localized_flow)
             if map_pins:
                 payload["mapPins"] = map_pins
-            scene_pins = build_mission_scene_pins(flow, available)
+            scene_pins = build_mission_scene_pins(localized_flow, available)
             if scene_pins:
                 payload["scenePins"] = scene_pins
         if scene_graph:
@@ -10179,56 +12048,11 @@ def build_language_bundle(
             if graph_flow and graph_flow.get("variantMissionIds"):
                 payload["sceneGraphVariantMissions"] = graph_flow["variantMissionIds"]
             mission_scene_graphs[mission] = scene_graph
-            unconfirmed_keys: set[str] = {
-                node.get("key")
-                for node in scene_graph.get("nodes") or []
-                if node.get("key") and node.get("orderConfirmed") is False
-            }
-            scene_graph_order = {
-                node.get("key"): int(node.get("order"))
-                for node in scene_graph.get("nodes") or []
-                if node.get("key") and isinstance(node.get("order"), int)
-                and node.get("orderConfirmed") is not False
-            }
-            scene_graph_order_strength = {
-                node.get("key"): node.get("orderStrength")
-                for node in scene_graph.get("nodes") or []
-                if node.get("key") and node.get("orderStrength")
-            }
-            if scene_graph_order or unconfirmed_keys:
-                attach_offsets: Counter[str] = Counter()
-
-                def annotate_order_strength(entry: dict, key: str) -> None:
-                    strength = scene_graph_order_strength.get(key)
-                    if strength == "strong":
-                        entry["goStrong"] = True
-                    elif strength == "weak":
-                        entry["goWeak"] = True
-                    elif strength == "unknown":
-                        entry["goUnknown"] = True
-
-                for entry in index_entries:
-                    if entry.get("m") != mission:
-                        continue
-                    k = entry.get("k") or ""
-                    if k in unconfirmed_keys:
-                        entry["goUnknown"] = True
-                        continue
-                    order = scene_graph_order.get(k)
-                    if order is not None:
-                        entry["go"] = order
-                        annotate_order_strength(entry, k)
-                        continue
-                    attached_to = entry.get("attachTo")
-                    attach_order = scene_graph_order.get(attached_to)
-                    if attach_order is not None:
-                        attach_offsets[attached_to] += 1
-                        entry["go"] = attach_order + (attach_offsets[attached_to] / 1000)
-                        annotate_order_strength(entry, attached_to)
         mission_flows_payload[mission] = payload
 
     mission_timeline_recovery_payload = build_mission_timeline_recovery_report(
-        mission_scene_graphs
+        mission_scene_graphs,
+        mission_flows=mission_flows_payload,
     )
     mission_timelines_by_mission = {
         mission.get("mission") or "": mission
@@ -10348,7 +12172,27 @@ def build_language_bundle(
     total_size = sum(p.stat().st_size for p in conv_dir.glob("*.json"))
     conv_count = len(list(conv_dir.glob("*.json")))
     index_path = out_dir / "index.json"
-    scene_order_report = shared_write_scene_order_gap_reports(ROOT, REPORTS_DIR, language_code, conv_dir)
+    mission_report_files = {
+        mission: repo_rel(out_dir / rel_file)
+        for mission, rel_file in mission_data_files.items()
+    }
+    scene_placement_index = shared_build_scene_placement_index_from_timelines(
+        mission_timelines_by_mission,
+        mission_files=mission_report_files,
+    )
+    scene_order_rows = shared_collect_scene_order_gap_rows_from_payloads(
+        ROOT,
+        sorted(scene_order_gap_sources.values(), key=lambda item: item[0].name),
+        scene_placement_index=scene_placement_index,
+        dialog_id_registry=dialog_id_registry,
+    )
+    scene_order_report = shared_write_scene_order_gap_reports(
+        ROOT,
+        REPORTS_DIR,
+        language_code,
+        conv_dir,
+        rows=scene_order_rows,
+    )
     inferred_anchor_report = shared_write_inferred_option_anchors_report(REPORTS_DIR, language_code, conv_dir)
     print(f"\n[{language_code}] Done in {time.time()-t0:.1f}s")
     print(f"  profile:       {profile}")

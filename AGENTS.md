@@ -14,9 +14,10 @@ Move observations, conclusions, older exploration notes, and status snapshots to
 
 ```bat
 .\export.bat
-.\export.bat --init-build
-.\export.bat --fast-assets
-.\export.bat --skip-export-full
+.\export.bat --export-from-game
+.\build_updates.bat
+.\build_updates.bat --init-build
+.\export_assets.bat
 python serve.py
 python serve.py 9000
 ```
@@ -26,17 +27,29 @@ Before starting a WebUI server, check whether the default
 server instead of starting another `serve.py` process on `8765` or a custom
 port, unless the user explicitly asks for a second server.
 
-`export.bat` is the canonical WebUI refresh. It exports only data needed by the
-browser, skips raw VFS and source inventory, builds the Updates feed, builds CN
-story/reference data by default, and rebuilds the asset index. It also verifies
-that `export_full/` matches the current installed `Endfield_Data` fingerprints
-before the long WebUI builders run.
-Use `--init-build` for first-time/baseline-only builds where the Updates feed
-should be baselined instead of reporting changes.
-Use `--fast-assets` for local refreshes that can reuse existing asset indexes
-and skip demo bundle zip generation.
-Use `--skip-export-full` for WebUI rebuilds that should reuse the existing
-`export_full/`; the wrapper still verifies freshness before long builders run.
+`export.bat` is the canonical story/reference WebUI rebuild from an existing
+`export_full/`. It verifies that `export_full/` matches the current installed
+`Endfield_Data` fingerprints before the long WebUI builders run, then builds CN
+story/reference data by default. It does not export from installed game data by
+default. Pass `--export-from-game` only when the user explicitly asks to refresh
+`export_full/`, run the story export tools, and decode CN audio. `export.bat`
+always finishes by running the audio builder so generated CN conversations have
+playable `audioSrc` links when decoded audio is available. It does not refresh
+`webui/overrides/story_order.json`; Story order is maintained by the OCR
+workflow.
+Use `build_updates.bat` for the standalone Updates feed comparison. Use
+`build_updates.bat --init-build` for first-time/baseline-only builds where the
+Updates feed should be baselined instead of reporting changes. The wrapper
+passes `--skip-asset-updates` by default so stale decoded asset outputs do not
+appear in story-only refreshes.
+Use `export_assets.bat` for WebUI Assets tab indexes and compact Story media
+lookup from existing decoded assets. Pass `--export-from-game` only when the
+user explicitly asks to run the heavier AnimeStudio image/model/animation
+decode from installed game data first.
+Use direct `scripts/build_audio.py` runs for non-CN languages or audio-only
+maintenance. The audio builder writes `export_full/structured/Audio/<LANG>/`,
+parses Wwise bank event-to-media links, and post-processes generated
+conversation JSON with playable `audioSrc` links.
 
 Useful direct commands:
 
@@ -44,13 +57,14 @@ Useful direct commands:
 python scripts\build_updates.py
 python scripts\build_updates.py --baseline-only
 python scripts\build_updates.py --skip-asset-updates
-python scripts\build_updates.py --reset-baseline
+python scripts\build_updates.py --refresh-previous-export-baseline
 python scripts\verify_export_freshness.py
 python scripts\story_builder\source_links.py
 python scripts\story_builder\build.py --languages CN --default-language CN
 python scripts\story_builder\build.py --languages CN EN JP --default-language CN
 python scripts\build_assets.py
-python scripts\build_assets.py --fast
+python scripts\build_audio.py
+python scripts\download_bilibili_video.py --dry-run
 python scripts\package_webui.py
 ```
 
@@ -81,7 +95,7 @@ current source of truth instead:
 - agent-facing repo rules: `AGENTS.md`
 - script/workflow contract: `scripts/README.md`
 - WebUI frontend scope: `webui/README.md`
-- detailed WebUI recovery notes: `memory/webui_recovery/`
+- detailed WebUI recovery notes: `memory/webui_recovery.md`
 - shader/animation recovery snapshots: dedicated files in `memory/`
 
 ## Project Local Skills
@@ -94,6 +108,9 @@ of these workflows, open the matching `SKILL.md` before acting:
   behavior.
 - `.codex/skills/endfield-source-graph/`: source graph build/query and
   graph-backed follow-up reports.
+- `.codex/skills/endfield-option-overrides/`: editing and validating
+  WebUI-only manual option recovery overrides in
+  `webui/overrides/options.json`.
 
 The current checkout does not ship separate `endfield-story-recovery` or
 `endfield-character-recovery-lab` skill folders. For those workflows, use the
@@ -109,34 +126,32 @@ disposable experiments in `scratch/` or `tmp/`.
 
 ## Update Tracking Rule
 
-The WebUI Updates tab must report only original installed game-data changes.
+The WebUI Updates tab must report only exported game-data changes between a
+saved previous export and the current export.
 
-`scripts/build_updates.py` tracks:
+`scripts/build_updates.py` compares:
 
 ```text
-D:\Program Files\Endfield Game\Endfield_Data
+export_122
+export_full
 ```
 
-by default and stores state under `.game-data-tracker/`. Do not point this
-tracker at `webui/`, `export_full/`, `reports/`, `memory/`, or `scratch/`.
-WebUI edits and generated output must not appear as game-data updates.
-Local CrashSight telemetry files under
-`Plugins/x86_64/wesight/crashsight_data/` are ignored as volatile local runtime
-state, not installed content updates.
+by default. Pass `--previous-export-root PATH` for a different saved previous
+export. Scanner cache and feed history live under `.game-data-tracker/`; the
+cached baseline is built from the previous export folder, then `export_full/`
+is scanned against it. Do not point this comparison at `webui/`, `reports/`,
+`memory/`, or `scratch/`. WebUI edits and generated output outside the export
+roots must not appear as game-data updates.
 
-The builder may scan exported assets under `export_full/` to add image/model/video
-asset-level entries to the Updates page, but it must only report those entries
-when the original `Endfield_Data` tracker reports a real game-data change. When
-there is no game-data change, exported asset differences should be treated as
-local rebuild noise and baselined silently.
+The builder may scan exported assets in the same two export folders to add
+image/model/video asset-level entries to the Updates page. The standalone
+`build_updates.bat` wrapper passes `--skip-asset-updates` by default; include
+asset updates only after the asset workflow refreshes heavy outputs
+intentionally.
 
-Zero-change reruns should not blank the Updates page. `build_updates.py`
-preserves the existing non-empty feed, or restores the latest non-empty feed
-snapshot from `.game-data-tracker/history/update-feed-*.json`. If no feed
-snapshot exists, it can fall back to the latest non-empty raw tracker report,
-which recovers game-data entries but not already-overwritten asset diffs. Use
-`--baseline-only` or `--reset-baseline` only when an empty baseline is
-intentional.
+Use `--baseline-only` only when an empty feed is intentional. Use
+`--refresh-previous-export-baseline` after replacing the saved previous export
+folder so the cached scanner baseline is rebuilt.
 
 ## Repo Rules
 
@@ -176,6 +191,7 @@ WebUI:
 - `scripts/story_builder/source_links.py`
 - `scripts/story_builder/build.py`
 - `scripts/build_assets.py`
+- `scripts/build_audio.py`
 - `scripts/package_webui.py`
 - supporting files in `scripts/` and `scripts/asset_builder/`
 
@@ -188,6 +204,10 @@ Story reconstruction helpers used by WebUI builders:
 Story recovery audit/refresh tools, not run by `export.bat`:
 
 - `scripts/story_recovery/`
+- `scripts/download_bilibili_video.py` is an optional gameplay-video intake
+  helper for the OCR/audio story-order workflow. It requires `requests`,
+  `ffmpeg`, and browser-exported Bilibili cookies, writes complete `.mp4` files
+  under `videos/`, and is not part of the stdlib-only export path.
 
 Unity character recovery lab:
 

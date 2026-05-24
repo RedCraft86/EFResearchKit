@@ -27,6 +27,10 @@ from common import (  # noqa: E402
     write_text_if_changed,
 )
 from story_builder.level_bindings import _load_levelscript_binding_data  # noqa: E402
+from story_builder.mission_recovery import (  # noqa: E402
+    TARGET_MISSION_PREFIXES,
+    mission_id_matches_target_prefix,
+)
 
 
 ORDER_KINDS = {"dlg", "sns", "cutscene", "black", "remotecomm", "radio", "video"}
@@ -116,6 +120,14 @@ def aliases_for_key(key: str) -> list[str]:
     return sorted(aliases, key=len, reverse=True)
 
 
+def is_story_ref_byte_boundary(raw: bytes, start: int, end: int) -> bool:
+    """Return true when a byte hit is not embedded in a longer story id."""
+    story_ref_chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_"
+    before_ok = start <= 0 or raw[start - 1] not in story_ref_chars
+    after_ok = end >= len(raw) or raw[end] not in story_ref_chars
+    return before_ok and after_ok
+
+
 def normalize_story_ref(raw: str) -> str:
     value = safe_key(raw)
     for prefix in ("f_", "m_", "fm_"):
@@ -148,7 +160,7 @@ def story_content_suffix(key: str) -> str:
     value = safe_key(key)
     if value.startswith("misc_"):
         value = value[5:]
-    for prefix in ("dlg_", "radio_", "black_", "remotecomm_", "sns_", "cutscene_"):
+    for prefix in ("dlg_", "radio_", "black_", "remotecomm_", "sns_", "cutscene_", "text_"):
         if value.startswith(prefix):
             return value[len(prefix):]
     return value
@@ -381,6 +393,9 @@ def collect_reading_prts_links(keys: list[str]) -> dict[str, dict[str, Any]]:
         allow_row_suffix = False
         if normalized_key.startswith("radio_"):
             candidates.add(f"radio_{suffix}")
+        elif normalized_key.startswith("text_"):
+            candidates.add(normalized_key)
+            allow_row_suffix = True
         elif normalized_key.startswith(("dlg_", "black_")):
             candidates.add(f"text_{suffix}")
             allow_row_suffix = True
@@ -525,6 +540,8 @@ def collect_leveldata_hits(
                         if index < 0:
                             break
                         search_from = index + max(1, len(alias_raw))
+                        if not is_story_ref_byte_boundary(raw, index, index + len(alias_raw)):
+                            continue
                         key_hits += 1
                         context = leveldata_context(raw, index, len(alias_raw))
                         if len(examples[key]) < 4:
@@ -985,6 +1002,29 @@ def build_report(
         for key in weak_or_unknown
         if entry_report[key]["hits"].get("radioContinuation")
     ]
+    chunks = (mission_timeline or {}).get("chunks") or []
+    levelscript_spatial = (mission_timeline or {}).get("levelscriptSpatialProximity") or []
+    chunk_strength_counter: Counter = Counter()
+    chunk_isolated_count = 0
+    chunk_max_scene_count = 0
+    subchunk_count = 0
+    chunk_with_subchunks_count = 0
+    for chunk in chunks:
+        chunk_strength_counter[str(chunk.get("strength") or "unanchored")] += 1
+        if chunk.get("isolated"):
+            chunk_isolated_count += 1
+        size = int(chunk.get("sceneCount") or 0)
+        if size > chunk_max_scene_count:
+            chunk_max_scene_count = size
+        subchunks = chunk.get("subchunks") or []
+        if subchunks:
+            chunk_with_subchunks_count += 1
+            subchunk_count += len(subchunks)
+    chunk_order_data = (mission_timeline or {}).get("chunkOrder") or {}
+    chunk_order_edges = chunk_order_data.get("edges") or []
+    chunk_order_parallel = chunk_order_data.get("parallel") or []
+    chunk_order_incomparable = chunk_order_data.get("incomparable") or []
+    chunk_order_unattached = chunk_order_data.get("unattachedChunkIds") or []
 
     return {
         "generated": datetime.now().isoformat(timespec="seconds"),
@@ -1027,13 +1067,33 @@ def build_report(
             "weakOrUnknownGainingRadioContinuationAnchor": weak_or_unknown_anchored_by_radio_cont,
             "variantMissionRuntimeAnchoredCount": variant_mission_runtime_anchored,
             "variantMissionRuntimeMissions": (webui_mission.get("flow") or {}).get("sceneGraphVariantMissions") or [],
+            "chunkCount": len(chunks),
+            "chunkStrongCount": chunk_strength_counter.get("strong", 0),
+            "chunkWeakCount": chunk_strength_counter.get("weak", 0),
+            "chunkUnanchoredCount": chunk_strength_counter.get("unanchored", 0),
+            "chunkIsolatedCount": chunk_isolated_count,
+            "chunkMaxSceneCount": chunk_max_scene_count,
+            "chunkWithSubchunksCount": chunk_with_subchunks_count,
+            "subchunkCount": subchunk_count,
+            "chunkOrderEdgeCount": len(chunk_order_edges),
+            "chunkOrderParallelPairCount": len(chunk_order_parallel),
+            "chunkOrderIncomparablePairCount": len(chunk_order_incomparable),
+            "chunkOrderUnattachedChunkCount": len(chunk_order_unattached),
+            "levelscriptSpatialProximityCount": len(levelscript_spatial),
         },
         "missionTimeline": {
             "propertyModel": (mission_timeline or {}).get("propertyModel"),
             "questEdges": (mission_timeline or {}).get("questEdges") or [],
+            "questTree": (mission_timeline or {}).get("questTree") or {},
             "sourceBackedSceneEdges": (mission_timeline or {}).get("sourceBackedSceneEdges") or [],
             "sourceBackedSceneSequences": (mission_timeline or {}).get("sourceBackedSceneSequences") or [],
             "sourceBackedHashTerminals": (mission_timeline or {}).get("sourceBackedHashTerminals") or [],
+            "chunks": (mission_timeline or {}).get("chunks") or [],
+            "chunkOrder": (mission_timeline or {}).get("chunkOrder") or {},
+            "questSpatialTrack": (mission_timeline or {}).get("questSpatialTrack") or [],
+            "levelscriptSpatialProximity": levelscript_spatial,
+            "scenePlacement": (mission_timeline or {}).get("scenePlacement") or {},
+            "scriptConditionAttachments": (mission_timeline or {}).get("scriptConditionAttachments") or [],
             "unresolved": (mission_timeline or {}).get("unresolved") or [],
         },
         "missionRuntimeScriptConditions": runtime_script_conditions,
@@ -1086,12 +1146,22 @@ def markdown_report(payload: dict[str, Any]) -> str:
         f"{summary.get('radioContinuationAnchoredCount', 0)} "
         f"(weak/unknown newly anchored: "
         f"{len(summary.get('weakOrUnknownGainingRadioContinuationAnchor', []))})",
+        f"- Scene chunks: {summary.get('chunkCount', 0)} "
+        f"(strong={summary.get('chunkStrongCount', 0)}, "
+        f"weak={summary.get('chunkWeakCount', 0)}, "
+        f"isolated={summary.get('chunkIsolatedCount', 0)}; "
+        f"max scenes/chunk {summary.get('chunkMaxSceneCount', 0)})",
+        f"- Chunk order: {summary.get('chunkOrderEdgeCount', 0)} questDag edges, "
+        f"{summary.get('chunkOrderParallelPairCount', 0)} parallel pairs, "
+        f"{summary.get('chunkOrderIncomparablePairCount', 0)} incomparable pairs, "
+        f"{summary.get('chunkOrderUnattachedChunkCount', 0)} chunks with no quest attach",
         "",
         "## Entry Evidence",
         "",
-        "| key | status | go | fallback | MissionRuntime | ProxyDlg | VariantMR | LevelScript | LevelData | Radio | Audio | Read/PRTS | AssetMap | PlayDir | RadioCont |",
-        "| --- | --- | ---: | --- | ---: | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- | --- |",
+        "| key | status | chunk | go | fallback | MissionRuntime | ProxyDlg | VariantMR | LevelScript | LevelData | Radio | Audio | Read/PRTS | AssetMap | PlayDir | RadioCont |",
+        "| --- | --- | --- | ---: | --- | ---: | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- | --- |",
     ]
+    scene_placement_index = (payload.get("missionTimeline") or {}).get("scenePlacement") or {}
     for key, info in payload["entries"].items():
         hits = info["hits"]
         radio = hits.get("radioTable")
@@ -1126,10 +1196,12 @@ def markdown_report(payload: dict[str, Any]) -> str:
             if proxy_dialog.get("count", 0) > 1:
                 proxy_dialog_text += f" (+{proxy_dialog['count'] - 1})"
         graph_order = info.get("graphOrder")
+        chunk_id = (scene_placement_index.get(key) or {}).get("chunkId") or ""
         lines.append(
             "| "
             f"`{md_escape(key)}` "
             f"| {md_escape(info.get('status'))} "
+            f"| {md_escape(chunk_id)} "
             f"| {graph_order if graph_order is not None else ''} "
             f"| {md_escape(info.get('fallbackTail'))} "
             f"| {hits.get('missionRuntime', {}).get('count', 0)} "
@@ -1144,6 +1216,434 @@ def markdown_report(payload: dict[str, Any]) -> str:
             f"| {md_escape(play_dir_text)} "
             f"| {md_escape(radio_cont_text)} |"
         )
+
+    chunks = (payload.get("missionTimeline") or {}).get("chunks") or []
+    lines.extend(["", "## Scene Chunks", ""])
+    if chunks:
+        chunk_counts = Counter(chunk.get("strength") or "unanchored" for chunk in chunks)
+        chunk_counts_text = ", ".join(
+            f"{name}={chunk_counts[name]}" for name in sorted(chunk_counts)
+        )
+        lines.append(
+            f"- {len(chunks)} chunks "
+            f"({chunk_counts_text}) — "
+            "connected components in source-backed scene edges, levelscript "
+            "chains, and shared Timelines. Order within a chunk is preserved "
+            "by its edges; inter-chunk order is recovered separately."
+        )
+        lines.append("")
+        lines.append("| chunk | strength | scenes | quests | subchunks | spatial candidates | source scripts | kinds | edge kinds | scene keys |")
+        lines.append("| --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- |")
+        for chunk in chunks:
+            scene_keys = chunk.get("sceneKeys") or []
+            scene_kinds = ", ".join(chunk.get("sceneKinds") or []) or "—"
+            edge_kinds = ", ".join(chunk.get("edgeKinds") or []) or "_(isolated)_"
+            scene_keys_text = ", ".join(f"`{md_escape(scene_key)}`" for scene_key in scene_keys[:12])
+            if len(scene_keys) > 12:
+                scene_keys_text += f", _… (+{len(scene_keys) - 12})_"
+            quest_ids = chunk.get("questIds") or []
+            quest_text = ", ".join(f"`{md_escape(quest_id)}`" for quest_id in quest_ids) or "-"
+            source_scripts = chunk.get("sourceScripts") or []
+            script_texts = [
+                f"`{md_escape((script.get('levelId') or script.get('mapId') or '?') + '/' + str(script.get('scriptId') or '?'))}`"
+                for script in source_scripts[:6]
+                if isinstance(script, dict)
+            ]
+            if len(source_scripts) > 6:
+                script_texts.append(f"_+{len(source_scripts) - 6}_")
+            span = chunk.get("sourceFileOrderSpan") or {}
+            if isinstance(span, dict) and span.get("first") and span.get("last"):
+                first = span.get("first") or {}
+                last = span.get("last") or {}
+                script_texts.append(
+                    "_span "
+                    f"{md_escape(str(first.get('scriptId') or '?'))}"
+                    ".."
+                    f"{md_escape(str(last.get('scriptId') or '?'))}_"
+                )
+            source_script_text = ", ".join(script_texts) or "-"
+            spatial_candidates = chunk.get("spatialQuestCandidates") or []
+            spatial_texts = []
+            for candidate in spatial_candidates[:4]:
+                if not isinstance(candidate, dict):
+                    continue
+                label = str(candidate.get("questId") or "?")
+                if candidate.get("distanceXZ") is not None:
+                    label += f" @{candidate.get('distanceXZ')}m"
+                if candidate.get("scriptId"):
+                    label += f" via {candidate.get('scriptId')}"
+                spatial_texts.append(f"`{md_escape(label)}`")
+            if len(spatial_candidates) > 4:
+                spatial_texts.append(f"_+{len(spatial_candidates) - 4}_")
+            spatial_text = ", ".join(spatial_texts) or "-"
+            subchunk_texts = []
+            for subchunk in (chunk.get("subchunks") or [])[:6]:
+                if not isinstance(subchunk, dict):
+                    continue
+                hint = subchunk.get("questOrderHint") or {}
+                label = str(hint.get("questId") or subchunk.get("basis") or "subchunk")
+                subchunk_texts.append(
+                    f"`{md_escape(subchunk.get('id'))}` {md_escape(label)} ({subchunk.get('sceneCount', 0)})"
+                )
+            if len(chunk.get("subchunks") or []) > 6:
+                subchunk_texts.append(f"_+{len(chunk.get('subchunks') or []) - 6}_")
+            subchunk_text = ", ".join(subchunk_texts) or "-"
+            lines.append(
+                "| "
+                f"`{md_escape(chunk.get('id'))}` "
+                f"| {md_escape(chunk.get('strength'))} "
+                f"| {chunk.get('sceneCount', 0)} "
+                f"| {quest_text} "
+                f"| {subchunk_text} "
+                f"| {spatial_text} "
+                f"| {source_script_text} "
+                f"| {md_escape(scene_kinds)} "
+                f"| {md_escape(edge_kinds)} "
+                f"| {scene_keys_text} |"
+            )
+    else:
+        lines.append("- _(none)_")
+
+    subchunk_rows = [
+        (chunk, subchunk)
+        for chunk in chunks
+        for subchunk in (chunk.get("subchunks") or [])
+        if isinstance(subchunk, dict)
+    ]
+    lines.extend(["", "## Scene Subchunks", ""])
+    if subchunk_rows:
+        lines.append(
+            "Diagnostic weak splits inside a chunk, usually from contiguous "
+            "LevelScript spatial-candidate runs. They do not create quest "
+            "attachments or chunk-order edges."
+        )
+        lines.append("")
+        lines.append("| parent | subchunk | hint | scenes | spatial candidates | source scripts | scene keys |")
+        lines.append("| --- | --- | --- | ---: | --- | --- | --- |")
+        for chunk, subchunk in subchunk_rows:
+            scene_keys = subchunk.get("sceneKeys") or []
+            scene_keys_text = ", ".join(f"`{md_escape(scene_key)}`" for scene_key in scene_keys[:12])
+            if len(scene_keys) > 12:
+                scene_keys_text += f", _... (+{len(scene_keys) - 12})_"
+            hint = subchunk.get("questOrderHint") or {}
+            hint_text = "-"
+            if hint:
+                hint_text = str(hint.get("questId") or hint.get("kind") or "-")
+                if hint.get("distanceXZ") is not None:
+                    hint_text += f" @{hint.get('distanceXZ')}m"
+                if hint.get("scriptId"):
+                    hint_text += f" via {hint.get('scriptId')}"
+                hint_text = f"`{md_escape(hint_text)}`"
+            spatial_texts = []
+            for candidate in (subchunk.get("spatialQuestCandidates") or [])[:4]:
+                if not isinstance(candidate, dict):
+                    continue
+                label = str(candidate.get("questId") or "?")
+                if candidate.get("distanceXZ") is not None:
+                    label += f" @{candidate.get('distanceXZ')}m"
+                if candidate.get("scriptId"):
+                    label += f" via {candidate.get('scriptId')}"
+                spatial_texts.append(f"`{md_escape(label)}`")
+            if len(subchunk.get("spatialQuestCandidates") or []) > 4:
+                spatial_texts.append(f"_+{len(subchunk.get('spatialQuestCandidates') or []) - 4}_")
+            spatial_text = ", ".join(spatial_texts) or "-"
+            script_texts = [
+                f"`{md_escape((script.get('levelId') or script.get('mapId') or '?') + '/' + str(script.get('scriptId') or '?'))}`"
+                for script in (subchunk.get("sourceScripts") or [])[:6]
+                if isinstance(script, dict)
+            ]
+            if len(subchunk.get("sourceScripts") or []) > 6:
+                script_texts.append(f"_+{len(subchunk.get('sourceScripts') or []) - 6}_")
+            script_text = ", ".join(script_texts) or "-"
+            lines.append(
+                "| "
+                f"`{md_escape(chunk.get('id'))}` "
+                f"| `{md_escape(subchunk.get('id'))}` "
+                f"| {hint_text} "
+                f"| {subchunk.get('sceneCount', 0)} "
+                f"| {spatial_text} "
+                f"| {script_text} "
+                f"| {scene_keys_text} |"
+            )
+    else:
+        lines.append("- _(none)_")
+
+    quest_tree = (payload.get("missionTimeline") or {}).get("questTree") or {}
+    unattached_quest_chunks = quest_tree.get("unattachedToQuestChunkIds") or []
+    attachment_summary = quest_tree.get("chunkAttachmentSummary") or {}
+    lines.extend(["", "## Task Tree", ""])
+    if quest_tree.get("roots") or quest_tree.get("unrootedRoots"):
+        lines.append(
+            f"- attached chunks: `{attachment_summary.get('attachedChunkCount', 0)}` "
+            f"across `{attachment_summary.get('questsWithChunkCount', 0)}` quests; "
+            f"unattached chunks: `{attachment_summary.get('unattachedChunkCount', 0)}`"
+        )
+        hint_summary = quest_tree.get("sourceScriptHintSummary") or {}
+        if hint_summary:
+            lines.append(
+                f"- source-script hints: `{hint_summary.get('hintCount', 0)}` "
+                f"across `{hint_summary.get('questCount', 0)}` quests"
+            )
+        lines.append("")
+
+        def render_tree_lines(nodes: list[dict], depth: int = 0) -> None:
+            for node in nodes or []:
+                if not isinstance(node, dict):
+                    continue
+                quest_id = node.get("questId") or ""
+                indent = "  " * depth
+                attached = node.get("attachedChunkIds") or []
+                chunks_text = (
+                    " — " + ", ".join(f"`{md_escape(cid)}`" for cid in attached)
+                    if attached
+                    else ""
+                )
+                source_hints = node.get("sourceScriptHints") or []
+                source_texts = []
+                for hint in source_hints[:4]:
+                    if not isinstance(hint, dict):
+                        continue
+                    label_parts = []
+                    if hint.get("subchunkId") or hint.get("chunkId"):
+                        label_parts.append(str(hint.get("subchunkId") or hint.get("chunkId")))
+                    if hint.get("sceneKey"):
+                        label_parts.append(str(hint.get("sceneKey")))
+                    if not label_parts:
+                        script_label = "/".join(
+                            str(value)
+                            for value in (hint.get("mapId") or hint.get("levelId"), hint.get("scriptId"))
+                            if value
+                        )
+                        label_parts.append(script_label or str(hint.get("kind") or "source"))
+                    label = " ".join(label_parts)
+                    if hint.get("scriptId") and not label.endswith(str(hint.get("scriptId"))):
+                        label += f"/{hint.get('scriptId')}"
+                    if hint.get("distanceXZ") is not None:
+                        label += f" @{hint.get('distanceXZ')}m"
+                    source_texts.append(f"`{md_escape(label)}`")
+                if len(source_hints) > 4:
+                    source_texts.append(f"_+{len(source_hints) - 4}_")
+                sources_text = (
+                    " sources " + ", ".join(source_texts)
+                    if source_texts
+                    else ""
+                )
+                tags = []
+                if node.get("loop"):
+                    tags.append("loop")
+                if node.get("reused"):
+                    tags.append("reused")
+                tag_text = f" _({', '.join(tags)})_" if tags else ""
+                lines.append(f"{indent}- `{md_escape(quest_id)}`{tag_text}{chunks_text}{sources_text}")
+                if not node.get("reused"):
+                    render_tree_lines(node.get("children") or [], depth + 1)
+
+        if quest_tree.get("roots"):
+            render_tree_lines(quest_tree["roots"])
+        if quest_tree.get("unrootedRoots"):
+            lines.append("")
+            lines.append("Unrooted (no explicit empty prevQuestIdList):")
+            lines.append("")
+            render_tree_lines(quest_tree["unrootedRoots"])
+        if unattached_quest_chunks:
+            lines.append("")
+            lines.append(
+                "Chunks not attached to any quest (no storyRef or script-condition match): "
+                + ", ".join(f"`{md_escape(cid)}`" for cid in unattached_quest_chunks)
+            )
+    else:
+        lines.append("- _(no quest tree)_")
+
+    quest_track = (payload.get("missionTimeline") or {}).get("questSpatialTrack") or []
+    lines.extend(["", "## Quest Map Track", ""])
+    if quest_track:
+        lines.append(
+            "Map pins, resources, and script conditions are diagnostic placement hints; "
+            "they are not promoted to chronology without an explicit quest/story edge."
+        )
+        lines.append("")
+        lines.append("| quest | flow | prev | chunks | spatial matches | pins | scripts | resources | dist |")
+        lines.append("| --- | ---: | --- | --- | --- | --- | --- | --- | ---: |")
+
+        def pin_label(pin: dict[str, Any]) -> str:
+            name = (
+                safe_key(pin.get("missionAreaId"))
+                or safe_key(pin.get("npcProxyId"))
+                or safe_key(pin.get("scene"))
+                or safe_key(pin.get("trackingType"))
+                or "pin"
+            )
+            pos = pin.get("position") or {}
+            if isinstance(pos, dict) and {"x", "z"} <= set(pos):
+                label = (
+                    f"{name}@"
+                    f"{float(pos.get('x', 0.0)):.1f},"
+                    f"{float(pos.get('z', 0.0)):.1f}"
+                )
+            else:
+                label = name
+            parent_raw = pin.get("subDataParentId") or pin.get("levelDataParentId")
+            parent = str(parent_raw) if parent_raw not in (None, "", [], {}) else ""
+            if parent:
+                label += f" parent {parent}"
+            return label
+
+        for item in quest_track:
+            if not isinstance(item, dict):
+                continue
+            chunks_text = ", ".join(f"`{md_escape(cid)}`" for cid in item.get("attachedChunkIds") or []) or "-"
+            spatial_matches = item.get("spatialSourceMatches") or []
+            spatial_texts = []
+            for match in spatial_matches[:4]:
+                if not isinstance(match, dict):
+                    continue
+                label_parts = []
+                if match.get("subchunkId") or match.get("chunkId"):
+                    label_parts.append(str(match.get("subchunkId") or match.get("chunkId")))
+                if match.get("sceneKey"):
+                    label_parts.append(str(match.get("sceneKey")))
+                label = " ".join(label_parts) or "?"
+                if match.get("scriptId"):
+                    label += f"/{match.get('scriptId')}"
+                if match.get("distanceXZ") is not None:
+                    label += f" @{match.get('distanceXZ')}m"
+                spatial_texts.append(f"`{md_escape(label)}`")
+            if len(spatial_matches) > 4:
+                spatial_texts.append(f"_+{len(spatial_matches) - 4}_")
+            spatial_text = ", ".join(spatial_texts) or "-"
+            pins = item.get("pins") or []
+            pins_text = ", ".join(md_escape(pin_label(pin)) for pin in pins[:4] if isinstance(pin, dict)) or "-"
+            if len(pins) > 4:
+                pins_text += f", _+{len(pins) - 4}_"
+            scripts = item.get("scriptRefs") or []
+            script_texts = []
+            for script in scripts[:4]:
+                if not isinstance(script, dict):
+                    continue
+                label = (
+                    f"{script.get('mapId') or script.get('levelId') or '?'}/"
+                    f"{script.get('scriptId') or '?'}"
+                )
+                if script.get("key"):
+                    label += f":{script.get('key')}"
+                script_texts.append(f"`{md_escape(label)}`")
+            if len(scripts) > 4:
+                script_texts.append(f"_+{len(scripts) - 4}_")
+            scripts_text = ", ".join(script_texts) or "-"
+            resources = item.get("resources") or []
+            resource_texts = [
+                f"`{md_escape((resource.get('kind') or 'ref') + ':' + (resource.get('key') or ''))}`"
+                for resource in resources[:5]
+                if isinstance(resource, dict) and resource.get("key")
+            ]
+            if len(resources) > 5:
+                resource_texts.append(f"_+{len(resources) - 5}_")
+            resources_text = ", ".join(resource_texts) or "-"
+            lines.append(
+                "| "
+                f"`{md_escape(item.get('questId'))}` "
+                f"| {item.get('flowIndex', '')} "
+                f"| {md_escape(', '.join(item.get('prevQuestIds') or []) or '-')} "
+                f"| {chunks_text} "
+                f"| {spatial_text} "
+                f"| {pins_text} "
+                f"| {scripts_text} "
+                f"| {resources_text} "
+                f"| {item.get('distanceFromPrevious', '')} |"
+            )
+    else:
+        lines.append("- _(none)_")
+
+    spatial_matches = (payload.get("missionTimeline") or {}).get("levelscriptSpatialProximity") or []
+    lines.extend(["", "## LevelScript Spatial Proximity", ""])
+    if spatial_matches:
+        lines.append(
+            "Weak matches from raw LevelScript float triples to quest map pins. "
+            "These are diagnostic placement hints and are not quest-DAG edges."
+        )
+        lines.append("")
+        lines.append("| scene | quest | chunk | script | offset | vector | pin | xz dist | y delta |")
+        lines.append("| --- | --- | --- | --- | ---: | --- | --- | ---: | ---: |")
+        scene_placement = (payload.get("missionTimeline") or {}).get("scenePlacement") or {}
+
+        def pos_label(pos: Any) -> str:
+            if not isinstance(pos, dict):
+                return "-"
+            try:
+                return (
+                    f"{float(pos.get('x', 0.0)):.1f},"
+                    f"{float(pos.get('y', 0.0)):.1f},"
+                    f"{float(pos.get('z', 0.0)):.1f}"
+                )
+            except (TypeError, ValueError):
+                return "-"
+
+        for match in spatial_matches[:80]:
+            if not isinstance(match, dict):
+                continue
+            scene_key = safe_key(match.get("sceneKey"))
+            placement = scene_placement.get(scene_key) or {}
+            pin = match.get("pin") if isinstance(match.get("pin"), dict) else {}
+            pin_name = safe_key(pin.get("label")) or safe_key(pin.get("missionAreaId")) or safe_key(pin.get("trackingType")) or "-"
+            parent_raw = pin.get("subDataParentId") or pin.get("levelDataParentId")
+            if parent_raw not in (None, "", [], {}):
+                pin_name += f" parent {parent_raw}"
+            script_label = f"{match.get('mapId') or match.get('levelId') or '?'}/{match.get('scriptId') or '?'}"
+            lines.append(
+                "| "
+                f"`{md_escape(scene_key)}` "
+                f"| `{md_escape(match.get('questId'))}` "
+                f"| `{md_escape(placement.get('chunkId') or '-')}` "
+                f"| `{md_escape(script_label)}` "
+                f"| {match.get('offset', '')} "
+                f"| {md_escape(pos_label(match.get('position')))} "
+                f"| {md_escape(pin_name + '@' + pos_label(pin.get('position')))} "
+                f"| {match.get('distanceXZ', '')} "
+                f"| {match.get('yDelta', '')} |"
+            )
+        if len(spatial_matches) > 80:
+            lines.append(f"- _... +{len(spatial_matches) - 80} more matches_")
+    else:
+        lines.append("- _(none)_")
+
+    chunk_order = (payload.get("missionTimeline") or {}).get("chunkOrder") or {}
+    co_edges = chunk_order.get("edges") or []
+    co_parallel = chunk_order.get("parallel") or []
+    co_incomparable = chunk_order.get("incomparable") or []
+    co_unattached = chunk_order.get("unattachedChunkIds") or []
+    lines.extend(["", "## Chunk Order (questDag)", ""])
+    if co_edges or co_parallel or co_incomparable or co_unattached:
+        if co_edges:
+            lines.append("Directed edges:")
+            lines.append("")
+            for edge in co_edges:
+                from_q = ", ".join(f"`{md_escape(q)}`" for q in edge.get("fromQuests") or [])
+                to_q = ", ".join(f"`{md_escape(q)}`" for q in edge.get("toQuests") or [])
+                lines.append(
+                    f"- `{md_escape(edge.get('from'))}` → `{md_escape(edge.get('to'))}` "
+                    f"(from {from_q} → to {to_q})"
+                )
+            lines.append("")
+        if co_parallel:
+            lines.append("Parallel pairs (share at least one quest, not orderable by questDag):")
+            for pair in co_parallel:
+                lines.append(f"- `{md_escape(pair[0])}` ‖ `{md_escape(pair[1])}`")
+            lines.append("")
+        if co_incomparable:
+            lines.append(
+                "Incomparable pairs (disjoint quest attachments, no provable order):"
+            )
+            for pair in co_incomparable:
+                lines.append(f"- `{md_escape(pair[0])}` ⊥ `{md_escape(pair[1])}`")
+            lines.append("")
+        if co_unattached:
+            unattached_text = ", ".join(f"`{md_escape(cid)}`" for cid in co_unattached)
+            lines.append(
+                f"Chunks with no quest attachments: {unattached_text}"
+            )
+            lines.append("")
+    else:
+        lines.append("- _(no chunk-order evidence)_")
 
     lines.extend(["", "## LevelScript Sequences", ""])
     wrote_sequence = False
@@ -1274,7 +1774,21 @@ def markdown_report(payload: dict[str, Any]) -> str:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--language", default="CN")
-    parser.add_argument("--mission", action="append", required=True, help="Mission id, comma-list accepted.")
+    parser.add_argument(
+        "--mission",
+        action="append",
+        default=[],
+        help="Mission id, comma-list accepted. Required unless --all-target-prefixes is set.",
+    )
+    parser.add_argument(
+        "--all-target-prefixes",
+        action="store_true",
+        help=(
+            "Audit every mission in mission_timeline_recovery whose id starts "
+            f"with one of {', '.join(TARGET_MISSION_PREFIXES)} "
+            "(authored story missions; excludes db/dm/hidden/map*)."
+        ),
+    )
     parser.add_argument("--reports-dir", type=Path, default=ROOT / "reports")
     parser.add_argument("--skip-asset-map", action="store_true", help="Skip the large AssetMap string-count pass.")
     return parser.parse_args(argv)
@@ -1290,11 +1804,31 @@ def split_missions(values: list[str]) -> list[str]:
     return unique_preserve(out)
 
 
+def collect_target_prefix_missions(language: str, reports_dir: Path) -> list[str]:
+    timeline_path = reports_dir / f"mission_timeline_recovery_{language}.json"
+    payload = read_json(timeline_path, {})
+    out: list[str] = []
+    for entry in payload.get("missions") or []:
+        mission_id = entry.get("mission") or ""
+        if mission_id and mission_id_matches_target_prefix(mission_id):
+            out.append(mission_id)
+    return unique_preserve(out)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     out_dir = args.reports_dir / "mission_order"
     out_dir.mkdir(parents=True, exist_ok=True)
     missions = split_missions(args.mission)
+    if args.all_target_prefixes:
+        missions.extend(collect_target_prefix_missions(args.language, args.reports_dir))
+        missions = unique_preserve(missions)
+    if not missions:
+        print(
+            "error: pass --mission ... or --all-target-prefixes",
+            file=sys.stderr,
+        )
+        return 2
     for mission in missions:
         payload = build_report(
             mission,

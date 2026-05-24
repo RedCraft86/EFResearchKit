@@ -28,6 +28,7 @@ const UI_TEXTS = {
     storyIssueInferredOptionLayout: "\u9009\u9879\u5b9a\u4f4d\u7f3a\u5931",
     storyIssueInferredOptionResponse: "\u9009\u9879\u56de\u5e94\u4e3a\u63a8\u6d4b",
     storyIssueDuplicateTimestamps: "\u65f6\u95f4\u6233\u91cd\u590d",
+    storyIssueOverrided: "\u5df2\u624b\u52a8\u8986\u76d6",
     recoveryMethodLinePrefix: "\u884c\u987a\u5e8f",
     recoveryMethodOptionPrefix: "\u9009\u9879",
     recoveryMethodOptionLayoutAuthored: "\u6388\u6743\u951a\u70b9",
@@ -43,11 +44,24 @@ const UI_TEXTS = {
     recoveryMethodOptionContinuationOption: "\u540e\u7eed\u9009\u9879",
     recoveryMethodOptionSiblingSceneHint: "\u5144\u5f1f\u573a\u666f\u63d0\u793a",
     recoveryMethodOptionSiblingSceneText: "\u5144\u5f1f\u573a\u666f\u6587\u672c\u5206\u652f",
+    recoveryMethodOptionManualOverride: "\u624b\u52a8\u8986\u76d6",
     sort: "\u6392\u5e8f",
-    sortNatural: "\u6309\u5267\u60c5\u7ebf\u548c\u4efb\u52a1\u987a\u5e8f",
+    sortNatural: "\u6309\u7c7b\u578b\u548c\u540d\u79f0",
+    sortStory: "\u6309\u5267\u60c5\u6392\u5e8f",
     sortLinesDesc: "\u6309\u884c\u6570\u4ece\u591a\u5230\u5c11",
     sortLinesAsc: "\u6309\u884c\u6570\u4ece\u5c11\u5230\u591a",
     sortKey: "\u6309\u952e\u503c (A-Z)",
+    storyOrderBadgeTitle: "\u539f\u59cb\u6570\u636e\u6062\u590d\u987a\u5e8f",
+    storyOrderLockMission: "\u9501\u5b9a",
+    storyOrderUnlockMission: "\u89e3\u9501",
+    storyOrderMissionLocked: "\u5df2\u9501\u5b9a",
+    storyOrderMissionEditable: "\u53ef\u7f16\u8f91",
+    storyOrderLockMissionTitle: "\u53ef\u7f16\u8f91\u2014\u2014\u70b9\u51fb\u9501\u5b9a\u8be5\u4efb\u52a1\u7684\u987a\u5e8f\uff0c\u7981\u6b62\u624b\u52a8\u8c03\u6574",
+    storyOrderUnlockMissionTitle: "\u5df2\u9501\u5b9a\u2014\u2014\u70b9\u51fb\u89e3\u9501\u4ee5\u62d6\u52a8\u8c03\u6574\u987a\u5e8f",
+    storyOrderDragHandle: "\u62d6\u52a8\u8c03\u6574\u987a\u5e8f",
+    storyOrderSaveSaving: "\u4fdd\u5b58\u4e2d",
+    storyOrderSaveSaved: "\u5df2\u4fdd\u5b58",
+    storyOrderSaveFailed: "\u4fdd\u5b58\u5931\u8d25",
     reset: "\u91cd\u7f6e\u7b5b\u9009",
     listUnit: "\u6761",
     lineUnit: "\u884c",
@@ -55,6 +69,7 @@ const UI_TEXTS = {
     revealCurrent: "\u5b9a\u4f4d\u5f53\u524d\u6587\u4ef6",
     showEmpty: "\u663e\u793a\u7a7a\u767d\u5bf9\u8bdd\u884c",
     showRaw: "\u663e\u793a\u539f\u59cb JSON / \u6587\u672c\u6765\u6e90",
+    showDebug: "\u663e\u793a\u8c03\u8bd5\u4fe1\u606f",
     inlineTagMode: "\u663e\u793a\u6807\u7b7e\u539f\u6587",
     genderVariant: "\u6027\u522b\uff1a{gender}",
     showFilters: "\u663e\u793a\u7b5b\u9009",
@@ -73,45 +88,42 @@ const UI_TEXTS = {
     narrativeVideo: "\u5267\u60c5\u89c6\u9891",
     narrativeVideoMore: "\u8fd8\u6709 {count} \u4e2a\u89c6\u9891",
     narrativeVideoInlineLabel: "\u89c6\u9891",
+    recoveredAudio: "\u6062\u590d\u97f3\u9891",
+    recoveredAudioMedia: "\u5a92\u4f53",
+    recoveredAudioBytes: "\u5b57\u8282",
     wikiImages: "\u56fe\u7247",
     wikiMedia: "\u5a92\u4f53",
     missionNotes: "\u4efb\u52a1\u5907\u6ce8",
     missionTimelineRecovery: "\u4efb\u52a1\u65f6\u95f4\u7ebf\u6062\u590d",
-    missionTimelineTree: "\u4efb\u52a1\u6811",
     missionTimelineQuests: "\u4efb\u52a1",
     missionTimelineBranches: "\u5206\u652f",
     missionTimelineEdges: "\u573a\u666f\u8fb9",
+    missionTimelineQuestSpatialTrack: "\u4efb\u52a1\u5730\u56fe\u8f68\u8ff9",
+    missionTimelineSpatialHint: "\u5730\u56fe/\u8d44\u6e90\u5143\u6570\u636e\u4ec5\u4f5c\u5b9a\u4f4d\u7ebf\u7d22\u3002",
+    missionTimelineSourceScripts: "\u6765\u6e90\u811a\u672c",
+    missionTimelineSpatialCandidates: "\u7a7a\u95f4\u5019\u9009",
+    missionTimelineSpatialMatches: "\u7a7a\u95f4\u5339\u914d",
+    cutsceneInfo: "\u8fc7\u573a\u4fe1\u606f",
+    cutscenePlacement: "\u4f4d\u7f6e\u7ebf\u7d22",
+    cutsceneVariants: "\u53d8\u4f53\u6587\u4ef6",
+    cutsceneVideos: "\u89c6\u9891",
+    cutscenePaths: "\u8def\u5f84",
+    cutsceneMetadata: "\u5143\u6570\u636e",
     missionTimelineSceneGraph: "\u573a\u666f\u8fb9\u56fe",
-    missionTimelineSceneOrder: "\u573a\u666f\u987a\u5e8f",
-    missionTimelineOrderUnknown: "\u987a\u5e8f\u672a\u77e5",
-    missionTimelineOrderReference: "\u7ebf\u6027\u53c2\u8003",
-    missionTimelineOrderReferenceHidden: "\u7ebf\u6027\u53c2\u8003\u5df2\u6536\u8d77\uff08{count} \u4e2a\u573a\u666f\uff09",
     missionTimelineEdgeList: "\u8fb9\u5217\u8868",
     missionTimelineComponent: "\u8fde\u901a\u5206\u91cf",
     missionTimelineNodes: "\u8282\u70b9",
     missionTimelineEvidence: "\u65f6\u95f4\u7ebf\u8bc1\u636e",
     missionTimelineUnresolved: "\u672a\u89e3\u6790",
-    missionTimelineLoop: "\u56de\u73af",
-    missionTimelineReused: "\u5df2\u5728\u5176\u4ed6\u5206\u652f\u5c55\u5f00",
-    missionTimelineUnrooted: "\u65e0\u660e\u786e\u5165\u53e3",
-    missionTimelineGuard: "\u5206\u652f\u6761\u4ef6",
     missionTimelineSource: "\u6765\u6e90",
     missionTimelineObjectives: "\u76ee\u6807",
-    missionTimelineActions: "\u5ba2\u6237\u7aef\u52a8\u4f5c",
-    missionTimelineTracking: "\u8ffd\u8e2a",
+    missionTimelineObjectiveInstructions: "\u4efb\u52a1\u6307\u5f15",
     missionTimelineScenes: "\u573a\u666f",
     missionTimelineResources: "\u8d44\u6e90",
-    missionTimelineLocations: "\u4f4d\u7f6e",
     missionTimelineMapPins: "\u5730\u56fe\u70b9",
     missionTimelineGraphLinks: "\u573a\u666f\u94fe\u63a5",
     missionTimelineFlow: "\u6d41\u7a0b",
     missionTimelinePrev: "\u524d\u7f6e",
-    missionOrderStrong: "\u987a\u5e8f",
-    missionOrderWeak: "\u987a\u5e8f?",
-    missionOrderUnknown: "\u672a\u5b9a",
-    missionOrderStrongTitle: "\u4efb\u52a1\u5185\u987a\u5e8f\u6709\u5f3a\u8bc1\u636e\uff1a\u4efb\u52a1 DAG\u3001\u6388\u6743\u573a\u666f\u8df3\u8f6c\u6216 UID LevelScript \u94fe\u3002",
-    missionOrderWeakTitle: "\u4efb\u52a1\u5185\u987a\u5e8f\u53ea\u6709\u5f31\u7ebf\u7d22\uff1aLevelScript \u6587\u4ef6\u504f\u79fb\u987a\u5e8f\u3002",
-    missionOrderUnknownTitle: "\u672a\u627e\u5230\u4efb\u52a1\u5185\u987a\u5e8f\u7ebf\u7d22\uff1b\u4ec5\u6309\u56de\u9000\u952e\u503c / \u6570\u5b57\u987a\u5e8f\u6392\u5217\u3002",
     lineOrderRecovery: "\u884c\u987a\u5e8f\u6062\u590d",
     lineOrderNotNeeded: "\u5355\u884c\u573a\u666f\uff0c\u65e0\u9700\u989d\u5916\u7684\u884c\u987a\u5e8f\u6062\u590d\u3002",
     lineOrderMissing: "\u672a\u6062\u590d\u51fa\u660e\u786e\u7684\u884c\u987a\u5e8f\u3002",
@@ -177,6 +189,9 @@ const UI_TEXTS = {
     archiveLinksHeading: "\u6863\u6848\u5173\u8054",
     archiveReports: "\u62a5\u544a",
     archiveMaterials: "\u76f8\u5173\u6863\u6848",
+    archiveDuplicateDocuments: "\u540c\u6587\u6863\u6848",
+    archivePopupTexts: "\u4efb\u52a1\u5f39\u7a97",
+    archiveMissionFiles: "\u4efb\u52a1\u6587\u4ef6",
     branchHintLabel: "\u2192 \u8df3\u8f6c\u5230",
     optTargetMenu: "\u2192 \u7b2c {g} \u7ec4\u9009\u9879",
     optTargetReturnsToMenu: "\u21a9 \u8fd4\u56de\u7b2c {g} \u7ec4",
@@ -201,6 +216,8 @@ const UI_TEXTS = {
     optRiskRawIndexMatchedLineTitle: "\u6e90\u6570\u636e\u6ca1\u6709\u660e\u786e\u5199\u51fa\u8be5\u9009\u9879\u7684\u76ee\u6807\u53f0\u8bcd\uff1b\u4f46 Timeline raw optionIndex \u4e0e\u9009\u9879\u5e8f\u53f7\u5339\u914d\uff0c\u56de\u590d\u884c\u6062\u590d\u5230 {line}\u3002\u8fd9\u4ecd\u7136\u5c5e\u4e8e\u6062\u590d\u63a8\u65ad\uff0c\u4f46\u6bd4\u76f8\u90bb\u884c\u63a8\u6d4b\u66f4\u5f3a\u3002",
     optRiskInferredFollowingLine: "\u63a8\u6d4b\u56de\u5e94",
     optRiskInferredFollowingLineTitle: "\u6e90\u6570\u636e\u6ca1\u6709\u660e\u786e\u5199\u51fa\u8be5\u9009\u9879\u7684\u76ee\u6807\u53f0\u8bcd\uff1b\u6309 Timeline \u987a\u5e8f\u63a8\u6d4b\u53ef\u80fd\u5bf9\u5e94 {line}\u3002",
+    optManualOverride: "\u624b\u52a8\u8986\u76d6",
+    optManualOverrideTitle: "\u8be5\u7ed3\u679c\u7531\u672c\u5730\u624b\u52a8\u8986\u76d6\u6587\u4ef6\u63d0\u4f9b\uff1a{source}{note}",
     preDialogOptions: "\u5bf9\u8bdd\u9009\u9879\uff08\u5f00\u573a\u524d\uff09",
     uncertainDialogOptions: "\u5bf9\u8bdd\u9009\u9879\uff08\u4f4d\u7f6e\u5f85\u786e\u8ba4\uff09",
     orphanDialogOptions: "\u5bf9\u8bdd\u9009\u9879\uff08\u4f4d\u7f6e\u4e0d\u660e\uff09",
@@ -216,6 +233,8 @@ const UI_TEXTS = {
     warningDuplicateTimestampLines: "\u91cd\u590d\u884c",
     warningNarrativeVideoUnplacedTitle: "\u89c6\u9891\u4f4d\u7f6e\u672a\u6062\u590d",
     warningNarrativeVideoUnplacedBody: "\u672c\u573a\u666f\u5173\u8054\u4e86\u89c6\u9891\uff0c\u4f46\u672a\u80fd\u4ece Timeline \u4e2d\u6062\u590d\u5176\u64ad\u653e\u4f4d\u7f6e\uff0c\u4e0b\u65b9\u4ec5\u4f5c\u4e3a\u9644\u4ef6\u5c55\u793a\u3002",
+    warningRemotecommNarrativeVideoMissingTitle: "\u8fdc\u7a0b\u901a\u8baf\u89c6\u9891\u7f3a\u5931",
+    warningRemotecommNarrativeVideoMissingBody: "\u6e90\u6570\u636e\u6307\u5411\u8fd9\u4e9b RemoteComm \u89c6\u9891\u6bb5\uff0c\u4f46\u5bfc\u51fa\u76ee\u5f55\u4e2d\u6ca1\u6709\u5bf9\u5e94 MP4 \u6587\u4ef6\u3002",
     warningSceneOrderDisorderTitle: "\u987a\u5e8f\u63d0\u793a",
     warningSceneOrderDisorderBody: "\u672c\u573a\u666f\u7684\u987a\u5e8f\u6216\u9009\u9879\u5b9a\u4f4d\u4e0d\u662f\u5b8c\u6574\u6388\u6743\u7ed3\u679c\u3002",
     warningAspectLineOrder: "\u884c\u987a\u5e8f",
@@ -266,7 +285,7 @@ const UI_TEXTS = {
     kind: "Type",
     type: "Storyline",
     mediaFilter: "Media",
-    storyIssueFilter: "Recovery",
+    storyIssueFilter: "Recovery Issue",
     recoveryMethodFilter: "Recovery Method",
     storyIssueMissingLineOrder: "Missing order",
     storyIssuePartialLineOrder: "Partial order",
@@ -275,6 +294,7 @@ const UI_TEXTS = {
     storyIssueInferredOptionLayout: "No option anchor",
     storyIssueInferredOptionResponse: "Inferred reply",
     storyIssueDuplicateTimestamps: "Duplicate timestamps",
+    storyIssueOverrided: "Overrided",
     recoveryMethodLinePrefix: "Line order",
     recoveryMethodOptionPrefix: "Option",
     recoveryMethodOptionLayoutAuthored: "authored anchors",
@@ -290,11 +310,24 @@ const UI_TEXTS = {
     recoveryMethodOptionContinuationOption: "continuation option",
     recoveryMethodOptionSiblingSceneHint: "sibling scene hint",
     recoveryMethodOptionSiblingSceneText: "sibling scene text branches",
+    recoveryMethodOptionManualOverride: "manual override",
     sort: "Sort",
-    sortNatural: "Storyline and mission order",
+    sortNatural: "Type and name",
+    sortStory: "Story order",
     sortLinesDesc: "Line count (high to low)",
     sortLinesAsc: "Line count (low to high)",
     sortKey: "Key (A-Z)",
+    storyOrderBadgeTitle: "Recovered game-data order",
+    storyOrderLockMission: "Lock",
+    storyOrderUnlockMission: "Unlock",
+    storyOrderMissionLocked: "Locked",
+    storyOrderMissionEditable: "Editable",
+    storyOrderLockMissionTitle: "Editable — click to lock this mission and disable manual reordering",
+    storyOrderUnlockMissionTitle: "Locked — click to unlock so you can drag rows to reorder",
+    storyOrderDragHandle: "Drag to reorder",
+    storyOrderSaveSaving: "Saving",
+    storyOrderSaveSaved: "Saved",
+    storyOrderSaveFailed: "Save failed",
     reset: "Reset filters",
     listUnit: "items",
     lineUnit: "lines",
@@ -302,6 +335,7 @@ const UI_TEXTS = {
     revealCurrent: "Reveal current file",
     showEmpty: "Show empty rows",
     showRaw: "Show raw JSON / text sources",
+    showDebug: "Show debug info",
     inlineTagMode: "Show raw tags",
     genderVariant: "Gender: {gender}",
     showFilters: "Show filters",
@@ -320,45 +354,42 @@ const UI_TEXTS = {
     narrativeVideo: "Narrative Video",
     narrativeVideoMore: "{count} more videos",
     narrativeVideoInlineLabel: "Video",
+    recoveredAudio: "Recovered Audio",
+    recoveredAudioMedia: "media",
+    recoveredAudioBytes: "bytes",
     wikiImages: "Images",
     wikiMedia: "Media",
     missionNotes: "Mission Notes",
     missionTimelineRecovery: "Mission Timeline Recovery",
-    missionTimelineTree: "Quest Tree",
     missionTimelineQuests: "quests",
     missionTimelineBranches: "branches",
     missionTimelineEdges: "scene edges",
+    missionTimelineQuestSpatialTrack: "Quest Map Track",
+    missionTimelineSpatialHint: "Map/resource metadata is a diagnostic placement hint.",
+    missionTimelineSourceScripts: "source scripts",
+    missionTimelineSpatialCandidates: "spatial candidates",
+    missionTimelineSpatialMatches: "spatial matches",
+    cutsceneInfo: "Cutscene Info",
+    cutscenePlacement: "Placement",
+    cutsceneVariants: "Variants",
+    cutsceneVideos: "Videos",
+    cutscenePaths: "Paths",
+    cutsceneMetadata: "Metadata",
     missionTimelineSceneGraph: "Scene Edge Graph",
-    missionTimelineSceneOrder: "Scene Order",
-    missionTimelineOrderUnknown: "Order unknown",
-    missionTimelineOrderReference: "linear reference",
-    missionTimelineOrderReferenceHidden: "linear reference hidden ({count} scenes)",
     missionTimelineEdgeList: "Edge list",
     missionTimelineComponent: "Component",
     missionTimelineNodes: "nodes",
     missionTimelineEvidence: "timeline evidence",
     missionTimelineUnresolved: "unresolved",
-    missionTimelineLoop: "loop",
-    missionTimelineReused: "expanded elsewhere",
-    missionTimelineUnrooted: "No explicit entry",
-    missionTimelineGuard: "branch guard",
     missionTimelineSource: "source",
     missionTimelineObjectives: "objectives",
-    missionTimelineActions: "client actions",
-    missionTimelineTracking: "tracking",
+    missionTimelineObjectiveInstructions: "instructions",
     missionTimelineScenes: "scenes",
     missionTimelineResources: "resources",
-    missionTimelineLocations: "locations",
     missionTimelineMapPins: "map pins",
     missionTimelineGraphLinks: "scene links",
     missionTimelineFlow: "flow",
     missionTimelinePrev: "prev",
-    missionOrderStrong: "order",
-    missionOrderWeak: "order?",
-    missionOrderUnknown: "none",
-    missionOrderStrongTitle: "Strong in-mission order clue: quest DAG, authored scene link, or UID-linked LevelScript chain.",
-    missionOrderWeakTitle: "Only a weak in-mission order clue: LevelScript file-offset order.",
-    missionOrderUnknownTitle: "No in-mission order clue was recovered; this file is sorted by fallback key / numeric order.",
     lineOrderRecovery: "Line-Order Recovery",
     lineOrderNotNeeded: "Single-line scene; explicit line-order recovery is not needed.",
     lineOrderMissing: "No explicit line-order recovery was found for this scene.",
@@ -424,6 +455,9 @@ const UI_TEXTS = {
     archiveLinksHeading: "Archive Links",
     archiveReports: "Reports",
     archiveMaterials: "Connected Files",
+    archiveDuplicateDocuments: "Matching Archive Files",
+    archivePopupTexts: "Popup Text",
+    archiveMissionFiles: "Mission Files",
     branchHintLabel: "jumps to",
     optTargetMenu: "Menu {g}",
     optTargetReturnsToMenu: "back to Menu {g}",
@@ -448,6 +482,8 @@ const UI_TEXTS = {
     optRiskRawIndexMatchedLineTitle: "The source data does not name an explicit target line for this option, but Timeline raw optionIndex matches the option index and recovers the reply at {line}. This is still recovered inference, but stronger than adjacent-line inference.",
     optRiskInferredFollowingLine: "inferred reply",
     optRiskInferredFollowingLineTitle: "The source data does not name an explicit target line for this option; Timeline order suggests it may correspond to {line}.",
+    optManualOverride: "manual override",
+    optManualOverrideTitle: "This result comes from a local manual override file: {source}{note}",
     preDialogOptions: "Dialogue Options (Before Scene)",
     uncertainDialogOptions: "Dialogue Options (Placement Uncertain)",
     orphanDialogOptions: "Dialogue Options (Unknown Position)",
@@ -463,6 +499,8 @@ const UI_TEXTS = {
     warningDuplicateTimestampLines: "Duplicate lines",
     warningNarrativeVideoUnplacedTitle: "Video timeline position unknown",
     warningNarrativeVideoUnplacedBody: "Narrative video is bound to this scene, but no timeline position was recovered. The file is listed below for reference only.",
+    warningRemotecommNarrativeVideoMissingTitle: "RemoteComm video missing",
+    warningRemotecommNarrativeVideoMissingBody: "Source data points to these RemoteComm video segments, but no matching MP4 files were exported.",
     warningSceneOrderDisorderTitle: "Order note",
     warningSceneOrderDisorderBody: "Scene order or option placement is not fully authored here.",
     warningAspectLineOrder: "Line order",
@@ -506,6 +544,7 @@ const KIND_LABELS = {
     black: { name: "\u9ed1\u5c4f\u5b57\u5e55", cls: "badge-black" },
     remotecomm: { name: "\u8fdc\u7a0b\u901a\u8bdd", cls: "badge-remotecomm" },
     radio: { name: "\u8bed\u97f3\u901a\u8baf", cls: "badge-radio" },
+    text: { name: "\u5f39\u51fa\u6587\u672c", cls: "badge-text" },
     reading: { name: "\u5f55\u97f3", cls: "badge-reading" },
     mail: { name: "\u90ae\u4ef6", cls: "badge-mail" },
     prts: { name: "\u6863\u6848\u5e93", cls: "badge-prts" },
@@ -522,6 +561,7 @@ const KIND_LABELS = {
     black: { name: "Black Screen", cls: "badge-black" },
     remotecomm: { name: "Remote Comm", cls: "badge-remotecomm" },
     radio: { name: "Radio", cls: "badge-radio" },
+    text: { name: "Popup Text", cls: "badge-text" },
     reading: { name: "Recording", cls: "badge-reading" },
     mail: { name: "Mail", cls: "badge-mail" },
     prts: { name: "Archive", cls: "badge-prts" },
@@ -1011,6 +1051,7 @@ const STORY_ISSUE_ORDER = [
   "duplicateTimestamps",
   "inferredOptionLayout",
   "inferredOptionResponse",
+  "overrided",
 ];
 
 const STORY_RECOVERY_METHOD_ORDER = [
@@ -1039,6 +1080,7 @@ const STORY_RECOVERY_METHOD_ORDER = [
   "optionBranch:continuationOption",
   "optionBranch:siblingSceneText",
   "optionBranch:siblingSceneHint",
+  "optionBranch:manualOverride",
 ];
 
 function uiText(key) {
@@ -1213,6 +1255,7 @@ function storyIssueLabel(code) {
   if (code === "duplicateTimestamps") return uiText("storyIssueDuplicateTimestamps");
   if (code === "inferredOptionLayout") return uiText("storyIssueInferredOptionLayout");
   if (code === "inferredOptionResponse") return uiText("storyIssueInferredOptionResponse");
+  if (code === "overrided") return uiText("storyIssueOverrided");
   return formatStructuredLabel(code);
 }
 
@@ -1258,6 +1301,7 @@ function recoveryMethodLabel(method) {
   if (raw === "optionBranch:continuationOption") return withPrefix("recoveryMethodOptionPrefix", uiText("recoveryMethodOptionContinuationOption"));
   if (raw === "optionBranch:siblingSceneText") return withPrefix("recoveryMethodOptionPrefix", uiText("recoveryMethodOptionSiblingSceneText"));
   if (raw === "optionBranch:siblingSceneHint") return withPrefix("recoveryMethodOptionPrefix", uiText("recoveryMethodOptionSiblingSceneHint"));
+  if (raw === "optionBranch:manualOverride") return withPrefix("recoveryMethodOptionPrefix", uiText("recoveryMethodOptionManualOverride"));
   return formatStructuredLabel(raw);
 }
 
@@ -1730,7 +1774,7 @@ function foldedEntryTypeKey(typeKey, entry) {
   if (!normalized || normalized === "?") return DEFAULT_DATA_TYPE_KEY;
   const storyMissionId = entryStoryMissionId(entry);
   if (storyMissionId) return storyMissionTypeFromId(storyMissionId);
-  if (isMissionlessCutscene(entry)) return "other";
+  if (isMissionlessCutscene(entry)) return "worldtext";
   if (entryWikiCollectionGroup(entry)) return "other";
   if (entrySnsChatTableGroup(entry)) return "other";
   if (entryTaskLike(entry)) return "other";
@@ -1820,10 +1864,24 @@ function entryDataTypes(entry) {
   };
 
   add(entryDataType(entry), true);
+  add(entryOriginalEnvTalkDataType(entry));
   add(entryPrtsDataType(entry));
+  if (String(entry.d || "").trim() === "sns") {
+    const storyMissionId = entryStoryMissionId(entry);
+    if (storyMissionId) add(storyMissionTypeFromId(storyMissionId));
+  }
 
   entry._dataTypesNormalized = out;
   return out;
+}
+
+function entryOriginalEnvTalkDataType(entry) {
+  if (!entry || String(entry.d || "").trim() !== "env") return "";
+  if (!String(entry.k || "").startsWith("env_envTalk_")) return "";
+  if (!pairedSimActorId(entry)) return "";
+
+  const rawType = String(entry.t || "").trim();
+  return foldedEntryTypeKey(rawType || "worldtext", entry);
 }
 
 function entryMediaTypeFilterKeys(entry) {

@@ -34,7 +34,30 @@ function entryTreeDataType(entry) {
 function entryTreeDataTypes(entry) {
   if (!entry) return [DEFAULT_DATA_TYPE_KEY];
   if (aiBarkSimActorId(entry)) return ["sim"];
-  return entryDataTypes(entry);
+  return entryDataTypes(entry).filter((dataType) => !entryShouldHideArchiveDuplicateStoryType(entry, dataType));
+}
+
+function entryTreeDataTypesForSort(entry, sortMode) {
+  const types = entryTreeDataTypes(entry);
+  if ((sortMode || "story") !== "story") return types;
+  if (typeof storyOrderDetailForEntry !== "function" || !storyOrderDetailForEntry(entry)) return types;
+  const missionId = typeof storyOrderMissionIdForEntry === "function"
+    ? storyOrderMissionIdForEntry(entry)
+    : entryTreeMissionId(entry);
+  const storyType = typeof storyMissionTypeFromId === "function"
+    ? storyMissionTypeFromId(missionId)
+    : "";
+  return storyType ? [storyType] : types;
+}
+
+function entryShouldHideArchiveDuplicateStoryType(entry, dataType) {
+  if (!entry || !dataType || typeof entryHasReadingArchiveMissionDuplicate !== "function") return false;
+  if (!entryHasReadingArchiveMissionDuplicate(entry)) return false;
+  if (String(dataType || "").startsWith("prtscat:")) return false;
+  const missionType = typeof storyMissionTypeFromId === "function"
+    ? storyMissionTypeFromId(entryTreeMissionId(entry))
+    : "";
+  return !!missionType && dataType === missionType;
 }
 
 function entryMatchesTreeDataTypeFilters(entry, filters) {
@@ -249,6 +272,70 @@ function formatLevelRef(ref) {
 }
 
 // ---------- filter UI ----------
+function filterSectionActiveCount(key) {
+  const filters = STATE.filters || createDefaultFilters();
+  switch (key) {
+    case "basic":
+      return filters.q ? 1 : 0;
+    case "kind":
+      return filters.kinds.size;
+    case "type":
+      return filters.dataTypes.size;
+    case "media":
+      return filters.media.size;
+    case "story-issue":
+      return filters.issues.size;
+    case "recovery-method":
+      return filters.recoveryMethods.size;
+    default:
+      return 0;
+  }
+}
+
+function hasActiveStoryFilters() {
+  return !!(
+    filterSectionActiveCount("basic") ||
+    filterSectionActiveCount("kind") ||
+    filterSectionActiveCount("type") ||
+    filterSectionActiveCount("media") ||
+    filterSectionActiveCount("story-issue") ||
+    filterSectionActiveCount("recovery-method")
+  );
+}
+
+function syncFilterSectionActiveCounts() {
+  for (const section of $$(".filter-section[data-filter-section]")) {
+    const count = filterSectionActiveCount(section.dataset.filterSection || "");
+    const title = section.querySelector(".filter-section-toggle, .filter-section-title");
+    if (!title) continue;
+
+    let badge = title.querySelector(".filter-section-active-count");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "filter-section-active-count";
+      badge.hidden = true;
+      const label = title.querySelector("span[id$='-label']");
+      if (label && label.nextSibling) title.insertBefore(badge, label.nextSibling);
+      else if (label) title.appendChild(badge);
+      else title.insertBefore(badge, title.firstChild);
+    }
+
+    badge.textContent = count ? `(${count})` : "";
+    badge.hidden = !count;
+    badge.setAttribute("aria-label", count ? `${count} active filters` : "");
+    section.classList.toggle("has-active-filters", !!count);
+  }
+}
+
+function preserveCurrentTreeExpansion() {
+  if (!Array.isArray(STATE.rows)) return;
+  for (const row of STATE.rows) {
+    if (row && row.type === "group" && row.expanded && row.path) {
+      STATE.expanded.add(row.path);
+    }
+  }
+}
+
 function buildKindChips() {
   const wrap = $("#kind-filter");
   wrap.innerHTML = "";
@@ -392,22 +479,246 @@ function toggleSet(set, value, el) {
   applyFilters();
 }
 
-const STORY_SORT_MODES = new Set(["natural", "lines-desc", "lines-asc", "key"]);
+const STORY_SORT_MODES = new Set(["natural", "story", "lines-desc", "lines-asc", "key"]);
 
 function normalizeStorySortMode(mode) {
   const normalized = String(mode || "");
-  return STORY_SORT_MODES.has(normalized) ? normalized : "natural";
+  return STORY_SORT_MODES.has(normalized) ? normalized : "story";
 }
 
 function syncStorySortControl() {
   const sortSelect = $("#sort");
   if (sortSelect) sortSelect.value = normalizeStorySortMode(STATE.sortMode);
+  syncStoryOrderEditor();
 }
 
 function setStorySortMode(mode, { resetScroll = true } = {}) {
   STATE.sortMode = normalizeStorySortMode(mode);
   syncStorySortControl();
   rebuildTree({ resetScroll });
+}
+
+function storyOrderEditingEnabled() {
+  return (STATE.sortMode || "story") === "story"
+    && !hasActiveStoryFilters();
+}
+
+function syncStoryOrderEditor() {
+  const row = $("#story-order-editor-row");
+  if (!row) return;
+  const inStorySort = (STATE.sortMode || "story") === "story";
+  row.hidden = !inStorySort;
+}
+
+function storyOrderMoveInfo(entry) {
+  if (!entry || typeof storyOrderMissionIdForEntry !== "function") return null;
+  const missionId = storyOrderMissionIdForEntry(entry);
+  if (!missionId) return null;
+  const mission = STATE.storyOrderPayload
+    && STATE.storyOrderPayload.missions
+    && STATE.storyOrderPayload.missions[missionId];
+  let order = typeof overrideKeyList === "function"
+    ? overrideKeyList(mission && mission.order)
+    : [];
+  if (!order.length) order = storyOrderMissionBaselineOrder(missionId);
+  const key = String(entry.k || "");
+  const index = order.indexOf(key);
+  if (!order.length || index < 0) return null;
+  return { missionId, order, index };
+}
+
+function storyOrderEntryEditable(entry) {
+  if (!storyOrderEditingEnabled()) return null;
+  const info = storyOrderMoveInfo(entry);
+  if (!info) return null;
+  const isLocked = typeof storyOrderMissionLocked === "function"
+    && storyOrderMissionLocked(info.missionId);
+  if (isLocked) return null;
+  return info;
+}
+
+function reorderStoryOrderEntry(missionId, fromKey, toKey, placeAfter) {
+  if (!storyOrderEditingEnabled()) return false;
+  const mission = STATE.storyOrderPayload
+    && STATE.storyOrderPayload.missions
+    && STATE.storyOrderPayload.missions[missionId];
+  let order = typeof overrideKeyList === "function"
+    ? overrideKeyList(mission && mission.order)
+    : [];
+  if (!order.length) order = storyOrderMissionBaselineOrder(missionId);
+  if (!order.length) return false;
+  if (typeof storyOrderMissionLocked === "function" && storyOrderMissionLocked(missionId)) return false;
+  const fromIndex = order.indexOf(String(fromKey));
+  const toIndex = order.indexOf(String(toKey));
+  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return false;
+
+  const nextOrder = order.slice();
+  const [moved] = nextOrder.splice(fromIndex, 1);
+  let insertAt = nextOrder.indexOf(String(toKey));
+  if (insertAt < 0) return false;
+  if (placeAfter) insertAt += 1;
+  nextOrder.splice(insertAt, 0, moved);
+
+  if (typeof setStoryOrderMissionOrder !== "function" || !setStoryOrderMissionOrder(missionId, nextOrder)) {
+    return false;
+  }
+  if (typeof scheduleStoryOrderSave === "function") scheduleStoryOrderSave();
+
+  const wrap = $("#list-wrap");
+  const prevScroll = wrap ? wrap.scrollTop : 0;
+  rebuildTree({ resetScroll: false });
+  if (wrap) wrap.scrollTop = prevScroll;
+  renderList();
+  return true;
+}
+
+function storyOrderMissionIdForGroup(groupKey) {
+  const missionId = String(groupKey || "");
+  if (!missionId || missionId.includes(":")) return "";
+  if (typeof storyMissionTypeFromId === "function" && storyMissionTypeFromId(missionId)) {
+    return missionId;
+  }
+  const mission = STATE.storyOrderPayload
+    && STATE.storyOrderPayload.missions
+    && STATE.storyOrderPayload.missions[missionId];
+  return mission && Array.isArray(mission.order) && mission.order.length ? missionId : "";
+}
+
+// Reorder operations target the current displayed list of a mission. When the
+// override has no entry for this mission yet, the editor seeds one from the
+// currently rendered order so freshly-typed missions (e/a/gm/c/sm/m/f/...)
+// can still be rearranged.
+function storyOrderMissionBaselineOrder(missionId) {
+  const target = String(missionId || "");
+  if (!target) return [];
+  const source = (STATE.filtered && STATE.filtered.length)
+    ? STATE.filtered
+    : (STATE.entries || []);
+  const seen = new Set();
+  const items = [];
+  for (const entry of source) {
+    if (!entry) continue;
+    const mid = typeof storyOrderMissionIdForEntry === "function"
+      ? storyOrderMissionIdForEntry(entry)
+      : String(entry.m || "");
+    if (String(mid) !== target) continue;
+    const key = String(entry.k || "");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    items.push(entry);
+  }
+  items.sort((a, b) => {
+    const ap = typeof storyOrderPositionForEntry === "function" ? storyOrderPositionForEntry(a) : null;
+    const bp = typeof storyOrderPositionForEntry === "function" ? storyOrderPositionForEntry(b) : null;
+    const hasA = Number.isFinite(ap);
+    const hasB = Number.isFinite(bp);
+    if (hasA && hasB && ap !== bp) return ap - bp;
+    if (hasA !== hasB) return hasA ? -1 : 1;
+    return String(a.k).localeCompare(String(b.k), undefined, { numeric: true });
+  });
+  return items.map((e) => String(e.k));
+}
+
+function storyOrderMissionLockControl(row) {
+  if ((STATE.sortMode || "story") !== "story") return "";
+  const missionId = String(row && row.storyOrderMissionId || "");
+  if (!missionId) return "";
+  const locked = typeof storyOrderMissionLocked === "function" && storyOrderMissionLocked(missionId);
+  const stateKey = locked ? "storyOrderMissionLocked" : "storyOrderMissionEditable";
+  const titleKey = locked ? "storyOrderUnlockMissionTitle" : "storyOrderLockMissionTitle";
+  const label = escapeHtml(uiText(stateKey));
+  const title = escapeHtml(uiText(titleKey));
+  const icon = locked
+    ? `<svg class="story-order-pin-icon" viewBox="0 0 14 14" aria-hidden="true"><path d="M4 6 V4.5 a3 3 0 0 1 6 0 V6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><rect x="3" y="6" width="8" height="6" rx="1.2" fill="currentColor"/></svg>`
+    : `<svg class="story-order-pin-icon" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 10 L9 3 L11 5 L4 12 Z" fill="currentColor"/><path d="M8.5 3.5 L10.5 5.5" stroke="rgba(0,0,0,0.35)" stroke-width="0.8"/></svg>`;
+  return (
+    `<button class="story-order-mission-lock-button${locked ? " is-locked" : " is-editable"}" ` +
+      `type="button" data-mission-id="${escapeHtml(missionId)}" ` +
+      `aria-pressed="${locked ? "true" : "false"}" title="${title}">${icon}<span class="story-order-mission-lock-label">${label}</span></button>`
+  );
+}
+
+function toggleStoryOrderMissionLock(missionId) {
+  const missionKey = String(missionId || "");
+  if (!missionKey || typeof setStoryOrderMissionLocked !== "function") return false;
+  const nextLocked = !(typeof storyOrderMissionLocked === "function" && storyOrderMissionLocked(missionKey));
+  if (!setStoryOrderMissionLocked(missionKey, nextLocked)) return false;
+  if (typeof scheduleStoryOrderSave === "function") scheduleStoryOrderSave();
+
+  const wrap = $("#list-wrap");
+  const prevScroll = wrap ? wrap.scrollTop : 0;
+  rebuildTree({ resetScroll: false });
+  if (wrap) wrap.scrollTop = prevScroll;
+  renderList();
+  return true;
+}
+
+function clearStoryOrderDropIndicators(listEl) {
+  if (!listEl) return;
+  listEl.querySelectorAll(".story-order-drop-before, .story-order-drop-after").forEach((el) => {
+    el.classList.remove("story-order-drop-before", "story-order-drop-after");
+  });
+}
+
+function bindStoryOrderDragEvents(listEl) {
+  if (!listEl) return;
+
+  listEl.addEventListener("dragstart", (ev) => {
+    const row = ev.target.closest(".row.item.story-order-draggable");
+    if (!row) return;
+    STATE.storyOrderDragKey = row.dataset.key || "";
+    STATE.storyOrderDragMissionId = row.dataset.storyOrderMissionId || "";
+    if (ev.dataTransfer) {
+      ev.dataTransfer.effectAllowed = "move";
+      try { ev.dataTransfer.setData("text/plain", STATE.storyOrderDragKey); } catch (_) {}
+    }
+    row.classList.add("story-order-dragging");
+  });
+
+  listEl.addEventListener("dragover", (ev) => {
+    if (!STATE.storyOrderDragKey) return;
+    const target = ev.target.closest(".row.item.story-order-draggable");
+    if (!target) return;
+    if (target.dataset.storyOrderMissionId !== STATE.storyOrderDragMissionId) return;
+    if (target.dataset.key === STATE.storyOrderDragKey) return;
+    ev.preventDefault();
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+    const rect = target.getBoundingClientRect();
+    const after = ev.clientY > rect.top + rect.height / 2;
+    clearStoryOrderDropIndicators(listEl);
+    target.classList.add(after ? "story-order-drop-after" : "story-order-drop-before");
+  });
+
+  listEl.addEventListener("dragleave", (ev) => {
+    const target = ev.target.closest(".row.item.story-order-draggable");
+    if (!target) return;
+    if (ev.relatedTarget && target.contains(ev.relatedTarget)) return;
+    target.classList.remove("story-order-drop-before", "story-order-drop-after");
+  });
+
+  listEl.addEventListener("drop", (ev) => {
+    if (!STATE.storyOrderDragKey) return;
+    const target = ev.target.closest(".row.item.story-order-draggable");
+    if (!target) return;
+    if (target.dataset.storyOrderMissionId !== STATE.storyOrderDragMissionId) return;
+    if (target.dataset.key === STATE.storyOrderDragKey) return;
+    ev.preventDefault();
+    const rect = target.getBoundingClientRect();
+    const after = ev.clientY > rect.top + rect.height / 2;
+    const fromKey = STATE.storyOrderDragKey;
+    const missionId = STATE.storyOrderDragMissionId;
+    clearStoryOrderDropIndicators(listEl);
+    STATE.storyOrderDragKey = "";
+    STATE.storyOrderDragMissionId = "";
+    reorderStoryOrderEntry(missionId, fromKey, target.dataset.key, after);
+  });
+
+  listEl.addEventListener("dragend", () => {
+    STATE.storyOrderDragKey = "";
+    STATE.storyOrderDragMissionId = "";
+    clearStoryOrderDropIndicators(listEl);
+    listEl.querySelectorAll(".story-order-dragging").forEach((el) => el.classList.remove("story-order-dragging"));
+  });
 }
 
 function bindEvents() {
@@ -438,20 +749,29 @@ function bindEvents() {
     });
   }
   $("#reset").addEventListener("click", () => {
+    clearTimeout(qTimer);
+    preserveCurrentTreeExpansion();
     STATE.filters = createDefaultFilters();
-    STATE.sortMode = "natural";
-    STATE.expanded.clear();
+    STATE.sortMode = "story";
     $("#q").value = "";
     syncStorySortControl();
     $$(".chip.on").forEach((c) => c.classList.remove("on"));
     applyFilters();
   });
-
   $("#list-wrap").addEventListener("scroll", renderList);
   window.addEventListener("resize", renderList);
 
+  bindStoryOrderDragEvents($("#list"));
+
   // Delegated click on the tree (groups + items).
   $("#list").addEventListener("click", (ev) => {
+    const missionLockButton = ev.target.closest(".story-order-mission-lock-button");
+    if (missionLockButton) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      toggleStoryOrderMissionLock(missionLockButton.dataset.missionId);
+      return;
+    }
     const row = ev.target.closest(".row");
     if (!row) return;
     if (row.classList.contains("group")) {
@@ -473,11 +793,25 @@ function bindEvents() {
       renderConv(STATE.convCache.get(STATE.selectedKey));
     }
   });
+  const showDebug = $("#show-debug");
+  if (showDebug) {
+    showDebug.addEventListener("click", () => {
+      const next = showDebug.getAttribute("aria-pressed") !== "true";
+      showDebug.setAttribute("aria-pressed", next ? "true" : "false");
+      STATE.showDebug = next;
+      document.body.classList.toggle("show-debug", next);
+      if (STATE.selectedKey && STATE.convCache.has(STATE.selectedKey)) {
+        renderConv(STATE.convCache.get(STATE.selectedKey));
+      }
+    });
+  }
   $("#inline-tag-mode").addEventListener("change", (ev) => {
     setInlineTagDisplayMode(ev.target.checked ? "raw" : "rendered");
   });
-  $("#gender-variant").addEventListener("change", (ev) => {
-    setGenderVariant(ev.target.checked ? "f" : "m");
+  $("#gender-variant").addEventListener("click", () => {
+    const btn = $("#gender-variant");
+    const isF = btn.getAttribute("aria-pressed") === "true";
+    setGenderVariant(isF ? "m" : "f");
   });
   $("#reveal-current").addEventListener("click", () => {
     const entry = getSelectedEntry();
@@ -517,6 +851,8 @@ function bindEvents() {
 
 // ---------- filtering + tree build ----------
 function applyFilters() {
+  syncFilterSectionActiveCounts();
+  syncStoryOrderEditor();
   const f = STATE.filters;
   let out = STATE.entries;
 
@@ -579,12 +915,11 @@ function applyFilters() {
 
 function rebuildTree({ resetScroll = true } = {}) {
   // Group by data type and then mission. Kind (dlg/sns/misc) is not a tree
-  // level, so story and chat from the same scene end up next to each other.
-  // user can browse them together. Kind is still visible per item (badge) and
-  // filterable via the chip row above.
+  // level, so story and chat from the same mission stay together.
   const tree = {};
+  const sortMode = STATE.sortMode || "story";
   for (const e of STATE.filtered) {
-    for (const dataType of entryTreeDataTypes(e)) {
+    for (const dataType of entryTreeDataTypesForSort(e, sortMode)) {
       (tree[dataType] ??= {});
       const group = treeGroupInfo(e, dataType);
       const bucket = (tree[dataType][group.key] ??= { ...group, items: [] });
@@ -595,17 +930,16 @@ function rebuildTree({ resetScroll = true } = {}) {
     tree[dataType] = collapseSingletonSourceGroups(tree[dataType]);
   }
 
-  const sortMode = STATE.sortMode || "natural";
-  const makeBucketSorter = (items) =>
-    makeItemSorter(sortMode, { graphOrderActive: items.some(hasEntryGraphOrder) });
+  const makeBucketSorter = () => makeItemSorter(sortMode);
   const autoExpand = !!STATE.filters.q;
 
   const rows = [];
   let offset = 0;
-  const pushGroup = (level, path, label, count, mono, raw = "") => {
+  const pushGroup = (level, path, label, count, mono, raw = "", extra = {}) => {
     const expanded = autoExpand || STATE.expanded.has(path);
     rows.push({
       type: "group", level, path, label, count, mono, raw,
+      ...extra,
       top: offset, h: ROW_GROUP_H, expanded,
     });
     offset += ROW_GROUP_H;
@@ -633,7 +967,8 @@ function rebuildTree({ resetScroll = true } = {}) {
       const items = bucket.items;
       const sortItems = makeBucketSorter(items);
       items.sort(sortItems);
-      if (!pushGroup(1, mPath, bucket.label, items.length, bucket.mono, bucket.raw)) continue;
+      const storyOrderMissionId = storyOrderMissionIdForGroup(m);
+      if (!pushGroup(1, mPath, bucket.label, items.length, bucket.mono, bucket.raw, { storyOrderMissionId })) continue;
 
       const cutsceneFamilies = new Map();
       for (const it of items) {
@@ -694,126 +1029,56 @@ const KIND_ORDER = {
   misc: 11,
 };
 
-const MISSION_ORDER_STATUS_KINDS = new Set(["dlg", "sns", "cutscene", "black", "remotecomm", "radio", "video"]);
-
-function entryGraphOrder(entry) {
-  const graphOrder = Number(entry && entry.go);
-  return Number.isFinite(graphOrder) ? graphOrder : null;
+function compareEntryName(a, b) {
+  const titleA = displayEntryTitle(a) || String(a && a.k || "");
+  const titleB = displayEntryTitle(b) || String(b && b.k || "");
+  return titleA.localeCompare(titleB, undefined, { numeric: true, sensitivity: "base" })
+    || String(a && a.k || "").localeCompare(String(b && b.k || ""), undefined, { numeric: true, sensitivity: "base" });
 }
 
-function hasEntryGraphOrder(entry) {
-  return entryGraphOrder(entry) !== null;
-}
-
-function hasEntryPlacedGraphOrder(entry) {
-  return entryGraphOrder(entry) !== null && !(entry && entry.goUnknown);
-}
-
-function entryMissionOrderStatus(entry) {
-  if (!entry || !MISSION_ORDER_STATUS_KINDS.has(entry.d)) return null;
-  if (entry.goStrong) {
-    return {
-      cls: "strong",
-      label: uiText("missionOrderStrong"),
-      title: uiText("missionOrderStrongTitle"),
-    };
-  }
-  if (entry.goWeak) {
-    return {
-      cls: "weak",
-      label: uiText("missionOrderWeak"),
-      title: uiText("missionOrderWeakTitle"),
-    };
-  }
-  if (entry.goUnknown) {
-    return {
-      cls: "unknown",
-      label: uiText("missionOrderUnknown"),
-      title: uiText("missionOrderUnknownTitle"),
-    };
-  }
-  if (!entry.m) return null;
-  return {
-    cls: "unknown",
-    label: uiText("missionOrderUnknown"),
-    title: uiText("missionOrderUnknownTitle"),
-  };
-}
-
-function entryFilenameIndexTail(entry) {
-  const key = String(entry && entry.k || "");
-  const normalizedKey = key.startsWith("misc_") ? key.slice(5) : key;
-  const mission = String(entry && entry.m || "");
-  if (mission) {
-    const marker = `_${mission}_`.toLowerCase();
-    const index = normalizedKey.toLowerCase().lastIndexOf(marker);
-    if (index >= 0) return normalizedKey.slice(index + marker.length);
-  }
-  const parts = normalizedKey.split("_").filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : normalizedKey;
-}
-
-function entryFilenameIndexNumber(entry) {
-  const tail = entryFilenameIndexTail(entry);
-  const parseMatch = (match) => {
-    if (!match) return null;
-    const whole = Number(match[1]);
-    if (!Number.isFinite(whole)) return null;
-    const decimal = match[2] ? Number(match[2]) : 0;
-    return whole + (Number.isFinite(decimal) ? decimal / 1000000 : 0);
-  };
-
-  const prefix = parseMatch(tail.match(/^(\d+)(?:d(\d+))?/i));
-  if (prefix !== null) return prefix;
-
-  let last = null;
-  for (const match of tail.matchAll(/(\d+)(?:d(\d+))?/gi)) last = match;
-  const embedded = parseMatch(last);
-  if (embedded !== null) return embedded;
-
-  return 10**9;
-}
-
-function compareEntryFilenameIndex(a, b) {
-  return (
-    entryFilenameIndexNumber(a) - entryFilenameIndexNumber(b)
-  ) || entryFilenameIndexTail(a).localeCompare(entryFilenameIndexTail(b), undefined, { numeric: true });
-}
-
-function makeItemSorter(mode, { graphOrderActive = false } = {}) {
+function makeItemSorter(mode) {
   const kindRank = (k) => KIND_ORDER[k] ?? 99;
   const lineCount = (entry) => {
     const count = Number(entry && entry.n);
     return Number.isFinite(count) ? count : 0;
   };
-  const fallbackSceneRank = (entry) => {
-    return entryFilenameIndexNumber(entry);
-  };
-  const sceneRank = (entry) => {
-    const graphOrder = entryGraphOrder(entry);
-    if (graphOrder !== null && !(entry && entry.goUnknown)) return graphOrder;
-    if (entry && entry.d === "env" && entryDataType(entry) !== "env") {
-      return (graphOrderActive ? 2000000 : 1000000) + fallbackSceneRank(entry);
-    }
-    const fallback = fallbackSceneRank(entry);
-    return graphOrderActive ? 1000000 + fallback : fallback;
-  };
-  const naturalCompare = (a, b) => {
-    const rank = sceneRank(a) - sceneRank(b);
-    if (rank) return rank;
-    if (!hasEntryPlacedGraphOrder(a) && !hasEntryPlacedGraphOrder(b)) {
-      const fileIndex = compareEntryFilenameIndex(a, b);
-      if (fileIndex) return fileIndex;
-    }
-    return (kindRank(a.d) - kindRank(b.d)) || a.k.localeCompare(b.k);
-  };
+  const naturalCompare = (a, b) => (
+    kindRank(a && a.d) - kindRank(b && b.d)
+  ) || compareEntryName(a, b);
   switch (mode) {
     case "lines-desc": return (a, b) => (lineCount(b) - lineCount(a)) || naturalCompare(a, b);
     case "lines-asc":  return (a, b) => (lineCount(a) - lineCount(b)) || naturalCompare(a, b);
-    case "key":        return (a, b) => a.k.localeCompare(b.k);
-    // natural: scene first, then kind so sns_X_1 sits above dlg_X_1.
+    case "key":        return (a, b) => String(a && a.k || "").localeCompare(String(b && b.k || ""), undefined, { numeric: true });
+    case "story":      return makeStorySorter();
+    // natural: kind first, then the displayed scene name/key.
     default:           return naturalCompare;
   }
+}
+
+// Story sort mode: trust story_order.json only. No env-talk segregation,
+// no kind-rank, no display-name fallback. Items with a recovered position
+// come first in that order; items without one fall back to key compare for
+// stability only.
+function makeStorySorter() {
+  return (a, b) => {
+    const ap = typeof storyOrderPositionForEntry === "function" ? storyOrderPositionForEntry(a) : null;
+    const bp = typeof storyOrderPositionForEntry === "function" ? storyOrderPositionForEntry(b) : null;
+    const hasA = Number.isFinite(ap);
+    const hasB = Number.isFinite(bp);
+    if (hasA && hasB && ap !== bp) return ap - bp;
+    if (hasA !== hasB) return hasA ? -1 : 1;
+    return String(a && a.k || "").localeCompare(
+      String(b && b.k || ""),
+      undefined,
+      { numeric: true },
+    );
+  };
+}
+
+function entryIsReadingPopup(entry) {
+  return String(entry && entry.d || "") === "text"
+    && typeof entryHasTag === "function"
+    && entryHasTag(entry, "readingPopup");
 }
 
 function missionSort(a, b) {

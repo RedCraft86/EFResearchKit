@@ -64,7 +64,10 @@ from common import (
     ROOT,
     first_string_field as _first_string_field,
     is_present,
+    path_id_export_base_stem,
+    path_id_export_path_id,
     rel_path as repo_rel,
+    rel_requires_path_id_export_name,
     unique_preserve as _unique_preserve,
     unique_strings,
     walk_const_values as _walk_const_values,
@@ -91,6 +94,7 @@ from .timeline_recovery import (
 )
 from .mission_recovery import (
     EVIDENCE_POLICY as MISSION_TIMELINE_EVIDENCE_POLICY,
+    build_script_condition_ownership as build_mission_script_condition_ownership,
     canonical_cutscene_key as mission_canonical_cutscene_key,
     load_timeline_index as load_mission_timeline_index,
     mission_files as mission_timeline_files,
@@ -103,8 +107,11 @@ from .mission_recovery import (
     write_json as write_mission_timeline_recovery_json,
 )
 from scene_order_gap_shared import (
+    analyze_scene_order_disorder as shared_analyze_scene_order_disorder,
+    build_scene_placement_index_from_timelines as shared_build_scene_placement_index_from_timelines,
     build_runtime_registry_debug as shared_build_runtime_registry_debug,
     build_scene_order_disorder_warning as shared_build_scene_order_disorder_warning,
+    collect_scene_order_gap_rows_from_payloads as shared_collect_scene_order_gap_rows_from_payloads,
     load_dialog_id_registry as shared_load_dialog_id_registry,
 )
 
@@ -125,18 +132,7 @@ MRA_DIR = DATA_JSON_DIR / "MissionRuntimeAsset"
 NPC_PROXY_EX_PATH = GAMEPLAY_CONFIG_DIR / "NpcProxyExDataTable.json"
 NPC_PROXY_TABLE_PATH = GAMEPLAY_CONFIG_DIR / "NpcProxyTable.json"
 ATMOS_CLUSTER_TABLE_PATH = GAMEPLAY_CONFIG_DIR / "AtmosphericNpcClusterDataTable.json"
-ANIME_TREE_DIRS = [
-    _resolve_recovered_dir(
-        EXPORT_ROOT,
-        ("recovered", "AnimeStudio-net9-extracted"),
-    ),
-    _resolve_recovered_dir(
-        EXPORT_ROOT,
-        ("recovered", "AnimeStudio", "main", "TextAsset"),
-    ),
-]
 ANIME_RESOURCE_DIRS = _existing_unique_paths([
-    *ANIME_TREE_DIRS,
     EXPORT_ROOT / "recovered" / "AnimeStudio-cli" / "StreamingAssets" / "json_by_type" / "TextAsset",
     EXPORT_ROOT / "recovered" / "AnimeStudio-cli" / "Persistent" / "json_by_type" / "TextAsset",
     EXPORT_ROOT / "recovered" / "AnimeStudio-cli" / "StreamingAssets" / "json_by_type" / "MonoBehaviour",

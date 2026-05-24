@@ -22,7 +22,15 @@ const FILTER_SECTION_STORAGE_KEY = "webui_filter_sections_collapsed_v2";
 const STORY_SPLITTER_STORAGE_KEY = "webui_story_splitter_width";
 const ASSET_SPLITTER_STORAGE_KEY = "webui_asset_splitter_width";
 const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
-const WEBUI_DATA_CACHE_TAG = "20260514-mission-order-strength";
+const WEBUI_DATA_CACHE_TAG = "20260518-scene-map-order-evidence";
+const STORY_ORDER_JSON_ENABLED = true;
+const MANUAL_READING_ARCHIVE_DUPLICATE_GROUPS = [
+  {
+    mission: "e1m1",
+    missionEntries: ["radio_e1m1_2d7"],
+    archives: ["nar_media_map01_128_1"],
+  },
+];
 const DEFAULT_LANGUAGE_INFO = {
   code: "CN",
   label: "Chinese (Simplified)",
@@ -52,16 +60,28 @@ const STATE = {
   archiveMetadataByKey: new Map(),
   archiveResearchById: new Map(),
   archiveMetadataLanguage: "",
+  readingArchiveLinksByKey: new Map(),
   storySearchLoaded: false,
   storySearchPromise: null,
   storySearchLanguage: "",
   storyMediaPayload: null,
   storyMediaPromise: null,
+  storyOrderPayload: null,
+  storyOrderPromise: null,
+  storyOrderOverridePayload: null,
+  storyOrderOverridePromise: null,
+  storyOrderSaveTimer: null,
+  storyOrderSaveStatusTimer: null,
+  storyOrderIndex: new Map(),
+  storyOrderGroupingOverrides: new Map(),
+  optionOverridePayload: null,
+  optionOverridePromise: null,
   expanded: new Set(),   // group paths the user opened
   filters: createDefaultFilters(),
-  sortMode: "natural",
+  sortMode: "story",
   showEmpty: false,
   showRaw: false,
+  showDebug: false,
   filtersCollapsed: false,
   filterSectionsCollapsed: new Set(),
   indexRequestToken: 0,
@@ -78,7 +98,17 @@ const STATE = {
   inlineTagDisplayMode: DEFAULT_INLINE_TAG_DISPLAY_MODE,
 };
 
-const { $, $$, storageGet, storageSet, normalizeUiLocale, escapeHtml, exportFullHref } = window.WebUI;
+const {
+  $,
+  $$,
+  storageGet,
+  storageSet,
+  normalizeUiLocale,
+  escapeHtml,
+  exportFullHref,
+  splitPathIdExportStem,
+  relRequiresPathIdExportName,
+} = window.WebUI;
 
 function createDefaultFilters() {
   return {
@@ -526,8 +556,740 @@ function loadStoryMediaPayload() {
   return STATE.storyMediaPromise;
 }
 
+function loadStoryOrderOverridePayload() {
+  if (STATE.storyOrderOverridePayload) return Promise.resolve(STATE.storyOrderOverridePayload);
+  if (STATE.storyOrderOverridePromise) return STATE.storyOrderOverridePromise;
+  STATE.storyOrderOverridePromise = fetchJson("overrides/story_order.json", { fresh: true })
+    .then(async (res) => {
+      if (!res.ok) return { missions: {} };
+      const payload = await res.json();
+      return payload && typeof payload === "object" ? payload : { missions: {} };
+    })
+    .catch((error) => {
+      console.warn("Unable to load overrides/story_order.json", error);
+      return { missions: {} };
+    })
+    .then((payload) => {
+      STATE.storyOrderOverridePayload = payload;
+      STATE.storyOrderOverridePromise = null;
+      return payload;
+    });
+  return STATE.storyOrderOverridePromise;
+}
+
+function loadStoryOrderPayload() {
+  if (STATE.storyOrderPromise) return STATE.storyOrderPromise;
+  if (!STORY_ORDER_JSON_ENABLED) {
+    const payload = { missions: {} };
+    STATE.storyOrderPayload = payload;
+    STATE.storyOrderIndex = new Map();
+    STATE.storyOrderGroupingOverrides = new Map();
+    STATE.storyOrderPromise = Promise.resolve(payload);
+    return STATE.storyOrderPromise;
+  }
+  STATE.storyOrderPromise = loadStoryOrderOverridePayload()
+    .then((payload) => {
+      const storyOrderPayload = payload && typeof payload === "object" ? payload : { missions: {} };
+      if (!storyOrderPayload.missions || typeof storyOrderPayload.missions !== "object") {
+        storyOrderPayload.missions = {};
+      }
+      STATE.storyOrderPayload = storyOrderPayload;
+      STATE.storyOrderIndex = buildStoryOrderIndex(storyOrderPayload);
+      STATE.storyOrderGroupingOverrides = buildStoryOrderGroupingOverrides(storyOrderPayload);
+      return storyOrderPayload;
+    });
+  return STATE.storyOrderPromise;
+}
+
+function overrideKeyList(values) {
+  const list = typeof values === "string" ? [values] : values;
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const value of list) {
+    const key = String(value || "").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
+}
+
+function storyOrderMissionLocked(missionId) {
+  const missionKey = String(missionId || "");
+  const mission = STATE.storyOrderPayload
+    && STATE.storyOrderPayload.missions
+    && STATE.storyOrderPayload.missions[missionKey];
+  return !!(mission && mission.locked === true);
+}
+
+function buildFullStoryOrderPayload() {
+  const payload = {
+    _schema: "storyOrder.fullOrder.v1",
+    _note: "Full per-mission Story file order. Each missions.<mission>.order list is editable in the WebUI. locked:true preserves that mission from OCR/browser updates; the WebUI can toggle it per mission.",
+    missions: {},
+  };
+  const missions = STATE.storyOrderPayload && STATE.storyOrderPayload.missions;
+  if (missions && typeof missions === "object") {
+    for (const [missionId, mission] of Object.entries(missions)) {
+      const order = mission && Array.isArray(mission.order) ? overrideKeyList(mission.order) : [];
+      if (!order.length) continue;
+      const out = { order };
+      if (mission && mission.locked === true) out.locked = true;
+      const level = String(mission && mission.level || "").trim();
+      if (level) out.level = level;
+      const levels = overrideKeyList(mission && mission.levels);
+      if (levels.length) out.levels = levels;
+      payload.missions[missionId] = out;
+    }
+  }
+
+  const sortedMissions = {};
+  const missionKeys = Object.keys(payload.missions).sort((a, b) => {
+    if (typeof missionSort === "function") return missionSort(a, b);
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+  });
+  for (const missionId of missionKeys) {
+    const mission = payload.missions[missionId];
+    if (!mission || typeof mission !== "object") continue;
+    const orderedMission = { order: overrideKeyList(mission.order) };
+    if (mission.locked === true) orderedMission.locked = true;
+    if (mission.level) orderedMission.level = mission.level;
+    if (Array.isArray(mission.levels) && mission.levels.length) orderedMission.levels = mission.levels;
+    sortedMissions[missionId] = orderedMission;
+  }
+  payload.missions = sortedMissions;
+  return payload;
+}
+
+function setStoryOrderMissionOrder(missionId, order) {
+  const missionKey = String(missionId || "");
+  const cleanOrder = overrideKeyList(order);
+  if (!missionKey || !cleanOrder.length) return false;
+
+  const missions = STATE.storyOrderPayload && STATE.storyOrderPayload.missions;
+  if (!missions || typeof missions !== "object") return false;
+  const mission = (missions[missionKey] ??= { level: "", levels: [], order: [], entries: [] });
+  mission.order = cleanOrder;
+  if (!Array.isArray(mission.entries)) mission.entries = [];
+  const details = new Set(mission.entries.map((entry) => String(entry && entry.key || "")).filter(Boolean));
+  for (const key of cleanOrder) {
+    if (details.has(key)) continue;
+    mission.entries.push({ key });
+    details.add(key);
+  }
+
+  const payload = buildFullStoryOrderPayload();
+  payload.missions[missionKey] = {
+    ...(payload.missions[missionKey] || {}),
+    order: cleanOrder,
+  };
+  STATE.storyOrderOverridePayload = payload;
+  STATE.storyOrderIndex = buildStoryOrderIndex(STATE.storyOrderPayload);
+  STATE.storyOrderGroupingOverrides = buildStoryOrderGroupingOverrides(STATE.storyOrderPayload);
+  return true;
+}
+
+function setStoryOrderMissionLocked(missionId, locked) {
+  const missionKey = String(missionId || "");
+  if (!missionKey) return false;
+  const missions = STATE.storyOrderPayload && STATE.storyOrderPayload.missions;
+  if (!missions || typeof missions !== "object") return false;
+  let mission = missions[missionKey];
+  if (!mission || typeof mission !== "object" || !Array.isArray(mission.order) || !mission.order.length) {
+    const baseline = typeof storyOrderMissionBaselineOrder === "function"
+      ? storyOrderMissionBaselineOrder(missionKey)
+      : [];
+    if (!baseline.length) return false;
+    mission = missions[missionKey] = {
+      level: "",
+      levels: [],
+      order: baseline.slice(),
+      entries: baseline.map((key) => ({ key })),
+    };
+    STATE.storyOrderIndex = buildStoryOrderIndex(STATE.storyOrderPayload);
+    STATE.storyOrderGroupingOverrides = buildStoryOrderGroupingOverrides(STATE.storyOrderPayload);
+  }
+  if (locked) mission.locked = true;
+  else delete mission.locked;
+  STATE.storyOrderOverridePayload = buildFullStoryOrderPayload();
+  return true;
+}
+
+function scheduleStoryOrderSave() {
+  if (STATE.storyOrderSaveTimer) clearTimeout(STATE.storyOrderSaveTimer);
+  setStoryOrderSaveStatus("saving", "storyOrderSaveSaving");
+  STATE.storyOrderSaveTimer = setTimeout(() => {
+    STATE.storyOrderSaveTimer = null;
+    void saveStoryOrderPayload();
+  }, 350);
+}
+
+function setStoryOrderSaveStatus(state, textKey) {
+  const node = $("#story-order-save-status");
+  if (!node) return;
+  if (STATE.storyOrderSaveStatusTimer) {
+    clearTimeout(STATE.storyOrderSaveStatusTimer);
+    STATE.storyOrderSaveStatusTimer = null;
+  }
+  node.className = "story-order-save-status" + (state ? ` is-${state}` : "");
+  node.textContent = textKey ? uiText(textKey) : "";
+  if (state === "saved") {
+    STATE.storyOrderSaveStatusTimer = setTimeout(() => {
+      node.className = "story-order-save-status";
+      node.textContent = "";
+    }, 1800);
+  }
+}
+
+function saveStoryOrderPayload() {
+  const payload = buildFullStoryOrderPayload();
+  STATE.storyOrderOverridePayload = payload;
+  setStoryOrderSaveStatus("saving", "storyOrderSaveSaving");
+  return fetch("overrides/story_order.json", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify(payload, null, 2) + "\n",
+  })
+    .then(async (res) => {
+      if (!res.ok) {
+        let message = "";
+        try {
+          const body = await res.json();
+          message = body && body.error ? String(body.error) : "";
+        } catch (_error) {
+          message = "";
+        }
+        throw new Error(message || `HTTP ${res.status}`);
+      }
+      setStoryOrderSaveStatus("saved", "storyOrderSaveSaved");
+      return true;
+    })
+    .catch((error) => {
+      console.warn("Unable to save overrides/story_order.json", error);
+      setStoryOrderSaveStatus("error", "storyOrderSaveFailed");
+      return false;
+    });
+}
+
+// `storyOrder` is keyed by missionId, value is a Map<convKey, position>.
+function buildStoryOrderIndex(payload) {
+  const out = new Map();
+  const missions = (payload && payload.missions) || {};
+  for (const [missionId, mission] of Object.entries(missions)) {
+    const order = (mission && mission.order) || [];
+    if (!Array.isArray(order) || !order.length) continue;
+    const positions = new Map();
+    const details = new Map();
+    for (const entry of ((mission && Array.isArray(mission.entries)) ? mission.entries : [])) {
+      const key = String(entry && entry.key || "");
+      if (key && !details.has(key)) details.set(key, entry);
+    }
+    for (let i = 0; i < order.length; i++) {
+      const key = String(order[i] || "");
+      if (key && !positions.has(key)) {
+        positions.set(key, {
+          ...(details.get(key) || {}),
+          key,
+          position: i,
+        });
+      }
+    }
+    if (positions.size) out.set(String(missionId), positions);
+  }
+  return out;
+}
+
+function buildStoryOrderGroupingOverrides(payload) {
+  const out = new Map();
+  const missions = (payload && payload.missions) || {};
+  for (const [missionId, mission] of Object.entries(missions)) {
+    const missionKey = String(missionId);
+    const order = (mission && Array.isArray(mission.order)) ? mission.order : [];
+    for (const rawKey of order) {
+      const key = String(rawKey || "");
+      if (!key) continue;
+      const existing = out.get(key);
+      if (existing && existing !== missionKey) {
+        console.warn(`Story order grouping override for ${key} already points at ${existing}; ignoring ${missionKey}`);
+        continue;
+      }
+      out.set(key, missionKey);
+    }
+  }
+  return out;
+}
+
+function clearStoryMissionDerivedCaches(entry, missionId) {
+  if (!entry) return false;
+  const dataTypes = entry._dataTypesNormalized;
+  if (!Array.isArray(dataTypes)) return false;
+  const storyType = typeof storyMissionTypeFromId === "function" ? storyMissionTypeFromId(missionId) : "";
+  if (storyType && dataTypes.includes(storyType)) return false;
+  delete entry._dataTypesNormalized;
+  return true;
+}
+
+function applyStoryOrderGroupingOverridesToEntries(entries = STATE.entries) {
+  const overrides = STATE.storyOrderGroupingOverrides;
+  if (!(overrides instanceof Map) || !overrides.size || !Array.isArray(entries) || !entries.length) return false;
+  let changed = false;
+  for (const entry of entries) {
+    const key = String(entry && entry.k || "");
+    const missionId = overrides.get(key);
+    if (!missionId || !entry) continue;
+    if (entry.storyMission === missionId) {
+      if (clearStoryMissionDerivedCaches(entry, missionId)) changed = true;
+      continue;
+    }
+    entry.storyMission = missionId;
+    clearStoryMissionDerivedCaches(entry, missionId);
+    changed = true;
+  }
+  return changed;
+}
+
+function storyOrderMissionIdForEntry(entry) {
+  const storyMissionId = typeof entryStoryMissionId === "function" ? entryStoryMissionId(entry) : "";
+  return storyMissionId || String(entry && entry.m || "");
+}
+
+function storyOrderDetailForEntry(entry) {
+  const index = STATE.storyOrderIndex;
+  if (!(index instanceof Map) || !index.size) return null;
+  const missionId = storyOrderMissionIdForEntry(entry);
+  if (!missionId) return null;
+  const positions = index.get(missionId);
+  if (!positions) return null;
+  const key = String(entry && entry.k || "");
+  return positions.get(key) || null;
+}
+
+function storyOrderPositionForEntry(entry) {
+  const detail = storyOrderDetailForEntry(entry);
+  const pos = detail && Number(detail.position);
+  return Number.isFinite(pos) ? pos : null;
+}
+
+function loadOptionOverridePayload() {
+  if (STATE.optionOverridePayload) return Promise.resolve(STATE.optionOverridePayload);
+  if (STATE.optionOverridePromise) return STATE.optionOverridePromise;
+  STATE.optionOverridePromise = fetchJson("overrides/options.json", { fresh: true })
+    .then(async (res) => {
+      if (!res.ok) return { scenes: {} };
+      const payload = await res.json();
+      return payload && typeof payload === "object" ? payload : { scenes: {} };
+    })
+    .catch((error) => {
+      console.warn("Unable to load overrides/options.json", error);
+      return { scenes: {} };
+    })
+    .then((payload) => {
+      STATE.optionOverridePayload = payload;
+      STATE.optionOverridePromise = null;
+      return payload;
+    });
+  return STATE.optionOverridePromise;
+}
+
+function optionOverrideSceneForKey(payload, key) {
+  const scenes = payload && payload.scenes;
+  if (!scenes || typeof scenes !== "object") return null;
+  const rawKey = String(key || "");
+  const candidates = [rawKey];
+  if (rawKey.startsWith("dlg_")) candidates.push(`misc_${rawKey}`);
+  if (rawKey.startsWith("misc_dlg_")) candidates.push(rawKey.slice("misc_".length));
+  for (const candidate of candidates) {
+    const scene = scenes[candidate];
+    if (scene && typeof scene === "object") return scene;
+  }
+  return null;
+}
+
+function optionOverrideNote(scene, groupId, fallback = "") {
+  const notes = scene && scene.notes && typeof scene.notes === "object" ? scene.notes : {};
+  return String(notes[String(groupId)] || scene.note || fallback || "").trim();
+}
+
+function applyManualOverrideToGroup(group, kind, scene, groupId) {
+  group.manualOverride = {
+    kind,
+    source: "webui/overrides/options.json",
+    note: optionOverrideNote(scene, groupId),
+  };
+}
+
+function applyOptionOverridesToConv(conv, payload) {
+  if (!conv || typeof conv !== "object" || !Array.isArray(conv.optionGroups)) return conv;
+  const scene = optionOverrideSceneForKey(payload, conv.key);
+  if (!scene) return conv;
+
+  const groupById = new Map();
+  const optionToGroup = new Map();
+  const validLineIds = new Set((conv.lines || []).map((line) => String(line && line.id || "")).filter(Boolean));
+  for (const group of conv.optionGroups || []) {
+    const groupId = String(group && group.g);
+    if (groupId) groupById.set(groupId, group);
+    for (const option of group && Array.isArray(group.options) ? group.options : []) {
+      const optionId = String(option && option.id || "");
+      if (optionId) optionToGroup.set(optionId, { option, group, groupId });
+    }
+  }
+
+  const positions = scene.positions && typeof scene.positions === "object" ? scene.positions : {};
+  const after = positions.after && typeof positions.after === "object" && !Array.isArray(positions.after)
+    ? positions.after
+    : {};
+  for (const [anchor, values] of Object.entries(after)) {
+    const anchorId = String(anchor || "").trim();
+    if (!anchorId || !validLineIds.has(anchorId)) continue;
+    for (const groupId of overrideKeyList(values)) {
+      const group = groupById.get(String(groupId));
+      if (!group) continue;
+      group.after = anchorId;
+      delete group.position;
+      applyManualOverrideToGroup(group, "optionLayout", scene, groupId);
+    }
+  }
+  for (const groupId of overrideKeyList(positions.pre || [])) {
+    const group = groupById.get(String(groupId));
+    if (!group) continue;
+    group.position = "pre";
+    delete group.after;
+    applyManualOverrideToGroup(group, "optionLayout", scene, groupId);
+  }
+
+  const responses = scene.responses && typeof scene.responses === "object" ? scene.responses : {};
+  for (const [optionIdRaw, values] of Object.entries(responses)) {
+    const optionId = String(optionIdRaw || "").trim();
+    const target = optionToGroup.get(optionId);
+    if (!target) continue;
+    const lineIds = overrideKeyList(values).filter((lineId) => validLineIds.has(lineId));
+    if (!lineIds.length) continue;
+    target.option.branchLines = lineIds;
+    applyManualOverrideToGroup(target.group, "optionResponse", scene, target.groupId);
+  }
+  return conv;
+}
+
+function storyOrderBadgeClass(detail) {
+  const rank = Number(detail && detail.rank);
+  const evidence = String(detail && detail.evidence || "");
+  if (!detail || evidence === "webui-conv-fallback") return "";
+  if (Number.isFinite(rank) && rank <= 2) return "is-strong";
+  if (Number.isFinite(rank) && rank <= 11) return "is-hint";
+  return "is-weak";
+}
+
+function storyOrderStrengthLabel(detail) {
+  const cls = storyOrderBadgeClass(detail);
+  if (cls === "is-strong") return "strong";
+  if (cls === "is-hint") return "hint";
+  if (cls === "is-weak") return "weak";
+  return "";
+}
+
+function formatStoryOrderScriptRef(ref, direction) {
+  if (!ref || typeof ref !== "object") return "";
+  const script = direction === "in" ? ref.sourceScript : ref.targetScript;
+  if (!script) return "";
+  const bits = [String(script)];
+  if (ref.offset !== undefined && ref.offset !== null && Number.isFinite(Number(ref.offset))) {
+    bits.push(`@0x${Number(ref.offset).toString(16)}`);
+  }
+  if (ref.record) bits.push(String(ref.record));
+  if (ref.class) bits.push(String(ref.class));
+  if (ref.relation) bits.push(String(ref.relation));
+  if (ref.pointerFlag !== undefined && ref.pointerFlag !== null) {
+    bits.push(`flag=${ref.pointerFlag}`);
+  }
+  return bits.join(" ");
+}
+
+function formatStoryOrderVector3(vector) {
+  if (!vector || typeof vector !== "object") return "";
+  const coords = ["x", "y", "z"].map((axis) => {
+    const value = Number(vector[axis]);
+    return Number.isFinite(value) ? value.toFixed(2) : "?";
+  });
+  return coords.join(",");
+}
+
+function formatStoryOrderSpatialCandidate(candidate) {
+  if (!candidate || typeof candidate !== "object") return "";
+  const bits = [];
+  const quest = candidate.questId || "?";
+  const script = [candidate.mapId || candidate.levelId, candidate.scriptId].filter(Boolean).join("/");
+  bits.push([quest, script ? `via ${script}` : ""].filter(Boolean).join(" "));
+  const distance = Number(candidate.distanceXZ);
+  if (Number.isFinite(distance)) bits.push(`dXZ=${distance.toFixed(distance >= 10 ? 1 : 2)}m`);
+  const distance3d = Number(candidate.distance3d);
+  if (Number.isFinite(distance3d)) bits.push(`d3=${distance3d.toFixed(distance3d >= 10 ? 1 : 2)}m`);
+  if (candidate.pinLabel) bits.push(`pin=${candidate.pinLabel}`);
+  const position = formatStoryOrderVector3(candidate.position);
+  if (position) bits.push(`pos=${position}`);
+  const pinPosition = formatStoryOrderVector3(candidate.pinPosition);
+  if (pinPosition) bits.push(`pinPos=${pinPosition}`);
+  if (candidate.offset !== undefined && candidate.offset !== null && Number.isFinite(Number(candidate.offset))) {
+    bits.push(`offset=0x${Number(candidate.offset).toString(16)}`);
+  }
+  return bits.filter(Boolean).join(" ");
+}
+
+function formatStoryOrderSceneEdge(edge) {
+  if (!edge || typeof edge !== "object") return "";
+  const bits = [];
+  if (edge.neighbor) bits.push(String(edge.neighbor));
+  if (edge.kind) bits.push(String(edge.kind));
+  const scripts = Array.isArray(edge.sourceScripts) ? edge.sourceScripts.filter(Boolean).slice(0, 4) : [];
+  if (scripts.length) bits.push(`via ${scripts.join(",")}`);
+  const positions = Array.isArray(edge.positions) ? edge.positions.filter((value) => Number.isFinite(Number(value))).slice(0, 4) : [];
+  if (positions.length) bits.push(`pos=${positions.join(",")}`);
+  return bits.join(" ");
+}
+
+function storyOrderEvidenceTitle(detail) {
+  if (!detail) return "";
+  const parts = [];
+  const position = Number(detail.position);
+  if (Number.isFinite(position)) parts.push(`${uiText("storyOrderBadgeTitle") || "Recovered order"} #${position + 1}`);
+  const strength = storyOrderStrengthLabel(detail);
+  if (strength) parts.push(`strength=${strength}`);
+  if (detail.evidence) parts.push(`evidence=${detail.evidence}`);
+  if (detail.observedOrderIndex !== undefined && detail.observedOrderIndex !== null) {
+    parts.push(`observedOrder=#${Number(detail.observedOrderIndex) + 1}`);
+  }
+  if (detail.observedOrderSource) parts.push(`observedSource=${detail.observedOrderSource}`);
+  if (detail.observedEvidenceAlignmentStatus) {
+    parts.push(`observedEvidenceStatus=${detail.observedEvidenceAlignmentStatus}`);
+  }
+  if (detail.observedEvidenceAlignment) {
+    parts.push(`observedEvidence=${detail.observedEvidenceAlignment}`);
+  }
+  if (Array.isArray(detail.observedEvidenceAlignmentSourceRefs) && detail.observedEvidenceAlignmentSourceRefs.length) {
+    parts.push(`observedEvidenceRefs=${detail.observedEvidenceAlignmentSourceRefs.join("; ")}`);
+  }
+  if (detail.recoveredEvidenceBeforeObserved) {
+    parts.push(`recoveredEvidenceBeforeObserved=${detail.recoveredEvidenceBeforeObserved}`);
+  }
+  if (detail.sourceScript) parts.push(`script=${detail.sourceScript}`);
+  if (detail.sourceFile) parts.push(`file=${detail.sourceFile}`);
+  if (detail.offset !== undefined && detail.offset !== null) parts.push(`offset=${detail.offset}`);
+  if (detail.recordClass) parts.push(`record=${detail.recordClass}`);
+  if (detail.levelseq) parts.push(`levelseq=${detail.levelseq}`);
+  if (detail.binaryScriptIdVerified !== undefined) {
+    parts.push(`binaryScriptIdVerified=${detail.binaryScriptIdVerified ? "true" : "false"}`);
+  }
+  if (detail.binaryScriptIdOffset) parts.push(`binaryScriptIdOffset=${detail.binaryScriptIdOffset}`);
+  if (detail.binaryMemberCount !== undefined && detail.binaryMemberCount !== null) {
+    const expected = detail.binaryExpectedMemberCount !== undefined && detail.binaryExpectedMemberCount !== null
+      ? `/${detail.binaryExpectedMemberCount}`
+      : "";
+    parts.push(`binaryMemberCount=${detail.binaryMemberCount}${expected}`);
+  }
+  if (detail.binaryStartType) {
+    const raw = detail.binaryStartTypeRaw !== undefined && detail.binaryStartTypeRaw !== null
+      ? `(${detail.binaryStartTypeRaw})`
+      : "";
+    parts.push(`binaryStartType=${detail.binaryStartType}${raw}`);
+  }
+  if (detail.binaryStartShapeList) {
+    const count = detail.binaryStartShapeListCount !== undefined && detail.binaryStartShapeListCount !== null
+      ? `:${detail.binaryStartShapeListCount}`
+      : "";
+    parts.push(`binaryStartShapeList=${detail.binaryStartShapeList}${count}`);
+  }
+  if (detail.binaryTaskMap) {
+    const count = detail.binaryTaskMapCount !== undefined && detail.binaryTaskMapCount !== null
+      ? `:${detail.binaryTaskMapCount}`
+      : "";
+    parts.push(`binaryTaskMap=${detail.binaryTaskMap}${count}`);
+  }
+  if (detail.levelDataFile) parts.push(`levelData=${detail.levelDataFile}`);
+  if (detail.levelDataOffset !== undefined && detail.levelDataOffset !== null) parts.push(`levelDataOffset=${detail.levelDataOffset}`);
+  if (Array.isArray(detail.levelDataPrevScripts) && detail.levelDataPrevScripts.length) {
+    parts.push(`levelDataPrev=${detail.levelDataPrevScripts.join(", ")}`);
+  }
+  if (Array.isArray(detail.levelDataNextScripts) && detail.levelDataNextScripts.length) {
+    parts.push(`levelDataNext=${detail.levelDataNextScripts.join(", ")}`);
+  }
+  if (Array.isArray(detail.binaryOutgoingScriptRefs) && detail.binaryOutgoingScriptRefs.length) {
+    const refs = detail.binaryOutgoingScriptRefs
+      .map((ref) => formatStoryOrderScriptRef(ref, "out"))
+      .filter(Boolean)
+      .slice(0, 6);
+    if (refs.length) parts.push(`binaryRefsOut=${refs.join("; ")}`);
+  }
+  if (Array.isArray(detail.binaryIncomingScriptRefs) && detail.binaryIncomingScriptRefs.length) {
+    const refs = detail.binaryIncomingScriptRefs
+      .map((ref) => formatStoryOrderScriptRef(ref, "in"))
+      .filter(Boolean)
+      .slice(0, 6);
+    if (refs.length) parts.push(`binaryRefsIn=${refs.join("; ")}`);
+  }
+  if (detail.sceneChunkId) parts.push(`sceneChunk=${detail.sceneChunkId}`);
+  if (Array.isArray(detail.sceneEvidenceKinds) && detail.sceneEvidenceKinds.length) {
+    parts.push(`sceneEvidence=${detail.sceneEvidenceKinds.join(", ")}`);
+  }
+  if (Array.isArray(detail.sceneQuestIds) && detail.sceneQuestIds.length) {
+    parts.push(`sceneQuests=${detail.sceneQuestIds.join(", ")}`);
+  }
+  if (Array.isArray(detail.sceneOutgoingEdges) && detail.sceneOutgoingEdges.length) {
+    const refs = detail.sceneOutgoingEdges.map(formatStoryOrderSceneEdge).filter(Boolean).slice(0, 4);
+    if (refs.length) parts.push(`sceneEdgesOut=${refs.join("; ")}`);
+  }
+  if (Array.isArray(detail.sceneIncomingEdges) && detail.sceneIncomingEdges.length) {
+    const refs = detail.sceneIncomingEdges.map(formatStoryOrderSceneEdge).filter(Boolean).slice(0, 4);
+    if (refs.length) parts.push(`sceneEdgesIn=${refs.join("; ")}`);
+  }
+  if (Array.isArray(detail.spatialQuestCandidates) && detail.spatialQuestCandidates.length) {
+    const refs = detail.spatialQuestCandidates
+      .map(formatStoryOrderSpatialCandidate)
+      .filter(Boolean)
+      .slice(0, 4);
+    if (refs.length) parts.push(`mapPosition=${refs.join("; ")}`);
+  }
+  if (Array.isArray(detail.spatialRelatedQuestCandidates) && detail.spatialRelatedQuestCandidates.length) {
+    const refs = detail.spatialRelatedQuestCandidates
+      .map(formatStoryOrderSpatialCandidate)
+      .filter(Boolean)
+      .slice(0, 4);
+    if (refs.length) parts.push(`mapPositionRelated=${refs.join("; ")}`);
+  }
+  if (detail.levelDataNote) parts.push(String(detail.levelDataNote));
+  if (detail.binaryScriptRefNote) parts.push(String(detail.binaryScriptRefNote));
+  if (detail.scenePlacementNote) parts.push(String(detail.scenePlacementNote));
+  if (detail.spatialNote) parts.push(String(detail.spatialNote));
+  if (detail.observedOrderNote) parts.push(String(detail.observedOrderNote));
+  if (detail.observedEvidenceAlignmentNote) parts.push(String(detail.observedEvidenceAlignmentNote));
+  if (detail.binaryNote) parts.push(String(detail.binaryNote));
+  if (detail.blackPreambleAttachKind) {
+    parts.push(`blackPreambleAttachKind=${detail.blackPreambleAttachKind}`);
+  }
+  if (detail.blackPreambleNote) parts.push(String(detail.blackPreambleNote));
+  return parts.join("\n");
+}
+
 function storyMediaEntries(payload, kind) {
   return ((payload && payload.entries) || []).filter((entry) => entry && entry.k === kind && entry.r);
+}
+
+function normalizeReadingArchiveLinkPart(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function readingArchiveLinkSignal(value) {
+  return String(value || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[^0-9A-Za-z\u3400-\u9FFF]/g, "");
+}
+
+function readingArchiveContentKey(entry) {
+  const isPopup = typeof entryIsReadingPopup === "function" && entryIsReadingPopup(entry);
+  const isArchive = typeof isPrtsArchiveEntry === "function" && isPrtsArchiveEntry(entry);
+  if (!isPopup && !isArchive) return "";
+  const preview = normalizeReadingArchiveLinkPart(entry && entry.p);
+  if (!preview) return "";
+  const lineCount = Number(entry && entry.n);
+  const countKey = Number.isFinite(lineCount) ? String(lineCount) : "";
+  const signal = readingArchiveLinkSignal(preview);
+  if (signal.length < 4) {
+    const title = normalizeReadingArchiveLinkPart(entry && entry.title);
+    if (!title) return "";
+    return `short:${title}\u0001${preview}\u0001${countKey}`;
+  }
+  return `${preview}\u0001${countKey}`;
+}
+
+function readingArchiveMissionKey(entry) {
+  return typeof entryTreeMissionId === "function"
+    ? entryTreeMissionId(entry)
+    : String(entry && entry.m || "");
+}
+
+function uniqueReadingArchiveKeys(keys) {
+  const out = [];
+  const seen = new Set();
+  for (const value of keys || []) {
+    const key = String(value || "").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
+}
+
+function setReadingArchiveLinkGroup(byKey, missionEntries, archives) {
+  const cleanMissionEntries = uniqueReadingArchiveKeys(missionEntries);
+  const cleanArchives = uniqueReadingArchiveKeys(archives);
+  if (!cleanMissionEntries.length || !cleanArchives.length) return;
+  const group = {
+    popups: cleanMissionEntries,
+    missionEntries: cleanMissionEntries,
+    archives: cleanArchives,
+  };
+  for (const key of cleanMissionEntries) byKey.set(key, group);
+  for (const key of cleanArchives) byKey.set(key, group);
+}
+
+function applyManualReadingArchiveDuplicateGroups(byKey, entriesByKey) {
+  for (const group of MANUAL_READING_ARCHIVE_DUPLICATE_GROUPS) {
+    const mission = String(group && group.mission || "").trim();
+    const missionEntries = uniqueReadingArchiveKeys(group && group.missionEntries)
+      .filter((key) => entriesByKey.has(key));
+    const archives = uniqueReadingArchiveKeys(group && group.archives)
+      .filter((key) => entriesByKey.has(key));
+    if (!missionEntries.length || !archives.length) continue;
+    if (mission) {
+      const allInMission = [...missionEntries, ...archives]
+        .every((key) => readingArchiveMissionKey(entriesByKey.get(key)) === mission);
+      if (!allInMission) continue;
+    }
+    setReadingArchiveLinkGroup(byKey, missionEntries, archives);
+  }
+}
+
+function buildReadingArchiveLinkIndex(entries) {
+  const groups = new Map();
+  const entriesByKey = new Map((entries || []).map((entry) => [String(entry && entry.k || ""), entry]));
+  for (const entry of entries || []) {
+    const contentKey = readingArchiveContentKey(entry);
+    if (!contentKey) continue;
+    const missionKey = readingArchiveMissionKey(entry);
+    if (!missionKey) continue;
+    const groupKey = `${missionKey}\u0002${contentKey}`;
+    const group = groups.get(groupKey) || {
+      popups: [],
+      archives: [],
+    };
+    if (entryIsReadingPopup(entry)) group.popups.push(String(entry.k || ""));
+    else if (isPrtsArchiveEntry(entry)) group.archives.push(String(entry.k || ""));
+    groups.set(groupKey, group);
+  }
+
+  const byKey = new Map();
+  for (const group of groups.values()) {
+    const popups = Array.from(new Set(group.popups.filter(Boolean)));
+    const archives = Array.from(new Set(group.archives.filter(Boolean)));
+    if (!popups.length || !archives.length) continue;
+    setReadingArchiveLinkGroup(byKey, popups, archives);
+  }
+  applyManualReadingArchiveDuplicateGroups(byKey, entriesByKey);
+  return byKey;
+}
+
+function readingArchiveLinksForEntry(entryOrKey) {
+  const key = typeof entryOrKey === "string"
+    ? entryOrKey
+    : String(entryOrKey && entryOrKey.k || "");
+  return key ? (STATE.readingArchiveLinksByKey.get(key) || null) : null;
+}
+
+function entryHasReadingArchiveMissionDuplicate(entry) {
+  return !!(entry && isPrtsArchiveEntry(entry) && readingArchiveLinksForEntry(entry));
 }
 
 function clearArchiveClassificationCaches(entries = STATE.entries) {
@@ -770,13 +1532,6 @@ function getMissionTimelineRecovery(mission) {
   return cached && cached.timelineRecovery ? cached.timelineRecovery : null;
 }
 
-function getMissionFlow(mission) {
-  const cached = cachedMissionData(mission);
-  if (cached && cached.flow) return cached.flow;
-  const flows = STATE.index && STATE.index.missionFlows;
-  return flows && mission ? (flows[mission] || null) : null;
-}
-
 async function ensureMissionData(mission, languageCode = STATE.language) {
   if (!mission) return;
   if (STATE.missionCache.has(mission)) return;
@@ -828,6 +1583,21 @@ function inlineImageNumberKey(value) {
   const match = String(value || "").match(/(?:^|[_-])(\d{1,3})$/);
   if (!match) return "";
   return String(Number(match[1]));
+}
+
+function storyMediaLookupStem(rel) {
+  const normalizedRel = String(rel || "").replace(/\\/g, "/");
+  const name = normalizedRel.split("/").filter(Boolean).pop() || normalizedRel;
+  const rawStem = name.replace(/\.[^.]+$/i, "").toLowerCase();
+  const split = splitPathIdExportStem(rawStem);
+  if (relRequiresPathIdExportName(normalizedRel)) {
+    return split ? { stem: split.base.toLowerCase(), rawStem, pathId: split.pathId } : null;
+  }
+  return {
+    stem: split ? split.base.toLowerCase() : rawStem,
+    rawStem,
+    pathId: split ? split.pathId : "",
+  };
 }
 
 // envEmoji prefab layer data is reconstructed from the original Unity prefabs at
@@ -1080,13 +1850,15 @@ function ensureInlineImageAssetLookup() {
         const rel = String(raw.r || "");
         const parts = rel.split("/").filter(Boolean);
         const name = parts[parts.length - 1] || rel;
-        const stem = name.replace(/\.[^.]+$/i, "").toLowerCase();
+        const stemInfo = storyMediaLookupStem(rel);
+        if (!stemInfo) continue;
+        const stem = stemInfo.stem;
         if (!stem) continue;
 
         const score = scoreInlineImageAsset(rel, stem);
         if (score <= 0) continue;
 
-        const candidate = { rel, name, stem, score };
+        const candidate = { rel, name, stem, rawStem: stemInfo.rawStem, pathId: stemInfo.pathId, score };
         rememberBestInlineImageAsset(byStem, stem, candidate);
 
         const numberKey = inlineImageNumberKey(stem);
@@ -1159,9 +1931,11 @@ function ensureWikiVideoAssetLookup() {
         const rel = String(raw.r || "");
         const parts = rel.split("/").filter(Boolean);
         const name = parts[parts.length - 1] || rel;
-        const stem = name.replace(/\.[^.]+$/i, "").toLowerCase();
+        const stemInfo = storyMediaLookupStem(rel);
+        if (!stemInfo) continue;
+        const stem = stemInfo.stem;
         if (!stem) continue;
-        const candidate = { rel, name, stem, size: Number(raw.s) || 0 };
+        const candidate = { rel, name, stem, rawStem: stemInfo.rawStem, pathId: stemInfo.pathId, size: Number(raw.s) || 0 };
         if (!byStem.has(stem)) byStem.set(stem, []);
         byStem.get(stem).push(candidate);
       }
@@ -1460,10 +2234,12 @@ function renderWikiVideoItem(asset) {
     const video = document.createElement("video");
     video.className = "wiki-video-player";
     video.src = src;
-    video.controls = true;
     video.preload = "metadata";
     video.setAttribute("playsinline", "");
-    item.appendChild(video);
+    const player = window.WebUI && window.WebUI.createMediaPlayer
+      ? window.WebUI.createMediaPlayer(video, { className: "wiki-video-control" })
+      : video;
+    item.appendChild(player);
   } else {
     const link = document.createElement("a");
     link.className = "wiki-video-file";
@@ -1577,9 +2353,7 @@ function narrativeVideoSelectionForRefs(refs) {
       byStem.set(key, ref);
     }
   }
-  const distinctRefs = Array.from(byStem.values())
-    .sort((a, b) => scoreNarrativeVideoRef(b) - scoreNarrativeVideoRef(a)
-      || String(a.name || a.rel).localeCompare(String(b.name || b.rel)));
+  const distinctRefs = Array.from(byStem.values());
   return {
     refs: distinctRefs.slice(0, NARRATIVE_VIDEO_DISPLAY_LIMIT),
     omitted: Math.max(0, distinctRefs.length - NARRATIVE_VIDEO_DISPLAY_LIMIT),
@@ -1733,8 +2507,6 @@ function resolveInitialLanguage() {
 function applyUiStrings() {
   document.documentElement.lang = STATE.uiLocale === "zh" ? "zh-CN" : "en";
 
-  $("#shell-title").textContent = uiText("suiteTitle");
-  $("#shell-subtitle").textContent = uiText("suiteSubtitle");
   $("#story-tab").textContent = uiText("storyTab");
   $("#assets-tab").textContent = uiText("assetsTab");
   $("#ui-language-label").textContent = uiText("uiLanguage");
@@ -1765,13 +2537,25 @@ function applyUiStrings() {
   if (searchLabel) searchLabel.textContent = uiText("searchFilter");
   $("#sort-label").textContent = uiText("sort");
   $("#reset").textContent = uiText("reset");
+  const sortStory = $("#sort-story");
+  if (sortStory) sortStory.textContent = uiText("sortStory");
+  const sortNatural = $("#sort-natural");
+  if (sortNatural) sortNatural.textContent = uiText("sortNatural");
+  const sortLinesDesc = $("#sort-lines-desc");
+  if (sortLinesDesc) sortLinesDesc.textContent = uiText("sortLinesDesc");
+  const sortLinesAsc = $("#sort-lines-asc");
+  if (sortLinesAsc) sortLinesAsc.textContent = uiText("sortLinesAsc");
+  const sortKey = $("#sort-key");
+  if (sortKey) sortKey.textContent = uiText("sortKey");
   const sortSelect = $("#sort");
-  if (sortSelect) sortSelect.value = STATE.sortMode || "natural";
+  if (sortSelect) sortSelect.value = STATE.sortMode || "story";
   $("#list-meta-label").textContent = uiText("listUnit");
   $("#conv-empty").textContent = uiText("emptyConversation");
   $("#reveal-current").textContent = uiText("revealCurrent");
   $("#show-empty-label").textContent = uiText("showEmpty");
   $("#show-raw-label").textContent = uiText("showRaw");
+  const showDebugLabel = $("#show-debug-label");
+  if (showDebugLabel) showDebugLabel.textContent = uiText("showDebug");
   const inlineTagMode = $("#inline-tag-mode");
   if (inlineTagMode) {
     $("#inline-tag-mode-label").textContent = uiText("inlineTagMode");
@@ -1779,6 +2563,7 @@ function applyUiStrings() {
   }
   syncGenderVariantControl();
   $("#q").placeholder = uiText("searchPlaceholder");
+  if (typeof syncStoryOrderEditor === "function") syncStoryOrderEditor();
   syncRevealCurrentButton();
   syncFilterPanel();
 }
@@ -1895,7 +2680,9 @@ async function switchLanguage(languageCode, { preserveSelection = true } = {}) {
     STATE.actorNames = normalizeActorNames(actorsPayload.actorNames || {});
     STATE.missionNames = missionsPayload.missionNames || {};
     STATE.entries = normalizeLoadedEntries(index.entries || []);
+    applyStoryOrderGroupingOverridesToEntries(STATE.entries);
     STATE.entryByKey = new Map(STATE.entries.map((entry) => [entry.k, entry]));
+    STATE.readingArchiveLinksByKey = buildReadingArchiveLinkIndex(STATE.entries);
     STATE.archiveMetadataByKey = new Map();
     STATE.archiveResearchById = new Map();
     STATE.archiveMetadataLanguage = "";
@@ -1945,9 +2732,24 @@ async function init() {
 
     const initialLanguage = resolveInitialLanguage();
     setUiLocale(resolveInitialUiLocale(initialLanguage), { persist: false, refresh: false });
+    const storyOrderPromise = loadStoryOrderPayload();
+    void loadOptionOverridePayload();
     void ensureInlineImageAssetLookup();
     void ensureWikiVideoAssetLookup();
     await switchLanguage(initialLanguage, { preserveSelection: false });
+    void storyOrderPromise.then(() => {
+      if (applyStoryOrderGroupingOverridesToEntries(STATE.entries)) {
+        STATE.readingArchiveLinksByKey = buildReadingArchiveLinkIndex(STATE.entries);
+        buildKindChips();
+        buildDataTypeChips();
+        buildMediaChips();
+        buildStoryIssueChips();
+        buildRecoveryMethodChips();
+        applyFilters();
+      } else if (STATE.sortMode === "story") {
+        rebuildTree({ resetScroll: false });
+      }
+    });
   } catch (error) {
     showFatalError(error);
   }
@@ -2102,7 +2904,8 @@ function renderGroup(row) {
       `<span class="${labelCls}" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span>` +
       (row.raw ? `<span class="sub mono" title="${escapeHtml(row.raw)}">${escapeHtml(row.raw)}</span>` : "") +
     `</span>` +
-    `<span class="group-count">${row.count}</span>`;
+    `<span class="group-count">${row.count}</span>` +
+    storyOrderMissionLockControl(row);
   return div;
 }
 
@@ -2116,25 +2919,84 @@ function renderItem(row) {
   div.style.paddingLeft = (8 + 2 * 14) + "px";
   div.dataset.key = e.k;
 
+  const editable = typeof storyOrderEntryEditable === "function" ? storyOrderEntryEditable(e) : null;
+  let dragHandle = "";
+  if (editable) {
+    div.draggable = true;
+    div.dataset.storyOrderMissionId = editable.missionId;
+    div.classList.add("story-order-draggable");
+    if (STATE.storyOrderDragKey && STATE.storyOrderDragKey === e.k) {
+      div.classList.add("story-order-dragging");
+    }
+    const grip = escapeHtml(uiText("storyOrderDragHandle"));
+    dragHandle =
+      `<span class="story-order-drag-handle" title="${grip}" aria-label="${grip}">` +
+        `<svg viewBox="0 0 8 12" aria-hidden="true">` +
+          `<circle cx="2" cy="2" r="1" fill="currentColor"/><circle cx="6" cy="2" r="1" fill="currentColor"/>` +
+          `<circle cx="2" cy="6" r="1" fill="currentColor"/><circle cx="6" cy="6" r="1" fill="currentColor"/>` +
+          `<circle cx="2" cy="10" r="1" fill="currentColor"/><circle cx="6" cy="10" r="1" fill="currentColor"/>` +
+        `</svg>` +
+      `</span>`;
+  }
+
   const kindCls = meta.cls;
   const kindNm = meta.name;
-  const orderStatus = entryMissionOrderStatus(e);
-  const orderBadge = orderStatus
-    ? `<span class="mission-order-badge is-${orderStatus.cls}" title="${escapeHtml(orderStatus.title)}">${escapeHtml(orderStatus.label)}</span>`
-    : "";
-  const actorTxt = e.c.slice(0, 3).map(actorDisplay).join(" / ")
-                 + (e.c.length > 3 ? `+${e.c.length - 3}` : "");
 
   div.innerHTML =
     `<div class="item-line1">` +
       `<span class="badge ${kindCls}">${escapeHtml(kindNm)}</span>` +
-      orderBadge +
       `<span class="item-key">${highlightTextFragment(displayEntryTitle(e), STATE.filters.q)}</span>` +
-      `<span class="item-meta">${e.n} ${uiText("lineUnit")}${actorTxt ? " | " + escapeHtml(actorTxt) : ""}</span>` +
+      `<span class="item-meta">${e.n} ${uiText("lineUnit")}</span>` +
+      dragHandle +
     `</div>` +
     `<div class="item-preview">${highlightTextFragment(e.p || uiText("emptyPreview"), STATE.filters.q)}</div>`;
   return div;
 }
+
+function storyOrderPreambleChip(detail) {
+  if (!detail) return "";
+  const evidence = String(detail.evidence || "");
+  if (!evidence.startsWith("cutscene-preamble-black:")) return "";
+  const target = evidence.slice("cutscene-preamble-black:".length);
+  const kind = String(detail.blackPreambleAttachKind || "");
+  const title = [
+    `Black-screen preamble card attached before ${target || "the next cutscene"}.`,
+    kind ? `Attachment kind: ${kind}` : "",
+    "The target cutscene's AnimeStudio metadata declares a useBlackScreen + pre-fade window; this row is rendered as an overlay during that window.",
+  ].filter(Boolean).join("\n");
+  const label = `↳ preamble: ${target || "cutscene"}`;
+  return `<span class="story-order-flag is-preamble" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
+}
+
+function cutsceneTrackInventoryChips(detail) {
+  const inv = detail && detail.trackInventory;
+  if (!inv || typeof inv !== "object") return "";
+  // Compact per-track-kind chips: only render kinds that have recovered
+  // content. Light is intentionally excluded by the builder.
+  const chips = [];
+  function pushTrack(label, count, titleExtra) {
+    if (!Number.isFinite(Number(count)) || Number(count) <= 0) return;
+    const title = `${label}: ${count} track${count === 1 ? "" : "s"} recovered${titleExtra ? "\n" + titleExtra : ""}`;
+    chips.push(`<span class="track-chip track-chip-${label.toLowerCase()}" title="${escapeHtml(title)}">${escapeHtml(label)} ${count}</span>`);
+  }
+  pushTrack("Actor", inv.actorTrackCount, inv.animClipCount ? `Anim clip count: ${inv.animClipCount}` : "");
+  pushTrack("Audio", inv.audioTrackCount, Array.isArray(inv.audioEvents) && inv.audioEvents.length
+    ? `Audio events: ${inv.audioEvents.slice(0, 4).join(", ")}${inv.audioEvents.length > 4 ? ", …" : ""}`
+    : "");
+  pushTrack("Effect", inv.effectTrackCount, "");
+  if (Number(inv.subtitleTrackCount) > 0) {
+    const locales = Array.isArray(inv.subtitleLocales) ? inv.subtitleLocales : [];
+    const localeLabel = locales.length ? ` (${locales.slice(0, 4).join(",")}${locales.length > 4 ? "+" : ""})` : "";
+    const title = `Subtitle: ${inv.subtitleTrackCount} track${inv.subtitleTrackCount === 1 ? "" : "s"} recovered${locales.length ? "\nLocales: " + locales.join(", ") : ""}`;
+    chips.push(`<span class="track-chip track-chip-subtitle" title="${escapeHtml(title)}">Sub${localeLabel} ${inv.subtitleTrackCount}</span>`);
+  }
+  if (inv.fmvBound) {
+    const title = `FMV bound via BeyondFMVPlayableAsset${inv.fmvVideoKey ? "\nVideo key: " + inv.fmvVideoKey : ""}`;
+    chips.push(`<span class="track-chip track-chip-fmv" title="${escapeHtml(title)}">FMV</span>`);
+  }
+  return chips.join("");
+}
+
 
 // ---------- conversation pane ----------
 async function loadConv(key, { force = false } = {}) {
@@ -2143,7 +3005,6 @@ async function loadConv(key, { force = false } = {}) {
   STATE.selectedKey = key;
   $$(".item").forEach((n) => n.classList.toggle("selected", n.dataset.key === key));
   syncRevealCurrentButton();
-
   if (!force && !wasSelected && STATE.convCache.has(key)) {
     const cached = STATE.convCache.get(key);
     await ensureMissionData(cached && cached.mission, languageCode);
@@ -2166,11 +3027,15 @@ async function loadConv(key, { force = false } = {}) {
   $("#conv-lines").innerHTML = "";
 
   try {
-    const res = await fetchJson(dataPath(`conv/${encodeURIComponent(key)}.json`, languageCode), {
-      fresh: force || wasSelected,
-    });
+    const [res, optionOverrides] = await Promise.all([
+      fetchJson(dataPath(`conv/${encodeURIComponent(key)}.json`, languageCode), {
+        fresh: force || wasSelected,
+      }),
+      loadOptionOverridePayload(),
+    ]);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const conv = await res.json();
+    applyOptionOverridesToConv(conv, optionOverrides);
     if (STATE.selectedKey === key && STATE.language === languageCode) {
       STATE.convCache.set(key, conv);
       await ensureMissionData(conv && conv.mission, languageCode);
@@ -2865,12 +3730,31 @@ function renderOptionRiskTags(option) {
       node.className = "opt-risk-tag opt-risk-tag-inferred";
       node.textContent = uiText("optRiskInferredFollowingLine");
       node.title = uiText("optRiskInferredFollowingLineTitle").replace("{line}", lineId || "?");
+    } else if (tag.code === "manualOptionResponseOverride") {
+      node.className = "opt-risk-tag opt-risk-tag-manual";
+      node.textContent = uiText("optManualOverride");
+      node.title = uiText("optManualOverrideTitle")
+        .replace("{source}", String(tag.source || "webui/overrides/options.json"))
+        .replace("{note}", "");
     } else {
       continue;
     }
     wrap.appendChild(node);
   }
   return wrap.childNodes.length ? wrap : null;
+}
+
+function renderManualOverrideTag(manualOverride) {
+  if (!manualOverride || typeof manualOverride !== "object") return null;
+  const node = document.createElement("span");
+  node.className = "manual-override-tag";
+  node.textContent = uiText("optManualOverride");
+  const source = String(manualOverride.source || "webui/overrides/options.json");
+  const note = String(manualOverride.note || "").trim();
+  node.title = uiText("optManualOverrideTitle")
+    .replace("{source}", source)
+    .replace("{note}", note ? ` (${note})` : "");
+  return node;
 }
 
 function findOptionGroupOutcomeBacklinks(group, conv, outcomesByOptionId) {
@@ -3204,6 +4088,24 @@ function renderConvWarning(warning) {
   if (warning.code === "narrativeVideoUnplaced") {
     title = uiText("warningNarrativeVideoUnplacedTitle");
     body = uiText("warningNarrativeVideoUnplacedBody");
+    const stems = Array.isArray(warning.videoStems) ? warning.videoStems : [];
+    if (stems.length) {
+      const section = document.createElement("section");
+      section.className = "conv-warning-section";
+      const list = document.createElement("ul");
+      list.className = "conv-warning-evidence";
+      for (const stem of stems) {
+        const li = document.createElement("li");
+        li.textContent = String(stem);
+        list.appendChild(li);
+      }
+      section.appendChild(list);
+      detailSections.push(section);
+    }
+  }
+  if (warning.code === "remotecommNarrativeVideoMissing") {
+    title = uiText("warningRemotecommNarrativeVideoMissingTitle");
+    body = uiText("warningRemotecommNarrativeVideoMissingBody");
     const stems = Array.isArray(warning.videoStems) ? warning.videoStems : [];
     if (stems.length) {
       const section = document.createElement("section");
@@ -3594,7 +4496,105 @@ function buildLineOrderOutcomeIndex(conv) {
   return index;
 }
 
-function renderCutsceneInfoPanel(conv) {
+function cutsceneValueText(value) {
+  if (Array.isArray(value)) return value.map(cutsceneValueText).join(", ");
+  if (value && typeof value === "object") return JSON.stringify(value);
+  if (value === undefined || value === null) return "";
+  return String(value);
+}
+
+function appendCutscenePillRow(container, labelText, values, { limit = 18 } = {}) {
+  const cleaned = missionTimelineUniqueStrings(values.map(cutsceneValueText).filter(Boolean));
+  if (!cleaned.length) return null;
+  const row = document.createElement("div");
+  row.className = "cs-pill-row";
+  const lbl = document.createElement("span");
+  lbl.className = "cs-row-label";
+  lbl.textContent = labelText;
+  row.appendChild(lbl);
+  for (const value of cleaned.slice(0, limit)) {
+    const pill = document.createElement("span");
+    pill.className = "cs-pill";
+    pill.textContent = value;
+    row.appendChild(pill);
+  }
+  if (cleaned.length > limit) {
+    const more = document.createElement("span");
+    more.className = "cs-pill";
+    more.textContent = `+${cleaned.length - limit}`;
+    row.appendChild(more);
+  }
+  container.appendChild(row);
+  return row;
+}
+
+function findCutsceneTimelinePlacement(timeline, convKey) {
+  if (!timeline || !convKey) return null;
+  const placement = timeline.scenePlacement || {};
+  return placement[convKey] || placement[`misc_${convKey}`] || null;
+}
+
+function appendCutsceneDetails(container, labelText, items, renderItem, { limit = 80 } = {}) {
+  const list = missionTimelineArray(items).filter((item) => item !== undefined && item !== null);
+  if (!list.length) return null;
+  const details = document.createElement("details");
+  details.className = "cs-details";
+  const summary = document.createElement("summary");
+  summary.textContent = `${labelText} (${list.length})`;
+  details.appendChild(summary);
+  const body = document.createElement("div");
+  body.className = "cs-detail-list";
+  for (const item of list.slice(0, limit)) {
+    const node = renderItem(item);
+    if (node) body.appendChild(node);
+  }
+  if (list.length > limit) {
+    const more = document.createElement("div");
+    more.className = "cs-detail-more";
+    more.textContent = `+${list.length - limit}`;
+    body.appendChild(more);
+  }
+  details.appendChild(body);
+  container.appendChild(details);
+  return details;
+}
+
+function renderCutscenePlacementEdges(placement, flowKeyMap, currentKey) {
+  if (!placement || typeof placement !== "object") return null;
+  const edges = [
+    ...missionTimelineArray(placement.incomingEdges),
+    ...missionTimelineArray(placement.outgoingEdges),
+  ].filter((edge) => edge && typeof edge === "object");
+  if (!edges.length) return null;
+  const details = document.createElement("details");
+  details.className = "cs-details cs-placement-edges";
+  const summary = document.createElement("summary");
+  summary.textContent = `${uiText("missionTimelineGraphLinks") || "Scene links"} (${edges.length})`;
+  details.appendChild(summary);
+  const body = document.createElement("div");
+  body.className = "cs-detail-list";
+  for (const edge of edges.slice(0, 20)) {
+    const row = document.createElement("div");
+    row.className = "mission-timeline-edge cs-placement-edge";
+    appendMissionTimelineChip(row, edge.direction || "edge");
+    row.appendChild(createFlowSceneChip(edge.neighbor || "?", flowKeyMap, currentKey));
+    appendMissionTimelineChip(row, edge.kind || "source");
+    const files = missionTimelineArray(edge.sourceFiles);
+    if (files.length) appendMissionTimelineChip(row, `${uiText("missionTimelineSource") || "source"} ${files.length}`);
+    if (files.length) row.title = files.join("\n");
+    body.appendChild(row);
+  }
+  if (edges.length > 20) {
+    const more = document.createElement("div");
+    more.className = "cs-detail-more";
+    more.textContent = `+${edges.length - 20}`;
+    body.appendChild(more);
+  }
+  details.appendChild(body);
+  return details;
+}
+
+function renderCutsceneInfoPanel(conv, timeline = null) {
   const cs = conv.cutscene;
   if (!cs) return null;
 
@@ -3650,6 +4650,24 @@ function renderCutsceneInfoPanel(conv) {
     box.appendChild(row);
   }
 
+  const flowKeyMap = buildFlowConversationKeyMap();
+  const placement = findCutsceneTimelinePlacement(timeline, conv.key);
+  if (placement) {
+    const placementValues = [];
+    for (const questId of missionTimelineArray(placement && placement.questIds)) placementValues.push(`quest=${questId}`);
+    for (const kind of missionTimelineArray(placement && placement.evidenceKinds)) placementValues.push(kind);
+    for (const timelineName of missionTimelineArray(placement && placement.timelines).slice(0, 4)) placementValues.push(timelineName);
+    appendCutscenePillRow(box, uiText("cutscenePlacement") || "Placement", placementValues, { limit: 18 });
+    appendCutscenePillRow(
+      box,
+      uiText("missionTimelineSpatialCandidates") || "Spatial",
+      missionTimelineArray(placement && placement.spatialQuestCandidates).map(missionTimelineSpatialCandidateLabel),
+      { limit: 12 },
+    );
+    const edgeDetails = renderCutscenePlacementEdges(placement, flowKeyMap, conv.key);
+    if (edgeDetails) box.appendChild(edgeDetails);
+  }
+
   // Technical info row
   const metaParts = [];
   const fps = Array.isArray(meta.targetFrameRate) ? meta.targetFrameRate[0] : meta.targetFrameRate;
@@ -3664,13 +4682,13 @@ function renderCutsceneInfoPanel(conv) {
   if (metaParts.length) {
     const row = document.createElement("div");
     row.className = "summary-text cs-meta-row";
-    row.textContent = metaParts.join("  ·  ");
+    row.textContent = metaParts.join(" | ");
     box.appendChild(row);
   }
 
   // Component breakdown
   const cc = cs.componentCounts || {};
-  const ccParts = Object.entries(cc).filter(([, v]) => v > 0).map(([k, v]) => `${k} ×${v}`);
+  const ccParts = Object.entries(cc).filter(([, v]) => v > 0).map(([k, v]) => `${k} x${v}`);
   if (ccParts.length) {
     const row = document.createElement("div");
     row.className = "summary-text cs-components";
@@ -3678,7 +4696,8 @@ function renderCutsceneInfoPanel(conv) {
     box.appendChild(row);
   }
 
-  // Audio events
+  // Audio event names. Playable recovered files render above the subtitle
+  // lines so cutscenes can be listened through before reading the transcript.
   if (cs.audioEvents && cs.audioEvents.length) {
     const row = document.createElement("div");
     row.className = "cs-pill-row";
@@ -3712,15 +4731,201 @@ function renderCutsceneInfoPanel(conv) {
     box.appendChild(row);
   }
 
-  // Asset path
-  if (cs.paths && cs.paths[0]) {
+  appendCutsceneDetails(
+    box,
+    uiText("cutscenePaths") || "Paths",
+    cs.paths || [],
+    (path) => {
+      const row = document.createElement("div");
+      row.className = "summary-text cs-path";
+      row.textContent = String(path || "");
+      return row;
+    },
+    { limit: 40 },
+  );
+
+  appendCutsceneDetails(
+    box,
+    uiText("cutsceneMetadata") || "Metadata",
+    Object.entries(meta),
+    ([key, value]) => {
+      const row = document.createElement("div");
+      row.className = "cs-kv-row";
+      const keyNode = document.createElement("span");
+      keyNode.className = "cs-kv-key";
+      keyNode.textContent = key;
+      const valueNode = document.createElement("span");
+      valueNode.className = "cs-kv-value";
+      valueNode.textContent = cutsceneValueText(value);
+      row.appendChild(keyNode);
+      row.appendChild(valueNode);
+      return row;
+    },
+    { limit: 80 },
+  );
+
+  appendCutsceneDetails(
+    box,
+    uiText("cutsceneVideos") || "Videos",
+    cs.videoRefs || [],
+    (video) => {
+      const row = document.createElement("div");
+      row.className = "cs-variant-row";
+      const fields = [
+        video && (video.key || video.id || video.name || video.assetKey),
+        video && video.gender,
+        video && video.format,
+        video && video.file,
+        video && video.path,
+        video && video.source,
+      ].filter(Boolean);
+      row.textContent = fields.map(String).join(" | ");
+      return row;
+    },
+    { limit: 80 },
+  );
+
+  appendCutsceneDetails(
+    box,
+    uiText("cutsceneVariants") || "Variants",
+    cs.variants || [],
+    (variant) => {
+      const row = document.createElement("div");
+      row.className = "cs-variant-row";
+      const head = document.createElement("div");
+      head.className = "cs-variant-head";
+      for (const value of [variant.name, variant.part, variant.version ? `v${variant.version}` : ""]) {
+        if (!value) continue;
+        const pill = document.createElement("span");
+        pill.className = "cs-pill";
+        pill.textContent = value;
+        head.appendChild(pill);
+      }
+      row.appendChild(head);
+      for (const value of [variant.path, variant.file]) {
+        if (!value) continue;
+        const pathRow = document.createElement("div");
+        pathRow.className = "cs-path";
+        pathRow.textContent = value;
+        row.appendChild(pathRow);
+      }
+      return row;
+    },
+    { limit: 120 },
+  );
+
+  return box;
+}
+
+function conversationRecoveredAudioFiles(conv) {
+  const files = [];
+  if (conv && Array.isArray(conv.audioFiles)) files.push(...conv.audioFiles);
+  if (conv && conv.cutscene && Array.isArray(conv.cutscene.audioFiles)) {
+    files.push(...conv.cutscene.audioFiles);
+  }
+  return files;
+}
+
+function renderRecoveredAudioBlock(conv) {
+  const audioFiles = conversationRecoveredAudioFiles(conv);
+  const playable = selectGenderedAudioFiles(audioFiles.filter((file) => file && file.src));
+  if (!playable.length) return null;
+
+  const box = document.createElement("div");
+  box.className = "summary-box cutscene-audio-block";
+
+  const label = document.createElement("div");
+  label.className = "summary-label";
+  label.textContent = uiText("recoveredAudio");
+  box.appendChild(label);
+
+  for (const file of playable) {
     const row = document.createElement("div");
-    row.className = "summary-text cs-path";
-    row.textContent = cs.paths[0];
+    row.className = "cutscene-audio-row";
+
+    const title = document.createElement("div");
+    title.className = "cutscene-audio-title";
+    const eventId = String(file.id || file.eventId || "");
+    const mediaId = file.mediaId !== undefined && file.mediaId !== null
+      ? `${uiText("recoveredAudioMedia")} ${file.mediaId}`
+      : "";
+    const gender = audioFileGenderSuffix(file);
+    title.textContent = [eventId, mediaId, gender ? gender.toUpperCase() : ""].filter(Boolean).join(" | ");
+    row.appendChild(title);
+
+    const audioNode = createAudioControl(file.src, eventId);
+    if (audioNode) {
+      audioNode.classList.add("cs-audio-control");
+      row.appendChild(audioNode);
+    }
+
+    const detailParts = [];
+    if (file.bank) detailParts.push(String(file.bank));
+    if (file.source) detailParts.push(String(file.source));
+    if (file.format) detailParts.push(String(file.format).toUpperCase());
+    if (file.bytes) detailParts.push(`${Number(file.bytes).toLocaleString()} ${uiText("recoveredAudioBytes")}`);
+    if (detailParts.length) {
+      const details = document.createElement("div");
+      details.className = "cutscene-audio-detail";
+      details.textContent = detailParts.join(" | ");
+      row.appendChild(details);
+    }
+
     box.appendChild(row);
   }
 
   return box;
+}
+
+function audioFileStem(file) {
+  const value = String(file && (file.rel || file.src) || "");
+  const clean = value.split("?")[0].split("#")[0].replace(/\\/g, "/");
+  const name = clean.split("/").pop() || "";
+  return name.replace(/\.[^.]+$/, "").toLowerCase();
+}
+
+function audioEventStem(file) {
+  return String(file && (file.eventId || file.id) || "").trim().toLowerCase();
+}
+
+function audioFileGenderSuffix(file) {
+  const match = (audioEventStem(file) || audioFileStem(file)).match(/(?:^|_)([fm])$/);
+  return match ? match[1] : "";
+}
+
+function audioFileGenderBase(file) {
+  const eventStem = audioEventStem(file);
+  if (eventStem) return eventStem.replace(/_([fm])$/, "");
+  return audioFileStem(file).replace(/_([fm])$/, "");
+}
+
+function selectGenderedAudioFiles(files) {
+  const active = resolveGenderVariant();
+  const passthrough = [];
+  const groups = new Map();
+
+  for (const file of files || []) {
+    const gender = audioFileGenderSuffix(file);
+    if (!gender) {
+      passthrough.push(file);
+      continue;
+    }
+    const key = [
+      audioFileGenderBase(file),
+      String(file.bank || ""),
+      String(file.source || ""),
+    ].join("|");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(file);
+  }
+
+  const selected = [];
+  for (const group of groups.values()) {
+    const preferred = group.find((file) => audioFileGenderSuffix(file) === active);
+    selected.push(preferred || group[0]);
+  }
+
+  return [...passthrough, ...selected];
 }
 
 function renderSourceLinksBlock(conv) {
@@ -3764,7 +4969,7 @@ function renderSourceLinksBlock(conv) {
 
 function summaryLabelForConv(conv) {
   return conv && (
-    ["wiki", "mail", "prts", "responsive"].includes(conv.kind)
+    ["wiki", "mail", "prts", "responsive", "text"].includes(conv.kind)
     || String(conv.kind || "").startsWith("table_")
   )
     ? uiText("metadata")
@@ -3924,6 +5129,32 @@ function addArchiveLinkRows(targetMap, rows, currentKey) {
   }
 }
 
+function addReadingArchiveLinkRows(targetMap, keys, currentKey, typeLabelKey) {
+  for (const key of keys || []) {
+    if (!key || key === currentKey || targetMap.has(key)) continue;
+    const entry = STATE.entryByKey.get(key);
+    if (!entry) continue;
+    const metadata = isPrtsArchiveEntry(entry) ? entryArchiveMetadata(key) : null;
+    targetMap.set(key, {
+      ...(metadata || {}),
+      key,
+      title: String(entry.title || key),
+      page: metadata && metadata.page ? metadata.page : (isPrtsArchiveEntry(entry) ? entryPrtsCategoryKey(entry) : ""),
+      typeLabel: isPrtsArchiveEntry(entry) ? "" : uiText(typeLabelKey),
+    });
+  }
+}
+
+function readingArchiveMissionLinkSectionLabel(keys) {
+  const entries = (keys || [])
+    .map((key) => STATE.entryByKey.get(key))
+    .filter(Boolean);
+  if (entries.length && entries.every((entry) => entryIsReadingPopup(entry))) {
+    return uiText("archivePopupTexts");
+  }
+  return uiText("archiveMissionFiles");
+}
+
 function renderArchiveLinkSection(label, rows) {
   if (!rows.length) return null;
   const section = document.createElement("div");
@@ -3951,7 +5182,7 @@ function renderArchiveLinkSection(label, rows) {
     });
     item.appendChild(link);
 
-    const pageLabel = meta.page ? dataTypeLabel(`prtscat:${meta.page}`) : "";
+    const pageLabel = meta.typeLabel || (meta.page ? dataTypeLabel(`prtscat:${meta.page}`) : "");
     if (pageLabel) {
       const type = document.createElement("span");
       type.className = "archive-link-type";
@@ -3967,21 +5198,35 @@ function renderArchiveLinkSection(label, rows) {
 function renderArchiveLinksBlock(entry, conv) {
   const key = String(entry && entry.k || conv && conv.key || "");
   if (!key) return null;
+  const duplicateLinks = readingArchiveLinksForEntry(key);
+  const duplicateArchiveRowsByKey = new Map();
+  const duplicateMissionRowsByKey = new Map();
+  if (duplicateLinks) {
+    if (!isPrtsArchiveEntry(entry)) {
+      addReadingArchiveLinkRows(duplicateArchiveRowsByKey, duplicateLinks.archives, key, "archiveDuplicateDocuments");
+    } else if (isPrtsArchiveEntry(entry)) {
+      addReadingArchiveLinkRows(duplicateMissionRowsByKey, duplicateLinks.missionEntries || duplicateLinks.popups, key, "archiveMissionFiles");
+    }
+  }
+
   const metadata = entryArchiveMetadata(key);
-  if (!metadata || !metadata.researchIds || !metadata.researchIds.length) return null;
 
   const reportsByKey = new Map();
   const materialsByKey = new Map();
-  for (const researchId of metadata.researchIds) {
-    const group = STATE.archiveResearchById.get(researchId);
-    if (!group) continue;
-    addArchiveLinkRows(reportsByKey, group.reports, key);
-    addArchiveLinkRows(materialsByKey, group.materials, key);
+  if (metadata && metadata.researchIds && metadata.researchIds.length) {
+    for (const researchId of metadata.researchIds) {
+      const group = STATE.archiveResearchById.get(researchId);
+      if (!group) continue;
+      addArchiveLinkRows(reportsByKey, group.reports, key);
+      addArchiveLinkRows(materialsByKey, group.materials, key);
+    }
   }
 
+  const duplicateArchives = Array.from(duplicateArchiveRowsByKey.values()).sort(compareArchiveMetadataRows);
+  const duplicateMissionRows = Array.from(duplicateMissionRowsByKey.values()).sort(compareArchiveMetadataRows);
   const reports = Array.from(reportsByKey.values()).sort(compareArchiveMetadataRows);
   const materials = Array.from(materialsByKey.values()).sort(compareArchiveMetadataRows);
-  if (!reports.length && !materials.length) return null;
+  if (!duplicateArchives.length && !duplicateMissionRows.length && !reports.length && !materials.length) return null;
 
   const box = document.createElement("div");
   box.className = "summary-box archive-links-box";
@@ -3990,6 +5235,15 @@ function renderArchiveLinksBlock(entry, conv) {
   label.className = "summary-label";
   label.textContent = uiText("archiveLinksHeading");
   box.appendChild(label);
+
+  const duplicateArchiveSection = renderArchiveLinkSection(uiText("archiveDuplicateDocuments"), duplicateArchives);
+  if (duplicateArchiveSection) box.appendChild(duplicateArchiveSection);
+
+  const duplicateMissionSection = renderArchiveLinkSection(
+    readingArchiveMissionLinkSectionLabel(duplicateLinks && (duplicateLinks.missionEntries || duplicateLinks.popups)),
+    duplicateMissionRows
+  );
+  if (duplicateMissionSection) box.appendChild(duplicateMissionSection);
 
   const reportSection = renderArchiveLinkSection(uiText("archiveReports"), reports);
   if (reportSection) box.appendChild(reportSection);
@@ -4005,7 +5259,7 @@ function renderConv(conv) {
   showConvPane();
   $("#conv-title").textContent = displayConvTitle(conv);
   const lineOrderWrap = $("#conv-line-order");
-  const lineOrderBlock = renderLineOrderRecovery(conv);
+  const lineOrderBlock = STATE.showDebug ? renderLineOrderRecovery(conv) : null;
   lineOrderWrap.replaceChildren();
   lineOrderWrap.hidden = !lineOrderBlock;
   if (lineOrderBlock) lineOrderWrap.appendChild(lineOrderBlock);
@@ -4027,8 +5281,69 @@ function renderConv(conv) {
       .filter(Boolean);
     if (actors.length) meta.push(`actors=${actors.join(", ")}`);
   }
+  if (Array.isArray(conv.fmvClips) && conv.fmvClips.length) {
+    const fmvParts = conv.fmvClips.map((c) => {
+      const start = typeof c.clipStart === "number" ? c.clipStart.toFixed(2) : "?";
+      const dur = typeof c.clipDuration === "number" ? c.clipDuration.toFixed(2) : "?";
+      return `${c.fmvId || "?"}@${start}s+${dur}s`;
+    });
+    meta.push(`fmv=${fmvParts.join(", ")}`);
+  }
   meta.push(`lines=${conv.lines.length}`);
   if (entry) {
+    const orderDetail = storyOrderDetailForEntry(entry);
+    if (orderDetail && storyOrderBadgeClass(orderDetail)) {
+      const orderBits = [`#${Number(orderDetail.position) + 1}`];
+      const strength = storyOrderStrengthLabel(orderDetail);
+      if (strength) orderBits.push(`strength=${strength}`);
+      if (orderDetail.evidence) orderBits.push(String(orderDetail.evidence));
+      if (orderDetail.observedEvidenceAlignmentStatus) {
+        orderBits.push(`observed=${orderDetail.observedEvidenceAlignmentStatus}`);
+      }
+      if (orderDetail.sourceScript) orderBits.push(`script=${orderDetail.sourceScript}`);
+      if (orderDetail.offset !== undefined && orderDetail.offset !== null) orderBits.push(`offset=${orderDetail.offset}`);
+      if (orderDetail.binaryStartType) orderBits.push(`startType=${orderDetail.binaryStartType}`);
+      if (Array.isArray(orderDetail.binaryOutgoingScriptRefs) && orderDetail.binaryOutgoingScriptRefs.length) {
+        const outRef = formatStoryOrderScriptRef(orderDetail.binaryOutgoingScriptRefs[0], "out");
+        if (outRef) orderBits.push(`out=${outRef}`);
+      }
+      if (Array.isArray(orderDetail.binaryIncomingScriptRefs) && orderDetail.binaryIncomingScriptRefs.length) {
+        const inRef = formatStoryOrderScriptRef(orderDetail.binaryIncomingScriptRefs[0], "in");
+        if (inRef) orderBits.push(`in=${inRef}`);
+      }
+      const spatialCandidate = Array.isArray(orderDetail.spatialQuestCandidates) && orderDetail.spatialQuestCandidates.length
+        ? orderDetail.spatialQuestCandidates[0]
+        : (Array.isArray(orderDetail.spatialRelatedQuestCandidates) && orderDetail.spatialRelatedQuestCandidates.length
+          ? orderDetail.spatialRelatedQuestCandidates[0]
+          : null);
+      if (spatialCandidate) {
+        const spatialText = missionTimelineSpatialCandidateLabel(spatialCandidate);
+        if (spatialText) orderBits.push(`map=${spatialText}`);
+      }
+      if (Array.isArray(orderDetail.sceneOutgoingEdges) && orderDetail.sceneOutgoingEdges.length) {
+        const edgeText = formatStoryOrderSceneEdge(orderDetail.sceneOutgoingEdges[0]);
+        if (edgeText) orderBits.push(`edge=${edgeText}`);
+      }
+      if (orderDetail.levelDataFile) orderBits.push(`levelData=${orderDetail.levelDataFile}`);
+      if (orderDetail.blackPreambleAttachKind) {
+        orderBits.push(`blackPreamble=${orderDetail.blackPreambleAttachKind}`);
+      }
+      const inv = orderDetail.trackInventory;
+      if (inv && typeof inv === "object") {
+        const invBits = [];
+        if (Number(inv.actorTrackCount)    > 0) invBits.push(`Actor=${inv.actorTrackCount}`);
+        if (Number(inv.audioTrackCount)    > 0) invBits.push(`Audio=${inv.audioTrackCount}`);
+        if (Number(inv.effectTrackCount)   > 0) invBits.push(`Effect=${inv.effectTrackCount}`);
+        if (Number(inv.subtitleTrackCount) > 0) {
+          const locs = Array.isArray(inv.subtitleLocales) && inv.subtitleLocales.length
+            ? `[${inv.subtitleLocales.join(",")}]` : "";
+          invBits.push(`Sub=${inv.subtitleTrackCount}${locs}`);
+        }
+        if (inv.fmvBound) invBits.push(`FMV=${inv.fmvVideoKey || "yes"}`);
+        if (invBits.length) orderBits.push(`tracks=${invBits.join(",")}`);
+      }
+      meta.push(`story_order=${orderBits.join(", ")}`);
+    }
     const metadataTagSummary = entryMetadataTagSummary(entry);
     if (metadataTagSummary) meta.push(`tags=${metadataTagSummary}`);
   }
@@ -4118,12 +5433,14 @@ function renderConv(conv) {
 
   const missionContextBlock = renderMissionContext(missionExtras);
   if (missionContextBlock) frag.appendChild(missionContextBlock);
-  const missionTimelineBlock = renderMissionTimelineRecovery(
-    getMissionTimelineRecovery(conv.mission),
-    conv,
-    getMissionFlow(conv.mission)
-  );
-  if (missionTimelineBlock) frag.appendChild(missionTimelineBlock);
+  const missionTimelineRecovery = getMissionTimelineRecovery(conv.mission);
+  if (STATE.showDebug) {
+    const missionTimelineBlock = renderMissionTimelineRecovery(
+      missionTimelineRecovery,
+      conv
+    );
+    if (missionTimelineBlock) frag.appendChild(missionTimelineBlock);
+  }
 
   const hintBlock = renderConversationHints(conv);
   if (hintBlock) frag.appendChild(hintBlock);
@@ -4131,8 +5448,10 @@ function renderConv(conv) {
   const archiveLinksBlock = renderArchiveLinksBlock(entry, conv);
   if (archiveLinksBlock) frag.appendChild(archiveLinksBlock);
 
-  const sourceLinksBlock = renderSourceLinksBlock(conv);
-  if (sourceLinksBlock) frag.appendChild(sourceLinksBlock);
+  if (STATE.showDebug) {
+    const sourceLinksBlock = renderSourceLinksBlock(conv);
+    if (sourceLinksBlock) frag.appendChild(sourceLinksBlock);
+  }
 
   const narrativeVideoBlock = renderNarrativeVideosBlock(conv);
   if (narrativeVideoBlock) frag.appendChild(narrativeVideoBlock);
@@ -4140,12 +5459,17 @@ function renderConv(conv) {
   const wikiMediaBlock = renderWikiMediaBlock(conv);
   if (wikiMediaBlock) frag.appendChild(wikiMediaBlock);
 
+  const recoveredAudioBlock = renderRecoveredAudioBlock(conv);
+
   // Scene summary: display above the lines when present.
   // Cutscenes get a dedicated structured info panel; all other kinds use the
   // generic summary text block.
   if (conv.kind === "cutscene") {
-    const csPanel = renderCutsceneInfoPanel(conv);
-    if (csPanel) frag.appendChild(csPanel);
+    if (STATE.showDebug) {
+      const csPanel = renderCutsceneInfoPanel(conv, missionTimelineRecovery);
+      if (csPanel) frag.appendChild(csPanel);
+    }
+    if (recoveredAudioBlock) frag.appendChild(recoveredAudioBlock);
   } else if (conv.summary && conv.summary.length) {
     const box = document.createElement("div");
     box.className = "summary-box";
@@ -4165,6 +5489,7 @@ function renderConv(conv) {
     }
     frag.appendChild(box);
   }
+  if (conv.kind !== "cutscene" && recoveredAudioBlock) frag.appendChild(recoveredAudioBlock);
 
   // Attach option groups to the dialog line after which they render. The
   // authoritative signal is the server-provided `after` field (built from the
@@ -4197,7 +5522,10 @@ function renderConv(conv) {
   const outcomesByOptionId = buildLineOrderOutcomeIndex(conv);
 
   for (const grp of conv.optionGroups || []) {
-    if (uncertainOptionLayout) {
+    const hasManualLayoutOverride = grp
+      && grp.manualOverride
+      && grp.manualOverride.kind === "optionLayout";
+    if (uncertainOptionLayout && !hasManualLayoutOverride) {
       uncertainGroups.push(grp);
       continue;
     }
@@ -4330,6 +5658,8 @@ function renderConv(conv) {
       ts.textContent = formatTimelineSeconds(ln.ts);
       body.appendChild(ts);
     }
+    const audioBeforeText = conv.kind === "cutscene";
+    if (audioBeforeText) appendLineAudio(body, ln);
     if (ln.text) {
       const text = document.createElement("div");
       text.className = "text";
@@ -4337,6 +5667,7 @@ function renderConv(conv) {
       body.appendChild(text);
       appendDebugTrace(body, ln._debug, "line");
     }
+    if (!audioBeforeText) appendLineAudio(body, ln);
     appendLineMedia(body, ln);
     appendLineId(body, ln);
     if (ln.id && uncoveredLineIdSet.has(ln.id)) {
@@ -4660,6 +5991,8 @@ function renderConv(conv) {
     const h = document.createElement("div");
     h.className = "opt-group-title";
     h.textContent = uiText("optionGroup").replace("{group}", grp.g);
+    const groupManualTag = renderManualOverrideTag(grp.manualOverride);
+    if (groupManualTag) h.appendChild(groupManualTag);
     g.appendChild(h);
 
     const backlinks = renderOptionGroupBacklinks(grp, conv, outcomesByOptionId);
@@ -4984,6 +6317,9 @@ function renderConv(conv) {
       pendingVideoIdx += 1;
     }
   };
+  if (videoTimelineRows.length && videoTimelineRows[0].start <= 0) {
+    flushVideoRowsBefore(0);
+  }
 
   for (const ln of conv.lines) {
     if (typeof ln.ts === "number" && Number.isFinite(ln.ts)) {
@@ -5063,6 +6399,8 @@ function renderConv(conv) {
       ts.textContent = formatTimelineSeconds(ln.ts);
       body.appendChild(ts);
     }
+    const audioBeforeText = conv.kind === "cutscene";
+    if (audioBeforeText) appendLineAudio(body, ln);
     if (ln.text) {
       const t = document.createElement("div");
       t.className = "text";
@@ -5079,6 +6417,7 @@ function renderConv(conv) {
       body.appendChild(t);
       appendDebugTrace(body, ln._debug, "line");
     }
+    if (!audioBeforeText) appendLineAudio(body, ln);
     appendLineMedia(body, ln);
     if (ln.options && ln.options.length && !snsBranchGroup) {
       const opts = document.createElement("div");
@@ -5273,59 +6612,6 @@ function missionTimelineUniqueStrings(values) {
   return out;
 }
 
-function missionTimelinePushQuestResourceRef(refs, value, kind = "") {
-  const key = String(value || "").trim();
-  if (!key) return;
-  refs.push({ key, kind: kind || "" });
-}
-
-function missionTimelineQuestRefs(quest, flowQuest = null) {
-  const refs = [];
-  const pushRef = (ref) => {
-    if (!ref || typeof ref !== "object") return;
-    const key = String(ref.sceneKey || ref.rawId || ref.value || "").trim();
-    if (!key) return;
-    refs.push({ key, kind: String(ref.kind || "") });
-  };
-
-  for (const ref of missionTimelineArray(quest && quest.storyRefs)) pushRef(ref);
-  for (const action of missionTimelineArray(quest && quest.clientActions)) {
-    for (const ref of missionTimelineArray(action && action.storyRefs)) pushRef(ref);
-  }
-  for (const objective of missionTimelineArray(quest && quest.objectives)) {
-    for (const leaf of missionTimelineArray(objective && objective.conditionLeaves)) {
-      for (const ref of missionTimelineArray(leaf && leaf.storyRefs)) pushRef(ref);
-    }
-  }
-  if (flowQuest && typeof flowQuest === "object") {
-    for (const key of missionTimelineArray(flowQuest.dialogs)) missionTimelinePushQuestResourceRef(refs, key, "dlg");
-    for (const key of missionTimelineArray(flowQuest.cutscenes)) missionTimelinePushQuestResourceRef(refs, key, "cutscene");
-    for (const key of missionTimelineArray(flowQuest.remotecomms)) missionTimelinePushQuestResourceRef(refs, key, "remotecomm");
-    for (const key of missionTimelineArray(flowQuest.radios)) missionTimelinePushQuestResourceRef(refs, key, "radio");
-    for (const anchor of missionTimelineArray(flowQuest.objectiveAnchors)) {
-      for (const key of missionTimelineArray(anchor && anchor.storyRefs)) {
-        missionTimelinePushQuestResourceRef(refs, key);
-      }
-    }
-  }
-
-  const seen = new Set();
-  return refs.filter((ref) => {
-    const dedup = ref.kind + "\0" + ref.key;
-    if (seen.has(dedup)) return false;
-    seen.add(dedup);
-    return true;
-  });
-}
-
-function missionTimelineQuestHasCurrent(quest, flowQuest, flowKeyMap, currentKey) {
-  if (!currentKey) return false;
-  return missionTimelineQuestRefs(quest, flowQuest).some((ref) => {
-    const resolved = resolveFlowConversationKey(ref.key, flowKeyMap);
-    return ref.key === currentKey || resolved === currentKey;
-  });
-}
-
 function missionTimelineSourceTitle(source) {
   if (!source || typeof source !== "object") return "";
   return [source.file, source.field].filter(Boolean).join(" :: ");
@@ -5338,87 +6624,37 @@ function appendMissionTimelineChip(row, text, extraClass = "") {
   return chip;
 }
 
-function missionTimelineAddByQuest(map, questId, value) {
-  const key = String(questId || "").trim();
-  if (!key) return;
-  if (!map.has(key)) map.set(key, []);
-  map.get(key).push(value);
-}
-
-function buildMissionTimelineResourceContext(flow, timeline) {
-  const context = {
-    flowQuestById: new Map(),
-    mapPinsByQuest: new Map(),
-    sceneGraphEdgesByQuest: new Map(),
-    sourceEdgesByQuest: new Map(),
-  };
-  if (flow && typeof flow === "object") {
-    for (const quest of missionTimelineArray(flow.quests)) {
-      if (quest && quest.id) context.flowQuestById.set(String(quest.id), quest);
-    }
-    for (const pin of [
-      ...missionTimelineArray(flow.mapPins),
-      ...missionTimelineArray(flow.scenePins),
-    ]) {
-      for (const questId of missionTimelineArray(pin && pin.questIds)) {
-        missionTimelineAddByQuest(context.mapPinsByQuest, questId, pin);
-      }
-    }
-    for (const edge of missionTimelineArray(flow.sceneGraph && flow.sceneGraph.edges)) {
-      for (const questId of missionTimelineArray(edge && edge.questIds)) {
-        missionTimelineAddByQuest(context.sceneGraphEdgesByQuest, questId, edge);
-      }
-    }
-  }
-  for (const edge of missionTimelineArray(timeline && timeline.sourceBackedSceneEdges)) {
-    for (const questId of missionTimelineArray(edge && edge.questIds)) {
-      missionTimelineAddByQuest(context.sourceEdgesByQuest, questId, edge);
-    }
-  }
-  return context;
-}
-
 function missionTimelinePinLabel(pin) {
   if (!pin || typeof pin !== "object") return "";
   const name = pin.missionAreaId || pin.npcProxyId || pin.scene || pin.trackingType || "";
   const position = pin.position || {};
   const hasPosition = ["x", "y", "z"].some((axis) => position[axis] !== undefined);
-  if (!hasPosition) return String(name || "");
+  const parent = pin.subDataParentId || pin.levelDataParentId || "";
+  const parentText = parent ? ` parent ${parent}` : "";
+  if (!hasPosition) return `${String(name || "")}${parentText}`;
   const coords = ["x", "y", "z"].map((axis) => {
     const value = Number(position[axis]);
     return Number.isFinite(value) ? value.toFixed(1) : "?";
   }).join(", ");
-  return `${name || pin.scene || "pin"} @ ${coords}`;
+  return `${name || pin.scene || "pin"} @ ${coords}${parentText}`;
 }
 
-function missionTimelineFlowLocations(flowQuest, pins) {
-  const values = [];
-  const push = (value) => {
-    const text = String(value || "").trim();
-    if (text) values.push(text);
-  };
-  if (flowQuest && typeof flowQuest === "object") {
-    for (const scene of missionTimelineArray(flowQuest.scenes)) push(scene);
-    for (const proxy of missionTimelineArray(flowQuest.proxies)) push(proxy);
-    for (const tracking of missionTimelineArray(flowQuest.tracking)) {
-      push(tracking && tracking.scene);
-      push(tracking && tracking.missionAreaId);
-      push(tracking && tracking.npcProxyId);
-      push(tracking && tracking.jumpId);
-    }
-    for (const anchor of missionTimelineArray(flowQuest.objectiveAnchors)) {
-      for (const scene of missionTimelineArray(anchor && anchor.sceneIds)) push(scene);
-      for (const area of missionTimelineArray(anchor && anchor.missionAreaIds)) push(area);
-      for (const proxy of missionTimelineArray(anchor && anchor.npcProxyIds)) push(proxy);
-      for (const jump of missionTimelineArray(anchor && anchor.jumpIds)) push(jump);
-    }
-  }
-  for (const pin of missionTimelineArray(pins)) {
-    push(pin && pin.scene);
-    push(pin && pin.missionAreaId);
-    push(pin && pin.npcProxyId);
-  }
-  return missionTimelineUniqueStrings(values);
+function missionTimelineSpatialCandidateLabel(candidate) {
+  if (!candidate || typeof candidate !== "object") return "";
+  const quest = candidate.questId || "?";
+  const script = [candidate.mapId || candidate.levelId, candidate.scriptId].filter(Boolean).join("/");
+  const distance = Number(candidate.distanceXZ);
+  const distText = Number.isFinite(distance) ? ` @ ${distance.toFixed(distance >= 10 ? 1 : 2)}m` : "";
+  return [quest, script ? `via ${script}` : "", distText.trim()].filter(Boolean).join(" ");
+}
+
+function missionTimelineSpatialMatchLabel(match) {
+  if (!match || typeof match !== "object") return "";
+  const scene = match.sceneKey || "";
+  const script = [match.mapId || match.levelId, match.scriptId].filter(Boolean).join("/");
+  const distance = Number(match.distanceXZ);
+  const distText = Number.isFinite(distance) ? ` @ ${distance.toFixed(distance >= 10 ? 1 : 2)}m` : "";
+  return [scene, script ? `via ${script}` : "", distText.trim()].filter(Boolean).join(" ");
 }
 
 function appendMissionTimelineTextLine(container, label, values, { limit = 8 } = {}) {
@@ -5433,6 +6669,37 @@ function appendMissionTimelineTextLine(container, label, values, { limit = 8 } =
   for (const value of cleaned.slice(0, limit)) appendMissionTimelineChip(line, value);
   if (cleaned.length > limit) appendMissionTimelineChip(line, `+${cleaned.length - limit}`);
   container.appendChild(line);
+}
+
+function renderMissionTimelineObjectiveLine(container, rows, { limit = 10 } = {}) {
+  const flat = [];
+  for (const row of missionTimelineArray(rows)) {
+    for (const entry of missionTimelineArray(row && row.entries)) {
+      flat.push({ ...entry, objectiveIndex: row.index || entry.objectiveIndex || "" });
+    }
+  }
+  if (!flat.length) return false;
+
+  const line = document.createElement("div");
+  line.className = "mission-timeline-line mission-timeline-objectives";
+  const labelNode = document.createElement("span");
+  labelNode.className = "mission-timeline-line-label";
+  labelNode.textContent = uiText("missionTimelineObjectiveInstructions") || uiText("missionTimelineObjectives");
+  line.appendChild(labelNode);
+
+  for (const entry of flat.slice(0, limit)) {
+    const node = document.createElement("span");
+    node.className = "mission-timeline-objective-text";
+    node.innerHTML = highlight(entry.text || entry.key || "", STATE.filters.q);
+    node.title = [
+      entry.objectiveIndex ? `#${entry.objectiveIndex}` : "",
+      entry.key || "",
+    ].filter(Boolean).join(" ");
+    line.appendChild(node);
+  }
+  if (flat.length > limit) appendMissionTimelineChip(line, `+${flat.length - limit}`);
+  container.appendChild(line);
+  return true;
 }
 
 function renderMissionTimelineSceneRefs(refs, flowKeyMap, currentKey) {
@@ -5459,221 +6726,11 @@ function renderMissionTimelineSceneRefs(refs, flowKeyMap, currentKey) {
   return row;
 }
 
-function renderMissionTimelineTreeNode(node, questById, resourceContext, flowKeyMap, currentKey) {
-  const questId = String(node && node.questId || "");
-  const quest = questById.get(questId) || {};
-  const flowQuest = resourceContext.flowQuestById.get(questId) || null;
-  const questPins = resourceContext.mapPinsByQuest.get(questId) || missionTimelineArray(flowQuest && flowQuest.pins);
-  const directGraphEdges = [
-    ...missionTimelineArray(resourceContext.sceneGraphEdgesByQuest.get(questId)),
-    ...missionTimelineArray(resourceContext.sourceEdgesByQuest.get(questId)),
-  ];
-  const li = document.createElement("li");
-  li.className = "mission-timeline-node";
-  if (node && node.loop) li.classList.add("is-loop");
-  if (node && node.reused) li.classList.add("is-reused");
-  if (missionTimelineQuestHasCurrent(quest, flowQuest, flowKeyMap, currentKey)) li.classList.add("is-current");
-
-  const panel = document.createElement("div");
-  panel.className = "mission-timeline-node-panel";
-  const sourceTitle = missionTimelineSourceTitle(quest.source || node.source);
-  if (sourceTitle) panel.title = sourceTitle;
-
-  const head = document.createElement("div");
-  head.className = "mission-timeline-node-head";
-  const title = document.createElement("span");
-  title.className = "mission-timeline-quest-id";
-  title.textContent = questId || "?";
-  head.appendChild(title);
-  const tags = document.createElement("span");
-  tags.className = "mission-timeline-tags";
-  if (quest.flowIndex !== undefined) appendMissionTimelineChip(tags, `${uiText("missionTimelineFlow")} ${quest.flowIndex}`);
-  if (quest.questType !== undefined) appendMissionTimelineChip(tags, `type ${quest.questType}`);
-  const prev = missionTimelineArray(quest.prevQuestIds);
-  if (prev.length) appendMissionTimelineChip(tags, `${uiText("missionTimelinePrev")} ${prev.join(", ")}`);
-  if (quest.failedCondition) appendMissionTimelineChip(tags, uiText("missionTimelineGuard"), "mission-timeline-chip-warn");
-  if (node && node.loop) appendMissionTimelineChip(tags, uiText("missionTimelineLoop"), "mission-timeline-chip-warn");
-  if (node && node.reused) appendMissionTimelineChip(tags, uiText("missionTimelineReused"));
-  head.appendChild(tags);
-  panel.appendChild(head);
-
-  const sceneRefs = renderMissionTimelineSceneRefs(
-    missionTimelineQuestRefs(quest, flowQuest),
-    flowKeyMap,
-    currentKey
-  );
-  if (sceneRefs) panel.appendChild(sceneRefs);
-
-  appendMissionTimelineTextLine(
-    panel,
-    uiText("missionTimelineLocations"),
-    missionTimelineFlowLocations(flowQuest, questPins),
-    { limit: 10 }
-  );
-  appendMissionTimelineTextLine(
-    panel,
-    uiText("missionTimelineMapPins"),
-    missionTimelineArray(questPins).map(missionTimelinePinLabel),
-    { limit: 5 }
-  );
-
-  appendMissionTimelineTextLine(
-    panel,
-    uiText("missionTimelineObjectives"),
-    missionTimelineArray(quest.objectives).map((objective) => objective && objective.descriptionKey)
-  );
-  appendMissionTimelineTextLine(
-    panel,
-    uiText("missionTimelineTracking"),
-    missionTimelineArray(quest.objectives).flatMap((objective) =>
-      missionTimelineArray(objective && objective.tracking).map((tracking) =>
-        tracking && (tracking.missionAreaId || tracking.npcProxyId || tracking.scene || tracking.type)
-      )
-    )
-  );
-  appendMissionTimelineTextLine(
-    panel,
-    uiText("missionTimelineActions"),
-    missionTimelineArray(quest.clientActions).map((action) =>
-      action && `${action.actionSlot !== undefined ? action.actionSlot + ": " : ""}${action.actionType || "ClientAction"}`
-    ),
-    { limit: 6 }
-  );
-
-  if (node && node.loopPath && node.loopPath.length) {
-    appendMissionTimelineTextLine(panel, uiText("missionTimelineLoop"), [node.loopPath.join(" -> ")], { limit: 1 });
-  }
-  const graphBlock = renderMissionTimelineInlineEdges(directGraphEdges, flowKeyMap, currentKey);
-  if (graphBlock) panel.appendChild(graphBlock);
-
-  li.appendChild(panel);
-  const children = missionTimelineArray(node && node.children);
-  if (children.length) {
-    const childList = document.createElement("ul");
-    childList.className = "mission-timeline-children";
-    for (const child of children) {
-      childList.appendChild(renderMissionTimelineTreeNode(child, questById, resourceContext, flowKeyMap, currentKey));
-    }
-    li.appendChild(childList);
-  }
-  return li;
+function compareMissionTimelineSceneKeys(a, b) {
+  return String(a || "").localeCompare(String(b || ""), undefined, { numeric: true, sensitivity: "base" });
 }
 
-function renderMissionTimelineTree(nodes, questById, resourceContext, flowKeyMap, currentKey) {
-  const list = document.createElement("ul");
-  list.className = "mission-timeline-tree";
-  for (const node of nodes) {
-    list.appendChild(renderMissionTimelineTreeNode(node, questById, resourceContext, flowKeyMap, currentKey));
-  }
-  return list;
-}
-
-const SCENE_ORDER_UNKNOWN = 1_000_000;
-
-function buildMissionTimelineSceneOrderMap(sceneGraph) {
-  const map = new Map();
-  for (const node of missionTimelineArray(sceneGraph && sceneGraph.nodes)) {
-    const key = String(node && node.key || "").trim();
-    const order = Number(node && node.order);
-    if (key && Number.isFinite(order) && !map.has(key)) {
-      map.set(key, order);
-    }
-  }
-  return map;
-}
-
-function missionTimelineSceneOrderValue(key, flowKeyMap, sceneOrderMap) {
-  const raw = String(key || "").trim();
-  if (!raw || !sceneOrderMap || !sceneOrderMap.size) return SCENE_ORDER_UNKNOWN;
-  const direct = sceneOrderMap.get(raw);
-  if (Number.isFinite(direct)) return direct;
-  const resolved = resolveFlowConversationKey(raw, flowKeyMap);
-  const resolvedOrder = sceneOrderMap.get(resolved);
-  return Number.isFinite(resolvedOrder) ? resolvedOrder : SCENE_ORDER_UNKNOWN;
-}
-
-function compareMissionTimelineSceneKeys(a, b, flowKeyMap, sceneOrderMap) {
-  return (
-    missionTimelineSceneOrderValue(a, flowKeyMap, sceneOrderMap) -
-    missionTimelineSceneOrderValue(b, flowKeyMap, sceneOrderMap)
-  ) || String(a || "").localeCompare(String(b || ""), undefined, { numeric: true });
-}
-
-function renderMissionTimelineSceneOrder(sceneGraph, flowKeyMap, currentKey) {
-  const allNodes = missionTimelineArray(sceneGraph && sceneGraph.nodes)
-    .filter((node) => node && String(node.key || "").trim());
-  if (!allNodes.length) return null;
-  const sceneEdges = missionTimelineArray(sceneGraph && sceneGraph.edges)
-    .filter((edge) => edge && String(edge.from || "").trim() && String(edge.to || "").trim());
-
-  const confirmed = allNodes
-    .filter((node) => node.orderConfirmed !== false)
-    .sort((a, b) => (
-      Number(a.order) - Number(b.order)
-    ) || String(a.key || "").localeCompare(String(b.key || ""), undefined, { numeric: true }));
-  const unconfirmed = allNodes
-    .filter((node) => node.orderConfirmed === false)
-    .sort((a, b) => String(a.key || "").localeCompare(String(b.key || ""), undefined, { numeric: true }));
-
-  const details = document.createElement("details");
-  details.className = "mission-timeline-details";
-  const summary = document.createElement("summary");
-  summary.textContent = `${uiText("missionTimelineSceneOrder")} (${confirmed.length}${unconfirmed.length ? ` + ${unconfirmed.length} ${uiText("missionTimelineOrderUnknown")}` : ""})`;
-  details.appendChild(summary);
-
-  const sceneOrderMap = buildMissionTimelineSceneOrderMap(sceneGraph);
-  const graph = renderMissionTimelineSceneEdgeGraph(sceneEdges, flowKeyMap, currentKey, { sceneOrderMap });
-  if (graph) {
-    details.appendChild(graph);
-  }
-
-  if (!graph || confirmed.length <= 30) {
-    const row = document.createElement("div");
-    row.className = "mission-timeline-edge" + (graph ? " mission-timeline-order-reference" : "");
-    if (graph) {
-      const label = document.createElement("span");
-      label.className = "mission-timeline-unknown-label";
-      label.textContent = uiText("missionTimelineOrderReference");
-      row.appendChild(label);
-    }
-    for (const [index, node] of confirmed.entries()) {
-      if (index) {
-        const arrow = document.createElement("span");
-        arrow.className = "mission-timeline-arrow";
-        arrow.textContent = "->";
-        row.appendChild(arrow);
-      }
-      const chip = createFlowSceneChip(node.key || "?", flowKeyMap, currentKey);
-      if (node.kind) chip.title = [chip.title, node.kind].filter(Boolean).join("\n");
-      row.appendChild(chip);
-    }
-    details.appendChild(row);
-  } else if (confirmed.length) {
-    const more = document.createElement("div");
-    more.className = "mission-timeline-more";
-    more.textContent = uiText("missionTimelineOrderReferenceHidden").replace("{count}", String(confirmed.length));
-    details.appendChild(more);
-  }
-
-  if (unconfirmed.length) {
-    const unknownRow = document.createElement("div");
-    unknownRow.className = "mission-timeline-edge mission-timeline-order-unknown";
-    const label = document.createElement("span");
-    label.className = "mission-timeline-unknown-label";
-    label.textContent = uiText("missionTimelineOrderUnknown");
-    unknownRow.appendChild(label);
-    for (const node of unconfirmed) {
-      const chip = createFlowSceneChip(node.key || "?", flowKeyMap, currentKey);
-      if (node.kind) chip.title = [chip.title, node.kind].filter(Boolean).join("\n");
-      unknownRow.appendChild(chip);
-    }
-    details.appendChild(unknownRow);
-  }
-
-  return details;
-}
-
-function renderMissionTimelineSceneEdges(edges, flowKeyMap, currentKey, { sceneOrderMap = null } = {}) {
+function renderMissionTimelineSceneEdges(edges, flowKeyMap, currentKey) {
   if (!edges.length) return null;
   const details = document.createElement("details");
   details.className = "mission-timeline-details";
@@ -5686,18 +6743,12 @@ function renderMissionTimelineSceneEdges(edges, flowKeyMap, currentKey, { sceneO
     const to = resolveFlowConversationKey(edge.to || "", flowKeyMap) || edge.to;
     return from === currentKey || to === currentKey;
   };
-  const edgeOrder = (edge) => Math.min(
-    missionTimelineSceneOrderValue(edge && edge.from, flowKeyMap, sceneOrderMap),
-    missionTimelineSceneOrderValue(edge && edge.to, flowKeyMap, sceneOrderMap)
-  );
   const ordered = [...edges].sort((a, b) => (
     Number(touchesCurrent(b)) - Number(touchesCurrent(a))
-  ) || (
-    edgeOrder(a) - edgeOrder(b)
-  ) || compareMissionTimelineSceneKeys(a && a.from, b && b.from, flowKeyMap, sceneOrderMap)
-    || compareMissionTimelineSceneKeys(a && a.to, b && b.to, flowKeyMap, sceneOrderMap)
+  ) || compareMissionTimelineSceneKeys(a && a.from, b && b.from)
+    || compareMissionTimelineSceneKeys(a && a.to, b && b.to)
     || String(a && a.kind || "").localeCompare(String(b && b.kind || ""), undefined, { numeric: true }));
-  const graph = renderMissionTimelineSceneEdgeGraph(ordered, flowKeyMap, currentKey, { sceneOrderMap });
+  const graph = renderMissionTimelineSceneEdgeGraph(ordered, flowKeyMap, currentKey);
   if (graph) details.appendChild(graph);
 
   const listLabel = document.createElement("div");
@@ -5732,7 +6783,7 @@ function renderMissionTimelineSceneEdges(edges, flowKeyMap, currentKey, { sceneO
   return details;
 }
 
-function renderMissionTimelineSceneEdgeGraph(edges, flowKeyMap, currentKey, { sceneOrderMap = null } = {}) {
+function renderMissionTimelineSceneEdgeGraph(edges, flowKeyMap, currentKey) {
   const graphEdges = [];
   const seen = new Set();
   for (const edge of missionTimelineArray(edges)) {
@@ -5764,7 +6815,7 @@ function renderMissionTimelineSceneEdgeGraph(edges, flowKeyMap, currentKey, { sc
 
   const components = [];
   const visited = new Set();
-  for (const start of Array.from(undirected.keys()).sort((a, b) => compareMissionTimelineSceneKeys(a, b, flowKeyMap, sceneOrderMap))) {
+  for (const start of Array.from(undirected.keys()).sort(compareMissionTimelineSceneKeys)) {
     if (visited.has(start)) continue;
     const nodes = [];
     const stack = [start];
@@ -5778,15 +6829,12 @@ function renderMissionTimelineSceneEdgeGraph(edges, flowKeyMap, currentKey, { sc
         stack.push(next);
       }
     }
-    nodes.sort((a, b) => compareMissionTimelineSceneKeys(a, b, flowKeyMap, sceneOrderMap));
+    nodes.sort(compareMissionTimelineSceneKeys);
     const edgeCount = nodes.reduce((count, node) => count + missionTimelineArray(outgoing.get(node)).length, 0);
     components.push({ nodes, edgeCount });
   }
-  const componentOrder = (component) => Math.min(
-    ...component.nodes.map((node) => missionTimelineSceneOrderValue(node, flowKeyMap, sceneOrderMap))
-  );
   components.sort((a, b) => (
-    componentOrder(a) - componentOrder(b)
+    compareMissionTimelineSceneKeys(a.nodes[0], b.nodes[0])
   ) || b.edgeCount - a.edgeCount || b.nodes.length - a.nodes.length);
 
   const wrap = document.createElement("div");
@@ -5804,7 +6852,7 @@ function renderMissionTimelineSceneEdgeGraph(edges, flowKeyMap, currentKey, { sc
 
     for (const source of component.nodes) {
       const sourceEdges = missionTimelineArray(outgoing.get(source)).sort((a, b) =>
-        compareMissionTimelineSceneKeys(a && a.to, b && b.to, flowKeyMap, sceneOrderMap)
+        compareMissionTimelineSceneKeys(a && a.to, b && b.to)
           || String(a && a.kind || "").localeCompare(String(b && b.kind || ""), undefined, { numeric: true })
       );
       if (!sourceEdges.length) continue;
@@ -5950,7 +6998,86 @@ function renderMissionTimelineUnresolved(unresolved, flowKeyMap, currentKey) {
   return details;
 }
 
-function renderMissionTimelineRecovery(timeline, conv, missionFlow = null) {
+function renderMissionTimelineQuestSpatialTrack(track, flowKeyMap, currentKey) {
+  const rows = missionTimelineArray(track).filter((row) => row && typeof row === "object");
+  if (!rows.length) return null;
+  const details = document.createElement("details");
+  details.className = "mission-timeline-details mission-timeline-spatial-details";
+  const summary = document.createElement("summary");
+  summary.textContent = `${uiText("missionTimelineQuestSpatialTrack") || "Quest Map Track"} (${rows.length})`;
+  details.appendChild(summary);
+  const note = document.createElement("div");
+  note.className = "mission-timeline-subheading";
+  note.textContent = uiText("missionTimelineSpatialHint") || "Map/resource metadata is a diagnostic placement hint.";
+  details.appendChild(note);
+
+  for (const item of rows.slice(0, 80)) {
+    const row = document.createElement("div");
+    row.className = "mission-timeline-spatial-row";
+    const head = document.createElement("div");
+    head.className = "mission-timeline-spatial-head";
+    appendMissionTimelineChip(head, item.questId || "?", "mission-timeline-quest-id-chip");
+    if (item.flowIndex !== undefined) appendMissionTimelineChip(head, `${uiText("missionTimelineFlow")} ${item.flowIndex}`);
+    const prev = missionTimelineArray(item.prevQuestIds);
+    if (prev.length) appendMissionTimelineChip(head, `${uiText("missionTimelinePrev")} ${prev.join(", ")}`);
+    if (item.distanceFromPrevious !== undefined) appendMissionTimelineChip(head, `d=${item.distanceFromPrevious}`);
+    row.appendChild(head);
+
+    appendMissionTimelineTextLine(
+      row,
+      uiText("missionTimelineMapPins"),
+      missionTimelineArray(item.pins).map(missionTimelinePinLabel),
+      { limit: 6 },
+    );
+    appendMissionTimelineTextLine(
+      row,
+      uiText("missionTimelineSpatialMatches") || "spatial matches",
+      missionTimelineArray(item.spatialSourceMatches).map(missionTimelineSpatialMatchLabel),
+      { limit: 6 },
+    );
+    const objectiveRows = [{
+      entries: missionTimelineArray(item.objectiveInstructions).length
+        ? missionTimelineArray(item.objectiveInstructions).map((instruction) => ({
+          key: instruction && instruction.key,
+          text: instruction && instruction.text,
+          label: instruction && (instruction.text || instruction.key),
+        }))
+        : missionTimelineArray(item.descriptionKeys).map((key) => ({ key, label: key })),
+    }];
+    renderMissionTimelineObjectiveLine(row, objectiveRows, { limit: 6 });
+    const scriptRefs = missionTimelineArray(item.scriptRefs).map((script) => {
+      const mapId = script && (script.mapId || script.levelId || "?");
+      const scriptId = script && (script.scriptId || "?");
+      const key = script && script.key ? `:${script.key}` : "";
+      return `${mapId}/${scriptId}${key}`;
+    });
+    appendMissionTimelineTextLine(
+      row,
+      uiText("missionTimelineSourceScripts") || "source scripts",
+      scriptRefs,
+      { limit: 6 },
+    );
+    const resourceLine = renderMissionTimelineSceneRefs(
+      missionTimelineArray(item.resources).map((resource) => ({
+        key: resource && resource.key,
+        kind: resource && resource.kind,
+      })),
+      flowKeyMap,
+      currentKey,
+    );
+    if (resourceLine) row.appendChild(resourceLine);
+    details.appendChild(row);
+  }
+  if (rows.length > 80) {
+    const more = document.createElement("div");
+    more.className = "mission-timeline-more";
+    more.textContent = `+${rows.length - 80}`;
+    details.appendChild(more);
+  }
+  return details;
+}
+
+function renderMissionTimelineRecovery(timeline, conv) {
   if (!timeline || !missionTimelineArray(timeline.quests).length) return null;
   const box = document.createElement("div");
   box.className = "summary-box mission-timeline-box";
@@ -5963,50 +7090,28 @@ function renderMissionTimelineRecovery(timeline, conv, missionFlow = null) {
   const stats = document.createElement("div");
   stats.className = "mission-timeline-stats";
   const questCount = missionTimelineArray(timeline.quests).length;
-  const treeLoops = missionTimelineArray(timeline.questTree && timeline.questTree.loops).length;
   appendMissionTimelineChip(stats, `${uiText("missionTimelineQuests")} ${questCount}`);
   appendMissionTimelineChip(stats, `${uiText("missionTimelineBranches")} ${missionTimelineArray(timeline.branchPoints).length}`);
   appendMissionTimelineChip(stats, `${uiText("missionTimelineEdges")} ${missionTimelineArray(timeline.sourceBackedSceneEdges).length}`);
   appendMissionTimelineChip(stats, `${uiText("missionTimelineEvidence")} ${Object.keys(timeline.sceneTimelineEvidence || {}).length}`);
   appendMissionTimelineChip(stats, `${uiText("missionTimelineUnresolved")} ${missionTimelineArray(timeline.unresolved).length}`);
-  if (treeLoops) appendMissionTimelineChip(stats, `${uiText("missionTimelineLoop")} ${treeLoops}`, "mission-timeline-chip-warn");
   box.appendChild(stats);
 
   const flowKeyMap = buildFlowConversationKeyMap();
   const currentKey = conv && conv.key ? conv.key : "";
-  const questById = new Map(missionTimelineArray(timeline.quests).map((quest) => [quest.questId, quest]));
-  const resourceContext = buildMissionTimelineResourceContext(missionFlow, timeline);
-  const sceneOrderMap = buildMissionTimelineSceneOrderMap(missionFlow && missionFlow.sceneGraph);
-  const tree = timeline.questTree || {};
-  const roots = missionTimelineArray(tree.roots);
-  const unrootedRoots = missionTimelineArray(tree.unrootedRoots);
+  const spatialBlock = renderMissionTimelineQuestSpatialTrack(
+    timeline.questSpatialTrack,
+    flowKeyMap,
+    currentKey,
+  );
+  if (spatialBlock) box.appendChild(spatialBlock);
 
-  if (roots.length || unrootedRoots.length) {
-    const details = document.createElement("details");
-    details.className = "mission-timeline-details mission-timeline-tree-details";
-    const summary = document.createElement("summary");
-    summary.textContent = `${uiText("missionTimelineTree")} (${(tree.rootQuestIds || []).length || roots.length})`;
-    details.appendChild(summary);
-    if (roots.length) details.appendChild(renderMissionTimelineTree(roots, questById, resourceContext, flowKeyMap, currentKey));
-    if (unrootedRoots.length) {
-      const unrootedLabel = document.createElement("div");
-      unrootedLabel.className = "mission-timeline-subheading";
-      unrootedLabel.textContent = uiText("missionTimelineUnrooted");
-      details.appendChild(unrootedLabel);
-      details.appendChild(renderMissionTimelineTree(unrootedRoots, questById, resourceContext, flowKeyMap, currentKey));
-    }
-    box.appendChild(details);
-  }
-
-  const sceneOrderBlock = renderMissionTimelineSceneOrder(missionFlow && missionFlow.sceneGraph, flowKeyMap, currentKey);
-  if (sceneOrderBlock) box.appendChild(sceneOrderBlock);
   const evidenceBlock = renderMissionTimelineEvidence(timeline.sceneTimelineEvidence || {}, flowKeyMap, currentKey);
   if (evidenceBlock) box.appendChild(evidenceBlock);
   const edgeBlock = renderMissionTimelineSceneEdges(
     missionTimelineArray(timeline.sourceBackedSceneEdges),
     flowKeyMap,
-    currentKey,
-    { sceneOrderMap }
+    currentKey
   );
   if (edgeBlock) box.appendChild(edgeBlock);
   const unresolvedBlock = renderMissionTimelineUnresolved(missionTimelineArray(timeline.unresolved), flowKeyMap, currentKey);
@@ -6044,6 +7149,7 @@ function buildFlowConversationKeyMap() {
     if (!key) continue;
     if (!map.has(key)) map.set(key, key);
     if (key.startsWith("misc_")) noteAlias(key.slice(5), key);
+    if (key.startsWith("text_")) noteAlias(`rp_${key}`, key);
     if (key.startsWith("env_envTalk_")) noteAlias("dlg_" + key.slice(12), key);
   }
 
@@ -6069,6 +7175,7 @@ function createFlowSceneChip(rawKey, flowKeyMap, currentKey) {
     raw.startsWith("remotecomm_") ||
     raw.startsWith("radio_") ||
     raw.startsWith("black_") ||
+    raw.startsWith("text_") ||
     raw.startsWith("cutscene_") ||
     /^dlg_.+_(OpenUI|NewSeries)$/.test(raw);
   const resolvedKey = isUiNode ? "" : resolveFlowConversationKey(raw, flowKeyMap);
@@ -6107,6 +7214,40 @@ function formatTimelineSeconds(value) {
   const minutes = Math.floor(seconds / 60);
   const remaining = seconds - minutes * 60;
   return `${minutes}:${remaining.toFixed(1).padStart(4, "0")}`;
+}
+
+function createAudioControl(src, label = "") {
+  if (!src) return null;
+  const wrap = document.createElement("div");
+  wrap.className = "line-audio";
+  if (label) {
+    const caption = document.createElement("span");
+    caption.className = "line-audio-label";
+    caption.textContent = label;
+    wrap.appendChild(caption);
+  }
+  const audio = document.createElement("audio");
+  audio.preload = "none";
+  audio.src = src;
+  if (label) audio.title = label;
+  const player = window.WebUI && window.WebUI.createMediaPlayer
+    ? window.WebUI.createMediaPlayer(audio)
+    : audio;
+  wrap.appendChild(player);
+  return wrap;
+}
+
+function appendLineAudio(parent, line) {
+  if (!line) return;
+  const variant = line.audioVariants && typeof line.audioVariants === "object"
+    ? line.audioVariants[resolveGenderVariant()]
+    : null;
+  const src = (variant && variant.src) || line.audioSrc || "";
+  if (!src) return;
+  const variantId = variant && variant.id ? String(variant.id) : "";
+  const label = variantId || line.voice || line.audio || "";
+  const node = createAudioControl(src, label);
+  if (node) parent.appendChild(node);
 }
 
 function exportedAssetHref(relPath) {
@@ -6472,8 +7613,8 @@ function resolveStoredGenderVariant() {
 
 function syncGenderVariantControl() {
   const active = resolveGenderVariant();
-  const checkbox = $("#gender-variant");
-  if (checkbox) checkbox.checked = active === "f";
+  const btn = $("#gender-variant");
+  if (btn) btn.setAttribute("aria-pressed", active === "f" ? "true" : "false");
   const label = $("#gender-variant-label");
   if (label) label.textContent = uiText("genderVariant").replace("{gender}", active.toUpperCase());
   applyGenderVariantBodyClass(active);
@@ -6637,7 +7778,7 @@ function renderDisplayedTextHtml(text, q) {
 }
 
 function isDocumentStyleKind(kind) {
-  return kind === "wiki" || kind === "mail" || kind === "prts" || String(kind || "").startsWith("table_");
+  return kind === "wiki" || kind === "mail" || kind === "prts" || kind === "text" || String(kind || "").startsWith("table_");
 }
 
 function normalizeDocumentDisplayText(text) {

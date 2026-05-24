@@ -58,38 +58,65 @@ as `sns_emoji_*` as regular inline emoji with no popup/modal preview, while
 non-emoji SNS media such as `sns_image_*` and `sns_sticker_*` render at normal
 image proportions with bounded hover/modal previews.
 
-`export.bat` is the normal browser-data refresh. It runs:
+The Story sidebar keeps routine browsing quiet by default: recovery issue
+filters, source/debug blocks, mission timeline evidence, cutscene debug panels,
+and manual order-edit controls are available from the `Show debug info` toggle.
+The reset button returns filters to the Story sort while preserving expanded
+mission groups.
 
-- `scripts/export_full_from_game.py --skip-raw-vfs --skip-source-inventory`
+`export.bat` is the normal story/reference browser-data rebuild from an
+existing `export_full/`. It runs:
+
 - `scripts/verify_export_freshness.py`
 - `scripts/story_builder/dialog_registry.py --quiet`
 - `scripts/story_builder/video_bindings.py`
 - `scripts/story_builder/source_links.py`
-- `scripts/build_updates.py`
 - `scripts/story_builder/build.py --languages CN --default-language CN`
-- `scripts/build_assets.py`
+- `scripts/build_audio.py --skip-decode`
 
-For an initial build where there is no useful update history yet:
-
-```bat
-.\export.bat --init-build
-```
-
-For faster local refreshes that can reuse the existing asset search indexes and
-skip demo bundle zip generation:
-
-```bat
-.\export.bat --fast-assets
-```
-
-For a WebUI rebuild from an existing export, skip the main extraction step while
-still checking that `export_full/` matches the installed game data:
+It intentionally skips installed-game export, Updates diffing, fluffy-dumper
+structured export, AnimeStudio story extraction, and 2D/3D asset/animation
+decoding by default. It also leaves the editable Story sort order in
+`webui/overrides/story_order.json` alone; that file is maintained by the OCR
+story-order workflow. Pass `--export-from-game` when you explicitly want to
+refresh `export_full/` from installed game data, run the story export tools,
+decode CN audio, and finish by linking playable `audioSrc` values into the
+generated CN conversations. Without `--export-from-game`, the final audio pass
+reuses existing decoded files under `export_full/structured/Audio/CN/`.
+To refresh the Updates tab after `export_full/` is current, run:
 
 ```bat
-.\export.bat --skip-export-full
+.\build_updates.bat
 ```
 
-CN is exported by default. To build more languages after the export:
+To refresh the Assets tab indexes and story media lookup from existing decoded
+asset outputs, run:
+
+```bat
+.\export_assets.bat
+```
+
+Pass `--export-from-game` when you want that wrapper to run the heavier
+image/model/animation export first.
+
+The final audio pass links `AudioDialog` voice rows and Wwise HIRC event media
+such as cutscene SFX/VO when the event graph reaches decoded media. Run
+`python scripts\build_audio.py --language EN --skip-decode` after building
+other WebUI language folders if those languages already have decoded audio.
+
+For an initial Updates build where there is no useful update history yet:
+
+```bat
+.\build_updates.bat --init-build
+```
+
+To refresh `export_full/` from the installed game before rebuilding:
+
+```bat
+.\export.bat --export-from-game
+```
+
+CN is rebuilt by default. To build more languages after the rebuild:
 
 ```bat
 python scripts\story_builder\build.py --languages CN EN JP --default-language CN
@@ -107,60 +134,62 @@ or:
 .\package_webui.bat
 ```
 
-Packaging writes two zips by default: a smaller story zip with the WebUI,
-story/reference text data, and emoji images, plus a companion assets zip with
-larger story images and videos. Extract the story zip first, then extract the
-assets zip into the same directory when those media files are needed.
+Packaging writes two zips by default: a story zip with the WebUI,
+story/reference text data, emoji images, and decoded story audio, plus a
+companion assets zip with larger story images and videos. Extract the story zip
+first, then extract the assets zip into the same directory when those media
+files are needed.
 
 ## Update Tracking
 
 The Updates tab is built by:
 
 ```bat
-python scripts\build_updates.py
+.\build_updates.bat
 ```
 
-It tracks only the original installed data tree, defaulting to:
+It compares two exported game-data trees. By default the previous tree is:
 
 ```text
-D:\Program Files\Endfield Game\Endfield_Data
+export_122
 ```
 
-It does not scan `webui/`, `memory/`, or other generated repo files, so WebUI
-edits do not appear as upstream data changes. Tracker state lives in
-`.game-data-tracker/`. The first scan initializes the baseline and writes an
-empty update feed; later scans show only changes from the original source tree.
-Local CrashSight telemetry files under `Plugins/x86_64/wesight/crashsight_data/`
-are ignored because they churn during normal local runs and are not installed
-content updates.
+and the current tree is:
 
-The same builder also diffs exported image/model/video assets from
-`export_full/` and adds those asset-level changes to the Updates page. Those
-asset diffs are only reported when the `Endfield_Data` tracker sees a real
-source-data change; export or WebUI rebuild noise without a source-data change
-is silently absorbed into the asset baseline.
+```text
+export_full
+```
 
-If the tracker is run again after a game update has already been recorded,
-`build_updates.py` preserves the last non-empty feed instead of overwriting the
-Updates page with a zero-change report. It can also restore that feed from
-`.game-data-tracker/history/` if the current `latest.json` was already blanked.
-Full non-empty feed snapshots are also kept there as `update-feed-*.json`, so
-future recovery keeps asset-level entries as well as game-data entries.
+Use `--previous-export-root PATH` when comparing against a different saved
+export. The builder does not scan `webui/`, `memory/`, or other generated repo
+files, so WebUI edits do not appear as upstream data changes. Scanner cache and
+feed history live in `.game-data-tracker/`; the cached baseline is built from
+the previous export folder, then `export_full/` is scanned against it.
+
+The same builder can also diff exported image/model/video assets between the
+same two export trees and add those asset-level changes to the Updates page.
+The wrapper passes `--skip-asset-updates` by default so stale heavy asset
+outputs do not affect story/reference refreshes. Run
+`.\build_updates.bat --include-asset-updates` after refreshing heavy assets when
+asset-level changes should be included.
+
+Non-empty feed snapshots are kept in `.game-data-tracker/history/` as
+`update-feed-*.json`.
 
 Write an empty baseline feed for a first-time or baseline-only build:
 
 ```bat
-python scripts\build_updates.py --baseline-only
+.\build_updates.bat --init-build
 ```
 
 If you still want game-data changes but not the exported asset diff, use
+the default `.\build_updates.bat` wrapper. The direct Python script also accepts
 `--skip-asset-updates`.
 
-Reset the baseline only when you intentionally want to treat the current
-installed game files as the new "no changes yet" state:
+Rebuild the cached scanner baseline after replacing the previous export folder:
 
 ```bat
-python scripts\build_updates.py --reset-baseline
+.\build_updates.bat --refresh-previous-export-baseline
 ```
 
 The WebUI feed is written to `webui/data/updates/latest.json`.
@@ -175,12 +204,12 @@ check that guard directly:
 python scripts\verify_export_freshness.py
 ```
 
-If it reports stale source roots, rerun `.\export.bat` so future game-data
-changes are re-extracted before the Story builder or asset indexing reads
-`export_full/`.
+If it reports stale source roots, rerun `.\export.bat --export-from-game` so
+future game-data changes are re-extracted before the Story builder or asset
+indexing reads `export_full/`.
 
-`.\export.bat --skip-export-full` uses this same guard before it rebuilds the
-WebUI from existing `export_full/` data.
+Plain `.\export.bat` uses this same guard before it rebuilds the WebUI from
+existing `export_full/` data.
 
 ## What The Browser Reads
 
@@ -225,38 +254,38 @@ workflow. In this checkout, Unity recovery helpers are project-local under
 
 ## Tool Pointers
 
-The active workflows use Python stdlib scripts plus a small tracked helper set
-under `tools/`. The `tools/` directory is ignored by default, so large vendor
-checkouts and generated tool caches can exist locally without becoming part of
-the maintained repo surface.
+The active wrappers do not require root-level helper tools beyond the WebUI
+scripts. The `tools/` directory is ignored by default, so large vendor
+checkouts, local binaries, and one-off tool experiments can exist there without
+becoming part of the maintained repo surface.
 
-Tracked helpers:
+Tracked helpers are intentionally small:
 
-- `tools/endfield_asset_map_filter.py`: local helper maintained in this repo
-  for asset-map filtering experiments.
-- `tools/endfield_source_graph.py`: local SQLite source-graph builder that
-  connects story, reference text, tables, audio, videos, assets, character
-  recovery manifests, material links, and optional AnimeStudio asset maps.
+- `tools/endfield_source_graph.py`: local SQLite source-graph builder for
+  evidence lookup across generated WebUI story/reference data, selected tables,
+  audio, videos, assets, material links, and optional AnimeStudio asset maps.
   Outputs are written under `reports/source_graph/`. Use
   `python tools\endfield_source_graph.py build --skip-asset-maps` for quick
   iteration, `python tools\endfield_source_graph.py build` for the full graph,
   and `python tools\endfield_source_graph.py query zhuangfy --limit 20` for a
-  simple search.
-- Source-graph follow-up tools: `tools/endfield_voice_audio_linker.py`,
-  `tools/endfield_story_branch_resolver.py`,
-  `tools/endfield_map_level_indexer.py`, and
-  `tools/endfield_semantic_update_classifier.py` build richer reports under
-  `reports/source_graph/`.
-- `tools/endfield-il2cpp/`: tracked offline IL2CPP metadata helpers. The
-  catalog validates/caches `global-metadata.dat`, the mapper links focused
-  method targets to `GameAssembly.dll` addresses, and both write option-flow
-  evidence reports. These are out-of-band diagnostics, not normal
-  `export.bat` steps.
+  simple search. Its old standalone follow-up helper scripts have been folded
+  into this tool's built-in follow-up index generation.
+- `tools/endfield-il2cpp/`: tracked offline IL2CPP metadata helpers used by
+  optional story-recovery audits. They are diagnostics, not normal
+  `export.bat`, Updates, packaging, or WebUI serving steps.
 
 Optional local tool/vendor directories may also exist under ignored `tools/`,
 including AnimeStudio, Ruri.ShaderDecompiler, FractalMiner, TypeTree,
 TypeTreeDumps, ACL helpers, and dumping support. Keep their generated outputs
-local; document only the workflow contract that depends on them.
+local. Standalone downloaders, report experiments, and other non-WebUI helpers
+should stay in `scratch/`, `tmp/`, or ignored local `tools/` entries unless
+they are deliberately promoted with docs.
+
+The maintained gameplay-video OCR workflow can use
+`scripts/download_bilibili_video.py` as an optional intake helper for public
+Bilibili sources. It writes flat `.mp4` files under `videos/` for the Story
+order OCR/audio matcher and requires `requests`, `ffmpeg`, and a
+browser-exported cookie JSON.
 
 Use `scripts/README.md` for the maintained script map. Keep new throwaway
 experiments in `scratch/`, and promote reusable shared helpers only with
@@ -265,11 +294,12 @@ matching docs and intentional tracking.
 ## Active Layout
 
 - `webui/`: static app and generated browser data.
-- `scripts/`: WebUI builders and packaging tools.
-- `scripts/`: WebUI/export helpers.
+- `scripts/`: WebUI builders, packaging tools, and export helpers.
 - `unity_endfield_graph_shader_lab/`: Unity character recovery lab project.
 - `export_full/`: generated data exported from the installed client.
 - `reports/`: durable WebUI/export summaries.
+- `videos/`: local gameplay captures used by optional Story order OCR/audio
+  recovery tools.
 - `scratch/`: disposable local outputs.
 - `memory/`: durable notes, conclusions, and recovery snapshots.
 

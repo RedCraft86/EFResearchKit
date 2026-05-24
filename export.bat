@@ -3,29 +3,24 @@ setlocal
 
 if /I "%~1"=="--help" goto :help
 if /I "%~1"=="-h" goto :help
+if /I "%~1"=="/?" goto :help
+if /I "%~1"=="/h" goto :help
+if /I "%~1"=="help" goto :help
 
 set "EXPORT_ARGS="
 set "VERIFY_EXPORT_ARGS="
-set "BUILD_UPDATES_ARGS="
-set "BUILD_ASSETS_ARGS="
-set "SKIP_EXPORT_FULL=0"
+set "AUDIO_ARGS="
+set "EXPORT_FROM_GAME=0"
 
 :parse_args
 if "%~1"=="" goto :parsed_args
 if /I "%~1"=="--help" goto :help
 if /I "%~1"=="-h" goto :help
-if /I "%~1"=="--init-build" (
-  set "BUILD_UPDATES_ARGS=%BUILD_UPDATES_ARGS% --baseline-only"
-  shift
-  goto :parse_args
-)
-if /I "%~1"=="--fast-assets" (
-  set "BUILD_ASSETS_ARGS=%BUILD_ASSETS_ARGS% --fast"
-  shift
-  goto :parse_args
-)
-if /I "%~1"=="--skip-export-full" (
-  set "SKIP_EXPORT_FULL=1"
+if /I "%~1"=="/?" goto :help
+if /I "%~1"=="/h" goto :help
+if /I "%~1"=="help" goto :help
+if /I "%~1"=="--export-from-game" (
+  set "EXPORT_FROM_GAME=1"
   shift
   goto :parse_args
 )
@@ -36,7 +31,7 @@ if /I "%~1"=="--game-root" (
   )
   set "EXPORT_ARGS=%EXPORT_ARGS% "%~1" "%~2""
   set "VERIFY_EXPORT_ARGS=%VERIFY_EXPORT_ARGS% "%~1" "%~2""
-  set "BUILD_UPDATES_ARGS=%BUILD_UPDATES_ARGS% "%~1" "%~2""
+  set "AUDIO_ARGS=%AUDIO_ARGS% "%~1" "%~2""
   shift
   shift
   goto :parse_args
@@ -47,19 +42,20 @@ goto :parse_args
 
 :parsed_args
 rem WebUI export/build pipeline:
-rem - export structured data and AnimeStudio outputs used by Story/Reference/Assets
-rem - skip raw_vfs and source inventory because the WebUI does not require them
-rem - optionally skip the export step when reusing an already fresh export_full
-rem - build the game-data update feed
+rem - rebuild from existing export_full by default
+rem - export from the installed game only when explicitly requested
+rem - skip raw_vfs, source inventory, structured data, and AnimeStudio by default
 rem - build only CN story/reference data by default
-rem - build the asset index
-if "%SKIP_EXPORT_FULL%"=="1" goto :skip_export_full
-python .\scripts\export_full_from_game.py --skip-raw-vfs --skip-source-inventory %EXPORT_ARGS%
+rem - preserve OCR-managed Story sort order under webui\overrides
+rem - finally rebuild/link CN audio, decoding first only for --export-from-game
+rem - skip image/model/animation asset decoding; use export_assets.bat --export-from-game for that
+if "%EXPORT_FROM_GAME%"=="0" goto :skip_export_full
+python .\scripts\export_full_from_game.py --animestudio-scope story --animestudio-stages maps json_by_type %EXPORT_ARGS%
 if errorlevel 1 exit /b %errorlevel%
 goto :after_export_full
 
 :skip_export_full
-echo [export.bat] Skipping scripts\export_full_from_game.py; verifying existing export_full before building.
+echo [export.bat] Reusing existing export_full; pass --export-from-game to refresh from installed game data.
 
 :after_export_full
 
@@ -75,34 +71,40 @@ if errorlevel 1 exit /b %errorlevel%
 python .\scripts\story_builder\source_links.py
 if errorlevel 1 exit /b %errorlevel%
 
-python .\scripts\build_updates.py %BUILD_UPDATES_ARGS%
-if errorlevel 1 exit /b %errorlevel%
-
 python .\scripts\story_builder\build.py --languages CN --default-language CN
 if errorlevel 1 exit /b %errorlevel%
 
-python .\scripts\build_assets.py %BUILD_ASSETS_ARGS%
+if "%EXPORT_FROM_GAME%"=="1" goto :decode_audio
+python .\scripts\build_audio.py --skip-decode %AUDIO_ARGS%
 if errorlevel 1 exit /b %errorlevel%
+goto :after_audio
+
+:decode_audio
+python .\scripts\build_audio.py %AUDIO_ARGS%
+if errorlevel 1 exit /b %errorlevel%
+
+:after_audio
 
 endlocal
 exit /b 0
 
 :help
-echo Usage: export.bat [--init-build] [--fast-assets] [--skip-export-full] [--game-root Endfield_Data] [export_full_from_game.py options]
+echo Usage: export.bat [--export-from-game] [export_full_from_game.py options]
 echo.
-echo Runs the WebUI-focused export/build pipeline. Story/reference output is CN only.
-echo Verifies export freshness before the long WebUI builders run.
+echo Runs the story/reference WebUI refresh from existing export_full by default,
+echo verifies export freshness, rebuilds source-link evidence, builds CN data,
+echo preserves OCR-managed Story sort order, and links decoded Story audio.
+echo Reading installed game data and tool-based extraction are opt-in.
 echo.
-echo   --init-build          Write an empty baseline Updates feed and skip asset diffing.
-echo   --fast-assets         Build asset indexes but skip demo bundle zip generation.
-echo   --skip-export-full    Reuse existing export_full and only verify freshness before builders.
-echo   --game-root PATH      Use a non-default installed Endfield_Data path.
+echo   --export-from-game    Refresh export_full and decode audio from installed game data.
 echo.
-python .\scripts\export_full_from_game.py --help
-if errorlevel 1 (
-  set "ERR=%errorlevel%"
-  endlocal
-  exit /b %ERR%
-)
+echo Other arguments are passed to scripts\export_full_from_game.py when
+echo --export-from-game is present, or to the freshness verifier where relevant.
+echo.
+echo Companion wrappers:
+echo   build_updates.bat     Build the Updates tab feed.
+echo   export_assets.bat     Rebuild asset indexes; pass --export-from-game to decode assets.
+echo   package_webui.bat     Create split shareable WebUI zips.
+echo.
 endlocal
 exit /b 0
