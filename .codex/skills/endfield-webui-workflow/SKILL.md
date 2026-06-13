@@ -21,6 +21,7 @@ This is the first skill to open for requests such as:
 From the repo root:
 
 ```bat
+.\setup_first_time.bat
 .\export.bat
 .\export.bat --export-from-game
 .\build_updates.bat
@@ -31,6 +32,12 @@ python serve.py 9000
 python scripts\package_webui.py
 ```
 
+Use `setup_first_time.bat` as the user-facing all-in-one first-time setup path
+from an installed game client. It initializes/builds AnimeStudio, downloads and
+builds the patched local `fluffy-dumper`, runs the installed-game Story export,
+runs the Assets export, creates the initial Updates baseline, then starts or
+reuses the default WebUI server unless `--no-serve` is passed.
+
 Use `export.bat` as the default story/reference rebuild path from an existing
 `export_full/`. It verifies export freshness, rebuilds DialogIdTable and story
 source-link evidence, rebuilds CN story/reference data, leaves the
@@ -40,10 +47,16 @@ It skips installed-game export, fluffy-dumper structured export, and AnimeStudio
 story extraction by default. Pass `--export-from-game` only when installed game
 data should be refreshed, the story export tools should run, and CN audio
 should be decoded before the final link pass.
-Use `build_updates.bat` as the standalone Updates feed comparison. It skips
-asset-level update entries by default; pass `--include-asset-updates` only
-after refreshing heavy assets. Use `export_assets.bat` for Assets tab indexes;
-pass `--export-from-game` to run the heavier image/model/animation decode.
+Use `build_updates.bat` as the standalone Updates feed comparison. It tracks
+WebUI-facing exported text JSON plus exported image/model/video assets and
+decoded audio by default. Asset modifications use fast size fingerprints; pass
+`--hash-asset-updates` when same-size binary modifications must be detected, or
+`--skip-asset-updates` for a text-only feed. Preview previous-export pruning
+with `--dry-run-prune-previous-export-untracked`; use
+`--prune-previous-export-untracked` only when intentionally deleting old export
+files outside the focused tracked scope. Use `export_assets.bat` for Assets tab
+indexes; pass `--export-from-game` to run the heavier image/model/animation
+decode.
 
 When running `python scripts\story_builder\build.py` directly, use a
 longer timeout. The default CN lean build currently takes about 3 minutes on
@@ -206,13 +219,15 @@ Narrative video inline-attachment overrides live in
 `webui/overrides/narrative_videos.json`. Use `attachInline` when a filename
 stem is known to belong to a different story key, and use `suppressInline`
 when a video should remain as a standalone `video_*` row but must not attach to
-a resolved story key:
+a resolved story key. Add `audioFrom` to an `attachInline` rule when the target
+cutscene should inherit audio events from another cutscene during audio relink:
 
 ```json
 {
   "attachInline": {
     "cutscene_example_2": {
       "stems": ["cs_video_other_name_1"],
+      "audioFrom": ["cutscene_example_1"],
       "note": "Short factual reason."
     }
   },
@@ -281,6 +296,7 @@ breaking normal browsing.
 
 - Keep root docs focused on active workflow, not investigation conclusions.
 - Put durable conclusions in `memory/`, not `reports/`.
-- Do not point Updates tracking at `webui/` or other generated repo folders.
+- Do not point Updates tracking at `webui/` or other generated repo folders;
+  compare saved/current export roots instead.
 - Treat ignored local vendor/tool caches under `tools/` as optional workflow
   dependencies; the tracked helper set is intentionally small.

@@ -439,7 +439,8 @@ html, body {
   font-size: 11px;
   flex-shrink: 0;
 }
-.story-order-mission-lock-button {
+.story-order-mission-lock-button,
+.story-order-mission-move-unused-button {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -457,10 +458,22 @@ html, body {
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
-.story-order-mission-lock-button .story-order-pin-icon {
+.story-order-mission-lock-button .story-order-pin-icon,
+.story-order-mission-move-unused-button .story-order-pin-icon {
   width: 12px;
   height: 12px;
   flex: 0 0 auto;
+}
+.story-order-mission-move-unused-button:not(:disabled):hover,
+.story-order-mission-move-unused-button:not(:disabled):focus-visible {
+  border-color: var(--border);
+  background: rgba(var(--fg-rgb), 0.16);
+  color: var(--text);
+  outline: none;
+}
+.story-order-mission-move-unused-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .story-order-mission-lock-button.is-editable {
   border-color: var(--border);
@@ -2419,7 +2432,6 @@ mark { background: rgba(var(--fg-rgb), 0.08); color: var(--text); padding: 0 2px
 .rich-tag {
   color: var(--accent);
   font-weight: 600;
-  border-bottom: 1px dotted var(--accent);
 }
 
 .rich-strike {
@@ -3341,6 +3353,32 @@ body.is-resizing-pane * {
   text-decoration: underline;
 }
 
+.updates-media-comparison {
+  display: grid;
+  gap: 12px;
+}
+
+.updates-media-comparison.is-comparison {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.updates-media-item {
+  min-width: 0;
+}
+
+.updates-media-label {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .updates-media-link {
   display: flex;
   min-height: 220px;
@@ -3363,14 +3401,135 @@ body.is-resizing-pane * {
 
 .updates-media-video {
   width: 100%;
+  border: 1px solid rgba(var(--accent-rgb), 0.24);
+  border-radius: 6px;
+  background: var(--bg-3);
 }
 
 .updates-media-preview .media-player {
   width: 100%;
+  border: 1px solid rgba(var(--accent-rgb), 0.24);
+  border-radius: 6px;
+  background: var(--bg-3);
 }
 
 .updates-media-preview .media-player-video .media-player-element {
   max-height: 62vh;
+}
+
+.updates-model-file {
+  display: flex;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid rgba(var(--accent-rgb), 0.24);
+  border-radius: 6px;
+  background: var(--bg-3);
+  color: var(--text);
+  text-align: center;
+  text-decoration: none;
+}
+
+.updates-model-file:hover {
+  border-color: rgba(var(--accent-rgb), 0.42);
+}
+
+.updates-model-file-kind {
+  display: inline-flex;
+  min-width: 54px;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--accent);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.updates-model-file-name {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+}
+
+.updates-model-file-caption {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.updates-model-preview {
+  display: grid;
+  min-height: 220px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--accent-rgb), 0.24);
+  border-radius: 6px;
+  background: var(--bg-3);
+}
+
+.updates-model-canvas {
+  display: block;
+  width: 100%;
+  height: clamp(220px, 42vh, 520px);
+}
+
+.updates-model-note {
+  min-height: 24px;
+  padding: 6px 10px 8px;
+  border-top: 1px solid rgba(var(--fg-rgb), 0.08);
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.updates-model-note.is-error {
+  color: #9d2323;
+}
+
+.updates-media-diff-stage {
+  position: relative;
+  display: flex;
+  min-height: 220px;
+  max-height: 62vh;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid rgba(var(--accent-rgb), 0.24);
+  border-radius: 6px;
+  background:
+    linear-gradient(45deg, rgba(var(--fg-rgb), 0.045) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(var(--fg-rgb), 0.045) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(var(--fg-rgb), 0.045) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(var(--fg-rgb), 0.045) 75%),
+    var(--bg-3);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.updates-media-diff-canvas {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  max-height: 62vh;
+  object-fit: contain;
+}
+
+.updates-diff-source-video {
+  display: none;
+}
+
+.updates-media-diff-note {
+  min-height: 18px;
+}
+
+.updates-media-diff-note.is-error {
+  color: #9d2323;
 }
 
 .updates-media-open {
@@ -3398,18 +3557,21 @@ body.is-resizing-pane * {
 .updates-diff-line {
   min-height: 1.45em;
   padding: 0 10px;
+  border-left: 3px solid transparent;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .updates-diff-add {
-  background: rgba(var(--fg-rgb), 0.12);
-  color: var(--text);
+  background: rgba(42, 157, 88, 0.14);
+  border-left-color: #2a9d58;
+  color: #17683a;
 }
 
 .updates-diff-del {
-  background: rgba(var(--fg-rgb), 0.12);
-  color: var(--text);
+  background: rgba(214, 63, 63, 0.14);
+  border-left-color: #d63f3f;
+  color: #9d2323;
 }
 
 .updates-diff-hunk,
@@ -3515,6 +3677,21 @@ body.is-resizing-pane * {
   color: var(--text);
 }
 
+.asset-badge-video {
+  background: rgba(var(--accent-rgb), 0.14);
+  color: var(--accent);
+}
+
+.asset-badge-json {
+  background: rgba(118, 171, 174, 0.14);
+  color: var(--accent-2);
+}
+
+.asset-badge-file {
+  background: rgba(var(--fg-rgb), 0.12);
+  color: var(--muted);
+}
+
 #asset-detail-header {
   position: sticky;
   top: 0;
@@ -3612,6 +3789,29 @@ body.is-resizing-pane * {
   max-width: 100%;
   max-height: 72vh;
   object-fit: contain;
+}
+
+#asset-preview-video {
+  display: block;
+  width: 100%;
+  max-height: 72vh;
+  background: #05070a;
+}
+
+#asset-preview-text {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-height: 72vh;
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  color: var(--text);
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 #asset-model-canvas {
@@ -3817,6 +4017,10 @@ body.is-resizing-pane * {
   #updates-app {
     height: auto;
     min-height: 100vh;
+    grid-template-columns: 1fr;
+  }
+
+  .updates-media-comparison.is-comparison {
     grid-template-columns: 1fr;
   }
 
@@ -4259,11 +4463,92 @@ body:not(.show-debug) .filter-section[data-filter-section="recovery-method"] {
 /* Hide mission-order editing controls unless the debug toggle is on */
 body:not(.show-debug) #story-order-editor-row,
 body:not(.show-debug) .story-order-mission-lock-button,
+body:not(.show-debug) .story-order-mission-move-unused-button,
 body:not(.show-debug) .story-order-drag-handle,
-body:not(.show-debug) .story-order-save-status {
+body:not(.show-debug) .story-order-save-status,
+body:not(.show-debug) .story-order-unused-toggle,
+body:not(.show-debug) .story-order-remove-from-mission {
   display: none !important;
 }
 
+/* "Possibly unused" badge — informational, always visible */
+.story-order-unused-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #8a6a00;
+  background: rgba(245, 196, 0, 0.18);
+  border: 1px solid rgba(184, 134, 0, 0.45);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.row.item.story-order-possibly-unused .item-key,
+.row.item.story-order-possibly-unused .item-preview {
+  opacity: 0.55;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.row.item.story-order-possibly-unused.selected .item-key,
+.row.item.story-order-possibly-unused.selected .item-preview {
+  opacity: 0.8;
+}
+
+/* Debug toggle — small inline checkbox-style button */
+.story-order-unused-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.story-order-unused-toggle:hover,
+.story-order-unused-toggle:focus-visible {
+  color: #8a6a00;
+  border-color: rgba(184, 134, 0, 0.6);
+  background: rgba(245, 196, 0, 0.1);
+  outline: none;
+}
+.story-order-unused-toggle.is-on {
+  color: #8a6a00;
+  border-color: rgba(184, 134, 0, 0.6);
+  background: rgba(245, 196, 0, 0.18);
+}
+.story-order-unused-toggle-mark {
+  display: inline-block;
+  width: 10px;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* Remove-from-mission button — for entries whose key lacks the mission code */
+.story-order-remove-from-mission {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #b03030;
+  background: rgba(220, 60, 60, 0.08);
+  border: 1px solid rgba(176, 48, 48, 0.45);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.story-order-remove-from-mission:hover,
+.story-order-remove-from-mission:focus-visible {
+  background: rgba(220, 60, 60, 0.2);
+  outline: none;
+}
 /* Sidebar header toggle buttons (Show debug, Gender) — match #reset chrome,
    filled state when aria-pressed="true" */
 .header-toggle-button {

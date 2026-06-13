@@ -4,7 +4,8 @@ Usage:
     python serve.py        # serves on http://localhost:8765
     python serve.py 9000   # custom port
 
-Serves the `webui` app at `/` and raw exported assets at `/export_full/...`.
+Serves the `webui` app at `/`, raw current exported assets at
+`/export_full/...`, and saved previous-export assets at `/export_previous/...`.
 """
 from __future__ import annotations
 
@@ -26,8 +27,112 @@ STORY_ORDER_OVERRIDE_PATH = WEBUI_ROOT / "overrides" / "story_order.json"
 MAX_WRITE_BYTES = 5 * 1024 * 1024
 
 
+def resolve_previous_export_root() -> Path:
+    env_root = os.environ.get("WEBUI_PREVIOUS_EXPORT_ROOT")
+    if env_root:
+        root = Path(env_root)
+        return root if root.is_absolute() else PROJECT_ROOT / root
+
+    feed_path = WEBUI_ROOT / "data" / "updates" / "latest.json"
+    try:
+        payload = json.loads(feed_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        payload = {}
+    previous_root = (
+        payload.get("previousSourceRoot")
+        or (payload.get("tracker") or {}).get("previousSourceRoot")
+        or "export_122"
+    )
+    root = Path(str(previous_root))
+    return root if root.is_absolute() else PROJECT_ROOT / root
+
+
+PREVIOUS_EXPORT_ROOT = resolve_previous_export_root()
+
+
+ERROR_PAGE_TEMPLATE = """<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>%(code)d %(message)s &middot; Endfield Story Browser</title>
+<style>
+  :root {
+    --bg: #f5f5f5;
+    --bg-3: #ffffff;
+    --border: rgba(48, 56, 65, 0.18);
+    --text: #303841;
+    --muted: rgba(48, 56, 65, 0.62);
+    --accent: #ff5722;
+    --accent-rgb: 255, 87, 34;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100%%;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Microsoft YaHei", sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  body { display: flex; flex-direction: column; min-height: 100vh; }
+  header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background:
+      linear-gradient(180deg, rgba(var(--accent-rgb), 0.08), rgba(var(--accent-rgb), 0)),
+      var(--bg);
+    font-size: 14px; font-weight: 700; letter-spacing: 0.03em;
+  }
+  main {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 32px 16px;
+  }
+  .error-card {
+    max-width: 560px; width: 100%%;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px 32px;
+    box-shadow: 0 2px 8px rgba(48, 56, 65, 0.05);
+  }
+  .error-code {
+    font-size: 48px; font-weight: 700; color: var(--accent);
+    line-height: 1; margin: 0 0 4px;
+  }
+  .error-message {
+    margin: 0 0 16px;
+    font-size: 18px; font-weight: 600;
+  }
+  .error-explain {
+    margin: 0 0 20px;
+    color: var(--muted); font-size: 13px;
+    word-break: break-word;
+  }
+  .error-actions a {
+    color: var(--accent); text-decoration: none; font-weight: 600;
+  }
+  .error-actions a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<header>&#32456;&#26411;&#22320;&#23545;&#35805;&#27983;&#35272;&#22120; / Endfield Story Browser</header>
+<main>
+  <div class="error-card">
+    <p class="error-code">%(code)d</p>
+    <p class="error-message">%(message)s</p>
+    <p class="error-explain">%(explain)s</p>
+    <p class="error-actions"><a href="/">&larr; &#36820;&#22238;&#39318;&#39029; / Back to home</a></p>
+  </div>
+</main>
+</body>
+</html>
+"""
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     _range_remaining: int | None = None
+    error_message_format = ERROR_PAGE_TEMPLATE
+    error_content_type = "text/html; charset=utf-8"
 
     def _send_json(self, status: int, payload: dict) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -97,12 +202,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         request_path = urlsplit(path).path or "/"
         root = WEBUI_ROOT
         export_full = request_path.startswith("/export_full/") or request_path == "/export_full"
+        export_previous = request_path.startswith("/export_previous/") or request_path == "/export_previous"
 
         if export_full:
             root = EXPORT_FULL_ROOT
             request_path = "/" + request_path.removeprefix("/export_full").lstrip("/")
+        elif export_previous:
+            root = PREVIOUS_EXPORT_ROOT
+            request_path = "/" + request_path.removeprefix("/export_previous").lstrip("/")
 
-        if not export_full and request_path in ("", "/"):
+        if not export_full and not export_previous and request_path in ("", "/"):
             request_path = "/index.html"
 
         self.directory = str(root)
@@ -219,7 +328,7 @@ def main(argv: list[str] | None = None) -> None:
 
     with http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler) as httpd:
         url = f"http://127.0.0.1:{port}/"
-        print(f"Serving {WEBUI_ROOT} and {EXPORT_FULL_ROOT} at {url}")
+        print(f"Serving {WEBUI_ROOT}, {EXPORT_FULL_ROOT}, and {PREVIOUS_EXPORT_ROOT} at {url}")
         print("Press Ctrl-C to stop.")
         if os.environ.get("WEBUI_NO_BROWSER", "").lower() not in {"1", "true", "yes"}:
             webbrowser.open(url)
