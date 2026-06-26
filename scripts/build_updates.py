@@ -66,6 +66,8 @@ AUDIO_EXTENSIONS = {
     ".wav",
     ".wem",
 }
+AUDIO_EXPORT_RELATIVE_ROOT = "structured/Audio"
+AUDIO_SOURCE_LABEL = "Audio"
 DECODED_IMPACT_SAMPLE_LIMIT = 200
 PRUNE_SAMPLE_LIMIT = 200
 IGNORED_GAME_PATH_PREFIXES = (
@@ -215,9 +217,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--prune-previous-export-untracked",
         action="store_true",
         help=(
-            "After a successful focused comparison, delete files from the "
-            "previous export root that are outside the tracked text JSON roots "
-            "and tracked asset files."
+            "After a successful comparison, delete previous-export files that "
+            "exist byte-identically at the same relative path in the current "
+            "export root."
         ),
     )
     parser.add_argument(
@@ -608,9 +610,9 @@ def asset_kind_for_suffix(suffix: str) -> str:
 
 def resolve_update_asset_source_roots(export_root: Path) -> list[tuple[str, Path]]:
     roots = list(resolve_asset_source_roots(export_root))
-    audio_root = export_root / "structured" / "Audio"
+    audio_root = export_root / AUDIO_EXPORT_RELATIVE_ROOT
     if audio_root.exists():
-        roots.append(("Audio", audio_root))
+        roots.append((AUDIO_SOURCE_LABEL, audio_root))
     return roots
 
 
@@ -630,6 +632,7 @@ def build_asset_snapshot(
     prior_assets: dict[str, dict[str, Any]] | None = None,
     *,
     hash_contents: bool = False,
+    preserve_missing_prior_assets: bool = False,
 ) -> dict[str, dict[str, Any]]:
     assets: dict[str, dict[str, Any]] = {}
     prior_assets = prior_assets or {}
@@ -682,6 +685,13 @@ def build_asset_snapshot(
                     "digest": digest,
                     "fingerprintMode": fingerprint_mode,
                 }
+    if preserve_missing_prior_assets:
+        for rel_path, old_asset in prior_assets.items():
+            if rel_path in assets or not isinstance(old_asset, dict):
+                continue
+            preserved = dict(old_asset)
+            preserved["missing_on_disk"] = True
+            assets[rel_path] = preserved
     return assets
 
 
@@ -717,17 +727,6 @@ def write_asset_state(path: Path, assets: dict[str, dict[str, Any]], *, export_r
     write_json(path, payload)
 
 
-def asset_export_rel_paths(assets: dict[str, dict[str, Any]]) -> set[str]:
-    paths: set[str] = set()
-    for asset in assets.values():
-        if not isinstance(asset, dict):
-            continue
-        rel_path = normalize_posix(str(asset.get("export_rel") or ""))
-        if rel_path:
-            paths.add(rel_path)
-    return paths
-
-
 def iter_existing_relative_files(root: Path) -> list[str]:
     out: list[str] = []
     if not root.exists():
@@ -743,24 +742,39 @@ def iter_existing_relative_files(root: Path) -> list[str]:
     return out
 
 
-def collect_existing_relative_files(root: Path, relative_paths: list[str]) -> set[str]:
-    out: set[str] = set()
-    for rel_path in normalized_relative_paths(relative_paths):
-        path = root / rel_path
-        if path.is_file():
-            out.add(normalize_posix(rel_path))
+def files_match_for_prune(previous_path: Path, current_path: Path) -> bool:
+    try:
+        previous_stat = previous_path.stat()
+        current_stat = current_path.stat()
+    except OSError:
+        return False
+    if previous_stat.st_size != current_stat.st_size:
+        return False
+    try:
+        with previous_path.open("rb") as previous_file, current_path.open("rb") as current_file:
+            while True:
+                previous_chunk = previous_file.read(ASSET_HASH_CHUNK_SIZE)
+                current_chunk = current_file.read(ASSET_HASH_CHUNK_SIZE)
+                if previous_chunk != current_chunk:
+                    return False
+                if not previous_chunk:
+                    return True
+    except OSError:
+        return False
+
+
+def collect_unchanged_current_relative_files(previous_root: Path, current_root: Path) -> set[str]:
+    """Return previous files that current export already carries unchanged."""
+    unchanged: set[str] = set()
+    for rel_path in iter_existing_relative_files(previous_root):
+        previous_path = previous_root / rel_path
+        current_path = current_root / rel_path
+        try:
+            if current_path.is_file() and files_match_for_prune(previous_path, current_path):
+                unchanged.add(rel_path)
+        except OSError:
             continue
-        if not path.is_dir():
-            continue
-        for dirpath, dirnames, filenames in os.walk(path):
-            dirnames.sort()
-            filenames.sort()
-            base_dir = Path(dirpath)
-            for filename in filenames:
-                file_path = base_dir / filename
-                if file_path.is_file():
-                    out.add(file_path.relative_to(root).as_posix())
-    return out
+    return unchanged
 
 
 def assert_safe_previous_export_prune(previous_export_root: Path, current_export_root: Path) -> None:
@@ -801,23 +815,14 @@ def prune_previous_export_untracked(
     *,
     previous_export_root: Path,
     current_export_root: Path,
-    include_relative_paths: list[str],
-    tracked_asset_paths: set[str],
     dry_run: bool,
 ) -> dict[str, Any]:
-    if not include_relative_paths:
-        raise SystemExit(
-            "--prune-previous-export-untracked is only supported for the focused "
-            "WebUI text JSON scan, not --full-export-scan."
-        )
     assert_safe_previous_export_prune(previous_export_root, current_export_root)
 
     previous_resolved = previous_export_root.resolve()
-    text_paths = collect_existing_relative_files(previous_resolved, include_relative_paths)
-    asset_paths = {normalize_posix(path) for path in tracked_asset_paths if normalize_posix(path)}
-    keep_paths = text_paths | asset_paths
+    unchanged_current_paths = collect_unchanged_current_relative_files(previous_resolved, current_export_root.resolve())
     all_paths = set(iter_existing_relative_files(previous_resolved))
-    delete_paths = sorted(path for path in all_paths if path not in keep_paths)
+    delete_paths = sorted(unchanged_current_paths)
 
     deleted_files = 0
     bytes_deleted = 0
@@ -839,9 +844,9 @@ def prune_previous_export_untracked(
         "enabled": True,
         "dryRun": dry_run,
         "previousExportRoot": str(previous_export_root),
-        "trackedTextFiles": len(text_paths),
-        "trackedAssetFiles": len(asset_paths),
-        "keptFiles": len(all_paths & keep_paths),
+        "trackedFiles": len(all_paths),
+        "unchangedCurrentFiles": len(unchanged_current_paths),
+        "keptFiles": len(all_paths - unchanged_current_paths),
         "deletedFiles": deleted_files,
         "bytesDeleted": bytes_deleted,
         "emptyDirsDeleted": empty_dirs_deleted,
@@ -886,6 +891,19 @@ def asset_update_entry(status: str, asset: dict[str, Any], old_asset: dict[str, 
     return entry
 
 
+def asset_is_modified(old_asset: dict[str, Any], new_asset: dict[str, Any]) -> bool:
+    if old_asset.get("digest") == new_asset.get("digest"):
+        return False
+    if (
+        old_asset.get("missing_on_disk")
+        and old_asset.get("size") is not None
+        and new_asset.get("size") is not None
+        and int(old_asset.get("size") or -1) == int(new_asset.get("size") or -2)
+    ):
+        return False
+    return True
+
+
 def build_asset_diff(
     old_assets: dict[str, dict[str, Any]],
     new_assets: dict[str, dict[str, Any]],
@@ -907,7 +925,7 @@ def build_asset_diff(
     for rel_path in sorted(old_paths & new_paths):
         old_asset = old_assets[rel_path]
         new_asset = new_assets[rel_path]
-        if old_asset.get("digest") != new_asset.get("digest"):
+        if asset_is_modified(old_asset, new_asset):
             modified.append(asset_update_entry("modified", new_asset, old_asset))
 
     totals = {
@@ -1191,7 +1209,7 @@ def attach_asset_updates(
     sample_limit: int,
     skip_asset_updates: bool = False,
     hash_asset_updates: bool = False,
-) -> set[str]:
+) -> None:
     asset_state_path = state_dir / "asset-state.json"
     old_assets = load_asset_state(asset_state_path, export_root=export_root)
     asset_scan_available = export_root.exists()
@@ -1224,7 +1242,7 @@ def attach_asset_updates(
             "truncated": {"added": 0, "modified": 0, "deleted": 0},
             "breakdown": {"byKind": {}, "byExtension": {}},
         }
-        return set()
+        return
 
     if previous_export_root is not None:
         previous_asset_scan_available = previous_export_root.exists()
@@ -1251,7 +1269,7 @@ def attach_asset_updates(
                 "truncated": {"added": 0, "modified": 0, "deleted": 0},
                 "breakdown": {"byKind": {}, "byExtension": {}},
             }
-            return set()
+            return
 
         previous_asset_state_path = state_dir / "asset-state-previous-export.json"
         current_asset_state_path = state_dir / "asset-state-current-export.json"
@@ -1259,6 +1277,7 @@ def attach_asset_updates(
             previous_export_root,
             load_asset_state(previous_asset_state_path, export_root=previous_export_root),
             hash_contents=hash_asset_updates,
+            preserve_missing_prior_assets=True,
         )
         new_assets = build_asset_snapshot(
             export_root,
@@ -1302,7 +1321,7 @@ def attach_asset_updates(
             STATUS_ORDER.get(str(entry.get("status")), 99),
             str(entry.get("path", "")).lower(),
         ))
-        return asset_export_rel_paths(old_assets)
+        return
 
     if not asset_scan_available:
         payload["assetTotals"] = zero_totals()
@@ -1322,7 +1341,7 @@ def attach_asset_updates(
             "truncated": {"added": 0, "modified": 0, "deleted": 0},
             "breakdown": {"byKind": {}, "byExtension": {}},
         }
-        return set()
+        return
 
     new_assets = build_asset_snapshot(export_root, old_assets, hash_contents=hash_asset_updates)
     asset_baseline_initialized = not old_assets
@@ -1367,7 +1386,7 @@ def attach_asset_updates(
         STATUS_ORDER.get(str(entry.get("status")), 99),
         str(entry.get("path", "")).lower(),
     ))
-    return set()
+    return
 
 
 def run_tracker(
@@ -1478,8 +1497,6 @@ def main(argv: list[str] | None = None) -> int:
     if prune_requested:
         if args.baseline_only:
             raise SystemExit("--prune-previous-export-untracked is not valid with --baseline-only.")
-        if args.full_export_scan:
-            raise SystemExit("--prune-previous-export-untracked is not valid with --full-export-scan.")
         assert_safe_previous_export_prune(previous_export_root, export_root)
     if args.baseline_only:
         raw_payload = empty_tracker_payload()
@@ -1521,7 +1538,7 @@ def main(argv: list[str] | None = None) -> int:
         scan_scope=scan_scope,
         include_relative_paths=include_relative_paths,
     )
-    tracked_asset_paths = attach_asset_updates(
+    attach_asset_updates(
         webui_payload,
         export_root=export_root,
         previous_export_root=previous_export_root,
@@ -1536,8 +1553,6 @@ def main(argv: list[str] | None = None) -> int:
         prune_result = prune_previous_export_untracked(
             previous_export_root=previous_export_root,
             current_export_root=export_root,
-            include_relative_paths=include_relative_paths,
-            tracked_asset_paths=tracked_asset_paths,
             dry_run=bool(args.dry_run_prune_previous_export_untracked),
         )
         webui_payload["previousExportPrune"] = prune_result
@@ -1585,6 +1600,13 @@ def main(argv: list[str] | None = None) -> int:
             f"{int(prune_result.get('deletedFiles') or 0)} file(s), "
             f"{int(prune_result.get('bytesDeleted') or 0)} byte(s)"
         )
+        unchanged_current = int(prune_result.get("unchangedCurrentFiles") or 0)
+        tracked_files = int(prune_result.get("trackedFiles") or 0)
+        if unchanged_current:
+            print(
+                "[build_updates] Previous export byte-identical matches:"
+                f" {unchanged_current}/{tracked_files} file(s)"
+            )
     print(f"[build_updates] WebUI feed: {out_path}")
     return 0
 

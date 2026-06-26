@@ -13,6 +13,7 @@ from .mission_flow import *
 from .dialog_tree import *
 from .bundle_support import *
 from .language_helpers import *
+from .timeline_action_evidence import build_conversation_action_debug
 
 
 _RADIO_CONTINUATION_REPORT_PATH = (
@@ -198,6 +199,7 @@ def build_language_bundle(
     written_reference_paths: set[str] = set()
     written_mission_paths: set[str] = set()
     conv_media_tags_by_key: dict[str, set[str]] = defaultdict(set)
+    conv_hint_search_text_by_key: dict[str, str] = {}
     scene_order_analysis_by_payload_id: dict[int, dict] = {}
     scene_order_gap_sources: dict[str, tuple[Path, dict, dict | None]] = {}
 
@@ -353,6 +355,11 @@ def build_language_bundle(
     def write_conv_payload(out_key: str, payload: dict) -> Path:
         path = conv_dir / f"{out_key}.json"
         write_json(path, payload)
+        hint_text = line_haystack(payload.get("lines") or [], "hint")
+        if hint_text:
+            conv_hint_search_text_by_key[out_key] = hint_text
+        else:
+            conv_hint_search_text_by_key.pop(out_key, None)
         if path.stem.startswith("dlg_"):
             scene_order_gap_sources[written_path_key(path)] = (
                 path,
@@ -3650,6 +3657,40 @@ def build_language_bundle(
             return
         payload["warnings"] = [*existing_warnings, warning]
 
+    def attach_timeline_action_evidence(
+        payload: dict,
+        evidence_key: str,
+        original_line_ids: list[str],
+        current_line_ids: list[str],
+    ) -> None:
+        action_debug = build_conversation_action_debug(
+            evidence_key,
+            original_line_ids,
+            current_line_ids,
+        )
+        if not action_debug:
+            return
+        debug = payload.setdefault("_debug", {})
+        if not isinstance(debug, dict):
+            debug = {}
+            payload["_debug"] = debug
+        debug["timelineActions"] = action_debug
+        line_actions_by_id = {
+            str(row.get("lineId") or ""): row
+            for row in (action_debug.get("lineActions") or [])
+            if isinstance(row, dict) and row.get("lineId")
+        }
+        if not line_actions_by_id:
+            return
+        for line in payload.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            line_id = str(line.get("id") or "")
+            line_actions = line_actions_by_id.get(line_id)
+            if not line_actions:
+                continue
+            line.setdefault("_debug", {})["timelineActions"] = line_actions
+
     def extras_text(out_key: str) -> str:
         """Concatenate all extras text for an out_key so the index entry's
         search haystack covers summaries / dialog options."""
@@ -4101,9 +4142,10 @@ def build_language_bundle(
             })
 
         out_key = f"dlg_{mission}_{scene}"
+        original_line_ids = [line.get("id") or "" for line in lines]
         ordered_line_ids, line_order_debug = resolve_scene_line_order(
             out_key,
-            [line.get("id") or "" for line in lines],
+            original_line_ids,
         )
         if ordered_line_ids:
             line_order_index = {line_id: idx for idx, line_id in enumerate(ordered_line_ids)}
@@ -4179,6 +4221,12 @@ def build_language_bundle(
             payload["sceneGraphLinks"] = scene_graph_links
             scene_graph_links_by_key[out_key] = scene_graph_links
         attach_runtime_registry_debug(payload)
+        attach_timeline_action_evidence(
+            payload,
+            out_key,
+            original_line_ids,
+            [line.get("id") or "" for line in lines],
+        )
         attach_scene_order_warning(payload)
         attach_duplicate_timestamp_warning(payload)
         story_issue_codes = dialog_story_issue_codes(payload)
@@ -9490,9 +9538,10 @@ def build_language_bundle(
                 })
             out_key = f"misc_{key}"
             type_, act, mission, scene = slot_misc(key)
+            original_line_ids = [line.get("id") or "" for line in lines]
             ordered_line_ids, line_order_debug = resolve_scene_line_order(
                 key,
-                [line.get("id") or "" for line in lines],
+                original_line_ids,
             )
             if ordered_line_ids:
                 line_order_index = {line_id: idx for idx, line_id in enumerate(ordered_line_ids)}
@@ -9538,6 +9587,12 @@ def build_language_bundle(
                 payload["sceneGraphLinks"] = scene_graph_links
                 scene_graph_links_by_key[out_key] = scene_graph_links
             attach_runtime_registry_debug(payload)
+            attach_timeline_action_evidence(
+                payload,
+                key,
+                original_line_ids,
+                [line.get("id") or "" for line in lines],
+            )
             attach_scene_order_warning(payload)
             story_issue_codes = dialog_story_issue_codes(payload)
             recovery_methods = dialog_recovery_methods(payload)
@@ -9631,14 +9686,7 @@ def build_language_bundle(
         key = str(entry.get("k") or "")
         if not key:
             return
-        conv_path = conv_dir / f"{key}.json"
-        if not conv_path.exists():
-            return
-        try:
-            payload = json.loads(conv_path.read_text(encoding="utf-8"))
-        except Exception:
-            return
-        hint_text = line_haystack(payload.get("lines") or [], "hint")
+        hint_text = conv_hint_search_text_by_key.get(key, "")
         if hint_text:
             entry["x"] = merge_search_text(entry.get("x", ""), hint_text)
             if not entry["x"]:

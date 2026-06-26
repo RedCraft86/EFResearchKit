@@ -2,7 +2,7 @@
   const UPDATE_TEXTS = {
     zh: {
       tab: "\u66f4\u65b0",
-      title: "WebUI \u5185\u5bb9\u66f4\u65b0",
+      title: "\u6570\u636e\u66f4\u65b0",
       countLabel: "\u9879\u53d8\u5316",
       search: "\u641c\u7d22\u8def\u5f84 / \u6269\u5c55\u540d",
       gameFile: "\u6e38\u620f\u6587\u4ef6",
@@ -73,7 +73,7 @@
     },
     en: {
       tab: "Updates",
-      title: "WebUI Content Updates",
+      title: "Data Updates",
       countLabel: "changes",
       search: "Search path / extension",
       gameFile: "Game file",
@@ -589,6 +589,7 @@
       Persistent: "export_full/recovered/AnimeStudio-cli/Persistent/convert_by_type",
       "Persistent-maps": "export_full/recovered/AnimeStudio-cli/Persistent/maps",
       "Persistent-structured": "export_full/structured/Persistent",
+      Audio: "export_full/structured/Audio",
     };
   }
 
@@ -607,6 +608,7 @@
   }
 
   function defaultExportSourceRoot(source) {
+    if (String(source || "").toLowerCase() === "audio") return "structured/Audio";
     const match = String(source || "").match(/^(.+)-structured$/i);
     return match ? `structured/${match[1]}` : "";
   }

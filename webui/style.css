@@ -42,13 +42,95 @@ html, body {
 #topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 16px;
+  gap: 20px;
+  padding: 10px 20px;
   border-bottom: 1px solid var(--border);
-  background:
-    linear-gradient(180deg, rgba(var(--accent-rgb), 0.08), rgba(var(--accent-rgb), 0)),
-    var(--bg-2);
+  background: var(--bg-3);
+  backdrop-filter: saturate(1.1);
+}
+
+/* ------- Brand / logo slot ------- */
+#brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--accent), #ff8a5c);
+  color: var(--on-accent);
+  box-shadow: 0 2px 6px rgba(var(--accent-rgb), 0.28);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+/* If a logo <img> is dropped in, let it fill the slot cleanly. */
+.brand-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.brand-logo-mark {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  min-width: 0;
+}
+
+.brand-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.brand-subtitle {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* GitHub link in the subtitle slot */
+.brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  text-decoration: none;
+  transition: color 120ms ease;
+}
+
+.brand-link-icon {
+  flex: 0 0 auto;
+  opacity: 0.85;
+}
+
+.brand-link:hover {
+  color: var(--accent);
+}
+
+.brand-link:hover span {
+  text-decoration: underline;
 }
 
 .topbar-copy {
@@ -69,8 +151,44 @@ html, body {
 
 #view-tabs {
   display: flex;
-  gap: 8px;
+  gap: 4px;
   flex-wrap: wrap;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(var(--fg-rgb), 0.05);
+}
+
+/* ------- Story-page TODO note (story view sidebar only) ------- */
+.todo-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(var(--accent-rgb), 0.05);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.todo-note-tag {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.todo-note-text {
+  min-width: 0;
 }
 
 .topbar-actions {
@@ -79,6 +197,7 @@ html, body {
   gap: 12px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  margin-left: auto;
 }
 
 .topbar-control {
@@ -101,6 +220,74 @@ html, body {
 .topbar-control select:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.ui-language-control {
+  flex: 0 0 auto;
+}
+
+.ui-language-switch {
+  display: inline-grid;
+  grid-template-columns: minmax(34px, auto) 34px minmax(24px, auto);
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-3);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.ui-language-switch:hover {
+  border-color: rgba(var(--accent-rgb), 0.42);
+  background: rgba(var(--accent-rgb), 0.06);
+}
+
+.ui-language-switch:focus-visible {
+  outline: 2px solid rgba(var(--accent-rgb), 0.35);
+  outline-offset: 2px;
+}
+
+.ui-language-option {
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ui-language-switch[data-locale="zh"] .ui-language-option-zh,
+.ui-language-switch[data-locale="en"] .ui-language-option-en {
+  color: var(--text);
+}
+
+.ui-language-track {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(var(--fg-rgb), 0.13);
+  box-shadow: inset 0 0 0 1px rgba(var(--fg-rgb), 0.08);
+}
+
+.ui-language-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 1px 3px rgba(var(--accent-rgb), 0.32);
+  transition: transform 140ms ease;
+}
+
+.ui-language-switch[data-locale="en"] .ui-language-thumb {
+  transform: translateX(16px);
 }
 
 .view-tab {
@@ -332,6 +519,11 @@ html, body {
 .filter-row {
   display: flex; align-items: center; gap: 8px;
   margin-bottom: 6px; font-size: 12px;
+}
+.filters > input[type=search] + .filter-row,
+.filters > .filter-row + .filter-row {
+  padding-top: 9px;
+  border-top: 1px solid var(--text);
 }
 .filter-row label { color: var(--muted); width: 56px; flex-shrink: 0; }
 .filter-row select {
@@ -1978,8 +2170,12 @@ a.opt-target-chip { cursor: pointer; }
 .mission-timeline-box {
   /* inherits --accent left border from .summary-box */
 }
+.timeline-action-box {
+  /* inherits --accent left border from .summary-box */
+}
 .mission-timeline-box .binding-chip,
-.mission-timeline-box .flow-dlg-ref {
+.mission-timeline-box .flow-dlg-ref,
+.timeline-action-box .flow-dlg-ref {
   max-width: 100%;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -1987,15 +2183,53 @@ a.opt-target-chip { cursor: pointer; }
 .mission-timeline-stats,
 .mission-timeline-tags,
 .mission-timeline-line,
-.mission-timeline-edge {
+.mission-timeline-edge,
+.timeline-action-stats,
+.timeline-action-line,
+.timeline-action-line-chips {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
-.mission-timeline-stats {
+.mission-timeline-stats,
+.timeline-action-stats {
   margin-bottom: 10px;
+}
+.timeline-action-line {
+  margin-top: 6px;
+}
+.timeline-action-line-chips {
+  margin-top: 6px;
+}
+.timeline-action-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 20px;
+  padding: 2px 7px;
+  border: 1px solid rgba(var(--accent-rgb), 0.18);
+  border-radius: 4px;
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.timeline-action-chip.is-authored {
+  border-color: var(--border);
+  background: rgba(var(--accent-rgb), 0.14);
+}
+.timeline-action-chip.is-fallback {
+  color: var(--warn);
+  border-color: var(--border);
+  background: rgba(var(--fg-rgb), 0.12);
+}
+.timeline-action-chip.is-missing {
+  color: var(--danger);
+  border-color: rgba(var(--danger-rgb), 0.3);
+  background: rgba(var(--danger-rgb), 0.08);
 }
 .mission-timeline-details {
   margin-top: 10px;
@@ -3392,14 +3626,16 @@ body.is-resizing-pane * {
 }
 
 .updates-media-image,
-.updates-media-video {
+.updates-media-video,
+.updates-media-audio {
   display: block;
   max-width: 100%;
   max-height: 62vh;
   object-fit: contain;
 }
 
-.updates-media-video {
+.updates-media-video,
+.updates-media-audio {
   width: 100%;
   border: 1px solid rgba(var(--accent-rgb), 0.24);
   border-radius: 6px;
@@ -3977,14 +4213,20 @@ body.is-resizing-pane * {
   }
 
   #topbar {
-    padding: 12px;
+    padding: 10px 12px;
     align-items: stretch;
     flex-direction: column;
+    gap: 12px;
+  }
+
+  #brand {
+    justify-content: flex-start;
   }
 
   .topbar-actions {
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-end;
+    margin-left: 0;
   }
 
   #view-tabs {
@@ -4237,24 +4479,27 @@ html, body, #topbar, #left, #asset-left, #reference-left, #updates-app aside,
   letter-spacing: 0.06em;
 }
 
-/* Sharper view tabs — drop the giant pill, use a subtle squared chip */
+/* Modern segmented-control tabs — borderless chips inside the #view-tabs rail */
 .view-tab {
-  border-radius: 4px;
-  letter-spacing: 0.08em;
+  padding: 7px 16px;
+  border-radius: 7px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   background: transparent;
-  border-color: var(--border);
+  border: 1px solid transparent;
   color: var(--muted);
+  font-weight: 600;
 }
 .view-tab:hover {
-  background: rgba(var(--accent-rgb), 0.10);
-  border-color: var(--border);
+  background: rgba(var(--fg-rgb), 0.06);
+  border-color: transparent;
   color: var(--text);
 }
 .view-tab.is-active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
+  background: var(--bg-3);
+  border-color: var(--border);
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(var(--fg-rgb), 0.10);
 }
 
 /* Themed scrollbars (WebKit + Firefox) */
