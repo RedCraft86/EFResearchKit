@@ -2861,6 +2861,10 @@ def run_ocr(args: argparse.Namespace) -> None:
     command = [
         sys.executable,
         str(OCR_SCRIPT_PATH),
+        "--ocr-engine",
+        args.ocr_engine,
+        "--paddleocr-frame-batch-size",
+        str(args.paddleocr_frame_batch_size),
         "--frame-step",
         str(args.frame_step),
         "--crop",
@@ -2898,6 +2902,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-ocr", action="store_true", help="run OCR before matching")
     parser.add_argument("--frame-step", type=int, default=10, help="OCR frame step when --run-ocr is used")
     parser.add_argument("--ocr-crop", choices=["subtitle", "lower-half", "lower-third", "full"], default="subtitle")
+    parser.add_argument(
+        "--ocr-engine",
+        choices=["paddleocr", "easyocr"],
+        default="paddleocr",
+        help="OCR engine for --run-ocr (default: paddleocr / PP-OCRv5)",
+    )
+    parser.add_argument(
+        "--paddleocr-frame-batch-size",
+        type=int,
+        default=40,
+        help="PaddleOCR frame batch size for --run-ocr (default: 40, tuned for PP-OCRv5 server on RTX 5080)",
+    )
     parser.add_argument("--force-ocr", action="store_true")
     parser.add_argument("--ocr-limit", type=int, default=None)
     parser.add_argument("--ocr-limit-frames", type=int, default=None)
@@ -3292,6 +3308,13 @@ def main() -> int:
         f"mapDialogCompanions={total_map_dialog_companion_matches}"
     )
     write_report_json(PROPOSED_STORY_ORDER_PATH, proposed)
+
+    # Distill the OCR order into a small WebUI-served reference so the story
+    # debug mode can compare it against the static recovery order/override.
+    from build_webui_ocr_order import build_webui_ocr_order  # noqa: E402
+
+    webui_ocr_path = build_webui_ocr_order(PROPOSED_STORY_ORDER_PATH)
+    print(f"Wrote {rel_path(webui_ocr_path)} (WebUI OCR order reference)")
 
     if args.apply:
         write_report_json(ACTIVE_STORY_ORDER_PATH, proposed)

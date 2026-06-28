@@ -21,6 +21,10 @@ const FILTER_PANEL_STORAGE_KEY = "webui_filters_collapsed";
 const FILTER_SECTION_STORAGE_KEY = "webui_filter_sections_collapsed_v2";
 const STORY_SPLITTER_STORAGE_KEY = "webui_story_splitter_width";
 const ASSET_SPLITTER_STORAGE_KEY = "webui_asset_splitter_width";
+const REFERENCE_SPLITTER_STORAGE_KEY = "webui_reference_splitter_width";
+const GAME_DATA_SPLITTER_STORAGE_KEY = "webui_game_data_splitter_width";
+const UPDATES_SPLITTER_STORAGE_KEY = "webui_updates_splitter_width";
+const FILTER_SPLITTER_STORAGE_PREFIX = "webui_filter_splitter_height_";
 const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
 const WEBUI_DATA_CACHE_TAG = "20260518-scene-map-order-evidence";
 const STORY_ORDER_JSON_ENABLED = true;
@@ -74,6 +78,8 @@ const STATE = {
   storyOrderSaveStatusTimer: null,
   storyOrderIndex: new Map(),
   storyOrderGroupingOverrides: new Map(),
+  storyOrderOcrPayload: null,
+  storyOrderOcrPromise: null,
   optionOverridePayload: null,
   optionOverridePromise: null,
   expanded: new Set(),   // group paths the user opened
@@ -82,7 +88,6 @@ const STATE = {
   showEmpty: false,
   showRaw: false,
   showDebug: false,
-  filtersCollapsed: false,
   filterSectionsCollapsed: new Set(),
   indexRequestToken: 0,
   inlineImageLookupLoaded: false,
@@ -138,10 +143,6 @@ function parseCssPixels(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function clampNumber(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
 function initPaneSplitters() {
   setupPaneSplitter({
     container: "#app",
@@ -155,6 +156,30 @@ function initPaneSplitters() {
     splitter: "#asset-splitter",
     storageKey: ASSET_SPLITTER_STORAGE_KEY,
   });
+  setupPaneSplitter({
+    container: "#reference-app",
+    pane: "#reference-left",
+    splitter: "#reference-splitter",
+    storageKey: REFERENCE_SPLITTER_STORAGE_KEY,
+  });
+  setupPaneSplitter({
+    container: "#game-data-app",
+    pane: "#game-data-left",
+    splitter: "#game-data-splitter",
+    storageKey: GAME_DATA_SPLITTER_STORAGE_KEY,
+  });
+  setupPaneSplitter({
+    container: "#updates-app",
+    pane: "#updates-left",
+    splitter: "#updates-splitter",
+    storageKey: UPDATES_SPLITTER_STORAGE_KEY,
+  });
+
+  setupFilterSplitter({ pane: "#left", panel: "#filter-panel", splitter: "#filter-splitter", list: "#list-wrap", storageKey: `${FILTER_SPLITTER_STORAGE_PREFIX}story` });
+  setupFilterSplitter({ pane: "#asset-left", panel: "#asset-filter-panel", splitter: "#asset-filter-splitter", list: "#asset-list-wrap", storageKey: `${FILTER_SPLITTER_STORAGE_PREFIX}assets` });
+  setupFilterSplitter({ pane: "#reference-left", panel: "#reference-filter-panel", splitter: "#reference-filter-splitter", list: "#reference-list", storageKey: `${FILTER_SPLITTER_STORAGE_PREFIX}reference` });
+  setupFilterSplitter({ pane: "#game-data-left", panel: "#game-data-filter-panel", splitter: "#game-data-filter-splitter", list: "#game-data-list", storageKey: `${FILTER_SPLITTER_STORAGE_PREFIX}game_data` });
+  setupFilterSplitter({ pane: "#updates-left", panel: "#updates-filter-panel", splitter: "#updates-filter-splitter", list: "#updates-list", storageKey: `${FILTER_SPLITTER_STORAGE_PREFIX}updates` });
 }
 
 function setupPaneSplitter({ container, pane, splitter, storageKey, minRightWidth = 0 }) {
@@ -163,34 +188,10 @@ function setupPaneSplitter({ container, pane, splitter, storageKey, minRightWidt
   const handle = $(splitter);
   if (!shell || !sidebar || !handle) return;
 
-  let activePointerId = null;
-  let startX = 0;
-  let startWidth = 0;
+  const { readStoredNumber } = window.WebUI.splitterUtils;
   let wasMobile = isMobileLayout();
-  let resizeQueued = false;
 
-  const queueLayoutResize = () => {
-    if (resizeQueued) return;
-    resizeQueued = true;
-    requestAnimationFrame(() => {
-      resizeQueued = false;
-      window.dispatchEvent(new Event("resize"));
-    });
-  };
-
-  const readStoredWidth = () => {
-    if (!storageKey) return null;
-    const raw = storageGet(storageKey);
-    const width = Number.parseFloat(raw || "");
-    return Number.isFinite(width) ? width : null;
-  };
-
-  const writeStoredWidth = (width) => {
-    if (!storageKey) return;
-    storageSet(storageKey, String(Math.round(width)));
-  };
-
-  const currentBounds = () => {
+  const bounds = () => {
     const paneStyles = window.getComputedStyle(sidebar);
     const handleStyles = window.getComputedStyle(handle);
     const minWidth = parseCssPixels(paneStyles.minWidth, 240);
@@ -201,127 +202,188 @@ function setupPaneSplitter({ container, pane, splitter, storageKey, minRightWidt
     const maxWidth = Number.isFinite(cssMaxWidth)
       ? Math.max(minWidth, Math.min(cssMaxWidth, maxByViewport))
       : maxByViewport;
-    return {
-      minWidth,
-      maxWidth,
-    };
+    return { min: minWidth, max: maxWidth };
   };
 
-  const applyWidth = (width, { persist = true, dispatchResize = true } = {}) => {
-    if (isMobileLayout()) {
-      sidebar.style.removeProperty("width");
-      handle.removeAttribute("aria-valuenow");
-      handle.removeAttribute("aria-valuemin");
-      handle.removeAttribute("aria-valuemax");
-      if (dispatchResize) queueLayoutResize();
-      return;
-    }
-
-    const bounds = currentBounds();
-    const nextWidth = clampNumber(width, bounds.minWidth, bounds.maxWidth);
-    sidebar.style.width = `${Math.round(nextWidth)}px`;
-    handle.setAttribute("aria-valuemin", String(Math.round(bounds.minWidth)));
-    handle.setAttribute("aria-valuemax", String(Math.round(bounds.maxWidth)));
-    handle.setAttribute("aria-valuenow", String(Math.round(nextWidth)));
-    if (persist) writeStoredWidth(nextWidth);
-    if (dispatchResize) queueLayoutResize();
-  };
-
-  const syncWidth = () => {
-    const mobile = isMobileLayout();
-    if (mobile) {
-      wasMobile = true;
-      applyWidth(sidebar.getBoundingClientRect().width, { persist: false, dispatchResize: false });
-      return;
-    }
-
-    if (shell.getBoundingClientRect().width < 48) {
-      return;
-    }
-
-    let targetWidth = parseCssPixels(sidebar.style.width, sidebar.getBoundingClientRect().width);
-    if (wasMobile || !sidebar.style.width) {
-      const stored = readStoredWidth();
-      if (stored !== null) targetWidth = stored;
-    }
-    wasMobile = false;
-    applyWidth(targetWidth, { persist: false, dispatchResize: false });
-  };
-
-  const stopDragging = () => {
-    if (activePointerId === null) return;
-    const pointerId = activePointerId;
-    activePointerId = null;
-    handle.classList.remove("is-dragging");
-    document.body.classList.remove("is-resizing-pane");
-    try {
-      handle.releasePointerCapture(pointerId);
-    } catch (_error) {
-      // Ignore capture cleanup failures.
-    }
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", onPointerUp);
-    window.removeEventListener("pointercancel", onPointerUp);
-    writeStoredWidth(parseCssPixels(sidebar.style.width, sidebar.getBoundingClientRect().width));
-  };
-
-  const onPointerMove = (event) => {
-    if (event.pointerId !== activePointerId) return;
-    applyWidth(startWidth + (event.clientX - startX), { persist: false });
-  };
-
-  const onPointerUp = (event) => {
-    if (activePointerId !== null && event.pointerId !== activePointerId) return;
-    stopDragging();
-  };
-
-  handle.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || isMobileLayout()) return;
-    event.preventDefault();
-    activePointerId = event.pointerId;
-    startX = event.clientX;
-    startWidth = sidebar.getBoundingClientRect().width;
-    handle.classList.add("is-dragging");
-    document.body.classList.add("is-resizing-pane");
-    handle.setPointerCapture?.(event.pointerId);
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("pointercancel", onPointerUp);
+  return window.WebUI.setupSplitter({
+    handle,
+    storageKey,
+    bodyDragClass: "is-resizing-pane",
+    client: (event) => event.clientX,
+    keys: { decrease: ["ArrowLeft"], increase: ["ArrowRight"] },
+    enabled: () => !isMobileLayout(),
+    bounds,
+    read: () => parseCssPixels(sidebar.style.width, sidebar.getBoundingClientRect().width),
+    write: (width) => { sidebar.style.width = `${Math.round(width)}px`; },
+    clear: () => { sidebar.style.removeProperty("width"); },
+    sync: (ctrl) => {
+      if (isMobileLayout()) {
+        wasMobile = true;
+        ctrl.clear({ commit: false });
+        return;
+      }
+      if (shell.getBoundingClientRect().width < 48) return;
+      let targetWidth = parseCssPixels(sidebar.style.width, sidebar.getBoundingClientRect().width);
+      if (wasMobile || !sidebar.style.width) {
+        const stored = readStoredNumber(storageKey);
+        if (stored !== null) targetWidth = stored;
+      }
+      wasMobile = false;
+      ctrl.set(targetWidth, { persist: false, commit: false });
+    },
   });
-
-  handle.addEventListener("keydown", (event) => {
-    if (isMobileLayout()) return;
-    const bounds = currentBounds();
-    const currentWidth = parseCssPixels(sidebar.style.width, sidebar.getBoundingClientRect().width);
-    const step = event.shiftKey ? 48 : 16;
-    if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      applyWidth(currentWidth - step);
-    } else if (event.key === "ArrowRight") {
-      event.preventDefault();
-      applyWidth(currentWidth + step);
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      applyWidth(bounds.minWidth);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      applyWidth(bounds.maxWidth);
-    }
-  });
-
-  window.addEventListener("resize", syncWidth);
-  syncWidth();
 }
 
-function persistFiltersCollapsed(collapsed) {
-  storageSet(FILTER_PANEL_STORAGE_KEY, collapsed ? "1" : "0");
+function setupFilterSplitter({ pane, panel, splitter, list, storageKey, minPanelHeight = 56, minListHeight = 160 }) {
+  const sidebar = $(pane);
+  const filterPanel = $(panel);
+  const handle = $(splitter);
+  const listPane = $(list);
+  if (!sidebar || !filterPanel || !handle || !listPane) return;
+
+  const { readStoredNumber } = window.WebUI.splitterUtils;
+  let wasMobile = isMobileLayout();
+
+  // Measure the panel's content height with the inline override removed, then restore it.
+  const measureNaturalPanelHeight = () => {
+    const previousHeight = filterPanel.style.height;
+    const wasResized = filterPanel.classList.contains("is-filter-resized");
+    filterPanel.style.removeProperty("height");
+    filterPanel.classList.remove("is-filter-resized");
+    const naturalHeight = Math.ceil(filterPanel.getBoundingClientRect().height);
+    if (previousHeight) filterPanel.style.height = previousHeight;
+    else filterPanel.style.removeProperty("height");
+    filterPanel.classList.toggle("is-filter-resized", wasResized);
+    return Math.max(minPanelHeight, naturalHeight);
+  };
+
+  const bounds = () => {
+    const sidebarHeight = sidebar.getBoundingClientRect().height;
+    let fixedHeight = 0;
+    for (const child of sidebar.children) {
+      if (child === filterPanel || child === listPane) continue;
+      fixedHeight += child.getBoundingClientRect().height;
+    }
+    const availableHeight = Math.max(minPanelHeight, sidebarHeight - fixedHeight - minListHeight);
+    const naturalHeight = measureNaturalPanelHeight();
+    const maxHeight = Math.max(minPanelHeight, Math.min(availableHeight, naturalHeight));
+    return { min: minPanelHeight, max: maxHeight };
+  };
+
+  const enabled = () => !isMobileLayout() && !filterPanel.hidden;
+
+  const ctrl = window.WebUI.setupSplitter({
+    handle,
+    storageKey,
+    bodyDragClass: "is-resizing-filter",
+    client: (event) => event.clientY,
+    keys: { decrease: ["ArrowUp"], increase: ["ArrowDown"] },
+    enabled,
+    bounds,
+    read: () => filterPanel.getBoundingClientRect().height,
+    write: (height) => {
+      filterPanel.style.height = `${Math.round(height)}px`;
+      filterPanel.classList.add("is-filter-resized");
+    },
+    clear: () => {
+      filterPanel.style.removeProperty("height");
+      filterPanel.classList.remove("is-filter-resized");
+    },
+    sync: (ctrl) => {
+      if (isMobileLayout() || filterPanel.hidden) {
+        wasMobile = isMobileLayout();
+        ctrl.clear({ commit: false });
+        return;
+      }
+      if (sidebar.getBoundingClientRect().height < 48) return;
+      const stored = readStoredNumber(storageKey);
+      if (stored !== null) {
+        wasMobile = false;
+        ctrl.set(stored, { persist: false, commit: false });
+        return;
+      }
+      if (wasMobile) ctrl.clear({ commit: false });
+      wasMobile = false;
+      ctrl.syncAria();
+    },
+  });
+
+  if (window.MutationObserver && ctrl) {
+    const observer = new MutationObserver(ctrl.requestSync);
+    observer.observe(filterPanel, { attributes: true, attributeFilter: ["hidden"] });
+    observer.observe(filterPanel, { childList: true, subtree: true, characterData: true });
+  }
+
+  return ctrl;
 }
 
-function resolveInitialFiltersCollapsed() {
-  const stored = storageGet(FILTER_PANEL_STORAGE_KEY);
-  if (stored === "1") return true;
-  if (stored === "0") return false;
-  return isMobileLayout();
+let filterLayoutSyncQueued = false;
+
+function requestFilterLayoutSync() {
+  if (filterLayoutSyncQueued) return;
+  filterLayoutSyncQueued = true;
+  requestAnimationFrame(() => {
+    filterLayoutSyncQueued = false;
+    window.dispatchEvent(new Event("resize"));
+  });
+}
+
+function ensureFilterSectionActiveBadge(title) {
+  let badge = title.querySelector(".filter-section-active-count");
+  if (badge) return badge;
+
+  badge = document.createElement("span");
+  badge.className = "filter-section-active-count";
+  badge.hidden = true;
+  const label = title.querySelector("[data-filter-section-label], span[id$='-label']");
+  if (label && label.nextSibling) title.insertBefore(badge, label.nextSibling);
+  else if (label) title.appendChild(badge);
+  else title.insertBefore(badge, title.firstChild);
+  return badge;
+}
+
+function setFilterSectionActiveCount(key, count) {
+  const section = $$(".filter-section[data-filter-section]")
+    .find((candidate) => candidate.dataset.filterSection === key);
+  if (!section) return;
+
+  const title = section.querySelector(".filter-section-toggle, .filter-section-title");
+  if (!title) return;
+
+  const activeCount = Math.max(0, Number(count) || 0);
+  const badge = ensureFilterSectionActiveBadge(title);
+  badge.textContent = activeCount ? `(${activeCount})` : "";
+  badge.hidden = !activeCount;
+  badge.setAttribute("aria-label", activeCount ? `${activeCount} active filters` : "");
+  section.classList.toggle("has-active-filters", !!activeCount);
+  requestFilterLayoutSync();
+}
+
+function setFilterSectionActiveCounts(counts) {
+  const entries = counts instanceof Map ? counts.entries() : Object.entries(counts || {});
+  for (const [key, count] of entries) {
+    setFilterSectionActiveCount(key, count);
+  }
+}
+
+window.WebUI.requestFilterLayoutSync = requestFilterLayoutSync;
+window.WebUI.setFilterSectionActiveCount = setFilterSectionActiveCount;
+window.WebUI.setFilterSectionActiveCounts = setFilterSectionActiveCounts;
+
+let storyPanel = null;
+
+function ensureStoryPanelToggle() {
+  if (storyPanel) return storyPanel;
+  storyPanel = window.WebUI.filters.createPanelToggle({
+    panel: "#filter-panel",
+    toggle: "#filter-toggle",
+    left: "#left",
+    storageKey: FILTER_PANEL_STORAGE_KEY,
+    isMobile: isMobileLayout,
+    labels: (collapsed) => uiText(collapsed ? "showFilters" : "hideFilters"),
+    onChange: () => requestAnimationFrame(renderList),
+  });
+  return storyPanel;
 }
 
 function availableFilterSectionKeys() {
@@ -379,12 +441,14 @@ function setFilterSectionCollapsed(key, collapsed, { persist = true } = {}) {
   if (section && section.dataset.fixedOpen === "1") {
     STATE.filterSectionsCollapsed.delete(key);
     syncFilterSection(section);
+    requestFilterLayoutSync();
     if (persist) persistFilterSectionsCollapsed();
     return;
   }
   if (collapsed) STATE.filterSectionsCollapsed.add(key);
   else STATE.filterSectionsCollapsed.delete(key);
   syncFilterSection(section);
+  requestFilterLayoutSync();
   if (persist) persistFilterSectionsCollapsed();
   requestAnimationFrame(renderList);
 }
@@ -400,6 +464,7 @@ function initFilterSections() {
     });
   }
   syncFilterSections();
+  requestFilterLayoutSync();
 }
 
 
@@ -488,11 +553,14 @@ function cacheBustedPath(path, token = WEBUI_DATA_CACHE_TAG) {
   return `${path}${sep}v=${encodeURIComponent(token)}`;
 }
 
-function fetchJson(path, { fresh = false } = {}) {
+function fetchJson(path, { fresh = false, onProgress = null } = {}) {
   const token = fresh ? `${WEBUI_DATA_CACHE_TAG}-${Date.now()}` : WEBUI_DATA_CACHE_TAG;
-  return fetch(cacheBustedPath(path, token), {
-    cache: fresh ? "no-store" : "no-cache",
-  });
+  const url = cacheBustedPath(path, token);
+  const init = { cache: fresh ? "no-store" : "no-cache" };
+  if (onProgress && window.WebUI && window.WebUI.fetchWithProgress) {
+    return window.WebUI.fetchWithProgress(url, { ...init, onProgress });
+  }
+  return fetch(url, init);
 }
 
 async function loadLanguageSidecar(index, key, languageCode) {
@@ -617,6 +685,42 @@ function loadStoryOrderPayload() {
       return storyOrderPayload;
     });
   return STATE.storyOrderPromise;
+}
+
+
+function normalizeStoryOrderReferencePayload(payload) {
+  const out = payload && typeof payload === "object" ? payload : { missions: {} };
+  if (!out.missions || typeof out.missions !== "object") out.missions = {};
+  return out;
+}
+
+function loadStoryOrderOcrPayload() {
+  if (STATE.storyOrderOcrPayload) return Promise.resolve(STATE.storyOrderOcrPayload);
+  if (STATE.storyOrderOcrPromise) return STATE.storyOrderOcrPromise;
+  STATE.storyOrderOcrPromise = fetchJson("data/story_order_ocr.json", { fresh: true })
+    .then(async (res) => {
+      if (!res.ok) return { missions: {}, _missing: true };
+      const payload = await res.json();
+      return normalizeStoryOrderReferencePayload(payload);
+    })
+    .catch((error) => {
+      console.warn("Unable to load data/story_order_ocr.json", error);
+      return { missions: {}, _missing: true, _error: String(error && error.message || error) };
+    })
+    .then((payload) => {
+      STATE.storyOrderOcrPayload = normalizeStoryOrderReferencePayload(payload);
+      STATE.storyOrderOcrPromise = null;
+      return STATE.storyOrderOcrPayload;
+    });
+  return STATE.storyOrderOcrPromise;
+}
+
+function ensureStoryOrderOcrPayloadForDebug() {
+  if (!STATE.showDebug || STATE.storyOrderOcrPayload || STATE.storyOrderOcrPromise) return;
+  void loadStoryOrderOcrPayload().then(() => {
+    const cached = STATE.selectedKey ? STATE.convCache.get(STATE.selectedKey) : null;
+    if (STATE.showDebug && cached) renderConv(cached);
+  }).catch(() => {});
 }
 
 function overrideKeyList(values) {
@@ -953,6 +1057,260 @@ function applyStoryOrderGroupingOverridesToEntries(entries = STATE.entries) {
 function storyOrderMissionIdForEntry(entry) {
   const storyMissionId = typeof entryStoryMissionId === "function" ? entryStoryMissionId(entry) : "";
   return storyMissionId || String(entry && entry.m || "");
+}
+
+// Per-scene static-recovery order confidence/phase, emitted by the builder into
+// the focused mission's timelineRecovery.sceneOrderInfo. Only available once the
+// mission's JSON is cached (i.e. when the mission is focused for editing). This is
+// STATIC recovery confidence only; it carries no OCR signal.
+function sceneOrderInfoForEntry(entry) {
+  const missionId = storyOrderMissionIdForEntry(entry);
+  if (!missionId) return null;
+  const tr = typeof getMissionTimelineRecovery === "function"
+    ? getMissionTimelineRecovery(missionId)
+    : null;
+  const info = tr && tr.sceneOrderInfo;
+  if (!info || typeof info !== "object") return null;
+  return info[String(entry && entry.k || "")] || null;
+}
+
+const SCENE_ORDER_CONF_LABEL = {
+  "source-backed": "storyOrderConfStrong",
+  "weak": "storyOrderConfWeak",
+  "fallback": "storyOrderConfGuess",
+};
+
+// Keys of a mission whose recovered order is low-confidence (need human review),
+// in the mission's current order. Empty when the mission JSON isn't cached yet.
+function storyOrderMissionUncertainKeys(missionId) {
+  if (!missionId) return [];
+  const tr = typeof getMissionTimelineRecovery === "function"
+    ? getMissionTimelineRecovery(missionId) : null;
+  const info = tr && tr.sceneOrderInfo;
+  if (!info || typeof info !== "object") return [];
+  const mission = STATE.storyOrderPayload && STATE.storyOrderPayload.missions
+    && STATE.storyOrderPayload.missions[missionId];
+  const order = (mission && Array.isArray(mission.order) && mission.order.length)
+    ? mission.order : Object.keys(info);
+  const out = [];
+  for (const raw of order) {
+    const k = String(raw || "");
+    const conf = info[k] && info[k].confidence;
+    if (conf === "fallback" || conf === "weak") out.push(k);
+  }
+  return out;
+}
+
+// Select + scroll to the next uncertain row in a mission (cycles past the current
+// selection). Lets the human work through only the rows that need confirmation.
+function jumpToNextUncertainRow(missionId) {
+  const keys = storyOrderMissionUncertainKeys(missionId);
+  if (!keys.length) return false;
+  let target = keys[0];
+  if (STATE.selectedKey) {
+    const idx = keys.indexOf(STATE.selectedKey);
+    if (idx >= 0 && idx + 1 < keys.length) target = keys[idx + 1];
+  }
+  const entry = Array.isArray(STATE.entries)
+    ? STATE.entries.find((en) => en && en.k === target) : null;
+  if (!entry) return false;
+  if (typeof loadConv === "function") loadConv(target);
+  if (typeof revealEntryInTree === "function") revealEntryInTree(entry);
+  return true;
+}
+
+
+function storyOrderMissionOrderFromPayload(payload, missionId) {
+  const missionKey = String(missionId || "");
+  const mission = payload && payload.missions && payload.missions[missionKey];
+  return overrideKeyList(mission && mission.order);
+}
+
+function storyOrderMissionCurrentOrder(missionId) {
+  const missionKey = String(missionId || "");
+  const mission = STATE.storyOrderPayload
+    && STATE.storyOrderPayload.missions
+    && STATE.storyOrderPayload.missions[missionKey];
+  const order = overrideKeyList(mission && mission.order);
+  if (order.length) return order;
+  return typeof storyOrderMissionBaselineOrder === "function"
+    ? storyOrderMissionBaselineOrder(missionKey)
+    : [];
+}
+
+function storyOrderAppendMissing(out, seen, values) {
+  for (const value of values || []) {
+    const key = String(value || "").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+}
+
+function completeStoryOrderSourceOrder(missionId, primaryOrder) {
+  const missionKey = String(missionId || "");
+  const out = [];
+  const seen = new Set();
+  storyOrderAppendMissing(out, seen, overrideKeyList(primaryOrder));
+  storyOrderAppendMissing(out, seen, storyOrderMissionCurrentOrder(missionKey));
+  if (typeof storyOrderMissionBaselineOrder === "function") {
+    storyOrderAppendMissing(out, seen, storyOrderMissionBaselineOrder(missionKey));
+  }
+  for (const entry of STATE.entries || []) {
+    const mid = typeof storyOrderMissionIdForEntry === "function"
+      ? storyOrderMissionIdForEntry(entry)
+      : String(entry && entry.m || "");
+    if (String(mid) === missionKey) storyOrderAppendMissing(out, seen, [entry && entry.k]);
+  }
+  return out;
+}
+
+function storyOrderSourceRank(value, fallback = Number.POSITIVE_INFINITY) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function storyOrderMissionStaticRecoveredOrder(missionId) {
+  const missionKey = String(missionId || "");
+  const tr = typeof getMissionTimelineRecovery === "function"
+    ? getMissionTimelineRecovery(missionKey) : null;
+  const info = tr && tr.sceneOrderInfo;
+  if (!info || typeof info !== "object") return [];
+  const baseOrder = storyOrderMissionCurrentOrder(missionKey);
+  const baseIndex = new Map(baseOrder.map((key, index) => [String(key), index]));
+  const confidenceRank = { "source-backed": 0, "weak": 1, "fallback": 2 };
+  const keys = Object.keys(info).filter(Boolean);
+  keys.sort((a, b) => {
+    const ai = info[a] || {};
+    const bi = info[b] || {};
+    const aq = storyOrderSourceRank(ai.questOrder);
+    const bq = storyOrderSourceRank(bi.questOrder);
+    if (aq !== bq) return aq - bq;
+    const af = storyOrderSourceRank(ai.flowIndex);
+    const bf = storyOrderSourceRank(bi.flowIndex);
+    if (af !== bf) return af - bf;
+    const ac = confidenceRank[ai.confidence] ?? 9;
+    const bc = confidenceRank[bi.confidence] ?? 9;
+    if (ac !== bc) return ac - bc;
+    const ab = baseIndex.has(a) ? baseIndex.get(a) : Number.POSITIVE_INFINITY;
+    const bb = baseIndex.has(b) ? baseIndex.get(b) : Number.POSITIVE_INFINITY;
+    if (ab !== bb) return ab - bb;
+    return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+  });
+  return completeStoryOrderSourceOrder(missionKey, keys);
+}
+
+function storyOrderSameOrder(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  return a.every((key, index) => String(key) === String(b[index]));
+}
+
+function storyOrderOrderDiffStats(baseOrder, candidateOrder) {
+  const base = overrideKeyList(baseOrder);
+  const candidate = overrideKeyList(candidateOrder);
+  const candidatePos = new Map(candidate.map((key, index) => [key, index]));
+  const baseSet = new Set(base);
+  let same = 0;
+  let moved = 0;
+  let missing = 0;
+  for (let index = 0; index < base.length; index += 1) {
+    const key = base[index];
+    if (!candidatePos.has(key)) missing += 1;
+    else if (candidatePos.get(key) === index) same += 1;
+    else moved += 1;
+  }
+  let added = 0;
+  for (const key of candidate) if (!baseSet.has(key)) added += 1;
+  return { same, moved, missing, added, total: candidate.length };
+}
+
+function storyOrderFormatCount(count) {
+  return (uiText("storyOrderCompareCount") || "{count} entries").replace("{count}", String(count));
+}
+
+function storyOrderFormatDiff(stats) {
+  if (!stats.moved && !stats.missing && !stats.added) return uiText("storyOrderCompareIdentical");
+  return (uiText("storyOrderCompareDiff") || "{moved} moved / {missing} missing / {added} added")
+    .replace("{moved}", String(stats.moved))
+    .replace("{missing}", String(stats.missing))
+    .replace("{added}", String(stats.added));
+}
+
+function appendStoryOrderComparePreview(parent, order, currentKey) {
+  const limit = 24;
+  const list = overrideKeyList(order);
+  for (const key of list.slice(0, limit)) {
+    const chip = document.createElement(key === currentKey ? "span" : "button");
+    chip.className = "story-order-compare-chip" + (key === currentKey ? " current" : "");
+    chip.textContent = key;
+    chip.title = key;
+    if (key !== currentKey) {
+      chip.type = "button";
+      chip.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        loadConv(key);
+      });
+    }
+    parent.appendChild(chip);
+  }
+  if (list.length > limit) {
+    const more = document.createElement("span");
+    more.className = "story-order-compare-more";
+    more.textContent = (uiText("storyOrderCompareMore") || "+{count}")
+      .replace("{count}", String(list.length - limit));
+    parent.appendChild(more);
+  }
+}
+
+function storyOrderAdoptMissionOrder(missionId, source) {
+  const missionKey = String(missionId || "");
+  if (!missionKey) return false;
+  if (typeof storyOrderMissionLocked === "function" && storyOrderMissionLocked(missionKey)) return false;
+  let sourceOrder = [];
+  if (source === "ocr") {
+    sourceOrder = completeStoryOrderSourceOrder(
+      missionKey,
+      storyOrderMissionOrderFromPayload(STATE.storyOrderOcrPayload, missionKey),
+    );
+  } else if (source === "static") {
+    sourceOrder = storyOrderMissionStaticRecoveredOrder(missionKey);
+  }
+  if (!sourceOrder.length) return false;
+  const currentOrder = storyOrderMissionCurrentOrder(missionKey);
+  if (storyOrderSameOrder(currentOrder, sourceOrder)) return false;
+  if (typeof setStoryOrderMissionOrder !== "function" || !setStoryOrderMissionOrder(missionKey, sourceOrder)) {
+    return false;
+  }
+  if (typeof scheduleStoryOrderSave === "function") scheduleStoryOrderSave();
+  const wrap = $("#list-wrap");
+  const prevScroll = wrap ? wrap.scrollTop : 0;
+  rebuildTree({ resetScroll: false });
+  if (wrap) wrap.scrollTop = prevScroll;
+  renderList();
+  const cached = STATE.selectedKey ? STATE.convCache.get(STATE.selectedKey) : null;
+  if (cached) renderConv(cached);
+  return true;
+}
+
+// In story-sort + debug, lazily load the JSON of missions whose rows are visible
+// so their per-scene order confidence/phase can render without selecting a row.
+// Guarded so each mission is fetched at most once and only a real fetch re-renders.
+function ensureVisibleMissionOrderData(rows) {
+  if ((STATE.sortMode || "story") !== "story" || !STATE.showDebug) return;
+  if (!(STATE.missionCache instanceof Map)) return;
+  if (!(STATE.storyOrderDataRequested instanceof Set)) STATE.storyOrderDataRequested = new Set();
+  const pending = [];
+  for (const row of rows) {
+    if (!row || row.type === "group" || !row.entry) continue;
+    const mid = storyOrderMissionIdForEntry(row.entry);
+    if (!mid || STATE.missionCache.has(mid) || STATE.storyOrderDataRequested.has(mid)) continue;
+    STATE.storyOrderDataRequested.add(mid);
+    pending.push(mid);
+  }
+  for (const mid of pending) {
+    Promise.resolve(ensureMissionData(mid)).then(() => { renderList(); }).catch(() => {});
+  }
 }
 
 function storyOrderDetailForEntry(entry) {
@@ -1936,6 +2294,11 @@ function isSnsInlineImageStem(stem) {
   return normalized.includes("sns") || normalized.includes("emoji");
 }
 
+function isInlineEmojiFamilyId(value) {
+  const normalized = normalizeInlineImageId(value);
+  return normalized.includes("emoji") || normalized.includes("emoiji");
+}
+
 function ensureInlineImageAssetLookup() {
   if (STATE.inlineImageLookupLoaded) return Promise.resolve();
   if (STATE.inlineImageLookupPromise) return STATE.inlineImageLookupPromise;
@@ -2107,17 +2470,24 @@ function resolveInlineImageAssetCandidates(imageId) {
   if (!numberKey) return matches;
 
   const padded2 = numberKey.padStart(2, "0");
-  const preferredStems = [
-    `deco_sns_tweet_decorate_${padded2}`,
-    `bg_sns_tweet_decorate_${padded2}`,
-    `sns_sticker_${padded2}`,
+  const emojiPreferredStems = [
     `emoji_02_${numberKey.padStart(3, "0")}`,
     `emoji_01_${numberKey.padStart(3, "0")}`,
   ];
+  const preferredStems = isInlineEmojiFamilyId(normalized)
+    ? emojiPreferredStems
+    : [
+      `deco_sns_tweet_decorate_${padded2}`,
+      `bg_sns_tweet_decorate_${padded2}`,
+      `sns_sticker_${padded2}`,
+      ...emojiPreferredStems,
+    ];
   for (const stem of preferredStems) {
     const match = STATE.inlineImageAssetByStem.get(stem);
     add(match);
   }
+
+  if (isInlineEmojiFamilyId(normalized)) return matches;
 
   add(STATE.inlineImageAssetByNumber.get(numberKey));
   return matches;
@@ -2671,22 +3041,7 @@ function applyUiStrings() {
 
 
 function syncFilterPanel() {
-  const panel = $("#filter-panel");
-  const toggle = $("#filter-toggle");
-  const left = $("#left");
-  if (!panel || !toggle || !left) return;
-
-  panel.hidden = STATE.filtersCollapsed;
-  left.classList.toggle("filters-collapsed", STATE.filtersCollapsed);
-  toggle.setAttribute("aria-expanded", String(!STATE.filtersCollapsed));
-  toggle.textContent = uiText(STATE.filtersCollapsed ? "showFilters" : "hideFilters");
-}
-
-function setFiltersCollapsed(collapsed, { persist = true } = {}) {
-  STATE.filtersCollapsed = !!collapsed;
-  if (persist) persistFiltersCollapsed(STATE.filtersCollapsed);
-  syncFilterPanel();
-  requestAnimationFrame(renderList);
+  storyPanel?.sync();
 }
 
 function buildLanguageSelect() {
@@ -2761,21 +3116,29 @@ async function switchLanguage(languageCode, { preserveSelection = true } = {}) {
   STATE.languageInfo = info;
   STATE.convCache.clear();
   STATE.missionCache.clear();
+  if (STATE.storyOrderDataRequested instanceof Set) STATE.storyOrderDataRequested.clear();
   persistLanguageSelection(info.code);
   $("#language").value = info.code;
   applyUiStrings();
+  window.WebUI.showLoader("story");
 
   try {
-    const res = await fetchJson(dataPath("index.json", info.code), { fresh: true });
+    const res = await fetchJson(dataPath("index.json", info.code), {
+      fresh: true,
+      // Map the index download (the dominant payload) onto the first half of the bar.
+      onProgress: (ratio) => window.WebUI.updateLoader("story", ratio == null ? null : ratio * 0.5),
+    });
     if (!res.ok) throw new Error(`index.json HTTP ${res.status}`);
     const index = await res.json();
     if (token !== STATE.indexRequestToken) return;
 
+    window.WebUI.updateLoader("story", 0.6);
     const [actorsPayload, missionsPayload] = await Promise.all([
       loadLanguageSidecar(index, "actors", info.code),
       loadLanguageSidecar(index, "missions", info.code),
     ]);
     if (token !== STATE.indexRequestToken) return;
+    window.WebUI.updateLoader("story", 0.8);
 
     STATE.index = index;
     STATE.actorNames = normalizeActorNames(actorsPayload.actorNames || {});
@@ -2794,6 +3157,9 @@ async function switchLanguage(languageCode, { preserveSelection = true } = {}) {
     STATE.rawStoryTypes = computeRawStoryTypes(STATE.entries);
     await ensureArchiveMetadataIndex(info.code, token);
     if (token !== STATE.indexRequestToken) return;
+    window.WebUI.updateLoader("story", 0.95);
+    // Let 95% paint before the chip-building + filtering render blocks.
+    await window.WebUI.nextPaint();
     STATE.prtsCategoryLabels = computePrtsCategoryLabels(STATE.entries);
     STATE.selectedKey = previousKey && STATE.entries.some((entry) => entry.k === previousKey)
       ? previousKey
@@ -2810,6 +3176,9 @@ async function switchLanguage(languageCode, { preserveSelection = true } = {}) {
       detail: { language: info.code },
     }));
 
+    window.WebUI.updateLoader("story", 1);
+    window.WebUI.hideLoader("story");
+
     if (STATE.selectedKey) {
       await loadConv(STATE.selectedKey);
     } else {
@@ -2817,6 +3186,7 @@ async function switchLanguage(languageCode, { preserveSelection = true } = {}) {
     }
   } catch (error) {
     if (token !== STATE.indexRequestToken) return;
+    window.WebUI.hideLoader("story");
     showFatalError(error);
   }
 }
@@ -2829,7 +3199,7 @@ async function init() {
     buildLanguageSelect();
     bindEvents();
     initFilterSections();
-    setFiltersCollapsed(resolveInitialFiltersCollapsed(), { persist: false });
+    ensureStoryPanelToggle();
 
     const initialLanguage = resolveInitialLanguage();
     setUiLocale(resolveInitialUiLocale(initialLanguage), { persist: false, refresh: false });
@@ -2977,12 +3347,15 @@ function renderList() {
 
   let i = findFirstVisible(startTop);
   const frag = document.createDocumentFragment();
+  const visible = [];
 
   while (i < total && STATE.rows[i].top < endTop) {
+    visible.push(STATE.rows[i]);
     frag.appendChild(renderRow(STATE.rows[i]));
     i++;
   }
   list.replaceChildren(frag);
+  ensureVisibleMissionOrderData(visible);
 }
 
 function renderRow(row) {
@@ -3006,6 +3379,8 @@ function renderGroup(row) {
       (row.raw ? `<span class="sub mono" title="${escapeHtml(row.raw)}">${escapeHtml(row.raw)}</span>` : "") +
     `</span>` +
     `<span class="group-count">${row.count}</span>` +
+    storyOrderMissionVerifiedControl(row) +
+    storyOrderMissionReviewControl(row) +
     storyOrderMissionLockControl(row) +
     storyOrderMissionMoveUnusedControl(row);
   return div;
@@ -3081,13 +3456,40 @@ function renderItem(row) {
     }
   }
 
+  // Static-recovery order confidence + phase (override-editing aid, debug-gated).
+  let confidenceBadge = "";
+  let phaseChip = "";
+  if (inStorySort && STATE.showDebug) {
+    const soi = sceneOrderInfoForEntry(e);
+    if (soi) {
+      const conf = String(soi.confidence || "");
+      if (conf) div.classList.add("story-order-conf-" + conf);
+      if (conf === "fallback" || conf === "weak") div.classList.add("story-order-uncertain");
+      const confLabel = escapeHtml(uiText(SCENE_ORDER_CONF_LABEL[conf] || "") || conf);
+      const confTitle = escapeHtml(
+        [uiText("storyOrderConfTitle"), conf, soi.orderSource ? `(${soi.orderSource})` : ""]
+          .filter(Boolean).join(" "));
+      confidenceBadge =
+        `<span class="story-order-conf-badge conf-${escapeHtml(conf || "unknown")}" title="${confTitle}">` +
+          `${confLabel}</span>`;
+      if (soi.questOrder !== null && soi.questOrder !== undefined) {
+        const phaseTitle = escapeHtml(uiText("storyOrderPhaseTitle"));
+        phaseChip =
+          `<span class="story-order-phase-chip" title="${phaseTitle}">` +
+            `${escapeHtml(uiText("storyOrderPhasePrefix"))}${escapeHtml(String(soi.questOrder))}</span>`;
+      }
+    }
+  }
+
   const kindCls = meta.cls;
   const kindNm = meta.name;
 
   div.innerHTML =
     `<div class="item-line1">` +
       `<span class="badge ${kindCls}">${escapeHtml(kindNm)}</span>` +
+      phaseChip +
       `<span class="item-key">${highlightTextFragment(displayEntryTitle(e), STATE.filters.q)}</span>` +
+      confidenceBadge +
       possiblyUnusedBadge +
       `<span class="item-meta">${e.n} ${uiText("lineUnit")}</span>` +
       possiblyUnusedToggle +
@@ -7398,6 +7800,121 @@ function renderMissionTimelineQuestSpatialTrack(track, flowKeyMap, currentKey) {
   return details;
 }
 
+
+function renderStoryOrderCompareSourceRow({ missionId, source, label, order, currentOrder, statusText, canAdopt, disabledTitle, currentKey }) {
+  const row = document.createElement("div");
+  row.className = `story-order-compare-row is-${source}`;
+  const head = document.createElement("div");
+  head.className = "story-order-compare-row-head";
+  const title = document.createElement("span");
+  title.className = "story-order-compare-source";
+  title.textContent = label;
+  head.appendChild(title);
+  const meta = document.createElement("span");
+  meta.className = "story-order-compare-meta";
+  const cleanOrder = overrideKeyList(order);
+  if (statusText) {
+    meta.textContent = statusText;
+  } else if (source === "current") {
+    meta.textContent = storyOrderFormatCount(cleanOrder.length);
+  } else {
+    meta.textContent = `${storyOrderFormatCount(cleanOrder.length)} / ${storyOrderFormatDiff(storyOrderOrderDiffStats(currentOrder, cleanOrder))}`;
+  }
+  head.appendChild(meta);
+  if (source !== "current") {
+    const button = document.createElement("button");
+    button.className = "story-order-compare-adopt-button";
+    button.type = "button";
+    button.dataset.missionId = missionId;
+    button.dataset.source = source;
+    button.textContent = uiText("storyOrderCompareAdopt");
+    button.disabled = !canAdopt;
+    if (!canAdopt) {
+      button.title = disabledTitle || statusText || uiText("storyOrderCompareIdentical");
+    } else {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        storyOrderAdoptMissionOrder(missionId, source);
+      });
+    }
+    head.appendChild(button);
+  }
+  row.appendChild(head);
+  const preview = document.createElement("div");
+  preview.className = "story-order-compare-preview";
+  if (cleanOrder.length) appendStoryOrderComparePreview(preview, cleanOrder, currentKey);
+  row.appendChild(preview);
+  return row;
+}
+
+function renderStoryOrderComparisonPanel(missionId, currentKey) {
+  const missionKey = String(missionId || "");
+  if (!missionKey) return null;
+  ensureStoryOrderOcrPayloadForDebug();
+  const currentOrder = storyOrderMissionCurrentOrder(missionKey);
+  const staticOrder = storyOrderMissionStaticRecoveredOrder(missionKey);
+  const ocrPayload = STATE.storyOrderOcrPayload;
+  const rawOcrOrder = storyOrderMissionOrderFromPayload(ocrPayload, missionKey);
+  const ocrOrder = rawOcrOrder.length ? completeStoryOrderSourceOrder(missionKey, rawOcrOrder) : [];
+  if (!currentOrder.length && !staticOrder.length && !ocrOrder.length && !STATE.storyOrderOcrPromise && !(ocrPayload && ocrPayload._missing)) {
+    return null;
+  }
+
+  const locked = typeof storyOrderMissionLocked === "function" && storyOrderMissionLocked(missionKey);
+  const panel = document.createElement("div");
+  panel.className = "story-order-compare-panel";
+  const heading = document.createElement("div");
+  heading.className = "story-order-compare-heading";
+  heading.textContent = uiText("storyOrderCompareTitle");
+  panel.appendChild(heading);
+
+  const staticStatus = staticOrder.length ? "" : uiText("storyOrderCompareMissing");
+  const ocrStatus = STATE.storyOrderOcrPromise
+    ? uiText("storyOrderCompareLoading")
+    : ((ocrPayload && ocrPayload._missing) || !ocrOrder.length ? uiText("storyOrderCompareMissing") : "");
+  const rows = [
+    {
+      missionId: missionKey,
+      source: "current",
+      label: uiText("storyOrderCompareCurrent"),
+      order: currentOrder,
+      currentOrder,
+      currentKey,
+    },
+    {
+      missionId: missionKey,
+      source: "static",
+      label: uiText("storyOrderCompareRecovered"),
+      order: staticOrder,
+      currentOrder,
+      statusText: staticStatus,
+      canAdopt: !locked && staticOrder.length && !storyOrderSameOrder(currentOrder, staticOrder),
+      disabledTitle: locked ? uiText("storyOrderCompareLocked") : "",
+      currentKey,
+    },
+    {
+      missionId: missionKey,
+      source: "ocr",
+      label: uiText("storyOrderCompareOcr"),
+      order: ocrOrder,
+      currentOrder,
+      statusText: ocrStatus,
+      canAdopt: !locked && ocrOrder.length && !storyOrderSameOrder(currentOrder, ocrOrder),
+      disabledTitle: locked ? uiText("storyOrderCompareLocked") : "",
+      currentKey,
+    },
+  ];
+  if (locked) {
+    const lockedNote = document.createElement("div");
+    lockedNote.className = "story-order-compare-locked";
+    lockedNote.textContent = uiText("storyOrderCompareLocked");
+    panel.appendChild(lockedNote);
+  }
+  for (const row of rows) panel.appendChild(renderStoryOrderCompareSourceRow(row));
+  return panel;
+}
+
 function renderMissionTimelineRecovery(timeline, conv) {
   if (!timeline || !missionTimelineArray(timeline.quests).length) return null;
   const box = document.createElement("div");
@@ -7420,6 +7937,8 @@ function renderMissionTimelineRecovery(timeline, conv) {
 
   const flowKeyMap = buildFlowConversationKeyMap();
   const currentKey = conv && conv.key ? conv.key : "";
+  const orderCompareBlock = renderStoryOrderComparisonPanel(conv && conv.mission, currentKey);
+  if (orderCompareBlock) box.appendChild(orderCompareBlock);
   const spatialBlock = renderMissionTimelineQuestSpatialTrack(
     timeline.questSpatialTrack,
     flowKeyMap,
@@ -7609,8 +8128,7 @@ function isInlineEmojiImageId(imageId, asset = null) {
   const rel = String(asset && asset.rel ? asset.rel : "").toLowerCase();
   const stem = String(asset && asset.stem ? asset.stem : "").toLowerCase();
   return (
-    normalized.includes("emoji")
-    || normalized.includes("emoiji")
+    isInlineEmojiFamilyId(normalized)
     || stem.includes("emoji")
     || stem.includes("emoiji")
     || rel.includes("emoji")

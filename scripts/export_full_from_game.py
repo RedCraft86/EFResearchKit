@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from package_webui import (
+from pack_webui import (
     ENV_EMOJI_FALLBACK_LAYER_STEMS,
     ENV_EMOJI_PREFAB_LAYER_STEMS,
     collect_inline_image_ids,
@@ -34,9 +34,42 @@ SOURCES = ("StreamingAssets", "Persistent")
 ANIMESTUDIO_STAGES = ("maps", "convert_by_type", "json_by_type")
 ANIMESTUDIO_SCOPES = ("story", "assets", "all")
 ANIMESTUDIO_ASSET_MODES = ("webui", "full", "debug")
+STRUCTURED_DUMP_MODES = ("webui", "full", "debug")
+WEBUI_STRUCTURED_REQUIRED_BLOCK_TYPES = (
+    "table",
+    "json-data",
+    "video",
+    "audit-video",
+)
+ANIMESTUDIO_STAGE_MERGE_MODES = ("auto", "never", "aggressive")
+ANIMESTUDIO_STAGE_MERGE_PRIMARY_STAGE = "convert_by_type"
+ANIMESTUDIO_STAGE_MERGE_SECONDARY_STAGE = "json_by_type"
+ANIMESTUDIO_STAGE_MERGE_FLAG_ENV_PREFIX = "ANIMESTUDIO_STAGE_MERGE"
+ANIMESTUDIO_SECONDARY_EXPORT_FLAGS = {
+    "output": os.environ.get(
+        f"{ANIMESTUDIO_STAGE_MERGE_FLAG_ENV_PREFIX}_OUTPUT_FLAG",
+        "--secondary_export_path",
+    ),
+    "export_type": os.environ.get(
+        f"{ANIMESTUDIO_STAGE_MERGE_FLAG_ENV_PREFIX}_EXPORT_TYPE_FLAG",
+        "--secondary_export_type",
+    ),
+    "types": os.environ.get(
+        f"{ANIMESTUDIO_STAGE_MERGE_FLAG_ENV_PREFIX}_TYPES_FLAG",
+        "--secondary_types",
+    ),
+}
+ANIMESTUDIO_STAGE_MERGE_SHARED_OPTION_KEYS = (
+    "map_op",
+    "map_type",
+    "map_name",
+    "names",
+    "containers",
+    "filter_data",
+)
 ANIMESTUDIO_GAME = "ArknightsEndfield"
 ANIMESTUDIO_LOGGER_FLAGS = ("Warning", "Error")
-ANIMESTUDIO_DEFAULT_JOBS = 4
+ANIMESTUDIO_DEFAULT_JOBS = 8
 ANIMESTUDIO_DEFAULT_SHARDS = 16
 ANIMESTUDIO_DUMMY_DLL_ENV = "ANIMESTUDIO_DUMMY_DLLS"
 ANIMESTUDIO_MANIFEST_SCHEMA_VERSION = 2
@@ -167,6 +200,34 @@ class CommandResult:
     duration_seconds: float
     stdout_log: str
     stderr_log: str
+
+
+@dataclass(frozen=True)
+class AnimeStudioSecondaryExport:
+    stage: str
+    output_path: Path
+    export_type: str
+    types: tuple[str, ...]
+
+
+class AnimeStudioCallPool:
+    def __init__(self, max_workers: int):
+        self.max_workers = max(1, max_workers)
+        self._executor: ThreadPoolExecutor | None = None
+
+    def __enter__(self) -> "AnimeStudioCallPool":
+        self._executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        if self._executor is not None:
+            self._executor.shutdown(wait=True)
+            self._executor = None
+
+    def submit_stage(self, **kwargs: Any):
+        if self._executor is None:
+            raise RuntimeError("AnimeStudioCallPool must be used as a context manager")
+        return self._executor.submit(run_animestudio_stage, **kwargs)
 
 
 def ordered_unique(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
@@ -332,7 +393,7 @@ def save_animestudio_manifest(path: Path, manifest: dict[str, Any]) -> None:
     payload["schema_version"] = ANIMESTUDIO_MANIFEST_SCHEMA_VERSION
     payload["last_updated_epoch"] = int(time.time())
     ensure_dir(path.parent)
-    write_json(path, payload)
+    write_json(path, payload, compact=True)
 
 
 def animestudio_asset_cache_path(output_root: Path) -> Path:
@@ -368,7 +429,7 @@ def save_animestudio_asset_cache(path: Path, cache: dict[str, Any]) -> None:
     payload["schema_version"] = ANIMESTUDIO_ASSET_CACHE_SCHEMA_VERSION
     payload["last_updated_epoch"] = int(time.time())
     ensure_dir(path.parent)
-    write_json(path, payload)
+    write_json(path, payload, compact=True)
 
 
 def regex_literal_body(pattern: str, suffix: str) -> str | None:
@@ -714,7 +775,7 @@ def write_asset_shard_files(
         }
         for entry in entries
     ]
-    write_json(filter_data_path, filter_items)
+    write_json(filter_data_path, filter_items, compact=True)
     names = sorted({str(entry.get("Name") or "") for entry in entries if str(entry.get("Name") or "")})
     names_path.write_text("\n".join(regex_exact(name) for name in names) + ("\n" if names else ""), encoding="utf-8")
     source_file_count, source_byte_count = asset_entry_source_stats(entries)
@@ -797,8 +858,11 @@ def prune_unmatched_animestudio_asset_outputs(
     type_dir = animestudio_stage_dir(output_root, source, stage) / type_name
     if not type_dir.is_dir():
         return 0
+    # Predicted outputs and dir entries are all under the resolved output_root, so
+    # normcase(abspath) normalizes for comparison without a filesystem-touching
+    # resolve() per path (matters for large Texture2D sets pruned every export).
     expected = {
-        str(path.resolve()).casefold()
+        os.path.normcase(os.path.abspath(path))
         for entry in entries
         if (path := predict_animestudio_convert_output_path(output_root, source, stage, entry)) is not None
     }
@@ -806,7 +870,7 @@ def prune_unmatched_animestudio_asset_outputs(
     for path in type_dir.iterdir():
         if not path.is_file():
             continue
-        if str(path.resolve()).casefold() in expected:
+        if os.path.normcase(os.path.abspath(path)) in expected:
             continue
         try:
             path.unlink()
@@ -873,15 +937,20 @@ def animestudio_stage_options_for_scope(scope: str, asset_mode: str = "webui") -
     if scope == "story":
         json_types = ANIMESTUDIO_STORY_JSON_TYPES
         convert_types: tuple[str, ...] = ()
-    elif asset_mode == "webui":
-        json_types = ANIMESTUDIO_WEBUI_JSON_TYPES
-        convert_types = ANIMESTUDIO_WEBUI_CONVERT_TYPES
-    elif asset_mode == "debug":
-        json_types = ANIMESTUDIO_DEBUG_JSON_TYPES
-        convert_types = ANIMESTUDIO_DEBUG_CONVERT_TYPES
     else:
-        json_types = ANIMESTUDIO_FULL_JSON_TYPES
-        convert_types = ANIMESTUDIO_FULL_CONVERT_TYPES
+        if asset_mode == "webui":
+            asset_json_types = ANIMESTUDIO_WEBUI_JSON_TYPES
+            convert_types = ANIMESTUDIO_WEBUI_CONVERT_TYPES
+        elif asset_mode == "debug":
+            asset_json_types = ANIMESTUDIO_DEBUG_JSON_TYPES
+            convert_types = ANIMESTUDIO_DEBUG_CONVERT_TYPES
+        else:
+            asset_json_types = ANIMESTUDIO_FULL_JSON_TYPES
+            convert_types = ANIMESTUDIO_FULL_CONVERT_TYPES
+        if scope == "all":
+            json_types = ordered_unique(ANIMESTUDIO_STORY_JSON_TYPES + asset_json_types)
+        else:
+            json_types = asset_json_types
     return {
         "maps": {"map_op": "Both", "map_type": "JSON,MessagePack"},
         "convert_by_type": {
@@ -1021,82 +1090,44 @@ def plan_animestudio_stage(
     output_root: Path,
     stage: str,
     options: dict[str, Any],
-    manifest_entries: dict[str, Any],
-    cli_signature: dict[str, Any] | None,
-    dummy_dll_signature: dict[str, Any] | None,
-    source_fingerprint: dict[str, Any],
-    refresh_selectors: tuple[str, ...],
 ) -> dict[str, Any]:
+    # The cross-run AnimeStudio cache has been removed: every selected item is
+    # always (re)exported, so planning is just an enumeration. No manifest
+    # lookups, no per-item cache_key hashing, and no planning-time count_files
+    # walks (output counts are gathered once at summary time instead).
     items: list[dict[str, Any]] = []
     selected_items: list[str] = []
-    cached_items: list[str] = []
     run_items: list[str] = []
-    forced_refresh_items: list[str] = []
-    item_file_counts: dict[str, int] = {}
     type_specs_to_run: list[str] = []
 
     for type_spec, item_name in animestudio_stage_items(stage, options.get("types", ())):
         selected_items.append(item_name)
-        item_file_count = animestudio_output_file_count(output_root, source, stage, type_spec)
-        item_file_counts[item_name] = item_file_count
-        manifest_key = animestudio_manifest_entry_key(source, stage, type_spec)
-        stage_signature = build_animestudio_stage_signature(stage, options, type_spec)
-        cache_key = build_animestudio_cache_key(
-            source=source,
-            stage_signature=stage_signature,
-            cli_signature=cli_signature,
-            dummy_dll_signature=dummy_dll_signature,
-            source_fingerprint=source_fingerprint,
+        items.append(
+            {
+                "type_spec": type_spec,
+                "item_name": item_name,
+                "stage_signature": build_animestudio_stage_signature(stage, options, type_spec),
+                "cache_valid": False,
+                "refresh_forced": False,
+            }
         )
-        refresh_forced = any(
-            animestudio_matches_refresh_selector(selector, source, stage, item_name)
-            for selector in refresh_selectors
-        )
-        manifest_entry = manifest_entries.get(manifest_key) or {}
-        cache_valid = (
-            not refresh_forced
-            and manifest_entry.get("cache_key") == cache_key
-            and int(manifest_entry.get("file_count", -1)) == item_file_count
-        )
+        run_items.append(item_name)
+        if type_spec is not None:
+            type_specs_to_run.append(type_spec)
 
-        item_info = {
-            "type_spec": type_spec,
-            "item_name": item_name,
-            "manifest_key": manifest_key,
-            "stage_signature": stage_signature,
-            "cache_key": cache_key,
-            "file_count": item_file_count,
-            "cache_valid": cache_valid,
-            "refresh_forced": refresh_forced,
-        }
-        items.append(item_info)
-
-        if refresh_forced:
-            forced_refresh_items.append(item_name)
-        if cache_valid:
-            cached_items.append(item_name)
-        else:
-            run_items.append(item_name)
-            if type_spec is not None:
-                type_specs_to_run.append(type_spec)
-
-    plan = {
+    return {
         "stage": stage,
         "options": options,
         "items": items,
         "selected_items": selected_items,
-        "cached_items": cached_items,
+        "cached_items": [],
         "run_items": run_items,
-        "forced_refresh_items": forced_refresh_items,
-        "item_file_counts": item_file_counts,
+        "forced_refresh_items": [],
+        "item_file_counts": {},
         "type_specs_to_run": tuple(type_specs_to_run),
         "should_run": bool(run_items),
-        "cli_signature": cli_signature,
-        "dummy_dll_signature": dummy_dll_signature,
-        "source_fingerprint": source_fingerprint,
+        "cache_state": "no_cache",
     }
-    plan["cache_state"] = animestudio_plan_cache_state(plan)
-    return plan
 
 
 def update_animestudio_manifest_for_stage(
@@ -1165,6 +1196,15 @@ def parse_args() -> argparse.Namespace:
         help="Path to AnimeStudio CLI for VFS structured exports",
     )
     parser.add_argument(
+        "--structured-dump-mode",
+        choices=STRUCTURED_DUMP_MODES,
+        default="webui",
+        help=(
+            "`webui` and `full` dump only WebUI-required structured VFS data and skip audio PCK/media files. "
+            "`debug` preserves the old broad dump of every dumpable block type."
+        ),
+    )
+    parser.add_argument(
         "--fluffy",
         dest="structured_dumper",
         help=argparse.SUPPRESS,
@@ -1213,7 +1253,8 @@ def parse_args() -> argparse.Namespace:
         default="all",
         help=(
             "`story` exports only maps plus TextAsset/MonoBehaviour/PlayableDirector JSON. "
-            "`assets`/`all` use --animestudio-asset-mode to choose WebUI-focused, full, or debug assets."
+            "`assets` uses --animestudio-asset-mode to choose WebUI-focused, full, or debug assets. "
+            "`all` combines story JSON with the selected asset mode."
         ),
     )
     parser.add_argument(
@@ -1230,9 +1271,8 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         default=(),
         help=(
-            "Force-refresh cached AnimeStudio items. Accepts selectors such as "
-            "`MonoBehaviour`, `Material`, `maps`, `json_by_type:Material`, or "
-            "`StreamingAssets:json_by_type:Material`."
+            "Deprecated no-op. The cross-run AnimeStudio cache has been removed, so "
+            "every selected item is always re-exported and there is nothing to force-refresh."
         ),
     )
     parser.add_argument(
@@ -1240,8 +1280,9 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=ANIMESTUDIO_DEFAULT_JOBS,
         help=(
-            "Maximum parallel AnimeStudio CLI processes for per-type export. "
-            f"The default {ANIMESTUDIO_DEFAULT_JOBS} runs shards/types in parallel; lower it to limit peak memory."
+            "Maximum parallel AnimeStudio CLI processes in the shared worker pool. "
+            f"The default {ANIMESTUDIO_DEFAULT_JOBS} lets pooled shards/types share workers; "
+            "lower it to limit peak memory."
         ),
     )
     parser.add_argument(
@@ -1250,15 +1291,37 @@ def parse_args() -> argparse.Namespace:
         default=ANIMESTUDIO_DEFAULT_SHARDS,
         help=(
             "Split each map-filtered deterministic asset type into this many filter_data shards. "
-            f"The default {ANIMESTUDIO_DEFAULT_SHARDS} keeps per-process asset slices small while "
-            f"--animestudio-jobs defaults to {ANIMESTUDIO_DEFAULT_JOBS}. "
+            f"The default {ANIMESTUDIO_DEFAULT_SHARDS} keeps per-process asset slices small; "
+            f"the shared --animestudio-jobs pool consumes those shards. "
             "Use 0 to shard by --animestudio-jobs."
+        ),
+    )
+    parser.add_argument(
+        "--animestudio-type-job-mode",
+        choices=("auto", "parallel", "merged"),
+        default="auto",
+        help=(
+            "How to run non-sharded AnimeStudio type jobs. `auto` merges json_by_type "
+            "types into one AnimeStudio process and keeps convert_by_type on the pooled "
+            "sharded path. `parallel` preserves the old one-process-per-type behavior. "
+            "`merged` combines every non-sharded type set."
+        ),
+    )
+    parser.add_argument(
+        "--animestudio-stage-merge-mode",
+        choices=ANIMESTUDIO_STAGE_MERGE_MODES,
+        default="auto",
+        help=(
+            "Controls guarded same-process merging across AnimeStudio stages. "
+            "`auto` preserves the current split Convert/JSON stage behavior, `never` disables "
+            "the merge path explicitly, and `aggressive` runs a Convert primary export with "
+            "a JSON secondary export only when the CLI advertises the secondary-export flags."
         ),
     )
     parser.add_argument(
         "--no-animestudio-asset-cache",
         action="store_true",
-        help="Disable per-asset AnimeStudio conversion cache for map-filtered deterministic conversions",
+        help="Deprecated no-op. The AnimeStudio conversion cache has been removed; every run re-exports.",
     )
     parser.add_argument(
         "--skip-structured",
@@ -1288,8 +1351,14 @@ def ensure_dir(path: Path) -> Path:
     return path
 
 
-def write_json(path: Path, data: Any) -> None:
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+def write_json(path: Path, data: Any, *, compact: bool = False) -> None:
+    # Human-facing reports keep indent=2; large machine-only caches/filters use
+    # `compact` to cut serialized size, peak string memory, and bytes written.
+    if compact:
+        text = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    else:
+        text = json.dumps(data, indent=2, ensure_ascii=False)
+    path.write_text(text, encoding="utf-8")
 
 
 def log(message: str) -> None:
@@ -1307,8 +1376,60 @@ def load_previous_summary(primary_path: Path, legacy_path: Path) -> dict[str, An
     return {}
 
 
+def structured_dump_steps(mode: str) -> list[dict[str, Any]]:
+    if mode == "debug":
+        return [{"name": "debug_all", "block_types": (), "file_regexes": ()}]
+    return [
+        {
+            "name": "required",
+            "block_types": WEBUI_STRUCTURED_REQUIRED_BLOCK_TYPES,
+            "file_regexes": (),
+        },
+    ]
+
+
+def describe_structured_dump_steps(steps: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    for step in steps:
+        block_types = step.get("block_types") or ()
+        file_regexes = step.get("file_regexes") or ()
+        block_text = ",".join(str(item) for item in block_types) if block_types else "all"
+        if file_regexes:
+            regex_text = ",".join(str(item) for item in file_regexes)
+            parts.append(f"{step['name']}[{block_text}; files={regex_text}]")
+        else:
+            parts.append(f"{step['name']}[{block_text}]")
+    return "; ".join(parts)
+
+
+def structured_dump_command_name(source: str, step: dict[str, Any], step_count: int) -> str:
+    if step_count == 1:
+        return f"{source}_structured_dump"
+    return f"{source}_structured_dump_{step['name']}"
+
+
 def structured_output_dir(output_root: Path, source: str) -> Path:
     return output_root / "structured" / source
+
+
+def reset_structured_output_dir(output_root: Path, source: str) -> Path:
+    target = structured_output_dir(output_root, source)
+    allowed_root = (output_root / "structured").resolve()
+    target_resolved = target.resolve()
+    try:
+        target_resolved.relative_to(allowed_root)
+    except ValueError as exc:
+        raise RuntimeError(f"refusing to clear structured output outside {allowed_root}: {target_resolved}") from exc
+    if target_resolved == allowed_root:
+        raise RuntimeError(f"refusing to clear structured root directly: {target_resolved}")
+
+    if target.exists() or target.is_symlink():
+        if target.is_dir() and not target.is_symlink():
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+    target.mkdir(parents=True, exist_ok=True)
+    return target
 
 
 def resolve_existing_structured_output_dir(output_root: Path, source: str) -> Path:
@@ -1504,6 +1625,74 @@ def mark_command_result_failed(result: CommandResult) -> CommandResult:
         stdout_log=result.stdout_log,
         stderr_log=result.stderr_log,
     )
+
+
+def normalize_animestudio_option_for_compare(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    return value
+
+
+def detect_animestudio_stage_merge_feature(animestudio_exe: Path, mode: str) -> dict[str, Any]:
+    flags = dict(ANIMESTUDIO_SECONDARY_EXPORT_FLAGS)
+    feature: dict[str, Any] = {
+        "contract": "secondary_export_v1",
+        "requested_mode": mode,
+        "effective_mode": "never",
+        "primary_stage": ANIMESTUDIO_STAGE_MERGE_PRIMARY_STAGE,
+        "secondary_stage": ANIMESTUDIO_STAGE_MERGE_SECONDARY_STAGE,
+        "flags": flags,
+        "supported": False,
+        "probed": False,
+        "probe_commands": [],
+        "missing_flags": list(flags.values()),
+        "reason": "stage merging is disabled",
+    }
+    if mode == "never":
+        feature["reason"] = "stage merge mode is never"
+        return feature
+    if mode == "auto":
+        feature["reason"] = "auto preserves split stages until the secondary-export CLI contract is enabled explicitly"
+        return feature
+
+    feature["probed"] = True
+    help_text_parts: list[str] = []
+    for probe_argv in ((str(animestudio_exe), "--help"), (str(animestudio_exe),)):
+        started = time.time()
+        probe_info: dict[str, Any] = {"argv": list(probe_argv)}
+        try:
+            proc = subprocess.run(
+                list(probe_argv),
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15,
+            )
+        except Exception as exc:  # pragma: no cover - defensive around local CLI launch failures
+            probe_info["error"] = str(exc)
+            probe_info["duration_seconds"] = round(time.time() - started, 3)
+            feature["probe_commands"].append(probe_info)
+            continue
+        probe_info["returncode"] = proc.returncode
+        probe_info["duration_seconds"] = round(time.time() - started, 3)
+        feature["probe_commands"].append(probe_info)
+        help_text_parts.extend([proc.stdout or "", proc.stderr or ""])
+        combined = "\n".join(help_text_parts)
+        if all(flag in combined for flag in flags.values()):
+            break
+
+    help_text = "\n".join(help_text_parts)
+    missing_flags = [flag for flag in flags.values() if flag not in help_text]
+    feature["missing_flags"] = missing_flags
+    if missing_flags:
+        feature["reason"] = "secondary-export CLI flags were not found in AnimeStudio help output"
+        return feature
+    feature["supported"] = True
+    feature["effective_mode"] = "aggressive"
+    feature["reason"] = "secondary-export CLI flags are available"
+    return feature
 
 
 def parse_structured_failures(stderr_text: str) -> list[dict[str, str]]:
@@ -1819,6 +2008,7 @@ def run_animestudio_stage(
     filter_data: str | Path | None = None,
     types: tuple[str, ...] = (),
     command_name: str | None = None,
+    secondary_export: AnimeStudioSecondaryExport | None = None,
 ) -> CommandResult:
     work_dir = ensure_dir(animestudio_work_dir(output_root))
     stage_out = ensure_dir(animestudio_stage_dir(output_root, source, stage))
@@ -1840,7 +2030,12 @@ def run_animestudio_stage(
         cmd.extend(["--export_type", export_type])
     if animestudio_dummy_dlls is not None:
         cmd.extend(["--dummy_dlls", str(animestudio_dummy_dlls)])
-    if mono_behaviour_type_tree_priority and any(animestudio_type_name(type_spec) == "MonoBehaviour" for type_spec in types):
+    combined_type_specs = tuple(types)
+    if secondary_export is not None:
+        combined_type_specs += tuple(secondary_export.types)
+    if mono_behaviour_type_tree_priority and any(
+        animestudio_type_name(type_spec) == "MonoBehaviour" for type_spec in combined_type_specs
+    ):
         cmd.extend(["--mono_behaviour_type_tree_priority", mono_behaviour_type_tree_priority])
     if use_map_op:
         cmd.extend(["--map_op", map_op])
@@ -1857,12 +2052,76 @@ def run_animestudio_stage(
     if types:
         cmd.append("--types")
         cmd.extend(types)
+    if secondary_export is not None:
+        ensure_dir(secondary_export.output_path)
+        cmd.extend([ANIMESTUDIO_SECONDARY_EXPORT_FLAGS["output"], str(secondary_export.output_path)])
+        cmd.extend([ANIMESTUDIO_SECONDARY_EXPORT_FLAGS["export_type"], secondary_export.export_type])
+        if secondary_export.types:
+            cmd.append(ANIMESTUDIO_SECONDARY_EXPORT_FLAGS["types"])
+            cmd.extend(secondary_export.types)
     name = command_name or f"{source}_animestudio_{stage}"
     result = run_logged_command(name, cmd, work_dir, reports_dir, stream_output=True)
     if result.returncode == 0 and animestudio_cli_usage_error(result):
         log(f"  animestudio command {name} printed CLI usage/validation output; treating as failed")
         return mark_command_result_failed(result)
     return result
+
+
+def run_animestudio_call_tasks(
+    tasks: list[dict[str, Any]],
+    jobs: int,
+    call_pool: AnimeStudioCallPool | None = None,
+) -> None:
+    if not tasks:
+        return
+    worker_count = call_pool.max_workers if call_pool is not None else max(1, jobs)
+    log(
+        f"  animestudio call pool: queueing {len(tasks)} task(s) "
+        f"with workers={worker_count}"
+    )
+
+    def drain(pool: AnimeStudioCallPool) -> None:
+        future_to_task = {
+            pool.submit_stage(**task["kwargs"]): task
+            for task in tasks
+        }
+        for future in as_completed(future_to_task):
+            task = future_to_task[future]
+            result = future.result()
+            task["result"] = result
+            kind = task.get("kind")
+            if kind == "asset_shard":
+                asset_work = task["asset_work"]
+                shard = task["shard"]
+                shard_index = int(shard["index"])
+                asset_work.setdefault("result_by_shard", {})[shard_index] = result
+                log(
+                    f"  animestudio asset shard {task['stage']}:{task['item_name']} "
+                    f"{shard_index}/{int(shard['count'])} for {task['source']}: "
+                    f"returncode={result.returncode}"
+                )
+            elif kind == "merged_types":
+                log(
+                    f"  animestudio merged type task {task['stage']} "
+                    f"({', '.join(task.get('item_names', []))}) for {task['source']}: "
+                    f"returncode={result.returncode}"
+                )
+            elif kind == "type":
+                log(
+                    f"  animestudio type {task['stage']}:{task['item_name']} for {task['source']}: "
+                    f"returncode={result.returncode}"
+                )
+            else:
+                log(
+                    f"  animestudio task {task.get('stage')} for {task.get('source')}: "
+                    f"returncode={result.returncode}"
+                )
+
+    if call_pool is not None:
+        drain(call_pool)
+    else:
+        with AnimeStudioCallPool(worker_count) as local_pool:
+            drain(local_pool)
 
 
 def write_animestudio_parallel_log_index(
@@ -1937,6 +2196,7 @@ def prepare_animestudio_asset_shards(
     plan: dict[str, Any],
     runnable_items: list[dict[str, Any]],
     jobs: int,
+    asset_cache: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if stage != "convert_by_type" or len(runnable_items) != 1:
         return None
@@ -1978,7 +2238,11 @@ def prepare_animestudio_asset_shards(
     )
     cache_enabled = bool(options.get("asset_cache_enabled", True))
     cache_path = animestudio_asset_cache_path(output_root)
-    asset_cache = load_animestudio_asset_cache(cache_path) if cache_enabled else default_animestudio_asset_cache()
+    if cache_enabled:
+        if asset_cache is None:
+            asset_cache = load_animestudio_asset_cache(cache_path)
+    else:
+        asset_cache = default_animestudio_asset_cache()
     cached_entries: list[dict[str, Any]] = []
     pending_entries: list[dict[str, Any]] = []
     for entry in matched_entries:
@@ -1986,12 +2250,15 @@ def prepare_animestudio_asset_shards(
         if output_path is None:
             pending_entries.append(entry)
             continue
-        manifest_key = asset_entry_manifest_key(entry, item, plan)
-        cache_key = asset_entry_cache_key(entry, item, plan)
-        if cache_enabled and asset_cache_entry_is_valid(asset_cache, manifest_key, cache_key, output_path):
-            cached_entries.append(entry)
-        else:
-            pending_entries.append(entry)
+        # Only compute the sha256 manifest/cache keys when the cache is enabled;
+        # with the cache removed every matched entry is simply re-exported.
+        if cache_enabled:
+            manifest_key = asset_entry_manifest_key(entry, item, plan)
+            cache_key = asset_entry_cache_key(entry, item, plan)
+            if asset_cache_entry_is_valid(asset_cache, manifest_key, cache_key, output_path):
+                cached_entries.append(entry)
+                continue
+        pending_entries.append(entry)
 
     requested_shards = int(options.get("asset_shards") or 0)
     if requested_shards <= 0:
@@ -2044,21 +2311,13 @@ def prepare_animestudio_asset_shards(
     }
 
 
-def run_animestudio_asset_shard_work(
+def begin_animestudio_asset_shard_work(
     source: str,
-    input_root: Path,
     output_root: Path,
-    reports_dir: Path,
-    animestudio_exe: Path,
-    animestudio_dummy_dlls: Path | None,
     stage: str,
-    plan: dict[str, Any],
-    jobs: int,
     asset_work: dict[str, Any],
-) -> tuple[list[CommandResult], list[str], list[str]]:
-    options = plan["options"]
+) -> tuple[bool, list[str], list[str]]:
     item = asset_work["item"]
-    type_spec = asset_work["type_spec"]
     type_name = asset_work["type_name"]
     asset_info = asset_work["asset_info"]
     shards = asset_work["shards"]
@@ -2090,72 +2349,45 @@ def run_animestudio_asset_shard_work(
             f"removed {removed_pending_output_count} stale pending outputs before shard export"
         )
 
-    if not shards:
-        output_entry_count = count_existing_animestudio_asset_outputs(
-            output_root=output_root,
-            source=source,
-            stage=stage,
-            entries=asset_work["matched_entries"],
-        )
-        missing_output_count = max(0, len(asset_work["matched_entries"]) - output_entry_count)
-        asset_info["updated_entry_count"] = 0
-        asset_info["successful_shard_count"] = 0
-        asset_info["failed_shard_count"] = 0
-        asset_info["output_entry_count"] = output_entry_count
-        asset_info["missing_output_count"] = missing_output_count
-        asset_info["export_error_count"] = 0
-        missing_outputs_allowed = type_name in ANIMESTUDIO_ALLOW_MISSING_CONVERT_OUTPUT_TYPES
-        asset_info["allowed_missing_output_count"] = missing_output_count if missing_outputs_allowed else 0
-        if missing_output_count and not missing_outputs_allowed:
-            log(
-                f"  animestudio asset cache {stage}:{type_name} for {source}: "
-                f"marking failed because missing_outputs={missing_output_count}"
-            )
-            return [], [], [item["item_name"]]
-        return [], [item["item_name"]], []
+    if shards:
+        return True, [], []
 
-    max_workers = min(max(1, jobs), len(shards))
-    log(
-        f"  animestudio asset shards {stage}:{type_name} for {source}: "
-        f"launching {len(shards)} shard jobs with max_workers={max_workers}"
+    output_entry_count = count_existing_animestudio_asset_outputs(
+        output_root=output_root,
+        source=source,
+        stage=stage,
+        entries=asset_work["matched_entries"],
     )
-    result_by_shard: dict[int, CommandResult] = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_shard = {}
-        for shard in shards:
-            shard_index = int(shard["index"])
-            command_name = (
-                f"{source}_animestudio_{stage}_{animestudio_log_suffix(type_name)}_"
-                f"shard{shard_index:02d}_of_{int(shard['count']):02d}"
-            )
-            future = executor.submit(
-                run_animestudio_stage,
-                source=source,
-                input_root=input_root,
-                output_root=output_root,
-                reports_dir=reports_dir,
-                animestudio_exe=animestudio_exe,
-                animestudio_dummy_dlls=animestudio_dummy_dlls,
-                mono_behaviour_type_tree_priority=options.get("mono_behaviour_type_tree_priority"),
-                stage=stage,
-                export_type=options.get("export_type"),
-                names=shard["names"],
-                filter_data=shard["filter_data"],
-                types=(type_spec,) if type_spec is not None else (),
-                command_name=command_name,
-            )
-            future_to_shard[future] = shard
+    missing_output_count = max(0, len(asset_work["matched_entries"]) - output_entry_count)
+    asset_info["updated_entry_count"] = 0
+    asset_info["successful_shard_count"] = 0
+    asset_info["failed_shard_count"] = 0
+    asset_info["output_entry_count"] = output_entry_count
+    asset_info["missing_output_count"] = missing_output_count
+    asset_info["export_error_count"] = 0
+    missing_outputs_allowed = type_name in ANIMESTUDIO_ALLOW_MISSING_CONVERT_OUTPUT_TYPES
+    asset_info["allowed_missing_output_count"] = missing_output_count if missing_outputs_allowed else 0
+    if missing_output_count and not missing_outputs_allowed:
+        log(
+            f"  animestudio asset cache {stage}:{type_name} for {source}: "
+            f"marking failed because missing_outputs={missing_output_count}"
+        )
+        return False, [], [item["item_name"]]
+    return False, [item["item_name"]], []
 
-        for future in as_completed(future_to_shard):
-            shard = future_to_shard[future]
-            result = future.result()
-            shard_index = int(shard["index"])
-            result_by_shard[shard_index] = result
-            log(
-                f"  animestudio asset shard {stage}:{type_name} "
-                f"{shard_index}/{int(shard['count'])} for {source}: returncode={result.returncode}"
-            )
 
+def finalize_animestudio_asset_shard_work(
+    source: str,
+    output_root: Path,
+    stage: str,
+    plan: dict[str, Any],
+    asset_work: dict[str, Any],
+) -> tuple[list[CommandResult], list[str], list[str]]:
+    item = asset_work["item"]
+    type_name = asset_work["type_name"]
+    asset_info = asset_work["asset_info"]
+    shards = asset_work["shards"]
+    result_by_shard = asset_work.get("result_by_shard", {})
     ordered_results = [
         result_by_shard[index]
         for index in sorted(result_by_shard)
@@ -2175,7 +2407,10 @@ def run_animestudio_asset_shard_work(
                 source=source,
                 stage=stage,
             )
-        save_animestudio_asset_cache(asset_work["cache_path"], asset_work["asset_cache"])
+        # The in-memory cache was loaded from disk and is only mutated by adding
+        # entries, so when nothing was updated the file is unchanged; skip the write.
+        if updated_cache_entries:
+            save_animestudio_asset_cache(asset_work["cache_path"], asset_work["asset_cache"])
     asset_info["updated_entry_count"] = updated_cache_entries
     asset_info["successful_shard_count"] = sum(1 for result in ordered_results if result.returncode == 0)
     asset_info["failed_shard_count"] = sum(1 for result in ordered_results if result.returncode != 0)
@@ -2194,11 +2429,13 @@ def run_animestudio_asset_shard_work(
     missing_outputs_allowed = (
         type_name in ANIMESTUDIO_ALLOW_MISSING_CONVERT_OUTPUT_TYPES
         and export_error_count == 0
+        and bool(ordered_results)
         and all(result.returncode == 0 for result in ordered_results)
     )
     asset_info["allowed_missing_output_count"] = missing_output_count if missing_outputs_allowed else 0
     all_succeeded = (
         bool(ordered_results)
+        and len(ordered_results) == len(shards)
         and all(result.returncode == 0 for result in ordered_results)
         and (missing_output_count == 0 or missing_outputs_allowed)
         and export_error_count == 0
@@ -2208,17 +2445,230 @@ def run_animestudio_asset_shard_work(
             f"  animestudio asset shards {stage}:{type_name} for {source}: "
             f"allowed {missing_output_count} no-output Mesh entries"
         )
-    if not all_succeeded and (missing_output_count or export_error_count):
+    if not all_succeeded and (missing_output_count or export_error_count or len(ordered_results) != len(shards)):
         log(
             f"  animestudio asset shards {stage}:{type_name} for {source}: "
             f"marking failed because missing_outputs={missing_output_count} "
-            f"export_errors={export_error_count}"
+            f"export_errors={export_error_count} completed_shards={len(ordered_results)}/{len(shards)}"
         )
     return (
         ordered_results,
         [item["item_name"]] if all_succeeded else [],
         [] if all_succeeded else [item["item_name"]],
     )
+
+
+def should_merge_animestudio_type_jobs(stage: str, normal_items: list[dict[str, Any]], mode: str) -> bool:
+    if stage == "maps" or len(normal_items) <= 1:
+        return False
+    if mode == "parallel":
+        return False
+    if mode == "merged":
+        return True
+    return stage == "json_by_type"
+
+
+def animestudio_plan_runnable_items(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    run_item_names = set(plan.get("run_items", []))
+    return [
+        item for item in plan.get("items", [])
+        if item["item_name"] in run_item_names
+    ]
+
+
+def build_animestudio_stage_merge_attempt(
+    source: str,
+    output_root: Path,
+    selected_stages: tuple[str, ...],
+    stage_plans: dict[str, dict[str, Any]],
+    stage_merge_feature: dict[str, Any],
+) -> dict[str, Any] | None:
+    if stage_merge_feature.get("requested_mode") != "aggressive":
+        return None
+
+    primary_stage = ANIMESTUDIO_STAGE_MERGE_PRIMARY_STAGE
+    secondary_stage = ANIMESTUDIO_STAGE_MERGE_SECONDARY_STAGE
+    attempt: dict[str, Any] = {
+        "source": source,
+        "requested_mode": stage_merge_feature.get("requested_mode"),
+        "effective_mode": "never",
+        "supported": bool(stage_merge_feature.get("supported")),
+        "mergeable": False,
+        "ran_this_run": False,
+        "primary_stage": primary_stage,
+        "secondary_stage": secondary_stage,
+        "primary_items": [],
+        "secondary_items": [],
+        "primary_types": [],
+        "secondary_types": [],
+        "secondary_output_root": str(animestudio_stage_dir(output_root, source, secondary_stage)),
+        "cli_flags": dict(ANIMESTUDIO_SECONDARY_EXPORT_FLAGS),
+        "reason": stage_merge_feature.get("reason"),
+    }
+    if not stage_merge_feature.get("supported"):
+        return attempt
+    if primary_stage not in selected_stages or secondary_stage not in selected_stages:
+        attempt["reason"] = "both convert_by_type and json_by_type must be selected"
+        return attempt
+
+    primary_plan = stage_plans.get(primary_stage)
+    secondary_plan = stage_plans.get(secondary_stage)
+    if not primary_plan or not secondary_plan:
+        attempt["reason"] = "both stage plans must exist"
+        return attempt
+    if not primary_plan.get("should_run") or not secondary_plan.get("should_run"):
+        attempt["reason"] = "both stages need pending run items"
+        return attempt
+
+    primary_items = animestudio_plan_runnable_items(primary_plan)
+    secondary_items = animestudio_plan_runnable_items(secondary_plan)
+    primary_types = tuple(item["type_spec"] for item in primary_items if item.get("type_spec") is not None)
+    secondary_types = tuple(item["type_spec"] for item in secondary_items if item.get("type_spec") is not None)
+    if not primary_types or not secondary_types:
+        attempt["reason"] = "both stages need concrete type specs"
+        return attempt
+
+    primary_options = primary_plan.get("options") or {}
+    secondary_options = secondary_plan.get("options") or {}
+    if primary_options.get("export_type") != "Convert" or secondary_options.get("export_type") != "JSON":
+        attempt["reason"] = "only Convert primary plus JSON secondary exports are mergeable"
+        return attempt
+
+    unsafe_primary_types = [
+        animestudio_type_name(type_spec)
+        for type_spec in primary_types
+        if not animestudio_map_filter_is_safe((type_spec,))
+    ]
+    if unsafe_primary_types:
+        attempt["reason"] = "primary convert types require broad dependency loading and must stay separate"
+        attempt["unsafe_primary_types"] = unsafe_primary_types
+        return attempt
+
+    cacheable_primary_types = [
+        animestudio_type_name(type_spec)
+        for type_spec in primary_types
+        if animestudio_asset_cache_supported(primary_stage, primary_options, animestudio_type_name(type_spec))
+    ]
+    if cacheable_primary_types:
+        attempt["reason"] = "cacheable convert types should stay on the sharded asset-cache path"
+        attempt["cacheable_primary_types"] = cacheable_primary_types
+        return attempt
+
+    mismatches: dict[str, dict[str, Any]] = {}
+    for key in ANIMESTUDIO_STAGE_MERGE_SHARED_OPTION_KEYS:
+        primary_value = normalize_animestudio_option_for_compare(primary_options.get(key))
+        secondary_value = normalize_animestudio_option_for_compare(secondary_options.get(key))
+        if primary_value != secondary_value:
+            mismatches[key] = {"primary": primary_value, "secondary": secondary_value}
+    if mismatches:
+        attempt["reason"] = "primary and secondary stage options differ"
+        attempt["option_mismatches"] = mismatches
+        return attempt
+
+    attempt.update(
+        {
+            "effective_mode": "aggressive",
+            "mergeable": True,
+            "command_name": f"{source}_animestudio_{primary_stage}_{secondary_stage}_merged",
+            "primary_items": [item["item_name"] for item in primary_items],
+            "secondary_items": [item["item_name"] for item in secondary_items],
+            "primary_types": list(primary_types),
+            "secondary_types": list(secondary_types),
+            "asset_cache_bypassed": bool(primary_options.get("asset_cache_enabled")),
+            "reason": "Convert primary export can carry JSON as a secondary export",
+        }
+    )
+    return attempt
+
+
+def mark_animestudio_stage_plan_from_merge(
+    plan: dict[str, Any],
+    attempt: dict[str, Any],
+    role: str,
+    item_names: list[str],
+    result: CommandResult,
+) -> None:
+    plan["command_results"] = [result]
+    plan["succeeded_items"] = list(item_names) if result.returncode == 0 else []
+    plan["failed_items"] = [] if result.returncode == 0 else list(item_names)
+    plan["stdout_log"] = result.stdout_log
+    plan["stderr_log"] = result.stderr_log
+    paired_stage = attempt["secondary_stage"] if role == "primary" else attempt["primary_stage"]
+    plan["stage_merge"] = {
+        "requested_mode": attempt.get("requested_mode"),
+        "effective_mode": attempt.get("effective_mode"),
+        "role": role,
+        "paired_stage": paired_stage,
+        "command_name": attempt.get("command_name"),
+        "reason": attempt.get("reason"),
+        "asset_cache_bypassed": attempt.get("asset_cache_bypassed", False),
+    }
+
+
+def run_animestudio_stage_merge_plan(
+    source: str,
+    input_root: Path,
+    output_root: Path,
+    reports_dir: Path,
+    animestudio_exe: Path,
+    animestudio_dummy_dlls: Path | None,
+    stage_plans: dict[str, dict[str, Any]],
+    attempt: dict[str, Any],
+    call_pool: AnimeStudioCallPool | None = None,
+) -> list[CommandResult]:
+    primary_stage = attempt["primary_stage"]
+    secondary_stage = attempt["secondary_stage"]
+    primary_plan = stage_plans[primary_stage]
+    secondary_plan = stage_plans[secondary_stage]
+    primary_options = primary_plan["options"]
+    secondary_options = secondary_plan["options"]
+    primary_items = animestudio_plan_runnable_items(primary_plan)
+    secondary_items = animestudio_plan_runnable_items(secondary_plan)
+    primary_types = tuple(attempt.get("primary_types") or ())
+    secondary_types = tuple(attempt.get("secondary_types") or ())
+
+    clear_animestudio_stage_outputs(output_root, source, primary_stage, primary_items)
+    clear_animestudio_stage_outputs(output_root, source, secondary_stage, secondary_items)
+    secondary_export = AnimeStudioSecondaryExport(
+        stage=secondary_stage,
+        output_path=animestudio_stage_dir(output_root, source, secondary_stage),
+        export_type=secondary_options["export_type"],
+        types=secondary_types,
+    )
+    merge_task = {
+        "kind": "stage_merge",
+        "source": source,
+        "stage": f"{primary_stage}+{secondary_stage}",
+        "kwargs": {
+            "source": source,
+            "input_root": input_root,
+            "output_root": output_root,
+            "reports_dir": reports_dir,
+            "animestudio_exe": animestudio_exe,
+            "animestudio_dummy_dlls": animestudio_dummy_dlls,
+            "mono_behaviour_type_tree_priority": primary_options.get("mono_behaviour_type_tree_priority"),
+            "stage": primary_stage,
+            "export_type": primary_options.get("export_type"),
+            "map_op": primary_options.get("map_op"),
+            "map_type": primary_options.get("map_type"),
+            "map_name": primary_options.get("map_name"),
+            "names": primary_options.get("names"),
+            "containers": primary_options.get("containers"),
+            "filter_data": primary_options.get("filter_data"),
+            "types": primary_types,
+            "command_name": attempt.get("command_name"),
+            "secondary_export": secondary_export,
+        },
+    }
+    run_animestudio_call_tasks([merge_task], jobs=1, call_pool=call_pool)
+    result = merge_task["result"]
+    attempt["ran_this_run"] = True
+    attempt["returncode"] = result.returncode
+    attempt["stdout_log"] = result.stdout_log
+    attempt["stderr_log"] = result.stderr_log
+    mark_animestudio_stage_plan_from_merge(primary_plan, attempt, "primary", attempt["primary_items"], result)
+    mark_animestudio_stage_plan_from_merge(secondary_plan, attempt, "secondary", attempt["secondary_items"], result)
+    return [result]
 
 
 def run_animestudio_stage_plan(
@@ -2231,13 +2681,11 @@ def run_animestudio_stage_plan(
     stage: str,
     plan: dict[str, Any],
     jobs: int,
+    type_job_mode: str,
+    call_pool: AnimeStudioCallPool | None = None,
 ) -> list[CommandResult]:
     options = plan["options"]
-    run_item_names = set(plan.get("run_items", []))
-    runnable_items = [
-        item for item in plan.get("items", [])
-        if item["item_name"] in run_item_names
-    ]
+    runnable_items = animestudio_plan_runnable_items(plan)
     if not runnable_items:
         plan["command_results"] = []
         plan["succeeded_items"] = []
@@ -2248,6 +2696,11 @@ def run_animestudio_stage_plan(
     succeeded: list[str] = []
     failed: list[str] = []
     normal_items: list[dict[str, Any]] = []
+    asset_works: list[dict[str, Any]] = []
+
+    shared_asset_cache: dict[str, Any] | None = None
+    if stage == "convert_by_type" and bool(options.get("asset_cache_enabled", True)):
+        shared_asset_cache = load_animestudio_asset_cache(animestudio_asset_cache_path(output_root))
 
     if stage != "maps":
         for item in runnable_items:
@@ -2258,122 +2711,185 @@ def run_animestudio_stage_plan(
                 plan=plan,
                 runnable_items=[item],
                 jobs=jobs,
+                asset_cache=shared_asset_cache,
             )
             if asset_work is None:
                 normal_items.append(item)
-                continue
-            item_results, item_succeeded, item_failed = run_animestudio_asset_shard_work(
-                source=source,
-                input_root=input_root,
-                output_root=output_root,
-                reports_dir=reports_dir,
-                animestudio_exe=animestudio_exe,
-                animestudio_dummy_dlls=animestudio_dummy_dlls,
-                stage=stage,
-                plan=plan,
-                jobs=jobs,
-                asset_work=asset_work,
-            )
-            all_results.extend(item_results)
-            succeeded.extend(item_succeeded)
-            failed.extend(item_failed)
+            else:
+                asset_works.append(asset_work)
     else:
         normal_items = list(runnable_items)
 
-    if normal_items and (stage == "maps" or len(normal_items) <= 1):
+    pending_asset_works: list[dict[str, Any]] = []
+    for asset_work in asset_works:
+        has_tasks, item_succeeded, item_failed = begin_animestudio_asset_shard_work(
+            source=source,
+            output_root=output_root,
+            stage=stage,
+            asset_work=asset_work,
+        )
+        succeeded.extend(item_succeeded)
+        failed.extend(item_failed)
+        if has_tasks:
+            pending_asset_works.append(asset_work)
+
+    merge_normal_items = should_merge_animestudio_type_jobs(stage, normal_items, type_job_mode)
+    task_groups: list[list[dict[str, Any]]] = []
+    normal_task_groups: list[dict[str, Any]] = []
+
+    def normal_task_kwargs(
+        item_names: list[str],
+        type_specs: tuple[str, ...],
+        command_name: str | None,
+    ) -> dict[str, Any]:
+        return {
+            "source": source,
+            "input_root": input_root,
+            "output_root": output_root,
+            "reports_dir": reports_dir,
+            "animestudio_exe": animestudio_exe,
+            "animestudio_dummy_dlls": animestudio_dummy_dlls,
+            "mono_behaviour_type_tree_priority": options.get("mono_behaviour_type_tree_priority"),
+            "stage": stage,
+            "export_type": options.get("export_type"),
+            "map_op": options.get("map_op"),
+            "map_type": options.get("map_type"),
+            "map_name": options.get("map_name"),
+            "names": options.get("names"),
+            "containers": options.get("containers"),
+            "filter_data": options.get("filter_data"),
+            "types": type_specs,
+            "command_name": command_name,
+        }
+
+    if normal_items and (stage == "maps" or len(normal_items) <= 1 or merge_normal_items):
         clear_animestudio_stage_outputs(output_root, source, stage, normal_items)
-        command_name = None
-        if stage != "maps" and all_results:
-            command_name = f"{source}_animestudio_{stage}_{animestudio_log_suffix(normal_items[0]['item_name'])}"
+        if merge_normal_items:
+            log(
+                f"  animestudio stage {stage} for {source}: merging {len(normal_items)} type jobs "
+                f"({', '.join(item['item_name'] for item in normal_items)})"
+            )
         normal_type_specs = (
             plan.get("type_specs_to_run", ())
             if stage == "maps"
             else tuple(item["type_spec"] for item in normal_items if item.get("type_spec") is not None)
         )
-        result = run_animestudio_stage(
-            source=source,
-            input_root=input_root,
-            output_root=output_root,
-            reports_dir=reports_dir,
-            animestudio_exe=animestudio_exe,
-            animestudio_dummy_dlls=animestudio_dummy_dlls,
-            mono_behaviour_type_tree_priority=options.get("mono_behaviour_type_tree_priority"),
-            stage=stage,
-            export_type=options.get("export_type"),
-            map_op=options.get("map_op"),
-            map_type=options.get("map_type"),
-            map_name=options.get("map_name"),
-            names=options.get("names"),
-            containers=options.get("containers"),
-            filter_data=options.get("filter_data"),
-            types=normal_type_specs,
-            command_name=command_name,
-        )
-        all_results.append(result)
         item_names = [item["item_name"] for item in normal_items]
+        item_suffix = "merged" if len(normal_items) > 1 else item_names[0]
+        task = {
+            "kind": "merged_types" if len(normal_items) > 1 else "type",
+            "source": source,
+            "stage": stage,
+            "item_name": item_suffix,
+            "item_names": item_names,
+            "items": normal_items,
+            "kwargs": normal_task_kwargs(item_names, normal_type_specs, None),
+        }
+        normal_task_groups.append(task)
+        task_groups.append([task])
+
+    elif normal_items:
+        for item in normal_items:
+            clear_animestudio_stage_outputs(output_root, source, stage, [item])
+            item_name = item["item_name"]
+            type_spec = item["type_spec"]
+            command_name = f"{source}_animestudio_{stage}_{animestudio_log_suffix(item_name)}"
+            task = {
+                "kind": "type",
+                "source": source,
+                "stage": stage,
+                "item_name": item_name,
+                "item_names": [item_name],
+                "items": [item],
+                "kwargs": normal_task_kwargs(
+                    [item_name],
+                    (type_spec,) if type_spec is not None else (),
+                    command_name,
+                ),
+            }
+            normal_task_groups.append(task)
+            task_groups.append([task])
+
+    for asset_work in pending_asset_works:
+        type_spec = asset_work["type_spec"]
+        type_name = asset_work["type_name"]
+        shards = asset_work["shards"]
+        log(
+            f"  animestudio asset shards {stage}:{type_name} for {source}: "
+            f"queueing {len(shards)} shard job(s)"
+        )
+        group: list[dict[str, Any]] = []
+        for shard in shards:
+            shard_index = int(shard["index"])
+            command_name = (
+                f"{source}_animestudio_{stage}_{animestudio_log_suffix(type_name)}_"
+                f"shard{shard_index:02d}_of_{int(shard['count']):02d}"
+            )
+            group.append(
+                {
+                    "kind": "asset_shard",
+                    "source": source,
+                    "stage": stage,
+                    "item_name": type_name,
+                    "item_names": [asset_work["item"]["item_name"]],
+                    "asset_work": asset_work,
+                    "shard": shard,
+                    "kwargs": {
+                        "source": source,
+                        "input_root": input_root,
+                        "output_root": output_root,
+                        "reports_dir": reports_dir,
+                        "animestudio_exe": animestudio_exe,
+                        "animestudio_dummy_dlls": animestudio_dummy_dlls,
+                        "mono_behaviour_type_tree_priority": options.get("mono_behaviour_type_tree_priority"),
+                        "stage": stage,
+                        "export_type": options.get("export_type"),
+                        "names": shard["names"],
+                        "filter_data": shard["filter_data"],
+                        "types": (type_spec,) if type_spec is not None else (),
+                        "command_name": command_name,
+                    },
+                }
+            )
+        task_groups.append(group)
+
+    call_tasks: list[dict[str, Any]] = []
+    while any(task_groups):
+        for group in task_groups:
+            if group:
+                call_tasks.append(group.pop(0))
+
+    if len(call_tasks) > 1:
+        for task in call_tasks:
+            if task["kwargs"].get("command_name") is None:
+                item_suffix = task["item_name"]
+                task["kwargs"]["command_name"] = f"{source}_animestudio_{stage}_{animestudio_log_suffix(item_suffix)}"
+
+    if call_tasks:
+        run_animestudio_call_tasks(call_tasks, jobs=jobs, call_pool=call_pool)
+
+    for asset_work in pending_asset_works:
+        item_results, item_succeeded, item_failed = finalize_animestudio_asset_shard_work(
+            source=source,
+            output_root=output_root,
+            stage=stage,
+            plan=plan,
+            asset_work=asset_work,
+        )
+        all_results.extend(item_results)
+        succeeded.extend(item_succeeded)
+        failed.extend(item_failed)
+
+    for task in normal_task_groups:
+        result = task.get("result")
+        if result is None:
+            continue
+        all_results.append(result)
+        item_names = task["item_names"]
         if result.returncode == 0:
             succeeded.extend(item_names)
         else:
             failed.extend(item_names)
-
-    elif normal_items:
-        max_workers = min(max(1, jobs), len(normal_items))
-        log(f"  animestudio stage {stage} for {source}: launching {len(normal_items)} type jobs with max_workers={max_workers}")
-        result_by_item: dict[str, CommandResult] = {}
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_item = {}
-            for item in normal_items:
-                clear_animestudio_stage_outputs(output_root, source, stage, [item])
-                item_name = item["item_name"]
-                type_spec = item["type_spec"]
-                command_name = f"{source}_animestudio_{stage}_{animestudio_log_suffix(item_name)}"
-                future = executor.submit(
-                    run_animestudio_stage,
-                    source=source,
-                    input_root=input_root,
-                    output_root=output_root,
-                    reports_dir=reports_dir,
-                    animestudio_exe=animestudio_exe,
-                    animestudio_dummy_dlls=animestudio_dummy_dlls,
-                    mono_behaviour_type_tree_priority=options.get("mono_behaviour_type_tree_priority"),
-                    stage=stage,
-                    export_type=options.get("export_type"),
-                    map_op=options.get("map_op"),
-                    map_type=options.get("map_type"),
-                    map_name=options.get("map_name"),
-                    names=options.get("names"),
-                    containers=options.get("containers"),
-                    filter_data=options.get("filter_data"),
-                    types=(type_spec,) if type_spec is not None else (),
-                    command_name=command_name,
-                )
-                future_to_item[future] = item
-
-            for future in as_completed(future_to_item):
-                item = future_to_item[future]
-                result = future.result()
-                result_by_item[item["item_name"]] = result
-                log(
-                    f"  animestudio type {stage}:{item['item_name']} for {source}: "
-                    f"returncode={result.returncode}"
-                )
-
-        normal_results = [
-            result_by_item[item["item_name"]]
-            for item in normal_items
-            if item["item_name"] in result_by_item
-        ]
-        all_results.extend(normal_results)
-        succeeded.extend(
-            item["item_name"]
-            for item in normal_items
-            if item["item_name"] in result_by_item and result_by_item[item["item_name"]].returncode == 0
-        )
-        failed.extend(
-            item["item_name"]
-            for item in normal_items
-            if item["item_name"] in result_by_item and result_by_item[item["item_name"]].returncode != 0
-        )
 
     default_stdout_log = str(reports_dir / f"{source}_animestudio_{stage}.stdout.log")
     default_stderr_log = str(reports_dir / f"{source}_animestudio_{stage}.stderr.log")
@@ -2409,12 +2925,25 @@ def summarize_animestudio_source(
     source_fingerprint: dict[str, Any],
 ) -> dict[str, Any]:
     previous_source = ((previous_summary.get("animestudio") or {}).get("sources") or {}).get(source, {})
+
+    def stage_file_count(stage_name: str) -> int:
+        # Output counts are informational only. They are gathered here, once per
+        # stage after the run, rather than during planning (the removed cache used
+        # to compute them for free). A plan may still carry counts from elsewhere;
+        # use those when present, otherwise do a single recursive walk.
+        plan = stage_plans.get(stage_name)
+        if plan is not None:
+            counts = plan.get("item_file_counts")
+            if isinstance(counts, dict) and counts:
+                return sum(int(value) for value in counts.values())
+        return count_files(animestudio_stage_dir(output_root, source, stage_name))
+
     result: dict[str, Any] = {
         "root": str(animestudio_source_root(output_root, source)),
         "source_fingerprint": source_fingerprint,
         "maps": {
             "output_root": str(animestudio_stage_dir(output_root, source, "maps")),
-            "file_count": count_files(animestudio_stage_dir(output_root, source, "maps")),
+            "file_count": stage_file_count("maps"),
             "returncode": previous_source.get("maps", {}).get("returncode"),
             "stdout_log": previous_source.get("maps", {}).get(
                 "stdout_log", str(source_report_dir / f"{source}_animestudio_maps.stdout.log")
@@ -2425,7 +2954,7 @@ def summarize_animestudio_source(
         },
         "convert_by_type": {
             "output_root": str(animestudio_stage_dir(output_root, source, "convert_by_type")),
-            "file_count": count_files(animestudio_stage_dir(output_root, source, "convert_by_type")),
+            "file_count": stage_file_count("convert_by_type"),
             "returncode": previous_source.get("convert_by_type", {}).get("returncode"),
             "stdout_log": previous_source.get("convert_by_type", {}).get(
                 "stdout_log", str(source_report_dir / f"{source}_animestudio_convert_by_type.stdout.log")
@@ -2436,7 +2965,7 @@ def summarize_animestudio_source(
         },
         "json_by_type": {
             "output_root": str(animestudio_stage_dir(output_root, source, "json_by_type")),
-            "file_count": count_files(animestudio_stage_dir(output_root, source, "json_by_type")),
+            "file_count": stage_file_count("json_by_type"),
             "returncode": previous_source.get("json_by_type", {}).get("returncode"),
             "stdout_log": previous_source.get("json_by_type", {}).get(
                 "stdout_log", str(source_report_dir / f"{source}_animestudio_json_by_type.stdout.log")
@@ -2463,6 +2992,10 @@ def summarize_animestudio_source(
         )
         result[stage]["item_file_counts"] = plan.get("item_file_counts", {}) if plan else previous_stage.get("item_file_counts", {})
         result[stage]["cache_state"] = plan.get("cache_state") if plan else previous_stage.get("cache_state")
+        if plan and plan.get("stage_merge"):
+            result[stage]["stage_merge"] = plan["stage_merge"]
+        elif previous_stage.get("stage_merge"):
+            result[stage]["stage_merge"] = previous_stage["stage_merge"]
         if plan and plan.get("asset_caches"):
             result[stage]["asset_caches"] = plan["asset_caches"]
         elif previous_stage.get("asset_caches"):
@@ -2560,6 +3093,7 @@ def main() -> int:
     animestudio = args.animestudio.resolve()
     selected_sources = ordered_unique(args.sources)
     selected_animestudio_stages = ordered_unique(args.animestudio_stages)
+    structured_dump_plan = structured_dump_steps(args.structured_dump_mode)
     animestudio_stage_options = animestudio_stage_options_for_scope(args.animestudio_scope, args.animestudio_asset_mode)
     vfs_index_enabled = not args.skip_vfs_index and not args.skip_animestudio and args.animestudio_scope != "story"
     webui_texture_name_filter: Path | None = None
@@ -2590,6 +3124,23 @@ def main() -> int:
     animestudio_mono_behaviour_type_tree_priority = animestudio_cli_type_tree_priority(
         args.animestudio_mono_behaviour_type_tree_priority
     )
+    if args.skip_animestudio:
+        animestudio_stage_merge_feature = {
+            "contract": "secondary_export_v1",
+            "requested_mode": args.animestudio_stage_merge_mode,
+            "effective_mode": "disabled",
+            "primary_stage": ANIMESTUDIO_STAGE_MERGE_PRIMARY_STAGE,
+            "secondary_stage": ANIMESTUDIO_STAGE_MERGE_SECONDARY_STAGE,
+            "flags": dict(ANIMESTUDIO_SECONDARY_EXPORT_FLAGS),
+            "supported": False,
+            "probed": False,
+            "reason": "AnimeStudio export is skipped",
+        }
+    else:
+        animestudio_stage_merge_feature = detect_animestudio_stage_merge_feature(
+            animestudio,
+            args.animestudio_stage_merge_mode,
+        )
 
     ensure_dir(output_root)
     log("starting full export")
@@ -2600,18 +3151,32 @@ def main() -> int:
     log(f"  reports run dir: {reports_dir}")
     log(f"  selected sources: {', '.join(selected_sources)}")
     log(f"  structured export: {'disabled' if args.skip_structured else 'enabled'}")
+    if not args.skip_structured:
+        log(f"  structured dump mode: {args.structured_dump_mode}")
+        log(f"  structured dump plan: {describe_structured_dump_steps(structured_dump_plan)}")
     log(f"  vfs index: {'enabled' if vfs_index_enabled else 'disabled'}")
     log("  raw vfs export: disabled")
     log(f"  animestudio export: {'disabled' if args.skip_animestudio else 'enabled'}")
     log(f"  animestudio scope: {args.animestudio_scope}")
     log(f"  animestudio asset mode: {args.animestudio_asset_mode}")
     log(f"  animestudio stages: {', '.join(selected_animestudio_stages)}")
+    log(f"  animestudio type job mode: {args.animestudio_type_job_mode}")
+    log(
+        "  animestudio stage merge mode: "
+        f"{args.animestudio_stage_merge_mode} "
+        f"(effective: {animestudio_stage_merge_feature.get('effective_mode')})"
+    )
+    if animestudio_stage_merge_feature.get("missing_flags") and args.animestudio_stage_merge_mode == "aggressive":
+        log(
+            "  animestudio stage merge disabled; missing CLI flags: "
+            f"{', '.join(animestudio_stage_merge_feature.get('missing_flags') or [])}"
+        )
     log(f"  animestudio jobs: {animestudio_jobs}")
     log(
         "  animestudio asset shards: "
         f"{args.animestudio_shards if args.animestudio_shards else f'auto ({animestudio_jobs})'}"
     )
-    log(f"  animestudio asset cache: {'disabled' if args.no_animestudio_asset_cache else 'enabled'}")
+    log("  animestudio asset cache: removed (every run re-exports)")
     log(f"  animestudio MonoBehaviour TypeTree priority: {animestudio_mono_behaviour_type_tree_priority}")
     log(f"  animestudio refresh selectors: {', '.join(refresh_selectors) if refresh_selectors else 'none'}")
     if webui_texture_name_filter is not None and webui_texture_name_filter_signature is not None:
@@ -2652,12 +3217,10 @@ def main() -> int:
     structured_manifest_by_source: dict[str, list[dict[str, str]]] = {}
     raw_failures_by_source: dict[str, list[dict[str, Any]]] = {}
     raw_manifest_chunks_by_source: dict[str, list[dict[str, Any]]] = {}
-    animestudio_cli_signature = build_file_signature(animestudio) if not args.skip_animestudio else None
-    animestudio_dummy_dll_signature = (
-        build_dummy_dll_signature(animestudio_dummy_dlls) if not args.skip_animestudio else None
-    )
-    animestudio_manifest_file = animestudio_manifest_path(output_root)
-    animestudio_manifest = load_animestudio_manifest(animestudio_manifest_file) if not args.skip_animestudio else default_animestudio_manifest()
+    # The cross-run AnimeStudio cache has been removed. Signatures and the type
+    # manifest only ever fed cache keys, so they are no longer computed or read.
+    animestudio_cli_signature = None
+    animestudio_dummy_dll_signature = None
     animestudio_summary: dict[str, Any] = {
         "enabled": not args.skip_animestudio,
         "exe": str(animestudio),
@@ -2672,11 +3235,13 @@ def main() -> int:
         "webui_texture_name_filter_signature": webui_texture_name_filter_signature,
         "mono_behaviour_type_tree_priority": animestudio_mono_behaviour_type_tree_priority,
         "jobs": animestudio_jobs,
+        "type_job_mode": args.animestudio_type_job_mode,
+        "stage_merge_mode": args.animestudio_stage_merge_mode,
+        "stage_merge_feature": animestudio_stage_merge_feature,
+        "stage_merge_attempts": [],
         "asset_shards": args.animestudio_shards,
-        "asset_cache_enabled": not args.no_animestudio_asset_cache,
-        "type_manifest_path": str(animestudio_manifest_file),
-        "type_manifest_exists": animestudio_manifest_file.exists(),
-        "type_manifest_entry_count": len(animestudio_manifest.get("entries", {})),
+        "asset_cache_enabled": False,
+        "cache_removed": True,
         "refresh_selectors": list(refresh_selectors),
         "sources_selected": list(selected_sources),
         "stages_selected": list(selected_animestudio_stages),
@@ -2723,43 +3288,83 @@ def main() -> int:
                 )
 
         if not args.skip_structured and not args.report_only:
-            structured_out = structured_output_dir(output_root, source)
+            structured_out = reset_structured_output_dir(output_root, source)
             log(f"  structured output dir: {structured_out}")
-            cmd = [str(structured_dumper), "dump", "-s", str(source_root), "-o", str(structured_out)]
             if source == "Persistent":
                 fallback_root = game_root / "StreamingAssets"
-                if fallback_root.exists():
-                    log(f"  using fallback assets from {fallback_root}")
+            else:
+                fallback_root = None
+            if fallback_root is not None and fallback_root.exists():
+                log(f"  using fallback assets from {fallback_root}")
+            for step in structured_dump_plan:
+                command_name = structured_dump_command_name(source, step, len(structured_dump_plan))
+                cmd = [str(structured_dumper), "dump", "-s", str(source_root), "-o", str(structured_out)]
+                for block_type in step.get("block_types") or ():
+                    cmd.extend(["-b", str(block_type)])
+                for file_regex in step.get("file_regexes") or ():
+                    cmd.extend(["--file-regex", str(file_regex)])
+                if fallback_root is not None and fallback_root.exists():
                     cmd.extend(["--fallback-assets", str(fallback_root)])
-            result = run_logged_command(f"{source}_structured_dump", cmd, ROOT, source_report_dir)
-            command_results.append(result)
-            command_results_by_name[result.name] = result
+                result = run_logged_command(command_name, cmd, ROOT, source_report_dir)
+                command_results.append(result)
+                command_results_by_name[result.name] = result
 
         if not args.skip_structured:
-            stdout_log = source_report_dir / f"{source}_structured_dump.stdout.log"
-            stderr_log = source_report_dir / f"{source}_structured_dump.stderr.log"
-            stdout_text = stdout_log.read_text(encoding="utf-8") if stdout_log.exists() else ""
-            stderr_text = stderr_log.read_text(encoding="utf-8") if stderr_log.exists() else ""
+            previous_structured = (previous_summary.get("structured") or {}).get(source, {})
+            structured_steps: list[dict[str, Any]] = []
+            stdout_parts: list[str] = []
+            stderr_parts: list[str] = []
+            returncodes: list[int] = []
+            for step in structured_dump_plan:
+                command_name = structured_dump_command_name(source, step, len(structured_dump_plan))
+                stdout_log = source_report_dir / f"{command_name}.stdout.log"
+                stderr_log = source_report_dir / f"{command_name}.stderr.log"
+                stdout_text = stdout_log.read_text(encoding="utf-8") if stdout_log.exists() else ""
+                stderr_text = stderr_log.read_text(encoding="utf-8") if stderr_log.exists() else ""
+                stdout_parts.append(stdout_text)
+                stderr_parts.append(stderr_text)
+                current_structured_step = command_results_by_name.get(command_name)
+                if current_structured_step is not None:
+                    returncodes.append(current_structured_step.returncode)
+                structured_steps.append(
+                    {
+                        "name": step["name"],
+                        "command_name": command_name,
+                        "returncode": current_structured_step.returncode if current_structured_step is not None else None,
+                        "block_types": list(step.get("block_types") or ["all"]),
+                        "file_regexes": list(step.get("file_regexes") or ()),
+                        "warning_failure_count": parse_warning_failure_count(stdout_text),
+                        "stdout_log": str(stdout_log),
+                        "stderr_log": str(stderr_log),
+                    }
+                )
+            stderr_text = "\n".join(part for part in stderr_parts if part)
+            stdout_text = "\n".join(part for part in stdout_parts if part)
             all_failures = parse_structured_failures(stderr_text)
             actual_failures, manifest_only = split_structured_failures(source, all_failures)
             structured_failures_by_source[source] = actual_failures
             structured_manifest_by_source[source] = manifest_only
-            previous_structured = (previous_summary.get("structured") or {}).get(source, {})
-            current_structured = command_results_by_name.get(f"{source}_structured_dump")
+            current_structured_returncode = next((code for code in returncodes if code != 0), returncodes[-1] if returncodes else None)
             structured_summary[source] = {
                 "output_root": str(
                     structured_output_dir(output_root, source)
-                    if current_structured is not None
+                    if returncodes
                     else resolve_existing_structured_output_dir(output_root, source)
                 ),
                 "returncode": (
-                    current_structured.returncode if current_structured is not None else previous_structured.get("returncode")
+                    current_structured_returncode if current_structured_returncode is not None else previous_structured.get("returncode")
                 ),
-                "warning_failure_count": parse_warning_failure_count(stdout_text),
+                "dump_mode": args.structured_dump_mode,
+                "dump_plan": describe_structured_dump_steps(structured_dump_plan),
+                "steps": structured_steps,
+                "block_types": sorted(
+                    {str(block_type) for step in structured_steps for block_type in step.get("block_types", [])}
+                ),
+                "warning_failure_count": sum(int(step.get("warning_failure_count") or 0) for step in structured_steps),
                 "actual_failure_count": len(actual_failures),
                 "manifest_reference_count": len(manifest_only),
-                "stdout_log": str(stdout_log),
-                "stderr_log": str(stderr_log),
+                "stdout_log": "; ".join(step["stdout_log"] for step in structured_steps),
+                "stderr_log": "; ".join(step["stderr_log"] for step in structured_steps),
             }
             log(
                 f"  structured summary {source}: "
@@ -2774,7 +3379,7 @@ def main() -> int:
             for stage in selected_animestudio_stages:
                 options = dict(animestudio_stage_options[stage])
                 options["mono_behaviour_type_tree_priority"] = animestudio_mono_behaviour_type_tree_priority
-                options["asset_cache_enabled"] = not args.no_animestudio_asset_cache
+                options["asset_cache_enabled"] = False
                 options["asset_shards"] = args.animestudio_shards
                 if stage == "maps":
                     options["map_name"] = f"endfield_{source.lower()}_assets"
@@ -2796,11 +3401,6 @@ def main() -> int:
                     output_root=output_root,
                     stage=stage,
                     options=options,
-                    manifest_entries=animestudio_manifest.get("entries", {}),
-                    cli_signature=animestudio_cli_signature,
-                    dummy_dll_signature=animestudio_dummy_dll_signature,
-                    source_fingerprint=source_sizes[source],
-                    refresh_selectors=refresh_selectors,
                 )
                 animestudio_stage_plans[stage] = plan
                 log(
@@ -2817,14 +3417,44 @@ def main() -> int:
                 if plan["run_items"]:
                     log(f"    pending items: {', '.join(plan['run_items'])}")
 
+            stage_merge_attempt = build_animestudio_stage_merge_attempt(
+                source=source,
+                output_root=output_root,
+                selected_stages=selected_animestudio_stages,
+                stage_plans=animestudio_stage_plans,
+                stage_merge_feature=animestudio_stage_merge_feature,
+            )
+            if stage_merge_attempt is not None:
+                animestudio_summary.setdefault("stage_merge_attempts", []).append(stage_merge_attempt)
+                if stage_merge_attempt.get("mergeable"):
+                    log(
+                        f"  animestudio stage merge for {source}: will merge "
+                        f"{stage_merge_attempt['primary_stage']} + {stage_merge_attempt['secondary_stage']} "
+                        f"({stage_merge_attempt['reason']})"
+                    )
+                else:
+                    log(f"  animestudio stage merge for {source}: split stages ({stage_merge_attempt['reason']})")
+
             if not args.report_only:
-                for stage in selected_animestudio_stages:
+                merged_stage_names: set[str] = set()
+
+                def remember_animestudio_results(stage_results: list[CommandResult]) -> None:
+                    command_results.extend(stage_results)
+                    for result in stage_results:
+                        command_results_by_name[result.name] = result
+
+                def finish_animestudio_stage(stage: str) -> None:
+                    # The cross-run cache is gone, so there is no manifest to update
+                    # or persist here; just surface any failed items.
                     plan = animestudio_stage_plans[stage]
-                    if not plan["should_run"]:
-                        log(f"  animestudio stage {stage} for {source}: cache hit, skipping")
-                        continue
+                    failed_items = plan.get("failed_items", [])
+                    if failed_items:
+                        log(f"  animestudio stage {stage} for {source} failed items: {', '.join(failed_items)}")
+
+                def run_stage_driver(stage: str, call_pool: AnimeStudioCallPool) -> list[CommandResult]:
+                    plan = animestudio_stage_plans[stage]
                     log(f"  animestudio stage {stage} for {source}: running {', '.join(plan['run_items'])}")
-                    stage_results = run_animestudio_stage_plan(
+                    return run_animestudio_stage_plan(
                         source=source,
                         input_root=source_root,
                         output_root=output_root,
@@ -2834,28 +3464,72 @@ def main() -> int:
                         stage=stage,
                         plan=plan,
                         jobs=animestudio_jobs,
+                        type_job_mode=args.animestudio_type_job_mode,
+                        call_pool=call_pool,
                     )
-                    command_results.extend(stage_results)
-                    for result in stage_results:
-                        command_results_by_name[result.name] = result
-                    succeeded_items = plan.get("succeeded_items", [])
-                    failed_items = plan.get("failed_items", [])
-                    if succeeded_items:
-                        success_plan = copy_animestudio_plan_for_run_items(plan, succeeded_items)
-                        update_animestudio_manifest_for_stage(
-                            manifest=animestudio_manifest,
-                            output_root=output_root,
+
+                with AnimeStudioCallPool(animestudio_jobs) as animestudio_call_pool:
+                    log(f"  animestudio call pool for {source}: workers={animestudio_call_pool.max_workers}")
+
+                    if "maps" in selected_animestudio_stages:
+                        maps_plan = animestudio_stage_plans["maps"]
+                        if maps_plan["should_run"]:
+                            stage_results = run_stage_driver("maps", animestudio_call_pool)
+                            remember_animestudio_results(stage_results)
+                            finish_animestudio_stage("maps")
+                        else:
+                            log(f"  animestudio stage maps for {source}: cache hit, skipping")
+
+                    if stage_merge_attempt and stage_merge_attempt.get("mergeable"):
+                        stage_results = run_animestudio_stage_merge_plan(
                             source=source,
-                            stage=stage,
-                            plan=success_plan,
-                            cli_signature=animestudio_cli_signature,
-                            dummy_dll_signature=animestudio_dummy_dll_signature,
-                            source_fingerprint=source_sizes[source],
+                            input_root=source_root,
+                            output_root=output_root,
+                            reports_dir=source_report_dir,
+                            animestudio_exe=animestudio,
+                            animestudio_dummy_dlls=animestudio_dummy_dlls,
+                            stage_plans=animestudio_stage_plans,
+                            attempt=stage_merge_attempt,
+                            call_pool=animestudio_call_pool,
                         )
-                        plan["item_file_counts"] = success_plan.get("item_file_counts", plan.get("item_file_counts", {}))
-                        save_animestudio_manifest(animestudio_manifest_file, animestudio_manifest)
-                    if failed_items:
-                        log(f"  animestudio stage {stage} for {source} failed items: {', '.join(failed_items)}")
+                        remember_animestudio_results(stage_results)
+                        merged_stage_names.update(
+                            (stage_merge_attempt["primary_stage"], stage_merge_attempt["secondary_stage"])
+                        )
+                        for stage in merged_stage_names:
+                            finish_animestudio_stage(stage)
+
+                    stages_to_run: list[str] = []
+                    for stage in selected_animestudio_stages:
+                        if stage == "maps" or stage in merged_stage_names:
+                            continue
+                        plan = animestudio_stage_plans[stage]
+                        if not plan["should_run"]:
+                            log(f"  animestudio stage {stage} for {source}: cache hit, skipping")
+                            continue
+                        stages_to_run.append(stage)
+
+                    if len(stages_to_run) > 1:
+                        log(
+                            f"  animestudio stage drivers for {source}: "
+                            f"sharing {animestudio_call_pool.max_workers} workers across {', '.join(stages_to_run)}"
+                        )
+                    if len(stages_to_run) == 1:
+                        stage = stages_to_run[0]
+                        stage_results = run_stage_driver(stage, animestudio_call_pool)
+                        remember_animestudio_results(stage_results)
+                        finish_animestudio_stage(stage)
+                    elif stages_to_run:
+                        with ThreadPoolExecutor(max_workers=len(stages_to_run)) as stage_executor:
+                            future_to_stage = {
+                                stage_executor.submit(run_stage_driver, stage, animestudio_call_pool): stage
+                                for stage in stages_to_run
+                            }
+                            for future in as_completed(future_to_stage):
+                                stage = future_to_stage[future]
+                                stage_results = future.result()
+                                remember_animestudio_results(stage_results)
+                                finish_animestudio_stage(stage)
             else:
                 for stage in selected_animestudio_stages:
                     plan = animestudio_stage_plans[stage]
@@ -2884,10 +3558,6 @@ def main() -> int:
                 f"convert={source_info['convert_by_type']['file_count']} "
                 f"json={source_info['json_by_type']['file_count']}"
             )
-
-    if not args.skip_animestudio:
-        animestudio_summary["type_manifest_exists"] = animestudio_manifest_file.exists()
-        animestudio_summary["type_manifest_entry_count"] = len(animestudio_manifest.get("entries", {}))
 
     unresolved_dir = ensure_dir(output_root / "unresolved")
     log(f"writing unresolved summaries to {unresolved_dir}")
@@ -2985,9 +3655,20 @@ def main() -> int:
             info = structured_summary.get(source, {})
             md_lines.append(
                 f"- `{source}`: returncode=`{info.get('returncode')}`, "
+                f"mode=`{info.get('dump_mode')}`, "
                 f"actual_failures=`{info.get('actual_failure_count')}`, "
                 f"manifest_refs=`{info.get('manifest_reference_count')}`"
             )
+            md_lines.append(f"  plan: `{info.get('dump_plan') or 'unknown'}`")
+            for step in info.get("steps") or []:
+                block_types = step.get("block_types") or []
+                block_type_text = ", ".join(str(item) for item in block_types) or "unknown"
+                file_regexes = step.get("file_regexes") or []
+                filter_text = f"; file_regexes={', '.join(str(item) for item in file_regexes)}" if file_regexes else ""
+                md_lines.append(
+                    f"  step `{step.get('name')}`: returncode=`{step.get('returncode')}`, "
+                    f"block_types=`{block_type_text}`{filter_text}"
+                )
             md_lines.append(f"  stdout: `{info.get('stdout_log')}`")
             md_lines.append(f"  stderr: `{info.get('stderr_log')}`")
 
@@ -3003,12 +3684,23 @@ def main() -> int:
         md_lines.append(f"- Scope: `{args.animestudio_scope}`")
         md_lines.append(f"- Asset mode: `{args.animestudio_asset_mode}`")
         md_lines.append(f"- Selected stages: `{', '.join(selected_animestudio_stages)}`")
+        md_lines.append(f"- Type job mode: `{args.animestudio_type_job_mode}`")
+        stage_merge_feature = animestudio_summary.get("stage_merge_feature") or {}
+        md_lines.append(
+            f"- Stage merge mode: `{args.animestudio_stage_merge_mode}` "
+            f"(effective `{stage_merge_feature.get('effective_mode')}`)"
+        )
+        if stage_merge_feature.get("missing_flags") and args.animestudio_stage_merge_mode == "aggressive":
+            md_lines.append(
+                "- Stage merge missing CLI flags: "
+                f"`{', '.join(stage_merge_feature.get('missing_flags') or [])}`"
+            )
         md_lines.append(f"- Parallel jobs: `{animestudio_jobs}`")
         md_lines.append(
             "- Asset shards: "
             f"`{args.animestudio_shards if args.animestudio_shards else f'auto ({animestudio_jobs})'}`"
         )
-        md_lines.append(f"- Asset cache: `{'disabled' if args.no_animestudio_asset_cache else 'enabled'}`")
+        md_lines.append("- Asset cache: `removed` (every run re-exports)")
         md_lines.append(f"- MonoBehaviour TypeTree priority: `{animestudio_mono_behaviour_type_tree_priority}`")
         md_lines.append(
             f"- DummyDlls: `{animestudio_dummy_dlls}`"
@@ -3017,11 +3709,6 @@ def main() -> int:
         )
         if animestudio_dummy_dll_source:
             md_lines.append(f"- DummyDll source: `{animestudio_dummy_dll_source}`")
-        md_lines.append(f"- Cache manifest: `{animestudio_summary.get('type_manifest_path')}`")
-        md_lines.append(
-            "- Refresh selectors: "
-            f"`{', '.join(animestudio_summary.get('refresh_selectors') or ['none'])}`"
-        )
         for source in selected_sources:
             info = animestudio_summary["sources"].get(source, {})
             md_lines.append(
@@ -3042,6 +3729,15 @@ def main() -> int:
                     f"succeeded=`{len(stage_info.get('succeeded_items') or [])}`, "
                     f"failed=`{len(stage_info.get('failed_items') or [])}`"
                 )
+                stage_merge = stage_info.get("stage_merge") or {}
+                if stage_merge:
+                    md_lines.append(
+                        "    stage merge: "
+                        f"role=`{stage_merge.get('role')}`, "
+                        f"paired_stage=`{stage_merge.get('paired_stage')}`, "
+                        f"command=`{stage_merge.get('command_name')}`, "
+                        f"asset_cache_bypassed=`{stage_merge.get('asset_cache_bypassed')}`"
+                    )
                 asset_caches = stage_info.get("asset_caches")
                 if not asset_caches:
                     asset_cache = stage_info.get("asset_cache") or {}
@@ -3117,15 +3813,25 @@ def main() -> int:
     latest_summary_md = reports_root / "export_full_summary.md"
     latest_summary_md.write_text("\n".join(md_lines), encoding="utf-8")
     log(f"updating latest markdown summary at {latest_summary_md}")
+    failed_entry_count = sum(1 for line in failed_lines if line and not line.startswith("["))
+    manifest_entry_count = sum(1 for line in manifest_lines if line and not line.startswith("["))
     log(
         "finished full export: "
         f"commands={len(summary['commands'])} "
         f"command_failures={len(command_failures)} "
-        f"failed_entries={sum(1 for line in failed_lines if line and not line.startswith('['))} "
-        f"manifest_entries={sum(1 for line in manifest_lines if line and not line.startswith('['))}"
+        f"failed_entries={failed_entry_count} "
+        f"manifest_entries={manifest_entry_count}"
     )
 
-    print(json.dumps(summary, indent=2, ensure_ascii=False))
+    brief_summary = {
+        "summary_json": str(reports_root / "export_full_summary.json"),
+        "summary_md": str(latest_summary_md),
+        "commands": len(summary["commands"]),
+        "command_failures": len(command_failures),
+        "failed_entries": failed_entry_count,
+        "manifest_entries": manifest_entry_count,
+    }
+    print(json.dumps(brief_summary, indent=2, ensure_ascii=False))
     if command_failures:
         for failure in command_failures:
             log(

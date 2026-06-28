@@ -10,10 +10,11 @@ From the repo root:
 notepad endfield_paths.bat
 .\setup_first_time.bat
 .\export.bat
+.\export.bat --with-assets
 .\export.bat --export-from-game
 .\build_updates.bat
 .\export_assets.bat
-.\package_webui.bat
+.\pack_webui.bat
 ```
 
 For a fresh checkout, edit `endfield_paths.bat` first, then prefer the root
@@ -44,8 +45,11 @@ bindings, and story source-link refresh in parallel before the Story builder
 loads those generated files.
 
 Pass `--export-from-game` when you explicitly want to refresh `export_full/`
-from installed game data before rebuilding Story/Text Tables data. Audio relinking
-is handled by `export_assets.bat` after generated conversations are rebuilt.
+from installed game data before rebuilding Story/Text Tables data. Pass
+`--with-assets` to also run the asset index builder and CN audio relinker after
+Story is rebuilt. When `--export-from-game` and `--with-assets` are combined,
+the wrapper runs one AnimeStudio Story+asset export so the source scan, maps
+stage, and VFS index work are not repeated by a second wrapper invocation.
 Set `ENDFIELD_GAME_ROOT` in `endfield_paths.bat` when the installed game is not
 under the default `D:\Program Files\Endfield Game\Endfield_Data`. The path must
 be the installed `Endfield_Data` directory. For one-off runs, pass
@@ -67,8 +71,9 @@ previous export and current `export_full/`. Use `.\build_updates.bat
 --init-build` for initial or baseline-only update feeds. By default it compares
 the exported text JSON that feeds Story and Text Tables plus exported image/model/video
 assets and decoded audio using fast size fingerprints; pass
-`--hash-asset-updates` for slower same-size binary modification detection, or
-`--skip-asset-updates` for a text-only feed. The wrapper reads
+`--hash-asset-updates` for slower same-size binary modification detection,
+`--skip-audio-updates` to omit decoded audio while keeping other asset entries,
+or `--skip-asset-updates` for a text-only feed. The wrapper reads
 `ENDFIELD_PREVIOUS_EXPORT_ROOT` and `ENDFIELD_EXPORT_ROOT` from
 `endfield_paths.bat`; pass `--previous-export-root PATH` and
 `--export-root PATH` only for one-off comparisons. Most runs do not need
@@ -83,17 +88,26 @@ the full WebUI-facing AnimeStudio image/model export plus `Material` JSON after
 first writing a lightweight AnimeStudio `vfs-index` bundle metadata snapshot,
 and decode CN audio first. Pass `--webui-assets` when only WebUI-referenced
 Texture2D media is needed, or `--debug-assets` for exhaustive AnimeStudio
-conversion/JSON diagnostics. It accepts the same `endfield_paths.bat`
+conversion/JSON diagnostics. When Story also needs an installed-game refresh,
+prefer `export.bat --export-from-game --with-assets` so one exporter invocation
+covers Story and assets. It accepts the same `endfield_paths.bat`
 `ENDFIELD_GAME_ROOT` fallback and `--game-root PATH` override when refreshing
 decoded assets/audio from a non-default install root.
 
 Both installed-game wrappers pass `--animestudio-jobs N` through to
-`export_full_from_game.py`. The default is now `4` so balanced asset shards and
-per-type exports run in parallel; use `1` or `2` for low-RAM or first-time runs.
-Earlier testing on the 64 GiB workstation found `--animestudio-jobs 2` improved
-the Story JSON slice by about 21%, while the old full asset refresh peaked at
-about 27 GiB observed process-tree working set. Full-mode `AnimationClip` and
-`Texture2D` workers dominate both memory and wall time.
+`export_full_from_game.py`. The default is now `8`; AnimeStudio subprocess
+tasks for a source go through a shared worker pool, and asset shards are queued
+round-robin by type so one large type does not monopolize workers. Use a lower
+value such as `1`, `2`, or `4` for low-RAM or first-time runs.
+Non-sharded JSON type exports use `--animestudio-type-job-mode auto` by default,
+which merges matching JSON types into one AnimeStudio process instead of loading
+the same source files once per type. Pass `--animestudio-type-job-mode parallel`
+for the older one-process-per-type behavior, or `merged` to combine every
+non-sharded type set. Earlier testing on the 64 GiB workstation found
+`--animestudio-jobs 2` improved the pre-merge Story JSON slice by about 21%,
+while the old full asset refresh peaked at about 27 GiB observed process-tree
+working set. Full-mode `AnimationClip` and `Texture2D` workers dominate both
+memory and wall time.
 
 Both wrappers can pass `--animestudio-dummy-dlls PATH` through when
 `--export-from-game` is present. Use this only for optional IL2CPP DummyDll
@@ -146,14 +160,15 @@ bounded fallback for objects with impossible schema fields. Per-asset
 reviewed separately from wrapper-level failures.
 
 `scripts/build_audio.py` can still be run directly for non-CN languages or
-audio-only maintenance. It indexes files under
+audio-only maintenance. It indexes shared files under
+`export_full/structured/Audio/shared/` plus language voice files under
 `export_full/structured/Audio/<LANG>/`, adds playable `audioSrc` links to
 generated conversation JSON when a line's `audio` id matches a decoded file,
-parses Wwise bank HIRC metadata from exported `*banks.pck` files, and links
-cutscene audio events such as `au_sfx_*`/`au_vo_*` when the event graph reaches
-decoded media.
+streams Wwise bank HIRC metadata from VFS `*banks.pck` payloads via AnimeStudio
+`stream`, and links cutscene audio events such as `au_sfx_*`/`au_vo_*` when
+the event graph reaches decoded media.
 
-`package_webui.bat` runs `scripts/package_webui.py` and creates split
+`pack_webui.bat` runs `scripts/pack_webui.py` and creates split
 shareable zips. The main story zip contains `serve.py`, `webui/`, generated
 story and text-table data, WebUI code, and emoji images. The companion assets
 zip contains larger displayed image/video media resolved from `export_full/`,
@@ -200,10 +215,16 @@ Expected active inputs and outputs:
 
 - `export_full_from_game.py`: export data from the installed Endfield client.
   The normal WebUI wrapper is `..\export.bat`, which skips raw VFS, source
-  inventory, and heavy 2D/3D/animation asset conversion. `..\export_assets.bat`
-  runs those heavier asset passes separately. Summaries are written under
-  `..\reports\`, but the workflow does not require `reports`, `scratch`, or
-  `tmp` as active inputs.
+  inventory, raw asset bundles, audio PCK/media files, world-streaming bytes,
+  irradiance volumes, extend-data bins, patch bytes, Lua, and heavy
+  2D/3D/animation asset conversion unless `--with-assets` is passed. The
+  structured dump defaults to `--structured-dump-mode webui`, and
+  `scripts\build_audio.py` streams Wwise bank metadata directly from VFS for
+  event relinking. `--structured-dump-mode full` keeps the same production skip
+  rules, and `--structured-dump-mode debug` is the broad VFS diagnostic mode.
+  `..\export_assets.bat` runs those heavier asset passes separately. Summaries
+  are written under `..\reports\`, but the workflow does not require `reports`,
+  `scratch`, or `tmp` as active inputs.
 - `verify_export_freshness.py`: compares the latest export summary with
   the current installed `Endfield_Data` source fingerprints and verifies the
   WebUI-required export folders are present. `export.bat` runs it immediately
@@ -222,9 +243,11 @@ Expected active inputs and outputs:
   `--export-root PATH` to compare a different current export,
   `--game-root PATH` only for optional decoded-impact mapping,
   `--refresh-previous-export-baseline` after replacing the saved previous
-  export, `--baseline-only` to write an empty feed, or `--skip-asset-updates`
-  to skip the exported image/model/video/audio asset diff. Asset modifications
-  use fast size fingerprints by default; pass `--hash-asset-updates` for slower
+  export, `--baseline-only` to write an empty feed, `--skip-audio-updates` to
+  omit decoded audio while keeping image/model/video asset entries, or
+  `--skip-asset-updates` to skip the full exported asset diff. Asset
+  modifications use fast size fingerprints by default; pass
+  `--hash-asset-updates` for slower
   content-hash detection of same-size binary changes. Pass
   `--full-export-scan` only for an intentional all-files audit of the export
   roots. Pass
@@ -249,10 +272,20 @@ Expected active inputs and outputs:
   `audio_relink.py` owns the post-build decoded-audio relink pass.
 - `build_assets.py`: builds the compact WebUI Story/Wiki media index by
   default, or the broad Assets browser index and optional demo bundle zips with
-  `--mode full`. It is run by `..\export_assets.bat`, not the story-only
-  `..\export.bat`.
-- `build_audio.py`: decodes language audio via AnimeStudio CLI, indexes files
-  under `export_full/structured/Audio/<LANG>/`, parses Wwise bank
+  `--mode full`. It is run by `..\export_assets.bat` and by
+  `..\export.bat --with-assets`, not the story-only `..\export.bat`.
+- `build_data_index.py`: builds the local-only Data tab index from
+  `export_full/structured/StreamingAssets/Data` by default. It writes
+  lazy-loaded shards under `webui/data/game_data/`, splits JSON entries by
+  prefix, parses real text JSON, identifies known MemoryPack binary `.json`
+  families with IL2CPP-recovered top-level field names, decodes stable
+  `LipSync` and `LevelScriptData` preview facts, skips `.pck` audio packages
+  and exported video files, and classifies `.bytes`, `.ab`, and `.bin` files by
+  signature/header without copying the raw Data tree. The Assets tab owns video
+  browsing and previews.
+- `build_audio.py`: decodes audio via AnimeStudio CLI, stores shared
+  SFX/music once under `export_full/structured/Audio/shared/`, indexes
+  language voice files under `export_full/structured/Audio/<LANG>/`, parses Wwise bank
   event-to-media links, and post-processes generated conversation JSON so
   dialog/cutscene lines and recoverable cutscene audio events can render native
   browser audio controls.
@@ -265,7 +298,7 @@ Expected active inputs and outputs:
   line ids. It defaults to `dlg` conversations and can emit text, JSON, or CSV.
 - `asset_builder/`: shared asset-browser indexing, story-media selection, and
   demo bundle helpers used by `build_assets.py` and the Updates builder.
-- `package_webui.py`: packages split shareable WebUI zips from
+- `pack_webui.py`: packages split shareable WebUI zips from
   `serve.py`, `..\webui\`, and displayed media files under `..\export_full\`.
   The primary zip is story/code/emoji, including the full
   `envEmoji_common_*` prefab layer sprite set; the companion assets zip carries
@@ -411,10 +444,15 @@ gameplay-video OCR/audio workflow.
   used by the full gameplay video story-order pipeline. It samples final
   gameplay videos from `videos/`, crops the subtitle/options band of every 10th
   frame by default (`13%-100%` width, `50%-97%` height) at source resolution,
-  and runs EasyOCR on that crop. EasyOCR uses a Story-derived character
-  dictionary by default, built from CN conversation text, speaker labels,
-  summaries, and options; pass
-  `--disable-ocr-dictionary` for unconstrained recognition. It writes
+  and runs OCR on that crop. The default engine is **PaddleOCR PP-OCRv5**
+  (`--ocr-engine paddleocr`, `server` variant), which is markedly more accurate
+  on Chinese subtitle text and, on a CUDA build, far faster (~0.13 s/frame on an
+  RTX 5080) than the legacy **EasyOCR** engine (`--ocr-engine easyocr`). EasyOCR
+  uses a Story-derived character dictionary by default, built from CN
+  conversation text, speaker labels, summaries, and options; pass
+  `--disable-ocr-dictionary` for unconstrained recognition (the dictionary
+  allowlist applies to EasyOCR only - PaddleOCR's recognizer has a fixed
+  dictionary and relies on downstream Story matching to filter). It writes
   per-video reports plus an aggregate index under
   `reports/gameplay_video_ocr/`. The runner skips `.lock`, `.m4s`, zero-byte,
   and other partial downloads, and it skips already completed videos when a
@@ -424,16 +462,17 @@ gameplay-video OCR/audio workflow.
   intentionally reprocessing completed videos. Decoded sampled-frame JPEGs are
   kept by default under `tmp/gameplay_video_ocr/frames/`; reruns reuse existing
   frame files and append only missing sampled frames. Pass `--discard-frames`
-  only for a disposable run. The default OCR language is
-  Simplified Chinese (`chi_sim`, mapped to EasyOCR `ch_sim`), and model weights
-  live under `tools/easyocr/`. The Simplified Chinese recognizer still supports
-  ASCII letters, digits, and common punctuation. OCR output
+  only for a disposable run. The default OCR language is Simplified Chinese
+  (`chi_sim`; for EasyOCR mapped to `ch_sim`). PP-OCRv5 weights are cached under
+  `~/.paddlex/official_models/`; EasyOCR weights live under `tools/easyocr/`.
+  Both recognizers also support ASCII letters, digits, and common punctuation.
+  OCR output
   is filtered before it becomes a segment: UID/latency overlays are stripped,
   Chinese-rich spans are extracted from mixed junk lines, short lines are
   dropped unless they look like short Chinese speaker names, and mostly-symbol
   lines are rejected. The default recognition and line filters are
   intentionally permissive so short subtitle fragments, speaker names, and
-  lower-confidence EasyOCR boxes are kept for matching. Mostly-black sampled
+  lower-confidence OCR boxes are kept for matching. Mostly-black sampled
   frames bypass the normal subtitle crop and are replaced in the decoded-frame
   cache by a near-full-frame OCR crop (`10%-97%` height) that avoids the top
   HUD and bottom UID strip. Archive-box frames and detected SNS interface
@@ -448,10 +487,16 @@ gameplay-video OCR/audio workflow.
   report, per-video elapsed/remaining/ETA lines, an overall video progress bar,
   and a live status index at
   `reports/gameplay_video_ocr/gameplay_video_ocr_index.md`. It orchestrates
-  external `ffmpeg`/`ffprobe` plus EasyOCR/PyTorch. ffmpeg tries CUDA/NVDEC
-  decode automatically when the local ffmpeg build supports it, with CPU
-  fallback if hardware decode fails. EasyOCR uses CUDA when available unless
-  `--easyocr-cpu` is passed.
+  external `ffmpeg`/`ffprobe` plus the OCR engine (PaddleOCR/Paddle on CUDA, or
+  EasyOCR/PyTorch). ffmpeg tries CUDA/NVDEC decode automatically when the local
+  ffmpeg build supports it, with CPU fallback if hardware decode fails. Both OCR
+  engines use CUDA when available unless `--easyocr-cpu` (the shared force-CPU
+  switch) is passed. The PaddleOCR GPU path uses a locally built
+  `paddlepaddle-gpu` wheel with Blackwell `sm_120` support; it imports `torch`
+  first so paddle reuses torch's bundled CUDA 12.8 / cuDNN 9 runtime DLLs (see
+  `memory/` notes / `scratch/paddle_build/`). The PP-OCRv5 server default
+  `--paddleocr-frame-batch-size 40` was benchmarked on cached P10 gameplay
+  crops on an RTX 5080; batch 56 was effectively tied, while 64+ regressed.
 - `story_recovery/build_gameplay_video_story_order.py`: full OCR/audio-to-order
   promotion pipeline. It can run the OCR sampler first with `--run-ocr`, then
   matches completed OCR segments against current CN Story text rows, summaries,
@@ -485,7 +530,14 @@ gameplay-video OCR/audio workflow.
   `reports/gameplay_video_ocr/story_order_ocr_matches.json` / `.md`, and emits
   a proposed full-list story order at
   `reports/gameplay_video_ocr/story_order_ocr_proposed_story_order.json`.
-  Pass `--apply` only after reviewing the report; it writes the same full-list
+  It also writes a WebUI debug reference at
+  `webui/data/story_order_ocr.json` via `build_webui_ocr_order.py`, so debug
+  mode can compare the OCR order with static recovery and the current override.
+  A prepare-only all-video OCR/order refresh is
+  `python scripts\story_recovery\build_gameplay_video_story_order.py --run-ocr`;
+  omit `--apply` to leave `webui/overrides/story_order.json` untouched while
+  refreshing the standalone reports/reference. Pass `--apply` only after
+  reviewing the report; it writes the same full-list
   format to `webui/overrides/story_order.json`, while preserving any mission
   marked with `locked: true`. Smoke OCR reports made with `--limit-frames` are
   ignored unless `--include-smoke` is passed. The matcher logs corpus/index
@@ -493,8 +545,14 @@ gameplay-video OCR/audio workflow.
   OCR-segment matching progress. It ignores stale OCR reports from older filter
   versions unless `--include-stale-ocr` is passed. The wrapper intentionally
   exposes only the practical OCR controls:
-  `--frame-step`, `--ocr-crop`, `--ocr-limit`, `--ocr-limit-frames`,
+  `--ocr-engine` (default `paddleocr`), `--frame-step`, `--ocr-crop`,
+  `--ocr-limit`, `--ocr-limit-frames`, `--paddleocr-frame-batch-size`,
   `--easyocr-cpu`, `--disable-ocr-dictionary`, and `--force-ocr`.
+- `story_recovery/build_webui_ocr_order.py`: distills
+  `reports/gameplay_video_ocr/story_order_ocr_proposed_story_order.json` into
+  the small WebUI-served reference `webui/data/story_order_ocr.json`. Run it
+  directly when the proposed OCR order already exists and only the debug compare
+  reference needs to be refreshed.
 - `story_recovery/show_gameplay_video_order_comparison.py`: focused review
   helper for selected OCR reports. It defaults to current P10 OCR outputs,
   reruns the text-only Story matcher for those reports, and writes a

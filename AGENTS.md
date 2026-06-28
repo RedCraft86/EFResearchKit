@@ -14,6 +14,7 @@ Move observations, conclusions, older exploration notes, and status snapshots to
 ```bat
 .\setup_first_time.bat
 .\export.bat
+.\export.bat --with-assets
 .\export.bat --export-from-game
 .\build_updates.bat
 .\build_updates.bat --init-build
@@ -45,27 +46,38 @@ starting `serve.py`.
 `Endfield_Data` fingerprints before the long WebUI builders run, then builds CN
 Story/Text Tables data by default. It does not export from installed game data by
 default. Pass `--export-from-game` only when the user explicitly asks to refresh
-`export_full/` and run the story export tools. Audio relinking is handled by
-`export_assets.bat` after generated conversations are rebuilt. `export.bat`
-does not refresh `webui/overrides/story_order.json`; Story order is maintained
-by the OCR workflow.
+`export_full/` and run the story export tools. Pass `--with-assets` to also
+rebuild asset indexes and relink/decode CN audio after generated conversations
+are rebuilt. Combining `--export-from-game --with-assets` runs one AnimeStudio
+Story+asset export instead of separate Story and asset exporter invocations.
+`export.bat` does not refresh `webui/overrides/story_order.json`; Story order is
+maintained by the OCR workflow. Every `export.bat` run writes a wall-time and
+process-tree RAM benchmark under `reports/export_benchmarks/` and updates
+`reports/export_benchmark_latest.md/json`.
 Use `build_updates.bat` for the standalone Updates feed comparison. Use
 `build_updates.bat --init-build` for first-time/baseline-only builds where the
 Updates feed should be baselined instead of reporting changes. It reads the
 previous/current export roots from `endfield_paths.bat` by default, tracks
 WebUI-facing exported text JSON plus exported image/model/video assets and
 decoded audio, and accepts explicit root flags for one-off comparisons. Pass
-`--skip-asset-updates` only for a text-only update feed.
+`--skip-audio-updates` to omit decoded audio while keeping other asset entries.
+Pass `--skip-asset-updates` only for a text-only update feed.
 Use `export_assets.bat` for WebUI Assets tab indexes, compact Story media
-lookup, and CN audio relinking from existing decoded assets. Pass
-`--export-from-game` only when the user explicitly asks to run the default full
-AnimeStudio image/model decode, `Material` JSON, and CN audio decode from
-installed game data first. Pass `--webui-assets` for the lean WebUI-referenced
+lookup, and CN audio relinking from existing decoded assets when Story is
+already current. Pass `--export-from-game` only when the user explicitly asks to
+run the default full AnimeStudio image/model decode, `Material` JSON, and CN
+audio decode from installed game data first. Prefer
+`export.bat --export-from-game --with-assets` when Story and assets both need an
+installed-game refresh. Pass `--webui-assets` for the lean WebUI-referenced
 Texture2D mode, or `--debug-assets` for exhaustive AnimeStudio diagnostics.
 Use direct `scripts/build_audio.py` runs for non-CN languages or audio-only
-maintenance. The audio builder writes `export_full/structured/Audio/<LANG>/`,
-parses Wwise bank event-to-media links, and post-processes generated
-conversation JSON with playable `audioSrc` links.
+maintenance. The audio builder writes shared SFX/music once under
+`export_full/structured/Audio/shared/` and language voice under
+`export_full/structured/Audio/<LANG>/`, parses Wwise bank event-to-media links, and post-processes generated
+conversation JSON with playable `audioSrc` links. The default exporter mode is
+`--animestudio-type-job-mode auto`: it merges non-sharded JSON type jobs inside
+one AnimeStudio process while keeping map-filtered asset conversion sharded;
+use `parallel` only when comparing against the older one-process-per-type path.
 
 Useful direct commands:
 
@@ -73,6 +85,7 @@ Useful direct commands:
 python scripts\build_updates.py
 python scripts\build_updates.py --baseline-only
 python scripts\build_updates.py --skip-asset-updates
+python scripts\build_updates.py --skip-audio-updates
 python scripts\build_updates.py --refresh-previous-export-baseline
 python scripts\verify_export_freshness.py
 python scripts\story_builder\refresh_evidence.py
@@ -82,7 +95,7 @@ python scripts\story_builder\build.py --languages CN EN JP --default-language CN
 python scripts\build_assets.py
 python scripts\build_audio.py
 python scripts\download_bilibili_video.py --dry-run
-python scripts\package_webui.py
+python scripts\pack_webui.py
 ```
 
 `scripts/story_builder/build.py` currently takes about 3 minutes for the
@@ -133,12 +146,23 @@ Setup and export internals:
 
 - The expected AnimeStudio CLI path is
   `tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe`.
-- The AnimeStudio CLI provides the WebUI VFS commands `dump`, `audio`, `vfs-index`,
-  and `list`; `dump`, `audio`, and `vfs-index` help should include
-  `--fallback-assets <FALLBACK_ASSETS>`.
+- The AnimeStudio CLI provides the WebUI VFS commands `dump`, `audio`, `stream`,
+  `vfs-index`, and `list`; `dump`, `audio`, `stream`, and `vfs-index` help should include
+  `--fallback-assets <FALLBACK_ASSETS>`. `dump`, `stream`, and `vfs-index` accept repeated
+  `--block-type` flags plus repeated `--file-regex` filters; `stream` exposes the
+  same targeted VFS filtering for JSONL byte streaming.
+- Installed-game Story exports use `--structured-dump-mode webui` by default:
+  they dump only WebUI-consumed VFS blocks (`table`, `json-data`, and video)
+  and skip raw asset bundles, audio PCK/media files, world-streaming bytes,
+  irradiance volumes, extend-data bins, patch bytes, and Lua. `build_audio.py`
+  streams Wwise bank metadata directly from VFS when relinking audio events.
+  `--structured-dump-mode full` keeps the same production skip rules; use
+  `--structured-dump-mode debug` only for broad VFS diagnostics.
 - `export_assets.bat --export-from-game` passes `--skip-structured`, writes a
   lightweight VFS metadata index, runs WebUI-facing image/model/Material
   export, and decodes CN audio before relinking.
+- `export.bat --export-from-game --with-assets` keeps the structured Story
+  refresh and folds the asset export into the same AnimeStudio run.
 - `tools\DummyDll` is the preferred repo-local IL2CPP DummyDll root when
   optional script-schema recovery is wanted. Wrapper flags or
   `ANIMESTUDIO_DUMMY_DLLS` can supply it, but missing or stale DummyDll paths
@@ -253,7 +277,9 @@ The builder scans exported assets in the same two export folders by default to
 add image/model/video/audio asset-level entries to the Updates page. Asset
 modifications use fast size fingerprints by default; pass
 `--hash-asset-updates` only when same-size binary modifications must be
-detected. Use `--skip-asset-updates` only when asset entries should be omitted.
+detected. Use `--skip-audio-updates` when decoded audio entries should be
+omitted while image/model/video entries remain enabled. Use
+`--skip-asset-updates` only when all asset entries should be omitted.
 Use `--dry-run-prune-previous-export-untracked` to preview previous-export
 files that exist byte-identically at the same relative paths in the current
 export, and `--prune-previous-export-untracked` only when intentionally
@@ -305,7 +331,7 @@ WebUI:
 - `scripts/story_builder/timeline_action_evidence.py`
 - `scripts/build_assets.py`
 - `scripts/build_audio.py`
-- `scripts/package_webui.py`
+- `scripts/pack_webui.py`
 - supporting files in `scripts/` and `scripts/asset_builder/`
 
 Story reconstruction helpers used by WebUI builders:

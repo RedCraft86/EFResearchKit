@@ -317,7 +317,7 @@ function hasActiveStoryFilters() {
 }
 
 function syncFilterSectionActiveCounts() {
-  for (const section of $$(".filter-section[data-filter-section]")) {
+  for (const section of $$("#filter-panel .filter-section[data-filter-section]")) {
     const count = filterSectionActiveCount(section.dataset.filterSection || "");
     const title = section.querySelector(".filter-section-toggle, .filter-section-title");
     if (!title) continue;
@@ -350,9 +350,6 @@ function preserveCurrentTreeExpansion() {
 }
 
 function buildKindChips() {
-  const wrap = $("#kind-filter");
-  wrap.innerHTML = "";
-
   const kindCounts = countBy(STATE.entries, (e) => entryGroupedKindKey(e));
   const kindKeys = Object.keys(kindCounts)
     .filter((k) => !shouldSuppressKindChip(k))
@@ -361,20 +358,23 @@ function buildKindChips() {
       const bName = kindMeta(b).name || formatStructuredLabel(b);
       return aName.localeCompare(bName, undefined, { numeric: true });
     });
-  const availableTokens = new Set(kindKeys.map(kindFilterToken));
-  pruneFilterSet(STATE.filters.kinds, availableTokens);
-  for (const k of kindKeys) {
-    const n = kindCounts[k] || 0;
-    if (!n) continue;
-    const meta = kindMeta(k);
-    const chip = document.createElement("span");
-    chip.className = `chip kind-chip ${meta.cls || ""}`;
-    chip.dataset.value = kindFilterToken(k);
-    if (STATE.filters.kinds.has(kindFilterToken(k))) chip.classList.add("on");
-    chip.textContent = `${meta.name} (${n})`;
-    chip.addEventListener("click", () => toggleSet(STATE.filters.kinds, kindFilterToken(k), chip));
-    wrap.appendChild(chip);
-  }
+  pruneFilterSet(STATE.filters.kinds, new Set(kindKeys.map(kindFilterToken)));
+  const items = kindKeys
+    .filter((k) => kindCounts[k])
+    .map((k) => {
+      const meta = kindMeta(k);
+      return {
+        value: kindFilterToken(k),
+        label: meta.name,
+        count: kindCounts[k],
+        className: `kind-chip ${meta.cls || ""}`.trim(),
+      };
+    });
+  window.WebUI.filters.buildChips("#kind-filter", items, {
+    active: STATE.filters.kinds,
+    prune: false,
+    onToggle: () => applyFilters(),
+  });
 }
 
 function buildDataTypeChips() {
@@ -384,112 +384,80 @@ function buildDataTypeChips() {
       counts[dataType] = (counts[dataType] || 0) + 1;
     }
   }
-  const wrap = $("#type-filter");
-  wrap.innerHTML = "";
   const dataTypeKeys = Object.keys(counts)
     .filter(Boolean)
     .sort((a, b) => compareDataTypeKeys(a, b, counts));
   pruneFilterSet(STATE.filters.dataTypes, new Set(dataTypeKeys));
-  for (const dataType of dataTypeKeys) {
-    const n = counts[dataType] || 0;
-    if (!n) continue;
-    const chip = document.createElement("span");
-    chip.className = "chip";
-    chip.dataset.value = dataType;
-    if (STATE.filters.dataTypes.has(dataType)) chip.classList.add("on");
-    chip.textContent = `${dataTypeLabel(dataType)} (${n})`;
-    chip.addEventListener("click", () => toggleSet(STATE.filters.dataTypes, dataType, chip));
-    wrap.appendChild(chip);
-  }
+  const items = dataTypeKeys
+    .filter((dataType) => counts[dataType])
+    .map((dataType) => ({ value: dataType, label: dataTypeLabel(dataType), count: counts[dataType] }));
+  window.WebUI.filters.buildChips("#type-filter", items, {
+    active: STATE.filters.dataTypes,
+    prune: false,
+    onToggle: () => applyFilters(),
+  });
 }
 
 function buildMediaChips() {
-  const wrap = $("#media-filter");
-  if (!wrap) return;
-
   const counts = {};
   for (const entry of STATE.entries) {
     for (const mediaKey of entryMediaTypeFilterKeys(entry)) {
       counts[mediaKey] = (counts[mediaKey] || 0) + 1;
     }
   }
-  wrap.innerHTML = "";
   const mediaKeys = MEDIA_TYPE_FILTER_KEYS.filter((key) => counts[key]);
   pruneFilterSet(STATE.filters.media, new Set(mediaKeys));
-  for (const mediaKey of mediaKeys) {
-    const n = counts[mediaKey] || 0;
-    if (!n) continue;
-    const chip = document.createElement("span");
-    chip.className = "chip media-chip";
-    chip.dataset.value = mediaKey;
-    if (STATE.filters.media.has(mediaKey)) chip.classList.add("on");
-    chip.textContent = `${mediaTypeFilterLabel(mediaKey)} (${n})`;
-    chip.addEventListener("click", () => toggleSet(STATE.filters.media, mediaKey, chip));
-    wrap.appendChild(chip);
-  }
+  const items = mediaKeys.map((mediaKey) => ({
+    value: mediaKey,
+    label: mediaTypeFilterLabel(mediaKey),
+    count: counts[mediaKey],
+  }));
+  window.WebUI.filters.buildChips("#media-filter", items, {
+    active: STATE.filters.media,
+    className: "media-chip",
+    prune: false,
+    onToggle: () => applyFilters(),
+  });
 }
 
 function buildStoryIssueChips() {
-  const wrap = $("#story-issue-filter");
-  if (!wrap) return;
-
-  wrap.innerHTML = "";
   const counts = {};
   for (const entry of STATE.entries) {
     for (const code of new Set(entryStoryIssues(entry))) {
       counts[code] = (counts[code] || 0) + 1;
     }
   }
-
   const issueKeys = STORY_ISSUE_ORDER.filter((code) => counts[code]);
   pruneFilterSet(STATE.filters.issues, new Set(issueKeys));
-  for (const code of issueKeys) {
-    const n = counts[code] || 0;
-    if (!n) continue;
-    const chip = document.createElement("span");
-    chip.className = "chip";
-    chip.dataset.value = code;
-    if (STATE.filters.issues.has(code)) chip.classList.add("on");
-    chip.textContent = `${storyIssueLabel(code)} (${n})`;
-    chip.addEventListener("click", () => toggleSet(STATE.filters.issues, code, chip));
-    wrap.appendChild(chip);
-  }
+  const items = issueKeys.map((code) => ({ value: code, label: storyIssueLabel(code), count: counts[code] }));
+  window.WebUI.filters.buildChips("#story-issue-filter", items, {
+    active: STATE.filters.issues,
+    prune: false,
+    onToggle: () => applyFilters(),
+  });
 }
 
 function buildRecoveryMethodChips() {
-  const wrap = $("#recovery-method-filter");
-  if (!wrap) return;
-
-  wrap.innerHTML = "";
   const counts = {};
   for (const entry of STATE.entries) {
     for (const method of new Set(entryRecoveryMethods(entry))) {
       counts[method] = (counts[method] || 0) + 1;
     }
   }
-
   const methodKeys = Object.keys(counts)
     .filter(Boolean)
     .sort((a, b) => compareRecoveryMethodKeys(a, b, counts));
   pruneFilterSet(STATE.filters.recoveryMethods, new Set(methodKeys));
-  for (const method of methodKeys) {
-    const n = counts[method] || 0;
-    if (!n) continue;
-    const chip = document.createElement("span");
-    chip.className = "chip";
-    chip.dataset.value = method;
-    if (STATE.filters.recoveryMethods.has(method)) chip.classList.add("on");
-    chip.textContent = `${recoveryMethodLabel(method)} (${n})`;
-    chip.addEventListener("click", () => toggleSet(STATE.filters.recoveryMethods, method, chip));
-    wrap.appendChild(chip);
-  }
-}
-
-function toggleSet(set, value, el) {
-  if (set.has(value)) set.delete(value);
-  else set.add(value);
-  el.classList.toggle("on");
-  applyFilters();
+  const items = methodKeys.map((method) => ({
+    value: method,
+    label: recoveryMethodLabel(method),
+    count: counts[method],
+  }));
+  window.WebUI.filters.buildChips("#recovery-method-filter", items, {
+    active: STATE.filters.recoveryMethods,
+    prune: false,
+    onToggle: () => applyFilters(),
+  });
 }
 
 const STORY_SORT_MODES = new Set(["natural", "story", "lines-desc", "lines-asc", "key"]);
@@ -676,6 +644,43 @@ function storyOrderMissionMoveUnusedControl(row) {
   );
 }
 
+// #2 — flag missions whose order is NOT human-verified (not locked). Non-locked
+// overrides may be OCR/auto-seeded; per project policy OCR is untrusted, so these
+// need a human pass. Locked missions are treated as verified and show no badge.
+function storyOrderMissionVerifiedControl(row) {
+  if ((STATE.sortMode || "story") !== "story") return "";
+  const missionId = String(row && row.storyOrderMissionId || "");
+  if (!missionId) return "";
+  const mission = STATE.storyOrderPayload && STATE.storyOrderPayload.missions
+    && STATE.storyOrderPayload.missions[missionId];
+  if (!mission || !Array.isArray(mission.order) || !mission.order.length) return "";
+  const locked = typeof storyOrderMissionLocked === "function" && storyOrderMissionLocked(missionId);
+  if (locked) return "";
+  const label = escapeHtml(uiText("storyOrderUnverifiedBadge"));
+  const title = escapeHtml(uiText("storyOrderUnverifiedTitle"));
+  return `<span class="story-order-unverified-badge" title="${title}">${label}</span>`;
+}
+
+// #1 — jump to the next low-confidence row needing review. Count reflects the
+// mission's fallback/weak rows; only shown once the mission JSON is cached (debug).
+function storyOrderMissionReviewControl(row) {
+  if ((STATE.sortMode || "story") !== "story" || !STATE.showDebug) return "";
+  const missionId = String(row && row.storyOrderMissionId || "");
+  if (!missionId) return "";
+  const keys = typeof storyOrderMissionUncertainKeys === "function"
+    ? storyOrderMissionUncertainKeys(missionId) : [];
+  if (!keys.length) return "";
+  const label = escapeHtml(uiText("storyOrderReviewJump"));
+  const title = escapeHtml(uiText("storyOrderReviewJumpTitle"));
+  return (
+    `<button class="story-order-mission-review-button" type="button" ` +
+      `data-mission-id="${escapeHtml(missionId)}" title="${title}">` +
+      `<span class="story-order-review-mark" aria-hidden="true">!</span>` +
+      `<span class="story-order-mission-lock-label">${label} (${keys.length})</span>` +
+    `</button>`
+  );
+}
+
 function moveStoryOrderMissionUnusedToEnd(missionId) {
   const missionKey = String(missionId || "");
   if (!missionKey) return false;
@@ -838,9 +843,6 @@ function bindEvents() {
   $("#ui-language").addEventListener("click", (ev) => {
     setUiLocale(ev.currentTarget.dataset.nextLocale || "en");
   });
-  $("#filter-toggle").addEventListener("click", () => {
-    setFiltersCollapsed(!STATE.filtersCollapsed);
-  });
   $("#q").addEventListener("input", (ev) => {
     clearTimeout(qTimer);
     const v = ev.target.value;
@@ -887,6 +889,15 @@ function bindEvents() {
       ev.stopPropagation();
       if (missionMoveUnusedButton.disabled) return;
       moveStoryOrderMissionUnusedToEnd(missionMoveUnusedButton.dataset.missionId);
+      return;
+    }
+    const missionReviewButton = ev.target.closest(".story-order-mission-review-button");
+    if (missionReviewButton) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (typeof jumpToNextUncertainRow === "function") {
+        jumpToNextUncertainRow(missionReviewButton.dataset.missionId);
+      }
       return;
     }
     const unusedToggle = ev.target.closest(".story-order-unused-toggle");
@@ -951,6 +962,16 @@ function bindEvents() {
   });
 
   $("#conv-lines").addEventListener("click", (ev) => {
+    const clickTarget = ev.target && ev.target.closest ? ev.target : null;
+    const storyOrderAdoptButton = clickTarget ? clickTarget.closest(".story-order-compare-adopt-button") : null;
+    if (storyOrderAdoptButton) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (!storyOrderAdoptButton.disabled && typeof storyOrderAdoptMissionOrder === "function") {
+        storyOrderAdoptMissionOrder(storyOrderAdoptButton.dataset.missionId, storyOrderAdoptButton.dataset.source);
+      }
+      return;
+    }
     if (handleInlineImageModalActivate(ev.target)) {
       ev.preventDefault();
       ev.stopPropagation();

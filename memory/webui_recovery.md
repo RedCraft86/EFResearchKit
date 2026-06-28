@@ -22,13 +22,16 @@ python serve.py
 4. rebuilds narrative video/source-link evidence;
 5. builds CN Story and Reference data;
 6. leaves the OCR-managed Story order override untouched; and
-7. relinks decoded CN audio from `export_full/structured/Audio/CN/`.
+7. leaves asset indexes and CN audio relinking to `export_assets.bat` unless
+   `--with-assets` is passed.
 
 Use `--export-from-game` only when refreshing `export_full/` from the installed
-game data and decoding CN audio before the final relink pass. Run
-`.\build_updates.bat` separately for the Updates feed and `.\export_assets.bat`
-separately for asset indexes. Pass `.\export_assets.bat --export-from-game`
-when the heavier image/model/animation export should run first.
+game data. Add `--with-assets` when the same command should also run a combined
+Story+asset AnimeStudio export, rebuild asset indexes, and decode/relink CN
+audio. Without `--export-from-game`, `--with-assets` reuses existing decoded
+assets and relinks audio after the Story rebuild. Run `.\build_updates.bat`
+separately for the Updates feed. Use `.\export_assets.bat` separately when only
+asset indexes or audio need maintenance.
 
 The game does not need to be running. If it is open, close it before export so
 files are not locked.
@@ -109,14 +112,16 @@ Serving and packaging:
   port such as `python serve.py 9000`.
 - Before starting a default server, check whether `127.0.0.1:8765` is already
   running and reuse it.
-- Package with `python scripts\package_webui.py` or `.\package_webui.bat`.
+- Package with `python scripts\pack_webui.py` or `.\pack_webui.bat`.
 - Package inputs are `serve.py`, `webui/`, and selected media from
   `export_full/`. `reports/`, `scratch/`, and `tmp/` are not package inputs.
 
 ## Inline Media Rules
 
 - `sns_emoji_*` assets render as inline emoji. They do not open hover popovers
-  or the full-screen modal.
+  or the full-screen modal. Their resolver only uses exact or emoji-family
+  sprite matches; missing emoji sprites stay unresolved instead of falling back
+  to numbered sticker or SNS decoration assets.
 - `envEmoji_common_*` rows render line-level `emoji` fields using recovered
   Unity prefab aliases, RectTransform layer data, and enter animation curves in
   `story_media.json`.
