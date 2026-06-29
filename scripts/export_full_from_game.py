@@ -85,11 +85,18 @@ ANIMESTUDIO_CONVERT_OUTPUT_EXTENSIONS = {
     "Shader": ".shader",
     "AnimationClip": ".anim",
 }
-ANIMESTUDIO_ALLOW_MISSING_CONVERT_OUTPUT_TYPES = frozenset({
-    # Some Mesh assets are accepted by AnimeStudio without producing an OBJ.
-    # Cache those no-output successes so future runs do not retry them forever.
-    "Mesh",
-})
+ANIMESTUDIO_CONVERT_OUTPUT_MARKER_SUFFIXES = {
+    "Texture2D": (f"{ANIMESTUDIO_TEXTURE_EXTENSION}.empty.json",),
+}
+ANIMESTUDIO_OUTPUT_BASE_RE = re.compile(r"^(?P<base>.+)_p[0-9A-Fa-f]{16}(?: \(\d+\))?(?:\..*)?$")
+ANIMESTUDIO_HEX_HASH_NAME_RE = re.compile(r"^[0-9a-fA-F]{8,}$")
+ANIMESTUDIO_CONVERT_PARSE_DEPENDENCIES = {
+    # Sprite.GetImage resolves a backing texture directly or through a SpriteAtlas.
+    # Parse these dependencies while keeping Sprite as the only export target.
+    "Sprite": ("Texture2D:Parse", "SpriteAtlas:Parse"),
+}
+# Missing convert outputs must be explained by structured exporter warnings.
+ANIMESTUDIO_ALLOW_MISSING_CONVERT_OUTPUT_TYPES = frozenset()
 ANIMESTUDIO_MAX_SAFE_FILE_NAME_LENGTH = 120
 ANIMESTUDIO_RESERVED_FILE_NAMES = frozenset(
     {
@@ -180,10 +187,20 @@ ANIMESTUDIO_ASSET_MAP_FILTER_UNSAFE_TYPES = frozenset({
 FAILED_EXTRACT_RE = re.compile(r"Failed to extract (?P<file>.+?): (?P<reason>.+)")
 WARNING_FAIL_RE = re.compile(r"Warning:\s+(?P<count>\d+)\s+files failed")
 ANIMESTUDIO_LOG_LINE_RE = re.compile(r"^\[(?P<level>Error|Warning)\]\s*(?P<message>.*)$")
-ANIMESTUDIO_EXPORT_ERROR_RE = re.compile(r"^\[Error\]\s+Export\s+(?P<asset>.+?)\s+error\s*$")
+ANIMESTUDIO_EXPORT_ERROR_RE = re.compile(r"^\[Error\]\s+Export\s+(?P<asset>.+?)\s+error(?:\s+.*)?$")
 ANIMESTUDIO_METADATA_ONLY_JSON_RE = re.compile(
     r"^\[Warning\]\s+Exporting MonoBehaviour (?P<asset>.+?) as metadata-only JSON after (?P<exception>[^:]+): (?P<reason>.+)$"
 )
+ANIMESTUDIO_TEXTURE2D_NO_OUTPUT_RE = re.compile(r"^\[Warning\]\s+Texture2D no output (?P<fields>.*)$")
+ANIMESTUDIO_MESH_NO_OUTPUT_RE = re.compile(r"^\[Warning\]\s+Mesh no output (?P<fields>.*)$")
+ANIMESTUDIO_ANIMATOR_NO_OUTPUT_RE = re.compile(r"^\[Warning\]\s+Animator no output (?P<fields>.*)$")
+ANIMESTUDIO_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+ANIMESTUDIO_LOG_KEY_VALUE_RE = re.compile(
+    r'(?P<key>[A-Za-z][A-Za-z0-9_]*)=(?:"(?P<quoted>(?:\\.|[^"\\])*)"|(?P<bare>\S*))'
+)
+ANIMESTUDIO_TEXTURE2D_NO_PAYLOAD_REASONS = frozenset({"font_placeholder_zero_size_texture"})
+ANIMESTUDIO_MESH_EXPECTED_NO_OUTPUT_REASONS = frozenset({"zero_vertex_count"})
+ANIMESTUDIO_ANIMATOR_EXPECTED_NO_OUTPUT_REASONS = frozenset({"no_mesh"})
 ANIMESTUDIO_STORY_HINT_RE = re.compile(
     r"(dlg|dlgtl|dialog|timeline|cutscene|option|trunk|playable)",
     re.IGNORECASE,
@@ -400,6 +417,10 @@ def animestudio_asset_cache_path(output_root: Path) -> Path:
     return animestudio_work_dir(output_root) / "animestudio_asset_cache.json"
 
 
+def animestudio_asset_status_path(output_root: Path, source: str, stage: str, type_name: str) -> Path:
+    return animestudio_source_root(output_root, source) / "asset_status" / f"{stage}_{type_name}.json"
+
+
 def default_animestudio_asset_cache() -> dict[str, Any]:
     return {
         "schema_version": ANIMESTUDIO_ASSET_CACHE_SCHEMA_VERSION,
@@ -559,12 +580,149 @@ def fix_animestudio_file_name(value: Any) -> str:
     return sanitized
 
 
+def normalized_container_leaf_stem(value: Any) -> str:
+    text = str(value or "").replace("\\", "/").rstrip("/")
+    if not text:
+        return ""
+    leaf = text.rsplit("/", 1)[-1]
+    return leaf.rsplit(".", 1)[0] if "." in leaf else leaf
+
+
+def animestudio_output_base_name(path: Any) -> str:
+    if path is None:
+        return ""
+    name = Path(str(path)).name
+    match = ANIMESTUDIO_OUTPUT_BASE_RE.match(name)
+    if match:
+        return match.group("base")
+    return Path(name).stem
+
+
+def animestudio_map_name_source_hint(value: Any) -> str:
+    name = str(value or "").strip()
+    if not name:
+        return "map_name_empty"
+    normalized = name.replace("\\", "/")
+    if "/" in normalized or normalized.casefold().endswith(".ab"):
+        return "map_name_bundle_path"
+    if ANIMESTUDIO_HEX_HASH_NAME_RE.fullmatch(name):
+        return "map_name_hex_hash"
+    return "map_name_other"
+
+
+def asset_output_name_mismatch_details(record: dict[str, Any]) -> dict[str, Any]:
+    entry = record["entry"]
+    actual_base = animestudio_output_base_name(record.get("output_path"))
+    predicted_base = animestudio_output_base_name(record.get("predicted_output_path"))
+    map_name = str(entry.get("Name") or "")
+    container_leaf = normalized_container_leaf_stem(entry.get("Container"))
+    fixed_container_leaf = fix_animestudio_file_name(container_leaf)
+    map_case_normalized = bool(
+        map_name
+        and actual_base
+        and actual_base.casefold() == map_name.casefold()
+        and actual_base != map_name
+    )
+    container_leaf_case_normalized = bool(
+        fixed_container_leaf
+        and actual_base
+        and actual_base.casefold() == fixed_container_leaf.casefold()
+        and actual_base != fixed_container_leaf
+    )
+    case_normalized = map_case_normalized or container_leaf_case_normalized
+    if record.get("output_is_marker"):
+        reason = "marker_suffix"
+    elif not map_name.strip():
+        reason = "empty_map_name"
+    elif map_case_normalized:
+        reason = "case_normalization"
+    elif actual_base and fixed_container_leaf and actual_base.casefold() == fixed_container_leaf.casefold():
+        reason = "container_leaf"
+    else:
+        reason = "runtime_asset_name"
+    return {
+        "actual_output_base": actual_base,
+        "predicted_output_base": predicted_base,
+        "map_name": map_name,
+        "container_leaf_stem": container_leaf,
+        "name_mismatch_reason": reason,
+        "name_source_hint": animestudio_map_name_source_hint(map_name),
+        "case_normalized": case_normalized,
+        "map_case_normalized": map_case_normalized,
+        "container_leaf_case_normalized": container_leaf_case_normalized,
+        "resolved_by_path_id": True,
+    }
+
+
 def format_animestudio_path_id(value: Any) -> str:
     return f"{int(value) & ((1 << 64) - 1):016X}"
 
 
 def animestudio_convert_output_extension(type_name: str) -> str | None:
     return ANIMESTUDIO_CONVERT_OUTPUT_EXTENSIONS.get(type_name)
+
+
+def animestudio_convert_output_suffixes(type_name: str) -> tuple[str, ...]:
+    extension = animestudio_convert_output_extension(type_name)
+    if extension is None:
+        return ()
+    return (extension, *ANIMESTUDIO_CONVERT_OUTPUT_MARKER_SUFFIXES.get(type_name, ()))
+
+
+def animestudio_convert_output_marker_suffixes(type_name: str) -> tuple[str, ...]:
+    return ANIMESTUDIO_CONVERT_OUTPUT_MARKER_SUFFIXES.get(type_name, ())
+
+
+def animestudio_path_has_output_suffix(path: Path, type_name: str) -> bool:
+    name = path.name.casefold()
+    return any(name.endswith(suffix.casefold()) for suffix in animestudio_convert_output_suffixes(type_name))
+
+
+def animestudio_marker_output_path(primary_path: Path, marker_suffix: str) -> Path:
+    primary_suffix = "".join(primary_path.suffixes[-1:])
+    if primary_suffix and marker_suffix.casefold().startswith(primary_suffix.casefold()):
+        return primary_path.with_name(primary_path.name[: -len(primary_suffix)] + marker_suffix)
+    return primary_path.with_name(primary_path.name + marker_suffix)
+
+
+def animestudio_candidate_convert_output_paths(
+    output_root: Path,
+    source: str,
+    stage: str,
+    entry: dict[str, Any],
+) -> tuple[Path, ...]:
+    primary_path = predict_animestudio_convert_output_path(output_root, source, stage, entry)
+    if primary_path is None:
+        return ()
+    type_name = str(entry.get("Type") or "")
+    markers = tuple(
+        animestudio_marker_output_path(primary_path, marker_suffix)
+        for marker_suffix in animestudio_convert_output_marker_suffixes(type_name)
+    )
+    return (primary_path, *markers)
+
+
+def animestudio_is_marker_output_path(path: Path, type_name: str) -> bool:
+    name = path.name.casefold()
+    return any(name.endswith(suffix.casefold()) for suffix in animestudio_convert_output_marker_suffixes(type_name))
+
+
+def animestudio_convert_parse_dependencies(stage: str, export_type: str | None, type_spec: str | None) -> tuple[str, ...]:
+    if stage != "convert_by_type" or export_type != "Convert" or type_spec is None:
+        return ()
+    return ANIMESTUDIO_CONVERT_PARSE_DEPENDENCIES.get(animestudio_type_name(type_spec), ())
+
+
+def animestudio_type_specs_for_export(
+    stage: str,
+    export_type: str | None,
+    type_specs: tuple[str, ...],
+) -> tuple[str, ...]:
+    expanded: list[str] = []
+    for type_spec in type_specs:
+        expanded.append(type_spec)
+        expanded.extend(animestudio_convert_parse_dependencies(stage, export_type, type_spec))
+    return ordered_unique(tuple(expanded))
 
 
 def animestudio_asset_cache_supported(stage: str, options: dict[str, Any], type_name: str) -> bool:
@@ -592,6 +750,94 @@ def predict_animestudio_convert_output_path(
     return animestudio_stage_dir(output_root, source, stage) / type_name / f"{file_name}_p{path_id}{extension}"
 
 
+def animestudio_output_path_id_suffix(path: Path, type_name: str) -> str | None:
+    stem = path.name
+    for output_suffix in sorted(animestudio_convert_output_suffixes(type_name), key=len, reverse=True):
+        if stem.casefold().endswith(output_suffix.casefold()):
+            stem = stem[: -len(output_suffix)]
+            break
+    else:
+        return None
+    try:
+        suffix = stem.rsplit("_p", 1)[1]
+    except IndexError:
+        return None
+    if len(suffix) != 16:
+        return None
+    try:
+        int(suffix, 16)
+    except ValueError:
+        return None
+    return suffix.upper()
+
+
+def build_animestudio_output_path_id_index(
+    output_root: Path,
+    source: str,
+    stage: str,
+    type_name: str,
+) -> dict[str, list[Path]]:
+    type_dir = animestudio_stage_dir(output_root, source, stage) / type_name
+    if not animestudio_convert_output_suffixes(type_name) or not type_dir.is_dir():
+        return {}
+    index: dict[str, list[Path]] = {}
+    for path in type_dir.iterdir():
+        if not path.is_file() or not animestudio_path_has_output_suffix(path, type_name):
+            continue
+        path_id_suffix = animestudio_output_path_id_suffix(path, type_name)
+        if path_id_suffix is not None:
+            index.setdefault(path_id_suffix, []).append(path)
+    return index
+
+
+def resolve_animestudio_convert_output_path(
+    output_root: Path,
+    source: str,
+    stage: str,
+    entry: dict[str, Any],
+    output_path_id_index: dict[str, list[Path]],
+) -> dict[str, Any]:
+    predicted_path = predict_animestudio_convert_output_path(output_root, source, stage, entry)
+    if predicted_path is None:
+        return {
+            "output_path": None,
+            "predicted_output_path": None,
+            "output_exists": False,
+            "output_name_mismatch": False,
+            "path_id_output_candidate_count": 0,
+            "output_is_marker": False,
+        }
+    if predicted_path.is_file():
+        return {
+            "output_path": predicted_path,
+            "predicted_output_path": predicted_path,
+            "output_exists": True,
+            "output_name_mismatch": False,
+            "path_id_output_candidate_count": 1,
+            "output_is_marker": False,
+        }
+    path_id = format_animestudio_path_id(entry.get("PathID") or 0)
+    candidates = sorted(output_path_id_index.get(path_id, []))
+    if len(candidates) == 1:
+        output_is_marker = animestudio_is_marker_output_path(candidates[0], str(entry.get("Type") or ""))
+        return {
+            "output_path": candidates[0],
+            "predicted_output_path": predicted_path,
+            "output_exists": True,
+            "output_name_mismatch": candidates[0] != predicted_path,
+            "path_id_output_candidate_count": 1,
+            "output_is_marker": output_is_marker,
+        }
+    return {
+        "output_path": predicted_path,
+        "predicted_output_path": predicted_path,
+        "output_exists": False,
+        "output_name_mismatch": False,
+        "path_id_output_candidate_count": len(candidates),
+        "output_is_marker": False,
+    }
+
+
 def asset_entry_identity(entry: dict[str, Any]) -> dict[str, Any]:
     return {
         "name": entry.get("Name"),
@@ -615,6 +861,7 @@ def stable_asset_export_signature(item: dict[str, Any], plan: dict[str, Any]) ->
         "file_naming": stage_signature.get("file_naming"),
         "logger_flags": stage_signature.get("logger_flags"),
         "output_extension": animestudio_convert_output_extension(animestudio_type_name(item.get("type_spec"))),
+        "parse_dependencies": stage_signature.get("parse_dependencies"),
     }
 
 
@@ -864,7 +1111,7 @@ def prune_unmatched_animestudio_asset_outputs(
     expected = {
         os.path.normcase(os.path.abspath(path))
         for entry in entries
-        if (path := predict_animestudio_convert_output_path(output_root, source, stage, entry)) is not None
+        for path in animestudio_candidate_convert_output_paths(output_root, source, stage, entry)
     }
     removed = 0
     for path in type_dir.iterdir():
@@ -887,15 +1134,20 @@ def remove_animestudio_asset_outputs(
     entries: list[dict[str, Any]],
 ) -> int:
     removed = 0
+    seen: set[str] = set()
     for entry in entries:
-        path = predict_animestudio_convert_output_path(output_root, source, stage, entry)
-        if path is None or not path.is_file():
-            continue
-        try:
-            path.unlink()
-            removed += 1
-        except OSError as exc:
-            log(f"  warning: unable to remove stale AnimeStudio output {path}: {exc}")
+        for path in animestudio_candidate_convert_output_paths(output_root, source, stage, entry):
+            key = os.path.normcase(os.path.abspath(path))
+            if key in seen:
+                continue
+            seen.add(key)
+            if not path.is_file():
+                continue
+            try:
+                path.unlink()
+                removed += 1
+            except OSError as exc:
+                log(f"  warning: unable to remove stale AnimeStudio output {path}: {exc}")
     return removed
 
 
@@ -908,15 +1160,697 @@ def count_existing_animestudio_asset_outputs(
     return sum(
         1
         for entry in entries
-        if (path := predict_animestudio_convert_output_path(output_root, source, stage, entry)) is not None
-        and path.is_file()
+        if any(path.is_file() for path in animestudio_candidate_convert_output_paths(output_root, source, stage, entry))
     )
+
+
+
+def asset_entry_ab_identity(entry: dict[str, Any]) -> dict[str, Any]:
+    source_path = str(entry.get("Source") or "")
+    source_file = Path(source_path) if source_path else None
+    return {
+        "source_path": source_path,
+        "source_name": source_file.name if source_file is not None else "",
+        "source_block": source_file.parent.name if source_file is not None else "",
+        "offset": normalized_asset_offset(entry.get("Offset")),
+    }
+
+
+def asset_entry_ab_key(entry: dict[str, Any]) -> str:
+    return stable_hash(asset_entry_ab_identity(entry))
+
+
+def parse_log_int(value: Any) -> int | None:
+    try:
+        return int(str(value), 0)
+    except (TypeError, ValueError):
+        return None
+
+
+def normalized_log_int(value: Any) -> int:
+    parsed = parse_log_int(value)
+    return parsed if parsed is not None else -1
+
+
+def normalized_source_leaf(value: Any) -> str:
+    source = str(value or "").replace("\\", "/").strip()
+    return source.rsplit("/", 1)[-1].casefold() if source else ""
+
+
+def texture2d_no_payload_log_indexes(log_issues: dict[str, Any] | None) -> tuple[set[tuple[int, int, str]], set[tuple[int, int]]]:
+    exact_keys: set[tuple[int, int, str]] = set()
+    fallback_keys: set[tuple[int, int]] = set()
+    for sample in (log_issues or {}).get("texture2d_no_output_records") or (log_issues or {}).get("texture2d_no_output_samples") or []:
+        if sample.get("reason") not in ANIMESTUDIO_TEXTURE2D_NO_PAYLOAD_REASONS:
+            continue
+        path_id = parse_log_int(sample.get("PathID"))
+        source_offset = parse_log_int(sample.get("SourceOffset"))
+        if path_id is None or source_offset is None or source_offset < 0:
+            continue
+        source_names = {
+            normalized_source_leaf(sample.get("SourceOriginalPath")),
+            normalized_source_leaf(sample.get("SourceFile")),
+        }
+        source_names.discard("")
+        if source_names:
+            for source_name in source_names:
+                exact_keys.add((path_id, source_offset, source_name))
+        else:
+            fallback_keys.add((path_id, source_offset))
+    return exact_keys, fallback_keys
+
+
+def texture2d_record_matches_no_payload_log(
+    record: dict[str, Any],
+    exact_keys: set[tuple[int, int, str]],
+    fallback_keys: set[tuple[int, int]],
+) -> bool:
+    entry = record["entry"]
+    path_id = parse_log_int(entry.get("PathID"))
+    source_offset = normalized_asset_offset(entry.get("Offset"))
+    if path_id is None or source_offset < 0:
+        return False
+    source_leaf = normalized_source_leaf(entry.get("Source"))
+    if source_leaf and (path_id, source_offset, source_leaf) in exact_keys:
+        return True
+    return (path_id, source_offset) in fallback_keys
+
+
+def mesh_expected_no_output_log_indexes(log_issues: dict[str, Any] | None) -> tuple[set[tuple[int, int, str]], set[tuple[int, int]]]:
+    exact_keys: set[tuple[int, int, str]] = set()
+    fallback_keys: set[tuple[int, int]] = set()
+    for sample in (log_issues or {}).get("mesh_no_output_records") or (log_issues or {}).get("mesh_no_output_samples") or []:
+        if sample.get("reason") not in ANIMESTUDIO_MESH_EXPECTED_NO_OUTPUT_REASONS:
+            continue
+        path_id = parse_log_int(sample.get("PathID"))
+        source_offset = parse_log_int(sample.get("SourceOffset"))
+        if path_id is None or source_offset is None or source_offset < 0:
+            continue
+        source_names = {
+            normalized_source_leaf(sample.get("SourceOriginalPath")),
+            normalized_source_leaf(sample.get("SourceFile")),
+        }
+        source_names.discard("")
+        if source_names:
+            for source_name in source_names:
+                exact_keys.add((path_id, source_offset, source_name))
+        else:
+            fallback_keys.add((path_id, source_offset))
+    return exact_keys, fallback_keys
+
+
+def mesh_record_matches_expected_no_output_log(
+    record: dict[str, Any],
+    exact_keys: set[tuple[int, int, str]],
+    fallback_keys: set[tuple[int, int]],
+) -> bool:
+    entry = record["entry"]
+    path_id = parse_log_int(entry.get("PathID"))
+    source_offset = normalized_asset_offset(entry.get("Offset"))
+    if path_id is None or source_offset < 0:
+        return False
+    source_leaf = normalized_source_leaf(entry.get("Source"))
+    if source_leaf and (path_id, source_offset, source_leaf) in exact_keys:
+        return True
+    return (path_id, source_offset) in fallback_keys
+
+
+def asset_output_record_sample(record: dict[str, Any]) -> dict[str, Any]:
+    entry = record["entry"]
+    sample = {
+        "name": entry.get("Name"),
+        "path_id": entry.get("PathID"),
+        "type": entry.get("Type"),
+        "container": entry.get("Container"),
+        "hash": entry.get("Hash"),
+        "output_path": str(record["output_path"]) if record.get("output_path") is not None else None,
+        "output_exists": bool(record.get("output_exists")),
+    }
+    predicted_output_path = record.get("predicted_output_path")
+    if record.get("output_name_mismatch") and predicted_output_path is not None:
+        sample["predicted_output_path"] = str(predicted_output_path)
+        sample["output_name_mismatch"] = True
+        sample.update(asset_output_name_mismatch_details(record))
+    if record.get("output_is_marker"):
+        sample["output_marker"] = True
+    candidate_count = int(record.get("path_id_output_candidate_count") or 0)
+    if candidate_count > 1:
+        sample["path_id_output_candidate_count"] = candidate_count
+    return sample
+
+
+def asset_output_collision_identity(record: dict[str, Any], *, include_hash: bool) -> tuple[str, Any, str, str]:
+    entry = record["entry"]
+    parsed_path_id = parse_log_int(entry.get("PathID"))
+    path_id: Any = parsed_path_id if parsed_path_id is not None else str(entry.get("PathID") or "")
+    digest = str(entry.get("Hash") or "").casefold() if include_hash else ""
+    return (
+        str(entry.get("Type") or ""),
+        path_id,
+        str(entry.get("Name") or ""),
+        digest,
+    )
+
+
+def classify_output_path_collision(records: list[dict[str, Any]]) -> str:
+    source_group_count = len({record["ab_key"] for record in records})
+    if source_group_count <= 1:
+        return "duplicate_output_path"
+    identities = {asset_output_collision_identity(record, include_hash=True) for record in records}
+    if len(identities) == 1:
+        return "shared_output_reference"
+    identities_without_hash = {
+        asset_output_collision_identity(record, include_hash=False)
+        for record in records
+    }
+    if len(identities_without_hash) == 1:
+        return "raw_hash_output_collision"
+    return "identity_output_collision"
+
+
+def build_animestudio_asset_output_status(
+    output_root: Path,
+    source: str,
+    stage: str,
+    type_name: str,
+    entries: list[dict[str, Any]],
+    *,
+    missing_outputs_allowed: bool,
+    log_issues: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    output_records: list[dict[str, Any]] = []
+    records_by_output_path: dict[str, list[dict[str, Any]]] = {}
+    records_by_ab: dict[str, list[dict[str, Any]]] = {}
+    ab_identities: dict[str, dict[str, Any]] = {}
+    output_path_id_index = build_animestudio_output_path_id_index(output_root, source, stage, type_name)
+
+    for entry in entries:
+        resolved_output = resolve_animestudio_convert_output_path(
+            output_root,
+            source,
+            stage,
+            entry,
+            output_path_id_index,
+        )
+        output_path = resolved_output["output_path"]
+        output_key = os.path.normcase(os.path.abspath(output_path)) if output_path is not None else ""
+        output_exists = bool(resolved_output["output_exists"])
+        ab_key = asset_entry_ab_key(entry)
+        record = {
+            "entry": entry,
+            "ab_key": ab_key,
+            "output_path": output_path,
+            "output_key": output_key,
+            "output_exists": output_exists,
+            "predicted_output_path": resolved_output.get("predicted_output_path"),
+            "output_name_mismatch": bool(resolved_output.get("output_name_mismatch")),
+            "output_is_marker": bool(resolved_output.get("output_is_marker")),
+            "path_id_output_candidate_count": int(resolved_output.get("path_id_output_candidate_count") or 0),
+        }
+        output_records.append(record)
+        records_by_ab.setdefault(ab_key, []).append(record)
+        ab_identities.setdefault(ab_key, asset_entry_ab_identity(entry))
+        if output_key:
+            records_by_output_path.setdefault(output_key, []).append(record)
+
+    duplicate_output_keys = {
+        output_key for output_key, records in records_by_output_path.items() if len(records) > 1
+    }
+    cross_ab_output_keys = {
+        output_key
+        for output_key, records in records_by_output_path.items()
+        if len({record["ab_key"] for record in records}) > 1
+    }
+    output_collision_kind_by_key = {
+        output_key: classify_output_path_collision(records)
+        for output_key, records in records_by_output_path.items()
+        if len(records) > 1
+    }
+    shared_output_reference_keys = {
+        output_key
+        for output_key, kind in output_collision_kind_by_key.items()
+        if kind == "shared_output_reference"
+    }
+    raw_hash_output_collision_keys = {
+        output_key
+        for output_key, kind in output_collision_kind_by_key.items()
+        if kind == "raw_hash_output_collision"
+    }
+    identity_output_collision_keys = {
+        output_key
+        for output_key, kind in output_collision_kind_by_key.items()
+        if kind == "identity_output_collision"
+    }
+    uncertain_output_collision_keys = raw_hash_output_collision_keys | identity_output_collision_keys
+    uncertain_duplicate_output_keys = {
+        output_key
+        for output_key, kind in output_collision_kind_by_key.items()
+        if kind == "duplicate_output_path"
+    }
+    missing_records = [record for record in output_records if not record["output_exists"]]
+    missing_output_keys = {record["output_key"] for record in missing_records if record["output_key"]}
+    name_mismatch_records = [record for record in output_records if record.get("output_name_mismatch")]
+    alternate_name_reason_counts: dict[str, int] = {}
+    alternate_name_source_hint_counts: dict[str, int] = {}
+    alternate_name_case_normalized_count = 0
+    for record in name_mismatch_records:
+        details = asset_output_name_mismatch_details(record)
+        reason = str(details.get("name_mismatch_reason") or "unknown")
+        source_hint = str(details.get("name_source_hint") or "unknown")
+        alternate_name_reason_counts[reason] = alternate_name_reason_counts.get(reason, 0) + 1
+        alternate_name_source_hint_counts[source_hint] = alternate_name_source_hint_counts.get(source_hint, 0) + 1
+        if details.get("case_normalized"):
+            alternate_name_case_normalized_count += 1
+    texture2d_no_output_count = int((log_issues or {}).get("texture2d_no_output_count") or 0)
+    texture2d_no_payload_count = int((log_issues or {}).get("texture2d_no_payload_count") or 0)
+    texture2d_decode_failed_count = int((log_issues or {}).get("texture2d_decode_failed_count") or 0)
+    texture2d_no_output_samples = list((log_issues or {}).get("texture2d_no_output_samples") or [])[:ANIMESTUDIO_LOG_SAMPLE_LIMIT]
+    mesh_no_output_count = int((log_issues or {}).get("mesh_no_output_count") or 0)
+    mesh_expected_no_output_count = int((log_issues or {}).get("mesh_expected_no_output_count") or 0)
+    mesh_suspicious_no_output_count = int((log_issues or {}).get("mesh_suspicious_no_output_count") or 0)
+    mesh_no_output_samples = list((log_issues or {}).get("mesh_no_output_samples") or [])[:ANIMESTUDIO_LOG_SAMPLE_LIMIT]
+    animator_no_output_count = int((log_issues or {}).get("animator_no_output_count") or 0)
+    animator_no_mesh_count = int((log_issues or {}).get("animator_no_mesh_count") or 0)
+    animator_suspicious_no_output_count = int((log_issues or {}).get("animator_suspicious_no_output_count") or 0)
+    animator_no_output_samples = list((log_issues or {}).get("animator_no_output_samples") or [])[:ANIMESTUDIO_LOG_SAMPLE_LIMIT]
+    texture2d_no_payload_record_ids: set[int] = set()
+    if type_name == "Texture2D" and missing_records and texture2d_no_payload_count:
+        exact_log_keys, fallback_log_keys = texture2d_no_payload_log_indexes(log_issues)
+        texture2d_no_payload_record_ids = {
+            id(record)
+            for record in missing_records
+            if texture2d_record_matches_no_payload_log(record, exact_log_keys, fallback_log_keys)
+        }
+    mesh_expected_no_output_record_ids: set[int] = set()
+    if type_name == "Mesh" and missing_records and mesh_expected_no_output_count:
+        exact_log_keys, fallback_log_keys = mesh_expected_no_output_log_indexes(log_issues)
+        mesh_expected_no_output_record_ids = {
+            id(record)
+            for record in missing_records
+            if mesh_record_matches_expected_no_output_log(record, exact_log_keys, fallback_log_keys)
+        }
+    classified_no_payload_missing_output_count = 0
+    if type_name == "Texture2D":
+        classified_no_payload_missing_output_count = len(texture2d_no_payload_record_ids)
+    classified_mesh_expected_missing_output_count = 0
+    if type_name == "Mesh":
+        classified_mesh_expected_missing_output_count = len(mesh_expected_no_output_record_ids)
+    allowed_missing_output_count = (
+        len(missing_records)
+        if missing_outputs_allowed
+        else classified_no_payload_missing_output_count + classified_mesh_expected_missing_output_count
+    )
+    suspicious_missing_output_count = max(0, len(missing_records) - allowed_missing_output_count)
+    if type_name == "Texture2D" and texture2d_decode_failed_count:
+        suspicious_missing_output_count = max(suspicious_missing_output_count, texture2d_decode_failed_count)
+    if type_name == "Mesh" and mesh_suspicious_no_output_count:
+        suspicious_missing_output_count = max(suspicious_missing_output_count, mesh_suspicious_no_output_count)
+    output_path_collision_samples: list[dict[str, Any]] = []
+    for output_key in sorted(cross_ab_output_keys)[:20]:
+        records = records_by_output_path[output_key]
+        output_path = records[0].get("output_path")
+        output_path_collision_samples.append(
+            {
+                "output_path": str(output_path) if output_path is not None else None,
+                "collision_kind": output_collision_kind_by_key.get(output_key),
+                "entry_count": len(records),
+                "source_group_count": len({record["ab_key"] for record in records}),
+                "samples": [asset_output_record_sample(record) for record in records[:5]],
+            }
+        )
+
+    status_counts: dict[str, int] = {}
+    groups: list[dict[str, Any]] = []
+    for ab_key, records in sorted(
+        records_by_ab.items(),
+        key=lambda item: (
+            str(ab_identities[item[0]].get("source_path") or "").casefold(),
+            int(ab_identities[item[0]].get("offset") or -1),
+        ),
+    ):
+        entry_count = len(records)
+        output_entry_count = sum(1 for record in records if record["output_exists"])
+        missing_entry_count = entry_count - output_entry_count
+        duplicate_entry_count = sum(1 for record in records if record["output_key"] in duplicate_output_keys)
+        uncertain_duplicate_entry_count = sum(
+            1 for record in records if record["output_key"] in uncertain_duplicate_output_keys
+        )
+        cross_ab_collision_entry_count = sum(1 for record in records if record["output_key"] in cross_ab_output_keys)
+        shared_reference_entry_count = sum(
+            1 for record in records if record["output_key"] in shared_output_reference_keys
+        )
+        raw_hash_collision_entry_count = sum(
+            1 for record in records if record["output_key"] in raw_hash_output_collision_keys
+        )
+        identity_collision_entry_count = sum(
+            1 for record in records if record["output_key"] in identity_output_collision_keys
+        )
+        uncertain_collision_entry_count = sum(
+            1 for record in records if record["output_key"] in uncertain_output_collision_keys
+        )
+        allowed_missing_entry_count = 0
+        if missing_outputs_allowed:
+            allowed_missing_entry_count = missing_entry_count
+        elif type_name == "Texture2D":
+            allowed_missing_entry_count = sum(
+                1
+                for record in records
+                if not record["output_exists"] and id(record) in texture2d_no_payload_record_ids
+            )
+        elif type_name == "Mesh":
+            allowed_missing_entry_count = sum(
+                1
+                for record in records
+                if not record["output_exists"] and id(record) in mesh_expected_no_output_record_ids
+            )
+        suspicious_missing_entry_count = missing_entry_count - allowed_missing_entry_count
+        if suspicious_missing_entry_count:
+            status = "dirty_missing_output"
+        elif missing_entry_count:
+            status = "allowed_missing_output"
+        elif uncertain_collision_entry_count:
+            status = "uncertain_output_collision"
+        elif uncertain_duplicate_entry_count:
+            status = "uncertain_duplicate_output_path"
+        else:
+            status = "clean_outputs"
+        status_counts[status] = status_counts.get(status, 0) + 1
+        groups.append(
+            {
+                "status": status,
+                **ab_identities[ab_key],
+                "entry_count": entry_count,
+                "unique_output_path_count": len({record["output_key"] for record in records if record["output_key"]}),
+                "output_entry_count": output_entry_count,
+                "missing_entry_count": missing_entry_count,
+                "allowed_missing_entry_count": allowed_missing_entry_count,
+                "suspicious_missing_entry_count": suspicious_missing_entry_count,
+                "duplicate_output_entry_count": duplicate_entry_count,
+                "uncertain_duplicate_output_entry_count": uncertain_duplicate_entry_count,
+                "cross_ab_output_collision_entry_count": cross_ab_collision_entry_count,
+                "shared_output_reference_entry_count": shared_reference_entry_count,
+                "raw_hash_output_collision_entry_count": raw_hash_collision_entry_count,
+                "identity_output_collision_entry_count": identity_collision_entry_count,
+                "uncertain_output_collision_entry_count": uncertain_collision_entry_count,
+                "missing_output_samples": [asset_output_record_sample(record) for record in records if not record["output_exists"]][:5],
+                "output_collision_samples": [
+                    asset_output_record_sample(record)
+                    for record in records
+                    if record["output_key"] in uncertain_output_collision_keys
+                ][:5],
+                "shared_output_reference_samples": [
+                    asset_output_record_sample(record)
+                    for record in records
+                    if record["output_key"] in shared_output_reference_keys
+                ][:5],
+            }
+        )
+
+    type_dir = animestudio_stage_dir(output_root, source, stage) / type_name
+    actual_output_file_count = sum(1 for path in type_dir.iterdir() if path.is_file()) if type_dir.is_dir() else 0
+    export_error_count = int((log_issues or {}).get("export_error_count") or 0)
+    summary = {
+        "source": source,
+        "stage": stage,
+        "type": type_name,
+        "matched_entry_count": len(entries),
+        "source_group_count": len(groups),
+        "status_counts": status_counts,
+        "clean_source_group_count": status_counts.get("clean_outputs", 0),
+        "dirty_source_group_count": len(groups) - status_counts.get("clean_outputs", 0),
+        "output_entry_count": sum(1 for record in output_records if record["output_exists"]),
+        "unique_output_path_count": len(records_by_output_path),
+        "output_unique_path_count": sum(
+            1 for records in records_by_output_path.values() if any(record["output_exists"] for record in records)
+        ),
+        "actual_output_file_count": actual_output_file_count,
+        "marker_output_count": sum(1 for record in output_records if record.get("output_is_marker")),
+        "name_mismatch_output_count": len(name_mismatch_records),
+        "name_mismatch_output_samples": [asset_output_record_sample(record) for record in name_mismatch_records[:20]],
+        "alternate_name_output_count": len(name_mismatch_records),
+        "alternate_name_reason_counts": dict(sorted(alternate_name_reason_counts.items())),
+        "alternate_name_source_hint_counts": dict(sorted(alternate_name_source_hint_counts.items())),
+        "alternate_name_case_normalized_count": alternate_name_case_normalized_count,
+        "alternate_name_output_samples": [asset_output_record_sample(record) for record in name_mismatch_records[:20]],
+        "missing_output_count": len(missing_records),
+        "missing_unique_output_count": len(missing_output_keys),
+        "allowed_missing_output_count": allowed_missing_output_count,
+        "suspicious_missing_output_count": suspicious_missing_output_count,
+        "classified_no_payload_missing_output_count": classified_no_payload_missing_output_count,
+        "classified_mesh_expected_missing_output_count": classified_mesh_expected_missing_output_count,
+        "texture2d_no_output_count": texture2d_no_output_count,
+        "texture2d_no_payload_count": texture2d_no_payload_count,
+        "texture2d_decode_failed_count": texture2d_decode_failed_count,
+        "texture2d_no_output_samples": texture2d_no_output_samples,
+        "mesh_no_output_count": mesh_no_output_count,
+        "mesh_expected_no_output_count": mesh_expected_no_output_count,
+        "mesh_suspicious_no_output_count": mesh_suspicious_no_output_count,
+        "mesh_no_output_samples": mesh_no_output_samples,
+        "animator_no_output_count": animator_no_output_count,
+        "animator_no_mesh_count": animator_no_mesh_count,
+        "animator_suspicious_no_output_count": animator_suspicious_no_output_count,
+        "animator_no_output_samples": animator_no_output_samples,
+        "duplicate_output_path_group_count": len(duplicate_output_keys),
+        "duplicate_output_entry_count": sum(len(records_by_output_path[key]) - 1 for key in duplicate_output_keys),
+        "uncertain_duplicate_output_path_group_count": len(uncertain_duplicate_output_keys),
+        "uncertain_duplicate_output_entry_count": sum(
+            len(records_by_output_path[key])
+            for key in uncertain_duplicate_output_keys
+        ),
+        "cross_ab_output_collision_group_count": len(cross_ab_output_keys),
+        "cross_ab_output_collision_entry_count": sum(len(records_by_output_path[key]) for key in cross_ab_output_keys),
+        "shared_output_reference_group_count": len(shared_output_reference_keys),
+        "shared_output_reference_entry_count": sum(
+            len(records_by_output_path[key])
+            for key in shared_output_reference_keys
+        ),
+        "raw_hash_output_collision_group_count": len(raw_hash_output_collision_keys),
+        "raw_hash_output_collision_entry_count": sum(
+            len(records_by_output_path[key])
+            for key in raw_hash_output_collision_keys
+        ),
+        "identity_output_collision_group_count": len(identity_output_collision_keys),
+        "identity_output_collision_entry_count": sum(
+            len(records_by_output_path[key])
+            for key in identity_output_collision_keys
+        ),
+        "uncertain_output_collision_group_count": len(uncertain_output_collision_keys),
+        "uncertain_output_collision_entry_count": sum(
+            len(records_by_output_path[key])
+            for key in uncertain_output_collision_keys
+        ),
+        "unmapped_export_error_count": export_error_count,
+    }
+    return {
+        "schema_version": 1,
+        "generated_at_epoch": int(time.time()),
+        "summary": summary,
+        "output_path_collision_samples": output_path_collision_samples,
+        "source_groups": groups,
+    }
+
+
+def write_animestudio_asset_status_manifest(
+    output_root: Path,
+    source: str,
+    stage: str,
+    type_name: str,
+    entries: list[dict[str, Any]],
+    *,
+    missing_outputs_allowed: bool,
+    log_issues: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    path = animestudio_asset_status_path(output_root, source, stage, type_name)
+    status = build_animestudio_asset_output_status(
+        output_root=output_root,
+        source=source,
+        stage=stage,
+        type_name=type_name,
+        entries=entries,
+        missing_outputs_allowed=missing_outputs_allowed,
+        log_issues=log_issues,
+    )
+    status["summary"]["manifest_path"] = str(path)
+    ensure_dir(path.parent)
+    write_json(path, status, compact=True)
+    return status["summary"]
+
+
+def write_animestudio_report_only_asset_statuses(
+    output_root: Path,
+    source: str,
+    stage: str,
+    plan: dict[str, Any],
+) -> list[dict[str, Any]]:
+    options = plan.get("options") or {}
+    if stage != "convert_by_type" or options.get("export_type") != "Convert":
+        return []
+    if not options.get("asset_map_filter"):
+        return []
+    map_name = options.get("map_name")
+    if not map_name:
+        return []
+    map_json = normalize_asset_map_path(map_name)
+    if not map_json.exists():
+        log(f"  animestudio report-only status {stage} for {source}: missing JSON map {map_json}")
+        return []
+
+    started = time.time()
+    map_entries_cache = plan.setdefault("_asset_map_entries_cache", {})
+    map_entries_key = str(map_json)
+    map_entries = map_entries_cache.get(map_entries_key)
+    if map_entries is None:
+        map_entries = load_animestudio_asset_map_entries(map_json)
+        map_entries_cache[map_entries_key] = map_entries
+
+    written: list[dict[str, Any]] = []
+    for item in plan.get("items", []):
+        type_spec = item.get("type_spec")
+        if type_spec is None:
+            continue
+        type_name = animestudio_type_name(type_spec)
+        if not animestudio_asset_cache_supported(stage, options, type_name):
+            continue
+        if not animestudio_map_filter_is_safe((type_spec,)):
+            continue
+        matched_entries = dedupe_asset_entries(
+            filter_animestudio_asset_map_entries(
+                map_path=map_json,
+                type_name=type_name,
+                names=options.get("names"),
+                containers=options.get("containers"),
+                entries=map_entries,
+            )
+        )
+        missing_outputs_allowed = type_name in ANIMESTUDIO_ALLOW_MISSING_CONVERT_OUTPUT_TYPES
+        status_summary = write_animestudio_asset_status_manifest(
+            output_root=output_root,
+            source=source,
+            stage=stage,
+            type_name=type_name,
+            entries=matched_entries,
+            missing_outputs_allowed=missing_outputs_allowed,
+        )
+        asset_info = {
+            "enabled": False,
+            "report_only": True,
+            "cache_path": None,
+            "map_json": str(map_json),
+            "type": type_name,
+            "output_extension": animestudio_convert_output_extension(type_name),
+            "matched_entry_count": len(matched_entries),
+            "cached_entry_count": 0,
+            "pending_entry_count": 0,
+            "shard_count": 0,
+            "prepare_seconds": round(time.time() - started, 3),
+            "export_error_count": 0,
+        }
+        for key in (
+            "manifest_path",
+            "output_entry_count",
+            "unique_output_path_count",
+            "output_unique_path_count",
+            "actual_output_file_count",
+            "marker_output_count",
+            "name_mismatch_output_count",
+            "alternate_name_output_count",
+            "alternate_name_reason_counts",
+            "alternate_name_source_hint_counts",
+            "alternate_name_case_normalized_count",
+            "missing_output_count",
+            "missing_unique_output_count",
+            "allowed_missing_output_count",
+            "duplicate_output_path_group_count",
+            "duplicate_output_entry_count",
+            "uncertain_duplicate_output_path_group_count",
+            "uncertain_duplicate_output_entry_count",
+            "cross_ab_output_collision_group_count",
+            "cross_ab_output_collision_entry_count",
+            "shared_output_reference_group_count",
+            "shared_output_reference_entry_count",
+            "raw_hash_output_collision_group_count",
+            "raw_hash_output_collision_entry_count",
+            "identity_output_collision_group_count",
+            "identity_output_collision_entry_count",
+            "uncertain_output_collision_group_count",
+            "uncertain_output_collision_entry_count",
+            "source_group_count",
+            "clean_source_group_count",
+            "dirty_source_group_count",
+            "unmapped_export_error_count",
+        ):
+            asset_info[key] = status_summary.get(key)
+        plan.setdefault("asset_caches", []).append(asset_info)
+        plan.setdefault("item_file_counts", {})[type_name] = int(status_summary.get("actual_output_file_count") or 0)
+        written.append(asset_info)
+        log(
+            f"  animestudio report-only status {stage}:{type_name} for {source}: "
+            f"matched={asset_info['matched_entry_count']} "
+            f"outputs={asset_info['output_entry_count']} "
+            f"missing={asset_info['missing_output_count']} "
+            f"manifest={asset_info['manifest_path']}"
+        )
+
+    if written:
+        plan["asset_cache"] = written[-1]
+    return written
 
 
 def animestudio_type_name(type_spec: str | None) -> str:
     if not type_spec:
         return ANIMESTUDIO_MANIFEST_MAP_LABEL
     return str(type_spec).split(":", 1)[0]
+
+
+def animestudio_known_asset_type_names() -> set[str]:
+    specs = (
+        ANIMESTUDIO_FULL_CONVERT_TYPES
+        + ANIMESTUDIO_DEBUG_CONVERT_TYPES
+        + ANIMESTUDIO_WEBUI_CONVERT_TYPES
+        + ANIMESTUDIO_FULL_JSON_TYPES
+        + ANIMESTUDIO_DEBUG_JSON_TYPES
+        + ANIMESTUDIO_WEBUI_JSON_TYPES
+    )
+    return {animestudio_type_name(spec).lower() for spec in specs}
+
+
+def normalize_animestudio_asset_type_filter(values: tuple[str, ...] | list[str]) -> set[str]:
+    selected = {
+        animestudio_type_name(value).lower()
+        for value in values
+        if str(value or "").strip()
+    }
+    known = animestudio_known_asset_type_names()
+    unknown = sorted(selected - known)
+    if unknown:
+        known_text = ", ".join(sorted(known))
+        raise SystemExit(
+            f"Unknown --animestudio-asset-types value(s): {', '.join(unknown)}. "
+            f"Known asset type names: {known_text}"
+        )
+    return selected
+
+
+def apply_animestudio_asset_type_filter(
+    stage_options: dict[str, dict[str, Any]],
+    selected_types: set[str],
+) -> None:
+    if not selected_types:
+        return
+    for stage in ("convert_by_type", "json_by_type"):
+        options = stage_options.get(stage)
+        if not options:
+            continue
+        filtered_types = tuple(
+            type_spec
+            for type_spec in options.get("types", ())
+            if animestudio_type_name(type_spec).lower() in selected_types
+        )
+        options["types"] = filtered_types
+        options["asset_type_filter"] = sorted(selected_types)
+        if not filtered_types:
+            options["asset_map_filter"] = False
+            options["webui_asset_filter"] = False
 
 
 def animestudio_log_suffix(item_name: str) -> str:
@@ -1004,6 +1938,9 @@ def build_animestudio_stage_signature(stage: str, options: dict[str, Any], type_
         "file_naming": "path_id_suffix_v1",
         "logger_flags": list(ANIMESTUDIO_LOGGER_FLAGS),
     }
+    dependencies = animestudio_convert_parse_dependencies(stage, options.get("export_type"), type_spec)
+    if dependencies:
+        signature["parse_dependencies"] = list(dependencies)
     if type_spec is not None and animestudio_type_name(type_spec) == "MonoBehaviour":
         signature["mono_behaviour_type_tree_priority"] = options.get("mono_behaviour_type_tree_priority")
     return signature
@@ -1264,6 +2201,16 @@ def parse_args() -> argparse.Namespace:
         help=(
             "`webui` exports only WebUI-referenced Texture2D media by loading the AnimeStudio asset map "
             "with generated name filters. `full` exports WebUI-facing image/model assets plus Material JSON. `debug` exports the exhaustive conversion and JSON diagnostic sets."
+        ),
+    )
+    parser.add_argument(
+        "--animestudio-asset-types",
+        nargs="+",
+        default=(),
+        help=(
+            "Limit asset-scope AnimeStudio convert/json stages to one or more Unity asset type names, "
+            "for example Sprite, Texture2D, Mesh, Animator, Material, Shader, or AnimationClip. "
+            "Maps still run when selected."
         ),
     )
     parser.add_argument(
@@ -1719,6 +2666,48 @@ def parse_warning_failure_count(stdout_text: str) -> int:
     return count
 
 
+def read_animestudio_log_text(path: Path) -> str:
+    data = path.read_bytes()
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16", errors="replace")
+    if data.startswith((b"\xef\xbb\xbf",)):
+        return data.decode("utf-8-sig", errors="replace")
+    if b"\x00" in data[:128]:
+        return data.decode("utf-16", errors="replace")
+    return data.decode("utf-8", errors="replace")
+
+
+def normalize_animestudio_log_line(line: str) -> str:
+    return ANIMESTUDIO_ANSI_ESCAPE_RE.sub("", line).strip("\ufeff\x00")
+
+
+def unescape_animestudio_log_value(value: str) -> str:
+    result: list[str] = []
+    escaped = False
+    for char in value:
+        if escaped:
+            result.append(char)
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        else:
+            result.append(char)
+    if escaped:
+        result.append("\\")
+    return "".join(result)
+
+
+def parse_animestudio_log_fields(text: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for match in ANIMESTUDIO_LOG_KEY_VALUE_RE.finditer(text):
+        if match.group("quoted") is not None:
+            value = unescape_animestudio_log_value(match.group("quoted"))
+        else:
+            value = match.group("bare") or ""
+        fields[match.group("key")] = value
+    return fields
+
+
 def summarize_animestudio_log_issues(stdout_log: str | Path | None, stderr_log: str | Path | None) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "error_count": 0,
@@ -1728,10 +2717,25 @@ def summarize_animestudio_log_issues(stdout_log: str | Path | None, stderr_log: 
         "export_error_count": 0,
         "story_like_export_error_count": 0,
         "metadata_only_json_count": 0,
+        "texture2d_no_output_count": 0,
+        "texture2d_no_payload_count": 0,
+        "texture2d_decode_failed_count": 0,
+        "mesh_no_output_count": 0,
+        "mesh_expected_no_output_count": 0,
+        "mesh_suspicious_no_output_count": 0,
+        "animator_no_output_count": 0,
+        "animator_no_mesh_count": 0,
+        "animator_suspicious_no_output_count": 0,
         "samples": [],
         "export_error_samples": [],
         "story_like_export_error_samples": [],
         "metadata_only_json_samples": [],
+        "texture2d_no_output_samples": [],
+        "texture2d_no_output_records": [],
+        "mesh_no_output_samples": [],
+        "mesh_no_output_records": [],
+        "animator_no_output_samples": [],
+        "animator_no_output_records": [],
         "missing_logs": [],
     }
 
@@ -1750,64 +2754,165 @@ def summarize_animestudio_log_issues(stdout_log: str | Path | None, stderr_log: 
 
         pending_export_sample: dict[str, Any] | None = None
         try:
-            with path.open("r", encoding="utf-8", errors="replace") as handle:
-                for line_number, line in enumerate(handle, 1):
-                    text = line.rstrip("\r\n")
-                    if pending_export_sample is not None and not pending_export_sample.get("reason"):
-                        stripped = text.strip()
-                        if stripped and not stripped.startswith("at "):
-                            pending_export_sample["reason"] = stripped
+            for line_number, line in enumerate(read_animestudio_log_text(path).splitlines(), 1):
+                text = normalize_animestudio_log_line(line)
+                if pending_export_sample is not None and not pending_export_sample.get("reason"):
+                    stripped = text.strip()
+                    if stripped and not stripped.startswith("at "):
+                        pending_export_sample["reason"] = stripped
 
-                    level_match = ANIMESTUDIO_LOG_LINE_RE.match(text)
-                    if level_match:
-                        level = level_match.group("level").lower()
-                        summary[f"{level}_count"] += 1
-                        add_sample(
-                            "samples",
-                            {
-                                "stream": stream_name,
-                                "line": line_number,
-                                "level": level,
-                                "message": level_match.group("message").strip(),
-                            },
-                        )
+                level_match = ANIMESTUDIO_LOG_LINE_RE.match(text)
+                if level_match:
+                    level = level_match.group("level").lower()
+                    summary[f"{level}_count"] += 1
+                    add_sample(
+                        "samples",
+                        {
+                            "stream": stream_name,
+                            "line": line_number,
+                            "level": level,
+                            "message": level_match.group("message").strip(),
+                        },
+                    )
 
-                    if "Exception" in text:
-                        summary["exception_count"] += 1
-                    if "Unable to read beyond the end of the stream" in text:
-                        summary["end_of_stream_count"] += 1
-
-                    metadata_only_match = ANIMESTUDIO_METADATA_ONLY_JSON_RE.match(text)
-                    if metadata_only_match:
-                        asset = metadata_only_match.group("asset").strip()
-                        summary["metadata_only_json_count"] += 1
-                        add_sample(
-                            "metadata_only_json_samples",
-                            {
-                                "stream": stream_name,
-                                "line": line_number,
-                                "asset": asset,
-                                "exception": metadata_only_match.group("exception").strip(),
-                                "reason": metadata_only_match.group("reason").strip(),
-                            },
-                        )
-
-                    export_match = ANIMESTUDIO_EXPORT_ERROR_RE.match(text)
-                    if not export_match:
-                        continue
-                    asset = export_match.group("asset").strip()
-                    summary["export_error_count"] += 1
-                    export_sample = {
+                texture2d_no_output_match = ANIMESTUDIO_TEXTURE2D_NO_OUTPUT_RE.match(text)
+                if texture2d_no_output_match:
+                    fields = parse_animestudio_log_fields(texture2d_no_output_match.group("fields"))
+                    reason = fields.get("reason", "")
+                    summary["texture2d_no_output_count"] += 1
+                    if reason in ANIMESTUDIO_TEXTURE2D_NO_PAYLOAD_REASONS:
+                        summary["texture2d_no_payload_count"] += 1
+                    elif reason == "decode_failed":
+                        summary["texture2d_decode_failed_count"] += 1
+                    sample = {
                         "stream": stream_name,
                         "line": line_number,
-                        "asset": asset,
-                        "reason": "",
+                        "reason": reason,
                     }
-                    add_sample("export_error_samples", export_sample)
-                    pending_export_sample = export_sample
-                    if ANIMESTUDIO_STORY_HINT_RE.search(asset):
-                        summary["story_like_export_error_count"] += 1
-                        add_sample("story_like_export_error_samples", export_sample)
+                    for field in (
+                        "name",
+                        "PathID",
+                        "SourceFile",
+                        "SourceOriginalPath",
+                        "SourceOffset",
+                        "Container",
+                        "Width",
+                        "Height",
+                        "Format",
+                        "ImageSize",
+                        "StreamSize",
+                        "StreamOffset",
+                        "StreamPath",
+                    ):
+                        if field in fields:
+                            sample[field] = fields[field]
+                    summary["texture2d_no_output_records"].append(sample)
+                    add_sample("texture2d_no_output_samples", sample)
+                mesh_no_output_match = ANIMESTUDIO_MESH_NO_OUTPUT_RE.match(text)
+                if mesh_no_output_match:
+                    fields = parse_animestudio_log_fields(mesh_no_output_match.group("fields"))
+                    reason = fields.get("reason", "")
+                    summary["mesh_no_output_count"] += 1
+                    if reason in ANIMESTUDIO_MESH_EXPECTED_NO_OUTPUT_REASONS:
+                        summary["mesh_expected_no_output_count"] += 1
+                    else:
+                        summary["mesh_suspicious_no_output_count"] += 1
+                    sample = {
+                        "stream": stream_name,
+                        "line": line_number,
+                        "reason": reason,
+                    }
+                    for field in (
+                        "name",
+                        "PathID",
+                        "SourceFile",
+                        "SourceOriginalPath",
+                        "SourceOffset",
+                        "Container",
+                        "VertexCount",
+                        "VerticesLength",
+                        "SubMeshCount",
+                        "IndexCount",
+                        "ByteSize",
+                    ):
+                        if field in fields:
+                            sample[field] = fields[field]
+                    summary["mesh_no_output_records"].append(sample)
+                    add_sample("mesh_no_output_samples", sample)
+                animator_no_output_match = ANIMESTUDIO_ANIMATOR_NO_OUTPUT_RE.match(text)
+                if animator_no_output_match:
+                    fields = parse_animestudio_log_fields(animator_no_output_match.group("fields"))
+                    reason = fields.get("reason", "")
+                    summary["animator_no_output_count"] += 1
+                    if reason in ANIMESTUDIO_ANIMATOR_EXPECTED_NO_OUTPUT_REASONS:
+                        summary["animator_no_mesh_count"] += 1
+                    else:
+                        summary["animator_suspicious_no_output_count"] += 1
+                    sample = {
+                        "stream": stream_name,
+                        "line": line_number,
+                        "reason": reason,
+                    }
+                    for field in (
+                        "name",
+                        "PathID",
+                        "SourceFile",
+                        "SourceOriginalPath",
+                        "SourceOffset",
+                        "Container",
+                        "GameObjectName",
+                        "GameObjectPathID",
+                        "GameObjectPointerPathID",
+                        "AvatarPathID",
+                        "ControllerPathID",
+                        "HasTransformHierarchy",
+                        "MeshCount",
+                        "MaterialCount",
+                        "TextureCount",
+                        "AnimationCount",
+                        "ExportPath",
+                    ):
+                        if field in fields:
+                            sample[field] = fields[field]
+                    summary["animator_no_output_records"].append(sample)
+                    add_sample("animator_no_output_samples", sample)
+
+                if "Exception" in text:
+                    summary["exception_count"] += 1
+                if "Unable to read beyond the end of the stream" in text:
+                    summary["end_of_stream_count"] += 1
+
+                metadata_only_match = ANIMESTUDIO_METADATA_ONLY_JSON_RE.match(text)
+                if metadata_only_match:
+                    asset = metadata_only_match.group("asset").strip()
+                    summary["metadata_only_json_count"] += 1
+                    add_sample(
+                        "metadata_only_json_samples",
+                        {
+                            "stream": stream_name,
+                            "line": line_number,
+                            "asset": asset,
+                            "exception": metadata_only_match.group("exception").strip(),
+                            "reason": metadata_only_match.group("reason").strip(),
+                        },
+                    )
+
+                export_match = ANIMESTUDIO_EXPORT_ERROR_RE.match(text)
+                if not export_match:
+                    continue
+                asset = export_match.group("asset").strip()
+                summary["export_error_count"] += 1
+                export_sample = {
+                    "stream": stream_name,
+                    "line": line_number,
+                    "asset": asset,
+                    "reason": "",
+                }
+                add_sample("export_error_samples", export_sample)
+                pending_export_sample = export_sample
+                if ANIMESTUDIO_STORY_HINT_RE.search(asset):
+                    summary["story_like_export_error_count"] += 1
+                    add_sample("story_like_export_error_samples", export_sample)
         except OSError as exc:
             add_sample(
                 "samples",
@@ -1829,6 +2934,18 @@ def summarize_animestudio_log_issues(stdout_log: str | Path | None, stderr_log: 
         summary.pop("story_like_export_error_samples", None)
     if not summary["metadata_only_json_samples"]:
         summary.pop("metadata_only_json_samples", None)
+    if not summary["texture2d_no_output_samples"]:
+        summary.pop("texture2d_no_output_samples", None)
+    if not summary["texture2d_no_output_records"]:
+        summary.pop("texture2d_no_output_records", None)
+    if not summary["mesh_no_output_samples"]:
+        summary.pop("mesh_no_output_samples", None)
+    if not summary["mesh_no_output_records"]:
+        summary.pop("mesh_no_output_records", None)
+    if not summary["animator_no_output_samples"]:
+        summary.pop("animator_no_output_samples", None)
+    if not summary["animator_no_output_records"]:
+        summary.pop("animator_no_output_records", None)
     return summary
 
 
@@ -1841,10 +2958,25 @@ def merge_animestudio_log_issues(results: list[CommandResult]) -> dict[str, Any]
         "export_error_count": 0,
         "story_like_export_error_count": 0,
         "metadata_only_json_count": 0,
+        "texture2d_no_output_count": 0,
+        "texture2d_no_payload_count": 0,
+        "texture2d_decode_failed_count": 0,
+        "mesh_no_output_count": 0,
+        "mesh_expected_no_output_count": 0,
+        "mesh_suspicious_no_output_count": 0,
+        "animator_no_output_count": 0,
+        "animator_no_mesh_count": 0,
+        "animator_suspicious_no_output_count": 0,
         "samples": [],
         "export_error_samples": [],
         "story_like_export_error_samples": [],
         "metadata_only_json_samples": [],
+        "texture2d_no_output_samples": [],
+        "texture2d_no_output_records": [],
+        "mesh_no_output_samples": [],
+        "mesh_no_output_records": [],
+        "animator_no_output_samples": [],
+        "animator_no_output_records": [],
         "missing_logs": [],
     }
     sample_keys = (
@@ -1852,6 +2984,9 @@ def merge_animestudio_log_issues(results: list[CommandResult]) -> dict[str, Any]
         "export_error_samples",
         "story_like_export_error_samples",
         "metadata_only_json_samples",
+        "texture2d_no_output_samples",
+        "mesh_no_output_samples",
+        "animator_no_output_samples",
     )
     count_keys = (
         "error_count",
@@ -1861,6 +2996,15 @@ def merge_animestudio_log_issues(results: list[CommandResult]) -> dict[str, Any]
         "export_error_count",
         "story_like_export_error_count",
         "metadata_only_json_count",
+        "texture2d_no_output_count",
+        "texture2d_no_payload_count",
+        "texture2d_decode_failed_count",
+        "mesh_no_output_count",
+        "mesh_expected_no_output_count",
+        "mesh_suspicious_no_output_count",
+        "animator_no_output_count",
+        "animator_no_mesh_count",
+        "animator_suspicious_no_output_count",
     )
     for result in results:
         issues = summarize_animestudio_log_issues(result.stdout_log, result.stderr_log)
@@ -1874,9 +3018,15 @@ def merge_animestudio_log_issues(results: list[CommandResult]) -> dict[str, Any]
                 enriched = dict(sample)
                 enriched.setdefault("command", result.name)
                 target.append(enriched)
+        for key in ("texture2d_no_output_records", "mesh_no_output_records", "animator_no_output_records"):
+            target = merged.setdefault(key, [])
+            for sample in issues.get(key) or []:
+                enriched = dict(sample)
+                enriched.setdefault("command", result.name)
+                target.append(enriched)
         merged["missing_logs"].extend(issues.get("missing_logs") or [])
 
-    for key in sample_keys + ("missing_logs",):
+    for key in sample_keys + ("texture2d_no_output_records", "mesh_no_output_records", "animator_no_output_records", "missing_logs"):
         if not merged.get(key):
             merged.pop(key, None)
     return merged
@@ -2030,9 +3180,15 @@ def run_animestudio_stage(
         cmd.extend(["--export_type", export_type])
     if animestudio_dummy_dlls is not None:
         cmd.extend(["--dummy_dlls", str(animestudio_dummy_dlls)])
-    combined_type_specs = tuple(types)
+    expanded_types = animestudio_type_specs_for_export(stage, export_type, tuple(types))
+    expanded_secondary_types: tuple[str, ...] = ()
     if secondary_export is not None:
-        combined_type_specs += tuple(secondary_export.types)
+        expanded_secondary_types = animestudio_type_specs_for_export(
+            secondary_export.stage,
+            secondary_export.export_type,
+            tuple(secondary_export.types),
+        )
+    combined_type_specs = expanded_types + expanded_secondary_types
     if mono_behaviour_type_tree_priority and any(
         animestudio_type_name(type_spec) == "MonoBehaviour" for type_spec in combined_type_specs
     ):
@@ -2049,16 +3205,16 @@ def run_animestudio_stage(
         cmd.extend(["--containers", str(containers)])
     if filter_data is not None:
         cmd.extend(["--filter_data", str(filter_data)])
-    if types:
+    if expanded_types:
         cmd.append("--types")
-        cmd.extend(types)
+        cmd.extend(expanded_types)
     if secondary_export is not None:
         ensure_dir(secondary_export.output_path)
         cmd.extend([ANIMESTUDIO_SECONDARY_EXPORT_FLAGS["output"], str(secondary_export.output_path)])
         cmd.extend([ANIMESTUDIO_SECONDARY_EXPORT_FLAGS["export_type"], secondary_export.export_type])
-        if secondary_export.types:
+        if expanded_secondary_types:
             cmd.append(ANIMESTUDIO_SECONDARY_EXPORT_FLAGS["types"])
-            cmd.extend(secondary_export.types)
+            cmd.extend(expanded_secondary_types)
     name = command_name or f"{source}_animestudio_{stage}"
     result = run_logged_command(name, cmd, work_dir, reports_dir, stream_output=True)
     if result.returncode == 0 and animestudio_cli_usage_error(result):
@@ -2352,25 +3508,76 @@ def begin_animestudio_asset_shard_work(
     if shards:
         return True, [], []
 
-    output_entry_count = count_existing_animestudio_asset_outputs(
+    missing_outputs_allowed = type_name in ANIMESTUDIO_ALLOW_MISSING_CONVERT_OUTPUT_TYPES
+    status_summary = write_animestudio_asset_status_manifest(
         output_root=output_root,
         source=source,
         stage=stage,
+        type_name=type_name,
         entries=asset_work["matched_entries"],
+        missing_outputs_allowed=missing_outputs_allowed,
     )
-    missing_output_count = max(0, len(asset_work["matched_entries"]) - output_entry_count)
     asset_info["updated_entry_count"] = 0
     asset_info["successful_shard_count"] = 0
     asset_info["failed_shard_count"] = 0
-    asset_info["output_entry_count"] = output_entry_count
-    asset_info["missing_output_count"] = missing_output_count
+    asset_info["output_entry_count"] = status_summary["output_entry_count"]
+    asset_info["missing_output_count"] = status_summary["missing_output_count"]
     asset_info["export_error_count"] = 0
-    missing_outputs_allowed = type_name in ANIMESTUDIO_ALLOW_MISSING_CONVERT_OUTPUT_TYPES
-    asset_info["allowed_missing_output_count"] = missing_output_count if missing_outputs_allowed else 0
-    if missing_output_count and not missing_outputs_allowed:
+    for key in (
+        "manifest_path",
+        "unique_output_path_count",
+        "output_unique_path_count",
+        "actual_output_file_count",
+        "marker_output_count",
+        "name_mismatch_output_count",
+        "alternate_name_output_count",
+        "alternate_name_reason_counts",
+        "alternate_name_source_hint_counts",
+        "alternate_name_case_normalized_count",
+        "missing_unique_output_count",
+        "allowed_missing_output_count",
+        "suspicious_missing_output_count",
+        "classified_no_payload_missing_output_count",
+        "classified_mesh_expected_missing_output_count",
+        "mesh_no_output_count",
+        "mesh_expected_no_output_count",
+        "mesh_suspicious_no_output_count",
+        "animator_no_output_count",
+        "animator_no_mesh_count",
+        "animator_suspicious_no_output_count",
+        "texture2d_no_output_count",
+        "texture2d_no_payload_count",
+        "texture2d_decode_failed_count",
+        "duplicate_output_path_group_count",
+        "duplicate_output_entry_count",
+        "uncertain_duplicate_output_path_group_count",
+        "uncertain_duplicate_output_entry_count",
+        "cross_ab_output_collision_group_count",
+        "cross_ab_output_collision_entry_count",
+        "shared_output_reference_group_count",
+        "shared_output_reference_entry_count",
+        "raw_hash_output_collision_group_count",
+        "raw_hash_output_collision_entry_count",
+        "identity_output_collision_group_count",
+        "identity_output_collision_entry_count",
+        "uncertain_output_collision_group_count",
+        "uncertain_output_collision_entry_count",
+        "source_group_count",
+        "clean_source_group_count",
+        "dirty_source_group_count",
+    ):
+        asset_info[key] = status_summary.get(key)
+    missing_output_count = int(status_summary.get("missing_output_count") or 0)
+    suspicious_missing_output_count = int(
+        status_summary["suspicious_missing_output_count"]
+        if "suspicious_missing_output_count" in status_summary
+        else missing_output_count
+    )
+    if suspicious_missing_output_count and not missing_outputs_allowed:
         log(
             f"  animestudio asset cache {stage}:{type_name} for {source}: "
-            f"marking failed because missing_outputs={missing_output_count}"
+            f"marking failed because missing_outputs={missing_output_count} "
+            f"suspicious_missing_outputs={suspicious_missing_output_count}"
         )
         return False, [], [item["item_name"]]
     return False, [item["item_name"]], []
@@ -2414,42 +3621,144 @@ def finalize_animestudio_asset_shard_work(
     asset_info["updated_entry_count"] = updated_cache_entries
     asset_info["successful_shard_count"] = sum(1 for result in ordered_results if result.returncode == 0)
     asset_info["failed_shard_count"] = sum(1 for result in ordered_results if result.returncode != 0)
-    output_entry_count = count_existing_animestudio_asset_outputs(
+    log_issues = merge_animestudio_log_issues(ordered_results)
+    export_error_count = int(log_issues.get("export_error_count") or 0)
+    missing_outputs_allowed_for_type = type_name in ANIMESTUDIO_ALLOW_MISSING_CONVERT_OUTPUT_TYPES
+    status_summary = write_animestudio_asset_status_manifest(
         output_root=output_root,
         source=source,
         stage=stage,
+        type_name=type_name,
         entries=asset_work["matched_entries"],
+        missing_outputs_allowed=missing_outputs_allowed_for_type,
+        log_issues=log_issues,
     )
-    missing_output_count = max(0, len(asset_work["matched_entries"]) - output_entry_count)
-    log_issues = merge_animestudio_log_issues(ordered_results)
-    export_error_count = int(log_issues.get("export_error_count") or 0)
-    asset_info["output_entry_count"] = output_entry_count
-    asset_info["missing_output_count"] = missing_output_count
+    asset_info["output_entry_count"] = status_summary["output_entry_count"]
+    asset_info["missing_output_count"] = status_summary["missing_output_count"]
     asset_info["export_error_count"] = export_error_count
-    missing_outputs_allowed = (
-        type_name in ANIMESTUDIO_ALLOW_MISSING_CONVERT_OUTPUT_TYPES
-        and export_error_count == 0
-        and bool(ordered_results)
-        and all(result.returncode == 0 for result in ordered_results)
+    for key in (
+        "manifest_path",
+        "unique_output_path_count",
+        "output_unique_path_count",
+        "actual_output_file_count",
+        "marker_output_count",
+        "name_mismatch_output_count",
+        "alternate_name_output_count",
+        "alternate_name_reason_counts",
+        "alternate_name_source_hint_counts",
+        "alternate_name_case_normalized_count",
+        "missing_unique_output_count",
+        "allowed_missing_output_count",
+        "suspicious_missing_output_count",
+        "classified_no_payload_missing_output_count",
+        "classified_mesh_expected_missing_output_count",
+        "texture2d_no_output_count",
+        "texture2d_no_payload_count",
+        "texture2d_decode_failed_count",
+        "mesh_no_output_count",
+        "mesh_expected_no_output_count",
+        "mesh_suspicious_no_output_count",
+        "animator_no_output_count",
+        "animator_no_mesh_count",
+        "animator_suspicious_no_output_count",
+        "duplicate_output_path_group_count",
+        "duplicate_output_entry_count",
+        "uncertain_duplicate_output_path_group_count",
+        "uncertain_duplicate_output_entry_count",
+        "cross_ab_output_collision_group_count",
+        "cross_ab_output_collision_entry_count",
+        "shared_output_reference_group_count",
+        "shared_output_reference_entry_count",
+        "raw_hash_output_collision_group_count",
+        "raw_hash_output_collision_entry_count",
+        "identity_output_collision_group_count",
+        "identity_output_collision_entry_count",
+        "uncertain_output_collision_group_count",
+        "uncertain_output_collision_entry_count",
+        "source_group_count",
+        "clean_source_group_count",
+        "dirty_source_group_count",
+        "unmapped_export_error_count",
+    ):
+        asset_info[key] = status_summary.get(key)
+    missing_output_count = int(status_summary.get("missing_output_count") or 0)
+    suspicious_missing_output_count = int(status_summary.get("suspicious_missing_output_count") or 0)
+    texture2d_decode_failed_count = int(status_summary.get("texture2d_decode_failed_count") or 0)
+    mesh_suspicious_no_output_count = int(status_summary.get("mesh_suspicious_no_output_count") or 0)
+    classified_mesh_expected_missing_output_count = int(
+        status_summary.get("classified_mesh_expected_missing_output_count") or 0
     )
-    asset_info["allowed_missing_output_count"] = missing_output_count if missing_outputs_allowed else 0
-    all_succeeded = (
+    all_shards_returned_cleanly = (
         bool(ordered_results)
         and len(ordered_results) == len(shards)
         and all(result.returncode == 0 for result in ordered_results)
-        and (missing_output_count == 0 or missing_outputs_allowed)
+    )
+    missing_outputs_allowed = (
+        missing_outputs_allowed_for_type
         and export_error_count == 0
+        and all_shards_returned_cleanly
+    )
+    texture2d_missing_outputs_explained = (
+        type_name == "Texture2D"
+        and missing_output_count > 0
+        and suspicious_missing_output_count == 0
+        and texture2d_decode_failed_count == 0
+        and export_error_count == 0
+        and all_shards_returned_cleanly
+    )
+    mesh_missing_outputs_explained = (
+        type_name == "Mesh"
+        and missing_output_count > 0
+        and suspicious_missing_output_count == 0
+        and mesh_suspicious_no_output_count == 0
+        and classified_mesh_expected_missing_output_count == missing_output_count
+        and export_error_count == 0
+        and all_shards_returned_cleanly
+    )
+    if not missing_outputs_allowed and not texture2d_missing_outputs_explained and not mesh_missing_outputs_explained:
+        asset_info["allowed_missing_output_count"] = 0
+    all_succeeded = (
+        all_shards_returned_cleanly
+        and (
+            missing_output_count == 0
+            or missing_outputs_allowed
+            or texture2d_missing_outputs_explained
+            or mesh_missing_outputs_explained
+        )
+        and export_error_count == 0
+        and texture2d_decode_failed_count == 0
+        and mesh_suspicious_no_output_count == 0
     )
     if missing_output_count and missing_outputs_allowed:
         log(
             f"  animestudio asset shards {stage}:{type_name} for {source}: "
-            f"allowed {missing_output_count} no-output Mesh entries"
+            f"allowed {missing_output_count} no-output {type_name} entries"
         )
-    if not all_succeeded and (missing_output_count or export_error_count or len(ordered_results) != len(shards)):
+    elif missing_output_count and texture2d_missing_outputs_explained:
+        log(
+            f"  animestudio asset shards {stage}:{type_name} for {source}: "
+            f"allowed {asset_info.get('allowed_missing_output_count') or missing_output_count} no-payload Texture2D entries"
+        )
+    elif missing_output_count and mesh_missing_outputs_explained:
+        log(
+            f"  animestudio asset shards {stage}:{type_name} for {source}: "
+            f"allowed {classified_mesh_expected_missing_output_count} zero-vertex Mesh no-output entries"
+        )
+    if not all_succeeded and (
+        suspicious_missing_output_count
+        or export_error_count
+        or texture2d_decode_failed_count
+        or mesh_suspicious_no_output_count
+        or len(ordered_results) != len(shards)
+    ):
         log(
             f"  animestudio asset shards {stage}:{type_name} for {source}: "
             f"marking failed because missing_outputs={missing_output_count} "
-            f"export_errors={export_error_count} completed_shards={len(ordered_results)}/{len(shards)}"
+            f"suspicious_missing_outputs={suspicious_missing_output_count} "
+            f"export_errors={export_error_count} "
+            f"texture2d_decode_failed={texture2d_decode_failed_count} "
+            f"mesh_suspicious_no_output={mesh_suspicious_no_output_count} "
+            f"completed_shards={len(ordered_results)}/{len(shards)}"
         )
     return (
         ordered_results,
@@ -3095,6 +4404,10 @@ def main() -> int:
     selected_animestudio_stages = ordered_unique(args.animestudio_stages)
     structured_dump_plan = structured_dump_steps(args.structured_dump_mode)
     animestudio_stage_options = animestudio_stage_options_for_scope(args.animestudio_scope, args.animestudio_asset_mode)
+    animestudio_asset_type_filter = normalize_animestudio_asset_type_filter(tuple(args.animestudio_asset_types))
+    if animestudio_asset_type_filter and args.animestudio_scope == "story":
+        raise SystemExit("--animestudio-asset-types applies only to asset or all AnimeStudio scopes")
+    apply_animestudio_asset_type_filter(animestudio_stage_options, animestudio_asset_type_filter)
     vfs_index_enabled = not args.skip_vfs_index and not args.skip_animestudio and args.animestudio_scope != "story"
     webui_texture_name_filter: Path | None = None
     webui_texture_name_filter_signature: dict[str, Any] | None = None
@@ -3159,6 +4472,10 @@ def main() -> int:
     log(f"  animestudio export: {'disabled' if args.skip_animestudio else 'enabled'}")
     log(f"  animestudio scope: {args.animestudio_scope}")
     log(f"  animestudio asset mode: {args.animestudio_asset_mode}")
+    log(
+        "  animestudio asset type filter: "
+        f"{', '.join(sorted(animestudio_asset_type_filter)) if animestudio_asset_type_filter else 'none'}"
+    )
     log(f"  animestudio stages: {', '.join(selected_animestudio_stages)}")
     log(f"  animestudio type job mode: {args.animestudio_type_job_mode}")
     log(
@@ -3231,6 +4548,7 @@ def main() -> int:
         "game": ANIMESTUDIO_GAME,
         "scope": args.animestudio_scope,
         "asset_mode": args.animestudio_asset_mode,
+        "asset_type_filter": sorted(animestudio_asset_type_filter),
         "webui_texture_name_filter": str(webui_texture_name_filter) if webui_texture_name_filter else None,
         "webui_texture_name_filter_signature": webui_texture_name_filter_signature,
         "mono_behaviour_type_tree_priority": animestudio_mono_behaviour_type_tree_priority,
@@ -3533,6 +4851,12 @@ def main() -> int:
             else:
                 for stage in selected_animestudio_stages:
                     plan = animestudio_stage_plans[stage]
+                    write_animestudio_report_only_asset_statuses(
+                        output_root=output_root,
+                        source=source,
+                        stage=stage,
+                        plan=plan,
+                    )
                     if plan["run_items"]:
                         log(
                             f"  animestudio report-only {stage} for {source}: "
@@ -3683,6 +5007,10 @@ def main() -> int:
         md_lines.append(f"- Game: `{ANIMESTUDIO_GAME}`")
         md_lines.append(f"- Scope: `{args.animestudio_scope}`")
         md_lines.append(f"- Asset mode: `{args.animestudio_asset_mode}`")
+        md_lines.append(
+            "- Asset type filter: "
+            f"`{', '.join(sorted(animestudio_asset_type_filter)) if animestudio_asset_type_filter else 'none'}`"
+        )
         md_lines.append(f"- Selected stages: `{', '.join(selected_animestudio_stages)}`")
         md_lines.append(f"- Type job mode: `{args.animestudio_type_job_mode}`")
         stage_merge_feature = animestudio_summary.get("stage_merge_feature") or {}
@@ -3755,9 +5083,18 @@ def main() -> int:
                         f"pruned=`{asset_cache.get('pruned_output_count', 0)}`, "
                         f"removed_pending=`{asset_cache.get('removed_pending_output_count', 0)}`, "
                         f"missing_outputs=`{asset_cache.get('missing_output_count', 0)}`, "
+                        f"missing_unique=`{asset_cache.get('missing_unique_output_count', 0)}`, "
                         f"allowed_missing=`{asset_cache.get('allowed_missing_output_count', 0)}`, "
+                        f"alternate_names=`{asset_cache.get('alternate_name_output_count', asset_cache.get('name_mismatch_output_count', 0))}`, "
+                        f"cross_ab_paths=`{asset_cache.get('cross_ab_output_collision_group_count', 0)}`, "
+                        f"shared_refs=`{asset_cache.get('shared_output_reference_group_count', 0)}`, "
+                        f"raw_hash_collisions=`{asset_cache.get('raw_hash_output_collision_group_count', 0)}`, "
+                        f"identity_collisions=`{asset_cache.get('identity_output_collision_group_count', 0)}`, "
+                        f"uncertain_collisions=`{asset_cache.get('uncertain_output_collision_group_count', asset_cache.get('cross_ab_output_collision_group_count', 0))}`, "
+                        f"dirty_abs=`{asset_cache.get('dirty_source_group_count', 0)}`, "
                         f"export_errors=`{asset_cache.get('export_error_count', 0)}`, "
-                        f"prepare_seconds=`{asset_cache.get('prepare_seconds')}`"
+                        f"prepare_seconds=`{asset_cache.get('prepare_seconds')}`, "
+                        f"status_manifest=`{asset_cache.get('manifest_path')}`"
                     )
                 issues = stage_info.get("log_issues") or {}
                 if any(
@@ -3778,7 +5115,9 @@ def main() -> int:
                         f"eof=`{issues.get('end_of_stream_count', 0)}`, "
                         f"export_errors=`{issues.get('export_error_count', 0)}`, "
                         f"story_like_export_errors=`{issues.get('story_like_export_error_count', 0)}`, "
-                        f"metadata_only_json=`{issues.get('metadata_only_json_count', 0)}`"
+                        f"metadata_only_json=`{issues.get('metadata_only_json_count', 0)}`, "
+                        f"animator_no_output=`{issues.get('animator_no_output_count', 0)}`, "
+                        f"animator_no_mesh=`{issues.get('animator_no_mesh_count', 0)}`"
                     )
                     samples = issues.get("story_like_export_error_samples") or issues.get("export_error_samples") or []
                     for sample in samples[:3]:
@@ -3793,6 +5132,13 @@ def main() -> int:
                                 "    metadata-only sample: "
                                 f"`{sample.get('asset')}`"
                                 + (f" - {sample.get('exception')}" if sample.get("exception") else "")
+                            )
+                    if not samples:
+                        for sample in (issues.get("animator_no_output_samples") or [])[:3]:
+                            md_lines.append(
+                                "    animator no-output sample: "
+                                f"`{sample.get('name')}`"
+                                + (f" - {sample.get('reason')}" if sample.get("reason") else "")
                             )
 
     md_lines.extend(
