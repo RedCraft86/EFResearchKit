@@ -84,13 +84,33 @@ ANIMESTUDIO_CONVERT_OUTPUT_EXTENSIONS = {
     "Mesh": ".obj",
     "Shader": ".shader",
     "AnimationClip": ".anim",
+    "Animator": ".fbx",
 }
 ANIMESTUDIO_CONVERT_OUTPUT_MARKER_SUFFIXES = {
     "Texture2D": (f"{ANIMESTUDIO_TEXTURE_EXTENSION}.empty.json",),
+    "Animator": (".fbx.empty.json",),
 }
 ANIMESTUDIO_OUTPUT_BASE_RE = re.compile(r"^(?P<base>.+)_p[0-9A-Fa-f]{16}(?: \(\d+\))?(?:\..*)?$")
 ANIMESTUDIO_HEX_HASH_NAME_RE = re.compile(r"^[0-9a-fA-F]{8,}$")
 ANIMESTUDIO_CONVERT_PARSE_DEPENDENCIES = {
+    # Animator FBX export starts from the linked GameObject hierarchy and only
+    # emits geometry when Transform, renderer, Mesh, Material/Texture, Avatar,
+    # controller, and clip dependencies are parsed alongside the Animator.
+    "Animator": (
+        "GameObject:Parse",
+        "Transform:Parse",
+        "RectTransform:Parse",
+        "MeshFilter:Parse",
+        "MeshRenderer:Parse",
+        "SkinnedMeshRenderer:Parse",
+        "Mesh:Parse",
+        "Texture2D:Parse",
+        "Material:Parse",
+        "Avatar:Parse",
+        "AnimatorController:Parse",
+        "AnimatorOverrideController:Parse",
+        "AnimationClip:Parse",
+    ),
     # Sprite.GetImage resolves a backing texture directly or through a SpriteAtlas.
     # Parse these dependencies while keeping Sprite as the only export target.
     "Sprite": ("Texture2D:Parse", "SpriteAtlas:Parse"),
@@ -1324,6 +1344,8 @@ def classify_output_path_collision(records: list[dict[str, Any]]) -> str:
         for record in records
     }
     if len(identities_without_hash) == 1:
+        if {str(record["entry"].get("Type") or "") for record in records} == {"Texture2D"}:
+            return "same_asset_id_output_reference"
         return "raw_hash_output_collision"
     return "identity_output_collision"
 
@@ -1391,6 +1413,11 @@ def build_animestudio_asset_output_status(
         for output_key, kind in output_collision_kind_by_key.items()
         if kind == "shared_output_reference"
     }
+    same_asset_id_output_reference_keys = {
+        output_key
+        for output_key, kind in output_collision_kind_by_key.items()
+        if kind == "same_asset_id_output_reference"
+    }
     raw_hash_output_collision_keys = {
         output_key
         for output_key, kind in output_collision_kind_by_key.items()
@@ -1409,11 +1436,16 @@ def build_animestudio_asset_output_status(
     }
     missing_records = [record for record in output_records if not record["output_exists"]]
     missing_output_keys = {record["output_key"] for record in missing_records if record["output_key"]}
+    marker_output_records = [record for record in output_records if record.get("output_is_marker")]
     name_mismatch_records = [record for record in output_records if record.get("output_name_mismatch")]
+    alternate_name_records = [
+        record for record in name_mismatch_records
+        if not record.get("output_is_marker")
+    ]
     alternate_name_reason_counts: dict[str, int] = {}
     alternate_name_source_hint_counts: dict[str, int] = {}
     alternate_name_case_normalized_count = 0
-    for record in name_mismatch_records:
+    for record in alternate_name_records:
         details = asset_output_name_mismatch_details(record)
         reason = str(details.get("name_mismatch_reason") or "unknown")
         source_hint = str(details.get("name_source_hint") or "unknown")
@@ -1499,6 +1531,9 @@ def build_animestudio_asset_output_status(
         shared_reference_entry_count = sum(
             1 for record in records if record["output_key"] in shared_output_reference_keys
         )
+        same_asset_id_reference_entry_count = sum(
+            1 for record in records if record["output_key"] in same_asset_id_output_reference_keys
+        )
         raw_hash_collision_entry_count = sum(
             1 for record in records if record["output_key"] in raw_hash_output_collision_keys
         )
@@ -1549,6 +1584,7 @@ def build_animestudio_asset_output_status(
                 "uncertain_duplicate_output_entry_count": uncertain_duplicate_entry_count,
                 "cross_ab_output_collision_entry_count": cross_ab_collision_entry_count,
                 "shared_output_reference_entry_count": shared_reference_entry_count,
+                "same_asset_id_output_reference_entry_count": same_asset_id_reference_entry_count,
                 "raw_hash_output_collision_entry_count": raw_hash_collision_entry_count,
                 "identity_output_collision_entry_count": identity_collision_entry_count,
                 "uncertain_output_collision_entry_count": uncertain_collision_entry_count,
@@ -1562,6 +1598,11 @@ def build_animestudio_asset_output_status(
                     asset_output_record_sample(record)
                     for record in records
                     if record["output_key"] in shared_output_reference_keys
+                ][:5],
+                "same_asset_id_output_reference_samples": [
+                    asset_output_record_sample(record)
+                    for record in records
+                    if record["output_key"] in same_asset_id_output_reference_keys
                 ][:5],
             }
         )
@@ -1584,14 +1625,15 @@ def build_animestudio_asset_output_status(
             1 for records in records_by_output_path.values() if any(record["output_exists"] for record in records)
         ),
         "actual_output_file_count": actual_output_file_count,
-        "marker_output_count": sum(1 for record in output_records if record.get("output_is_marker")),
+        "marker_output_count": len(marker_output_records),
+        "marker_output_samples": [asset_output_record_sample(record) for record in marker_output_records[:20]],
         "name_mismatch_output_count": len(name_mismatch_records),
         "name_mismatch_output_samples": [asset_output_record_sample(record) for record in name_mismatch_records[:20]],
-        "alternate_name_output_count": len(name_mismatch_records),
+        "alternate_name_output_count": len(alternate_name_records),
         "alternate_name_reason_counts": dict(sorted(alternate_name_reason_counts.items())),
         "alternate_name_source_hint_counts": dict(sorted(alternate_name_source_hint_counts.items())),
         "alternate_name_case_normalized_count": alternate_name_case_normalized_count,
-        "alternate_name_output_samples": [asset_output_record_sample(record) for record in name_mismatch_records[:20]],
+        "alternate_name_output_samples": [asset_output_record_sample(record) for record in alternate_name_records[:20]],
         "missing_output_count": len(missing_records),
         "missing_unique_output_count": len(missing_output_keys),
         "allowed_missing_output_count": allowed_missing_output_count,
@@ -1623,6 +1665,11 @@ def build_animestudio_asset_output_status(
         "shared_output_reference_entry_count": sum(
             len(records_by_output_path[key])
             for key in shared_output_reference_keys
+        ),
+        "same_asset_id_output_reference_group_count": len(same_asset_id_output_reference_keys),
+        "same_asset_id_output_reference_entry_count": sum(
+            len(records_by_output_path[key])
+            for key in same_asset_id_output_reference_keys
         ),
         "raw_hash_output_collision_group_count": len(raw_hash_output_collision_keys),
         "raw_hash_output_collision_entry_count": sum(
@@ -1681,6 +1728,9 @@ def write_animestudio_report_only_asset_statuses(
     source: str,
     stage: str,
     plan: dict[str, Any],
+    *,
+    item_names: set[str] | None = None,
+    skip_existing_types: bool = False,
 ) -> list[dict[str, Any]]:
     options = plan.get("options") or {}
     if stage != "convert_by_type" or options.get("export_type") != "Convert":
@@ -1704,14 +1754,22 @@ def write_animestudio_report_only_asset_statuses(
         map_entries_cache[map_entries_key] = map_entries
 
     written: list[dict[str, Any]] = []
+    existing_types = {
+        str(asset_info.get("type") or "")
+        for asset_info in plan.get("asset_caches", [])
+        if isinstance(asset_info, dict)
+    }
     for item in plan.get("items", []):
+        item_name = str(item.get("item_name") or "")
+        if item_names is not None and item_name not in item_names:
+            continue
         type_spec = item.get("type_spec")
         if type_spec is None:
             continue
         type_name = animestudio_type_name(type_spec)
-        if not animestudio_asset_cache_supported(stage, options, type_name):
+        if skip_existing_types and type_name in existing_types:
             continue
-        if not animestudio_map_filter_is_safe((type_spec,)):
+        if not animestudio_asset_cache_supported(stage, options, type_name):
             continue
         matched_entries = dedupe_asset_entries(
             filter_animestudio_asset_map_entries(
@@ -1768,6 +1826,8 @@ def write_animestudio_report_only_asset_statuses(
             "cross_ab_output_collision_entry_count",
             "shared_output_reference_group_count",
             "shared_output_reference_entry_count",
+            "same_asset_id_output_reference_group_count",
+            "same_asset_id_output_reference_entry_count",
             "raw_hash_output_collision_group_count",
             "raw_hash_output_collision_entry_count",
             "identity_output_collision_group_count",
@@ -1781,6 +1841,7 @@ def write_animestudio_report_only_asset_statuses(
         ):
             asset_info[key] = status_summary.get(key)
         plan.setdefault("asset_caches", []).append(asset_info)
+        existing_types.add(type_name)
         plan.setdefault("item_file_counts", {})[type_name] = int(status_summary.get("actual_output_file_count") or 0)
         written.append(asset_info)
         log(
@@ -2391,8 +2452,18 @@ def vfs_index_dir(output_root: Path, source: str) -> Path:
     return output_root / "recovered" / "AnimeStudio-cli" / source / "vfs_index"
 
 
+VFS_INDEX_BLOCKS: tuple[tuple[str, str], ...] = (
+    ("bundle", "bundle"),
+    ("initial-bundle", "initial-bundle"),
+)
+
+
 def vfs_index_path(output_root: Path, source: str, block_name: str = "bundle") -> Path:
     return vfs_index_dir(output_root, source) / f"{block_name.lower()}_vfs_index.json"
+
+
+def vfs_index_command_name(source: str, block_name: str) -> str:
+    return f"{source}_vfs_index_{block_name.replace('-', '_')}"
 
 
 def summarize_vfs_index(path: Path, result: CommandResult | None = None) -> dict[str, Any]:
@@ -2424,6 +2495,50 @@ def summarize_vfs_index(path: Path, result: CommandResult | None = None) -> dict
                 "byte_count": index_summary.get("byteCount"),
             }
         )
+    return summary
+
+
+def summarize_vfs_indexes(
+    output_root: Path,
+    source: str,
+    command_results_by_name: dict[str, CommandResult] | None = None,
+) -> dict[str, Any]:
+    block_summaries: dict[str, dict[str, Any]] = {}
+    for block_name, _cli_block_name in VFS_INDEX_BLOCKS:
+        result = None
+        if command_results_by_name is not None:
+            result = command_results_by_name.get(vfs_index_command_name(source, block_name))
+        block_summaries[block_name] = summarize_vfs_index(vfs_index_path(output_root, source, block_name), result)
+
+    existing_blocks = {
+        block_name: info
+        for block_name, info in block_summaries.items()
+        if info.get("exists")
+    }
+    summary: dict[str, Any] = {
+        "exists": bool(existing_blocks),
+        "blocks": block_summaries,
+        "block_names": list(block_summaries),
+        "index_paths": [info.get("index_path") for info in existing_blocks.values()],
+    }
+    if "bundle" in block_summaries:
+        summary["index_path"] = block_summaries["bundle"].get("index_path")
+
+    for key in (
+        "block_count",
+        "missing_block_count",
+        "chunk_count",
+        "missing_chunk_count",
+        "file_count",
+        "byte_count",
+    ):
+        values = [
+            info.get(key)
+            for info in existing_blocks.values()
+            if isinstance(info.get(key), int)
+        ]
+        summary[key] = sum(values) if values else None
+
     return summary
 
 
@@ -3556,6 +3671,8 @@ def begin_animestudio_asset_shard_work(
         "cross_ab_output_collision_entry_count",
         "shared_output_reference_group_count",
         "shared_output_reference_entry_count",
+        "same_asset_id_output_reference_group_count",
+        "same_asset_id_output_reference_entry_count",
         "raw_hash_output_collision_group_count",
         "raw_hash_output_collision_entry_count",
         "identity_output_collision_group_count",
@@ -3669,6 +3786,8 @@ def finalize_animestudio_asset_shard_work(
         "cross_ab_output_collision_entry_count",
         "shared_output_reference_group_count",
         "shared_output_reference_entry_count",
+        "same_asset_id_output_reference_group_count",
+        "same_asset_id_output_reference_entry_count",
         "raw_hash_output_collision_group_count",
         "raw_hash_output_collision_entry_count",
         "identity_output_collision_group_count",
@@ -4573,30 +4692,34 @@ def main() -> int:
         log(f"  source root: {source_root}")
         log(f"  source reports: {source_report_dir}")
 
-        current_vfs_index_path = vfs_index_path(output_root, source, "bundle")
+        current_vfs_index_paths = [
+            vfs_index_path(output_root, source, block_name)
+            for block_name, _cli_block_name in VFS_INDEX_BLOCKS
+        ]
         if vfs_index_enabled and not args.report_only:
-            log(f"  vfs index path: {current_vfs_index_path}")
-            cmd = [
-                str(structured_dumper),
-                "vfs-index",
-                "-s",
-                str(source_root),
-                "-o",
-                str(current_vfs_index_path),
-                "-b",
-                "bundle",
-            ]
-            if source == "Persistent":
-                fallback_root = game_root / "StreamingAssets"
-                if fallback_root.exists():
-                    cmd.extend(["--fallback-assets", str(fallback_root)])
-            result = run_logged_command(f"{source}_vfs_index_bundle", cmd, ROOT, source_report_dir)
-            command_results.append(result)
-            command_results_by_name[result.name] = result
+            for block_name, cli_block_name in VFS_INDEX_BLOCKS:
+                current_vfs_index_path = vfs_index_path(output_root, source, block_name)
+                log(f"  vfs {block_name} index path: {current_vfs_index_path}")
+                cmd = [
+                    str(structured_dumper),
+                    "vfs-index",
+                    "-s",
+                    str(source_root),
+                    "-o",
+                    str(current_vfs_index_path),
+                    "-b",
+                    cli_block_name,
+                ]
+                if source == "Persistent":
+                    fallback_root = game_root / "StreamingAssets"
+                    if fallback_root.exists():
+                        cmd.extend(["--fallback-assets", str(fallback_root)])
+                result = run_logged_command(vfs_index_command_name(source, block_name), cmd, ROOT, source_report_dir)
+                command_results.append(result)
+                command_results_by_name[result.name] = result
 
-        if vfs_index_enabled or current_vfs_index_path.exists():
-            current_vfs_index = command_results_by_name.get(f"{source}_vfs_index_bundle")
-            vfs_index_summary[source] = summarize_vfs_index(current_vfs_index_path, current_vfs_index)
+        if vfs_index_enabled or any(path.exists() for path in current_vfs_index_paths):
+            vfs_index_summary[source] = summarize_vfs_indexes(output_root, source, command_results_by_name)
             if vfs_index_summary[source].get("exists"):
                 log(
                     f"  vfs index summary {source}: "
@@ -4762,9 +4885,17 @@ def main() -> int:
                         command_results_by_name[result.name] = result
 
                 def finish_animestudio_stage(stage: str) -> None:
-                    # The cross-run cache is gone, so there is no manifest to update
-                    # or persist here; just surface any failed items.
                     plan = animestudio_stage_plans[stage]
+                    succeeded_items = set(plan.get("succeeded_items", []))
+                    if succeeded_items:
+                        write_animestudio_report_only_asset_statuses(
+                            output_root=output_root,
+                            source=source,
+                            stage=stage,
+                            plan=plan,
+                            item_names=succeeded_items,
+                            skip_existing_types=True,
+                        )
                     failed_items = plan.get("failed_items", [])
                     if failed_items:
                         log(f"  animestudio stage {stage} for {source} failed items: {', '.join(failed_items)}")
@@ -4965,11 +5096,27 @@ def main() -> int:
                 f"chunks=`{info.get('chunk_count')}`, "
                 f"missing_chunks=`{info.get('missing_chunk_count')}`"
             )
-            md_lines.append(f"  index: `{info.get('index_path')}`")
-            if info.get("stdout_log"):
-                md_lines.append(f"  stdout: `{info.get('stdout_log')}`")
-            if info.get("stderr_log"):
-                md_lines.append(f"  stderr: `{info.get('stderr_log')}`")
+            block_infos = info.get("blocks") if isinstance(info, dict) else None
+            if isinstance(block_infos, dict):
+                for block_name in info.get("block_names", block_infos.keys()):
+                    block_info = block_infos.get(block_name, {})
+                    md_lines.append(
+                        f"  - `{block_name}`: exists=`{block_info.get('exists')}`, "
+                        f"files=`{block_info.get('file_count')}`, "
+                        f"chunks=`{block_info.get('chunk_count')}`, "
+                        f"missing_chunks=`{block_info.get('missing_chunk_count')}`"
+                    )
+                    md_lines.append(f"    index: `{block_info.get('index_path')}`")
+                    if block_info.get("stdout_log"):
+                        md_lines.append(f"    stdout: `{block_info.get('stdout_log')}`")
+                    if block_info.get("stderr_log"):
+                        md_lines.append(f"    stderr: `{block_info.get('stderr_log')}`")
+            else:
+                md_lines.append(f"  index: `{info.get('index_path')}`")
+                if info.get("stdout_log"):
+                    md_lines.append(f"  stdout: `{info.get('stdout_log')}`")
+                if info.get("stderr_log"):
+                    md_lines.append(f"  stderr: `{info.get('stderr_log')}`")
 
     md_lines.extend(["", "## Structured Export"])
     if args.skip_structured:
@@ -5088,6 +5235,7 @@ def main() -> int:
                         f"alternate_names=`{asset_cache.get('alternate_name_output_count', asset_cache.get('name_mismatch_output_count', 0))}`, "
                         f"cross_ab_paths=`{asset_cache.get('cross_ab_output_collision_group_count', 0)}`, "
                         f"shared_refs=`{asset_cache.get('shared_output_reference_group_count', 0)}`, "
+                        f"same_asset_refs=`{asset_cache.get('same_asset_id_output_reference_group_count', 0)}`, "
                         f"raw_hash_collisions=`{asset_cache.get('raw_hash_output_collision_group_count', 0)}`, "
                         f"identity_collisions=`{asset_cache.get('identity_output_collision_group_count', 0)}`, "
                         f"uncertain_collisions=`{asset_cache.get('uncertain_output_collision_group_count', asset_cache.get('cross_ab_output_collision_group_count', 0))}`, "
