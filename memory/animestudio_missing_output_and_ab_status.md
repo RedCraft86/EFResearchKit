@@ -3630,3 +3630,724 @@ Remaining raw `$unparsed` refs in the same validation slice after this pass:
 | `Beyond.Gameplay.Core.AbilitySystemData` | 2 |
 
 Current classification: the Advanced buff-stack payload bytes are now fully preserved and structurally inspectable, but the class is not considered semantically decoded yet. The new evidence strongly suggests a `BuffFindSettings` shape of `checkType + buff-id list + GameplayTagQuery`, followed by `buffStackNumType`, `compareType`, BlackboardDouble `value`, and `limitSkillCastId`, but the parent remains `$unparsed` until broader samples prove every `BuffFindSettings.CheckType` variant and the generic/list contract.
+
+## 2026-06-30 Fortieth Fresh StreamingAssets Advanced Buff-Stack Partial Decode Validation
+
+Follow-up after the diagnostic-only Advanced buff-stack batch. The current AnimeStudio exporter now has a guarded `TryDecodeCoreActionConditionManagedReferenceData` branch for `Beyond.Gameplay.Core.CheckBuffStackNumAdvanced/Data`, so this pass validated that branch against the same focused character slice instead of adding new parser code.
+
+Evidence used:
+
+- The prior diagnostic trace byte-proved all 7 observed Advanced payloads with lengths 200, 240, and 252 bytes.
+- Local IL2CPP metadata names the direct field order as `checkTarget`, `buffSettings`, `buffStackNumType`, `compareType`, `value`, and `limitSkillCastId`.
+- Guide-focused parallel subagents found no current guide `$unparsed` target in `tmp\current_cli_probe_topfamilies_20260630\guide`; guide is verification-only for now, so the unresolved non-guide Advanced buff-stack class stayed the active target.
+
+Validation:
+
+```text
+.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
+```
+
+Rebuild result: 0 errors and the same 14 existing warnings from AnimeStudio projects.
+
+Targeted validation output: `tmp\advanced_buff_decode_after_20260630_try2` from the three current installed-game VFS chunks:
+
+```text
+D:\Program Files\Endfield Game\Endfield_Data\StreamingAssets\VFS\7064D8E2\68B3B9B8EB82E88FBFE6A313E6B18FB6.chk
+D:\Program Files\Endfield Game\Endfield_Data\StreamingAssets\VFS\7064D8E2\71FC2E71A9F249B382BF8DAED3BCEE65.chk
+D:\Program Files\Endfield Game\Endfield_Data\StreamingAssets\VFS\7064D8E2\FBAD673F662CF3EACDDB14A65999F7EF.chk
+```
+
+The old `71FC2E714440BA2EC25896BA8E09F866.chk` and `FBAD673F42623B59F1A82C68E760FB0B.chk` paths were stale for the current install; the current files were located by prefix before rerunning those two chunks.
+
+| Metric | Result |
+| --- | ---: |
+| MonoBehaviour JSON files | 30 |
+| JSON parse failures | 0 |
+| Decoded `CheckBuffStackNumAdvanced/Data` data records | 7 |
+| Advanced records marked `$partial` | 7 |
+| Advanced records still `$unparsed` | 0 |
+| Advanced records marked `$heuristic` | 0 |
+| Advanced records with `decodeError` | 0 |
+| Overall `$unparsed` records in this validation slice | 0 |
+
+Observed Advanced decoded variants:
+
+| Shape | Count | Observed data |
+| --- | ---: | --- |
+| `checkType = Id`, one buff id, empty tag query | 2 | `buff_chr_0023_antal_tageffect`, `compareType = GE`, value `1.0`, `limitSkillCastId = false` |
+| `checkType = Id`, two buff ids, empty tag query | 2 | `buff_chr_0028_wulfa_combo_usetimer`, `buff_chr_0028_wulfa_combo_cannottrigger`, `compareType = LT`, value `1.0`, `limitSkillCastId = false` |
+| `checkType = Tag`, no buff ids, two tags | 1 | `Skill/Character/Common/NoGuard`, `Skill/Character/Common/SpellInflict`, `compareType = Equals`, value `0.0`, `limitSkillCastId = false` |
+| `checkType = Tag`, one buff id, one tag | 2 | `buff_chr_0030_zhuangfy_have_sword`, `Skill/Character/Common/SpellInflict/PulseInflict`, `compareType = GE`, value `1.0`, `limitSkillCastId = false` |
+
+Residual diagnostics:
+
+- The validation slice still has object-level `managedReferencesRegistryRecovery` heuristic/decode-error notes on 28 character files. These are recovery diagnostics from the original TypeTree registry reader losing sync before the managed-reference recovery pass, not failed Advanced payload decodes.
+- `AbilitySystemData`, `SkillDataBundle`, `TargetSettings`, and `SelectorData` remain `$partial` where expected because selector suffix/post-processor semantics are still not fully named.
+
+Current classification: `CheckBuffStackNumAdvanced/Data` is no longer a raw `$unparsed` managed-reference payload in the focused validation slice. It is now byte-consumed and exported as a decoded `$partial` record with named direct fields. It is still not fully semantic because embedded `TargetSettings` and `BuffFindSettings` keep partial notes until unobserved selector/post-processor and `Environment`/`Context` `BuffFindSettings.CheckType` variants are proven.
+
+## 2026-06-30 Forty-First Fresh StreamingAssets Managed-Reference Registry Status Clarification
+
+Follow-up after the Advanced buff-stack partial decode validation. Work focused on the object-level `managedReferencesRegistryRecovery` diagnostics that still appeared scary in focused character outputs even when all recovered managed-reference payloads were decoded or partial-decoded.
+
+Evidence used:
+
+- A parallel registry-recovery subagent inspected `tmp\advanced_buff_decode_after_20260630_try2`, `Exporter.cs`, `TypeTreeHelper.cs`, `EndianBinaryReader.cs`, `ObjectReader.cs`, and `MonoBehaviour.cs`.
+- The subagent found the registry headers/counts are recovered correctly. The large `ReadAlignedString` lengths are serialized TypeTree fallback failures after Unity's TypeTree reaches `ReferencedObjectData` without a payload schema and begins reading managed-reference payload bytes as if they were registry header strings.
+- Example: `808661040 = 0x30333030`, bytes `30 30 33 30`, ASCII `0030` from `chr_0030_zhuangfy`; this is payload text misread as a string length, not an encrypted or missing registry block.
+- `expectedRidCount` in the old metadata was misleading: it was collected from the pre-registry partial TypeTree payload, often just `data.rid = 1`, not the actual registry entry count.
+
+Implemented in `tools/AnimeStudio/AnimeStudio.CLI/Exporter.cs`:
+
+- Split recovered registry status into `fullyDecoded`, `partialDecoded`, and `heuristic`.
+- A recovered registry with only `$partial` child payloads now reports `status = partialDecoded` and sets `references.$partial`, not `status = heuristic` and `references.$heuristic`.
+- Real weak-header, `$unparsed`, or `$heuristic` child payloads still keep `status = heuristic`.
+- Added `preRegistryRidCount` while keeping the old `expectedRidCount` for compatibility.
+- Added actual `registryCount`, `recoveredRidCount`, `registryStartOffset`, and `typeTreeFailureOffset` fields when available.
+- Moved the TypeTree fallback exception to `typeTreeDecodeError` for `partialDecoded` cases. `decodeError` remains reserved for genuinely heuristic recovered registries.
+
+Validation:
+
+```text
+.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
+```
+
+Rebuild result: 0 warnings, 0 errors.
+
+Targeted validation output: `tmp\registry_status_after_20260630` from the same three current installed-game VFS chunks used by the Advanced buff-stack validation.
+
+| Metric | Result |
+| --- | ---: |
+| MonoBehaviour JSON files | 30 |
+| Registry recovery metadata blocks | 30 |
+| `partialDecoded` registries | 28 |
+| `fullyDecoded` registries | 2 |
+| `heuristic` registries | 0 |
+| Registry count mismatches | 0 |
+| Data-level `$unparsed` records | 0 |
+| Data-level `$heuristic` records | 0 |
+| Data-level `decodeError` records | 0 |
+
+Representative generated metadata after the change:
+
+```json
+{
+  "field": "references",
+  "type": "ManagedReferencesRegistry",
+  "status": "partialDecoded",
+  "preRegistryRidCount": 1,
+  "expectedRidCount": 1,
+  "typeTreeDecodeError": "EndOfStreamException: ReadAlignedString requests 808661040 bytes at offset 0x11C24, but only 10964 bytes remain.",
+  "registryStartOffset": 64,
+  "typeTreeFailureOffset": 180,
+  "registryCount": 43,
+  "recoveredRidCount": 43
+}
+```
+
+Current classification: these focused character registry diagnostics are not evidence of missing VFS bytes, encryption, or an unresolved managed-reference registry format. They are evidence that the serialized TypeTree path cannot decode arbitrary managed-reference payload schemas directly, after which AnimeStudio's recovery pass locates the registry and decodes payloads with local per-class parsers. Remaining work is semantic payload recovery, especially `AbilitySystemData`, `SkillDataBundle`, `TargetSettings`, `SelectorData`, and unobserved selector/post-processor variants.
+
+## 2026-06-30 Forty-Second Fresh StreamingAssets Selector Validator Count Naming Batch
+
+Follow-up after the managed-reference registry status clarification. Work focused on one small `SelectorData` semantic improvement recommended by a parallel TargetSettings/SelectorData subagent: the field previously emitted as `selectorCountOrFlag` is byte-proven as the `validatorData` list/count control in current samples.
+
+Evidence used:
+
+- Installed `global-metadata.dat` confirms `Beyond.Gameplay.Core.Selector+SelectorData` has fields `finderData`, `validatorData`, and `postProcessorData`.
+- The broader current focused output has 70 `SelectorData` blocks: 68 have count `0`, and 2 have count `1` followed by a linked `Selector/MainCharacterValidator/Data` RID.
+- The two non-null validator cases are both `CheckTargetsEqual/Data.secondTargetSettings` in `data_chr_0004_pelica` and `data_chr_0017_yvonne`.
+- Current bytes do not prove `postProcessorData` ownership because all observed late RID candidates are null, so this batch intentionally does not promote or rename the late RID slots.
+
+Implemented in `tools/AnimeStudio/AnimeStudio.CLI/Exporter.cs`:
+
+- Renamed the emitted `SelectorData` field from `selectorCountOrFlag` to `validatorDataCount`.
+- Renamed the internal local variable to match.
+- Updated the guard error from `unsupported selector count/flag` to `unsupported validatorData count`.
+- Kept `SelectorData` marked `$partial`; no post-processor or post-selector tail promotion was made.
+
+Validation:
+
+```text
+.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
+```
+
+Rebuild result: 0 errors and the same 14 existing warnings from AnimeStudio projects.
+
+Targeted validation output: `tmp\selector_validator_count_after_20260630\68B3` using the 68B3 focused character chunk, which includes both observed `validatorDataCount` variants.
+
+| Metric | Result |
+| --- | ---: |
+| `SelectorData` blocks in validation slice | 54 |
+| `validatorDataCount = 0` | 52 |
+| `validatorDataCount = 1` | 2 |
+| Blocks with `validatorDataRid` | 2 |
+| Stale `selectorCountOrFlag` keys | 0 |
+| Data-level `$unparsed` records | 0 |
+| Data-level `$heuristic` records | 0 |
+| Data-level `decodeError` records | 0 |
+
+Current classification: the selector validator count is now named according to installed metadata and observed byte behavior. `SelectorData` remains partial because `postProcessorData` and the post-selector `TargetSettings` tail still need non-null/non-trivial samples before further semantic promotion.
+
+## 2026-06-30 Forty-Third Fresh StreamingAssets SkillDataBundle Root Status Batch
+
+Follow-up after the Selector validator count naming batch. Work focused on reducing misleading `$partial` markers inside the current AbilitySystemData partial tree without hiding real unresolved semantics.
+
+Evidence used:
+
+- Current focused outputs have no data-level `$unparsed`, `$heuristic`, or `decodeError` records in the inspected slices.
+- Across `tmp\registry_status_after_20260630` and `tmp\projectile_component_movemode_values_after_20260630`, all 38 inspected `AbilitySystemData` records consume their payloads completely: `remainingRawWords = []` and `remainingStringHints = []`.
+- The AbilitySystemData-owned `SkillDataBundle` reader consumes through `defaultCmdMapping`; later fields are consumed by the parent `AbilitySystemData` reader, not left inside the bundle.
+- Existing projectile-specific `SkillDataBundle` output was already `$decoded`; the mismatch was only in the AbilitySystemData-owned reader.
+- A parallel `EffectActionCfg` probe found 53 `deadEffect` records are byte-consumed with `deadEffect.serializedWordCount = 107`, but should remain `$partial` because BlackboardDouble wrappers are still raw 3-word diagnostics and metadata variants such as `overrideDeadEffect` / `centerOffset` are not proven in current samples.
+
+Implemented in `tools/AnimeStudio/AnimeStudio.CLI/Exporter.cs`:
+
+- Marked the AbilitySystemData-owned `SkillDataBundle` root as `$decoded` instead of `$partial`.
+- Replaced the old misleading note `decoded through defaultCmdMapping; later AbilitySystemData fields remain in remainingRawWords` with a note that the bundle is consumed through `defaultCmdMapping`, nested combo conditions may still contain partial action/condition payloads, and later AbilitySystemData fields are handled by the parent reader.
+- Did not remove `$partial` from parent `AbilitySystemData`, `EffectActionCfg`, `TargetSettings`, `SelectorData`, or nested action/condition records.
+
+Validation:
+
+```text
+.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
+```
+
+Rebuild result: 0 errors and the same 14 existing warnings from AnimeStudio projects.
+
+Targeted validation output: `tmp\ability_skillbundle_status_after_20260630\68B3` using the 68B3 focused character chunk.
+
+| Metric | Result |
+| --- | ---: |
+| MonoBehaviour JSON files | 27 |
+| AbilitySystemData records | 25 |
+| AbilitySystemData records still `$partial` | 25 |
+| AbilitySystemData records with empty `remainingRawWords` and `remainingStringHints` | 25 |
+| SkillDataBundle records | 25 |
+| SkillDataBundle records marked `$decoded` | 25 |
+| SkillDataBundle records still `$partial` | 0 |
+| Data-level `$unparsed` records | 0 |
+| Data-level `$heuristic` records | 0 |
+| Data-level `decodeError` records | 0 |
+
+Remaining partial roots in the same validation slice are now better scoped: `AbilitySystemData` remains partial because of the unresolved `overrideDeadEffect` metadata variant and nested semantic diagnostics; `EffectActionCfg` remains partial because of raw BlackboardDouble wrapper semantics and unobserved metadata variants; `TargetSettings` and `SelectorData` remain partial because selector post-processor/post-selector tails still need non-null samples.
+
+Current classification: `SkillDataBundle` itself is byte-consumed and structurally decoded in the current AbilitySystemData samples. The unresolved work is in nested action/condition payload semantics and parent AbilitySystemData/EffectActionCfg variant semantics, not in unread SkillDataBundle tail bytes.
+
+## 2026-06-30 Forty-Fourth Fresh StreamingAssets EffectActionCfg Partial Reason Annotation Batch
+
+Follow-up after the SkillDataBundle root status batch. Work focused on making the remaining `EffectActionCfg` partial status explicit instead of implying there are unread bytes in the current fixed AbilitySystemData shape.
+
+Evidence used:
+
+- Current focused outputs contain 63 `Beyond.Gameplay.EffectActionCfg` records across the inspected registry, SkillDataBundle, and projectile slices.
+- All inspected `EffectActionCfg` rows use the same current fixed 107-word AbilitySystemData payload shape, and the focused character validation still reports `serializedWordCount = 107` for every row.
+- The raw AbilitySystemData `BlackboardDouble` wrappers are still not semantically proven. Across the focused slices, 1094 raw wrappers were observed; word 2 is always `0`, word 0 is split between `0` and `1`, and word 1 behaves like the only safe float candidate.
+- Managed-reference `BlackboardDouble` payloads already decode into `useBlackboardKey`, `value`, and `blackboardKey`, including keyed examples such as `EntityBB_noguard_count`. The fixed AbilitySystemData 3-word wrapper does not carry that string shape, and existing outer gates such as `useScaleBB` / `useLengthBB` mean word 0 should not be promoted to a named key-use flag yet.
+- IL2CPP metadata lists `centerOffset`, but observed AbilitySystemData rows omit it. The `overrideDeadEffect` metadata variant is also not proven by the focused samples.
+
+Implemented in `tools/AnimeStudio/AnimeStudio.CLI/Exporter.cs`:
+
+- Added `observedPayloadStatus` to `EffectActionCfg` records: `fixed 107-word AbilitySystemData EffectActionCfg variant consumed by this reader`.
+- Added `partialReasons` naming the three current blockers: raw BlackboardDouble wrappers, omitted observed `centerOffset`, and unproven `overrideDeadEffect`.
+- Kept `EffectActionCfg` marked `$partial`.
+- Did not add `centerOffset`, did not add `overrideDeadEffect`, and did not promote the raw 3-word BlackboardDouble wrapper into `useBlackboardKey` / `value` / `blackboardKey`.
+
+Validation:
+
+```text
+.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
+```
+
+Rebuild result: 0 errors and the same 14 existing warnings from AnimeStudio projects.
+
+Targeted validation output: `tmp\effect_actioncfg_partial_reasons_after_20260630\68B3` using the 68B3 focused character chunk.
+
+| Metric | Result |
+| --- | ---: |
+| MonoBehaviour JSON files | 27 |
+| `EffectActionCfg` records | 25 |
+| `EffectActionCfg` records still `$partial` | 25 |
+| Records with `observedPayloadStatus` | 25 |
+| `serializedWordCount = 107` | 25 |
+| Records with all three `partialReasons` | 25 |
+| Data-level `$unparsed` records | 0 |
+| Data-level `$heuristic` records | 0 |
+| Data-level `decodeError` records | 0 |
+
+Current classification: the current AbilitySystemData `EffectActionCfg` reader consumes the observed fixed 107-word row shape, but the output remains correctly partial because key substructures are still diagnostic rather than semantically decoded. This batch improves the exported explanation without reducing warning fidelity.
+
+## 2026-06-30 Forty-Fifth Fresh StreamingAssets TargetSettings Partial Reason Annotation Batch
+
+Follow-up after the EffectActionCfg partial reason annotation batch. Work focused on the largest remaining semantic partial cluster in the current focused outputs: `Beyond.Gameplay.Core.TargetSettings` and nested `Selector/SelectorData` diagnostics.
+
+Evidence used:
+
+- Current focused partial inventory across recent validation slices showed no data-level `$unparsed`, `$heuristic`, or `decodeError` records. The dominant remaining semantic partials were `TargetSettings` and `SelectorData`.
+- The 68B3 focused validation slice contains 54 `TargetSettings` records and 54 nested `SelectorData` records.
+- Selector evidence is strong for the first two metadata fields: `validatorDataCount = 0` appears 52 times, `validatorDataCount = 1` appears 2 times, and the two non-zero validator slots link to `Selector/MainCharacterValidator/Data`.
+- `postProcessorData` is still not proven: all 54 focused `postProcessorData` late RID candidates are `(-2, -2)` in the current validation output, with no linked post-processor object.
+- The post-selector tail is byte-consumed but still compact and under-proven: all 54 records have an 8-word raw tail, with 53 instances of `(0,0,0,1,0,0,0,0)` and 1 instance of `(0,0,0,1,0,0,1,0)`.
+- Local IL2CPP metadata confirms `TargetSettings` field order through `Default` and confirms `SelectorData` fields `finderData`, `validatorData`, and `postProcessorData`, but it does not prove the exact serialized width split of the compact eight-word tail in observed Unity payloads.
+- A local Il2CppDumper v6.7.46 attempt against the installed `GameAssembly.dll` and `global-metadata.dat` found metadata v29 and code registration but failed auto processing before producing `dump.cs`; no field-offset dump was available from that route in this batch.
+- A parallel read-only TargetSettings explorer independently recommended no semantic promotion yet because samples do not prove non-empty `targetContextKey`, non-default direction variants, or post-processor ownership.
+
+Implemented in `tools/AnimeStudio/AnimeStudio.CLI/Exporter.cs`:
+
+- Added `observedPayloadStatus` and `partialReasons` to `TargetSettings` records.
+- Added `observedPayloadStatus` and `partialReasons` to `postProcessorDataCandidates`.
+- Added `observedPayloadStatus` and `partialReasons` to `postSelectorFields`.
+- Kept `TargetSettings`, `SelectorData`, `postProcessorDataCandidates`, and `postSelectorFields` marked `$partial`.
+- Did not promote the compact eight-word tail into named `enableAdvancedDirection`, `advancedDirection`, `selectorDirection`, `target`, `targetContextKey`, or `Default` values.
+- Did not promote either late RID candidate to `postProcessorData` until a linked non-empty sample proves the container shape.
+
+Validation:
+
+```text
+.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
+```
+
+Rebuild result: 0 errors and the same 14 existing warnings from AnimeStudio projects.
+
+Targeted validation output: `tmp\targetsettings_partial_reasons_after_20260630\68B3` using the 68B3 focused character chunk.
+
+| Metric | Result |
+| --- | ---: |
+| MonoBehaviour JSON files | 27 |
+| `TargetSettings` records | 54 |
+| `TargetSettings` records still `$partial` | 54 |
+| `TargetSettings` records with `observedPayloadStatus` | 54 |
+| `TargetSettings` records with 3 `partialReasons` | 54 |
+| `SelectorData` records | 54 |
+| `validatorDataCount = 0` | 52 |
+| `validatorDataCount = 1` | 2 |
+| `postProcessorDataCandidates` with `observedPayloadStatus` | 54 |
+| `postProcessorDataCandidates` with 2 `partialReasons` | 54 |
+| `postSelectorFields` with `observedPayloadStatus` | 54 |
+| `postSelectorFields` with 3 `partialReasons` | 54 |
+| Tail pattern `(0,0,0,1,0,0,0,0)` | 53 |
+| Tail pattern `(0,0,0,1,0,0,1,0)` | 1 |
+| Late RID pair `(-2,-2)` | 54 |
+| Data-level `$unparsed` records | 0 |
+| Data-level `$heuristic` records | 0 |
+| Data-level `decodeError` records | 0 |
+
+Current classification: `TargetSettings` and `SelectorData` are byte-consumed and now explain why they remain partial. The safe next promotion requires stronger samples: a non-empty `postProcessorData`, a non-empty `targetContextKey`, or non-default direction/target variants that prove the compact tail field widths.
+
+## 2026-06-30 Forty-Sixth Fresh StreamingAssets Projectile MoveModeDict Container Promotion Batch
+
+Follow-up after the TargetSettings partial reason annotation batch. Work focused on the next non-TargetSettings partial cluster in the current focused outputs: `Dictionary<string, Beyond.Gameplay.Core.ProjectileComponentData/MoveModeData>` inside `ProjectileComponentData`.
+
+Evidence used:
+
+- Current focused inventory still has no data-level `$unparsed`, `$heuristic`, or `decodeError` records in the inspected slices.
+- The active projectile validation slice contains 10 `ProjectileComponentData` records and 10 `moveModeDict` dictionaries.
+- Every `moveModeDict` has matching `keyCount` and `valueCount`.
+- Key distribution is stable: `Default` appears 10 times, and `T1`, `T2`, and `T3` each appear 5 times.
+- Boundary evidence from the prior projectile batch still holds: 25 nested `MoveModeData` values, each exactly 124 int32 words / 496 bytes.
+- A parallel read-only projectile explorer independently recommended promoting only the dictionary container to decoded. It reported that each nested `MoveModeData` value still keeps 115 raw words after the metadata-backed prefix, and parent projectile tails still keep effect/sound/scalar raw words.
+- Local IL2CPP metadata confirms `MoveModeData` field order, but local DummyDll/Cpp2IL assemblies still do not expose the projectile data type through the Mono.Cecil probe. That means the value internals are not field-width proven enough for full semantic promotion.
+
+Implemented in `tools/AnimeStudio/AnimeStudio.CLI/Exporter.cs`:
+
+- Marked `Dictionary<string, Beyond.Gameplay.Core.ProjectileComponentData/MoveModeData>` as `$decoded` instead of `$partial`.
+- Added `observedPayloadStatus` and `nestedPartialReasons` to the dictionary container.
+- Added `observedPayloadStatus`, `partialReasons`, `decodedPrefixWordCount`, and `remainingRawWordCount` to each `MoveModeData` value.
+- Kept every `MoveModeData` value marked `$partial`.
+- Kept parent `ProjectileComponentData` marked `$partial`.
+- Did not promote raw `MoveModeData` tail words, did not emit enum member names, and did not decode effect/sound/scalar parent tail collections.
+
+Validation:
+
+```text
+.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
+```
+
+Rebuild result: 0 warnings and 0 errors.
+
+Targeted validation output: `tmp\projectile_movemode_dict_status_after_20260630` using the 10-row projectile filter data from `tmp\projectile_component_movemode_values_after_20260630\filter_data.json`.
+
+| Metric | Result |
+| --- | ---: |
+| MonoBehaviour JSON files | 10 |
+| `ProjectileComponentData` records | 10 |
+| `ProjectileComponentData` records still `$partial` | 10 |
+| `ProjectileComponentData` records marked `$decoded` | 10 |
+| `moveModeDict` dictionaries | 10 |
+| `moveModeDict` dictionaries marked `$decoded` | 10 |
+| `moveModeDict` dictionaries still `$partial` | 0 |
+| Dictionaries with matching key/value counts | 10 |
+| Key `Default` | 10 |
+| Key `T1` | 5 |
+| Key `T2` | 5 |
+| Key `T3` | 5 |
+| `MoveModeData` values | 25 |
+| `MoveModeData` values still `$partial` | 25 |
+| `MoveModeData` values marked `$decoded` | 0 |
+| `MoveModeData wordCount = 124` | 25 |
+| `MoveModeData length = 496` | 25 |
+| `decodedPrefixWordCount = 9` | 25 |
+| `remainingRawWordCount = 115` | 25 |
+| Data-level `$unparsed` records | 0 |
+| Data-level `$heuristic` records | 0 |
+| Data-level `decodeError` records | 0 |
+
+Current classification: `moveModeDict` is now structurally decoded. Remaining projectile unknowns are inside nested `MoveModeData` value internals and the parent effect/sound/scalar tail, not the dictionary key/value boundary.
+
+## 2026-06-30 Forty-Seventh Fresh StreamingAssets Projectile Tail And MoveModeData Suffix Batch
+
+Follow-up after the `moveModeDict` container promotion. Work focused on the first raw parent-tail fields after the dictionary and on the nested `MoveModeData` suffix after `parabolaDef`.
+
+Evidence used:
+
+- The focused projectile validation slice still has no data-level `$unparsed`, `$heuristic`, or `decodeError` records.
+- Local IL2CPP metadata places `mainEffectFinishType` and `mainEffectFinishDistance` immediately after `moveModeDict`.
+- Byte evidence over 10 projectile tails matched that field order: one enum word followed by the existing three-word `Beyond.Blackboard.BlackboardDouble` payload shape.
+- `mainEffectFinishType` was `0` in all 10 focused samples.
+- The `mainEffectFinishDistance` middle raw word was `0` in 9 samples and `1119092736` in 1 sample.
+- After decoding these four words, the raw parent-tail counts dropped from `{128:1, 244:5, 245:2, 363:1, 494:1}` to `{124:1, 240:5, 241:2, 359:1, 490:1}`.
+- A parallel MoveModeData suffix probe found 25 records with 15 unique 115-word suffix patterns. It identified dynamic curve boundaries and reported that `m_parabolaSpeedInfo`, `m_bezierSpeedInfo`, and `m_speedCurveInfo` appear non-serialized in current payloads.
+- The suffix after `parabolaDef` is now decoded through `gravity`, then keeps BezierPoint records as bounded raw structures because their range wrapper internals are not field-accurate yet.
+- `bezierMidPoint2` is a full 21-word raw record in 24 focused samples and a truncated 7-word raw record in 1 focused sample.
+
+Implemented in `tools/AnimeStudio/AnimeStudio.CLI/Exporter.cs`:
+
+- Added `mainEffectFinishType` decoding to `ReadProjectileComponentTailDiagnostic` using `ReadPayloadEnum32Candidate`.
+- Added `mainEffectFinishDistance` decoding to `ReadProjectileComponentTailDiagnostic` using `ReadAbilitySystemBlackboardDouble`.
+- Added a guarded `structuredSuffix` view to each `MoveModeData` value.
+- The structured suffix decodes `speed`, `speedCurve`, `useSpeedScaleWithDistance`, `speedScaleWithDistance`, `lockVelocityToXZ`, `groundedMove`, `limitAngularSpeed`, `angularSpeed`, `angularSpeedCurve`, `travelDuration`, `vertexYOffset`, and `gravity`.
+- The structured suffix preserves BezierPoint records as bounded raw records with metadata field order and handles the observed truncated `bezierMidPoint2` case without desynchronizing the main reader.
+- The original 115-word `remainingRawWords` suffix is still emitted on every `MoveModeData` value for byte audit.
+- Kept parent `ProjectileComponentData`, the parent tail, all nested `MoveModeData` values, structured suffixes, and BezierPoint records marked `$partial`.
+- Did not promote effect-list payloads, projectile sound structs, final scalar fields, enum member names, or BezierPoint range-wrapper internals.
+
+Validation:
+
+```text
+.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
+```
+
+Latest rebuild result: 0 warnings and 0 errors.
+
+Targeted validation output: `tmp\projectile_tail_and_movemode_suffix_after_20260630` using the same 10-row projectile filter data from `tmp\projectile_component_movemode_values_after_20260630\filter_data.json`.
+
+| Metric | Result |
+| --- | ---: |
+| MonoBehaviour JSON files | 10 |
+| `ProjectileComponentData` records | 10 |
+| `ProjectileComponentData` records marked `$decoded` | 10 |
+| `ProjectileComponentData` records still `$partial` | 10 |
+| Tails with `mainEffectFinishType` | 10 |
+| Tails with `mainEffectFinishDistance` | 10 |
+| `moveModeDict` dictionaries marked `$decoded` | 10 |
+| `MoveModeData` values | 25 |
+| `MoveModeData` values still `$partial` | 25 |
+| `MoveModeData` original raw suffix length 115 words | 25 |
+| Structured suffix decode status `decoded` | 25 |
+| `speedCurve` keyframes = 2 | 25 |
+| `speedScaleWithDistance` keyframes = 2 | 24 |
+| `speedScaleWithDistance` keyframes = 4 | 1 |
+| `angularSpeedCurve` keyframes = 2 | 25 |
+| `bezierMidPoint1` word count = 21 | 25 |
+| `bezierMidPoint2` full 21-word record | 24 |
+| `bezierMidPoint2` truncated 7 raw words | 1 |
+| Remaining parent tail raw word counts | `{124:1, 240:5, 241:2, 359:1, 490:1}` |
+| Data-level `$unparsed` records | 0 |
+| Data-level `$heuristic` records | 0 |
+| Data-level `decodeError` records | 0 |
+
+Current classification: `ProjectileComponentData` is decoded through the parent tail `mainEffectFinishDistance` field. Nested `MoveModeData` values now expose a guarded structured suffix view but remain partial because BezierPoint internals and the non-serialized speed-info metadata fields are not fully understood. The remaining projectile parent-tail unknown starts at `mainEffects`.
+
+## 2026-06-30 Forty-Eighth Fresh StreamingAssets Projectile BezierPoint Decode Batch
+
+Follow-up after the projectile tail and `MoveModeData` suffix batch. Work focused on the bounded BezierPoint records inside the nested `MoveModeData.structuredSuffix` diagnostic view.
+
+Evidence used:
+
+- The focused projectile validation slice still has no data-level `$unparsed`, `$heuristic`, or `decodeError` records.
+- IL2CPP metadata gives BezierPoint field order: `usePresetPoint`, `presetPointKey`, `xRatioRange`, `yzAngleRange`, `yzRadiusRange`, and `scaledYzRadius`.
+- The observed full BezierPoint payload is exactly 21 int32 words: one bool, one empty aligned string length word, three two-endpoint `BlackboardDouble` ranges, and one bool.
+- All 49 full BezierPoint records decode with `presetPointKey = ""` and `scaledYzRadius = true`.
+- The already-known short `bezierMidPoint2` case remains a guarded truncated path with 7 raw words preserved.
+- The original 115-word `MoveModeData.remainingRawWords` suffix is still emitted for audit.
+
+Implemented in `tools/AnimeStudio/AnimeStudio.CLI/Exporter.cs`:
+
+- Full 21-word BezierPoint records now decode into field-level output.
+- Added a small `ReadProjectileBlackboardDoubleRange` helper for the three BezierPoint range fields.
+- Full BezierPoint records are emitted as `$decoded` and `$inferred`.
+- Truncated BezierPoint records remain `$partial` and raw.
+- `MoveModeData` and `structuredSuffix` remain `$partial` because one `bezierMidPoint2` is truncated and the parent projectile effect/sound tail remains unresolved.
+
+Validation:
+
+```text
+.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
+```
+
+Latest rebuild result: 0 errors and the same 14 existing AnimeStudio project warnings.
+
+Targeted validation output: `tmp\projectile_bezierpoint_decode_after_20260630` using the same 10-row projectile filter data from `tmp\projectile_component_movemode_values_after_20260630\filter_data.json`.
+
+| Metric | Result |
+| --- | ---: |
+| MonoBehaviour JSON files | 10 |
+| `ProjectileComponentData` records | 10 |
+| `MoveModeData` values | 25 |
+| `MoveModeData` original raw suffix length 115 words | 25 |
+| Structured suffix decode status `decoded` | 25 |
+| Full BezierPoint records | 49 |
+| Full BezierPoint records marked `$decoded` | 49 |
+| Full BezierPoint records marked `$partial` | 0 |
+| Full BezierPoint `presetPointKey = ""` | 49 |
+| Full BezierPoint `scaledYzRadius = true` | 49 |
+| `bezierMidPoint2` full 21-word record | 24 |
+| `bezierMidPoint2` truncated 7 raw words | 1 |
+| Remaining parent tail raw word counts | `{124:1, 240:5, 241:2, 359:1, 490:1}` |
+| Data-level `$unparsed` records | 0 |
+| Data-level `$heuristic` records | 0 |
+| Data-level `decodeError` records | 0 |
+
+Current classification: full BezierPoint records in `MoveModeData` are now field-decoded for the focused projectile slice. The remaining projectile unknowns are the single truncated BezierPoint variant, non-serialized speed-info metadata fields, and the parent effect/sound/scalar tail beginning at `mainEffects`.
+## 2026-06-30 Forty-Ninth Fresh StreamingAssets AbilitySystemData Parent Status Batch
+
+Follow-up after the projectile BezierPoint batch. Work focused on reducing misleading parent-level `$partial` markers on `Beyond.Gameplay.Core.AbilitySystemData` when the staged reader has consumed all parent bytes.
+
+Evidence used:
+
+- A read-only EffectActionCfg/AbilitySystemData explorer confirmed that current focused outputs have byte-consumed `AbilitySystemData` parents with empty `remainingRawWords`, empty `remainingStringHints`, and no `remainingRidLinks`.
+- The same explorer recommended not promoting `EffectActionCfg`: the 107-word fixed variant is consumed, but BlackboardDouble wrappers, omitted `centerOffset`, and unproven `overrideDeadEffect` variants remain valid partial reasons.
+- A TargetSettings explorer independently found no safe `TargetSettings` / `SelectorData` promotion yet. The 232 partial count in the rolling inventory is repeated validation sightings, not 232 unique layouts.
+
+Implemented in `tools/AnimeStudio/AnimeStudio.CLI/Exporter.cs`:
+
+- Removed unconditional `$partial` from the `AbilitySystemData` success path.
+- Added parent-level remainder-sensitive status handling: parent `$partial` is set only when parent `remainingStringHints`, `remainingRidLinks`, or `remainingRawWords` are non-empty.
+- Added `observedPayloadStatus` for fully consumed parent rows to clarify that nested partial objects carry their own markers.
+- Left the diagnostic fallback, nested `EffectActionCfg`, `TargetSettings`, `SelectorData`, and action/condition partials unchanged.
+
+Validation:
+
+```text
+.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
+```
+
+Rebuild result: 0 errors and the same 14 existing AnimeStudio project warnings.
+
+Targeted validation output: `tmp\abilitysystem_parent_promotion_after_20260630`. The initial by-source validation command exported many CAB folders, so validation counted the 27 known focused filenames from `tmp\effect_actioncfg_partial_reasons_after_20260630\68B3\MonoBehaviour` inside the new output.
+
+| Metric | Result |
+| --- | ---: |
+| Focused filenames wanted/found | 27 / 27 |
+| `AbilitySystemData` rows | 25 |
+| `AbilitySystemData` rows marked `$decoded` | 25 |
+| `AbilitySystemData` parent rows still `$partial` | 0 |
+| `AbilitySystemData` rows with observed parent status | 25 |
+| Empty parent `remainingRawWords` | 25 |
+| Empty parent `remainingStringHints` | 25 |
+| Empty parent `remainingRidLinks` | 25 |
+| `EffectActionCfg` rows still `$partial` | 25 |
+| `SkillDataBundle` rows marked `$decoded` | 25 |
+| `TargetSettings` rows still `$partial` | 54 |
+| `SelectorData` rows still `$partial` | 54 |
+| Data-level `$unparsed` records | 0 |
+| Data-level `$heuristic` records | 0 |
+| Data-level `decodeError` records | 0 |
+
+Current classification: focused `AbilitySystemData` parent payloads are now correctly classified as byte-consumed. Remaining Ability/Target warnings are nested semantic partials, not missing VFS bytes, encryption, or unread parent AbilitySystemData tails.
+## 2026-06-30 Fiftieth Fresh StreamingAssets Projectile Parent Tail End Suffix Batch
+
+Follow-up after the AbilitySystemData parent status batch. Work focused on the stable end-relative suffix in `Beyond.Gameplay.Core.ProjectileComponentData` after `mainEffectFinishDistance`.
+
+Evidence used:
+
+- The current focused projectile slice still has no data-level `$unparsed`, `$heuristic`, or `decodeError` records.
+- Prior parallel projectile-tail analysis found that the variable `P_fxbat_*` effect blocks are real but not safely assignable to exact named effect-list fields yet.
+- The same analysis identified a stable end-relative suffix beginning at `showAlertEffect`, followed by a default alert effect record, seven current empty sound strings, and two scalar floats.
+- Validation confirmed the raw parent tail word-count distribution remains `{124:1, 240:5, 241:2, 359:1, 490:1}` after adding the structured view.
+
+Implemented in `tools/AnimeStudio/AnimeStudio.CLI/Exporter.cs`:
+
+- Added `structuredRemainingTail` to `ReadProjectileComponentTailDiagnostic` while preserving the original `remainingRawWords`.
+- Added `ReadProjectileComponentRemainingTailDiagnostic` for a guarded local decode of the end-relative suffix.
+- Added `ReadProjectileDefaultEffectRecordDiagnostic` to bound and preserve the current default `alertEffect` record as raw words.
+- Kept the variable effect-list/finish prefix raw under `effectListAndFinishPrefixRawWords`.
+- Kept parent `ProjectileComponentData`, `structuredRemainingTail`, and `alertEffect` marked `$partial`.
+- Did not promote named effect-list assignment, non-empty sound layouts, or effect-record internals.
+
+Validation:
+
+```text
+.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
+```
+
+Rebuild result: 0 errors and the same 14 existing AnimeStudio project warnings.
+
+Targeted validation output: `tmp\projectile_tail_suffix_decode_after_20260630` using the same 10-row projectile filter data from `tmp\projectile_component_movemode_values_after_20260630\filter_data.json`.
+
+| Metric | Result |
+| --- | ---: |
+| MonoBehaviour JSON files | 10 |
+| `ProjectileComponentData` records | 10 |
+| Structured remaining tails | 10 |
+| Structured remaining tails decoded | 10 |
+| Parent raw tail word counts | `{124:1, 240:5, 241:2, 359:1, 490:1}` |
+| Raw effect/finish prefix word counts | `{8:1, 124:5, 125:2, 243:1, 374:1}` |
+| `showAlertEffect = false` | 10 |
+| `alertEffect` default records with 106 raw words | 10 |
+| Empty `launchSound` / `loopSound` / `reachSound` / `hitSound` / `blockSound` / `finishedSound` / `sizzleSound` | 10 each |
+| `sizzleSoundTriggerDistance = 0.0` | 10 |
+| `ringProjectileSoundSmoothFactor = 0.1` | 10 |
+| Data-level `$unparsed` records | 0 |
+| Data-level `$heuristic` records | 0 |
+| Data-level `decodeError` records | 0 |
+
+Current classification: `ProjectileComponentData` now exposes the stable parent-tail alert/sound/scalar suffix while keeping the byte-level tail available. Remaining projectile parent-tail unknowns are the variable effect-list/finish prefix, exact effect-record internals, and non-empty sound layouts.
+## 2026-06-30 Fifty-First Fresh StreamingAssets Core Action/Condition Parent Status Batch
+
+Follow-up after the projectile parent-tail suffix batch. Work focused on reducing
+misleading parent-level `$partial` markers on small action/condition wrappers
+whose own serialized bytes are consumed, while preserving nested
+`TargetSettings` / `SelectorData` partial diagnostics.
+
+Evidence used:
+
+- A read-only action/condition probe confirmed five wrapper classes are fully
+  byte-consumed at the parent level and only depend on nested `TargetSettings`
+  / `SelectorData` partials.
+- A parallel `TargetSettings` probe confirmed no safe nested promotion yet:
+  `postProcessorDataCandidates.lateRidA = -2` and `lateRidB = -2` in all 54
+  observed samples; post-selector raw tails are 53x `(0,0,0,1,0,0,0,0)` and 1x
+  `(0,0,0,1,0,0,1,0)`; no non-empty post-processor RID, non-empty
+  `targetContextKey`, or non-default direction/context variant was observed.
+- `CreateBuffAction/Data` and `CheckBuffStackNumAdvanced/Data` still have local
+  unresolved fields and remain parent-partial.
+
+Implemented in `tools/AnimeStudio/AnimeStudio.CLI/Exporter.cs`:
+
+- Removed unconditional parent `$partial` from the success path for:
+  `CheckObjectTypeMatch/Data`, `CheckMainCharacterCondition/Data`,
+  `CheckTargetsEqual/Data`, `CheckBuffStackNum/Data`, and
+  `CheckBuffStackNumByTag/Data`.
+- Added `observedPayloadStatus` to those five wrappers to state that all parent
+  bytes are consumed and nested objects carry their own partial markers.
+- Left nested `TargetSettings` and `SelectorData` `$partial` markers unchanged.
+- Left `CreateBuffAction/Data` and `CheckBuffStackNumAdvanced/Data` parent
+  `$partial` markers unchanged.
+
+Validation:
+
+```text
+.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
+```
+
+Rebuild result: 0 errors and the same 14 existing AnimeStudio project warnings.
+
+Targeted validation output: `tmp\core_action_condition_parent_status_after_20260630`
+from `68B3B9B8EB82E88FBFE6A313E6B18FB6.chk`.
+
+| Class | Count | Decoded | Parent `$partial` | `observedPayloadStatus` |
+| --- | ---: | ---: | ---: | ---: |
+| `CheckObjectTypeMatch/Data` | 18 | 18 | 0 | 18 |
+| `CheckMainCharacterCondition/Data` | 6 | 6 | 0 | 6 |
+| `CheckTargetsEqual/Data` | 4 | 4 | 0 | 4 |
+| `CheckBuffStackNum/Data` | 3 | 3 | 0 | 3 |
+| `CheckBuffStackNumByTag/Data` | 4 | 4 | 0 | 4 |
+| `CreateBuffAction/Data` | 5 | 5 | 5 | 0 |
+| `CheckBuffStackNumAdvanced/Data` | 3 | 3 | 3 | 0 |
+
+Additional validation metrics:
+
+| Metric | Result |
+| --- | ---: |
+| JSON files parsed | 129,407 |
+| JSON parse errors | 0 |
+| Nested `TargetSettings` partials under the five promoted wrappers | 39 |
+| Nested `SelectorData` partials under the five promoted wrappers | 39 |
+
+Current classification: the five promoted wrapper parents are byte-consumed and
+no longer need parent partial markers. Remaining warnings are nested semantic
+uncertainty in `TargetSettings` and `SelectorData`, plus local unresolved fields
+in `CreateBuffAction/Data` and `CheckBuffStackNumAdvanced/Data`.
+## 2026-06-30 Fifty-Second Fresh StreamingAssets Projectile AlertEffect Boundary Correction Batch
+
+Follow-up after the core action/condition parent-status batch. This pass corrects the prior projectile `structuredRemainingTail` interpretation: the earlier split into `alertEffect`, seven sound strings, and two scalar floats is superseded by broader raw payload evidence.
+
+Evidence used:
+
+- A read-only projectile alert-effect probe checked 300 projectile JSON/raw payload slices.
+- `P_skillalert_circle_*` appears in 24 projectile payloads: `P_skillalert_circle_01` x13 and `P_skillalert_circle_01_02` x11.
+- The raw suffix shape is stable as `showAlertEffect` followed by one bounded `Beyond.Gameplay.EffectActionCfg` alert-effect variant that consumes through the observed tail end.
+- The previous separate sound/scalar suffix interpretation is not supported across the 300 raw payload slices.
+
+Implemented in `tools/AnimeStudio/AnimeStudio.CLI/Exporter.cs`:
+
+- Replaced the fixed default alert record plus decoded sound/scalar suffix with a guarded end-relative alert-effect suffix finder.
+- The structured tail now decodes `showAlertEffect` and a partial `alertEffect` object.
+- The `alertEffect` object field-decodes only `fxType` and `effectName`, then preserves the remaining EffectActionCfg words raw.
+- Removed emitted `launchSound`, `loopSound`, `reachSound`, `hitSound`, `blockSound`, `finishedSound`, `sizzleSound`, `sizzleSoundTriggerDistance`, and `ringProjectileSoundSmoothFactor` from the structured suffix view.
+- Kept `ProjectileComponentData`, `structuredRemainingTail`, and `alertEffect` marked `$partial`.
+
+Validation:
+
+```text
+.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
+```
+
+Final rebuild result after the correction: 0 warnings and 0 errors.
+
+Targeted validation output: `tmp\projectile_alert_effect_validation_after_20260630` using the three existing projectile filter chunks under `tmp\projectile_template_validation_filters`.
+
+| Metric | Result |
+| --- | ---: |
+| `ProjectileComponentData` records | 300 |
+| Structured remaining tails | 295 |
+| Structured remaining tails decoded | 295 |
+| `alertEffect` records | 295 |
+| `alertEffect` records still `$partial` | 295 |
+| `effectName = ""` | 271 |
+| `effectName = "P_skillalert_circle_01"` | 13 |
+| `effectName = "P_skillalert_circle_01_02"` | 11 |
+| Suffix words for empty/default alertEffect | 116 |
+| Suffix words for `P_skillalert_circle_01` | 122 |
+| Suffix words for `P_skillalert_circle_01_02` | 123 |
+| `alertEffect.remainingRawWordCount = 113` | 295 |
+| Separate decoded sound/scalar suffix fields emitted | 0 |
+
+Current classification: the projectile tail end boundary is now represented as `showAlertEffect` plus a bounded partial `EffectActionCfg` alertEffect. This fixes a wrong field split instead of suppressing the warning. Remaining projectile work is the inner EffectActionCfg layout, effect-list assignment before the alert suffix, and locating byte evidence for the metadata sound fields if they are serialized elsewhere or only under unobserved variants.
+## 2026-06-30 Fifty-Third Fresh StreamingAssets Core Wrapper Parent Reason Batch
+
+Follow-up after the projectile alertEffect boundary correction. Work focused on remaining small action/condition wrappers in the same managed-reference family.
+
+Implemented in `tools/AnimeStudio/AnimeStudio.CLI/Exporter.cs`:
+
+- Removed parent `$partial` from byte-consumed `CheckHp/Data`, `CheckTagMatch/Data`, `ModifyDynamicBlackboard/Data`, and `StoreBuffCount/Data` success paths.
+- Added `observedPayloadStatus` for those four wrappers to clarify that nested `TargetSettings` carries its own partial marker.
+- Kept `CreateBuffAction/Data` and `CheckBuffStackNumAdvanced/Data` parent `$partial` markers.
+- Added parent `observedPayloadStatus` and `partialReasons` to `CreateBuffAction/Data` and `CheckBuffStackNumAdvanced/Data` so the remaining warnings point to concrete unresolved fields instead of a generic parent marker.
+
+Validation:
+
+```text
+.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
+```
+
+Rebuild result: 0 errors and the same 14 existing AnimeStudio project warnings.
+
+Focused validation output: `tmp\core_wrapper_parent_reason_validation_after_20260630`.
+
+| Metric | Result |
+| --- | ---: |
+| JSON files parsed | 27 |
+| JSON parse errors | 0 |
+| Data-level `$unparsed` / `$heuristic` / `decodeError` flags | 0 |
+
+| Class | Count | Decoded | Parent `$partial` | `observedPayloadStatus` | Parent `partialReasons` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `CheckHp/Data` | 2 | 2 | 0 | 2 | 0 |
+| `CheckTagMatch/Data` | 2 | 2 | 0 | 2 | 0 |
+| `ModifyDynamicBlackboard/Data` | 2 | 2 | 0 | 2 | 0 |
+| `StoreBuffCount/Data` | 1 | 1 | 0 | 1 | 0 |
+| `CreateBuffAction/Data` | 5 | 5 | 5 | 5 | 5 |
+| `CheckBuffStackNumAdvanced/Data` | 7 | 7 | 7 | 7 | 7 |
+
+Current classification: this does not suppress remaining warnings. It separates byte-consumed wrapper parents from genuinely unresolved parent cases. Remaining high-value parser work is nested `TargetSettings` / `SelectorData`, `CreateBuffAction` non-default list/post-context variants, `CheckBuffStackNumAdvanced` `BuffFindSettings` variants, and projectile effect-list assignment before the alertEffect suffix.

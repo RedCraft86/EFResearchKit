@@ -19,7 +19,7 @@ notepad endfield_paths.bat
 
 For a fresh checkout, edit `endfield_paths.bat` first, then prefer the root
 `setup_first_time.bat` wrapper. It initializes and builds the required external
-tools, runs the installed-game Story/Text Tables export, prints optional
+tools, runs the installed-game Story/Gameplay/Text Tables export, prints optional
 Assets/media and Updates follow-up commands, and starts or reuses the default
 WebUI server. Pass `--no-serve` if the setup should stop after the build/export
 steps.
@@ -30,12 +30,13 @@ The root wrappers load `endfield_paths.bat` before parsing arguments. It sets
 `--game-root`, `--previous-export-root`, and `--export-root` still take
 precedence for one-off commands.
 
-`export.bat` is the normal Story/Text Tables WebUI rebuild path from an existing
+`export.bat` is the normal Story, Gameplay, and Text Tables WebUI rebuild path from an existing
 `export_full/`. It runs:
 
 - `scripts/verify_export_freshness.py`
 - `scripts/story_builder/refresh_evidence.py`
 - `scripts/story_builder/build.py --languages CN --default-language CN --skip-audio-link`
+- `scripts/build_gameplay_data.py --languages CN --default-language CN`
 
 The freshness verifier uses a fast non-empty check for required generated output
 folders by default; pass `--full-output-counts` directly to
@@ -45,7 +46,7 @@ bindings, and story source-link refresh in parallel before the Story builder
 loads those generated files.
 
 Pass `--export-from-game` when you explicitly want to refresh `export_full/`
-from installed game data before rebuilding Story/Text Tables data. Pass
+from installed game data before rebuilding Story/Gameplay/Text Tables data. Pass
 `--with-assets` to also run the asset index builder and CN audio relinker after
 Story is rebuilt. When `--export-from-game` and `--with-assets` are combined,
 the wrapper runs one AnimeStudio Story+asset export so the source scan, maps
@@ -274,22 +275,46 @@ Expected active inputs and outputs:
   default, or the broad Assets browser index and optional demo bundle zips with
   `--mode full`. It is run by `..\export_assets.bat` and by
   `..\export.bat --with-assets`, not the story-only `..\export.bat`.
-- `build_data_index.py`: builds the local-only Data tab index from
-  `export_full/structured/StreamingAssets/Data` by default. It writes
-  lazy-loaded shards under `webui/data/game_data/`, splits JSON entries by
-  clear directory structure before falling back to filename prefixes, parses
-  real text JSON, identifies known MemoryPack binary `.json` families with
-  IL2CPP-recovered top-level field names, decodes stable `LipSync` and
-  `LevelScriptData` preview facts, skips `.pck` audio packages, includes Data
-  video/media files as raw records, and classifies `.bytes`, `.ab`, and `.bin`
-  files by signature/header without copying the raw Data tree. The Assets tab
-  owns richer asset browsing and previews.
+- `build_gameplay_data.py`: builds the compact Gameplay tab payload under
+  `webui/data/lang/<LANG>/gameplay/index.json` from structured tables such as
+  `WeaponBasicTable`, `WeaponUpgradeTemplate*`, `WeaponBreakThroughTemplateTable`,
+  `WeaponTalentTemplateTable`, `ItemTable`, `CharacterTable`, `CharGrowthTable`,
+  `CharLevelUpTable`, `CharBreak*`, `CharacterPotentialTable`, `SkillPatchTable`,
+  and talent/profession/type lookup tables. It resolves localized display names,
+  default weapon links, skill blackboard values, level-up costs, weapon upgrade
+  checkpoints, weapon base-ATK stat checkpoints, breakthrough material costs,
+  character break-stage caps, capped character stat checkpoints from
+  `CharacterTable.attributes`, character breakthrough costs, and potential unlock
+  effects. It is run by `..\export.bat` after the Story builder and can be run
+  directly for extra languages with `--languages CN EN JP --default-language CN`.
+- `build_data_index.py`: builds a legacy local decoded-config index from final
+  decoded config files under `export_full/structured/StreamingAssets/Data/Json`
+  and `export_full/structured/Persistent/Data/Json` by default. It writes
+  lazy-loaded shards under `webui/data/game_data/`, splits
+  JSON entries by clear directory structure before falling back to filename
+  prefixes, parses real text JSON, identifies known MemoryPack binary `.json`
+  families with IL2CPP-recovered top-level field names, and decodes stable
+  `LipSync` and `LevelScriptData` preview facts. Raw `.ab` bundles, packed
+  audio, video/media, streaming, irradiance, and extend-data payloads are
+  intentionally excluded; the Assets/export tooling owns richer media and asset
+  browsing. The current WebUI no longer loads this as a tab.
+- `build_decoded_index.py`: builds a legacy local AnimeStudio decoded JSON index from
+  AnimeStudio JSON outputs under
+  `export_full/recovered/AnimeStudio-cli/<source>/json_by_type/`. It defaults to
+  MonoBehaviour, writes lazy-loaded shards under `webui/data/decoded/`, groups
+  entries by semantic domain and schema signal, splits only oversized
+  semantic/schema groups into balanced lazy-loaded parts, records `$animestudio`
+  metadata, decode status markers, managed-reference classes/layouts, semantic
+  meaning/tags, schema/field-set IDs, and links raw previews back to
+  `export_full/` without copying decoded files. The current WebUI no longer loads this as a tab.
 - `build_audio.py`: decodes audio via AnimeStudio CLI, stores shared
   SFX/music once under `export_full/structured/Audio/shared/`, indexes
   language voice files under `export_full/structured/Audio/<LANG>/`, parses Wwise bank
   event-to-media links, and post-processes generated conversation JSON so
   dialog/cutscene lines and recoverable cutscene audio events can render native
-  browser audio controls.
+  browser audio controls. It accepts scalar or list-valued audio path fields
+  (`audioPath`, `audioPaths`, `audioDialogPath`, `audioDialogPaths`) from Story
+  payloads and their `_debug.source` blocks.
 - `hash_export_pngs.py`: hashes every `.png` file under `..\export_full\` with
   parallel readers and writes `path,hash` CSV rows to
   `..\reports\export_full_png_hashes.csv` by default.
@@ -301,10 +326,11 @@ Expected active inputs and outputs:
   demo bundle helpers used by `build_assets.py` and the Updates builder.
 - `pack_webui.py`: packages split shareable WebUI zips from
   `serve.py`, `..\webui\`, and displayed media files under `..\export_full\`.
-  The primary zip is story/code/emoji, including the full
-  `envEmoji_common_*` prefab layer sprite set; the companion assets zip carries
-  larger images and videos; the standalone audio zip carries decoded story
-  audio.
+  The primary zip is story/gameplay/reference code/data plus emoji, including
+  the full `envEmoji_common_*` prefab layer sprite set; the companion assets zip
+  carries larger images and videos; the standalone audio zip carries decoded
+  story audio. Legacy local index folders are excluded by default because
+  they point back to the local export tree.
 - `download_bilibili_video.py`: optional gameplay-video intake helper for the
   OCR/audio story-order workflow. It downloads Bilibili pages into the flat
   `..\videos\` folder using browser-exported cookies, resumable `.m4s` parts,
@@ -398,6 +424,11 @@ These are kept because the WebUI story builders import or use them:
   It reports missing override stems/targets, missing `audioFrom` source keys,
   stale attach/suppress rules, filename-only attachment candidates, and
   unresolved video candidate keys.
+- `story_recovery/build_option_override_coverage_audit.py` validates
+  current `inferredOptionLayout` and `inferredOptionResponse` warning records
+  against `webui/overrides/options.json`. It writes
+  `reports/option_override_coverage_<LANG>.json` / `.md` and distinguishes
+  raw recovery uncertainty from manual WebUI display coverage.
 - `webui/overrides/options.json` is a runtime WebUI-only manual
   override file for known option recovery gaps. It can pin option groups with
   `positions.after.<lineId>: ["<group>"]` or `positions.pre`, and can map

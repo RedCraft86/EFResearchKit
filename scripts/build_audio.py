@@ -1761,16 +1761,27 @@ def run_audio_dumper(
             )
     return source_by_rel
 
+def append_audio_id_candidate(ids: list[str], seen: set[str], value: object) -> None:
+    if isinstance(value, (list, tuple, set)):
+        for item in value:
+            append_audio_id_candidate(ids, seen, item)
+        return
+    audio_id = audio_id_from_path(str(value or "").strip())
+    if audio_id and audio_id not in seen:
+        seen.add(audio_id)
+        ids.append(audio_id)
+
+
 def line_audio_ids(line: dict[str, Any]) -> list[str]:
     ids: list[str] = []
     seen: set[str] = set()
-    for field in ("voice", "audio"):
-        audio_id = str(line.get(field) or "").strip().lower()
-        if audio_id and audio_id not in seen:
-            seen.add(audio_id)
-            ids.append(audio_id)
+    for field in ("voice", "audio", "voId", "audioId", "audioPath", "audioPaths", "audioDialogPath", "audioDialogPaths"):
+        append_audio_id_candidate(ids, seen, line.get(field))
+    debug = line.get("_debug") if isinstance(line.get("_debug"), dict) else {}
+    source = debug.get("source") if isinstance(debug.get("source"), dict) else {}
+    for field in ("voId", "audioOverride", "audio", "audioId", "audioPath", "audioPaths", "audioDialogPath", "audioDialogPaths"):
+        append_audio_id_candidate(ids, seen, source.get(field))
     return ids
-
 
 def attach_audio_to_line(line: dict[str, Any], audio_entry: dict[str, Any]) -> bool:
     changed = False

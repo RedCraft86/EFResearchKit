@@ -6571,11 +6571,12 @@ def build_language_bundle(
                 },
             })
         for voice in sorted(profile_voice, key=lambda item: (int(item.get("voiceIndex") or 0), str(item.get("id") or ""))):
+            voice_id = str(voice.get("voId") or "").strip()
             voice_text = t((voice.get("voiceDesc") or {}).get("id"))
-            if not voice_text:
+            if not voice_text and not voice_id:
                 continue
-            voice_title = brace_text(t((voice.get("voiceTitle") or {}).get("id"))) or str(voice.get("voId") or voice.get("id") or "")
-            lines.append({
+            voice_title = brace_text(t((voice.get("voiceTitle") or {}).get("id"))) or str(voice_id or voice.get("id") or "")
+            line = {
                 "id": str(voice.get("id") or voice.get("voId") or f"{char_id}_voice"),
                 "aid": actor_id,
                 "actor": char_name,
@@ -6593,7 +6594,10 @@ def build_language_bundle(
                         "text": text_trace("CharacterTable.profileVoice", str(voice.get("id") or char_id), "voiceDesc", voice.get("voiceDesc")),
                     },
                 },
-            })
+            }
+            if voice_id:
+                line["voice"] = voice_id
+            lines.append(line)
         if not lines:
             continue
         out_key = f"wiki_{char_id}"
@@ -8292,20 +8296,32 @@ def build_language_bundle(
                         }
         audio_payload = collection_table_payload(table_source, "AudioDialog.json")
         for row_id, audio_row in sorted(audio_payload.items(), key=lambda item: str(item[0])):
-            if row_id in refs:
-                continue
             if not isinstance(audio_row, dict):
                 continue
+            row_key = str(row_id)
+            audio_path = str(audio_row.get("path") or "")
             speaker_id = str(audio_row.get("speakerChannel") or "")
             actor_id = speaker_actor_id(speaker_id)
+            speaker_name = speaker_display_name(speaker_id) or actor_id or speaker_id
+            current = refs.get(row_key)
+            if current:
+                if audio_path:
+                    current["audioPath"] = audio_path
+                if speaker_id and not current.get("speakerId"):
+                    current["speakerId"] = speaker_id
+                if actor_id and not current.get("actorId"):
+                    current["actorId"] = actor_id
+                if speaker_name and not current.get("speakerName"):
+                    current["speakerName"] = speaker_name
+                continue
             if not actor_id:
                 continue
-            refs[str(row_id)] = {
+            refs[row_key] = {
                 "actorId": actor_id,
                 "speakerId": speaker_id,
-                "speakerName": speaker_display_name(speaker_id) or actor_id or speaker_id,
+                "speakerName": speaker_name,
                 "source": "AudioDialog",
-                "audioPath": str(audio_row.get("path") or ""),
+                "audioPath": audio_path,
             }
         ai_bark_reference_cache[table_source] = refs
         return refs
@@ -9247,6 +9263,7 @@ def build_language_bundle(
                 hint_bits.append("Audio fallback")
             if len(line_info["responseIds"]) > 1:
                 hint_bits.append(f"Responses: {len(line_info['responseIds'])}")
+            audio_paths = sorted(line_info["audioPaths"])
             line = {
                 "id": line_info["id"],
                 "aid": actor_id,
@@ -9260,7 +9277,7 @@ def build_language_bundle(
                         "setIds": set_ids,
                         "triggerKeys": trigger_keys,
                         "responseIds": responsive_sort_values(line_info["responseIds"]),
-                        "audioPaths": sorted(line_info["audioPaths"]),
+                        "audioPaths": audio_paths,
                         "refs": line_info["sourceRefs"],
                     },
                     "fields": {
@@ -9268,6 +9285,10 @@ def build_language_bundle(
                     },
                 },
             }
+            if audio_paths:
+                line["audioPaths"] = audio_paths
+                if len(audio_paths) == 1:
+                    line["audioPath"] = audio_paths[0]
             if hint_bits:
                 line["hint"] = " | ".join(hint_bits)
             lines.append(line)

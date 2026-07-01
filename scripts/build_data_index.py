@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Build the WebUI game-data browser index.
 
-The input is an installed/exported StreamingAssets/Data tree. The browser loads
-the generated index lazily by logical group, with Json split by category and
-folded by directory structure before filename prefix, while raw file previews
-are served from the local export by serve.py.
+The input is installed/exported StreamingAssets/Data and Persistent/Data trees, but the WebUI
+Data tab indexes only final decoded config files under Data/Json. Raw bundle,
+packed audio, video/media, streaming, irradiance, and extend-data payloads are
+left to the dedicated export/asset tooling instead of being listed here.
 """
 from __future__ import annotations
 
@@ -33,13 +33,26 @@ from story_builder.levelscript_binary import (
 
 DEFAULT_EXPORT_ROOT = ROOT / "export_full"
 DEFAULT_DATA_REL = Path("structured") / "StreamingAssets" / "Data"
+DEFAULT_DATA_SOURCE_RELS = (
+    ("StreamingAssets", Path("structured") / "StreamingAssets" / "Data"),
+    ("Persistent", Path("structured") / "Persistent" / "Data"),
+)
 GAME_DATA_DIR = OUT_DIR / "game_data"
 HEADER_BYTES = 1024
 STRING_SAMPLE_LIMIT = 8
 STRING_SAMPLE_MAX_CHARS = 360
-EXCLUDED_EXTENSIONS: set[str] = set()
-EXCLUDED_GROUPS: set[str] = set()
 VIDEO_EXTENSIONS = {"mp4", "webm", "mov", "usm"}
+INDEXED_GROUPS = {"Json"}
+RAW_CONTAINER_GROUPS = {
+    "Audio",
+    "Bundles",
+    "DynamicStreaming",
+    "ExtendData",
+    "IrradianceVolume",
+    "Streaming",
+    "Video",
+}
+RAW_CONTAINER_EXTENSIONS = {"ab", "bin", "bytes", "bundle", "hgmmap", "pck", *VIDEO_EXTENSIONS}
 PREFIX_GROUP_ROOTS = {"Json"}
 AUTO_LOAD_ALL_FILE_LIMIT = 120_000
 BUNDLE_MAIN_SHARD_CHARS = 1
@@ -773,18 +786,18 @@ TRAILING_VARIANT_TOKEN_RE = re.compile(r"^\d+[A-Za-z]?$")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build WebUI indexes for StreamingAssets/Data.")
+    parser = argparse.ArgumentParser(description="Build WebUI indexes for decoded StreamingAssets/Persistent Data JSON files.")
     parser.add_argument(
         "--export-root",
         type=Path,
         default=DEFAULT_EXPORT_ROOT,
-        help=f"Export root that contains structured/StreamingAssets/Data. Default: {DEFAULT_EXPORT_ROOT}",
+        help=f"Export root that contains structured/{{StreamingAssets,Persistent}}/Data. Default: {DEFAULT_EXPORT_ROOT}",
     )
     parser.add_argument(
         "--data-root",
         type=Path,
         default=None,
-        help="Data root to scan. Overrides --export-root/structured/StreamingAssets/Data.",
+        help="Single Data root to scan. Overrides the default StreamingAssets + Persistent merge.",
     )
     parser.add_argument(
         "--output",
@@ -796,7 +809,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--groups",
         nargs="*",
         default=None,
-        help="Optional top-level Data groups to scan, e.g. Json Bundles.",
+        help="Optional top-level decoded Data groups to scan. Defaults to Json; raw container/media groups are ignored.",
     )
     return parser.parse_args(argv)
 
@@ -907,7 +920,12 @@ def ext_label(path: Path) -> str:
 
 def should_index_path(path: Path, data_root: Path) -> bool:
     rel = rel_to_data_root(path, data_root)
-    return first_group(rel) not in EXCLUDED_GROUPS and ext_label(path) not in EXCLUDED_EXTENSIONS
+    group = first_group(rel)
+    if group not in INDEXED_GROUPS:
+        return False
+    if ext_label(path) in RAW_CONTAINER_EXTENSIONS:
+        return False
+    return True
 
 
 def hex_signature(data: bytes, length: int = 8) -> str:
@@ -2243,6 +2261,2590 @@ def read_buff_gameplay_tag_field(
     }, offset
 
 
+def read_buff_trigger_interval_bool_tail_exact(
+    data: bytes,
+    offset: int,
+) -> tuple[dict[str, Any], bool, bool, int]:
+    trigger_interval, offset = read_buff_blackboard_float_field(
+        data,
+        offset,
+        "triggerInterval",
+    )
+    use_time_dilation_dt, offset = read_buff_bool_field(
+        data,
+        offset,
+        "useTimeDilationDt",
+    )
+    wait_first_trigger_interval, offset = read_buff_bool_field(
+        data,
+        offset,
+        "waitFirstTriggerInterval",
+    )
+    if offset != len(data):
+        raise ValueError(f"tail-not-exact={format_offset(offset)}")
+    return trigger_interval, use_time_dilation_dt, wait_first_trigger_interval, offset
+
+
+def read_buff_member1_empty_tag_field(
+    data: bytes,
+    offset: int,
+    field_name: str,
+) -> tuple[dict[str, Any], int]:
+    start = offset
+    end = offset + 9
+    if end > len(data):
+        raise ValueError(f"{field_name}:truncated-member1-empty-payload")
+    member_count = data[offset]
+    if member_count != 1:
+        raise ValueError(f"{field_name}:member-count={member_count}")
+    if data[offset + 1:end] != b"\x00" * 8:
+        raise ValueError(f"{field_name}:member1-nonzero-empty-payload")
+    return {
+        "memberCount": member_count,
+        "offset": format_offset(start),
+        "branch": "member1-empty-payload",
+        "branchNote": "single observed member-count-1 tag payload carries two zero u32 values before triggerInterval",
+        "tagId": 0,
+        "tagName": "",
+    }, end
+
+
+BUFF_ABILITY_ACTION_TAG_SOURCE_NOTE = (
+    "AbilityActionData union tags recovered from MemoryPack.Beyond formatter cctors with "
+    "GameAssembly CodeRegistration 0x18C439740; table is contiguous 0x0000..0x0165. "
+    "This compact map includes tags observed as first actions in current BuffData timelineActions."
+)
+BUFF_ABILITY_ACTION_TAG_NAMES = {
+    0x0002: "Core_AbilityActions_FinishBuffAction_Data",
+    0x0008: "Core_AddDynamicCcsAction_AddDynamicCcsActionData",
+    0x000b: "Core_AddTagAction_Data",
+    0x0015: "Core_AuraAction_Data",
+    0x0019: "Core_BlowOffCharacterAction_Data",
+    0x0020: "Core_CameraImpulseAction_CameraImpulseActionData",
+    0x002a: "Core_ChannelingAction_Data",
+    0x002f: "Core_CharHurtAnimAction_Data",
+    0x0036: "Core_CheckBuffStackNumAdvanced_Data",
+    0x0047: "Core_CompareFloat_Data",
+    0x004f: "Core_Conditions_CheckBuffStackNum_Data",
+    0x007c: "Core_ContinuousFindTargetAction_Data",
+    0x007e: "Core_ConvertToTargetContext_Data",
+    0x0082: "Core_CreateBuffAction_Data",
+    0x0089: "Core_CustomRootMotionAction_Data",
+    0x008a: "Core_DamageAction_DamageActionData",
+    0x008b: "Core_DebugPrintAction_Data",
+    0x0091: "Core_EffectAction_EffectActionData",
+    0x009f: "Core_FindTargetAction_FindTargetActionData",
+    0x00a1: "Core_FinishBuffAdvanced_Data",
+    0x00a3: "Core_FinishOwnerAction_Data",
+    0x00ac: "Core_GetAITransDataAction_Data",
+    0x00b2: "Core_HitStopAction_Data",
+    0x00b4: "Core_IfElseAction_IfElseActionData",
+    0x00bf: "Core_InterruptAction_Data",
+    0x00c8: "Core_LaunchProjectile_Data",
+    0x00ca: "Core_LockCameraAimAction_LockCameraAimActionData",
+    0x00d1: "Core_ModifyDynamicBlackboard_Data",
+    0x00db: "Core_MoveToAction_Data",
+    0x00e9: "Core_OverrideCameraFollowAction_OverrideCameraFollowActionData",
+    0x00ef: "Core_PatrolTeleport_Data",
+    0x00f8: "Core_PlayAnimationAction_PlayAnimationActionData",
+    0x00fc: "Core_PlaySoundAction_PlaySoundActionData",
+    0x00fe: "Core_PullAction_Data",
+    0x0108: "Core_RecoverFromPoiseBreak_Data",
+    0x010a: "Core_RecoverPoiseAction_Data",
+    0x011e: "Core_SelfRotateAction_Data",
+    0x011f: "Core_SendBattleSignalToLevel_Data",
+    0x0133: "Core_ShowComboRingQte_Data",
+    0x0135: "Core_ShowHideActorAction_ShowHideActorData",
+    0x013d: "Core_SpawnAbilityEntity_Data",
+    0x013e: "Core_SpawnEnemyAction_Data",
+    0x0140: "Core_SpellInfliction_Data",
+    0x014d: "Core_TeleportAction_Data",
+    0x0152: "Core_TickIntervalAction_Data",
+    0x0154: "Core_TimeDilationAction_Data",
+}
+BUFF_ABILITY_ACTION_TAG_MEMBER_COUNTS = {
+    0x0002: 12,
+    0x0008: 49,
+    0x000b: 8,
+    0x0015: 23,
+    0x0019: 15,
+    0x0020: 12,
+    0x002a: 10,
+    0x002f: 15,
+    0x0036: 10,
+    0x0047: 7,
+    0x004f: 8,
+    0x007c: 19,
+    0x007e: 12,
+    0x0082: 17,
+    0x0089: 23,
+    0x008a: 11,
+    0x008b: 8,
+    0x0091: 15,
+    0x009f: 18,
+    0x00a1: 13,
+    0x00a3: 6,
+    0x00ac: 6,
+    0x00b2: 12,
+    0x00b4: 8,
+    0x00bf: 8,
+    0x00c8: 34,
+    0x00ca: 54,
+    0x00d1: 10,
+    0x00db: 42,
+    0x00e9: 12,
+    0x00ef: 6,
+    0x00f8: 12,
+    0x00fc: 22,
+    0x00fe: 17,
+    0x0108: 5,
+    0x010a: 11,
+    0x011e: 18,
+    0x011f: 6,
+    0x0133: 8,
+    0x0135: 10,
+    0x013d: 37,
+    0x013e: 15,
+    0x0140: 8,
+    0x014d: 13,
+    0x0152: 9,
+    0x0154: 16,
+}
+BUFF_OPAQUE_TIMELINE_ACTION_BODY_MAX_BYTES = 256 * 1024
+
+
+def read_buff_timeline_force_sync_anim_data(
+    data: bytes,
+    offset: int,
+    limit: int,
+    field_name: str,
+) -> tuple[dict[str, Any], int]:
+    start = offset
+    if offset >= limit:
+        raise ValueError(f"{field_name}:truncated-member-count")
+    member_count = data[offset]
+    offset += 1
+    if member_count != 4:
+        raise ValueError(f"{field_name}:member-count={member_count}")
+    force_sync, offset = read_buff_bool_field(data, offset, f"{field_name}.forceSync")
+    montage_name, offset, error = read_memorypack_utf8_string(data, offset, max_length=512)
+    if error:
+        raise ValueError(f"{field_name}.montageName:{error}")
+    if offset + 8 > limit:
+        raise ValueError(f"{field_name}:truncated-tail")
+    playback_speed = struct.unpack_from("<f", data, offset)[0]
+    offset += 4
+    if not math.isfinite(playback_speed):
+        raise ValueError(f"{field_name}.playbackSpeed:non-finite")
+    target_frame = struct.unpack_from("<i", data, offset)[0]
+    offset += 4
+    if abs(target_frame) > 1_000_000:
+        raise ValueError(f"{field_name}.targetFrame:implausible={target_frame}")
+    return {
+        "memberCount": member_count,
+        "offset": format_offset(start),
+        "bytes": offset - start,
+        "forceSync": force_sync,
+        "montageName": montage_name or "",
+        "playbackSpeed": round(playback_speed, 6),
+        "targetFrame": target_frame,
+    }, offset
+
+
+def read_buff_timeline_first_union_tag(
+    data: bytes,
+    offset: int,
+    limit: int,
+) -> tuple[int | None, int, str]:
+    if offset >= limit:
+        return None, 0, ""
+    if data[offset] == MEMORYPACK_UNION_WIDE_TAG:
+        if offset + 3 > limit:
+            return None, 0, ""
+        return struct.unpack_from("<H", data, offset + 1)[0], 3, data[offset:offset + 3].hex(" ")
+    return data[offset], 1, data[offset:offset + 1].hex(" ")
+
+
+
+BUFF_CONVERT_TO_TARGET_CONTEXT_ACTION_TAG = 0x007e
+BUFF_CREATE_BUFF_ACTION_TAG = 0x0082
+BUFF_MODIFY_DYNAMIC_BLACKBOARD_ACTION_TAG = 0x00d1
+BUFF_DEBUG_PRINT_ACTION_TAG = 0x008b
+BUFF_EFFECT_ACTION_TAG = 0x0091
+BUFF_SEND_BATTLE_SIGNAL_TO_LEVEL_TAG = 0x011f
+BUFF_PLAY_SOUND_ACTION_TAG = 0x00fc
+BUFF_PATROL_TELEPORT_ACTION_TAG = 0x00ef
+BUFF_PLAY_ANIMATION_ACTION_TAG = 0x00f8
+BUFF_PLAY_SOUND_TIME_DILATION_TAIL_BYTES = 26
+BUFF_TARGET_SETTINGS_ENVELOPE_BASE_BYTES = 67
+BUFF_TARGET_SETTINGS_STRING_SLOT_OFFSET = 59
+BUFF_TARGET_SETTINGS_STRING_SLOT_MAX_BYTES = 128
+BUFF_CONVERT_TO_TARGET_CONTEXT_TARGET_SETTINGS_BYTES = 67
+BUFF_EFFECT_ACTION_CFG_MIN_BYTES = 256
+BUFF_CREATE_BUFF_ICON_DURATION_SOURCE_BYTES = 9
+BUFF_CREATE_BUFF_INPUT_TAIL_BYTES = 5
+BUFF_CREATE_BUFF_MAX_BUFF_IDS = 16
+BUFF_MODIFY_DYNAMIC_BLACKBOARD_OPERATION_NAMES = {
+    0: "Assign",
+    1: "Add",
+    2: "Multiply",
+    3: "Divide",
+}
+
+def read_buff_i32_field(data: bytes, offset: int, field_name: str) -> tuple[int, int]:
+    if offset + 4 > len(data):
+        raise ValueError(f"{field_name}:truncated-i32")
+    return struct.unpack_from("<i", data, offset)[0], offset + 4
+
+
+def read_buff_f32_field(data: bytes, offset: int, field_name: str) -> tuple[float, int]:
+    if offset + 4 > len(data):
+        raise ValueError(f"{field_name}:truncated-f32")
+    value = struct.unpack_from("<f", data, offset)[0]
+    if not math.isfinite(value):
+        raise ValueError(f"{field_name}:non-finite")
+    return value, offset + 4
+
+
+def read_buff_memorypack_utf8_string_strict(
+    data: bytes,
+    offset: int,
+    field_name: str,
+    *,
+    max_length: int = 512,
+) -> tuple[str | None, int]:
+    if offset + 4 > len(data):
+        raise ValueError(f"{field_name}:truncated-length")
+    length = struct.unpack_from("<I", data, offset)[0]
+    offset += 4
+    if length == MEMORYPACK_NULL_COUNT:
+        return None, offset
+    if length > max_length or offset + length > len(data):
+        raise ValueError(f"{field_name}:invalid-length={length}")
+    raw = data[offset:offset + length]
+    try:
+        value = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{field_name}:invalid-utf8") from exc
+    if any(ord(ch) < 32 for ch in value):
+        raise ValueError(f"{field_name}:control-char")
+    return value, offset + length
+
+
+def read_buff_memorypack_utf8_string_strict_bounded(
+    data: bytes,
+    offset: int,
+    limit: int,
+    field_name: str,
+    *,
+    max_length: int = 512,
+) -> tuple[str | None, int]:
+    if offset + 4 > limit:
+        raise ValueError(f"{field_name}:truncated-length")
+    length = struct.unpack_from("<I", data, offset)[0]
+    offset += 4
+    if length == MEMORYPACK_NULL_COUNT:
+        return None, offset
+    if length > max_length or offset + length > limit:
+        raise ValueError(f"{field_name}:invalid-length={length}")
+    raw = data[offset:offset + length]
+    try:
+        value = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{field_name}:invalid-utf8") from exc
+    if any(ord(ch) < 32 for ch in value):
+        raise ValueError(f"{field_name}:control-char")
+    return value, offset + length
+
+
+def read_buff_blackboard_float_raw_field_exact(
+    data: bytes,
+    offset: int,
+    field_name: str,
+) -> tuple[dict[str, Any], int]:
+    start = offset
+    if offset >= len(data):
+        raise ValueError(f"{field_name}:truncated-member-count")
+    member_count = data[offset]
+    offset += 1
+    if member_count != 3:
+        raise ValueError(f"{field_name}:member-count={member_count}")
+    key, offset = read_buff_memorypack_utf8_string_strict(
+        data,
+        offset,
+        f"{field_name}.blackboardKey",
+        max_length=256,
+    )
+    use_blackboard_key, offset = read_buff_bool_field(data, offset, f"{field_name}.useBlackboardKey")
+    if offset + 4 > len(data):
+        raise ValueError(f"{field_name}.value:truncated-f32")
+    raw_u32 = struct.unpack_from("<I", data, offset)[0]
+    value = struct.unpack_from("<f", data, offset)[0]
+    offset += 4
+    if not math.isfinite(value):
+        raise ValueError(f"{field_name}.value:non-finite")
+    return {
+        "memberCount": member_count,
+        "offset": format_offset(start),
+        "blackboardKey": key or "",
+        "useBlackboardKey": use_blackboard_key,
+        "serializedValueType": "System.Single",
+        "rawValueU32": f"0x{raw_u32:08x}",
+        "value": round(value, 6),
+    }, offset
+
+
+def read_buff_blackboard_vector3_field_exact(
+    data: bytes,
+    offset: int,
+    field_name: str,
+) -> tuple[dict[str, Any], int]:
+    start = offset
+    if offset >= len(data):
+        raise ValueError(f"{field_name}:truncated-member-count")
+    member_count = data[offset]
+    offset += 1
+    if member_count != 3:
+        raise ValueError(f"{field_name}:member-count={member_count}")
+    x, offset = read_buff_blackboard_float_raw_field_exact(data, offset, f"{field_name}.x")
+    y, offset = read_buff_blackboard_float_raw_field_exact(data, offset, f"{field_name}.y")
+    z, offset = read_buff_blackboard_float_raw_field_exact(data, offset, f"{field_name}.z")
+    return {
+        "memberCount": member_count,
+        "offset": format_offset(start),
+        "bytes": offset - start,
+        "x": x,
+        "y": y,
+        "z": z,
+        "value": [x["value"], y["value"], z["value"]],
+    }, offset
+
+
+def read_buff_blackboard_string_field_exact(
+    data: bytes,
+    offset: int,
+    field_name: str,
+) -> tuple[dict[str, Any], int]:
+    start = offset
+    if offset >= len(data):
+        raise ValueError(f"{field_name}:truncated-member-count")
+    member_count = data[offset]
+    offset += 1
+    if member_count != 3:
+        raise ValueError(f"{field_name}:member-count={member_count}")
+    key, offset = read_buff_memorypack_utf8_string_strict(
+        data,
+        offset,
+        f"{field_name}.blackboardKey",
+        max_length=256,
+    )
+    use_blackboard_key, offset = read_buff_bool_field(data, offset, f"{field_name}.useBlackboardKey")
+    value, offset = read_buff_memorypack_utf8_string_strict(
+        data,
+        offset,
+        f"{field_name}.value",
+        max_length=512,
+    )
+    return {
+        "memberCount": member_count,
+        "offset": format_offset(start),
+        "blackboardKey": key or "",
+        "useBlackboardKey": use_blackboard_key,
+        "value": value or "",
+    }, offset
+
+
+def read_buff_ability_action_common_prefix_exact(
+    data: bytes,
+    offset: int,
+    field_name: str,
+) -> tuple[dict[str, Any], int]:
+    start = offset
+    is_enable, offset = read_buff_bool_field(data, offset, f"{field_name}.isEnable")
+    priority_level, offset = read_buff_i32_field(data, offset, f"{field_name}.priorityLevel")
+    priority_offset, offset = read_buff_i32_field(data, offset, f"{field_name}.priorityOffset")
+    server_action_index, offset = read_buff_i32_field(data, offset, f"{field_name}.serverActionIndex")
+    for name, value in (
+        ("priorityLevel", priority_level),
+        ("priorityOffset", priority_offset),
+        ("serverActionIndex", server_action_index),
+    ):
+        if abs(value) > 1_000_000:
+            raise ValueError(f"{field_name}.{name}:implausible={value}")
+    return {
+        "offset": format_offset(start),
+        "bytes": offset - start,
+        "isEnable": is_enable,
+        "priorityLevel": priority_level,
+        "priorityOffset": priority_offset,
+        "serverActionIndex": server_action_index,
+    }, offset
+
+
+def validate_buff_nonnegative_ms(value: int, field_name: str, *, max_value: int = 600_000) -> None:
+    if value < 0 or value > max_value:
+        raise ValueError(f"{field_name}:ms-out-of-range={value}")
+
+
+def buff_target_settings_envelope_limit(
+    data: bytes,
+    offset: int,
+    max_limit: int,
+    field_name: str,
+) -> int:
+    base_end = offset + BUFF_TARGET_SETTINGS_ENVELOPE_BASE_BYTES
+    string_length_offset = offset + BUFF_TARGET_SETTINGS_STRING_SLOT_OFFSET
+    if base_end > max_limit or string_length_offset + 4 > max_limit:
+        raise ValueError(f"{field_name}:truncated-envelope")
+    string_length = struct.unpack_from("<I", data, string_length_offset)[0]
+    if string_length > BUFF_TARGET_SETTINGS_STRING_SLOT_MAX_BYTES:
+        raise ValueError(f"{field_name}:string-slot-length={string_length}")
+    limit = base_end + string_length
+    if limit > max_limit:
+        raise ValueError(f"{field_name}:envelope-limit={format_offset(limit)} max={format_offset(max_limit)}")
+    return limit
+
+
+def read_buff_target_settings_partial(
+    data: bytes,
+    offset: int,
+    limit: int,
+    field_name: str,
+    *,
+    allowed_tail_u32s: tuple[int, ...] = (1, 4),
+) -> tuple[dict[str, Any], int]:
+    if limit < offset:
+        raise ValueError(f"{field_name}:invalid-bounds")
+    expected_limit = buff_target_settings_envelope_limit(data, offset, limit, field_name)
+    if expected_limit != limit:
+        raise ValueError(
+            f"{field_name}:unexpected-bytes={limit - offset} expected={expected_limit - offset}"
+        )
+    raw = data[offset:limit]
+    byte_length = len(raw)
+    stable_prefix = bytes.fromhex("0d 08 01 00 00 00 00 00 00 ff 00 00 00 00 ff 00")
+    if not raw.startswith(stable_prefix):
+        raise ValueError(f"{field_name}:unexpected-prefix={raw[:16].hex(' ')}")
+    string_slot_offset = BUFF_TARGET_SETTINGS_STRING_SLOT_OFFSET
+    string_length = struct.unpack_from("<I", raw, string_slot_offset)[0]
+    string_start = string_slot_offset + 4
+    string_end = string_start + string_length
+    string_value = ""
+    if string_length:
+        try:
+            string_value = raw[string_start:string_end].decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"{field_name}:string-slot-invalid-utf8") from exc
+        if any(ord(ch) < 32 for ch in string_value):
+            raise ValueError(f"{field_name}:string-slot-control-char")
+    string_hits = scan_length_prefixed_utf8_string_hits(
+        raw,
+        start=0,
+        max_scan_bytes=byte_length,
+        max_samples=4,
+        max_length=128,
+    )
+    tail_u32 = struct.unpack_from("<I", raw, byte_length - 4)[0]
+    if tail_u32 not in allowed_tail_u32s:
+        raise ValueError(f"{field_name}:tail-u32={tail_u32}")
+    return {
+        "status": "partial",
+        "semanticStatus": "partial-target-settings-envelope-opaque",
+        "offset": format_offset(offset),
+        "bytes": byte_length,
+        "shape": "string-slot" if string_length else "no-string-slot",
+        "memberCountCandidate": raw[0],
+        "envelopeHeaderRaw": raw[:16].hex(" "),
+        "stringSlotOffset": format_offset(offset + string_slot_offset),
+        "stringSlotLength": string_length,
+        "stringSlotValue": string_value,
+        "tailU32Candidate": tail_u32,
+        "allowedTailU32Candidates": list(allowed_tail_u32s),
+        "tailRaw": raw[-16:].hex(" "),
+        "stringHits": string_hits,
+        "rawHex": raw.hex(" "),
+    }, limit
+
+
+def read_buff_effect_action_cfg_partial(
+    data: bytes,
+    offset: int,
+    limit: int,
+    field_name: str,
+) -> tuple[dict[str, Any], int]:
+    if limit < offset:
+        raise ValueError(f"{field_name}:invalid-bounds")
+    byte_length = limit - offset
+    if byte_length < BUFF_EFFECT_ACTION_CFG_MIN_BYTES:
+        raise ValueError(f"{field_name}:unexpected-bytes={byte_length}")
+    member_count, _member_offset = read_buff_i32_field(data, offset, f"{field_name}.memberCountCandidate")
+    if member_count not in (74, 76):
+        raise ValueError(f"{field_name}.memberCountCandidate={member_count}")
+    raw = data[offset:limit]
+    string_hits = scan_length_prefixed_utf8_string_hits(
+        raw,
+        start=0,
+        max_scan_bytes=byte_length,
+        max_samples=8,
+        max_length=256,
+    )
+    return {
+        "status": "partial",
+        "semanticStatus": "partial-effect-action-cfg-fields-opaque",
+        "offset": format_offset(offset),
+        "bytes": byte_length,
+        "memberCountCandidate": member_count,
+        "memberCountOffset": format_offset(offset),
+        "schemaSource": (
+            "EffectActionCfg MemoryPack formatter exposes many fields; current decoder preserves the "
+            "bounded config blob and validates the next TargetSettings anchor instead of naming fields"
+        ),
+        "rawSha256": hashlib.sha256(raw).hexdigest(),
+        "prefixHex": raw[:48].hex(" "),
+        "tailHex": raw[-48:].hex(" "),
+        "stringHits": string_hits,
+    }, limit
+
+
+def read_buff_create_buff_icon_duration_source_partial(
+    data: bytes,
+    offset: int,
+    limit: int,
+    field_name: str,
+) -> tuple[dict[str, Any], int]:
+    start = offset
+    end = offset + BUFF_CREATE_BUFF_ICON_DURATION_SOURCE_BYTES
+    if end > limit:
+        raise ValueError(f"{field_name}:truncated")
+    member_count = data[offset]
+    if member_count != 2:
+        raise ValueError(f"{field_name}:member-count={member_count}")
+    word0 = struct.unpack_from("<I", data, offset + 1)[0]
+    word1 = struct.unpack_from("<I", data, offset + 5)[0]
+    raw = data[start:end]
+    return {
+        "status": "partial",
+        "semanticStatus": "partial-buff-icon-duration-source-setting-opaque",
+        "offset": format_offset(start),
+        "bytes": len(raw),
+        "memberCount": member_count,
+        "rawU32": [word0, word1],
+        "rawHex": raw.hex(" "),
+    }, end
+
+
+def read_buff_create_buff_input_partial(
+    data: bytes,
+    offset: int,
+    limit: int,
+    field_name: str,
+) -> tuple[dict[str, Any], int]:
+    start = offset
+    if offset + 10 > limit:
+        raise ValueError(f"{field_name}:truncated-prefix")
+    member_count = data[offset]
+    offset += 1
+    if member_count != 5:
+        raise ValueError(f"{field_name}:member-count={member_count}")
+    flag_candidate, offset = read_buff_bool_field(data, offset, f"{field_name}.flagCandidate")
+    reserved_u32, offset = read_buff_u32_field(data, offset, f"{field_name}.reservedU32")
+    if reserved_u32 != 0:
+        raise ValueError(f"{field_name}.reservedU32={reserved_u32}")
+    buff_id, offset = read_buff_memorypack_utf8_string_strict_bounded(
+        data,
+        offset,
+        limit,
+        f"{field_name}.buffId",
+        max_length=256,
+    )
+    if not buff_id or not buff_id.startswith("buff_"):
+        raise ValueError(f"{field_name}.buffId:unexpected={buff_id}")
+    tail_end = offset + BUFF_CREATE_BUFF_INPUT_TAIL_BYTES
+    if tail_end > limit:
+        raise ValueError(f"{field_name}:truncated-tail")
+    tail = data[offset:tail_end]
+    if tail != b"\x00" * BUFF_CREATE_BUFF_INPUT_TAIL_BYTES:
+        raise ValueError(f"{field_name}:tail={tail.hex(' ')}")
+    offset = tail_end
+    return {
+        "status": "partial",
+        "semanticStatus": "partial-create-buff-input-fields-opaque",
+        "offset": format_offset(start),
+        "bytes": offset - start,
+        "memberCount": member_count,
+        "flagCandidate": flag_candidate,
+        "reservedU32": reserved_u32,
+        "buffId": buff_id,
+        "tailRaw": tail.hex(" "),
+    }, offset
+
+
+def read_buff_create_buff_list_partial(
+    data: bytes,
+    offset: int,
+    limit: int,
+    field_name: str,
+) -> tuple[dict[str, Any], int]:
+    start = offset
+    count, offset = read_buff_u32_field(data, offset, f"{field_name}.count")
+    if count <= 0 or count > BUFF_CREATE_BUFF_MAX_BUFF_IDS:
+        raise ValueError(f"{field_name}.count={count}")
+    items: list[dict[str, Any]] = []
+    for index in range(count):
+        item, offset = read_buff_create_buff_input_partial(
+            data,
+            offset,
+            limit,
+            f"{field_name}[{index}]",
+        )
+        items.append(item)
+    return {
+        "status": "partial",
+        "semanticStatus": "partial-create-buff-input-list-fields-opaque",
+        "offset": format_offset(start),
+        "bytes": offset - start,
+        "count": count,
+        "items": items,
+    }, offset
+
+
+def decode_buff_create_buff_action(
+    data: bytes,
+    item_start: int,
+    item_end: int,
+    tag_width: int,
+    member_count: int,
+) -> dict[str, Any]:
+    tag, actual_tag_width, _raw = read_buff_timeline_first_union_tag(data, item_start, item_end)
+    if tag != BUFF_CREATE_BUFF_ACTION_TAG or actual_tag_width != tag_width:
+        raise ValueError("createBuff:tag-mismatch")
+    if tag_width != 1:
+        raise ValueError(f"createBuff:tag-width={tag_width}")
+    if member_count != 17:
+        raise ValueError(f"createBuff:member-count={member_count}")
+    offset = item_start + tag_width + 1
+    prefix, offset = read_buff_ability_action_common_prefix_exact(
+        data,
+        offset,
+        "createBuff.prefix",
+    )
+    as_child_buff, offset = read_buff_bool_field(data, offset, "createBuff.asChildBuff")
+    auto_finish_by_action, offset = read_buff_bool_field(data, offset, "createBuff.autoFinishByAction")
+    buff_icon_duration_source, offset = read_buff_create_buff_icon_duration_source_partial(
+        data,
+        offset,
+        item_end,
+        "createBuff.buffIconDurationSource",
+    )
+    buffs, offset = read_buff_create_buff_list_partial(
+        data,
+        offset,
+        item_end,
+        "createBuff.buffs",
+    )
+    buff_source_raw, offset = read_buff_u32_field(data, offset, "createBuff.buffSourceRaw")
+    if buff_source_raw > 1_000_000:
+        raise ValueError(f"createBuff.buffSourceRaw={buff_source_raw}")
+    context_key, offset = read_buff_memorypack_utf8_string_strict_bounded(
+        data,
+        offset,
+        item_end,
+        "createBuff.contextKey",
+        max_length=256,
+    )
+    if offset + 10 > item_end:
+        raise ValueError("createBuff.count:truncated")
+    count_candidate, offset = read_buff_blackboard_float_raw_field_exact(
+        data,
+        offset,
+        "createBuff.count",
+    )
+    inherit_skill_id_count, offset = read_buff_u32_field(
+        data,
+        offset,
+        "createBuff.inheritSkillIdList.count",
+    )
+    if inherit_skill_id_count != 0:
+        raise ValueError(f"createBuff.inheritSkillIdList.count={inherit_skill_id_count}")
+    inherit_source_skill_cast_id, offset = read_buff_bool_field(
+        data,
+        offset,
+        "createBuff.inheritSourceSkillCastId",
+    )
+    inherit_source_skill_cast_info, offset = read_buff_bool_field(
+        data,
+        offset,
+        "createBuff.inheritSourceSkillCastInfo",
+    )
+    is_extra, offset = read_buff_bool_field(data, offset, "createBuff.isExtra")
+    override_buff_icon_duration, offset = read_buff_bool_field(
+        data,
+        offset,
+        "createBuff.overrideBuffIconDuration",
+    )
+    target_settings, offset = read_buff_target_settings_partial(
+        data,
+        offset,
+        item_end,
+        "createBuff.targetSettings",
+        allowed_tail_u32s=(0, 1, 2, 4),
+    )
+    if offset != item_end:
+        raise ValueError(f"createBuff:tail-at={format_offset(offset)} end={format_offset(item_end)}")
+    return {
+        "type": BUFF_ABILITY_ACTION_TAG_NAMES[BUFF_CREATE_BUFF_ACTION_TAG],
+        "decodeStatus": "partial",
+        "semanticStatus": "partial-create-buff-input-tail-and-target-settings-opaque",
+        "schemaSource": (
+            "MemoryPack setter order plus current byte evidence: AbilityActionData prefix, asChildBuff, "
+            "autoFinishByAction, buffIconDurationSource, buffs, buffSource, contextKey, count, "
+            "empty inheritSkillIdList, four boolean tail flags, targetSettings; buff input internals, "
+            "BlackboardDouble/count semantics, and TargetSettings internals remain partial"
+        ),
+        "byteLength": item_end - item_start,
+        "prefix": prefix,
+        "asChildBuff": as_child_buff,
+        "autoFinishByAction": auto_finish_by_action,
+        "buffIconDurationSourcePartial": buff_icon_duration_source,
+        "buffsPartial": buffs,
+        "buffSourceRaw": buff_source_raw,
+        "contextKey": context_key or "",
+        "countCandidate": count_candidate,
+        "inheritSkillIdListCount": inherit_skill_id_count,
+        "inheritSourceSkillCastId": inherit_source_skill_cast_id,
+        "inheritSourceSkillCastInfo": inherit_source_skill_cast_info,
+        "isExtra": is_extra,
+        "overrideBuffIconDuration": override_buff_icon_duration,
+        "targetSettingsEnvelopePartial": target_settings,
+    }
+
+
+def decode_buff_modify_dynamic_blackboard_action(
+    data: bytes,
+    item_start: int,
+    item_end: int,
+    tag_width: int,
+    member_count: int,
+) -> dict[str, Any]:
+    tag, actual_tag_width, _raw = read_buff_timeline_first_union_tag(data, item_start, item_end)
+    if tag != BUFF_MODIFY_DYNAMIC_BLACKBOARD_ACTION_TAG or actual_tag_width != tag_width:
+        raise ValueError("modifyDynamicBlackboard:tag-mismatch")
+    if tag_width != 1:
+        raise ValueError(f"modifyDynamicBlackboard:tag-width={tag_width}")
+    if member_count != 10:
+        raise ValueError(f"modifyDynamicBlackboard:member-count={member_count}")
+    offset = item_start + tag_width + 1
+    prefix, offset = read_buff_ability_action_common_prefix_exact(
+        data,
+        offset,
+        "modifyDynamicBlackboard.prefix",
+    )
+    calculate_type, offset = read_buff_i32_field(
+        data,
+        offset,
+        "modifyDynamicBlackboard.calculateType",
+    )
+    if abs(calculate_type) > 1_000:
+        raise ValueError(f"modifyDynamicBlackboard.calculateType={calculate_type}")
+    calculation_target_end = buff_target_settings_envelope_limit(
+        data,
+        offset,
+        item_end,
+        "modifyDynamicBlackboard.calculationTarget",
+    )
+    calculation_target, offset = read_buff_target_settings_partial(
+        data,
+        offset,
+        calculation_target_end,
+        "modifyDynamicBlackboard.calculationTarget",
+    )
+    direct_value, offset = read_buff_bool_field(data, offset, "modifyDynamicBlackboard.directValue")
+    key, offset = read_buff_memorypack_utf8_string_strict(
+        data,
+        offset,
+        "modifyDynamicBlackboard.key",
+        max_length=256,
+    )
+    if not key:
+        raise ValueError("modifyDynamicBlackboard.key:empty")
+    operation, offset = read_buff_i32_field(data, offset, "modifyDynamicBlackboard.operation")
+    if operation not in BUFF_MODIFY_DYNAMIC_BLACKBOARD_OPERATION_NAMES:
+        raise ValueError(f"modifyDynamicBlackboard.operation={operation}")
+    value, offset = read_buff_blackboard_float_raw_field_exact(
+        data,
+        offset,
+        "modifyDynamicBlackboard.value",
+    )
+    if offset != item_end:
+        raise ValueError(
+            f"modifyDynamicBlackboard:tail-at={format_offset(offset)} end={format_offset(item_end)}"
+        )
+    return {
+        "type": BUFF_ABILITY_ACTION_TAG_NAMES[BUFF_MODIFY_DYNAMIC_BLACKBOARD_ACTION_TAG],
+        "decodeStatus": "partial",
+        "semanticStatus": "partial-calculation-target-settings-envelope-opaque",
+        "schemaSource": (
+            "MemoryPack setter order: AbilityActionData prefix, calculateType, calculationTarget, "
+            "directValue, key, operation, value; TargetSettings internals and calculateType enum remain partial"
+        ),
+        "byteLength": item_end - item_start,
+        "prefix": prefix,
+        "calculateType": calculate_type,
+        "calculationTargetEnvelopePartial": calculation_target,
+        "directValue": direct_value,
+        "key": key,
+        "operation": operation,
+        "operationName": BUFF_MODIFY_DYNAMIC_BLACKBOARD_OPERATION_NAMES[operation],
+        "value": value,
+    }
+
+def decode_buff_effect_action(
+    data: bytes,
+    item_start: int,
+    item_end: int,
+    tag_width: int,
+    member_count: int,
+) -> dict[str, Any] | None:
+    tag, actual_tag_width, _raw = read_buff_timeline_first_union_tag(data, item_start, item_end)
+    if tag != BUFF_EFFECT_ACTION_TAG or actual_tag_width != tag_width:
+        raise ValueError("effectAction:tag-mismatch")
+    if tag_width != 1:
+        raise ValueError(f"effectAction:tag-width={tag_width}")
+    if member_count != 15:
+        raise ValueError(f"effectAction:member-count={member_count}")
+    offset = item_start + tag_width + 1
+    prefix, offset = read_buff_ability_action_common_prefix_exact(
+        data,
+        offset,
+        "effectAction.prefix",
+    )
+    big_effect_name, offset = read_buff_memorypack_utf8_string_strict(
+        data,
+        offset,
+        "effectAction.bigEffectName",
+        max_length=512,
+    )
+    stable_prefix = bytes.fromhex("0d 08 01 00 00 00 00 00 00 ff 00 00 00 00 ff 00")
+    anchor_offsets: list[int] = []
+    search_offset = offset
+    while True:
+        found = data.find(stable_prefix, search_offset, item_end)
+        if found < 0:
+            break
+        anchor_offsets.append(found)
+        search_offset = found + 1
+    if len(anchor_offsets) != 2:
+        raise ValueError(f"effectAction.targetSettingsAnchorCount={len(anchor_offsets)}")
+    effect_source_start, target_settings_start = anchor_offsets
+    try:
+        effect_action_cfg, offset = read_buff_effect_action_cfg_partial(
+            data,
+            offset,
+            effect_source_start,
+            "effectAction.effectActionCfg",
+        )
+    except ValueError as exc:
+        if str(exc).startswith("effectAction.effectActionCfg.memberCountCandidate="):
+            return None
+        raise
+    effect_source_end = buff_target_settings_envelope_limit(
+        data,
+        offset,
+        target_settings_start,
+        "effectAction.effectSource",
+    )
+    effect_source, offset = read_buff_target_settings_partial(
+        data,
+        offset,
+        effect_source_end,
+        "effectAction.effectSource",
+    )
+    bool_fields: dict[str, bool] = {}
+    for field_name in (
+        "forceMainBody",
+        "isCreateWithSourceModelActive",
+        "isMainCharacterActive",
+        "isShowBigEffect",
+        "isTargetMainCharacterActive",
+        "playOnHittableObjects",
+    ):
+        bool_fields[field_name], offset = read_buff_bool_field(data, offset, f"effectAction.{field_name}")
+    save_effect_id_to_blackboard, offset = read_buff_memorypack_utf8_string_strict(
+        data,
+        offset,
+        "effectAction.saveEffectIdToBlackboard",
+        max_length=256,
+    )
+    if offset != target_settings_start:
+        raise ValueError(
+            f"effectAction.afterEffectSourceTail={format_offset(offset)} "
+            f"targetStart={format_offset(target_settings_start)}"
+        )
+    target_settings, offset = read_buff_target_settings_partial(
+        data,
+        offset,
+        item_end,
+        "effectAction.targetSettings",
+        allowed_tail_u32s=(0, 1, 2, 4),
+    )
+    if offset != item_end:
+        raise ValueError(f"effectAction:tail-at={format_offset(offset)} end={format_offset(item_end)}")
+    return {
+        "type": BUFF_ABILITY_ACTION_TAG_NAMES[BUFF_EFFECT_ACTION_TAG],
+        "decodeStatus": "partial",
+        "semanticStatus": "partial-effect-action-cfg-and-target-settings-opaque",
+        "schemaSource": (
+            "MemoryPack setter order: AbilityActionData prefix, bigEffectName, effectActionCfg, "
+            "effectSource, six boolean flags, saveEffectIdToBlackboard, targetSettings; "
+            "EffectActionCfg and TargetSettings internals remain partial"
+        ),
+        "byteLength": item_end - item_start,
+        "prefix": prefix,
+        "bigEffectName": big_effect_name or "",
+        "effectActionCfgPartial": effect_action_cfg,
+        "effectSourceEnvelopePartial": effect_source,
+        **bool_fields,
+        "saveEffectIdToBlackboard": save_effect_id_to_blackboard or "",
+        "targetSettingsEnvelopePartial": target_settings,
+    }
+
+def decode_buff_convert_to_target_context_action(
+    data: bytes,
+    item_start: int,
+    item_end: int,
+    tag_width: int,
+    member_count: int,
+) -> dict[str, Any]:
+    tag, actual_tag_width, _raw = read_buff_timeline_first_union_tag(data, item_start, item_end)
+    if tag != BUFF_CONVERT_TO_TARGET_CONTEXT_ACTION_TAG or actual_tag_width != tag_width:
+        raise ValueError("convertToTargetContext:tag-mismatch")
+    if tag_width != 1:
+        raise ValueError(f"convertToTargetContext:tag-width={tag_width}")
+    if member_count != 12:
+        raise ValueError(f"convertToTargetContext:member-count={member_count}")
+    offset = item_start + tag_width + 1
+    prefix, offset = read_buff_ability_action_common_prefix_exact(
+        data,
+        offset,
+        "convertToTargetContext.prefix",
+    )
+    blackboard_vector3, offset = read_buff_blackboard_vector3_field_exact(
+        data,
+        offset,
+        "convertToTargetContext.blackboardVector3",
+    )
+    convert_from_end = offset + BUFF_CONVERT_TO_TARGET_CONTEXT_TARGET_SETTINGS_BYTES
+    convert_from, offset = read_buff_target_settings_partial(
+        data,
+        offset,
+        convert_from_end,
+        "convertToTargetContext.convertFrom",
+    )
+    exclude_target, offset = read_buff_i32_field(data, offset, "convertToTargetContext.excludeTarget")
+    operation_type, offset = read_buff_i32_field(data, offset, "convertToTargetContext.operationType")
+    target_group_key, offset = read_buff_memorypack_utf8_string_strict(
+        data,
+        offset,
+        "convertToTargetContext.targetGroupKey",
+        max_length=256,
+    )
+    if not target_group_key:
+        raise ValueError("convertToTargetContext.targetGroupKey:empty")
+    translate_operation, offset = read_buff_i32_field(
+        data,
+        offset,
+        "convertToTargetContext.translateOperation",
+    )
+    translation_deg, offset = read_buff_f32_field(data, offset, "convertToTargetContext.translationDeg")
+    translation_ref, offset = read_buff_i32_field(data, offset, "convertToTargetContext.translationRef")
+    for field_name, value in (
+        ("convertToTargetContext.excludeTarget", exclude_target),
+        ("convertToTargetContext.operationType", operation_type),
+        ("convertToTargetContext.translateOperation", translate_operation),
+        ("convertToTargetContext.translationRef", translation_ref),
+    ):
+        if abs(value) > 1_000_000:
+            raise ValueError(f"{field_name}:implausible={value}")
+    if translation_deg < -100_000 or translation_deg > 100_000:
+        raise ValueError(f"convertToTargetContext.translationDeg:out-of-range={translation_deg}")
+    if offset != item_end:
+        raise ValueError(
+            f"convertToTargetContext:tail-at={format_offset(offset)} end={format_offset(item_end)}"
+        )
+    return {
+        "type": BUFF_ABILITY_ACTION_TAG_NAMES[BUFF_CONVERT_TO_TARGET_CONTEXT_ACTION_TAG],
+        "decodeStatus": "partial",
+        "semanticStatus": "partial-convert-from-target-settings-envelope-opaque",
+        "schemaSource": (
+            "MemoryPack setter order: AbilityActionData prefix, blackboardVector3, convertFrom "
+            "TargetSettings, excludeTarget, operationType, targetGroupKey, translateOperation, "
+            "translationDeg, translationRef; TargetSettings targeting semantics remain partial"
+        ),
+        "byteLength": item_end - item_start,
+        "prefix": prefix,
+        "blackboardVector3": blackboard_vector3,
+        "convertFromTargetSettingsEnvelopePartial": convert_from,
+        "excludeTarget": exclude_target,
+        "operationType": operation_type,
+        "targetGroupKey": target_group_key,
+        "translateOperation": translate_operation,
+        "translationDeg": round(translation_deg, 6),
+        "translationRef": translation_ref,
+    }
+
+
+def decode_buff_debug_print_action(
+    data: bytes,
+    item_start: int,
+    item_end: int,
+    tag_width: int,
+    member_count: int,
+) -> dict[str, Any]:
+    tag, actual_tag_width, _raw = read_buff_timeline_first_union_tag(data, item_start, item_end)
+    if tag != BUFF_DEBUG_PRINT_ACTION_TAG or actual_tag_width != tag_width:
+        raise ValueError("debugPrint:tag-mismatch")
+    if tag_width != 1:
+        raise ValueError(f"debugPrint:tag-width={tag_width}")
+    if member_count != 8:
+        raise ValueError(f"debugPrint:member-count={member_count}")
+    offset = item_start + tag_width + 1
+    prefix, offset = read_buff_ability_action_common_prefix_exact(
+        data,
+        offset,
+        "debugPrint.prefix",
+    )
+    bb_key, offset = read_buff_memorypack_utf8_string_strict(
+        data,
+        offset,
+        "debugPrint.bbKey",
+        max_length=256,
+    )
+    identifier, offset = read_buff_memorypack_utf8_string_strict(
+        data,
+        offset,
+        "debugPrint.identifier",
+        max_length=512,
+    )
+    if not identifier:
+        raise ValueError("debugPrint.identifier:empty")
+    log_type, offset = read_buff_i32_field(data, offset, "debugPrint.logType")
+    log_type_names = {0: "TargetSetting", 1: "BlackboardItem"}
+    if log_type not in log_type_names:
+        raise ValueError(f"debugPrint.logType={log_type}")
+    target_settings, offset = read_buff_target_settings_partial(
+        data,
+        offset,
+        item_end,
+        "debugPrint.target",
+        allowed_tail_u32s=(0, 1, 4),
+    )
+    if offset != item_end:
+        raise ValueError(f"debugPrint:tail-at={format_offset(offset)} end={format_offset(item_end)}")
+    return {
+        "type": BUFF_ABILITY_ACTION_TAG_NAMES[BUFF_DEBUG_PRINT_ACTION_TAG],
+        "decodeStatus": "partial",
+        "semanticStatus": "partial-target-settings-envelope-opaque",
+        "schemaSource": (
+            "MemoryPack setter order: AbilityActionData prefix, bbKey, identifier, logType, target; "
+            "TargetSettings envelope bytes are bounded but targeting semantics and tail values remain partial"
+        ),
+        "byteLength": item_end - item_start,
+        "prefix": prefix,
+        "bbKey": bb_key or "",
+        "identifier": identifier,
+        "logType": log_type,
+        "logTypeName": log_type_names[log_type],
+        "targetSettingsEnvelopePartial": target_settings,
+    }
+
+
+def decode_buff_play_animation_action(
+    data: bytes,
+    item_start: int,
+    item_end: int,
+    tag_width: int,
+    member_count: int,
+) -> dict[str, Any]:
+    tag, actual_tag_width, _raw = read_buff_timeline_first_union_tag(data, item_start, item_end)
+    if tag != BUFF_PLAY_ANIMATION_ACTION_TAG or actual_tag_width != tag_width:
+        raise ValueError("playAnimation:tag-mismatch")
+    if tag_width != 1:
+        raise ValueError(f"playAnimation:tag-width={tag_width}")
+    if member_count != 12:
+        raise ValueError(f"playAnimation:member-count={member_count}")
+    offset = item_start + tag_width + 1
+    prefix, offset = read_buff_ability_action_common_prefix_exact(
+        data,
+        offset,
+        "playAnimation.prefix",
+    )
+    anim_name, offset = read_buff_memorypack_utf8_string_strict(
+        data,
+        offset,
+        "playAnimation.animName",
+        max_length=256,
+    )
+    if not anim_name:
+        raise ValueError("playAnimation.animName:empty")
+    blend_duration, offset = read_buff_f32_field(data, offset, "playAnimation.blendDuration")
+    blend_out, offset = read_buff_f32_field(data, offset, "playAnimation.blendOut")
+    blend_out_next_state_hash, offset = read_buff_i32_field(
+        data,
+        offset,
+        "playAnimation.blendOutNextStateHash",
+    )
+    duration, offset = read_buff_f32_field(data, offset, "playAnimation.duration")
+    exit_to_idle, offset = read_buff_bool_field(data, offset, "playAnimation.exitToIdle")
+    playback_speed, offset = read_buff_f32_field(data, offset, "playAnimation.playbackSpeed")
+    start_time, offset = read_buff_f32_field(data, offset, "playAnimation.startTime")
+    for field_name, value in (
+        ("playAnimation.blendDuration", blend_duration),
+        ("playAnimation.blendOut", blend_out),
+        ("playAnimation.duration", duration),
+        ("playAnimation.playbackSpeed", playback_speed),
+        ("playAnimation.startTime", start_time),
+    ):
+        if value < -10_000 or value > 100_000:
+            raise ValueError(f"{field_name}:out-of-range={value}")
+    if offset != item_end:
+        raise ValueError(f"playAnimation:tail-at={format_offset(offset)} end={format_offset(item_end)}")
+    return {
+        "type": BUFF_ABILITY_ACTION_TAG_NAMES[BUFF_PLAY_ANIMATION_ACTION_TAG],
+        "decodeStatus": "exact",
+        "schemaSource": (
+            "MemoryPack setter order: AbilityActionData prefix, animName, blendDuration, blendOut, "
+            "blendOutNextStateHash, duration, exitToIdle, playbackSpeed, startTime"
+        ),
+        "byteLength": item_end - item_start,
+        "prefix": prefix,
+        "animName": anim_name,
+        "blendDuration": round(blend_duration, 6),
+        "blendOut": round(blend_out, 6),
+        "blendOutNextStateHash": blend_out_next_state_hash,
+        "duration": round(duration, 6),
+        "exitToIdle": exit_to_idle,
+        "playbackSpeed": round(playback_speed, 6),
+        "startTime": round(start_time, 6),
+    }
+
+def decode_buff_patrol_teleport_action(
+    data: bytes,
+    item_start: int,
+    item_end: int,
+    tag_width: int,
+    member_count: int,
+) -> dict[str, Any]:
+    tag, actual_tag_width, _raw = read_buff_timeline_first_union_tag(data, item_start, item_end)
+    if tag != BUFF_PATROL_TELEPORT_ACTION_TAG or actual_tag_width != tag_width:
+        raise ValueError("patrolTeleport:tag-mismatch")
+    if tag_width != 1:
+        raise ValueError(f"patrolTeleport:tag-width={tag_width}")
+    if member_count != 6:
+        raise ValueError(f"patrolTeleport:member-count={member_count}")
+    offset = item_start + tag_width + 1
+    prefix, offset = read_buff_ability_action_common_prefix_exact(
+        data,
+        offset,
+        "patrolTeleport.prefix",
+    )
+    save_to, offset = read_buff_memorypack_utf8_string_strict(
+        data,
+        offset,
+        "patrolTeleport.saveTo",
+        max_length=128,
+    )
+    if not save_to:
+        raise ValueError("patrolTeleport.saveTo:empty")
+    teleport_dis, offset = read_buff_f32_field(data, offset, "patrolTeleport.teleportDis")
+    if teleport_dis < 0 or teleport_dis > 100_000:
+        raise ValueError(f"patrolTeleport.teleportDis:out-of-range={teleport_dis}")
+    if offset != item_end:
+        raise ValueError(f"patrolTeleport:tail-at={format_offset(offset)} end={format_offset(item_end)}")
+    return {
+        "type": BUFF_ABILITY_ACTION_TAG_NAMES[BUFF_PATROL_TELEPORT_ACTION_TAG],
+        "decodeStatus": "exact",
+        "schemaSource": (
+            "Runtime fields are teleportDis and saveTo; current MemoryPack bytes consume exactly as "
+            "AbilityActionData prefix, saveTo string, then teleportDis float"
+        ),
+        "byteLength": item_end - item_start,
+        "prefix": prefix,
+        "saveTo": save_to,
+        "teleportDis": round(teleport_dis, 6),
+    }
+
+def decode_buff_play_sound_action(
+    data: bytes,
+    item_start: int,
+    item_end: int,
+    tag_width: int,
+    member_count: int,
+) -> dict[str, Any]:
+    tag, actual_tag_width, _raw = read_buff_timeline_first_union_tag(data, item_start, item_end)
+    if tag != BUFF_PLAY_SOUND_ACTION_TAG or actual_tag_width != tag_width:
+        raise ValueError("playSound:tag-mismatch")
+    if tag_width != 3:
+        raise ValueError(f"playSound:tag-width={tag_width}")
+    if member_count != 22:
+        raise ValueError(f"playSound:member-count={member_count}")
+    if item_end - item_start <= BUFF_PLAY_SOUND_TIME_DILATION_TAIL_BYTES:
+        raise ValueError("playSound:truncated-tail")
+
+    offset = item_start + tag_width + 1
+    prefix, offset = read_buff_ability_action_common_prefix_exact(
+        data,
+        offset,
+        "playSound.prefix",
+    )
+    can_interrupt_time_ms, offset = read_buff_i32_field(data, offset, "playSound.canInterruptTimeMs")
+    intrpt_fade_duration_ms, offset = read_buff_i32_field(data, offset, "playSound.intrptFadeDurationMs")
+    jump_to_when_play_ms, offset = read_buff_i32_field(data, offset, "playSound.jumpToWhenPlayMs")
+    for field_name, value in (
+        ("playSound.canInterruptTimeMs", can_interrupt_time_ms),
+        ("playSound.intrptFadeDurationMs", intrpt_fade_duration_ms),
+        ("playSound.jumpToWhenPlayMs", jump_to_when_play_ms),
+    ):
+        validate_buff_nonnegative_ms(value, field_name)
+
+    sound_event, offset = read_buff_memorypack_utf8_string_strict(
+        data,
+        offset,
+        "playSound.soundEvent",
+        max_length=512,
+    )
+    if not sound_event or not sound_event.startswith("au_"):
+        raise ValueError(f"playSound.soundEvent:unexpected={sound_event or ''}")
+
+    stop_fade_duration_ms, offset = read_buff_i32_field(data, offset, "playSound.stopFadeDurationMs")
+    validate_buff_nonnegative_ms(stop_fade_duration_ms, "playSound.stopFadeDurationMs")
+    stop_on_end, offset = read_buff_bool_field(data, offset, "playSound.stopOnEnd")
+    use_temp_emitter, offset = read_buff_bool_field(data, offset, "playSound.useTempEmitter")
+    follow_mount_point, offset = read_buff_bool_field(data, offset, "playSound.followMountPoint")
+    mount_point, offset = read_buff_memorypack_utf8_string_strict(
+        data,
+        offset,
+        "playSound.mountPoint",
+        max_length=256,
+    )
+
+    tail_start = item_end - BUFF_PLAY_SOUND_TIME_DILATION_TAIL_BYTES
+    target_settings, offset = read_buff_target_settings_partial(
+        data,
+        offset,
+        tail_start,
+        "playSound.targetSettings",
+    )
+
+    time_dilation_fade_in_duration_ms, offset = read_buff_i32_field(
+        data,
+        offset,
+        "playSound.timeDilationFadeInDurationMs",
+    )
+    validate_buff_nonnegative_ms(
+        time_dilation_fade_in_duration_ms,
+        "playSound.timeDilationFadeInDurationMs",
+    )
+    time_dilation_fade_out_duration_ms, offset = read_buff_i32_field(
+        data,
+        offset,
+        "playSound.timeDilationFadeOutDurationMs",
+    )
+    validate_buff_nonnegative_ms(
+        time_dilation_fade_out_duration_ms,
+        "playSound.timeDilationFadeOutDurationMs",
+    )
+    time_dilation_pause_threshold, offset = read_buff_f32_field(
+        data,
+        offset,
+        "playSound.timeDilationPauseThreshold",
+    )
+    time_dilation_seek_threshold, offset = read_buff_f32_field(
+        data,
+        offset,
+        "playSound.timeDilationSeekThreshold",
+    )
+    for field_name, value in (
+        ("playSound.timeDilationPauseThreshold", time_dilation_pause_threshold),
+        ("playSound.timeDilationSeekThreshold", time_dilation_seek_threshold),
+    ):
+        if value < 0 or value > 10:
+            raise ValueError(f"{field_name}:out-of-range={value}")
+    use_time_dilation_pause_and_seek, offset = read_buff_bool_field(
+        data,
+        offset,
+        "playSound.useTimeDilationPauseAndSeek",
+    )
+    use_weapon_mount_point, offset = read_buff_bool_field(
+        data,
+        offset,
+        "playSound.useWeaponMountPoint",
+    )
+    weapon_index, offset = read_buff_i32_field(data, offset, "playSound.weaponIndex")
+    if abs(weapon_index) > 1_000_000:
+        raise ValueError(f"playSound.weaponIndex:implausible={weapon_index}")
+    weapon_mount_point, offset = read_buff_memorypack_utf8_string_strict(
+        data,
+        offset,
+        "playSound.weaponMountPoint",
+        max_length=256,
+    )
+    if offset != item_end:
+        raise ValueError(f"playSound:tail-at={format_offset(offset)} end={format_offset(item_end)}")
+
+    return {
+        "type": BUFF_ABILITY_ACTION_TAG_NAMES[BUFF_PLAY_SOUND_ACTION_TAG],
+        "decodeStatus": "partial",
+        "semanticStatus": "partial-target-settings-envelope-opaque",
+        "schemaSource": (
+            "MemoryPack formatter setter order: AbilityActionData prefix, PlaySound primitive fields, "
+            "targetSettings, and time-dilation tail; TargetSettings bytes are bounded but targeting semantics remain partial"
+        ),
+        "byteLength": item_end - item_start,
+        "prefix": prefix,
+        "canInterruptTimeMs": can_interrupt_time_ms,
+        "intrptFadeDurationMs": intrpt_fade_duration_ms,
+        "jumpToWhenPlayMs": jump_to_when_play_ms,
+        "soundEvent": sound_event,
+        "stopFadeDurationMs": stop_fade_duration_ms,
+        "stopOnEnd": stop_on_end,
+        "useTempEmitter": use_temp_emitter,
+        "followMountPoint": follow_mount_point,
+        "mountPoint": mount_point or "",
+        "targetSettingsEnvelopePartial": target_settings,
+        "timeDilationFadeInDurationMs": time_dilation_fade_in_duration_ms,
+        "timeDilationFadeOutDurationMs": time_dilation_fade_out_duration_ms,
+        "timeDilationPauseThreshold": round(time_dilation_pause_threshold, 6),
+        "timeDilationSeekThreshold": round(time_dilation_seek_threshold, 6),
+        "useTimeDilationPauseAndSeek": use_time_dilation_pause_and_seek,
+        "useWeaponMountPoint": use_weapon_mount_point,
+        "weaponIndex": weapon_index,
+        "weaponMountPoint": weapon_mount_point or "",
+    }
+
+def decode_buff_send_battle_signal_to_level_action(
+    data: bytes,
+    item_start: int,
+    item_end: int,
+    tag_width: int,
+    member_count: int,
+) -> dict[str, Any]:
+    tag, actual_tag_width, _raw = read_buff_timeline_first_union_tag(data, item_start, item_end)
+    if tag != BUFF_SEND_BATTLE_SIGNAL_TO_LEVEL_TAG or actual_tag_width != tag_width:
+        raise ValueError("sendBattleSignal:tag-mismatch")
+    if tag_width != 3:
+        raise ValueError(f"sendBattleSignal:tag-width={tag_width}")
+    if member_count != 6:
+        raise ValueError(f"sendBattleSignal:member-count={member_count}")
+    offset = item_start + tag_width + 1
+    prefix, offset = read_buff_ability_action_common_prefix_exact(
+        data,
+        offset,
+        "sendBattleSignal.prefix",
+    )
+    double_value, offset = read_buff_blackboard_float_raw_field_exact(
+        data,
+        offset,
+        "sendBattleSignal.doubleValue",
+    )
+    signal_id, offset = read_buff_blackboard_string_field_exact(
+        data,
+        offset,
+        "sendBattleSignal.signalId",
+    )
+    if offset != item_end:
+        raise ValueError(f"sendBattleSignal:tail-at={format_offset(offset)} end={format_offset(item_end)}")
+    return {
+        "type": BUFF_ABILITY_ACTION_TAG_NAMES[BUFF_SEND_BATTLE_SIGNAL_TO_LEVEL_TAG],
+        "decodeStatus": "exact",
+        "schemaSource": (
+            "MemoryPack formatter setter order: AbilityActionData prefix, doubleValue, signalId; "
+            "current BuffData bytes match setter order rather than runtime field display order"
+        ),
+        "byteLength": item_end - item_start,
+        "prefix": prefix,
+        "doubleValue": double_value,
+        "signalId": signal_id,
+    }
+
+
+def decode_buff_ability_action_item_exact(
+    data: bytes,
+    item_start: int,
+    item_end: int,
+    tag: int,
+    tag_width: int,
+    member_count: int,
+) -> dict[str, Any] | None:
+    if tag == BUFF_CREATE_BUFF_ACTION_TAG:
+        return decode_buff_create_buff_action(
+            data,
+            item_start,
+            item_end,
+            tag_width,
+            member_count,
+        )
+    if tag == BUFF_MODIFY_DYNAMIC_BLACKBOARD_ACTION_TAG:
+        return decode_buff_modify_dynamic_blackboard_action(
+            data,
+            item_start,
+            item_end,
+            tag_width,
+            member_count,
+        )
+    if tag == BUFF_EFFECT_ACTION_TAG:
+        return decode_buff_effect_action(
+            data,
+            item_start,
+            item_end,
+            tag_width,
+            member_count,
+        )
+    if tag == BUFF_DEBUG_PRINT_ACTION_TAG:
+        return decode_buff_debug_print_action(
+            data,
+            item_start,
+            item_end,
+            tag_width,
+            member_count,
+        )
+    if tag == BUFF_CONVERT_TO_TARGET_CONTEXT_ACTION_TAG:
+        return decode_buff_convert_to_target_context_action(
+            data,
+            item_start,
+            item_end,
+            tag_width,
+            member_count,
+        )
+    if tag == BUFF_SEND_BATTLE_SIGNAL_TO_LEVEL_TAG:
+        return decode_buff_send_battle_signal_to_level_action(
+            data,
+            item_start,
+            item_end,
+            tag_width,
+            member_count,
+        )
+    if tag == BUFF_PLAY_SOUND_ACTION_TAG:
+        return decode_buff_play_sound_action(
+            data,
+            item_start,
+            item_end,
+            tag_width,
+            member_count,
+        )
+    if tag == BUFF_PATROL_TELEPORT_ACTION_TAG:
+        return decode_buff_patrol_teleport_action(
+            data,
+            item_start,
+            item_end,
+            tag_width,
+            member_count,
+        )
+    if tag == BUFF_PLAY_ANIMATION_ACTION_TAG:
+        return decode_buff_play_animation_action(
+            data,
+            item_start,
+            item_end,
+            tag_width,
+            member_count,
+        )
+    return None
+
+
+def read_buff_ability_action_item_header(
+    data: bytes,
+    offset: int,
+    limit: int,
+) -> tuple[int, int, int] | None:
+    tag, tag_width, _raw = read_buff_timeline_first_union_tag(data, offset, limit)
+    if tag is None or tag not in BUFF_ABILITY_ACTION_TAG_NAMES:
+        return None
+    member_count_offset = offset + tag_width
+    if member_count_offset >= limit:
+        return None
+    member_count = data[member_count_offset]
+    expected_member_count = BUFF_ABILITY_ACTION_TAG_MEMBER_COUNTS.get(tag)
+    if expected_member_count is None or member_count != expected_member_count:
+        return None
+    return tag, tag_width, member_count
+
+
+def build_buff_ability_action_item_summary(
+    data: bytes,
+    item_start: int,
+    item_end: int,
+    tag: int,
+    tag_width: int,
+    member_count: int,
+    index: int,
+) -> dict[str, Any]:
+    item_bytes = item_end - item_start
+    string_hits = scan_length_prefixed_utf8_string_hits(
+        data,
+        start=item_start,
+        max_scan_bytes=item_bytes,
+        max_samples=4,
+        max_length=128,
+    )
+    summary: dict[str, Any] = {
+        "index": index,
+        "offset": format_offset(item_start),
+        "bytes": item_bytes,
+        "tag": f"0x{tag:04x}",
+        "name": BUFF_ABILITY_ACTION_TAG_NAMES.get(tag, ""),
+        "tagBytes": tag_width,
+        "memberCount": member_count,
+        "bodyBytes": item_bytes - tag_width - 1,
+        "decodeStatus": "opaque",
+        "stringHits": string_hits,
+    }
+    try:
+        decoded = decode_buff_ability_action_item_exact(
+            data,
+            item_start,
+            item_end,
+            tag,
+            tag_width,
+            member_count,
+        )
+    except (struct.error, UnicodeDecodeError, ValueError) as exc:
+        summary["decodeStatus"] = "typed-decoder-failed"
+        summary["decodeError"] = str(exc)[:200]
+    else:
+        if decoded is not None:
+            summary["decodeStatus"] = str(decoded.get("decodeStatus") or "exact")
+            summary["decoded"] = decoded
+    return summary
+
+
+def split_buff_ability_action_items_opaque(
+    data: bytes,
+    offset: int,
+    body_end: int,
+    action_data_count: int,
+) -> tuple[str, list[dict[str, Any]]]:
+    if action_data_count == 0:
+        return ("empty", []) if offset == body_end else ("failed", [])
+    if action_data_count == 1:
+        header = read_buff_ability_action_item_header(data, offset, body_end)
+        if header is None:
+            return "failed", []
+        tag, tag_width, member_count = header
+        return "single-item", [
+            build_buff_ability_action_item_summary(
+                data,
+                offset,
+                body_end,
+                tag,
+                tag_width,
+                member_count,
+                0,
+            )
+        ]
+    if action_data_count > 1:
+        return "ambiguous-union-tag-boundaries", []
+    return "failed", []
+
+
+def short_counter_dict(counter: Counter[Any], limit: int = 16) -> dict[str, int]:
+    return {str(key): value for key, value in counter.most_common(limit)}
+
+
+def decode_buff_timeline_actions_outer(
+    data: bytes,
+    offset: int,
+    action_count: int,
+    body_end: int,
+) -> dict[str, Any]:
+    if action_count <= 0 or action_count > 64:
+        raise ValueError(f"timelineActionsCount:unsupported-body-count={action_count}")
+    if offset >= body_end or body_end > len(data):
+        raise ValueError("timelineActionsBody:invalid-bounds")
+
+    memo: dict[tuple[int, int], list[list[dict[str, Any]]]] = {}
+    max_candidates = 2
+
+    def parse_records(record_index: int, cursor: int) -> list[list[dict[str, Any]]]:
+        key = (record_index, cursor)
+        if key in memo:
+            return memo[key]
+        if record_index == action_count:
+            return [[]] if cursor == body_end else []
+        if cursor >= body_end or data[cursor] != 4:
+            return []
+
+        record_start = cursor
+        cursor += 1
+        if cursor + 4 > body_end:
+            return []
+        end_frame = struct.unpack_from("<i", data, cursor)[0]
+        cursor += 4
+        if abs(end_frame) > 1_000_000:
+            return []
+
+        sequence_start = cursor
+        if cursor >= body_end or data[cursor] != 3:
+            return []
+        cursor += 1
+        if cursor + 4 > body_end:
+            return []
+        action_data_count = struct.unpack_from("<I", data, cursor)[0]
+        cursor += 4
+        if action_data_count > 64:
+            return []
+        action_payload_start = cursor
+
+        # Two sequence bools, startFrame i32, then ForceSyncAnimData:
+        # memberCount, bool, MemoryPack string length, f32, i32.
+        min_after_action_payload = 20
+        max_payload_end = body_end - min_after_action_payload
+        results: list[list[dict[str, Any]]] = []
+        for payload_end in range(action_payload_start, max_payload_end + 1):
+            payload_len = payload_end - action_payload_start
+            if action_data_count == 0 and payload_len:
+                break
+            if action_data_count and payload_len <= 0:
+                continue
+            if data[payload_end] not in (0, 1) or data[payload_end + 1] not in (0, 1):
+                continue
+            only_guard = bool(data[payload_end])
+            only_main_char = bool(data[payload_end + 1])
+            start_frame_offset = payload_end + 2
+            start_frame = struct.unpack_from("<i", data, start_frame_offset)[0]
+            if abs(start_frame) > 1_000_000:
+                continue
+            force_sync_offset = start_frame_offset + 4
+            try:
+                force_sync, force_end = read_buff_timeline_force_sync_anim_data(
+                    data,
+                    force_sync_offset,
+                    body_end,
+                    f"timelineActions[{record_index}].forceSyncAnimData",
+                )
+            except (struct.error, UnicodeDecodeError, ValueError):
+                continue
+            if record_index + 1 < action_count and (force_end >= body_end or data[force_end] != 4):
+                continue
+            suffixes = parse_records(record_index + 1, force_end)
+            if not suffixes:
+                continue
+
+            first_tag, first_tag_bytes, first_tag_raw = read_buff_timeline_first_union_tag(
+                data,
+                action_payload_start,
+                payload_end,
+            )
+            string_hits = scan_length_prefixed_utf8_string_hits(
+                data,
+                start=action_payload_start,
+                max_scan_bytes=payload_len,
+                max_samples=6,
+                max_length=128,
+            )
+            action_data_split, action_data_items = split_buff_ability_action_items_opaque(
+                data,
+                action_payload_start,
+                payload_end,
+                action_data_count,
+            )
+            record = {
+                "index": record_index,
+                "offset": format_offset(record_start),
+                "bytes": force_end - record_start,
+                "memberCount": 4,
+                "startFrame": start_frame,
+                "endFrame": end_frame,
+                "sequenceActionData": {
+                    "memberCount": 3,
+                    "offset": format_offset(sequence_start),
+                    "actionDataCount": action_data_count,
+                    "actionDataOffset": format_offset(action_payload_start),
+                    "actionDataBytes": payload_len,
+                    "firstActionTag": f"0x{first_tag:04x}" if first_tag is not None else "",
+                    "firstActionName": BUFF_ABILITY_ACTION_TAG_NAMES.get(first_tag, "") if first_tag is not None else "",
+                    "firstActionTagBytes": first_tag_bytes,
+                    "firstActionTagRaw": first_tag_raw,
+                    "actionDataSplit": action_data_split,
+                    "actionDataItems": action_data_items,
+                    "onlyExecuteWhenSourceIsGuard": only_guard,
+                    "onlyExecuteWhenSourceIsMainChar": only_main_char,
+                    "stringHits": string_hits,
+                },
+                "forceSyncAnimData": force_sync,
+            }
+            for suffix in suffixes:
+                results.append([record, *suffix])
+                if len(results) >= max_candidates:
+                    memo[key] = results
+                    return results
+
+        memo[key] = results
+        return results
+
+    candidates = parse_records(0, offset)
+    if len(candidates) != 1:
+        raise ValueError(f"timelineActionsBody:outer-parse-candidates={len(candidates)}")
+
+    records = candidates[0]
+    action_data_count_counts = Counter(
+        record["sequenceActionData"]["actionDataCount"] for record in records
+    )
+    first_tag_counts = Counter(
+        record["sequenceActionData"]["firstActionTag"] or "none" for record in records
+    )
+    first_action_name_counts = Counter(
+        record["sequenceActionData"]["firstActionName"] or "unknown" for record in records
+    )
+    action_data_split_counts = Counter(
+        record["sequenceActionData"].get("actionDataSplit") or "unknown" for record in records
+    )
+    split_action_item_name_counts = Counter(
+        item.get("name") or "unknown"
+        for record in records
+        for item in record["sequenceActionData"].get("actionDataItems") or []
+    )
+    split_action_item_decode_counts = Counter(
+        item.get("decodeStatus") or "unknown"
+        for record in records
+        for item in record["sequenceActionData"].get("actionDataItems") or []
+    )
+    exact_action_item_type_counts = Counter(
+        (item.get("decoded") or {}).get("type") or "unknown"
+        for record in records
+        for item in record["sequenceActionData"].get("actionDataItems") or []
+        if item.get("decodeStatus") == "exact"
+    )
+    decoded_action_item_type_counts = Counter(
+        (item.get("decoded") or {}).get("type") or "unknown"
+        for record in records
+        for item in record["sequenceActionData"].get("actionDataItems") or []
+        if item.get("decoded")
+    )
+    return {
+        "timelineActionsBodyStatus": "partial-timelineActions-opaque-actionData",
+        "timelineActionsBodyShape": (
+            "outer TimelineActionData list decoded as memberCount=4, endFrame, "
+            "SequenceActionData(memberCount=3, opaque union actionData payloads, guard/main-char bools), "
+            "startFrame, and ForceSyncAnimData(memberCount=4)"
+        ),
+        "timelineActionsSemanticStatus": "partial-inner-actionData-union-payloads-opaque",
+        "timelineActionRecordCount": len(records),
+        "timelineActionUnionTagSource": BUFF_ABILITY_ACTION_TAG_SOURCE_NOTE,
+        "timelineActionDataCountCounts": short_counter_dict(action_data_count_counts),
+        "timelineActionFirstTagCounts": short_counter_dict(first_tag_counts),
+        "timelineActionFirstActionNameCounts": short_counter_dict(first_action_name_counts),
+        "timelineActionDataSplitCounts": short_counter_dict(action_data_split_counts),
+        "timelineActionSplitItemNameCounts": short_counter_dict(split_action_item_name_counts),
+        "timelineActionItemDecodeStatusCounts": short_counter_dict(split_action_item_decode_counts),
+        "timelineActionExactItemTypeCounts": short_counter_dict(exact_action_item_type_counts),
+        "timelineActionDecodedItemTypeCounts": short_counter_dict(decoded_action_item_type_counts),
+        "timelineActionRecords": records,
+    }
+
+
+def find_buff_timeline_actions_body_end(
+    data: bytes,
+    offset: int,
+    action_count: int,
+) -> tuple[int, int]:
+    if action_count <= 0 or action_count > 64:
+        raise ValueError(f"timelineActionsCount:unsupported-body-count={action_count}")
+    if offset >= len(data):
+        raise ValueError("timelineActionsBody:truncated")
+    body_pattern = data[offset]
+    if body_pattern not in (0x03, 0x04):
+        raise ValueError(f"timelineActionsBody:unsupported-pattern=0x{body_pattern:02x}")
+
+    candidates: list[int] = []
+    scan_end = min(len(data), offset + BUFF_OPAQUE_TIMELINE_ACTION_BODY_MAX_BYTES)
+    for candidate_end in range(offset + 1, scan_end):
+        try:
+            read_buff_trigger_interval_bool_tail_exact(data, candidate_end)
+        except (struct.error, UnicodeDecodeError, ValueError):
+            continue
+        candidates.append(candidate_end)
+        if len(candidates) > 1:
+            break
+    if len(candidates) != 1:
+        raise ValueError(f"timelineActionsBody:tail-anchor-candidates={len(candidates)}")
+    return candidates[0], body_pattern
+
+
+BUFF_OPAQUE_STACK_EFFECT_ACTION_MAX_ACTIONS = 16
+BUFF_OPAQUE_STACK_EFFECT_ACTION_FIXED_BYTES = 471
+BUFF_OPAQUE_STACK_EFFECT_ACTION_NAME_OFFSET = 37
+BUFF_OPAQUE_STACK_EFFECT_ACTION_NAME_MAX_BYTES = 256
+BUFF_STACK_EFFECT_ACTION_DIAGNOSTIC_U32_OFFSETS = (1, 18, 318, 390, 467)
+BUFF_STACK_EFFECT_ACTION_DIAGNOSTIC_F32X3_OFFSETS = (190,)
+BUFF_STACK_EFFECT_ACTION_DIAGNOSTIC_BLOCK_OFFSETS = (128, 202, 246)
+
+
+def skip_buff_stack_effects_effect_actions_body(
+    data: bytes,
+    offset: int,
+    stack_effect_count: int,
+) -> tuple[dict[str, Any], int]:
+    total_action_count = 0
+    action_counts: list[int] = []
+    samples: list[dict[str, Any]] = []
+    effect_name_counts: Counter[str] = Counter()
+    diagnostic_u32_counts: dict[int, Counter[int]] = {
+        raw_offset: Counter() for raw_offset in BUFF_STACK_EFFECT_ACTION_DIAGNOSTIC_U32_OFFSETS
+    }
+    diagnostic_f32x3_counts: dict[int, Counter[str]] = {
+        raw_offset: Counter() for raw_offset in BUFF_STACK_EFFECT_ACTION_DIAGNOSTIC_F32X3_OFFSETS
+    }
+
+    for item_index in range(stack_effect_count):
+        if offset >= len(data):
+            raise ValueError(f"stackEffects[{item_index}]:truncated-member-count")
+        member_count = data[offset]
+        offset += 1
+        if member_count != 1:
+            raise ValueError(f"stackEffects[{item_index}]:member-count={member_count}")
+
+        action_count, offset = read_buff_u32_field(
+            data,
+            offset,
+            f"stackEffects[{item_index}].effectActionsCount",
+        )
+        if action_count <= 0 or action_count > BUFF_OPAQUE_STACK_EFFECT_ACTION_MAX_ACTIONS:
+            raise ValueError(f"stackEffects[{item_index}].effectActionsCount:unsupported-count={action_count}")
+        action_counts.append(action_count)
+        total_action_count += action_count
+
+        for action_index in range(action_count):
+            action_start = offset
+            if action_start + BUFF_OPAQUE_STACK_EFFECT_ACTION_FIXED_BYTES > len(data):
+                raise ValueError(f"stackEffects[{item_index}].effectActions[{action_index}]:truncated-body")
+            member_count = data[action_start]
+            if member_count != 15:
+                raise ValueError(
+                    f"stackEffects[{item_index}].effectActions[{action_index}]:member-count={member_count}"
+                )
+            discriminator = struct.unpack_from("<I", data, action_start + 1)[0]
+            if discriminator != 1:
+                raise ValueError(
+                    f"stackEffects[{item_index}].effectActions[{action_index}]:discriminator={discriminator}"
+                )
+            marker = struct.unpack_from("<I", data, action_start + 18)[0]
+            if marker != 74:
+                raise ValueError(f"stackEffects[{item_index}].effectActions[{action_index}]:marker={marker}")
+            name_len = struct.unpack_from("<I", data, action_start + BUFF_OPAQUE_STACK_EFFECT_ACTION_NAME_OFFSET)[0]
+            if name_len <= 0 or name_len > BUFF_OPAQUE_STACK_EFFECT_ACTION_NAME_MAX_BYTES:
+                raise ValueError(
+                    f"stackEffects[{item_index}].effectActions[{action_index}].effectName:invalid-length={name_len}"
+                )
+            name_start = action_start + BUFF_OPAQUE_STACK_EFFECT_ACTION_NAME_OFFSET + 4
+            name_end = name_start + name_len
+            action_end = action_start + BUFF_OPAQUE_STACK_EFFECT_ACTION_FIXED_BYTES + name_len
+            if action_end > len(data):
+                raise ValueError(f"stackEffects[{item_index}].effectActions[{action_index}]:truncated-named-body")
+            try:
+                effect_name = data[name_start:name_end].decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise ValueError(
+                    f"stackEffects[{item_index}].effectActions[{action_index}].effectName:invalid-utf8"
+                ) from exc
+            if not effect_name.startswith("P_"):
+                raise ValueError(
+                    f"stackEffects[{item_index}].effectActions[{action_index}].effectName:unexpected={effect_name[:24]}"
+                )
+            if data[action_end - 4:action_end] != b"\x04\x00\x00\x00":
+                raise ValueError(f"stackEffects[{item_index}].effectActions[{action_index}]:missing-terminal-u32")
+            effect_name_counts[effect_name] += 1
+            diagnostic_u32: dict[str, int] = {}
+            for raw_offset in BUFF_STACK_EFFECT_ACTION_DIAGNOSTIC_U32_OFFSETS:
+                source_offset = action_start + raw_offset
+                if raw_offset >= BUFF_OPAQUE_STACK_EFFECT_ACTION_NAME_OFFSET + 4:
+                    source_offset += name_len
+                value = struct.unpack_from("<I", data, source_offset)[0]
+                diagnostic_u32_counts[raw_offset][value] += 1
+                diagnostic_u32[format_offset(raw_offset)] = value
+            diagnostic_f32x3: dict[str, list[float]] = {}
+            for raw_offset in BUFF_STACK_EFFECT_ACTION_DIAGNOSTIC_F32X3_OFFSETS:
+                source_offset = action_start + raw_offset
+                if raw_offset >= BUFF_OPAQUE_STACK_EFFECT_ACTION_NAME_OFFSET + 4:
+                    source_offset += name_len
+                values = struct.unpack_from("<fff", data, source_offset)
+                if all(math.isfinite(value) for value in values):
+                    rounded = [round(value, 6) for value in values]
+                    diagnostic_f32x3_counts[raw_offset][",".join(str(value) for value in rounded)] += 1
+                    diagnostic_f32x3[format_offset(raw_offset)] = rounded
+            diagnostic_blocks: dict[str, str] = {}
+            for raw_offset in BUFF_STACK_EFFECT_ACTION_DIAGNOSTIC_BLOCK_OFFSETS:
+                source_offset = action_start + raw_offset + name_len
+                diagnostic_blocks[format_offset(raw_offset)] = data[source_offset:source_offset + 16].hex(" ")
+            if len(samples) < 12:
+                samples.append({
+                    "stackEffectIndex": item_index,
+                    "actionIndex": action_index,
+                    "offset": format_offset(action_start),
+                    "bytes": action_end - action_start,
+                    "memberCount": member_count,
+                    "rawDiscriminator": discriminator,
+                    "marker": marker,
+                    "effectName": effect_name,
+                    "effectNameLength": name_len,
+                    "normalizedU32Fields": diagnostic_u32,
+                    "scaleCandidateF32x3": diagnostic_f32x3,
+                    "blackboardVector3CandidatePrefixes": diagnostic_blocks,
+                })
+            offset = action_end
+
+    pad_offset = offset
+    if offset + 4 > len(data):
+        raise ValueError("stackEffects:truncated-terminal-pad")
+    if data[offset:offset + 4] != b"\x00\x00\x00\x00":
+        raise ValueError("stackEffects:missing-terminal-pad")
+    offset += 4
+
+    return {
+        "stackEffectsBodyShape": (
+            "opaque EffectActionCfg list; each action has memberCount=15, discriminator=1, "
+            "marker=74, P_* effect name at +37, fixed 471-byte body plus name bytes, terminal u32=4"
+        ),
+        "stackEffectsBodyPadOffset": format_offset(pad_offset),
+        "effectActionsSemanticStatus": "partial-effectActions-unproven-field-order",
+        "opaqueEffectActionCount": total_action_count,
+        "effectActionsPerStackEffect": action_counts,
+        "effectActionNameCounts": short_counter_dict(effect_name_counts, limit=32),
+        "effectActionNormalizedU32Counts": {
+            format_offset(raw_offset): short_counter_dict(counter)
+            for raw_offset, counter in diagnostic_u32_counts.items()
+        },
+        "effectActionScaleCandidateCounts": {
+            format_offset(raw_offset): short_counter_dict(counter)
+            for raw_offset, counter in diagnostic_f32x3_counts.items()
+        },
+        "opaqueEffectActionSamples": samples,
+    }, offset
+
+
+
+BUFF_OPAQUE_IGNITE_EVENT_ACTION_BODY_MAX_BYTES = 64 * 1024
+BUFF_OPAQUE_POISE_MODIFIER_BODY_MAX_BYTES = 16 * 1024
+BUFF_OPAQUE_SHIELD_CONFIGS_BODY_MAX_BYTES = 16 * 1024
+
+
+def buff_post_id_result_is_exact_tail(result: dict[str, Any]) -> bool:
+    return result.get("status") == "parsed-through-exact-tail" and not result.get("tailParseStatus")
+
+
+def read_buff_compact_empty_tag_field(
+    data: bytes,
+    offset: int,
+    field_name: str,
+) -> tuple[dict[str, Any], int]:
+    end = offset + 5
+    if end > len(data):
+        raise ValueError(f"{field_name}:truncated-compact-empty-payload")
+    if data[offset:end] != b"\x00\x00\x00\x00\x00":
+        raw = data[offset] if offset < len(data) else None
+        raise ValueError(f"{field_name}:not-compact-empty-member-count={raw}")
+    return {
+        "memberCount": 0,
+        "offset": format_offset(offset),
+        "branch": "compact-empty-payload",
+        "branchNote": "observed empty tag payload uses five zero bytes before timelineActionsCount",
+        "tagId": 0,
+        "tagName": "",
+    }, end
+
+
+def buff_tag_name_has_control(value: str) -> bool:
+    return any(ord(ch) < 32 for ch in value)
+
+
+def read_buff_compact_tag_list_field(
+    data: bytes,
+    offset: int,
+    field_name: str,
+) -> tuple[dict[str, Any], int]:
+    start = offset
+    if offset + 5 > len(data):
+        raise ValueError(f"{field_name}:truncated-compact-tag-list")
+    prefix_member_count = data[offset]
+    if prefix_member_count != 0:
+        raise ValueError(f"{field_name}:compact-list-prefix={prefix_member_count}")
+    count = struct.unpack_from("<I", data, offset + 1)[0]
+    if count <= 0 or count > 16:
+        raise ValueError(f"{field_name}:compact-list-count={count}")
+    offset += 5
+    tags: list[dict[str, Any]] = []
+    for index in range(count):
+        tag, offset = read_buff_gameplay_tag_field(data, offset, f"{field_name}[{index}]")
+        if tag.get("memberCount") != 2:
+            raise ValueError(f"{field_name}[{index}]:member-count={tag.get('memberCount')}")
+        tag_name = str(tag.get("tagName") or "")
+        if not is_clean_skill_tag_name(tag_name):
+            raise ValueError(f"{field_name}[{index}]:unclean-tag-name")
+        tags.append(tag)
+    return {
+        "memberCount": prefix_member_count,
+        "offset": format_offset(start),
+        "branch": "compact-tag-list",
+        "branchNote": "observed tagsAfterTriggerExtendBuffAction list uses a zero prefix byte followed by u32 tag count",
+        "count": count,
+        "tags": tags,
+    }, offset
+
+
+def read_buff_tags_after_trigger_field(
+    data: bytes,
+    offset: int,
+) -> tuple[dict[str, Any], int]:
+    field_name = "tagsAfterTriggerExtendBuffAction"
+    try:
+        tag, end = read_buff_gameplay_tag_field(data, offset, field_name)
+        tag_name = str(tag.get("tagName") or "")
+        if tag.get("memberCount") == 0 and tag_name:
+            raise ValueError(f"{field_name}:member0-nonempty-tag")
+        if buff_tag_name_has_control(tag_name):
+            raise ValueError(f"{field_name}:control-tag-name")
+        return tag, end
+    except (struct.error, UnicodeDecodeError, ValueError):
+        pass
+
+    try:
+        return read_buff_member1_empty_tag_field(data, offset, field_name)
+    except (struct.error, UnicodeDecodeError, ValueError):
+        pass
+
+    try:
+        return read_buff_compact_empty_tag_field(data, offset, field_name)
+    except (struct.error, UnicodeDecodeError, ValueError):
+        return read_buff_compact_tag_list_field(data, offset, field_name)
+
+
+def parse_buff_tail_after_shield_configs(
+    data: bytes,
+    tail_offset: int,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        stacking_settings, tail_offset = read_buff_stacking_settings_compact_id_branch(
+            data,
+            tail_offset,
+        )
+        if (
+            stacking_settings.get("stackEffectsCount")
+            and stacking_settings.get("stackEffectsBodyStatus")
+            not in {"skipped-zero-action-items", "opaque-effectActions"}
+        ):
+            result["status"] = "parsed-through-stackingSettings"
+            result["stackingSettings"] = stacking_settings
+            result["tailParseStatus"] = "unparsed-stackEffects"
+            result["tailParseOffset"] = format_offset(tail_offset)
+            result["tailParseError"] = f"stackEffectsCount={stacking_settings.get('stackEffectsCount')}"
+            result["endOffset"] = format_offset(tail_offset)
+            return result
+
+        tag_field_offset = tail_offset
+        tags_after_trigger, tail_offset = read_buff_tags_after_trigger_field(
+            data,
+            tag_field_offset,
+        )
+        if tags_after_trigger.get("branch") == "member1-empty-payload":
+            trigger_interval, use_time_dilation_dt, wait_first_trigger_interval, tail_offset = (
+                read_buff_trigger_interval_bool_tail_exact(data, tail_offset)
+            )
+            result["status"] = "parsed-through-exact-tail"
+            result["stackingSettings"] = stacking_settings
+            result["tagsAfterTriggerExtendBuffAction"] = tags_after_trigger
+            result["timelineActionsCount"] = 0
+            result["timelineActionsEncoding"] = "omitted-empty-count-after-member1-empty-tag"
+            result["triggerInterval"] = trigger_interval
+            result["useTimeDilationDt"] = use_time_dilation_dt
+            result["waitFirstTriggerInterval"] = wait_first_trigger_interval
+            result["endOffset"] = format_offset(tail_offset)
+            return result
+
+        timeline_count_offset = tail_offset
+        timeline_action_count, tail_offset = read_buff_u32_field(
+            data,
+            tail_offset,
+            "timelineActionsCount",
+        )
+        if timeline_action_count > 256:
+            try:
+                trigger_interval, use_time_dilation_dt, wait_first_trigger_interval, tail_offset = (
+                    read_buff_trigger_interval_bool_tail_exact(data, timeline_count_offset)
+                )
+            except (struct.error, UnicodeDecodeError, ValueError):
+                raise ValueError(f"timelineActionsCount:large-count={timeline_action_count}")
+            result["status"] = "parsed-through-exact-tail"
+            result["stackingSettings"] = stacking_settings
+            result["tagsAfterTriggerExtendBuffAction"] = tags_after_trigger
+            result["timelineActionsCount"] = 0
+            result["timelineActionsEncoding"] = "omitted-empty-count"
+            result["triggerInterval"] = trigger_interval
+            result["useTimeDilationDt"] = use_time_dilation_dt
+            result["waitFirstTriggerInterval"] = wait_first_trigger_interval
+            result["endOffset"] = format_offset(tail_offset)
+            return result
+        if timeline_action_count:
+            try:
+                trigger_interval, use_time_dilation_dt, wait_first_trigger_interval, tail_offset = (
+                    read_buff_trigger_interval_bool_tail_exact(data, timeline_count_offset)
+                )
+            except (struct.error, UnicodeDecodeError, ValueError):
+                try:
+                    timeline_body_end, timeline_body_pattern = find_buff_timeline_actions_body_end(
+                        data,
+                        tail_offset,
+                        timeline_action_count,
+                    )
+                    trigger_interval, use_time_dilation_dt, wait_first_trigger_interval, tail_offset = (
+                        read_buff_trigger_interval_bool_tail_exact(data, timeline_body_end)
+                    )
+                except (struct.error, UnicodeDecodeError, ValueError):
+                    result["status"] = "parsed-through-timelineActionsCount"
+                    result["stackingSettings"] = stacking_settings
+                    result["tagsAfterTriggerExtendBuffAction"] = tags_after_trigger
+                    result["timelineActionsCount"] = timeline_action_count
+                    result["tailParseStatus"] = "unparsed-timelineActions"
+                    result["tailParseOffset"] = format_offset(tail_offset)
+                    result["tailParseError"] = f"timelineActionsCount={timeline_action_count}"
+                    result["endOffset"] = format_offset(tail_offset)
+                    return result
+                result["status"] = "parsed-through-exact-tail"
+                result["stackingSettings"] = stacking_settings
+                result["tagsAfterTriggerExtendBuffAction"] = tags_after_trigger
+                result["timelineActionsCount"] = timeline_action_count
+                try:
+                    result.update(decode_buff_timeline_actions_outer(
+                        data,
+                        timeline_count_offset + 4,
+                        timeline_action_count,
+                        timeline_body_end,
+                    ))
+                except (struct.error, UnicodeDecodeError, ValueError) as timeline_exc:
+                    result["timelineActionsBodyStatus"] = "opaque-timelineActions"
+                    result["timelineActionsSemanticStatus"] = f"partial-decode-failed:{timeline_exc}"
+                result["timelineActionsBodyOffset"] = format_offset(timeline_count_offset + 4)
+                result["timelineActionsBodyBytes"] = timeline_body_end - (timeline_count_offset + 4)
+                result["timelineActionsBodyPattern"] = f"0x{timeline_body_pattern:02x}"
+                result["triggerInterval"] = trigger_interval
+                result["useTimeDilationDt"] = use_time_dilation_dt
+                result["waitFirstTriggerInterval"] = wait_first_trigger_interval
+                result["endOffset"] = format_offset(tail_offset)
+                return result
+            result["status"] = "parsed-through-exact-tail"
+            result["stackingSettings"] = stacking_settings
+            result["tagsAfterTriggerExtendBuffAction"] = tags_after_trigger
+            result["timelineActionsCount"] = 0
+            result["timelineActionsEncoding"] = "omitted-empty-count"
+            result["timelineActionsApparentCount"] = timeline_action_count
+            result["triggerInterval"] = trigger_interval
+            result["useTimeDilationDt"] = use_time_dilation_dt
+            result["waitFirstTriggerInterval"] = wait_first_trigger_interval
+            result["endOffset"] = format_offset(tail_offset)
+            return result
+
+        trigger_interval, use_time_dilation_dt, wait_first_trigger_interval, tail_offset = (
+            read_buff_trigger_interval_bool_tail_exact(data, tail_offset)
+        )
+        result["status"] = "parsed-through-exact-tail"
+        result["stackingSettings"] = stacking_settings
+        result["tagsAfterTriggerExtendBuffAction"] = tags_after_trigger
+        result["timelineActionsCount"] = timeline_action_count
+        result["triggerInterval"] = trigger_interval
+        result["useTimeDilationDt"] = use_time_dilation_dt
+        result["waitFirstTriggerInterval"] = wait_first_trigger_interval
+        result["endOffset"] = format_offset(tail_offset)
+    except (struct.error, UnicodeDecodeError, ValueError) as tail_exc:
+        result["tailParseStatus"] = "parse-error"
+        result["tailParseOffset"] = format_offset(tail_offset)
+        result["tailParseError"] = str(tail_exc)
+    result.setdefault("endOffset", format_offset(tail_offset))
+    return result
+
+
+def summarize_buff_opaque_body_diagnostics(
+    data: bytes,
+    offset: int,
+    body_end: int,
+    field_prefix: str,
+    *,
+    max_head_bytes: int = 96,
+    max_tail_bytes: int = 48,
+    max_string_hits: int = 12,
+) -> dict[str, Any]:
+    if body_end < offset or body_end > len(data):
+        raise ValueError(f"{field_prefix}:invalid-body-bounds")
+    body_len = body_end - offset
+    details: dict[str, Any] = {
+        f"{field_prefix}BodyMemberCountCandidate": data[offset] if body_len else None,
+        f"{field_prefix}BodyU32AtPlus1Candidate": read_u32_at(data, offset + 1) if body_len >= 5 else None,
+        f"{field_prefix}BodyHeadHex": data[offset:offset + min(body_len, max_head_bytes)].hex(" "),
+        f"{field_prefix}BodyTailHex": data[max(offset, body_end - min(body_len, max_tail_bytes)):body_end].hex(" "),
+    }
+    string_hits = scan_length_prefixed_utf8_string_hits(
+        data,
+        start=offset,
+        max_scan_bytes=body_len,
+        max_samples=max_string_hits,
+        max_length=160,
+    )
+    if string_hits:
+        details[f"{field_prefix}BodyStringHits"] = string_hits
+    return {key: value for key, value in details.items() if value not in (None, "")}
+
+def find_buff_shield_configs_body_end(
+    data: bytes,
+    offset: int,
+    shield_config_count: int,
+) -> tuple[dict[str, Any], int]:
+    if shield_config_count <= 0 or shield_config_count > 16:
+        raise ValueError(f"shieldConfigsCount:unsupported-body-count={shield_config_count}")
+    if offset >= len(data) or data[offset] != 9:
+        raw = data[offset] if offset < len(data) else None
+        raise ValueError(f"shieldConfigsBody:unsupported-member-count={raw}")
+
+    candidates: list[tuple[int, dict[str, Any]]] = []
+    scan_end = min(len(data), offset + BUFF_OPAQUE_SHIELD_CONFIGS_BODY_MAX_BYTES)
+    for candidate_end in range(offset + 1, scan_end):
+        if data[candidate_end] != 12:
+            continue
+        probe_result: dict[str, Any] = {
+            "status": "parsed-through-shieldConfigsCount",
+            "shieldConfigsCount": shield_config_count,
+        }
+        parsed = parse_buff_tail_after_shield_configs(data, candidate_end, probe_result)
+        if buff_post_id_result_is_exact_tail(parsed):
+            candidates.append((candidate_end, parsed))
+            if len(candidates) > 1:
+                break
+    if len(candidates) != 1:
+        raise ValueError(f"shieldConfigsBody:tail-anchor-candidates={len(candidates)}")
+
+    body_end, parsed = candidates[0]
+    body_diagnostics = summarize_buff_opaque_body_diagnostics(
+        data,
+        offset,
+        body_end,
+        "shieldConfigs",
+    )
+    return {
+        "shieldConfigsBodyShape": "opaque ShieldConfig list; boundary selected by unique downstream stackingSettings/tail parse",
+        "shieldConfigsSemanticStatus": "partial-shieldConfigs-opaque-nested-fields",
+        **body_diagnostics,
+        "shieldConfigsBodyTailPreview": {
+            key: parsed.get(key)
+            for key in ("timelineActionsCount", "timelineActionsBodyStatus", "timelineActionsBodyBytes")
+            if parsed.get(key) not in (None, "")
+        },
+    }, body_end
+
+
+def read_buff_shield_configs_and_tail(
+    data: bytes,
+    offset: int,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    shield_config_count, offset = read_buff_u32_field(data, offset, "shieldConfigsCount")
+    if shield_config_count > 256:
+        raise ValueError(f"shieldConfigsCount:large-count={shield_config_count}")
+    result["shieldConfigsCount"] = shield_config_count
+    result["status"] = "parsed-through-shieldConfigsCount"
+    if shield_config_count:
+        shield_body_offset = offset
+        try:
+            shield_body_details, offset = find_buff_shield_configs_body_end(
+                data,
+                offset,
+                shield_config_count,
+            )
+        except (struct.error, UnicodeDecodeError, ValueError) as exc:
+            result["tailParseStatus"] = "unparsed-shieldConfigs"
+            result["tailParseOffset"] = format_offset(offset)
+            result["tailParseError"] = f"shieldConfigsCount={shield_config_count}; {exc}"
+            result["endOffset"] = format_offset(offset)
+            return result
+        result["shieldConfigsBodyStatus"] = "opaque-shieldConfigs"
+        result["shieldConfigsBodyOffset"] = format_offset(shield_body_offset)
+        result["shieldConfigsBodyBytes"] = offset - shield_body_offset
+        result.update(shield_body_details)
+    return parse_buff_tail_after_shield_configs(data, offset, result)
+
+
+def find_buff_poise_modifier_body_end(
+    data: bytes,
+    offset: int,
+    poise_modifier_count: int,
+) -> tuple[dict[str, Any], int]:
+    if poise_modifier_count <= 0 or poise_modifier_count > 16:
+        raise ValueError(f"poiseModifierCount:unsupported-body-count={poise_modifier_count}")
+    if offset >= len(data) or data[offset] != 3:
+        raw = data[offset] if offset < len(data) else None
+        raise ValueError(f"poiseModifierBody:unsupported-prefix={raw}")
+
+    candidates: list[tuple[int, dict[str, Any]]] = []
+    scan_end = min(len(data), offset + BUFF_OPAQUE_POISE_MODIFIER_BODY_MAX_BYTES)
+    for candidate_end in range(offset + 1, scan_end):
+        shield_count = read_u32_at(data, candidate_end)
+        if shield_count is None or shield_count > 16:
+            continue
+        if shield_count == 0:
+            if candidate_end + 4 >= len(data) or data[candidate_end + 4] != 12:
+                continue
+        elif candidate_end + 4 >= len(data) or data[candidate_end + 4] != 9:
+            continue
+        probe_result: dict[str, Any] = {
+            "status": "parsed-through-poiseModifierCount",
+            "poiseModifierCount": poise_modifier_count,
+        }
+        parsed = read_buff_shield_configs_and_tail(data, candidate_end, probe_result)
+        if buff_post_id_result_is_exact_tail(parsed):
+            candidates.append((candidate_end, parsed))
+            if len(candidates) > 1:
+                break
+    if len(candidates) != 1:
+        raise ValueError(f"poiseModifierBody:tail-anchor-candidates={len(candidates)}")
+
+    body_end, parsed = candidates[0]
+    body_diagnostics = summarize_buff_opaque_body_diagnostics(
+        data,
+        offset,
+        body_end,
+        "poiseModifier",
+    )
+    return {
+        "poiseModifierBodyShape": "opaque PoiseModifier list; boundary selected by unique downstream shieldConfigs/tail parse",
+        "poiseModifierSemanticStatus": "partial-poiseModifier-opaque-processors",
+        **body_diagnostics,
+        "poiseModifierBodyTailPreview": {
+            key: parsed.get(key)
+            for key in (
+                "shieldConfigsCount",
+                "shieldConfigsBodyStatus",
+                "timelineActionsCount",
+                "timelineActionsBodyStatus",
+            )
+            if parsed.get(key) not in (None, "")
+        },
+    }, body_end
+
+
+def read_buff_post_ignite_suffix(
+    data: bytes,
+    offset: int,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    ignore_cooldown, offset = read_buff_bool_field(
+        data,
+        offset,
+        "ignoreCooldownWhenAdding",
+    )
+    ignore_tag_immune, offset = read_buff_bool_field(data, offset, "ignoreTagImmune")
+    if offset >= len(data):
+        raise ValueError("lifeType:truncated-u8")
+    life_type = data[offset]
+    offset += 1
+    max_trigger_count, offset = read_buff_blackboard_int_field(
+        data,
+        offset,
+        "maxTriggerCnt",
+    )
+    poise_modifier_count, offset = read_buff_u32_field(data, offset, "poiseModifierCount")
+    if poise_modifier_count > 256:
+        raise ValueError(f"poiseModifierCount:large-count={poise_modifier_count}")
+
+    result.update({
+        "status": "parsed-through-poiseModifierCount",
+        "ignoreCooldownWhenAdding": ignore_cooldown,
+        "ignoreTagImmune": ignore_tag_immune,
+        "lifeTypeRaw": life_type,
+        "maxTriggerCnt": max_trigger_count,
+        "poiseModifierCount": poise_modifier_count,
+    })
+    if poise_modifier_count:
+        poise_body_offset = offset
+        try:
+            poise_body_details, offset = find_buff_poise_modifier_body_end(
+                data,
+                offset,
+                poise_modifier_count,
+            )
+        except (struct.error, UnicodeDecodeError, ValueError) as exc:
+            result["stopReason"] = "poiseModifier list body not skipped"
+            result["tailParseStatus"] = "unparsed-poiseModifier"
+            result["tailParseOffset"] = format_offset(offset)
+            result["tailParseError"] = f"poiseModifierCount={poise_modifier_count}; {exc}"
+            result["endOffset"] = format_offset(offset)
+            return result
+        result["poiseModifierBodyStatus"] = "opaque-poiseModifier"
+        result["poiseModifierBodyOffset"] = format_offset(poise_body_offset)
+        result["poiseModifierBodyBytes"] = offset - poise_body_offset
+        result.update(poise_body_details)
+
+    return read_buff_shield_configs_and_tail(data, offset, result)
+
+
+BUFF_IGNITE_NESTED_BLOCK_START = b"\x03\x01\x00\x00\x00\x03"
+BUFF_IGNITE_NESTED_BLOCK_LONG_HEADER = b"\x03\x01\x00\x00\x00\x03\x02\x00\x00\x00\xfa\x44\x01\x08"
+BUFF_IGNITE_NESTED_BLOCK_SHORT_HEADER = b"\x03\x01\x00\x00\x00\x03\x01\x00\x00\x00\x82\x11\x01"
+BUFF_IGNITE_NESTED_BLOCK_TAIL_PREFIX = b"\x04\x00\x00\x00\x00\x00\x00"
+
+
+def validate_buff_ignite_nested_blocks(
+    data: bytes,
+    offset: int,
+    body_end: int,
+    ignite_count: int,
+) -> dict[str, Any]:
+    if ignite_count != 4:
+        raise ValueError(f"igniteEventActionNestedBlocks:unsupported-count={ignite_count}")
+    if body_end <= offset or body_end > len(data):
+        raise ValueError("igniteEventActionNestedBlocks:invalid-body-end")
+    if data[offset:offset + len(BUFF_IGNITE_NESTED_BLOCK_START)] != BUFF_IGNITE_NESTED_BLOCK_START:
+        raise ValueError("igniteEventActionNestedBlocks:missing-initial-block")
+
+    starts: list[int] = []
+    probe = offset
+    while probe < body_end:
+        found = data.find(BUFF_IGNITE_NESTED_BLOCK_START, probe, body_end)
+        if found < 0:
+            break
+        starts.append(found)
+        probe = found + 1
+    if len(starts) != ignite_count or starts[0] != offset:
+        raise ValueError(f"igniteEventActionNestedBlocks:block-start-count={len(starts)}")
+
+    tail_codes: list[int] = []
+    block_summaries: list[dict[str, Any]] = []
+    for index, start in enumerate(starts):
+        block_end = starts[index + 1] if index + 1 < len(starts) else body_end
+        if index < 3:
+            expected_header = BUFF_IGNITE_NESTED_BLOCK_LONG_HEADER
+            header_kind = "energy-shard-long"
+        else:
+            expected_header = BUFF_IGNITE_NESTED_BLOCK_SHORT_HEADER
+            header_kind = "energy-shard-short"
+        if data[start:start + len(expected_header)] != expected_header:
+            raise ValueError(f"igniteEventActionNestedBlocks[{index}]:header-mismatch")
+        if block_end - start < 11:
+            raise ValueError(f"igniteEventActionNestedBlocks[{index}]:truncated-tail")
+        tail = data[block_end - 11:block_end]
+        if tail[:7] != BUFF_IGNITE_NESTED_BLOCK_TAIL_PREFIX or tail[8:] != b"\x00\x00\x00":
+            raise ValueError(f"igniteEventActionNestedBlocks[{index}]:tail-mismatch")
+        tail_code = tail[7]
+        tail_codes.append(tail_code)
+        block_summary = {
+            "index": index,
+            "offset": format_offset(start),
+            "bytes": block_end - start,
+            "header": header_kind,
+            "tailCode": tail_code,
+        }
+        string_hits = scan_length_prefixed_utf8_string_hits(
+            data,
+            start=start,
+            max_scan_bytes=block_end - start,
+            max_samples=8,
+            max_length=160,
+        )
+        if string_hits:
+            block_summary["stringHits"] = string_hits
+        block_summaries.append(block_summary)
+    if set(tail_codes) != {2, 3, 4, 5}:
+        raise ValueError(f"igniteEventActionNestedBlocks:tail-codes={tail_codes}")
+
+    return {
+        "igniteEventActionBodyStatus": "opaque-igniteEventAction-nestedBlocks",
+        "igniteEventActionBodyEncoding": "energy-shard-nested-blocks",
+        "igniteEventActionSemanticStatus": "partial-igniteEventAction-nestedBlocks-opaque-actionData",
+        "igniteEventActionNestedBlockCount": len(starts),
+        "igniteEventActionNestedBlockTailCodes": tail_codes,
+        "igniteEventActionNestedBlocks": block_summaries,
+    }
+
+
+def find_buff_ignite_event_action_body_end(
+    data: bytes,
+    offset: int,
+    ignite_count: int,
+) -> tuple[dict[str, Any], int]:
+    if ignite_count <= 0 or ignite_count > 16:
+        raise ValueError(f"igniteEventActionCount:unsupported-body-count={ignite_count}")
+    if offset + 5 > len(data) or data[offset] != 3:
+        raw = data[offset] if offset < len(data) else None
+        raise ValueError(f"igniteEventActionBody:unsupported-prefix={raw}")
+    body_count = read_u32_at(data, offset + 1)
+
+    candidates: list[tuple[int, dict[str, Any], dict[str, Any]]] = []
+    scan_end = min(len(data), offset + BUFF_OPAQUE_IGNITE_EVENT_ACTION_BODY_MAX_BYTES)
+    for candidate_end in range(offset + 5, scan_end):
+        if candidate_end + 4 >= len(data):
+            break
+        if data[candidate_end] not in (0, 1) or data[candidate_end + 1] not in (0, 1):
+            continue
+        if data[candidate_end + 3] != 3:
+            continue
+        probe_result: dict[str, Any] = {
+            "status": "parsed-through-igniteEventActionCount",
+            "igniteEventActionCount": ignite_count,
+        }
+        try:
+            parsed = read_buff_post_ignite_suffix(data, candidate_end, probe_result)
+        except (struct.error, UnicodeDecodeError, ValueError):
+            continue
+        if buff_post_id_result_is_exact_tail(parsed):
+            if body_count == ignite_count:
+                body_details: dict[str, Any] = {
+                    "igniteEventActionSemanticStatus": "partial-igniteEventAction-opaque-actionData",
+                    "igniteEventActionBodyLocalCount": body_count,
+                }
+                body_details.update(summarize_buff_opaque_body_diagnostics(
+                    data,
+                    offset,
+                    candidate_end,
+                    "igniteEventAction",
+                    max_string_hits=16,
+                ))
+            else:
+                body_details = validate_buff_ignite_nested_blocks(
+                    data,
+                    offset,
+                    candidate_end,
+                    ignite_count,
+                )
+                body_details["igniteEventActionBodyLocalCount"] = body_count
+                body_details.update(summarize_buff_opaque_body_diagnostics(
+                    data,
+                    offset,
+                    candidate_end,
+                    "igniteEventAction",
+                    max_string_hits=16,
+                ))
+            candidates.append((candidate_end, parsed, body_details))
+            if len(candidates) > 1:
+                break
+    if len(candidates) != 1:
+        if body_count != ignite_count:
+            raise ValueError(f"igniteEventActionBody:body-count={body_count}; tail-anchor-candidates={len(candidates)}")
+        raise ValueError(f"igniteEventActionBody:tail-anchor-candidates={len(candidates)}")
+
+    body_end, parsed, body_details = candidates[0]
+    result = {
+        "igniteEventActionBodyShape": "opaque IgniteEventAction list; boundary selected by unique downstream bool/maxTrigger/poise/tail parse",
+        "igniteEventActionBodyTailPreview": {
+            key: parsed.get(key)
+            for key in (
+                "poiseModifierCount",
+                "poiseModifierBodyStatus",
+                "shieldConfigsCount",
+                "shieldConfigsBodyStatus",
+                "timelineActionsCount",
+                "timelineActionsBodyStatus",
+            )
+            if parsed.get(key) not in (None, "")
+        },
+    }
+    result.update(body_details)
+    return result, body_end
+
+
 def read_buff_stacking_settings_compact_id_branch(
     data: bytes,
     offset: int,
@@ -2282,6 +4884,71 @@ def read_buff_stacking_settings_compact_id_branch(
     stack_effect_count, offset = read_buff_u32_field(data, offset, "stackingSettings.stackEffectsCount")
     if stack_effect_count > 256:
         raise ValueError(f"stackingSettings.stackEffectsCount:large-count={stack_effect_count}")
+
+    stack_effects_body_offset = offset
+    stack_effects_body_status = ""
+    stack_effects_body_bytes = 0
+    stack_effects_body_details: dict[str, Any] = {}
+    if stack_effect_count:
+        zero_action_end = offset + stack_effect_count * 5
+        zero_action_body = zero_action_end <= len(data)
+        probe = offset
+        for _ in range(stack_effect_count):
+            if not zero_action_body or data[probe] != 1:
+                zero_action_body = False
+                break
+            action_count = struct.unpack_from("<I", data, probe + 1)[0]
+            if action_count != 0:
+                zero_action_body = False
+                break
+            probe += 5
+        if zero_action_body:
+            offset = zero_action_end
+            stack_effects_body_status = "skipped-zero-action-items"
+            stack_effects_body_bytes = offset - stack_effects_body_offset
+        else:
+            try:
+                stack_effects_body_details, offset = skip_buff_stack_effects_effect_actions_body(
+                    data,
+                    offset,
+                    stack_effect_count,
+                )
+            except (struct.error, UnicodeDecodeError, ValueError) as exc:
+                return {
+                    "memberCount": member_count,
+                    "offset": format_offset(start),
+                    "branch": "stack-effects-body",
+                    "branchNote": "nonzero stackEffects body remains opaque until EffectActionCfg layout is skipped",
+                    "identifierTypeRaw": identifier_type,
+                    "maxStackCnt": max_stack_count,
+                    "maxStackCntKey": max_stack_count_key or "",
+                    "priority": round(priority, 6),
+                    "priorityKey": priority_key or "",
+                    "negatePriority": negate_priority,
+                    "isNeedStackEffect": is_need_stack_effect,
+                    "stackEffectsCount": stack_effect_count,
+                    "stackEffectsBodyStatus": "unparsed-effectActions",
+                    "stackEffectsBodyOffset": format_offset(stack_effects_body_offset),
+                    "stackEffectsBodyError": str(exc),
+                }, stack_effects_body_offset
+            stack_effects_body_status = "opaque-effectActions"
+            stack_effects_body_bytes = offset - stack_effects_body_offset
+
+    stacking_key_offset = offset
+    stacking_key, stacking_key_end, stacking_key_error = read_memorypack_utf8_string(
+        data,
+        stacking_key_offset,
+        max_length=256,
+    )
+    branch = "compact-id"
+    branch_note = "validated rows use identifierType=Id; empty stackingKey branch consumes compact suffix bytes"
+    if stacking_key_error is None and stacking_key and is_clean_skill_identifier_string(stacking_key):
+        offset = stacking_key_end
+        branch = "compact-stacking-key"
+        branch_note = "non-empty stackingKey branch consumes the common compact suffix bytes"
+    else:
+        stacking_key = ""
+
     stacking_type = data[offset]
     offset += 1
     if stacking_type > 16:
@@ -2293,11 +4960,11 @@ def read_buff_stacking_settings_compact_id_branch(
     )
     use_priority_key, offset = read_buff_bool_field(data, offset, "stackingSettings.usePriorityKey")
 
-    return {
+    result = {
         "memberCount": member_count,
         "offset": format_offset(start),
-        "branch": "compact-id",
-        "branchNote": "validated rows use identifierType=Id; stackingKey branch remains opaque",
+        "branch": branch,
+        "branchNote": branch_note,
         "identifierTypeRaw": identifier_type,
         "stackingTypeRaw": stacking_type,
         "maxStackCnt": max_stack_count,
@@ -2309,8 +4976,82 @@ def read_buff_stacking_settings_compact_id_branch(
         "negatePriority": negate_priority,
         "isNeedStackEffect": is_need_stack_effect,
         "stackEffectsCount": stack_effect_count,
-    }, offset
+    }
+    if stack_effects_body_status:
+        result["stackEffectsBodyStatus"] = stack_effects_body_status
+        result["stackEffectsBodyOffset"] = format_offset(stack_effects_body_offset)
+        result["stackEffectsBodyBytes"] = stack_effects_body_bytes
+        result.update(stack_effects_body_details)
+    if stacking_key:
+        result["stackingKey"] = stacking_key
+    return result, offset
 
+
+def summarize_buff_post_id_prefix_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "idMarkerOffset": candidate.get("idMarkerOffset"),
+        "status": candidate.get("status"),
+        "offset": candidate.get("offset"),
+        "endOffset": candidate.get("endOffset"),
+    }
+    for key in (
+        "tailParseStatus",
+        "tailParseOffset",
+        "error",
+        "tailParseError",
+        "igniteEventActionCount",
+        "poiseModifierCount",
+        "shieldConfigsCount",
+    ):
+        if key in candidate:
+            summary[key] = candidate.get(key)
+    return {key: value for key, value in summary.items() if value not in (None, "")}
+
+
+def decode_buff_post_id_prefix_at(
+    data: bytes,
+    id_value: str,
+    id_marker_offset: int,
+) -> dict[str, Any]:
+    start = id_marker_offset + 4 + len(id_value.encode("utf-8"))
+    offset = start
+    try:
+        ignite_count, offset = read_buff_u32_field(data, offset, "igniteEventActionCount")
+        if ignite_count > 256:
+            raise ValueError(f"igniteEventActionCount:large-count={ignite_count}")
+        result: dict[str, Any] = {
+            "status": "parsed-through-igniteEventActionCount",
+            "source": "anchored after exact top-level id marker; bounded opaque list bodies resume downstream tail parsing",
+            "idMarkerOffset": format_offset(id_marker_offset),
+            "offset": format_offset(start),
+            "igniteEventActionCount": ignite_count,
+        }
+        if ignite_count:
+            ignite_body_offset = offset
+            try:
+                ignite_body_details, offset = find_buff_ignite_event_action_body_end(
+                    data,
+                    offset,
+                    ignite_count,
+                )
+            except (struct.error, UnicodeDecodeError, ValueError) as exc:
+                result["tailParseStatus"] = "unparsed-igniteEventAction"
+                result["tailParseOffset"] = format_offset(offset)
+                result["tailParseError"] = f"igniteEventActionCount={ignite_count}; {exc}"
+                result["endOffset"] = format_offset(offset)
+                return result
+            result["igniteEventActionBodyStatus"] = "opaque-igniteEventAction"
+            result["igniteEventActionBodyOffset"] = format_offset(ignite_body_offset)
+            result["igniteEventActionBodyBytes"] = offset - ignite_body_offset
+            result.update(ignite_body_details)
+        return read_buff_post_ignite_suffix(data, offset, result)
+    except (struct.error, UnicodeDecodeError, ValueError) as exc:
+        return {
+            "status": "parse-error",
+            "idMarkerOffset": format_offset(id_marker_offset),
+            "offset": format_offset(offset),
+            "error": str(exc),
+        }
 
 def decode_buff_post_id_prefix(
     data: bytes,
@@ -2320,110 +5061,64 @@ def decode_buff_post_id_prefix(
 ) -> dict[str, Any]:
     if not id_value or not id_marker_offsets:
         return {"status": "missing-id-marker"}
-    if id_marker_count != 1:
-        return {"status": "ambiguous-id-marker", "idMarkerCount": id_marker_count}
 
-    start = id_marker_offsets[0] + 4 + len(id_value.encode("utf-8"))
-    offset = start
-    try:
-        ignite_count, offset = read_buff_u32_field(data, offset, "igniteEventActionCount")
-        if ignite_count > 256:
-            raise ValueError(f"igniteEventActionCount:large-count={ignite_count}")
-        ignore_cooldown, offset = read_buff_bool_field(
-            data,
-            offset,
-            "ignoreCooldownWhenAdding",
-        )
-        ignore_tag_immune, offset = read_buff_bool_field(data, offset, "ignoreTagImmune")
-        if offset >= len(data):
-            raise ValueError("lifeType:truncated-u8")
-        life_type = data[offset]
-        offset += 1
-        max_trigger_count, offset = read_buff_blackboard_int_field(
-            data,
-            offset,
-            "maxTriggerCnt",
-        )
-        poise_modifier_count, offset = read_buff_u32_field(data, offset, "poiseModifierCount")
-        if poise_modifier_count > 256:
-            raise ValueError(f"poiseModifierCount:large-count={poise_modifier_count}")
+    candidates = [
+        decode_buff_post_id_prefix_at(data, id_value, marker_offset)
+        for marker_offset in id_marker_offsets
+    ]
+    if id_marker_count == 1:
+        return candidates[0]
 
-        result: dict[str, Any] = {
-            "status": "parsed-through-poiseModifierCount",
-            "source": "anchored after exact top-level id marker; stops before nonzero list bodies",
-            "offset": format_offset(start),
-            "igniteEventActionCount": ignite_count,
-            "ignoreCooldownWhenAdding": ignore_cooldown,
-            "ignoreTagImmune": ignore_tag_immune,
-            "lifeTypeRaw": life_type,
-            "maxTriggerCnt": max_trigger_count,
-            "poiseModifierCount": poise_modifier_count,
+    exact_candidates = [
+        candidate for candidate in candidates
+        if candidate.get("status") == "parsed-through-exact-tail"
+    ]
+    if len(exact_candidates) == 1:
+        result = dict(exact_candidates[0])
+        result["anchorSelection"] = {
+            "status": "selected-from-ambiguous-id-markers",
+            "idMarkerCount": id_marker_count,
+            "selectedIdMarkerOffset": result.get("idMarkerOffset"),
+            "selectionCriteria": "unique BuffData id marker candidate parsed through exact tail",
+            "candidateSummaries": [
+                summarize_buff_post_id_prefix_candidate(candidate)
+                for candidate in candidates[:12]
+            ],
         }
-        if poise_modifier_count == 0:
-            shield_config_count, offset = read_buff_u32_field(data, offset, "shieldConfigsCount")
-            if shield_config_count > 256:
-                raise ValueError(f"shieldConfigsCount:large-count={shield_config_count}")
-            result["shieldConfigsCount"] = shield_config_count
-            result["status"] = "parsed-through-shieldConfigsCount"
-            if shield_config_count == 0:
-                tail_offset = offset
-                try:
-                    stacking_settings, tail_offset = read_buff_stacking_settings_compact_id_branch(
-                        data,
-                        tail_offset,
-                    )
-                    tags_after_trigger, tail_offset = read_buff_gameplay_tag_field(
-                        data,
-                        tail_offset,
-                        "tagsAfterTriggerExtendBuffAction",
-                    )
-                    timeline_action_count, tail_offset = read_buff_u32_field(
-                        data,
-                        tail_offset,
-                        "timelineActionsCount",
-                    )
-                    if timeline_action_count > 256:
-                        raise ValueError(f"timelineActionsCount:large-count={timeline_action_count}")
-                    trigger_interval, tail_offset = read_buff_blackboard_float_field(
-                        data,
-                        tail_offset,
-                        "triggerInterval",
-                    )
-                    use_time_dilation_dt, tail_offset = read_buff_bool_field(
-                        data,
-                        tail_offset,
-                        "useTimeDilationDt",
-                    )
-                    wait_first_trigger_interval, tail_offset = read_buff_bool_field(
-                        data,
-                        tail_offset,
-                        "waitFirstTriggerInterval",
-                    )
-                    if tail_offset != len(data):
-                        raise ValueError(f"tail-not-exact={format_offset(tail_offset)}")
-                    result["status"] = "parsed-through-exact-tail"
-                    result["stackingSettings"] = stacking_settings
-                    result["tagsAfterTriggerExtendBuffAction"] = tags_after_trigger
-                    result["timelineActionsCount"] = timeline_action_count
-                    result["triggerInterval"] = trigger_interval
-                    result["useTimeDilationDt"] = use_time_dilation_dt
-                    result["waitFirstTriggerInterval"] = wait_first_trigger_interval
-                    result["endOffset"] = format_offset(tail_offset)
-                except (struct.error, UnicodeDecodeError, ValueError) as tail_exc:
-                    result["tailParseStatus"] = "parse-error"
-                    result["tailParseOffset"] = format_offset(tail_offset)
-                    result["tailParseError"] = str(tail_exc)
-        else:
-            result["stopReason"] = "poiseModifier list body not skipped"
-        result.setdefault("endOffset", format_offset(offset))
         return result
-    except (struct.error, UnicodeDecodeError, ValueError) as exc:
-        return {
-            "status": "parse-error",
-            "offset": format_offset(offset),
-            "error": str(exc),
-        }
 
+    structured_candidates = [
+        candidate for candidate in candidates
+        if str(candidate.get("status") or "").startswith("parsed-through")
+    ]
+    if len(structured_candidates) == 1 and all(
+        candidate is structured_candidates[0] or candidate.get("status") == "parse-error"
+        for candidate in candidates
+    ):
+        result = dict(structured_candidates[0])
+        result["anchorSelection"] = {
+            "status": "selected-from-ambiguous-id-markers",
+            "idMarkerCount": id_marker_count,
+            "selectedIdMarkerOffset": result.get("idMarkerOffset"),
+            "selectionCriteria": "unique BuffData id marker candidate reached a structured parser stop; all other candidates were hard parse errors",
+            "candidateSummaries": [
+                summarize_buff_post_id_prefix_candidate(candidate)
+                for candidate in candidates[:12]
+            ],
+        }
+        return result
+
+    return {
+        "status": "ambiguous-id-marker",
+        "idMarkerCount": id_marker_count,
+        "candidateCount": len(candidates),
+        "idMarkerOffsets": [format_offset(offset) for offset in id_marker_offsets],
+        "selectionCriteria": "requires a unique BuffData candidate that parses through exact tail",
+        "candidateSummaries": [
+            summarize_buff_post_id_prefix_candidate(candidate)
+            for candidate in candidates[:12]
+        ],
+    }
 
 def buff_post_id_prefix_sample(prefix: dict[str, Any]) -> str:
     status = str(prefix.get("status") or "")
@@ -2598,7 +5293,7 @@ def read_skill_gameplay_tag_list_field(
 def is_clean_skill_tag_name(value: str) -> bool:
     if not value or len(value) > 180:
         return False
-    if any(ord(ch) < 32 or ch == "�" for ch in value):
+    if any(ord(ch) < 32 or ord(ch) == 0xFFFD for ch in value):
         return False
     return bool(re.fullmatch(r"[A-Za-z0-9_./#:+-]+", value))
 
@@ -2608,7 +5303,7 @@ def is_clean_skill_identifier_string(value: str) -> bool:
         return True
     if len(value) > 180:
         return False
-    if any(ord(ch) < 32 or ch == "�" for ch in value):
+    if any(ord(ch) < 32 or ord(ch) == 0xFFFD for ch in value):
         return False
     return bool(re.fullmatch(r"[A-Za-z0-9_./#:+-]+", value))
 
@@ -2723,12 +5418,339 @@ def read_skill_ui_range_hint_data(
     }, offset
 
 
-def decode_skill_post_switch_tail_fields(data: bytes, switch_offset: int) -> dict[str, Any]:
-    switch_end = switch_offset + SKILL_DEFAULT_SWITCH_TO_BUFF_CONFIG_BYTE_LENGTH
+SKILL_POST_ID_PARSED_STATUSES = {"parsed-through-smartTargetTagQuery", "parsed-through-smartTargetPayload"}
+
+
+SKILL_COMPARE_TYPE_NAMES = {
+    0: "LT",
+    1: "LE",
+    2: "GT",
+    3: "GE",
+    4: "Equals",
+}
+
+
+def read_skill_assign_pair_data(
+    data: bytes,
+    offset: int,
+    field_name: str,
+) -> tuple[dict[str, Any], int]:
+    start = offset
+    if offset >= len(data):
+        raise ValueError(f"{field_name}:truncated-member-count")
+    member_count = data[offset]
+    offset += 1
+    if member_count != 6:
+        raise ValueError(f"{field_name}:member-count={member_count}")
+
+    direct_value_type, offset = read_buff_u32_field(data, offset, f"{field_name}.directValueType")
+    input_value_key, offset = read_skill_clean_string_field(
+        data,
+        offset,
+        f"{field_name}.inputValueKey",
+        max_length=256,
+    )
+    numeric_value, offset = read_skill_f32_field(data, offset, f"{field_name}.numericValue")
+    string_value, offset = read_skill_clean_string_field(
+        data,
+        offset,
+        f"{field_name}.stringValue",
+        max_length=256,
+    )
+    target_key, offset = read_skill_clean_string_field(
+        data,
+        offset,
+        f"{field_name}.targetKey",
+        max_length=256,
+    )
+    use_direct_value, offset = read_skill_bool_field(data, offset, f"{field_name}.useDirectValue")
+
+    return {
+        "offset": format_offset(start),
+        "memberCount": member_count,
+        "directValueTypeRaw": direct_value_type,
+        "inputValueKey": input_value_key,
+        "numericValue": round(numeric_value, 6),
+        "stringValue": string_value,
+        "targetKey": target_key,
+        "useDirectValue": use_direct_value,
+        "byteLength": offset - start,
+    }, offset
+
+
+def read_skill_buff_input_data(
+    data: bytes,
+    offset: int,
+    index: int,
+    field_name: str = "toggleBuffs.buffs",
+) -> tuple[dict[str, Any], int]:
+    item_name = f"{field_name}[{index}]"
+    start = offset
+    if offset >= len(data):
+        raise ValueError(f"{item_name}:truncated-member-count")
+    member_count = data[offset]
+    offset += 1
+    if member_count != 3:
+        raise ValueError(f"{item_name}:member-count={member_count}")
+
+    assign_blackboard, offset = read_skill_bool_field(
+        data,
+        offset,
+        f"{item_name}.assignBlackboard",
+    )
+    assign_items_count, offset = read_buff_u32_field(
+        data,
+        offset,
+        f"{item_name}.assignItemsCount",
+    )
+    if assign_items_count > 32:
+        raise ValueError(f"{item_name}.assignItemsCount:large-count={assign_items_count}")
+
+    assign_items: list[dict[str, Any]] = []
+    for item_index in range(assign_items_count):
+        assign_item, offset = read_skill_assign_pair_data(
+            data,
+            offset,
+            f"{item_name}.assignItems[{item_index}]",
+        )
+        assign_items.append(assign_item)
+
+    buff_id, offset = read_skill_clean_string_field(
+        data,
+        offset,
+        f"{item_name}.buffId",
+        max_length=256,
+    )
+    if not buff_id.startswith("buff_"):
+        raise ValueError(f"{item_name}.buffId:unexpected={buff_id!r}")
+
+    return {
+        "offset": format_offset(start),
+        "memberCount": member_count,
+        "assignBlackboard": assign_blackboard,
+        "assignItemsCount": assign_items_count,
+        "assignItems": assign_items[:8],
+        "buffId": buff_id,
+        "byteLength": offset - start,
+    }, offset
+
+
+def read_skill_toggle_condition_data(
+    data: bytes,
+    offset: int,
+    index: int,
+) -> tuple[dict[str, Any], int]:
+    start = offset
+    condition_kind, offset = read_skill_u8_field(
+        data,
+        offset,
+        f"toggleBuffs.conditions[{index}].kind",
+        max_value=16,
+    )
+    if condition_kind != 1:
+        raise ValueError(f"toggleBuffs.conditions[{index}].kind={condition_kind}")
+    member_count, offset = read_skill_u8_field(
+        data,
+        offset,
+        f"toggleBuffs.conditions[{index}].memberCount",
+        max_value=16,
+    )
+    if member_count != 2:
+        raise ValueError(f"toggleBuffs.conditions[{index}].member-count={member_count}")
+
+    compare_raw, offset = read_buff_u32_field(data, offset, f"toggleBuffs.conditions[{index}].compare")
+    if compare_raw > 16:
+        raise ValueError(f"toggleBuffs.conditions[{index}].compare:raw={compare_raw}")
+    value, offset = read_buff_blackboard_float_field(
+        data,
+        offset,
+        f"toggleBuffs.conditions[{index}].value",
+    )
+
+    return {
+        "offset": format_offset(start),
+        "kindRaw": condition_kind,
+        "kindName": "compareBlackboardValue",
+        "memberCount": member_count,
+        "compareRaw": compare_raw,
+        "compareName": SKILL_COMPARE_TYPE_NAMES.get(compare_raw, f"compare_{compare_raw}"),
+        "value": value,
+        "byteLength": offset - start,
+    }, offset
+
+
+def read_skill_toggle_buff_data(
+    data: bytes,
+    offset: int,
+    index: int,
+) -> tuple[dict[str, Any], int]:
+    start = offset
+    if offset >= len(data):
+        raise ValueError(f"toggleBuffs[{index}]:truncated-member-count")
+    member_count = data[offset]
+    offset += 1
+    if member_count != 2:
+        raise ValueError(f"toggleBuffs[{index}]:member-count={member_count}")
+
+    buffs_count, offset = read_buff_u32_field(data, offset, f"toggleBuffs[{index}].buffsCount")
+    if buffs_count > 32:
+        raise ValueError(f"toggleBuffs[{index}].buffsCount:large-count={buffs_count}")
+    buffs: list[dict[str, Any]] = []
+    for buff_index in range(buffs_count):
+        buff, offset = read_skill_buff_input_data(data, offset, buff_index)
+        buffs.append(buff)
+
+    conditions_count, offset = read_buff_u32_field(data, offset, f"toggleBuffs[{index}].conditionsCount")
+    if conditions_count > 32:
+        raise ValueError(f"toggleBuffs[{index}].conditionsCount:large-count={conditions_count}")
+    conditions: list[dict[str, Any]] = []
+    for condition_index in range(conditions_count):
+        condition, offset = read_skill_toggle_condition_data(data, offset, condition_index)
+        conditions.append(condition)
+
+    return {
+        "offset": format_offset(start),
+        "memberCount": member_count,
+        "metadataFieldOrder": ["buffs", "conditions"],
+        "buffsCount": buffs_count,
+        "buffs": buffs[:8],
+        "conditionsCount": conditions_count,
+        "conditions": conditions[:8],
+        "byteLength": offset - start,
+    }, offset
+
+
+def scan_skill_tag_record_hits(
+    data: bytes,
+    start: int,
+    end: int,
+    *,
+    max_records: int = 12,
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    limit = max(start, min(end, len(data)) - 8)
+    for offset in range(max(start, 0), limit):
+        member_count = data[offset]
+        if member_count not in (1, 2, 3, 4):
+            continue
+        if offset + 9 > end:
+            continue
+        tag_id = struct.unpack_from("<I", data, offset + 1)[0]
+        tag_name, tag_end, error = read_memorypack_utf8_string(data, offset + 5, max_length=256)
+        if error:
+            continue
+        tag_name = tag_name or ""
+        if not tag_name.startswith("Skill/") or not is_clean_skill_tag_name(tag_name):
+            continue
+        records.append({
+            "offset": format_offset(offset),
+            "memberCount": member_count,
+            "tagId": tag_id,
+            "tagHash": f"0x{tag_id:08x}",
+            "tagName": tag_name,
+            "byteLength": tag_end - offset,
+        })
+        if len(records) >= max_records:
+            break
+    return records
+
+
+def read_skill_switch_to_buff_config_data(
+    data: bytes,
+    switch_offset: int,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    offset = switch_offset
+    if offset >= len(data):
+        raise ValueError("switchToBuffConfig:truncated-member-count")
+    member_count = data[offset]
+    offset += 1
+    if member_count != 5:
+        raise ValueError(f"switchToBuffConfig:member-count={member_count}")
+    as_skill_cast, offset = read_skill_bool_field(data, offset, "switchToBuffConfig.asSkillCast")
+    buffs_count, offset = read_buff_u32_field(data, offset, "switchToBuffConfig.buffsCount")
+    if buffs_count > 256:
+        raise ValueError(f"switchToBuffConfig.buffsCount:large-count={buffs_count}")
+
+    buffs: list[dict[str, Any]] = []
+    for buff_index in range(buffs_count):
+        buff, offset = read_skill_buff_input_data(
+            data,
+            offset,
+            buff_index,
+            "switchToBuffConfig.buffs",
+        )
+        buffs.append(buff)
+
+    suffix_offset = offset
+    default_length = SKILL_DEFAULT_SWITCH_TO_BUFF_CONFIG_BYTE_LENGTH
+    default_end = switch_offset + default_length
+    post_switch_tail = decode_skill_post_switch_tail_at(data, default_end, default_length, "default-fixed")
+    body_end = default_end
+    boundary_status = "default-fixed"
+
+    if default_end < suffix_offset or post_switch_tail.get("status") != "parsed-through-exact-tail":
+        scan_start = max(suffix_offset, switch_offset + 6)
+        scan_end = min(len(data), suffix_offset + 4096)
+        found_tail: dict[str, Any] | None = None
+        found_end = -1
+        for candidate_end in range(scan_start, scan_end):
+            if data[candidate_end] not in (0, 1):
+                continue
+            candidate_length = candidate_end - switch_offset
+            candidate_tail = decode_skill_post_switch_tail_at(
+                data,
+                candidate_end,
+                candidate_length,
+                "validated-post-tail-scan",
+            )
+            if candidate_tail.get("status") == "parsed-through-exact-tail":
+                found_tail = candidate_tail
+                found_end = candidate_end
+                break
+        if found_tail is not None:
+            body_end = found_end
+            post_switch_tail = found_tail
+            boundary_status = "validated-post-tail-scan"
+        else:
+            body_end = max(default_end, suffix_offset)
+            boundary_status = "default-fixed-parse-error"
+
+    suffix_length = max(0, body_end - suffix_offset)
+    suffix_bytes = data[suffix_offset:body_end]
+    switch_config = {
+        "memberCount": member_count,
+        "asSkillCast": as_skill_cast,
+        "asSkillCastRaw": int(as_skill_cast),
+        "buffsCount": buffs_count,
+        "buffs": buffs[:8],
+        "fieldOrder": ["asSkillCast", "buffs", "buffSource", "condition", "targets"],
+        "defaultByteLength": default_length,
+        "bodyByteLength": max(0, body_end - switch_offset),
+        "boundaryStatus": boundary_status,
+        "remainingSwitchSuffixByteLength": suffix_length,
+        "remainingSwitchSuffixFieldOrder": ["buffSource", "condition", "targets"],
+        "remainingSwitchSuffixPrefixHex": suffix_bytes[:96].hex(" "),
+        "remainingSwitchSuffixStringHits": scan_length_prefixed_utf8_string_hits(
+            suffix_bytes,
+            max_samples=12,
+            max_length=120,
+        ),
+    }
+    if post_switch_tail.get("status") != "parsed-through-exact-tail":
+        switch_config["boundaryError"] = post_switch_tail.get("error")
+    return switch_config, post_switch_tail
+
+
+def decode_skill_post_switch_tail_at(
+    data: bytes,
+    switch_end: int,
+    switch_config_byte_length: int,
+    boundary_status: str,
+) -> dict[str, Any]:
     offset = switch_end
     try:
         if switch_end > len(data):
-            raise ValueError("default-switch-config-boundary:truncated")
+            raise ValueError("switch-config-boundary:truncated")
         switch_to_center, offset = read_skill_bool_field(
             data,
             offset,
@@ -2746,19 +5768,23 @@ def decode_skill_post_switch_tail_fields(data: bytes, switch_offset: int) -> dic
         result: dict[str, Any] = {
             "status": "parsed-through-toggleBuffsCount",
             "source": (
-                "default SwitchToBuffConfig boundary plus final SkillData tail fields; "
-                "UIRangeHintData branch validated by exact file-end handoff where toggleBuffs is empty"
+                "validated SwitchToBuffConfig boundary plus final SkillData tail fields; "
+                "UIRangeHintData and toggleBuffs branches require exact file-end handoff"
             ),
             "offset": format_offset(switch_end),
-            "switchToBuffConfigByteLength": SKILL_DEFAULT_SWITCH_TO_BUFF_CONFIG_BYTE_LENGTH,
+            "switchToBuffConfigByteLength": switch_config_byte_length,
+            "switchToBuffConfigBoundaryStatus": boundary_status,
             "switchToCenterBeforeCast": switch_to_center,
             "tagDuringAttach": tag_during_attach,
             "toggleBuffsCount": toggle_buffs_count,
             "endOffset": format_offset(offset),
         }
-        if toggle_buffs_count != 0:
-            result["stopReason"] = "toggleBuffs list body not skipped"
-            return result
+        toggle_buffs: list[dict[str, Any]] = []
+        for index in range(toggle_buffs_count):
+            toggle_buff, offset = read_skill_toggle_buff_data(data, offset, index)
+            toggle_buffs.append(toggle_buff)
+        if toggle_buffs:
+            result["toggleBuffs"] = toggle_buffs[:8]
 
         ui_range_hints_count, offset = read_buff_u32_field(data, offset, "uiRangeHintsCount")
         if ui_range_hints_count > 32:
@@ -2779,9 +5805,20 @@ def decode_skill_post_switch_tail_fields(data: bytes, switch_offset: int) -> dic
         return {
             "status": "parse-error",
             "offset": format_offset(offset),
-            "switchToBuffConfigByteLength": SKILL_DEFAULT_SWITCH_TO_BUFF_CONFIG_BYTE_LENGTH,
+            "switchToBuffConfigByteLength": switch_config_byte_length,
+            "switchToBuffConfigBoundaryStatus": boundary_status,
             "error": str(exc),
         }
+
+
+def decode_skill_post_switch_tail_fields(data: bytes, switch_offset: int) -> dict[str, Any]:
+    switch_end = switch_offset + SKILL_DEFAULT_SWITCH_TO_BUFF_CONFIG_BYTE_LENGTH
+    return decode_skill_post_switch_tail_at(
+        data,
+        switch_end,
+        SKILL_DEFAULT_SWITCH_TO_BUFF_CONFIG_BYTE_LENGTH,
+        "default-fixed",
+    )
 
 
 def decode_skill_switch_tail_probe(data: bytes, offset: int) -> dict[str, Any]:
@@ -2793,7 +5830,7 @@ def decode_skill_switch_tail_probe(data: bytes, offset: int) -> dict[str, Any]:
             "tailByteLength": 0,
         }
 
-    scan_limit = min(len(tail), 96)
+    scan_limit = min(len(tail), 512)
     marker_rel: int | None = None
     as_skill_cast = 0
     buffs_count = 0
@@ -2823,7 +5860,20 @@ def decode_skill_switch_tail_probe(data: bytes, offset: int) -> dict[str, Any]:
     pre_switch = tail[:marker_rel]
     switch_offset = offset + marker_rel
     switch_tail = tail[marker_rel:]
-    post_switch_tail = decode_skill_post_switch_tail_fields(data, switch_offset)
+    try:
+        switch_to_buff_config, post_switch_tail = read_skill_switch_to_buff_config_data(data, switch_offset)
+    except (struct.error, UnicodeDecodeError, ValueError) as exc:
+        switch_to_buff_config = {
+            "memberCount": 5,
+            "asSkillCast": bool(as_skill_cast),
+            "asSkillCastRaw": as_skill_cast,
+            "buffsCount": buffs_count,
+            "fieldOrder": ["asSkillCast", "buffs", "buffSource", "condition", "targets"],
+            "defaultByteLength": SKILL_DEFAULT_SWITCH_TO_BUFF_CONFIG_BYTE_LENGTH,
+            "boundaryStatus": "parse-error",
+            "boundaryError": str(exc),
+        }
+        post_switch_tail = decode_skill_post_switch_tail_fields(data, switch_offset)
     return {
         "status": "switch-marker-found",
         "source": (
@@ -2839,14 +5889,13 @@ def decode_skill_switch_tail_probe(data: bytes, offset: int) -> dict[str, Any]:
             max_samples=8,
             max_length=120,
         ),
-        "switchToBuffConfig": {
-            "memberCount": 5,
-            "asSkillCast": bool(as_skill_cast),
-            "asSkillCastRaw": as_skill_cast,
-            "buffsCount": buffs_count,
-            "fieldOrder": ["asSkillCast", "buffs", "buffSource", "condition", "targets"],
-            "defaultByteLength": SKILL_DEFAULT_SWITCH_TO_BUFF_CONFIG_BYTE_LENGTH,
-        },
+        "preSwitchTagRecords": scan_skill_tag_record_hits(
+            data,
+            offset,
+            switch_offset,
+            max_records=8,
+        ),
+        "switchToBuffConfig": switch_to_buff_config,
         "postSwitchTail": post_switch_tail,
         "unparsedFromSwitchByteLength": len(switch_tail),
         "switchPrefixHex": switch_tail[:64].hex(" "),
@@ -2858,23 +5907,25 @@ def decode_skill_switch_tail_probe(data: bytes, offset: int) -> dict[str, Any]:
     }
 
 
-def decode_skill_post_id_tail_prefix(
+def decode_skill_post_id_tail_prefix_at(
     data: bytes,
     id_value: str,
-    id_marker_count: int,
-    id_marker_offsets: list[int],
+    id_marker_offset: int,
 ) -> dict[str, Any]:
-    if not id_value or not id_marker_offsets:
-        return {"status": "missing-id-marker"}
-    if id_marker_count != 1:
-        return {"status": "ambiguous-id-marker", "idMarkerCount": id_marker_count}
-
-    start = id_marker_offsets[0] + 4 + len(id_value.encode("utf-8"))
+    start = id_marker_offset + 4 + len(id_value.encode("utf-8"))
     offset = start
+    skill_name = ""
+    skill_specification: int | None = None
+    skill_tags: dict[str, Any] | None = None
+    smart_target_buff_find_settings: int | None = None
+    smart_target_buff_ids: dict[str, Any] | None = None
+    smart_target_select_strategy: int | None = None
+    smart_target_tag_query: int | None = None
     try:
-        skill_name, offset, error = read_memorypack_utf8_string(data, offset, max_length=512)
+        skill_name_value, offset, error = read_memorypack_utf8_string(data, offset, max_length=512)
         if error:
             raise ValueError(f"skillName:{error}")
+        skill_name = skill_name_value or ""
         skill_specification, offset = read_skill_i32_field(data, offset, "skillSpecification")
         skill_tags, offset = read_skill_gameplay_tag_list_field(data, offset, "skillTags")
         smart_target_buff_find_settings, offset = read_skill_u8_field(
@@ -2900,11 +5951,12 @@ def decode_skill_post_id_tail_prefix(
         return {
             "status": "parsed-through-smartTargetTagQuery",
             "source": (
-                "anchored after exact top-level skillId marker; parses clean post-id scalar/list prefix "
+                "anchored after candidate exact skillId marker; parses clean post-id scalar/list prefix "
                 "and probes the following SwitchToBuffConfig tail marker"
             ),
+            "idMarkerOffset": format_offset(id_marker_offset),
             "offset": format_offset(start),
-            "skillName": skill_name or "",
+            "skillName": skill_name,
             "skillSpecificationRaw": skill_specification,
             "skillTags": skill_tags,
             "smartTargetBuffFindSettingsRaw": smart_target_buff_find_settings,
@@ -2915,15 +5967,149 @@ def decode_skill_post_id_tail_prefix(
             "endOffset": format_offset(offset),
         }
     except (struct.error, UnicodeDecodeError, ValueError) as exc:
+        fallback_probe = decode_skill_switch_tail_probe(data, offset)
+        fallback_tail = fallback_probe.get("postSwitchTail") or {}
+        if (
+            fallback_probe.get("status") == "switch-marker-found"
+            and fallback_tail.get("status") == "parsed-through-exact-tail"
+            and fallback_tail.get("exactLength") is True
+        ):
+            payload_start = offset
+            payload_length = fallback_probe.get("preSwitchByteLength")
+            result: dict[str, Any] = {
+                "status": "parsed-through-smartTargetPayload",
+                "source": (
+                    "post-id scalar prefix hit a non-simple smart-target/tag-query payload; "
+                    "the payload is preserved with string/tag diagnostics and validated by exact SwitchToBuffConfig handoff"
+                ),
+                "idMarkerOffset": format_offset(id_marker_offset),
+                "offset": format_offset(start),
+                "skillName": skill_name,
+                "skillSpecificationRaw": skill_specification,
+                "skillTags": skill_tags,
+                "smartTargetBuffFindSettingsRaw": smart_target_buff_find_settings,
+                "smartTargetBuffIds": smart_target_buff_ids,
+                "smartTargetSelectStrategyRaw": smart_target_select_strategy,
+                "smartTargetTagQueryRaw": smart_target_tag_query,
+                "smartTargetParseError": str(exc),
+                "smartTargetPayload": {
+                    "status": "validated-by-switch-tail",
+                    "offset": format_offset(payload_start),
+                    "byteLength": payload_length,
+                    "stringHits": fallback_probe.get("preSwitchStringHits") or [],
+                    "tagRecords": fallback_probe.get("preSwitchTagRecords") or [],
+                    "prefixHex": fallback_probe.get("preSwitchPrefixHex"),
+                    "layoutNote": (
+                        "Payload bytes occur between the simple smart-target fields and SwitchToBuffConfig. "
+                        "Observed records use GameplayTag-like memberCount/tagId/string triples and/or buff-id strings."
+                    ),
+                },
+                "switchTailProbe": fallback_probe,
+                "endOffset": format_offset(payload_start),
+            }
+            return result
         return {
             "status": "parse-error",
+            "idMarkerOffset": format_offset(id_marker_offset),
             "offset": format_offset(offset),
             "error": str(exc),
         }
 
 
+def is_skill_top_level_post_id_tail_candidate(candidate: dict[str, Any]) -> bool:
+    if candidate.get("status") not in SKILL_POST_ID_PARSED_STATUSES:
+        return False
+    skill_tags = candidate.get("skillTags") or {}
+    if skill_tags.get("count") != 1:
+        return False
+    switch_tail = candidate.get("switchTailProbe") or {}
+    post_switch_tail = switch_tail.get("postSwitchTail") or {}
+    return (
+        switch_tail.get("status") == "switch-marker-found"
+        and post_switch_tail.get("status") == "parsed-through-exact-tail"
+        and post_switch_tail.get("exactLength") is True
+    )
+
+
+def summarize_skill_post_id_tail_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    skill_tags = candidate.get("skillTags") or {}
+    smart_target_buff_ids = candidate.get("smartTargetBuffIds") or {}
+    switch_tail = candidate.get("switchTailProbe") or {}
+    post_switch_tail = switch_tail.get("postSwitchTail") or {}
+    return {
+        "idMarkerOffset": candidate.get("idMarkerOffset"),
+        "status": candidate.get("status"),
+        "offset": candidate.get("offset"),
+        "error": candidate.get("error"),
+        "skillTagsCount": skill_tags.get("count"),
+        "smartTargetBuffIdsCount": smart_target_buff_ids.get("count"),
+        "smartTargetTagQueryRaw": candidate.get("smartTargetTagQueryRaw"),
+        "switchTailStatus": switch_tail.get("status"),
+        "postSwitchStatus": post_switch_tail.get("status"),
+        "postSwitchExactLength": post_switch_tail.get("exactLength"),
+    }
+
+
+def decode_skill_post_id_tail_prefix(
+    data: bytes,
+    id_value: str,
+    id_marker_count: int,
+    id_marker_offsets: list[int],
+) -> dict[str, Any]:
+    if not id_value or not id_marker_offsets:
+        return {"status": "missing-id-marker"}
+
+    candidates = [
+        decode_skill_post_id_tail_prefix_at(data, id_value, marker_offset)
+        for marker_offset in id_marker_offsets
+    ]
+    if id_marker_count == 1:
+        return candidates[0]
+
+    structural_candidates = [candidate for candidate in candidates if is_skill_top_level_post_id_tail_candidate(candidate)]
+    simple_candidates = [
+        candidate
+        for candidate in structural_candidates
+        if candidate.get("status") == "parsed-through-smartTargetTagQuery"
+    ]
+    selected = simple_candidates if len(simple_candidates) == 1 else structural_candidates
+    if len(selected) == 1:
+        result = selected[0]
+        result["source"] = (
+            "selected exact top-level skillId marker among multiple length-prefixed id references; "
+            "embedded id-string references were rejected by post-id and exact-tail structure"
+        )
+        result["anchorSelection"] = {
+            "status": "selected-from-ambiguous-id-markers",
+            "idMarkerCount": id_marker_count,
+            "candidateCount": len(candidates),
+            "selectedIdMarkerOffset": result.get("idMarkerOffset"),
+            "selectionCriteria": (
+                "post-id prefix parsed, skillTags.count == 1, SwitchToBuffConfig marker found, "
+                "and post-switch tail reached exact EOF"
+            ),
+            "candidateSummaries": [summarize_skill_post_id_tail_candidate(candidate) for candidate in candidates[:12]],
+        }
+        return result
+
+    return {
+        "status": "ambiguous-id-marker",
+        "idMarkerCount": id_marker_count,
+        "candidateCount": len(candidates),
+        "idMarkerOffsets": [format_offset(offset) for offset in id_marker_offsets],
+        "selectionCriteria": (
+            "post-id prefix parsed, skillTags.count == 1, SwitchToBuffConfig marker found, "
+            "and post-switch tail reached exact EOF"
+        ),
+        "selectedCandidateCount": len(selected),
+        "structuralCandidateCount": len(structural_candidates),
+        "simpleCandidateCount": len(simple_candidates),
+        "candidateSummaries": [summarize_skill_post_id_tail_candidate(candidate) for candidate in candidates[:12]],
+    }
+
+
 def skill_post_id_tail_sample(prefix: dict[str, Any]) -> str:
-    if prefix.get("status") != "parsed-through-smartTargetTagQuery":
+    if prefix.get("status") not in SKILL_POST_ID_PARSED_STATUSES:
         return ""
     tags = prefix.get("skillTags") or {}
     smart_target_buff_ids = prefix.get("smartTargetBuffIds") or {}
@@ -2931,6 +6117,10 @@ def skill_post_id_tail_sample(prefix: dict[str, Any]) -> str:
         f"spec:{prefix.get('skillSpecificationRaw')}",
         f"tags:{tags.get('count')}",
     ]
+    anchor_selection = prefix.get("anchorSelection") or {}
+    if anchor_selection.get("status") == "selected-from-ambiguous-id-markers":
+        parts.append("anchor:selected-from-ambiguous-id-markers")
+        parts.append(f"anchorOffset:{anchor_selection.get('selectedIdMarkerOffset')}")
     if tags.get("branch") == "one-member-wrapper":
         parts.append("tagMode:wrap")
     clean_tags = [
@@ -2940,6 +6130,12 @@ def skill_post_id_tail_sample(prefix: dict[str, Any]) -> str:
     ]
     if clean_tags:
         parts.append("tag:" + clean_tags[0][:80])
+    smart_payload = prefix.get("smartTargetPayload") or {}
+    if smart_payload:
+        parts.append(f"smartPayload:{smart_payload.get('byteLength')}")
+        tag_records = smart_payload.get("tagRecords") or []
+        if tag_records:
+            parts.append(f"smartTags:{len(tag_records)}")
     parts.extend([
         f"find:{prefix.get('smartTargetBuffFindSettingsRaw')}",
         f"buffIds:{smart_target_buff_ids.get('count')}",
@@ -4292,7 +7488,7 @@ def decode_skill_memorypack(path: Path, data: bytes, size: int) -> dict[str, Any
     hits = scan_length_prefixed_utf8_string_hits(data, max_samples=320)
     strings = unique_strings([str(hit.get("value") or "") for hit in hits], 96)
     stem = path.stem
-    id_marker_count, id_marker_offsets = length_prefixed_utf8_string_marker_info(data, stem)
+    id_marker_count, id_marker_offsets = length_prefixed_utf8_string_marker_info(data, stem, max_offsets=64)
     id_verified = id_marker_count > 0
     id_value = stem if id_verified else next((value for value in strings if value.startswith(("chr_", "eny_", "abilityentity_"))), "")
     value_fields, complex_fields = skill_schema_field_groups(schema)
@@ -4363,7 +7559,7 @@ def decode_skill_memorypack(path: Path, data: bytes, size: int) -> dict[str, Any
             f"{len(complex_fields)} complex/list)"
             + (
                 "; post-id tail prefix parsed"
-                if post_id_tail.get("status") == "parsed-through-smartTargetTagQuery"
+                if post_id_tail.get("status") in SKILL_POST_ID_PARSED_STATUSES
                 else ""
             )
         ),
@@ -8731,6 +11927,104 @@ def classify_binary(rel: str, path: Path, size: int, header: bytes) -> tuple[str
     return "binary", ext, f"Binary payload; header u32 {word_summary}"
 
 
+DECODER_STATUS_FIELD_LIMIT = 24
+DECODER_ISSUE_FIELD_LIMIT = 12
+DECODER_ISSUE_STATUS_VALUES = {
+    "ambiguous-id-marker",
+    "count-exceeds-remaining",
+    "opaque-effectactions",
+    "partial-effectactions-unproven-field-order",
+    "partial-igniteeventaction-nestedblocks-opaque-actiondata",
+    "partial-igniteeventaction-opaque-actiondata",
+    "partial-poisemodifier-opaque-processors",
+    "partial-shieldconfigs-opaque-nested-fields",
+    "opaque-igniteeventaction",
+    "opaque-igniteeventaction-nestedblocks",
+    "opaque-poisemodifier",
+    "opaque-shieldconfigs",
+    "opaque-timelineactions",
+    "partial-inner-actiondata-union-payloads-opaque",
+    "partial-timelineactions-opaque-actiondata",
+    "unparsed-igniteeventaction",
+    "unparsed-poisemodifier",
+    "unparsed-shieldconfigs",
+    "unparsed-stackeffects",
+    "unparsed-timelineactions",
+    "empty-tail",
+    "invalid-count",
+    "missing-id-marker",
+    "parse-error",
+    "switch-marker-not-found",
+    "truncated",
+}
+
+
+def collect_decoder_status_fields(
+    node: Any,
+    *,
+    path: str = "decoded",
+    limit: int = DECODER_STATUS_FIELD_LIMIT,
+) -> list[str]:
+    fields: list[str] = []
+
+    def visit(value: Any, current_path: str) -> None:
+        if len(fields) >= limit:
+            return
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if len(fields) >= limit:
+                    break
+                key_text = str(key)
+                item_path = f"{current_path}.{key_text}"
+                key_lower = key_text.lower()
+                if (
+                    key_lower == "status"
+                    or key_lower.endswith("status")
+                    or key_lower == "error"
+                    or key_lower.endswith("error")
+                ) and isinstance(item, (str, int, float, bool)):
+                    item_text = str(item)
+                    if item_text:
+                        fields.append(f"{item_path}={item_text}")
+                if isinstance(item, (dict, list)):
+                    visit(item, item_path)
+        elif isinstance(value, list):
+            for index, item in enumerate(value[:8]):
+                if len(fields) >= limit:
+                    break
+                if isinstance(item, (dict, list)):
+                    visit(item, f"{current_path}[{index}]")
+
+    visit(node, path)
+    return fields
+
+
+def decoder_issue_fields(status_fields: list[str]) -> list[str]:
+    issues: list[str] = []
+    for field in status_fields:
+        name, _sep, value = field.partition("=")
+        if ".candidateSummaries[" in name:
+            continue
+        value_lower = value.lower()
+        if value_lower in DECODER_ISSUE_STATUS_VALUES or "parse-error" in value_lower:
+            issues.append(field)
+        if len(issues) >= DECODER_ISSUE_FIELD_LIMIT:
+            break
+    return issues
+
+
+def add_decoder_status_fields(entry: dict[str, Any], decoded: dict[str, Any]) -> None:
+    decoded_payload = decoded.get("decoded")
+    if not isinstance(decoded_payload, dict):
+        return
+    status_fields = collect_decoder_status_fields(decoded_payload)
+    if status_fields:
+        entry["ds"] = status_fields
+    issue_fields = decoder_issue_fields(status_fields)
+    if issue_fields:
+        entry["di"] = issue_fields
+
+
 def compact_entry(
     rel: str,
     path: Path,
@@ -8792,6 +12086,7 @@ def compact_entry(
                 entry["a"] = decoded_binary["keys"]
             if decoded_binary.get("sample"):
                 entry["t"] = str(decoded_binary["sample"])[:STRING_SAMPLE_MAX_CHARS]
+            add_decoder_status_fields(entry, decoded_binary)
             return entry
 
     if path.suffix.lower() == ".bytes":
@@ -8808,6 +12103,7 @@ def compact_entry(
                 entry["a"] = decoded_flatbuffer["keys"]
             if decoded_flatbuffer.get("sample"):
                 entry["t"] = str(decoded_flatbuffer["sample"])[:STRING_SAMPLE_MAX_CHARS]
+            add_decoder_status_fields(entry, decoded_flatbuffer)
             return entry
 
     kind, subtype, summary = classify_binary(rel, path, size, header)
@@ -8833,10 +12129,6 @@ def safe_group_filename(group: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", group).strip("_") or "root"
 
 
-def group_matches_selected(group: str, selected: set[str] | None) -> bool:
-    if not selected:
-        return True
-    return first_group(group) in selected
 
 
 def aggregate_group_counts(groups: list[dict[str, Any]]) -> dict[str, Any]:
@@ -8857,7 +12149,28 @@ def aggregate_group_counts(groups: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def build_index(data_root: Path, output: Path, export_root: Path, selected_groups: set[str] | None) -> dict[str, Any]:
+def repo_rel(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(ROOT.resolve()).as_posix()
+    except (OSError, ValueError):
+        return path.resolve().as_posix()
+
+
+def default_data_roots(export_root: Path) -> list[tuple[str, Path]]:
+    roots: list[tuple[str, Path]] = []
+    for source, rel in DEFAULT_DATA_SOURCE_RELS:
+        root = export_root / rel
+        if root.exists():
+            roots.append((source, root))
+    return roots
+
+
+def source_data_rel(source: str, rel: str) -> str:
+    source = str(source or "").strip()
+    return f"{source}/Data/{rel}" if source else rel
+
+
+def build_index(data_roots: list[tuple[str, Path]], output: Path, export_root: Path, selected_groups: set[str] | None) -> dict[str, Any]:
     entries_by_group: dict[str, list[dict[str, Any]]] = defaultdict(list)
     group_stats: dict[str, dict[str, Any]] = defaultdict(lambda: {
         "files": 0,
@@ -8871,19 +12184,21 @@ def build_index(data_root: Path, output: Path, export_root: Path, selected_group
     total_files = 0
     total_bytes = 0
 
-    file_infos: list[tuple[Path, str, Any, bytes, tuple[int, str]]] = []
+    file_infos: list[tuple[Path, str, str, str, Path, Any, bytes, tuple[int, str]]] = []
     hash_candidate_keys: Counter[tuple[int, str]] = Counter()
-    for path in sorted(data_root.rglob("*")):
-        if not (path.is_file() and wanted_group(path, data_root, selected_groups) and should_index_path(path, data_root)):
-            continue
-        rel = rel_to_data_root(path, data_root)
-        stat = path.stat()
-        header = read_header(path)
-        key = (int(stat.st_size), hex_signature(header))
-        file_infos.append((path, rel, stat, header, key))
-        hash_candidate_keys[key] += 1
+    for source, data_root in data_roots:
+        for path in sorted(data_root.rglob("*")):
+            if not (path.is_file() and wanted_group(path, data_root, selected_groups) and should_index_path(path, data_root)):
+                continue
+            rel = rel_to_data_root(path, data_root)
+            raw_rel = source_data_rel(source, rel)
+            stat = path.stat()
+            header = read_header(path)
+            key = (int(stat.st_size), hex_signature(header))
+            file_infos.append((path, rel, raw_rel, source, data_root, stat, header, key))
+            hash_candidate_keys[key] += 1
 
-    for path, rel, stat, header, hash_key in file_infos:
+    for path, rel, raw_rel, source, data_root, stat, header, hash_key in file_infos:
         group = index_group_for_rel(rel)
         entry = compact_entry(
             rel,
@@ -8893,6 +12208,10 @@ def build_index(data_root: Path, output: Path, export_root: Path, selected_group
             stat_result=stat,
             header=header,
         )
+        entry["p"] = raw_rel
+        entry["dp"] = rel
+        if source:
+            entry["source"] = source
         entries_by_group[group].append(entry)
 
         stats = group_stats[group]
@@ -8910,36 +12229,13 @@ def build_index(data_root: Path, output: Path, export_root: Path, selected_group
         total_extensions[ext] += 1
         total_kinds[kind] += 1
 
-    try:
-        source_root = data_root.resolve().relative_to(ROOT.resolve()).as_posix()
-    except ValueError:
-        source_root = data_root.resolve().as_posix()
-    try:
-        export_root_rel = export_root.resolve().relative_to(ROOT.resolve()).as_posix()
-    except ValueError:
-        export_root_rel = export_root.resolve().as_posix()
+    source_roots = {source or "Data": repo_rel(root) for source, root in data_roots}
+    source_root = ", ".join(source_roots.values())
+    export_root_rel = repo_rel(export_root)
 
     groups_dir = output / "groups"
     groups_dir.mkdir(parents=True, exist_ok=True)
-    existing_index: dict[str, Any] | None = None
-    existing_index_path = output / "index.json"
-    if selected_groups and existing_index_path.exists():
-        try:
-            loaded_index = json.loads(existing_index_path.read_text(encoding="utf-8"))
-            if loaded_index.get("sourceRoot") == source_root and loaded_index.get("exportRoot") == export_root_rel:
-                existing_index = loaded_index
-        except (OSError, json.JSONDecodeError):
-            existing_index = None
-
-    if selected_groups and existing_index:
-        stale_files = []
-        for group in existing_index.get("groups", []):
-            group_id = str(group.get("id") or "")
-            file_rel = str(group.get("file") or "")
-            if file_rel and group_matches_selected(group_id, selected_groups):
-                stale_files.append(output / file_rel)
-    else:
-        stale_files = list(groups_dir.glob("*.json"))
+    stale_files = list(groups_dir.glob("*.json"))
 
     for stale_group in stale_files:
         try:
@@ -8966,25 +12262,19 @@ def build_index(data_root: Path, output: Path, export_root: Path, selected_group
             "categories": dict(stats["categories"].most_common(80)),
         })
 
-    if selected_groups and existing_index:
-        preserved_groups = [
-            group
-            for group in existing_index.get("groups", [])
-            if not group_matches_selected(str(group.get("id") or ""), selected_groups)
-        ]
-        group_payloads = sorted(
-            preserved_groups + group_payloads,
-            key=lambda group: str(group.get("id") or ""),
-        )
-    else:
-        group_payloads.sort(key=lambda group: str(group.get("id") or ""))
+    group_payloads.sort(key=lambda group: str(group.get("id") or ""))
 
     aggregate_counts = aggregate_group_counts(group_payloads)
     payload = {
         "generated": int(time.time()),
         "sourceRoot": source_root,
+        "sourceRoots": source_roots,
         "exportRoot": export_root_rel,
         "rawRoute": "/export_data/",
+        "indexScope": "decoded_data_json",
+        "indexedGroups": sorted(INDEXED_GROUPS),
+        "excludedRawGroups": sorted(RAW_CONTAINER_GROUPS),
+        "excludedRawExtensions": sorted(RAW_CONTAINER_EXTENSIONS),
         "counts": aggregate_counts,
         "requiresGroupSelection": int(aggregate_counts.get("files") or 0) > AUTO_LOAD_ALL_FILE_LIMIT,
         "autoLoadAllLimit": AUTO_LOAD_ALL_FILE_LIMIT,
@@ -8993,17 +12283,34 @@ def build_index(data_root: Path, output: Path, export_root: Path, selected_group
     write_json(output / "index.json", payload)
     return payload
 
-
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     export_root = args.export_root
-    data_root = args.data_root or (export_root / DEFAULT_DATA_REL)
-    if not data_root.exists():
-        raise SystemExit(f"Data root not found: {data_root}")
+    if args.data_root:
+        if not args.data_root.exists():
+            raise SystemExit(f"Data root not found: {args.data_root}")
+        data_roots = [("", args.data_root)]
+    else:
+        data_roots = default_data_roots(export_root)
+        if not data_roots:
+            raise SystemExit(f"Data roots not found under: {export_root / 'structured'}")
 
-    selected_groups = set(args.groups) if args.groups else None
+    requested_groups = set(args.groups) if args.groups else set(INDEXED_GROUPS)
+    selected_groups = requested_groups & INDEXED_GROUPS
+    ignored_groups = requested_groups - INDEXED_GROUPS
+    if ignored_groups:
+        print(
+            "[build_data_index] Ignoring raw/non-decoded Data group(s): "
+            + ", ".join(sorted(ignored_groups)),
+            file=sys.stderr,
+        )
+    if not selected_groups:
+        raise SystemExit(
+            "No decoded Data groups selected. Supported group(s): "
+            + ", ".join(sorted(INDEXED_GROUPS))
+        )
     args.output.mkdir(parents=True, exist_ok=True)
-    payload = build_index(data_root, args.output, export_root, selected_groups)
+    payload = build_index(data_roots, args.output, export_root, selected_groups)
     counts = payload["counts"]
     print(
         "Game data index written:",
