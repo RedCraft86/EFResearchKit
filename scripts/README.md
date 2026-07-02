@@ -724,6 +724,43 @@ gameplay-video OCR/audio workflow.
   post flag, and optional tail local action ref; `0x0bed/0x00` is now decoded
   as a compact terminal branch carrier with local action refs, though both
   runtime class families are still unnamed.
+- `story_recovery/build_selector_formatter_tag_audit.py`: extracts selector
+  Finder/Validator/PostProcessor MemoryPack formatter evidence from
+  `GameAssembly.dll`. It writes
+  `reports/mission_order/selector_formatter_tag_audit.json` / `.md`; current
+  recovery resolves Finder tags `0x0000..0x0013`, Validator tags
+  `0x0000..0x000a`, and PostProcessor tags `0x0000..0x0008` to concrete
+  selector formatter names.
+- `story_recovery/build_selector_targetsettings_body_audit.py`: regenerates the
+  focused selector/TargetSettings IL2CPP metadata catalog, maps it to
+  `GameAssembly.dll`, preserves the raw body report, and writes
+  `reports/mission_order/selector_targetsettings_chain_summary.json` / `.md`.
+  The compact summary records FindTargetAction/SelectorData/TargetSettings
+  setter call order, setter store offsets, aliasing warnings, selector tag-map
+  evidence, and the current "parser still missing" gate before FindTargetAction
+  chain consumption can be enabled.
+- `story_recovery/build_findtarget_selector_boundary_audit.py`: scans exported
+  BuffData through the existing WebUI data decoder and writes
+  `reports/mission_order/findtarget_selector_boundary_audit.json` / `.md`. It
+  groups real FindTargetAction body-middle byte shapes, checks whether the
+  current TargetSettings envelope parser accepts any middle-byte candidates,
+  stores complete body-middle hex for parser replay in JSON, lists ambiguous
+  first-FindTarget records, and keeps selector tag byte hits as non-proof
+  prioritization hints.
+- `story_recovery/build_lua_consumer_reference_audit.py`: scans extracted Lua
+  roots and writes `reports/mission_order/lua_consumer_reference_audit.json` /
+  `.md`. It deduplicates Persistent/StreamingAssets modules by relative Lua
+  path, extracts `Tables.*`, `GEnums.*`, `CS.Beyond.*`, `contentParam`,
+  dialog/RemoteComm ids, sprite/video/audio helper references, checks
+  `Tables.*` names against exported Table JSON roots, emits graph-ready
+  Lua module-to-table edge candidates, and summarizes focus areas such as
+  SNS, RemoteComm, Dialog, map marks, and mission UI.
+- `story_recovery/build_skipped_vfs_block_audit.py`: summarizes an
+  AnimeStudio/fluffy-dumper `vfs-index` JSON for WebUI-skipped VFS blocks such
+  as Lua, ExtendData, Streaming, DynamicStreaming, and BundleManifest. It
+  writes `reports/mission_order/skipped_vfs_block_audit.json` / `.md` with
+  counts, sizes, top directories, largest files, and story/SNS/UI signal
+  samples so broad raw dumps can be prioritized.
 - `story_recovery/build_levelscript_header_chain_audit.py`: uses the compact
   `ActionHeader.nextId` payload field on `headerList` rows to walk from
   event/listener records into `actionList` chains. It writes

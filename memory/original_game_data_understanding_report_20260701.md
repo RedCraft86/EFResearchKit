@@ -2066,6 +2066,156 @@ The source graph now adds explicit label-text edges for activity tags and shop g
 
 This is a narrow explainability bridge for tag-like tables that already had domain nodes, not a new tag taxonomy.
 
+### 2026-07-01 Weapon Semantics Graph Progress
+
+The source graph now models weapon definitions and their numeric progression templates directly from structured game tables. `WeaponBasicTable` enriches the existing `weapon` nodes with name/description text links, model path aliases, model asset-entity links, upgrade/breakthrough/talent template edges, potential-skill edges, regular weapon skill edges, and potential item requirements. Related weapon template tables now expose upgrade curves, cumulative upgrade summaries, breakthrough item/gold requirements, talent-level bounds, weapon potential-up item applicability, and weapon EXP items.
+
+A fast CN build verified 71 weapon definitions, 142 weapon text links, 21 upgrade templates, 21 upgrade-sum templates, 20 breakthrough templates, 2 talent templates, 208 weapon-to-`gameplay_skill` edges, 200 breakthrough item requirement edges, and 16 potential item requirement edges. This closes the largest remaining coherent unmodeled report-listed table without creating a parallel weapon namespace.
+
+### 2026-07-02 Scene Collectable Graph Progress
+
+The source graph now closes the remaining `SceneCollectableItemTable` text/asset gap without changing the existing level/item model. Each nested collectable can link to its `infoLabel` text id, icon asset stems, visual asset matches, and, when the same `itemId` is proven by decoded config nodes, the corresponding interactive object/template.
+
+A fast CN build verified 37 scene collectable nodes, 32 collectable info-text links, 296 visual asset links, and 19 collectable-to-interactive-object plus 19 collectable-to-interactive-template links. This makes scene collectable labels and interactive-object overlap explainable while avoiding broad fanout to placed world entities.
+
+### 2026-07-02 Achievement Text Bridge Progress
+
+The source graph now makes achievement-facing text roles explicit. Achievement categories, groups, achievement names, level completion strings, and condition descriptions now have role-specific edges to `i18n_text`, while preserving generic text reachability.
+
+A fast CN build verified 8 category name links, 8 group name links, 114 achievement name links, 156 level completion links, and 200 condition description links. This improves achievement lookup without changing the existing activity/achievement topology.
+
+### 2026-07-02 Item Economy Text Graph Progress
+
+The source graph now makes item-facing text roles queryable on the existing item economy model. `ItemTable` items link name, description, decoration-description, and no-obtain hint text; item type and showing type labels have dedicated text edges; and `ItemGatherTextTable` now has compact gather-text nodes linked to descriptions, domains, and icon assets.
+
+A fast CN build verified 2,348 item name links, 2,296 item description links, 2,174 decoration-description links, 862 no-obtain hint links, 101 type/showing-type label links, and 42 gather-description/domain rows. This adds high-volume item text semantics without changing item/reward/shop topology.
+
+### 2026-07-02 System Tips And Errors Graph Progress
+
+The source graph now models the UI/system text cluster for error codes, loading tips, hyperlink rich-text entries, death tips, and battle-pass forecast tips. These nodes expose role-specific text edges and preserve lightweight links to missions, wiki targets, enemies, and dungeons where the source rows prove those relationships.
+
+A fast CN build verified 1,061 system-tip nodes across the covered tables and 1,362 system-tip `uses_i18n_text` edges, including 599 error-code text links, 288 loading-tip title/body links, 210 hyperlink name/description links, and 259 death-tip text links. This closes another high-volume non-story text island without mixing it into story recovery.
+
+
+### 2026-07-02 Wiki And Tutorial Graph Progress
+
+The source graph now models the game wiki/tutorial data directly: categories, groups, entries, tutorial pages, limited guides, craft jumps, default craft hints, and wiki enemy-drop rows. A fast CN build verified 6 categories, 56 groups, 1,107 wiki entries, 308 tutorial ids, 527 tutorial pages, 118 limited guides, 69 craft refs, 434 entry-description text links, 1,054 tutorial-page ordering links, 455 tutorial page-to-entry refs, 724 wiki item refs, and 73 wiki enemy refs.
+
+This makes encyclopedia/tutorial lookup explainable from either the wiki ids, text ids, tutorial page ids, items, or enemies, and it connects the earlier hyperlink-only wiki ids to their structured source rows.
+
+### 2026-07-02 Gacha Pool Graph Progress
+
+The source graph now models the exported gacha pool tables directly. Character pools, weapon pools, pool-type rate/guarantee configs, pool contents, ticket mappings, character/weapon presets, recommendations, and weapon refresh offers are queryable from pool ids, tickets, characters, weapons, items, rewards, and text ids.
+
+A fast CN build verified 10 character pools, 14 weapon pools, 210 character-pool membership edges, 532 weapon-pool membership edges, 13 character-ticket-to-pool links, 1 weapon-ticket-to-pool link, 23 character initial/perfect weapon links, 92 recommended equipment links, 64 weapon perfect-gem links, 24 pool name text links, and 3 refresh-rule shop-goods links. This improves monetization/pool semantics while staying limited to authored table evidence rather than runtime probability simulation or server guarantee state.
+
+### 2026-07-02 Game Mechanic Graph Progress
+
+The source graph now models authored game-mechanic tables directly: mechanic categories, groups, individual mechanics, condition rows, conditional child-mechanic groups, and world-mechanic display info. This was selected after a subagent triage also flagged the GameMechanic family as a high-value remaining gap for understanding tutorialized/playable mode rules.
+
+A fast CN build verified 28 categories, 9 groups, 480 game-mechanic nodes, 249 conditions, 438 defined mechanics, 498 mechanic-condition links, 727 mechanic name/description text links, 155 condition-description links, 245 mechanic reward edges, 296 condition string-parameter refs, 5 world display level links, 148 world display enemy-level edges, and 122 world display item-drop edges. This improves static gameplay-mode semantics while avoiding claims about runtime condition evaluator behavior.
+
+### 2026-07-02 Dungeon And Training Catalog Graph Progress
+
+The source graph now models authored dungeon and training catalog tables directly: dungeon rows, dungeon series/types/category labels, raid variants, factory dungeon dependencies, simulation training levels/cards/card pools, training type labels, adventure levels, and adventure world-level tip text.
+
+A fast CN build verified 215 defined dungeon rows, 106 dungeon series, 18 dungeon types, 370 series-to-dungeon links, 316 dungeon scene/level links, 274 dungeon enemy links with level payloads, 177 dungeon reward edges, 30 raid-related dungeon links, 46 factory dungeon rows, 125 simulation training pool-card links, 60 adventure levels, 59 adventure level rewards, and 42 adventure world-level tip text links. This improves playable-mode and progression catalog semantics while keeping numeric progression values as authored table evidence rather than runtime formula proof.
+
+### 2026-07-02 Battle Pass Progression Graph Progress
+
+The source graph now models battle-pass progression tables directly: seasons, task groups, tasks, conditions, level and override level reward groups, tracks, reward-preview entries, banners, label maps, and week-raid battle-pass nodes. This completes the larger battle-pass structure that earlier passes only touched through UI task labels and forecast tips.
+
+A fast CN build verified 4 seasons, 45 task groups, 306 tasks, 288 conditions, 162 level entries, 484 level reward edges, 44 preview entries/items, 16 banner entries, 46 label/sublabel links, 167 task system-jump links, and 20 week-raid nodes linked to dungeons, rewards, and reward items. This improves monetization/progression semantics while staying limited to authored table data rather than live server season state or runtime progress counters.
+
+
+### 2026-07-02 Profile And Social Catalog Graph Progress
+
+The source graph now models authored player-profile and social catalog tables directly: profile pictures, picture item unlock rows, picture type/gender rows, user avatars, business-card topics, mail senders/templates, and friend-chat emotion/text tabs.
+
+A fast CN build verified 88 profile pictures, 39 user avatars, 20 business-card topics, 57 mail senders, 39 mail templates, 118 friend-chat emotions, and 48 friend-chat text rows. The validated edges cover picture name/author/unlock/character links, avatar and business-card unlock items, mail template title/content/sender/reward links, friend-chat emotion tab placement, and friend-chat message/tab text labels. This improves profile/social lookup while staying limited to authored catalog evidence, not live account unlock state, mail delivery state, or server-side social behavior.
+
+
+### 2026-07-02 Character Progression Graph Progress
+
+The source graph now models the missing character level and breakthrough progression tables directly. `CharLevelUpTable`, `CharBreakTable`, `CharBreakStageTable`, `CharBreakNodeTable`, and `CharGrowthTable` now connect characters to level costs, break configs, break-stage caps, break nodes, default weapons, growth profession/type, attribute metadata, and required breakthrough items.
+
+A fast CN build verified 90 level-cost rows, 5 break configs, 5 stage-cap rows, 7 generic break nodes, 29 character growth rows, 203 per-character break-cost nodes, and 464 break-cost item requirement edges. Smoke checks passed for Pelica growth and `charBreak20` requirements, including text links, item counts, stage refs, and break-node refs. This improves character progression semantics while staying limited to authored table evidence rather than live account state or runtime progression formulas.
+
+
+### 2026-07-02 Cash Shop Commerce Graph Progress
+
+The source graph now models the paid commerce tables directly. Cash-shop goods, paid shop groups, shop tabs, recharge bonus rows, recommendation surfaces, gift-pack display config, and direct recharge packs now link to text ids, rewards, items, shops, tags, and presentation assets where the source rows prove those relationships.
+
+A fast CN build verified 61 defined cash goods, 8 defined cash shops, 2 cash-shop groups, 34 recharge bonus rows, 24 recommendation rows, 31 tab rows, 26 gift-pack configs, and 6 direct recharge packs. Smoke checks passed for the BP paid track, the BP shop, the paid gift-pack group, a newbie recommendation chain, a gift-pack tag, a direct recharge pack, and an overseas recharge bonus reward. This improves monetization/catalog semantics while staying limited to authored table evidence, not live purchase state or server-side store availability.
+
+
+### 2026-07-02 Item Acquisition And Grouping Graph Progress
+
+The source graph now models the item grouping and acquisition-display support tables directly. Item type lists, showing-type lists, no-obtain conditions, obtain-way show conditions, usable item chests, limited-time item aliases, and limited-time item-type presets now link to existing item, type, reward, dungeon, wiki, and factory-tech nodes.
+
+A fast CN build verified 1,946 item-type list edges, 1,946 showing-type list edges, 53 obtain-condition nodes, 32 obtain-way show-condition links, 36 usable chest configs with 154 reward links, 28 limited-time aliases, and 5 limited-time type preset links. Smoke checks covered normal type/showing-type lists, dungeon/wiki/factory-tech condition refs, a battle-pass self-select obtain condition, a random BP chest reward, and a limited-time AP supply alias. This improves item acquisition semantics while staying limited to authored display/config evidence rather than live inventory or runtime chest selection.
+
+
+### 2026-07-02 World Harvestable And Crop Graph Progress
+
+The source graph now models authored harvestable/crop tables directly. General pickable/breakable doodads, tree doodads, planting crop configs, soil reward rows, fertilize item configs, and fertilize increase effects now link to labels, rewards, items, crop-step parameters, and preserved model/effect asset tokens.
+
+A fast CN build verified 86 world doodads, 24 tree doodads, 16 planting crops, 92 planting steps, 20 soil reward rows, 2 fertilize items, and 3 fertilize effect nodes. Smoke checks covered moss pick rewards, tree breaking/broken rewards, BB flower crop rewards and steps, soil reward item output, and muck fertilize config. This improves world-resource and crop semantics while staying limited to authored table evidence, not placed world instances or live harvest state.
+
+### 2026-07-02 Equipment And Gem Table Graph Progress
+
+The source graph now models authored equipment and gem tables directly. Equipment rows connect to item ids, domains, suits, display/runtime attribute metadata, equippable item-use configs, suit membership and bonus skills, gem terms/tags, gem presets, gem term pools, tag-combo weapon recommendations, enhance rules, dismantle outputs, and drop-gem type rows.
+
+A fast CN temp build verified 220 equipment definitions, 49 equippable item-use configs, 22 equipment suits, 182 suit-equipment membership edges, 22 suit-bonus nodes, 31 gem terms, 31 gem tags, 156 gem presets, 59 tag-combo recommendation nodes, 16 gem term pools, 12 enhance rules, 8 dismantle rules, 1 drop-gem type, 1,753 equipment attribute edges, and 458 gem preset term edges. This improves static loadout/gem semantics while staying limited to authored table evidence rather than runtime enhancement RNG, live inventory, or server-side drop-roll behavior.
+
+### 2026-07-02 Domain Depot Graph Progress
+
+The source graph now models authored domain-depot tables directly. Depot rows connect to gameplay domains, levels, unlock quests, text ids, image tokens, buyers, delivery targets, nested upgrade levels, deliver item/pack types, pack-value ranges, package-integrity reduce rules, depot constants, existing delivery-target dialog nodes, and `DomainPoiTable` feature categories.
+
+A fast CN temp build verified 5 depots, 55 buyers, 22 delivery targets, 7 recycle targets, 19 depot upgrade levels, 45 pack-value rows, 3 deliver item types, 3 deliver pack types, 3 integrity reduce types, 8 constants, 8 domain POI types, 1 depot feature node, 22 target-to-dialog links, 55 buyer-to-depot shared-level links, and 22 target-to-depot shared-level links. This improves logistics/depot semantics while marking buyer/target depot links as level/refLevelId inference rather than direct buyer-target matching, placed POI proof, or live delivery state.
+
+### 2026-07-02 Factory Logistics And Capability Graph Progress
+
+The source graph now models selected factory logistics/capability tables directly. The new coverage links machine craft groups to recipes, ingredient tags to machines and UI labels, resource items to supported machines and recipe-specific tags, build items to logistics units, panel-store goods to costs/actions/conditions/tech gates, panel locks to quests/radio ids, blueprint tags/types to UI labels and recipes, system blueprint metadata to text ids, and factory regions/blackboxes to level and hub-building requirements.
+
+A fast CN temp build verified 14 ingredient tags, 16 logistics units, 42 panel-store goods, 11 panel locks, 14 panel-lock rules, 20 blueprint tags, 3 blueprint tag types, 45 system blueprints, 57 blackbox nodes, 257 craft-group recipe edges, 229 resource item-to-machine edges, 241 recipe item-to-tag edges, 20 item-to-logistics-unit edges, 5 panel-condition tech refs, 27 lock quest edges, 5 lock radio edges, 57 blackbox-region edges, and 69 region-level edges. This improves factory production/logistics explainability while staying limited to authored capability/index metadata rather than runtime logistics simulation, recipe throughput execution, or live building state.
+
+### 2026-07-02 Reward And Currency Catalog Graph Progress
+
+The source graph now models compact reward/currency catalog tables directly. Gift items connect to their item ids, preference tags, hobby tags, and popularity time ids; check-in configs connect activities to per-day rewards plus featured character/weapon rows; daily activation rewards connect activation thresholds to reward ids; money configs/exchanges connect currency items and exchange ratios; important item show rows connect display categories to item types; and important reward items connect item ids to description text.
+
+A fast CN temp build verified 14 gift items, 6 gift preference tags, 14 check-in activities, 114 check-in stages, 5 daily activation reward rows, 5 money configs, 2 money exchanges, 4 important item show entries, 12 important reward items, 114 check-in reward edges, 28 gift hobby-tag edges, 14 gift preference edges, 5 activation reward edges, 4 money exchange source/target item edges, and 12 important reward description text links. This improves reward/currency lookup while staying limited to authored catalog evidence rather than live account check-in state, inventory ownership, reward claiming, or runtime currency transaction execution.
+
+### 2026-07-02 Activity And Adventure Catalog Graph Progress
+
+The source graph now promotes compact activity/adventure catalog structure from `AdventureTaskTable`, `AdventureBookStageRewardTable`, `ActivityGameEntrance*`, `HighDifficulty*`, `PsActivity*`, `ActivitySubmitFoodTable`, and `ActivityBenefitsTable`. It adds queryable nodes for adventure book tasks/stages, activity entrance groups/series/games, high-difficulty series, PS activities/tasks, submit-food stages/items, and activity benefits, with edges to rewards, conditions, jumps, achievements, missions, recipes, item/character/weapon showcase refs, and dungeon/catalog game ids.
+
+A fast CN temp build verified 85 adventure book tasks, 13 adventure book stages, 1 activity entrance group, 2 activity entrance series, 45 catalog game refs, 4 high-difficulty series, 3 PS activities, 11 PS activity tasks, 14 submit-food stages, 14 submit items, 8 activity benefits, 85 adventure task reward edges, 86 adventure task condition edges, 72 adventure stage task edges, 15 entrance-series game edges, 30 high-difficulty game edges, 22 PS task mission edges, 14 submit-food recipe edges, and 19 benefit reward/showcase refs. CLI smoke checks passed for `adventure_book_task:ab_01_01`, `activity_game_entrance_series:activity_puzzle_v1d0`, and `activity_benefit:checkIn`. This improves authored activity lookup while staying limited to catalog/navigation evidence rather than live event availability, runtime unlock evaluation, account progress, or server-side activity state.
+
+### 2026-07-02 Week Raid Graph Progress
+
+The source graph now promotes Week Raid gameplay-mode structure from `WeekRaidTable`, `WeekRaidTechTable`, `WeekRaidTechTypeTable`, `WeekRaidBufTechTypeTable`, `WeekRaidDelegateTable`, `WeekRaidItemTable`, `WeekRaidItemReverseTable`, `WeekraidItemDomainTable`, `WeekRaidRefreshTable`, and `WeekRaidBattlePassTable`. It adds queryable nodes for Week Raid games, tech types, buff tech types, tech rows, delegate missions, refresh levels, battle-pass tiers, and item-domain labels, with edges to dungeon/game ids, currency items, unlock missions, tech unlock items, rewards, item conversions, domain display buckets, and tier reward items.
+
+A fast CN temp build verified 2 Week Raid games, 6 item-domain labels, 7 tech types, 9 buff tech types, 31 tech rows, 66 delegate missions, 9 refresh levels, 20 battle-pass tiers, 31 tech item edges, 66 delegate reward edges, 68 item conversion/reverse edges, 68 item-domain edges, 9 refresh-level edges, 20 tier reward edges, and 44 normalized format-text links. CLI smoke checks passed for `week_raid_game:dung01_wrdg001`, `week_raid_tech:t_1_1`, `week_raid_delegate:db01m2d1`, and `week_raid_battlepass_tier:1`. This improves authored gameplay-mode lookup while staying limited to config evidence rather than runtime danger/score formulas, live weekly rotation, account progress, or server-side refresh state.
+
+### 2026-07-02 Factory Utility Numeric Graph Progress
+
+The source graph now promotes authored factory utility numeric profiles from power station/hub/pole tables, factory power/productivity data type tables, miner/fuel/battery tables, `LiquidTable`, fluid machine tables, and sewage treatment plant tables. It adds queryable nodes for power stations, hub power profiles, power poles, power/productivity data types, miners, fuel profiles, battery profiles, liquids, fluid machines, sewage plant levels, and sewage action params, with edges to factory buildings/machines, items, liquid item refs, empty/full bottle pairs, accepted liquids, product liquids, domains, levels, and sewage action targets.
+
+A fast CN temp build verified 1 power station, 2 hub power profiles, 4 power poles, 5 power data types, 5 productivity data types, 4 miners, 6 fuel profiles, 5 battery profiles, 11 liquids, 17 fluid-machine refs, 4 sewage levels, 10 miner output item edges, 4 miner consume item edges, 67 empty bottle refs, 67 full bottle refs, 67 bottle-pair edges, 24 fluid accepted-liquid edges, 1 fluid product liquid edge, 4 sewage plant level edges, 8 sewage action param edges, 4 action level refs, and 4 action machine refs. CLI smoke checks passed for `factory_miner:miner_2`, `factory_liquid:item_liquid_acid`, `factory_fluid_machine:pump_2`, `sewage_treat_plant:liquidcleanfactory_005_1`, and `factory_sewage_level:liquidcleanfactory_005_1:4`. This improves authored utility lookup while staying limited to config evidence rather than runtime throughput, placement behavior, power simulation, liquid transfer simulation, or account/world upgrade state.
+
+### 2026-07-02 Tower Defense Graph Progress
+
+The source graph now promotes settlement defense structure from `TowerDefenseTable`, `TowerDefenseGroupTable`, and `TowerDefenseMapTable`. It adds queryable nodes for tower defense stages, groups, settlement maps, and spawners, with edges to rewards, scene levels, settlement maps, group membership, enemy ids/templates, recommended battle-building items, detail/map image asset aliases, and spawner ids.
+
+A fast CN temp build verified 22 tower defense stages, 11 groups, 3 settlement maps, 11 unique spawners, 22 group-to-stage edges, 22 stage scene-level edges, 22 stage reward edges, 96 per-stage enemy refs, 40 deduped enemy-template refs, 82 recommended battle-building item refs, 22 spawner refs, and 11 group name text links. CLI smoke checks passed for `tower_defense_stage:stm_hongs_1_1_normal`, `tower_defense_group:stm_hongs_1_1`, and `tower_defense_settlement_map:stm_hongs_1`. This improves authored settlement-defense lookup while staying limited to config evidence rather than runtime wave timing, settlement combat behavior, placement validation, or account/world defense progress.
+
+### 2026-07-02 Snapshot And Kite Station Photo Chain Graph Progress
+
+The source graph now promotes the photo-taking chain from `SnapshotIdentify*`, `SnapshotFilterTable`, `SnapshotStickerTable`, `ActivitySnapshotChallenge*`, `IdentifyGroupId2ActivitySnapshotStageTable`, and `KiteStation*`. It adds queryable snapshot identify groups, identify targets/types, filters, stickers, activity snapshot mains/stages/challenges, Kite Stations, Kite Station levels, entrust tasks, and milestone rewards, with edges to activity ids, missions, quests, levels, rewards, items, enemies, NPC templates, factory templates, snapshot groups, and UI asset aliases.
+
+A temp validation build verified 75 defined snapshot identify groups plus 5 Kite bridge-only group refs, 123 snapshot identify ids, 11 filters, 17 stickers, 17 activity snapshot stages/challenges, 2 Kite Stations, 7 Kite Station levels, 28 entrust tasks, 136 group-to-identify refs, 17 group-to-activity-stage refs, 28 task snapshot-group refs, 28 task mission refs, 112 per-level Kite task reward refs, 9 milestone reward refs, 9 enemy target refs, 17 NPC target refs, 11 filter unlock item refs, and 17 sticker unlock item refs. CLI smoke checks passed for `snapshot_identify_group:snapshot_005`, `activity_snapshot_stage:activity_conditional_multistage_1_stage_1`, `snapshot_filter:filter_1`, and `kite_station_entrust_task:kitestation_002_1:1`. Normal source-graph build validation is currently blocked by an unrelated dirty `scripts/build_data_index.py` import error, so this pass was validated with a disposable temp runner and decoder import stub. This improves authored photo-chain lookup while staying limited to config evidence rather than runtime photo recognition, camera scoring, account unlocks, or live Kite Station task state.
+
 ## Caveats
 
 - Some reports are historical snapshots. Current headline metrics should come
