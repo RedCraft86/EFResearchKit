@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sqlite3
+import struct
+import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -21,8 +24,19 @@ from typing import Any, Iterable
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_DIR = ROOT / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+from build_data_index import (
+    decode_bamboo_raft_task_table_memorypack,
+    decode_damage_text_memorypack,
+    decode_dialog_id_table_memorypack,
+    decode_interactive_template_memorypack,
+    decode_model_view_state_controller_memorypack,
+)
 EXPORT_ROOT = ROOT / "export_full"
 WEBUI_DATA = ROOT / "webui" / "data"
+WEBUI_OPTION_OVERRIDES = ROOT / "webui" / "overrides" / "options.json"
 UNITY_CHARACTER_ROOT = (
     ROOT
     / "unity_endfield_graph_shader_lab"
@@ -37,6 +51,8 @@ DEFAULT_SUMMARY_JSON = GRAPH_DIR / "summary.json"
 DEFAULT_SUMMARY_MD = GRAPH_DIR / "summary.md"
 TIMELINE_LINE_ORDERS_REL = Path("recovered") / "AnimeStudio-cli" / "timeline_line_orders.json"
 TIMELINE_LINE_ORDERS_PATH = EXPORT_ROOT / TIMELINE_LINE_ORDERS_REL
+DIALOG_ID_TABLE_INDEX_PATH = EXPORT_ROOT / "recovered" / "dialog_id_table_index.json"
+RUNTIME_OPTION_ROUTE_AUDIT_GLOB = "runtime_jump_option_route_audit_CN*_nearby*.json"
 
 ASSET_MAPS = {
     "StreamingAssets": (
@@ -62,22 +78,516 @@ STORY_KEY_RE = re.compile(
 )
 ASSET_ACTOR_RE = re.compile(r"(?:^|[/\\])(?:S|T|M|A|AC)_actor_([A-Za-z0-9]+)", re.IGNORECASE)
 LINE_AUDIO_RE = re.compile(r"\bau_[A-Za-z0-9_]{2,160}\b")
-
+LINE_AUDIO_BYTES_RE = re.compile(rb"\bau_[A-Za-z0-9_]{2,160}\b")
+PATH_ID_EXPORT_STEM_RE = re.compile(r"^(?P<base>.+)_p(?P<path_id>[0-9A-Fa-f]{16})$")
+ASSET_SINGLE_PREFIX_RE = re.compile(r"^[A-Za-z]_")
+ASSET_LOD_SUFFIX_RE = re.compile(r"(?:[_-])lod\d+$", re.IGNORECASE)
+WORLD_SEMANTIC_TABLES = (
+    "MapIdTable.json",
+    "LevelDescTable.json",
+    "LevelLoadingTable.json",
+    "MapMarkCategoryTable.json",
+    "MapMarkTypeTable.json",
+    "MapMarkTempTable.json",
+    "MapMarkInsTable.json",
+    "SceneAreaTable.json",
+    "SceneCollectableItemTable.json",
+    "SpecialLevelToMapTable.json",
+    "FactoryLevelRegionTable.json",
+    "SettlementLevelPOIMapTable.json",
+    "ShopChannelLevelPOIMapTable.json",
+    "TrackMapPointTable.json",
+    "TrackMapLinkTable.json",
+)
 SELECTED_STRUCTURED_TABLES = (
     "AudioDialog.json",
     "AudioSequenceDialog.json",
     "CharacterTable.json",
     "DialogSummaryMapTable.json",
     "DialogSummaryTable.json",
+    "FactoryCraftShowingTypeTable.json",
+    "FactoryHubCraftTable.json",
+    "FactoryItemTable.json",
+    "FactoryMachineCrafterTable.json",
+    "FactoryMachineCraftTable.json",
+    "FactoryManualCraftTable.json",
     "InteractiveMissionDataTable.json",
     "LevelDescTable.json",
+    "LevelLoadingTable.json",
     "MapIdTable.json",
+    "MapMarkCategoryTable.json",
+    "MapMarkTypeTable.json",
+    "MapMarkTempTable.json",
     "MapMarkInsTable.json",
     "MissionExtraInfoTable.json",
     "SceneAreaTable.json",
+    "SceneCollectableItemTable.json",
     "SpecialLevelToMapTable.json",
+    "FactoryLevelRegionTable.json",
+    "SettlementLevelPOIMapTable.json",
+    "ShopChannelLevelPOIMapTable.json",
+    "TrackMapPointTable.json",
+    "TrackMapLinkTable.json",
 )
+ITEM_ECONOMY_TABLES = (
+    "ItemTypeTable.json",
+    "ItemShowingTypeTable.json",
+    "ItemTable.json",
+    "RewardTable.json",
+    "RewardDropTable.json",
+    "ShopGoodsTagTable.json",
+    "ShopGoodsTable.json",
+    "ShopTable.json",
+    "ShopGroupTable.json",
+)
+COMBAT_SEMANTIC_TABLES = (
+    "BuffTable.json",
+    "SkillPatchTable.json",
+    "AbilityEntityAttrTable.json",
+    "GlobalEffectTable.json",
+    "GeneralAbilityTable.json",
+    "UseItemTable.json",
+    "PotentialTalentEffectTable.json",
+    "EnemyTagTable.json",
+)
+ATTRIBUTE_DICTIONARY_TABLES = (
+    "AttributeMetaTable.json",
+    "AttributeShowConfigTable.json",
+    "CompositeAttributeTable.json",
+    "CompositeAttributeShowConfigTable.json",
+    "AttributeFilterTable.json",
+    "InteractiveAttributeDataTable.json",
+)
+SETTINGS_SEMANTIC_TABLES = (
+    "SettingTabTable.json",
+    "QualitySubSettingTable.json",
+    "QualitySubSettingOptionTable.json",
+    "GamepadSettingItemTable.json",
+    "GamepadImplicitSettingItemTable.json",
+)
+TAG_TAXONOMY_TABLES = (
+    "TagGroupDataTable.json",
+    "TagDataTable.json",
+)
+UI_LABEL_SEMANTIC_TABLES = {
+    "BattlePassTaskLabelTable.json": {
+        "id_fields": ("labelId",),
+        "text_fields": ("name", "subName", "conditionHint"),
+        "sort_fields": ("sortId", "forecastType", "isLifeTime"),
+    },
+    "SettlementTagTable.json": {
+        "id_fields": ("settlementTagId",),
+        "text_fields": ("settlementTagName", "desc"),
+        "ref_fields": ("enhanceCharTagId",),
+        "sort_fields": ("enhanceExpProfitRate", "enhanceMoneyProfitRate", "enhanceMoneyProduceSpeedRate"),
+    },
+    "ShareChannelTable.json": {
+        "id_fields": ("shareChannelId",),
+        "text_fields": ("name",),
+        "asset_fields": ("icon",),
+        "sort_fields": ("sort",),
+    },
+    "SocialBuildingSignTabTable.json": {
+        "id_fields": ("tabId",),
+        "text_fields": ("name",),
+        "asset_fields": ("icon",),
+        "sort_fields": ("priority",),
+    },
+    "SocialBuildingSignTable.json": {
+        "id_fields": ("signId",),
+        "text_fields": ("text",),
+        "asset_fields": ("iconKey", "uiIconKey"),
+        "ref_fields": ("tab",),
+        "sort_fields": ("sortId",),
+    },
+    "FactoryBlueprintTagTypeTable.json": {
+        "id_fields": ("id",),
+        "text_fields": ("name",),
+        "sort_fields": ("sortId", "allowMultiSelect"),
+    },
+    "FactoryBlueprintTagTable.json": {
+        "id_fields": ("id",),
+        "text_fields": ("name",),
+        "ref_fields": ("type", "formulaId"),
+        "sort_fields": ("sortId",),
+    },
+    "FactoryIngredientTagTable.json": {
+        "id_fields": ("id",),
+        "text_fields": ("tagLabel",),
+        "ref_fields": ("combineMachineIds",),
+    },
+    "CashShopGiftPackTagTable.json": {
+        "id_fields": ("tagId",),
+        "text_fields": ("value",),
+        "sort_fields": ("style",),
+    },
+    "MoneyConsumeTable.json": {
+        "id_fields": ("sourceType",),
+        "text_fields": ("name",),
+    },
+    "MoneyGainTable.json": {
+        "id_fields": ("sourceType",),
+        "text_fields": ("name",),
+    },
+    "ReportTable.json": {
+        "id_fields": (),
+        "text_fields": ("__self__",),
+    },
+    "GameSystemConfigTable.json": {
+        "id_fields": ("systemId",),
+        "text_fields": ("systemName", "systemDesc"),
+        "asset_fields": ("systemIcon",),
+        "sort_fields": ("unlockSystemType", "redDotName"),
+    },
+    "TowerDefenseGroupTable.json": {
+        "id_fields": ("tdGroup",),
+        "text_fields": ("name",),
+        "sort_fields": ("sortId",),
+    },
+    "BlocDataTable.json": {
+        "id_fields": ("blocId",),
+        "text_fields": ("blocName", "engName"),
+        "asset_fields": ("icon",),
+        "ref_fields": ("tagId",),
+    },
+    "CharBattleTagTable.json": {
+        "id_fields": (),
+        "text_fields": ("__self__",),
+    },
+}
+CHARACTER_SUPPORT_TABLES = (
+    "CharacterTagTable.json",
+    "CharacterTagDesTable.json",
+    "CharProfessionTable.json",
+    "CharTypeTable.json",
+    "CharPresetTable.json",
+    "CharTeamTable.json",
+    "CharWpnRecommendTable.json",
+    "CharWpnSkillRecommendTable.json",
+    "DungeonCharTutorialStepTable.json",
+    "DungeonCharTutorialTable.json",
+    "DungeonCharTrialTable.json",
+    "CharId2DungeonIdTable.json",
+    "ActivityCharTrial.json",
+    "ActivityCharacterGuideLineTable.json",
+    "RecommendTraining.json",
+)
+SPACESHIP_SEMANTIC_TABLES = (
+    "EnvTalkTable.json",
+    "SpaceShipNpc2Char.json",
+    "SpaceShipFriendNpc2Char.json",
+    "SpaceshipRoomTypeTable.json",
+    "SpaceshipRoomAttrTypeTable.json",
+    "SpaceshipRoomLvTable.json",
+    "SpaceshipRoomLvHelperTable.json",
+    "SpaceshipGrowCabinSeedFormulaTable.json",
+    "SpaceshipGrowCabinFormulaTable.json",
+    "SpaceshipManufactureFormulaTable.json",
+    "SpaceshipGrowCabinMaterial2OutComeTable.json",
+    "SpaceshipGrowCabinOutCome2MaterialTable.json",
+    "SpaceshipClueDataTable.json",
+    "SpaceshipClueDataIndex2IdTable.json",
+    "SpaceshipSkillTable.json",
+    "SpaceShipCharBehaviourTable.json",
+    "SpaceshipCharSkillTable.json",
+    "SpaceshipControlCenterLvTable.json",
+    "SpaceshipManufacturingStationLvTable.json",
+    "SpaceshipGrowCabinLvTable.json",
+    "SpaceshipGuestRoomLvTable.json",
+    "SpaceshipGuestRoomClueLvTable.json",
+    "SpaceshipEmptyRoomTable.json",
+)
+FACTORY_TECH_TABLES = (
+    "FacSTTGroupTable.json",
+    "FacSTTCategoryTable.json",
+    "FacSTTLayerTable.json",
+    "FacSTTNodeTable.json",
+    "FacSTTConditionTable.json",
+    "FacSTTPackConditionTable.json",
+    "MachineId2MachineTechIdTable.json",
+    "MachineBlueprint2MachineItemTable.json",
+    "FactoryBuildingTypeTable.json",
+    "FactoryBuildingRendererTemplateTable.json",
+    "FactoryBuildingTable.json",
+    "FactoryBuildingItemTable.json",
+    "FactoryBlueprintMachineIconTable.json",
+    "FactoryManualCraftFormulaUnlockTable.json",
+    "FactoryManualCraftUpgradeTable.json",
+)
+PRTS_ARCHIVE_TABLES = (
+    "RichContentTable.json",
+    "PrtsPage.json",
+    "PrtsCategory.json",
+    "PrtsFirstLv.json",
+    "PrtsAllItem.json",
+    "PrtsRecord.json",
+    "PrtsDocument.json",
+    "PrtsMultimedia.json",
+    "ReadingPopUpIconTable.json",
+    "ReadingPopUpTable.json",
+    "PrtsReading.json",
+    "PrtsNote.json",
+    "PrtsInvestigate.json",
+    "PrtsInvestigateCategory.json",
+)
+NPC_VOICE_BARK_TABLES = (
+    "AudioDialogChannel.json",
+    "AudioDialogChannelMappings.json",
+    "NpcTemplateGroupTable.json",
+    "NpcGroupTable.json",
+    "NpcTable.json",
+    "GameplayAndEnvironmentalNpc.json",
+    "AtmosphereNpcTable.json",
+    "NpcInfoTable.json",
+    "ResponsiveTriggers.json",
+    "AIBarkText.json",
+    "ResponsiveDialog.json",
+    "AIBark.json",
+    "AIBarkTableConst.json",
+)
+NARRATIVE_AUDIO_TABLES = (
+    "SNSChatTable.json",
+    "SNSDialogTopicTable.json",
+    "SNSDialogOptionTable.json",
+    "SNSDialogTable.json",
+    "SNSConst.json",
+    "RadioTable.json",
+    "AudioRadioContinueTable.json",
+    "RemoteCommonTable.json",
+    "AudioCueTable.json",
+    "AudioVoiceExtraData.json",
+    "EmotionVoiceConfig.json",
+    "VoiceIdConflictTable.json",
+    "AudioDialogCustomEventTable.json",
+    "AudioDialogConfigs.json",
+)
+AUDIO_CONFIG_TABLES = (
+    "TextVoIdTable.json",
+    "AudioVoTone.json",
+    "AudioSpeakerTypeWeights.json",
+    "AudioBattleBuildings.json",
+    "AudioCollection.json",
+    "AudioDrop.json",
+    "AudioFactory.json",
+    "AudioFactoryAnnouncement.json",
+    "AudioItemDragAndDrop.json",
+    "AudioItemTypeDragAndDrop.json",
+    "AudioLevel.json",
+)
+DIALOG_SUPPORT_TABLES = (
+    "DialogSummaryTable.json",
+    "DialogSummaryMapTable.json",
+    "DialogTextTable.json",
+    "DialogOptionTable.json",
+    "DomainDepotDeliverTargetDialogTable.json",
+)
+VISUAL_TOKEN_FIELDS = {
+    "icon",
+    "iconId",
+    "tabIcon",
+    "headIcon",
+    "headLabelIcon",
+    "listIcon",
+    "cornerIcon",
+    "visitorIcon",
+    "bg",
+    "bgImg",
+    "tabImg",
+    "tabImgColor",
+    "tabImgGender",
+    "bgRolePath",
+    "dungeonBgPath",
+    "image",
+    "imagePath",
+    "bgOnPanel",
+    "iconOnPanel",
+}
 
+VISUAL_TOKEN_KINDS = {
+    "icon",
+    "iconId",
+    "tabIcon",
+    "headIcon",
+    "headLabelIcon",
+    "listIcon",
+    "cornerIcon",
+    "visitorIcon",
+    "iconOnPanel",
+}
+
+VISUAL_BACKGROUND_FIELDS = {
+    "bg",
+    "bgImg",
+    "tabImg",
+    "tabImgColor",
+    "tabImgGender",
+    "bgRolePath",
+    "dungeonBgPath",
+    "image",
+    "imagePath",
+    "bgOnPanel",
+}
+
+DECODED_CONFIG_GROUP_FILES = (
+    "Json_AnimationConfig.json",
+    "Json_AtmosphericNpcData.json",
+    "Json_CharInteractPerformCfgs.json",
+    "Json_BuffData.json",
+    "Json_GameplayConfig.json",
+    "Json_GameplayConfigMissionAreaTable.json",
+    "Json_GameplayConfigSubGameInstanceDataTable.json",
+    "Json_NonGeneratedConfigs.json",
+    "Json_SkillData.json",
+    "Json_SpawnerConfig.json",
+    "Json_Interactive.json",
+    "Json_InteractiveData.json",
+    "Json_LevelConfig.json",
+    "Json_LevelData.json",
+    "Json_NPC.json",
+    "Json_LevelScriptData.json",
+    "Json_LevelScriptTemplateData.json",
+    "Json_NavMesh.json",
+    "Json_GameplayConfigWorldEntityRegistry.json",
+    "Json_GPUISystemConfig.json",
+    "Json_LipSync.json",
+    "Json_MissionRuntimeAsset.json",
+    "Json_AIConfig.json",
+    "Json_MapConfig.json",
+    "Json_GameplayConfigScriptTaskExtraInfoTable.json",
+    "Json_LevelMountPoint.json",
+    "Json_LevelGenForRuntime.json",
+    "Json_UILevelMapLoadConfig.json",
+)
+GAMEPLAY_CONFIG_MAP_LEVEL_LOOKUP_PATHS = frozenset(
+    {
+        "Json/GameplayConfig/MapIdTable.json",
+        "Json/GameplayConfig/LevelBasicInfoTable.json",
+        "Json/GameplayConfig/LevelShortIdTable.json",
+        "Json/GameplayConfig/MapBriefInfoTable.json",
+    }
+)
+GAMEPLAY_CONFIG_MAP_PLACEMENT_PATHS = frozenset(
+    {
+        "Json/GameplayConfig/LevelMapMark.json",
+        "Json/GameplayConfig/MapRegionTable.json",
+        "Json/GameplayConfig/MinePointTeamTable.json",
+    }
+)
+GAMEPLAY_CONFIG_WORLD_ENTITY_TEXT_PATHS = frozenset(
+    {
+        "Json/GameplayConfig/WorldEntityRegistry.json",
+    }
+)
+GAMEPLAY_CONFIG_SCRIPT_TASK_EXTRA_PATHS = frozenset(
+    {
+        "Json/GameplayConfig/ScriptTaskExtraInfoTable.json",
+    }
+)
+STAT_ATTR_KEYS = {
+    1: "hp",
+    2: "atk",
+    3: "def",
+    4: "physical_damage_taken",
+    5: "fire_damage_taken",
+    6: "pulse_damage_taken",
+    7: "cryst_damage_taken",
+    9: "critical_rate",
+    17: "normal_attack_efficiency",
+    28: "ultimate_skill_efficiency",
+    29: "heal_output",
+    30: "heal_taken",
+    31: "healing_taken_scalar",
+    32: "skill_damage",
+    33: "combo_skill_damage",
+    34: "normal_attack_damage",
+    35: "fire_burst_damage",
+    36: "pulse_burst_damage",
+    37: "cryst_burst_damage",
+    38: "natural_burst_damage",
+    39: "str",
+    40: "agi",
+    41: "wis",
+    42: "will",
+    44: "ultimate_sp_gain",
+    48: "natural_damage_taken",
+    50: "physical_damage",
+    51: "fire_damage",
+    52: "pulse_damage",
+    53: "cryst_damage",
+    54: "natural_damage",
+    60: "ether_damage_taken",
+    61: "broken_unit_damage",
+    80: "physical_damage_taken_scalar",
+    81: "natural_damage_taken_scalar",
+    82: "cryst_damage_taken_scalar",
+    83: "pulse_damage_taken_scalar",
+    84: "fire_damage_taken_scalar",
+    85: "ether_damage_taken_scalar",
+    87: "infliction",
+}
+DECODED_CONFIG_TARGET_TYPES = {
+    "AnimationConfig",
+    "AIConfigEnemyTemplateDataSummary",
+    "MapConfig",
+    "GameplayConfigScriptTaskExtraInfoTable",
+    "LevelMountPoint",
+    "LevelGenForRuntime",
+    "UILevelMapLoadConfig",
+    "BambooRaftTaskTable",
+    "CharInteractPerformCfgs",
+    "NpcAtmosphericDataTable",
+    "BuffData",
+    "DialogIdTable",
+    "GameplayConfigMissionAreaTable",
+    "GameplayConfigMapLevelLookups",
+    "GameplayConfigMapPlacement",
+    "GameplayConfigWorldEntityRegistry",
+    "GameplayConfigWorldEntityTextRegistry",
+    "GPUISystemConfigDamageText",
+    "InteractiveTable",
+    "InteractiveTemplateData",
+    "InteractiveDataCollections",
+    "LunaArea",
+    "ModelViewStateControllerData",
+    "NavMeshStateContainer",
+    "LevelConfig",
+    "LevelData",
+    "LevelScriptData",
+    "LevelScriptTemplateData",
+    "LipSync",
+    "ModelRadiusTable",
+    "ModelTable",
+    "MissionRuntimeAsset",
+    "NPCMontageJson",
+    "SkillData",
+    "SpawnerConfig",
+    "SubGameInstanceDataTable",
+    "TeleportValidationDataTable",
+}
+MEMORYPACK_NULL_COUNT = 0xFFFFFFFF
+ACTIVITY_ACHIEVEMENT_TABLES = (
+    "SystemJumpTable.json",
+    "ActivityTagTable.json",
+    "ActivityTable.json",
+    "AchievementTypeTable.json",
+    "AchievementTable.json",
+    "AchievementStatisticTable.json",
+    "ActivityAchievementDataTable.json",
+    "ActivityWeeklyTaskTable.json",
+    "ActivityWeeklyTaskMileStoneTable.json",
+    "ActivityConditionalMultiStageTable.json",
+    "ActivityConditionalMultiStageStageToActivityTable.json",
+    "ActivityConditionalMultiStageConditionTable.json",
+    "ActivityConditionalMultiStageCompleteConditionTable.json",
+    "ActivityConditionalMultiStageTaskConfigTable.json",
+    "ActivityConditionalMultiStageTaskCompleteConditionTable.json",
+    "ActivityLevelRewardsTable.json",
+    "ActivityCultivationRefundStageTable.json",
+    "ActivityVersionGuideTable.json",
+    "ActivityVersionGuideStageTable.json",
+    "ActivityBannerTable.json",
+    "ActivityPushBubbleTable.json",
+)
 
 def slash(path: Path) -> str:
     try:
@@ -105,6 +615,53 @@ def compact_text(value: Any, limit: int = 240) -> str:
     return text
 
 
+def table_text(value: Any) -> str:
+    if isinstance(value, dict):
+        return compact_text(value.get("text") or value.get("id") or "")
+    return compact_text(value)
+
+
+def table_display_text(value: Any) -> str:
+    if isinstance(value, dict):
+        return compact_text(value.get("text") or "")
+    return compact_text(value)
+
+
+def path_id_export_base_stem(value: Any) -> str:
+    match = PATH_ID_EXPORT_STEM_RE.match(str(value or ""))
+    return match.group("base") if match else ""
+
+
+def normalized_model_entity_base(stem: str) -> str:
+    logical_stem = path_id_export_base_stem(stem) or stem
+    stripped = ASSET_SINGLE_PREFIX_RE.sub("", logical_stem, count=1)
+    return ASSET_LOD_SUFFIX_RE.sub("", stripped).lower()
+
+
+def model_asset_entity_candidate_bases(token: Any) -> list[str]:
+    token_key = safe_key(token)
+    if not token_key:
+        return []
+    candidates: list[str] = []
+    for value in (token_key, Path(token_key).stem):
+        base = normalized_model_entity_base(value)
+        if not base:
+            continue
+        candidates.append(base)
+        if not base.endswith("_postmodel"):
+            candidates.append(f"{base}_postmodel")
+    return _unique_preserve(candidate for candidate in candidates if candidate)
+
+
+def exported_model_entity_base(rel: str) -> str:
+    stem = Path(rel).stem
+    logical_stem = path_id_export_base_stem(stem) or stem
+    stripped = ASSET_SINGLE_PREFIX_RE.sub("", logical_stem, count=1)
+    if ASSET_LOD_SUFFIX_RE.search(stripped) or stripped.lower().endswith("_postmodel"):
+        return normalized_model_entity_base(stem)
+    return ""
+
+
 def compact_payload(value: Any, *, depth: int = 2, list_limit: int = 12) -> Any:
     """Keep node payloads useful without ballooning the graph."""
     if depth <= 0:
@@ -129,6 +686,1643 @@ def compact_payload(value: Any, *, depth: int = 2, list_limit: int = 12) -> Any:
     if isinstance(value, str):
         return compact_text(value, 500)
     return value
+
+
+def parse_summary_assignments(summary: Any) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for part in str(summary or "").split(";"):
+        if "=" not in part:
+            continue
+        key, value = part.strip().split("=", 1)
+        key = key.strip()
+        if key:
+            out[key] = value.strip()
+    return out
+
+
+
+def mp_read_u32(data: bytes, offset: int, field_name: str, *, max_count: int = 50_000) -> tuple[int, int]:
+    if offset + 4 > len(data):
+        raise ValueError(f"{field_name}:truncated-count")
+    count = struct.unpack_from("<I", data, offset)[0]
+    offset += 4
+    if count == MEMORYPACK_NULL_COUNT:
+        raise ValueError(f"{field_name}:null-count")
+    if count > max_count:
+        raise ValueError(f"{field_name}:invalid-count={count}")
+    return count, offset
+
+
+def mp_read_utf8_string(data: bytes, offset: int, field_name: str, *, max_length: int = 16_384) -> tuple[str | None, int]:
+    if offset + 4 > len(data):
+        raise ValueError(f"{field_name}:truncated-length")
+    length = struct.unpack_from("<I", data, offset)[0]
+    offset += 4
+    if length == MEMORYPACK_NULL_COUNT:
+        return None, offset
+    if length > max_length or offset + length > len(data):
+        raise ValueError(f"{field_name}:invalid-length={length}")
+    raw = data[offset:offset + length]
+    offset += length
+    return raw.decode("utf-8", "replace"), offset
+
+
+def mp_read_required_string(data: bytes, offset: int, field_name: str, *, max_length: int = 16_384) -> tuple[str, int]:
+    value, offset = mp_read_utf8_string(data, offset, field_name, max_length=max_length)
+    if value is None:
+        raise ValueError(f"{field_name}:null-string")
+    return value, offset
+
+
+def mp_read_i32(data: bytes, offset: int, field_name: str) -> tuple[int, int]:
+    if offset + 4 > len(data):
+        raise ValueError(f"{field_name}:truncated-i32")
+    return struct.unpack_from("<i", data, offset)[0], offset + 4
+
+
+def mp_read_u16(data: bytes, offset: int, field_name: str) -> tuple[int, int]:
+    if offset + 2 > len(data):
+        raise ValueError(f"{field_name}:truncated-u16")
+    return struct.unpack_from("<H", data, offset)[0], offset + 2
+
+
+def mp_read_bool(data: bytes, offset: int, field_name: str) -> tuple[bool, int]:
+    if offset >= len(data):
+        raise ValueError(f"{field_name}:truncated-bool")
+    value = data[offset]
+    if value not in {0, 1}:
+        raise ValueError(f"{field_name}:invalid-bool={value}")
+    return bool(value), offset + 1
+
+
+def mp_read_u64(data: bytes, offset: int, field_name: str) -> tuple[int, int]:
+    if offset + 8 > len(data):
+        raise ValueError(f"{field_name}:truncated-u64")
+    return struct.unpack_from("<Q", data, offset)[0], offset + 8
+
+
+def mp_read_f32(data: bytes, offset: int, field_name: str) -> tuple[float, int]:
+    if offset + 4 > len(data):
+        raise ValueError(f"{field_name}:truncated-f32")
+    value = struct.unpack_from("<f", data, offset)[0]
+    if not math.isfinite(value):
+        raise ValueError(f"{field_name}:non-finite")
+    return value, offset + 4
+
+
+NAVMESH_LUNA_AREA_ROW_MEMBER_COUNT = 6
+NAVMESH_STATE_CONTAINER_MEMBER_COUNT = 6
+NAVMESH_STATE_RECORD_KINDS = ("bounds36", "ints20", "ints16", "groupedU64Lists", "idValueLists")
+
+
+def decode_navmesh_luna_area_rows(data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != 1:
+        return None
+    try:
+        offset = 1
+        area_count, offset = mp_read_u32(data, offset, "LunaArea", max_count=10_000)
+        rows: list[dict[str, Any]] = []
+        total_vertices = 0
+        max_vertices = 0
+        for row_index in range(area_count):
+            if offset >= len(data):
+                raise ValueError("LunaArea.rowMemberCount:truncated")
+            row_member_count = data[offset]
+            offset += 1
+            if row_member_count != NAVMESH_LUNA_AREA_ROW_MEMBER_COUNT:
+                raise ValueError(f"LunaArea.rowMemberCount:{row_member_count}")
+            area_id, offset = mp_read_i32(data, offset, "LunaArea.areaId")
+            center: list[float] = []
+            for axis in range(2):
+                value, offset = mp_read_f32(data, offset, f"LunaArea.center[{axis}]")
+                center.append(round(value, 4))
+            vertex_count, offset = mp_read_u32(data, offset, "LunaArea.vertices", max_count=2_000)
+            vertices_preview: list[list[float]] = []
+            for _vertex_index in range(vertex_count):
+                vertex: list[float] = []
+                for axis in range(3):
+                    value, offset = mp_read_f32(data, offset, f"LunaArea.vertex[{axis}]")
+                    vertex.append(round(value, 4))
+                if len(vertices_preview) < 4:
+                    vertices_preview.append(vertex)
+            tail_u64, offset = mp_read_u64(data, offset, "LunaArea.tailU64")
+            if offset + 4 > len(data):
+                raise ValueError("LunaArea.tailU32:truncated")
+            tail_u32 = struct.unpack_from("<I", data, offset)[0]
+            offset += 4
+            total_vertices += vertex_count
+            max_vertices = max(max_vertices, vertex_count)
+            rows.append(
+                {
+                    "rowIndex": row_index,
+                    "areaId": area_id,
+                    "rowMemberCount": row_member_count,
+                    "center": center,
+                    "vertexCount": vertex_count,
+                    "verticesPreview": vertices_preview,
+                    "tailU64": tail_u64,
+                    "tailU32": tail_u32,
+                }
+            )
+        if offset != len(data):
+            raise ValueError("LunaArea:trailing-bytes")
+    except (ValueError, struct.error):
+        return None
+    return {
+        "areaCount": area_count,
+        "totalVertices": total_vertices,
+        "maxVertices": max_vertices,
+        "rows": rows,
+        "exactLength": True,
+    }
+
+
+def parse_navmesh_state_record_field(data: bytes, offset: int, count: int, record_kind: str) -> tuple[int, list[dict[str, Any]]] | None:
+    rows: list[dict[str, Any]] = []
+    try:
+        if record_kind == "bounds36":
+            row_size = 36
+            if offset + count * row_size > len(data):
+                return None
+            for row_index in range(count):
+                key = struct.unpack_from("<I", data, offset)[0]
+                offset += 4
+                area_id = struct.unpack_from("<i", data, offset)[0]
+                offset += 4
+                kind = struct.unpack_from("<i", data, offset)[0]
+                offset += 4
+                values = [round(struct.unpack_from("<f", data, offset + value_index * 4)[0], 4) for value_index in range(6)]
+                offset += 24
+                if not all(math.isfinite(value) and abs(value) < 100_000_000 for value in values):
+                    return None
+                rows.append({"rowIndex": row_index, "key": key, "areaId": area_id, "kind": kind, "boundsValues": values})
+            return offset, rows
+
+        if record_kind in {"ints16", "ints20"}:
+            int_count = 4 if record_kind == "ints16" else 5
+            row_size = int_count * 4
+            if offset + count * row_size > len(data):
+                return None
+            for row_index in range(count):
+                values = [struct.unpack_from("<i", data, offset + value_index * 4)[0] for value_index in range(int_count)]
+                offset += row_size
+                rows.append({"rowIndex": row_index, "values": values})
+            return offset, rows
+
+        if record_kind == "groupedU64Lists":
+            for row_index in range(count):
+                if offset + 12 > len(data):
+                    return None
+                key, field0, sublist_count = struct.unpack_from("<III", data, offset)
+                offset += 12
+                if key < 100_000_000 or field0 > 10 or sublist_count > 64:
+                    return None
+                lists: list[dict[str, Any]] = []
+                total_ids = 0
+                for _list_index in range(sublist_count):
+                    if offset + 8 > len(data):
+                        return None
+                    list_index, item_count = struct.unpack_from("<II", data, offset)
+                    offset += 8
+                    if list_index > 128 or item_count > 512 or offset + item_count * 8 > len(data):
+                        return None
+                    ids: list[int] = []
+                    for item_index in range(item_count):
+                        value = struct.unpack_from("<Q", data, offset + item_index * 8)[0]
+                        if value == 0 or value > 0xFFFFFFFF:
+                            return None
+                        if len(ids) < 8:
+                            ids.append(value)
+                    offset += item_count * 8
+                    total_ids += item_count
+                    if len(lists) < 8:
+                        lists.append({"index": list_index, "count": item_count, "idsPreview": ids})
+                rows.append(
+                    {
+                        "rowIndex": row_index,
+                        "key": key,
+                        "field0": field0,
+                        "sublistCount": sublist_count,
+                        "totalIds": total_ids,
+                        "lists": lists,
+                    }
+                )
+            return offset, rows
+
+        if record_kind == "idValueLists":
+            for row_index in range(count):
+                if offset + 12 > len(data):
+                    return None
+                key = struct.unpack_from("<Q", data, offset)[0]
+                offset += 8
+                value_count = struct.unpack_from("<I", data, offset)[0]
+                offset += 4
+                if key == 0 or key > 0xFFFFFFFF or value_count > 32 or offset + value_count * 4 > len(data):
+                    return None
+                values = [struct.unpack_from("<I", data, offset + value_index * 4)[0] for value_index in range(value_count)]
+                if any(value > 100_000 for value in values):
+                    return None
+                offset += value_count * 4
+                rows.append({"rowIndex": row_index, "key": key, "valueCount": value_count, "values": values[:12]})
+            return offset, rows
+    except struct.error:
+        return None
+    return None
+
+
+def find_navmesh_state_container_fields(data: bytes, offset: int, field_index: int, fields: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
+    if field_index == NAVMESH_STATE_CONTAINER_MEMBER_COUNT:
+        return fields if offset == len(data) else None
+    if offset + 4 > len(data):
+        return None
+    count = struct.unpack_from("<I", data, offset)[0]
+    if count > 1_000:
+        return None
+    value_offset = offset + 4
+    if count == 0:
+        decoded = {"fieldIndex": field_index + 1, "recordKind": "empty", "count": 0, "rows": []}
+        return find_navmesh_state_container_fields(data, value_offset, field_index + 1, fields + [decoded])
+    for record_kind in NAVMESH_STATE_RECORD_KINDS:
+        parsed = parse_navmesh_state_record_field(data, value_offset, count, record_kind)
+        if not parsed:
+            continue
+        next_offset, rows = parsed
+        decoded = {"fieldIndex": field_index + 1, "recordKind": record_kind, "count": count, "rows": rows}
+        result = find_navmesh_state_container_fields(data, next_offset, field_index + 1, fields + [decoded])
+        if result is not None:
+            return result
+    return None
+
+
+def decode_navmesh_state_container_fields(data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != NAVMESH_STATE_CONTAINER_MEMBER_COUNT:
+        return None
+    fields = find_navmesh_state_container_fields(data, 1, 0, [])
+    if fields is None:
+        return None
+    total_rows = sum(int(field.get("count") or 0) for field in fields)
+    record_kind_counts = Counter(str(field.get("recordKind") or "") for field in fields)
+    return {
+        "fieldCount": len(fields),
+        "totalRows": total_rows,
+        "recordKindCounts": dict(sorted(record_kind_counts.items())),
+        "fields": fields,
+        "exactLength": True,
+    }
+
+
+BUFF_DATA_MEMBER_COUNT = 29
+BUFF_DATA_STRING_MAX_SAMPLES = 512
+BUFF_DATA_PARAM_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{1,48}$")
+BUFF_DATA_POST_ID_RE = re.compile(r"(?:^|; )postId=([^;]+)")
+
+
+def mp_format_offset(offset: int) -> str:
+    return f"0x{offset:x}"
+
+
+def scan_length_prefixed_utf8_string_hits(
+    data: bytes,
+    *,
+    start: int = 0,
+    max_scan_bytes: int | None = None,
+    max_samples: int = 128,
+    min_length: int = 2,
+    max_length: int = 160,
+) -> list[dict[str, Any]]:
+    end = len(data) if max_scan_bytes is None else min(len(data), start + max_scan_bytes)
+    hits: list[dict[str, Any]] = []
+    seen: set[tuple[int, str]] = set()
+    for pos in range(max(start, 0), max(start, end - 4)):
+        length = struct.unpack_from("<I", data, pos)[0]
+        if length < min_length or length > max_length or pos + 4 + length > end:
+            continue
+        raw = data[pos + 4:pos + 4 + length]
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        if any(ord(ch) < 32 for ch in text):
+            continue
+        if not any(ch.isalnum() for ch in text):
+            continue
+        key = (pos, text)
+        if key in seen:
+            continue
+        seen.add(key)
+        hits.append({"offset": pos, "offsetHex": mp_format_offset(pos), "length": length, "value": text})
+        if len(hits) >= max_samples:
+            break
+    return hits
+
+
+def length_prefixed_utf8_marker_offsets(data: bytes, value: str) -> list[int]:
+    if not value:
+        return []
+    raw = value.encode("utf-8")
+    marker = struct.pack("<I", len(raw)) + raw
+    offsets: list[int] = []
+    cursor = 0
+    while True:
+        pos = data.find(marker, cursor)
+        if pos < 0:
+            return offsets
+        offsets.append(pos)
+        cursor = pos + 1
+
+
+def is_buff_data_param_string(value: str) -> bool:
+    if not BUFF_DATA_PARAM_RE.match(value):
+        return False
+    if value.startswith(("buff_", "icon_", "au_", "P_")):
+        return False
+    return "/" not in value
+
+
+def parse_buff_data_post_id_sample(sample: Any) -> dict[str, Any]:
+    text = safe_key(sample)
+    match = BUFF_DATA_POST_ID_RE.search(text)
+    if not match:
+        return {}
+    parsed: dict[str, Any] = {}
+    for item in match.group(1).split(","):
+        if ":" not in item:
+            continue
+        key, raw_value = item.split(":", 1)
+        key = key.strip()
+        raw_value = raw_value.strip()
+        if not key:
+            continue
+        try:
+            if raw_value.lower() in {"true", "false"}:
+                value: Any = raw_value.lower() == "true"
+            elif any(ch in raw_value for ch in ".eE"):
+                value = float(raw_value)
+            else:
+                value = int(raw_value)
+        except ValueError:
+            value = raw_value
+        parsed[key] = value
+    return parsed
+
+
+def buff_data_id_from_entry(entry: dict[str, Any]) -> str:
+    path_id = Path(safe_key(entry.get("p"))).stem
+    if path_id:
+        return path_id
+    sample = safe_key(entry.get("t"))
+    match = re.search(r"(?:^|; )id=([^;]+)", sample)
+    return safe_key(match.group(1)) if match else ""
+
+
+def buff_data_string_ref_kind(value: Any, buff_id: str) -> str:
+    text = safe_key(value)
+    if not text or text == buff_id:
+        return ""
+    if text.startswith("buff_"):
+        return "linked_buff"
+    if text.startswith("P_") and len(text) > 2:
+        return "effect"
+    if text.startswith(("au_", "radio_", "bark_")):
+        return "audio"
+    if text.startswith("icon_"):
+        return "icon"
+    if "/" in text and not text.startswith(("Assets/", "assets/")) and len(text) >= 3:
+        return "tag"
+    if is_buff_data_param_string(text):
+        return "param"
+    return ""
+
+
+def extract_buff_data_summary(entry: dict[str, Any], data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != BUFF_DATA_MEMBER_COUNT:
+        return None
+    buff_id = buff_data_id_from_entry(entry)
+    id_offsets = length_prefixed_utf8_marker_offsets(data, buff_id)
+    hits = scan_length_prefixed_utf8_string_hits(data, max_samples=BUFF_DATA_STRING_MAX_SAMPLES)
+    refs: dict[str, list[dict[str, Any]]] = {"linked_buff": [], "tag": [], "param": [], "effect": [], "audio": [], "icon": []}
+    seen: set[tuple[str, str, int]] = set()
+    for index, hit in enumerate(hits):
+        value = safe_key(hit.get("value"))
+        kind = buff_data_string_ref_kind(value, buff_id)
+        if not kind:
+            continue
+        offset = int(hit.get("offset") or 0)
+        key = (kind, value, offset)
+        if key in seen:
+            continue
+        seen.add(key)
+        refs[kind].append({
+            "index": index,
+            "offset": hit.get("offsetHex"),
+            "length": hit.get("length"),
+            "value": value,
+        })
+    return {
+        "buffId": buff_id,
+        "memberCount": BUFF_DATA_MEMBER_COUNT,
+        "idStringVerified": bool(id_offsets),
+        "idMarkerCount": len(id_offsets),
+        "idMarkerOffsets": [mp_format_offset(offset) for offset in id_offsets[:16]],
+        "postId": parse_buff_data_post_id_sample(entry.get("t")),
+        "postIdStatus": next((safe_key(item).split("=", 1)[1] for item in entry.get("ds") or [] if safe_key(item).startswith("decoded.postIdPrefix.status=")), ""),
+        "stringCountScanned": len(hits),
+        "stringScanLimit": BUFF_DATA_STRING_MAX_SAMPLES,
+        "refCounts": {kind: len(values) for kind, values in refs.items()},
+        "refs": refs,
+    }
+
+
+SKILL_DATA_MEMBER_COUNT = 45
+SKILL_DATA_STRING_MAX_SAMPLES = 512
+SKILL_DATA_POST_ID_RE = re.compile(r"(?:^|; )postId=([^;]+)")
+
+
+def parse_skill_data_post_id_sample(sample: Any) -> dict[str, Any]:
+    text = safe_key(sample)
+    match = SKILL_DATA_POST_ID_RE.search(text)
+    if not match:
+        return {}
+    parsed: dict[str, Any] = {}
+    for item in match.group(1).split(","):
+        if ":" not in item:
+            continue
+        key, raw_value = item.split(":", 1)
+        key = key.strip()
+        raw_value = raw_value.strip()
+        if not key:
+            continue
+        try:
+            if raw_value.lower() in {"true", "false"}:
+                value: Any = raw_value.lower() == "true"
+            elif any(ch in raw_value for ch in ".eE"):
+                value = float(raw_value)
+            else:
+                value = int(raw_value)
+        except ValueError:
+            value = raw_value
+        parsed[key] = value
+    return parsed
+
+
+def skill_data_id_from_entry(entry: dict[str, Any]) -> str:
+    path_id = Path(safe_key(entry.get("p"))).stem
+    if path_id:
+        return path_id
+    sample = safe_key(entry.get("t"))
+    match = re.search(r"(?:^|; )id=([^;]+)", sample)
+    return safe_key(match.group(1)) if match else ""
+
+
+def is_skill_data_param_string(value: str) -> bool:
+    if not BUFF_DATA_PARAM_RE.match(value):
+        return False
+    if value.startswith(("buff_", "icon_", "au_", "P_")):
+        return False
+    return "/" not in value
+
+
+def skill_data_string_ref_kind(value: Any, skill_id: str) -> str:
+    text = safe_key(value)
+    if not text or text == skill_id:
+        return ""
+    if text.startswith("buff_"):
+        return "linked_buff"
+    if text.startswith("P_") and len(text) > 2:
+        return "effect"
+    if text.startswith(("au_", "radio_", "bark_")):
+        return "audio"
+    if text.startswith("icon_"):
+        return "icon"
+    if "/" in text and not text.startswith(("Assets/", "assets/")) and len(text) >= 3:
+        return "tag"
+    if is_skill_data_param_string(text):
+        return "param"
+    return ""
+
+
+def extract_skill_data_summary(entry: dict[str, Any], data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != SKILL_DATA_MEMBER_COUNT:
+        return None
+    skill_id = skill_data_id_from_entry(entry)
+    id_offsets = length_prefixed_utf8_marker_offsets(data, skill_id)
+    hits = scan_length_prefixed_utf8_string_hits(data, max_samples=SKILL_DATA_STRING_MAX_SAMPLES)
+    refs: dict[str, list[dict[str, Any]]] = {"linked_buff": [], "tag": [], "param": [], "effect": [], "audio": [], "icon": []}
+    seen: set[tuple[str, str, int]] = set()
+    for index, hit in enumerate(hits):
+        value = safe_key(hit.get("value"))
+        kind = skill_data_string_ref_kind(value, skill_id)
+        if not kind:
+            continue
+        offset = int(hit.get("offset") or 0)
+        key = (kind, value, offset)
+        if key in seen:
+            continue
+        seen.add(key)
+        refs[kind].append({
+            "index": index,
+            "offset": hit.get("offsetHex"),
+            "length": hit.get("length"),
+            "value": value,
+        })
+    return {
+        "skillId": skill_id,
+        "memberCount": SKILL_DATA_MEMBER_COUNT,
+        "idStringVerified": bool(id_offsets),
+        "idMarkerCount": len(id_offsets),
+        "idMarkerOffsets": [mp_format_offset(offset) for offset in id_offsets[:16]],
+        "postId": parse_skill_data_post_id_sample(entry.get("t")),
+        "postIdStatus": next((safe_key(item).split("=", 1)[1] for item in entry.get("ds") or [] if safe_key(item).startswith("decoded.postIdTailPrefix.status=")), ""),
+        "switchTailStatus": next((safe_key(item).split("=", 1)[1] for item in entry.get("ds") or [] if safe_key(item).startswith("decoded.postIdTailPrefix.switchTailProbe.postSwitchTail.status=")), ""),
+        "stringCountScanned": len(hits),
+        "stringScanLimit": SKILL_DATA_STRING_MAX_SAMPLES,
+        "refCounts": {kind: len(values) for kind, values in refs.items()},
+        "refs": refs,
+    }
+
+
+def mp_read_vec3(data: bytes, offset: int, field_name: str) -> tuple[list[float], int]:
+    values: list[float] = []
+    for axis in range(3):
+        value, offset = mp_read_f32(data, offset, f"{field_name}[{axis}]")
+        if abs(value) > 1_000_000:
+            raise ValueError(f"{field_name}[{axis}]:out-of-range")
+        values.append(round(value, 6))
+    return values, offset
+
+
+LEVEL_SCRIPT_SAMPLE_INT_RE = re.compile(r"(?P<key>records|uidRecords|actionList|getterList|headerList|root|linked|tail)=(-?\d+)")
+LEVEL_SCRIPT_SAMPLE_VALUE_RE = re.compile(r"(?:^|; )(?P<key>startType|triggerVolumes|actionMap|scriptId|templateId)=([^;]+)")
+
+
+def level_script_level_id_from_entry(entry: dict[str, Any]) -> str:
+    rel = safe_key(entry.get("p"))
+    if not rel:
+        return ""
+    parts = Path(rel).parts
+    if len(parts) >= 2:
+        return safe_key(parts[-2])
+    return ""
+
+
+def parse_level_script_sample(sample: Any) -> dict[str, Any]:
+    text = safe_key(sample)
+    values: dict[str, Any] = {}
+    for match in LEVEL_SCRIPT_SAMPLE_INT_RE.finditer(text):
+        values[match.group("key")] = int(match.group(2))
+    for match in LEVEL_SCRIPT_SAMPLE_VALUE_RE.finditer(text):
+        values[match.group("key")] = match.group(2).strip()
+    return values
+
+
+def decoded_status_lookup(entry: dict[str, Any], prefix: str) -> str:
+    for item in entry.get("ds") or []:
+        text = safe_key(item)
+        if text.startswith(prefix):
+            return text.split("=", 1)[1]
+    return ""
+
+
+def extract_level_script_entry_summary(entry: dict[str, Any]) -> dict[str, Any]:
+    script_id = Path(safe_key(entry.get("p"))).stem
+    sample = parse_level_script_sample(entry.get("t"))
+    return {
+        "scriptId": safe_key(sample.get("scriptId")) or script_id,
+        "levelId": level_script_level_id_from_entry(entry),
+        "actionMapStatus": decoded_status_lookup(entry, "decoded.actionMapStatus=") or safe_key(sample.get("actionMap")),
+        "actionMapRecordCount": sample.get("records"),
+        "uidRecordCount": sample.get("uidRecords"),
+        "actionListCount": sample.get("actionList"),
+        "getterListCount": sample.get("getterList"),
+        "headerListCount": sample.get("headerList"),
+        "rootActionCount": sample.get("root"),
+        "linkedActionCount": sample.get("linked"),
+        "startType": safe_key(sample.get("startType")),
+        "triggerVolumesStatus": decoded_status_lookup(entry, "decoded.triggerVolumesStatus=") or safe_key(sample.get("triggerVolumes")),
+        "triggerVolumesParseStatus": decoded_status_lookup(entry, "decoded.triggerVolumesDetails.parseStatus="),
+        "taskMapStatus": decoded_status_lookup(entry, "decoded.taskMapStatus="),
+        "startShapeListStatus": decoded_status_lookup(entry, "decoded.startShapeListStatus="),
+    }
+
+
+def extract_level_script_template_entry_summary(entry: dict[str, Any]) -> dict[str, Any]:
+    template_id = Path(safe_key(entry.get("p"))).stem
+    sample = parse_level_script_sample(entry.get("t"))
+    return {
+        "templateId": safe_key(sample.get("templateId")) or template_id,
+        "templateGroup": safe_key(entry.get("g")),
+        "actionMapStatus": decoded_status_lookup(entry, "decoded.actionMapStatus=") or safe_key(sample.get("actionMap")),
+        "actionMapRecordCount": sample.get("records"),
+    }
+
+
+LEVEL_SCRIPT_MISSIONISH_RE = re.compile(r"^[cer]\d+m\d+(?:[A-Za-z0-9_#-]*)?$", re.IGNORECASE)
+LEVEL_SCRIPT_TEMPLATE_PATH_RE = re.compile(r"(?:^|/)LevelScriptTemplateData/(?P<name>[^/\\]+)\.json$", re.IGNORECASE)
+
+
+LEVEL_DATA_MEMBER_COUNT = 42
+LEVEL_CONFIG_MEMBER_COUNT = 15
+LEVEL_DATA_STRING_MAX_SAMPLES = 512
+LEVEL_DATA_LEVEL_REF_RE = re.compile(
+    r"^(?:base\d+|map\d+|dung\d+|indie|main\d+|rgl\d+)_(?:lv|dg|rdg|ssdg)\d+[A-Za-z0-9_]*$",
+    re.IGNORECASE,
+)
+
+
+def parse_optional_int(value: Any) -> int | None:
+    text = safe_key(value)
+    if not text or text.lower() == "null":
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
+def level_data_scene_id_from_entry(entry: dict[str, Any]) -> str:
+    rel = safe_key(entry.get("p") or entry.get("dp"))
+    if not rel:
+        return ""
+    parts = Path(rel).parts
+    for index, part in enumerate(parts):
+        if part == "LevelData" and index + 1 < len(parts):
+            return safe_key(parts[index + 1])
+    return safe_key(Path(rel).parent.name)
+
+
+def level_data_node_key_from_entry(entry: dict[str, Any]) -> str:
+    return safe_key(entry.get("dp") or entry.get("p"))
+
+
+def level_data_string_ref_kind(value: Any, scene_id: str) -> str:
+    text = safe_key(value)
+    if not text or text == scene_id:
+        return ""
+    if text.startswith("sc_"):
+        return "level_script"
+    story_match = STORY_KEY_RE.search(text)
+    if story_match and story_match.group(0) == text:
+        return "story"
+    if LEVEL_SCRIPT_MISSIONISH_RE.match(text):
+        return "mission"
+    if text.startswith(("au_", "bark_")):
+        return "audio"
+    if text.startswith("P_") and len(text) > 2:
+        return "effect"
+    if text.startswith("buff_"):
+        return "buff"
+    if text.startswith("Montage/"):
+        return "montage"
+    if LEVEL_SCRIPT_TEMPLATE_PATH_RE.search(text):
+        return "template"
+    if text.startswith(("Assets/", "assets/")):
+        return "asset_path"
+    if LEVEL_DATA_LEVEL_REF_RE.match(text):
+        return "level"
+    if text.startswith("lt:") or text.startswith(("Task", "FinishObj_", "guide_")):
+        return "marker"
+    if is_buff_data_param_string(text) and not text.startswith(("guide_", "scene_", "base", "map", "dung", "indie", "Task", "FinishObj_", "lt:")):
+        return "param"
+    return ""
+
+
+def extract_level_config_summary(entry: dict[str, Any]) -> dict[str, Any]:
+    values = parse_summary_assignments(entry.get("t"))
+    level_id = safe_key(values.get("id")) or Path(safe_key(entry.get("p"))).stem
+    return {
+        "levelId": level_id,
+        "idStringVerified": safe_key(values.get("idString")) == "verified",
+        "idNum": parse_optional_int(values.get("idNum")),
+        "mapId": safe_key(values.get("mapId")),
+        "levelDataPathCount": parse_optional_int(values.get("levelDataPaths")) if values.get("levelDataPaths") is not None else entry.get("r"),
+        "scope": parse_optional_int(values.get("scope")),
+        "playerInitPos": safe_key(values.get("init")),
+        "rect": safe_key(values.get("rect")),
+        "defaultSceneConfigPath": safe_key(values.get("defaultScene")),
+        "memberCount": LEVEL_CONFIG_MEMBER_COUNT,
+        "exactLength": "exact length" in safe_key(entry.get("h")).lower() or "numeric tail parsed" in safe_key(entry.get("h")).lower(),
+    }
+
+
+def extract_level_data_summary(entry: dict[str, Any], data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != LEVEL_DATA_MEMBER_COUNT:
+        return None
+    scene_id = level_data_scene_id_from_entry(entry)
+    id_offsets = length_prefixed_utf8_marker_offsets(data, scene_id)
+    hits = scan_length_prefixed_utf8_string_hits(data, max_samples=LEVEL_DATA_STRING_MAX_SAMPLES, max_length=320)
+    refs: dict[str, list[dict[str, Any]]] = {
+        "level_script": [],
+        "story": [],
+        "mission": [],
+        "audio": [],
+        "effect": [],
+        "buff": [],
+        "montage": [],
+        "template": [],
+        "asset_path": [],
+        "level": [],
+        "marker": [],
+        "param": [],
+    }
+    seen: set[tuple[str, str]] = set()
+    for index, hit in enumerate(hits):
+        value = safe_key(hit.get("value"))
+        kind = level_data_string_ref_kind(value, scene_id)
+        if not kind:
+            continue
+        key = (kind, value)
+        if key in seen:
+            continue
+        seen.add(key)
+        refs[kind].append({
+            "index": index,
+            "offset": hit.get("offsetHex"),
+            "length": hit.get("length"),
+            "value": value,
+        })
+    return {
+        "sceneId": scene_id,
+        "memberCount": LEVEL_DATA_MEMBER_COUNT,
+        "sceneIdStringVerified": bool(id_offsets),
+        "sceneIdMarkerCount": len(id_offsets),
+        "sceneIdMarkerOffsets": [mp_format_offset(offset) for offset in id_offsets[:16]],
+        "sampledStringCount": len(hits),
+        "stringScanLimit": LEVEL_DATA_STRING_MAX_SAMPLES,
+        "refCounts": {kind: len(values) for kind, values in refs.items()},
+        "refs": refs,
+        "exactLength": False,
+    }
+
+ANIMATION_CONFIG_MEMBER_COUNT = 12
+ANIMATION_CONFIG_STRING_MAX_SAMPLES = 640
+
+
+def animation_config_id_from_entry(entry: dict[str, Any]) -> str:
+    return Path(safe_key(entry.get("p"))).stem
+
+
+def extract_animation_config_summary(entry: dict[str, Any], data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != ANIMATION_CONFIG_MEMBER_COUNT:
+        return None
+    config_id = animation_config_id_from_entry(entry)
+    hits = scan_length_prefixed_utf8_string_hits(data, max_samples=ANIMATION_CONFIG_STRING_MAX_SAMPLES, max_length=260)
+    strings: list[str] = []
+    seen_strings: set[str] = set()
+    for hit in hits:
+        value = safe_key(hit.get("value"))
+        if value and value not in seen_strings:
+            seen_strings.add(value)
+            strings.append(value)
+        if len(strings) >= 192:
+            break
+    facial_morphs = [value for value in strings if value.startswith("FacialMorph/")][:12]
+    montage_paths = [value for value in strings if value.startswith("Montage/")][:12]
+    actor_anims = [value for value in strings if value.startswith("A_actor_")][:12]
+    cutscene_refs = [value for value in strings if value.startswith("cutscene_") or re.match(r"^e\d+m\d+_", value)][:12]
+    other_paths = [
+        value
+        for value in strings
+        if "/" in value
+        and not value.startswith("FacialMorph/")
+        and not value.startswith("Montage/")
+    ][:12]
+    state_names = [
+        value
+        for value in strings
+        if "/" not in value
+        and not value.startswith("A_actor_")
+        and not value.startswith("cutscene_")
+        and not re.match(r"^e\d+m\d+_", value)
+    ][:24]
+    bool_tail_valid = len(data) >= 2 and data[-2] in (0, 1) and data[-1] in (0, 1)
+    return {
+        "configId": config_id,
+        "memberCount": ANIMATION_CONFIG_MEMBER_COUNT,
+        "sampledStringCount": len(strings),
+        "stringScanLimit": ANIMATION_CONFIG_STRING_MAX_SAMPLES,
+        "stateNames": state_names,
+        "facialMorphs": facial_morphs,
+        "montagePaths": montage_paths,
+        "actorAnimationRefs": actor_anims,
+        "cutsceneRefs": cutscene_refs,
+        "otherPaths": other_paths,
+        "useRotateDirection": bool(data[-2]) if bool_tail_valid else None,
+        "useStateVariables": bool(data[-1]) if bool_tail_valid else None,
+        "booleanTailVerified": bool_tail_valid,
+        "stringHits": hits[:48],
+        "exactLength": False,
+    }
+
+CHAR_INTERACT_PERFORM_MEMBER_COUNT = 26
+CHAR_INTERACT_PERFORM_STRING_MAX_SAMPLES = 256
+
+
+def read_memorypack_tag_list_prefix(data: bytes, offset: int, *, max_items: int = 32) -> tuple[list[dict[str, Any]], int | None, int, str | None]:
+    if offset + 4 > len(data):
+        return [], None, offset, "truncated-count"
+    raw_count = struct.unpack_from("<I", data, offset)[0]
+    offset += 4
+    if raw_count == MEMORYPACK_NULL_COUNT:
+        return [], None, offset, None
+    if raw_count > max_items:
+        return [], raw_count, offset, f"large-count={raw_count}"
+    tags: list[dict[str, Any]] = []
+    for index in range(raw_count):
+        if offset + 5 > len(data):
+            return tags, raw_count, offset, "truncated-item"
+        member_count = data[offset]
+        offset += 1
+        hash_value = struct.unpack_from("<I", data, offset)[0]
+        offset += 4
+        try:
+            tag, offset = mp_read_utf8_string(data, offset, f"tag[{index}]", max_length=512)
+        except ValueError as exc:
+            return tags, raw_count, offset, str(exc)
+        tags.append({"index": index, "memberCount": member_count, "hash": f"0x{hash_value:08x}", "tag": safe_key(tag)})
+    return tags, raw_count, offset, None
+
+
+def char_interact_perform_id_from_entry(entry: dict[str, Any]) -> str:
+    return Path(safe_key(entry.get("p"))).stem
+
+
+def extract_char_interact_perform_summary(entry: dict[str, Any], data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != CHAR_INTERACT_PERFORM_MEMBER_COUNT:
+        return None
+    offset = 1
+    active_tags, active_tag_count, offset, err = read_memorypack_tag_list_prefix(data, offset, max_items=64)
+    if err or active_tag_count is None:
+        return None
+    if offset >= len(data) or data[offset] not in (0, 1):
+        return None
+    allow_inherit_perform = bool(data[offset])
+    offset += 1
+    if offset + 4 > len(data):
+        return None
+    body_type_act_data_count = struct.unpack_from("<I", data, offset)[0]
+    offset += 4
+    if body_type_act_data_count > 1024:
+        return None
+
+    hits = scan_length_prefixed_utf8_string_hits(
+        data,
+        start=offset,
+        max_samples=CHAR_INTERACT_PERFORM_STRING_MAX_SAMPLES,
+        min_length=2,
+        max_length=320,
+    )
+    strings = unique_limited_strings((hit.get("value") for hit in hits), 96)
+    active_tag_values = {safe_key(tag.get("tag")) for tag in active_tags}
+    non_prefix_strings = [value for value in strings if value not in active_tag_values]
+    status_tags = unique_limited_strings((value for value in strings if value.startswith("Status/")), 16)
+    montage_refs = unique_limited_strings((value for value in strings if value.startswith("Montage/")), 16)
+    actor_refs = unique_limited_strings((value for value in strings if value.startswith(("chr_", "npc_"))), 16)
+    effect_ids = unique_limited_strings((value for value in strings if value.startswith("P_")), 16)
+    perform_refs = unique_limited_strings((value for value in strings if value.startswith("CharIntPerform")), 16)
+    asset_refs = unique_limited_strings(
+        (
+            value
+            for value in strings
+            if value.startswith(("DynamicAssets/", "Designer/", "Attachment/", "Weapons/"))
+        ),
+        16,
+    )
+    ccs_refs = unique_limited_strings((value for value in strings if value.startswith(("Interact/", "LD/"))), 16)
+    state_or_param = unique_limited_strings(
+        (
+            value
+            for value in non_prefix_strings
+            if re.match(r"^[A-Za-z][A-Za-z0-9_]{2,48}$", value)
+            and not value.startswith(("CharIntPerform", "Status", "Montage", "DynamicAssets"))
+        ),
+        16,
+    )
+    return {
+        "performId": char_interact_perform_id_from_entry(entry),
+        "memberCount": CHAR_INTERACT_PERFORM_MEMBER_COUNT,
+        "activeTagCount": active_tag_count,
+        "activeTags": active_tags,
+        "allowInheritPerform": allow_inherit_perform,
+        "bodyTypeActDataDictCount": body_type_act_data_count,
+        "bodyTypeActDataDictOffset": mp_format_offset(offset),
+        "statusTags": status_tags,
+        "montageRefs": montage_refs,
+        "actorRefs": actor_refs,
+        "effectIds": effect_ids,
+        "performRefs": perform_refs,
+        "assetRefs": asset_refs,
+        "ccsRefs": ccs_refs,
+        "stateOrParamStrings": state_or_param,
+        "bodyStringSamples": non_prefix_strings[:32],
+        "stringHitCount": len(hits),
+        "stringScanLimit": CHAR_INTERACT_PERFORM_STRING_MAX_SAMPLES,
+        "stringHits": hits[:24],
+        "exactPrefixFields": ["activeTags", "allowInheritPerform", "bodyTypeActDataDictCount"],
+        "exactLength": False,
+    }
+
+ATMOSPHERIC_NPC_TABLE_MEMBER_COUNT = 1
+ATMOSPHERIC_NPC_ROW_MEMBER_COUNT = 109
+ATMOSPHERIC_NPC_KEY_MAX_LENGTH = 120
+ATMOSPHERIC_NPC_ROW_STRING_LIMIT = 80
+
+
+def unique_limited_strings(values: Iterable[Any], limit: int) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = safe_key(value)
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def atmospheric_npc_key_is_plausible(value: str) -> bool:
+    text = safe_key(value)
+    if not text.startswith("npc_"):
+        return False
+    lowered = text.lower()
+    return "_atmospheric_" in lowered or "_enviromental_" in lowered or "_environmental_" in lowered
+
+
+def atmospheric_npc_row_key_positions(data: bytes) -> list[tuple[int, str]]:
+    positions: list[tuple[int, str]] = []
+    for pos in range(5, max(5, len(data) - 4)):
+        length = struct.unpack_from("<I", data, pos)[0]
+        text_start = pos + 4
+        text_end = text_start + length
+        if not (1 <= length <= ATMOSPHERIC_NPC_KEY_MAX_LENGTH and text_end < len(data)):
+            continue
+        if data[text_end] != ATMOSPHERIC_NPC_ROW_MEMBER_COUNT:
+            continue
+        try:
+            text = data[text_start:text_end].decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        if any(ord(ch) < 32 for ch in text) or not atmospheric_npc_key_is_plausible(text):
+            continue
+        positions.append((pos, text))
+    return positions
+
+
+def scan_atmospheric_npc_row_strings(data: bytes, start: int, end: int, *, limit: int = ATMOSPHERIC_NPC_ROW_STRING_LIMIT) -> list[str]:
+    strings: list[str] = []
+    scan_start = max(0, start)
+    scan_end = max(scan_start, min(len(data), end))
+    for pos in range(scan_start, max(scan_start, scan_end - 4)):
+        length = struct.unpack_from("<I", data, pos)[0]
+        if length <= 0 or length > 220 or pos + 4 + length > scan_end:
+            continue
+        try:
+            text = data[pos + 4:pos + 4 + length].decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        if any(ord(ch) < 32 for ch in text) or not any(ch.isalnum() for ch in text):
+            continue
+        if text not in strings:
+            strings.append(text)
+            if len(strings) >= limit:
+                break
+    return strings
+
+
+def atmospheric_level_id_like(value: str) -> bool:
+    text = safe_key(value)
+    if not text or text.startswith("npc_") or "_cluster_" in text:
+        return False
+    lowered = text.lower()
+    if "_atmospheric_" in lowered or "_enviromental_" in lowered or "_environmental_" in lowered:
+        return False
+    return bool(re.match(r"^(?:base|map|dung|indie|main|rgl)\d{0,2}(?:_|$)", text, re.IGNORECASE))
+
+
+def classify_atmospheric_npc_strings(strings: list[str], row_keys: set[str]) -> dict[str, list[str]]:
+    return {
+        "aiConfigs": unique_limited_strings((value for value in strings if value.startswith("aiconf_")), 12),
+        "montages": unique_limited_strings((value for value in strings if value.startswith("Montage/")), 12),
+        "facialAnims": unique_limited_strings((value for value in strings if value.startswith("FacialMorph/")), 12),
+        "envTalks": unique_limited_strings((value for value in strings if value.startswith("envTalk_")), 12),
+        "templateIds": unique_limited_strings(
+            (
+                value
+                for value in strings
+                if value.startswith("npc_")
+                and value not in row_keys
+                and not atmospheric_npc_key_is_plausible(value)
+            ),
+            12,
+        ),
+        "clusters": unique_limited_strings((value for value in strings if "_cluster_" in value), 12),
+        "levels": unique_limited_strings((value for value in strings if atmospheric_level_id_like(value)), 12),
+    }
+
+
+def first_atmospheric_value(values: list[str]) -> str:
+    return safe_key(values[0]) if values else ""
+
+
+def extract_atmospheric_npc_table_summary(entry: dict[str, Any], data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != ATMOSPHERIC_NPC_TABLE_MEMBER_COUNT or len(data) < 5:
+        return None
+    table_count = struct.unpack_from("<I", data, 1)[0]
+    if table_count > 100_000:
+        return None
+    positions = atmospheric_npc_row_key_positions(data)
+    row_boundaries_verified = len(positions) == table_count
+    if table_count == 0 and len(data) != 5:
+        row_boundaries_verified = False
+
+    rows: list[dict[str, Any]] = []
+    for index, (pos, key) in enumerate(positions):
+        key_length = struct.unpack_from("<I", data, pos)[0]
+        member_offset = pos + 4 + key_length
+        if member_offset >= len(data):
+            continue
+        next_offset = positions[index + 1][0] if index + 1 < len(positions) else len(data)
+        row_strings = scan_atmospheric_npc_row_strings(data, member_offset + 1, next_offset)
+        classified = classify_atmospheric_npc_strings(row_strings, {key})
+        rows.append({
+            "index": index,
+            "key": key,
+            "memberCount": data[member_offset],
+            "aiCfg": first_atmospheric_value(classified["aiConfigs"]),
+            "templateDataId": first_atmospheric_value(classified["templateIds"]),
+            "levelId": first_atmospheric_value(classified["levels"]),
+            "clusterId": first_atmospheric_value(classified["clusters"]),
+            "montages": classified["montages"],
+            "facialAnims": classified["facialAnims"],
+            "envTalks": classified["envTalks"],
+            "rowStartOffset": mp_format_offset(pos),
+            "rowEndOffset": mp_format_offset(next_offset),
+        })
+
+    return {
+        "tableId": safe_key(entry.get("g")) or Path(safe_key(entry.get("p"))).stem,
+        "memberCount": ATMOSPHERIC_NPC_TABLE_MEMBER_COUNT,
+        "tableRowCount": table_count,
+        "rowKeyCount": len(positions),
+        "rowBoundariesVerified": row_boundaries_verified,
+        "rowMemberCount": ATMOSPHERIC_NPC_ROW_MEMBER_COUNT,
+        "rowStringScanLimit": ATMOSPHERIC_NPC_ROW_STRING_LIMIT,
+        "rows": rows,
+        "exactLength": row_boundaries_verified,
+    }
+
+def parse_npc_montage_tag(tag: Any) -> dict[str, str]:
+    tag_text = safe_key(tag)
+    parts = [part for part in tag_text.split("/") if part]
+    if len(parts) < 3:
+        return {"domain": tag_text, "category": "", "form": "", "body": "", "role": "", "action": ""}
+    category = parts[2]
+    action = parts[-1] if parts else ""
+    if category == "Generic":
+        return {
+            "domain": "/".join(parts[:3]),
+            "category": category,
+            "form": "",
+            "body": parts[3] if len(parts) > 3 else "",
+            "role": "",
+            "action": action,
+        }
+    return {
+        "domain": "/".join(parts[:3]),
+        "category": category,
+        "form": parts[3] if len(parts) > 3 else "",
+        "body": parts[4] if len(parts) > 4 else "",
+        "role": parts[5] if len(parts) > 5 else "",
+        "action": action,
+    }
+
+
+def extract_npc_montage_summary(entry: dict[str, Any]) -> dict[str, Any]:
+    values = parse_summary_assignments(entry.get("t"))
+    tag = safe_key(values.get("tag"))
+    tag_info = parse_npc_montage_tag(tag)
+    return {
+        "tag": tag,
+        "animType": parse_optional_int(values.get("animType")),
+        "dataMemberCount": parse_optional_int(values.get("dataMembers")),
+        "category": safe_key(values.get("category")) or tag_info.get("category", ""),
+        "form": safe_key(values.get("form")) or tag_info.get("form", ""),
+        "body": safe_key(values.get("body")) or tag_info.get("body", ""),
+        "role": safe_key(values.get("role")) or tag_info.get("role", ""),
+        "action": safe_key(values.get("action")) or tag_info.get("action", ""),
+        "domain": tag_info.get("domain", ""),
+        "memberCount": 3,
+        "tailGameplayTagParsed": "tail gameplaytag parsed exactly" in safe_key(entry.get("h")).lower(),
+        "sourceFolder": safe_key(entry.get("g")),
+    }
+
+def level_script_ref_kind(value: Any, owner_id: str) -> str:
+    text = safe_key(value)
+    if not text or text == owner_id:
+        return ""
+    if STORY_KEY_RE.search(text) and STORY_KEY_RE.search(text).group(0) == text:
+        return "story"
+    if LEVEL_SCRIPT_MISSIONISH_RE.match(text):
+        return "mission"
+    if text.startswith(("au_", "radio_", "bark_")):
+        return "audio"
+    if text.startswith("P_") and len(text) > 2:
+        return "effect"
+    if text.startswith("buff_"):
+        return "buff"
+    if text.startswith("Montage/"):
+        return "montage"
+    if LEVEL_SCRIPT_TEMPLATE_PATH_RE.search(text):
+        return "template"
+    return ""
+
+
+def level_script_template_id_from_ref(value: str) -> str:
+    match = LEVEL_SCRIPT_TEMPLATE_PATH_RE.search(value)
+    if match:
+        return Path(match.group("name")).stem
+    return ""
+
+
+def extract_level_script_string_refs(entry: dict[str, Any], data: bytes, owner_id: str) -> dict[str, list[dict[str, Any]]]:
+    refs: dict[str, list[dict[str, Any]]] = {"story": [], "mission": [], "audio": [], "effect": [], "buff": [], "template": [], "montage": []}
+    if not data:
+        return refs
+    hits = scan_length_prefixed_utf8_string_hits(data, max_samples=512, max_length=320)
+    seen: set[tuple[str, str, int]] = set()
+    for index, hit in enumerate(hits):
+        value = safe_key(hit.get("value"))
+        kind = level_script_ref_kind(value, owner_id)
+        if not kind:
+            continue
+        offset = int(hit.get("offset") or 0)
+        key = (kind, value, offset)
+        if key in seen:
+            continue
+        seen.add(key)
+        refs[kind].append({
+            "index": index,
+            "offset": hit.get("offsetHex"),
+            "length": hit.get("length"),
+            "value": value,
+        })
+    return refs
+
+
+def extract_model_table_rows(data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != 2:
+        return None
+    try:
+        offset = 1
+        model_count, offset = mp_read_u32(data, offset, "modelDict", max_count=10_000)
+        rows: list[dict[str, Any]] = []
+        for index in range(model_count):
+            model_id, offset = mp_read_required_string(data, offset, f"modelDict[{index}].key", max_length=512)
+            if offset >= len(data):
+                raise ValueError(f"modelDict[{index}].memberCount:truncated")
+            member_count = data[offset]
+            offset += 1
+            if member_count != 6:
+                raise ValueError(f"modelDict[{index}].memberCount={member_count}")
+            alt_model_id, offset = mp_read_utf8_string(data, offset, f"modelDict[{index}].altModelId", max_length=512)
+            if offset >= len(data):
+                raise ValueError(f"modelDict[{index}].flag:truncated")
+            flag = data[offset]
+            offset += 1
+            duplicate_model_id, offset = mp_read_required_string(data, offset, f"modelDict[{index}].duplicateModelId", max_length=512)
+            prefab_path, offset = mp_read_required_string(data, offset, f"modelDict[{index}].prefabPath", max_length=2048)
+            scale, offset = mp_read_f32(data, offset, f"modelDict[{index}].scale")
+            tail_int, offset = mp_read_i32(data, offset, f"modelDict[{index}].tailInt")
+            rows.append({
+                "modelId": model_id,
+                "altModelId": alt_model_id,
+                "flag": flag,
+                "duplicateModelId": duplicate_model_id,
+                "prefabPath": prefab_path,
+                "scale": round(scale, 6),
+                "tailInt": tail_int,
+            })
+        layout_count = None
+        if offset + 4 <= len(data):
+            layout_count = struct.unpack_from("<I", data, offset)[0]
+        return {"modelCount": model_count, "layoutCountFromHeader": layout_count, "modelRows": rows}
+    except (ValueError, struct.error):
+        return None
+
+
+def extract_model_radius_rows(data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != 1:
+        return None
+    try:
+        offset = 1
+        entry_count, offset = mp_read_u32(data, offset, "ModelRadiusTable", max_count=50_000)
+        rows: list[dict[str, Any]] = []
+        for index in range(entry_count):
+            model_id, offset = mp_read_required_string(data, offset, f"ModelRadiusTable[{index}].key", max_length=512)
+            if offset >= len(data):
+                raise ValueError(f"ModelRadiusTable[{index}].memberCount:truncated")
+            member_count = data[offset]
+            offset += 1
+            if member_count != 4:
+                raise ValueError(f"ModelRadiusTable[{index}].memberCount={member_count}")
+            field0, offset = mp_read_i32(data, offset, f"ModelRadiusTable[{index}].field0")
+            if offset >= len(data):
+                raise ValueError(f"ModelRadiusTable[{index}].flagByte:truncated")
+            flag_byte = data[offset]
+            offset += 1
+            field2, offset = mp_read_i32(data, offset, f"ModelRadiusTable[{index}].field2")
+            radius, offset = mp_read_f32(data, offset, f"ModelRadiusTable[{index}].radius")
+            rows.append({"modelId": model_id, "field0": field0, "flagByte": flag_byte, "field2": field2, "radius": round(radius, 6)})
+        if offset != len(data):
+            raise ValueError("ModelRadiusTable:trailing-bytes")
+        return {"rowCount": entry_count, "rows": rows}
+    except (ValueError, struct.error):
+        return None
+
+
+def extract_interactive_table_rows(data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != 2:
+        return None
+    try:
+        offset = 1
+        core_count, offset = mp_read_u32(data, offset, "coreTemplatePathDict", max_count=10_000)
+        core_rows: list[dict[str, Any]] = []
+        for index in range(core_count):
+            template_id, offset = mp_read_required_string(data, offset, f"coreTemplatePathDict[{index}].key", max_length=512)
+            template_path, offset = mp_read_required_string(data, offset, f"coreTemplatePathDict[{index}].value", max_length=2048)
+            core_rows.append({"templateId": template_id, "templatePath": template_path})
+        interactive_count, offset = mp_read_u32(data, offset, "interactiveDataDict", max_count=50_000)
+        interactive_rows: list[dict[str, Any]] = []
+        for index in range(interactive_count):
+            object_id, offset = mp_read_required_string(data, offset, f"interactiveDataDict[{index}].key", max_length=512)
+            if offset >= len(data):
+                raise ValueError(f"interactiveDataDict[{index}].memberCount:truncated")
+            member_count = data[offset]
+            offset += 1
+            template_id, offset = mp_read_required_string(data, offset, f"interactiveDataDict[{index}].templateId", max_length=512)
+            interactive_rows.append({"objectId": object_id, "valueMemberCount": member_count, "templateId": template_id})
+        if offset != len(data):
+            raise ValueError("InteractiveTable:trailing-bytes")
+        return {"coreTemplateCount": core_count, "interactiveDataCount": interactive_count, "coreRows": core_rows, "interactiveRows": interactive_rows}
+    except (ValueError, struct.error):
+        return None
+
+
+def extract_world_entity_brief_rows(data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != 4:
+        return None
+    try:
+        offset = 1
+        empty_field_1, offset = mp_read_u32(data, offset, "emptyField1", max_count=1)
+        empty_field_2, offset = mp_read_u32(data, offset, "emptyField2", max_count=1)
+        if empty_field_1 or empty_field_2:
+            raise ValueError("WorldEntityRegistry:expected-empty-prefix")
+        brief_count, offset = mp_read_u32(data, offset, "worldEntityBriefInfos", max_count=20_000)
+        rows: list[dict[str, Any]] = []
+        for index in range(brief_count):
+            entity_id, offset = mp_read_u64(data, offset, f"worldEntityBriefInfos[{index}].key")
+            if offset >= len(data):
+                raise ValueError(f"worldEntityBriefInfos[{index}].memberCount:truncated")
+            member_count = data[offset]
+            offset += 1
+            if member_count != 4:
+                raise ValueError(f"worldEntityBriefInfos[{index}].memberCount={member_count}")
+            detail_id, offset = mp_read_utf8_string(data, offset, f"worldEntityBriefInfos[{index}].detailId", max_length=512)
+            entity_type, offset = mp_read_i32(data, offset, f"worldEntityBriefInfos[{index}].entityType")
+            position, offset = mp_read_vec3(data, offset, f"worldEntityBriefInfos[{index}].position")
+            rotation, offset = mp_read_vec3(data, offset, f"worldEntityBriefInfos[{index}].rotation")
+            rows.append({"entityId": str(entity_id), "detailId": detail_id, "entityType": entity_type, "position": position, "rotation": rotation})
+        return {"briefCount": brief_count, "briefRows": rows}
+    except (ValueError, struct.error):
+        return None
+
+
+def extract_teleport_validation_rows(data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != 1:
+        return None
+    try:
+        offset = 1
+        row_count, offset = mp_read_u32(data, offset, "TeleportValidationDataTable", max_count=10_000)
+        rows: list[dict[str, Any]] = []
+        for index in range(row_count):
+            teleport_id, offset = mp_read_required_string(data, offset, f"TeleportValidationDataTable[{index}].key", max_length=1024)
+            if offset >= len(data):
+                raise ValueError(f"TeleportValidationDataTable[{index}].memberCount:truncated")
+            member_count = data[offset]
+            offset += 1
+            if member_count != 10:
+                raise ValueError(f"TeleportValidationDataTable[{index}].memberCount={member_count}")
+            field0_float, offset = mp_read_f32(data, offset, f"TeleportValidationDataTable[{index}].field0Float")
+            duplicate_id, offset = mp_read_required_string(data, offset, f"TeleportValidationDataTable[{index}].id", max_length=1024)
+            if duplicate_id != teleport_id:
+                raise ValueError(f"TeleportValidationDataTable[{index}].idMismatch")
+            flag_word, offset = mp_read_u16(data, offset, f"TeleportValidationDataTable[{index}].flagWord")
+            position, offset = mp_read_vec3(data, offset, f"TeleportValidationDataTable[{index}].position")
+            rotation, offset = mp_read_vec3(data, offset, f"TeleportValidationDataTable[{index}].rotation")
+            map_id, offset = mp_read_utf8_string(data, offset, f"TeleportValidationDataTable[{index}].mapId", max_length=1024)
+            tail0, offset = mp_read_i32(data, offset, f"TeleportValidationDataTable[{index}].tail0")
+            tail1, offset = mp_read_i32(data, offset, f"TeleportValidationDataTable[{index}].tail1")
+            tail2, offset = mp_read_i32(data, offset, f"TeleportValidationDataTable[{index}].tail2")
+            tail3, offset = mp_read_i32(data, offset, f"TeleportValidationDataTable[{index}].tail3")
+            rows.append({
+                "teleportId": teleport_id,
+                "field0Float": round(field0_float, 6),
+                "flagWord": flag_word,
+                "position": position,
+                "rotation": rotation,
+                "mapId": map_id,
+                "tail0": tail0,
+                "tail1": tail1,
+                "tail2": tail2,
+                "tail3": tail3,
+            })
+        if offset != len(data):
+            raise ValueError("TeleportValidationDataTable:trailing-bytes")
+        return {"rowCount": row_count, "rows": rows}
+    except (ValueError, struct.error):
+        return None
+
+
+def extract_spawner_blackboard_pair(data: bytes, offset: int) -> tuple[dict[str, Any], int]:
+    if offset >= len(data):
+        raise ValueError("SpawnerConfig.blackboard:truncated-member-count")
+    member_count = data[offset]
+    offset += 1
+    if member_count != 4:
+        raise ValueError(f"SpawnerConfig.blackboard:memberCount={member_count}")
+    key, offset = mp_read_utf8_string(data, offset, "SpawnerConfig.blackboard.key", max_length=256)
+    use_string, offset = mp_read_bool(data, offset, "SpawnerConfig.blackboard.useString")
+    value_float, offset = mp_read_f32(data, offset, "SpawnerConfig.blackboard.valueFloat")
+    value_string, offset = mp_read_utf8_string(data, offset, "SpawnerConfig.blackboard.valueString", max_length=512)
+    return {
+        "key": key,
+        "useString": use_string,
+        "valueFloat": round(value_float, 4),
+        "valueString": value_string,
+    }, offset
+
+
+def extract_spawner_buff_inst(data: bytes, offset: int) -> tuple[dict[str, Any], int]:
+    if offset >= len(data):
+        raise ValueError("SpawnerConfig.buff:truncated-member-count")
+    member_count = data[offset]
+    offset += 1
+    if member_count != 2:
+        raise ValueError(f"SpawnerConfig.buff:memberCount={member_count}")
+    if offset + 4 > len(data):
+        raise ValueError("SpawnerConfig.buff:blackboardCount:truncated")
+    blackboard_count = struct.unpack_from("<I", data, offset)[0]
+    offset += 4
+    if blackboard_count == MEMORYPACK_NULL_COUNT:
+        blackboard_count = 0
+    if blackboard_count > 256:
+        raise ValueError(f"SpawnerConfig.buff:blackboardCount={blackboard_count}")
+    blackboard: list[dict[str, Any]] = []
+    for _index in range(blackboard_count):
+        pair, offset = extract_spawner_blackboard_pair(data, offset)
+        blackboard.append(pair)
+    buff_id, offset = mp_read_utf8_string(data, offset, "SpawnerConfig.buff.buffId", max_length=256)
+    return {"buffId": buff_id, "blackboard": blackboard}, offset
+
+
+def extract_spawner_enemy_library_item(data: bytes, offset: int) -> tuple[dict[str, Any], int]:
+    if offset >= len(data):
+        raise ValueError("SpawnerConfig.enemy:truncated-member-count")
+    member_count = data[offset]
+    offset += 1
+    if member_count != 11:
+        raise ValueError(f"SpawnerConfig.enemy:memberCount={member_count}")
+    if offset + 4 > len(data):
+        raise ValueError("SpawnerConfig.enemy:bornBuffCount:truncated")
+    born_buff_count = struct.unpack_from("<I", data, offset)[0]
+    offset += 4
+    if born_buff_count == MEMORYPACK_NULL_COUNT:
+        born_buff_count = 0
+    if born_buff_count > 256:
+        raise ValueError(f"SpawnerConfig.enemy:bornBuffCount={born_buff_count}")
+    born_buffs: list[dict[str, Any]] = []
+    for _index in range(born_buff_count):
+        buff, offset = extract_spawner_buff_inst(data, offset)
+        born_buffs.append(buff)
+    enemy_id, offset = mp_read_utf8_string(data, offset, "SpawnerConfig.enemy.enemyId", max_length=256)
+    enemy_level, offset = mp_read_i32(data, offset, "SpawnerConfig.enemy.enemyLevel")
+    force_to_battle, offset = mp_read_bool(data, offset, "SpawnerConfig.enemy.forceToBattle")
+    key, offset = mp_read_utf8_string(data, offset, "SpawnerConfig.enemy.key", max_length=256)
+    override_ai_config, offset = mp_read_utf8_string(data, offset, "SpawnerConfig.enemy.overrideAIConfig", max_length=512)
+    patrol_gait, offset = mp_read_i32(data, offset, "SpawnerConfig.enemy.patrolGait")
+    prewarn_audio, offset = mp_read_utf8_string(data, offset, "SpawnerConfig.enemy.preWarnAudioEventKey", max_length=512)
+    fixed_rotation: list[float] = []
+    for rot_index in range(4):
+        value, offset = mp_read_f32(data, offset, f"SpawnerConfig.enemy.preWarnEffectFixedRotation[{rot_index}]")
+        fixed_rotation.append(round(value, 4))
+    prewarn_effect, offset = mp_read_utf8_string(data, offset, "SpawnerConfig.enemy.preWarnEffectKey", max_length=512)
+    prewarn_time, offset = mp_read_f32(data, offset, "SpawnerConfig.enemy.preWarnTime")
+    return {
+        "enemyId": enemy_id,
+        "enemyLevel": enemy_level,
+        "forceToBattle": force_to_battle,
+        "key": key,
+        "overrideAIConfig": override_ai_config,
+        "patrolGait": patrol_gait,
+        "preWarnAudioEventKey": prewarn_audio,
+        "preWarnEffectFixedRotation": fixed_rotation,
+        "preWarnEffectKey": prewarn_effect,
+        "preWarnTime": round(prewarn_time, 4),
+        "bornBuffs": born_buffs,
+    }, offset
+
+
+def extract_spawner_config_rows(data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != 5:
+        return None
+    try:
+        offset = 1
+        config_id, offset = mp_read_required_string(data, offset, "SpawnerConfig.configId", max_length=512)
+        if offset + 4 > len(data):
+            raise ValueError("SpawnerConfig.enemyLibraryCount:truncated")
+        enemy_library_count = struct.unpack_from("<I", data, offset)[0]
+        offset += 4
+        if enemy_library_count == MEMORYPACK_NULL_COUNT:
+            enemy_library_count_value: int | None = None
+        elif enemy_library_count <= 10_000:
+            enemy_library_count_value = int(enemy_library_count)
+        else:
+            raise ValueError(f"SpawnerConfig.enemyLibraryCount={enemy_library_count}")
+        enemy_rows: list[dict[str, Any]] = []
+        if enemy_library_count_value is not None:
+            for index in range(enemy_library_count_value):
+                item, offset = extract_spawner_enemy_library_item(data, offset)
+                item["index"] = index
+                enemy_rows.append(item)
+        return {
+            "configId": config_id,
+            "enemyLibraryCount": enemy_library_count_value,
+            "enemyLibraryEndOffset": offset,
+            "enemyRows": enemy_rows,
+        }
+    except (ValueError, struct.error):
+        return None
+
+
+def extract_subgame_instance_rows(data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != 1:
+        return None
+
+    def read_fixed(offset: int, length: int, field_name: str) -> tuple[bytes, int]:
+        if offset + length > len(data):
+            raise ValueError(f"{field_name}:truncated")
+        return data[offset:offset + length], offset + length
+
+    try:
+        offset = 1
+        row_count, offset = mp_read_u32(data, offset, "SubGameInstanceDataTable", max_count=1_000)
+        rows: list[dict[str, Any]] = []
+        for index in range(row_count):
+            instance_id, offset = mp_read_required_string(data, offset, f"SubGameInstanceDataTable[{index}].key", max_length=160)
+            if offset >= len(data):
+                raise ValueError(f"SubGameInstanceDataTable[{index}].memberCount:truncated")
+            member_count = data[offset]
+            offset += 1
+            if member_count != 6:
+                raise ValueError(f"SubGameInstanceDataTable[{index}].memberCount={member_count}")
+            prefix_bytes, offset = read_fixed(offset, 28, f"SubGameInstanceDataTable[{index}].prefix")
+            failure_text_id, offset = mp_read_required_string(data, offset, f"SubGameInstanceDataTable[{index}].failureTextId", max_length=160)
+            after_failure, offset = read_fixed(offset, 11, f"SubGameInstanceDataTable[{index}].afterFailure")
+            source_id, offset = mp_read_required_string(data, offset, f"SubGameInstanceDataTable[{index}].sourceId", max_length=160)
+            after_source, offset = read_fixed(offset, 10, f"SubGameInstanceDataTable[{index}].afterSource")
+            short_hash, offset = mp_read_required_string(data, offset, f"SubGameInstanceDataTable[{index}].shortHash", max_length=32)
+            if not re.fullmatch(r"[0-9A-Fa-f]{8}", short_hash):
+                raise ValueError(f"SubGameInstanceDataTable[{index}].shortHash:unexpected")
+            after_short_hash, offset = read_fixed(offset, 2, f"SubGameInstanceDataTable[{index}].afterShortHash")
+            default_group, offset = mp_read_required_string(data, offset, f"SubGameInstanceDataTable[{index}].defaultGroup", max_length=160)
+            after_default, offset = read_fixed(offset, 9, f"SubGameInstanceDataTable[{index}].afterDefault")
+            quit_button_text_id, offset = mp_read_required_string(data, offset, f"SubGameInstanceDataTable[{index}].quitButtonTextId", max_length=160)
+            after_quit, offset = read_fixed(offset, 10, f"SubGameInstanceDataTable[{index}].afterQuit")
+            success_text_id, offset = mp_read_required_string(data, offset, f"SubGameInstanceDataTable[{index}].successTextId", max_length=160)
+            tail_bytes, offset = read_fixed(offset, 10, f"SubGameInstanceDataTable[{index}].tail")
+            if source_id != instance_id:
+                raise ValueError(f"SubGameInstanceDataTable[{index}].sourceMismatch")
+            rows.append({
+                "instanceId": instance_id,
+                "prefixU64": struct.unpack_from("<Q", prefix_bytes, 0)[0],
+                "prefixBytes": prefix_bytes.hex(" "),
+                "failureTextId": failure_text_id,
+                "sourceId": source_id,
+                "shortHash": short_hash,
+                "defaultGroup": default_group,
+                "quitButtonTextId": quit_button_text_id,
+                "successTextId": success_text_id,
+                "markerBytes": {
+                    "afterFailure": after_failure.hex(" "),
+                    "afterSource": after_source.hex(" "),
+                    "afterShortHash": after_short_hash.hex(" "),
+                    "afterDefault": after_default.hex(" "),
+                    "afterQuit": after_quit.hex(" "),
+                    "tail": tail_bytes.hex(" "),
+                },
+            })
+        if offset != len(data):
+            raise ValueError("SubGameInstanceDataTable:trailing-bytes")
+        return {"rowCount": row_count, "rows": rows}
+    except (ValueError, struct.error):
+        return None
+
+
+def extract_mission_area_rows(data: bytes) -> dict[str, Any] | None:
+    if not data or data[0] != 1:
+        return None
+
+    def read_ascii_id_at(offset: int, *, max_length: int = 96) -> tuple[str, int] | None:
+        if offset + 4 > len(data):
+            return None
+        length = struct.unpack_from("<I", data, offset)[0]
+        if length <= 0 or length > max_length or offset + 4 + length > len(data):
+            return None
+        raw = data[offset + 4:offset + 4 + length]
+        try:
+            value = raw.decode("ascii")
+        except UnicodeDecodeError:
+            return None
+        if not all(ch.isalnum() or ch == "_" for ch in value):
+            return None
+        return value, offset + 4 + length
+
+    def is_row_start(offset: int) -> bool:
+        parsed = read_ascii_id_at(offset)
+        if not parsed:
+            return False
+        key, cursor = parsed
+        if cursor >= len(data) or data[cursor] != 8:
+            return False
+        cursor += 1
+        if cursor >= len(data) or data[cursor] != 0:
+            return False
+        cursor += 1
+        duplicate = read_ascii_id_at(cursor)
+        return bool(duplicate and duplicate[0] == key)
+
+    def find_next_row_start(min_offset: int) -> int | None:
+        for candidate in range(max(min_offset, 0), len(data)):
+            if is_row_start(candidate):
+                return candidate
+        return None
+
+    try:
+        offset = 1
+        header_count0, offset = mp_read_u32(data, offset, "MissionAreaTable.headerCount0", max_count=128)
+        header_count1, offset = mp_read_u32(data, offset, "MissionAreaTable.headerCount1", max_count=10_000)
+        row_count, offset = mp_read_u32(data, offset, "MissionAreaTable.rows", max_count=10_000)
+        if header_count0 != 1 or row_count <= 0:
+            raise ValueError("MissionAreaTable:unexpected-header")
+        rows: list[dict[str, Any]] = []
+        for index in range(row_count):
+            area_key, offset = mp_read_required_string(data, offset, f"MissionAreaTable[{index}].key", max_length=96)
+            if offset >= len(data):
+                raise ValueError(f"MissionAreaTable[{index}].memberCount:truncated")
+            member_count = data[offset]
+            offset += 1
+            if member_count != 8:
+                raise ValueError(f"MissionAreaTable[{index}].memberCount={member_count}")
+            if offset >= len(data):
+                raise ValueError(f"MissionAreaTable[{index}].marker:truncated")
+            string_marker = data[offset]
+            offset += 1
+            if string_marker != 0:
+                raise ValueError(f"MissionAreaTable[{index}].marker={string_marker}")
+            duplicate_id, offset = mp_read_required_string(data, offset, f"MissionAreaTable[{index}].duplicateId", max_length=96)
+            if duplicate_id != area_key:
+                raise ValueError(f"MissionAreaTable[{index}].idMismatch")
+            next_offset = find_next_row_start(offset + 60) if index + 1 < row_count else len(data)
+            if next_offset is None:
+                raise ValueError(f"MissionAreaTable[{index}].nextRowStart")
+            tail = data[offset:next_offset]
+            if len(tail) < 67:
+                raise ValueError(f"MissionAreaTable[{index}].tailLength={len(tail)}")
+            flag = tail[0]
+            type_id = struct.unpack_from("<i", tail, 1)[0]
+            values = [round(struct.unpack_from("<f", tail, 5 + value_index * 4)[0], 4) for value_index in range(10)]
+            if not all(math.isfinite(value) and abs(value) < 10_000_000 for value in values):
+                raise ValueError(f"MissionAreaTable[{index}].values")
+            if flag not in {0, 1} or type_id not in {1, 2}:
+                raise ValueError(f"MissionAreaTable[{index}].flagOrType")
+            rows.append({
+                "areaKey": area_key,
+                "flag": flag,
+                "typeId": type_id,
+                "primaryVec3": values[:3],
+                "secondaryVec3": values[3:6],
+                "sizeValues": values[6:10],
+                "tailLength": len(tail),
+                "extraTailLength": max(0, len(tail) - 67),
+                "tailMarkerPreview": tail[45:min(len(tail), 67)].hex(" "),
+            })
+            offset = next_offset
+        if offset != len(data):
+            raise ValueError("MissionAreaTable:trailing-bytes")
+        return {"headerCount0": header_count0, "headerCount1": header_count1, "rowCount": row_count, "rows": rows}
+    except (ValueError, struct.error):
+        return None
 
 
 def _unique_preserve(values: Iterable[Any]) -> list[Any]:
@@ -194,6 +2388,7 @@ class SourceGraphBuilder:
         root: Path = ROOT,
         export_root: Path = EXPORT_ROOT,
         language: str = "CN",
+        include_gameplay: bool = True,
         include_asset_maps: bool = True,
         include_reference_rows: bool = True,
         include_all_material_json: bool = False,
@@ -202,6 +2397,7 @@ class SourceGraphBuilder:
         self.root = root
         self.export_root = export_root
         self.language = language
+        self.include_gameplay = include_gameplay
         self.db_path = db_path
         self.include_asset_maps = include_asset_maps
         self.include_reference_rows = include_reference_rows
@@ -214,6 +2410,10 @@ class SourceGraphBuilder:
         self.ingest_counts: Counter[str] = Counter()
         self.asset_by_stem: dict[str, list[str]] = defaultdict(list)
         self.asset_by_name: dict[str, list[str]] = defaultdict(list)
+        self.asset_entities_by_base: dict[str, list[str]] = defaultdict(list)
+        self.asset_paths: list[str] = []
+        self.gameplay_item_asset_cache: dict[str, list[str]] = {}
+        self.audio_dialog_row_cache: dict[str, Any] | None = None
         self.alias_count = 0
 
     @property
@@ -322,6 +2522,45 @@ class SourceGraphBuilder:
             self.node_counts[kind] += 1
         return node_id
 
+    def update_node_details(self, node_id: str, *, name: Any = None, source: Any = None, path: Any = None, data: Any = None) -> None:
+        updates: list[str] = []
+        values: list[Any] = []
+        if name is not None:
+            updates.append("name = ?")
+            values.append(compact_text(name, 300))
+        if source is not None:
+            updates.append("source = ?")
+            values.append(safe_key(source) or None)
+        if path is not None:
+            updates.append("path = ?")
+            values.append(safe_key(path) or None)
+        if data is not None:
+            updates.append("data = ?")
+            values.append(dump_json(data))
+        if not updates:
+            return
+        values.append(node_id)
+        self.db.execute(f"UPDATE nodes SET {', '.join(updates)} WHERE id = ?", values)
+
+    def node_exists(self, kind: str, key: Any) -> bool:
+        return self.db.execute("SELECT 1 FROM nodes WHERE id = ?", (self.node_id(kind, key),)).fetchone() is not None
+
+    def alias_node_ids(self, alias: Any, *, kind: str = "") -> list[str]:
+        alias_text = safe_key(alias)
+        if not alias_text:
+            return []
+        if kind:
+            rows = self.db.execute(
+                "SELECT node_id FROM aliases WHERE alias = ? AND kind = ? ORDER BY node_id",
+                (alias_text, kind),
+            ).fetchall()
+        else:
+            rows = self.db.execute(
+                "SELECT node_id FROM aliases WHERE alias = ? ORDER BY node_id",
+                (alias_text,),
+            ).fetchall()
+        return [row[0] for row in rows]
+
     def add_alias(self, alias: Any, node_id: str, *, kind: str = "", source: str = "") -> None:
         alias_text = safe_key(alias)
         if not alias_text:
@@ -395,8 +2634,41 @@ class SourceGraphBuilder:
             self.commit_step("videos")
             self.ingest_webui_story()
             self.commit_step("story")
+            self.ingest_video_bindings()
+            self.commit_step("videoBindings")
+            self.ingest_option_overrides()
+            self.commit_step("optionOverrides")
+            self.ingest_item_economy()
+            self.commit_step("itemEconomy")
+            self.ingest_world_semantics()
+            self.commit_step("worldSemantics")
+            self.ingest_combat_semantics()
+            self.commit_step("combatSemantics")
+            self.ingest_attribute_dictionary()
+            self.commit_step("attributeDictionary")
+            self.ingest_settings_semantics()
+            self.commit_step("settingsSemantics")
+            if self.include_gameplay:
+                self.ingest_gameplay()
+                self.commit_step("gameplay")
+            self.ingest_character_support_semantics()
+            self.commit_step("characterSupport")
+            self.ingest_tag_taxonomy_semantics()
+            self.commit_step("tagTaxonomy")
+            self.ingest_ui_label_semantics()
+            self.commit_step("uiLabels")
+            self.ingest_spaceship_semantics()
+            self.commit_step("spaceshipSemantics")
+            self.ingest_factory_tech_semantics()
+            self.commit_step("factoryTech")
+            self.ingest_prts_archive_semantics()
+            self.commit_step("prtsArchive")
+            self.ingest_activity_achievement_semantics()
+            self.commit_step("activityAchievement")
             self.ingest_timeline_line_orders()
             self.commit_step("timelineLineOrders")
+            self.ingest_runtime_option_route_audits()
+            self.commit_step("runtimeOptionRouteAudits")
             self.ingest_story_source_links()
             self.commit_step("storySourceLinks")
             self.ingest_materials()
@@ -405,6 +2677,22 @@ class SourceGraphBuilder:
             self.commit_step("characterManifests")
             self.ingest_selected_structured_tables()
             self.commit_step("structuredTables")
+            self.ingest_npc_voice_bark_semantics()
+            self.commit_step("npcVoiceBark")
+            self.ingest_narrative_audio_semantics()
+            self.commit_step("narrativeAudio")
+            self.ingest_audio_config_semantics()
+            self.commit_step("audioConfig")
+            self.ingest_dialog_support_semantics()
+            self.commit_step("dialogSupport")
+            self.ingest_decoded_config_semantics()
+            self.commit_step("decodedConfigs")
+            self.link_decoded_parameter_blackboard_keys()
+            self.commit_step("decodedParameterBlackboardMatches")
+            self.link_gameplay_effect_export_assets()
+            self.commit_step("effectAssetMatches")
+            self.link_visual_token_export_assets()
+            self.commit_step("visualTokenAssetMatches")
             if self.include_reference_rows:
                 self.ingest_reference_tables()
                 self.commit_step("reference")
@@ -427,30 +2715,4298 @@ class SourceGraphBuilder:
         path = WEBUI_DATA / "assets" / "index.json"
         payload = read_json(path, {})
         root_node = self.add_node("dataset", "webui_assets", name="WebUI asset index", path=slash(path))
+        asset_nodes_by_rel: dict[str, str] = {}
+        asset_entity_key_by_model_rel: dict[str, tuple[str, str]] = {}
+        asset_entity_groups: dict[tuple[str, str], dict[str, Any]] = defaultdict(
+            lambda: {"source": "", "base": "", "models": {}, "materials": {}, "textures": {}}
+        )
+
+        def asset_node_for_rel(rel_value: Any) -> str:
+            rel_text = safe_key(rel_value)
+            if not rel_text:
+                return ""
+            node = asset_nodes_by_rel.get(rel_text)
+            if node:
+                return node
+            return self.add_node(
+                "asset",
+                rel_text,
+                name=Path(rel_text).name,
+                source=rel_text.split("/", 1)[0],
+                path=rel_text,
+            )
+
+        def add_pid_aliases(pid_value: Any, node_id: str) -> None:
+            raw = safe_key(pid_value).upper()
+            if raw.startswith("PID:"):
+                raw = raw[4:]
+            if raw.startswith("0X"):
+                raw = raw[2:]
+            if not re.fullmatch(r"[0-9A-F]{1,16}", raw):
+                return
+            number = int(raw, 16)
+            pid = f"{number:016X}"
+            self.add_alias(f"pid:{pid}", node_id, kind="asset_pid", source="webui/assets")
+            signed_path_id = number - (1 << 64) if number & (1 << 63) else number
+            self.add_alias(f"pathid:{signed_path_id}", node_id, kind="asset_pathid", source="webui/assets")
+
+        def relation_data(item: dict[str, Any]) -> dict[str, Any]:
+            return {
+                key: item.get(key)
+                for key in ("slot", "name", "pid", "rel")
+                if item.get(key) not in (None, "")
+            }
+
+        def relation_evidence(item: dict[str, Any]) -> str:
+            slot = safe_key(item.get("slot"))
+            name = safe_key(item.get("name"))
+            pid = safe_key(item.get("pid"))
+            return " ".join(part for part in (slot, name or pid) if part)
+
         for entry in payload.get("entries") or []:
             rel = safe_key(entry.get("r"))
             if not rel:
                 continue
             kind = safe_key(entry.get("k")) or "asset"
             size = entry.get("s")
+            pid = safe_key(entry.get("pid")).upper()
+            data = {
+                key: value
+                for key, value in {
+                    "type": kind,
+                    "size": size,
+                    "preview": entry.get("p"),
+                    "pid": pid,
+                    "category": entry.get("ic"),
+                    "materialLike": bool(entry.get("mt")) if entry.get("mt") else None,
+                }.items()
+                if value not in (None, "")
+            }
             node = self.add_node(
                 "asset",
                 rel,
                 name=Path(rel).name,
                 source=rel.split("/", 1)[0],
                 path=rel,
-                data={"type": kind, "size": size, "preview": entry.get("p")},
+                data=data,
             )
+            asset_nodes_by_rel[rel] = node
             self.add_edge(root_node, node, "indexes_asset", source="webui/assets")
             self.add_file(rel, kind=kind, source=rel.split("/", 1)[0], size=size)
             stem = Path(rel).stem.lower()
             self.asset_by_stem[stem].append(rel)
             self.asset_by_name[Path(rel).name.lower()].append(rel)
+            self.asset_paths.append(rel)
             self.add_alias(stem, node, kind="asset_stem", source="webui/assets")
             self.add_alias(Path(rel).name.lower(), node, kind="asset_name", source="webui/assets")
+            if pid:
+                add_pid_aliases(pid, node)
+            if kind == "model":
+                model_base = exported_model_entity_base(rel)
+                if model_base:
+                    source = rel.split("/", 1)[0]
+                    entity_key = (source, model_base)
+                    asset_entity_key_by_model_rel[rel] = entity_key
+                    group = asset_entity_groups[entity_key]
+                    group["source"] = source
+                    group["base"] = model_base
+                    group["models"][rel] = {"pid": pid} if pid else {}
             if entry.get("p"):
-                preview = self.add_node("asset", entry["p"], name=Path(entry["p"]).name, path=entry["p"])
+                preview = asset_node_for_rel(entry["p"])
                 self.add_edge(node, preview, "previewed_by", source="webui/assets")
+
+        relations = payload.get("relations") or {}
+        if isinstance(relations, dict):
+            for rel, relation in sorted(relations.items()):
+                if not isinstance(relation, dict):
+                    continue
+                src_node = asset_node_for_rel(rel)
+                if not src_node:
+                    continue
+                entity_key = asset_entity_key_by_model_rel.get(rel)
+                entity_group = asset_entity_groups.get(entity_key) if entity_key else None
+
+                for item in relation.get("materials") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    dst_rel = safe_key(item.get("rel"))
+                    if not dst_rel:
+                        continue
+                    dst_node = asset_node_for_rel(dst_rel)
+                    material_evidence = safe_key(item.get("name")) or Path(dst_rel).stem
+                    material_data = relation_data(item)
+                    self.add_edge(
+                        src_node,
+                        dst_node,
+                        "uses_material",
+                        source="webui/assets",
+                        evidence=material_evidence,
+                        data=material_data,
+                    )
+                    if entity_group is not None:
+                        entity_group["materials"].setdefault(
+                            dst_rel,
+                            {"evidence": material_evidence, "data": material_data},
+                        )
+
+                for item in relation.get("textures") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    dst_rel = safe_key(item.get("rel"))
+                    if not dst_rel:
+                        continue
+                    dst_node = asset_node_for_rel(dst_rel)
+                    texture_evidence = relation_evidence(item)
+                    texture_data = relation_data(item)
+                    self.add_edge(
+                        src_node,
+                        dst_node,
+                        "uses_texture",
+                        source="webui/assets",
+                        evidence=texture_evidence,
+                        data=texture_data,
+                    )
+                    if entity_group is not None:
+                        entity_group["textures"].setdefault(
+                            dst_rel,
+                            {"evidence": texture_evidence, "data": texture_data},
+                        )
+
+                for item in relation.get("referencedByMaterials") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    dst_rel = safe_key(item.get("rel"))
+                    if not dst_rel:
+                        continue
+                    dst_node = asset_node_for_rel(dst_rel)
+                    self.add_edge(
+                        src_node,
+                        dst_node,
+                        "referenced_by_material",
+                        source="webui/assets",
+                        evidence=relation_evidence(item),
+                        data=relation_data(item),
+                    )
+
+                for item in relation.get("referencedByModels") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    dst_rel = safe_key(item.get("rel"))
+                    if not dst_rel:
+                        continue
+                    dst_node = asset_node_for_rel(dst_rel)
+                    self.add_edge(
+                        src_node,
+                        dst_node,
+                        "referenced_by_model",
+                        source="webui/assets",
+                        evidence=safe_key(item.get("name")) or Path(dst_rel).stem,
+                        data=relation_data(item),
+                    )
+
+        relation_lookup = relations if isinstance(relations, dict) else {}
+        for (_source, _model_base), group in sorted(asset_entity_groups.items()):
+            source = safe_key(group.get("source"))
+            model_base = safe_key(group.get("base"))
+            if not source or not model_base:
+                continue
+            for material_rel, material_info in sorted(group["materials"].items()):
+                material_relation = relation_lookup.get(material_rel) or {}
+                if not isinstance(material_relation, dict):
+                    continue
+                for item in material_relation.get("textures") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    dst_rel = safe_key(item.get("rel"))
+                    if not dst_rel:
+                        continue
+                    texture_data = relation_data(item)
+                    texture_data["viaMaterial"] = material_rel
+                    texture_evidence = relation_evidence(item) or Path(dst_rel).stem
+                    group["textures"].setdefault(
+                        dst_rel,
+                        {
+                            "evidence": texture_evidence,
+                            "data": texture_data,
+                        },
+                    )
+
+            entity_node = self.add_node(
+                "asset_entity",
+                f"{source}/{model_base}",
+                name=model_base,
+                source=source,
+                data={
+                    "source": source,
+                    "modelBase": model_base,
+                    "lodModelCount": len(group["models"]),
+                    "materialCount": len(group["materials"]),
+                    "textureCount": len(group["textures"]),
+                },
+            )
+            self.add_alias(model_base, entity_node, kind="asset_entity_id", source="webui/assets")
+            self.add_alias(f"{source}/{model_base}", entity_node, kind="asset_entity_id", source="webui/assets")
+            self.asset_entities_by_base[model_base].append(entity_node)
+            for model_rel, model_info in sorted(group["models"].items()):
+                model_node = asset_node_for_rel(model_rel)
+                model_data = {"rel": model_rel}
+                if isinstance(model_info, dict) and model_info.get("pid"):
+                    model_data["pid"] = model_info["pid"]
+                self.add_edge(
+                    entity_node,
+                    model_node,
+                    "entity_has_lod_model",
+                    source="webui/assets",
+                    evidence=Path(model_rel).stem,
+                    data=model_data,
+                )
+            for material_rel, material_info in sorted(group["materials"].items()):
+                material_node = asset_node_for_rel(material_rel)
+                material_data = dict(material_info.get("data") or {}) if isinstance(material_info, dict) else {}
+                material_data.setdefault("rel", material_rel)
+                self.add_edge(
+                    entity_node,
+                    material_node,
+                    "entity_uses_material",
+                    source="webui/assets",
+                    evidence=safe_key(material_info.get("evidence")) if isinstance(material_info, dict) else Path(material_rel).stem,
+                    data=material_data,
+                )
+            for texture_rel, texture_info in sorted(group["textures"].items()):
+                texture_node = asset_node_for_rel(texture_rel)
+                texture_data = dict(texture_info.get("data") or {}) if isinstance(texture_info, dict) else {}
+                texture_data.setdefault("rel", texture_rel)
+                self.add_edge(
+                    entity_node,
+                    texture_node,
+                    "entity_uses_texture",
+                    source="webui/assets",
+                    evidence=safe_key(texture_info.get("evidence")) if isinstance(texture_info, dict) else Path(texture_rel).stem,
+                    data=texture_data,
+                )
+
+    def link_decoded_parameter_blackboard_keys(self) -> None:
+        rows = self.db.execute(
+            """
+            SELECT parameter.id, parameter.kind, blackboard.id, parameter.name
+            FROM nodes AS parameter
+            JOIN nodes AS blackboard
+              ON parameter.name = blackboard.name
+             AND blackboard.kind = 'gameplay_blackboard_key'
+            WHERE parameter.kind IN ('buff_parameter', 'skill_parameter')
+            ORDER BY parameter.kind, parameter.name
+            """
+        ).fetchall()
+        seen: set[tuple[str, str, str]] = set()
+        for parameter_node, parameter_kind, blackboard_node, parameter_name in rows:
+            if not parameter_node or not blackboard_node:
+                continue
+            edge_kind = "buff_parameter_matches_blackboard_key" if parameter_kind == "buff_parameter" else "skill_parameter_matches_blackboard_key"
+            edge_key = (safe_key(parameter_node), safe_key(blackboard_node), edge_kind)
+            if edge_key in seen:
+                continue
+            seen.add(edge_key)
+            self.add_edge(
+                parameter_node,
+                blackboard_node,
+                edge_kind,
+                source="source_graph/decoded_parameter_bridge",
+                evidence="exact_parameter_name",
+                data={"parameter": parameter_name},
+            )
+
+    def link_gameplay_effect_export_assets(self) -> None:
+        effect_rows = self.db.execute(
+            """
+            SELECT id, name
+            FROM nodes
+            WHERE kind = 'gameplay_effect'
+            """
+        ).fetchall()
+        effects_by_key: dict[str, list[str]] = defaultdict(list)
+        for effect_id, effect_name in effect_rows:
+            effect_key = safe_key(effect_name or node_key(effect_id)).lower()
+            if effect_key:
+                effects_by_key[effect_key].append(effect_id)
+        if not effects_by_key:
+            return
+
+        asset_rows = self.db.execute(
+            """
+            SELECT aliases.alias AS stem, aliases.node_id AS asset_id, nodes.path AS asset_path
+            FROM aliases
+            JOIN nodes ON nodes.id = aliases.node_id
+            WHERE aliases.kind = 'asset_stem'
+              AND nodes.kind = 'asset'
+              AND aliases.node_id LIKE 'asset:%'
+            """
+        ).fetchall()
+        seen_pairs: set[tuple[str, str]] = set()
+        for stem_value, asset_id, asset_path in asset_rows:
+            stem = safe_key(stem_value)
+            match = PATH_ID_EXPORT_STEM_RE.match(stem)
+            if not match:
+                continue
+            normalized_base = match.group("base").lower()
+            effect_nodes = effects_by_key.get(normalized_base)
+            if not effect_nodes:
+                continue
+            for effect_node in effect_nodes:
+                pair = (effect_node, asset_id)
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
+                self.add_edge(
+                    effect_node,
+                    asset_id,
+                    "effect_name_matches_export_base_asset",
+                    source="webui/assets",
+                    evidence="asset_stem_pathid_suffix",
+                    data={
+                        "assetStem": stem,
+                        "normalizedBase": normalized_base,
+                        "pathIdSuffix": match.group("path_id").upper(),
+                        "assetPath": asset_path,
+                    },
+                )
+
+    def iter_visual_token_values(self, value: Any, *, path: str = "") -> Iterable[tuple[str, str, str]]:
+        if not isinstance(value, dict):
+            return
+        for key, child in value.items():
+            key_text = safe_key(key)
+            if key_text == "iconMap" and isinstance(child, dict):
+                for icon_key, icon_row in child.items():
+                    if isinstance(icon_row, dict):
+                        token = safe_key(icon_row.get("icon"))
+                        if token:
+                            yield "icon", token, f"iconMap.{safe_key(icon_key)}.icon"
+                    else:
+                        token = safe_key(icon_row)
+                        if token:
+                            yield "icon", token, f"iconMap.{safe_key(icon_key)}"
+                continue
+            if key_text not in VISUAL_TOKEN_FIELDS:
+                continue
+            if isinstance(child, dict):
+                for child_key, child_value in child.items():
+                    token = safe_key(child_value)
+                    if token:
+                        yield key_text, token, f"{key_text}.{safe_key(child_key)}"
+            elif isinstance(child, list):
+                for index, item in enumerate(child):
+                    token = safe_key(item)
+                    if token:
+                        yield key_text, token, f"{key_text}[{index}]"
+            else:
+                token = safe_key(child)
+                if token:
+                    yield key_text, token, key_text
+
+    def visual_token_edge_kind(self, field_name: str) -> str:
+        if field_name in VISUAL_TOKEN_KINDS:
+            return "uses_icon_asset"
+        if field_name in VISUAL_BACKGROUND_FIELDS:
+            return "uses_visual_asset"
+        return "visual_token_matches_export_base_asset"
+
+    def link_visual_token_export_assets(self) -> None:
+        asset_rows = self.db.execute(
+            """
+            SELECT aliases.alias AS stem, aliases.node_id AS asset_id, nodes.path AS asset_path, nodes.data AS asset_data
+            FROM aliases
+            JOIN nodes ON nodes.id = aliases.node_id
+            WHERE aliases.kind = 'asset_stem'
+              AND nodes.kind = 'asset'
+              AND aliases.node_id LIKE 'asset:%'
+            """
+        ).fetchall()
+        assets_by_base: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
+        for stem_value, asset_id, asset_path, asset_data in asset_rows:
+            stem = safe_key(stem_value)
+            match = PATH_ID_EXPORT_STEM_RE.match(stem)
+            if not match:
+                continue
+            asset_type = ""
+            try:
+                decoded_data = json.loads(asset_data) if asset_data else {}
+                asset_type = safe_key(decoded_data.get("type")) if isinstance(decoded_data, dict) else ""
+            except json.JSONDecodeError:
+                asset_type = ""
+            if asset_type != "image":
+                continue
+            normalized_base = match.group("base").lower()
+            assets_by_base[normalized_base].append((asset_id, asset_path, stem))
+        if not assets_by_base:
+            return
+
+        rows = self.db.execute(
+            """
+            SELECT id, kind, data
+            FROM nodes
+            WHERE data IS NOT NULL
+              AND kind NOT IN ('asset', 'file', 'dataset', 'material', 'texture', 'shader', 'table_row')
+            """
+        ).fetchall()
+        seen: set[tuple[str, str, str, str]] = set()
+        for node_id, node_kind, data_text in rows:
+            try:
+                payload = json.loads(data_text) if data_text else None
+            except json.JSONDecodeError:
+                continue
+            if payload is None:
+                continue
+            for field_name, token, field_path in self.iter_visual_token_values(payload):
+                token_key = token.strip().strip("/").replace("\\", "/")
+                if not token_key:
+                    continue
+                token_base = Path(token_key).stem.lower() or token_key.lower()
+                asset_matches = assets_by_base.get(token_base)
+                if not asset_matches:
+                    continue
+                edge_kind = self.visual_token_edge_kind(field_name)
+                for asset_id, asset_path, asset_stem in asset_matches:
+                    edge_key = (node_id, asset_id, edge_kind, field_path)
+                    if edge_key in seen:
+                        continue
+                    seen.add(edge_key)
+                    self.add_edge(
+                        node_id,
+                        asset_id,
+                        edge_kind,
+                        source="source_graph/visual_token_bridge",
+                        evidence=field_path,
+                        data={
+                            "nodeKind": node_kind,
+                            "field": field_name,
+                            "fieldPath": field_path,
+                            "token": token,
+                            "normalizedBase": token_base,
+                            "assetStem": asset_stem,
+                            "assetPath": asset_path,
+                        },
+                    )
+
+    def decoded_config_entry_data(self, entry: dict[str, Any]) -> dict[str, Any]:
+        return compact_payload(
+            {
+                "path": entry.get("p"),
+                "dataPath": entry.get("dp"),
+                "source": entry.get("source"),
+                "domain": entry.get("d"),
+                "group": entry.get("g"),
+                "kind": entry.get("k"),
+                "subtype": entry.get("q"),
+                "summary": entry.get("h"),
+                "rows": entry.get("r"),
+                "fields": entry.get("a"),
+                "sample": entry.get("t"),
+                "hash": entry.get("hash"),
+                "size": entry.get("s"),
+            },
+            depth=3,
+        )
+
+    def decoded_config_raw_path(self, entry: dict[str, Any]) -> Path:
+        rel = safe_key(entry.get("p"))
+        return EXPORT_ROOT / "structured" / Path(rel)
+
+    def read_decoded_config_bytes(self, entry: dict[str, Any]) -> bytes:
+        path = self.decoded_config_raw_path(entry)
+        try:
+            return path.read_bytes()
+        except OSError:
+            return b""
+
+    def add_model_asset_entity_edges(self, owner_node: str, tokens: Iterable[Any], *, edge_kind: str, source: str, evidence: str) -> None:
+        seen_entities: set[str] = set()
+        for token in tokens:
+            token_key = safe_key(token)
+            if not token_key:
+                continue
+            candidate_bases = model_asset_entity_candidate_bases(token_key)
+            for base in candidate_bases:
+                if not base:
+                    continue
+                entity_nodes = list(self.asset_entities_by_base.get(base, []))
+                if not entity_nodes:
+                    for model_base, nodes in sorted(self.asset_entities_by_base.items()):
+                        if model_base.startswith(f"{base}_"):
+                            entity_nodes.extend(nodes)
+                for entity_node in entity_nodes:
+                    if entity_node in seen_entities:
+                        continue
+                    seen_entities.add(entity_node)
+                    self.add_edge(
+                        owner_node,
+                        entity_node,
+                        edge_kind,
+                        source=source,
+                        evidence=evidence,
+                        data={"token": token_key, "modelBase": node_key(entity_node)},
+                    )
+
+    def ingest_decoded_config_semantics(self) -> None:
+        group_root = WEBUI_DATA / "game_data" / "groups"
+        dataset = self.add_node("dataset", "webui_game_data_decoded_configs", name="WebUI decoded game-data configs", path=slash(group_root))
+        for group_name in DECODED_CONFIG_GROUP_FILES:
+            group_path = group_root / group_name
+            payload = read_json(group_path, {})
+            entries = payload.get("entries") if isinstance(payload, dict) else None
+            if not isinstance(entries, list):
+                continue
+            group_key = Path(group_name).stem
+            group_node = self.add_node(
+                "decoded_config_group",
+                group_key,
+                name=group_key,
+                source="webui/game_data",
+                path=slash(group_path),
+                data={"entryCount": len(entries), "group": payload.get("group") if isinstance(payload, dict) else group_key},
+            )
+            self.add_edge(dataset, group_node, "has_decoded_config_group", source="webui/game_data")
+            self.add_file(slash(group_path), kind="webui_game_data_group", source="webui/game_data", data={"entryCount": len(entries)})
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                subtype = safe_key(entry.get("q") or entry.get("g"))
+                if group_name == "Json_InteractiveData.json" and safe_key(entry.get("dp")) == "Json/InteractiveData/Collections.json":
+                    subtype = "InteractiveDataCollections"
+                if group_name == "Json_MissionRuntimeAsset.json":
+                    subtype = "MissionRuntimeAsset"
+                if group_name == "Json_AIConfig.json" and safe_key(entry.get("dp")) == "Json/AIConfig/EnemyTemplateDataSummary.json":
+                    subtype = "AIConfigEnemyTemplateDataSummary"
+                if group_name == "Json_MapConfig.json":
+                    subtype = "MapConfig"
+                if group_name == "Json_GameplayConfig.json" and safe_key(entry.get("dp")) in GAMEPLAY_CONFIG_MAP_LEVEL_LOOKUP_PATHS:
+                    subtype = "GameplayConfigMapLevelLookups"
+                if group_name == "Json_GameplayConfig.json" and safe_key(entry.get("dp")) in GAMEPLAY_CONFIG_MAP_PLACEMENT_PATHS:
+                    subtype = "GameplayConfigMapPlacement"
+                if group_name == "Json_GameplayConfig.json" and safe_key(entry.get("dp")) in GAMEPLAY_CONFIG_WORLD_ENTITY_TEXT_PATHS:
+                    subtype = "GameplayConfigWorldEntityTextRegistry"
+                if group_name == "Json_GameplayConfig.json" and safe_key(entry.get("dp")) in GAMEPLAY_CONFIG_SCRIPT_TASK_EXTRA_PATHS:
+                    subtype = "GameplayConfigScriptTaskExtraInfoTable"
+                if group_name == "Json_GameplayConfigScriptTaskExtraInfoTable.json":
+                    subtype = "GameplayConfigScriptTaskExtraInfoTable"
+                if group_name == "Json_LevelMountPoint.json":
+                    subtype = "LevelMountPoint"
+                if group_name == "Json_LevelGenForRuntime.json":
+                    subtype = "LevelGenForRuntime"
+                if group_name == "Json_UILevelMapLoadConfig.json":
+                    subtype = "UILevelMapLoadConfig"
+                if subtype not in DECODED_CONFIG_TARGET_TYPES:
+                    continue
+                self.add_decoded_config_entry(group_node, entry, subtype=subtype)
+
+    def add_decoded_config_entry(self, group_node: str, entry: dict[str, Any], *, subtype: str) -> None:
+        entry_path = safe_key(entry.get("p"))
+        if not entry_path:
+            return
+        file_node = self.add_node(
+            "decoded_config_file",
+            entry_path,
+            name=Path(entry_path).name,
+            source="webui/game_data",
+            path=entry_path,
+            data=self.decoded_config_entry_data(entry),
+        )
+        self.add_edge(group_node, file_node, "has_decoded_config_file", source="webui/game_data", evidence=subtype)
+        self.add_alias(entry.get("dp"), file_node, kind="decoded_config_path", source="webui/game_data")
+        self.add_alias(entry_path, file_node, kind="decoded_config_path", source="webui/game_data")
+        self.add_file(entry_path, kind="decoded_game_data", source=safe_key(entry.get("source")) or "webui/game_data", size=entry.get("s"), data={"subtype": subtype, "rows": entry.get("r"), "hash": entry.get("hash")})
+        family_node = self.add_node("decoded_config_family", subtype, name=subtype, source="webui/game_data")
+        self.add_edge(file_node, family_node, "decoded_as_config_family", source="webui/game_data", evidence=safe_key(entry.get("q")))
+        if subtype == "AIConfigEnemyTemplateDataSummary":
+            self.add_ai_config_enemy_template_summary_edges(file_node, entry)
+        elif subtype == "MapConfig":
+            self.add_map_config_edges(file_node, entry)
+        elif subtype == "GameplayConfigMapLevelLookups":
+            self.add_gameplay_config_map_level_lookup_edges(file_node, entry)
+        elif subtype == "GameplayConfigMapPlacement":
+            self.add_gameplay_config_map_placement_edges(file_node, entry)
+        elif subtype == "GameplayConfigScriptTaskExtraInfoTable":
+            self.add_gameplay_script_task_extra_edges(file_node, entry)
+        elif subtype == "LevelMountPoint":
+            self.add_level_mount_point_edges(file_node, entry)
+        elif subtype == "LevelGenForRuntime":
+            self.add_level_gen_for_runtime_edges(file_node, entry)
+        elif subtype == "UILevelMapLoadConfig":
+            self.add_ui_level_map_load_config_edges(file_node, entry)
+        elif subtype == "AnimationConfig":
+            self.add_animation_config_edges(file_node, entry)
+        elif subtype == "NpcAtmosphericDataTable":
+            self.add_atmospheric_npc_data_edges(file_node, entry)
+        elif subtype == "CharInteractPerformCfgs":
+            self.add_char_interact_perform_edges(file_node, entry)
+        elif subtype == "BuffData":
+            self.add_buff_data_config_edges(file_node, entry)
+        elif subtype == "SkillData":
+            self.add_skill_data_config_edges(file_node, entry)
+        elif subtype == "DialogIdTable":
+            self.add_dialog_id_table_edges(file_node, entry)
+        elif subtype == "BambooRaftTaskTable":
+            self.add_bamboo_raft_task_table_edges(file_node, entry)
+        elif subtype == "GPUISystemConfigDamageText":
+            self.add_damage_text_config_edges(file_node, entry)
+        elif subtype == "LipSync":
+            self.add_lipsync_clip_edges(file_node, entry)
+        elif subtype == "MissionRuntimeAsset":
+            self.add_mission_runtime_asset_edges(file_node, entry)
+        elif subtype == "LunaArea":
+            self.add_navmesh_luna_area_edges(file_node, entry)
+        elif subtype == "NavMeshStateContainer":
+            self.add_navmesh_state_container_edges(file_node, entry)
+        elif subtype == "GameplayConfigMissionAreaTable":
+            self.add_mission_area_config_edges(file_node, entry)
+        elif subtype == "ModelTable":
+            self.add_model_table_config_edges(file_node, entry)
+        elif subtype == "ModelRadiusTable":
+            self.add_model_radius_config_edges(file_node, entry)
+        elif subtype == "NPCMontageJson":
+            self.add_npc_montage_config_edges(file_node, entry)
+        elif subtype == "SpawnerConfig":
+            self.add_spawner_config_edges(file_node, entry)
+        elif subtype == "SubGameInstanceDataTable":
+            self.add_subgame_instance_config_edges(file_node, entry)
+        elif subtype == "InteractiveTable":
+            self.add_interactive_table_config_edges(file_node, entry)
+        elif subtype == "InteractiveTemplateData":
+            self.add_interactive_template_data_edges(file_node, entry)
+        elif subtype == "InteractiveDataCollections":
+            self.add_interactive_collection_edges(file_node, entry)
+        elif subtype == "ModelViewStateControllerData":
+            self.add_model_view_state_controller_edges(file_node, entry)
+        elif subtype == "LevelConfig":
+            self.add_level_config_edges(file_node, entry)
+        elif subtype == "LevelData":
+            self.add_level_data_edges(file_node, entry)
+        elif subtype == "LevelScriptData":
+            self.add_level_script_data_edges(file_node, entry)
+        elif subtype == "LevelScriptTemplateData":
+            self.add_level_script_template_data_edges(file_node, entry)
+        elif subtype == "GameplayConfigWorldEntityRegistry":
+            self.add_world_entity_registry_edges(file_node, entry)
+        elif subtype == "GameplayConfigWorldEntityTextRegistry":
+            self.add_world_entity_text_registry_edges(file_node, entry)
+        elif subtype == "TeleportValidationDataTable":
+            self.add_teleport_validation_config_edges(file_node, entry)
+
+    def add_char_interact_perform_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        decoded = extract_char_interact_perform_summary(entry, self.read_decoded_config_bytes(entry))
+        perform_id = safe_key(decoded.get("performId") if decoded else "")
+        if not decoded or not perform_id:
+            return
+        source = "webui/game_data"
+        config_data = compact_payload({**self.decoded_config_entry_data(entry), "decoded": decoded}, depth=3)
+        config_node = self.add_node(
+            "char_interact_perform_config",
+            perform_id,
+            name=perform_id,
+            source=source,
+            path=safe_key(entry.get("p")),
+            data=config_data,
+        )
+        self.update_node_details(config_node, name=perform_id, source=source, path=safe_key(entry.get("p")), data=config_data)
+        self.add_edge(file_node, config_node, "char_interact_data_defines_perform_config", source=source, evidence=safe_key(entry.get("dp")))
+        self.add_alias(perform_id, config_node, kind="char_interact_perform_id", source=source)
+        self.add_alias(entry.get("dp"), config_node, kind="char_interact_perform_path", source=source)
+        self.add_alias(entry.get("p"), config_node, kind="char_interact_perform_data_path", source=source)
+
+        for tag in decoded.get("activeTags") or []:
+            tag_value = safe_key(tag.get("tag") if isinstance(tag, dict) else tag)
+            if not tag_value:
+                continue
+            tag_node = self.add_gameplay_tag_node(tag_value, source=source)
+            self.add_edge(config_node, tag_node, "char_interact_has_active_tag", source=source, evidence=f"activeTags[{tag.get('index') if isinstance(tag, dict) else ''}]", data=compact_payload(tag, depth=1) if isinstance(tag, dict) else None)
+        for index, tag_value in enumerate(decoded.get("statusTags") or []):
+            tag_node = self.add_gameplay_tag_node(tag_value, source=source)
+            self.add_edge(config_node, tag_node, "char_interact_references_status_tag", source=source, evidence=f"statusTags[{index}]")
+        for index, montage_id in enumerate(decoded.get("montageRefs") or []):
+            montage_node = self.add_level_script_montage_node(montage_id, source=source)
+            self.add_edge(config_node, montage_node, "char_interact_references_montage", source=source, evidence=f"montageRefs[{index}]")
+        for index, actor_id in enumerate(decoded.get("actorRefs") or []):
+            actor_key = safe_key(actor_id)
+            if actor_key.startswith("chr_"):
+                actor_node = self.add_character_ref_node(actor_key, source=source)
+                self.add_edge(config_node, actor_node, "char_interact_references_character", source=source, evidence=f"actorRefs[{index}]")
+            elif actor_key.startswith("npc_"):
+                npc_node = self.add_npc_template_node(actor_key, source=source)
+                self.add_edge(config_node, npc_node, "char_interact_references_npc_template", source=source, evidence=f"actorRefs[{index}]")
+        for index, effect_id in enumerate(decoded.get("effectIds") or []):
+            effect_key = safe_key(effect_id)
+            if not effect_key:
+                continue
+            effect_node = self.add_node("gameplay_effect", effect_key, name=effect_key, source=source)
+            self.add_alias(effect_key, effect_node, kind="gameplay_effect_id", source=source)
+            self.add_edge(config_node, effect_node, "char_interact_references_effect", source=source, evidence=f"effectIds[{index}]")
+        for index, ref_id in enumerate(decoded.get("performRefs") or []):
+            ref_key = safe_key(ref_id)
+            if not ref_key:
+                continue
+            ref_node = self.add_node("char_interact_perform_config", ref_key, name=ref_key, source=source)
+            self.add_alias(ref_key, ref_node, kind="char_interact_perform_id", source=source)
+            self.add_edge(config_node, ref_node, "char_interact_references_perform_config", source=source, evidence=f"performRefs[{index}]")
+        for index, asset_path in enumerate(decoded.get("assetRefs") or []):
+            asset_key = safe_key(asset_path)
+            if not asset_key:
+                continue
+            asset_node = self.add_node("char_interact_asset_reference", asset_key, name=Path(asset_key).name, source=source, path=asset_key)
+            self.add_alias(asset_key, asset_node, kind="char_interact_asset_path", source=source)
+            self.add_edge(config_node, asset_node, "char_interact_references_asset_path", source=source, evidence=f"assetRefs[{index}]")
+        for index, ccs_path in enumerate(decoded.get("ccsRefs") or []):
+            ccs_key = safe_key(ccs_path)
+            if not ccs_key:
+                continue
+            ccs_node = self.add_node("char_interact_ccs_reference", ccs_key, name=Path(ccs_key).name, source=source, path=ccs_key)
+            self.add_alias(ccs_key, ccs_node, kind="char_interact_ccs_path", source=source)
+            self.add_edge(config_node, ccs_node, "char_interact_references_ccs", source=source, evidence=f"ccsRefs[{index}]")
+
+    def add_ai_config_node(self, ai_config_id: Any, *, source: str = "") -> str:
+        config_key = safe_key(ai_config_id)
+        if not config_key:
+            return ""
+        node = self.add_node("ai_config", config_key, name=config_key, source=source)
+        self.add_alias(config_key, node, kind="ai_config_id", source=source)
+        return node
+
+    def add_atmospheric_npc_cluster_node(self, cluster_id: Any, *, source: str = "") -> str:
+        cluster_key = safe_key(cluster_id)
+        if not cluster_key:
+            return ""
+        node = self.add_node("atmospheric_npc_cluster", cluster_key, name=cluster_key, source=source)
+        self.add_alias(cluster_key, node, kind="atmospheric_npc_cluster_id", source=source)
+        return node
+
+    def add_atmospheric_npc_data_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        decoded = extract_atmospheric_npc_table_summary(entry, self.read_decoded_config_bytes(entry))
+        if not decoded:
+            return
+        source = "webui/game_data"
+        table_path = safe_key(entry.get("p"))
+        table_data = {
+            "tableId": decoded.get("tableId"),
+            "tableRowCount": decoded.get("tableRowCount"),
+            "rowKeyCount": decoded.get("rowKeyCount"),
+            "rowBoundariesVerified": decoded.get("rowBoundariesVerified"),
+            "rowMemberCount": decoded.get("rowMemberCount"),
+        }
+        self.update_node_details(
+            file_node,
+            data=compact_payload({**self.decoded_config_entry_data(entry), "decoded": table_data}, depth=3),
+        )
+        for row in decoded.get("rows") or []:
+            row_key = safe_key(row.get("key"))
+            if not row_key:
+                continue
+            row_data = compact_payload(row, depth=2)
+            npc_node = self.add_environmental_npc_node(row_key, source=source, data=row_data)
+            self.add_alias(row_key, npc_node, kind="atmospheric_npc_row_key", source=source)
+            self.add_edge(file_node, npc_node, "atmospheric_npc_table_has_row", source=source, evidence=table_path, data={"index": row.get("index"), "rowStartOffset": row.get("rowStartOffset"), "rowEndOffset": row.get("rowEndOffset"), "tableId": decoded.get("tableId")})
+
+            template_id = safe_key(row.get("templateDataId"))
+            if template_id:
+                template_node = self.add_npc_template_node(template_id, source=source)
+                self.add_edge(npc_node, template_node, "atmospheric_npc_uses_template", source=source, evidence="templateDataId")
+            level_id = safe_key(row.get("levelId"))
+            if level_id:
+                level_node = self.add_level_node(level_id, source=source)
+                self.add_edge(npc_node, level_node, "atmospheric_npc_in_level", source=source, evidence="levelId")
+                self.add_level_map_edge(level_node, level_id, source=source, evidence="atmospheric_npc_levelId")
+            ai_cfg = safe_key(row.get("aiCfg"))
+            if ai_cfg:
+                ai_node = self.add_ai_config_node(ai_cfg, source=source)
+                self.add_edge(npc_node, ai_node, "atmospheric_npc_uses_ai_config", source=source, evidence="aiCfg")
+            cluster_id = safe_key(row.get("clusterId"))
+            if cluster_id:
+                cluster_node = self.add_atmospheric_npc_cluster_node(cluster_id, source=source)
+                self.add_edge(npc_node, cluster_node, "atmospheric_npc_in_cluster", source=source, evidence="clusterId")
+            for index, montage_id in enumerate(row.get("montages") or []):
+                montage_node = self.add_level_script_montage_node(montage_id, source=source)
+                self.add_edge(npc_node, montage_node, "atmospheric_npc_uses_montage", source=source, evidence=f"montages[{index}]")
+            for index, morph_id in enumerate(row.get("facialAnims") or []):
+                morph_key = safe_key(morph_id)
+                if not morph_key:
+                    continue
+                morph_node = self.add_node("facial_morph", morph_key, name=Path(morph_key).name, source=source, path=morph_key)
+                self.add_alias(morph_key, morph_node, kind="facial_morph_path", source=source)
+                self.add_edge(npc_node, morph_node, "atmospheric_npc_uses_facial_morph", source=source, evidence=f"facialAnims[{index}]")
+            for index, talk_id in enumerate(row.get("envTalks") or []):
+                talk_node = self.add_env_talk_node(talk_id, source=source)
+                self.add_edge(npc_node, talk_node, "atmospheric_npc_uses_env_talk", source=source, evidence=f"envTalks[{index}]")
+
+    def add_animation_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        decoded = extract_animation_config_summary(entry, self.read_decoded_config_bytes(entry))
+        config_id = safe_key(decoded.get("configId") if decoded else "")
+        if not decoded or not config_id:
+            return
+        config_node = self.add_node(
+            "animation_config",
+            config_id,
+            name=config_id,
+            source="webui/game_data",
+            path=safe_key(entry.get("p")),
+            data=compact_payload({**self.decoded_config_entry_data(entry), "decoded": decoded}, depth=3),
+        )
+        self.add_edge(file_node, config_node, "animation_config_data_defines_config", source="webui/game_data", evidence=safe_key(entry.get("dp")))
+        self.add_alias(config_id, config_node, kind="animation_config_id", source="webui/game_data")
+        self.add_alias(entry.get("dp"), config_node, kind="animation_config_path", source="webui/game_data")
+        self.add_alias(entry.get("p"), config_node, kind="animation_config_data_path", source="webui/game_data")
+
+        for index, value in enumerate(decoded.get("stateNames") or []):
+            state_key = safe_key(value)
+            if not state_key:
+                continue
+            state_node = self.add_node("animation_state", state_key, name=state_key, source="webui/game_data")
+            self.add_alias(state_key, state_node, kind="animation_state_name", source="webui/game_data")
+            self.add_edge(config_node, state_node, "animation_config_references_state", source="webui/game_data", evidence=f"stateNames[{index}]")
+        for index, value in enumerate(decoded.get("facialMorphs") or []):
+            morph_key = safe_key(value)
+            if not morph_key:
+                continue
+            morph_node = self.add_node("facial_morph", morph_key, name=Path(morph_key).name, source="webui/game_data", path=morph_key)
+            self.add_alias(morph_key, morph_node, kind="facial_morph_path", source="webui/game_data")
+            self.add_edge(config_node, morph_node, "animation_config_references_facial_morph", source="webui/game_data", evidence=f"facialMorphs[{index}]")
+        for index, value in enumerate(decoded.get("montagePaths") or []):
+            montage_node = self.add_level_script_montage_node(value, source="webui/game_data")
+            self.add_edge(config_node, montage_node, "animation_config_references_montage", source="webui/game_data", evidence=f"montagePaths[{index}]")
+        for index, value in enumerate(decoded.get("actorAnimationRefs") or []):
+            anim_key = safe_key(value)
+            if not anim_key:
+                continue
+            anim_node = self.add_node("actor_animation_ref", anim_key, name=anim_key, source="webui/game_data")
+            self.add_alias(anim_key, anim_node, kind="actor_animation_ref_id", source="webui/game_data")
+            self.add_edge(config_node, anim_node, "animation_config_references_actor_animation", source="webui/game_data", evidence=f"actorAnimationRefs[{index}]")
+        for index, value in enumerate(decoded.get("cutsceneRefs") or []):
+            cutscene_key = safe_key(value)
+            if not cutscene_key:
+                continue
+            cutscene_node = self.add_node("animation_cutscene_ref", cutscene_key, name=cutscene_key, source="webui/game_data")
+            self.add_alias(cutscene_key, cutscene_node, kind="animation_cutscene_ref_id", source="webui/game_data")
+            self.add_edge(config_node, cutscene_node, "animation_config_references_cutscene", source="webui/game_data", evidence=f"cutsceneRefs[{index}]")
+        for index, value in enumerate(decoded.get("otherPaths") or []):
+            path_key = safe_key(value)
+            if not path_key:
+                continue
+            path_node = self.add_node("animation_path_ref", path_key, name=Path(path_key).name, source="webui/game_data", path=path_key)
+            self.add_alias(path_key, path_node, kind="animation_path_ref", source="webui/game_data")
+            self.add_edge(config_node, path_node, "animation_config_references_path", source="webui/game_data", evidence=f"otherPaths[{index}]")
+
+    def add_npc_montage_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        summary = extract_npc_montage_summary(entry)
+        tag = safe_key(summary.get("tag"))
+        if not tag:
+            return
+        montage_node = self.add_level_script_montage_node(tag, source="webui/game_data")
+        self.update_node_details(
+            montage_node,
+            name=tag,
+            source="webui/game_data",
+            path=safe_key(entry.get("p")),
+            data=compact_payload({**self.decoded_config_entry_data(entry), "decoded": summary}, depth=3),
+        )
+        self.add_edge(file_node, montage_node, "npc_montage_data_defines_montage", source="webui/game_data", evidence=safe_key(entry.get("dp")))
+        self.add_alias(tag, montage_node, kind="npc_montage_tag", source="webui/game_data")
+        self.add_alias(entry.get("dp"), montage_node, kind="npc_montage_path", source="webui/game_data")
+        self.add_alias(entry.get("p"), montage_node, kind="npc_montage_data_path", source="webui/game_data")
+
+        category = safe_key(summary.get("category"))
+        if category:
+            category_node = self.add_node("npc_montage_category", category, name=category, source="webui/game_data")
+            self.add_alias(category, category_node, kind="npc_montage_category_id", source="webui/game_data")
+            self.add_edge(montage_node, category_node, "npc_montage_has_category", source="webui/game_data", evidence="category")
+        body = safe_key(summary.get("body"))
+        if body:
+            body_key = f"{category}/{body}" if category else body
+            body_node = self.add_node("npc_montage_body", body_key, name=body, source="webui/game_data", data={"category": category, "body": body})
+            self.add_alias(body, body_node, kind="npc_montage_body_id", source="webui/game_data")
+            self.add_alias(body_key, body_node, kind="npc_montage_body_id", source="webui/game_data")
+            self.add_edge(montage_node, body_node, "npc_montage_has_body", source="webui/game_data", evidence="body")
+        action = safe_key(summary.get("action"))
+        if action:
+            action_node = self.add_node("npc_montage_action", action, name=action, source="webui/game_data")
+            self.add_alias(action, action_node, kind="npc_montage_action_id", source="webui/game_data")
+            self.add_edge(montage_node, action_node, "npc_montage_has_action", source="webui/game_data", evidence="action")
+
+    def add_level_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        summary = extract_level_config_summary(entry)
+        level_id = safe_key(summary.get("levelId"))
+        if not level_id:
+            return
+        config_node = self.add_node(
+            "level_config",
+            level_id,
+            name=level_id,
+            source="webui/game_data",
+            path=safe_key(entry.get("p")),
+            data=compact_payload({**self.decoded_config_entry_data(entry), "decoded": summary}, depth=3),
+        )
+        self.add_edge(file_node, config_node, "level_config_data_defines_config", source="webui/game_data", evidence=safe_key(entry.get("dp")))
+        self.add_alias(level_id, config_node, kind="level_config_id", source="webui/game_data")
+        self.add_alias(entry.get("dp"), config_node, kind="level_config_path", source="webui/game_data")
+        self.add_alias(entry.get("p"), config_node, kind="level_config_data_path", source="webui/game_data")
+
+        level_node = self.add_level_node(level_id, source="webui/game_data")
+        self.add_edge(config_node, level_node, "level_config_defines_level", source="webui/game_data", evidence=safe_key(entry.get("dp")))
+        map_id = safe_key(summary.get("mapId"))
+        if map_id:
+            map_node = self.add_map_node(map_id, source="webui/game_data")
+            self.add_edge(config_node, map_node, "level_config_has_map_id", source="webui/game_data", evidence="mapId")
+            self.add_level_map_edge(level_node, level_id, source="webui/game_data", evidence="level_config_mapId", map_id=map_id)
+        default_scene = safe_key(summary.get("defaultSceneConfigPath"))
+        if default_scene:
+            scene_node = self.add_node(
+                "level_scene_config",
+                default_scene,
+                name=Path(default_scene).name,
+                source="webui/game_data",
+                path=default_scene,
+            )
+            self.add_alias(default_scene, scene_node, kind="level_scene_config_path", source="webui/game_data")
+            self.add_edge(config_node, scene_node, "level_config_uses_default_scene_config", source="webui/game_data", evidence="defaultScene")
+
+    def add_level_data_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        decoded = extract_level_data_summary(entry, self.read_decoded_config_bytes(entry))
+        if not decoded:
+            return
+        data_key = level_data_node_key_from_entry(entry)
+        scene_id = safe_key(decoded.get("sceneId"))
+        if not data_key or not scene_id:
+            return
+        data_node = self.add_node(
+            "level_data",
+            data_key,
+            name=Path(data_key).name,
+            source="webui/game_data",
+            path=safe_key(entry.get("p")),
+            data=compact_payload({**self.decoded_config_entry_data(entry), "decoded": decoded}, depth=3),
+        )
+        self.add_edge(file_node, data_node, "level_data_file_defines_level_data", source="webui/game_data", evidence=safe_key(entry.get("dp")))
+        self.add_alias(data_key, data_node, kind="level_data_path", source="webui/game_data")
+        self.add_alias(entry.get("p"), data_node, kind="level_data_path", source="webui/game_data")
+        self.add_alias(Path(data_key).stem, data_node, kind="level_data_file_stem", source="webui/game_data")
+        self.add_alias(scene_id, data_node, kind="level_data_scene_id", source="webui/game_data")
+        level_node = self.add_level_node(scene_id, source="webui/game_data")
+        self.add_edge(level_node, data_node, "level_has_level_data", source="webui/game_data", evidence=Path(data_key).name)
+        self.add_level_map_edge(level_node, scene_id, source="webui/game_data", evidence="level_data_scene_id")
+        refs = decoded.get("refs") if isinstance(decoded.get("refs"), dict) else {}
+        self.add_level_data_reference_edges(data_node, refs, source="webui/game_data")
+
+    def add_level_data_reference_edges(self, data_node: str, refs: dict[str, list[dict[str, Any]]], *, source: str) -> None:
+        for ref_kind, values in refs.items():
+            if not isinstance(values, list):
+                continue
+            for ref in values:
+                if not isinstance(ref, dict):
+                    continue
+                value = safe_key(ref.get("value"))
+                if not value:
+                    continue
+                evidence = safe_key(ref.get("offset")) or f"strings[{ref.get('index')}]"
+                data = {"index": ref.get("index"), "offset": ref.get("offset"), "length": ref.get("length"), "value": value}
+                if ref_kind == "level_script":
+                    script_node = self.add_node("level_script", value, name=value, source=source)
+                    self.add_alias(value, script_node, kind="level_script_id", source=source)
+                    self.add_edge(data_node, script_node, "level_data_references_level_script", source=source, evidence=evidence, data=data)
+                elif ref_kind == "story":
+                    story_node = self.add_node("story", value, name=value, source=source)
+                    self.add_alias(value, story_node, kind="story_key", source=source)
+                    self.add_edge(data_node, story_node, "level_data_references_story", source=source, evidence=evidence, data=data)
+                elif ref_kind == "mission":
+                    mission_node = self.add_mission_ref_node(value, source=source)
+                    self.add_edge(data_node, mission_node, "level_data_references_mission", source=source, evidence=evidence, data=data)
+                elif ref_kind == "audio":
+                    self.add_audio_target_edge(data_node, value, edge_kind="level_data_references_audio", source=source, evidence=evidence)
+                elif ref_kind == "effect":
+                    effect_node = self.add_node("gameplay_effect", value, name=value, source=source)
+                    self.add_alias(value, effect_node, kind="gameplay_effect_id", source=source)
+                    self.add_edge(data_node, effect_node, "level_data_references_effect", source=source, evidence=evidence, data=data)
+                elif ref_kind == "buff":
+                    buff_node = self.add_buff_ref_node(value, source=source)
+                    self.add_edge(data_node, buff_node, "level_data_references_buff", source=source, evidence=evidence, data=data)
+                elif ref_kind == "montage":
+                    montage_node = self.add_level_script_montage_node(value, source=source)
+                    self.add_edge(data_node, montage_node, "level_data_references_montage", source=source, evidence=evidence, data=data)
+                elif ref_kind == "template":
+                    template_id = level_script_template_id_from_ref(value)
+                    if not template_id:
+                        continue
+                    template_node = self.add_node("level_script_template", template_id, name=template_id, source=source, data={"referencedPath": value})
+                    self.add_alias(template_id, template_node, kind="level_script_template_id", source=source)
+                    self.add_alias(value, template_node, kind="level_script_template_path", source=source)
+                    self.add_edge(data_node, template_node, "level_data_references_template", source=source, evidence=evidence, data=data)
+                elif ref_kind == "asset_path":
+                    asset_ref_node = self.add_node("level_asset_reference", value, name=Path(value).name, source=source, path=value)
+                    self.add_alias(value, asset_ref_node, kind="level_asset_path", source=source)
+                    self.add_edge(data_node, asset_ref_node, "level_data_references_asset_path", source=source, evidence=evidence, data=data)
+                elif ref_kind == "level":
+                    level_node = self.add_level_node(value, source=source)
+                    self.add_edge(data_node, level_node, "level_data_references_level", source=source, evidence=evidence, data=data)
+                    self.add_level_map_edge(level_node, value, source=source, evidence="level_data_reference")
+                elif ref_kind == "marker":
+                    marker_node = self.add_node("level_task_marker", value, name=value, source=source)
+                    self.add_alias(value, marker_node, kind="level_task_marker_id", source=source)
+                    self.add_edge(data_node, marker_node, "level_data_has_task_marker", source=source, evidence=evidence, data=data)
+                elif ref_kind == "param":
+                    param_node = self.add_node("level_data_param", value, name=value, source=source)
+                    self.add_alias(value, param_node, kind="level_data_param", source=source)
+                    self.add_edge(data_node, param_node, "level_data_has_param_string", source=source, evidence=evidence, data=data)
+
+    def add_level_script_data_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        summary = extract_level_script_entry_summary(entry)
+        script_id = safe_key(summary.get("scriptId"))
+        if not script_id:
+            return
+        refs = extract_level_script_string_refs(entry, self.read_decoded_config_bytes(entry), script_id)
+        summary["refCounts"] = {kind: len(values) for kind, values in refs.items()}
+        script_node = self.add_node(
+            "level_script",
+            script_id,
+            name=script_id,
+            source="webui/game_data",
+            path=safe_key(entry.get("p")),
+            data=compact_payload({**self.decoded_config_entry_data(entry), "decoded": summary, "refs": refs}, depth=3),
+        )
+        self.update_node_details(script_node, name=script_id, source="webui/game_data", path=safe_key(entry.get("p")), data=compact_payload({**self.decoded_config_entry_data(entry), "decoded": summary, "refs": refs}, depth=3))
+        self.add_edge(file_node, script_node, "level_script_data_defines_script", source="webui/game_data", evidence=safe_key(entry.get("dp")))
+        self.add_alias(script_id, script_node, kind="level_script_id", source="webui/game_data")
+        self.add_alias(entry.get("dp"), script_node, kind="level_script_config_path", source="webui/game_data")
+        self.add_alias(entry.get("p"), script_node, kind="level_script_data_path", source="webui/game_data")
+        level_id = safe_key(summary.get("levelId"))
+        if level_id:
+            level_node = self.add_level_node(level_id, source="webui/game_data")
+            self.add_edge(level_node, script_node, "level_has_level_script", source="webui/game_data", evidence=level_id, data={"scriptId": script_id})
+            self.add_level_map_edge(level_node, level_id, source="webui/game_data", evidence="level_script_path")
+        start_type = safe_key(summary.get("startType"))
+        if start_type:
+            start_node = self.add_node("level_script_start_type", start_type, name=start_type, source="webui/game_data")
+            self.add_alias(start_type, start_node, kind="level_script_start_type_id", source="webui/game_data")
+            self.add_edge(script_node, start_node, "level_script_has_start_type", source="webui/game_data", evidence="startType")
+        self.add_level_script_reference_edges(script_node, refs, edge_prefix="level_script", source="webui/game_data")
+
+    def add_level_script_template_data_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        summary = extract_level_script_template_entry_summary(entry)
+        template_id = safe_key(summary.get("templateId"))
+        if not template_id:
+            return
+        refs = extract_level_script_string_refs(entry, self.read_decoded_config_bytes(entry), template_id)
+        summary["refCounts"] = {kind: len(values) for kind, values in refs.items()}
+        template_node = self.add_node(
+            "level_script_template",
+            template_id,
+            name=template_id,
+            source="webui/game_data",
+            path=safe_key(entry.get("p")),
+            data=compact_payload({**self.decoded_config_entry_data(entry), "decoded": summary, "refs": refs}, depth=3),
+        )
+        self.update_node_details(template_node, name=template_id, source="webui/game_data", path=safe_key(entry.get("p")), data=compact_payload({**self.decoded_config_entry_data(entry), "decoded": summary, "refs": refs}, depth=3))
+        self.add_edge(file_node, template_node, "level_script_data_defines_template", source="webui/game_data", evidence=safe_key(entry.get("dp")))
+        self.add_alias(template_id, template_node, kind="level_script_template_id", source="webui/game_data")
+        self.add_alias(entry.get("dp"), template_node, kind="level_script_template_path", source="webui/game_data")
+        self.add_alias(entry.get("p"), template_node, kind="level_script_template_data_path", source="webui/game_data")
+        group_key = safe_key(summary.get("templateGroup"))
+        if group_key:
+            group_node = self.add_node("level_script_template_group", group_key, name=group_key, source="webui/game_data")
+            self.add_alias(group_key, group_node, kind="level_script_template_group_id", source="webui/game_data")
+            self.add_edge(group_node, template_node, "level_script_template_group_has_template", source="webui/game_data", evidence=group_key)
+        self.add_level_script_reference_edges(template_node, refs, edge_prefix="level_script_template", source="webui/game_data")
+
+    def add_level_script_montage_node(self, montage_id: Any, *, source: str = "") -> str:
+        montage_key = safe_key(montage_id)
+        if not montage_key:
+            return ""
+        montage_node = self.add_node("level_script_montage", montage_key, name=montage_key, source=source)
+        self.add_alias(montage_key, montage_node, kind="level_script_montage_id", source=source)
+        return montage_node
+
+    def add_level_script_reference_edges(self, owner_node: str, refs: dict[str, list[dict[str, Any]]], *, edge_prefix: str, source: str) -> None:
+        for ref_kind, values in refs.items():
+            if not isinstance(values, list):
+                continue
+            for ref in values:
+                if not isinstance(ref, dict):
+                    continue
+                value = safe_key(ref.get("value"))
+                if not value:
+                    continue
+                evidence = safe_key(ref.get("offset")) or f"strings[{ref.get('index')}]"
+                data = {"index": ref.get("index"), "offset": ref.get("offset"), "length": ref.get("length"), "value": value}
+                if ref_kind == "story":
+                    story_node = self.add_node("story", value, name=value, source=source)
+                    self.add_alias(value, story_node, kind="story_key", source=source)
+                    self.add_edge(owner_node, story_node, f"{edge_prefix}_references_story", source=source, evidence=evidence, data=data)
+                elif ref_kind == "mission":
+                    mission_node = self.add_mission_ref_node(value, source=source)
+                    self.add_edge(owner_node, mission_node, f"{edge_prefix}_references_mission", source=source, evidence=evidence, data=data)
+                elif ref_kind == "audio":
+                    self.add_audio_target_edge(owner_node, value, edge_kind=f"{edge_prefix}_references_audio", source=source, evidence=evidence)
+                elif ref_kind == "effect":
+                    effect_node = self.add_node("gameplay_effect", value, name=value, source=source)
+                    self.add_alias(value, effect_node, kind="gameplay_effect_id", source=source)
+                    self.add_edge(owner_node, effect_node, f"{edge_prefix}_references_effect", source=source, evidence=evidence, data=data)
+                elif ref_kind == "buff":
+                    buff_node = self.add_buff_ref_node(value, source=source)
+                    self.add_edge(owner_node, buff_node, f"{edge_prefix}_references_buff", source=source, evidence=evidence, data=data)
+                elif ref_kind == "template":
+                    template_id = level_script_template_id_from_ref(value)
+                    if not template_id:
+                        continue
+                    template_node = self.add_node("level_script_template", template_id, name=template_id, source=source, data={"referencedPath": value})
+                    self.add_alias(template_id, template_node, kind="level_script_template_id", source=source)
+                    self.add_alias(value, template_node, kind="level_script_template_path", source=source)
+                    self.add_edge(owner_node, template_node, f"{edge_prefix}_references_template", source=source, evidence=evidence, data=data)
+                elif ref_kind == "montage":
+                    montage_node = self.add_level_script_montage_node(value, source=source)
+                    self.add_edge(owner_node, montage_node, f"{edge_prefix}_references_montage", source=source, evidence=evidence, data=data)
+
+    def add_buff_data_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        decoded = extract_buff_data_summary(entry, self.read_decoded_config_bytes(entry))
+        buff_id = safe_key(decoded.get("buffId") if decoded else "") or buff_data_id_from_entry(entry)
+        if not buff_id:
+            return
+        buff_node = self.add_buff_ref_node(buff_id, source="webui/game_data")
+        self.update_node_details(
+            buff_node,
+            name=buff_id,
+            source="webui/game_data",
+            data=compact_payload({**self.decoded_config_entry_data(entry), "decoded": decoded or {}}, depth=3),
+        )
+        self.add_edge(file_node, buff_node, "buff_data_defines_buff", source="webui/game_data", evidence=safe_key(entry.get("dp")))
+        self.add_alias(entry.get("dp"), buff_node, kind="buff_config_path", source="webui/game_data")
+        self.add_alias(entry.get("p"), buff_node, kind="buff_data_path", source="webui/game_data")
+        if not decoded:
+            return
+        refs = decoded.get("refs") if isinstance(decoded.get("refs"), dict) else {}
+        for ref_kind, values in refs.items():
+            if not isinstance(values, list):
+                continue
+            for ref in values:
+                if not isinstance(ref, dict):
+                    continue
+                value = safe_key(ref.get("value"))
+                if not value:
+                    continue
+                evidence = safe_key(ref.get("offset")) or f"strings[{ref.get('index')}]"
+                data = {"index": ref.get("index"), "offset": ref.get("offset"), "length": ref.get("length"), "value": value}
+                if ref_kind == "linked_buff":
+                    target_node = self.add_buff_ref_node(value, source="webui/game_data")
+                    self.add_edge(buff_node, target_node, "buff_data_references_buff", source="webui/game_data", evidence=evidence, data=data)
+                elif ref_kind == "tag":
+                    target_node = self.add_gameplay_tag_node(value, source="webui/game_data")
+                    self.add_edge(buff_node, target_node, "buff_data_has_tag_string", source="webui/game_data", evidence=evidence, data=data)
+                elif ref_kind == "param":
+                    target_node = self.add_buff_parameter_node(value, source="webui/game_data")
+                    self.add_edge(buff_node, target_node, "buff_data_has_param_string", source="webui/game_data", evidence=evidence, data=data)
+                elif ref_kind == "effect":
+                    target_node = self.add_node("gameplay_effect", value, name=value, source="webui/game_data")
+                    self.add_alias(value, target_node, kind="gameplay_effect_id", source="webui/game_data")
+                    self.add_edge(buff_node, target_node, "buff_data_references_effect", source="webui/game_data", evidence=evidence, data=data)
+                elif ref_kind == "audio":
+                    self.add_audio_target_edge(buff_node, value, edge_kind="buff_data_references_audio", source="webui/game_data", evidence=evidence)
+                elif ref_kind == "icon":
+                    target_node = self.add_buff_icon_node(value, source="webui/game_data")
+                    self.add_edge(buff_node, target_node, "buff_data_references_icon", source="webui/game_data", evidence=evidence, data=data)
+
+    def add_skill_data_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        decoded = extract_skill_data_summary(entry, self.read_decoded_config_bytes(entry))
+        skill_id = safe_key(decoded.get("skillId") if decoded else "") or skill_data_id_from_entry(entry)
+        if not skill_id:
+            return
+        skill_node = self.add_gameplay_skill_ref_node(skill_id, source="webui/game_data")
+        self.update_node_details(
+            skill_node,
+            name=skill_id,
+            source="webui/game_data",
+            data=compact_payload({**self.decoded_config_entry_data(entry), "decoded": decoded or {}}, depth=3),
+        )
+        self.add_edge(file_node, skill_node, "skill_data_defines_skill", source="webui/game_data", evidence=safe_key(entry.get("dp")))
+        self.add_alias(entry.get("dp"), skill_node, kind="skill_config_path", source="webui/game_data")
+        self.add_alias(entry.get("p"), skill_node, kind="skill_data_path", source="webui/game_data")
+        if not decoded:
+            return
+        refs = decoded.get("refs") if isinstance(decoded.get("refs"), dict) else {}
+        for ref_kind, values in refs.items():
+            if not isinstance(values, list):
+                continue
+            for ref in values:
+                if not isinstance(ref, dict):
+                    continue
+                value = safe_key(ref.get("value"))
+                if not value:
+                    continue
+                evidence = safe_key(ref.get("offset")) or f"strings[{ref.get('index')}]"
+                data = {"index": ref.get("index"), "offset": ref.get("offset"), "length": ref.get("length"), "value": value}
+                if ref_kind == "linked_buff":
+                    target_node = self.add_buff_ref_node(value, source="webui/game_data")
+                    self.add_edge(skill_node, target_node, "skill_data_references_buff", source="webui/game_data", evidence=evidence, data=data)
+                elif ref_kind == "tag":
+                    target_node = self.add_gameplay_tag_node(value, source="webui/game_data")
+                    self.add_edge(skill_node, target_node, "skill_data_has_tag_string", source="webui/game_data", evidence=evidence, data=data)
+                elif ref_kind == "param":
+                    target_node = self.add_skill_parameter_node(value, source="webui/game_data")
+                    self.add_edge(skill_node, target_node, "skill_data_has_param_string", source="webui/game_data", evidence=evidence, data=data)
+                elif ref_kind == "effect":
+                    target_node = self.add_node("gameplay_effect", value, name=value, source="webui/game_data")
+                    self.add_alias(value, target_node, kind="gameplay_effect_id", source="webui/game_data")
+                    self.add_edge(skill_node, target_node, "skill_data_references_effect", source="webui/game_data", evidence=evidence, data=data)
+                elif ref_kind == "audio":
+                    self.add_audio_target_edge(skill_node, value, edge_kind="skill_data_references_audio", source="webui/game_data", evidence=evidence)
+                elif ref_kind == "icon":
+                    target_node = self.add_skill_icon_node(value, source="webui/game_data")
+                    self.add_edge(skill_node, target_node, "skill_data_references_icon", source="webui/game_data", evidence=evidence, data=data)
+
+    def add_spawner_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        decoded = extract_spawner_config_rows(self.read_decoded_config_bytes(entry))
+        config_id = safe_key(decoded.get("configId") if decoded else "") or Path(safe_key(entry.get("p"))).stem
+        if not config_id:
+            return
+        config_node = self.add_node(
+            "spawner_config",
+            config_id,
+            name=config_id,
+            source="webui/game_data",
+            path=safe_key(entry.get("p")),
+            data=compact_payload({**self.decoded_config_entry_data(entry), "decoded": decoded or {}}, depth=3),
+        )
+        self.add_edge(file_node, config_node, "defines_spawner_config", source="webui/game_data", evidence=safe_key(entry.get("dp")))
+        self.add_alias(config_id, config_node, kind="spawner_config_id", source="webui/game_data")
+        self.add_alias(entry.get("dp"), config_node, kind="spawner_config_path", source="webui/game_data")
+        if not decoded:
+            return
+        self.update_node_details(config_node, data=compact_payload({**self.decoded_config_entry_data(entry), "decoded": {"enemyLibraryCount": decoded.get("enemyLibraryCount"), "enemyLibraryEndOffset": decoded.get("enemyLibraryEndOffset")}}, depth=3))
+        for row in decoded.get("enemyRows") or []:
+            index = row.get("index")
+            enemy_id = safe_key(row.get("enemyId"))
+            row_key = f"{config_id}:{index}:{enemy_id or 'enemy'}"
+            entry_node = self.add_node(
+                "spawner_enemy_entry",
+                row_key,
+                name=enemy_id or row_key,
+                source="webui/game_data",
+                data=compact_payload(row, depth=3),
+            )
+            self.add_edge(config_node, entry_node, "spawner_config_has_enemy", source="webui/game_data", evidence=str(index), data={"enemyId": enemy_id, "enemyLevel": row.get("enemyLevel"), "forceToBattle": row.get("forceToBattle")})
+            self.add_alias(row_key, entry_node, kind="spawner_enemy_entry_id", source="webui/game_data")
+            if enemy_id:
+                enemy_node = self.add_node("enemy", enemy_id, name=enemy_id, source="webui/game_data")
+                self.add_edge(entry_node, enemy_node, "spawner_enemy_uses_enemy", source="webui/game_data", evidence="enemyId", data={"enemyLevel": row.get("enemyLevel"), "forceToBattle": row.get("forceToBattle")})
+                self.add_alias(enemy_id, enemy_node, kind="enemy_id", source="webui/game_data")
+            for buff_index, buff in enumerate(row.get("bornBuffs") or []):
+                if not isinstance(buff, dict):
+                    continue
+                buff_id = safe_key(buff.get("buffId"))
+                if not buff_id:
+                    continue
+                buff_node = self.add_buff_ref_node(buff_id, source="webui/game_data")
+                self.add_edge(entry_node, buff_node, "spawner_enemy_starts_with_buff", source="webui/game_data", evidence=f"bornBuffs[{buff_index}]", data={"blackboardCount": len(buff.get("blackboard") or [])})
+                self.add_blackboard_edges(entry_node, buff.get("blackboard"), edge_kind="spawner_buff_uses_blackboard_key", source="webui/game_data", evidence_prefix=f"bornBuffs[{buff_index}].blackboard", context={"buffId": buff_id})
+            self.add_audio_target_edge(entry_node, row.get("preWarnAudioEventKey"), edge_kind="spawner_enemy_prewarn_audio", source="webui/game_data", evidence="preWarnAudioEventKey")
+            effect_key = safe_key(row.get("preWarnEffectKey"))
+            if effect_key:
+                effect_node = self.add_node("gameplay_effect", effect_key, name=effect_key, source="webui/game_data")
+                self.add_edge(entry_node, effect_node, "spawner_enemy_prewarn_effect", source="webui/game_data", evidence="preWarnEffectKey", data={"fixedRotation": row.get("preWarnEffectFixedRotation"), "preWarnTime": row.get("preWarnTime")})
+                self.add_alias(effect_key, effect_node, kind="gameplay_effect_id", source="webui/game_data")
+
+    def add_subgame_instance_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        config_key = safe_key(entry.get("p"))
+        config_node = self.add_node("subgame_instance_config", config_key, name=Path(config_key).name, source="webui/game_data", path=config_key, data=self.decoded_config_entry_data(entry))
+        self.add_edge(file_node, config_node, "defines_subgame_instance_config", source="webui/game_data")
+        decoded = extract_subgame_instance_rows(self.read_decoded_config_bytes(entry))
+        if not decoded:
+            return
+        self.update_node_details(config_node, data={**self.decoded_config_entry_data(entry), "rowCountParsed": decoded.get("rowCount")})
+        for row in decoded.get("rows") or []:
+            instance_id = safe_key(row.get("instanceId"))
+            if not instance_id:
+                continue
+            instance_node = self.add_node("subgame_instance", instance_id, name=instance_id, source="webui/game_data", data=compact_payload(row, depth=3))
+            self.add_edge(config_node, instance_node, "subgame_config_has_instance", source="webui/game_data", evidence=safe_key(entry.get("dp")), data=compact_payload(row, depth=1))
+            self.add_alias(instance_id, instance_node, kind="subgame_instance_id", source="webui/game_data")
+            self.add_alias(row.get("shortHash"), instance_node, kind="subgame_instance_hash", source="webui/game_data")
+            group_id = safe_key(row.get("defaultGroup"))
+            if group_id:
+                group_node = self.add_node("subgame_group", group_id, name=group_id, source="webui/game_data")
+                self.add_edge(instance_node, group_node, "subgame_instance_default_group", source="webui/game_data", evidence="defaultGroup")
+                self.add_alias(group_id, group_node, kind="subgame_group_id", source="webui/game_data")
+            for field, edge_kind in (
+                ("failureTextId", "subgame_failure_text"),
+                ("quitButtonTextId", "subgame_quit_text"),
+                ("successTextId", "subgame_success_text"),
+            ):
+                text_node = self.add_i18n_text_node(row.get(field), source="SubGameInstanceDataTable")
+                if text_node:
+                    self.add_edge(instance_node, text_node, edge_kind, source="webui/game_data", evidence=field)
+
+    def add_mission_area_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        config_key = safe_key(entry.get("p"))
+        config_node = self.add_node("mission_area_config", config_key, name=Path(config_key).name, source="webui/game_data", path=config_key, data=self.decoded_config_entry_data(entry))
+        self.add_edge(file_node, config_node, "defines_mission_area_config", source="webui/game_data")
+        decoded = extract_mission_area_rows(self.read_decoded_config_bytes(entry))
+        if not decoded:
+            return
+        self.update_node_details(config_node, data={**self.decoded_config_entry_data(entry), "rowCountParsed": decoded.get("rowCount"), "headerCount1": decoded.get("headerCount1")})
+        for row in decoded.get("rows") or []:
+            area_key = safe_key(row.get("areaKey"))
+            if not area_key:
+                continue
+            area_node = self.add_node("mission_area", area_key, name=area_key, source="webui/game_data", data=compact_payload(row, depth=2))
+            self.add_edge(config_node, area_node, "mission_area_config_has_area", source="webui/game_data", evidence=safe_key(entry.get("dp")), data=compact_payload(row, depth=1))
+            self.add_alias(area_key, area_node, kind="mission_area_id", source="webui/game_data")
+            prefix_parts = area_key.rsplit("_", 1)
+            mission_key = prefix_parts[0] if len(prefix_parts) == 2 and prefix_parts[1].isdigit() else ""
+            if mission_key and self.node_exists("mission", mission_key):
+                self.add_edge(area_node, self.node_id("mission", mission_key), "mission_area_for_mission", source="webui/game_data", evidence="areaKeyPrefix")
+
+    def add_model_table_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        config_key = safe_key(entry.get("p"))
+        config_node = self.add_node("model_config", config_key, name=Path(config_key).name, source="webui/game_data", path=config_key, data=self.decoded_config_entry_data(entry))
+        self.add_edge(file_node, config_node, "defines_model_config", source="webui/game_data")
+        decoded = extract_model_table_rows(self.read_decoded_config_bytes(entry))
+        if not decoded:
+            return
+        self.update_node_details(config_node, data={**self.decoded_config_entry_data(entry), "modelCountParsed": decoded.get("modelCount"), "layoutCountFromHeader": decoded.get("layoutCountFromHeader")})
+        for row in decoded.get("modelRows") or []:
+            model_id = safe_key(row.get("modelId"))
+            if not model_id:
+                continue
+            model_node = self.add_node("model_config_model", model_id, name=model_id, source="webui/game_data", data=compact_payload(row, depth=2))
+            self.add_edge(config_node, model_node, "model_config_has_model", source="webui/game_data", evidence=safe_key(entry.get("dp")), data=compact_payload(row, depth=1))
+            self.add_alias(model_id, model_node, kind="model_id", source="webui/game_data")
+            prefab_path = safe_key(row.get("prefabPath"))
+            if prefab_path:
+                self.add_alias(prefab_path, model_node, kind="prefab_path", source="webui/game_data")
+                self.add_alias(Path(prefab_path).stem, model_node, kind="model_name", source="webui/game_data")
+            self.add_model_asset_entity_edges(model_node, (model_id, prefab_path), edge_kind="model_config_asset_entity", source="webui/game_data", evidence="modelId/prefabPath")
+            radius_node = self.node_id("model_radius", model_id)
+            if self.node_exists("model_radius", model_id):
+                self.add_edge(model_node, radius_node, "model_config_has_radius", source="webui/game_data", evidence="modelId")
+
+    def add_model_radius_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        config_key = safe_key(entry.get("p"))
+        config_node = self.add_node("model_radius_config", config_key, name=Path(config_key).name, source="webui/game_data", path=config_key, data=self.decoded_config_entry_data(entry))
+        self.add_edge(file_node, config_node, "defines_model_radius_config", source="webui/game_data")
+        decoded = extract_model_radius_rows(self.read_decoded_config_bytes(entry))
+        if not decoded:
+            return
+        self.update_node_details(config_node, data={**self.decoded_config_entry_data(entry), "rowCountParsed": decoded.get("rowCount")})
+        for row in decoded.get("rows") or []:
+            model_id = safe_key(row.get("modelId"))
+            if not model_id:
+                continue
+            radius_node = self.add_node("model_radius", model_id, name=model_id, source="webui/game_data", data=compact_payload(row, depth=2))
+            self.add_edge(config_node, radius_node, "model_radius_config_has_model", source="webui/game_data", evidence=safe_key(entry.get("dp")), data=compact_payload(row, depth=1))
+            self.add_alias(model_id, radius_node, kind="model_id", source="webui/game_data")
+
+    def add_interactive_table_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        config_key = safe_key(entry.get("p"))
+        config_node = self.add_node("interactive_table_config", config_key, name=Path(config_key).name, source="webui/game_data", path=config_key, data=self.decoded_config_entry_data(entry))
+        self.add_edge(file_node, config_node, "defines_interactive_table_config", source="webui/game_data")
+        decoded = extract_interactive_table_rows(self.read_decoded_config_bytes(entry))
+        if not decoded:
+            return
+        self.update_node_details(config_node, data={**self.decoded_config_entry_data(entry), "coreTemplateCountParsed": decoded.get("coreTemplateCount"), "interactiveDataCountParsed": decoded.get("interactiveDataCount")})
+        for row in decoded.get("coreRows") or []:
+            template_id = safe_key(row.get("templateId"))
+            if not template_id:
+                continue
+            template_node = self.add_node("interactive_template", template_id, name=template_id, source="webui/game_data", data=compact_payload(row, depth=2))
+            self.add_edge(config_node, template_node, "interactive_table_has_core_template", source="webui/game_data", evidence=safe_key(entry.get("dp")), data=compact_payload(row, depth=1))
+            self.add_alias(template_id, template_node, kind="interactive_template_id", source="webui/game_data")
+            template_path = safe_key(row.get("templatePath"))
+            if template_path:
+                self.add_alias(template_path, template_node, kind="interactive_template_path", source="webui/game_data")
+        for row in decoded.get("interactiveRows") or []:
+            object_id = safe_key(row.get("objectId"))
+            template_id = safe_key(row.get("templateId"))
+            if not object_id:
+                continue
+            object_node = self.add_node("interactive_object", object_id, name=object_id, source="webui/game_data", data=compact_payload(row, depth=2))
+            self.add_edge(config_node, object_node, "interactive_table_has_object", source="webui/game_data", evidence=safe_key(entry.get("dp")), data=compact_payload(row, depth=1))
+            self.add_alias(object_id, object_node, kind="interactive_object_id", source="webui/game_data")
+            if template_id:
+                template_node = self.add_node("interactive_template", template_id, name=template_id, source="webui/game_data")
+                self.add_edge(object_node, template_node, "interactive_object_uses_template", source="webui/game_data", evidence="interactiveDataDict")
+
+    def decode_model_view_state_controller_payload(self, entry: dict[str, Any], raw_data: bytes | None = None) -> dict[str, Any] | None:
+        data = raw_data if raw_data is not None else self.read_decoded_config_bytes(entry)
+        if not data:
+            return None
+        try:
+            decoded = decode_model_view_state_controller_memorypack(self.decoded_config_raw_path(entry), data, len(data))
+        except Exception:
+            return None
+        payload = decoded.get("decoded") if isinstance(decoded, dict) else None
+        return payload if isinstance(payload, dict) else None
+
+    def add_model_view_clip_ref_node(self, clip_name: Any, *, source: str = "") -> str:
+        key = safe_key(clip_name)
+        if not key:
+            return ""
+        node = self.add_node("model_view_clip_ref", key, name=key, source=source)
+        self.add_alias(key, node, kind="model_view_clip_ref_id", source=source)
+        return node
+
+    def add_model_view_animator_name_node(self, animator_name: Any, *, source: str = "") -> str:
+        key = safe_key(animator_name)
+        if not key:
+            return ""
+        node = self.add_node("model_view_animator_name", key, name=key, source=source)
+        self.add_alias(key, node, kind="model_view_animator_name", source=source)
+        return node
+
+    def decode_dialog_id_table_payload(self, entry: dict[str, Any], raw_data: bytes | None = None) -> dict[str, Any] | None:
+        data = raw_data if raw_data is not None else self.read_decoded_config_bytes(entry)
+        if not data:
+            return None
+        try:
+            decoded = decode_dialog_id_table_memorypack(safe_key(entry.get("dp")), data, len(data))
+        except Exception:
+            return None
+        payload = decoded.get("decoded") if isinstance(decoded, dict) else None
+        return payload if isinstance(payload, dict) else None
+
+    def add_dialog_id_table_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        raw_data = self.read_decoded_config_bytes(entry)
+        decoded = self.decode_dialog_id_table_payload(entry, raw_data)
+        source_id = safe_key(entry.get("source")) or "webui"
+        config_node = self.add_node(
+            "dialog_id_table_config",
+            "DialogIdTable",
+            name="DialogIdTable",
+            source="webui/game_data",
+            path=safe_key(entry.get("p")),
+            data=compact_payload(
+                {
+                    **self.decoded_config_entry_data(entry),
+                    "dialogBriefInfoCount": (decoded or {}).get("dialogBriefInfoCount"),
+                    "dialogBriefInfoParsedCount": (decoded or {}).get("dialogBriefInfoParsedCount"),
+                    "registrySummary": (decoded or {}).get("registrySummary"),
+                    "exactLength": (decoded or {}).get("exactLength"),
+                },
+                depth=3,
+            ),
+        )
+        self.add_edge(file_node, config_node, "defines_dialog_id_table", source="webui/game_data", evidence=safe_key(entry.get("dp")), data={"source": source_id})
+        self.add_alias("DialogIdTable", config_node, kind="decoded_config_family", source="webui/game_data")
+        if source_id != "StreamingAssets":
+            return
+        registry = read_json(DIALOG_ID_TABLE_INDEX_PATH, {})
+        if not isinstance(registry, dict):
+            return
+        self.add_file(slash(DIALOG_ID_TABLE_INDEX_PATH), kind="dialog_registry", source="DialogIdTable", data={"sceneCount": len(registry)})
+        for scene_key_raw, scene in registry.items():
+            scene_key = safe_key(scene_key_raw)
+            if not scene_key or not isinstance(scene, dict):
+                continue
+            scene_node = self.add_node(
+                "dialog_registry_scene",
+                scene_key,
+                name=scene_key,
+                source="DialogIdTable",
+                data=compact_payload(
+                    {
+                        "registered": scene.get("registered"),
+                        "hasRootKey": scene.get("hasRootKey"),
+                        "trunkCount": scene.get("trunkCount"),
+                        "trunkIndices": scene.get("trunkIndices"),
+                        "lineCount": scene.get("lineCount"),
+                        "optionGroupCount": scene.get("optionGroupCount"),
+                        "optionCount": scene.get("optionCount"),
+                    },
+                    depth=3,
+                ),
+            )
+            self.add_alias(scene_key, scene_node, kind="dialog_registry_scene_key", source="DialogIdTable")
+            self.add_edge(config_node, scene_node, "dialog_id_table_registers_scene", source="DialogIdTable", evidence="dialog_id_table_index.json")
+            story_node = self.add_node("story", scene_key, name=scene_key, source="DialogIdTable")
+            self.add_alias(scene_key, story_node, kind="story_key", source="DialogIdTable")
+            self.add_edge(scene_node, story_node, "dialog_registry_targets_story", source="DialogIdTable", evidence="sceneKey", data={"hasRootKey": scene.get("hasRootKey")})
+
+            lines_by_trunk = scene.get("linesByTrunk") if isinstance(scene.get("linesByTrunk"), dict) else {}
+            for trunk_key, line_ids in lines_by_trunk.items():
+                if not isinstance(line_ids, list):
+                    continue
+                for index, line_id_raw in enumerate(line_ids):
+                    line_id = safe_key(line_id_raw)
+                    if not line_id:
+                        continue
+                    line_node = self.add_node("line", line_id, name=line_id, source="DialogIdTable")
+                    self.add_edge(scene_node, line_node, "dialog_registry_has_line", source="DialogIdTable", evidence=safe_key(trunk_key), data={"trunk": trunk_key, "index": index})
+                    self.add_edge(line_node, story_node, "dialog_registry_line_for_story", source="DialogIdTable", evidence=safe_key(trunk_key), data={"trunk": trunk_key, "index": index})
+
+            options_by_group = scene.get("optionsByGroup") if isinstance(scene.get("optionsByGroup"), dict) else {}
+            for group_key, option_ids in options_by_group.items():
+                if not isinstance(option_ids, list):
+                    continue
+                for index, option_id_raw in enumerate(option_ids):
+                    option_id = safe_key(option_id_raw)
+                    if not option_id:
+                        continue
+                    option_node = self.add_node("option", option_id, name=option_id, source="DialogIdTable")
+                    self.add_edge(scene_node, option_node, "dialog_registry_has_option", source="DialogIdTable", evidence=safe_key(group_key), data={"group": group_key, "index": index})
+                    self.add_edge(option_node, story_node, "dialog_registry_option_for_story", source="DialogIdTable", evidence=safe_key(group_key), data={"group": group_key, "index": index})
+
+    def add_enemy_data_asset_node(self, asset_path: Any, *, source: str = "") -> str:
+        asset_key = safe_key(asset_path)
+        if not asset_key:
+            return ""
+        node = self.add_node("enemy_data_asset", asset_key, name=Path(asset_key).name, source=source, path=asset_key)
+        self.add_alias(asset_key, node, kind="enemy_data_asset_path", source=source)
+        self.add_alias(Path(asset_key).stem, node, kind="enemy_data_asset_stem", source=source)
+        return node
+
+    def add_ai_config_enemy_template_summary_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        raw_data = self.read_decoded_config_bytes(entry)
+        if not raw_data:
+            return
+        try:
+            payload = json.loads(raw_data.decode("utf-8-sig"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, dict):
+            return
+        mapping = payload.get("preloadEnemyTemplateId2Path")
+        if not isinstance(mapping, dict):
+            return
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        self.update_node_details(file_node, data=compact_payload({**self.decoded_config_entry_data(entry), "enemyTemplateCount": len(mapping)}, depth=3))
+        for index, (template_id_raw, asset_path_raw) in enumerate(sorted(mapping.items())):
+            template_id = safe_key(template_id_raw)
+            asset_path = safe_key(asset_path_raw)
+            if not template_id or not asset_path:
+                continue
+            template_node = self.add_node("enemy_template", template_id, name=template_id, source=source)
+            self.add_alias(template_id, template_node, kind="enemy_template_id", source=source)
+            asset_node = self.add_enemy_data_asset_node(asset_path, source=source)
+            self.add_edge(file_node, template_node, "ai_config_preloads_enemy_template", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id, "index": index})
+            if asset_node:
+                self.add_edge(template_node, asset_node, "enemy_template_preloads_data_asset", source=source, evidence="preloadEnemyTemplateId2Path", data={"source": source_id})
+
+    def map_config_condition_type_name(self, condition_type: Any) -> str:
+        type_key = safe_key(condition_type)
+        if not type_key:
+            return ""
+        return type_key.split(",", 1)[0].rsplit(".", 1)[-1] or type_key
+
+    def add_map_config_condition_type_node(self, condition_type: Any, *, source: str = "") -> str:
+        type_key = safe_key(condition_type)
+        type_name = self.map_config_condition_type_name(type_key)
+        if not type_name:
+            return ""
+        node = self.add_node("map_config_condition_type", type_name, name=type_name, source=source, data={"type": type_key})
+        self.add_alias(type_name, node, kind="map_config_condition_type", source=source)
+        self.add_alias(type_key, node, kind="map_config_condition_full_type", source=source)
+        return node
+
+    def add_map_variable_node(self, map_id: Any, var_name: Any = None, var_num: Any = None, *, source: str = "") -> str:
+        map_key = safe_key(map_id) or "unknown"
+        name_key = safe_key(var_name)
+        num_key = safe_key(var_num)
+        value_key = name_key or num_key
+        if not value_key:
+            return ""
+        node_key = f"{map_key}:{value_key}"
+        node = self.add_node("map_variable", node_key, name=value_key, source=source, data={"mapIdStr": map_key, "name": name_key, "numId": num_key})
+        self.add_alias(node_key, node, kind="map_variable_key", source=source)
+        if name_key:
+            self.add_alias(name_key, node, kind="map_variable_name", source=source)
+            self.add_alias(f"{map_key}:{name_key}", node, kind="map_variable_name", source=source)
+        if num_key:
+            self.add_alias(f"{map_key}:{num_key}", node, kind="map_variable_num_id", source=source)
+        return node
+
+    def add_map_config_condition_refs(self, owner_node: str, condition: Any, *, source: str, evidence: str, map_id: str) -> None:
+        if not isinstance(condition, dict):
+            return
+        condition_type = safe_key(condition.get("$type"))
+        type_node = self.add_map_config_condition_type_node(condition_type, source=source)
+        condition_data = compact_payload({
+            "conditionOperator": condition.get("conditionOperator"),
+            "reverse": condition.get("reverse"),
+            "compareOperator": condition.get("compareOperator"),
+            "compareTarget": condition.get("compareTarget"),
+        }, depth=2)
+        if type_node:
+            self.add_edge(owner_node, type_node, "map_scene_condition_type", source=source, evidence=evidence, data=condition_data)
+        quest_id = safe_key(condition.get("questId"))
+        if quest_id:
+            quest_node = self.add_quest_task_node(quest_id, source=source)
+            self.add_edge(owner_node, quest_node, "map_scene_condition_quest", source=source, evidence=evidence, data=condition_data)
+            mission_prefix = self.quest_task_mission_prefix(quest_id)
+            mission_node = self.add_mission_ref_node(mission_prefix, source=source)
+            if mission_node:
+                self.add_edge(quest_node, mission_node, "quest_task_in_mission", source=source, evidence="map_config_quest_prefix")
+        mission_id = safe_key(condition.get("missionId"))
+        if mission_id:
+            mission_node = self.add_mission_ref_node(mission_id, source=source)
+            if mission_node:
+                self.add_edge(owner_node, mission_node, "map_scene_condition_mission", source=source, evidence=evidence, data=condition_data)
+        map_var_name = safe_key(condition.get("mapVarName"))
+        if map_var_name:
+            var_map_id = safe_key(condition.get("belongMapId")) or map_id
+            var_node = self.add_map_variable_node(var_map_id, map_var_name, source=source)
+            if var_node:
+                self.add_edge(owner_node, var_node, "map_scene_condition_map_variable", source=source, evidence=evidence, data=condition_data)
+        for sub_index, sub_condition in enumerate(condition.get("subConditions") or []):
+            self.add_map_config_condition_refs(owner_node, sub_condition, source=source, evidence=f"{evidence}.subConditions[{sub_index}]", map_id=map_id)
+
+    def add_map_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        raw_data = self.read_decoded_config_bytes(entry)
+        if not raw_data:
+            return
+        try:
+            payload = json.loads(raw_data.decode("utf-8-sig"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, dict):
+            return
+        map_id = safe_key(payload.get("mapIdStr")) or Path(safe_key(entry.get("dp"))).stem
+        if not map_id:
+            return
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        level_counts = Counter(safe_key(value) for value in (payload.get("levelIds") or []) if safe_key(value))
+        level_str_ids = sorted({safe_key(value) for value in (payload.get("levelStrIds") or []) if safe_key(value)})
+        scene_states = payload.get("sceneStates") if isinstance(payload.get("sceneStates"), dict) else {}
+        scene_conditions = payload.get("sceneStateConditions") if isinstance(payload.get("sceneStateConditions"), list) else []
+        map_vars_by_num = payload.get("mapVarNumId2Name") if isinstance(payload.get("mapVarNumId2Name"), dict) else {}
+        map_vars_by_name = payload.get("mapVarName2NumId") if isinstance(payload.get("mapVarName2NumId"), dict) else {}
+        config_data = compact_payload({
+            "mapIdStr": map_id,
+            "mapId": payload.get("mapId"),
+            "isSeamless": payload.get("isSeamless"),
+            "sideGridNum": payload.get("sideGridNum"),
+            "facSystemSkip": payload.get("facSystemSkip"),
+            "domainName": payload.get("domainName"),
+            "streamingMapConfigPath": payload.get("streamingMapConfigPath"),
+            "levelIdUniqueCount": len(level_counts),
+            "levelIdGridCellCount": sum(level_counts.values()),
+            "levelStrIdCount": len(level_str_ids),
+            "sceneStateCount": len(scene_states),
+            "sceneStateConditionCount": len(scene_conditions),
+            "mapVarCount": max(len(map_vars_by_num), len(map_vars_by_name)),
+            "levelIdCounts": dict(sorted(level_counts.items())),
+            "levelStrIds": level_str_ids,
+            "sceneStates": scene_states,
+        }, depth=4)
+        config_node = self.add_node("map_config", map_id, name=map_id, source=source, data=config_data)
+        self.add_alias(map_id, config_node, kind="map_config_id", source=source)
+        self.add_alias(payload.get("mapId"), config_node, kind="map_config_numeric_id", source=source)
+        self.add_edge(file_node, config_node, "defines_map_config", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id})
+        map_node = self.add_map_node(map_id, source=source, data={"mapId": payload.get("mapId")})
+        if map_node:
+            self.add_edge(config_node, map_node, "map_config_defines_map", source=source, evidence="mapIdStr")
+        domain_name = safe_key(payload.get("domainName"))
+        if domain_name:
+            domain_node = self.add_node("map_domain", domain_name, name=domain_name, source=source)
+            self.add_alias(domain_name, domain_node, kind="map_domain_name", source=source)
+            self.add_edge(config_node, domain_node, "map_config_in_domain", source=source, evidence="domainName")
+        streaming_path = safe_key(payload.get("streamingMapConfigPath"))
+        if streaming_path:
+            streaming_node = self.add_node("map_streaming_asset", streaming_path, name=Path(streaming_path).name, source=source, path=streaming_path)
+            self.add_alias(streaming_path, streaming_node, kind="map_streaming_asset_path", source=source)
+            self.add_edge(config_node, streaming_node, "map_config_uses_streaming_asset", source=source, evidence="streamingMapConfigPath")
+        for level_id, count in sorted(level_counts.items()):
+            level_node = self.add_level_node(level_id, source=source)
+            self.add_edge(config_node, level_node, "map_config_has_level_id", source=source, evidence="levelIds", data={"gridCellCount": count})
+            if map_node:
+                self.add_edge(level_node, map_node, "level_belongs_to_map", source=source, evidence="MapConfig.levelIds")
+        for level_id in level_str_ids:
+            level_node = self.add_level_node(level_id, source=source)
+            self.add_edge(config_node, level_node, "map_config_has_level_str_id", source=source, evidence="levelStrIds")
+            if map_node:
+                self.add_edge(level_node, map_node, "level_belongs_to_map", source=source, evidence="MapConfig.levelStrIds")
+        for num_id, var_name in sorted(map_vars_by_num.items(), key=lambda item: safe_key(item[0])):
+            var_node = self.add_map_variable_node(map_id, var_name, num_id, source=source)
+            if var_node:
+                self.add_edge(config_node, var_node, "map_config_defines_map_variable", source=source, evidence="mapVarNumId2Name")
+        for var_name, num_id in sorted(map_vars_by_name.items(), key=lambda item: safe_key(item[0])):
+            var_node = self.add_map_variable_node(map_id, var_name, num_id, source=source)
+            if var_node:
+                self.add_edge(config_node, var_node, "map_config_defines_map_variable", source=source, evidence="mapVarName2NumId")
+        state_nodes: dict[str, str] = {}
+        for state_name_raw, state_id in sorted(scene_states.items(), key=lambda item: safe_key(item[0])):
+            state_name = safe_key(state_name_raw)
+            if not state_name:
+                continue
+            state_node = self.add_node("map_scene_state", f"{map_id}:{state_name}", name=state_name, source=source, data={"mapIdStr": map_id, "stateName": state_name, "stateId": state_id})
+            self.add_alias(f"{map_id}:{state_name}", state_node, kind="map_scene_state_key", source=source)
+            self.add_alias(state_name, state_node, kind="map_scene_state_name", source=source)
+            self.add_edge(config_node, state_node, "map_config_has_scene_state", source=source, evidence="sceneStates", data={"stateId": state_id})
+            state_nodes[state_name] = state_node
+        for condition_index, condition_entry in enumerate(scene_conditions):
+            if not isinstance(condition_entry, dict):
+                continue
+            state_name = safe_key(condition_entry.get("stateName")) or f"condition_{condition_index}"
+            state_node = state_nodes.get(state_name)
+            if not state_node:
+                state_node = self.add_node("map_scene_state", f"{map_id}:{state_name}", name=state_name, source=source, data={"mapIdStr": map_id, "stateName": state_name})
+                self.add_alias(f"{map_id}:{state_name}", state_node, kind="map_scene_state_key", source=source)
+                self.add_alias(state_name, state_node, kind="map_scene_state_name", source=source)
+                self.add_edge(config_node, state_node, "map_config_has_scene_state", source=source, evidence="sceneStateConditions")
+                state_nodes[state_name] = state_node
+            self.add_map_config_condition_refs(state_node, condition_entry.get("condition"), source=source, evidence=f"sceneStateConditions[{condition_index}]", map_id=map_id)
+
+    def read_decoded_config_json_payload(self, entry: dict[str, Any]) -> Any:
+        raw_data = self.read_decoded_config_bytes(entry)
+        if not raw_data:
+            return None
+        try:
+            return json.loads(raw_data.decode("utf-8-sig"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None
+
+    def gameplay_config_map_num_to_str(self, entry: dict[str, Any]) -> dict[str, str]:
+        map_id_path = self.decoded_config_raw_path(entry).with_name("MapIdTable.json")
+        payload = read_json(map_id_path, {})
+        if not isinstance(payload, dict):
+            return {}
+        mapping = payload.get("mapIdNumToStr")
+        if not isinstance(mapping, dict):
+            return {}
+        return {safe_key(num): safe_key(map_id) for num, map_id in mapping.items() if safe_key(num) and safe_key(map_id)}
+
+    def add_gameplay_map_id_table_edges(self, file_node: str, entry: dict[str, Any], payload: dict[str, Any], *, source: str, source_id: str) -> None:
+        map_ids = {safe_key(value) for value in payload.get("mapIds") or [] if safe_key(value)}
+        str_to_num = payload.get("mapIdStrToNum") if isinstance(payload.get("mapIdStrToNum"), dict) else {}
+        num_to_str = payload.get("mapIdNumToStr") if isinstance(payload.get("mapIdNumToStr"), dict) else {}
+        for map_id in str_to_num:
+            map_key = safe_key(map_id)
+            if map_key:
+                map_ids.add(map_key)
+        for map_id in num_to_str.values():
+            map_key = safe_key(map_id)
+            if map_key:
+                map_ids.add(map_key)
+        self.update_node_details(
+            file_node,
+            data=compact_payload({**self.decoded_config_entry_data(entry), "mapIdCount": len(map_ids), "numericIdCount": max(len(str_to_num), len(num_to_str))}, depth=3),
+        )
+        numeric_by_map = {safe_key(map_id): value for map_id, value in str_to_num.items() if safe_key(map_id)}
+        for num_id, map_id in num_to_str.items():
+            map_key = safe_key(map_id)
+            if map_key and map_key not in numeric_by_map:
+                numeric_by_map[map_key] = num_id
+        for map_id in sorted(map_ids):
+            map_node = self.add_map_node(map_id, source=source)
+            num_id = numeric_by_map.get(map_id)
+            num_key = safe_key(num_id)
+            if num_key:
+                self.add_alias(num_key, map_node, kind="map_numeric_id", source=source)
+            self.add_edge(
+                file_node,
+                map_node,
+                "gameplay_config_map_id_table_defines_map",
+                source=source,
+                evidence=safe_key(entry.get("dp")),
+                data={"source": source_id, "mapIdNum": num_id},
+            )
+
+    def add_gameplay_level_basic_info_edges(self, file_node: str, entry: dict[str, Any], payload: dict[str, Any], *, source: str, source_id: str) -> None:
+        rows = [(safe_key(key), value) for key, value in payload.items() if safe_key(key) and isinstance(value, dict)]
+        self.update_node_details(file_node, data=compact_payload({**self.decoded_config_entry_data(entry), "levelCount": len(rows)}, depth=3))
+        for row_key, row in sorted(rows, key=lambda item: item[0]):
+            level_id = safe_key(row.get("id") or row_key)
+            if not level_id:
+                continue
+            info_data = compact_payload(
+                {
+                    "id": level_id,
+                    "idNum": row.get("idNum"),
+                    "levelType": row.get("levelType"),
+                    "configPath": row.get("configPath"),
+                    "mapUI": row.get("mapUI"),
+                    "regionUI": row.get("regionUI"),
+                    "facArea": row.get("facArea"),
+                    "scope": row.get("scope"),
+                    "domainName": row.get("domainName"),
+                    "source": source_id,
+                },
+                depth=3,
+            )
+            info_node = self.add_node("level_basic_info", level_id, name=level_id, source=source, data=info_data)
+            level_node = self.add_level_node(level_id, source=source)
+            self.add_alias(level_id, info_node, kind="level_basic_info_id", source=source)
+            id_num = safe_key(row.get("idNum"))
+            if id_num:
+                self.add_alias(id_num, info_node, kind="level_basic_info_numeric_id", source=source)
+                self.add_alias(id_num, level_node, kind="level_numeric_id", source=source)
+            self.add_edge(file_node, info_node, "defines_level_basic_info", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id})
+            self.add_edge(info_node, level_node, "level_basic_info_for_level", source=source, evidence="id")
+            self.add_level_map_edge(level_node, level_id, source=source, evidence="LevelBasicInfoTable.id")
+            config_path = safe_key(row.get("configPath"))
+            if config_path:
+                config_node = self.add_node("level_config", level_id, name=level_id, source=source, path=config_path)
+                self.add_alias(config_path, config_node, kind="level_config_path", source=source)
+                self.add_edge(info_node, config_node, "level_basic_info_uses_level_config", source=source, evidence="configPath")
+            domain_name = safe_key(row.get("domainName"))
+            if domain_name:
+                domain_node = self.add_node("map_domain", domain_name, name=domain_name, source=source)
+                self.add_alias(domain_name, domain_node, kind="map_domain_name", source=source)
+                self.add_edge(info_node, domain_node, "level_basic_info_in_domain", source=source, evidence="domainName")
+            map_ui = safe_key(row.get("mapUI"))
+            if map_ui:
+                ui_node = self.add_node("ui_level_map_config", map_ui, name=map_ui, source=source)
+                self.add_alias(map_ui, ui_node, kind="ui_level_map_config_id", source=source)
+                self.add_edge(info_node, ui_node, "level_basic_info_has_map_ui", source=source, evidence="mapUI")
+            region_ui = safe_key(row.get("regionUI"))
+            if region_ui:
+                region_node = self.add_node("ui_map_region_info", region_ui, name=region_ui, source=source)
+                self.add_alias(region_ui, region_node, kind="ui_map_region_info_id", source=source)
+                self.add_edge(info_node, region_node, "level_basic_info_has_region_ui", source=source, evidence="regionUI")
+            fac_area = safe_key(row.get("facArea"))
+            if fac_area:
+                area_node = self.add_node("factory_area", fac_area, name=fac_area, source=source)
+                self.add_alias(fac_area, area_node, kind="factory_area_id", source=source)
+                self.add_edge(info_node, area_node, "level_basic_info_has_factory_area", source=source, evidence="facArea")
+
+    def add_gameplay_level_short_id_edges(self, file_node: str, entry: dict[str, Any], payload: dict[str, Any], *, source: str, source_id: str) -> None:
+        rows = [(safe_key(key), value) for key, value in payload.items() if safe_key(key) and isinstance(value, dict)]
+        short_count = sum(len(row.get("ids") or {}) for _, row in rows if isinstance(row.get("ids"), dict))
+        self.update_node_details(file_node, data=compact_payload({**self.decoded_config_entry_data(entry), "sceneCount": len(rows), "shortIdCount": short_count}, depth=3))
+        for scene_key, row in sorted(rows, key=lambda item: item[0]):
+            scene_name = safe_key(row.get("sceneName") or scene_key)
+            if not scene_name:
+                continue
+            scene_node = self.add_node("level_short_id_scene", scene_name, name=scene_name, source=source, data={"sceneName": scene_name, "shortIdCount": len(row.get("ids") or {}), "source": source_id})
+            self.add_alias(scene_name, scene_node, kind="level_short_id_scene", source=source)
+            self.add_edge(file_node, scene_node, "defines_level_short_id_scene", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id})
+            level_node = self.add_level_node(scene_name, source=source)
+            self.add_edge(scene_node, level_node, "level_short_id_scene_for_level", source=source, evidence="sceneName")
+            self.add_level_map_edge(level_node, scene_name, source=source, evidence="LevelShortIdTable.sceneName")
+            reverse_ids = row.get("reverseIds") if isinstance(row.get("reverseIds"), dict) else {}
+            ids = row.get("ids") if isinstance(row.get("ids"), dict) else {}
+            for short_raw, numeric_raw in sorted(ids.items(), key=lambda item: safe_key(item[0])):
+                short_id = safe_key(short_raw)
+                numeric_id = safe_key(numeric_raw)
+                if not short_id:
+                    continue
+                short_node_key = f"{scene_name}:{short_id}"
+                short_node = self.add_node(
+                    "level_short_id",
+                    short_node_key,
+                    name=short_id,
+                    source=source,
+                    data={"sceneName": scene_name, "shortId": short_id, "numericId": numeric_id, "reverseShortId": reverse_ids.get(str(numeric_raw)) or reverse_ids.get(numeric_id)},
+                )
+                self.add_alias(short_node_key, short_node, kind="level_short_id_key", source=source)
+                self.add_alias(f"{scene_name}:{numeric_id}", short_node, kind="level_short_numeric_id_key", source=source)
+                self.add_edge(scene_node, short_node, "level_short_id_scene_has_short_id", source=source, evidence="ids", data={"source": source_id, "numericId": numeric_id})
+
+    def add_gameplay_map_brief_info_edges(self, file_node: str, entry: dict[str, Any], payload: dict[str, Any], *, source: str, source_id: str) -> None:
+        map_table = payload.get("mapTable") if isinstance(payload.get("mapTable"), dict) else {}
+        num_to_str = self.gameplay_config_map_num_to_str(entry)
+        sublevel_count = 0
+        enemy_ref_count = 0
+        for row in map_table.values():
+            if not isinstance(row, dict):
+                continue
+            sub_table = row.get("subLevelTable") if isinstance(row.get("subLevelTable"), dict) else {}
+            sublevel_count += len(sub_table)
+            for sub_row in sub_table.values():
+                if isinstance(sub_row, dict):
+                    enemy_ref_count += len(sub_row.get("enemyIdSet") or [])
+        self.update_node_details(
+            file_node,
+            data=compact_payload({**self.decoded_config_entry_data(entry), "mapRowCount": len(map_table), "subLevelCount": sublevel_count, "enemyRefCount": enemy_ref_count}, depth=3),
+        )
+        for map_num_raw, row in sorted(map_table.items(), key=lambda item: safe_key(item[0])):
+            if not isinstance(row, dict):
+                continue
+            map_num = safe_key(map_num_raw)
+            map_id = num_to_str.get(map_num, "")
+            map_key = map_id or f"mapnum_{map_num}"
+            brief_node = self.add_node(
+                "map_brief_info",
+                map_key,
+                name=map_id or map_num,
+                source=source,
+                data={"mapId": map_id, "mapIdNum": map_num, "subLevelCount": len(row.get("subLevelTable") or {}), "source": source_id},
+            )
+            self.add_alias(map_key, brief_node, kind="map_brief_info_id", source=source)
+            self.add_alias(map_num, brief_node, kind="map_brief_numeric_map_id", source=source)
+            self.add_edge(file_node, brief_node, "defines_map_brief_info", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id})
+            map_node = self.add_map_node(map_id, source=source) if map_id else ""
+            if map_node:
+                self.add_alias(map_num, map_node, kind="map_numeric_id", source=source)
+                self.add_edge(brief_node, map_node, "map_brief_info_for_map", source=source, evidence="mapIdNumToStr", data={"mapIdNum": map_num})
+            sub_table = row.get("subLevelTable") if isinstance(row.get("subLevelTable"), dict) else {}
+            for sub_id_raw, sub_row in sorted(sub_table.items(), key=lambda item: safe_key(item[0])):
+                if not isinstance(sub_row, dict):
+                    continue
+                sub_id = safe_key(sub_id_raw)
+                if not sub_id:
+                    continue
+                parent_id = safe_key(sub_row.get("subDataParentId"))
+                sub_node_key = f"{map_key}:{sub_id}"
+                enemies = [safe_key(enemy_id) for enemy_id in (sub_row.get("enemyIdSet") or []) if safe_key(enemy_id)]
+                sub_node = self.add_node(
+                    "map_sublevel_brief",
+                    sub_node_key,
+                    name=sub_id,
+                    source=source,
+                    data={"mapId": map_id, "mapIdNum": map_num, "subLevelId": sub_id, "subDataParentId": parent_id, "enemyCount": len(enemies), "source": source_id},
+                )
+                self.add_alias(sub_node_key, sub_node, kind="map_sublevel_brief_id", source=source)
+                self.add_alias(f"{map_key}:{parent_id}", sub_node, kind="map_sublevel_parent_id", source=source)
+                self.add_edge(brief_node, sub_node, "map_brief_info_has_sublevel", source=source, evidence="subLevelTable", data={"subDataParentId": parent_id})
+                if map_node:
+                    self.add_edge(sub_node, map_node, "map_sublevel_brief_in_map", source=source, evidence="mapIdNum")
+                for enemy_index, enemy_id in enumerate(enemies):
+                    enemy_node = self.add_node("enemy", enemy_id, name=enemy_id, source=source)
+                    self.add_alias(enemy_id, enemy_node, kind="enemy_id", source=source)
+                    self.add_edge(sub_node, enemy_node, "map_sublevel_brief_has_enemy", source=source, evidence=f"enemyIdSet[{enemy_index}]", data={"mapId": map_id, "mapIdNum": map_num, "subLevelId": sub_id})
+
+    def iter_gameplay_config_grouped_rows(self, payload: Any) -> Iterable[tuple[str, int, dict[str, Any]]]:
+        if not isinstance(payload, dict):
+            return
+        for top_key_raw, values in sorted(payload.items(), key=lambda item: safe_key(item[0])):
+            top_key = safe_key(top_key_raw)
+            if not top_key or not isinstance(values, list):
+                continue
+            for index, row in enumerate(values):
+                if isinstance(row, dict):
+                    yield top_key, index, row
+
+    def runtime_type_leaf(self, type_name: Any) -> str:
+        type_key = safe_key(type_name)
+        if not type_key:
+            return ""
+        return type_key.split(",", 1)[0].rsplit(".", 1)[-1] or type_key
+
+    def add_map_region_node(self, region_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        region_key = safe_key(region_id)
+        if not region_key:
+            return ""
+        region_name = safe_key(name) or region_key
+        node = self.add_node("map_region", region_key, name=region_name, source=source, data=data)
+        self.add_alias(region_key, node, kind="map_region_id", source=source)
+        if region_name != region_key:
+            self.add_alias(region_name, node, kind="map_region_name", source=source)
+        return node
+
+    def add_map_mark_detail_type_node(self, type_name: Any, *, source: str = "") -> str:
+        type_key = safe_key(type_name)
+        type_leaf = self.runtime_type_leaf(type_key)
+        if not type_leaf:
+            return ""
+        node = self.add_node("map_mark_detail_type", type_leaf, name=type_leaf, source=source, data={"type": type_key})
+        self.add_alias(type_leaf, node, kind="map_mark_detail_type", source=source)
+        self.add_alias(type_key, node, kind="map_mark_detail_full_type", source=source)
+        return node
+
+    def add_map_mark_visibility_type_node(self, type_name: Any, *, source: str = "") -> str:
+        type_key = safe_key(type_name)
+        type_leaf = self.runtime_type_leaf(type_key)
+        if not type_leaf:
+            return ""
+        node = self.add_node("map_mark_visibility_type", type_leaf, name=type_leaf, source=source, data={"type": type_key})
+        self.add_alias(type_leaf, node, kind="map_mark_visibility_type", source=source)
+        self.add_alias(type_key, node, kind="map_mark_visibility_full_type", source=source)
+        return node
+
+    def add_map_mark_logic_ref_node(self, logic_id: Any, *, source: str = "") -> str:
+        logic_key = safe_key(logic_id)
+        if not logic_key:
+            return ""
+        node = self.add_node("map_mark_logic_ref", logic_key, name=logic_key, source=source)
+        self.add_alias(logic_key, node, kind="map_mark_logic_ref_id", source=source)
+        return node
+
+    def add_system_interactive_node(self, inst_id: Any, *, source: str = "") -> str:
+        inst_key = safe_key(inst_id)
+        if not inst_key:
+            return ""
+        node = self.add_node("system_interactive", inst_key, name=inst_key, source=source)
+        self.add_alias(inst_key, node, kind="system_interactive_id", source=source)
+        return node
+
+    def add_minigame_node(self, minigame_id: Any, *, source: str = "") -> str:
+        minigame_key = safe_key(minigame_id)
+        if not minigame_key:
+            return ""
+        node = self.add_node("minigame", minigame_key, name=minigame_key, source=source)
+        self.add_alias(minigame_key, node, kind="minigame_id", source=source)
+        return node
+
+    def add_sewage_treat_plant_node(self, plant_id: Any, *, source: str = "") -> str:
+        plant_key = safe_key(plant_id)
+        if not plant_key:
+            return ""
+        node = self.add_node("sewage_treat_plant", plant_key, name=plant_key, source=source)
+        self.add_alias(plant_key, node, kind="sewage_treat_plant_id", source=source)
+        return node
+
+    def gameplay_config_map_regions_by_id(self, entry: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        region_path = self.decoded_config_raw_path(entry).with_name("MapRegionTable.json")
+        payload = read_json(region_path, {})
+        regions: dict[str, dict[str, Any]] = {}
+        for top_key, index, row in self.iter_gameplay_config_grouped_rows(payload):
+            region_id = safe_key(row.get("mapRegionId"))
+            if not region_id:
+                continue
+            region = dict(row)
+            region["_topKey"] = top_key
+            region["_index"] = index
+            regions[region_id] = region
+        return regions
+
+    def add_gameplay_map_region_table_edges(self, file_node: str, entry: dict[str, Any], payload: dict[str, Any], *, source: str, source_id: str) -> None:
+        rows = list(self.iter_gameplay_config_grouped_rows(payload))
+        region_ids = {safe_key(row.get("mapRegionId")) for _, _, row in rows if safe_key(row.get("mapRegionId"))}
+        shape_count = sum(len(row.get("shapeList") or []) for _, _, row in rows)
+        self.update_node_details(file_node, data=compact_payload({**self.decoded_config_entry_data(entry), "topKeyCount": len(payload), "regionCount": len(rows), "shapeCount": shape_count}, depth=3))
+        region_entries: list[tuple[str, str, int, dict[str, Any], str]] = []
+        for top_key, index, row in rows:
+            region_id = safe_key(row.get("mapRegionId"))
+            if not region_id:
+                continue
+            region_name = safe_key(row.get("mapRegionIdName")) or region_id
+            level_id = safe_key(row.get("levelId"))
+            tier_refs = [safe_key(value) for value in (row.get("tierMapRegionIds") or []) if safe_key(value)]
+            region_data = compact_payload({
+                "mapRegionId": region_id,
+                "mapRegionIdName": region_name,
+                "levelId": level_id,
+                "topKey": top_key,
+                "isMist": row.get("isMist"),
+                "mapRegionType": row.get("mapRegionType"),
+                "hideByMistId": row.get("hideByMistId"),
+                "tierIndex": row.get("tierIndex"),
+                "tierMapRegionIds": tier_refs,
+                "groupId": row.get("groupId"),
+                "priority": row.get("priority"),
+                "shapeCount": len(row.get("shapeList") or []),
+                "source": source_id,
+            }, depth=3)
+            region_node = self.add_map_region_node(region_id, name=region_name, source=source, data=region_data)
+            self.update_node_details(region_node, name=region_name, source=source, data=region_data)
+            self.add_alias(f"{top_key}:{region_id}", region_node, kind="map_region_top_key", source=source)
+            self.add_edge(file_node, region_node, "defines_map_region", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id, "topKey": top_key, "index": index})
+            if level_id:
+                level_node = self.add_level_node(level_id, source=source)
+                self.add_edge(level_node, region_node, "level_has_map_region", source=source, evidence="levelId", data={"source": source_id})
+                self.add_level_map_edge(level_node, level_id, source=source, evidence="MapRegionTable.levelId")
+            region_entries.append((region_id, region_node, index, row, top_key))
+        for region_id, region_node, _index, row, _top_key in region_entries:
+            for tier_index, tier_id in enumerate(row.get("tierMapRegionIds") or []):
+                tier_key = safe_key(tier_id)
+                if not tier_key:
+                    continue
+                tier_node = self.add_map_region_node(tier_key, source=source)
+                self.add_edge(region_node, tier_node, "map_region_has_tier_region", source=source, evidence=f"tierMapRegionIds[{tier_index}]", data={"source": source_id})
+            hide_id = safe_key(row.get("hideByMistId"))
+            if hide_id and hide_id in region_ids:
+                hide_node = self.add_map_region_node(hide_id, source=source)
+                self.add_edge(region_node, hide_node, "map_region_hidden_by_mist_region", source=source, evidence="hideByMistId", data={"source": source_id})
+            group_id = safe_key(row.get("groupId"))
+            if group_id and group_id in region_ids:
+                group_node = self.add_map_region_node(group_id, source=source)
+                self.add_edge(region_node, group_node, "map_region_group_region", source=source, evidence="groupId", data={"source": source_id})
+
+    def add_level_map_mark_reference_edges(self, mark_node: str, detail: Any, visibility: Any, *, source: str) -> None:
+        detail_map = detail if isinstance(detail, dict) else {}
+        visibility_map = visibility if isinstance(visibility, dict) else {}
+        detail_type_node = self.add_map_mark_detail_type_node(detail_map.get("$type"), source=source)
+        if detail_type_node:
+            self.add_edge(mark_node, detail_type_node, "map_mark_has_detail_type", source=source, evidence="detailedData.$type")
+        visibility_type_node = self.add_map_mark_visibility_type_node(visibility_map.get("$type"), source=source)
+        if visibility_type_node:
+            self.add_edge(mark_node, visibility_type_node, "map_mark_has_visibility_type", source=source, evidence="visibilityData.$type")
+        for field, payload in (("displayItemId", detail_map), ("pieceItemId", visibility_map)):
+            item_node = self.add_item_node(payload.get(field), source=source)
+            if item_node:
+                self.add_edge(mark_node, item_node, "map_mark_displays_item", source=source, evidence=f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}")
+        for field, payload in (("rewardId", detail_map), ("rewardId", visibility_map)):
+            reward_node = self.add_reward_node(payload.get(field), source=source)
+            if reward_node:
+                self.add_edge(mark_node, reward_node, "map_mark_rewards", source=source, evidence=f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}")
+        teleport_node = self.add_node("teleport_point", safe_key(detail_map.get("teleportValidationId")), name=safe_key(detail_map.get("teleportValidationId")), source=source) if safe_key(detail_map.get("teleportValidationId")) else ""
+        if teleport_node:
+            self.add_alias(detail_map.get("teleportValidationId"), teleport_node, kind="teleport_point_id", source=source)
+            self.add_edge(mark_node, teleport_node, "map_mark_teleport_validation", source=source, evidence="detailedData.teleportValidationId")
+        for field, payload in (("systemInstId", detail_map), ("systemInsId", visibility_map)):
+            system_node = self.add_system_interactive_node(payload.get(field), source=source)
+            if system_node:
+                self.add_edge(mark_node, system_node, "map_mark_system_instance", source=source, evidence=f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}")
+        for field, payload in (("logicIdGlobal", detail_map), ("entityLogicIdGlobal", visibility_map), ("intLogicIdGlobal", visibility_map), ("logicId", visibility_map)):
+            logic_node = self.add_map_mark_logic_ref_node(payload.get(field), source=source)
+            if logic_node:
+                self.add_edge(mark_node, logic_node, "map_mark_logic_ref", source=source, evidence=f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}")
+        for field, payload in (("activityId", detail_map), ("activityId", visibility_map)):
+            activity_node = self.add_activity_node(payload.get(field), source=source)
+            if activity_node:
+                self.add_edge(mark_node, activity_node, "map_mark_activity", source=source, evidence=f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}")
+        for field, payload in (("activityStageId", detail_map), ("activityStageId", visibility_map)):
+            stage_node = self.add_activity_stage_node(payload.get(field), source=source)
+            if stage_node:
+                self.add_edge(mark_node, stage_node, "map_mark_activity_stage", source=source, evidence=f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}")
+        for field, payload in (("settlementId", detail_map), ("settlementId", visibility_map)):
+            settlement_id = safe_key(payload.get(field))
+            if not settlement_id:
+                continue
+            settlement_node = self.add_node("settlement_poi", settlement_id, name=settlement_id, source=source)
+            self.add_alias(settlement_id, settlement_node, kind="settlement_poi_id", source=source)
+            self.add_edge(mark_node, settlement_node, "map_mark_settlement", source=source, evidence=f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}")
+        for field, payload in (("plantId", detail_map), ("plantId", visibility_map)):
+            plant_node = self.add_sewage_treat_plant_node(payload.get(field), source=source)
+            if plant_node:
+                self.add_edge(mark_node, plant_node, "map_mark_sewage_treat_plant", source=source, evidence=f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}")
+        for field, payload in (("minigameIds", visibility_map),):
+            values = payload.get(field)
+            if not isinstance(values, list):
+                continue
+            for index, value in enumerate(values):
+                minigame_node = self.add_minigame_node(value, source=source)
+                if minigame_node:
+                    self.add_edge(mark_node, minigame_node, "map_mark_minigame", source=source, evidence=f"visibilityData.{field}[{index}]")
+        for field, payload in (("coreLogicId", detail_map), ("allCoreEntity", visibility_map)):
+            values = payload.get(field)
+            if not isinstance(values, list):
+                continue
+            for index, value in enumerate(values):
+                logic_node = self.add_level_gen_doodad_logic_node(value, source=source)
+                if logic_node:
+                    self.add_edge(mark_node, logic_node, "map_mark_core_doodad_logic", source=source, evidence=f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}[{index}]")
+
+    def add_gameplay_level_map_mark_edges(self, file_node: str, entry: dict[str, Any], payload: dict[str, Any], *, source: str, source_id: str) -> None:
+        rows = list(self.iter_gameplay_config_grouped_rows(payload))
+        region_rows = self.gameplay_config_map_regions_by_id(entry)
+        template_ids: set[str] = set()
+        mist_refs = 0
+        tier_refs = 0
+        detailed_count = 0
+        visibility_count = 0
+        for _top_key, _index, row in rows:
+            basic = row.get("basicData") if isinstance(row.get("basicData"), dict) else {}
+            template_id = safe_key(basic.get("templateId"))
+            if template_id:
+                template_ids.add(template_id)
+            mist_refs += 1 if safe_key(basic.get("mistMap")) and safe_key(basic.get("mistMap")) != "0" else 0
+            tier_refs += 1 if safe_key(basic.get("tierMap")) and safe_key(basic.get("tierMap")) != "0" else 0
+            detailed_count += 1 if isinstance(row.get("detailedData"), dict) else 0
+            visibility_count += 1 if isinstance(row.get("visibilityData"), dict) else 0
+        self.update_node_details(file_node, data=compact_payload({**self.decoded_config_entry_data(entry), "topKeyCount": len(payload), "markCount": len(rows), "templateCount": len(template_ids), "mistRefCount": mist_refs, "tierRefCount": tier_refs, "detailedCount": detailed_count, "visibilityCount": visibility_count}, depth=3))
+        for top_key, index, row in rows:
+            basic = row.get("basicData") if isinstance(row.get("basicData"), dict) else {}
+            mark_id = safe_key(basic.get("markInstId"))
+            if not mark_id:
+                continue
+            detail = row.get("detailedData") if isinstance(row.get("detailedData"), dict) else {}
+            visibility = row.get("visibilityData") if isinstance(row.get("visibilityData"), dict) else {}
+            mist_region_id = safe_key(basic.get("mistMap"))
+            tier_region_id = safe_key(basic.get("tierMap"))
+            if mist_region_id == "0":
+                mist_region_id = ""
+            if tier_region_id == "0":
+                tier_region_id = ""
+            level_candidates = {safe_key(region_rows.get(region_id, {}).get("levelId")) for region_id in (mist_region_id, tier_region_id) if safe_key(region_rows.get(region_id, {}).get("levelId"))}
+            level_id = next(iter(level_candidates)) if len(level_candidates) == 1 else ""
+            mark_data = compact_payload({
+                "markInstId": mark_id,
+                "topKey": top_key,
+                "templateId": basic.get("templateId"),
+                "defaultVisible": basic.get("defaultVisible"),
+                "serverMarkIndex": basic.get("serverMarkIndex"),
+                "mistMap": basic.get("mistMap"),
+                "tierMap": basic.get("tierMap"),
+                "tierIndex": basic.get("tierIndex"),
+                "pos": basic.get("pos"),
+                "levelId": level_id,
+                "detailType": detail.get("$type"),
+                "visibilityType": visibility.get("$type"),
+                "distToPosThreshold": visibility.get("distToPosThreshold"),
+                "source": source_id,
+            }, depth=4)
+            mark_node = self.add_node("map_mark", mark_id, name=mark_id, source=source, data=mark_data)
+            self.update_node_details(mark_node, name=mark_id, source=source, data=mark_data)
+            self.add_alias(mark_id, mark_node, kind="map_mark_id", source=source)
+            self.add_alias(f"{top_key}:{mark_id}", mark_node, kind="level_map_mark_key", source=source)
+            self.add_edge(file_node, mark_node, "defines_level_map_mark", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id, "topKey": top_key, "index": index})
+            template_node = self.add_map_mark_template_node(basic.get("templateId"), source=source)
+            if template_node:
+                self.add_edge(mark_node, template_node, "map_mark_uses_template", source=source, evidence="basicData.templateId", data={"source": source_id})
+            if level_id:
+                level_node = self.add_level_node(level_id, source=source)
+                self.add_edge(level_node, mark_node, "level_has_map_mark", source=source, evidence="LevelMapMark.region", data={"source": source_id})
+                self.add_level_map_edge(level_node, level_id, source=source, evidence="LevelMapMark.region")
+            for region_id, edge_kind, evidence in ((mist_region_id, "map_mark_mist_region", "basicData.mistMap"), (tier_region_id, "map_mark_tier_region", "basicData.tierMap")):
+                if not region_id:
+                    continue
+                region = region_rows.get(region_id, {})
+                region_node = self.add_map_region_node(region_id, name=region.get("mapRegionIdName"), source=source)
+                self.add_edge(mark_node, region_node, edge_kind, source=source, evidence=evidence, data={"source": source_id})
+            self.add_level_map_mark_reference_edges(mark_node, detail, visibility, source=source)
+
+    def mine_point_team_mark_id(self, inst_id: Any) -> str:
+        inst_key = safe_key(inst_id)
+        prefix = "mark_p_minepoint_team"
+        if inst_key.startswith(prefix):
+            return safe_key(inst_key[len(prefix):])
+        return ""
+
+    def add_gameplay_mine_point_team_edges(self, file_node: str, entry: dict[str, Any], payload: dict[str, Any], *, source: str, source_id: str) -> None:
+        rows = list(self.iter_gameplay_config_grouped_rows(payload))
+        doodad_ref_count = sum(len(row.get("doodadCoreIds") or []) for _top_key, _index, row in rows)
+        self.update_node_details(file_node, data=compact_payload({**self.decoded_config_entry_data(entry), "topKeyCount": len(payload), "teamCount": len(rows), "doodadRefCount": doodad_ref_count}, depth=3))
+        for top_key, index, row in rows:
+            inst_id = safe_key(row.get("instId"))
+            if not inst_id:
+                continue
+            level_id = safe_key(row.get("levelId"))
+            mark_id = self.mine_point_team_mark_id(inst_id)
+            doodad_ids = [safe_key(value) for value in (row.get("doodadCoreIds") or []) if safe_key(value)]
+            team_node = self.add_node("factory_mine_team", inst_id, name=inst_id, source=source, data=compact_payload({"instId": inst_id, "levelId": level_id, "topKey": top_key, "markInstId": mark_id, "doodadCoreIds": doodad_ids, "source": source_id}, depth=3))
+            self.add_alias(inst_id, team_node, kind="factory_mine_team_id", source=source)
+            if mark_id:
+                self.add_alias(mark_id, team_node, kind="factory_mine_team_mark_id", source=source)
+            self.add_edge(file_node, team_node, "defines_factory_mine_team", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id, "topKey": top_key, "index": index})
+            if level_id:
+                level_node = self.add_level_node(level_id, source=source)
+                self.add_edge(level_node, team_node, "level_has_factory_mine_team", source=source, evidence="levelId", data={"source": source_id})
+                self.add_level_map_edge(level_node, level_id, source=source, evidence="MinePointTeamTable.levelId")
+            if mark_id:
+                mark_node = self.add_node("map_mark", mark_id, name=mark_id, source=source)
+                self.add_alias(mark_id, mark_node, kind="map_mark_id", source=source)
+                self.add_edge(team_node, mark_node, "factory_mine_team_map_mark", source=source, evidence="instId", data={"source": source_id})
+                self.add_edge(mark_node, team_node, "map_mark_has_factory_mine_team", source=source, evidence="instId", data={"source": source_id})
+            for doodad_index, doodad_id in enumerate(doodad_ids):
+                logic_node = self.add_level_gen_doodad_logic_node(doodad_id, source=source)
+                if logic_node:
+                    self.add_edge(team_node, logic_node, "factory_mine_team_uses_doodad_logic", source=source, evidence=f"doodadCoreIds[{doodad_index}]", data={"source": source_id})
+
+    def add_gameplay_config_map_placement_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        payload = self.read_decoded_config_json_payload(entry)
+        if not isinstance(payload, dict):
+            return
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        table_name = Path(safe_key(entry.get("dp"))).name
+        if table_name == "LevelMapMark.json":
+            self.add_gameplay_level_map_mark_edges(file_node, entry, payload, source=source, source_id=source_id)
+        elif table_name == "MapRegionTable.json":
+            self.add_gameplay_map_region_table_edges(file_node, entry, payload, source=source, source_id=source_id)
+        elif table_name == "MinePointTeamTable.json":
+            self.add_gameplay_mine_point_team_edges(file_node, entry, payload, source=source, source_id=source_id)
+
+    def add_gameplay_config_map_level_lookup_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        payload = self.read_decoded_config_json_payload(entry)
+        if not isinstance(payload, dict):
+            return
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        table_name = Path(safe_key(entry.get("dp"))).name
+        if table_name == "MapIdTable.json":
+            self.add_gameplay_map_id_table_edges(file_node, entry, payload, source=source, source_id=source_id)
+        elif table_name == "LevelBasicInfoTable.json":
+            self.add_gameplay_level_basic_info_edges(file_node, entry, payload, source=source, source_id=source_id)
+        elif table_name == "LevelShortIdTable.json":
+            self.add_gameplay_level_short_id_edges(file_node, entry, payload, source=source, source_id=source_id)
+        elif table_name == "MapBriefInfoTable.json":
+            self.add_gameplay_map_brief_info_edges(file_node, entry, payload, source=source, source_id=source_id)
+
+    def script_task_extra_text_key(self, payload: Any) -> str:
+        if isinstance(payload, dict):
+            key = safe_key(payload.get("key"))
+            if key and key not in {"\\", "0"}:
+                return key
+        return ""
+
+    def add_script_task_extra_text_edge(self, owner_node: str, payload: Any, *, edge_kind: str, source: str, evidence: str) -> None:
+        text_key = self.script_task_extra_text_key(payload)
+        if not text_key:
+            return
+        text_node = self.add_i18n_text_node(text_key, source=source)
+        if text_node:
+            self.add_edge(owner_node, text_node, edge_kind, source=source, evidence=evidence)
+
+    def add_gameplay_script_task_extra_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        raw_data = self.read_decoded_config_bytes(entry)
+        if not raw_data:
+            return
+        try:
+            payload = json.loads(raw_data.decode("utf-8-sig"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, dict):
+            return
+        data_table = payload.get("dataTable")
+        if not isinstance(data_table, dict):
+            return
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        self.update_node_details(file_node, data=compact_payload({**self.decoded_config_entry_data(entry), "levelCount": len(data_table)}, depth=3))
+        for level_id_raw, task_map in sorted(data_table.items(), key=lambda item: safe_key(item[0])):
+            level_id = safe_key(level_id_raw)
+            if not level_id or not isinstance(task_map, dict):
+                continue
+            level_node = self.add_level_node(level_id, source=source)
+            for task_id_raw, extra_map in sorted(task_map.items(), key=lambda item: safe_key(item[0])):
+                task_id = safe_key(task_id_raw)
+                if not task_id or not isinstance(extra_map, dict):
+                    continue
+                for extra_key_raw, extra in sorted(extra_map.items(), key=lambda item: safe_key(item[0])):
+                    extra_key = safe_key(extra_key_raw)
+                    if not extra_key or not isinstance(extra, dict):
+                        continue
+                    node_key = f"{level_id}:{task_id}:{extra_key}"
+                    tracking = extra.get("trackingInfoDict") if isinstance(extra.get("trackingInfoDict"), dict) else {}
+                    extra_node = self.add_node(
+                        "level_script_task_extra",
+                        node_key,
+                        name=task_id,
+                        source=source,
+                        data=compact_payload({
+                            "levelId": level_id,
+                            "taskId": task_id,
+                            "extraKey": extra_key,
+                            "useSingleDescription": extra.get("useSingleDescription"),
+                            "singleDescriptionFormatProgress": extra.get("singleDescriptionFormatProgress"),
+                            "taskTitleConfigKey": extra.get("taskTitleConfigKey"),
+                            "taskTitleUseConfig": extra.get("taskTitleUseConfig"),
+                            "objectiveCount": extra.get("objectiveCount"),
+                            "trackingCount": len(tracking),
+                            "trackingKeys": sorted(tracking.keys()),
+                        }, depth=3),
+                    )
+                    self.add_alias(node_key, extra_node, kind="level_script_task_extra_key", source=source)
+                    self.add_alias(task_id, extra_node, kind="level_script_task_extra_task_id", source=source)
+                    self.add_alias(f"{level_id}:{task_id}", extra_node, kind="level_script_task_extra_task_key", source=source)
+                    self.add_edge(file_node, extra_node, "defines_level_script_task_extra", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id})
+                    self.add_edge(extra_node, level_node, "level_script_task_extra_in_level", source=source, evidence="dataTable.levelId")
+                    script_node = self.add_node("level_script", task_id, name=task_id, source=source)
+                    self.add_alias(task_id, script_node, kind="level_script_id", source=source)
+                    self.add_edge(extra_node, script_node, "level_script_task_extra_for_script", source=source, evidence="dataTable.scriptId")
+                    uid_node = self.add_node(
+                        "level_script_task_uid",
+                        node_key,
+                        name=extra_key,
+                        source=source,
+                        data={"levelId": level_id, "scriptId": task_id, "uid": extra_key},
+                    )
+                    self.add_alias(node_key, uid_node, kind="level_script_task_uid_key", source=source)
+                    self.add_alias(f"{task_id}:{extra_key}", uid_node, kind="level_script_task_uid", source=source)
+                    self.add_edge(extra_node, uid_node, "level_script_task_extra_has_uid", source=source, evidence="dataTable.uid")
+                    self.add_edge(uid_node, script_node, "level_script_task_uid_in_script", source=source, evidence="dataTable.scriptId")
+                    self.add_script_task_extra_text_edge(extra_node, extra.get("taskTitle"), edge_kind="level_script_task_extra_title_text", source=source, evidence="taskTitle")
+                    self.add_script_task_extra_text_edge(extra_node, extra.get("singleDescription"), edge_kind="level_script_task_extra_single_description_text", source=source, evidence="singleDescription")
+                    for objective_key, objective in sorted(tracking.items(), key=lambda item: safe_key(item[0])):
+                        objective_id = safe_key(objective_key)
+                        if not objective_id or not isinstance(objective, dict):
+                            continue
+                        objective_node = self.add_node(
+                            "level_script_task_objective",
+                            f"{node_key}:{objective_id}",
+                            name=f"{task_id} {objective_id}",
+                            source=source,
+                            data=compact_payload({"levelId": level_id, "scriptId": task_id, "uid": extra_key, "objective": objective_id, "needFormatProgress": objective.get("needFormatProgress"), "progressDisplayMode": objective.get("progressDisplayMode"), "trackPointType": objective.get("trackPointType")}, depth=2),
+                        )
+                        self.add_alias(f"{node_key}:{objective_id}", objective_node, kind="level_script_task_objective_key", source=source)
+                        self.add_edge(extra_node, objective_node, "level_script_task_extra_has_objective", source=source, evidence=f"trackingInfoDict.{objective_id}")
+                        self.add_script_task_extra_text_edge(
+                            objective_node,
+                            objective.get("description"),
+                            edge_kind="level_script_task_objective_text",
+                            source=source,
+                            evidence=f"trackingInfoDict.{objective_id}.description",
+                        )
+                        self.add_script_task_extra_text_edge(
+                            extra_node,
+                            objective.get("description"),
+                            edge_kind="level_script_task_extra_objective_text",
+                            source=source,
+                            evidence=f"trackingInfoDict.{objective_id}.description",
+                        )
+                        display_mode = safe_key(objective.get("progressDisplayMode"))
+                        if display_mode:
+                            mode_node = self.add_node("level_script_task_progress_display_mode", display_mode, name=display_mode, source=source)
+                            self.add_alias(display_mode, mode_node, kind="level_script_task_progress_display_mode", source=source)
+                            self.add_edge(objective_node, mode_node, "level_script_task_objective_progress_display_mode", source=source, evidence=f"trackingInfoDict.{objective_id}.progressDisplayMode")
+                        track_point_type = safe_key(objective.get("trackPointType"))
+                        if track_point_type:
+                            type_node = self.add_node("level_script_task_track_point_type", track_point_type, name=track_point_type, source=source)
+                            self.add_alias(track_point_type, type_node, kind="level_script_task_track_point_type", source=source)
+                            self.add_edge(objective_node, type_node, "level_script_task_objective_track_point_type", source=source, evidence=f"trackingInfoDict.{objective_id}.trackPointType")
+
+    def iter_level_mount_points(self, node: Any, path: list[str]) -> Iterable[tuple[list[str], dict[str, Any]]]:
+        if not isinstance(node, dict):
+            return
+        mount_point = node.get("mountPoint")
+        if isinstance(mount_point, dict):
+            yield path, mount_point
+        children = node.get("children")
+        if isinstance(children, dict):
+            for child_key, child in sorted(children.items(), key=lambda item: safe_key(item[0])):
+                child_name = safe_key(child_key)
+                if child_name:
+                    yield from self.iter_level_mount_points(child, [*path, child_name])
+
+    def add_level_mount_type_node(self, mount_type: Any, *, source: str = "") -> str:
+        type_key = safe_key(mount_type)
+        if not type_key:
+            return ""
+        node = self.add_node("level_mount_type", type_key, name=type_key, source=source)
+        self.add_alias(type_key, node, kind="level_mount_type", source=source)
+        return node
+
+    def add_level_mount_point_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        raw_data = self.read_decoded_config_bytes(entry)
+        if not raw_data:
+            return
+        try:
+            payload = json.loads(raw_data.decode("utf-8-sig"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, dict):
+            return
+        sub_roots = payload.get("subRootByType")
+        if not isinstance(sub_roots, dict):
+            return
+        level_id = Path(safe_key(entry.get("dp") or entry.get("p"))).stem
+        if not level_id:
+            return
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        level_node = self.add_level_node(level_id, source=source)
+        mount_count = 0
+        for mount_type_raw, root_node in sorted(sub_roots.items(), key=lambda item: safe_key(item[0])):
+            mount_type = safe_key(mount_type_raw)
+            if not mount_type:
+                continue
+            type_node = self.add_level_mount_type_node(mount_type, source=source)
+            for path_parts, mount_point in self.iter_level_mount_points(root_node, [mount_type]):
+                mount_path = "/".join(path_parts)
+                if not mount_path:
+                    continue
+                mount_count += 1
+                node_key = f"{level_id}:{mount_path}"
+                mount_node = self.add_node(
+                    "level_mount_point",
+                    node_key,
+                    name=mount_path,
+                    source=source,
+                    data=compact_payload({
+                        "levelId": level_id,
+                        "mountType": mount_type,
+                        "path": mount_path,
+                        "position": mount_point.get("position"),
+                        "rotation": mount_point.get("rotation"),
+                    }, depth=4),
+                )
+                self.add_alias(node_key, mount_node, kind="level_mount_point_key", source=source)
+                self.add_alias(mount_path, mount_node, kind="level_mount_path", source=source)
+                self.add_alias(f"{level_id}:{mount_path}", mount_node, kind="level_mount_path", source=source)
+                self.add_edge(file_node, mount_node, "defines_level_mount_point", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id})
+                if level_node:
+                    self.add_edge(mount_node, level_node, "level_mount_point_in_level", source=source, evidence="LevelMountPoint")
+                if type_node:
+                    self.add_edge(mount_node, type_node, "level_mount_point_type", source=source, evidence="subRootByType")
+        self.update_node_details(file_node, data=compact_payload({**self.decoded_config_entry_data(entry), "levelId": level_id, "mountPointCount": mount_count, "mountTypeCount": len(sub_roots)}, depth=3))
+
+    def add_level_gen_parent_node(self, parent_id: Any, *, source: str = "") -> str:
+        parent_key = safe_key(parent_id)
+        if not parent_key:
+            return ""
+        node = self.add_node("level_gen_parent_data", parent_key, name=parent_key, source=source)
+        self.add_alias(parent_key, node, kind="level_gen_parent_data_id", source=source)
+        return node
+
+    def add_level_gen_doodad_logic_node(self, logic_id: Any, *, source: str = "") -> str:
+        logic_key = safe_key(logic_id)
+        if not logic_key:
+            return ""
+        node = self.add_node("level_gen_doodad_logic", logic_key, name=logic_key, source=source)
+        self.add_alias(logic_key, node, kind="level_gen_doodad_logic_id", source=source)
+        return node
+
+    def add_level_gen_mine_proto_node(self, proto_id: Any, *, source: str = "") -> str:
+        proto_key = safe_key(proto_id)
+        if not proto_key:
+            return ""
+        node = self.add_node("factory_mine_proto", proto_key, name=proto_key, source=source)
+        self.add_alias(proto_key, node, kind="factory_mine_proto_id", source=source)
+        return node
+
+    def add_level_gen_doodad_group_edges(self, file_node: str, entry: dict[str, Any], payload: dict[str, Any]) -> None:
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        group_count = 0
+        outer_count = 0
+        for parent_id_raw, groups in sorted(payload.items(), key=lambda item: safe_key(item[0])):
+            parent_id = safe_key(parent_id_raw)
+            if not parent_id or not isinstance(groups, list):
+                continue
+            parent_node = self.add_level_gen_parent_node(parent_id, source=source)
+            for group_index, group in enumerate(groups):
+                if not isinstance(group, dict):
+                    continue
+                group_id = safe_key(group.get("doodadGroupId"))
+                if not group_id:
+                    continue
+                group_count += 1
+                outer_ids = [safe_key(value) for value in (group.get("outerId") or []) if safe_key(value)]
+                outer_count += len(outer_ids)
+                group_node = self.add_node(
+                    "level_gen_doodad_group",
+                    group_id,
+                    name=group_id,
+                    source=source,
+                    data=compact_payload({
+                        "parentId": parent_id,
+                        "doodadGroupId": group_id,
+                        "centerId": group.get("centerId"),
+                        "mapMarkInstId": group.get("mapMarkInstId"),
+                        "upgradeSource": group.get("upgradeSource"),
+                        "doodadGroupType": group.get("doodadGroupType"),
+                        "outerCount": len(outer_ids),
+                        "factoryPosition": group.get("factoryPosition"),
+                        "upgradeSceneGrade": group.get("upgradeSceneGrade"),
+                        "refreshGroupUpperLimitLevel": group.get("refreshGroupUpperLimitLevel"),
+                        "refreshGroupNumLevel": group.get("refreshGroupNumLevel"),
+                        "outputSpeedPercentage": group.get("outputSpeedPercentage"),
+                    }, depth=4),
+                )
+                self.add_alias(group_id, group_node, kind="level_gen_doodad_group_id", source=source)
+                self.add_edge(file_node, group_node, "defines_level_gen_doodad_group", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id, "parentId": parent_id, "index": group_index})
+                if parent_node:
+                    self.add_edge(group_node, parent_node, "level_gen_doodad_group_parent", source=source, evidence="subDataParentId")
+                center_node = self.add_level_gen_doodad_logic_node(group.get("centerId"), source=source)
+                if center_node:
+                    self.add_edge(group_node, center_node, "level_gen_doodad_group_center", source=source, evidence="centerId")
+                for outer_index, outer_id in enumerate(outer_ids):
+                    outer_node = self.add_level_gen_doodad_logic_node(outer_id, source=source)
+                    if outer_node:
+                        self.add_edge(group_node, outer_node, "level_gen_doodad_group_outer", source=source, evidence=f"outerId[{outer_index}]", data={"index": outer_index})
+                mark_id = safe_key(group.get("mapMarkInstId"))
+                if mark_id:
+                    mark_node = self.add_node("map_mark", mark_id, name=mark_id, source=source)
+                    self.add_alias(mark_id, mark_node, kind="map_mark_id", source=source)
+                    self.add_edge(group_node, mark_node, "level_gen_doodad_group_map_mark", source=source, evidence="mapMarkInstId")
+        self.update_node_details(file_node, data=compact_payload({**self.decoded_config_entry_data(entry), "parentCount": len(payload), "doodadGroupCount": group_count, "outerIdCount": outer_count}, depth=3))
+
+    def add_level_gen_factory_region_edges(self, file_node: str, entry: dict[str, Any], payload: dict[str, Any]) -> None:
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        regions = payload.get("regions")
+        if not isinstance(regions, list):
+            return
+        mine_count = 0
+        for region_index, region in enumerate(regions):
+            if not isinstance(region, dict):
+                continue
+            region_id = safe_key(region.get("regionId"))
+            if not region_id:
+                continue
+            parent_id = safe_key(region.get("subDataParentId"))
+            scene_id = safe_key(region.get("sceneId"))
+            mines = region.get("mines") if isinstance(region.get("mines"), list) else []
+            region_node = self.add_node("factory_region", region_id, name=region_id, source=source, data=compact_payload({"subDataParentId": parent_id, "sceneId": scene_id, "mineCount": len(mines)}, depth=3))
+            self.add_alias(region_id, region_node, kind="factory_region_id", source=source)
+            self.add_edge(file_node, region_node, "defines_level_gen_factory_region", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id, "index": region_index})
+            parent_node = self.add_level_gen_parent_node(parent_id, source=source)
+            if parent_node:
+                self.add_edge(region_node, parent_node, "level_gen_factory_region_parent", source=source, evidence="subDataParentId")
+            level_node = self.add_level_node(scene_id, source=source)
+            if level_node:
+                self.add_edge(region_node, level_node, "level_gen_factory_region_in_level", source=source, evidence="sceneId")
+                self.add_edge(level_node, region_node, "level_has_factory_region", source=source, evidence="LevelGenForRuntime.sceneId")
+                self.add_level_map_edge(level_node, scene_id, source=source, evidence="level_gen_runtime_scene")
+            for mine_index, mine in enumerate(mines):
+                if not isinstance(mine, dict):
+                    continue
+                logic_id = safe_key(mine.get("logicMineDataId"))
+                if not logic_id:
+                    continue
+                mine_count += 1
+                mine_key = f"{region_id}:{logic_id}"
+                mine_node = self.add_node(
+                    "factory_mine",
+                    mine_key,
+                    name=logic_id,
+                    source=source,
+                    data=compact_payload({
+                        "regionId": region_id,
+                        "sceneId": scene_id,
+                        "subDataParentId": parent_id,
+                        "logicMineDataId": logic_id,
+                        "protoId": mine.get("protoId"),
+                        "itemId": mine.get("itemId"),
+                        "offset": mine.get("offset"),
+                        "mineHeight": mine.get("mineHeight"),
+                        "densityLevel": mine.get("densityLevel"),
+                        "trans": mine.get("trans"),
+                    }, depth=5),
+                )
+                self.add_alias(mine_key, mine_node, kind="factory_mine_key", source=source)
+                self.add_alias(logic_id, mine_node, kind="factory_mine_logic_id", source=source)
+                self.add_edge(file_node, mine_node, "defines_factory_mine", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id, "index": mine_index})
+                self.add_edge(region_node, mine_node, "factory_region_has_mine", source=source, evidence=f"mines[{mine_index}]")
+                logic_node = self.add_level_gen_doodad_logic_node(logic_id, source=source)
+                if logic_node:
+                    self.add_edge(mine_node, logic_node, "factory_mine_uses_doodad_logic", source=source, evidence="logicMineDataId")
+                proto_node = self.add_level_gen_mine_proto_node(mine.get("protoId"), source=source)
+                if proto_node:
+                    self.add_edge(mine_node, proto_node, "factory_mine_has_proto", source=source, evidence="protoId")
+                item_node = self.add_item_node(mine.get("itemId"), source=source)
+                if item_node:
+                    self.add_edge(mine_node, item_node, "factory_mine_produces_item", source=source, evidence="itemId")
+        self.update_node_details(file_node, data=compact_payload({**self.decoded_config_entry_data(entry), "regionCount": len(regions), "mineCount": mine_count}, depth=3))
+
+    def add_level_gen_for_runtime_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        raw_data = self.read_decoded_config_bytes(entry)
+        if not raw_data:
+            return
+        try:
+            payload = json.loads(raw_data.decode("utf-8-sig"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, dict):
+            return
+        dp = safe_key(entry.get("dp"))
+        if dp.endswith("DoodadGroupTable.json"):
+            self.add_level_gen_doodad_group_edges(file_node, entry, payload)
+        elif dp.endswith("TotalFactoryRegions.json"):
+            self.add_level_gen_factory_region_edges(file_node, entry, payload)
+
+    def add_ui_map_static_element_type_node(self, type_id: Any, *, source: str = "") -> str:
+        type_key = safe_key(type_id)
+        if not type_key:
+            return ""
+        node = self.add_node("ui_map_static_element_type", type_key, name=type_key, source=source)
+        self.add_alias(type_key, node, kind="ui_map_static_element_type", source=source)
+        return node
+
+    def add_ui_map_text_edge(self, owner_node: str, text_id: Any, *, edge_kind: str, source: str, evidence: str) -> None:
+        text_key = safe_key(text_id)
+        if not text_key:
+            return
+        text_node = self.add_i18n_text_node(text_key, source=source)
+        if text_node:
+            self.add_edge(owner_node, text_node, edge_kind, source=source, evidence=evidence)
+
+    def add_ui_level_map_load_list_edges(self, file_node: str, entry: dict[str, Any], payload: dict[str, Any]) -> None:
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        levels = [safe_key(value) for value in (payload.get("loadLevelList") or []) if safe_key(value)]
+        self.update_node_details(file_node, data=compact_payload({**self.decoded_config_entry_data(entry), "loadLevelCount": len(levels)}, depth=3))
+        for index, level_id in enumerate(levels):
+            config_node = self.add_node("ui_level_map_config", level_id, name=level_id, source=source)
+            self.add_alias(level_id, config_node, kind="ui_level_map_config_id", source=source)
+            level_node = self.add_level_node(level_id, source=source)
+            self.add_edge(file_node, config_node, "ui_level_map_load_list_includes_config", source=source, evidence="loadLevelList", data={"source": source_id, "index": index})
+            if level_node:
+                self.add_edge(config_node, level_node, "ui_level_map_config_for_level", source=source, evidence="loadLevelList")
+
+    def add_ui_level_map_config_edges(self, file_node: str, entry: dict[str, Any], payload: dict[str, Any]) -> None:
+        level_id = Path(safe_key(entry.get("dp") or entry.get("p"))).stem
+        if not level_id:
+            return
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        basic = payload.get("basic") if isinstance(payload.get("basic"), dict) else {}
+        static_elements = payload.get("staticElements") if isinstance(payload.get("staticElements"), dict) else {}
+        tier_names = payload.get("tierNames") if isinstance(payload.get("tierNames"), dict) else {}
+        count_fields = {field: len(payload.get(field) or {}) if isinstance(payload.get(field), dict) else 0 for field in ("lowChunks", "mediumChunks", "highChunks", "gridInfos", "mistInfos", "tierInfos")}
+        config_node = self.add_node(
+            "ui_level_map_config",
+            level_id,
+            name=level_id,
+            source=source,
+            data=compact_payload({
+                "levelId": level_id,
+                "basic": basic,
+                "staticElementCount": len(static_elements),
+                "tierNameCount": len(tier_names),
+                **count_fields,
+            }, depth=4),
+        )
+        self.add_alias(level_id, config_node, kind="ui_level_map_config_id", source=source)
+        self.add_edge(file_node, config_node, "defines_ui_level_map_config", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id})
+        level_node = self.add_level_node(level_id, source=source)
+        if level_node:
+            self.add_edge(config_node, level_node, "ui_level_map_config_for_level", source=source, evidence="fileName")
+        for element_key_raw, element in sorted(static_elements.items(), key=lambda item: safe_key(item[0])):
+            if not isinstance(element, dict):
+                continue
+            element_id = safe_key(element.get("id") or element_key_raw)
+            if not element_id:
+                continue
+            element_node = self.add_node(
+                "ui_map_static_element",
+                element_id,
+                name=element_id,
+                source=source,
+                data=compact_payload({
+                    "id": element_id,
+                    "levelId": level_id,
+                    "type": element.get("type"),
+                    "position": element.get("position"),
+                    "isPermanent": element.get("isPermanent"),
+                    "loadDistance": element.get("loadDistance"),
+                    "directionAngle": element.get("directionAngle"),
+                    "targetLevelId": element.get("targetLevelId"),
+                    "regionLevelId": element.get("regionLevelId"),
+                    "textId": element.get("textId"),
+                    "targetLevelSpriteName": element.get("targetLevelSpriteName"),
+                    "regionPanelIndex": element.get("regionPanelIndex"),
+                }, depth=4),
+            )
+            self.add_alias(element_id, element_node, kind="ui_map_static_element_id", source=source)
+            self.add_alias(f"{level_id}:{element_id}", element_node, kind="ui_map_static_element_key", source=source)
+            self.add_edge(file_node, element_node, "defines_ui_map_static_element", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id})
+            self.add_edge(config_node, element_node, "ui_level_map_config_has_static_element", source=source, evidence="staticElements")
+            type_node = self.add_ui_map_static_element_type_node(element.get("type"), source=source)
+            if type_node:
+                self.add_edge(element_node, type_node, "ui_map_static_element_type", source=source, evidence="type")
+            target_level = self.add_level_node(element.get("targetLevelId"), source=source)
+            if target_level:
+                self.add_edge(element_node, target_level, "ui_map_static_element_targets_level", source=source, evidence="targetLevelId")
+            region_level = self.add_level_node(element.get("regionLevelId"), source=source)
+            if region_level:
+                self.add_edge(element_node, region_level, "ui_map_static_element_region_level", source=source, evidence="regionLevelId")
+            self.add_ui_map_text_edge(element_node, element.get("textId"), edge_kind="ui_map_static_element_text", source=source, evidence="textId")
+        for tier_id_raw, text_id_raw in sorted(tier_names.items(), key=lambda item: safe_key(item[0])):
+            tier_id = safe_key(tier_id_raw)
+            text_id = safe_key(text_id_raw)
+            if not tier_id:
+                continue
+            tier_node = self.add_node("ui_map_tier_name", f"{level_id}:{tier_id}", name=tier_id, source=source, data={"levelId": level_id, "tierId": tier_id, "textId": text_id})
+            self.add_alias(f"{level_id}:{tier_id}", tier_node, kind="ui_map_tier_key", source=source)
+            self.add_alias(tier_id, tier_node, kind="ui_map_tier_id", source=source)
+            self.add_edge(file_node, tier_node, "defines_ui_map_tier_name", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id})
+            self.add_edge(config_node, tier_node, "ui_level_map_config_has_tier_name", source=source, evidence="tierNames")
+            self.add_ui_map_text_edge(tier_node, text_id, edge_kind="ui_map_tier_name_text", source=source, evidence="tierNames")
+        self.update_node_details(file_node, data=compact_payload({**self.decoded_config_entry_data(entry), "levelId": level_id, "staticElementCount": len(static_elements), "tierNameCount": len(tier_names), **count_fields}, depth=3))
+
+    def add_ui_level_map_load_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        raw_data = self.read_decoded_config_bytes(entry)
+        if not raw_data:
+            return
+        try:
+            payload = json.loads(raw_data.decode("utf-8-sig"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, dict):
+            return
+        dp = safe_key(entry.get("dp"))
+        if dp.endswith("LoadListConfig.json"):
+            self.add_ui_level_map_load_list_edges(file_node, entry, payload)
+        else:
+            self.add_ui_level_map_config_edges(file_node, entry, payload)
+
+    def mission_runtime_text_key(self, payload: Any) -> str:
+        if isinstance(payload, dict):
+            key = safe_key(payload.get("key"))
+            if key and key not in {"\\", "0"}:
+                return key
+        return ""
+
+    def iter_mission_runtime_strings(self, value: Any) -> Iterable[str]:
+        if isinstance(value, dict):
+            for child in value.values():
+                yield from self.iter_mission_runtime_strings(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from self.iter_mission_runtime_strings(child)
+        elif isinstance(value, str):
+            yield value
+
+    def add_mission_runtime_type_node(self, kind: str, type_name: Any, *, source: str = "") -> str:
+        type_key = safe_key(type_name)
+        if not type_key:
+            return ""
+        type_class = type_key.split(",", 1)[0]
+        short_name = type_class.rsplit(".", 1)[-1]
+        node = self.add_node(kind, type_key, name=short_name or type_key, source=source)
+        self.add_alias(type_key, node, kind=f"{kind}_id", source=source)
+        if short_name and short_name != type_key:
+            self.add_alias(short_name, node, kind=f"{kind}_name", source=source)
+        return node
+
+    def add_mission_runtime_narrative_ref_edge(self, owner_node: str, ref_id: Any, *, edge_kind: str, source: str, evidence: str) -> None:
+        ref_key = safe_key(ref_id)
+        if not ref_key:
+            return
+        if ref_key.startswith("radio_"):
+            ref_node = self.add_node("radio", ref_key, name=ref_key, source=source)
+            self.add_alias(ref_key, ref_node, kind="radio_id", source=source)
+        elif ref_key.startswith("sns_"):
+            ref_node = self.add_node("sns_dialog", ref_key, name=ref_key, source=source)
+            self.add_alias(ref_key, ref_node, kind="sns_dialog_id", source=source)
+        elif ref_key.startswith("remotecomm_"):
+            ref_node = self.add_node("remote_common", ref_key, name=ref_key, source=source)
+            self.add_alias(ref_key, ref_node, kind="remote_common_id", source=source)
+        else:
+            ref_node = self.add_node("story", ref_key, name=ref_key, source=source)
+            self.add_alias(ref_key, ref_node, kind="story_key", source=source)
+        self.add_edge(owner_node, ref_node, edge_kind, source=source, evidence=evidence)
+
+    def mission_runtime_const_value(self, value: Any) -> Any:
+        if isinstance(value, dict) and "constValue" in value:
+            return value.get("constValue")
+        return value
+
+    def add_mission_runtime_guide_group_node(self, guide_group_id: Any, *, source: str = "") -> str:
+        guide_key = safe_key(guide_group_id)
+        if not guide_key:
+            return ""
+        node = self.add_node("guide_group", guide_key, name=guide_key, source=source)
+        self.add_alias(guide_key, node, kind="guide_group_id", source=source)
+        return node
+
+    def add_mission_runtime_chapter_panel_node(self, chapter_id: Any, *, source: str = "") -> str:
+        chapter_key = safe_key(chapter_id)
+        if not chapter_key:
+            return ""
+        node = self.add_node("mission_runtime_chapter_panel", chapter_key, name=chapter_key, source=source)
+        self.add_alias(chapter_key, node, kind="mission_runtime_chapter_panel_id", source=source)
+        return node
+
+    def add_mission_runtime_action_node(self, asset_node: str, asset_key: str, action: dict[str, Any], action_index: int, *, source: str) -> str:
+        uid = safe_key(action.get("_uid"))
+        action_id = safe_key(action.get("_ID"))
+        action_key = f"{asset_key}:{uid or action_id or action_index}"
+        type_key = safe_key(action.get("$type"))
+        type_class = type_key.split(",", 1)[0]
+        short_type = type_class.rsplit(".", 1)[-1] if type_class else ""
+        action_node = self.add_node(
+            "mission_runtime_action",
+            action_key,
+            name=f"{asset_key} {short_type or 'action'} {uid or action_id or action_index}",
+            source=source,
+            data=compact_payload(
+                {
+                    "assetKey": asset_key,
+                    "index": action_index,
+                    "uid": uid,
+                    "id": action.get("_ID"),
+                    "type": type_key,
+                    "shortType": short_type,
+                    "nextID": self.mission_runtime_const_value(action.get("_nextID")),
+                    "scopeMask": action.get("scopeMask"),
+                },
+                depth=2,
+            ),
+        )
+        self.add_alias(action_key, action_node, kind="mission_runtime_action_key", source=source)
+        if uid:
+            self.add_alias(f"{asset_key}:{uid}", action_node, kind="mission_runtime_action_uid", source=source)
+        if action_id:
+            self.add_alias(f"{asset_key}:{action_id}", action_node, kind="mission_runtime_action_id", source=source)
+        self.add_edge(asset_node, action_node, "mission_runtime_has_action", source=source, evidence=f"actionList[{action_index}]", data={"uid": uid, "id": action.get("_ID"), "type": short_type or type_key})
+        type_node = self.add_mission_runtime_type_node("mission_runtime_action_type", type_key, source=source)
+        if type_node:
+            self.add_edge(action_node, type_node, "mission_runtime_action_type", source=source, evidence="$type", data={"uid": uid, "id": action.get("_ID")})
+        return action_node
+
+    def add_mission_runtime_action_reference_edges(self, action_node: str, action: dict[str, Any], *, source: str, evidence_prefix: str) -> None:
+        radio_id = self.mission_runtime_const_value(action.get("_radioId"))
+        if safe_key(radio_id):
+            self.add_mission_runtime_narrative_ref_edge(action_node, radio_id, edge_kind="mission_runtime_action_plays_radio", source=source, evidence=f"{evidence_prefix}._radioId")
+        text_id = self.mission_runtime_const_value(action.get("_textId"))
+        text_node = self.add_i18n_text_node(text_id, source=source)
+        if text_node:
+            self.add_edge(action_node, text_node, "mission_runtime_action_text", source=source, evidence=f"{evidence_prefix}._textId")
+        for field, edge_kind in (
+            ("_mediaGuideGroupId", "mission_runtime_action_media_guide_group"),
+            ("_groupId", "mission_runtime_action_guide_group"),
+        ):
+            guide_node = self.add_mission_runtime_guide_group_node(self.mission_runtime_const_value(action.get(field)), source=source)
+            if guide_node:
+                self.add_edge(action_node, guide_node, edge_kind, source=source, evidence=f"{evidence_prefix}.{field}")
+        chapter_node = self.add_mission_runtime_chapter_panel_node(self.mission_runtime_const_value(action.get("_chapterId")), source=source)
+        if chapter_node:
+            self.add_edge(action_node, chapter_node, "mission_runtime_action_shows_chapter_panel", source=source, evidence=f"{evidence_prefix}._chapterId", data={"chapterEffectType": self.mission_runtime_const_value(action.get("_chapterEffectType")), "isToBeContinue": self.mission_runtime_const_value(action.get("_isToBeContinue"))})
+        for ref_index, ref in enumerate(sorted(set(STORY_KEY_RE.findall("\n".join(self.iter_mission_runtime_strings(action)))))):
+            self.add_mission_runtime_narrative_ref_edge(action_node, ref, edge_kind="mission_runtime_action_references_narrative", source=source, evidence=f"{evidence_prefix}.storyRef[{ref_index}]")
+
+    def mission_runtime_condition_short_type(self, condition: dict[str, Any]) -> str:
+        type_key = safe_key(condition.get("$type"))
+        type_class = type_key.split(",", 1)[0]
+        return type_class.rsplit(".", 1)[-1] if type_class else ""
+
+    def mission_runtime_condition_id(self, asset_key: str, quest_id: str, objective_index: int, condition: dict[str, Any], condition_path: str = "") -> str:
+        unique_id = safe_key(condition.get("uniqueId")) or f"objective_{objective_index}"
+        short_type = self.mission_runtime_condition_short_type(condition) or "condition"
+        path_key = safe_key(condition_path).replace("[", ":").replace("]", "")
+        suffix = f":{path_key}" if path_key else ""
+        return f"{asset_key}:{quest_id}:objective:{objective_index}:{short_type}:{unique_id}{suffix}"
+
+    def mission_runtime_const_key(self, condition: dict[str, Any], field: str) -> str:
+        return safe_key(self.mission_runtime_const_value(condition.get(field)))
+
+    def mission_runtime_const_list(self, condition: dict[str, Any], field: str) -> list[Any]:
+        value = self.mission_runtime_const_value(condition.get(field))
+        if isinstance(value, list):
+            return value
+        if safe_key(value):
+            return [value]
+        return []
+
+    def add_mission_runtime_condition_node(
+        self,
+        quest_node: str,
+        asset_key: str,
+        mission_id: str,
+        quest_id: str,
+        objective_index: int,
+        condition: dict[str, Any],
+        *,
+        source: str,
+        evidence_prefix: str,
+        condition_path: str = "",
+        parent_node: str = "",
+        parent_edge_kind: str = "",
+    ) -> str:
+        condition_key = self.mission_runtime_condition_id(asset_key, quest_id, objective_index, condition, condition_path)
+        short_type = self.mission_runtime_condition_short_type(condition)
+        condition_node = self.add_node(
+            "mission_runtime_condition",
+            condition_key,
+            name=f"{quest_id} {short_type or 'condition'}",
+            source=source,
+            data=compact_payload(
+                {
+                    "missionId": mission_id,
+                    "assetKey": asset_key,
+                    "questId": quest_id,
+                    "objectiveIndex": objective_index,
+                    "conditionPath": condition_path,
+                    "uniqueId": condition.get("uniqueId"),
+                    "type": condition.get("$type"),
+                    "shortType": short_type,
+                    "scopeMask": condition.get("scopeMask"),
+                    "useCurrentScope": condition.get("useCurrentScope"),
+                    "useGraphScope": condition.get("useGraphScope"),
+                },
+                depth=2,
+            ),
+        )
+        self.add_alias(condition_key, condition_node, kind="mission_runtime_condition_key", source=source)
+        self.add_edge(quest_node, condition_node, "quest_has_runtime_condition", source=source, evidence=evidence_prefix, data={"objectiveIndex": objective_index, "conditionPath": condition_path, "type": short_type})
+        if parent_node and parent_edge_kind:
+            self.add_edge(parent_node, condition_node, parent_edge_kind, source=source, evidence=evidence_prefix, data={"objectiveIndex": objective_index, "conditionPath": condition_path, "type": short_type})
+        type_node = self.add_mission_runtime_type_node("mission_runtime_condition_type", condition.get("$type"), source=source)
+        if type_node:
+            self.add_edge(condition_node, type_node, "mission_runtime_condition_type", source=source, evidence=f"{evidence_prefix}.$type")
+            self.add_edge(quest_node, type_node, "quest_objective_condition_type", source=source, evidence=evidence_prefix)
+        self.add_mission_runtime_condition_reference_edges(condition_node, condition, source=source, evidence_prefix=evidence_prefix)
+        for sub_index, sub_condition in enumerate(condition.get("subConditions") or []):
+            if not isinstance(sub_condition, dict):
+                continue
+            sub_path = f"{condition_path}.subConditions[{sub_index}]" if condition_path else f"subConditions[{sub_index}]"
+            self.add_mission_runtime_condition_node(
+                quest_node,
+                asset_key,
+                mission_id,
+                quest_id,
+                objective_index,
+                sub_condition,
+                source=source,
+                evidence_prefix=f"{evidence_prefix}.subConditions[{sub_index}]",
+                condition_path=sub_path,
+                parent_node=condition_node,
+                parent_edge_kind="condition_has_sub_condition",
+            )
+        failed_condition = condition.get("failedCondition")
+        if isinstance(failed_condition, dict):
+            failed_path = f"{condition_path}.failedCondition" if condition_path else "failedCondition"
+            self.add_mission_runtime_condition_node(
+                quest_node,
+                asset_key,
+                mission_id,
+                quest_id,
+                objective_index,
+                failed_condition,
+                source=source,
+                evidence_prefix=f"{evidence_prefix}.failedCondition",
+                condition_path=failed_path,
+                parent_node=condition_node,
+                parent_edge_kind="condition_has_failed_condition",
+            )
+        return condition_node
+
+    def add_mission_runtime_condition_reference_edges(self, condition_node: str, condition: dict[str, Any], *, source: str, evidence_prefix: str) -> None:
+        short_type = self.mission_runtime_condition_short_type(condition)
+
+        def add_level(field: str, edge_kind: str) -> str:
+            level_id = self.mission_runtime_const_key(condition, field)
+            if not level_id:
+                return ""
+            level_node = self.add_level_node(level_id, source=source)
+            self.add_edge(condition_node, level_node, edge_kind, source=source, evidence=f"{evidence_prefix}.{field}")
+            self.add_level_map_edge(level_node, level_id, source=source, evidence=f"mission_runtime_condition.{field}")
+            return level_id
+
+        def add_level_script(field: str, edge_kind: str, data: Any = None) -> str:
+            value = self.mission_runtime_const_value(condition.get(field))
+            script_id = safe_key(value.get("scriptId") if isinstance(value, dict) else value)
+            if not script_id:
+                return ""
+            script_node = self.add_node("level_script", script_id, name=script_id, source=source)
+            self.add_alias(script_id, script_node, kind="level_script_id", source=source)
+            self.add_edge(condition_node, script_node, edge_kind, source=source, evidence=f"{evidence_prefix}.{field}", data=data)
+            return script_id
+
+        if short_type in {"CheckLevelScriptPropertyBool", "CheckLevelScriptPropertyInt"}:
+            add_level("_mapId", "condition_checks_level")
+            script_id = add_level_script(
+                "_scriptId",
+                "condition_checks_level_script_property",
+                data={
+                    "key": self.mission_runtime_const_value(condition.get("_key")),
+                    "value": self.mission_runtime_const_value(condition.get("_value")),
+                    "comparer": self.mission_runtime_const_value(condition.get("_comparer")),
+                    "propertyType": short_type.removeprefix("CheckLevelScriptProperty"),
+                },
+            )
+            key = self.mission_runtime_const_value(condition.get("_key"))
+            if script_id and safe_key(key):
+                property_node = self.add_node("level_script_property", f"{script_id}:{safe_key(key)}", name=f"{script_id}:{safe_key(key)}", source=source, data={"scriptId": script_id, "key": key})
+                self.add_edge(condition_node, property_node, "condition_checks_level_script_property_key", source=source, evidence=f"{evidence_prefix}._key")
+            return
+
+        if short_type == "CheckScriptMonsterKilled":
+            add_level("_sceneId", "condition_checks_level")
+            script_id = add_level_script("_scriptId", "condition_checks_level_script", data={"needAllKill": condition.get("needAllKill"), "compareOperator": self.mission_runtime_const_value(condition.get("_compareOperator")), "progressToCompare": self.mission_runtime_const_value(condition.get("_progressToCompare"))})
+            if script_id:
+                for slot_index, slot_id_raw in enumerate(self.mission_runtime_const_list(condition, "_slotIds")):
+                    slot_id = safe_key(slot_id_raw)
+                    if not slot_id:
+                        continue
+                    slot_node = self.add_node("world_entity_script_slot", f"{script_id}:{slot_id}", name=f"{script_id}:{slot_id}", source=source, data={"scriptIdGlobal": script_id, "slotId": slot_id})
+                    self.add_alias(f"{script_id}:{slot_id}", slot_node, kind="world_entity_script_slot_id", source=source)
+                    self.add_edge(condition_node, slot_node, "condition_checks_world_entity_script_slot", source=source, evidence=f"{evidence_prefix}._slotIds[{slot_index}]", data={"needAllKill": condition.get("needAllKill")})
+            return
+
+        if short_type == "CheckQuestState":
+            quest_id = self.mission_runtime_const_key(condition, "_questId")
+            quest_node = self.add_quest_task_node(quest_id, source=source)
+            if quest_node:
+                self.add_edge(condition_node, quest_node, "condition_checks_quest_state", source=source, evidence=f"{evidence_prefix}._questId", data={"targetQuestState": self.mission_runtime_const_value(condition.get("_targetQuestState")), "comparer": self.mission_runtime_const_value(condition.get("_comparer"))})
+            return
+
+        if short_type == "CheckMissionState":
+            mission_node = self.add_mission_ref_node(self.mission_runtime_const_key(condition, "_missionId"), source=source)
+            if mission_node:
+                self.add_edge(condition_node, mission_node, "condition_checks_mission_state", source=source, evidence=f"{evidence_prefix}._missionId", data={"targetMissionState": self.mission_runtime_const_value(condition.get("_targetMissionState")), "comparer": self.mission_runtime_const_value(condition.get("_comparer"))})
+            return
+
+        if short_type == "CheckUnlockTech":
+            tech_id = self.mission_runtime_const_key(condition, "_facTechId")
+            tech_node = self.add_factory_tech_node(tech_id, source=source)
+            if tech_node:
+                self.add_edge(condition_node, tech_node, "condition_requires_factory_tech", source=source, evidence=f"{evidence_prefix}._facTechId")
+            return
+
+        if short_type in {"WeekRaidPlayerHasItem", "PlayerHasItem", "PlayerHasItemInItemBag", "CheckMoney"}:
+            item_field = "_moneyId" if short_type == "CheckMoney" else "_itemId"
+            item_node = self.add_item_node(self.mission_runtime_const_key(condition, item_field), source=source)
+            if item_node:
+                self.add_edge(
+                    condition_node,
+                    item_node,
+                    "condition_requires_item_count",
+                    source=source,
+                    evidence=f"{evidence_prefix}.{item_field}",
+                    data={
+                        "conditionType": short_type,
+                        "count": self.mission_runtime_const_value(condition.get("_progressToCompare")) if short_type != "PlayerHasItemInItemBag" else self.mission_runtime_const_value(condition.get("_targetItemCount")),
+                        "comparer": self.mission_runtime_const_value(condition.get("_comparer")),
+                        "compareOperator": self.mission_runtime_const_value(condition.get("_compareOperator")),
+                    },
+                )
+            return
+
+        if short_type == "ReachDestination":
+            add_level("_mapId", "condition_reaches_level")
+            area_id = self.mission_runtime_const_key(condition, "_areaId")
+            if area_id:
+                area_node = self.add_node("mission_area", area_id, name=area_id, source=source)
+                self.add_alias(area_id, area_node, kind="mission_area_id", source=source)
+                self.add_edge(condition_node, area_node, "condition_reaches_mission_area", source=source, evidence=f"{evidence_prefix}._areaId", data={"mapId": self.mission_runtime_const_value(condition.get("_mapId"))})
+            return
+
+        if short_type == "CheckTalkOptionFinish":
+            dialog_id = self.mission_runtime_const_key(condition, "_dialogId")
+            if dialog_id:
+                self.add_mission_runtime_narrative_ref_edge(condition_node, dialog_id, edge_kind="condition_checks_dialog_finish", source=source, evidence=f"{evidence_prefix}._dialogId")
+            return
+
+    def add_mission_runtime_asset_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        raw_data = self.read_decoded_config_bytes(entry)
+        if not raw_data:
+            return
+        try:
+            payload = json.loads(raw_data.decode("utf-8-sig"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, dict):
+            return
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        stem = Path(safe_key(entry.get("dp") or entry.get("p"))).stem
+        asset_kind = "meta" if stem.endswith("_meta") else "runtime"
+        mission_id = safe_key(payload.get("missionId")) or stem.removesuffix("_meta")
+        if not mission_id:
+            return
+        quest_dic = payload.get("questDic") if isinstance(payload.get("questDic"), dict) else {}
+        action_map = payload.get("actionMapRaw") if isinstance(payload.get("actionMapRaw"), dict) else {}
+        data_map = action_map.get("dataMap") if isinstance(action_map.get("dataMap"), dict) else {}
+        asset_key = f"{mission_id}:{asset_kind}"
+        asset_node = self.add_node(
+            "mission_runtime_asset",
+            asset_key,
+            name=asset_key,
+            source=source,
+            path=safe_key(entry.get("p")),
+            data=compact_payload(
+                {
+                    "missionId": mission_id,
+                    "assetKind": asset_kind,
+                    "missionType": payload.get("missionType"),
+                    "baseMissionImportance": payload.get("baseMissionImportance") or payload.get("missionImportance"),
+                    "overrideImportance": payload.get("overrideImportance"),
+                    "sortId": payload.get("sortId"),
+                    "questCount": len(quest_dic),
+                    "actionCount": len(data_map.get("actionList") or []),
+                    "getterCount": len(data_map.get("getterList") or []),
+                    "propertyCount": len(payload.get("properties") or []),
+                },
+                depth=3,
+            ),
+        )
+        self.add_alias(asset_key, asset_node, kind="mission_runtime_asset_key", source=source)
+        self.add_alias(mission_id, asset_node, kind="mission_runtime_mission_id", source=source)
+        self.add_edge(file_node, asset_node, "defines_mission_runtime_asset", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id, "assetKind": asset_kind})
+
+        mission_node = self.add_mission_ref_node(mission_id, source=source)
+        if mission_node:
+            self.add_edge(asset_node, mission_node, "mission_runtime_asset_for_mission", source=source, evidence="missionId")
+        level_id = safe_key(payload.get("levelId"))
+        accept_mode = payload.get("acceptMode") if isinstance(payload.get("acceptMode"), dict) else {}
+        if not level_id:
+            level_id = safe_key(accept_mode.get("levelId"))
+        if level_id:
+            level_node = self.add_level_node(level_id, source=source)
+            self.add_edge(asset_node, level_node, "mission_runtime_in_level", source=source, evidence="levelId")
+            self.add_level_map_edge(level_node, level_id, source=source, evidence="mission_runtime_levelId")
+        reward_node = self.add_reward_node(payload.get("rewardId"), source=source)
+        if reward_node:
+            self.add_edge(asset_node, reward_node, "mission_runtime_rewards", source=source, evidence="rewardId")
+        for field, edge_kind in (("missionName", "mission_runtime_name_text"), ("missionDescription", "mission_runtime_description_text")):
+            text_key = self.mission_runtime_text_key(payload.get(field))
+            text_node = self.add_i18n_text_node(text_key, source=source)
+            if text_node:
+                self.add_edge(asset_node, text_node, edge_kind, source=source, evidence=field)
+
+        action_nodes_by_id: dict[str, str] = {}
+        runtime_actions = data_map.get("actionList") if isinstance(data_map.get("actionList"), list) else []
+        for action_index, action in enumerate(runtime_actions):
+            if not isinstance(action, dict):
+                continue
+            action_node = self.add_mission_runtime_action_node(asset_node, asset_key, action, action_index, source=source)
+            action_id = safe_key(action.get("_ID"))
+            if action_node and action_id:
+                action_nodes_by_id[action_id] = action_node
+        for action_index, action in enumerate(runtime_actions):
+            if not isinstance(action, dict):
+                continue
+            action_id = safe_key(action.get("_ID"))
+            action_node = action_nodes_by_id.get(action_id) or self.node_id("mission_runtime_action", f"{asset_key}:{safe_key(action.get('_uid')) or action_id or action_index}")
+            if not action_node:
+                continue
+            self.add_mission_runtime_action_reference_edges(action_node, action, source=source, evidence_prefix=f"actionList[{action_index}]")
+            next_id = safe_key(self.mission_runtime_const_value(action.get("_nextID")))
+            next_node = action_nodes_by_id.get(next_id)
+            if next_node:
+                self.add_edge(action_node, next_node, "mission_runtime_action_next", source=source, evidence=f"actionList[{action_index}]._nextID")
+        for ref_index, ref in enumerate(sorted(set(STORY_KEY_RE.findall("\n".join(self.iter_mission_runtime_strings(payload.get("actionMapRaw"))))))):
+            self.add_mission_runtime_narrative_ref_edge(asset_node, ref, edge_kind="mission_runtime_action_map_references_narrative", source=source, evidence=f"actionMapRaw[{ref_index}]")
+
+        for quest_index, (quest_key_raw, quest) in enumerate(quest_dic.items()):
+            if not isinstance(quest, dict):
+                continue
+            quest_id = safe_key(quest.get("questId") or quest_key_raw)
+            if not quest_id:
+                continue
+            quest_node = self.add_quest_task_node(
+                quest_id,
+                source=source,
+                data=compact_payload(
+                    {
+                        "questId": quest_id,
+                        "missionId": mission_id,
+                        "questType": quest.get("questType"),
+                        "objectiveConditionNum": quest.get("objectiveConditionNum"),
+                        "showMode": quest.get("showMode"),
+                        "flowIndex": quest.get("flowIndex"),
+                        "objectiveCount": len(quest.get("objectiveList") or []),
+                        "prevQuestCount": len(quest.get("prevQuestIdList") or []),
+                    },
+                    depth=2,
+                ),
+            )
+            self.add_edge(asset_node, quest_node, "mission_runtime_has_quest", source=source, evidence=f"questDic[{quest_index}]", data={"source": source_id})
+            if mission_node:
+                self.add_edge(quest_node, mission_node, "quest_task_in_mission", source=source, evidence="missionRuntimeAsset")
+            quest_reward = self.add_reward_node(quest.get("rewardId"), source=source)
+            if quest_reward:
+                self.add_edge(quest_node, quest_reward, "quest_task_rewards", source=source, evidence="rewardId")
+            override_text = self.mission_runtime_text_key(quest.get("descriptionOverride"))
+            override_node = self.add_i18n_text_node(override_text, source=source)
+            if override_node:
+                self.add_edge(quest_node, override_node, "quest_description_override_text", source=source, evidence="descriptionOverride")
+            for prev_index, prev_quest_id in enumerate(quest.get("prevQuestIdList") or []):
+                prev_node = self.add_quest_task_node(prev_quest_id, source=source)
+                if prev_node:
+                    self.add_edge(quest_node, prev_node, "quest_task_depends_on_previous", source=source, evidence=f"prevQuestIdList[{prev_index}]")
+            for objective_index, objective in enumerate(quest.get("objectiveList") or []):
+                if not isinstance(objective, dict):
+                    continue
+                text_key = self.mission_runtime_text_key(objective.get("description"))
+                text_node = self.add_i18n_text_node(text_key, source=source)
+                if text_node:
+                    self.add_edge(quest_node, text_node, "quest_objective_text", source=source, evidence=f"objectiveList[{objective_index}].description")
+                condition = objective.get("condition") if isinstance(objective.get("condition"), dict) else {}
+                if condition:
+                    self.add_mission_runtime_condition_node(
+                        quest_node,
+                        asset_key,
+                        mission_id,
+                        quest_id,
+                        objective_index,
+                        condition,
+                        source=source,
+                        evidence_prefix=f"objectiveList[{objective_index}].condition",
+                    )
+                for tracking_index, tracking in enumerate(objective.get("trackingInfoList") or []):
+                    if not isinstance(tracking, dict):
+                        continue
+                    tracking_node = self.add_mission_runtime_type_node("mission_runtime_tracking_type", tracking.get("$type"), source=source)
+                    if tracking_node:
+                        self.add_edge(quest_node, tracking_node, "quest_tracking_type", source=source, evidence=f"objectiveList[{objective_index}].trackingInfoList[{tracking_index}]")
+                    scene_id = safe_key(tracking.get("sceneId"))
+                    if scene_id:
+                        scene_node = self.add_level_node(scene_id, source=source)
+                        self.add_edge(quest_node, scene_node, "quest_tracking_in_level", source=source, evidence="trackingInfo.sceneId")
+                    area_id = safe_key(tracking.get("missionAreaId"))
+                    if area_id:
+                        area_node = self.add_node("mission_area", area_id, name=area_id, source=source)
+                        self.add_alias(area_id, area_node, kind="mission_area_id", source=source)
+                        self.add_edge(quest_node, area_node, "quest_tracks_mission_area", source=source, evidence="trackingInfo.missionAreaId")
+            for ref_index, ref in enumerate(sorted(set(STORY_KEY_RE.findall("\n".join(self.iter_mission_runtime_strings(quest)))))):
+                self.add_mission_runtime_narrative_ref_edge(quest_node, ref, edge_kind="quest_references_narrative", source=source, evidence=f"questDic[{quest_index}].storyRef[{ref_index}]")
+
+    def lipsync_parts_from_entry(self, entry: dict[str, Any]) -> tuple[str, str]:
+        rel = safe_key(entry.get("dp") or entry.get("p"))
+        parts = [part for part in rel.replace("\\", "/").split("/") if part]
+        for index, part in enumerate(parts):
+            if part == "LipSync" and index + 2 < len(parts):
+                language = safe_key(parts[index + 1])
+                audio_id = Path(parts[-1]).stem
+                return language, safe_key(audio_id)
+        return "", ""
+
+    def add_lipsync_language_node(self, language: Any, *, source: str = "") -> str:
+        language_key = safe_key(language)
+        if not language_key:
+            return ""
+        node = self.add_node("lipsync_language", language_key, name=language_key, source=source)
+        self.add_alias(language_key, node, kind="lipsync_language", source=source)
+        return node
+
+    def add_lipsync_clip_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        language, audio_id = self.lipsync_parts_from_entry(entry)
+        if not language or not audio_id:
+            return
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        clip_key = f"{language}:{audio_id}"
+        clip_node = self.add_node(
+            "lipsync_clip",
+            clip_key,
+            name=clip_key,
+            source=source,
+            path=safe_key(entry.get("p")),
+            data=compact_payload(
+                {
+                    "language": language,
+                    "audioId": audio_id,
+                    "totalRecords": entry.get("r"),
+                    "size": entry.get("s"),
+                    "summary": entry.get("h"),
+                    "sample": entry.get("t"),
+                    "fieldCount": len(entry.get("a") or []),
+                    "decodedSummaryCount": len(entry.get("ds") or []),
+                },
+                depth=2,
+            ),
+        )
+        self.add_alias(clip_key, clip_node, kind="lipsync_clip_key", source=source)
+        self.add_alias(audio_id, clip_node, kind="lipsync_audio_id", source=source)
+        self.add_edge(file_node, clip_node, "defines_lipsync_clip", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id})
+        language_node = self.add_lipsync_language_node(language, source=source)
+        if language_node:
+            self.add_edge(clip_node, language_node, "lipsync_clip_language", source=source, evidence="path")
+        self.add_audio_target_edge(clip_node, audio_id, edge_kind="lipsync_for_audio", source=source, evidence="pathStem")
+
+    def decode_damage_text_payload(self, entry: dict[str, Any], raw_data: bytes | None = None) -> dict[str, Any] | None:
+        data = raw_data if raw_data is not None else self.read_decoded_config_bytes(entry)
+        if not data:
+            return None
+        try:
+            decoded = decode_damage_text_memorypack(safe_key(entry.get("dp")), data, len(data))
+        except Exception:
+            return None
+        payload = decoded.get("decoded") if isinstance(decoded, dict) else None
+        return payload if isinstance(payload, dict) else None
+
+    def add_damage_text_animation_node(self, animation_name: Any, *, source: str = "") -> str:
+        animation_key = safe_key(animation_name)
+        if not animation_key:
+            return ""
+        node = self.add_node("damage_text_animation", animation_key, name=animation_key, source=source)
+        self.add_alias(animation_key, node, kind="damage_text_animation_name", source=source)
+        return node
+
+    def add_damage_text_node_name_node(self, node_name: Any, *, source: str = "") -> str:
+        node_key = safe_key(node_name)
+        if not node_key:
+            return ""
+        node = self.add_node("damage_text_node_name", node_key, name=node_key, source=source)
+        self.add_alias(node_key, node, kind="damage_text_node_name", source=source)
+        return node
+
+    def add_damage_text_ui_resource_node(self, resource_id: Any, *, source: str = "") -> str:
+        resource_key = safe_key(resource_id)
+        if not resource_key or not resource_key.startswith("ui_"):
+            return ""
+        node = self.add_node("damage_text_ui_resource", resource_key, name=resource_key, source=source)
+        self.add_alias(resource_key, node, kind="damage_text_ui_resource", source=source)
+        return node
+
+    def add_damage_text_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        raw_data = self.read_decoded_config_bytes(entry)
+        decoded = self.decode_damage_text_payload(entry, raw_data)
+        if not decoded:
+            return
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        self.update_node_details(
+            file_node,
+            data=compact_payload(
+                {
+                    **self.decoded_config_entry_data(entry),
+                    "charset": decoded.get("charset"),
+                    "declaredRowCount": decoded.get("declaredRowCount"),
+                    "rowFlagCounts": decoded.get("rowFlagCounts"),
+                    "animationCountByRow": decoded.get("animationCountByRow"),
+                    "nodeCountPairs": decoded.get("nodeCountPairs"),
+                    "tailLengthCounts": decoded.get("tailLengthCounts"),
+                    "exactLength": decoded.get("exactLength"),
+                },
+                depth=3,
+            ),
+        )
+        for row in decoded.get("sampleRows") or []:
+            if not isinstance(row, dict):
+                continue
+            row_index = row.get("index")
+            if not isinstance(row_index, int):
+                continue
+            style_key = f"damage_text:row{row_index:03d}"
+            style_node = self.add_node(
+                "damage_text_style",
+                style_key,
+                name=style_key,
+                source=source,
+                data=compact_payload(
+                    {
+                        "rowIndex": row_index,
+                        "rowFlag": row.get("rowFlag"),
+                        "nodeMetaCount": row.get("nodeMetaCount"),
+                        "layoutCount": row.get("layoutCount"),
+                        "layoutTailLength": row.get("layoutTailLength"),
+                        "startOffset": row.get("startOffset"),
+                    },
+                    depth=2,
+                ),
+            )
+            self.add_alias(style_key, style_node, kind="damage_text_style_key", source=source)
+            self.add_edge(file_node, style_node, "defines_damage_text_style", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id, "rowIndex": row_index})
+
+            for animation_index, animation in enumerate(row.get("animationRefs") or []):
+                if not isinstance(animation, dict):
+                    continue
+                animation_node = self.add_damage_text_animation_node(animation.get("name"), source=source)
+                if animation_node:
+                    self.add_edge(style_node, animation_node, "damage_text_uses_animation", source=source, evidence=f"animationRefs[{animation_index}]", data=compact_payload(animation, depth=1))
+
+            for node_index, node_name in enumerate(row.get("nodeNames") or []):
+                node_name_node = self.add_damage_text_node_name_node(node_name, source=source)
+                if node_name_node:
+                    self.add_edge(style_node, node_name_node, "damage_text_has_node_name", source=source, evidence=f"nodeNames[{node_index}]")
+
+            for resource_index, resource_ref in enumerate(row.get("nodeResourceRefs") or []):
+                resource_node = self.add_damage_text_ui_resource_node(resource_ref, source=source)
+                if resource_node:
+                    self.add_edge(style_node, resource_node, "damage_text_uses_ui_resource", source=source, evidence=f"nodeResourceRefs[{resource_index}]")
+
+    def decode_bamboo_raft_task_table_payload(self, entry: dict[str, Any], raw_data: bytes | None = None) -> dict[str, Any] | None:
+        data = raw_data if raw_data is not None else self.read_decoded_config_bytes(entry)
+        if not data:
+            return None
+        try:
+            decoded = decode_bamboo_raft_task_table_memorypack(safe_key(entry.get("dp")), data, len(data))
+        except Exception:
+            return None
+        payload = decoded.get("decoded") if isinstance(decoded, dict) else None
+        return payload if isinstance(payload, dict) else None
+
+    def quest_task_mission_prefix(self, task_id: Any) -> str:
+        task_key = safe_key(task_id)
+        match = re.match(r"^(.+)_q#\d+$", task_key)
+        return match.group(1) if match else ""
+
+    def add_quest_task_node(self, task_id: Any, *, source: str = "", data: Any = None) -> str:
+        task_key = safe_key(task_id)
+        if not task_key:
+            return ""
+        node = self.add_node("quest_task", task_key, name=task_key, source=source, data=data)
+        self.add_alias(task_key, node, kind="quest_task_id", source=source)
+        return node
+
+    def add_bamboo_raft_task_table_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        raw_data = self.read_decoded_config_bytes(entry)
+        decoded = self.decode_bamboo_raft_task_table_payload(entry, raw_data)
+        if not decoded:
+            return
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        self.update_node_details(
+            file_node,
+            data=compact_payload(
+                {
+                    **self.decoded_config_entry_data(entry),
+                    "entryCount": decoded.get("entryCount"),
+                    "totalTaskRefs": decoded.get("totalTaskRefs"),
+                    "duplicateIdMatches": decoded.get("duplicateIdMatches"),
+                    "field0Counts": decoded.get("field0Counts"),
+                    "taskCountCounts": decoded.get("taskCountCounts"),
+                    "exactLength": decoded.get("exactLength"),
+                },
+                depth=3,
+            ),
+        )
+        for row_index, row in enumerate(decoded.get("sampleRows") or []):
+            if not isinstance(row, dict):
+                continue
+            group_key = safe_key(row.get("hashU32"))
+            if not group_key:
+                continue
+            group_node = self.add_node(
+                "bamboo_raft_task_group",
+                group_key,
+                name=group_key,
+                source=source,
+                data=compact_payload(
+                    {
+                        "hashU32": row.get("hashU32"),
+                        "field0U32": row.get("field0U32"),
+                        "valueMemberCount": row.get("valueMemberCount"),
+                        "taskCount": row.get("taskCount"),
+                        "tailU64": row.get("tailU64"),
+                    },
+                    depth=2,
+                ),
+            )
+            self.add_alias(group_key, group_node, kind="bamboo_raft_task_group_hash", source=source)
+            self.add_edge(file_node, group_node, "defines_bamboo_raft_task_group", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id, "rowIndex": row_index})
+            for task_index, task in enumerate(row.get("taskRefs") or []):
+                if not isinstance(task, dict):
+                    continue
+                task_id = safe_key(task.get("taskId"))
+                if not task_id:
+                    continue
+                mission_prefix = self.quest_task_mission_prefix(task_id)
+                task_node = self.add_quest_task_node(task_id, source=source, data={"taskId": task_id, "missionPrefix": mission_prefix})
+                self.add_edge(group_node, task_node, "bamboo_raft_group_has_task", source=source, evidence=f"taskRefs[{task_index}]", data=compact_payload(task, depth=1))
+                self.add_edge(file_node, task_node, "defines_bamboo_raft_task_ref", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id, "rowIndex": row_index, "taskIndex": task_index, "duplicateIdMatches": task.get("duplicateId") == task_id})
+                if mission_prefix:
+                    mission_node = self.add_mission_ref_node(mission_prefix, source=source)
+                    if mission_node:
+                        self.add_edge(task_node, mission_node, "quest_task_in_mission", source=source, evidence="taskIdPrefix")
+
+    def navmesh_owner_from_entry(self, entry: dict[str, Any]) -> str:
+        rel = safe_key(entry.get("dp") or entry.get("p"))
+        parts = [part for part in rel.replace("\\", "/").split("/") if part]
+        for index, part in enumerate(parts):
+            if part == "NavMesh" and index + 1 < len(parts):
+                return safe_key(parts[index + 1])
+        return ""
+
+    def add_navmesh_area_id_node(self, owner: Any, area_id: Any, *, source: str = "") -> str:
+        owner_key = safe_key(owner)
+        area_key = safe_key(area_id)
+        if not owner_key or not area_key:
+            return ""
+        key = f"{owner_key}:{area_key}"
+        node = self.add_node(
+            "navmesh_area_id",
+            key,
+            name=key,
+            source=source,
+            data={"owner": owner_key, "areaId": area_id},
+        )
+        self.add_alias(key, node, kind="navmesh_area_id", source=source)
+        return node
+
+    def add_navmesh_luna_area_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        raw_data = self.read_decoded_config_bytes(entry)
+        decoded = decode_navmesh_luna_area_rows(raw_data)
+        owner = self.navmesh_owner_from_entry(entry)
+        if not decoded or not owner:
+            return
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        self.update_node_details(
+            file_node,
+            data=compact_payload({**self.decoded_config_entry_data(entry), "decoded": {key: value for key, value in decoded.items() if key != "rows"}}, depth=3),
+        )
+        level_node = self.add_level_node(owner, source=source)
+        self.add_level_map_edge(level_node, owner, source=source, evidence="navmesh_owner")
+        for row in decoded.get("rows") or []:
+            row_index = row.get("rowIndex")
+            area_id = row.get("areaId")
+            area_key = f"{owner}:row{int(row_index):04d}:area{safe_key(area_id)}"
+            area_node = self.add_node(
+                "navmesh_area",
+                area_key,
+                name=area_key,
+                source=source,
+                path=safe_key(entry.get("p")),
+                data=compact_payload({"owner": owner, **row}, depth=3),
+            )
+            self.add_alias(area_key, area_node, kind="navmesh_area_key", source=source)
+            self.add_edge(file_node, area_node, "defines_navmesh_area", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id, "rowIndex": row_index})
+            self.add_edge(area_node, level_node, "navmesh_area_in_level", source=source, evidence="navmesh_owner")
+            area_id_node = self.add_navmesh_area_id_node(owner, area_id, source=source)
+            if area_id_node:
+                self.add_edge(area_node, area_id_node, "navmesh_area_has_area_id", source=source, evidence="areaId")
+
+    def add_navmesh_state_container_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        raw_data = self.read_decoded_config_bytes(entry)
+        decoded = decode_navmesh_state_container_fields(raw_data)
+        owner = self.navmesh_owner_from_entry(entry)
+        if not decoded or not owner:
+            return
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        field_summaries = [
+            {"fieldIndex": field.get("fieldIndex"), "recordKind": field.get("recordKind"), "count": field.get("count")}
+            for field in decoded.get("fields") or []
+        ]
+        container_node = self.add_node(
+            "navmesh_state_container",
+            owner,
+            name=owner,
+            source=source,
+            path=safe_key(entry.get("p")),
+            data=compact_payload(
+                {
+                    **self.decoded_config_entry_data(entry),
+                    "owner": owner,
+                    "fieldCount": decoded.get("fieldCount"),
+                    "totalRows": decoded.get("totalRows"),
+                    "recordKindCounts": decoded.get("recordKindCounts"),
+                    "fields": field_summaries,
+                    "exactLength": decoded.get("exactLength"),
+                },
+                depth=3,
+            ),
+        )
+        self.add_alias(owner, container_node, kind="navmesh_state_container_owner", source=source)
+        self.add_edge(file_node, container_node, "defines_navmesh_state_container", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id})
+        level_node = self.add_level_node(owner, source=source)
+        self.add_edge(container_node, level_node, "navmesh_state_container_in_level", source=source, evidence="navmesh_owner")
+        self.add_level_map_edge(level_node, owner, source=source, evidence="navmesh_owner")
+
+        for field in decoded.get("fields") or []:
+            field_index = field.get("fieldIndex")
+            record_kind = safe_key(field.get("recordKind"))
+            for row in field.get("rows") or []:
+                row_index = row.get("rowIndex")
+                record_key = f"{owner}:f{int(field_index):02d}:r{int(row_index):04d}"
+                record_node = self.add_node(
+                    "navmesh_state_record",
+                    record_key,
+                    name=record_key,
+                    source=source,
+                    path=safe_key(entry.get("p")),
+                    data=compact_payload({"owner": owner, "fieldIndex": field_index, "recordKind": record_kind, **row}, depth=3),
+                )
+                self.add_alias(record_key, record_node, kind="navmesh_state_record_key", source=source)
+                self.add_edge(container_node, record_node, "navmesh_state_container_has_record", source=source, evidence=f"field{field_index}:{record_kind}")
+                self.add_edge(file_node, record_node, "defines_navmesh_state_record", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id, "fieldIndex": field_index, "rowIndex": row_index, "recordKind": record_kind})
+                if record_kind == "bounds36" and row.get("areaId") is not None:
+                    area_id_node = self.add_navmesh_area_id_node(owner, row.get("areaId"), source=source)
+                    if area_id_node:
+                        self.add_edge(record_node, area_id_node, "navmesh_state_record_references_area_id", source=source, evidence="areaId")
+
+    def add_model_view_state_controller_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        raw_data = self.read_decoded_config_bytes(entry)
+        decoded = self.decode_model_view_state_controller_payload(entry, raw_data)
+        fields = parse_summary_assignments(entry.get("t"))
+        model_id = safe_key((decoded or {}).get("modelId")) or safe_key(fields.get("modelId")) or Path(safe_key(entry.get("p"))).stem
+        if not model_id:
+            return
+        source_id = safe_key(entry.get("source")) or "webui"
+        controller_node = self.add_node(
+            "model_view_state_controller",
+            model_id,
+            name=model_id,
+            source="webui/game_data",
+            path=safe_key(entry.get("p")),
+            data=compact_payload(
+                {
+                    **self.decoded_config_entry_data(entry),
+                    "modelId": model_id,
+                    "clipAssetInfoCount": (decoded or {}).get("clipAssetInfoCount"),
+                    "effectIdCount": (decoded or {}).get("effectIdCount"),
+                    "emissiveConfigHashCount": (decoded or {}).get("emissiveConfigHashCount"),
+                    "modelAnimatorDatasCount": (decoded or {}).get("modelAnimatorDatasCount"),
+                    "preTickAnimator": (decoded or {}).get("preTickAnimator"),
+                    "exactLength": (decoded or {}).get("exactLength"),
+                },
+                depth=3,
+            ),
+        )
+        self.add_edge(file_node, controller_node, "defines_model_view_state_controller", source="webui/game_data", evidence=safe_key(entry.get("dp")), data={"source": source_id})
+        self.add_alias(model_id, controller_node, kind="model_view_state_controller_id", source="webui/game_data")
+        model_node = self.add_node("model_config_model", model_id, name=model_id, source="webui/game_data")
+        self.add_edge(controller_node, model_node, "model_view_state_controller_uses_model", source="webui/game_data", evidence="modelId")
+        self.add_alias(model_id, model_node, kind="model_id", source="webui/game_data")
+        self.add_model_asset_entity_edges(controller_node, (model_id,), edge_kind="model_view_state_controller_asset_entity", source="webui/game_data", evidence="modelId")
+
+        seen_clips: set[tuple[str, str]] = set()
+        for clip in (decoded or {}).get("clipAssetInfos") or []:
+            if not isinstance(clip, dict):
+                continue
+            clip_name = safe_key(clip.get("name"))
+            if not clip_name or ("clipAssetInfos", clip_name) in seen_clips:
+                continue
+            seen_clips.add(("clipAssetInfos", clip_name))
+            clip_node = self.add_model_view_clip_ref_node(clip_name, source="webui/game_data")
+            self.add_edge(controller_node, clip_node, "model_view_state_controller_has_clip_asset", source="webui/game_data", evidence="clipAssetInfos", data=compact_payload(clip, depth=1))
+        for index, clip_name in enumerate((decoded or {}).get("modelAnimatorDataClipRefs") or []):
+            clip_key = safe_key(clip_name)
+            if not clip_key or ("modelAnimatorDataClipRefs", clip_key) in seen_clips:
+                continue
+            seen_clips.add(("modelAnimatorDataClipRefs", clip_key))
+            clip_node = self.add_model_view_clip_ref_node(clip_key, source="webui/game_data")
+            self.add_edge(controller_node, clip_node, "model_view_state_controller_animator_references_clip", source="webui/game_data", evidence=f"modelAnimatorDataClipRefs[{index}]")
+
+        seen_effects: set[tuple[str, str]] = set()
+        for field, edge_kind in (
+            ("effectIds", "model_view_state_controller_references_effect"),
+            ("modelAnimatorDataEffectRefs", "model_view_state_controller_animator_references_effect"),
+        ):
+            for index, effect_id in enumerate((decoded or {}).get(field) or []):
+                effect_key = safe_key(effect_id)
+                if not effect_key or (field, effect_key) in seen_effects:
+                    continue
+                seen_effects.add((field, effect_key))
+                effect_node = self.add_node("gameplay_effect", effect_key, name=effect_key, source="webui/game_data")
+                self.add_alias(effect_key, effect_node, kind="gameplay_effect_id", source="webui/game_data")
+                self.add_edge(controller_node, effect_node, edge_kind, source="webui/game_data", evidence=f"{field}[{index}]")
+
+        for index, animator_name in enumerate((decoded or {}).get("animatorNames") or []):
+            animator_key = safe_key(animator_name)
+            if not animator_key:
+                continue
+            animator_node = self.add_model_view_animator_name_node(animator_key, source="webui/game_data")
+            self.add_edge(controller_node, animator_node, "model_view_state_controller_has_animator_name", source="webui/game_data", evidence=f"animatorNames[{index}]")
+
+    def add_interactive_collection_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        raw_data = self.read_decoded_config_bytes(entry)
+        if not raw_data:
+            return
+        try:
+            payload = json.loads(raw_data.decode("utf-8-sig"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, dict):
+            return
+        source_id = safe_key(entry.get("source")) or "webui"
+        for collection_id, row in payload.items():
+            collection_key = safe_key(collection_id)
+            if not collection_key or not isinstance(row, dict):
+                continue
+            scene_id = safe_key(row.get("sceneId"))
+            total_cnt = row.get("totalCnt")
+            edge_data = compact_payload(
+                {
+                    "source": source_id,
+                    "sceneId": scene_id,
+                    "totalCntLength": len(total_cnt) if isinstance(total_cnt, list) else None,
+                    "totalCnt": total_cnt if isinstance(total_cnt, list) else None,
+                },
+                depth=2,
+            )
+            collection_node = self.add_node(
+                "interactive_collection",
+                collection_key,
+                name=collection_key,
+                source="webui/game_data",
+                data=compact_payload({"sceneId": scene_id, "totalCntLength": len(total_cnt) if isinstance(total_cnt, list) else None}, depth=2),
+            )
+            self.add_edge(file_node, collection_node, "defines_interactive_collection", source="webui/game_data", evidence=safe_key(entry.get("dp")), data=edge_data)
+            self.add_alias(collection_key, collection_node, kind="interactive_collection_id", source="webui/game_data")
+            if not scene_id:
+                continue
+            level_node = self.add_node("level", scene_id, name=scene_id, source="webui/game_data")
+            self.add_edge(collection_node, level_node, "interactive_collection_in_level", source="webui/game_data", evidence="sceneId", data={"source": source_id})
+
+    def decode_interactive_template_payload(self, entry: dict[str, Any], raw_data: bytes | None = None) -> dict[str, Any] | None:
+        data = raw_data if raw_data is not None else self.read_decoded_config_bytes(entry)
+        if not data:
+            return None
+        try:
+            decoded = decode_interactive_template_memorypack(self.decoded_config_raw_path(entry), data, len(data))
+        except Exception:
+            return None
+        payload = decoded.get("decoded") if isinstance(decoded, dict) else None
+        return payload if isinstance(payload, dict) else None
+
+    def add_interactive_component_type_node(self, component_type: Any, *, source: str = "") -> str:
+        component_key = safe_key(component_type)
+        if not component_key:
+            return ""
+        node = self.add_node("interactive_component_type", component_key, name=component_key, source=source)
+        self.add_alias(component_key, node, kind="interactive_component_type", source=source)
+        return node
+
+    def add_interactive_property_key_node(self, property_key: Any, *, source: str = "") -> str:
+        key = safe_key(property_key)
+        if not key:
+            return ""
+        node = self.add_node("interactive_property_key", key, name=key, source=source)
+        self.add_alias(key, node, kind="interactive_property_key", source=source)
+        return node
+
+    def add_interactive_component_node(
+        self,
+        template_id: str,
+        source_id: str,
+        row: dict[str, Any],
+        *,
+        source: str,
+    ) -> str:
+        component_type = safe_key(row.get("type"))
+        index = safe_key(row.get("index"))
+        if not component_type or not index:
+            return ""
+        component_key = f"{source_id}:{template_id}:{index}:{component_type}"
+        data = compact_payload(
+            {
+                "index": row.get("index"),
+                "tag": row.get("tag"),
+                "type": component_type,
+                "memberCount": row.get("memberCount"),
+                "tagWidth": row.get("tagWidth"),
+                "payloadOffset": row.get("payloadOffset"),
+                "byteLength": row.get("byteLength"),
+                "parsedBody": row.get("parsedBody"),
+                "bodyShape": row.get("bodyShape"),
+            },
+            depth=2,
+        )
+        return self.add_node(
+            "interactive_component",
+            component_key,
+            name=f"{template_id}[{index}] {component_type}",
+            source=source,
+            data=data,
+        )
+
+    def add_interactive_logic_type_node(self, logic_type: Any, *, source: str = "") -> str:
+        key = safe_key(logic_type)
+        if not key:
+            return ""
+        node = self.add_node("interactive_logic_type", key, name=key, source=source)
+        self.add_alias(key, node, kind="interactive_logic_type", source=source)
+        return node
+
+    def add_interactive_shape_node(self, kind: str, value: Any, *, source: str = "") -> str:
+        key = safe_key(value)
+        if not key:
+            return ""
+        node = self.add_node(kind, key, name=key, source=source)
+        self.add_alias(key, node, kind=kind, source=source)
+        return node
+
+    def add_interactive_property_edges(
+        self,
+        data_node: str,
+        component_node: str,
+        keys: Iterable[Any],
+        *,
+        template_edge_kind: str,
+        component_edge_kind: str,
+        source: str,
+        evidence: str,
+    ) -> None:
+        seen: set[str] = set()
+        for raw_key in keys:
+            key = safe_key(raw_key)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            property_node = self.add_interactive_property_key_node(key, source=source)
+            self.add_edge(data_node, property_node, template_edge_kind, source=source, evidence=evidence)
+            if component_node:
+                self.add_edge(component_node, property_node, component_edge_kind, source=source, evidence=evidence)
+
+    def add_interactive_template_decoded_edges(
+        self,
+        data_node: str,
+        template_id: str,
+        source_id: str,
+        decoded: dict[str, Any],
+        *,
+        source: str,
+    ) -> None:
+        for tag_row in decoded.get("bornTags") or []:
+            tag = safe_key(tag_row.get("tag") if isinstance(tag_row, dict) else tag_row)
+            if not tag.startswith("Category/"):
+                continue
+            category_node = self.add_gameplay_tag_node(tag, source=source)
+            self.add_edge(data_node, category_node, "interactive_template_has_category_tag", source=source, evidence="bornTags")
+
+        component_nodes_by_index: dict[int, str] = {}
+
+        def add_component(row: Any, template_edge_kind: str, evidence: str) -> str:
+            if not isinstance(row, dict):
+                return ""
+            component_node = self.add_interactive_component_node(template_id, source_id, row, source=source)
+            component_type = safe_key(row.get("type"))
+            if not component_node or not component_type:
+                return ""
+            index = row.get("index")
+            if isinstance(index, int):
+                component_nodes_by_index[index] = component_node
+            self.add_edge(data_node, component_node, "interactive_template_data_has_component", source=source, evidence=evidence)
+            component_type_node = self.add_interactive_component_type_node(component_type, source=source)
+            edge_data = compact_payload(
+                {"index": row.get("index"), "tag": row.get("tag"), "memberCount": row.get("memberCount"), "parsedBody": row.get("parsedBody")},
+                depth=1,
+            )
+            self.add_edge(component_node, component_type_node, "interactive_component_has_type", source=source, evidence=evidence, data=edge_data)
+            self.add_edge(data_node, component_type_node, template_edge_kind, source=source, evidence=evidence, data=edge_data)
+            if template_edge_kind != "interactive_template_has_component_type":
+                self.add_edge(data_node, component_type_node, "interactive_template_has_component_type", source=source, evidence=evidence, data=edge_data)
+            return component_node
+
+        for row in decoded.get("componentListPrefixRows") or []:
+            edge_kind = "interactive_template_has_first_component_type" if row.get("index") == 0 else "interactive_template_has_component_type"
+            add_component(row, edge_kind, "componentListPrefixRows")
+        for row in decoded.get("componentListParsedPayloadRows") or []:
+            add_component(row, "interactive_template_has_payload_component_type", "componentListParsedPayloadRows")
+        stop_row = decoded.get("componentListStopPayload")
+        if isinstance(stop_row, dict):
+            add_component(stop_row, "interactive_template_stopped_at_component_type", "componentListStopPayload")
+
+        def component_for_detail(detail: dict[str, Any], evidence: str) -> str:
+            index = detail.get("index")
+            if isinstance(index, int) and index in component_nodes_by_index:
+                return component_nodes_by_index[index]
+            return add_component(detail, "interactive_template_has_component_type", evidence)
+
+        for detail in decoded.get("componentTriggerObserverComponents") or []:
+            if not isinstance(detail, dict):
+                continue
+            component_node = component_for_detail(detail, "componentTriggerObserverComponents")
+            self.add_interactive_property_edges(
+                data_node,
+                component_node,
+                detail.get("primaryKeys") or [],
+                template_edge_kind="interactive_template_has_trigger_property_key",
+                component_edge_kind="interactive_component_uses_trigger_property_key",
+                source=source,
+                evidence="componentTriggerObserverComponents.primaryKeys",
+            )
+            preview = detail.get("primaryPreviewByKey") or {}
+            if isinstance(preview, dict):
+                trigger_shape = safe_key(preview.get("shape"))
+                if trigger_shape:
+                    shape_node = self.add_interactive_shape_node("interactive_trigger_shape", trigger_shape, source=source)
+                    data = {"radius": safe_key(preview.get("radius"))} if safe_key(preview.get("radius")) else None
+                    self.add_edge(data_node, shape_node, "interactive_template_has_trigger_shape", source=source, evidence="componentTriggerObserverComponents", data=data)
+                    if component_node:
+                        self.add_edge(component_node, shape_node, "interactive_component_has_trigger_shape", source=source, evidence="componentTriggerObserverComponents", data=data)
+
+        for detail in decoded.get("componentPropertyMapComponents") or []:
+            if not isinstance(detail, dict):
+                continue
+            self.add_interactive_property_edges(
+                data_node,
+                component_for_detail(detail, "componentPropertyMapComponents"),
+                detail.get("propertyKeys") or [],
+                template_edge_kind="interactive_template_has_property_key",
+                component_edge_kind="interactive_component_uses_property_key",
+                source=source,
+                evidence="componentPropertyMapComponents.propertyKeys",
+            )
+
+        for detail in decoded.get("componentCommonPerformComponents") or []:
+            if not isinstance(detail, dict):
+                continue
+            component_node = component_for_detail(detail, "componentCommonPerformComponents")
+            self.add_interactive_property_edges(
+                data_node,
+                component_node,
+                detail.get("dynamicPropertyKeys") or [],
+                template_edge_kind="interactive_template_has_property_key",
+                component_edge_kind="interactive_component_uses_property_key",
+                source=source,
+                evidence="componentCommonPerformComponents.dynamicPropertyKeys",
+            )
+            self.add_interactive_property_edges(
+                data_node,
+                component_node,
+                (detail.get("performPropertyNameCounts") or {}).keys(),
+                template_edge_kind="interactive_template_has_perform_property_key",
+                component_edge_kind="interactive_component_uses_perform_property_key",
+                source=source,
+                evidence="componentCommonPerformComponents.performPropertyNameCounts",
+            )
+
+        for detail in decoded.get("componentLogicControllerComponents") or []:
+            if not isinstance(detail, dict):
+                continue
+            component_node = component_for_detail(detail, "componentLogicControllerComponents")
+            logic_node = self.add_interactive_logic_type_node(detail.get("logicType"), source=source)
+            if logic_node:
+                self.add_edge(data_node, logic_node, "interactive_template_has_logic_type", source=source, evidence="componentLogicControllerComponents.logicType")
+                if component_node:
+                    self.add_edge(component_node, logic_node, "interactive_component_has_logic_type", source=source, evidence="componentLogicControllerComponents.logicType")
+            self.add_interactive_property_edges(
+                data_node,
+                component_node,
+                detail.get("propertyKeys") or [],
+                template_edge_kind="interactive_template_has_logic_property_key",
+                component_edge_kind="interactive_component_uses_logic_property_key",
+                source=source,
+                evidence="componentLogicControllerComponents.propertyKeys",
+            )
+
+        for detail in decoded.get("componentHittableComponents") or []:
+            if not isinstance(detail, dict):
+                continue
+            self.add_interactive_property_edges(
+                data_node,
+                component_for_detail(detail, "componentHittableComponents"),
+                detail.get("propertyKeys") or [],
+                template_edge_kind="interactive_template_has_hittable_property_key",
+                component_edge_kind="interactive_component_uses_hittable_property_key",
+                source=source,
+                evidence="componentHittableComponents.propertyKeys",
+            )
+
+        for detail in decoded.get("componentShowGuideComponents") or []:
+            if not isinstance(detail, dict):
+                continue
+            component_node = component_for_detail(detail, "componentShowGuideComponents")
+            guide_shape = safe_key(detail.get("shape"))
+            if guide_shape:
+                guide_node = self.add_interactive_shape_node("interactive_guide_shape", guide_shape, source=source)
+                self.add_edge(data_node, guide_node, "interactive_template_has_guide_shape", source=source, evidence="componentShowGuideComponents.shape")
+                if component_node:
+                    self.add_edge(component_node, guide_node, "interactive_component_has_guide_shape", source=source, evidence="componentShowGuideComponents.shape")
+            self.add_interactive_property_edges(
+                data_node,
+                component_node,
+                detail.get("propertyKeys") or [],
+                template_edge_kind="interactive_template_has_property_key",
+                component_edge_kind="interactive_component_uses_property_key",
+                source=source,
+                evidence="componentShowGuideComponents.propertyKeys",
+            )
+    def add_interactive_template_data_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        fields = parse_summary_assignments(entry.get("t"))
+        raw_data = self.read_decoded_config_bytes(entry)
+        decoded = self.decode_interactive_template_payload(entry, raw_data)
+        template_id = safe_key((decoded or {}).get("name")) or safe_key(fields.get("name")) or Path(safe_key(entry.get("p"))).stem.removeprefix("data_")
+        if not template_id:
+            return
+        source_id = safe_key(entry.get("source")) or "webui"
+        decoded_brief = None
+        if decoded:
+            decoded_brief = compact_payload(
+                {
+                    "schemaSource": decoded.get("schemaSource"),
+                    "componentListCount": decoded.get("componentListCount"),
+                    "componentListPrefixParsedCount": decoded.get("componentListPrefixParsedCount"),
+                    "componentListParsedPayloadCount": decoded.get("componentListParsedPayloadCount"),
+                    "componentParseError": decoded.get("componentParseError"),
+                    "exactLength": decoded.get("exactLength"),
+                },
+                depth=2,
+            )
+        data_node = self.add_node(
+            "interactive_template_data",
+            f"{source_id}:{template_id}",
+            name=template_id,
+            source="webui/game_data",
+            path=safe_key(entry.get("p")),
+            data=compact_payload({**self.decoded_config_entry_data(entry), "decodedSummary": fields, "interactiveDecoded": decoded_brief}, depth=3),
+        )
+        template_node = self.add_node("interactive_template", template_id, name=template_id, source="webui/game_data")
+        self.add_edge(file_node, data_node, "defines_interactive_template_data", source="webui/game_data", evidence=safe_key(entry.get("dp")))
+        self.add_edge(data_node, template_node, "interactive_template_data_for_template", source="webui/game_data", evidence="name")
+        self.add_alias(template_id, data_node, kind="interactive_template_id", source="webui/game_data")
+        object_type = safe_key((decoded or {}).get("objectType")) or safe_key(fields.get("objectType"))
+        if object_type and object_type != template_id:
+            object_node = self.add_node("interactive_object", object_type, name=object_type, source="webui/game_data")
+            self.add_edge(data_node, object_node, "interactive_template_object_type", source="webui/game_data", evidence="objectType")
+        model_data = (decoded or {}).get("componentModelData") if isinstance((decoded or {}).get("componentModelData"), dict) else {}
+        model_component = safe_key(model_data.get("modelId")) or safe_key(fields.get("modelComponent"))
+        if model_component:
+            model_node = self.add_node("model_config_model", model_component, name=model_component, source="webui/game_data")
+            self.add_edge(data_node, model_node, "interactive_template_uses_model", source="webui/game_data", evidence="componentModelData.modelId" if model_data else "modelComponent")
+            self.add_alias(model_component, model_node, kind="model_id", source="webui/game_data")
+            self.add_model_asset_entity_edges(data_node, (model_component,), edge_kind="interactive_template_asset_entity", source="webui/game_data", evidence="componentModelData.modelId" if model_data else "modelComponent")
+        if decoded:
+            self.add_interactive_template_decoded_edges(data_node, template_id, source_id, decoded, source="webui/game_data")
+        audio_ids: set[str] = set()
+        for match in LINE_AUDIO_BYTES_RE.findall(raw_data or b""):
+            try:
+                audio_ids.add(match.decode("ascii"))
+            except UnicodeDecodeError:
+                continue
+        if not audio_ids:
+            audio_ids.update(LINE_AUDIO_RE.findall(str(entry.get("t") or "")))
+        for audio_id in sorted(audio_ids):
+            self.add_audio_target_edge(data_node, audio_id, edge_kind="interactive_template_uses_audio", source="webui/game_data", evidence="memorypack-bytes" if raw_data else "summary")
+
+    def add_world_entity_detail_ref_edges(self, owner_node: str, detail_id: Any, *, source: str, edge_prefix: str, alias_kind: str = "") -> bool:
+        detail_key = safe_key(detail_id)
+        if not detail_key:
+            return False
+        linked_detail = False
+        for target_kind, suffix in (
+            ("enemy", "uses_enemy"),
+            ("enemy_template", "uses_enemy_template"),
+            ("npc", "uses_npc"),
+            ("environmental_npc", "uses_environmental_npc"),
+            ("interactive_object", "uses_interactive_detail"),
+            ("model_config_model", "uses_model"),
+            ("model_radius", "has_model_radius"),
+            ("audio_collection", "uses_audio_collection"),
+            ("audio_dialog_channel", "uses_audio_dialog_channel"),
+        ):
+            if not self.node_exists(target_kind, detail_key):
+                continue
+            self.add_edge(owner_node, self.node_id(target_kind, detail_key), f"{edge_prefix}_{suffix}", source=source, evidence="detailId")
+            linked_detail = True
+        if not linked_detail:
+            if detail_key.startswith("int_"):
+                detail_node = self.add_node("interactive_object", detail_key, name=detail_key, source=source)
+                self.add_edge(owner_node, detail_node, f"{edge_prefix}_uses_interactive_detail", source=source, evidence="detailId")
+            else:
+                detail_node = self.add_node("world_entity_detail", detail_key, name=detail_key, source=source)
+                self.add_edge(owner_node, detail_node, f"{edge_prefix}_uses_detail", source=source, evidence="detailId")
+        if alias_kind:
+            self.add_alias(detail_key, owner_node, kind=alias_kind, source=source)
+        return True
+
+    def add_world_entity_instance_node(self, entity_id: Any, *, source: str, data: Any = None) -> str:
+        entity_key = safe_key(entity_id)
+        if not entity_key:
+            return ""
+        node = self.add_node("world_entity_instance", entity_key, name=entity_key, source=source, data=data)
+        self.add_alias(entity_key, node, kind="world_entity_instance_id", source=source)
+        return node
+
+    def add_world_entity_text_registry_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        payload = self.read_decoded_config_json_payload(entry)
+        if not isinstance(payload, dict):
+            return
+        source = "webui/game_data"
+        source_id = safe_key(entry.get("source")) or "webui"
+        registry_key = safe_key(entry.get("p"))
+        registry_node = self.add_node("world_entity_text_registry", registry_key, name=Path(registry_key).name, source=source, path=registry_key, data=self.decoded_config_entry_data(entry))
+        self.add_edge(file_node, registry_node, "defines_world_entity_text_registry", source=source, evidence=safe_key(entry.get("dp")), data={"source": source_id})
+
+        entity_rows = payload.get("worldEntityBriefInfos") if isinstance(payload.get("worldEntityBriefInfos"), dict) else {}
+        script_ids = payload.get("m_scriptEntityIdList") if isinstance(payload.get("m_scriptEntityIdList"), list) else []
+        script_briefs = payload.get("m_scriptEntityBriefInfo") if isinstance(payload.get("m_scriptEntityBriefInfo"), list) else []
+        config_rows = payload.get("worldEntityConfigInfos") if isinstance(payload.get("worldEntityConfigInfos"), dict) else {}
+        npc_proxy_rows = payload.get("npcProxyBriefInfos") if isinstance(payload.get("npcProxyBriefInfos"), dict) else {}
+        self.update_node_details(
+            registry_node,
+            data=compact_payload({
+                **self.decoded_config_entry_data(entry),
+                "worldEntityCount": len(entity_rows),
+                "scriptEntityIdCount": len(script_ids),
+                "scriptEntityBriefCount": len(script_briefs),
+                "configInfoCount": len(config_rows),
+                "npcProxyBriefCount": len(npc_proxy_rows),
+            }, depth=3),
+        )
+
+        for entity_id_raw, row in sorted(entity_rows.items(), key=lambda item: safe_key(item[0])):
+            if not isinstance(row, dict):
+                continue
+            entity_id = safe_key(entity_id_raw)
+            if not entity_id:
+                continue
+            detail_id = safe_key(row.get("detailId"))
+            instance_data = compact_payload({
+                "entityId": entity_id,
+                "entityType": row.get("entityType"),
+                "detailId": detail_id,
+                "position": row.get("position"),
+                "rotation": row.get("rotation"),
+                "source": source_id,
+            }, depth=3)
+            instance_node = self.add_world_entity_instance_node(entity_id, source=source, data=instance_data)
+            self.update_node_details(instance_node, name=entity_id, source=source, data=instance_data)
+            self.add_edge(registry_node, instance_node, "world_entity_text_registry_has_instance", source=source, evidence="worldEntityBriefInfos", data={"source": source_id})
+            world_node = self.add_node("world_entity", entity_id, name=entity_id, source=source)
+            self.add_alias(entity_id, world_node, kind="world_entity_id", source=source)
+            self.add_edge(instance_node, world_node, "world_entity_instance_compact_entity", source=source, evidence="entityId", data={"source": source_id})
+            self.add_world_entity_detail_ref_edges(instance_node, detail_id, source=source, edge_prefix="world_entity_instance", alias_kind="world_entity_instance_detail_id")
+
+        for index, id_row in enumerate(script_ids):
+            if not isinstance(id_row, dict):
+                continue
+            brief = script_briefs[index] if index < len(script_briefs) and isinstance(script_briefs[index], dict) else {}
+            script_id = safe_key(id_row.get("scriptIdGlobal"))
+            slot_id = safe_key(id_row.get("slotId"))
+            if not script_id or not slot_id:
+                continue
+            node_key = f"{script_id}:{slot_id}"
+            detail_id = safe_key(brief.get("detailId"))
+            slot_node = self.add_node(
+                "world_entity_script_slot",
+                node_key,
+                name=node_key,
+                source=source,
+                data=compact_payload({"scriptIdGlobal": script_id, "slotId": slot_id, "detailId": detail_id, "entityType": brief.get("entityType"), "position": brief.get("position"), "rotation": brief.get("rotation"), "source": source_id}, depth=3),
+            )
+            self.add_alias(node_key, slot_node, kind="world_entity_script_slot_id", source=source)
+            self.add_alias(script_id, slot_node, kind="world_entity_script_id", source=source)
+            self.add_edge(registry_node, slot_node, "world_entity_text_registry_has_script_slot", source=source, evidence="m_scriptEntityIdList", data={"source": source_id, "index": index})
+            script_node = self.add_node("level_script", script_id, name=script_id, source=source)
+            self.add_alias(script_id, script_node, kind="level_script_id", source=source)
+            self.add_edge(slot_node, script_node, "world_entity_script_slot_uses_level_script", source=source, evidence="scriptIdGlobal")
+            self.add_world_entity_detail_ref_edges(slot_node, detail_id, source=source, edge_prefix="world_entity_script_slot", alias_kind="world_entity_script_slot_detail_id")
+
+        for entity_id_raw, row in sorted(config_rows.items(), key=lambda item: safe_key(item[0])):
+            if not isinstance(row, dict):
+                continue
+            entity_id = safe_key(entity_id_raw)
+            if not entity_id:
+                continue
+            properties = row.get("propertyList") if isinstance(row.get("propertyList"), list) else []
+            config_node = self.add_node("world_entity_config", entity_id, name=entity_id, source=source, data=compact_payload({"entityId": entity_id, "propertyCount": len(properties), "source": source_id}, depth=2))
+            self.add_alias(entity_id, config_node, kind="world_entity_config_id", source=source)
+            self.add_edge(registry_node, config_node, "world_entity_text_registry_has_config", source=source, evidence="worldEntityConfigInfos", data={"source": source_id})
+            instance_node = self.add_world_entity_instance_node(entity_id, source=source)
+            if instance_node:
+                self.add_edge(config_node, instance_node, "world_entity_config_for_instance", source=source, evidence="entityId")
+            for prop_index, prop in enumerate(properties):
+                if not isinstance(prop, dict):
+                    continue
+                prop_key = safe_key(prop.get("key")) or f"property_{prop_index}"
+                prop_node_key = f"{entity_id}:{prop_key}"
+                prop_node = self.add_node("world_entity_config_property", prop_node_key, name=prop_key, source=source, data=compact_payload({"entityId": entity_id, "key": prop_key, "value": prop.get("value"), "source": source_id}, depth=4))
+                self.add_alias(prop_node_key, prop_node, kind="world_entity_config_property_id", source=source)
+                self.add_edge(config_node, prop_node, "world_entity_config_has_property", source=source, evidence=f"propertyList[{prop_index}]", data={"source": source_id})
+
+        for segment_id_raw, row in sorted(npc_proxy_rows.items(), key=lambda item: safe_key(item[0])):
+            if not isinstance(row, dict):
+                continue
+            segment_id = safe_key(row.get("segmentIdGlobal") or segment_id_raw)
+            proxy_id = safe_key(row.get("proxyId"))
+            if not proxy_id:
+                continue
+            proxy_node = self.add_node("npc_proxy_brief", proxy_id, name=proxy_id, source=source, data=compact_payload({"proxyId": proxy_id, "segmentIdGlobal": segment_id, "position": row.get("position"), "source": source_id}, depth=3))
+            self.add_alias(proxy_id, proxy_node, kind="npc_proxy_brief_id", source=source)
+            self.add_alias(segment_id, proxy_node, kind="npc_proxy_segment_id", source=source)
+            self.add_edge(registry_node, proxy_node, "world_entity_text_registry_has_npc_proxy_brief", source=source, evidence="npcProxyBriefInfos", data={"source": source_id})
+            segment_node = self.add_node("world_entity_segment", segment_id, name=segment_id, source=source)
+            self.add_alias(segment_id, segment_node, kind="world_entity_segment_id", source=source)
+            self.add_edge(proxy_node, segment_node, "npc_proxy_brief_in_segment", source=source, evidence="segmentIdGlobal")
+            if self.node_exists("world_entity_instance", segment_id):
+                self.add_edge(proxy_node, self.node_id("world_entity_instance", segment_id), "npc_proxy_brief_segment_instance", source=source, evidence="segmentIdGlobal")
+    def add_world_entity_registry_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        config_key = safe_key(entry.get("p"))
+        registry_node = self.add_node("world_entity_registry", config_key, name=Path(config_key).name, source="webui/game_data", path=config_key, data=self.decoded_config_entry_data(entry))
+        self.add_edge(file_node, registry_node, "defines_world_entity_registry", source="webui/game_data")
+        decoded = extract_world_entity_brief_rows(self.read_decoded_config_bytes(entry))
+        if not decoded:
+            return
+        self.update_node_details(registry_node, data={**self.decoded_config_entry_data(entry), "briefCountParsed": decoded.get("briefCount")})
+        for row in decoded.get("briefRows") or []:
+            entity_id = safe_key(row.get("entityId"))
+            if not entity_id:
+                continue
+            entity_node = self.add_node("world_entity", entity_id, name=entity_id, source="webui/game_data", data=compact_payload(row, depth=2))
+            self.add_edge(registry_node, entity_node, "world_entity_registry_has_entity", source="webui/game_data", evidence=safe_key(entry.get("dp")), data=compact_payload(row, depth=1))
+            self.add_alias(entity_id, entity_node, kind="world_entity_id", source="webui/game_data")
+            detail_id = safe_key(row.get("detailId"))
+            if not detail_id:
+                continue
+            linked_detail = False
+            for target_kind, edge_kind in (
+                ("enemy", "world_entity_uses_enemy"),
+                ("enemy_template", "world_entity_uses_enemy_template"),
+                ("npc", "world_entity_uses_npc"),
+                ("environmental_npc", "world_entity_uses_environmental_npc"),
+                ("interactive_object", "world_entity_uses_interactive_detail"),
+                ("model_config_model", "world_entity_uses_model"),
+                ("model_radius", "world_entity_has_model_radius"),
+                ("audio_collection", "world_entity_uses_audio_collection"),
+                ("audio_dialog_channel", "world_entity_uses_audio_dialog_channel"),
+            ):
+                if not self.node_exists(target_kind, detail_id):
+                    continue
+                self.add_edge(entity_node, self.node_id(target_kind, detail_id), edge_kind, source="webui/game_data", evidence="detailId")
+                linked_detail = True
+            if not linked_detail:
+                if detail_id.startswith("int_"):
+                    detail_node = self.add_node("interactive_object", detail_id, name=detail_id, source="webui/game_data")
+                    self.add_edge(entity_node, detail_node, "world_entity_uses_interactive_detail", source="webui/game_data", evidence="detailId")
+                else:
+                    detail_node = self.add_node("world_entity_detail", detail_id, name=detail_id, source="webui/game_data")
+                    self.add_edge(entity_node, detail_node, "world_entity_uses_detail", source="webui/game_data", evidence="detailId")
+            self.add_alias(detail_id, entity_node, kind="world_entity_detail_id", source="webui/game_data")
+
+    def add_teleport_validation_config_edges(self, file_node: str, entry: dict[str, Any]) -> None:
+        config_key = safe_key(entry.get("p"))
+        config_name = Path(config_key).stem
+        config_node = self.add_node("teleport_validation_config", config_key, name=config_name, source="webui/game_data", path=config_key, data=self.decoded_config_entry_data(entry))
+        self.add_edge(file_node, config_node, "defines_teleport_validation_config", source="webui/game_data")
+        decoded = extract_teleport_validation_rows(self.read_decoded_config_bytes(entry))
+        if not decoded:
+            return
+        self.update_node_details(config_node, data={**self.decoded_config_entry_data(entry), "rowCountParsed": decoded.get("rowCount")})
+        for row in decoded.get("rows") or []:
+            teleport_id = safe_key(row.get("teleportId"))
+            if not teleport_id:
+                continue
+            point_node = self.add_node("teleport_point", teleport_id, name=teleport_id, source="webui/game_data", data=compact_payload({**row, "config": config_name}, depth=2))
+            self.add_edge(config_node, point_node, "teleport_validation_has_point", source="webui/game_data", evidence=safe_key(entry.get("dp")), data=compact_payload(row, depth=1))
+            self.add_alias(teleport_id, point_node, kind="teleport_point_id", source="webui/game_data")
+            map_id = safe_key(row.get("mapId"))
+            if not map_id:
+                continue
+            level_node = self.add_level_node(map_id, source="webui/game_data")
+            self.add_edge(point_node, level_node, "teleport_point_in_level", source="webui/game_data", evidence="mapId")
+            self.add_level_map_edge(level_node, map_id, source="webui/game_data", evidence="teleport_mapId")
 
     def ingest_videos(self) -> None:
         path = WEBUI_DATA / "assets" / "videos.json"
@@ -471,6 +7027,151 @@ class SourceGraphBuilder:
             self.add_edge(root_node, node, "indexes_video", source="webui/videos")
             self.add_file(rel, kind="video", source=rel.split("/", 1)[0], size=entry.get("s"))
             self.add_alias(Path(rel).stem.lower(), node, kind="video_stem", source="webui/videos")
+
+    def normalized_video_binding_path(self, value: Any) -> str:
+        rel = safe_key(value).replace("\\", "/")
+        if not rel:
+            return ""
+        marker = "export_full/structured/"
+        if rel.startswith(marker):
+            rel = rel[len(marker) :]
+        if rel.startswith("structured/"):
+            rel = rel[len("structured/") :]
+        if rel.startswith("StreamingAssets/"):
+            return f"StreamingAssets-structured/{rel[len('StreamingAssets/') :]}"
+        if rel.startswith("Persistent/"):
+            return f"Persistent-structured/{rel[len('Persistent/') :]}"
+        return rel
+
+    def ingest_video_bindings(self) -> None:
+        path = EXPORT_ROOT / "recovered" / "video_bindings.json"
+        payload = read_json(path, {})
+        bindings = payload.get("bindings") if isinstance(payload, dict) else None
+        if not isinstance(bindings, dict) or not bindings:
+            return
+        dataset = self.add_node(
+            "dataset",
+            "fmv_video_bindings",
+            name="FMV video bindings",
+            path=slash(path),
+            source="video_bindings",
+            data=payload.get("summary"),
+        )
+        self.add_file(slash(path), kind="video_bindings", source="video_bindings", data=payload.get("summary"))
+        for binding_key, binding in sorted(bindings.items()):
+            if not isinstance(binding, dict):
+                continue
+            fmv_id = safe_key(binding.get("fmvId") or binding_key)
+            if not fmv_id:
+                continue
+            binding_node = self.add_node(
+                "fmv_binding",
+                fmv_id,
+                name=fmv_id,
+                source="video_bindings",
+                data={
+                    "fmvId": fmv_id,
+                    "baseFmvId": binding.get("baseFmvId"),
+                    "gender": binding.get("gender"),
+                    "scene": binding.get("scene"),
+                    "mission": binding.get("mission"),
+                    "fallbackSceneHint": binding.get("fallbackSceneHint"),
+                    "fallbackMissionHint": binding.get("fallbackMissionHint"),
+                    "sceneIsHint": binding.get("sceneIsHint"),
+                    "videoCount": len(binding.get("videos") or []),
+                    "clipCount": len(binding.get("clips") or []),
+                    "sourceCount": len(binding.get("sources") or []),
+                },
+            )
+            self.add_edge(dataset, binding_node, "defines_fmv_binding", source="video_bindings", evidence=fmv_id)
+            self.add_alias(fmv_id, binding_node, kind="fmv_id", source="video_bindings")
+            self.add_alias(binding.get("baseFmvId"), binding_node, kind="fmv_base_id", source="video_bindings")
+
+            story_key = safe_key(binding.get("fallbackSceneHint"))
+            if story_key:
+                story_node = self.add_node("story", story_key, source="video_bindings")
+                self.add_edge(
+                    binding_node,
+                    story_node,
+                    "fmv_binding_targets_story",
+                    source="video_bindings",
+                    evidence="fallbackSceneHint",
+                    data={"scene": binding.get("scene"), "sceneIsHint": bool(binding.get("sceneIsHint"))},
+                )
+            mission_id = safe_key(binding.get("mission") or binding.get("fallbackMissionHint"))
+            if mission_id:
+                mission_node = self.add_node("mission", mission_id, source="video_bindings")
+                self.add_edge(
+                    binding_node,
+                    mission_node,
+                    "fmv_binding_in_mission",
+                    source="video_bindings",
+                    evidence="mission" if safe_key(binding.get("mission")) else "fallbackMissionHint",
+                    data={"fallbackMissionHint": binding.get("fallbackMissionHint")},
+                )
+            for video_index, video_path in enumerate(binding.get("videos") or []):
+                rel = self.normalized_video_binding_path(video_path)
+                if not rel:
+                    continue
+                video_node = self.add_node("video", rel, name=Path(rel).name, source=rel.split("/", 1)[0], path=rel)
+                self.add_edge(
+                    binding_node,
+                    video_node,
+                    "fmv_binding_uses_video",
+                    source="video_bindings",
+                    evidence=f"videos[{video_index}]",
+                    data={"rawPath": video_path},
+                )
+
+            for clip_index, clip in enumerate(binding.get("clips") or []):
+                if not isinstance(clip, dict):
+                    continue
+                clip_node = self.add_node(
+                    "fmv_clip",
+                    f"{fmv_id}:{clip_index}",
+                    name=safe_key(clip.get("displayName")) or f"{fmv_id}:{clip_index}",
+                    source="video_bindings",
+                    data={
+                        "fmvId": fmv_id,
+                        "index": clip_index,
+                        "scene": clip.get("scene"),
+                        "start": clip.get("start"),
+                        "duration": clip.get("duration"),
+                        "optionIndex": clip.get("optionIndex"),
+                        "displayName": clip.get("displayName"),
+                        "playableAssetPathId": clip.get("playableAssetPathId"),
+                    },
+                )
+                self.add_edge(binding_node, clip_node, "fmv_binding_timeline_clip", source="video_bindings", evidence=f"clips[{clip_index}]")
+                track_file = safe_key(clip.get("trackFile"))
+                if track_file:
+                    file_node = self.add_file(track_file, kind="timeline_fmv_track", source="video_bindings")
+                    self.add_edge(clip_node, file_node, "fmv_binding_source_file", source="video_bindings", evidence=f"clips[{clip_index}].trackFile")
+                path_id = safe_key(clip.get("playableAssetPathId"))
+                if path_id:
+                    pid_node = self.add_node("unity_pathid", f"pathid:{path_id}", name=f"pathid:{path_id}", source="video_bindings")
+                    self.add_alias(f"pathid:{path_id}", pid_node, kind="unity_pathid", source="video_bindings")
+                    self.add_edge(clip_node, pid_node, "fmv_binding_playable_pathid", source="video_bindings", evidence=f"clips[{clip_index}].playableAssetPathId")
+
+            for source_index, source_row in enumerate(binding.get("sources") or []):
+                if not isinstance(source_row, dict):
+                    continue
+                source_file = safe_key(source_row.get("asset"))
+                if source_file:
+                    file_node = self.add_file(source_file, kind="fmv_binding_source", source=safe_key(source_row.get("kind")) or "video_bindings", data=compact_payload(source_row, depth=2))
+                    self.add_edge(binding_node, file_node, "fmv_binding_source_file", source="video_bindings", evidence=f"sources[{source_index}].asset", data=compact_payload(source_row, depth=2))
+                path_id = safe_key(source_row.get("pathId"))
+                if path_id:
+                    pid_node = self.add_node("unity_pathid", f"pathid:{path_id}", name=f"pathid:{path_id}", source="video_bindings")
+                    self.add_alias(f"pathid:{path_id}", pid_node, kind="unity_pathid", source="video_bindings")
+                    self.add_edge(binding_node, pid_node, "fmv_binding_playable_pathid", source="video_bindings", evidence=f"sources[{source_index}].pathId", data={"kind": source_row.get("kind"), "duration": source_row.get("duration")})
+
+        for index, video_path in enumerate(payload.get("unboundVideos") or []):
+            rel = self.normalized_video_binding_path(video_path)
+            if not rel:
+                continue
+            video_node = self.add_node("video", rel, name=Path(rel).name, source=rel.split("/", 1)[0], path=rel)
+            self.add_edge(dataset, video_node, "unbound_video_candidate", source="video_bindings", evidence=str(index), data={"rawPath": video_path})
 
     def ingest_webui_story(self) -> None:
         lang_root = WEBUI_DATA / "lang" / self.language
@@ -514,6 +7215,993 @@ class SourceGraphBuilder:
             self.add_narrative_videos(conv, story_node)
             self.add_scene_graph_edges(conv, story_node)
             self.add_recovery_warnings(conv, story_node)
+
+    def ingest_option_overrides(self) -> None:
+        payload = read_json(WEBUI_OPTION_OVERRIDES, {})
+        scenes = payload.get("scenes") if isinstance(payload, dict) else {}
+        if not isinstance(scenes, dict) or not scenes:
+            return
+        file_rel = slash(WEBUI_OPTION_OVERRIDES)
+        file_node = self.add_file(
+            file_rel,
+            kind="option_override",
+            source="webui/option_override",
+            data={"sceneCount": len(scenes)},
+        )
+
+        def group_id_text(value: Any) -> str:
+            text = safe_key(value)
+            if not text:
+                return ""
+            try:
+                return str(int(text))
+            except ValueError:
+                return text
+
+        def override_key(story_key: str, group_id: str) -> str:
+            return f"{story_key}#optionGroup:{group_id}"
+
+        def note_for(scene_override: dict[str, Any], group_id: str) -> str:
+            notes = scene_override.get("notes") if isinstance(scene_override, dict) else {}
+            if not isinstance(notes, dict):
+                return ""
+            return safe_key(notes.get(group_id))
+
+        def response_group_id(story_key: str, option_id: str) -> str:
+            prefix = f"option_{story_key}_"
+            if option_id.startswith(prefix):
+                return group_id_text(option_id[len(prefix):].split("_", 1)[0])
+            match = re.search(r"_(\d+)_\d+$", option_id)
+            return group_id_text(match.group(1)) if match else ""
+
+        def ensure_override_node(story_key: str, group_id: str, scene_override: dict[str, Any]) -> str:
+            key = override_key(story_key, group_id)
+            note = note_for(scene_override, group_id)
+            node = self.add_node(
+                "option_override",
+                key,
+                name=key,
+                source="webui/option_override",
+                path=file_rel,
+                data={"story": story_key, "group": group_id, "note": note, "webuiOnly": True},
+            )
+            story_node = self.add_node("story", story_key, source="webui/option_override")
+            group_node = self.add_node("option_group", key, source="webui/option_override")
+            self.add_edge(story_node, node, "has_option_override", source="webui/option_override", evidence=group_id)
+            self.add_edge(file_node, node, "defines_option_override", source="webui/option_override", evidence=story_key)
+            self.add_edge(node, group_node, "overrides_option_group", source="webui/option_override", evidence=group_id)
+            self.add_alias(f"manual-option:{story_key}:{group_id}", node, kind="option_override", source="webui/option_override")
+            self.add_alias(f"option-override:{story_key}:{group_id}", node, kind="option_override", source="webui/option_override")
+            return node
+
+        for story_key_raw, scene_override in sorted(scenes.items()):
+            story_key = safe_key(story_key_raw)
+            if not story_key or not isinstance(scene_override, dict):
+                continue
+            positions = scene_override.get("positions") if isinstance(scene_override.get("positions"), dict) else {}
+            positions_after = positions.get("after") if isinstance(positions.get("after"), dict) else {}
+            positions_pre = positions.get("pre") if isinstance(positions.get("pre"), list) else []
+            responses = scene_override.get("responses") if isinstance(scene_override.get("responses"), dict) else {}
+            story_node = self.add_node("story", story_key, source="webui/option_override")
+
+            for group_raw in positions_pre:
+                group_id = group_id_text(group_raw)
+                if not group_id:
+                    continue
+                override_node = ensure_override_node(story_key, group_id, scene_override)
+                group_node = self.add_node("option_group", override_key(story_key, group_id), source="webui/option_override")
+                data = {"story": story_key, "group": group_id, "position": "pre", "note": note_for(scene_override, group_id), "webuiOnly": True}
+                self.add_edge(group_node, story_node, "manual_position_pre", source="webui/option_override", evidence=group_id, data=data)
+                self.add_edge(override_node, group_node, "manual_position_pre", source="webui/option_override", evidence=group_id, data=data)
+
+            for anchor_line, groups in sorted(positions_after.items()):
+                if not isinstance(groups, list):
+                    continue
+                anchor_id = safe_key(anchor_line)
+                if not anchor_id:
+                    continue
+                anchor_node = self.add_node("line", anchor_id, source="webui/option_override")
+                for group_raw in groups:
+                    group_id = group_id_text(group_raw)
+                    if not group_id:
+                        continue
+                    override_node = ensure_override_node(story_key, group_id, scene_override)
+                    group_node = self.add_node("option_group", override_key(story_key, group_id), source="webui/option_override")
+                    data = {"story": story_key, "group": group_id, "position": "after", "anchor": anchor_id, "note": note_for(scene_override, group_id), "webuiOnly": True}
+                    self.add_edge(group_node, anchor_node, "anchored_after_line", source="webui/option_override", evidence=group_id, data=data)
+                    self.add_edge(override_node, anchor_node, "manual_position_after", source="webui/option_override", evidence=group_id, data=data)
+
+            for option_id_raw, targets_raw in sorted(responses.items()):
+                option_id = safe_key(option_id_raw)
+                targets = [safe_key(target) for target in targets_raw or [] if safe_key(target)] if isinstance(targets_raw, list) else []
+                if not option_id or not targets:
+                    continue
+                group_id = response_group_id(story_key, option_id)
+                if not group_id:
+                    continue
+                override_node = ensure_override_node(story_key, group_id, scene_override)
+                option_node = self.add_node("option", option_id, source="webui/option_override")
+                self.add_edge(override_node, option_node, "overrides_option", source="webui/option_override", evidence=group_id)
+                data = {"story": story_key, "group": group_id, "targets": targets, "note": note_for(scene_override, group_id), "webuiOnly": True}
+                first_line_node = self.add_node("line", targets[0], source="webui/option_override")
+                self.add_edge(option_node, first_line_node, "option_first_line", source="webui/option_override", evidence=group_id, data=data)
+                for target in targets:
+                    target_node = self.add_node("line", target, source="webui/option_override")
+                    self.add_edge(option_node, target_node, "option_path_line", source="webui/option_override", evidence=group_id, data=data)
+                self.add_edge(option_node, story_node, "option_path_story", source="webui/option_override", evidence=group_id, data=data)
+                self.add_edge(option_node, story_node, "option_enters_story", source="webui/option_override", evidence=group_id, data=data)
+
+    def ingest_gameplay(self) -> None:
+        path = WEBUI_DATA / "lang" / self.language / "gameplay" / "index.json"
+        payload = read_json(path, {})
+        if not isinstance(payload, dict):
+            return
+        entries = [entry for entry in payload.get("entries") or [] if isinstance(entry, dict)]
+        if not entries:
+            return
+        dataset = self.add_node(
+            "dataset",
+            f"gameplay_{self.language}",
+            name=f"Gameplay {self.language}",
+            source="webui/gameplay",
+            path=slash(path),
+            data={"counts": payload.get("counts"), "entryCount": len(entries)},
+        )
+        language_node = self.add_node("language", self.language, name=self.language)
+        self.add_edge(language_node, dataset, "has_gameplay_dataset", source="webui/gameplay")
+        self.add_file(slash(path), kind="gameplay_index", source=self.language)
+        for entry in entries:
+            self.add_gameplay_entry(dataset, entry)
+
+    def add_gameplay_entry(self, dataset_node: str, entry: dict[str, Any]) -> None:
+        entry_id = safe_key(entry.get("id"))
+        if not entry_id:
+            return
+        kind = safe_key(entry.get("kind")) or "entry"
+        node_kind = {"weapon": "weapon", "equipment": "equipment", "character": "character", "enemy": "enemy"}.get(kind, "gameplay_entry")
+        stats = entry.get("stats") if isinstance(entry.get("stats"), dict) else {}
+        formula = entry.get("formula") if isinstance(entry.get("formula"), dict) else {}
+        node = self.add_node(
+            node_kind,
+            entry_id,
+            name=entry.get("title") or entry_id,
+            source="webui/gameplay",
+            data={
+                "kind": kind,
+                "title": entry.get("title"),
+                "subtitle": entry.get("subtitle"),
+                "group": entry.get("group"),
+                "rarity": entry.get("rarity"),
+                "weaponType": entry.get("weaponType"),
+                "weaponTypeLabel": entry.get("weaponTypeLabel"),
+                "element": entry.get("element"),
+                "elementLabel": entry.get("elementLabel"),
+                "profession": entry.get("profession"),
+                "professionLabel": entry.get("professionLabel"),
+                "partType": entry.get("partType"),
+                "partTypeLabel": entry.get("partTypeLabel"),
+                "showingType": entry.get("showingType"),
+                "showingTypeLabel": entry.get("showingTypeLabel"),
+                "domainId": entry.get("domainId"),
+                "domainName": entry.get("domainName"),
+                "suitId": entry.get("suitId"),
+                "templateId": entry.get("templateId"),
+                "templateName": entry.get("templateName"),
+                "attrTemplateId": entry.get("attrTemplateId"),
+                "modelId": entry.get("modelId"),
+                "aiTemplateId": entry.get("aiTemplateId"),
+                "displayType": entry.get("displayType"),
+                "displayTypeLabel": entry.get("displayTypeLabel"),
+                "isDangerous": entry.get("isDangerous"),
+                "formulaId": formula.get("formulaId"),
+                "formulaName": formula.get("formulaName") or formula.get("name"),
+                "source": entry.get("source"),
+                "stats": self.gameplay_progression_summary(stats),
+            },
+        )
+        self.add_edge(dataset_node, node, "has_gameplay_entry", source="webui/gameplay", evidence=kind)
+        for alias, alias_kind in (
+            (entry_id, f"{node_kind}_id"),
+            (entry.get("title"), f"{node_kind}_name"),
+            (entry.get("subtitle"), f"{node_kind}_alias"),
+            (entry.get("internalName"), f"{node_kind}_alias"),
+            (entry.get("engName"), f"{node_kind}_alias"),
+            (entry.get("nickname"), f"{node_kind}_alias"),
+            (entry.get("templateId"), f"{node_kind}_template_id"),
+            (entry.get("attrTemplateId"), f"{node_kind}_attr_template_id"),
+            (entry.get("modelId"), "model_id"),
+            (entry.get("aiTemplateId"), "ai_template_id"),
+            (entry.get("fileName"), "model_name"),
+            (entry.get("modelPath"), "model_path"),
+            (entry.get("iconId"), "icon_id"),
+        ):
+            self.add_alias(alias, node, kind=alias_kind, source="webui/gameplay")
+        self.add_gameplay_source_edges(node, entry.get("source"))
+        self.add_gameplay_source_edges(node, entry.get("displaySource"), edge_kind="displayed_by_row")
+        self.add_gameplay_asset_edges(node, entry)
+        self.add_gameplay_asset_entity_edges(node, entry)
+
+        default_weapon_id = safe_key(entry.get("defaultWeaponId"))
+        if default_weapon_id:
+            weapon_node = self.add_node("weapon", default_weapon_id, name=entry.get("defaultWeaponName") or default_weapon_id, source="webui/gameplay")
+            self.add_edge(node, weapon_node, "default_weapon", source="webui/gameplay")
+
+        for label in ("stats", "upgrade", "breakthrough", "levelCurve", "breakthroughs", "potentials", "formula", "suit"):
+            self.add_gameplay_progression_node(node, entry_id, label, entry.get(label))
+        if kind == "character":
+            self.add_gameplay_character_semantics(node, entry_id, entry)
+        if kind == "equipment":
+            self.add_gameplay_equipment_semantics(node, entry_id, entry)
+        if kind == "enemy":
+            self.add_gameplay_enemy_semantics(node, entry_id, entry)
+
+        for index, skill in enumerate(entry.get("skills") or []):
+            if isinstance(skill, dict):
+                self.add_gameplay_skill(node, skill, edge_kind="has_weapon_skill", owner_key=entry_id, index=index)
+
+        for index, group in enumerate(entry.get("skillGroups") or []):
+            if not isinstance(group, dict):
+                continue
+            group_id = safe_key(group.get("id") or f"group_{index}")
+            group_node = self.add_node(
+                "gameplay_skill_group",
+                f"{entry_id}:{group_id}",
+                name=group.get("name") or group_id,
+                source="webui/gameplay",
+                data={
+                    "id": group.get("id"),
+                    "type": group.get("type"),
+                    "typeLabel": group.get("typeLabel"),
+                    "name": group.get("name"),
+                    "description": compact_text(group.get("description"), 500),
+                    "actionSkillIds": group.get("actionSkillIds"),
+                    "levelUp": self.gameplay_progression_summary(group.get("levelUp")),
+                },
+            )
+            self.add_edge(node, group_node, "has_skill_group", source="webui/gameplay")
+            self.add_alias(group.get("id"), group_node, kind="gameplay_skill_group_id", source="webui/gameplay")
+            self.add_alias(group.get("name"), group_node, kind="gameplay_skill_group_name", source="webui/gameplay")
+            self.add_gameplay_required_items(group_node, group.get("levelUp"), evidence="skillGroup.levelUp")
+            for skill_index, skill in enumerate(group.get("skills") or []):
+                if isinstance(skill, dict):
+                    self.add_gameplay_skill(group_node, skill, edge_kind="has_action_skill", owner_key=f"{entry_id}:{group_id}", index=skill_index)
+
+        for index, group in enumerate(entry.get("talentGroups") or []):
+            if isinstance(group, dict):
+                self.add_gameplay_talent_group(node, entry_id, group, index)
+        if not entry.get("talentGroups"):
+            for index, talent in enumerate(entry.get("talents") or []):
+                if isinstance(talent, dict):
+                    self.add_gameplay_talent(node, f"{entry_id}:talents", talent, index)
+
+    def add_gameplay_character_semantics(self, character_node: str, character_id: str, entry: dict[str, Any]) -> None:
+        profession_node = self.add_character_profession_node(entry.get("profession"), name=entry.get("professionLabel"), source="webui/gameplay")
+        if profession_node:
+            self.add_edge(character_node, profession_node, "character_has_profession", source="webui/gameplay", evidence="profession")
+        type_node = self.add_character_type_node(entry.get("element"), name=entry.get("elementLabel"), source="webui/gameplay")
+        if type_node:
+            self.add_edge(character_node, type_node, "character_has_type", source="webui/gameplay", evidence="element")
+
+        default_weapon_id = safe_key(entry.get("defaultWeaponId"))
+        if default_weapon_id:
+            weapon_node = self.add_node("weapon", default_weapon_id, name=entry.get("defaultWeaponName") or default_weapon_id, source="webui/gameplay")
+            self.add_edge(character_node, weapon_node, "uses_default_weapon", source="webui/gameplay", evidence="defaultWeaponId")
+            self.add_alias(default_weapon_id, weapon_node, kind="weapon_id", source="webui/gameplay")
+            self.add_alias(entry.get("defaultWeaponName"), weapon_node, kind="weapon_name", source="webui/gameplay")
+
+        for index, stage in enumerate(entry.get("breakStages") or []):
+            if not isinstance(stage, dict):
+                continue
+            stage_key = safe_key(stage.get("stage") if stage.get("stage") is not None else index)
+            if not stage_key:
+                continue
+            level_range = stage.get("levelRange") if isinstance(stage.get("levelRange"), list) else []
+            stage_node = self.add_node(
+                "character_break_stage",
+                f"{character_id}:break_stage:{stage_key}",
+                name=f"{character_id} break stage {stage_key}",
+                source="webui/gameplay",
+                data={
+                    "characterId": character_id,
+                    "stage": stage.get("stage"),
+                    "levelRange": level_range,
+                    "skillCaps": stage.get("skillCaps"),
+                    "breakStatus": stage.get("breakStatus"),
+                    "goldCost": stage.get("goldCost"),
+                    "availableExpItemCount": len(stage.get("availableExpItems") or []),
+                },
+            )
+            self.add_edge(character_node, stage_node, "has_character_break_stage", source="webui/gameplay", evidence=stage_key)
+            self.add_alias(f"{character_id}:break_stage:{stage_key}", stage_node, kind="character_break_stage_id", source="webui/gameplay")
+            for item_index, item in enumerate(stage.get("availableExpItems") or []):
+                if not isinstance(item, dict):
+                    continue
+                item_node = self.add_item_node(item.get("id"), name=item.get("name"), source="webui/gameplay")
+                if item_node:
+                    self.add_edge(stage_node, item_node, "break_stage_allows_exp_item", source="webui/gameplay", evidence=f"availableExpItems[{item_index}]")
+                    self.add_gameplay_item_asset_edges(item_node, safe_key(item.get("id")))
+
+        level_curve = entry.get("levelCurve") if isinstance(entry.get("levelCurve"), dict) else {}
+        for index, checkpoint in enumerate(level_curve.get("checkpoints") or []):
+            if not isinstance(checkpoint, dict):
+                continue
+            level_key = safe_key(checkpoint.get("level") if checkpoint.get("level") is not None else index)
+            if not level_key:
+                continue
+            checkpoint_node = self.add_node(
+                "character_level_checkpoint",
+                f"{character_id}:level:{level_key}",
+                name=f"{character_id} level {level_key}",
+                source="webui/gameplay",
+                data={
+                    "characterId": character_id,
+                    "level": checkpoint.get("level"),
+                    "exp": checkpoint.get("exp"),
+                    "gold": checkpoint.get("gold"),
+                    "table": level_curve.get("table"),
+                },
+            )
+            self.add_edge(character_node, checkpoint_node, "has_character_level_checkpoint", source="webui/gameplay", evidence=level_key)
+            self.add_alias(f"{character_id}:level:{level_key}", checkpoint_node, kind="character_level_checkpoint_id", source="webui/gameplay")
+            gold = checkpoint.get("gold")
+            if isinstance(gold, (int, float)) and gold > 0:
+                item_node = self.add_item_node("item_gold", name="item_gold", source="webui/gameplay")
+                self.add_edge(checkpoint_node, item_node, "level_checkpoint_gold_cost", source="webui/gameplay", evidence="gold", data={"count": gold})
+                self.add_gameplay_item_asset_edges(item_node, "item_gold")
+
+        stats = entry.get("stats") if isinstance(entry.get("stats"), dict) else {}
+        for index, row in enumerate(stats.get("rows") or []):
+            if not isinstance(row, dict):
+                continue
+            level_key = safe_key(row.get("level")) or str(index)
+            break_stage_key = safe_key(row.get("breakStage")) or "0"
+            stat_node = self.add_node(
+                "character_stat_checkpoint",
+                f"{character_id}:stat:{index}:{level_key}:{break_stage_key}",
+                name=f"{character_id} L{level_key} B{break_stage_key}",
+                source="webui/gameplay",
+                data={
+                    "characterId": character_id,
+                    "level": row.get("level"),
+                    "breakStage": row.get("breakStage"),
+                    "attrCount": len(row.get("attrs") or []),
+                    "source": stats.get("source"),
+                },
+            )
+            self.add_edge(character_node, stat_node, "has_character_stat_checkpoint", source="webui/gameplay", evidence=f"{level_key}:{break_stage_key}")
+            self.add_alias(f"{character_id}:stat:{level_key}:{break_stage_key}", stat_node, kind="character_stat_checkpoint_id", source="webui/gameplay")
+            for attr_index, attr in enumerate(row.get("attrs") or []):
+                if not isinstance(attr, dict):
+                    continue
+                attr_key = safe_key(attr.get("key") or f"attr_{attr.get('type')}")
+                if not attr_key:
+                    continue
+                property_node = self.add_node(
+                    "gameplay_stat_property",
+                    attr_key,
+                    name=attr.get("label") or attr_key,
+                    source="webui/gameplay",
+                    data={"key": attr_key, "type": attr.get("type"), "label": attr.get("label"), "iconName": attr.get("iconName")},
+                )
+                self.add_edge(stat_node, property_node, "stat_checkpoint_has_property", source="webui/gameplay", evidence=f"attrs[{attr_index}]", data={"value": attr.get("value"), "type": attr.get("type"), "key": attr_key})
+                self.add_alias(attr_key, property_node, kind="gameplay_stat_property_key", source="webui/gameplay")
+                self.add_alias(attr.get("label"), property_node, kind="gameplay_stat_property_name", source="webui/gameplay")
+
+        for index, breakthrough in enumerate(entry.get("breakthroughs") or []):
+            if not isinstance(breakthrough, dict):
+                continue
+            breakthrough_id = safe_key(breakthrough.get("id") or f"breakthrough_{index}")
+            if not breakthrough_id:
+                continue
+            breakthrough_node = self.add_node(
+                "character_breakthrough",
+                f"{character_id}:breakthrough:{breakthrough_id}",
+                name=breakthrough.get("name") or breakthrough.get("title") or breakthrough_id,
+                source="webui/gameplay",
+                data={
+                    "characterId": character_id,
+                    "id": breakthrough_id,
+                    "stage": breakthrough.get("stage"),
+                    "level": breakthrough.get("level"),
+                    "equipTierLimit": breakthrough.get("equipTierLimit"),
+                    "name": breakthrough.get("name") or breakthrough.get("title"),
+                    "description": compact_text(breakthrough.get("description"), 500),
+                },
+            )
+            self.add_edge(character_node, breakthrough_node, "has_character_breakthrough", source="webui/gameplay", evidence=breakthrough_id)
+            self.add_alias(breakthrough_id, breakthrough_node, kind="character_breakthrough_id", source="webui/gameplay")
+            self.add_alias(f"{character_id}:breakthrough:{safe_key(breakthrough.get('level'))}", breakthrough_node, kind="character_breakthrough_level", source="webui/gameplay")
+            source = breakthrough.get("source") if isinstance(breakthrough.get("source"), dict) else {"table": "CharBreakNodeTable.json", "id": breakthrough_id}
+            self.add_gameplay_source_edges(breakthrough_node, source)
+            stage_key = safe_key(breakthrough.get("stage"))
+            if stage_key:
+                stage_node = self.add_node("character_break_stage", f"{character_id}:break_stage:{stage_key}", name=f"{character_id} break stage {stage_key}", source="webui/gameplay")
+                self.add_edge(breakthrough_node, stage_node, "unlocks_character_break_stage", source="webui/gameplay", evidence="stage")
+            self.add_gameplay_required_items(breakthrough_node, breakthrough, evidence="characterBreakthrough")
+
+        potentials = entry.get("potentials") if isinstance(entry.get("potentials"), dict) else {}
+        first_item_node = self.add_item_node(potentials.get("firstItemId"), source="webui/gameplay")
+        if first_item_node:
+            self.add_edge(character_node, first_item_node, "uses_character_potential_item", source="webui/gameplay", evidence="firstItemId")
+            self.add_gameplay_item_asset_edges(first_item_node, safe_key(potentials.get("firstItemId")))
+        for index, potential in enumerate(potentials.get("levels") or []):
+            if not isinstance(potential, dict):
+                continue
+            level_key = safe_key(potential.get("level") if potential.get("level") is not None else index)
+            if not level_key:
+                continue
+            effect_id = safe_key(potential.get("potentialEffectId"))
+            potential_node = self.add_node(
+                "character_potential",
+                f"{character_id}:potential:{level_key}",
+                name=potential.get("name") or effect_id or f"potential {level_key}",
+                source="webui/gameplay",
+                data={
+                    "characterId": character_id,
+                    "level": potential.get("level"),
+                    "name": potential.get("name"),
+                    "potentialEffectId": effect_id,
+                    "description": compact_text(potential.get("description"), 500),
+                    "descriptionTemplate": compact_text(potential.get("descriptionTemplate"), 500),
+                    "blackboardCount": len(potential.get("blackboard") or []),
+                    "unlockPictureItemCount": len(potential.get("unlockCharPictureItemList") or []),
+                    "unlockCardTopicItem": potential.get("unlockCardTopicItem"),
+                },
+            )
+            self.add_edge(character_node, potential_node, "has_character_potential", source="webui/gameplay", evidence=level_key)
+            self.add_alias(f"{character_id}:potential:{level_key}", potential_node, kind="character_potential_id", source="webui/gameplay")
+            self.add_alias(potential.get("name"), potential_node, kind="character_potential_name", source="webui/gameplay")
+            if effect_id:
+                effect_node = self.add_node("potential_talent_effect", effect_id, name=effect_id, source="webui/gameplay")
+                self.add_edge(potential_node, effect_node, "uses_potential_talent_effect", source="webui/gameplay", evidence="potentialEffectId")
+                self.add_alias(effect_id, effect_node, kind="potential_talent_effect_id", source="webui/gameplay")
+            for bb_index, bb in enumerate(potential.get("blackboard") or []):
+                if not isinstance(bb, dict):
+                    continue
+                bb_key = safe_key(bb.get("key"))
+                if not bb_key:
+                    continue
+                bb_node = self.add_node("gameplay_blackboard_key", bb_key, name=bb_key, source="webui/gameplay")
+                self.add_edge(potential_node, bb_node, "character_potential_uses_blackboard_key", source="webui/gameplay", evidence=f"blackboard[{bb_index}]", data={"value": bb.get("value")})
+                self.add_alias(bb_key, bb_node, kind="gameplay_blackboard_key", source="webui/gameplay")
+            for item_index, item_id in enumerate(potential.get("unlockCharPictureItemList") or []):
+                item_node = self.add_item_node(item_id, source="webui/gameplay")
+                if item_node:
+                    self.add_edge(potential_node, item_node, "character_potential_unlocks_item", source="webui/gameplay", evidence=f"unlockCharPictureItemList[{item_index}]")
+                    self.add_gameplay_item_asset_edges(item_node, safe_key(item_id))
+            card_item_node = self.add_item_node(potential.get("unlockCardTopicItem"), source="webui/gameplay")
+            if card_item_node:
+                self.add_edge(potential_node, card_item_node, "character_potential_unlocks_item", source="webui/gameplay", evidence="unlockCardTopicItem")
+                self.add_gameplay_item_asset_edges(card_item_node, safe_key(potential.get("unlockCardTopicItem")))
+            self.add_gameplay_required_items(potential_node, potential, evidence="characterPotential")
+
+    def add_gameplay_enemy_semantics(self, enemy_node: str, enemy_id: str, entry: dict[str, Any]) -> None:
+        template_id = safe_key(entry.get("templateId"))
+        if template_id:
+            template_node = self.add_node(
+                "enemy_template",
+                template_id,
+                name=entry.get("templateName") or template_id,
+                source="webui/gameplay",
+                data={
+                    "id": template_id,
+                    "name": entry.get("templateName"),
+                    "displayType": entry.get("displayType"),
+                    "displayTypeLabel": entry.get("displayTypeLabel"),
+                    "distributionCount": len(entry.get("distributionIds") or []),
+                },
+            )
+            self.add_edge(enemy_node, template_node, "uses_enemy_template", source="webui/gameplay", evidence="templateId")
+            self.add_alias(template_id, template_node, kind="enemy_template_id", source="webui/gameplay")
+            self.add_alias(entry.get("templateName"), template_node, kind="enemy_template_name", source="webui/gameplay")
+            self.add_gameplay_source_edges(template_node, {"table": "EnemyTemplateTable.json", "id": template_id})
+            self.add_gameplay_source_edges(template_node, {"table": "EnemyTemplateDisplayInfoTable.json", "id": template_id}, edge_kind="displayed_by_row")
+
+        attr_template_id = safe_key(entry.get("attrTemplateId"))
+        if attr_template_id:
+            stats = entry.get("stats") if isinstance(entry.get("stats"), dict) else {}
+            attr_node = self.add_node(
+                "enemy_attribute_template",
+                attr_template_id,
+                name=attr_template_id,
+                source="webui/gameplay",
+                data={
+                    "id": attr_template_id,
+                    "stats": self.gameplay_progression_summary(stats),
+                    "independentAttributeCount": len(entry.get("independentAttributes") or []),
+                    "damageScalarCount": len(entry.get("damageScalars") or []),
+                    "resilienceFieldCount": len(entry.get("resilience") or []),
+                },
+            )
+            self.add_edge(enemy_node, attr_node, "uses_enemy_attribute_template", source="webui/gameplay", evidence="attrTemplateId")
+            self.add_alias(attr_template_id, attr_node, kind="enemy_attribute_template_id", source="webui/gameplay")
+            self.add_gameplay_source_edges(attr_node, {"table": "EnemyAttributeTemplateTable.json", "id": attr_template_id})
+
+        display_type = safe_key(entry.get("displayType"))
+        if display_type:
+            display_node = self.add_node(
+                "enemy_display_type",
+                display_type,
+                name=entry.get("displayTypeLabel") or display_type,
+                source="webui/gameplay",
+            )
+            self.add_edge(enemy_node, display_node, "has_enemy_display_type", source="webui/gameplay", evidence="displayType")
+            self.add_alias(display_type, display_node, kind="enemy_display_type_id", source="webui/gameplay")
+            self.add_alias(entry.get("displayTypeLabel"), display_node, kind="enemy_display_type_name", source="webui/gameplay")
+            self.add_gameplay_source_edges(display_node, {"table": "DisplayEnemyTypeTable.json", "id": display_type})
+
+        for index, ability in enumerate(entry.get("abilities") or []):
+            if not isinstance(ability, dict):
+                continue
+            ability_id = safe_key(ability.get("id"))
+            if not ability_id:
+                continue
+            ability_node = self.add_node(
+                "enemy_ability",
+                ability_id,
+                name=ability.get("name") or ability_id,
+                source="webui/gameplay",
+                data={"id": ability_id, "description": compact_text(ability.get("description"), 500)},
+            )
+            self.add_edge(enemy_node, ability_node, "has_enemy_ability", source="webui/gameplay", evidence=str(index))
+            self.add_alias(ability_id, ability_node, kind="enemy_ability_id", source="webui/gameplay")
+            self.add_alias(ability.get("name"), ability_node, kind="enemy_ability_name", source="webui/gameplay")
+            self.add_gameplay_source_edges(ability_node, {"table": "EnemyAbilityDescTable.json", "id": ability_id})
+
+        for tag in entry.get("tags") or []:
+            if not isinstance(tag, dict):
+                continue
+            tag_id = safe_key(tag.get("id"))
+            if not tag_id:
+                continue
+            tag_node = self.add_node("enemy_tag", tag_id, name=tag.get("label") or tag_id, source="webui/gameplay")
+            self.add_edge(enemy_node, tag_node, "has_enemy_tag", source="webui/gameplay", evidence=tag_id)
+            self.add_alias(tag_id, tag_node, kind="enemy_tag_id", source="webui/gameplay")
+            self.add_alias(tag.get("label"), tag_node, kind="enemy_tag_name", source="webui/gameplay")
+            self.add_gameplay_source_edges(tag_node, {"table": "EnemyTagTable.json", "id": tag_id})
+
+        for item in entry.get("dropItems") or []:
+            if not isinstance(item, dict):
+                continue
+            item_id = safe_key(item.get("id"))
+            if not item_id:
+                continue
+            item_node = self.add_node("item", item_id, name=item.get("name") or item_id, source="webui/gameplay")
+            self.add_edge(enemy_node, item_node, "drops_item", source="webui/gameplay", evidence="WikiEnemyDropTable")
+            self.add_alias(item_id, item_node, kind="item_id", source="webui/gameplay")
+            self.add_alias(item.get("name"), item_node, kind="item_name", source="webui/gameplay")
+            self.add_gameplay_item_asset_edges(item_node, item_id)
+
+        for index, buff_id in enumerate(entry.get("bornBuffs") or []):
+            buff_id = safe_key(buff_id)
+            if not buff_id:
+                continue
+            buff_node = self.add_node("buff", buff_id, name=buff_id, source="webui/gameplay")
+            self.add_edge(enemy_node, buff_node, "starts_with_buff", source="webui/gameplay", evidence=str(index))
+            self.add_alias(buff_id, buff_node, kind="buff_id", source="webui/gameplay")
+
+        for index, modifier in enumerate(entry.get("attrModifiers") or []):
+            if not isinstance(modifier, dict):
+                continue
+            modifier_node = self.add_node(
+                "enemy_attribute_modifier",
+                f"{enemy_id}:{index}",
+                name=f"{enemy_id} modifier {index + 1}",
+                source="webui/gameplay",
+                data=compact_payload(modifier, depth=2, list_limit=6),
+            )
+            self.add_edge(enemy_node, modifier_node, "has_enemy_attribute_modifier", source="webui/gameplay", evidence=str(index))
+
+    def add_gameplay_equipment_semantics(self, equipment_node: str, equipment_id: str, entry: dict[str, Any]) -> None:
+        domain = entry.get("domain") if isinstance(entry.get("domain"), dict) else {}
+        domain_id = safe_key(entry.get("domainId") or domain.get("id"))
+        if domain_id:
+            domain_node = self.add_node(
+                "gameplay_domain",
+                domain_id,
+                name=entry.get("domainName") or domain.get("name") or domain_id,
+                source="webui/gameplay",
+                data={
+                    "id": domain_id,
+                    "name": entry.get("domainName") or domain.get("name"),
+                    "storageName": domain.get("storageName"),
+                    "equipmentCountEvidence": "edge_count",
+                },
+            )
+            self.add_edge(equipment_node, domain_node, "uses_gameplay_domain", source="webui/gameplay", evidence="domainId")
+            self.add_alias(domain_id, domain_node, kind="gameplay_domain_id", source="webui/gameplay")
+            self.add_alias(entry.get("domainName") or domain.get("name"), domain_node, kind="gameplay_domain_name", source="webui/gameplay")
+            self.add_gameplay_source_edges(domain_node, {"table": "DomainDataTable.json", "id": domain_id})
+
+        suit = entry.get("suit") if isinstance(entry.get("suit"), dict) else {}
+        suit_id = safe_key(entry.get("suitId") or suit.get("id"))
+        if suit_id:
+            suit_node = self.add_node(
+                "equipment_suit",
+                suit_id,
+                name=suit.get("name") or suit_id,
+                source="webui/gameplay",
+                data={
+                    "id": suit_id,
+                    "name": suit.get("name"),
+                    "effectCount": len(suit.get("effects") or []),
+                },
+            )
+            self.add_edge(equipment_node, suit_node, "has_equipment_suit", source="webui/gameplay", evidence="suitId")
+            self.add_alias(suit_id, suit_node, kind="equipment_suit_id", source="webui/gameplay")
+            self.add_alias(suit.get("name"), suit_node, kind="equipment_suit_name", source="webui/gameplay")
+            self.add_gameplay_source_edges(suit_node, {"table": "EquipSuitTable.json", "id": suit_id})
+
+        formula = entry.get("formula") if isinstance(entry.get("formula"), dict) else {}
+        formula_id = safe_key(formula.get("formulaId"))
+        if formula_id:
+            formula_node = self.add_node(
+                "equipment_formula",
+                formula_id,
+                name=formula.get("formulaName") or formula.get("name") or formula_id,
+                source="webui/gameplay",
+                data={
+                    "id": formula_id,
+                    "name": formula.get("formulaName") or formula.get("name"),
+                    "outcomeEquipId": formula.get("outcomeEquipId"),
+                    "outcomeEquipName": formula.get("outcomeEquipName"),
+                    "packId": formula.get("packId"),
+                    "packName": formula.get("packName"),
+                    "unlockType": formula.get("unlockType"),
+                    "unlockKey": formula.get("unlockKey"),
+                    "unlockName": formula.get("unlockName"),
+                    "costCount": len(formula.get("costs") or []),
+                },
+            )
+            self.add_edge(equipment_node, formula_node, "crafted_by_formula", source="webui/gameplay", evidence="formulaId")
+            self.add_edge(formula_node, equipment_node, "formula_outputs_equipment", source="webui/gameplay", evidence="outcomeEquipId")
+            self.add_alias(formula_id, formula_node, kind="equipment_formula_id", source="webui/gameplay")
+            self.add_alias(formula.get("formulaName") or formula.get("name"), formula_node, kind="equipment_formula_name", source="webui/gameplay")
+            self.add_alias(formula.get("outcomeEquipId"), formula_node, kind="equipment_formula_outcome_id", source="webui/gameplay")
+            self.add_gameplay_source_edges(formula_node, {"table": "EquipFormulaTable.json", "id": formula_id})
+            self.add_gameplay_required_items(formula_node, formula, evidence="equipmentFormula")
+
+            pack_id = safe_key(formula.get("packId"))
+            if pack_id:
+                pack_node = self.add_node(
+                    "equipment_formula_pack",
+                    pack_id,
+                    name=formula.get("packName") or pack_id,
+                    source="webui/gameplay",
+                    data={"id": pack_id, "name": formula.get("packName")},
+                )
+                self.add_edge(formula_node, pack_node, "belongs_to_formula_pack", source="webui/gameplay", evidence="packId")
+                self.add_alias(pack_id, pack_node, kind="equipment_formula_pack_id", source="webui/gameplay")
+                self.add_alias(formula.get("packName"), pack_node, kind="equipment_formula_pack_name", source="webui/gameplay")
+                self.add_gameplay_source_edges(pack_node, {"table": "EquipPackTable.json", "id": pack_id})
+
+            unlock_key = safe_key(formula.get("unlockKey"))
+            if unlock_key:
+                unlock_node = self.add_node(
+                    "gameplay_unlock",
+                    unlock_key,
+                    name=formula.get("unlockName") or unlock_key,
+                    source="webui/gameplay",
+                    data={
+                        "id": unlock_key,
+                        "name": formula.get("unlockName"),
+                        "unlockType": formula.get("unlockType"),
+                        "unlockValue": formula.get("unlockValue"),
+                    },
+                )
+                self.add_edge(formula_node, unlock_node, "unlocked_by", source="webui/gameplay", evidence="unlockKey")
+                self.add_alias(unlock_key, unlock_node, kind="gameplay_unlock_id", source="webui/gameplay")
+                self.add_alias(formula.get("unlockName"), unlock_node, kind="gameplay_unlock_name", source="webui/gameplay")
+
+        stats = entry.get("stats") if isinstance(entry.get("stats"), dict) else {}
+        for index, curve in enumerate(stats.get("propertyCurves") or []):
+            if isinstance(curve, dict):
+                self.add_gameplay_property_curve(equipment_node, equipment_id, curve, index)
+
+    def add_gameplay_property_curve(self, equipment_node: str, equipment_id: str, curve: dict[str, Any], index: int) -> str:
+        attr_index = safe_key(curve.get("attrIndex"))
+        key = safe_key(curve.get("key") or curve.get("compositeAttr") or attr_index or f"property_{index}")
+        curve_key = f"{equipment_id}:{attr_index or index}:{key}"
+        node = self.add_node(
+            "gameplay_property_curve",
+            curve_key,
+            name=curve.get("label") or key,
+            source="webui/gameplay",
+            data={
+                "equipmentId": equipment_id,
+                "attrIndex": curve.get("attrIndex"),
+                "key": curve.get("key"),
+                "label": curve.get("label"),
+                "iconName": curve.get("iconName"),
+                "compositeAttr": curve.get("compositeAttr"),
+                "rowCount": curve.get("rowCount"),
+                "maxLevel": curve.get("maxLevel"),
+            },
+        )
+        self.add_edge(equipment_node, node, "has_equipment_property_curve", source="webui/gameplay", evidence=attr_index or str(index))
+        self.add_alias(key, node, kind="gameplay_property_curve_key", source="webui/gameplay")
+        self.add_alias(curve.get("label"), node, kind="gameplay_property_curve_label", source="webui/gameplay")
+
+        stat_node = self.add_node(
+            "gameplay_stat_property",
+            key,
+            name=curve.get("label") or key,
+            source="webui/gameplay",
+            data={"key": key, "label": curve.get("label"), "iconName": curve.get("iconName"), "compositeAttr": curve.get("compositeAttr")},
+        )
+        self.add_edge(node, stat_node, "scales_stat_property", source="webui/gameplay", evidence=key)
+        self.add_alias(key, stat_node, kind="gameplay_stat_property_key", source="webui/gameplay")
+        self.add_alias(curve.get("label"), stat_node, kind="gameplay_stat_property_name", source="webui/gameplay")
+        return node
+
+    def add_gameplay_asset_entity_edges(self, owner_node: str, entry: dict[str, Any]) -> None:
+        if safe_key(entry.get("kind")) != "weapon":
+            return
+        model_path = safe_key(entry.get("modelPath"))
+        if not model_path:
+            return
+        model_stem = Path(model_path).stem.lower()
+        if not model_stem:
+            return
+        seen_entities: set[str] = set()
+        for model_base, entity_nodes in sorted(self.asset_entities_by_base.items()):
+            if model_base != model_stem and not model_base.startswith(f"{model_stem}_"):
+                continue
+            for entity_node in entity_nodes:
+                if entity_node in seen_entities:
+                    continue
+                seen_entities.add(entity_node)
+                self.add_edge(
+                    owner_node,
+                    entity_node,
+                    "has_gameplay_asset_entity",
+                    source="webui/gameplay",
+                    evidence="modelPath",
+                    data={
+                        "modelPath": model_path,
+                        "token": model_stem,
+                        "modelBase": model_base,
+                        "assetEntity": node_key(entity_node),
+                    },
+                )
+
+    def add_gameplay_asset_edges(self, owner_node: str, entry: dict[str, Any]) -> None:
+        tokens: list[tuple[str, str]] = []
+        entry_id = safe_key(entry.get("id"))
+        kind = safe_key(entry.get("kind"))
+        if kind in {"weapon", "character"} and entry_id:
+            tokens.append(("id", entry_id))
+        icon_id = safe_key(entry.get("iconId"))
+        if icon_id:
+            tokens.append(("iconId", icon_id))
+        model_path = safe_key(entry.get("modelPath"))
+        if model_path:
+            model_stem = Path(model_path).stem
+            if model_stem:
+                tokens.append(("modelPath", model_stem))
+
+        seen_tokens: set[str] = set()
+        for field, token in tokens:
+            token_lower = token.lower()
+            if not token_lower or token_lower in seen_tokens:
+                continue
+            seen_tokens.add(token_lower)
+            for rel in self.asset_paths:
+                if token_lower not in rel.lower():
+                    continue
+                asset_node = self.add_node("asset", rel, name=Path(rel).name, path=rel)
+                self.add_edge(
+                    owner_node,
+                    asset_node,
+                    "has_gameplay_asset",
+                    source="webui/gameplay",
+                    evidence=field,
+                    data={"token": token},
+                )
+
+    def add_gameplay_item_asset_edges(self, item_node: str, item_id: str) -> None:
+        item_key = safe_key(item_id)
+        if not item_key:
+            return
+        cache_key = item_key.lower()
+        matches = self.gameplay_item_asset_cache.get(cache_key)
+        if matches is None:
+            matches = [rel for rel in self.asset_paths if cache_key in rel.lower()]
+            self.gameplay_item_asset_cache[cache_key] = matches
+        for rel in matches:
+            asset_node = self.add_node("asset", rel, name=Path(rel).name, path=rel)
+            self.add_edge(
+                item_node,
+                asset_node,
+                "has_gameplay_asset",
+                source="webui/gameplay",
+                evidence="itemId",
+                data={"itemId": item_key, "token": item_key},
+            )
+
+    def add_gameplay_source_edges(self, owner_node: str, source: Any, *, edge_kind: str = "defined_by_row") -> None:
+        if not isinstance(source, dict):
+            return
+        row_id = safe_key(source.get("id"))
+        if not row_id:
+            return
+        for key, kind in (("table", edge_kind), ("nameTable", "named_by_row")):
+            table_name = safe_key(source.get(key))
+            if not table_name:
+                continue
+            table_key = Path(table_name).stem
+            table_node = self.add_node("table", table_key, name=table_key, source="webui/gameplay")
+            row_node = self.add_node("table_row", f"{table_key}:{row_id}", name=row_id, source=table_key)
+            self.add_edge(table_node, row_node, "has_row", source="webui/gameplay")
+            self.add_edge(owner_node, row_node, kind, source="webui/gameplay", evidence=table_name)
+
+    def gameplay_progression_summary(self, payload: Any) -> dict[str, Any]:
+        if isinstance(payload, dict):
+            out = {
+                key: payload.get(key)
+                for key in (
+                    "source",
+                    "templateId",
+                    "rowCount",
+                    "rawRowCount",
+                    "maxLevel",
+                    "rawMaxLevel",
+                    "playableMaxLevel",
+                    "extraRowsBeyondPlayable",
+                )
+                if payload.get(key) not in (None, "", [], {})
+            }
+            for key in ("rows", "checkpoints", "levels", "costs", "requiredItem", "displayAttrs", "propertyCurves"):
+                if isinstance(payload.get(key), list):
+                    out[f"{key}Count"] = len(payload[key])
+            return out
+        if isinstance(payload, list):
+            return {"count": len(payload), "preview": compact_payload(payload[:2], depth=2, list_limit=4)}
+        return {}
+
+    def add_gameplay_progression_node(self, owner_node: str, owner_key: str, label: str, payload: Any) -> str:
+        if payload in (None, "", [], {}):
+            return ""
+        data = self.gameplay_progression_summary(payload)
+        if not data:
+            data = compact_payload(payload, depth=2, list_limit=6)
+        node = self.add_node(
+            "gameplay_progression",
+            f"{owner_key}:{label}",
+            name=f"{owner_key} {label}",
+            source="webui/gameplay",
+            data=data,
+        )
+        self.add_edge(owner_node, node, "has_gameplay_progression", source="webui/gameplay", evidence=label)
+        self.add_gameplay_required_items(node, payload, evidence=label)
+        return node
+
+    def add_gameplay_skill(self, owner_node: str, skill: dict[str, Any], *, edge_kind: str, owner_key: str, index: int) -> str:
+        skill_id = safe_key(skill.get("id") or f"skill_{index}")
+        node = self.add_node(
+            "gameplay_skill",
+            skill_id,
+            name=skill.get("name") or skill_id,
+            source="webui/gameplay",
+            data={
+                "id": skill.get("id"),
+                "name": skill.get("name"),
+                "description": compact_text(skill.get("description"), 500),
+                "maxDescription": compact_text(skill.get("maxDescription"), 500),
+                "levelCount": skill.get("levelCount"),
+                "source": skill.get("source"),
+            },
+        )
+        self.add_edge(owner_node, node, edge_kind, source="webui/gameplay", evidence=str(index))
+        self.add_alias(skill.get("id"), node, kind="gameplay_skill_id", source="webui/gameplay")
+        self.add_alias(skill.get("name"), node, kind="gameplay_skill_name", source="webui/gameplay")
+        self.add_gameplay_source_edges(node, skill.get("source"))
+        self.add_gameplay_required_items(node, skill, evidence="skill")
+        return node
+
+    def add_gameplay_talent_group(self, owner_node: str, owner_key: str, group: dict[str, Any], index: int) -> str:
+        group_id = safe_key(group.get("id") or f"talent_group_{index}")
+        node = self.add_node(
+            "gameplay_talent_group",
+            f"{owner_key}:{group_id}",
+            name=group.get("title") or group_id,
+            source="webui/gameplay",
+            data={
+                "id": group.get("id"),
+                "kind": group.get("kind"),
+                "kindLabel": group.get("kindLabel"),
+                "rank": group.get("rank"),
+                "rankIndex": group.get("rankIndex"),
+                "title": group.get("title"),
+                "levelCount": len(group.get("levels") or []),
+            },
+        )
+        self.add_edge(owner_node, node, "has_talent_group", source="webui/gameplay", evidence=str(index))
+        self.add_alias(group.get("id"), node, kind="gameplay_talent_group_id", source="webui/gameplay")
+        self.add_alias(group.get("title"), node, kind="gameplay_talent_group_name", source="webui/gameplay")
+        for level_index, level in enumerate(group.get("levels") or []):
+            if isinstance(level, dict):
+                self.add_gameplay_talent(node, f"{owner_key}:{group_id}", level, level_index)
+        return node
+
+    def add_gameplay_talent(self, owner_node: str, owner_key: str, talent: dict[str, Any], index: int) -> str:
+        talent_id = safe_key(talent.get("id") or f"talent_{index}")
+        node = self.add_node(
+            "gameplay_talent",
+            f"{owner_key}:{talent_id}:{index}",
+            name=talent.get("title") or talent_id,
+            source="webui/gameplay",
+            data={
+                "id": talent.get("id"),
+                "nodeType": talent.get("nodeType"),
+                "typeLabel": talent.get("typeLabel"),
+                "kind": talent.get("kind"),
+                "kindLabel": talent.get("kindLabel"),
+                "title": talent.get("title"),
+                "description": compact_text(talent.get("description"), 500),
+                "level": talent.get("level"),
+                "rank": talent.get("rank"),
+                "breakStage": talent.get("breakStage"),
+                "source": talent.get("source"),
+            },
+        )
+        self.add_edge(owner_node, node, "has_talent", source="webui/gameplay", evidence=str(index))
+        self.add_alias(talent.get("id"), node, kind="gameplay_talent_id", source="webui/gameplay")
+        self.add_alias(talent.get("title"), node, kind="gameplay_talent_name", source="webui/gameplay")
+        self.add_gameplay_source_edges(node, talent.get("source"))
+        self.add_gameplay_required_items(node, talent, evidence="talent")
+        return node
+
+    def add_gameplay_required_items(self, owner_node: str, payload: Any, *, evidence: str, depth: int = 4) -> None:
+        if depth <= 0 or payload in (None, "", [], {}):
+            return
+        if isinstance(payload, dict):
+            for key in ("costs", "requiredItem", "requiredItems", "itemBundle", "items"):
+                self.add_gameplay_item_edges(owner_node, payload.get(key), evidence=f"{evidence}.{key}")
+            self.add_gameplay_gold_edge(owner_node, payload.get("goldCost"), evidence=f"{evidence}.goldCost")
+            for key in ("rows", "checkpoints", "levels", "potentials", "breakthroughs", "formula", "suit", "propertyCurves"):
+                self.add_gameplay_required_items(owner_node, payload.get(key), evidence=f"{evidence}.{key}", depth=depth - 1)
+        elif isinstance(payload, list):
+            for item in payload:
+                self.add_gameplay_required_items(owner_node, item, evidence=evidence, depth=depth - 1)
+
+    def add_gameplay_gold_edge(self, owner_node: str, value: Any, *, evidence: str) -> None:
+        if not isinstance(value, (int, float)) or value <= 0:
+            return
+        item_node = self.add_node(
+            "item",
+            "item_gold",
+            name="item_gold",
+            source="webui/gameplay",
+            data={"id": "item_gold", "name": "item_gold"},
+        )
+        self.add_edge(owner_node, item_node, "requires_item", source="webui/gameplay", evidence=evidence, data={"count": value})
+        self.add_alias("item_gold", item_node, kind="item_id", source="webui/gameplay")
+        self.add_gameplay_item_asset_edges(item_node, "item_gold")
+
+    def add_gameplay_item_edges(self, owner_node: str, items: Any, *, evidence: str) -> None:
+        if not isinstance(items, list):
+            return
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            item_id = safe_key(item.get("id") or item.get("itemId"))
+            if not item_id:
+                continue
+            count = item.get("count")
+            if isinstance(count, (int, float)) and count <= 0:
+                continue
+            item_node = self.add_node(
+                "item",
+                item_id,
+                name=item.get("name") or item_id,
+                source="webui/gameplay",
+                data={"id": item_id, "name": item.get("name"), "count": count},
+            )
+            self.add_edge(owner_node, item_node, "requires_item", source="webui/gameplay", evidence=evidence, data={"count": count})
+            self.add_alias(item_id, item_node, kind="item_id", source="webui/gameplay")
+            self.add_alias(item.get("name"), item_node, kind="item_name", source="webui/gameplay")
+            self.add_gameplay_item_asset_edges(item_node, item_id)
 
     def add_story_node(self, story_key: str, data: dict[str, Any], *, path: str = "") -> str:
         summary = data.get("summary")
@@ -565,7 +8253,7 @@ class SourceGraphBuilder:
                 actor_node = self.add_node("actor", actor_id, name=line.get("actor"), source="webui/story")
                 self.add_edge(line_node, actor_node, "spoken_by", source="webui/story")
             audio_id = safe_key(line.get("audio"))
-            if audio_id:
+            if audio_id and audio_id not in {"0", "0.0"}:
                 audio_node = self.add_node("audio", audio_id, name=audio_id, source="dialog_line")
                 self.add_edge(line_node, audio_node, "uses_audio", source="webui/story")
 
@@ -1218,6 +8906,177 @@ class SourceGraphBuilder:
         self.add_edge(option_node, jump_node, "timeline_route_runtime_jump", source="timeline_line_orders", evidence=str(jump_index), data=jump_data)
         self.add_timeline_clip_files(jump_node, jump, prefix="runtime_jump")
 
+    def ingest_runtime_option_route_audits(self) -> None:
+        source = "runtime_jump_option_route_audit"
+        for path in sorted((ROOT / "reports").glob(RUNTIME_OPTION_ROUTE_AUDIT_GLOB)):
+            payload = read_json(path, {})
+            groups = payload.get("groups") or []
+            if not isinstance(groups, list) or not groups:
+                continue
+            source_path = slash(path.relative_to(ROOT))
+            dataset = self.add_node(
+                "dataset",
+                f"runtime_option_route_audit:{path.stem}",
+                name=path.name,
+                source=source,
+                path=source_path,
+                data={"summary": compact_payload(payload.get("summary"), depth=2), "groupCount": len(groups)},
+            )
+            file_node = self.add_file(source_path, kind="runtime_option_route_audit", source=source, size=path.stat().st_size)
+            self.add_edge(file_node, dataset, "defines_runtime_option_route_audit", source=source, evidence=path.name)
+            for group_index, group in enumerate(groups):
+                if not isinstance(group, dict):
+                    continue
+                story_key = safe_key(group.get("sceneKey") or group.get("storyKey"))
+                group_key = safe_key(group.get("group") if group.get("group") is not None else group.get("groupKey"))
+                if not story_key or not group_key:
+                    continue
+                audit_key = f"{story_key}#group:{group_key}"
+                checks = group.get("checks") if isinstance(group.get("checks"), dict) else {}
+                audit_data = {
+                    "sceneKey": story_key,
+                    "group": group_key,
+                    "mission": group.get("mission"),
+                    "recommendation": group.get("recommendation"),
+                    "optionIds": group.get("optionIds") or [],
+                    "optionIndex": group.get("optionIndex") or [],
+                    "commonContinuationLineId": group.get("commonContinuationLineId"),
+                    "candidateLineIds": group.get("candidateLineIds") or [],
+                    "sourceFiles": group.get("sourceFiles") or [],
+                    "sourceReport": source_path,
+                    "runtimePathConflictCount": checks.get("runtimePathConflictCount"),
+                    "directionalFirstLineConflictCount": checks.get("directionalFirstLineConflictCount"),
+                    "nearbyRuntimeJumpCount": len(group.get("nearbyRuntimeJumps") or []),
+                }
+                audit_node = self.add_node(
+                    "runtime_option_route_audit_group",
+                    audit_key,
+                    name=audit_key,
+                    source=source,
+                    path=source_path,
+                    data=compact_payload(audit_data, depth=3),
+                )
+                story_node = self.add_node("story", story_key, source=source)
+                option_group_node = self.add_node(
+                    "option_group",
+                    self.timeline_group_key(story_key, group_key),
+                    source=source,
+                    data={"g": group_key, "index": self.timeline_group_index(group_key)},
+                )
+                self.add_edge(dataset, audit_node, "has_runtime_option_route_audit", source=source, evidence=str(group_index), data=audit_data)
+                self.add_edge(story_node, audit_node, "has_runtime_option_route_audit", source=source, evidence=group_key, data=audit_data)
+                self.add_edge(option_group_node, audit_node, "option_group_runtime_audit", source=source, evidence=source_path, data=audit_data)
+
+                option_ids = [safe_key(option_id) for option_id in (group.get("optionIds") or []) if safe_key(option_id)]
+                option_indices = group.get("optionIndex") or []
+                option_by_index = {safe_key(index): option_id for option_id, index in zip(option_ids, option_indices) if safe_key(index)}
+                for option_id in option_ids:
+                    option_node = self.add_node("option", option_id, name=option_id, source=source)
+                    self.add_edge(audit_node, option_node, "runtime_audit_has_option", source=source, evidence=option_id, data=audit_data)
+
+                for map_key, edge_kind in (
+                    ("expectedFirstLineByOption", "runtime_audit_expected_first_line"),
+                    ("runtimeFirstLineByOption", "runtime_audit_runtime_first_line"),
+                    ("directionalFirstLineByOption", "runtime_audit_directional_first_line"),
+                ):
+                    mapping = checks.get(map_key) if isinstance(checks.get(map_key), dict) else {}
+                    for option_id, line_id in mapping.items():
+                        option_key = safe_key(option_id)
+                        line_key = safe_key(line_id)
+                        if not option_key or not line_key:
+                            continue
+                        option_node = self.add_node("option", option_key, name=option_key, source=source)
+                        line_node = self.add_node("line", line_key, source=source)
+                        edge_data = {
+                            "sceneKey": story_key,
+                            "group": group_key,
+                            "optionId": option_key,
+                            "lineId": line_key,
+                            "field": f"checks.{map_key}.{option_key}",
+                            "recommendation": group.get("recommendation"),
+                            "sourceReport": source_path,
+                        }
+                        self.add_edge(option_node, line_node, edge_kind, source=source, evidence=source_path, data=edge_data)
+
+                conflicts = checks.get("runtimePathConflicts") if isinstance(checks.get("runtimePathConflicts"), list) else []
+                for conflict_index, conflict in enumerate(conflicts):
+                    if not isinstance(conflict, dict):
+                        continue
+                    option_id = safe_key(conflict.get("optionId"))
+                    if not option_id:
+                        continue
+                    conflict_key = f"{audit_key}:{option_id}:conflict:{conflict_index}"
+                    conflict_data = {
+                        "sceneKey": story_key,
+                        "group": group_key,
+                        "optionId": option_id,
+                        "expectedFirstLineId": conflict.get("expectedFirstLineId"),
+                        "runtimeFirstLineId": conflict.get("runtimeFirstLineId"),
+                        "runtimeFirstLineCandidateOwner": conflict.get("runtimeFirstLineCandidateOwner"),
+                        "recommendation": group.get("recommendation"),
+                        "sourceReport": source_path,
+                    }
+                    option_node = self.add_node("option", option_id, name=option_id, source=source)
+                    conflict_node = self.add_node(
+                        "runtime_option_route_conflict",
+                        conflict_key,
+                        name=f"{story_key} group {group_key} {option_id}",
+                        source=source,
+                        path=source_path,
+                        data=conflict_data,
+                    )
+                    self.add_edge(option_node, conflict_node, "has_runtime_route_conflict", source=source, evidence=source_path, data=conflict_data)
+                    self.add_edge(audit_node, conflict_node, "runtime_audit_has_conflict", source=source, evidence=str(conflict_index), data=conflict_data)
+                    for line_field, edge_kind in (
+                        ("expectedFirstLineId", "runtime_route_conflict_expected_first_line"),
+                        ("runtimeFirstLineId", "runtime_route_conflict_runtime_first_line"),
+                    ):
+                        line_key = safe_key(conflict.get(line_field))
+                        if line_key:
+                            line_node = self.add_node("line", line_key, source=source)
+                            self.add_edge(conflict_node, line_node, edge_kind, source=source, evidence=line_field, data=conflict_data)
+                    owner_key = safe_key(conflict.get("runtimeFirstLineCandidateOwner"))
+                    if owner_key:
+                        owner_node = self.add_node("option", owner_key, name=owner_key, source=source)
+                        self.add_edge(conflict_node, owner_node, "runtime_first_line_candidate_owner", source=source, evidence=owner_key, data=conflict_data)
+
+                for jump_index, jump in enumerate(group.get("nearbyRuntimeJumps") or []):
+                    if not isinstance(jump, dict):
+                        continue
+                    jump_key = safe_key(jump.get("assetTrack") or jump.get("track"))
+                    if not jump_key:
+                        jump_key = f"{story_key}:runtimeAuditJump:{group_key}:{jump_index}:{jump.get('start')}:{jump.get('end')}"
+                    option_id = option_by_index.get(safe_key(jump.get("optionIndex")))
+                    if not option_id:
+                        continue
+                    option_node = self.add_node("option", option_id, name=option_id, source=source)
+                    jump_data = {
+                        "sceneKey": story_key,
+                        "group": group_key,
+                        "optionId": option_id,
+                        "optionIndex": jump.get("optionIndex"),
+                        "start": jump.get("start"),
+                        "end": jump.get("end"),
+                        "duration": jump.get("duration"),
+                        "trackName": jump.get("trackName"),
+                        "displayName": jump.get("displayName"),
+                        "track": jump.get("track"),
+                        "assetTrack": jump.get("assetTrack"),
+                        "needChangeOptionAfterJump": jump.get("needChangeOptionAfterJump"),
+                        "optionIndexAfterJump": jump.get("optionIndexAfterJump"),
+                        "sourceReport": source_path,
+                    }
+                    jump_node = self.add_node(
+                        "runtime_jump_clip",
+                        jump_key,
+                        name=Path(jump_key).stem,
+                        source=source,
+                        path=safe_key(jump.get("assetTrack") or jump.get("track")),
+                        data=jump_data,
+                    )
+                    self.add_edge(option_node, jump_node, "runtime_audit_nearby_jump", source=source, evidence=str(jump_index), data=jump_data)
+                    self.add_edge(audit_node, jump_node, "runtime_audit_has_nearby_jump", source=source, evidence=str(jump_index), data=jump_data)
+
     def ingest_story_source_links(self) -> None:
         path = EXPORT_ROOT / "recovered" / "story_source_links.json"
         payload = read_json(path, {})
@@ -1365,10 +9224,4829 @@ class SourceGraphBuilder:
                 )
                 self.add_edge(manifest_node, clip_node, "has_animation_clip", source="unity_character_lab")
 
+    def ingest_item_economy(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_item_economy", path=slash(table_root))
+        for table_name in ITEM_ECONOMY_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if payload is None:
+                continue
+            table_key = Path(table_name).stem
+            table_node = self.add_node("table", table_key, name=table_key, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/item_economy")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if not isinstance(payload, dict):
+                continue
+            for row_key, row in payload.items():
+                row_node = self.add_node(
+                    "table_row",
+                    f"{table_key}:{row_key}",
+                    name=str(row_key),
+                    source=table_key,
+                    data=compact_payload(row, depth=2),
+                )
+                self.add_edge(table_node, row_node, "has_row", source="structured/item_economy")
+                self.add_item_economy_row_edges(table_key, row_key, row, row_node)
+
+    def add_item_node(self, item_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        item_key = safe_key(item_id)
+        if not item_key:
+            return ""
+        item_name = table_display_text(name) or item_key
+        item_node = self.add_node("item", item_key, name=item_name, source=source, data=data)
+        self.add_alias(item_key, item_node, kind="item_id", source=source)
+        self.add_alias(item_key.removeprefix("item_"), item_node, kind="item_alias", source=source)
+        if item_name != item_key:
+            self.add_alias(item_name, item_node, kind="item_name", source=source)
+        return item_node
+
+    def add_item_type_node(self, type_id: Any, *, name: Any = None, source: str = "") -> str:
+        type_key = safe_key(type_id)
+        if not type_key:
+            return ""
+        type_name = table_display_text(name) or type_key
+        type_node = self.add_node("item_type", type_key, name=type_name, source=source)
+        self.add_alias(type_key, type_node, kind="item_type_id", source=source)
+        if type_name != type_key:
+            self.add_alias(type_name, type_node, kind="item_type_name", source=source)
+        return type_node
+
+    def add_item_showing_type_node(self, showing_type: Any, *, name: Any = None, source: str = "") -> str:
+        showing_key = safe_key(showing_type)
+        if not showing_key:
+            return ""
+        showing_name = table_display_text(name) or showing_key
+        showing_node = self.add_node("item_showing_type", showing_key, name=showing_name, source=source)
+        self.add_alias(showing_key, showing_node, kind="item_showing_type_id", source=source)
+        if showing_name != showing_key:
+            self.add_alias(showing_name, showing_node, kind="item_showing_type_name", source=source)
+        return showing_node
+
+    def add_reward_node(self, reward_id: Any, *, source: str = "", data: Any = None) -> str:
+        reward_key = safe_key(reward_id)
+        if not reward_key:
+            return ""
+        reward_node = self.add_node("reward", reward_key, name=reward_key, source=source, data=data)
+        self.add_alias(reward_key, reward_node, kind="reward_id", source=source)
+        return reward_node
+
+    def add_shop_node(self, shop_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        shop_key = safe_key(shop_id)
+        if not shop_key:
+            return ""
+        shop_name = table_display_text(name) or shop_key
+        shop_node = self.add_node("shop", shop_key, name=shop_name, source=source, data=data)
+        self.add_alias(shop_key, shop_node, kind="shop_id", source=source)
+        if shop_name != shop_key:
+            self.add_alias(shop_name, shop_node, kind="shop_name", source=source)
+        return shop_node
+
+    def add_shop_goods_node(self, goods_id: Any, *, source: str = "", data: Any = None) -> str:
+        goods_key = safe_key(goods_id)
+        if not goods_key:
+            return ""
+        goods_node = self.add_node("shop_goods", goods_key, name=goods_key, source=source, data=data)
+        self.add_alias(goods_key, goods_node, kind="shop_goods_id", source=source)
+        return goods_node
+
+    def add_shop_goods_tag_node(self, tag_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        tag_key = safe_key(tag_id)
+        if not tag_key:
+            return ""
+        tag_name = table_display_text(name) or tag_key
+        tag_node = self.add_node("shop_goods_tag", tag_key, name=tag_name, source=source, data=data)
+        self.add_alias(tag_key, tag_node, kind="shop_goods_tag_id", source=source)
+        if tag_name != tag_key:
+            self.add_alias(tag_name, tag_node, kind="shop_goods_tag_name", source=source)
+        return tag_node
+
+    def add_item_table_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        item_id = safe_key(row.get("id") or row_key)
+        if not item_id:
+            return
+        item_node = self.add_item_node(
+            item_id,
+            name=row.get("name"),
+            source=table,
+            data={
+                "id": item_id,
+                "type": row.get("type"),
+                "showingType": row.get("showingType"),
+                "rarity": row.get("rarity"),
+                "iconId": row.get("iconId"),
+                "iconCompositeId": row.get("iconCompositeId"),
+                "modelKey": row.get("modelKey"),
+                "maxStackCount": row.get("maxStackCount"),
+                "maxBackpackStackCount": row.get("maxBackpackStackCount"),
+                "sortId1": row.get("sortId1"),
+                "sortId2": row.get("sortId2"),
+                "valuableTabType": row.get("valuableTabType"),
+                "notObtainShow": row.get("notObtainShow"),
+                "obtainWayCount": len(row.get("obtainWayIds") or []),
+                "outcomeItemCount": len(row.get("outcomeItemIds") or []),
+            },
+        )
+        self.add_edge(row_node, item_node, "defines_item", source=table)
+        self.add_alias(row.get("iconId"), item_node, kind="icon_id", source=table)
+        self.add_alias(row.get("iconCompositeId"), item_node, kind="icon_composite_id", source=table)
+        self.add_alias(row.get("modelKey"), item_node, kind="model_key", source=table)
+        type_node = self.add_item_type_node(row.get("type"), source=table)
+        if type_node:
+            self.add_edge(item_node, type_node, "item_has_type", source=table, evidence="type")
+        showing_node = self.add_item_showing_type_node(row.get("showingType"), source=table)
+        if showing_node:
+            self.add_edge(item_node, showing_node, "item_has_showing_type", source=table, evidence="showingType")
+        for index, obtain_id in enumerate(row.get("obtainWayIds") or []):
+            obtain_key = safe_key(obtain_id)
+            if not obtain_key:
+                continue
+            obtain_node = self.add_node("item_obtain_way", obtain_key, name=obtain_key, source=table)
+            self.add_alias(obtain_key, obtain_node, kind="item_obtain_way_id", source=table)
+            self.add_edge(item_node, obtain_node, "item_has_obtain_way", source=table, evidence=f"obtainWayIds[{index}]")
+        for index, outcome_id in enumerate(row.get("outcomeItemIds") or []):
+            outcome_node = self.add_item_node(outcome_id, source=table)
+            self.add_edge(item_node, outcome_node, "item_outcomes_item", source=table, evidence=f"outcomeItemIds[{index}]")
+
+    def add_item_type_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        type_id = row.get("itemType") if "itemType" in row else row_key
+        type_node = self.add_item_type_node(type_id, name=row.get("name"), source=table)
+        self.add_edge(row_node, type_node, "defines_item_type", source=table)
+
+    def add_item_showing_type_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        showing_node = self.add_item_showing_type_node(row.get("type") if "type" in row else row_key, name=row.get("name"), source=table)
+        self.add_edge(row_node, showing_node, "defines_item_showing_type", source=table)
+
+    def add_reward_item_bundle_edges(self, reward_node: str, bundles: Any, *, edge_kind: str, source: str, field: str, visible_list: Any = None) -> None:
+        if not isinstance(bundles, list):
+            return
+        for index, bundle in enumerate(bundles):
+            if not isinstance(bundle, dict):
+                continue
+            item_id = safe_key(bundle.get("id") or bundle.get("itemId"))
+            if not item_id:
+                continue
+            item_node = self.add_item_node(item_id, source=source)
+            data = {"count": bundle.get("count"), "index": index}
+            if isinstance(visible_list, list) and index < len(visible_list):
+                data["visible"] = visible_list[index]
+            self.add_edge(reward_node, item_node, edge_kind, source=source, evidence=f"{field}[{index}]", data=data)
+
+    def add_reward_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        reward_id = safe_key(row.get("rewardId") or row_key)
+        if not reward_id:
+            return
+        reward_node = self.add_reward_node(
+            reward_id,
+            source=table,
+            data={
+                "id": reward_id,
+                "itemBundleCount": len(row.get("itemBundles") or []),
+                "probItemBundleCount": len(row.get("probItemBundles") or []),
+            },
+        )
+        self.add_edge(row_node, reward_node, "defines_reward", source=table)
+        self.add_reward_item_bundle_edges(reward_node, row.get("itemBundles"), edge_kind="reward_grants_item", source=table, field="itemBundles", visible_list=row.get("itemBundleVisibleList"))
+        self.add_reward_item_bundle_edges(reward_node, row.get("probItemBundles"), edge_kind="reward_may_grant_item", source=table, field="probItemBundles")
+
+    def add_reward_drop_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        drop_id = safe_key(row.get("rewardId") or row_key)
+        if not drop_id:
+            return
+        drop_node = self.add_node("reward_drop", drop_id, name=drop_id, source=table, data={"id": drop_id, "itemCount": len(row.get("itemIds") or [])})
+        reward_node = self.add_reward_node(drop_id, source=table)
+        self.add_edge(row_node, drop_node, "defines_reward_drop", source=table)
+        self.add_edge(reward_node, drop_node, "reward_has_drop_table", source=table, evidence="rewardId")
+        self.add_alias(drop_id, drop_node, kind="reward_drop_id", source=table)
+        for index, item_id in enumerate(row.get("itemIds") or []):
+            item_node = self.add_item_node(item_id, source=table)
+            self.add_edge(drop_node, item_node, "reward_drop_may_drop_item", source=table, evidence=f"itemIds[{index}]", data={"index": index})
+
+    def add_shop_group_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        group_id = safe_key(row.get("shopGroupId") or row_key)
+        if not group_id:
+            return
+        group_node = self.add_node(
+            "shop_group",
+            group_id,
+            name=table_display_text(row.get("shopGroupName")) or group_id,
+            source=table,
+            data={"id": group_id, "type": row.get("shopGroupType"), "icon": row.get("icon"), "shopCount": len(row.get("shopIds") or [])},
+        )
+        self.add_edge(row_node, group_node, "defines_shop_group", source=table)
+        self.add_alias(group_id, group_node, kind="shop_group_id", source=table)
+        self.add_alias(table_display_text(row.get("shopGroupName")), group_node, kind="shop_group_name", source=table)
+        for index, shop_id in enumerate(row.get("shopIds") or []):
+            shop_node = self.add_shop_node(shop_id, source=table)
+            self.add_edge(group_node, shop_node, "shop_group_has_shop", source=table, evidence=f"shopIds[{index}]")
+
+    def add_shop_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        shop_id = safe_key(row.get("shopId") or row_key)
+        if not shop_id:
+            return
+        shop_node = self.add_shop_node(
+            shop_id,
+            name=row.get("shopName") or row.get("shopEnName"),
+            source=table,
+            data={"id": shop_id, "iconId": row.get("iconId"), "goodsCount": len(row.get("shopGoodsIds") or []), "isShowWhenLock": row.get("isShowWhenLock")},
+        )
+        self.add_edge(row_node, shop_node, "defines_shop", source=table)
+        for index, goods_id in enumerate(row.get("shopGoodsIds") or []):
+            goods_node = self.add_shop_goods_node(goods_id, source=table)
+            self.add_edge(shop_node, goods_node, "shop_has_goods", source=table, evidence=f"shopGoodsIds[{index}]")
+
+    def add_shop_goods_tag_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        tag_id = safe_key(row.get("goodsTagId") or row_key)
+        if not tag_id:
+            return
+        tag_node = self.add_shop_goods_tag_node(tag_id, name=row.get("tagName"), source=table, data={"id": tag_id, "icon": row.get("tagIcon"), "sortId": row.get("sortId")})
+        self.add_edge(row_node, tag_node, "defines_shop_goods_tag", source=table)
+        self.add_tag_i18n_edges(tag_node, row.get("tagName"), source=table, edge_kind="shop_goods_tag_name_text")
+
+    def add_shop_goods_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        goods_id = safe_key(row.get("goodsId") or row_key)
+        if not goods_id:
+            return
+        goods_node = self.add_shop_goods_node(
+            goods_id,
+            source=table,
+            data={
+                "id": goods_id,
+                "shopId": row.get("shopId"),
+                "moneyId": row.get("moneyId"),
+                "price": row.get("price"),
+                "rewardId": row.get("rewardId"),
+                "goodsTagId": row.get("goodsTagId"),
+                "limitCount": row.get("limitCount"),
+                "limitCountRefreshType": row.get("limitCountRefreshType"),
+                "sortId": row.get("sortId"),
+            },
+        )
+        self.add_edge(row_node, goods_node, "defines_shop_goods", source=table)
+        money_node = self.add_item_node(row.get("moneyId"), source=table)
+        if money_node:
+            self.add_edge(goods_node, money_node, "shop_goods_priced_in_item", source=table, evidence="moneyId", data={"price": row.get("price"), "discount": row.get("cnDiscount")})
+        reward_node = self.add_reward_node(row.get("rewardId"), source=table)
+        if reward_node:
+            self.add_edge(goods_node, reward_node, "shop_goods_grants_reward", source=table, evidence="rewardId")
+        tag_node = self.add_shop_goods_tag_node(row.get("goodsTagId"), source=table)
+        if tag_node:
+            self.add_edge(goods_node, tag_node, "shop_goods_tagged", source=table, evidence="goodsTagId")
+
+    def add_item_economy_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        if not isinstance(row, dict):
+            return
+        if table == "ItemTable":
+            self.add_item_table_edges(table, row_key, row, row_node)
+        elif table == "ItemTypeTable":
+            self.add_item_type_edges(table, row_key, row, row_node)
+        elif table == "ItemShowingTypeTable":
+            self.add_item_showing_type_edges(table, row_key, row, row_node)
+        elif table == "RewardTable":
+            self.add_reward_edges(table, row_key, row, row_node)
+        elif table == "RewardDropTable":
+            self.add_reward_drop_edges(table, row_key, row, row_node)
+        elif table == "ShopGroupTable":
+            self.add_shop_group_edges(table, row_key, row, row_node)
+        elif table == "ShopTable":
+            self.add_shop_edges(table, row_key, row, row_node)
+        elif table == "ShopGoodsTagTable":
+            self.add_shop_goods_tag_edges(table, row_key, row, row_node)
+        elif table == "ShopGoodsTable":
+            self.add_shop_goods_edges(table, row_key, row, row_node)
+
+    def ingest_attribute_dictionary(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_attribute_dictionary", path=slash(table_root))
+        for table_name in ATTRIBUTE_DICTIONARY_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if payload is None:
+                continue
+            table_key = Path(table_name).stem
+            table_node = self.add_node("table", table_key, name=table_key, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/attribute_dictionary")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if not isinstance(payload, dict):
+                continue
+            for row_key, row in payload.items():
+                row_node = self.add_node(
+                    "table_row",
+                    f"{table_key}:{row_key}",
+                    name=str(row_key),
+                    source=table_key,
+                    data=compact_payload(row, depth=2),
+                )
+                self.add_edge(table_node, row_node, "has_row", source="structured/attribute_dictionary")
+                self.add_attribute_dictionary_row_edges(table_key, row_key, row, row_node)
+
+    def add_attribute_meta_node(self, attr_type: Any, *, source: str = "", data: Any = None) -> str:
+        attr_key = safe_key(attr_type)
+        if not attr_key:
+            return ""
+        node = self.add_node("attribute_meta", attr_key, name=f"attr_{attr_key}", source=source, data=data)
+        self.add_alias(attr_key, node, kind="attribute_type", source=source)
+        self.add_alias(f"attr_{attr_key}", node, kind="attribute_meta_id", source=source)
+        return node
+
+    def add_gameplay_stat_property_node(self, key: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        prop_key = safe_key(key)
+        if not prop_key:
+            return ""
+        prop_name = table_display_text(name) or prop_key
+        node = self.add_node("gameplay_stat_property", prop_key, name=prop_name, source=source, data=data)
+        self.add_alias(prop_key, node, kind="gameplay_stat_property_key", source=source)
+        if prop_name != prop_key:
+            self.add_alias(prop_name, node, kind="gameplay_stat_property_name", source=source)
+        return node
+
+    def add_attribute_display_entry_node(self, key: str, entry: dict[str, Any], *, source: str) -> str:
+        entry_node = self.add_node(
+            "attribute_display_entry",
+            key,
+            name=table_display_text(entry.get("name")) or key,
+            source=source,
+            data={
+                "attributeModifier": entry.get("attributeModifier"),
+                "index": entry.get("index"),
+                "showPercent": entry.get("showPercent"),
+                "isReduce": entry.get("isReduce"),
+                "valueFormat": entry.get("valueFormat"),
+                "defaultDisplayType": entry.get("defaultDisplayType"),
+                "charFullAttrDisplayType": entry.get("charFullAttrDisplayType"),
+                "equipFullAttrDisplayType": entry.get("equipFullAttrDisplayType"),
+            },
+        )
+        self.add_alias(key, entry_node, kind="attribute_display_entry_id", source=source)
+        self.add_alias(table_display_text(entry.get("name")), entry_node, kind="attribute_display_name", source=source)
+        for text_id in self.iter_i18n_text_ids(entry):
+            text_node = self.add_i18n_text_node(text_id, source=source)
+            if text_node:
+                self.add_edge(entry_node, text_node, "attribute_display_entry_text", source=source, evidence=text_id)
+                self.add_edge(entry_node, text_node, "uses_i18n_text", source=source, evidence=text_id)
+        return entry_node
+
+    def add_attribute_meta_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        attr_type = safe_key(row.get("attributeType") if "attributeType" in row else row_key)
+        if not attr_type:
+            return
+        node = self.add_attribute_meta_node(
+            attr_type,
+            source=table,
+            data={
+                "attributeType": row.get("attributeType"),
+                "defaultValue": row.get("defaultValue"),
+                "hasMaxValue": row.get("hasMaxValue"),
+                "maxValue": row.get("maxValue"),
+                "hasMinValue": row.get("hasMinValue"),
+                "minValue": row.get("minValue"),
+                "iconName": row.get("iconName"),
+                "bigIconName": row.get("bigIconName"),
+            },
+        )
+        self.add_edge(row_node, node, "defines_attribute_meta", source=table)
+        stat_key = STAT_ATTR_KEYS.get(int(attr_type)) if str(attr_type).isdigit() else None
+        if stat_key:
+            stat_node = self.add_gameplay_stat_property_node(stat_key, source=table)
+            if stat_node:
+                self.add_edge(node, stat_node, "attribute_meta_has_stat_property", source=table, evidence="STAT_ATTR_KEYS", data={"attributeType": attr_type, "statKey": stat_key})
+        self.add_alias(row.get("iconName"), node, kind="icon_id", source=table)
+        self.add_alias(row.get("bigIconName"), node, kind="icon_id", source=table)
+
+    def add_attribute_show_config_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        attr_type = safe_key(row_key)
+        if not attr_type:
+            return
+        config_node = self.add_node("attribute_display_config", f"attribute:{attr_type}", name=f"attribute {attr_type} display", source=table, data={"attributeType": attr_type, "entryCount": len(row.get("list") or [])})
+        self.add_edge(row_node, config_node, "defines_attribute_display_config", source=table)
+        meta_node = self.add_attribute_meta_node(attr_type, source=table)
+        if meta_node:
+            self.add_edge(config_node, meta_node, "attribute_display_config_for_meta", source=table, evidence="attributeType")
+        for index, entry in enumerate(row.get("list") or []):
+            if not isinstance(entry, dict):
+                continue
+            entry_node = self.add_attribute_display_entry_node(f"attribute:{attr_type}:{index}", entry, source=table)
+            self.add_edge(config_node, entry_node, "attribute_show_includes_modifier", source=table, evidence=f"list[{index}]", data={"attributeModifier": entry.get("attributeModifier")})
+            modifier_node = self.add_gameplay_stat_property_node(entry.get("attributeModifier"), source=table)
+            if modifier_node:
+                self.add_edge(entry_node, modifier_node, "attribute_display_entry_uses_modifier_property", source=table, evidence="attributeModifier")
+            if meta_node:
+                self.add_edge(entry_node, meta_node, "display_entry_for_attribute_meta", source=table, evidence="attributeType")
+
+    def add_composite_attribute_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        composite_id = safe_key(row_key)
+        if not composite_id:
+            return
+        node = self.add_node("composite_attribute", composite_id, name=composite_id, source=table, data={"id": composite_id, "memberCount": len(row.get("list") or [])})
+        self.add_edge(row_node, node, "defines_composite_attribute", source=table)
+        self.add_alias(composite_id, node, kind="composite_attribute_id", source=table)
+        for index, member_id in enumerate(row.get("list") or []):
+            member_node = self.add_gameplay_stat_property_node(member_id, source=table)
+            if member_node:
+                self.add_edge(node, member_node, "composite_attribute_includes", source=table, evidence=f"list[{index}]")
+
+    def add_composite_attribute_show_config_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        composite_id = safe_key(row_key)
+        if not composite_id:
+            return
+        composite_node = self.add_node("composite_attribute", composite_id, name=composite_id, source=table)
+        config_node = self.add_node("attribute_display_config", f"composite:{composite_id}", name=f"{composite_id} display", source=table, data={"compositeAttribute": composite_id, "entryCount": len(row.get("list") or [])})
+        self.add_edge(row_node, config_node, "defines_composite_attribute_display_config", source=table)
+        self.add_edge(composite_node, config_node, "has_composite_attribute_display_config", source=table)
+        for index, entry in enumerate(row.get("list") or []):
+            if not isinstance(entry, dict):
+                continue
+            entry_node = self.add_attribute_display_entry_node(f"composite:{composite_id}:{index}", entry, source=table)
+            self.add_edge(config_node, entry_node, "composite_attribute_show_includes_modifier", source=table, evidence=f"list[{index}]", data={"attributeModifier": entry.get("attributeModifier")})
+            self.add_edge(entry_node, composite_node, "display_entry_for_composite_attribute", source=table, evidence="compositeAttribute")
+
+    def add_attribute_filter_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        filter_id = safe_key(row_key)
+        if not filter_id:
+            return
+        filter_node = self.add_node("attribute_filter", filter_id, name=filter_id, source=table, data={"id": filter_id, "entryCount": len(row.get("list") or [])})
+        self.add_edge(row_node, filter_node, "defines_attribute_filter", source=table)
+        self.add_alias(filter_id, filter_node, kind="attribute_filter_id", source=table)
+        for index, entry in enumerate(row.get("list") or []):
+            if not isinstance(entry, dict):
+                continue
+            entry_node = self.add_attribute_display_entry_node(f"filter:{filter_id}:{index}", entry, source=table)
+            self.add_edge(filter_node, entry_node, "attribute_filter_includes", source=table, evidence=f"list[{index}]")
+            composite_id = safe_key(entry.get("compositeAttr"))
+            if composite_id:
+                composite_node = self.add_node("composite_attribute", composite_id, name=composite_id, source=table)
+                self.add_edge(entry_node, composite_node, "filter_entry_uses_composite_attribute", source=table, evidence="compositeAttr")
+            else:
+                meta_node = self.add_attribute_meta_node(entry.get("attributeType"), source=table)
+                if meta_node:
+                    self.add_edge(entry_node, meta_node, "filter_entry_uses_attribute_meta", source=table, evidence="attributeType")
+
+    def add_interactive_attribute_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        attr_id = safe_key(row.get("id") or row_key)
+        if not attr_id:
+            return
+        node = self.add_node("interactive_attribute", attr_id, name=attr_id, source=table, data={"id": attr_id, "hp": row.get("hp"), "atk": row.get("atk"), "def": row.get("def"), "pen": row.get("pen")})
+        self.add_edge(row_node, node, "defines_interactive_attribute", source=table)
+        self.add_alias(attr_id, node, kind="interactive_attribute_id", source=table)
+        for field in ("hp", "atk", "def", "pen"):
+            value = row.get(field)
+            if value is None:
+                continue
+            prop_node = self.add_gameplay_stat_property_node(field, source=table)
+            self.add_edge(node, prop_node, "interactive_attribute_sets_property", source=table, evidence=field, data={"value": value})
+
+    def add_attribute_dictionary_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        if not isinstance(row, dict):
+            return
+        if table == "AttributeMetaTable":
+            self.add_attribute_meta_edges(table, row_key, row, row_node)
+        elif table == "AttributeShowConfigTable":
+            self.add_attribute_show_config_edges(table, row_key, row, row_node)
+        elif table == "CompositeAttributeTable":
+            self.add_composite_attribute_edges(table, row_key, row, row_node)
+        elif table == "CompositeAttributeShowConfigTable":
+            self.add_composite_attribute_show_config_edges(table, row_key, row, row_node)
+        elif table == "AttributeFilterTable":
+            self.add_attribute_filter_edges(table, row_key, row, row_node)
+        elif table == "InteractiveAttributeDataTable":
+            self.add_interactive_attribute_edges(table, row_key, row, row_node)
+
+    def ingest_character_support_semantics(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_character_support", path=slash(table_root))
+        for table_name in CHARACTER_SUPPORT_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if payload is None:
+                continue
+            table_key = Path(table_name).stem
+            table_node = self.add_node("table", table_key, name=table_key, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/character_support")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if not isinstance(payload, dict):
+                continue
+            for row_key, row in payload.items():
+                row_node = self.add_node(
+                    "table_row",
+                    f"{table_key}:{row_key}",
+                    name=str(row_key),
+                    source=table_key,
+                    data=compact_payload(row, depth=2),
+                )
+                self.add_edge(table_node, row_node, "has_row", source="structured/character_support")
+                self.add_character_support_row_edges(table_key, row_key, row, row_node)
+
+    def add_character_ref_node(self, char_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        char_key = safe_key(char_id)
+        if not char_key:
+            return ""
+        char_name = table_display_text(name) or char_key
+        node = self.add_node("character", char_key, name=char_name, source=source, data=data)
+        self.add_alias(char_key, node, kind="character_id", source=source)
+        if char_name != char_key:
+            self.add_alias(char_name, node, kind="character_name", source=source)
+        return node
+
+    def add_character_tag_node(self, tag_id: Any, *, source: str = "", data: Any = None) -> str:
+        tag_key = safe_key(tag_id)
+        if not tag_key:
+            return ""
+        node = self.add_node("character_tag", tag_key, name=tag_key, source=source, data=data)
+        self.add_alias(tag_key, node, kind="character_tag_id", source=source)
+        return node
+
+    def add_tag_group_node(self, group_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        group_key = safe_key(group_id)
+        if not group_key:
+            return ""
+        group_name = table_display_text(name) or group_key
+        node = self.add_node("tag_group", group_key, name=group_name, source=source, data=data)
+        self.add_alias(group_key, node, kind="tag_group_id", source=source)
+        if group_name != group_key:
+            self.add_alias(group_name, node, kind="tag_group_name", source=source)
+        return node
+
+    def add_tag_node(self, tag_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        tag_key = safe_key(tag_id)
+        if not tag_key:
+            return ""
+        tag_name = table_display_text(name) or tag_key
+        node = self.add_node("tag", tag_key, name=tag_name, source=source, data=data)
+        self.add_alias(tag_key, node, kind="tag_id", source=source)
+        if tag_name != tag_key:
+            self.add_alias(tag_name, node, kind="tag_name", source=source)
+        return node
+
+    def add_tag_i18n_edges(self, owner_node: str, payload: Any, *, source: str, edge_kind: str) -> None:
+        seen: set[str] = set()
+        for text_id in self.iter_i18n_text_ids(payload):
+            if text_id in seen:
+                continue
+            seen.add(text_id)
+            text_node = self.add_i18n_text_node(text_id, source=source)
+            if text_node:
+                self.add_edge(owner_node, text_node, edge_kind, source=source, evidence=text_id)
+                self.add_edge(owner_node, text_node, "uses_i18n_text", source=source, evidence=text_id)
+
+    def ingest_tag_taxonomy_semantics(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_tag_taxonomy", name="Structured tag taxonomy tables", path=slash(table_root))
+        group_nodes: dict[str, str] = {}
+        for table_name in TAG_TAXONOMY_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if not isinstance(payload, dict):
+                continue
+            table = Path(table_name).stem
+            table_node = self.add_node("table", table, name=table, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/tag_taxonomy")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if table == "TagGroupDataTable":
+                for row_key, row in payload.items():
+                    if not isinstance(row, dict):
+                        continue
+                    group_id = safe_key(row.get("tagGroupId") or row_key)
+                    if not group_id:
+                        continue
+                    group_data = {
+                        "tagGroupId": group_id,
+                        "tagGroupName": table_text(row.get("tagGroupName")),
+                        "desc": table_text(row.get("desc")),
+                    }
+                    group_node = self.add_tag_group_node(group_id, name=row.get("tagGroupName"), source=table, data=group_data)
+                    group_nodes[group_id] = group_node
+                    self.add_edge(table_node, group_node, "defines_tag_group", source=table, evidence=group_id)
+                    self.add_tag_i18n_edges(group_node, row.get("tagGroupName"), source=table, edge_kind="tag_group_name_text")
+                    self.add_tag_i18n_edges(group_node, row.get("desc"), source=table, edge_kind="tag_group_desc_text")
+            elif table == "TagDataTable":
+                for row_key, row in payload.items():
+                    if not isinstance(row, dict):
+                        continue
+                    tag_id = safe_key(row.get("tagId") or row_key)
+                    if not tag_id:
+                        continue
+                    group_id = safe_key(row.get("tagGroupId"))
+                    tag_data = {
+                        "tagId": tag_id,
+                        "tagGroupId": group_id,
+                        "tagName": table_text(row.get("tagName")),
+                        "hideTag": bool(row.get("hideTag")),
+                    }
+                    tag_node = self.add_tag_node(tag_id, name=row.get("tagName"), source=table, data=tag_data)
+                    self.add_edge(table_node, tag_node, "defines_tag", source=table, evidence=tag_id)
+                    self.add_tag_i18n_edges(tag_node, row.get("tagName"), source=table, edge_kind="tag_name_text")
+                    if group_id:
+                        group_node = group_nodes.get(group_id) or self.add_tag_group_node(group_id, source=table)
+                        group_nodes[group_id] = group_node
+                        self.add_edge(tag_node, group_node, "tag_belongs_to_group", source=table, evidence="tagGroupId")
+                    character_tag_node = self.node_id("character_tag", tag_id)
+                    if self.node_exists("character_tag", tag_id):
+                        self.add_edge(character_tag_node, tag_node, "character_tag_resolves_to_tag", source=table, evidence=tag_id)
+
+    def ui_label_identity(self, table: str, row_key: Any, row: dict[str, Any], config: dict[str, Any]) -> str:
+        for field in config.get("id_fields", ()):
+            value = safe_key(row.get(field))
+            if value:
+                return value
+        return safe_key(row_key)
+
+    def ui_label_payload(self, table: str, identity: str, row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+        text_fields = config.get("text_fields", ())
+        asset_fields = config.get("asset_fields", ())
+        ref_fields = config.get("ref_fields", ())
+        sort_fields = config.get("sort_fields", ())
+        data: dict[str, Any] = {"table": table, "id": identity}
+        for field in text_fields:
+            if field == "__self__":
+                data["text"] = table_text(row)
+            elif field in row:
+                data[field] = table_text(row.get(field))
+        for field in (*asset_fields, *ref_fields, *sort_fields):
+            if field in row and row.get(field) not in (None, "", [], {}):
+                data[field] = compact_payload(row.get(field), depth=2)
+        return data
+
+    def add_ui_label_node(self, table: str, identity: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        label_key = safe_key(identity)
+        if not label_key:
+            return ""
+        node_key = f"{table}:{label_key}"
+        label_name = table_display_text(name) or label_key
+        node = self.add_node("ui_label", node_key, name=label_name, source=source, data=data)
+        self.add_alias(label_key, node, kind="ui_label_id", source=source)
+        self.add_alias(node_key, node, kind="ui_label_id", source=source)
+        if label_name and label_name != label_key:
+            self.add_alias(label_name, node, kind="ui_label_name", source=source)
+        return node
+
+    def add_ui_label_text_edges(self, owner_node: str, payload: Any, *, source: str, edge_kind: str) -> None:
+        seen: set[str] = set()
+        for text_id in self.iter_i18n_text_ids(payload):
+            if text_id in seen:
+                continue
+            seen.add(text_id)
+            text_node = self.add_i18n_text_node(text_id, source=source)
+            if text_node:
+                self.add_edge(owner_node, text_node, edge_kind, source=source, evidence=text_id)
+                self.add_edge(owner_node, text_node, "uses_i18n_text", source=source, evidence=text_id)
+
+    def add_ui_label_reference_edges(self, label_node: str, table: str, row: dict[str, Any]) -> None:
+        if table == "SettlementTagTable":
+            for tag_id in row.get("enhanceCharTagId") or []:
+                tag_key = safe_key(tag_id)
+                if not tag_key:
+                    continue
+                character_tag_node = self.node_id("character_tag", tag_key)
+                if self.node_exists("character_tag", tag_key):
+                    self.add_edge(label_node, character_tag_node, "ui_label_references_character_tag", source=table, evidence="enhanceCharTagId")
+                tag_node = self.node_id("tag", tag_key)
+                if self.node_exists("tag", tag_key):
+                    self.add_edge(label_node, tag_node, "ui_label_references_tag", source=table, evidence="enhanceCharTagId")
+        elif table == "SocialBuildingSignTable":
+            tab_id = safe_key(row.get("tab"))
+            tab_node = self.node_id("ui_label", f"SocialBuildingSignTabTable:{tab_id}")
+            if tab_id and self.node_exists("ui_label", f"SocialBuildingSignTabTable:{tab_id}"):
+                self.add_edge(label_node, tab_node, "ui_label_in_tab", source=table, evidence="tab")
+        elif table == "FactoryBlueprintTagTable":
+            type_id = safe_key(row.get("type"))
+            type_node = self.node_id("ui_label", f"FactoryBlueprintTagTypeTable:{type_id}")
+            if type_id and self.node_exists("ui_label", f"FactoryBlueprintTagTypeTable:{type_id}"):
+                self.add_edge(label_node, type_node, "ui_label_has_type", source=table, evidence="type")
+        elif table == "BlocDataTable":
+            tag_id = safe_key(row.get("tagId"))
+            tag_node = self.node_id("tag", tag_id)
+            if tag_id and self.node_exists("tag", tag_id):
+                self.add_edge(label_node, tag_node, "ui_label_references_tag", source=table, evidence="tagId")
+
+    def ingest_ui_label_semantics(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_ui_labels", name="Structured UI label tables", path=slash(table_root))
+        for table_name, config in UI_LABEL_SEMANTIC_TABLES.items():
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if not isinstance(payload, dict):
+                continue
+            table = Path(table_name).stem
+            table_node = self.add_node("table", table, name=table, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/ui_labels")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            for row_key, row in payload.items():
+                if not isinstance(row, dict):
+                    continue
+                identity = self.ui_label_identity(table, row_key, row, config)
+                if not identity:
+                    continue
+                name_payload = None
+                for field in config.get("text_fields", ()):  # choose the first configured label as display name
+                    name_payload = row if field == "__self__" else row.get(field)
+                    if name_payload not in (None, "", {}, []):
+                        break
+                label_data = self.ui_label_payload(table, identity, row, config)
+                label_node = self.add_ui_label_node(table, identity, name=name_payload, source=table, data=compact_payload(label_data, depth=3))
+                if not label_node:
+                    continue
+                self.add_edge(table_node, label_node, "defines_ui_label", source=table, evidence=identity)
+                for field in config.get("asset_fields", ()):
+                    asset_key = safe_key(row.get(field))
+                    if asset_key:
+                        self.add_alias(asset_key, label_node, kind="asset_stem", source=table)
+                for field in config.get("text_fields", ()):
+                    payload_value = row if field == "__self__" else row.get(field)
+                    edge_field = "text" if field == "__self__" else field
+                    edge_kind = "ui_label_text" if edge_field == "text" else f"ui_label_{edge_field}_text"
+                    self.add_ui_label_text_edges(label_node, payload_value, source=table, edge_kind=edge_kind)
+                self.add_ui_label_reference_edges(label_node, table, row)
+
+    def add_character_profession_node(self, profession_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        profession_key = safe_key(profession_id)
+        if not profession_key:
+            return ""
+        profession_name = table_display_text(name) or profession_key
+        node = self.add_node("character_profession", profession_key, name=profession_name, source=source, data=data)
+        self.add_alias(profession_key, node, kind="character_profession_id", source=source)
+        if profession_name != profession_key:
+            self.add_alias(profession_name, node, kind="character_profession_name", source=source)
+        return node
+
+    def add_character_type_node(self, type_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        type_key = safe_key(type_id)
+        if not type_key:
+            return ""
+        type_name = table_display_text(name) or type_key
+        node = self.add_node("character_type", type_key, name=type_name, source=source, data=data)
+        self.add_alias(type_key, node, kind="character_type_id", source=source)
+        if type_name != type_key:
+            self.add_alias(type_name, node, kind="character_type_name", source=source)
+        return node
+
+    def add_character_preset_node(self, preset_id: Any, *, source: str = "", data: Any = None) -> str:
+        preset_key = safe_key(preset_id)
+        if not preset_key:
+            return ""
+        node = self.add_node("character_preset", preset_key, name=preset_key, source=source, data=data)
+        self.add_alias(preset_key, node, kind="character_preset_id", source=source)
+        return node
+
+    def add_character_team_node(self, team_id: Any, *, source: str = "", data: Any = None) -> str:
+        team_key = safe_key(team_id)
+        if not team_key:
+            return ""
+        node = self.add_node("character_team", team_key, name=team_key, source=source, data=data)
+        self.add_alias(team_key, node, kind="character_team_id", source=source)
+        return node
+
+    def add_dungeon_node(self, dungeon_id: Any, *, source: str = "", data: Any = None) -> str:
+        dungeon_key = safe_key(dungeon_id)
+        if not dungeon_key:
+            return ""
+        node = self.add_node("dungeon", dungeon_key, name=dungeon_key, source=source, data=data)
+        self.add_alias(dungeon_key, node, kind="dungeon_id", source=source)
+        return node
+
+    def add_character_tag_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        char_id = safe_key(row.get("charId") or row_key)
+        char_node = self.add_character_ref_node(char_id, source=table)
+        if not char_node:
+            return
+        self.add_edge(row_node, char_node, "defines_character_tags", source=table)
+        tag_fields = (
+            ("blocTagId", "bloc"),
+            ("raceTagId", "race"),
+            ("giftPreferTagId", "gift_prefer"),
+            ("dispositionTagIds", "disposition"),
+            ("expertTagIds", "expert"),
+            ("hobbyTagIds", "hobby"),
+            ("behaviourHateTagIds", "behaviour_hate"),
+            ("behaviourUnavailableTagIds", "behaviour_unavailable"),
+        )
+        for field, category in tag_fields:
+            value = row.get(field)
+            values = value if isinstance(value, list) else [value]
+            for index, tag_id in enumerate(values):
+                tag_node = self.add_character_tag_node(tag_id, source=table, data={"category": category})
+                if tag_node:
+                    evidence = f"{field}[{index}]" if isinstance(value, list) else field
+                    self.add_edge(char_node, tag_node, "has_character_tag", source=table, evidence=evidence, data={"category": category})
+        bloc_id = safe_key(row.get("blocId"))
+        if bloc_id:
+            bloc_node = self.add_character_tag_node(bloc_id, source=table, data={"category": "bloc_id"})
+            self.add_edge(char_node, bloc_node, "character_has_bloc", source=table, evidence="blocId")
+
+    def add_character_tag_desc_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        char_id = safe_key(row_key)
+        char_node = self.add_character_ref_node(char_id, source=table)
+        if not char_node:
+            return
+        for tag_id, desc in (row.get("tagDesc") or {}).items():
+            tag_key = safe_key(tag_id)
+            if not tag_key or not isinstance(desc, dict):
+                continue
+            desc_node = self.add_node("character_tag_desc", f"{char_id}:{tag_key}", name=tag_key, source=table, data={"characterId": char_id, "tagId": tag_key, "desc": table_text(desc.get("desc"))})
+            tag_node = self.add_character_tag_node(tag_key, source=table)
+            self.add_edge(row_node, desc_node, "defines_character_tag_desc", source=table)
+            self.add_edge(char_node, desc_node, "has_character_tag_desc", source=table, evidence=tag_key)
+            self.add_edge(desc_node, tag_node, "describes_character_tag", source=table, evidence="tagId")
+            for text_id in self.iter_i18n_text_ids(desc.get("desc")):
+                text_node = self.add_i18n_text_node(text_id, source=table)
+                if text_node:
+                    self.add_edge(desc_node, text_node, "character_tag_desc_text", source=table, evidence=text_id)
+                    self.add_edge(desc_node, text_node, "uses_i18n_text", source=table, evidence=text_id)
+
+    def add_character_profession_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        profession_id = safe_key(row.get("profession") if "profession" in row else row_key)
+        node = self.add_character_profession_node(profession_id, name=row.get("name"), source=table, data={"profession": row.get("profession"), "iconId": row.get("iconId"), "sortId": row.get("sortId"), "desc": table_text(row.get("desc"))})
+        if node:
+            self.add_edge(row_node, node, "defines_character_profession", source=table)
+            self.add_alias(row.get("iconId"), node, kind="icon_id", source=table)
+
+    def add_character_type_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        type_id = safe_key(row.get("charTypeId") or row_key)
+        node = self.add_character_type_node(type_id, name=row.get("name"), source=table, data={"charTypeId": type_id, "damageType": row.get("damageType"), "icon": row.get("icon"), "color": row.get("color")})
+        if node:
+            self.add_edge(row_node, node, "defines_character_type", source=table)
+            self.add_alias(row.get("icon"), node, kind="icon_id", source=table)
+
+    def add_character_preset_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        preset_id = safe_key(row.get("id") or row_key)
+        preset_node = self.add_character_preset_node(preset_id, source=table, data={"id": preset_id, "charId": row.get("charId"), "charLv": row.get("charLv"), "weaponId": row.get("weaponId"), "weaponLv": row.get("weaponLv"), "potentialLevel": row.get("potentialLevel"), "normalAttackSkillLevel": row.get("normalAttackSkillLevel"), "normalSkillLevel": row.get("normalSkillLevel"), "ultimateSkillLevel": row.get("ultimateSkillLevel"), "comboSkillLevel": row.get("comboSkillLevel"), "equipmentCount": len(row.get("equips") or [])})
+        if not preset_node:
+            return
+        self.add_edge(row_node, preset_node, "defines_character_preset", source=table)
+        char_node = self.add_character_ref_node(row.get("charId"), source=table)
+        if char_node:
+            self.add_edge(preset_node, char_node, "preset_uses_character", source=table, evidence="charId", data={"charLv": row.get("charLv"), "potentialLevel": row.get("potentialLevel")})
+            self.add_edge(char_node, preset_node, "character_has_preset", source=table, evidence=preset_id)
+        weapon_id = safe_key(row.get("weaponId"))
+        if weapon_id:
+            weapon_node = self.add_node("weapon", weapon_id, name=weapon_id, source=table)
+            self.add_edge(preset_node, weapon_node, "preset_uses_weapon", source=table, evidence="weaponId", data={"weaponLv": row.get("weaponLv"), "isWeaponBreakthrough": row.get("isWeaponBreakthrough")})
+            self.add_alias(weapon_id, weapon_node, kind="weapon_id", source=table)
+        for index, equip_id in enumerate(row.get("equips") or []):
+            equip_key = safe_key(equip_id)
+            if not equip_key:
+                continue
+            equip_node = self.add_node("equipment", equip_key, name=equip_key, source=table)
+            self.add_edge(preset_node, equip_node, "preset_uses_equipment", source=table, evidence=f"equips[{index}]")
+            self.add_alias(equip_key, equip_node, kind="equipment_id", source=table)
+
+    def add_character_team_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        team_id = safe_key(row.get("id") or row_key)
+        team_node = self.add_character_team_node(team_id, source=table, data={"id": team_id, "maxMemberCount": row.get("maxMemberCount"), "presetCharListCount": len(row.get("presetCharList") or []), "presetTeamCount": len(row.get("presetTeam") or []), "requiredCharacterCount": len(row.get("requireCharTids") or [])})
+        if not team_node:
+            return
+        self.add_edge(row_node, team_node, "defines_character_team", source=table)
+        for index, preset_id in enumerate(row.get("presetCharList") or []):
+            preset_node = self.add_character_preset_node(preset_id, source=table)
+            if preset_node:
+                self.add_edge(team_node, preset_node, "team_includes_preset", source=table, evidence=f"presetCharList[{index}]")
+        for index, preset_id in enumerate(row.get("presetTeam") or []):
+            preset_node = self.add_character_preset_node(preset_id, source=table)
+            if preset_node:
+                self.add_edge(team_node, preset_node, "team_uses_preset", source=table, evidence=f"presetTeam[{index}]")
+        for index, char_id in enumerate(row.get("requireCharTids") or []):
+            char_node = self.add_character_ref_node(char_id, source=table)
+            if char_node:
+                self.add_edge(team_node, char_node, "team_requires_character", source=table, evidence=f"requireCharTids[{index}]")
+
+    def add_character_weapon_recommend_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        char_node = self.add_character_ref_node(row.get("charId") or row_key, source=table)
+        if not char_node:
+            return
+        self.add_edge(row_node, char_node, "defines_character_weapon_recommendations", source=table)
+        for tier, field in enumerate(("weaponIds1", "weaponIds2", "weaponIds3"), start=1):
+            for index, weapon_id in enumerate(row.get(field) or []):
+                weapon_key = safe_key(weapon_id)
+                if not weapon_key:
+                    continue
+                weapon_node = self.add_node("weapon", weapon_key, name=weapon_key, source=table)
+                self.add_edge(char_node, weapon_node, "character_recommends_weapon", source=table, evidence=f"{field}[{index}]", data={"tier": tier, "index": index})
+                self.add_alias(weapon_key, weapon_node, kind="weapon_id", source=table)
+
+    def add_character_weapon_skill_recommend_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        char_node = self.add_character_ref_node(row.get("charId") or row_key, source=table)
+        if not char_node:
+            return
+        self.add_edge(row_node, char_node, "defines_character_weapon_skill_recommendations", source=table)
+        for index, skill_id in enumerate(row.get("weaponSkillIds") or []):
+            skill_key = safe_key(skill_id)
+            if not skill_key:
+                continue
+            skill_node = self.add_node("weapon_skill_recommendation", skill_key, name=skill_key, source=table)
+            self.add_edge(char_node, skill_node, "character_recommends_weapon_skill", source=table, evidence=f"weaponSkillIds[{index}]")
+            self.add_alias(skill_key, skill_node, kind="weapon_skill_recommendation_id", source=table)
+
+    def add_tutorial_step_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        step_id = safe_key(row.get("stepId") or row_key)
+        if not step_id:
+            return
+        step_node = self.add_node("character_tutorial_step", step_id, name=step_id, source=table, data={"stepId": step_id, "stepIcon": row.get("stepIcon"), "stepDesc": table_text(row.get("stepDesc")), "iconDesc": table_text(row.get("iconDesc"))})
+        self.add_edge(row_node, step_node, "defines_character_tutorial_step", source=table)
+        self.add_alias(step_id, step_node, kind="character_tutorial_step_id", source=table)
+        self.add_alias(row.get("stepIcon"), step_node, kind="icon_id", source=table)
+        for field, edge_kind in (("stepDesc", "tutorial_step_desc_text"), ("iconDesc", "tutorial_step_icon_desc_text")):
+            for text_id in self.iter_i18n_text_ids(row.get(field)):
+                text_node = self.add_i18n_text_node(text_id, source=table)
+                if text_node:
+                    self.add_edge(step_node, text_node, edge_kind, source=table, evidence=text_id)
+                    self.add_edge(step_node, text_node, "uses_i18n_text", source=table, evidence=text_id)
+
+    def add_tutorial_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        tutorial_id = safe_key(row_key)
+        tutorial_node = self.add_node("character_tutorial", tutorial_id, name=tutorial_id, source=table, data={"dungeonId": tutorial_id, "stageCount": len(row.get("tutorialStageData") or [])})
+        dungeon_node = self.add_dungeon_node(tutorial_id, source=table)
+        self.add_edge(row_node, tutorial_node, "defines_character_tutorial", source=table)
+        self.add_edge(tutorial_node, dungeon_node, "tutorial_uses_dungeon", source=table, evidence="rowKey")
+        self.add_alias(tutorial_id, tutorial_node, kind="character_tutorial_id", source=table)
+        for index, stage in enumerate(row.get("tutorialStageData") or []):
+            if not isinstance(stage, dict):
+                continue
+            stage_key = safe_key(stage.get("stage") if stage.get("stage") is not None else index)
+            stage_node = self.add_node("character_tutorial_stage", f"{tutorial_id}:{stage_key}", name=f"{tutorial_id} stage {stage_key}", source=table, data={"tutorialId": tutorial_id, "stage": stage.get("stage"), "guideGroupId": stage.get("guideGroupId"), "stepCount": len(stage.get("stepIds") or [])})
+            self.add_edge(tutorial_node, stage_node, "tutorial_has_stage", source=table, evidence=f"tutorialStageData[{index}]")
+            self.add_alias(stage.get("guideGroupId"), stage_node, kind="guide_group_id", source=table)
+            for step_index, step_id in enumerate(stage.get("stepIds") or []):
+                step_node = self.add_node("character_tutorial_step", step_id, name=step_id, source=table)
+                self.add_edge(stage_node, step_node, "tutorial_stage_has_step", source=table, evidence=f"stepIds[{step_index}]")
+                self.add_alias(step_id, step_node, kind="character_tutorial_step_id", source=table)
+
+    def add_char_training_dungeon_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        char_node = self.add_character_ref_node(row_key, source=table)
+        dungeon_node = self.add_dungeon_node(row, source=table)
+        if not char_node or not dungeon_node:
+            return
+        tutorial_node = self.add_node("character_tutorial", safe_key(row), name=safe_key(row), source=table)
+        self.add_edge(row_node, char_node, "defines_character_training_dungeon", source=table)
+        self.add_edge(char_node, dungeon_node, "character_training_dungeon", source=table, evidence="rowValue")
+        self.add_edge(char_node, tutorial_node, "character_has_tutorial", source=table, evidence=safe_key(row))
+        self.add_edge(tutorial_node, dungeon_node, "tutorial_uses_dungeon", source=table, evidence="CharId2DungeonIdTable")
+
+    def add_character_trial_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        dungeon_id = safe_key(row.get("dungeonId") or row_key)
+        if not dungeon_id:
+            return
+        trial_node = self.add_node("character_trial", dungeon_id, name=dungeon_id, source=table, data={"dungeonId": dungeon_id, "guideGroupId": row.get("guideGroupId")})
+        dungeon_node = self.add_dungeon_node(dungeon_id, source=table)
+        self.add_edge(row_node, trial_node, "defines_character_trial", source=table)
+        self.add_edge(trial_node, dungeon_node, "trial_uses_dungeon", source=table, evidence="dungeonId")
+        self.add_alias(dungeon_id, trial_node, kind="character_trial_id", source=table)
+        self.add_alias(row.get("guideGroupId"), trial_node, kind="guide_group_id", source=table)
+
+    def add_activity_char_trial_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        dungeon_id = safe_key(row.get("dungeonId") or row_key)
+        if not dungeon_id:
+            return
+        trial_node = self.add_node("character_trial", dungeon_id, name=dungeon_id, source=table, data={"activityId": row.get("activityId"), "jumpId": row.get("jumpId"), "rewardId": row.get("rewardId"), "sortId": row.get("sortId")})
+        self.add_edge(row_node, trial_node, "defines_activity_character_trial", source=table)
+        reward_node = self.add_reward_node(row.get("rewardId"), source=table)
+        if reward_node:
+            self.add_edge(trial_node, reward_node, "trial_grants_reward", source=table, evidence="rewardId")
+        self.add_alias(row.get("activityId"), trial_node, kind="activity_id", source=table)
+        self.add_alias(row.get("jumpId"), trial_node, kind="jump_id", source=table)
+        self.add_alias(row.get("bgRolePath"), trial_node, kind="asset_stem", source=table)
+        self.add_alias(row.get("dungeonBgPath"), trial_node, kind="asset_stem", source=table)
+
+    def add_activity_character_guide_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        guide_id = safe_key(row_key)
+        if not guide_id:
+            return
+        guide_node = self.add_node("character_guide", guide_id, name=guide_id, source=table, data={"bgNode": row.get("bgNode")})
+        self.add_edge(row_node, guide_node, "defines_character_guide", source=table)
+        self.add_alias(guide_id, guide_node, kind="character_guide_id", source=table)
+        self.add_alias(row.get("bgNode"), guide_node, kind="bg_node", source=table)
+
+    def add_recommend_training_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        rec_id = safe_key(row_key)
+        if not rec_id:
+            return
+        node = self.add_node("training_recommendation", rec_id, name=f"enemy level {rec_id}", source=table, data={"enemyLv": row.get("enemyLv"), "squadLvSum": row.get("squadLvSum"), "squadWeaponLvSum": row.get("squadWeaponLvSum"), "squadSkillLvSum": row.get("squadSkillLvSum"), "squadEquipLvSum": row.get("squadEquipLvSum")})
+        self.add_edge(row_node, node, "defines_training_recommendation", source=table)
+        self.add_alias(rec_id, node, kind="training_recommendation_id", source=table)
+
+    def add_character_support_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        if table == "CharId2DungeonIdTable":
+            self.add_char_training_dungeon_edges(table, row_key, row, row_node)
+            return
+        if not isinstance(row, dict):
+            return
+        if table == "CharacterTagTable":
+            self.add_character_tag_edges(table, row_key, row, row_node)
+        elif table == "CharacterTagDesTable":
+            self.add_character_tag_desc_edges(table, row_key, row, row_node)
+        elif table == "CharProfessionTable":
+            self.add_character_profession_edges(table, row_key, row, row_node)
+        elif table == "CharTypeTable":
+            self.add_character_type_edges(table, row_key, row, row_node)
+        elif table == "CharPresetTable":
+            self.add_character_preset_edges(table, row_key, row, row_node)
+        elif table == "CharTeamTable":
+            self.add_character_team_edges(table, row_key, row, row_node)
+        elif table == "CharWpnRecommendTable":
+            self.add_character_weapon_recommend_edges(table, row_key, row, row_node)
+        elif table == "CharWpnSkillRecommendTable":
+            self.add_character_weapon_skill_recommend_edges(table, row_key, row, row_node)
+        elif table == "DungeonCharTutorialStepTable":
+            self.add_tutorial_step_edges(table, row_key, row, row_node)
+        elif table == "DungeonCharTutorialTable":
+            self.add_tutorial_edges(table, row_key, row, row_node)
+        elif table == "DungeonCharTrialTable":
+            self.add_character_trial_edges(table, row_key, row, row_node)
+        elif table == "ActivityCharTrial":
+            self.add_activity_char_trial_edges(table, row_key, row, row_node)
+        elif table == "ActivityCharacterGuideLineTable":
+            self.add_activity_character_guide_edges(table, row_key, row, row_node)
+        elif table == "RecommendTraining":
+            self.add_recommend_training_edges(table, row_key, row, row_node)
+
+    def ingest_spaceship_semantics(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_spaceship_semantics", path=slash(table_root))
+        for table_name in SPACESHIP_SEMANTIC_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if payload is None:
+                continue
+            table_key = Path(table_name).stem
+            table_node = self.add_node("table", table_key, name=table_key, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/spaceship")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if not isinstance(payload, dict):
+                continue
+            for row_key, row in payload.items():
+                row_node = self.add_node(
+                    "table_row",
+                    f"{table_key}:{row_key}",
+                    name=str(row_key),
+                    source=table_key,
+                    data=compact_payload(row, depth=2),
+                )
+                self.add_edge(table_node, row_node, "has_row", source="structured/spaceship")
+                self.add_spaceship_row_edges(table_key, row_key, row, row_node)
+
+    def add_i18n_text_node(self, text_id: Any, *, source: str = "") -> str:
+        text_key = safe_key(text_id)
+        if not text_key or text_key == "0":
+            return ""
+        node = self.add_node("i18n_text", text_key, name=text_key, source=source)
+        self.add_alias(text_key, node, kind="i18n_text_id", source=source)
+        return node
+
+    def iter_i18n_text_ids(self, value: Any) -> Iterable[str]:
+        if isinstance(value, dict):
+            if "id" in value and "text" in value:
+                text_id = safe_key(value.get("id"))
+                if text_id and text_id != "0":
+                    yield text_id
+            for item in value.values():
+                yield from self.iter_i18n_text_ids(item)
+        elif isinstance(value, list):
+            for item in value:
+                yield from self.iter_i18n_text_ids(item)
+
+    def add_i18n_text_edges(self, owner_node: str, payload: Any, *, source: str) -> None:
+        seen: set[str] = set()
+        for text_id in self.iter_i18n_text_ids(payload):
+            if text_id in seen:
+                continue
+            seen.add(text_id)
+            text_node = self.add_i18n_text_node(text_id, source=source)
+            if text_node:
+                self.add_edge(owner_node, text_node, "uses_i18n_text", source=source, evidence=text_id)
+
+    def add_setting_text_edges(self, owner_node: str, payload: Any, *, source: str, edge_kind: str = "setting_uses_i18n_text") -> None:
+        seen: set[str] = set()
+        for text_id in self.iter_i18n_text_ids(payload):
+            if text_id in seen:
+                continue
+            seen.add(text_id)
+            text_node = self.add_i18n_text_node(text_id, source=source)
+            if text_node:
+                self.add_edge(owner_node, text_node, edge_kind, source=source, evidence=text_id)
+                self.add_edge(owner_node, text_node, "uses_i18n_text", source=source, evidence=text_id)
+
+    def add_setting_text_key_node(self, text_key: Any, *, source: str = "") -> str:
+        key = safe_key(text_key)
+        if not key:
+            return ""
+        node = self.add_node("setting_text_key", key, name=key, source=source)
+        self.add_alias(key, node, kind="setting_text_key", source=source)
+        return node
+
+    def add_setting_item_node(self, setting_id: Any, *, source: str = "", data: Any = None) -> str:
+        key = safe_key(setting_id)
+        if not key:
+            return ""
+        node = self.add_node("setting_item", key, name=key, source=source, data=data)
+        self.add_alias(key, node, kind="setting_id", source=source)
+        return node
+
+    def add_setting_function_node(self, function_name: Any, *, source: str = "") -> str:
+        key = safe_key(function_name)
+        if not key:
+            return ""
+        node = self.add_node("setting_function", key, name=key, source=source)
+        self.add_alias(key, node, kind="setting_function", source=source)
+        return node
+
+    def add_setting_function_edges(self, owner_node: str, payload: dict[str, Any], *, source: str, edge_kind: str = "setting_uses_function") -> None:
+        for field, value in payload.items():
+            if not field.lower().endswith("function"):
+                continue
+            function_node = self.add_setting_function_node(value, source=source)
+            if function_node:
+                self.add_edge(owner_node, function_node, edge_kind, source=source, evidence=field)
+
+    def add_input_action_node(self, action_id: Any, *, source: str = "") -> str:
+        key = safe_key(action_id)
+        if not key:
+            return ""
+        node = self.add_node("input_action", key, name=key, source=source)
+        self.add_alias(key, node, kind="input_action_id", source=source)
+        return node
+
+    def add_input_scope_node(self, scope_id: Any, *, source: str = "") -> str:
+        key = safe_key(scope_id)
+        if not key:
+            return ""
+        node = self.add_node("input_scope", key, name=key, source=source)
+        self.add_alias(key, node, kind="input_scope", source=source)
+        return node
+
+    def add_input_key_node(self, key_id: Any, *, source: str = "") -> str:
+        key = safe_key(key_id)
+        if not key:
+            return ""
+        node = self.add_node("input_key", key, name=key, source=source)
+        self.add_alias(key, node, kind="input_key", source=source)
+        return node
+
+    def setting_item_payload(self, row: dict[str, Any]) -> dict[str, Any]:
+        keys = (
+            "settingId",
+            "settingTabId",
+            "settingItemType",
+            "settingSortOrder",
+            "settingRedDot",
+            "isDefaultValueValid",
+            "settingDefaultValue",
+            "validGameStates",
+            "validInputTypes",
+            "validPlatform",
+            "validRegions",
+            "validServerChannels",
+            "validUserPlatform",
+            "validateFunction",
+            "buttonGetStateFunction",
+            "buttonIcon",
+            "buttonOnClickFunction",
+            "dropdownOptionGetFunction",
+            "dropdownOptionSelectFunction",
+            "dropdownOptionValidateSelectFunction",
+            "toggleValueGetFunction",
+            "toggleValueSetFunction",
+            "sliderValueGetFunction",
+            "sliderValueSetFunction",
+            "sliderMinValue",
+            "sliderMaxValue",
+            "sliderStepValue",
+            "sliderWholeNumbers",
+        )
+        return compact_payload({key: row.get(key) for key in keys if row.get(key) not in (None, "", [], {})}, depth=3)
+
+    def ingest_settings_semantics(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_settings", name="Structured settings tables", path=slash(table_root))
+        for table_name in SETTINGS_SEMANTIC_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if not isinstance(payload, dict):
+                continue
+            table = Path(table_name).stem
+            table_node = self.add_node("table", table, name=table, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/settings")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if table == "SettingTabTable":
+                self.add_setting_tab_edges(table, table_node, payload)
+            elif table == "QualitySubSettingTable":
+                self.add_quality_subsetting_edges(table, table_node, payload)
+            elif table == "QualitySubSettingOptionTable":
+                self.add_quality_option_edges(table, table_node, payload)
+            elif table == "GamepadSettingItemTable":
+                self.add_gamepad_setting_edges(table, table_node, payload, implicit=False)
+            elif table == "GamepadImplicitSettingItemTable":
+                self.add_gamepad_setting_edges(table, table_node, payload, implicit=True)
+
+    def add_setting_tab_edges(self, table: str, table_node: str, payload: dict[str, Any]) -> None:
+        for row_key, row in payload.items():
+            if not isinstance(row, dict):
+                continue
+            tab_id = safe_key(row.get("tabId") or row_key)
+            if not tab_id:
+                continue
+            tab_data = {
+                "tabId": tab_id,
+                "tabIcon": row.get("tabIcon"),
+                "tabSortOrder": row.get("tabSortOrder"),
+                "tabRedDot": row.get("tabRedDot"),
+                "validGameStates": row.get("validGameStates") or [],
+                "validInputTypes": row.get("validInputTypes") or [],
+                "validPlatform": row.get("validPlatform") or [],
+                "validateFunction": row.get("validateFunction"),
+                "tabLeaveFunction": row.get("tabLeaveFunction"),
+                "itemCount": len(row.get("tabItems") or {}),
+            }
+            tab_node = self.add_node("setting_tab", tab_id, name=tab_id, source=table, data=compact_payload(tab_data, depth=2))
+            self.add_alias(tab_id, tab_node, kind="setting_tab_id", source=table)
+            self.add_edge(table_node, tab_node, "defines_setting_tab", source=table, evidence=tab_id)
+            self.add_setting_text_edges(tab_node, row.get("tabText"), source=table, edge_kind="setting_tab_text")
+            self.add_setting_function_edges(tab_node, row, source=table, edge_kind="setting_tab_uses_function")
+            for setting_key, setting in (row.get("tabItems") or {}).items():
+                if not isinstance(setting, dict):
+                    continue
+                setting_id = safe_key(setting.get("settingId") or setting_key)
+                if not setting_id:
+                    continue
+                item_data = self.setting_item_payload(setting)
+                item_node = self.add_setting_item_node(setting_id, source=table, data=item_data)
+                self.add_edge(table_node, item_node, "defines_setting_item", source=table, evidence=setting_id)
+                self.add_edge(tab_node, item_node, "setting_tab_has_item", source=table, evidence=setting_id, data={"sortOrder": setting.get("settingSortOrder")})
+                self.add_setting_text_edges(item_node, setting, source=table)
+                self.add_setting_function_edges(item_node, setting, source=table)
+                for field in ("keyActionIds1", "keyActionIds2"):
+                    for index, action_id in enumerate(setting.get(field) or []):
+                        action_node = self.add_input_action_node(action_id, source=table)
+                        if action_node:
+                            self.add_edge(item_node, action_node, "setting_item_references_action", source=table, evidence=f"{field}[{index}]")
+                for index, scope in enumerate(setting.get("keyActionScopes") or []):
+                    scope_node = self.add_input_scope_node(scope, source=table)
+                    if scope_node:
+                        self.add_edge(item_node, scope_node, "setting_item_has_key_scope", source=table, evidence=f"keyActionScopes[{index}]")
+
+    def add_quality_subsetting_edges(self, table: str, table_node: str, payload: dict[str, Any]) -> None:
+        for row_key, row in payload.items():
+            if not isinstance(row, dict):
+                continue
+            setting_id = safe_key(row.get("settingId") or row_key)
+            if not setting_id:
+                continue
+            item_node = self.add_setting_item_node(setting_id, source=table)
+            quality_node = self.add_node(
+                "setting_quality_subsetting",
+                setting_id,
+                name=setting_id,
+                source=table,
+                data={"settingId": setting_id, "settingSortOrder": row.get("settingSortOrder"), "validPlatform": row.get("validPlatform") or []},
+            )
+            self.add_alias(setting_id, quality_node, kind="setting_quality_subsetting_id", source=table)
+            self.add_edge(table_node, quality_node, "defines_setting_quality_subsetting", source=table, evidence=setting_id)
+            self.add_edge(quality_node, item_node, "quality_subsetting_extends_setting_item", source=table, evidence=setting_id)
+            self.add_setting_text_edges(quality_node, row, source=table)
+
+    def add_quality_option_edges(self, table: str, table_node: str, payload: dict[str, Any]) -> None:
+        for row_key, row in payload.items():
+            if not isinstance(row, dict):
+                continue
+            option_id = safe_key(row.get("optionId") or row_key)
+            if not option_id:
+                continue
+            option_node = self.add_node("setting_quality_option", option_id, name=option_id, source=table, data={"optionId": option_id})
+            self.add_alias(option_id, option_node, kind="setting_quality_option_id", source=table)
+            self.add_edge(table_node, option_node, "defines_setting_quality_option", source=table, evidence=option_id)
+            self.add_setting_text_edges(option_node, row.get("optionText"), source=table, edge_kind="setting_quality_option_text")
+
+    def add_gamepad_setting_edges(self, table: str, table_node: str, payload: dict[str, Any], *, implicit: bool) -> None:
+        node_kind = "setting_gamepad_implicit_item" if implicit else "setting_gamepad_item"
+        define_edge = "defines_implicit_gamepad_setting_item" if implicit else "defines_gamepad_setting_item"
+        for row_key, row in payload.items():
+            if not isinstance(row, dict):
+                continue
+            setting_id = safe_key(row.get("settingId") or row_key)
+            if not setting_id:
+                continue
+            item_node = self.add_setting_item_node(setting_id, source=table, data=self.setting_item_payload(row))
+            gamepad_node = self.add_node(
+                node_kind,
+                setting_id,
+                name=setting_id,
+                source=table,
+                data=compact_payload({
+                    "settingId": setting_id,
+                    "settingItemType": row.get("settingItemType"),
+                    "settingSortOrder": row.get("settingSortOrder"),
+                    "settingRedDot": row.get("settingRedDot"),
+                    "actionScope": row.get("actionScope"),
+                    "actionCount": len(row.get("actions") or []),
+                    "optionCount": len(row.get("options") or []),
+                    "mutexSettingIds": row.get("mutexSettingIds") or [],
+                }, depth=2),
+            )
+            self.add_alias(setting_id, gamepad_node, kind=node_kind, source=table)
+            self.add_edge(table_node, gamepad_node, define_edge, source=table, evidence=setting_id)
+            self.add_edge(gamepad_node, item_node, "gamepad_setting_extends_setting_item", source=table, evidence=setting_id)
+            self.add_setting_text_edges(gamepad_node, row, source=table)
+            scope_node = self.add_input_scope_node(row.get("actionScope"), source=table)
+            if scope_node:
+                self.add_edge(gamepad_node, scope_node, "gamepad_setting_has_action_scope", source=table, evidence="actionScope")
+            for field in ("actionFactoryKeyHintTextIds", "actionKeyHintTextIds"):
+                for index, text_key in enumerate(row.get(field) or []):
+                    text_node = self.add_setting_text_key_node(text_key, source=table)
+                    if text_node:
+                        self.add_edge(gamepad_node, text_node, "gamepad_setting_uses_hint_text_key", source=table, evidence=f"{field}[{index}]")
+            for action_index, action in enumerate(row.get("actions") or []):
+                if not isinstance(action, dict):
+                    continue
+                for action_id in action.get("actionIds") or []:
+                    action_node = self.add_input_action_node(action_id, source=table)
+                    if action_node:
+                        self.add_edge(
+                            gamepad_node,
+                            action_node,
+                            "gamepad_setting_references_action",
+                            source=table,
+                            evidence=f"actions[{action_index}]",
+                            data={
+                                "actionKey": action.get("actionKey"),
+                                "actionKeyIsModifyKey": action.get("actionKeyIsModifyKey"),
+                                "actionOverrideKeyIconName": action.get("actionOverrideKeyIconName"),
+                            },
+                        )
+                key_node = self.add_input_key_node(action.get("actionKey"), source=table)
+                if key_node:
+                    self.add_edge(gamepad_node, key_node, "gamepad_setting_uses_input_key", source=table, evidence=f"actions[{action_index}].actionKey")
+            for option_index, option in enumerate(row.get("options") or []):
+                if not isinstance(option, dict):
+                    continue
+                option_node = self.add_node(
+                    "setting_gamepad_option",
+                    f"{setting_id}:{option.get('optionIndex')}",
+                    name=f"{setting_id}:{option.get('optionIndex')}",
+                    source=table,
+                    data={"settingId": setting_id, "optionIndex": option.get("optionIndex"), "optionActionKeys": option.get("optionActionKeys") or []},
+                )
+                self.add_edge(gamepad_node, option_node, "gamepad_setting_has_option", source=table, evidence=f"options[{option_index}]")
+                for key_index, key_id in enumerate(option.get("optionActionKeys") or []):
+                    key_node = self.add_input_key_node(key_id, source=table)
+                    if key_node:
+                        self.add_edge(option_node, key_node, "gamepad_option_uses_input_key", source=table, evidence=f"optionActionKeys[{key_index}]")
+            for index, mutex_setting_id in enumerate(row.get("mutexSettingIds") or []):
+                mutex_node = self.add_setting_item_node(mutex_setting_id, source=table)
+                if mutex_node:
+                    self.add_edge(gamepad_node, mutex_node, "setting_item_mutex_setting", source=table, evidence=f"mutexSettingIds[{index}]")
+
+    def add_env_talk_node(self, talk_id: Any, *, source: str = "", data: Any = None) -> str:
+        talk_key = safe_key(talk_id)
+        if not talk_key:
+            return ""
+        node = self.add_node("env_talk", talk_key, name=talk_key, source=source, data=data)
+        self.add_alias(talk_key, node, kind="env_talk_id", source=source)
+        return node
+
+    def add_spaceship_proxy_node(self, proxy_id: Any, *, source: str = "", data: Any = None) -> str:
+        proxy_key = safe_key(proxy_id)
+        if not proxy_key:
+            return ""
+        node = self.add_node("spaceship_npc_proxy", proxy_key, name=proxy_key, source=source, data=data)
+        self.add_alias(proxy_key, node, kind="spaceship_proxy_id", source=source)
+        return node
+
+    def add_spaceship_skill_node(self, skill_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        skill_key = safe_key(skill_id)
+        if not skill_key:
+            return ""
+        skill_name = table_display_text(name) or skill_key
+        node = self.add_node("spaceship_skill", skill_key, name=skill_name, source=source, data=data)
+        self.add_alias(skill_key, node, kind="spaceship_skill_id", source=source)
+        if skill_name != skill_key:
+            self.add_alias(skill_name, node, kind="spaceship_skill_name", source=source)
+        return node
+
+    def add_spaceship_room_type_node(self, room_type: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        type_key = safe_key(room_type)
+        if not type_key:
+            return ""
+        type_name = table_display_text(name) or type_key
+        node = self.add_node("spaceship_room_type", type_key, name=type_name, source=source, data=data)
+        self.add_alias(type_key, node, kind="spaceship_room_type_id", source=source)
+        if type_name != type_key:
+            self.add_alias(type_name, node, kind="spaceship_room_type_name", source=source)
+        return node
+
+    def add_spaceship_room_attr_node(self, attr_type: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        attr_key = safe_key(attr_type)
+        if not attr_key:
+            return ""
+        attr_name = table_display_text(name) or attr_key
+        node = self.add_node("spaceship_room_attr", attr_key, name=attr_name, source=source, data=data)
+        self.add_alias(attr_key, node, kind="spaceship_room_attr_id", source=source)
+        if attr_name != attr_key:
+            self.add_alias(attr_name, node, kind="spaceship_room_attr_name", source=source)
+        return node
+
+    def add_spaceship_proxy_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        proxy_id = safe_key(row_key)
+        char_id = safe_key(row)
+        if not proxy_id or not char_id:
+            return
+        proxy_node = self.add_spaceship_proxy_node(proxy_id, source=table, data={"proxyId": proxy_id, "characterId": char_id})
+        char_node = self.add_character_ref_node(char_id, source=table)
+        self.add_edge(row_node, proxy_node, "defines_spaceship_npc_proxy", source=table)
+        self.add_edge(proxy_node, char_node, "spaceship_proxy_for_character", source=table, evidence="rowValue")
+        self.add_edge(char_node, proxy_node, "character_has_spaceship_proxy", source=table, evidence=proxy_id)
+
+    def add_spaceship_behavior_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        char_id = safe_key(row.get("charId") or row_key)
+        char_node = self.add_character_ref_node(char_id, source=table)
+        if not char_node:
+            return
+        self.add_edge(row_node, char_node, "defines_spaceship_character_behavior", source=table)
+        for field, edge_kind in (("proxyId", "character_uses_spaceship_proxy"), ("friendProxyId", "character_uses_friend_spaceship_proxy")):
+            proxy_node = self.add_spaceship_proxy_node(row.get(field), source=table)
+            if proxy_node:
+                self.add_edge(char_node, proxy_node, edge_kind, source=table, evidence=field)
+        talk_fields = (
+            "commonNegativeEnvTalk",
+            "commonNormalEnvTalk",
+            "commonPositiveEnvTalk",
+            "workNegativeEnvTalk",
+            "workPositiveEnvTalk",
+            "friendGreetEnvTalkId",
+            "greetEnvTalkIds1",
+            "greetEnvTalkIds2",
+            "greetEnvTalkIds3",
+        )
+        for field in talk_fields:
+            value = row.get(field)
+            values = value if isinstance(value, list) else [value]
+            for index, talk_id in enumerate(values):
+                talk_node = self.add_env_talk_node(talk_id, source=table)
+                if talk_node:
+                    evidence = f"{field}[{index}]" if isinstance(value, list) else field
+                    self.add_edge(char_node, talk_node, "spaceship_behavior_uses_env_talk", source=table, evidence=evidence)
+
+    def add_spaceship_char_skill_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        char_id = safe_key(row_key)
+        char_node = self.add_character_ref_node(char_id, source=table, data={"spaceshipMaxSkillCount": row.get("maxSkillCount")})
+        if not char_node:
+            return
+        self.add_edge(row_node, char_node, "defines_spaceship_character_skills", source=table)
+        for index, skill in enumerate(row.get("skillList") or []):
+            if not isinstance(skill, dict):
+                continue
+            skill_node = self.add_spaceship_skill_node(skill.get("skillId"), source=table, data={"skillIndex": skill.get("skillIndex"), "unlockHint": table_text(skill.get("unlockHint"))})
+            if skill_node:
+                self.add_edge(char_node, skill_node, "character_has_spaceship_skill", source=table, evidence=f"skillList[{index}]", data={"skillIndex": skill.get("skillIndex")})
+                self.add_i18n_text_edges(skill_node, skill.get("unlockHint"), source=table)
+
+    def add_spaceship_skill_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        skill_id = safe_key(row.get("id") or row_key)
+        if not skill_id:
+            return
+        skill_node = self.add_spaceship_skill_node(
+            skill_id,
+            name=row.get("name") or row.get("talentName"),
+            source=table,
+            data={
+                "id": skill_id,
+                "level": row.get("level"),
+                "effectType": row.get("effectType"),
+                "roomType": row.get("roomType"),
+                "icon": row.get("icon"),
+                "sortId": row.get("sortId"),
+                "parameterCount": len(row.get("parameters") or []),
+                "skillNamePostfix": row.get("skillNamePostfix"),
+            },
+        )
+        self.add_edge(row_node, skill_node, "defines_spaceship_skill", source=table)
+        self.add_alias(row.get("icon"), skill_node, kind="icon_id", source=table)
+        room_node = self.add_spaceship_room_type_node(row.get("roomType"), source=table)
+        if room_node:
+            self.add_edge(skill_node, room_node, "spaceship_skill_applies_to_room_type", source=table, evidence="roomType")
+        self.add_i18n_text_edges(skill_node, {"name": row.get("name"), "desc": row.get("desc"), "talentName": row.get("talentName")}, source=table)
+
+    def add_env_talk_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        talk_id = safe_key(row.get("envTalkId") or row_key)
+        if not talk_id:
+            return
+        data_list = row.get("envTalkDataList") if isinstance(row.get("envTalkDataList"), list) else []
+        talk_node = self.add_env_talk_node(talk_id, source=table, data={"id": talk_id, "envTalkCd": row.get("envTalkCd"), "lineCount": len(data_list)})
+        self.add_edge(row_node, talk_node, "defines_env_talk", source=table)
+        for index, item in enumerate(data_list):
+            if not isinstance(item, dict):
+                continue
+            audio_id = safe_key(item.get("audio"))
+            if audio_id:
+                audio_node = self.add_node("audio", audio_id, name=audio_id, source=table)
+                self.add_edge(talk_node, audio_node, "env_talk_uses_audio", source=table, evidence=f"envTalkDataList[{index}]")
+            actor_id = safe_key(item.get("actorId"))
+            if actor_id:
+                actor_node = self.add_node("actor", actor_id, name=actor_id, source=table)
+                self.add_edge(talk_node, actor_node, "env_talk_actor", source=table, evidence=f"envTalkDataList[{index}]")
+
+    def add_spaceship_room_level_node(self, level_id: Any, *, source: str = "", data: Any = None) -> str:
+        level_key = safe_key(level_id)
+        if not level_key:
+            return ""
+        node = self.add_node("spaceship_room_level", level_key, name=level_key, source=source, data=data)
+        self.add_alias(level_key, node, kind="spaceship_room_level_id", source=source)
+        return node
+
+    def add_spaceship_room_type_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        room_type = safe_key(row.get("type") if "type" in row else row_key)
+        room_node = self.add_spaceship_room_type_node(room_type, name=row.get("name"), source=table, data={"type": row.get("type"), "allowBuildType": row.get("allowBuildType"), "icon": row.get("icon"), "bg": row.get("bg"), "sortId": row.get("sortId"), "previewProductItemCount": len(row.get("previewProductItemIds") or [])})
+        if not room_node:
+            return
+        self.add_edge(row_node, room_node, "defines_spaceship_room_type", source=table)
+        for alias in (row.get("icon"), row.get("bg"), row.get("visitorIcon")):
+            self.add_alias(alias, room_node, kind="asset_stem", source=table)
+        for index, item_id in enumerate(row.get("previewProductItemIds") or []):
+            item_node = self.add_item_node(item_id, source=table)
+            if item_node:
+                self.add_edge(room_node, item_node, "room_type_previews_item", source=table, evidence=f"previewProductItemIds[{index}]")
+        self.add_i18n_text_edges(room_node, row, source=table)
+
+    def add_spaceship_room_attr_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        attr_type = safe_key(row.get("type") if "type" in row else row_key)
+        attr_node = self.add_spaceship_room_attr_node(attr_type, name=row.get("name"), source=table, data={"type": row.get("type"), "icon": row.get("icon"), "isPercent": row.get("isPercent"), "showRate": row.get("showRate"), "sortId": row.get("sortId")})
+        if not attr_node:
+            return
+        self.add_edge(row_node, attr_node, "defines_spaceship_room_attr", source=table)
+        self.add_alias(row.get("icon"), attr_node, kind="asset_stem", source=table)
+        self.add_i18n_text_edges(attr_node, row, source=table)
+
+    def add_spaceship_room_level_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        level_id = safe_key(row.get("id") or row_key)
+        if not level_id:
+            return
+        level_node = self.add_spaceship_room_level_node(level_id, source=table, data={"id": level_id, "conditionType": row.get("conditionType"), "conditionId": row.get("conditionId"), "progressToCompare": row.get("progressToCompare"), "upgradeDialogId": row.get("upgradeDialogId"), "costItemCount": len(row.get("costItems") or [])})
+        self.add_edge(row_node, level_node, "defines_spaceship_room_level", source=table)
+        for index, item in enumerate(row.get("costItems") or []):
+            if not isinstance(item, dict):
+                continue
+            item_node = self.add_item_node(item.get("id"), source=table)
+            if item_node:
+                self.add_edge(level_node, item_node, "spaceship_room_level_requires_item", source=table, evidence=f"costItems[{index}]", data={"count": item.get("count")})
+        dialog_id = safe_key(row.get("upgradeDialogId"))
+        if dialog_id:
+            story_node = self.add_node("story", dialog_id, name=dialog_id, source=table)
+            self.add_edge(level_node, story_node, "spaceship_room_level_upgrade_dialog", source=table, evidence="upgradeDialogId")
+        condition_id = safe_key(row.get("conditionId"))
+        if condition_id:
+            condition_node = self.add_spaceship_room_level_node(condition_id, source=table)
+            self.add_edge(level_node, condition_node, "spaceship_room_level_condition", source=table, evidence="conditionId")
+        self.add_i18n_text_edges(level_node, row, source=table)
+
+    def add_spaceship_room_level_helper_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        level_id = safe_key(row.get("id") or row_key)
+        level_node = self.add_spaceship_room_level_node(level_id, source=table, data={"id": level_id, "level": row.get("level"), "roomType": row.get("roomType")})
+        room_node = self.add_spaceship_room_type_node(row.get("roomType"), source=table)
+        if level_node:
+            self.add_edge(row_node, level_node, "defines_spaceship_room_level_helper", source=table)
+        if level_node and room_node:
+            self.add_edge(level_node, room_node, "spaceship_room_level_for_type", source=table, evidence="roomType", data={"level": row.get("level")})
+
+    def add_spaceship_specialized_room_level_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        level_id = safe_key(row.get("id") or row_key)
+        if not level_id:
+            return
+        level_node = self.add_spaceship_room_level_node(level_id, source=table, data=compact_payload(row, depth=2, list_limit=8))
+        self.add_edge(row_node, level_node, "defines_spaceship_room_level_detail", source=table)
+        room_node = self.add_spaceship_room_type_node(row.get("roomType"), source=table)
+        if room_node:
+            self.add_edge(level_node, room_node, "spaceship_room_level_for_type", source=table, evidence="roomType", data={"level": row.get("level")})
+        reward_node = self.add_reward_node(row.get("rewardId"), source=table)
+        if reward_node:
+            self.add_edge(level_node, reward_node, "spaceship_room_level_reward", source=table, evidence="rewardId")
+        for index, recipe_id in enumerate(row.get("unlockRecipe") or []):
+            formula_node = self.add_node("spaceship_formula", recipe_id, name=recipe_id, source=table)
+            self.add_edge(level_node, formula_node, "spaceship_room_level_unlocks_formula", source=table, evidence=f"unlockRecipe[{index}]")
+            self.add_alias(recipe_id, formula_node, kind="spaceship_formula_id", source=table)
+        unlock_room_type = safe_key(row.get("unlockRoomType"))
+        if unlock_room_type:
+            unlock_room_node = self.add_spaceship_room_type_node(unlock_room_type, source=table)
+            self.add_edge(level_node, unlock_room_node, "spaceship_room_level_unlocks_room_type", source=table, evidence="unlockRoomType")
+        self.add_i18n_text_edges(level_node, row, source=table)
+
+    def add_spaceship_empty_room_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        room_id = safe_key(row.get("id") or row_key)
+        room_node = self.add_node("spaceship_empty_room", room_id, name=table_display_text(row.get("name")) or room_id, source=table, data={"id": room_id, "roomType": row.get("roomType"), "areaType": row.get("areaType"), "sortId": row.get("sortId"), "demolitionDialogId": row.get("demolitionDialogId")})
+        self.add_edge(row_node, room_node, "defines_spaceship_empty_room", source=table)
+        self.add_alias(room_id, room_node, kind="spaceship_empty_room_id", source=table)
+        type_node = self.add_spaceship_room_type_node(row.get("roomType"), source=table)
+        if type_node:
+            self.add_edge(room_node, type_node, "spaceship_empty_room_has_type", source=table, evidence="roomType")
+        dialog_id = safe_key(row.get("demolitionDialogId"))
+        if dialog_id:
+            story_node = self.add_node("story", dialog_id, name=dialog_id, source=table)
+            self.add_edge(room_node, story_node, "spaceship_empty_room_demolition_dialog", source=table, evidence="demolitionDialogId")
+        self.add_i18n_text_edges(room_node, row, source=table)
+
+    def add_spaceship_formula_node(self, formula_id: Any, *, source: str = "", data: Any = None) -> str:
+        formula_key = safe_key(formula_id)
+        if not formula_key:
+            return ""
+        node = self.add_node("spaceship_formula", formula_key, name=formula_key, source=source, data=data)
+        self.add_alias(formula_key, node, kind="spaceship_formula_id", source=source)
+        return node
+
+    def add_spaceship_formula_item_edge(self, formula_node: str, item_id: Any, *, edge_kind: str, source: str, evidence: str, count: Any = None) -> None:
+        item_node = self.add_item_node(item_id, source=source)
+        if item_node:
+            self.add_edge(formula_node, item_node, edge_kind, source=source, evidence=evidence, data={"count": count} if count is not None else None)
+
+    def add_spaceship_grow_formula_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        formula_id = safe_key(row.get("id") or row_key)
+        formula_node = self.add_spaceship_formula_node(formula_id, source=table, data={"id": formula_id, "kind": "grow", "level": row.get("level"), "type": row.get("type"), "rarity": row.get("rarity"), "roomAttrType": row.get("roomAttrType"), "totalProgress": row.get("totalProgress"), "sortId": row.get("sortId"), "growingPostmodelId": row.get("growingPostmodelId"), "finishPostmodelId": row.get("finishPostmodelId")})
+        if not formula_node:
+            return
+        self.add_edge(row_node, formula_node, "defines_spaceship_formula", source=table)
+        self.add_spaceship_formula_item_edge(formula_node, row.get("seedItemId"), edge_kind="spaceship_formula_consumes_item", source=table, evidence="seedItemId", count=row.get("seedItemCount"))
+        self.add_spaceship_formula_item_edge(formula_node, row.get("outcomeItemId"), edge_kind="spaceship_formula_produces_item", source=table, evidence="outcomeItemId", count=row.get("outcomeItemCount"))
+        seed_formula_node = self.add_spaceship_formula_node(row.get("seedFormulaId"), source=table)
+        if seed_formula_node:
+            self.add_edge(formula_node, seed_formula_node, "spaceship_formula_uses_seed_formula", source=table, evidence="seedFormulaId")
+        attr_node = self.add_spaceship_room_attr_node(row.get("roomAttrType"), source=table)
+        if attr_node:
+            self.add_edge(formula_node, attr_node, "spaceship_formula_uses_room_attr", source=table, evidence="roomAttrType")
+
+    def add_spaceship_seed_formula_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        formula_id = safe_key(row.get("id") or row_key)
+        formula_node = self.add_spaceship_formula_node(formula_id, source=table, data={"id": formula_id, "kind": "seed", "level": row.get("level"), "type": row.get("type"), "rarity": row.get("rarity"), "sortId": row.get("sortId")})
+        if not formula_node:
+            return
+        self.add_edge(row_node, formula_node, "defines_spaceship_formula", source=table)
+        self.add_spaceship_formula_item_edge(formula_node, row.get("materialItemId"), edge_kind="spaceship_formula_consumes_item", source=table, evidence="materialItemId", count=row.get("materialItemCount"))
+        self.add_spaceship_formula_item_edge(formula_node, row.get("outcomeseedItemId"), edge_kind="spaceship_formula_produces_item", source=table, evidence="outcomeseedItemId", count=row.get("outcomeseedItemCount"))
+
+    def add_spaceship_manufacture_formula_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        formula_id = safe_key(row.get("id") or row_key)
+        formula_node = self.add_spaceship_formula_node(formula_id, source=table, data={"id": formula_id, "kind": "manufacture", "level": row.get("level"), "rarity": row.get("rarity"), "roomAttrType": row.get("roomAttrType"), "showingType": row.get("showingType"), "perCapacity": row.get("perCapacity"), "totalProgress": row.get("totalProgress"), "sortId": row.get("sortId")})
+        if not formula_node:
+            return
+        self.add_edge(row_node, formula_node, "defines_spaceship_formula", source=table)
+        self.add_spaceship_formula_item_edge(formula_node, row.get("outcomeItemId"), edge_kind="spaceship_formula_produces_item", source=table, evidence="outcomeItemId", count=row.get("perCapacity"))
+        attr_node = self.add_spaceship_room_attr_node(row.get("roomAttrType"), source=table)
+        if attr_node:
+            self.add_edge(formula_node, attr_node, "spaceship_formula_uses_room_attr", source=table, evidence="roomAttrType")
+
+    def add_spaceship_grow_reverse_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        source_item = self.add_item_node(row_key, source=table)
+        target_item_id = row.get("outcomeseedItemId") or row.get("materialItemId")
+        target_item = self.add_item_node(target_item_id, source=table)
+        if source_item and target_item:
+            edge_kind = "spaceship_material_maps_to_seed" if row.get("outcomeseedItemId") else "spaceship_seed_maps_to_material"
+            self.add_edge(source_item, target_item, edge_kind, source=table, evidence="rowValue")
+
+    def add_spaceship_clue_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        clue_id = safe_key(row.get("id") or row_key)
+        clue_node = self.add_node("spaceship_clue", clue_id, name=table_display_text(row.get("name")) or clue_id, source=table, data={"id": clue_id, "clueType": row.get("clueType"), "roomAttrType": row.get("roomAttrType"), "icon": row.get("icon"), "color": row.get("color")})
+        self.add_edge(row_node, clue_node, "defines_spaceship_clue", source=table)
+        self.add_alias(clue_id, clue_node, kind="spaceship_clue_id", source=table)
+        self.add_alias(row.get("icon"), clue_node, kind="asset_stem", source=table)
+        attr_node = self.add_spaceship_room_attr_node(row.get("roomAttrType"), source=table)
+        if attr_node:
+            self.add_edge(clue_node, attr_node, "spaceship_clue_uses_room_attr", source=table, evidence="roomAttrType")
+        self.add_i18n_text_edges(clue_node, row, source=table)
+
+    def add_spaceship_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        if table in {"SpaceShipNpc2Char", "SpaceShipFriendNpc2Char"}:
+            self.add_spaceship_proxy_edges(table, row_key, row, row_node)
+            return
+        if not isinstance(row, dict):
+            return
+        if table != "EnvTalkTable":
+            self.add_i18n_text_edges(row_node, row, source=table)
+        if table == "SpaceShipCharBehaviourTable":
+            self.add_spaceship_behavior_edges(table, row_key, row, row_node)
+        elif table == "SpaceshipCharSkillTable":
+            self.add_spaceship_char_skill_edges(table, row_key, row, row_node)
+        elif table == "SpaceshipSkillTable":
+            self.add_spaceship_skill_edges(table, row_key, row, row_node)
+        elif table == "EnvTalkTable":
+            self.add_env_talk_edges(table, row_key, row, row_node)
+        elif table == "SpaceshipRoomTypeTable":
+            self.add_spaceship_room_type_edges(table, row_key, row, row_node)
+        elif table == "SpaceshipRoomAttrTypeTable":
+            self.add_spaceship_room_attr_edges(table, row_key, row, row_node)
+        elif table == "SpaceshipRoomLvTable":
+            self.add_spaceship_room_level_edges(table, row_key, row, row_node)
+        elif table == "SpaceshipRoomLvHelperTable":
+            self.add_spaceship_room_level_helper_edges(table, row_key, row, row_node)
+        elif table in {"SpaceshipControlCenterLvTable", "SpaceshipManufacturingStationLvTable", "SpaceshipGrowCabinLvTable", "SpaceshipGuestRoomLvTable", "SpaceshipGuestRoomClueLvTable"}:
+            self.add_spaceship_specialized_room_level_edges(table, row_key, row, row_node)
+        elif table == "SpaceshipEmptyRoomTable":
+            self.add_spaceship_empty_room_edges(table, row_key, row, row_node)
+        elif table == "SpaceshipGrowCabinFormulaTable":
+            self.add_spaceship_grow_formula_edges(table, row_key, row, row_node)
+        elif table == "SpaceshipGrowCabinSeedFormulaTable":
+            self.add_spaceship_seed_formula_edges(table, row_key, row, row_node)
+        elif table == "SpaceshipManufactureFormulaTable":
+            self.add_spaceship_manufacture_formula_edges(table, row_key, row, row_node)
+        elif table in {"SpaceshipGrowCabinMaterial2OutComeTable", "SpaceshipGrowCabinOutCome2MaterialTable"}:
+            self.add_spaceship_grow_reverse_edges(table, row_key, row, row_node)
+        elif table in {"SpaceshipClueDataTable", "SpaceshipClueDataIndex2IdTable"}:
+            self.add_spaceship_clue_edges(table, row_key, row, row_node)
+
+    def ingest_factory_tech_semantics(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_factory_tech_semantics", path=slash(table_root))
+        for table_name in FACTORY_TECH_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if payload is None:
+                continue
+            table_key = Path(table_name).stem
+            table_node = self.add_node("table", table_key, name=table_key, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/factory_tech")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if not isinstance(payload, dict):
+                continue
+            for row_key, row in payload.items():
+                row_node = self.add_node(
+                    "table_row",
+                    f"{table_key}:{row_key}",
+                    name=str(row_key),
+                    source=table_key,
+                    data=compact_payload(row, depth=2),
+                )
+                self.add_edge(table_node, row_node, "has_row", source="structured/factory_tech")
+                self.add_factory_tech_row_edges(table_key, row_key, row, row_node)
+
+    def add_factory_tech_group_node(self, group_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        group_key = safe_key(group_id)
+        if not group_key:
+            return ""
+        group_name = table_display_text(name) or group_key
+        node = self.add_node("factory_tech_group", group_key, name=group_name, source=source, data=data)
+        self.add_alias(group_key, node, kind="factory_tech_group_id", source=source)
+        if group_name != group_key:
+            self.add_alias(group_name, node, kind="factory_tech_group_name", source=source)
+        return node
+
+    def add_factory_tech_category_node(self, category_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        category_key = safe_key(category_id)
+        if not category_key:
+            return ""
+        category_name = table_display_text(name) or category_key
+        node = self.add_node("factory_tech_category", category_key, name=category_name, source=source, data=data)
+        self.add_alias(category_key, node, kind="factory_tech_category_id", source=source)
+        if category_name != category_key:
+            self.add_alias(category_name, node, kind="factory_tech_category_name", source=source)
+        return node
+
+    def add_factory_tech_layer_node(self, layer_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        layer_key = safe_key(layer_id)
+        if not layer_key:
+            return ""
+        layer_name = table_display_text(name) or layer_key
+        node = self.add_node("factory_tech_layer", layer_key, name=layer_name, source=source, data=data)
+        self.add_alias(layer_key, node, kind="factory_tech_layer_id", source=source)
+        if layer_name != layer_key:
+            self.add_alias(layer_name, node, kind="factory_tech_layer_name", source=source)
+        return node
+
+    def add_factory_tech_node(self, tech_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        tech_key = safe_key(tech_id)
+        if not tech_key:
+            return ""
+        tech_name = table_display_text(name) or tech_key
+        node = self.add_node("factory_tech", tech_key, name=tech_name, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=tech_name, source=source, data=data)
+        self.add_alias(tech_key, node, kind="factory_tech_id", source=source)
+        if tech_name != tech_key:
+            self.add_alias(tech_name, node, kind="factory_tech_name", source=source)
+        return node
+
+    def add_factory_tech_condition_node(self, condition_id: Any, *, source: str = "", data: Any = None) -> str:
+        condition_key = safe_key(condition_id)
+        if not condition_key:
+            return ""
+        node = self.add_node("factory_tech_condition", condition_key, name=condition_key, source=source, data=data)
+        self.add_alias(condition_key, node, kind="factory_tech_condition_id", source=source)
+        return node
+
+    def add_factory_building_node(self, building_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        building_key = safe_key(building_id)
+        if not building_key:
+            return ""
+        building_name = table_display_text(name) or building_key
+        node = self.add_node("factory_building", building_key, name=building_name, source=source, data=data)
+        self.add_alias(building_key, node, kind="factory_building_id", source=source)
+        if building_name != building_key:
+            self.add_alias(building_name, node, kind="factory_building_name", source=source)
+        return node
+
+    def add_factory_building_type_node(self, type_id: Any, *, source: str = "", data: Any = None) -> str:
+        type_key = safe_key(type_id)
+        if not type_key:
+            return ""
+        node = self.add_node("factory_building_type", type_key, name=type_key, source=source, data=data)
+        self.add_alias(type_key, node, kind="factory_building_type_id", source=source)
+        return node
+
+    def add_factory_renderer_template_node(self, template_id: Any, *, source: str = "", data: Any = None) -> str:
+        template_key = safe_key(template_id)
+        if not template_key:
+            return ""
+        node = self.add_node("factory_renderer_template", template_key, name=template_key, source=source, data=data)
+        self.add_alias(template_key, node, kind="factory_renderer_template_id", source=source)
+        return node
+
+    def add_factory_blueprint_machine_icon_node(self, icon_id: Any, *, source: str = "", data: Any = None) -> str:
+        icon_key = safe_key(icon_id)
+        if not icon_key:
+            return ""
+        node = self.add_node("factory_blueprint_machine_icon", icon_key, name=icon_key, source=source, data=data)
+        self.add_alias(icon_key, node, kind="factory_blueprint_machine_icon_id", source=source)
+        return node
+
+    def add_manual_craft_unlock_node(self, unlock_id: Any, *, source: str = "", data: Any = None) -> str:
+        unlock_key = safe_key(unlock_id)
+        if not unlock_key:
+            return ""
+        node = self.add_node("manual_craft_unlock", unlock_key, name=unlock_key, source=source, data=data)
+        self.add_alias(unlock_key, node, kind="manual_craft_unlock_id", source=source)
+        return node
+
+    def add_factory_machine_node(self, machine_id: Any, *, source: str = "", data: Any = None) -> str:
+        machine_key = safe_key(machine_id)
+        if not machine_key:
+            return ""
+        node = self.add_node("factory_machine", machine_key, name=machine_key, source=source, data=data)
+        self.add_alias(machine_key, node, kind="factory_machine_id", source=source)
+        return node
+
+    def add_gameplay_domain_node(self, domain_id: Any, *, source: str = "") -> str:
+        domain_key = safe_key(domain_id)
+        if not domain_key:
+            return ""
+        node = self.add_node("gameplay_domain", domain_key, name=domain_key, source=source)
+        self.add_alias(domain_key, node, kind="gameplay_domain_id", source=source)
+        return node
+
+    def add_map_mark_template_node(self, template_id: Any, *, source: str = "", data: Any = None) -> str:
+        template_key = safe_key(template_id)
+        if not template_key:
+            return ""
+        node = self.add_node("map_mark_template", template_key, name=template_key, source=source, data=data)
+        self.add_alias(template_key, node, kind="map_mark_template_id", source=source)
+        return node
+
+    def factory_renderer_template_key(self, machine_id: Any, template_id: Any) -> str:
+        machine_key = safe_key(machine_id)
+        template_key = safe_key(template_id)
+        if not machine_key or not template_key:
+            return ""
+        if "__" in template_key:
+            mode, level = template_key.split("__", 1)
+            return safe_key(f"{machine_key}_{mode}_{level}")
+        return template_key
+
+    def add_factory_condition_parameter_refs(self, condition_node: str, parameters: Any, *, source: str, evidence_prefix: str) -> None:
+        if not isinstance(parameters, list):
+            return
+        for param_index, param in enumerate(parameters):
+            if not isinstance(param, dict):
+                continue
+            values = param.get("valueStringList")
+            if not isinstance(values, list):
+                continue
+            for value_index, raw_value in enumerate(values):
+                ref = safe_key(raw_value)
+                if not ref or re.fullmatch(r"-?\d+(?:\.\d+)?", ref):
+                    continue
+                evidence = f"{evidence_prefix}.parameters[{param_index}].valueStringList[{value_index}]"
+                if re.fullmatch(r"map\d+_lv\d+", ref):
+                    ref_node = self.add_level_node(ref, source=source)
+                    edge_kind = "factory_tech_condition_references_level"
+                elif ref.startswith("item_"):
+                    ref_node = self.add_item_node(ref, source=source)
+                    edge_kind = "factory_tech_condition_references_item"
+                elif ref.startswith("domain_"):
+                    ref_node = self.add_gameplay_domain_node(ref, source=source)
+                    edge_kind = "factory_tech_condition_references_domain"
+                else:
+                    ref_node = self.add_factory_machine_node(ref, source=source)
+                    edge_kind = "factory_tech_condition_references_machine"
+                self.add_edge(condition_node, ref_node, edge_kind, source=source, evidence=evidence)
+
+    def add_factory_tech_condition_edges(self, owner_node: str, condition: dict[str, Any], *, edge_kind: str, source: str, evidence: str) -> None:
+        condition_id = safe_key(condition.get("conditionId"))
+        condition_node = self.add_factory_tech_condition_node(
+            condition_id,
+            source=source,
+            data={"conditionType": condition.get("conditionType"), "groupId": condition.get("groupId"), "techId": condition.get("techId")},
+        )
+        if not condition_node:
+            return
+        self.add_edge(owner_node, condition_node, edge_kind, source=source, evidence=evidence)
+        self.add_factory_condition_parameter_refs(condition_node, condition.get("parameters"), source=source, evidence_prefix=evidence)
+        self.add_i18n_text_edges(condition_node, condition, source=source)
+
+    def add_factory_tech_action_refs(self, tech_node: str, action: Any, *, source: str) -> None:
+        if not isinstance(action, dict):
+            return
+        for param_index, param in enumerate(action.get("parameters") or []):
+            if not isinstance(param, dict):
+                continue
+            for value_index, raw_value in enumerate(param.get("valueStringList") or []):
+                ref = safe_key(raw_value)
+                if not ref or re.fullmatch(r"-?\d+(?:\.\d+)?", ref):
+                    continue
+                evidence = f"action.parameters[{param_index}].valueStringList[{value_index}]"
+                if ref.startswith("item_"):
+                    ref_node = self.add_item_node(ref, source=source)
+                    edge_kind = "factory_tech_action_references_item"
+                elif ref.startswith("domain_"):
+                    ref_node = self.add_gameplay_domain_node(ref, source=source)
+                    edge_kind = "factory_tech_action_references_domain"
+                else:
+                    ref_node = self.add_factory_machine_node(ref, source=source)
+                    edge_kind = "factory_tech_action_references_machine"
+                self.add_edge(tech_node, ref_node, edge_kind, source=source, evidence=evidence)
+
+    def add_factory_tech_group_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        group_node = self.add_factory_tech_group_node(row.get("groupId") or row_key, name=row.get("groupName"), source=table, data={"domainId": row.get("domainId"), "costPointType": row.get("costPointType"), "adventurebookRewardId": row.get("adventurebookRewardId")})
+        if not group_node:
+            return
+        self.add_edge(row_node, group_node, "defines_factory_tech_group", source=table)
+        self.add_reward_ref_edge(group_node, row.get("adventurebookRewardId"), edge_kind="factory_tech_group_rewards", source=table, evidence="adventurebookRewardId")
+        domain_node = self.add_gameplay_domain_node(row.get("domainId"), source=table)
+        if domain_node:
+            self.add_edge(group_node, domain_node, "factory_tech_group_domain", source=table, evidence="domainId")
+        cost_item = self.add_item_node(row.get("costPointType"), source=table)
+        if cost_item:
+            self.add_edge(group_node, cost_item, "factory_tech_group_uses_point_item", source=table, evidence="costPointType")
+        for index, category_id in enumerate(row.get("categoryIds") or []):
+            category_node = self.add_factory_tech_category_node(category_id, source=table)
+            if category_node:
+                self.add_edge(group_node, category_node, "factory_tech_group_has_category", source=table, evidence=f"categoryIds[{index}]")
+        for index, layer_id in enumerate(row.get("layerIds") or []):
+            layer_node = self.add_factory_tech_layer_node(layer_id, source=table)
+            if layer_node:
+                self.add_edge(group_node, layer_node, "factory_tech_group_has_layer", source=table, evidence=f"layerIds[{index}]")
+        for index, tech_id in enumerate(row.get("techIds") or []):
+            tech_node = self.add_factory_tech_node(tech_id, source=table)
+            if tech_node:
+                self.add_edge(group_node, tech_node, "factory_tech_group_has_tech", source=table, evidence=f"techIds[{index}]")
+        for index, dungeon_id in enumerate(row.get("blackboxIds") or []):
+            dungeon_node = self.add_dungeon_node(dungeon_id, source=table)
+            if dungeon_node:
+                self.add_edge(group_node, dungeon_node, "factory_tech_group_has_blackbox", source=table, evidence=f"blackboxIds[{index}]")
+        for index, condition in enumerate(row.get("conditions") or []):
+            if isinstance(condition, dict):
+                self.add_factory_tech_condition_edges(group_node, condition, edge_kind="factory_tech_group_has_condition", source=table, evidence=f"conditions[{index}]")
+        self.add_alias(row.get("icon"), group_node, kind="asset_stem", source=table)
+        self.add_i18n_text_edges(group_node, row, source=table)
+
+    def add_factory_tech_category_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        category_node = self.add_factory_tech_category_node(row.get("category") or row_key, name=row.get("name"), source=table, data={"groupId": row.get("groupId"), "order": row.get("order"), "startPosX": row.get("startPosX"), "defaultHidden": row.get("defaultHidden")})
+        if not category_node:
+            return
+        self.add_edge(row_node, category_node, "defines_factory_tech_category", source=table)
+        group_node = self.add_factory_tech_group_node(row.get("groupId"), source=table)
+        if group_node:
+            self.add_edge(group_node, category_node, "factory_tech_group_has_category", source=table, evidence="groupId")
+        for index, tech_id in enumerate(row.get("techIds") or []):
+            tech_node = self.add_factory_tech_node(tech_id, source=table)
+            if tech_node:
+                self.add_edge(category_node, tech_node, "factory_tech_category_has_tech", source=table, evidence=f"techIds[{index}]")
+        self.add_i18n_text_edges(category_node, row, source=table)
+
+    def add_factory_tech_layer_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        layer_node = self.add_factory_tech_layer_node(row.get("layerId") or row_key, name=row.get("name"), source=table, data={"groupId": row.get("groupId"), "order": row.get("order"), "preLayer": row.get("preLayer"), "isTBD": row.get("isTBD")})
+        if not layer_node:
+            return
+        self.add_edge(row_node, layer_node, "defines_factory_tech_layer", source=table)
+        group_node = self.add_factory_tech_group_node(row.get("groupId"), source=table)
+        if group_node:
+            self.add_edge(group_node, layer_node, "factory_tech_group_has_layer", source=table, evidence="groupId")
+        pre_layer = self.add_factory_tech_layer_node(row.get("preLayer"), source=table)
+        if pre_layer:
+            self.add_edge(layer_node, pre_layer, "factory_tech_layer_requires_layer", source=table, evidence="preLayer")
+        for index, item in enumerate(row.get("costItems") or []):
+            if not isinstance(item, dict):
+                continue
+            item_node = self.add_item_node(item.get("costItemId"), source=table)
+            if item_node:
+                self.add_edge(layer_node, item_node, "factory_tech_layer_requires_item", source=table, evidence=f"costItems[{index}]", data={"count": item.get("costItemCount")})
+        for index, tech_id in enumerate(row.get("techIds") or []):
+            tech_node = self.add_factory_tech_node(tech_id, source=table)
+            if tech_node:
+                self.add_edge(layer_node, tech_node, "factory_tech_layer_has_tech", source=table, evidence=f"techIds[{index}]")
+        for index, dungeon_id in enumerate(row.get("blackboxIds") or []):
+            dungeon_node = self.add_dungeon_node(dungeon_id, source=table)
+            if dungeon_node:
+                self.add_edge(layer_node, dungeon_node, "factory_tech_layer_has_blackbox", source=table, evidence=f"blackboxIds[{index}]")
+        self.add_alias(row.get("icon"), layer_node, kind="asset_stem", source=table)
+        self.add_i18n_text_edges(layer_node, row, source=table)
+
+    def add_factory_tech_node_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        tech_id = safe_key(row.get("techId") or row_key)
+        tech_node = self.add_factory_tech_node(tech_id, name=row.get("name"), source=table, data={"groupId": row.get("groupId"), "category": row.get("category"), "layer": row.get("layer"), "sortId": row.get("sortId"), "actionType": (row.get("action") or {}).get("actionType") if isinstance(row.get("action"), dict) else None, "costPointCount": row.get("costPointCount"), "alreadyUnlock": row.get("alreadyUnlock"), "defaultHidden": row.get("defaultHidden")})
+        if not tech_node:
+            return
+        self.add_edge(row_node, tech_node, "defines_factory_tech", source=table)
+        group_node = self.add_factory_tech_group_node(row.get("groupId"), source=table)
+        if group_node:
+            self.add_edge(group_node, tech_node, "factory_tech_group_has_tech", source=table, evidence="groupId")
+        category_node = self.add_factory_tech_category_node(row.get("category"), source=table)
+        if category_node:
+            self.add_edge(category_node, tech_node, "factory_tech_category_has_tech", source=table, evidence="category")
+        layer_node = self.add_factory_tech_layer_node(row.get("layer"), source=table)
+        if layer_node:
+            self.add_edge(layer_node, tech_node, "factory_tech_layer_has_tech", source=table, evidence="layer")
+        for index, pre_node in enumerate(row.get("preNode") or []):
+            pre_tech = self.add_factory_tech_node(pre_node, source=table)
+            if pre_tech:
+                self.add_edge(tech_node, pre_tech, "factory_tech_requires_tech", source=table, evidence=f"preNode[{index}]")
+        for index, item in enumerate(row.get("unlockReward") or []):
+            if not isinstance(item, dict):
+                continue
+            item_node = self.add_item_node(item.get("itemId"), source=table)
+            if item_node:
+                self.add_edge(tech_node, item_node, "factory_tech_unlocks_item", source=table, evidence=f"unlockReward[{index}]", data={"count": item.get("count")})
+        for index, dungeon_id in enumerate(row.get("blackboxIds") or []):
+            dungeon_node = self.add_dungeon_node(dungeon_id, source=table)
+            if dungeon_node:
+                self.add_edge(tech_node, dungeon_node, "factory_tech_has_blackbox", source=table, evidence=f"blackboxIds[{index}]")
+        self.add_factory_tech_action_refs(tech_node, row.get("action"), source=table)
+        for field in ("icon", "cornerIcon"):
+            self.add_alias(row.get(field), tech_node, kind="asset_stem", source=table)
+        self.add_i18n_text_edges(tech_node, row, source=table)
+
+    def add_factory_tech_condition_table_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        condition_node = self.add_factory_tech_condition_node(row.get("conditionId") or row_key, source=table, data={"conditionType": row.get("conditionType"), "groupId": row.get("groupId"), "techId": row.get("techId")})
+        if not condition_node:
+            return
+        self.add_edge(row_node, condition_node, "defines_factory_tech_condition", source=table)
+        group_node = self.add_factory_tech_group_node(row.get("groupId"), source=table)
+        if group_node:
+            self.add_edge(group_node, condition_node, "factory_tech_group_has_condition", source=table, evidence="groupId")
+        tech_node = self.add_factory_tech_node(row.get("techId"), source=table)
+        if tech_node:
+            self.add_edge(tech_node, condition_node, "factory_tech_has_condition", source=table, evidence="techId")
+        self.add_factory_condition_parameter_refs(condition_node, row.get("parameters"), source=table, evidence_prefix="parameters")
+        self.add_i18n_text_edges(condition_node, row, source=table)
+
+    def add_machine_tech_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        machine_node = self.add_factory_machine_node(row_key, source=table)
+        tech_node = self.add_factory_tech_node(row.get("techId"), source=table)
+        if machine_node and tech_node:
+            self.add_edge(row_node, machine_node, "defines_machine_tech_link", source=table)
+            self.add_edge(machine_node, tech_node, "machine_unlocked_by_tech", source=table, evidence="techId")
+
+    def add_machine_blueprint_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        blueprint_item = self.add_item_node(row_key, source=table)
+        machine_item = self.add_item_node(row.get("itemId"), source=table)
+        if blueprint_item and machine_item:
+            self.add_edge(row_node, blueprint_item, "defines_machine_blueprint_item", source=table)
+            self.add_edge(blueprint_item, machine_item, "blueprint_item_builds_item", source=table, evidence="itemId")
+
+    def add_factory_building_type_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        type_node = self.add_factory_building_type_node(row.get("type") if "type" in row else row_key, source=table, data={"rangeExtend": row.get("rangeExtend")})
+        if type_node:
+            self.add_edge(row_node, type_node, "defines_factory_building_type", source=table)
+
+    def add_factory_renderer_template_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        template_node = self.add_factory_renderer_template_node(row_key, source=table, data=compact_payload(row, depth=2))
+        if not template_node:
+            return
+        self.add_edge(row_node, template_node, "defines_factory_renderer_template", source=table)
+        machine_node = self.add_factory_machine_node(row.get("machineId"), source=table)
+        if machine_node:
+            self.add_edge(template_node, machine_node, "renderer_template_for_machine", source=table, evidence="machineId")
+        render_node = self.add_factory_machine_node(row.get("machineRenderId"), source=table)
+        if render_node:
+            self.add_edge(template_node, render_node, "renderer_template_uses_render_machine", source=table, evidence="machineRenderId")
+
+    def add_factory_building_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        building_id = safe_key(row.get("id") or row_key)
+        building_node = self.add_factory_building_node(building_id, name=row.get("name"), source=table, data={"type": row.get("type"), "needPower": row.get("needPower"), "powerConsume": row.get("powerConsume"), "quickBarType": row.get("quickBarType"), "defaultRendererTemplate": row.get("defaultRendererTemplate"), "markInfoId": row.get("markInfoId"), "canDelete": row.get("canDelete"), "liquidEnabled": row.get("liquidEnabled")})
+        if not building_node:
+            return
+        self.add_edge(row_node, building_node, "defines_factory_building", source=table)
+        type_node = self.add_factory_building_type_node(row.get("type"), source=table)
+        if type_node:
+            self.add_edge(building_node, type_node, "factory_building_has_type", source=table, evidence="type")
+        mark_node = self.add_map_mark_template_node(row.get("markInfoId"), source=table)
+        if mark_node:
+            self.add_edge(building_node, mark_node, "factory_building_has_map_mark_template", source=table, evidence="markInfoId")
+        default_template = self.add_factory_renderer_template_node(self.factory_renderer_template_key(building_id, row.get("defaultRendererTemplate")), source=table)
+        if default_template:
+            self.add_edge(building_node, default_template, "factory_building_default_renderer_template", source=table, evidence="defaultRendererTemplate")
+        template_map = row.get("rendererTemplateMap") if isinstance(row.get("rendererTemplateMap"), dict) else {}
+        for index, (template_key, template_row) in enumerate(template_map.items()):
+            template_node = self.add_factory_renderer_template_node(self.factory_renderer_template_key(building_id, template_key), source=table, data=compact_payload(template_row, depth=2) if isinstance(template_row, dict) else None)
+            if template_node:
+                self.add_edge(building_node, template_node, "factory_building_uses_renderer_template", source=table, evidence=f"rendererTemplateMap[{index}]")
+        for field, edge_kind in (("placeDomains", "factory_building_place_domain"), ("recommendDomains", "factory_building_recommend_domain")):
+            for index, domain_id in enumerate(row.get(field) or []):
+                domain_node = self.add_gameplay_domain_node(domain_id, source=table)
+                if domain_node:
+                    self.add_edge(building_node, domain_node, edge_kind, source=table, evidence=f"{field}[{index}]")
+        for field in ("bgOnPanel", "iconOnPanel", "buildCamState"):
+            self.add_alias(row.get(field), building_node, kind="asset_stem", source=table)
+        self.add_i18n_text_edges(building_node, row, source=table)
+
+    def add_factory_building_item_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        item_node = self.add_item_node(row.get("itemId") or row_key, source=table)
+        building_node = self.add_factory_building_node(row.get("buildingId"), source=table)
+        if item_node and building_node:
+            self.add_edge(row_node, item_node, "defines_factory_building_item", source=table)
+            self.add_edge(item_node, building_node, "building_item_defines_building", source=table, evidence="buildingId")
+
+    def add_factory_blueprint_machine_icon_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        icon_node = self.add_factory_blueprint_machine_icon_node(row.get("id") or row_key, source=table, data={"canModify": row.get("canModify")})
+        if not icon_node:
+            return
+        self.add_edge(row_node, icon_node, "defines_factory_blueprint_machine_icon", source=table)
+        machine_node = self.add_factory_machine_node(row.get("id") or row_key, source=table)
+        if machine_node:
+            self.add_edge(icon_node, machine_node, "factory_blueprint_icon_for_machine", source=table, evidence="id")
+
+    def add_manual_craft_formula_unlock_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        unlock_node = self.add_manual_craft_unlock_node(row.get("id") or row_key, source=table, data={"gainItemNum": row.get("gainItemNum"), "itemId": row.get("itemId"), "rewardItemId1": row.get("rewardItemId1"), "rewardItemCount1": row.get("rewardItemCount1")})
+        if not unlock_node:
+            return
+        self.add_edge(row_node, unlock_node, "defines_manual_craft_unlock", source=table)
+        source_item = self.add_item_node(row.get("itemId"), source=table)
+        reward_item = self.add_item_node(row.get("rewardItemId1"), source=table)
+        if source_item:
+            self.add_edge(unlock_node, source_item, "manual_craft_unlock_requires_item", source=table, evidence="itemId", data={"count": row.get("gainItemNum")})
+        if reward_item:
+            self.add_edge(unlock_node, reward_item, "manual_craft_unlock_grants_formula_item", source=table, evidence="rewardItemId1", data={"count": row.get("rewardItemCount1")})
+        if source_item and reward_item:
+            self.add_edge(source_item, reward_item, "manual_craft_material_unlocks_formula_item", source=table, evidence=safe_key(row.get("id") or row_key), data={"count": row.get("rewardItemCount1")})
+
+    def add_manual_craft_upgrade_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        item_node = self.add_item_node(row.get("itemId") or row_key, source=table)
+        target_item = self.add_item_node(row.get("levelUpItemId"), source=table)
+        if item_node and target_item:
+            self.add_edge(row_node, item_node, "defines_manual_craft_upgrade_item", source=table)
+            self.add_edge(item_node, target_item, "manual_craft_upgrade_item_targets_item", source=table, evidence="levelUpItemId")
+
+    def add_factory_tech_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        if not isinstance(row, dict):
+            return
+        self.add_i18n_text_edges(row_node, row, source=table)
+        if table == "FacSTTGroupTable":
+            self.add_factory_tech_group_edges(table, row_key, row, row_node)
+        elif table == "FacSTTCategoryTable":
+            self.add_factory_tech_category_edges(table, row_key, row, row_node)
+        elif table == "FacSTTLayerTable":
+            self.add_factory_tech_layer_edges(table, row_key, row, row_node)
+        elif table == "FacSTTNodeTable":
+            self.add_factory_tech_node_edges(table, row_key, row, row_node)
+        elif table in {"FacSTTConditionTable", "FacSTTPackConditionTable"}:
+            self.add_factory_tech_condition_table_edges(table, row_key, row, row_node)
+        elif table == "MachineId2MachineTechIdTable":
+            self.add_machine_tech_edges(table, row_key, row, row_node)
+        elif table == "MachineBlueprint2MachineItemTable":
+            self.add_machine_blueprint_edges(table, row_key, row, row_node)
+        elif table == "FactoryBuildingTypeTable":
+            self.add_factory_building_type_edges(table, row_key, row, row_node)
+        elif table == "FactoryBuildingRendererTemplateTable":
+            self.add_factory_renderer_template_edges(table, row_key, row, row_node)
+        elif table == "FactoryBuildingTable":
+            self.add_factory_building_edges(table, row_key, row, row_node)
+        elif table == "FactoryBuildingItemTable":
+            self.add_factory_building_item_edges(table, row_key, row, row_node)
+        elif table == "FactoryBlueprintMachineIconTable":
+            self.add_factory_blueprint_machine_icon_edges(table, row_key, row, row_node)
+        elif table == "FactoryManualCraftFormulaUnlockTable":
+            self.add_manual_craft_formula_unlock_edges(table, row_key, row, row_node)
+        elif table == "FactoryManualCraftUpgradeTable":
+            self.add_manual_craft_upgrade_edges(table, row_key, row, row_node)
+
+    def ingest_prts_archive_semantics(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_prts_archive_semantics", path=slash(table_root))
+        for table_name in PRTS_ARCHIVE_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if payload is None:
+                continue
+            table_key = Path(table_name).stem
+            table_node = self.add_node("table", table_key, name=table_key, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/prts_archive")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if not isinstance(payload, dict):
+                continue
+            for row_key, row in payload.items():
+                row_node = self.add_node(
+                    "table_row",
+                    f"{table_key}:{row_key}",
+                    name=str(row_key),
+                    source=table_key,
+                    data=compact_payload(row, depth=2),
+                )
+                self.add_edge(table_node, row_node, "has_row", source="structured/prts_archive")
+                self.add_prts_archive_row_edges(table_key, row_key, row, row_node)
+
+    def add_prts_page_node(self, page_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        page_key = safe_key(page_id)
+        if not page_key:
+            return ""
+        page_name = table_display_text(name) or page_key
+        node = self.add_node("prts_page", page_key, name=page_name, source=source, data=data)
+        self.add_alias(page_key, node, kind="prts_page_id", source=source)
+        if page_name != page_key:
+            self.add_alias(page_name, node, kind="prts_page_name", source=source)
+        return node
+
+    def add_prts_category_node(self, category_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        category_key = safe_key(category_id)
+        if not category_key:
+            return ""
+        category_name = table_display_text(name) or category_key
+        node = self.add_node("prts_category", category_key, name=category_name, source=source, data=data)
+        self.add_alias(category_key, node, kind="prts_category_id", source=source)
+        if category_name != category_key:
+            self.add_alias(category_name, node, kind="prts_category_name", source=source)
+        return node
+
+    def add_prts_first_level_node(self, first_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        first_key = safe_key(first_id)
+        if not first_key:
+            return ""
+        first_name = table_display_text(name) or first_key
+        node = self.add_node("prts_first_level", first_key, name=first_name, source=source, data=data)
+        self.add_alias(first_key, node, kind="prts_first_level_id", source=source)
+        if first_name != first_key:
+            self.add_alias(first_name, node, kind="prts_first_level_name", source=source)
+        return node
+
+    def add_prts_entry_node(self, entry_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        entry_key = safe_key(entry_id)
+        if not entry_key:
+            return ""
+        entry_name = table_display_text(name) or entry_key
+        node = self.add_node("prts_entry", entry_key, name=entry_name, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=entry_name, source=source, data=data)
+        self.add_alias(entry_key, node, kind="prts_entry_id", source=source)
+        if entry_name != entry_key:
+            self.add_alias(entry_name, node, kind="prts_entry_name", source=source)
+        return node
+
+    def add_rich_content_node(self, content_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        content_key = safe_key(content_id)
+        if not content_key:
+            return ""
+        content_name = table_display_text(name) or content_key
+        node = self.add_node("rich_content", content_key, name=content_name, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=content_name, source=source, data=data)
+        self.add_alias(content_key, node, kind="rich_content_id", source=source)
+        return node
+
+    def add_rich_content_line_node(self, line_id: Any, *, source: str = "", data: Any = None) -> str:
+        line_key = safe_key(line_id)
+        if not line_key:
+            return ""
+        node = self.add_node("rich_content_line", line_key, name=line_key, source=source, data=data)
+        self.add_alias(line_key, node, kind="rich_content_line_id", source=source)
+        return node
+
+    def add_reading_popup_node(self, popup_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        popup_key = safe_key(popup_id)
+        if not popup_key:
+            return ""
+        popup_name = table_display_text(name) or popup_key
+        node = self.add_node("reading_popup", popup_key, name=popup_name, source=source, data=data)
+        self.add_alias(popup_key, node, kind="reading_popup_id", source=source)
+        if popup_name != popup_key:
+            self.add_alias(popup_name, node, kind="reading_popup_name", source=source)
+        return node
+
+    def add_reading_popup_icon_node(self, icon_id: Any, *, source: str = "", data: Any = None) -> str:
+        icon_key = safe_key(icon_id)
+        if not icon_key:
+            return ""
+        node = self.add_node("reading_popup_icon", icon_key, name=icon_key, source=source, data=data)
+        self.add_alias(icon_key, node, kind="reading_popup_icon_id", source=source)
+        return node
+
+    def add_prts_reading_node(self, reading_id: Any, *, source: str = "", data: Any = None) -> str:
+        reading_key = safe_key(reading_id)
+        if not reading_key:
+            return ""
+        node = self.add_node("prts_reading", reading_key, name=reading_key, source=source, data=data)
+        self.add_alias(reading_key, node, kind="prts_reading_id", source=source)
+        return node
+
+    def add_prts_reading_entry_node(self, entry_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        entry_key = safe_key(entry_id)
+        if not entry_key:
+            return ""
+        entry_name = table_display_text(name) or entry_key
+        node = self.add_node("prts_reading_entry", entry_key, name=entry_name, source=source, data=data)
+        self.add_alias(entry_key, node, kind="prts_reading_entry_id", source=source)
+        if entry_name != entry_key:
+            self.add_alias(entry_name, node, kind="prts_reading_entry_name", source=source)
+        return node
+
+    def add_prts_investigation_node(self, investigation_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        investigation_key = safe_key(investigation_id)
+        if not investigation_key:
+            return ""
+        investigation_name = table_display_text(name) or investigation_key
+        node = self.add_node("prts_investigation", investigation_key, name=investigation_name, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=investigation_name, source=source, data=data)
+        self.add_alias(investigation_key, node, kind="prts_investigation_id", source=source)
+        if investigation_name != investigation_key:
+            self.add_alias(investigation_name, node, kind="prts_investigation_name", source=source)
+        return node
+
+    def add_prts_investigation_group_node(self, group_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        group_key = safe_key(group_id)
+        if not group_key:
+            return ""
+        group_name = table_display_text(name) or group_key
+        node = self.add_node("prts_investigation_group", group_key, name=group_name, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=group_name, source=source, data=data)
+        self.add_alias(group_key, node, kind="prts_investigation_group_id", source=source)
+        if group_name != group_key:
+            self.add_alias(group_name, node, kind="prts_investigation_group_name", source=source)
+        return node
+
+    def add_prts_note_node(self, note_id: Any, *, source: str = "", data: Any = None) -> str:
+        note_key = safe_key(note_id)
+        if not note_key:
+            return ""
+        node = self.add_node("prts_note", note_key, name=note_key, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=note_key, source=source, data=data)
+        self.add_alias(note_key, node, kind="prts_note_id", source=source)
+        return node
+
+    def add_prts_content_target_edges(self, owner_node: str, content_id: Any, *, source: str, evidence: str, story_edge: str, rich_edge: str) -> None:
+        content_key = safe_key(content_id)
+        if not content_key:
+            return
+        if self.node_exists("story", content_key):
+            story_node = self.node_id("story", content_key)
+            self.add_edge(owner_node, story_node, story_edge, source=source, evidence=evidence)
+        if self.node_exists("rich_content", content_key):
+            rich_node = self.add_rich_content_node(content_key, source=source)
+            self.add_edge(owner_node, rich_node, rich_edge, source=source, evidence=evidence)
+
+    def add_rich_content_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        content_id = safe_key(row_key)
+        content_list = row.get("contentList") if isinstance(row.get("contentList"), list) else []
+        content_node = self.add_rich_content_node(content_id, name=row.get("title"), source=table, data={"lineCount": len(content_list)})
+        if not content_node:
+            return
+        self.add_edge(row_node, content_node, "defines_rich_content", source=table)
+        self.add_i18n_text_edges(content_node, row.get("title"), source=table)
+        for index, item in enumerate(content_list):
+            if not isinstance(item, dict):
+                continue
+            line_node = self.add_rich_content_line_node(f"{content_id}:line:{index + 1}", source=table, data={"contentId": content_id, "index": index + 1, "content": table_text(item.get("content"))})
+            if not line_node:
+                continue
+            self.add_edge(content_node, line_node, "rich_content_has_line", source=table, evidence=f"contentList[{index}]")
+            for text_id in self.iter_i18n_text_ids(item.get("content")):
+                text_node = self.add_i18n_text_node(text_id, source=table)
+                if text_node:
+                    self.add_edge(line_node, text_node, "rich_content_line_uses_i18n_text", source=table, evidence=text_id)
+                    self.add_edge(content_node, text_node, "rich_content_uses_i18n_text", source=table, evidence=f"contentList[{index}]")
+
+    def add_prts_page_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        page_node = self.add_prts_page_node(row.get("pageType") or row_key, name=row.get("name"), source=table, data={"icon": row.get("icon")})
+        if page_node:
+            self.add_edge(row_node, page_node, "defines_prts_page", source=table)
+            self.add_alias(row.get("icon"), page_node, kind="asset_stem", source=table)
+            self.add_i18n_text_edges(page_node, row, source=table)
+
+    def add_prts_category_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        category_node = self.add_prts_category_node(row.get("categoryId") or row_key, name=row.get("name"), source=table, data={"order": row.get("order"), "tabIcon": row.get("tabIcon")})
+        if not category_node:
+            return
+        self.add_edge(row_node, category_node, "defines_prts_category", source=table)
+        page_key = row.get("categoryId") or row_key
+        if self.node_exists("prts_page", page_key):
+            self.add_edge(self.node_id("prts_page", page_key), category_node, "prts_page_has_category", source=table, evidence="categoryId")
+        self.add_alias(row.get("tabIcon"), category_node, kind="asset_stem", source=table)
+        self.add_i18n_text_edges(category_node, row, source=table)
+
+    def add_prts_first_level_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        first_id = safe_key(row.get("firstLvId") or row_key)
+        first_node = self.add_prts_first_level_node(first_id, name=row.get("name"), source=table, data={"categoryId": row.get("categoryId"), "order": row.get("order"), "icon": row.get("icon"), "itemCount": len(row.get("itemIds") or [])})
+        if not first_node:
+            return
+        self.add_edge(row_node, first_node, "defines_prts_first_level", source=table)
+        category_node = self.add_prts_category_node(row.get("categoryId"), source=table)
+        if category_node:
+            self.add_edge(category_node, first_node, "prts_category_has_first_level", source=table, evidence="categoryId")
+        for index, entry_id in enumerate(row.get("itemIds") or []):
+            entry_node = self.add_prts_entry_node(entry_id, source=table)
+            if entry_node:
+                self.add_edge(first_node, entry_node, "prts_first_level_has_entry", source=table, evidence=f"itemIds[{index}]")
+        self.add_alias(row.get("icon"), first_node, kind="asset_stem", source=table)
+        self.add_i18n_text_edges(first_node, row, source=table)
+
+    def add_prts_entry_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        entry_id = safe_key(row.get("id") or row_key)
+        canonical = table == "PrtsAllItem"
+        entry_node = self.add_prts_entry_node(
+            entry_id,
+            name=row.get("name") if canonical else None,
+            source=table,
+            data={"contentId": row.get("contentId"), "firstLvId": row.get("firstLvId"), "type": row.get("type"), "order": row.get("order"), "sourceTable": table} if canonical else None,
+        )
+        if not entry_node:
+            return
+        edge_kind = {
+            "PrtsRecord": "defines_prts_record_entry",
+            "PrtsDocument": "defines_prts_document_entry",
+            "PrtsMultimedia": "defines_prts_multimedia_entry",
+        }.get(table, "defines_prts_entry")
+        self.add_edge(row_node, entry_node, edge_kind, source=table)
+        if canonical:
+            self.add_prts_content_target_edges(entry_node, row.get("contentId"), source=table, evidence="contentId", story_edge="prts_entry_targets_story", rich_edge="prts_entry_targets_rich_content")
+            self.add_i18n_text_edges(entry_node, row, source=table)
+
+    def add_reading_popup_icon_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        icon_map = row.get("iconMap") if isinstance(row.get("iconMap"), dict) else {}
+        for icon_key, icon_row in icon_map.items():
+            if not isinstance(icon_row, dict):
+                continue
+            icon_node = self.add_reading_popup_icon_node(f"{row_key}:{icon_key}", source=table, data={"bgType": row_key, "iconType": icon_key, "icon": icon_row.get("icon")})
+            if icon_node:
+                self.add_edge(row_node, icon_node, "defines_reading_popup_icon", source=table, evidence=f"iconMap[{icon_key}]")
+                self.add_alias(icon_row.get("icon"), icon_node, kind="asset_stem", source=table)
+
+    def add_reading_popup_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        popup_id = safe_key(row.get("id") or row_key)
+        popup_node = self.add_reading_popup_node(popup_id, name=row.get("title"), source=table, data={"contentId": row.get("contentId"), "bgType": row.get("bgType"), "iconType": row.get("iconType")})
+        if not popup_node:
+            return
+        self.add_edge(row_node, popup_node, "defines_reading_popup", source=table)
+        icon_node = self.add_reading_popup_icon_node(f"{row.get('bgType')}:{row.get('iconType')}", source=table)
+        if icon_node:
+            self.add_edge(popup_node, icon_node, "reading_popup_uses_icon", source=table, evidence="bgType/iconType")
+        self.add_prts_content_target_edges(popup_node, row.get("contentId"), source=table, evidence="contentId", story_edge="reading_popup_targets_story", rich_edge="reading_popup_targets_rich_content")
+        self.add_i18n_text_edges(popup_node, row, source=table)
+
+    def add_prts_reading_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        reading_node = self.add_prts_reading_node(row_key, source=table, data={"entryCount": len(row.get("list") or {})})
+        if not reading_node:
+            return
+        self.add_edge(row_node, reading_node, "defines_prts_reading", source=table)
+        entry_map = row.get("list") if isinstance(row.get("list"), dict) else {}
+        for entry_key, entry in entry_map.items():
+            if not isinstance(entry, dict):
+                continue
+            entry_node = self.add_prts_reading_entry_node(entry.get("uniqId") or f"{row_key}:{entry_key}", name=entry.get("name"), source=table, data={"contentId": entry.get("contentId"), "order": entry.get("order"), "prtsId": entry.get("prtsId"), "rootId": row_key})
+            if not entry_node:
+                continue
+            self.add_edge(reading_node, entry_node, "prts_reading_has_entry", source=table, evidence=f"list[{entry_key}]")
+            prts_entry = self.add_prts_entry_node(entry.get("prtsId"), source=table)
+            if prts_entry:
+                self.add_edge(entry_node, prts_entry, "prts_reading_entry_refs_prts_entry", source=table, evidence="prtsId")
+            self.add_prts_content_target_edges(entry_node, entry.get("contentId"), source=table, evidence="contentId", story_edge="prts_reading_entry_targets_story", rich_edge="prts_reading_entry_targets_rich_content")
+            self.add_i18n_text_edges(entry_node, entry, source=table)
+
+    def add_prts_note_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        note_node = self.add_prts_note_node(row.get("id") or row_key, source=table, data={"desc": table_text(row.get("desc"))})
+        if note_node:
+            self.add_edge(row_node, note_node, "defines_prts_note", source=table)
+            self.add_i18n_text_edges(note_node, row, source=table)
+
+    def add_prts_investigation_group_edges(self, investigation_node: str, group: dict[str, Any], *, group_id: str, source: str, evidence_prefix: str) -> str:
+        group_node = self.add_prts_investigation_group_node(group_id, name=group.get("name"), source=source, data={"index": group.get("index"), "collectionCount": len(group.get("collectionIdList") or []), "noteCount": len(group.get("noteIdList") or [])})
+        if not group_node:
+            return ""
+        self.add_edge(investigation_node, group_node, "prts_investigation_has_group", source=source, evidence=evidence_prefix)
+        for index, entry_id in enumerate(group.get("collectionIdList") or []):
+            entry_node = self.add_prts_entry_node(entry_id, source=source)
+            if entry_node:
+                self.add_edge(group_node, entry_node, "prts_investigation_group_has_entry", source=source, evidence=f"{evidence_prefix}.collectionIdList[{index}]")
+        for index, note_id in enumerate(group.get("noteIdList") or []):
+            note_node = self.add_prts_note_node(note_id, source=source)
+            if note_node:
+                self.add_edge(group_node, note_node, "prts_investigation_group_has_note", source=source, evidence=f"{evidence_prefix}.noteIdList[{index}]")
+        self.add_i18n_text_edges(group_node, group, source=source)
+        return group_node
+
+    def add_prts_investigation_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        investigation_id = safe_key(row.get("id") or row_key)
+        investigation_node = self.add_prts_investigation_node(investigation_id, name=row.get("name"), source=table, data={"domainId": row.get("domainId"), "type": row.get("type"), "index": row.get("index"), "unlockPrts": row.get("unlockPrts"), "collectionCount": len(row.get("collectionIdList") or []), "groupCount": len(row.get("categoryDataList") or [])})
+        if not investigation_node:
+            return
+        self.add_edge(row_node, investigation_node, "defines_prts_investigation", source=table)
+        domain_node = self.add_gameplay_domain_node(row.get("domainId"), source=table)
+        if domain_node:
+            self.add_edge(investigation_node, domain_node, "prts_investigation_uses_domain", source=table, evidence="domainId")
+        unlock_entry = self.add_prts_entry_node(row.get("unlockPrts"), source=table)
+        if unlock_entry:
+            self.add_edge(investigation_node, unlock_entry, "prts_investigation_unlocks_entry", source=table, evidence="unlockPrts")
+        for index, entry_id in enumerate(row.get("collectionIdList") or []):
+            entry_node = self.add_prts_entry_node(entry_id, source=table)
+            if entry_node:
+                self.add_edge(investigation_node, entry_node, "prts_investigation_has_entry", source=table, evidence=f"collectionIdList[{index}]")
+        for index, item in enumerate(row.get("rewardItemList") or []):
+            if not isinstance(item, dict):
+                continue
+            item_node = self.add_item_node(item.get("id"), source=table)
+            if item_node:
+                self.add_edge(investigation_node, item_node, "prts_investigation_rewards_item", source=table, evidence=f"rewardItemList[{index}]", data={"count": item.get("count")})
+        for index, group in enumerate(row.get("categoryDataList") or []):
+            if isinstance(group, dict):
+                self.add_prts_investigation_group_edges(investigation_node, group, group_id=f"{investigation_id}:group:{group.get('index') or index + 1}", source=table, evidence_prefix=f"categoryDataList[{index}]")
+        self.add_i18n_text_edges(investigation_node, row, source=table)
+
+    def add_prts_investigation_category_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        investigation_id = safe_key(row.get("id") or row_key)
+        category_data = None if self.node_exists("prts_investigation", investigation_id) else {"groupCount": len(row.get("list") or [])}
+        investigation_node = self.add_prts_investigation_node(investigation_id, source=table, data=category_data)
+        if not investigation_node:
+            return
+        self.add_edge(row_node, investigation_node, "defines_prts_investigation_category", source=table)
+        for index, group in enumerate(row.get("list") or []):
+            if isinstance(group, dict):
+                self.add_prts_investigation_group_edges(investigation_node, group, group_id=f"{investigation_id}:group:{group.get('index') or index + 1}", source=table, evidence_prefix=f"list[{index}]")
+
+    def add_prts_archive_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        if not isinstance(row, dict):
+            return
+        if table != "RichContentTable":
+            self.add_i18n_text_edges(row_node, row, source=table)
+        if table == "RichContentTable":
+            self.add_rich_content_edges(table, row_key, row, row_node)
+        elif table == "PrtsPage":
+            self.add_prts_page_edges(table, row_key, row, row_node)
+        elif table == "PrtsCategory":
+            self.add_prts_category_edges(table, row_key, row, row_node)
+        elif table == "PrtsFirstLv":
+            self.add_prts_first_level_edges(table, row_key, row, row_node)
+        elif table in {"PrtsAllItem", "PrtsRecord", "PrtsDocument", "PrtsMultimedia"}:
+            self.add_prts_entry_edges(table, row_key, row, row_node)
+        elif table == "ReadingPopUpIconTable":
+            self.add_reading_popup_icon_edges(table, row_key, row, row_node)
+        elif table == "ReadingPopUpTable":
+            self.add_reading_popup_edges(table, row_key, row, row_node)
+        elif table == "PrtsReading":
+            self.add_prts_reading_edges(table, row_key, row, row_node)
+        elif table == "PrtsNote":
+            self.add_prts_note_edges(table, row_key, row, row_node)
+        elif table == "PrtsInvestigate":
+            self.add_prts_investigation_edges(table, row_key, row, row_node)
+        elif table == "PrtsInvestigateCategory":
+            self.add_prts_investigation_category_edges(table, row_key, row, row_node)
+
+    def ingest_npc_voice_bark_semantics(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_npc_voice_bark_semantics", path=slash(table_root))
+        for table_name in NPC_VOICE_BARK_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if payload is None:
+                continue
+            table_key = Path(table_name).stem
+            table_node = self.add_node("table", table_key, name=table_key, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/npc_voice_bark")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if not isinstance(payload, dict):
+                continue
+            for row_key, row in payload.items():
+                row_node = self.add_node(
+                    "table_row",
+                    f"{table_key}:{row_key}",
+                    name=str(row_key),
+                    source=table_key,
+                    data=compact_payload(row, depth=2),
+                )
+                self.add_edge(table_node, row_node, "has_row", source="structured/npc_voice_bark")
+                self.add_npc_voice_bark_row_edges(table_key, row_key, row, row_node)
+
+    def add_npc_node(self, npc_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        npc_key = safe_key(npc_id)
+        if not npc_key:
+            return ""
+        npc_name = table_display_text(name) or npc_key
+        node = self.add_node("npc", npc_key, name=npc_name, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=npc_name, source=source, data=data)
+        self.add_alias(npc_key, node, kind="npc_id", source=source)
+        if npc_name != npc_key:
+            self.add_alias(npc_name, node, kind="npc_name", source=source)
+        return node
+
+    def add_npc_group_node(self, group_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        group_key = safe_key(group_id)
+        if not group_key:
+            return ""
+        group_name = table_display_text(name) or group_key
+        node = self.add_node("npc_group", group_key, name=group_name, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=group_name, source=source, data=data)
+        self.add_alias(group_key, node, kind="npc_group_id", source=source)
+        if group_name != group_key:
+            self.add_alias(group_name, node, kind="npc_group_name", source=source)
+        return node
+
+    def add_npc_template_node(self, template_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        template_key = safe_key(template_id)
+        if not template_key:
+            return ""
+        template_name = table_display_text(name) or template_key
+        node = self.add_node("npc_template", template_key, name=template_name, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=template_name, source=source, data=data)
+        self.add_alias(template_key, node, kind="npc_template_id", source=source)
+        if template_name != template_key:
+            self.add_alias(template_name, node, kind="npc_template_name", source=source)
+        return node
+
+    def add_npc_voice_profile_node(self, profile_id: Any, *, source: str = "", data: Any = None) -> str:
+        profile_key = safe_key(profile_id)
+        if not profile_key:
+            return ""
+        node = self.add_node("npc_voice_profile", profile_key, name=profile_key, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=profile_key, source=source, data=data)
+        self.add_alias(profile_key, node, kind="npc_voice_profile_id", source=source)
+        return node
+
+    def add_environmental_npc_node(self, npc_id: Any, *, source: str = "", data: Any = None) -> str:
+        npc_key = safe_key(npc_id)
+        if not npc_key:
+            return ""
+        node = self.add_node("environmental_npc", npc_key, name=npc_key, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=npc_key, source=source, data=data)
+        self.add_alias(npc_key, node, kind="environmental_npc_id", source=source)
+        return node
+
+    def add_npc_camp_tag_node(self, tag_id: Any, *, source: str = "", data: Any = None) -> str:
+        tag_key = safe_key(tag_id)
+        if not tag_key:
+            return ""
+        node = self.add_node("npc_camp_tag", tag_key, name=tag_key, source=source, data=data)
+        self.add_alias(tag_key, node, kind="npc_camp_tag_id", source=source)
+        return node
+
+    def add_npc_career_tag_node(self, tag_id: Any, *, source: str = "", data: Any = None) -> str:
+        tag_key = safe_key(tag_id)
+        if not tag_key:
+            return ""
+        node = self.add_node("npc_career_tag", tag_key, name=tag_key, source=source, data=data)
+        self.add_alias(tag_key, node, kind="npc_career_tag_id", source=source)
+        return node
+
+    def add_audio_dialog_channel_node(self, channel_id: Any, *, source: str = "", data: Any = None) -> str:
+        channel_key = safe_key(channel_id)
+        if not channel_key:
+            return ""
+        node = self.add_node("audio_dialog_channel", channel_key, name=channel_key, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=channel_key, source=source, data=data)
+        self.add_alias(channel_key, node, kind="audio_dialog_channel_id", source=source)
+        return node
+
+    def add_wwise_event_node(self, event_id: Any, *, source: str = "") -> str:
+        event_key = safe_key(event_id)
+        if not event_key:
+            return ""
+        node = self.add_node("wwise_event", event_key, name=event_key, source=source)
+        self.add_alias(event_key, node, kind="wwise_event_id", source=source)
+        return node
+
+    def audio_dialog_rows(self) -> dict[str, Any]:
+        if self.audio_dialog_row_cache is None:
+            path = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table" / "AudioDialog.json"
+            payload = read_json(path, {})
+            self.audio_dialog_row_cache = payload if isinstance(payload, dict) else {}
+        return self.audio_dialog_row_cache
+
+    def add_responsive_response_audio_edges(self, response_node: str, response_id: Any, *, source: str, evidence: str) -> None:
+        response_key = safe_key(response_id)
+        if not response_key:
+            return
+        response_evidence = response_key
+        line_node = self.node_id("line", response_key)
+        if self.node_exists("line", response_key):
+            self.add_edge(response_node, line_node, "responsive_response_line_node", source=source, evidence=response_evidence)
+        row = self.audio_dialog_rows().get(response_key)
+        if not isinstance(row, dict):
+            return
+        row_node = self.node_id("table_row", f"AudioDialog:{response_key}")
+        if self.node_exists("table_row", f"AudioDialog:{response_key}"):
+            self.add_edge(response_node, row_node, "responsive_response_audio_dialog_row", source=source, evidence=response_evidence)
+        path = safe_key(row.get("path"))
+        audio_key = Path(path).stem if path else response_key
+        audio_node = self.add_node(
+            "audio",
+            audio_key,
+            name=audio_key,
+            source="AudioDialog",
+            path=path,
+            data={"id": response_key, "speaker": row.get("speakerChannel"), "duration": row.get("wavDuration"), "voType": row.get("voType"), "codec": row.get("codec")},
+        )
+        self.add_edge(response_node, audio_node, "responsive_response_uses_audio", source=source, evidence=response_evidence)
+
+    def add_responsive_dialog_group_node(self, group_id: Any, *, source: str = "", data: Any = None) -> str:
+        group_key = safe_key(group_id)
+        if not group_key:
+            return ""
+        node = self.add_node("responsive_dialog_group", group_key, name=group_key, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=group_key, source=source, data=data)
+        self.add_alias(group_key, node, kind="responsive_dialog_group_id", source=source)
+        return node
+
+    def add_responsive_speaker_node(self, speaker_id: Any, *, source: str = "") -> str:
+        speaker_key = safe_key(speaker_id)
+        if not speaker_key:
+            return ""
+        node = self.add_node("responsive_speaker", speaker_key, name=speaker_key, source=source)
+        self.add_alias(speaker_key, node, kind="responsive_speaker_id", source=source)
+        return node
+
+    def add_responsive_trigger_key_node(self, trigger_key: Any, *, source: str = "") -> str:
+        key = safe_key(trigger_key)
+        if not key:
+            return ""
+        node = self.add_node("responsive_trigger_key", key, name=key, source=source)
+        self.add_alias(key, node, kind="responsive_trigger_key_id", source=source)
+        return node
+
+    def add_responsive_trigger_node(self, trigger_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        trigger_key = safe_key(trigger_id)
+        if not trigger_key:
+            return ""
+        trigger_name = safe_key(name) or trigger_key
+        node = self.add_node("responsive_trigger", trigger_key, name=trigger_name, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=trigger_name, source=source, data=data)
+        self.add_alias(trigger_key, node, kind="responsive_trigger_id", source=source)
+        if trigger_name != trigger_key:
+            self.add_alias(trigger_name, node, kind="responsive_trigger_key", source=source)
+        return node
+
+    def add_responsive_trigger_type_node(self, trigger_type_id: Any, *, source: str = "", data: Any = None) -> str:
+        type_key = safe_key(trigger_type_id)
+        if not type_key:
+            return ""
+        node = self.add_node("responsive_trigger_type", type_key, name=type_key, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=type_key, source=source, data=data)
+        self.add_alias(type_key, node, kind="responsive_trigger_type_id", source=source)
+        return node
+
+    def add_responsive_event_template_node(self, template_id: Any, *, source: str = "") -> str:
+        template_key = safe_key(template_id)
+        if not template_key:
+            return ""
+        node = self.add_node("responsive_event_template", template_key, name=template_key, source=source)
+        self.add_alias(template_key, node, kind="responsive_event_template_id", source=source)
+        return node
+
+    def add_responsive_response_node(self, response_id: Any, *, source: str = "") -> str:
+        response_key = safe_key(response_id)
+        if not response_key:
+            return ""
+        node = self.add_node("responsive_response", response_key, name=response_key, source=source)
+        self.add_alias(response_key, node, kind="responsive_response_id", source=source)
+        return node
+
+    def add_bark_group_node(self, bark_id: Any, *, source: str = "", data: Any = None) -> str:
+        bark_key = safe_key(bark_id)
+        if not bark_key:
+            return ""
+        node = self.add_node("bark_group", bark_key, name=bark_key, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=bark_key, source=source, data=data)
+        self.add_alias(bark_key, node, kind="bark_group_id", source=source)
+        return node
+
+    def add_bark_variant_node(self, variant_id: Any, *, source: str = "", data: Any = None) -> str:
+        variant_key = safe_key(variant_id)
+        if not variant_key:
+            return ""
+        node = self.add_node("bark_variant", variant_key, name=variant_key, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=variant_key, source=source, data=data)
+        self.add_alias(variant_key, node, kind="bark_variant_id", source=source)
+        return node
+
+    def add_bark_text_node(self, text_id: Any, *, source: str = "", data: Any = None) -> str:
+        text_key = safe_key(text_id)
+        if not text_key:
+            return ""
+        node = self.add_node("bark_text", text_key, name=text_key, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=text_key, source=source, data=data)
+        self.add_alias(text_key, node, kind="bark_text_id", source=source)
+        return node
+
+    def add_bark_table_const_node(self, const_id: Any, *, source: str = "", data: Any = None) -> str:
+        const_key = safe_key(const_id)
+        if not const_key:
+            return ""
+        node = self.add_node("bark_table_const", const_key, name=const_key, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=const_key, source=source, data=data)
+        self.add_alias(const_key, node, kind="bark_table_const_id", source=source)
+        return node
+
+    def add_npc_template_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        template_node = self.add_npc_template_node(
+            row.get("templateId") or row_key,
+            name=row.get("name") or row.get("npcNameId"),
+            source=table,
+            data={"npcNameId": row.get("npcNameId"), "voActor": row.get("voActor"), "faction": row.get("faction"), "title": row.get("title")},
+        )
+        if not template_node:
+            return
+        self.add_edge(row_node, template_node, "defines_npc_template", source=table)
+        for alias, kind in ((row.get("npcNameId"), "npc_name_id"), (row.get("name"), "npc_name_key"), (row.get("voActor"), "voice_actor_id")):
+            self.add_alias(alias, template_node, kind=kind, source=table)
+        channel_node = self.add_audio_dialog_channel_node(row.get("voActor"), source=table) if self.node_exists("audio_dialog_channel", row.get("voActor")) else ""
+        if channel_node:
+            self.add_edge(template_node, channel_node, "npc_template_uses_voice_actor_channel", source=table, evidence="voActor")
+        self.add_i18n_text_edges(template_node, row, source=table)
+
+    def add_npc_group_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        group_node = self.add_npc_group_node(
+            row.get("npcGroupId") or row_key,
+            name=row.get("name"),
+            source=table,
+            data={"dataKey": row.get("dataKey"), "ignoreGroupVisibleRule": row.get("ignoreGroupVisibleRule"), "headIcon": row.get("headIcon"), "headLabelIcon": row.get("headLabelIcon")},
+        )
+        if not group_node:
+            return
+        self.add_edge(row_node, group_node, "defines_npc_group", source=table)
+        self.add_alias(row.get("dataKey"), group_node, kind="npc_group_data_key", source=table)
+        for alias in (row.get("headIcon"), row.get("headLabelIcon")):
+            self.add_alias(alias, group_node, kind="asset_stem", source=table)
+        if self.node_exists("npc_template", row.get("dataKey")):
+            template_node = self.node_id("npc_template", row.get("dataKey"))
+            self.add_edge(group_node, template_node, "npc_group_uses_template", source=table, evidence="dataKey")
+        self.add_i18n_text_edges(group_node, row, source=table)
+
+    def add_npc_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        npc_node = self.add_npc_node(
+            row.get("npcId") or row_key,
+            name=row.get("name"),
+            source=table,
+            data={"dataKey": row.get("dataKey"), "npcGroupId": row.get("npcGroupId"), "dialogSelector": row.get("dialogSelector"), "normalCfg": row.get("normalCfg"), "interactRangeType": row.get("interactRangeType"), "envTalkCount": len(row.get("envTalkIds") or [])},
+        )
+        if not npc_node:
+            return
+        self.add_edge(row_node, npc_node, "defines_npc", source=table)
+        self.add_alias(row.get("dataKey"), npc_node, kind="npc_data_key", source=table)
+        for alias in (row.get("headIcon"), row.get("headLabelIcon")):
+            self.add_alias(alias, npc_node, kind="asset_stem", source=table)
+        group_node = self.add_npc_group_node(row.get("npcGroupId"), source=table)
+        if group_node:
+            self.add_edge(npc_node, group_node, "npc_in_group", source=table, evidence="npcGroupId")
+        if self.node_exists("npc_template", row.get("dataKey")):
+            template_node = self.node_id("npc_template", row.get("dataKey"))
+            self.add_edge(npc_node, template_node, "npc_uses_template", source=table, evidence="dataKey")
+        odds = row.get("envTalkOdd") if isinstance(row.get("envTalkOdd"), list) else []
+        for index, talk_id in enumerate(row.get("envTalkIds") or []):
+            talk_node = self.add_env_talk_node(talk_id, source=table)
+            if talk_node:
+                data = {"odd": odds[index]} if index < len(odds) else None
+                self.add_edge(npc_node, talk_node, "npc_uses_env_talk", source=table, evidence=f"envTalkIds[{index}]", data=data)
+        self.add_i18n_text_edges(npc_node, row, source=table)
+    def add_environmental_npc_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        data_key = row.get("dataKey") or row_key
+        npc_node = self.add_environmental_npc_node(row_key, source=table, data={"dataKey": data_key})
+        if not npc_node:
+            return
+        self.add_edge(row_node, npc_node, "defines_environmental_npc", source=table)
+        self.add_alias(data_key, npc_node, kind="environmental_npc_data_key", source=table)
+        if self.node_exists("npc_template", data_key):
+            self.add_edge(npc_node, self.node_id("npc_template", data_key), "environmental_npc_uses_template", source=table, evidence="dataKey")
+        for group_node in self.alias_node_ids(data_key, kind="npc_group_data_key"):
+            self.add_edge(npc_node, group_node, "environmental_npc_matches_group_data_key", source=table, evidence="dataKey")
+
+    def add_atmosphere_npc_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        camp_node = self.add_npc_camp_tag_node(row_key, source=table, data={"careerCount": len(row.get("itemList") or [])})
+        if not camp_node:
+            return
+        self.add_edge(row_node, camp_node, "defines_npc_camp_tag", source=table)
+        for index, item in enumerate(row.get("itemList") or []):
+            if not isinstance(item, dict):
+                continue
+            item_camp = self.add_npc_camp_tag_node(item.get("npcCampTag") or row_key, source=table)
+            career_node = self.add_npc_career_tag_node(item.get("npcCareerTag"), source=table)
+            if item_camp and item_camp != camp_node:
+                self.add_edge(camp_node, item_camp, "npc_camp_aliases_item_camp", source=table, evidence=f"itemList[{index}]")
+            if career_node:
+                self.add_edge(row_node, career_node, "defines_npc_career_tag", source=table, evidence=f"itemList[{index}]")
+                self.add_edge(camp_node, career_node, "npc_camp_has_career", source=table, evidence=f"itemList[{index}]")
+
+    def add_audio_dialog_channel_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        channel_node = self.add_audio_dialog_channel_node(
+            row_key,
+            source=table,
+            data={"speakerType": row.get("speakerType"), "cdTime": row.get("cdTime"), "attenuationScale": row.get("attenuationScale"), "volOffset": row.get("volOffset"), "narratingWwiseEvent": row.get("narratingWwiseEvent"), "radioWwiseEvent": row.get("radioWwiseEvent")},
+        )
+        if not channel_node:
+            return
+        self.add_edge(row_node, channel_node, "defines_audio_dialog_channel", source=table)
+        for field, edge_kind in (("narratingWwiseEvent", "audio_dialog_channel_uses_narrating_event"), ("radioWwiseEvent", "audio_dialog_channel_uses_radio_event")):
+            event_node = self.add_wwise_event_node(row.get(field), source=table)
+            if event_node:
+                self.add_edge(channel_node, event_node, edge_kind, source=table, evidence=field)
+        if self.node_exists("actor", row_key):
+            self.add_edge(channel_node, self.node_id("actor", row_key), "audio_dialog_channel_matches_actor", source=table, evidence="channelId")
+
+    def add_audio_dialog_channel_mapping_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        alias_node = self.add_audio_dialog_channel_node(row_key, source=table, data={"canonicalChannel": row})
+        target_node = self.add_audio_dialog_channel_node(row, source=table) if safe_key(row) else ""
+        if alias_node:
+            self.add_edge(row_node, alias_node, "defines_audio_dialog_channel_mapping", source=table)
+        if alias_node and target_node:
+            self.add_edge(alias_node, target_node, "audio_dialog_channel_aliases", source=table, evidence="rowValue")
+            self.add_alias(row_key, target_node, kind="audio_dialog_channel_alias", source=table)
+
+    def add_npc_voice_profile_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        profile_node = self.add_npc_voice_profile_node(
+            row.get("npcId") or row_key,
+            source=table,
+            data={"templateId": row.get("templateId"), "wwiseId": row.get("wwiseId"), "voActor": row.get("voActor")},
+        )
+        if not profile_node:
+            return
+        self.add_edge(row_node, profile_node, "defines_npc_voice_profile", source=table)
+        template_id = row.get("templateId")
+        if self.node_exists("npc_template", template_id):
+            self.add_edge(profile_node, self.node_id("npc_template", template_id), "npc_info_uses_template", source=table, evidence="templateId")
+        for field, edge_kind in (("wwiseId", "npc_info_uses_wwise_channel"), ("voActor", "npc_info_uses_vo_actor_channel")):
+            channel_id = row.get(field)
+            if self.node_exists("audio_dialog_channel", channel_id):
+                self.add_edge(profile_node, self.node_id("audio_dialog_channel", channel_id), edge_kind, source=table, evidence=field)
+        for field, edge_kind in (("npcId", "npc_info_matches_actor"), ("wwiseId", "npc_info_uses_wwise_actor"), ("voActor", "npc_info_uses_vo_actor")):
+            actor_id = row.get(field)
+            if self.node_exists("actor", actor_id):
+                self.add_edge(profile_node, self.node_id("actor", actor_id), edge_kind, source=table, evidence=field)
+    def add_responsive_trigger_type_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        group_node = self.add_responsive_dialog_group_node(row_key, source=table, data={"triggerTypeCount": len(row.get("triggerTypes") or {})})
+        if group_node:
+            self.add_edge(row_node, group_node, "defines_responsive_trigger_group", source=table)
+        trigger_types = row.get("triggerTypes") if isinstance(row.get("triggerTypes"), dict) else {}
+        for trigger_type_id, trigger_type in trigger_types.items():
+            if not isinstance(trigger_type, dict):
+                continue
+            type_node = self.add_responsive_trigger_type_node(trigger_type_id, source=table, data=compact_payload(trigger_type, depth=2))
+            if not type_node:
+                continue
+            self.add_edge(row_node, type_node, "defines_responsive_trigger_type", source=table, evidence=f"triggerTypes[{trigger_type_id}]")
+            if group_node:
+                self.add_edge(group_node, type_node, "responsive_group_defines_trigger_type", source=table, evidence=trigger_type_id)
+            event_node = self.add_responsive_event_template_node(trigger_type.get("eventTemplate"), source=table)
+            if event_node:
+                self.add_edge(type_node, event_node, "responsive_trigger_type_uses_event_template", source=table, evidence="eventTemplate")
+            base_type = safe_key(trigger_type.get("baseTriggerType"))
+            if base_type and base_type != "-1":
+                base_node = self.add_responsive_trigger_type_node(base_type, source=table)
+                if base_node:
+                    self.add_edge(type_node, base_node, "responsive_trigger_type_extends", source=table, evidence="baseTriggerType")
+
+    def add_bark_text_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        text_node = self.add_bark_text_node(row_key, source=table, data={"barkText": table_text(row.get("barkText"))})
+        if not text_node:
+            return
+        self.add_edge(row_node, text_node, "defines_bark_text", source=table)
+        if self.node_exists("line", row_key):
+            self.add_edge(text_node, self.node_id("line", row_key), "bark_text_line_node", source=table, evidence=row_key)
+        self.add_i18n_text_edges(text_node, row.get("barkText"), source=table)
+        for text_id in self.iter_i18n_text_ids(row.get("barkText")):
+            i18n_node = self.add_i18n_text_node(text_id, source=table)
+            if i18n_node:
+                self.add_edge(text_node, i18n_node, "bark_text_uses_i18n_text", source=table, evidence=text_id)
+
+    def add_responsive_dialog_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        speakers = row.get("speakers") if isinstance(row.get("speakers"), dict) else {}
+        group_node = self.add_responsive_dialog_group_node(row_key, source=table, data={"speakerCount": len(speakers)})
+        if not group_node:
+            return
+        self.add_edge(row_node, group_node, "defines_responsive_dialog_group", source=table)
+        for speaker_id, speaker in speakers.items():
+            if not isinstance(speaker, dict):
+                continue
+            speaker_node = self.add_responsive_speaker_node(speaker_id, source=table)
+            if not speaker_node:
+                continue
+            self.add_edge(group_node, speaker_node, "responsive_group_has_speaker", source=table, evidence=speaker_id)
+            if self.node_exists("character", speaker_id):
+                self.add_edge(speaker_node, self.node_id("character", speaker_id), "responsive_speaker_is_character", source=table, evidence="speakerId")
+            if self.node_exists("actor", speaker_id):
+                self.add_edge(speaker_node, self.node_id("actor", speaker_id), "responsive_speaker_is_actor", source=table, evidence="speakerId")
+            triggers = speaker.get("triggers") if isinstance(speaker.get("triggers"), dict) else {}
+            for trigger_key, trigger in triggers.items():
+                if not isinstance(trigger, dict):
+                    continue
+                key_node = self.add_responsive_trigger_key_node(trigger_key, source=table)
+                trigger_node = self.add_responsive_trigger_node(
+                    f"{row_key}:{speaker_id}:{trigger_key}",
+                    name=trigger_key,
+                    source=table,
+                    data={"groupId": row_key, "speakerId": speaker_id, "triggerKey": trigger_key, "triggerTypeId": trigger.get("triggerTypeId"), "responseCount": len(trigger.get("response") or []), "weightCount": len(trigger.get("weight") or []), "weight": compact_payload(trigger.get("weight") or [], depth=2)},
+                )
+                if not trigger_node:
+                    continue
+                self.add_edge(speaker_node, trigger_node, "responsive_speaker_has_trigger", source=table, evidence=f"{row_key}:{trigger_key}")
+                self.add_edge(group_node, trigger_node, "responsive_group_has_trigger", source=table, evidence=f"{speaker_id}:{trigger_key}")
+                if key_node:
+                    self.add_edge(trigger_node, key_node, "responsive_trigger_uses_key", source=table, evidence="triggerKey")
+                type_node = self.add_responsive_trigger_type_node(trigger.get("triggerTypeId"), source=table)
+                if type_node:
+                    self.add_edge(trigger_node, type_node, "responsive_trigger_has_type", source=table, evidence="triggerTypeId")
+                for index, response_id in enumerate(trigger.get("response") or []):
+                    response_node = self.add_responsive_response_node(response_id, source=table)
+                    if not response_node:
+                        continue
+                    evidence = f"response[{index}]"
+                    self.add_edge(trigger_node, response_node, "responsive_trigger_has_response", source=table, evidence=evidence)
+                    self.add_responsive_response_audio_edges(response_node, response_id, source=table, evidence=evidence)
+                    if self.node_exists("bark_text", response_id):
+                        bark_text_node = self.node_id("bark_text", response_id)
+                        self.add_edge(response_node, bark_text_node, "responsive_response_has_bark_text", source=table, evidence=safe_key(response_id))
+
+    def add_ai_bark_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        variants = row.get("array") if isinstance(row.get("array"), list) else []
+        group_node = self.add_bark_group_node(row_key, source=table, data={"variantCount": len(variants)})
+        if not group_node:
+            return
+        self.add_edge(row_node, group_node, "defines_bark_group", source=table)
+        for index, variant in enumerate(variants):
+            if not isinstance(variant, dict):
+                continue
+            variant_id = f"{row_key}:variant:{index + 1}"
+            variant_node = self.add_bark_variant_node(
+                variant_id,
+                source=table,
+                data={"barkId": variant.get("barkId"), "type": variant.get("type"), "speakerType": variant.get("speakerType"), "voType": variant.get("voType"), "delay": variant.get("delay"), "isEnabled": variant.get("isEnabled"), "isShuffle": variant.get("isShuffle"), "triggerOdd": variant.get("triggerOdd"), "barkOdd": variant.get("barkOdd")},
+            )
+            if not variant_node:
+                continue
+            self.add_edge(group_node, variant_node, "bark_group_has_variant", source=table, evidence=f"array[{index}]")
+            self.add_alias(variant.get("barkId"), variant_node, kind="bark_id", source=table)
+            for trigger_index, trigger_key in enumerate(variant.get("triggerKey") or []):
+                key_node = self.add_responsive_trigger_key_node(trigger_key, source=table)
+                if key_node:
+                    self.add_edge(variant_node, key_node, "bark_variant_uses_trigger_key", source=table, evidence=f"triggerKey[{trigger_index}]")
+
+    def add_bark_table_const_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        const_node = self.add_bark_table_const_node(row_key, source=table, data={"value": row})
+        if const_node:
+            self.add_edge(row_node, const_node, "defines_bark_table_const", source=table)
+
+    def add_npc_voice_bark_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        if table == "AudioDialogChannel" and isinstance(row, dict):
+            self.add_audio_dialog_channel_edges(table, row_key, row, row_node)
+        elif table == "AudioDialogChannelMappings":
+            self.add_audio_dialog_channel_mapping_edges(table, row_key, row, row_node)
+        elif table == "NpcTemplateGroupTable" and isinstance(row, dict):
+            self.add_npc_template_edges(table, row_key, row, row_node)
+        elif table == "NpcGroupTable" and isinstance(row, dict):
+            self.add_npc_group_edges(table, row_key, row, row_node)
+        elif table == "NpcTable" and isinstance(row, dict):
+            self.add_npc_edges(table, row_key, row, row_node)
+        elif table == "GameplayAndEnvironmentalNpc" and isinstance(row, dict):
+            self.add_environmental_npc_edges(table, row_key, row, row_node)
+        elif table == "AtmosphereNpcTable" and isinstance(row, dict):
+            self.add_atmosphere_npc_edges(table, row_key, row, row_node)
+        elif table == "NpcInfoTable" and isinstance(row, dict):
+            self.add_npc_voice_profile_edges(table, row_key, row, row_node)
+        elif table == "ResponsiveTriggers" and isinstance(row, dict):
+            self.add_responsive_trigger_type_edges(table, row_key, row, row_node)
+        elif table == "AIBarkText" and isinstance(row, dict):
+            self.add_bark_text_edges(table, row_key, row, row_node)
+        elif table == "ResponsiveDialog" and isinstance(row, dict):
+            self.add_responsive_dialog_edges(table, row_key, row, row_node)
+        elif table == "AIBark" and isinstance(row, dict):
+            self.add_ai_bark_edges(table, row_key, row, row_node)
+        elif table == "AIBarkTableConst":
+            self.add_bark_table_const_edges(table, row_key, row, row_node)
+
+    def add_semantic_node(
+        self,
+        kind: str,
+        key: Any,
+        *,
+        name: Any = None,
+        source: str = "",
+        data: Any = None,
+        alias_kind: str | None = None,
+    ) -> str:
+        node_key = safe_key(key)
+        if not node_key:
+            return ""
+        node_name = table_display_text(name) or node_key
+        node = self.add_node(kind, node_key, name=node_name, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=node_name, source=source, data=data)
+        self.add_alias(node_key, node, kind=alias_kind or f"{kind}_id", source=source)
+        if node_name != node_key:
+            self.add_alias(node_name, node, kind=f"{kind}_name", source=source)
+        return node
+
+    def ingest_narrative_audio_semantics(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_narrative_audio_semantics", path=slash(table_root))
+        for table_name in NARRATIVE_AUDIO_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if payload is None:
+                continue
+            table_key = Path(table_name).stem
+            table_node = self.add_node("table", table_key, name=table_key, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/narrative_audio")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if not isinstance(payload, dict):
+                continue
+            for row_key, row in payload.items():
+                row_node = self.add_node(
+                    "table_row",
+                    f"{table_key}:{row_key}",
+                    name=str(row_key),
+                    source=table_key,
+                    data=compact_payload(row, depth=2),
+                )
+                self.add_edge(table_node, row_node, "has_row", source="structured/narrative_audio")
+                self.add_narrative_audio_row_edges(table_key, row_key, row, row_node)
+
+    def add_story_target_edge(self, owner_node: str, story_id: Any, *, edge_kind: str, source: str, evidence: str) -> None:
+        story_key = safe_key(story_id)
+        if story_key and self.node_exists("story", story_key):
+            self.add_edge(owner_node, self.node_id("story", story_key), edge_kind, source=source, evidence=evidence)
+
+    def add_line_target_edge(self, owner_node: str, line_id: Any, *, edge_kind: str, source: str, evidence: str) -> None:
+        line_key = safe_key(line_id)
+        if line_key and self.node_exists("line", line_key):
+            self.add_edge(owner_node, self.node_id("line", line_key), edge_kind, source=source, evidence=evidence)
+
+    def add_story_edges_for_line_target(self, owner_node: str, line_id: Any, *, edge_kind: str, source: str, evidence: str) -> None:
+        line_key = safe_key(line_id)
+        if not line_key:
+            return
+        line_node = self.node_id("line", line_key)
+        rows = self.db.execute(
+            """
+            SELECT edges.src
+            FROM edges
+            JOIN nodes ON nodes.id = edges.src
+            WHERE edges.dst = ?
+              AND edges.kind = 'has_line'
+              AND edges.source = 'webui/story'
+              AND nodes.kind = 'story'
+              AND nodes.source = 'webui/story'
+            ORDER BY edges.src
+            """,
+            (line_node,),
+        ).fetchall()
+        for (story_node,) in rows:
+            self.add_edge(owner_node, story_node, edge_kind, source=source, evidence=evidence)
+
+    def add_audio_target_edge(self, owner_node: str, audio_id: Any, *, edge_kind: str, source: str, evidence: str) -> None:
+        audio_key = safe_key(audio_id)
+        if not audio_key or audio_key in {"0", "0.0"}:
+            return
+        audio_node = self.add_node("audio", audio_key, name=audio_key, source=source)
+        self.add_edge(owner_node, audio_node, edge_kind, source=source, evidence=evidence)
+
+    def add_audio_dialog_reference_edges(
+        self,
+        owner_node: str,
+        audio_dialog_id: Any,
+        *,
+        row_edge: str,
+        audio_edge: str,
+        source: str,
+        evidence: str,
+        line_edge: str = "",
+    ) -> None:
+        audio_dialog_key = safe_key(audio_dialog_id)
+        if not audio_dialog_key:
+            return
+        row_key = f"AudioDialog:{audio_dialog_key}"
+        if self.node_exists("table_row", row_key):
+            self.add_edge(owner_node, self.node_id("table_row", row_key), row_edge, source=source, evidence=evidence)
+        audio_row = self.audio_dialog_rows().get(audio_dialog_key)
+        if isinstance(audio_row, dict):
+            path = safe_key(audio_row.get("path"))
+            audio_key = Path(path).stem if path else audio_dialog_key
+            audio_node = self.add_node("audio", audio_key, name=audio_key, source="AudioDialog", path=path)
+            self.add_edge(owner_node, audio_node, audio_edge, source=source, evidence=evidence)
+        if line_edge:
+            self.add_line_target_edge(owner_node, audio_dialog_key, edge_kind=line_edge, source=source, evidence=evidence)
+
+    def ingest_audio_config_semantics(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_audio_config_semantics", path=slash(table_root))
+        for table_name in AUDIO_CONFIG_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if payload is None:
+                continue
+            table_key = Path(table_name).stem
+            table_node = self.add_node("table", table_key, name=table_key, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/audio_config")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if not isinstance(payload, dict):
+                continue
+            for row_key, row in payload.items():
+                row_node = self.add_node(
+                    "table_row",
+                    f"{table_key}:{row_key}",
+                    name=str(row_key),
+                    source=table_key,
+                    data=compact_payload(row, depth=2),
+                )
+                self.add_edge(table_node, row_node, "has_row", source="structured/audio_config")
+                self.add_audio_config_row_edges(table_key, row_key, row, row_node)
+        self.add_audio_sequence_response_links()
+
+    def add_audio_sequence_response_links(self) -> None:
+        rows = self.db.execute(
+            "SELECT id FROM nodes WHERE kind = 'audio_sequence_dialog' ORDER BY id"
+        ).fetchall()
+        for (sequence_node,) in rows:
+            sequence_key = sequence_node.rsplit(":", 1)[-1]
+            if self.node_exists("responsive_response", sequence_key):
+                self.add_edge(
+                    sequence_node,
+                    self.node_id("responsive_response", sequence_key),
+                    "audio_sequence_dialog_targets_response",
+                    source="AudioSequenceDialog",
+                    evidence="sequenceKey",
+                )
+
+    def add_text_voice_id_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        voice_id = safe_key(row)
+        mapping_node = self.add_semantic_node("text_voice_id", row_key, source=table, data={"voiceId": voice_id})
+        if not mapping_node:
+            return
+        self.add_edge(row_node, mapping_node, "defines_text_voice_id", source=table)
+        self.add_line_target_edge(mapping_node, row_key, edge_kind="text_voice_id_line_node", source=table, evidence="rowKey")
+        if voice_id:
+            self.add_audio_target_edge(mapping_node, voice_id, edge_kind="text_voice_id_uses_audio", source=table, evidence="rowValue")
+
+    def add_audio_vo_tone_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        tones = row.get("toneList") if isinstance(row.get("toneList"), list) else []
+        tone_node = self.add_semantic_node("audio_vo_tone", row_key, source=table, data={"toneCount": len(tones)})
+        if not tone_node:
+            return
+        self.add_edge(row_node, tone_node, "defines_audio_vo_tone", source=table)
+        self.add_audio_dialog_reference_edges(
+            tone_node,
+            row_key,
+            row_edge="audio_vo_tone_for_dialog_row",
+            audio_edge="audio_vo_tone_for_audio",
+            source=table,
+            evidence="rowKey",
+        )
+        for index, tone_id in enumerate(tones):
+            self.add_audio_dialog_reference_edges(
+                tone_node,
+                tone_id,
+                row_edge="audio_vo_tone_has_variant_dialog_row",
+                audio_edge="audio_vo_tone_has_variant_audio",
+                source=table,
+                evidence=f"toneList[{index}]",
+            )
+
+    def add_audio_speaker_type_weight_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        weight_node = self.add_semantic_node("audio_speaker_type_weight", row_key, source=table, data={"weight": row})
+        if weight_node:
+            self.add_edge(row_node, weight_node, "defines_audio_speaker_type_weight", source=table)
+
+    def add_audio_config_event_edges(self, owner_node: str, payload: Any, *, edge_kind: str, source: str, evidence_prefix: str = "") -> None:
+        if isinstance(payload, dict):
+            for field, value in payload.items():
+                field_key = safe_key(field)
+                if not (field_key.startswith("audio") or field_key.endswith("Event") or "Music" in field_key):
+                    continue
+                self.add_audio_config_event_edges(owner_node, value, edge_kind=edge_kind, source=source, evidence_prefix=field_key)
+        elif isinstance(payload, list):
+            for index, item in enumerate(payload):
+                evidence = f"{evidence_prefix}[{index}]" if evidence_prefix else f"[{index}]"
+                self.add_audio_config_event_edges(owner_node, item, edge_kind=edge_kind, source=source, evidence_prefix=evidence)
+        else:
+            event_key = safe_key(payload)
+            if not event_key or event_key in {"0", "0.0"}:
+                return
+            event_node = self.add_wwise_event_node(event_key, source=source)
+            if event_node:
+                self.add_edge(owner_node, event_node, edge_kind, source=source, evidence=evidence_prefix)
+
+    def add_audio_config_owner_edges(self, config_node: str, row_key: str, *, source: str, owner_edges: tuple[tuple[str, str], ...]) -> None:
+        for kind, edge_kind in owner_edges:
+            if self.node_exists(kind, row_key):
+                self.add_edge(config_node, self.node_id(kind, row_key), edge_kind, source=source, evidence="rowKey")
+
+    def add_audio_sfx_config_edges(
+        self,
+        table: str,
+        row_key: str,
+        row: dict[str, Any],
+        row_node: str,
+        *,
+        kind: str,
+        define_edge: str,
+        event_edge: str,
+        owner_edges: tuple[tuple[str, str], ...] = (),
+    ) -> None:
+        config_node = self.add_semantic_node(kind, row_key, source=table, data=compact_payload(row, depth=2))
+        if not config_node:
+            return
+        self.add_edge(row_node, config_node, define_edge, source=table)
+        self.add_audio_config_owner_edges(config_node, row_key, source=table, owner_edges=owner_edges)
+        self.add_audio_config_event_edges(config_node, row, edge_kind=event_edge, source=table)
+
+    def add_audio_factory_announcement_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        announce_node = self.add_semantic_node("audio_factory_announcement", row_key, source=table, data=compact_payload(row, depth=2))
+        if not announce_node:
+            return
+        self.add_edge(row_node, announce_node, "defines_audio_factory_announcement", source=table)
+        event_node = self.add_wwise_event_node(row_key, source=table)
+        if event_node:
+            self.add_edge(announce_node, event_node, "audio_factory_announcement_key_event", source=table, evidence="rowKey")
+        self.add_audio_target_edge(announce_node, row.get("voiceId"), edge_kind="audio_factory_announcement_uses_voice", source=table, evidence="voiceId")
+
+    def add_audio_sequence_dialog_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        sequences = row.get("sequence") if isinstance(row.get("sequence"), dict) else {}
+        group_node = self.add_semantic_node("audio_sequence_dialog_set", row_key, source=table, data={"sequenceCount": len(sequences)})
+        if group_node:
+            self.add_edge(row_node, group_node, "defines_audio_sequence_dialog_set", source=table)
+        for sequence_key, sequence in sequences.items():
+            if not isinstance(sequence, dict):
+                continue
+            sequence_node = self.add_semantic_node(
+                "audio_sequence_dialog",
+                f"{row_key}:{sequence_key}",
+                name=sequence_key,
+                source=table,
+                data={"setId": row_key, "sequenceId": sequence_key, "cdTime": sequence.get("cdTime"), "speakerCount": len(sequence.get("involvedSpeakers") or []), "audioCount": len(sequence.get("sequence") or [])},
+            )
+            if not sequence_node:
+                continue
+            self.add_edge(row_node, sequence_node, "defines_audio_sequence_dialog", source=table, evidence=sequence_key)
+            if group_node:
+                self.add_edge(group_node, sequence_node, "audio_sequence_set_has_dialog", source=table, evidence=sequence_key)
+
+            for index, speaker in enumerate(sequence.get("involvedSpeakers") or []):
+                self.add_actor_or_character_edges(sequence_node, speaker, actor_edge="audio_sequence_dialog_speaker_actor", character_edge="audio_sequence_dialog_speaker_character", source=table, evidence=f"involvedSpeakers[{index}]")
+            for index, audio_id in enumerate(sequence.get("sequence") or []):
+                self.add_audio_dialog_reference_edges(
+                    sequence_node,
+                    audio_id,
+                    row_edge="audio_sequence_dialog_uses_dialog_row",
+                    audio_edge="audio_sequence_dialog_uses_audio",
+                    line_edge="audio_sequence_dialog_line_node",
+                    source=table,
+                    evidence=f"sequence[{index}]",
+                )
+
+    def add_audio_config_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        if table == "TextVoIdTable":
+            self.add_text_voice_id_edges(table, row_key, row, row_node)
+        elif table == "AudioVoTone" and isinstance(row, dict):
+            self.add_audio_vo_tone_edges(table, row_key, row, row_node)
+        elif table == "AudioSpeakerTypeWeights":
+            self.add_audio_speaker_type_weight_edges(table, row_key, row, row_node)
+        elif table == "AudioBattleBuildings" and isinstance(row, dict):
+            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_battle_building", define_edge="defines_audio_battle_building", event_edge="audio_battle_building_uses_event", owner_edges=(("factory_building", "audio_battle_building_for_factory_building"), ("factory_machine", "audio_battle_building_for_factory_machine")))
+        elif table == "AudioCollection" and isinstance(row, dict):
+            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_collection", define_edge="defines_audio_collection", event_edge="audio_collection_uses_event")
+        elif table == "AudioDrop" and isinstance(row, dict):
+            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_drop", define_edge="defines_audio_drop", event_edge="audio_drop_uses_event")
+        elif table == "AudioFactory" and isinstance(row, dict):
+            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_factory", define_edge="defines_audio_factory", event_edge="audio_factory_uses_event", owner_edges=(("factory_building", "audio_factory_for_factory_building"), ("factory_machine", "audio_factory_for_factory_machine")))
+        elif table == "AudioFactoryAnnouncement" and isinstance(row, dict):
+            self.add_audio_factory_announcement_edges(table, row_key, row, row_node)
+        elif table == "AudioItemDragAndDrop" and isinstance(row, dict):
+            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_item_drag_drop", define_edge="defines_audio_item_drag_drop", event_edge="audio_item_drag_drop_uses_event", owner_edges=(("item", "audio_item_drag_drop_for_item"), ("factory_item", "audio_item_drag_drop_for_factory_item"), ("factory_machine", "audio_item_drag_drop_for_factory_machine")))
+        elif table == "AudioItemTypeDragAndDrop" and isinstance(row, dict):
+            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_item_type_drag_drop", define_edge="defines_audio_item_type_drag_drop", event_edge="audio_item_type_drag_drop_uses_event", owner_edges=(("item_type", "audio_item_type_drag_drop_for_item_type"),))
+        elif table == "AudioLevel" and isinstance(row, dict):
+            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_level", define_edge="defines_audio_level", event_edge="audio_level_uses_event", owner_edges=(("level", "audio_level_for_level"),))
+
+
+    def ingest_dialog_support_semantics(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_dialog_support_semantics", path=slash(table_root))
+        for table_name in DIALOG_SUPPORT_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if payload is None:
+                continue
+            table_key = Path(table_name).stem
+            table_node = self.add_node("table", table_key, name=table_key, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/dialog_support")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if not isinstance(payload, dict):
+                continue
+            for row_key, row in payload.items():
+                row_node = self.add_node(
+                    "table_row",
+                    f"{table_key}:{row_key}",
+                    name=str(row_key),
+                    source=table_key,
+                    data=compact_payload(row, depth=2),
+                )
+                self.add_edge(table_node, row_node, "has_row", source="structured/dialog_support")
+                self.add_dialog_support_row_edges(table_key, row_key, row, row_node)
+
+    def add_dialog_text_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        text_node = self.add_semantic_node(
+            "dialog_text",
+            row_key,
+            source=table,
+            data={"actorNameId": row.get("actorNameId"), "audioOverride": row.get("audioOverride"), "audioEffect": row.get("audioEffect"), "emotionType": row.get("emotionType"), "hideHint": row.get("hideHint")},
+        )
+        if not text_node:
+            return
+        self.add_edge(row_node, text_node, "defines_dialog_text", source=table)
+        self.add_line_target_edge(text_node, row_key, edge_kind="dialog_text_line_node", source=table, evidence="rowKey")
+        self.add_story_edges_for_line_target(text_node, row_key, edge_kind="dialog_text_story_node", source=table, evidence="has_line")
+        self.add_audio_target_edge(text_node, row.get("audioOverride"), edge_kind="dialog_text_uses_audio", source=table, evidence="audioOverride")
+        self.add_actor_or_character_edges(text_node, row.get("actorNameId"), actor_edge="dialog_text_actor", character_edge="dialog_text_character", source=table, evidence="actorNameId")
+        self.add_i18n_text_edges(text_node, row, source=table)
+
+    def add_dialog_option_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        option_node = self.add_semantic_node("dialog_option", row_key, source=table, data={"iconType": row.get("iconType")})
+        if not option_node:
+            return
+        self.add_edge(row_node, option_node, "defines_dialog_option", source=table)
+        if self.node_exists("option", row_key):
+            self.add_edge(option_node, self.node_id("option", row_key), "dialog_option_generated_option", source=table, evidence="rowKey")
+        self.add_i18n_text_edges(option_node, row, source=table)
+
+    def add_dialog_summary_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        summary_node = self.add_semantic_node("dialog_summary", row_key, source=table, data=compact_payload(row, depth=2))
+        if not summary_node:
+            return
+        self.add_edge(row_node, summary_node, "defines_dialog_summary", source=table)
+        self.add_i18n_text_edges(summary_node, row, source=table)
+
+    def add_dialog_summary_map_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        summary_key = safe_key(row)
+        map_node = self.add_semantic_node("dialog_summary_map", row_key, source=table, data={"summaryId": summary_key})
+        if not map_node:
+            return
+        self.add_edge(row_node, map_node, "defines_dialog_summary_map", source=table)
+        self.add_story_target_edge(map_node, row_key, edge_kind="dialog_summary_map_targets_story", source=table, evidence="rowKey")
+        summary_node = self.add_semantic_node("dialog_summary", summary_key, source=table)
+        if summary_node:
+            self.add_edge(map_node, summary_node, "dialog_summary_map_uses_summary", source=table, evidence="rowValue")
+        summary_row_key = f"DialogSummaryTable:{summary_key}"
+        if self.node_exists("table_row", summary_row_key):
+            self.add_edge(map_node, self.node_id("table_row", summary_row_key), "dialog_summary_map_uses_summary_row", source=table, evidence="rowValue")
+
+    def add_domain_depot_deliver_target_dialog_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        target_node = self.add_semantic_node(
+            "domain_depot_deliver_target_dialog",
+            row_key,
+            source=table,
+            data={"npcProxyId": row.get("npcProxyId"), "initialDialogId": row.get("initialDialogId"), "repeatDialogId": row.get("repeatDialogId")},
+        )
+        if not target_node:
+            return
+        self.add_edge(row_node, target_node, "defines_domain_depot_deliver_target_dialog", source=table)
+        self.add_story_target_edge(target_node, row.get("initialDialogId"), edge_kind="domain_depot_initial_dialog", source=table, evidence="initialDialogId")
+        self.add_story_target_edge(target_node, row.get("repeatDialogId"), edge_kind="domain_depot_repeat_dialog", source=table, evidence="repeatDialogId")
+
+    def add_dialog_support_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        if table == "DialogTextTable" and isinstance(row, dict):
+            self.add_dialog_text_edges(table, row_key, row, row_node)
+        elif table == "DialogOptionTable" and isinstance(row, dict):
+            self.add_dialog_option_edges(table, row_key, row, row_node)
+        elif table == "DialogSummaryTable":
+            self.add_dialog_summary_edges(table, row_key, row, row_node)
+        elif table == "DialogSummaryMapTable":
+            self.add_dialog_summary_map_edges(table, row_key, row, row_node)
+        elif table == "DomainDepotDeliverTargetDialogTable" and isinstance(row, dict):
+            self.add_domain_depot_deliver_target_dialog_edges(table, row_key, row, row_node)
+
+    def add_actor_or_character_edges(self, owner_node: str, actor_id: Any, *, actor_edge: str, character_edge: str, source: str, evidence: str) -> None:
+        actor_key = safe_key(actor_id)
+        if not actor_key:
+            return
+        if self.node_exists("actor", actor_key):
+            self.add_edge(owner_node, self.node_id("actor", actor_key), actor_edge, source=source, evidence=evidence)
+        if self.node_exists("character", actor_key):
+            self.add_edge(owner_node, self.node_id("character", actor_key), character_edge, source=source, evidence=evidence)
+
+    def add_sns_chat_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        chat_node = self.add_semantic_node(
+            "sns_chat",
+            row.get("chatId") or row_key,
+            name=row.get("name"),
+            source=table,
+            data={"chatType": row.get("chatType"), "tagType": row.get("tagType"), "owner": row.get("owner"), "memberRawNum": row.get("memberRawNum"), "isSettlementChannel": row.get("isSettlementChannel"), "icon": row.get("icon"), "listIcon": row.get("listIcon")},
+        )
+        if not chat_node:
+            return
+        self.add_edge(row_node, chat_node, "defines_sns_chat", source=table)
+        for alias in (row.get("icon"), row.get("listIcon")):
+            self.add_alias(alias, chat_node, kind="asset_stem", source=table)
+        self.add_actor_or_character_edges(chat_node, row.get("owner"), actor_edge="sns_chat_owner_actor", character_edge="sns_chat_owner_character", source=table, evidence="owner")
+        self.add_i18n_text_edges(chat_node, row, source=table)
+
+    def add_sns_topic_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        topic_node = self.add_semantic_node("sns_topic", row.get("topicId") or row_key, name=row.get("topicName"), source=table, data={"sortId": row.get("sortId"), "dialogCount": len(row.get("includeDialogIds") or [])})
+        if not topic_node:
+            return
+        self.add_edge(row_node, topic_node, "defines_sns_topic", source=table)
+        for index, dialog_id in enumerate(row.get("includeDialogIds") or []):
+            dialog_node = self.add_semantic_node("sns_dialog", dialog_id, source=table)
+            if dialog_node:
+                self.add_edge(topic_node, dialog_node, "sns_topic_includes_dialog", source=table, evidence=f"includeDialogIds[{index}]")
+                self.add_story_target_edge(dialog_node, dialog_id, edge_kind="sns_dialog_targets_story", source=table, evidence="includeDialogIds")
+        self.add_i18n_text_edges(topic_node, row, source=table)
+
+    def add_sns_option_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        option_node = self.add_semantic_node("sns_option", row.get("optionId") or row_key, name=row.get("optionDesc"), source=table, data={"optionNextContentId": row.get("optionNextContentId"), "optionNPCCount": row.get("optionNPCCount"), "optionResPath": row.get("optionResPath")})
+        if not option_node:
+            return
+        self.add_edge(row_node, option_node, "defines_sns_option", source=table)
+        for index, npc_id in enumerate(row.get("optionNPCIds") or []):
+            self.add_actor_or_character_edges(option_node, npc_id, actor_edge="sns_option_uses_actor", character_edge="sns_option_uses_character", source=table, evidence=f"optionNPCIds[{index}]")
+        self.add_i18n_text_edges(option_node, row, source=table)
+
+    def add_sns_dialog_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        content_map = row.get("dialogContentData") if isinstance(row.get("dialogContentData"), dict) else {}
+        dialog_node = self.add_semantic_node(
+            "sns_dialog",
+            row.get("dialogId") or row_key,
+            source=table,
+            data={"chatId": row.get("chatId"), "topicId": row.get("topicId"), "dialogType": row.get("dialogType"), "noticeType": row.get("noticeType"), "relatedMissionId": row.get("relatedMissionId"), "skipToFirstOption": row.get("skipToFirstOption"), "contentCount": len(content_map)},
+        )
+        if not dialog_node:
+            return
+        dialog_key = safe_key(row.get("dialogId") or row_key)
+        self.add_edge(row_node, dialog_node, "defines_sns_dialog", source=table)
+        self.add_story_target_edge(dialog_node, dialog_key, edge_kind="sns_dialog_targets_story", source=table, evidence="dialogId")
+        chat_node = self.add_semantic_node("sns_chat", row.get("chatId"), source=table)
+        if chat_node:
+            self.add_edge(dialog_node, chat_node, "sns_dialog_uses_chat", source=table, evidence="chatId")
+        topic_node = self.add_semantic_node("sns_topic", row.get("topicId"), source=table)
+        if topic_node:
+            self.add_edge(dialog_node, topic_node, "sns_dialog_has_topic", source=table, evidence="topicId")
+        mission_node = self.add_mission_ref_node(row.get("relatedMissionId"), source=table)
+        if mission_node:
+            self.add_edge(dialog_node, mission_node, "sns_dialog_related_mission", source=table, evidence="relatedMissionId")
+        content_nodes: dict[str, str] = {}
+        for content_key, content in content_map.items():
+            if not isinstance(content, dict):
+                continue
+            content_id = safe_key(content.get("contentId") if content.get("contentId") is not None else content_key)
+            node_key = f"{dialog_key}:content:{content_id}"
+            content_node = self.add_semantic_node(
+                "sns_content",
+                node_key,
+                name=content.get("content"),
+                source=table,
+                data={"dialogId": dialog_key, "contentId": content_id, "contentType": content.get("contentType"), "speaker": content.get("speaker"), "optionType": content.get("optionType"), "isEnd": content.get("isEnd"), "preContentId": content.get("preContentId"), "nextContentId": content.get("nextContentId"), "optionCount": len(content.get("dialogOptionIds") or []), "linkMissionId": content.get("linkMissionId"), "linkRewardId": content.get("linkRewardId")},
+            )
+            if not content_node:
+                continue
+            content_nodes[content_id] = content_node
+            self.add_edge(dialog_node, content_node, "sns_dialog_has_content", source=table, evidence=content_id)
+            self.add_actor_or_character_edges(content_node, content.get("speaker"), actor_edge="sns_content_speaker_actor", character_edge="sns_content_speaker_character", source=table, evidence="speaker")
+            linked_mission = self.add_mission_ref_node(content.get("linkMissionId"), source=table)
+            if linked_mission:
+                self.add_edge(content_node, linked_mission, "sns_content_links_mission", source=table, evidence="linkMissionId")
+            reward_node = self.add_reward_node(content.get("linkRewardId"), source=table)
+            if reward_node:
+                self.add_edge(content_node, reward_node, "sns_content_links_reward", source=table, evidence="linkRewardId")
+            for index, option_id in enumerate(content.get("dialogOptionIds") or []):
+                option_node = self.add_semantic_node("sns_option", option_id, source=table)
+                if option_node:
+                    self.add_edge(content_node, option_node, "sns_content_has_option", source=table, evidence=f"dialogOptionIds[{index}]")
+            self.add_i18n_text_edges(content_node, content, source=table)
+        for content_key, content in content_map.items():
+            if not isinstance(content, dict):
+                continue
+            content_id = safe_key(content.get("contentId") if content.get("contentId") is not None else content_key)
+            content_node = content_nodes.get(content_id)
+            if not content_node:
+                continue
+            for field, edge_kind in (("preContentId", "sns_content_previous"), ("nextContentId", "sns_content_next")):
+                target_id = safe_key(content.get(field))
+                target_node = content_nodes.get(target_id)
+                if target_node:
+                    self.add_edge(content_node, target_node, edge_kind, source=table, evidence=field)
+
+    def add_sns_const_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        const_node = self.add_semantic_node("sns_const", row_key, source=table, data={"value": compact_payload(row, depth=2)})
+        if not const_node:
+            return
+        self.add_edge(row_node, const_node, "defines_sns_const", source=table)
+        values = row if isinstance(row, list) else [row]
+        for index, value in enumerate(values):
+            dialog_key = safe_key(value)
+            if not dialog_key.startswith(("sns_", "test_sns_")):
+                continue
+            dialog_node = self.add_semantic_node("sns_dialog", dialog_key, source=table)
+            if dialog_node:
+                self.add_edge(const_node, dialog_node, "sns_const_refs_dialog", source=table, evidence=f"value[{index}]")
+                self.add_story_target_edge(dialog_node, dialog_key, edge_kind="sns_dialog_targets_story", source=table, evidence=row_key)
+
+    def add_radio_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        lines = row.get("radioSingleDataList") if isinstance(row.get("radioSingleDataList"), list) else []
+        radio_node = self.add_semantic_node("radio", row_key, source=table, data={"radioType": row.get("radioType"), "priority": row.get("priority"), "continueAfterDialog": row.get("continueAfterDialog"), "continueAfterRadio": row.get("continueAfterRadio"), "lineCount": len(lines)})
+        if not radio_node:
+            return
+        self.add_edge(row_node, radio_node, "defines_radio", source=table)
+        self.add_story_target_edge(radio_node, row_key, edge_kind="radio_targets_story", source=table, evidence="rowKey")
+        for index, item in enumerate(lines):
+            if not isinstance(item, dict):
+                continue
+            line_node = self.add_semantic_node("radio_line", item.get("id") or f"{row_key}:line:{index + 1}", name=item.get("radioText"), source=table, data={"radioId": row_key, "index": item.get("index"), "actorNameId": item.get("actorNameId"), "audioOverride": item.get("audioOverride"), "audioEffect": item.get("audioEffect"), "emotionType": item.get("emotionType"), "is3D": item.get("is3D"), "iconSuffix": item.get("iconSuffix")})
+            if not line_node:
+                continue
+            self.add_edge(radio_node, line_node, "radio_has_line", source=table, evidence=f"radioSingleDataList[{index}]")
+            self.add_line_target_edge(line_node, item.get("id"), edge_kind="radio_line_node", source=table, evidence="id")
+            self.add_audio_target_edge(line_node, item.get("audioOverride"), edge_kind="radio_line_uses_audio", source=table, evidence="audioOverride")
+            self.add_actor_or_character_edges(line_node, item.get("actorNameId"), actor_edge="radio_line_actor", character_edge="radio_line_character", source=table, evidence="actorNameId")
+            self.add_i18n_text_edges(line_node, item, source=table)
+
+    def add_remote_common_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        lines = row.get("remoteCommSingleDataList") if isinstance(row.get("remoteCommSingleDataList"), list) else []
+        remote_node = self.add_semantic_node("remote_common", row_key, source=table, data={"autoPlay": row.get("autoPlay"), "startAudioEvent": row.get("startAudioEvent"), "endAudioEvent": row.get("endAudioEvent"), "lineCount": len(lines)})
+        if not remote_node:
+            return
+        self.add_edge(row_node, remote_node, "defines_remote_common", source=table)
+        self.add_story_target_edge(remote_node, row_key, edge_kind="remote_common_targets_story", source=table, evidence="rowKey")
+        for field, edge_kind in (("startAudioEvent", "remote_common_start_event"), ("endAudioEvent", "remote_common_end_event")):
+            event_node = self.add_wwise_event_node(row.get(field), source=table)
+            if event_node:
+                self.add_edge(remote_node, event_node, edge_kind, source=table, evidence=field)
+        for index, item in enumerate(lines):
+            if not isinstance(item, dict):
+                continue
+            line_node = self.add_semantic_node("remote_common_line", item.get("singleId") or f"{row_key}:line:{index + 1}", name=item.get("remoteCommText"), source=table, data={"remoteId": row_key, "index": item.get("index"), "middleId": item.get("middleId"), "voiceId": item.get("voiceId"), "audioId": item.get("audioId"), "musicId": item.get("musicId"), "autoPlayTime": item.get("autoPlayTime"), "isVideoLoop": item.get("isVideoLoop"), "actorCount": len(item.get("actorList") or []), "imageCount": len(item.get("imageList") or [])})
+            if not line_node:
+                continue
+            self.add_edge(remote_node, line_node, "remote_common_has_line", source=table, evidence=f"remoteCommSingleDataList[{index}]")
+            self.add_line_target_edge(line_node, item.get("singleId"), edge_kind="remote_common_line_node", source=table, evidence="singleId")
+            for field, edge_kind in (("voiceId", "remote_common_line_uses_voice"), ("audioId", "remote_common_line_uses_audio"), ("musicId", "remote_common_line_uses_music")):
+                self.add_audio_target_edge(line_node, item.get(field), edge_kind=edge_kind, source=table, evidence=field)
+            self.add_actor_or_character_edges(line_node, item.get("middleId"), actor_edge="remote_common_line_middle_actor", character_edge="remote_common_line_middle_character", source=table, evidence="middleId")
+            if safe_key(item.get("middleId")) and not self.node_exists("actor", item.get("middleId")) and not self.node_exists("character", item.get("middleId")):
+                self.add_alias(item.get("middleId"), line_node, kind="asset_stem", source=table)
+            for actor_index, actor_id in enumerate(item.get("actorList") or []):
+                self.add_actor_or_character_edges(line_node, actor_id, actor_edge="remote_common_line_actor", character_edge="remote_common_line_character", source=table, evidence=f"actorList[{actor_index}]")
+            for image_index, image_id in enumerate(item.get("imageList") or []):
+                self.add_alias(image_id, line_node, kind="asset_stem", source=table)
+            self.add_i18n_text_edges(line_node, item, source=table)
+
+    def iter_audio_cue_expr_strings(self, value: Any) -> Iterable[str]:
+        if isinstance(value, dict):
+            string_value = safe_key(value.get("stringValue"))
+            if string_value:
+                yield string_value
+            for child in value.get("children") or []:
+                yield from self.iter_audio_cue_expr_strings(child)
+        elif isinstance(value, list):
+            for item in value:
+                yield from self.iter_audio_cue_expr_strings(item)
+
+    def add_audio_cue_handler_edges(self, cue_node: str, handler: Any, *, handler_id: str, source: str, evidence: str, level_id: Any = None) -> None:
+        if not isinstance(handler, dict):
+            return
+        handler_node = self.add_semantic_node("audio_cue_handler", handler_id, source=source, data={"levelId": level_id, "evidence": evidence, "conditionExpr": compact_payload(handler.get("conditionExpr"), depth=3), "behaviourExpr": compact_payload(handler.get("behaviourExpr"), depth=3)})
+        if not handler_node:
+            return
+        self.add_edge(cue_node, handler_node, "audio_cue_has_handler", source=source, evidence=evidence)
+        if safe_key(level_id) and self.node_exists("level", level_id):
+            self.add_edge(handler_node, self.node_id("level", level_id), "audio_cue_handler_for_level", source=source, evidence="levelHandlerMap")
+        seen: set[str] = set()
+        for expr in (handler.get("conditionExpr"), handler.get("behaviourExpr")):
+            for string_value in self.iter_audio_cue_expr_strings(expr):
+                if string_value in seen:
+                    continue
+                seen.add(string_value)
+                event_node = self.add_wwise_event_node(string_value, source=source)
+                if event_node:
+                    self.add_edge(handler_node, event_node, "audio_cue_handler_uses_event", source=source, evidence=string_value)
+
+    def add_audio_cue_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        direct_handlers = row.get("directHandlers") if isinstance(row.get("directHandlers"), list) else []
+        level_map = row.get("levelHandlerMap") if isinstance(row.get("levelHandlerMap"), dict) else {}
+        cue_node = self.add_semantic_node("audio_cue", row_key, source=table, data={"directHandlerCount": len(direct_handlers), "levelHandlerLevelCount": len(level_map)})
+        if not cue_node:
+            return
+        self.add_edge(row_node, cue_node, "defines_audio_cue", source=table)
+        for index, handler in enumerate(direct_handlers):
+            self.add_audio_cue_handler_edges(cue_node, handler, handler_id=f"{row_key}:direct:{index + 1}", source=table, evidence=f"directHandlers[{index}]")
+        for level_id, handlers in level_map.items():
+            values = handlers if isinstance(handlers, list) else [handlers]
+            for index, handler in enumerate(values):
+                self.add_audio_cue_handler_edges(cue_node, handler, handler_id=f"{row_key}:level:{level_id}:{index + 1}", source=table, evidence=f"levelHandlerMap[{level_id}][{index}]", level_id=level_id)
+
+    def add_audio_voice_extra_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        voice_node = self.add_semantic_node("audio_voice_extra", row_key, source=table, data={"durationCN": row.get("durationCN"), "durationEN": row.get("durationEN"), "durationJP": row.get("durationJP"), "durationKR": row.get("durationKR"), "devStageCN": row.get("devStageCN"), "devStageEN": row.get("devStageEN"), "devStageJP": row.get("devStageJP"), "devStageKR": row.get("devStageKR")})
+        if not voice_node:
+            return
+        self.add_edge(row_node, voice_node, "defines_audio_voice_extra", source=table)
+        audio_row = self.audio_dialog_rows().get(safe_key(row_key))
+        if isinstance(audio_row, dict):
+            audio_dialog_row = self.node_id("table_row", f"AudioDialog:{row_key}")
+            if self.node_exists("table_row", f"AudioDialog:{row_key}"):
+                self.add_edge(voice_node, audio_dialog_row, "audio_voice_extra_for_dialog_row", source=table, evidence=row_key)
+            path = safe_key(audio_row.get("path"))
+            audio_key = Path(path).stem if path else row_key
+            audio_node = self.add_node("audio", audio_key, name=audio_key, source="AudioDialog", path=path)
+            self.add_edge(voice_node, audio_node, "audio_voice_extra_for_audio", source=table, evidence=row_key)
+        self.add_line_target_edge(voice_node, row_key, edge_kind="audio_voice_extra_line_node", source=table, evidence=row_key)
+
+    def add_emotion_voice_config_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        config_node = self.add_semantic_node("emotion_voice_config", row_key, source=table, data={"emotionType": row.get("emotionType"), "interjection": row.get("interjection"), "interjectionCount": len(row.get("interjectionList") or [])})
+        if not config_node:
+            return
+        self.add_edge(row_node, config_node, "defines_emotion_voice_config", source=table)
+        for index, interjection in enumerate(row.get("interjectionList") or []):
+            interjection_node = self.add_semantic_node("voice_interjection", interjection, source=table)
+            if interjection_node:
+                self.add_edge(config_node, interjection_node, "emotion_voice_uses_interjection", source=table, evidence=f"interjectionList[{index}]")
+
+    def add_voice_id_conflict_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        conflict_node = self.add_semantic_node("voice_id_conflict", row_key, source=table, data={"value": compact_payload(row, depth=2)})
+        if conflict_node:
+            self.add_edge(row_node, conflict_node, "defines_voice_id_conflict", source=table)
+
+    def add_audio_dialog_custom_event_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        event_node = self.add_semantic_node("audio_dialog_custom_event", row.get("dlgId") or row_key, source=table, data={"preloadCount": len(row.get("preloadEvents") or []), "preEnterCount": len(row.get("preEnterEvents") or []), "postEnterCount": len(row.get("postEnterEvents") or []), "preExitCount": len(row.get("preExitEvents") or []), "postExitCount": len(row.get("postExitEvents") or [])})
+        if not event_node:
+            return
+        self.add_edge(row_node, event_node, "defines_audio_dialog_custom_event", source=table)
+        self.add_story_target_edge(event_node, row.get("dlgId") or row_key, edge_kind="audio_dialog_custom_event_targets_story", source=table, evidence="dlgId")
+        for field, edge_kind in (("preloadEvents", "audio_dialog_preloads_event"), ("preEnterEvents", "audio_dialog_pre_enter_event"), ("postEnterEvents", "audio_dialog_post_enter_event"), ("preExitEvents", "audio_dialog_pre_exit_event"), ("postExitEvents", "audio_dialog_post_exit_event")):
+            for index, event_id in enumerate(row.get(field) or []):
+                wwise_node = self.add_wwise_event_node(event_id, source=table)
+                if wwise_node:
+                    self.add_edge(event_node, wwise_node, edge_kind, source=table, evidence=f"{field}[{index}]")
+
+    def add_audio_dialog_config_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        config_node = self.add_semantic_node("audio_dialog_config", row_key, source=table, data={"value": row})
+        if not config_node:
+            return
+        self.add_edge(row_node, config_node, "defines_audio_dialog_config", source=table)
+        if isinstance(row, str):
+            event_node = self.add_wwise_event_node(row, source=table)
+            if event_node:
+                self.add_edge(config_node, event_node, "audio_dialog_config_uses_event", source=table, evidence="rowValue")
+
+    def add_narrative_audio_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        if table == "SNSChatTable" and isinstance(row, dict):
+            self.add_sns_chat_edges(table, row_key, row, row_node)
+        elif table == "SNSDialogTopicTable" and isinstance(row, dict):
+            self.add_sns_topic_edges(table, row_key, row, row_node)
+        elif table == "SNSDialogOptionTable" and isinstance(row, dict):
+            self.add_sns_option_edges(table, row_key, row, row_node)
+        elif table == "SNSDialogTable" and isinstance(row, dict):
+            self.add_sns_dialog_edges(table, row_key, row, row_node)
+        elif table == "SNSConst":
+            self.add_sns_const_edges(table, row_key, row, row_node)
+        elif table == "RadioTable" and isinstance(row, dict):
+            self.add_radio_edges(table, row_key, row, row_node)
+        elif table == "RemoteCommonTable" and isinstance(row, dict):
+            self.add_remote_common_edges(table, row_key, row, row_node)
+        elif table == "AudioCueTable" and isinstance(row, dict):
+            self.add_audio_cue_edges(table, row_key, row, row_node)
+        elif table == "AudioVoiceExtraData" and isinstance(row, dict):
+            self.add_audio_voice_extra_edges(table, row_key, row, row_node)
+        elif table == "EmotionVoiceConfig" and isinstance(row, dict):
+            self.add_emotion_voice_config_edges(table, row_key, row, row_node)
+        elif table == "VoiceIdConflictTable":
+            self.add_voice_id_conflict_edges(table, row_key, row, row_node)
+        elif table == "AudioDialogCustomEventTable" and isinstance(row, dict):
+            self.add_audio_dialog_custom_event_edges(table, row_key, row, row_node)
+        elif table == "AudioDialogConfigs":
+            self.add_audio_dialog_config_edges(table, row_key, row, row_node)
+
+    def ingest_activity_achievement_semantics(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_activity_achievement_semantics", path=slash(table_root))
+        for table_name in ACTIVITY_ACHIEVEMENT_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if payload is None:
+                continue
+            table_key = Path(table_name).stem
+            table_node = self.add_node("table", table_key, name=table_key, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/activity_achievement")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if not isinstance(payload, dict):
+                continue
+            for row_key, row in payload.items():
+                row_node = self.add_node(
+                    "table_row",
+                    f"{table_key}:{row_key}",
+                    name=str(row_key),
+                    source=table_key,
+                    data=compact_payload(row, depth=2),
+                )
+                self.add_edge(table_node, row_node, "has_row", source="structured/activity_achievement")
+                self.add_activity_achievement_row_edges(table_key, row_key, row, row_node)
+
+    def add_system_jump_node(self, jump_id: Any, *, source: str = "", data: Any = None) -> str:
+        jump_key = safe_key(jump_id)
+        if not jump_key:
+            return ""
+        node = self.add_node("system_jump", jump_key, name=jump_key, source=source, data=data)
+        self.add_alias(jump_key, node, kind="system_jump_id", source=source)
+        self.add_alias(jump_key, node, kind="jump_id", source=source)
+        return node
+
+    def add_activity_node(self, activity_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        activity_key = safe_key(activity_id)
+        if not activity_key:
+            return ""
+        activity_name = table_display_text(name) or activity_key
+        node = self.add_node("activity", activity_key, name=activity_name, source=source, data=data)
+        self.add_alias(activity_key, node, kind="activity_id", source=source)
+        if activity_name != activity_key:
+            self.add_alias(activity_name, node, kind="activity_name", source=source)
+        return node
+
+    def add_activity_tag_node(self, tag_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        tag_key = safe_key(tag_id)
+        if not tag_key:
+            return ""
+        tag_name = table_display_text(name) or tag_key
+        node = self.add_node("activity_tag", tag_key, name=tag_name, source=source, data=data)
+        self.add_alias(tag_key, node, kind="activity_tag_id", source=source)
+        if tag_name != tag_key:
+            self.add_alias(tag_name, node, kind="activity_tag_name", source=source)
+        return node
+
+    def add_activity_condition_node(self, condition_id: Any, *, source: str = "", data: Any = None) -> str:
+        condition_key = safe_key(condition_id)
+        if not condition_key:
+            return ""
+        node = self.add_node("activity_condition", condition_key, name=condition_key, source=source, data=data)
+        self.add_alias(condition_key, node, kind="activity_condition_id", source=source)
+        return node
+
+    def add_activity_task_node(self, task_id: Any, *, source: str = "", data: Any = None) -> str:
+        task_key = safe_key(task_id)
+        if not task_key:
+            return ""
+        node = self.add_node("activity_task", task_key, name=task_key, source=source, data=data)
+        self.add_alias(task_key, node, kind="activity_task_id", source=source)
+        return node
+
+    def add_activity_stage_node(self, stage_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        stage_key = safe_key(stage_id)
+        if not stage_key:
+            return ""
+        stage_name = table_display_text(name) or stage_key
+        node = self.add_node("activity_stage", stage_key, name=stage_name, source=source, data=data)
+        self.add_alias(stage_key, node, kind="activity_stage_id", source=source)
+        if stage_name != stage_key:
+            self.add_alias(stage_name, node, kind="activity_stage_name", source=source)
+        return node
+
+    def add_activity_milestone_node(self, milestone_id: Any, *, source: str = "", data: Any = None) -> str:
+        milestone_key = safe_key(milestone_id)
+        if not milestone_key:
+            return ""
+        node = self.add_node("activity_milestone", milestone_key, name=milestone_key, source=source, data=data)
+        self.add_alias(milestone_key, node, kind="activity_milestone_id", source=source)
+        return node
+
+    def add_activity_banner_node(self, banner_id: Any, *, source: str = "", data: Any = None) -> str:
+        banner_key = safe_key(banner_id)
+        if not banner_key:
+            return ""
+        node = self.add_node("activity_banner", banner_key, name=banner_key, source=source, data=data)
+        self.add_alias(banner_key, node, kind="activity_banner_id", source=source)
+        return node
+
+    def add_activity_push_node(self, push_id: Any, *, source: str = "", data: Any = None) -> str:
+        push_key = safe_key(push_id)
+        if not push_key:
+            return ""
+        node = self.add_node("activity_push", push_key, name=push_key, source=source, data=data)
+        self.add_alias(push_key, node, kind="activity_push_id", source=source)
+        return node
+
+    def add_achievement_category_node(self, category_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        category_key = safe_key(category_id)
+        if not category_key:
+            return ""
+        category_name = table_display_text(name) or category_key
+        node = self.add_node("achievement_category", category_key, name=category_name, source=source, data=data)
+        self.add_alias(category_key, node, kind="achievement_category_id", source=source)
+        if category_name != category_key:
+            self.add_alias(category_name, node, kind="achievement_category_name", source=source)
+        return node
+
+    def add_achievement_group_node(self, group_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        group_key = safe_key(group_id)
+        if not group_key:
+            return ""
+        group_name = table_display_text(name) or group_key
+        node = self.add_node("achievement_group", group_key, name=group_name, source=source, data=data)
+        self.add_alias(group_key, node, kind="achievement_group_id", source=source)
+        if group_name != group_key:
+            self.add_alias(group_name, node, kind="achievement_group_name", source=source)
+        return node
+
+    def add_achievement_node(self, achievement_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        achievement_key = safe_key(achievement_id)
+        if not achievement_key:
+            return ""
+        achievement_name = table_display_text(name) or achievement_key
+        node = self.add_node("achievement", achievement_key, name=achievement_name, source=source, data=data)
+        self.add_alias(achievement_key, node, kind="achievement_id", source=source)
+        if achievement_name != achievement_key:
+            self.add_alias(achievement_name, node, kind="achievement_name", source=source)
+        return node
+
+    def add_achievement_level_node(self, level_id: Any, *, source: str = "", data: Any = None) -> str:
+        level_key = safe_key(level_id)
+        if not level_key:
+            return ""
+        node = self.add_node("achievement_level", level_key, name=level_key, source=source, data=data)
+        self.add_alias(level_key, node, kind="achievement_level_id", source=source)
+        return node
+
+    def add_achievement_condition_node(self, condition_id: Any, *, source: str = "", data: Any = None) -> str:
+        condition_key = safe_key(condition_id)
+        if not condition_key:
+            return ""
+        node = self.add_node("achievement_condition", condition_key, name=condition_key, source=source, data=data)
+        self.add_alias(condition_key, node, kind="achievement_condition_id", source=source)
+        return node
+
+    def add_achievement_statistic_node(self, statistic_id: Any, *, source: str = "", data: Any = None) -> str:
+        statistic_key = safe_key(statistic_id)
+        if not statistic_key:
+            return ""
+        node = self.add_node("achievement_statistic", statistic_key, name=statistic_key, source=source, data=data)
+        self.add_alias(statistic_key, node, kind="achievement_statistic_id", source=source)
+        return node
+
+    def add_mission_ref_node(self, mission_id: Any, *, source: str = "") -> str:
+        mission_key = safe_key(mission_id)
+        if not mission_key:
+            return ""
+        node = self.add_node("mission", mission_key, name=mission_key, source=source)
+        self.add_alias(mission_key, node, kind="mission_id", source=source)
+        return node
+
+    def add_system_jump_edge(self, owner_node: str, jump_id: Any, *, edge_kind: str, source: str, evidence: str) -> None:
+        jump_node = self.add_system_jump_node(jump_id, source=source)
+        if jump_node:
+            self.add_edge(owner_node, jump_node, edge_kind, source=source, evidence=evidence)
+
+    def add_reward_ref_edge(self, owner_node: str, reward_id: Any, *, edge_kind: str, source: str, evidence: str, data: Any = None) -> None:
+        reward_node = self.add_reward_node(reward_id, source=source)
+        if reward_node:
+            self.add_edge(owner_node, reward_node, edge_kind, source=source, evidence=evidence, data=data)
+
+    def iter_activity_conditions(self, value: Any) -> Iterable[dict[str, Any]]:
+        if isinstance(value, dict):
+            if isinstance(value.get("conditionList"), list):
+                for item in value.get("conditionList") or []:
+                    yield from self.iter_activity_conditions(item)
+            elif "conditionId" in value or "conditionType" in value or "progressToCompare" in value:
+                yield value
+        elif isinstance(value, list):
+            for item in value:
+                yield from self.iter_activity_conditions(item)
+        else:
+            condition_id = safe_key(value)
+            if condition_id:
+                yield {"conditionId": condition_id}
+
+    def add_activity_parameter_refs(self, condition_node: str, parameters: Any, *, source: str, evidence_prefix: str) -> None:
+        if not isinstance(parameters, list):
+            return
+        for param_index, param in enumerate(parameters):
+            if not isinstance(param, dict):
+                continue
+            values = param.get("valueStringList")
+            if not isinstance(values, list):
+                continue
+            for value_index, raw_value in enumerate(values):
+                ref = safe_key(raw_value)
+                if not ref or re.fullmatch(r"-?\d+(?:\.\d+)?", ref):
+                    continue
+                evidence = f"{evidence_prefix}.parameters[{param_index}].valueStringList[{value_index}]"
+                if ref.startswith("jump_"):
+                    ref_node = self.add_system_jump_node(ref, source=source)
+                    edge_kind = "activity_condition_refs_system_jump"
+                elif ref.startswith("reward_"):
+                    ref_node = self.add_reward_node(ref, source=source)
+                    edge_kind = "activity_condition_refs_reward"
+                elif ref.startswith("item_"):
+                    ref_node = self.add_item_node(ref, source=source)
+                    edge_kind = "activity_condition_refs_item"
+                elif ref.startswith("chr_"):
+                    ref_node = self.add_character_ref_node(ref, source=source)
+                    edge_kind = "activity_condition_refs_character"
+                elif ref.startswith("achv_"):
+                    ref_node = self.add_achievement_node(ref, source=source)
+                    edge_kind = "activity_condition_refs_achievement"
+                elif "_stage_" in ref:
+                    ref_node = self.add_activity_stage_node(ref, source=source)
+                    edge_kind = "activity_condition_refs_stage"
+                elif ref.startswith("activity_") or ref.startswith("CharacterGuide_") or ref.startswith("web_activity_"):
+                    ref_node = self.add_activity_node(ref, source=source)
+                    edge_kind = "activity_condition_refs_activity"
+                elif ref.startswith("dung"):
+                    ref_node = self.add_dungeon_node(ref, source=source)
+                    edge_kind = "activity_condition_refs_dungeon"
+                elif re.fullmatch(r"[a-z]\d+m\d+[A-Za-z0-9_#-]*", ref):
+                    ref_node = self.add_mission_ref_node(ref, source=source)
+                    edge_kind = "activity_condition_refs_mission"
+                else:
+                    continue
+                self.add_edge(condition_node, ref_node, edge_kind, source=source, evidence=evidence)
+
+    def add_activity_condition_edges(self, owner_node: str, conditions: Any, *, edge_kind: str, source: str, evidence_prefix: str) -> None:
+        for index, condition in enumerate(self.iter_activity_conditions(conditions)):
+            condition_id = safe_key(condition.get("conditionId") or f"{owner_node}:{evidence_prefix}:{index}")
+            condition_node = self.add_activity_condition_node(
+                condition_id,
+                source=source,
+                data={
+                    "conditionType": condition.get("conditionType"),
+                    "compareOperator": condition.get("compareOperator"),
+                    "progressToCompare": condition.get("progressToCompare"),
+                    "blockShow": condition.get("blockShow"),
+                },
+            )
+            if not condition_node:
+                continue
+            evidence = f"{evidence_prefix}[{index}]"
+            self.add_edge(owner_node, condition_node, edge_kind, source=source, evidence=evidence)
+            self.add_i18n_text_edges(condition_node, condition, source=source)
+            self.add_system_jump_edge(condition_node, condition.get("jumpId"), edge_kind="activity_condition_jumps_to", source=source, evidence=f"{evidence}.jumpId")
+            stage_node = self.add_activity_stage_node(condition.get("stageId"), source=source)
+            if stage_node:
+                self.add_edge(condition_node, stage_node, "activity_condition_refs_stage", source=source, evidence=f"{evidence}.stageId")
+            self.add_activity_parameter_refs(condition_node, condition.get("parameters"), source=source, evidence_prefix=evidence)
+
+    def add_system_jump_target_edges(self, jump_node: str, phase_id: str, phase_args: Any, *, source: str) -> None:
+        args = parse_json_text(phase_args) if safe_key(phase_args) else {}
+        if not isinstance(args, dict):
+            args = {}
+        if args.get("activityId"):
+            activity_node = self.add_activity_node(args.get("activityId"), source=source)
+            self.add_edge(jump_node, activity_node, "system_jump_targets_activity", source=source, evidence="phaseArgs.activityId")
+        if phase_id == "SnapshotChallenge" and args.get("activityId"):
+            activity_node = self.add_activity_node(args.get("activityId"), source=source)
+            self.add_edge(jump_node, activity_node, "system_jump_targets_snapshot_activity", source=source, evidence="phaseArgs.activityId")
+        if phase_id == "FacTechTree":
+            tech_node = self.add_factory_tech_node(args.get("techId") or args.get("nodeId") or args.get("id"), source=source)
+            if tech_node:
+                self.add_edge(jump_node, tech_node, "system_jump_targets_factory_tech", source=source, evidence="phaseArgs.techId")
+            group_node = self.add_factory_tech_group_node(args.get("packageId"), source=source)
+            if group_node:
+                self.add_edge(jump_node, group_node, "system_jump_targets_factory_tech_group", source=source, evidence="phaseArgs.packageId")
+        if phase_id in {"ManualCraft", "ManualCraftPopups"}:
+            item_id = args.get("jumpItem") or args.get("itemId") or args.get("formulaId") or "manual_craft"
+            item_node = self.add_item_node(item_id, source=source)
+            self.add_edge(jump_node, item_node, "system_jump_targets_manual_craft_unlock", source=source, evidence="phaseArgs")
+        for field, kind in (("itemId", "system_jump_targets_item"), ("jumpItem", "system_jump_targets_item"), ("sourceId", "system_jump_targets_item"), ("targetId", "system_jump_targets_item")):
+            item_node = self.add_item_node(args.get(field), source=source)
+            if item_node:
+                self.add_edge(jump_node, item_node, kind, source=source, evidence=f"phaseArgs.{field}")
+        reward_node = self.add_reward_node(args.get("selectedRewardId"), source=source)
+        if reward_node:
+            self.add_edge(jump_node, reward_node, "system_jump_targets_reward", source=source, evidence="phaseArgs.selectedRewardId")
+        for field in ("dungeonId", "dungeonSeriesId"):
+            dungeon_node = self.add_dungeon_node(args.get(field), source=source)
+            if dungeon_node:
+                self.add_edge(jump_node, dungeon_node, "system_jump_targets_dungeon", source=source, evidence=f"phaseArgs.{field}")
+        for field in ("missionId",):
+            mission_node = self.add_mission_ref_node(args.get(field), source=source)
+            if mission_node:
+                self.add_edge(jump_node, mission_node, "system_jump_targets_mission", source=source, evidence=f"phaseArgs.{field}")
+        map_node = self.add_map_node(args.get("mapId"), source=source)
+        if map_node:
+            self.add_edge(jump_node, map_node, "system_jump_targets_map", source=source, evidence="phaseArgs.mapId")
+        mark_node = self.add_node("map_mark_template", args.get("templateId"), name=args.get("templateId"), source=source) if safe_key(args.get("templateId")) else ""
+        if mark_node:
+            self.add_alias(args.get("templateId"), mark_node, kind="map_mark_template_id", source=source)
+            self.add_edge(jump_node, mark_node, "system_jump_targets_map_mark_template", source=source, evidence="phaseArgs.templateId")
+        domain_id = safe_key(args.get("domainId"))
+        if domain_id:
+            domain_node = self.add_node("gameplay_domain", domain_id, name=domain_id, source=source)
+            self.add_alias(domain_id, domain_node, kind="gameplay_domain_id", source=source)
+            self.add_edge(jump_node, domain_node, "system_jump_targets_domain", source=source, evidence="phaseArgs.domainId")
+        shop_node = self.add_shop_node(args.get("shopId"), source=source)
+        if shop_node:
+            self.add_edge(jump_node, shop_node, "system_jump_targets_shop", source=source, evidence="phaseArgs.shopId")
+        shop_group = self.add_node("shop_group", args.get("shopGroupId"), name=args.get("shopGroupId"), source=source) if safe_key(args.get("shopGroupId")) else ""
+        if shop_group:
+            self.add_alias(args.get("shopGroupId"), shop_group, kind="shop_group_id", source=source)
+            self.add_edge(jump_node, shop_group, "system_jump_targets_shop_group", source=source, evidence="phaseArgs.shopGroupId")
+        character_node = self.add_character_ref_node(args.get("charId") or args.get("characterId"), source=source)
+        if character_node:
+            self.add_edge(jump_node, character_node, "system_jump_targets_character", source=source, evidence="phaseArgs.characterId")
+        achievement_node = self.add_achievement_node(args.get("achieveId") or args.get("achievementId"), source=source)
+        if achievement_node:
+            self.add_edge(jump_node, achievement_node, "system_jump_targets_achievement", source=source, evidence="phaseArgs.achievementId")
+        if phase_id == "PRTSStoryCollDetail":
+            entry_node = self.add_prts_entry_node(args.get("id"), source=source)
+            if entry_node:
+                self.add_edge(jump_node, entry_node, "system_jump_targets_prts_entry", source=source, evidence="phaseArgs.id")
+        if phase_id == "PRTSInvestigateDetail":
+            investigation_node = self.add_prts_investigation_node(args.get("id"), source=source)
+            if investigation_node:
+                self.add_edge(jump_node, investigation_node, "system_jump_targets_prts_investigation", source=source, evidence="phaseArgs.id")
+
+    def add_system_jump_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        jump_id = safe_key(row.get("id") or row_key)
+        phase_id = safe_key(row.get("phaseId"))
+        jump_node = self.add_system_jump_node(jump_id, source=table, data={"bindSystem": row.get("bindSystem"), "phaseId": row.get("phaseId"), "phaseArgs": row.get("phaseArgs"), "iconId": row.get("iconId")})
+        if not jump_node:
+            return
+        self.add_edge(row_node, jump_node, "defines_system_jump", source=table)
+        self.add_alias(row.get("iconId"), jump_node, kind="asset_stem", source=table)
+        self.add_system_jump_target_edges(jump_node, phase_id, row.get("phaseArgs"), source=table)
+        self.add_i18n_text_edges(jump_node, row, source=table)
+
+    def add_activity_tag_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        tag_node = self.add_activity_tag_node(row.get("tagId") or row_key, name=row.get("name"), source=table)
+        if tag_node:
+            self.add_edge(row_node, tag_node, "defines_activity_tag", source=table)
+            self.add_tag_i18n_edges(tag_node, row.get("name"), source=table, edge_kind="activity_tag_name_text")
+
+    def add_activity_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        activity_id = safe_key(row.get("id") or row_key)
+        activity_node = self.add_activity_node(activity_id, name=row.get("name"), source=table, data={"type": row.get("type"), "panelId": row.get("panelId"), "timeId": row.get("timeId"), "sortId": row.get("sortId"), "instructionId": row.get("instructionId")})
+        if not activity_node:
+            return
+        self.add_edge(row_node, activity_node, "defines_activity", source=table)
+        for field in ("detailJumpId", "introMissionJumpId"):
+            self.add_system_jump_edge(activity_node, row.get(field), edge_kind="activity_jumps_to", source=table, evidence=field)
+        self.add_reward_ref_edge(activity_node, row.get("rewardId"), edge_kind="activity_rewards", source=table, evidence="rewardId")
+        mission_node = self.add_mission_ref_node(row.get("introMissionQuestId"), source=table)
+        if mission_node:
+            self.add_edge(activity_node, mission_node, "activity_intro_mission", source=table, evidence="introMissionQuestId")
+        for index, tag_id in enumerate(row.get("tagIds") or []):
+            tag_node = self.add_activity_tag_node(tag_id, source=table)
+            if tag_node:
+                self.add_edge(activity_node, tag_node, "activity_has_tag", source=table, evidence=f"tagIds[{index}]")
+        for field in ("bgImg", "tabImg", "tabImgColor", "tabImgGender", "popUpPanelId"):
+            self.add_alias(row.get(field), activity_node, kind="asset_stem", source=table)
+        self.add_activity_condition_edges(activity_node, row.get("conditions"), edge_kind="activity_has_condition", source=table, evidence_prefix="conditions")
+        self.add_i18n_text_edges(activity_node, row, source=table)
+
+    def add_activity_task_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        task_id = safe_key(row.get("taskId") or row_key)
+        task_node = self.add_activity_task_node(task_id, source=table, data={"activityId": row.get("activityId"), "progressToCompare": row.get("progressToCompare"), "score": row.get("score"), "sortId": row.get("sortId"), "displayFactor": row.get("displayFactor")})
+        if not task_node:
+            return
+        self.add_edge(row_node, task_node, "defines_activity_task", source=table)
+        activity_node = self.add_activity_node(row.get("activityId"), source=table)
+        if activity_node:
+            self.add_edge(activity_node, task_node, "activity_has_task", source=table, evidence="activityId")
+        self.add_system_jump_edge(task_node, row.get("jumpId"), edge_kind="task_jumps_to", source=table, evidence="jumpId")
+        self.add_i18n_text_edges(task_node, row, source=table)
+
+    def add_activity_milestone_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        activity_node = self.add_activity_node(row_key, source=table)
+        milestones = row.get("mileStones") if isinstance(row.get("mileStones"), dict) else {}
+        for milestone_id, milestone in milestones.items():
+            if not isinstance(milestone, dict):
+                continue
+            milestone_node = self.add_activity_milestone_node(milestone_id, source=table, data={"score": milestone.get("score"), "rewardId": milestone.get("rewardId")})
+            if not milestone_node:
+                continue
+            self.add_edge(row_node, milestone_node, "defines_activity_milestone", source=table)
+            self.add_edge(activity_node, milestone_node, "activity_has_milestone", source=table, evidence="mileStones")
+            self.add_reward_ref_edge(milestone_node, milestone.get("rewardId"), edge_kind="activity_milestone_rewards", source=table, evidence="rewardId", data={"score": milestone.get("score")})
+
+    def add_activity_stage_semantics(self, table: str, row_key: str, stage: dict[str, Any], row_node: str, *, activity_id: Any = None, evidence: str = "") -> str:
+        stage_id = safe_key(stage.get("stageId") or stage.get("stageStrId") or row_key)
+        stage_node = self.add_activity_stage_node(stage_id, name=stage.get("name") or stage.get("desc"), source=table, data={"activityId": stage.get("activityId") or activity_id, "missionId": stage.get("missionId"), "rewardId": stage.get("rewardId"), "jumpId": stage.get("jumpId"), "sortId": stage.get("sortId"), "timeId": stage.get("timeId"), "rankRelatedId": stage.get("rankRelatedId")})
+        if not stage_node:
+            return ""
+        self.add_edge(row_node, stage_node, "defines_activity_stage", source=table, evidence=evidence)
+        activity_node = self.add_activity_node(stage.get("activityId") or activity_id, source=table)
+        if activity_node:
+            self.add_edge(activity_node, stage_node, "activity_has_stage", source=table, evidence=evidence or "activityId", data={"sortId": stage.get("sortId")})
+        self.add_reward_ref_edge(stage_node, stage.get("rewardId"), edge_kind="stage_rewards", source=table, evidence="rewardId")
+        self.add_system_jump_edge(stage_node, stage.get("jumpId"), edge_kind="stage_jumps_to", source=table, evidence="jumpId")
+        mission_node = self.add_mission_ref_node(stage.get("missionId"), source=table)
+        if mission_node:
+            self.add_edge(stage_node, mission_node, "stage_uses_mission", source=table, evidence="missionId")
+        self.add_activity_condition_edges(stage_node, stage.get("conditions"), edge_kind="stage_has_condition", source=table, evidence_prefix=f"{evidence}.conditions" if evidence else "conditions")
+        self.add_i18n_text_edges(stage_node, stage, source=table)
+        return stage_node
+
+    def add_activity_multistage_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        activity_id = row.get("activityId") or row_key
+        activity_node = self.add_activity_node(activity_id, source=table, data={"stageCount": len(row.get("stageList") or {})})
+        if activity_node:
+            self.add_edge(row_node, activity_node, "defines_activity_stage_group", source=table)
+        stage_list = row.get("stageList") if isinstance(row.get("stageList"), dict) else {}
+        for index, (stage_id, stage) in enumerate(stage_list.items()):
+            if isinstance(stage, dict):
+                self.add_activity_stage_semantics(table, stage_id, stage, row_node, activity_id=activity_id, evidence=f"stageList[{index}]")
+
+    def add_activity_stage_to_activity_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        self.add_activity_stage_semantics(table, row.get("stageId") or row_key, row, row_node, activity_id=row.get("activityId"), evidence="stageId")
+
+    def add_activity_stage_condition_table_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str, *, edge_kind: str) -> None:
+        stage_node = self.add_activity_stage_node(row_key, source=table)
+        if stage_node:
+            self.add_edge(row_node, stage_node, "defines_activity_stage_conditions", source=table)
+            self.add_activity_condition_edges(stage_node, row, edge_kind=edge_kind, source=table, evidence_prefix="conditionList")
+
+    def add_activity_task_config_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        activity_node = self.add_activity_node(row_key, source=table)
+        task_map = row.get("TaskConfigMap") if isinstance(row.get("TaskConfigMap"), dict) else {}
+        for index, (task_id, task) in enumerate(task_map.items()):
+            if not isinstance(task, dict):
+                continue
+            task_node = self.add_activity_task_node(task.get("taskId") or task_id, source=table, data={"rewardId": task.get("rewardId"), "sortId": task.get("sortId"), "taskGroupId": task.get("taskGroupId"), "unlockTimeId": task.get("unlockTimeId")})
+            if not task_node:
+                continue
+            self.add_edge(row_node, task_node, "defines_activity_task", source=table, evidence=f"TaskConfigMap[{index}]")
+            self.add_edge(activity_node, task_node, "activity_has_task", source=table, evidence=f"TaskConfigMap[{index}]")
+            self.add_reward_ref_edge(task_node, task.get("rewardId"), edge_kind="task_rewards", source=table, evidence="rewardId")
+            self.add_system_jump_edge(task_node, task.get("jumpId"), edge_kind="task_jumps_to", source=table, evidence="jumpId")
+            for condition_index, condition_id in enumerate(task.get("completeConditionId") or []):
+                condition_node = self.add_activity_condition_node(condition_id, source=table)
+                if condition_node:
+                    self.add_edge(task_node, condition_node, "task_has_complete_condition", source=table, evidence=f"completeConditionId[{condition_index}]")
+            self.add_i18n_text_edges(task_node, task, source=table)
+
+    def add_activity_task_condition_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        condition_node = self.add_activity_condition_node(row.get("conditionId") or row_key, source=table, data={"conditionType": row.get("conditionType"), "compareOperator": row.get("compareOperator"), "progressToCompare": row.get("progressToCompare")})
+        if condition_node:
+            self.add_edge(row_node, condition_node, "defines_activity_condition", source=table)
+            self.add_activity_parameter_refs(condition_node, row.get("parameters"), source=table, evidence_prefix="parameters")
+
+    def add_activity_level_reward_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        for index, stage in enumerate(row.get("stageList") or []):
+            if isinstance(stage, dict):
+                self.add_activity_stage_semantics(table, stage.get("stageStrId") or f"{row_key}:{index}", stage, row_node, activity_id=stage.get("activityId") or row_key, evidence=f"stageList[{index}]")
+
+    def add_activity_version_guide_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        activity_node = self.add_activity_node(row_key, source=table, data={"prefabName": row.get("prefabName")})
+        if activity_node:
+            self.add_edge(row_node, activity_node, "defines_activity_version_guide", source=table)
+            self.add_alias(row.get("prefabName"), activity_node, kind="prefab_name", source=table)
+
+    def add_activity_banner_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        banner_node = self.add_activity_banner_node(row.get("bannerId") or row_key, source=table, data={"bannerType": row.get("bannerType"), "corrSysId": row.get("corrSysId"), "image": row.get("image"), "index": row.get("index"), "jumpId": row.get("jumpId")})
+        if not banner_node:
+            return
+        self.add_edge(row_node, banner_node, "defines_activity_banner", source=table)
+        self.add_alias(row.get("image"), banner_node, kind="asset_stem", source=table)
+        activity_node = self.add_activity_node(row.get("corrSysId"), source=table)
+        if activity_node:
+            self.add_edge(banner_node, activity_node, "banner_for_activity", source=table, evidence="corrSysId")
+        self.add_system_jump_edge(banner_node, row.get("jumpId"), edge_kind="banner_jumps_to", source=table, evidence="jumpId")
+
+    def add_activity_push_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        push_node = self.add_activity_push_node(row.get("pushID") or row_key, source=table, data={"activityId": row.get("activityId"), "bubbleType": row.get("bubbleType"), "pushType": row.get("pushType"), "tabType": row.get("tabType"), "bubbleSortId": row.get("bubbleSortId")})
+        if not push_node:
+            return
+        self.add_edge(row_node, push_node, "defines_activity_push", source=table)
+        activity_node = self.add_activity_node(row.get("activityId"), source=table)
+        if activity_node:
+            self.add_edge(activity_node, push_node, "activity_has_push", source=table, evidence="activityId")
+        for index, condition_id in enumerate(row.get("conditionIdList") or []):
+            condition_node = self.add_activity_condition_node(condition_id, source=table)
+            if condition_node:
+                self.add_edge(push_node, condition_node, "push_has_condition", source=table, evidence=f"conditionIdList[{index}]")
+        self.add_i18n_text_edges(push_node, row, source=table)
+
+    def add_activity_achievement_data_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        activity_node = self.add_activity_node(row_key, source=table)
+        achievement_node = self.add_achievement_node(row.get("achievementId"), source=table)
+        if activity_node and achievement_node:
+            self.add_edge(row_node, activity_node, "defines_activity_achievement_link", source=table)
+            self.add_edge(activity_node, achievement_node, "activity_has_achievement", source=table, evidence="achievementId")
+
+    def add_achievement_type_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        category_node = self.add_achievement_category_node(row.get("categoryId") or row_key, name=row.get("categoryName"), source=table, data={"categoryPriority": row.get("categoryPriority"), "noObtainCanView": row.get("noObtainCanView")})
+        if not category_node:
+            return
+        self.add_edge(row_node, category_node, "defines_achievement_category", source=table)
+        for index, group in enumerate(row.get("achievementGroupData") or []):
+            if not isinstance(group, dict):
+                continue
+            group_node = self.add_achievement_group_node(group.get("groupId"), name=group.get("groupName"), source=table)
+            if group_node:
+                self.add_edge(category_node, group_node, "achievement_category_has_group", source=table, evidence=f"achievementGroupData[{index}]")
+                self.add_i18n_text_edges(group_node, group, source=table)
+        self.add_i18n_text_edges(category_node, row, source=table)
+
+    def add_achievement_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        achievement_id = safe_key(row.get("achieveId") or row_key)
+        achievement_node = self.add_achievement_node(achievement_id, name=row.get("name"), source=table, data={"groupId": row.get("groupId"), "initLevel": row.get("initLevel"), "order": row.get("order"), "canBeUpgraded": row.get("canBeUpgraded"), "canBePlated": row.get("canBePlated"), "specialProgress": row.get("specialProgress")})
+        if not achievement_node:
+            return
+        self.add_edge(row_node, achievement_node, "defines_achievement", source=table)
+        group_node = self.add_achievement_group_node(row.get("groupId"), source=table)
+        if group_node:
+            self.add_edge(group_node, achievement_node, "achievement_group_has_achievement", source=table, evidence="groupId")
+        self.add_activity_condition_edges(achievement_node, row.get("plateConditions"), edge_kind="achievement_has_plate_condition", source=table, evidence_prefix="plateConditions")
+        level_infos = row.get("levelInfos") if isinstance(row.get("levelInfos"), dict) else {}
+        for level_key, level in level_infos.items():
+            if not isinstance(level, dict):
+                continue
+            level_node = self.add_achievement_level_node(f"{achievement_id}:level:{level_key}", source=table, data={"achievementId": achievement_id, "achieveLevel": level.get("achieveLevel") or level_key})
+            if not level_node:
+                continue
+            self.add_edge(achievement_node, level_node, "achievement_has_level", source=table, evidence=f"levelInfos[{level_key}]")
+            self.add_i18n_text_edges(level_node, level, source=table)
+            for condition_index, condition in enumerate(level.get("conditions") or []):
+                if not isinstance(condition, dict):
+                    continue
+                condition_node = self.add_achievement_condition_node(condition.get("conditionId") or f"{achievement_id}:level:{level_key}:condition:{condition_index}", source=table, data={"achievementId": achievement_id, "achieveLevel": level.get("achieveLevel") or level_key, "progressToCompare": condition.get("progressToCompare")})
+                if condition_node:
+                    self.add_edge(level_node, condition_node, "achievement_level_has_condition", source=table, evidence=f"conditions[{condition_index}]")
+                    self.add_i18n_text_edges(condition_node, condition, source=table)
+        self.add_i18n_text_edges(achievement_node, row, source=table)
+
+    def add_achievement_statistic_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        statistic_node = self.add_achievement_statistic_node(row_key, source=table, data={"maxStatVal": row.get("maxStatVal")})
+        if not statistic_node:
+            return
+        self.add_edge(row_node, statistic_node, "defines_achievement_statistic", source=table)
+        for index, entry in enumerate(row.get("achieveList") or []):
+            if not isinstance(entry, dict):
+                continue
+            achievement_node = self.add_achievement_node(entry.get("achieveId"), source=table)
+            if achievement_node:
+                self.add_edge(statistic_node, achievement_node, "achievement_statistic_tracks", source=table, evidence=f"achieveList[{index}]", data={"statVal": entry.get("statVal")})
+
+    def add_activity_achievement_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        if not isinstance(row, dict):
+            return
+        if table != "AchievementTable":
+            self.add_i18n_text_edges(row_node, row, source=table)
+        if table == "SystemJumpTable":
+            self.add_system_jump_edges(table, row_key, row, row_node)
+        elif table == "ActivityTagTable":
+            self.add_activity_tag_edges(table, row_key, row, row_node)
+        elif table == "ActivityTable":
+            self.add_activity_edges(table, row_key, row, row_node)
+        elif table == "ActivityWeeklyTaskTable":
+            self.add_activity_task_edges(table, row_key, row, row_node)
+        elif table == "ActivityWeeklyTaskMileStoneTable":
+            self.add_activity_milestone_edges(table, row_key, row, row_node)
+        elif table == "ActivityConditionalMultiStageTable":
+            self.add_activity_multistage_edges(table, row_key, row, row_node)
+        elif table == "ActivityConditionalMultiStageStageToActivityTable":
+            self.add_activity_stage_to_activity_edges(table, row_key, row, row_node)
+        elif table == "ActivityConditionalMultiStageConditionTable":
+            self.add_activity_stage_condition_table_edges(table, row_key, row, row_node, edge_kind="stage_has_unlock_condition")
+        elif table == "ActivityConditionalMultiStageCompleteConditionTable":
+            self.add_activity_stage_condition_table_edges(table, row_key, row, row_node, edge_kind="stage_has_complete_condition")
+        elif table == "ActivityConditionalMultiStageTaskConfigTable":
+            self.add_activity_task_config_edges(table, row_key, row, row_node)
+        elif table == "ActivityConditionalMultiStageTaskCompleteConditionTable":
+            self.add_activity_task_condition_edges(table, row_key, row, row_node)
+        elif table in {"ActivityLevelRewardsTable", "ActivityVersionGuideStageTable"}:
+            self.add_activity_level_reward_edges(table, row_key, row, row_node)
+        elif table == "ActivityCultivationRefundStageTable":
+            self.add_activity_stage_to_activity_edges(table, row_key, row, row_node)
+        elif table == "ActivityVersionGuideTable":
+            self.add_activity_version_guide_edges(table, row_key, row, row_node)
+        elif table == "ActivityBannerTable":
+            self.add_activity_banner_edges(table, row_key, row, row_node)
+        elif table == "ActivityPushBubbleTable":
+            self.add_activity_push_edges(table, row_key, row, row_node)
+        elif table == "ActivityAchievementDataTable":
+            self.add_activity_achievement_data_edges(table, row_key, row, row_node)
+        elif table == "AchievementTypeTable":
+            self.add_achievement_type_edges(table, row_key, row, row_node)
+        elif table == "AchievementTable":
+            self.add_achievement_edges(table, row_key, row, row_node)
+        elif table == "AchievementStatisticTable":
+            self.add_achievement_statistic_edges(table, row_key, row, row_node)
+
+    def ingest_combat_semantics(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_combat_semantics", path=slash(table_root))
+        for table_name in COMBAT_SEMANTIC_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if payload is None:
+                continue
+            table_key = Path(table_name).stem
+            table_node = self.add_node("table", table_key, name=table_key, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured/combat_semantics")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if not isinstance(payload, dict):
+                continue
+            for row_key, row in payload.items():
+                row_node = self.add_node(
+                    "table_row",
+                    f"{table_key}:{row_key}",
+                    name=str(row_key),
+                    source=table_key,
+                    data=compact_payload(row, depth=2),
+                )
+                self.add_edge(table_node, row_node, "has_row", source="structured/combat_semantics")
+                self.add_combat_semantic_row_edges(table_key, row_key, row, row_node)
+
+    def add_buff_ref_node(self, buff_id: Any, *, source: str = "", data: Any = None) -> str:
+        buff_key = safe_key(buff_id)
+        if not buff_key:
+            return ""
+        buff_node = self.add_node("buff", buff_key, name=buff_key, source=source, data=data)
+        self.add_alias(buff_key, buff_node, kind="buff_id", source=source)
+        return buff_node
+
+    def add_gameplay_skill_ref_node(self, skill_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        skill_key = safe_key(skill_id)
+        if not skill_key:
+            return ""
+        skill_name = table_display_text(name) or skill_key
+        skill_node = self.add_node("gameplay_skill", skill_key, name=skill_name, source=source, data=data)
+        self.add_alias(skill_key, skill_node, kind="gameplay_skill_id", source=source)
+        if skill_name != skill_key:
+            self.add_alias(skill_name, skill_node, kind="gameplay_skill_name", source=source)
+        return skill_node
+
+    def add_blackboard_key_node(self, key: Any, *, source: str = "") -> str:
+        key_text = safe_key(key)
+        if not key_text:
+            return ""
+        node = self.add_node("gameplay_blackboard_key", key_text, name=key_text, source=source)
+        self.add_alias(key_text, node, kind="gameplay_blackboard_key", source=source)
+        return node
+
+    def add_skill_tag_node(self, tag_id: Any, *, source: str = "") -> str:
+        tag_key = safe_key(tag_id)
+        if not tag_key:
+            return ""
+        tag_node = self.add_node("skill_tag", tag_key, name=tag_key, source=source)
+        self.add_alias(tag_key, tag_node, kind="skill_tag_id", source=source)
+        return tag_node
+
+    def add_gameplay_tag_node(self, tag_id: Any, *, source: str = "") -> str:
+        tag_key = safe_key(tag_id)
+        if not tag_key:
+            return ""
+        tag_node = self.add_node("gameplay_tag", tag_key, name=tag_key, source=source)
+        self.add_alias(tag_key, tag_node, kind="gameplay_tag_id", source=source)
+        return tag_node
+
+    def add_enemy_tag_node(self, tag_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        tag_key = safe_key(tag_id)
+        if not tag_key:
+            return ""
+        tag_name = table_display_text(name) or tag_key
+        tag_node = self.add_node("enemy_tag", tag_key, name=tag_name, source=source, data=data)
+        self.add_alias(tag_key, tag_node, kind="enemy_tag_id", source=source)
+        if tag_name != tag_key:
+            self.add_alias(tag_name, tag_node, kind="enemy_tag_name", source=source)
+        return tag_node
+
+    def add_buff_parameter_node(self, parameter_id: Any, *, source: str = "") -> str:
+        parameter_key = safe_key(parameter_id)
+        if not parameter_key:
+            return ""
+        parameter_node = self.add_node("buff_parameter", parameter_key, name=parameter_key, source=source)
+        self.add_alias(parameter_key, parameter_node, kind="buff_parameter_id", source=source)
+        return parameter_node
+
+    def add_buff_icon_node(self, icon_id: Any, *, source: str = "") -> str:
+        icon_key = safe_key(icon_id)
+        if not icon_key:
+            return ""
+        icon_node = self.add_node("buff_icon", icon_key, name=icon_key, source=source)
+        self.add_alias(icon_key, icon_node, kind="buff_icon_id", source=source)
+        self.add_alias(icon_key, icon_node, kind="icon_id", source=source)
+        return icon_node
+
+    def add_skill_parameter_node(self, parameter_id: Any, *, source: str = "") -> str:
+        parameter_key = safe_key(parameter_id)
+        if not parameter_key:
+            return ""
+        parameter_node = self.add_node("skill_parameter", parameter_key, name=parameter_key, source=source)
+        self.add_alias(parameter_key, parameter_node, kind="skill_parameter_id", source=source)
+        return parameter_node
+
+    def add_skill_icon_node(self, icon_id: Any, *, source: str = "") -> str:
+        icon_key = safe_key(icon_id)
+        if not icon_key:
+            return ""
+        icon_node = self.add_node("skill_icon", icon_key, name=icon_key, source=source)
+        self.add_alias(icon_key, icon_node, kind="skill_icon_id", source=source)
+        self.add_alias(icon_key, icon_node, kind="icon_id", source=source)
+        return icon_node
+
+    def add_blackboard_edges(self, owner_node: str, entries: Any, *, edge_kind: str, source: str, evidence_prefix: str, context: dict[str, Any] | None = None) -> None:
+        if not isinstance(entries, list):
+            return
+        for index, entry in enumerate(entries):
+            if not isinstance(entry, dict):
+                continue
+            key_node = self.add_blackboard_key_node(entry.get("key"), source=source)
+            if not key_node:
+                continue
+            data = {
+                "index": index,
+                "key": entry.get("key"),
+                "value": entry.get("value"),
+                "valueStr": entry.get("valueStr"),
+            }
+            if context:
+                data.update(context)
+            self.add_edge(owner_node, key_node, edge_kind, source=source, evidence=f"{evidence_prefix}[{index}]", data=data)
+
+    def add_buff_table_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        buff_id = safe_key(row.get("buffId") or row_key)
+        if not buff_id:
+            return
+        buff_node = self.add_buff_ref_node(buff_id, source=table, data={"id": buff_id, "configPath": row.get("buffConfigPath")})
+        self.add_edge(row_node, buff_node, "defines_buff", source=table)
+        self.add_alias(row.get("buffConfigPath"), buff_node, kind="buff_config_path", source=table)
+
+    def add_skill_patch_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        bundles = row.get("SkillPatchDataBundle") or []
+        if not isinstance(bundles, list):
+            bundles = []
+        first_bundle = next((bundle for bundle in bundles if isinstance(bundle, dict)), {})
+        skill_id = safe_key(row_key or first_bundle.get("skillId"))
+        if not skill_id:
+            return
+        levels = [bundle.get("level") for bundle in bundles if isinstance(bundle, dict) and isinstance(bundle.get("level"), int)]
+        skill_node = self.add_gameplay_skill_ref_node(
+            skill_id,
+            name=first_bundle.get("skillName") if isinstance(first_bundle, dict) else None,
+            source=table,
+            data={
+                "id": skill_id,
+                "levelCount": len(bundles),
+                "maxLevel": max(levels) if levels else None,
+                "bundleCount": len(bundles),
+            },
+        )
+        self.add_edge(row_node, skill_node, "defines_skill_patch", source=table)
+        for index, bundle in enumerate(bundles):
+            if not isinstance(bundle, dict):
+                continue
+            bundle_skill_id = safe_key(bundle.get("skillId") or skill_id)
+            level = bundle.get("level")
+            level_key = f"{skill_id}:{index + 1}"
+            level_node = self.add_node(
+                "gameplay_skill_level",
+                level_key,
+                name=f"{bundle_skill_id} Lv{level or index + 1}",
+                source=table,
+                data={
+                    "skillId": bundle_skill_id,
+                    "level": level,
+                    "coolDown": bundle.get("coolDown"),
+                    "costType": bundle.get("costType"),
+                    "costValue": bundle.get("costValue"),
+                    "maxChargeTime": bundle.get("maxChargeTime"),
+                    "iconId": bundle.get("iconId"),
+                    "iconBgType": bundle.get("iconBgType"),
+                    "tagId": bundle.get("tagId"),
+                    "subDescList": bundle.get("subDescList"),
+                    "blackboardCount": len(bundle.get("blackboard") or []),
+                },
+            )
+            self.add_edge(row_node, level_node, "defines_skill_patch_level", source=table, evidence=str(index))
+            self.add_edge(skill_node, level_node, "has_skill_patch_level", source=table, evidence=str(level or index + 1))
+            self.add_alias(bundle.get("iconId"), level_node, kind="icon_id", source=table)
+            tag_node = self.add_skill_tag_node(bundle.get("tagId"), source=table)
+            if tag_node:
+                self.add_edge(level_node, tag_node, "skill_level_has_tag", source=table, evidence="tagId")
+            self.add_blackboard_edges(level_node, bundle.get("blackboard"), edge_kind="skill_level_uses_blackboard_key", source=table, evidence_prefix=f"levels[{index}].blackboard")
+
+    def add_use_item_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        item_id = safe_key(row.get("itemId") or row_key)
+        if not item_id:
+            return
+        effect_node = self.add_node(
+            "use_item_effect",
+            item_id,
+            name=item_id,
+            source=table,
+            data={
+                "itemId": item_id,
+                "duration": row.get("duration"),
+                "effectType": row.get("effectType"),
+                "isPersistentBuff": row.get("isPersistentBuff"),
+                "isValuableDepot": row.get("isValuableDepot"),
+                "stackingKey": row.get("stackingKey"),
+                "targetNumType": row.get("targetNumType"),
+                "uiType": row.get("uiType"),
+                "actionCount": len(row.get("useActions") or []),
+            },
+        )
+        self.add_edge(row_node, effect_node, "defines_use_item_effect", source=table)
+        item_node = self.add_item_node(item_id, source=table)
+        self.add_edge(item_node, effect_node, "item_has_use_effect", source=table, evidence="itemId")
+        self.add_alias(item_id, effect_node, kind="use_item_effect_id", source=table)
+        for action_index, action in enumerate(row.get("useActions") or []):
+            if not isinstance(action, dict):
+                continue
+            use_type = action.get("useType")
+            buff_data = action.get("buffBBData") if isinstance(action.get("buffBBData"), dict) else {}
+            buff_id = safe_key(buff_data.get("buffId"))
+            if buff_id:
+                buff_node = self.add_buff_ref_node(buff_id, source=table)
+                self.add_edge(effect_node, buff_node, "use_effect_applies_buff", source=table, evidence=f"useActions[{action_index}].buffBBData", data={"actionIndex": action_index, "useType": use_type, "blackboardCount": len(buff_data.get("blackboard") or [])})
+            self.add_blackboard_edges(effect_node, buff_data.get("blackboard"), edge_kind="use_effect_uses_blackboard_key", source=table, evidence_prefix=f"useActions[{action_index}].buffBBData.blackboard", context={"actionIndex": action_index, "useType": use_type, "target": "buff", "buffId": buff_id})
+            skill_data = action.get("skillBBData") if isinstance(action.get("skillBBData"), dict) else {}
+            skill_id = safe_key(skill_data.get("skillId") or Path(safe_key(skill_data.get("skillPath"))).stem)
+            if skill_id:
+                skill_node = self.add_gameplay_skill_ref_node(skill_id, source=table, data={"skillPath": skill_data.get("skillPath")})
+                self.add_edge(effect_node, skill_node, "use_effect_runs_skill", source=table, evidence=f"useActions[{action_index}].skillBBData", data={"actionIndex": action_index, "useType": use_type, "skillPath": skill_data.get("skillPath"), "blackboardCount": len(skill_data.get("blackboard") or [])})
+            self.add_blackboard_edges(effect_node, skill_data.get("blackboard"), edge_kind="use_effect_uses_blackboard_key", source=table, evidence_prefix=f"useActions[{action_index}].skillBBData.blackboard", context={"actionIndex": action_index, "useType": use_type, "target": "skill", "skillId": skill_id})
+
+    def add_general_ability_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        ability_id = safe_key(row.get("generalAbilityType") if "generalAbilityType" in row else row_key)
+        if not ability_id:
+            return
+        ability_node = self.add_node(
+            "general_ability",
+            ability_id,
+            name=table_display_text(row.get("name")) or ability_id,
+            source=table,
+            data={
+                "id": ability_id,
+                "gameVarName": row.get("gameVarName"),
+                "iconId": row.get("iconId"),
+                "intervalTime": row.get("intervalTime"),
+                "sortId": row.get("sortId"),
+                "unlockSystemType": row.get("unlockSystemType"),
+                "useItem": row.get("useItem"),
+                "banMapCount": len(row.get("banMap") or []),
+            },
+        )
+        self.add_edge(row_node, ability_node, "defines_general_ability", source=table)
+        self.add_alias(ability_id, ability_node, kind="general_ability_id", source=table)
+        self.add_alias(row.get("gameVarName"), ability_node, kind="game_var_name", source=table)
+        self.add_alias(row.get("iconId"), ability_node, kind="icon_id", source=table)
+        item_node = self.add_item_node(row.get("useItem"), source=table)
+        if item_node:
+            self.add_edge(ability_node, item_node, "general_ability_uses_item", source=table, evidence="useItem")
+        unlock_key = safe_key(row.get("unlockSystemType"))
+        if unlock_key:
+            unlock_node = self.add_node("gameplay_unlock", unlock_key, name=unlock_key, source=table)
+            self.add_edge(ability_node, unlock_node, "general_ability_unlock_system", source=table, evidence="unlockSystemType")
+            self.add_alias(unlock_key, unlock_node, kind="gameplay_unlock_id", source=table)
+        for index, map_id in enumerate(row.get("banMap") or []):
+            map_id = safe_key(map_id)
+            if not map_id:
+                continue
+            map_node = self.add_map_node(map_id, source=table)
+            self.add_edge(ability_node, map_node, "general_ability_banned_in_map", source=table, evidence=f"banMap[{index}]")
+
+    def add_ability_entity_attr_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        entity_id = safe_key(row.get("abilityEntityId") or row_key)
+        if not entity_id:
+            return
+        entity_node = self.add_node("ability_entity", entity_id, name=entity_id, source=table, data={"id": entity_id, "atk": row.get("atk"), "maxHp": row.get("maxHp")})
+        self.add_edge(row_node, entity_node, "defines_ability_entity_attr", source=table)
+        self.add_alias(entity_id, entity_node, kind="ability_entity_id", source=table)
+        for field in ("atk", "maxHp"):
+            value = row.get(field)
+            if value is None:
+                continue
+            stat_node = self.add_gameplay_stat_property_node(field, source=table)
+            if stat_node:
+                self.add_edge(entity_node, stat_node, "ability_entity_sets_stat_property", source=table, evidence=field, data={"value": value})
+
+    def add_global_effect_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        effect_id = safe_key(row.get("effectId") or row_key)
+        if not effect_id:
+            return
+        effect_node = self.add_node("global_effect", effect_id, name=effect_id, source=table, data={"id": effect_id, "domainId": row.get("domainId"), "dpsCount": len(row.get("dps") or []), "extraArgCount": len(row.get("extraArgs") or [])})
+        self.add_edge(row_node, effect_node, "defines_global_effect", source=table)
+        self.add_alias(effect_id, effect_node, kind="global_effect_id", source=table)
+        domain_id = safe_key(row.get("domainId"))
+        if domain_id:
+            domain_node = self.add_node("gameplay_domain", domain_id, name=domain_id, source=table)
+            self.add_edge(effect_node, domain_node, "global_effect_domain", source=table, evidence="domainId")
+        for field in ("dps", "extraArgs"):
+            values = row.get(field) or []
+            if not isinstance(values, list):
+                continue
+            for index, value in enumerate(values):
+                param_node = self.add_node("global_effect_param", f"{effect_id}:{field}:{index}", name=f"{effect_id} {field} {index}", source=table, data=compact_payload(value, depth=2))
+                self.add_edge(effect_node, param_node, "global_effect_has_param", source=table, evidence=f"{field}[{index}]")
+
+    def add_potential_talent_effect_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        effect_id = safe_key(row.get("id") or row_key)
+        if not effect_id:
+            return
+        effect_node = self.add_node("potential_talent_effect", effect_id, name=effect_id, source=table, data={"id": effect_id, "description": table_text(row.get("desc")), "dataCount": len(row.get("dataList") or [])})
+        self.add_edge(row_node, effect_node, "defines_potential_talent_effect", source=table)
+        self.add_alias(effect_id, effect_node, kind="potential_talent_effect_id", source=table)
+        for index, entry in enumerate(row.get("dataList") or []):
+            if not isinstance(entry, dict):
+                continue
+            modify_type = entry.get("modifyType")
+            buff_data = entry.get("attachBuff") if isinstance(entry.get("attachBuff"), dict) else {}
+            buff_id = safe_key(buff_data.get("buffId"))
+            if buff_id:
+                buff_node = self.add_buff_ref_node(buff_id, source=table)
+                self.add_edge(effect_node, buff_node, "potential_talent_attaches_buff", source=table, evidence=f"dataList[{index}].attachBuff", data={"index": index, "modifyType": modify_type, "blackboardCount": len(buff_data.get("blackboard") or [])})
+            self.add_blackboard_edges(effect_node, buff_data.get("blackboard"), edge_kind="potential_talent_uses_blackboard_key", source=table, evidence_prefix=f"dataList[{index}].attachBuff.blackboard", context={"index": index, "modifyType": modify_type, "target": "buff", "buffId": buff_id})
+            attach_skill = entry.get("attachSkill") if isinstance(entry.get("attachSkill"), dict) else {}
+            attach_skill_id = safe_key(attach_skill.get("skillId") or Path(safe_key(attach_skill.get("skillPath"))).stem)
+            if attach_skill_id:
+                skill_node = self.add_gameplay_skill_ref_node(attach_skill_id, source=table, data={"skillPath": attach_skill.get("skillPath")})
+                self.add_edge(effect_node, skill_node, "potential_talent_attaches_skill", source=table, evidence=f"dataList[{index}].attachSkill", data={"index": index, "modifyType": modify_type, "skillPath": attach_skill.get("skillPath")})
+            skill_bb = entry.get("skillBbModifier") if isinstance(entry.get("skillBbModifier"), dict) else {}
+            skill_bb_id = safe_key(skill_bb.get("skillId"))
+            if skill_bb_id:
+                skill_node = self.add_gameplay_skill_ref_node(skill_bb_id, source=table)
+                self.add_edge(effect_node, skill_node, "potential_talent_modifies_skill_blackboard", source=table, evidence=f"dataList[{index}].skillBbModifier", data={"index": index, "modifyType": modify_type, "bbKey": skill_bb.get("bbKey"), "floatValue": skill_bb.get("floatValue"), "stringValue": skill_bb.get("stringValue")})
+                key_node = self.add_blackboard_key_node(skill_bb.get("bbKey"), source=table)
+                if key_node:
+                    self.add_edge(effect_node, key_node, "potential_talent_modifies_blackboard_key", source=table, evidence=f"dataList[{index}].skillBbModifier.bbKey", data={"index": index, "skillId": skill_bb_id, "floatValue": skill_bb.get("floatValue"), "stringValue": skill_bb.get("stringValue")})
+            skill_param = entry.get("skillParamModifier") if isinstance(entry.get("skillParamModifier"), dict) else {}
+            skill_param_id = safe_key(skill_param.get("skillId"))
+            if skill_param_id:
+                skill_node = self.add_gameplay_skill_ref_node(skill_param_id, source=table)
+                self.add_edge(effect_node, skill_node, "potential_talent_modifies_skill_param", source=table, evidence=f"dataList[{index}].skillParamModifier", data={"index": index, "modifyType": modify_type, "paramType": skill_param.get("paramType"), "paramValue": skill_param.get("paramValue")})
+            attr = entry.get("attrModifier") if isinstance(entry.get("attrModifier"), dict) else {}
+            if any(attr.get(key) not in (None, "", 0, 0.0) for key in ("attrType", "attrValue", "modifierType", "modifyAttributeType")):
+                attr_key = safe_key(attr.get("attrType"))
+                stat_node = self.add_node("gameplay_stat_property", attr_key, name=attr_key, source=table, data={"key": attr_key, "rawAttrType": attr.get("attrType")})
+                edge_data = {"index": index, "modifyType": modify_type, "attrType": attr.get("attrType"), "attrValue": attr.get("attrValue"), "modifierType": attr.get("modifierType"), "modifyAttributeType": attr.get("modifyAttributeType")}
+                self.add_edge(effect_node, stat_node, "potential_talent_modifies_stat_property", source=table, evidence=f"dataList[{index}].attrModifier", data=edge_data)
+                self.add_alias(attr_key, stat_node, kind="gameplay_stat_property_key", source=table)
+                meta_node = self.add_attribute_meta_node(attr.get("attrType"), source=table)
+                if meta_node:
+                    self.add_edge(effect_node, meta_node, "potential_talent_modifies_attribute_meta", source=table, evidence=f"dataList[{index}].attrModifier.attrType", data=edge_data)
+
+    def add_enemy_tag_table_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        tag_id = safe_key(row.get("tagId") or row_key)
+        if not tag_id:
+            return
+        tag_node = self.add_enemy_tag_node(tag_id, name=row.get("tagText"), source=table, data={"id": tag_id})
+        if not tag_node:
+            return
+        self.add_edge(row_node, tag_node, "defines_enemy_tag", source=table)
+        self.add_tag_i18n_edges(tag_node, row.get("tagText"), source=table, edge_kind="enemy_tag_text")
+
+    def add_combat_semantic_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
+        if not isinstance(row, dict):
+            return
+        if table == "BuffTable":
+            self.add_buff_table_edges(table, row_key, row, row_node)
+        elif table == "SkillPatchTable":
+            self.add_skill_patch_edges(table, row_key, row, row_node)
+        elif table == "UseItemTable":
+            self.add_use_item_edges(table, row_key, row, row_node)
+        elif table == "GeneralAbilityTable":
+            self.add_general_ability_edges(table, row_key, row, row_node)
+        elif table == "AbilityEntityAttrTable":
+            self.add_ability_entity_attr_edges(table, row_key, row, row_node)
+        elif table == "GlobalEffectTable":
+            self.add_global_effect_edges(table, row_key, row, row_node)
+        elif table == "PotentialTalentEffectTable":
+            self.add_potential_talent_effect_edges(table, row_key, row, row_node)
+        elif table == "EnemyTagTable":
+            self.add_enemy_tag_table_edges(table, row_key, row, row_node)
+
+    def ingest_world_semantics(self) -> None:
+        table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
+        dataset = self.add_node("dataset", "structured_tables_selected", path=slash(table_root))
+        for table_name in WORLD_SEMANTIC_TABLES:
+            path = table_root / table_name
+            payload = read_json(path, None)
+            if payload is None:
+                continue
+            table_key = Path(table_name).stem
+            table_node = self.add_node("table", table_key, name=table_key, source="StreamingAssets/Table", path=slash(path))
+            self.add_edge(dataset, table_node, "has_table", source="structured")
+            self.add_file(slash(path), kind="structured_table", source="StreamingAssets/Table")
+            if not isinstance(payload, dict):
+                continue
+            for row_key, row in payload.items():
+                row_node = self.add_node(
+                    "table_row",
+                    f"{table_key}:{row_key}",
+                    name=str(row_key),
+                    source=table_key,
+                    data=compact_payload(row, depth=2),
+                )
+                self.add_edge(table_node, row_node, "has_row", source="structured")
+                self.add_structured_row_edges(table_key, row_key, row, row_node)
     def ingest_selected_structured_tables(self) -> None:
         table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
         dataset = self.add_node("dataset", "structured_tables_selected", path=slash(table_root))
         for table_name in SELECTED_STRUCTURED_TABLES:
+            if table_name in WORLD_SEMANTIC_TABLES:
+                continue
             path = table_root / table_name
             payload = read_json(path, None)
             if payload is None:
@@ -1390,8 +14068,447 @@ class SourceGraphBuilder:
                 self.add_edge(table_node, row_node, "has_row", source="structured")
                 self.add_structured_row_edges(table_key, row_key, row, row_node)
 
+    def iter_factory_item_refs(self, values: Any) -> Iterable[tuple[int, int, dict[str, Any]]]:
+        if not isinstance(values, list):
+            return
+        for group_index, entry in enumerate(values):
+            if not isinstance(entry, dict):
+                continue
+            group = entry.get("group")
+            if isinstance(group, list):
+                for item_index, item in enumerate(group):
+                    if isinstance(item, dict) and safe_key(item.get("id")):
+                        yield group_index, item_index, item
+            elif safe_key(entry.get("id")):
+                yield group_index, 0, entry
+
+    def factory_recipe_type(self, table: str) -> str:
+        return {
+            "FactoryManualCraftTable": "manual",
+            "FactoryMachineCraftTable": "machine",
+            "FactoryHubCraftTable": "hub",
+        }.get(table, "factory")
+
+    def add_factory_item_aliases(self, item_node: str, item_id: str, *, source: str) -> None:
+        self.add_alias(item_id, item_node, kind="item_id", source=source)
+        self.add_alias(item_id.removeprefix("item_"), item_node, kind="item_alias", source=source)
+
+    def add_factory_item_edge(self, recipe_node: str, item: dict[str, Any], edge_kind: str, *, source: str, evidence: str, group_index: int, item_index: int) -> None:
+        item_id = safe_key(item.get("id"))
+        if not item_id:
+            return
+        item_node = self.add_node("item", item_id, name=item_id, source=source)
+        self.add_factory_item_aliases(item_node, item_id, source=source)
+        self.add_edge(
+            recipe_node,
+            item_node,
+            edge_kind,
+            source=source,
+            evidence=evidence,
+            data={
+                "count": item.get("count"),
+                "groupIndex": group_index,
+                "itemIndex": item_index,
+            },
+        )
+
+    def add_factory_recipe_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        recipe_id = safe_key(row.get("id") or row_key)
+        if not recipe_id:
+            return
+        recipe_type = self.factory_recipe_type(table)
+        recipe_node = self.add_node(
+            "factory_recipe",
+            recipe_id,
+            name=table_text(row.get("name") or row.get("formulaDesc")) or recipe_id,
+            source=table,
+            data={
+                "id": recipe_id,
+                "recipeType": recipe_type,
+                "rarity": row.get("rarity"),
+                "sortId": row.get("sortId"),
+                "defaultUnlock": row.get("defaultUnlock"),
+                "domainId": row.get("domainId"),
+                "machineId": row.get("machineId"),
+                "showingType": row.get("showingType"),
+                "formulaGroupId": row.get("formulaGroupId"),
+                "progressRound": row.get("progressRound"),
+                "totalProgress": row.get("totalProgress"),
+                "usableLevel": row.get("usableLevel"),
+                "signal": row.get("signal"),
+            },
+        )
+        self.add_edge(row_node, recipe_node, "defines_factory_recipe", source=table)
+        self.add_alias(recipe_id, recipe_node, kind="factory_recipe_id", source=table)
+        for group_index, item_index, item in self.iter_factory_item_refs(row.get("ingredients")):
+            self.add_factory_item_edge(recipe_node, item, "factory_consumes_item", source=table, evidence="ingredients", group_index=group_index, item_index=item_index)
+        for group_index, item_index, item in self.iter_factory_item_refs(row.get("outcomes")):
+            self.add_factory_item_edge(recipe_node, item, "factory_produces_item", source=table, evidence="outcomes", group_index=group_index, item_index=item_index)
+        formula_item_id = safe_key(row.get("itemId"))
+        if formula_item_id:
+            item_node = self.add_node("item", formula_item_id, name=formula_item_id, source=table)
+            self.add_factory_item_aliases(item_node, formula_item_id, source=table)
+            self.add_edge(recipe_node, item_node, "unlocked_by_factory_formula_item", source=table, evidence="itemId")
+        machine_id = safe_key(row.get("machineId"))
+        if machine_id:
+            machine_node = self.add_node("factory_machine", machine_id, name=machine_id, source=table)
+            self.add_edge(recipe_node, machine_node, "crafted_by_machine", source=table, evidence="machineId")
+            self.add_alias(machine_id, machine_node, kind="factory_machine_id", source=table)
+        domain_id = safe_key(row.get("domainId"))
+        if domain_id:
+            domain_node = self.add_node("gameplay_domain", domain_id, name=domain_id, source=table)
+            self.add_edge(recipe_node, domain_node, "factory_recipe_domain", source=table, evidence="domainId")
+            self.add_alias(domain_id, domain_node, kind="gameplay_domain_id", source=table)
+        showing_type = safe_key(row.get("showingType"))
+        if showing_type:
+            showing_node = self.add_node("factory_craft_showing_type", showing_type, name=showing_type, source=table)
+            self.add_edge(recipe_node, showing_node, "has_factory_showing_type", source=table, evidence="showingType")
+            self.add_alias(showing_type, showing_node, kind="factory_craft_showing_type_id", source=table)
+        formula_group_id = safe_key(row.get("formulaGroupId"))
+        if formula_group_id:
+            group_node = self.add_node("factory_craft_group", formula_group_id, name=formula_group_id, source=table)
+            self.add_edge(recipe_node, group_node, "belongs_to_factory_craft_group", source=table, evidence="formulaGroupId")
+            self.add_alias(formula_group_id, group_node, kind="factory_craft_group_id", source=table)
+        for group_id in row.get("belongingGroupIds") or []:
+            group_id = safe_key(group_id)
+            if not group_id:
+                continue
+            group_node = self.add_node("factory_craft_group", group_id, name=group_id, source=table)
+            self.add_edge(recipe_node, group_node, "belongs_to_factory_craft_group", source=table, evidence="belongingGroupIds")
+            self.add_alias(group_id, group_node, kind="factory_craft_group_id", source=table)
+
+    def add_factory_item_table_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        item_id = safe_key(row.get("id") or row_key)
+        if not item_id:
+            return
+        factory_item_node = self.add_node(
+            "factory_item",
+            item_id,
+            name=item_id,
+            source=table,
+            data={
+                "id": item_id,
+                "subType": row.get("subType"),
+                "value": row.get("value"),
+                "buildingBufferStackLimit": row.get("buildingBufferStackLimit"),
+                "showInUnloader": row.get("showInUnloader"),
+                "dischargeType": row.get("dischargeType"),
+                "itemState": row.get("itemState"),
+            },
+        )
+        item_node = self.add_node("item", item_id, name=item_id, source=table)
+        self.add_edge(row_node, factory_item_node, "defines_factory_item", source=table)
+        self.add_edge(factory_item_node, item_node, "describes_item", source=table)
+        self.add_alias(item_id, factory_item_node, kind="factory_item_id", source=table)
+        self.add_factory_item_aliases(item_node, item_id, source=table)
+        for field, edge_kind in (
+            ("showInHubDomainIds", "factory_item_shown_in_domain"),
+            ("losslessDomainIds", "factory_item_lossless_in_domain"),
+            ("transferDomainIds", "factory_item_transfers_in_domain"),
+        ):
+            for domain_id in row.get(field) or []:
+                domain_id = safe_key(domain_id)
+                if not domain_id:
+                    continue
+                domain_node = self.add_node("gameplay_domain", domain_id, name=domain_id, source=table)
+                self.add_edge(factory_item_node, domain_node, edge_kind, source=table, evidence=field)
+
+    def add_factory_machine_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        machine_id = safe_key(row_key)
+        if not machine_id:
+            return
+        machine_node = self.add_node(
+            "factory_machine",
+            machine_id,
+            name=machine_id,
+            source=table,
+            data={"modeCount": len(row.get("modeMap") or []), "defaultModes": row.get("modeUnlockDefaultMap")},
+        )
+        self.add_edge(row_node, machine_node, "defines_factory_machine", source=table)
+        self.add_alias(machine_id, machine_node, kind="factory_machine_id", source=table)
+        for mode in row.get("modeMap") or []:
+            if not isinstance(mode, dict):
+                continue
+            group_id = safe_key(mode.get("groupName"))
+            if not group_id:
+                continue
+            group_node = self.add_node("factory_craft_group", group_id, name=group_id, source=table)
+            self.add_edge(machine_node, group_node, "machine_supports_craft_group", source=table, evidence=safe_key(mode.get("modeName")))
+            self.add_alias(group_id, group_node, kind="factory_craft_group_id", source=table)
+
+    def add_factory_showing_type_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        showing_id = safe_key(row.get("type") or row_key)
+        if not showing_id:
+            return
+        showing_node = self.add_node(
+            "factory_craft_showing_type",
+            showing_id,
+            name=table_text(row.get("name")) or showing_id,
+            source=table,
+            data={"id": showing_id, "icon": row.get("icon"), "priority": row.get("priority")},
+        )
+        self.add_edge(row_node, showing_node, "defines_factory_showing_type", source=table)
+        self.add_alias(showing_id, showing_node, kind="factory_craft_showing_type_id", source=table)
+        self.add_alias(table_text(row.get("name")), showing_node, kind="factory_craft_showing_type_name", source=table)
+
+    def add_map_node(self, map_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        map_key = safe_key(map_id)
+        if not map_key:
+            return ""
+        map_name = table_display_text(name) or map_key
+        map_node = self.add_node("map", map_key, name=map_name, source=source, data=data)
+        self.add_alias(map_key, map_node, kind="map_id", source=source)
+        if map_name != map_key:
+            self.add_alias(map_name, map_node, kind="map_name", source=source)
+        return map_node
+
+    def add_level_node(self, level_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
+        level_key = safe_key(level_id)
+        if not level_key:
+            return ""
+        level_name = table_display_text(name) or level_key
+        level_node = self.add_node("level", level_key, name=level_name, source=source, data=data)
+        self.add_alias(level_key, level_node, kind="level_id", source=source)
+        if level_name != level_key:
+            self.add_alias(level_name, level_node, kind="level_name", source=source)
+        return level_node
+
+    def inferred_map_id_for_level(self, level_id: Any) -> str:
+        level_key = safe_key(level_id)
+        if not level_key:
+            return ""
+        if "_lv" in level_key:
+            return level_key.split("_lv", 1)[0]
+        match = re.match(r"^(map\d+)", level_key, re.IGNORECASE)
+        return match.group(1) if match else ""
+
+    def add_level_map_edge(self, level_node: str, level_id: Any, *, source: str, evidence: str, map_id: Any = None) -> None:
+        map_key = safe_key(map_id) or self.inferred_map_id_for_level(level_id)
+        if not map_key:
+            return
+        map_node = self.add_map_node(map_key, source=source)
+        self.add_edge(level_node, map_node, "level_belongs_to_map", source=source, evidence=evidence)
+
+    def add_map_table_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        map_id = safe_key(row_key)
+        if not map_id:
+            return
+        map_node = self.add_map_node(map_id, name=row.get("showName"), source=table, data={"id": map_id})
+        self.add_edge(row_node, map_node, "defines_map", source=table)
+
+    def add_level_desc_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        level_id = safe_key(row.get("id") or row_key)
+        if not level_id:
+            return
+        level_node = self.add_level_node(level_id, name=row.get("showName"), source=table, data={"id": level_id, "phoneticName": row.get("phoneticName")})
+        self.add_edge(row_node, level_node, "defines_level", source=table)
+        self.add_alias(row.get("phoneticName"), level_node, kind="level_phonetic_name", source=table)
+        self.add_level_map_edge(level_node, level_id, source=table, evidence="inferred_level_prefix")
+
+    def add_level_loading_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        level_id = safe_key(row.get("levelId") or row_key)
+        if not level_id:
+            return
+        loading_node = self.add_node("level_loading", level_id, name=level_id, source=table, data={"levelId": level_id, "bgNameGroup": row.get("bgNameGroup"), "regularBgNameGroup": row.get("regularBgNameGroup"), "regularTipsKeyGroup": row.get("regularTipsKeyGroup"), "mapTags": row.get("mapTags"), "typeTags": row.get("typeTags"), "overrideTypeTags": row.get("overrideTypeTags"), "regionRelated": row.get("regionRelated")})
+        level_node = self.add_level_node(level_id, source=table)
+        self.add_edge(row_node, loading_node, "defines_level_loading", source=table)
+        self.add_edge(level_node, loading_node, "level_has_loading", source=table, evidence="levelId")
+        self.add_level_map_edge(level_node, level_id, source=table, evidence="inferred_level_prefix")
+
+    def add_special_level_map_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        level_id = safe_key(row_key)
+        map_id = safe_key(row.get("mapId"))
+        if not level_id or not map_id:
+            return
+        level_node = self.add_level_node(level_id, source=table)
+        map_node = self.add_map_node(map_id, source=table)
+        self.add_edge(row_node, level_node, "defines_special_level_map", source=table)
+        self.add_edge(level_node, map_node, "level_belongs_to_map", source=table, evidence="mapId")
+
+    def add_scene_area_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        area_id = safe_key(row.get("areaId") or row_key)
+        if not area_id:
+            return
+        scene_id = safe_key(row.get("sceneId"))
+        area_node = self.add_node("scene_area", area_id, name=area_id, source=table, data={"areaId": area_id, "sceneId": scene_id, "areaIndex": row.get("areaIndex"), "bandwidth": row.get("bandwidth"), "spBuildingCnt": row.get("spBuildingCnt"), "uiAreaNode": row.get("uiAreaNode")})
+        self.add_edge(row_node, area_node, "defines_scene_area", source=table)
+        self.add_alias(area_id, area_node, kind="scene_area_id", source=table)
+        if scene_id:
+            level_node = self.add_level_node(scene_id, source=table)
+            self.add_edge(level_node, area_node, "level_has_scene_area", source=table, evidence="sceneId")
+            self.add_level_map_edge(level_node, scene_id, source=table, evidence="inferred_level_prefix")
+
+    def add_map_mark_category_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        category_id = safe_key(row.get("category") if "category" in row else row_key)
+        if not category_id:
+            return
+        category_node = self.add_node("map_mark_category", category_id, name=table_display_text(row.get("name")) or category_id, source=table, data={"category": row.get("category"), "sortId": row.get("sortId")})
+        self.add_edge(row_node, category_node, "defines_map_mark_category", source=table)
+        self.add_alias(category_id, category_node, kind="map_mark_category_id", source=table)
+
+    def add_map_mark_type_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        type_id = safe_key(row.get("markInfoType") if "markInfoType" in row else row_key)
+        if not type_id:
+            return
+        type_node = self.add_node("map_mark_type", type_id, name=table_display_text(row.get("name")) or type_id, source=table, data={"markInfoType": row.get("markInfoType"), "category": row.get("category"), "icon": row.get("icon"), "sortId": row.get("sortId")})
+        self.add_edge(row_node, type_node, "defines_map_mark_type", source=table)
+        self.add_alias(type_id, type_node, kind="map_mark_type_id", source=table)
+        category_id = safe_key(row.get("category"))
+        if category_id:
+            category_node = self.add_node("map_mark_category", category_id, name=category_id, source=table)
+            self.add_edge(type_node, category_node, "map_mark_type_has_category", source=table, evidence="category")
+
+    def add_map_mark_template_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        template_id = safe_key(row.get("markInfoId") or row_key)
+        if not template_id:
+            return
+        template_node = self.add_node("map_mark_template", template_id, name=table_display_text(row.get("name")) or template_id, source=table, data={"markInfoId": template_id, "markInfoType": row.get("markInfoType"), "markType": row.get("markType"), "activeIcon": row.get("activeIcon"), "inActiveIcon": row.get("inActiveIcon"), "defaultVisible": row.get("defaultVisible"), "isStatic": row.get("isStatic"), "visibleLayer": row.get("visibleLayer"), "visibleDist": row.get("visibleDist"), "sortOrder": row.get("sortOrder")})
+        self.add_edge(row_node, template_node, "defines_map_mark_template", source=table)
+        self.add_alias(template_id, template_node, kind="map_mark_template_id", source=table)
+        self.add_alias(row.get("activeIcon"), template_node, kind="icon_id", source=table)
+        type_id = safe_key(row.get("markInfoType"))
+        if type_id:
+            type_node = self.add_node("map_mark_type", type_id, name=type_id, source=table)
+            self.add_edge(template_node, type_node, "map_mark_template_has_type", source=table, evidence="markInfoType")
+
+    def add_map_mark_instance_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        mark_id = safe_key(row.get("markInsId") or row_key)
+        if not mark_id:
+            return
+        level_id = safe_key(row.get("levelId"))
+        template_id = safe_key(row.get("markInfoId"))
+        mark_node = self.add_node("map_mark", mark_id, name=mark_id, source=table, data={"markInsId": mark_id, "levelId": level_id, "markInfoId": template_id, "logicId": row.get("logicId"), "activeMethod": row.get("activeMethod"), "visibleMethod": row.get("visibleMethod"), "pos": row.get("pos")})
+        self.add_edge(row_node, mark_node, "defines_map_mark", source=table)
+        self.add_alias(mark_id, mark_node, kind="map_mark_id", source=table)
+        if level_id:
+            level_node = self.add_level_node(level_id, source=table)
+            self.add_edge(level_node, mark_node, "level_has_map_mark", source=table, evidence="levelId")
+            self.add_level_map_edge(level_node, level_id, source=table, evidence="inferred_level_prefix")
+        if template_id:
+            template_node = self.add_node("map_mark_template", template_id, name=template_id, source=table)
+            self.add_edge(mark_node, template_node, "map_mark_uses_template", source=table, evidence="markInfoId")
+
+    def add_track_map_point_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        point_id = safe_key(row_key)
+        point_node = self.add_node("track_map_point", point_id, name=point_id, source=table, data={"id": point_id, "start": row.get("start"), "end": row.get("end"), "quest": row.get("quest"), "pos": row.get("pos")})
+        self.add_edge(row_node, point_node, "defines_track_map_point", source=table)
+        for field, edge_kind in (("start", "track_point_starts_at_level"), ("end", "track_point_ends_at_level")):
+            level_id = safe_key(row.get(field))
+            if not level_id:
+                continue
+            level_node = self.add_level_node(level_id, source=table)
+            self.add_edge(point_node, level_node, edge_kind, source=table, evidence=field)
+            self.add_level_map_edge(level_node, level_id, source=table, evidence="inferred_level_prefix")
+
+    def add_track_map_link_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        link_id = safe_key(row_key)
+        link_node = self.add_node("track_map_link", link_id, name=link_id, source=table, data={"id": link_id, "start": row.get("start"), "mid": row.get("mid"), "end": row.get("end"), "quest": row.get("quest")})
+        self.add_edge(row_node, link_node, "defines_track_map_link", source=table)
+        for field, edge_kind in (("start", "track_link_starts_at_level"), ("mid", "track_link_passes_level"), ("end", "track_link_ends_at_level")):
+            level_id = safe_key(row.get(field))
+            if not level_id:
+                continue
+            level_node = self.add_level_node(level_id, source=table)
+            self.add_edge(link_node, level_node, edge_kind, source=table, evidence=field)
+            self.add_level_map_edge(level_node, level_id, source=table, evidence="inferred_level_prefix")
+
+    def add_scene_collectable_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        scene_id = safe_key(row_key)
+        level_node = self.add_level_node(scene_id, source=table)
+        self.add_level_map_edge(level_node, scene_id, source=table, evidence="inferred_level_prefix")
+        for index, item in enumerate(row.get("itemList") or []):
+            if not isinstance(item, dict):
+                continue
+            item_id = safe_key(item.get("itemId"))
+            if not item_id:
+                continue
+            collectable_node = self.add_node("scene_collectable", f"{scene_id}:{item_id}:{index}", name=item_id, source=table, data={"sceneId": item.get("sceneId") or scene_id, "itemId": item_id, "maxCount": item.get("maxCount"), "imagePath": item.get("imagePath"), "hasConvertRule": item.get("hasConvertRule"), "convertTargetItemId": item.get("convertTargetItemId"), "convertRequiredCount": item.get("convertRequiredCount"), "extraBandwidthCapacity": item.get("extraBandwidthCapacity"), "extraBuildingNumLimit": item.get("extraBuildingNumLimit")})
+            item_node = self.add_item_node(item_id, source=table)
+            self.add_edge(row_node, collectable_node, "defines_scene_collectable", source=table, evidence=str(index))
+            self.add_edge(level_node, collectable_node, "level_has_scene_collectable", source=table, evidence=str(index))
+            self.add_edge(level_node, item_node, "level_has_collectable_item", source=table, evidence=str(index), data={"maxCount": item.get("maxCount")})
+            self.add_edge(collectable_node, item_node, "scene_collectable_item", source=table, evidence="itemId")
+            convert_node = self.add_item_node(item.get("convertTargetItemId"), source=table)
+            if convert_node:
+                self.add_edge(collectable_node, convert_node, "scene_collectable_converts_to_item", source=table, evidence="convertTargetItemId", data={"convertRequiredCount": item.get("convertRequiredCount")})
+
+    def add_factory_level_region_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        level_id = safe_key(row_key)
+        level_node = self.add_level_node(level_id, source=table)
+        self.add_level_map_edge(level_node, level_id, source=table, evidence="inferred_level_prefix")
+        for index, region_id in enumerate(row.get("list") or []):
+            region_id = safe_key(region_id)
+            if not region_id:
+                continue
+            region_node = self.add_node("factory_region", region_id, name=region_id, source=table)
+            self.add_edge(row_node, region_node, "defines_factory_region_ref", source=table, evidence=str(index))
+            self.add_edge(level_node, region_node, "level_has_factory_region", source=table, evidence=f"list[{index}]")
+            self.add_alias(region_id, region_node, kind="factory_region_id", source=table)
+
+    def add_settlement_level_poi_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        level_id = safe_key(row_key)
+        poi_id = safe_key(row.get("settlementId"))
+        if not level_id or not poi_id:
+            return
+        level_node = self.add_level_node(level_id, source=table)
+        poi_node = self.add_node("settlement_poi", poi_id, name=poi_id, source=table)
+        self.add_edge(row_node, poi_node, "defines_settlement_poi", source=table)
+        self.add_edge(level_node, poi_node, "level_has_settlement_poi", source=table, evidence="settlementId")
+        self.add_alias(poi_id, poi_node, kind="settlement_poi_id", source=table)
+        self.add_level_map_edge(level_node, level_id, source=table, evidence="inferred_level_prefix")
+
+    def add_shop_channel_level_poi_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
+        level_id = safe_key(row_key)
+        poi_id = safe_key(row.get("channelPartner"))
+        if not level_id or not poi_id:
+            return
+        level_node = self.add_level_node(level_id, source=table)
+        poi_node = self.add_node("shop_channel_poi", poi_id, name=poi_id, source=table)
+        self.add_edge(row_node, poi_node, "defines_shop_channel_poi", source=table)
+        self.add_edge(level_node, poi_node, "level_has_shop_channel_poi", source=table, evidence="channelPartner")
+        self.add_alias(poi_id, poi_node, kind="shop_channel_poi_id", source=table)
+        self.add_level_map_edge(level_node, level_id, source=table, evidence="inferred_level_prefix")
+
     def add_structured_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
-        if table == "AudioDialog" and isinstance(row, dict):
+        if table in {"FactoryManualCraftTable", "FactoryMachineCraftTable", "FactoryHubCraftTable"} and isinstance(row, dict):
+            self.add_factory_recipe_edges(table, row_key, row, row_node)
+        elif table == "FactoryItemTable" and isinstance(row, dict):
+            self.add_factory_item_table_edges(table, row_key, row, row_node)
+        elif table == "FactoryMachineCrafterTable" and isinstance(row, dict):
+            self.add_factory_machine_edges(table, row_key, row, row_node)
+        elif table == "FactoryCraftShowingTypeTable" and isinstance(row, dict):
+            self.add_factory_showing_type_edges(table, row_key, row, row_node)
+        elif table == "MapIdTable" and isinstance(row, dict):
+            self.add_map_table_edges(table, row_key, row, row_node)
+        elif table == "LevelDescTable" and isinstance(row, dict):
+            self.add_level_desc_edges(table, row_key, row, row_node)
+        elif table == "LevelLoadingTable" and isinstance(row, dict):
+            self.add_level_loading_edges(table, row_key, row, row_node)
+        elif table == "SpecialLevelToMapTable" and isinstance(row, dict):
+            self.add_special_level_map_edges(table, row_key, row, row_node)
+        elif table == "SceneAreaTable" and isinstance(row, dict):
+            self.add_scene_area_edges(table, row_key, row, row_node)
+        elif table == "MapMarkCategoryTable" and isinstance(row, dict):
+            self.add_map_mark_category_edges(table, row_key, row, row_node)
+        elif table == "MapMarkTypeTable" and isinstance(row, dict):
+            self.add_map_mark_type_edges(table, row_key, row, row_node)
+        elif table == "MapMarkTempTable" and isinstance(row, dict):
+            self.add_map_mark_template_edges(table, row_key, row, row_node)
+        elif table == "MapMarkInsTable" and isinstance(row, dict):
+            self.add_map_mark_instance_edges(table, row_key, row, row_node)
+        elif table == "TrackMapPointTable" and isinstance(row, dict):
+            self.add_track_map_point_edges(table, row_key, row, row_node)
+        elif table == "TrackMapLinkTable" and isinstance(row, dict):
+            self.add_track_map_link_edges(table, row_key, row, row_node)
+        elif table == "SceneCollectableItemTable" and isinstance(row, dict):
+            self.add_scene_collectable_edges(table, row_key, row, row_node)
+        elif table == "FactoryLevelRegionTable" and isinstance(row, dict):
+            self.add_factory_level_region_edges(table, row_key, row, row_node)
+        elif table == "SettlementLevelPOIMapTable" and isinstance(row, dict):
+            self.add_settlement_level_poi_edges(table, row_key, row, row_node)
+        elif table == "ShopChannelLevelPOIMapTable" and isinstance(row, dict):
+            self.add_shop_channel_level_poi_edges(table, row_key, row, row_node)
+        elif table == "AudioDialog" and isinstance(row, dict):
             path = safe_key(row.get("path"))
             audio_key = Path(path).stem if path else row_key
             audio_node = self.add_node(
@@ -1428,37 +14545,38 @@ class SourceGraphBuilder:
             self.add_edge(row_node, char_node, "defines_character", source="CharacterTable")
             actor_hint = char_id.replace("chr_", "")
             self.add_alias(actor_hint, char_node, kind="character_alias", source="CharacterTable")
+            for field, edge_kind in (("mainAttrType", "character_main_attribute_meta"), ("subAttrType", "character_sub_attribute_meta")):
+                meta_node = self.add_attribute_meta_node(row.get(field), source="CharacterTable")
+                if meta_node:
+                    self.add_edge(char_node, meta_node, edge_kind, source="CharacterTable", evidence=field)
+            for stage_index, stage in enumerate(row.get("attributes") or []):
+                if not isinstance(stage, dict):
+                    continue
+                attr_payload = stage.get("Attribute") if isinstance(stage.get("Attribute"), dict) else {}
+                attrs = attr_payload.get("attrs") if isinstance(attr_payload.get("attrs"), list) else []
+                for attr_index, attr in enumerate(attrs):
+                    if not isinstance(attr, dict):
+                        continue
+                    meta_node = self.add_attribute_meta_node(attr.get("attrType"), source="CharacterTable")
+                    if not meta_node:
+                        continue
+                    self.add_edge(
+                        char_node,
+                        meta_node,
+                        "character_base_attribute_meta",
+                        source="CharacterTable",
+                        evidence=f"attributes[{stage_index}].Attribute.attrs[{attr_index}].attrType",
+                        data={"breakStage": stage.get("breakStage"), "attrType": attr.get("attrType"), "attrValue": attr.get("attrValue"), "index": attr_index},
+                    )
             for voice in row.get("profileVoice") or []:
                 vo_id = safe_key(voice.get("voId"))
                 if not vo_id:
                     continue
                 audio_node = self.add_node("audio", vo_id, name=vo_id, source="CharacterTable")
                 self.add_edge(char_node, audio_node, "has_profile_voice", source="CharacterTable", evidence=str(voice.get("voiceIndex") or ""))
-        elif table == "MapMarkInsTable" and isinstance(row, dict):
-            level = safe_key(row.get("levelId"))
-            mark = safe_key(row.get("markInsId") or row_key)
-            mark_node = self.add_node(
-                "map_mark",
-                mark,
-                name=mark,
-                source="MapMarkInsTable",
-                data={"levelId": level, "markInfoId": row.get("markInfoId"), "pos": row.get("pos")},
-            )
-            self.add_edge(row_node, mark_node, "defines_map_mark", source="MapMarkInsTable")
-            if level:
-                level_node = self.add_node("level", level, name=level, source="MapMarkInsTable")
-                self.add_edge(level_node, mark_node, "has_map_mark", source="MapMarkInsTable")
+
         elif table == "AudioSequenceDialog" and isinstance(row, dict):
-            for sequence_key, sequence in row.items():
-                seq_node = self.add_node("audio_sequence", sequence_key, name=sequence_key, source="AudioSequenceDialog")
-                self.add_edge(row_node, seq_node, "has_audio_sequence", source="AudioSequenceDialog")
-                if isinstance(sequence, dict):
-                    for speaker in sequence.get("involvedSpeakers") or []:
-                        char_node = self.add_node("character", speaker, name=speaker, source="AudioSequenceDialog")
-                        self.add_edge(seq_node, char_node, "involves_speaker", source="AudioSequenceDialog")
-                    for audio_id in sequence.get("sequence") or []:
-                        audio_node = self.add_node("audio", str(audio_id), name=str(audio_id), source="AudioSequenceDialog")
-                        self.add_edge(seq_node, audio_node, "sequence_audio_id", source="AudioSequenceDialog")
+            self.add_audio_sequence_dialog_edges(table, row_key, row, row_node)
 
     def ingest_reference_tables(self) -> None:
         ref_root = WEBUI_DATA / "lang" / self.language / "reference"
@@ -1573,6 +14691,7 @@ class SourceGraphBuilder:
             "edgesByKind": edges_by_kind,
             "filesByKind": files_by_kind,
             "options": {
+                "includeGameplay": self.include_gameplay,
                 "includeAssetMaps": self.include_asset_maps,
                 "includeReferenceRows": self.include_reference_rows,
                 "includeAllMaterialJson": self.include_all_material_json,
@@ -1754,15 +14873,93 @@ def emit_option_branch_gaps(conn: sqlite3.Connection) -> None:
         """
     ).fetchall()
     edge_counts = {row["storyKey"]: row["graphEdges"] for row in story_rows}
+    audit_rows = conn.execute(
+        """
+        SELECT
+            story.name AS storyKey,
+            audit.data AS auditData,
+            (
+                SELECT GROUP_CONCAT(DISTINCT dataset.path)
+                FROM edges dataset_edge
+                JOIN nodes dataset ON dataset.id = dataset_edge.src
+                WHERE dataset_edge.dst = audit.id
+                  AND dataset_edge.kind = 'has_runtime_option_route_audit'
+                  AND dataset.kind = 'dataset'
+            ) AS runtimeAuditReports,
+            (
+                SELECT COUNT(*)
+                FROM edges conflict_edge
+                WHERE conflict_edge.src = audit.id
+                  AND conflict_edge.kind = 'runtime_audit_has_conflict'
+            ) AS runtimeAuditConflicts,
+            (
+                SELECT COUNT(*)
+                FROM edges jump_edge
+                WHERE jump_edge.src = audit.id
+                  AND jump_edge.kind = 'runtime_audit_has_nearby_jump'
+            ) AS runtimeAuditNearbyJumps
+        FROM edges e
+        JOIN nodes story ON story.id = e.src
+        JOIN nodes audit ON audit.id = e.dst
+        WHERE story.kind = 'story'
+          AND audit.kind = 'runtime_option_route_audit_group'
+          AND e.kind = 'has_runtime_option_route_audit'
+        """
+    ).fetchall()
+    audit_stats: dict[str, dict[str, Any]] = {}
+    for row in audit_rows:
+        story_key = row["storyKey"]
+        data = parse_json_text(row["auditData"])
+        stats = audit_stats.setdefault(
+            story_key,
+            {
+                "runtimeAuditGroups": 0,
+                "runtimeAuditConflicts": 0,
+                "runtimeAuditNearbyJumps": 0,
+                "runtimeAuditRecommendations": Counter(),
+                "runtimeAuditReports": set(),
+            },
+        )
+        stats["runtimeAuditGroups"] += 1
+        stats["runtimeAuditConflicts"] += int(row["runtimeAuditConflicts"] or 0)
+        stats["runtimeAuditNearbyJumps"] += int(row["runtimeAuditNearbyJumps"] or 0)
+        recommendation = safe_key(data.get("recommendation"))
+        if recommendation:
+            stats["runtimeAuditRecommendations"][recommendation] += 1
+        for source_report in safe_key(row["runtimeAuditReports"]).split(","):
+            if source_report:
+                stats["runtimeAuditReports"].add(source_report)
     output_scenes = []
+    seen_scene_keys: set[str] = set()
     if isinstance(scenes, list):
         for scene in scenes:
             key = scene.get("scene") or scene.get("key") or scene.get("storyKey")
             if not key:
                 continue
+            seen_scene_keys.add(key)
             scene = dict(scene)
             scene["graphOptionEdges"] = edge_counts.get(key, 0)
+            stats = audit_stats.get(key)
+            if stats:
+                scene["runtimeAuditGroups"] = stats["runtimeAuditGroups"]
+                scene["runtimeAuditConflicts"] = stats["runtimeAuditConflicts"]
+                scene["runtimeAuditNearbyJumps"] = stats["runtimeAuditNearbyJumps"]
+                scene["runtimeAuditRecommendations"] = dict(sorted(stats["runtimeAuditRecommendations"].items()))
+                scene["runtimeAuditReports"] = sorted(stats["runtimeAuditReports"])
             output_scenes.append(scene)
+    for key, stats in sorted(audit_stats.items()):
+        if key in seen_scene_keys:
+            continue
+        output_scenes.append({
+            "scene": key,
+            "auditOnly": True,
+            "graphOptionEdges": edge_counts.get(key, 0),
+            "runtimeAuditGroups": stats["runtimeAuditGroups"],
+            "runtimeAuditConflicts": stats["runtimeAuditConflicts"],
+            "runtimeAuditNearbyJumps": stats["runtimeAuditNearbyJumps"],
+            "runtimeAuditRecommendations": dict(sorted(stats["runtimeAuditRecommendations"].items())),
+            "runtimeAuditReports": sorted(stats["runtimeAuditReports"]),
+        })
     payload = {
         "generated": int(time.time()),
         "sourceReport": slash(report_path),
@@ -1844,32 +15041,712 @@ QUERY_KIND_PRIORITY = {
     "story": 0,
     "option_group": 1,
     "option": 2,
-    "line": 3,
-    "timeline": 4,
-    "timeline_option_route": 5,
-    "runtime_jump_clip": 6,
-    "mission": 7,
-    "actor": 8,
-    "audio": 9,
-    "file": 10,
+    "option_override": 3,
+    "runtime_option_route_audit_group": 3.2,
+    "runtime_option_route_conflict": 3.3,
+    "line": 4,
+    "sns_dialog": 5,
+    "sns_content": 6,
+    "sns_option": 7,
+    "sns_topic": 8,
+    "sns_chat": 9,
+    "sns_const": 10,
+    "radio": 11,
+    "radio_line": 12,
+    "remote_common": 13,
+    "remote_common_line": 14,
+    "audio_cue": 15,
+    "audio_cue_handler": 16,
+    "audio_voice_extra": 17,
+    "emotion_voice_config": 18,
+    "voice_interjection": 19,
+    "voice_id_conflict": 20,
+    "audio_dialog_custom_event": 21,
+    "audio_dialog_config": 22,
+    "text_voice_id": 23,
+    "audio_vo_tone": 24,
+    "audio_speaker_type_weight": 25,
+    "audio_sequence_dialog_set": 26,
+    "audio_sequence_dialog": 27,
+    "audio_battle_building": 28,
+    "audio_collection": 29,
+    "audio_drop": 30,
+    "audio_factory": 31,
+    "audio_factory_announcement": 32,
+    "audio_item_drag_drop": 33,
+    "audio_item_type_drag_drop": 34,
+    "audio_level": 35,
+    "dialog_text": 36,
+    "dialog_option": 37,
+    "dialog_summary": 38,
+    "dialog_summary_map": 39,
+    "domain_depot_deliver_target_dialog": 40,
+    "decoded_config_file": 41,
+    "decoded_config_family": 42,
+    "decoded_config_group": 43,
+    "model_config": 44,
+    "model_config_model": 45,
+    "model_radius": 46,
+    "model_radius_config": 47,
+    "interactive_table_config": 48,
+    "interactive_template": 49,
+    "interactive_object": 50,
+    "interactive_template_data": 51,
+    "world_entity_registry": 52,
+    "world_entity": 53,
+    "world_entity_detail": 54,
+    "teleport_validation_config": 55,
+    "teleport_point": 56,
+    "mission_area_config": 57,
+    "mission_area": 58,
+    "subgame_instance_config": 59,
+    "subgame_instance": 60,
+    "subgame_group": 61,
+    "spawner_config": 62,
+    "spawner_enemy_entry": 63,
+    "gameplay_effect": 64,
+    "gameplay_tag": 65,
+    "buff_parameter": 66,
+    "buff_icon": 67,
+    "skill_parameter": 68,
+    "skill_icon": 69,
+    "level_config": 70,
+    "level_data": 71,
+    "level_scene_config": 72,
+    "level_asset_reference": 73,
+    "level_task_marker": 74,
+    "level_data_param": 75,
+    "level_script": 76,
+    "level_script_property": 76.1,
+    "level_script_template": 77,
+    "level_script_template_group": 78,
+    "level_script_start_type": 79,
+    "level_script_montage": 80,
+    "npc_montage_category": 81,
+    "npc_montage_body": 82,
+    "npc_montage_action": 83,
+    "animation_config": 84,
+    "animation_state": 85,
+    "facial_morph": 86,
+    "actor_animation_ref": 87,
+    "animation_cutscene_ref": 88,
+    "animation_path_ref": 89,
+    "ai_config": 90,
+    "atmospheric_npc_cluster": 91,
+    "char_interact_perform_config": 92,
+    "char_interact_asset_reference": 93,
+    "char_interact_ccs_reference": 94,
+    "interactive_collection": 95,
+    "interactive_component": 96,
+    "interactive_component_type": 97,
+    "interactive_property_key": 98,
+    "interactive_logic_type": 99,
+    "interactive_trigger_shape": 100,
+    "interactive_guide_shape": 101,
+    "model_view_state_controller": 102,
+    "model_view_clip_ref": 103,
+    "model_view_animator_name": 104,
+    "dialog_id_table_config": 105,
+    "dialog_registry_scene": 106,
+    "bamboo_raft_task_group": 107,
+    "quest_task": 108,
+    "damage_text_style": 109,
+    "damage_text_animation": 110,
+    "damage_text_node_name": 111,
+    "damage_text_ui_resource": 112,
+    "lipsync_clip": 113,
+    "lipsync_language": 114,
+    "navmesh_area": 115,
+    "navmesh_area_id": 116,
+    "navmesh_state_container": 117,
+    "navmesh_state_record": 118,
+    "fmv_binding": 118.4,
+    "fmv_clip": 118.5,
+    "mission_runtime_asset": 119,
+    "mission_runtime_action": 119.1,
+    "mission_runtime_action_type": 120,
+    "guide_group": 120.1,
+    "mission_runtime_chapter_panel": 120.2,
+    "mission_runtime_condition": 120.9,
+    "mission_runtime_condition_type": 121,
+    "mission_runtime_tracking_type": 122,
+    "enemy_data_asset": 123,
+    "map_config": 124,
+    "map_scene_state": 125,
+    "map_variable": 126,
+    "map_domain": 127,
+    "map_streaming_asset": 128,
+    "map_config_condition_type": 129,
+    "level_script_task_extra": 130,
+    "level_script_task_uid": 130.1,
+    "level_script_task_objective": 130.2,
+    "level_script_task_progress_display_mode": 130.3,
+    "level_script_task_track_point_type": 130.4,
+    "level_mount_point": 131,
+    "level_mount_type": 132,
+    "level_gen_parent_data": 133,
+    "level_gen_doodad_group": 134,
+    "level_gen_doodad_logic": 135,
+    "factory_mine": 136,
+    "factory_mine_proto": 137,
+    "ui_level_map_config": 138,
+    "ui_map_static_element": 139,
+    "ui_map_static_element_type": 140,
+    "ui_map_tier_name": 141,
+    "level_basic_info": 142,
+    "level_short_id_scene": 143,
+    "level_short_id": 144,
+    "map_brief_info": 145,
+    "map_sublevel_brief": 146,
+    "ui_map_region_info": 147,
+    "factory_area": 148,
+    "map_region": 149,
+    "factory_mine_team": 150,
+    "map_mark_detail_type": 151,
+    "map_mark_visibility_type": 152,
+    "map_mark_logic_ref": 153,
+    "system_interactive": 154,
+    "minigame": 155,
+    "sewage_treat_plant": 156,
+    "world_entity_text_registry": 157,
+    "world_entity_instance": 158,
+    "world_entity_script_slot": 159,
+    "world_entity_config": 160,
+    "world_entity_config_property": 161,
+    "npc_proxy_brief": 162,
+    "world_entity_segment": 163,
+    "timeline": 5,
+    "timeline_option_route": 6,
+    "runtime_jump_clip": 7,
+    "mission": 8,
+    "map": 9,
+    "level": 10,
+    "level_loading": 11,
+    "scene_area": 12,
+    "map_mark": 13,
+    "map_mark_template": 14,
+    "map_mark_type": 15,
+    "map_mark_category": 16,
+    "track_map_point": 17,
+    "track_map_link": 18,
+    "scene_collectable": 19,
+    "factory_region": 20,
+    "settlement_poi": 21,
+    "shop_channel_poi": 22,
+    "character": 9,
+    "character_break_stage": 10,
+    "character_level_checkpoint": 11,
+    "character_stat_checkpoint": 12,
+    "character_breakthrough": 13,
+    "character_potential": 14,
+    "character_tag": 15,
+    "character_tag_desc": 16,
+    "tag": 16.2,
+    "tag_group": 16.3,
+    "character_profession": 17,
+    "character_type": 18,
+    "character_team": 19,
+    "character_preset": 20,
+    "weapon_skill_recommendation": 21,
+    "dungeon": 22,
+    "character_tutorial": 23,
+    "character_tutorial_stage": 24,
+    "character_tutorial_step": 25,
+    "character_trial": 26,
+    "character_guide": 27,
+    "training_recommendation": 28,
+    "attribute_meta": 29,
+    "attribute_display_config": 30,
+    "attribute_display_entry": 31,
+    "composite_attribute": 32,
+    "attribute_filter": 33,
+    "interactive_attribute": 34,
+    "setting_tab": 34.1,
+    "setting_item": 34.2,
+    "setting_quality_subsetting": 34.3,
+    "setting_quality_option": 34.4,
+    "setting_gamepad_item": 34.5,
+    "setting_gamepad_implicit_item": 34.6,
+    "setting_gamepad_option": 34.7,
+    "setting_text_key": 34.8,
+    "setting_function": 34.85,
+    "ui_label": 34.87,
+    "input_action": 34.9,
+    "input_scope": 34.91,
+    "input_key": 34.92,
+    "spaceship_npc_proxy": 35,
+    "spaceship_skill": 36,
+    "spaceship_room_type": 37,
+    "spaceship_room_attr": 38,
+    "spaceship_room_level": 39,
+    "spaceship_empty_room": 40,
+    "spaceship_formula": 41,
+    "spaceship_clue": 42,
+    "env_talk": 43,
+    "i18n_text": 44,
+    "system_jump": 45,
+    "activity": 46,
+    "activity_tag": 47,
+    "activity_condition": 48,
+    "activity_task": 49,
+    "activity_stage": 50,
+    "activity_milestone": 51,
+    "activity_banner": 52,
+    "activity_push": 53,
+    "achievement_category": 54,
+    "achievement_group": 55,
+    "achievement": 56,
+    "achievement_level": 57,
+    "achievement_condition": 58,
+    "achievement_statistic": 59,
+    "factory_tech_group": 60,
+    "factory_tech_category": 61,
+    "factory_tech_layer": 62,
+    "factory_tech": 63,
+    "factory_tech_condition": 64,
+    "factory_building": 65,
+    "factory_building_type": 66,
+    "factory_renderer_template": 67,
+    "factory_blueprint_machine_icon": 68,
+    "manual_craft_unlock": 69,
+    "prts_page": 70,
+    "prts_category": 71,
+    "prts_first_level": 72,
+    "prts_entry": 73,
+    "rich_content": 74,
+    "rich_content_line": 75,
+    "reading_popup": 76,
+    "reading_popup_icon": 77,
+    "prts_reading": 78,
+    "prts_reading_entry": 79,
+    "prts_investigation": 80,
+    "prts_investigation_group": 81,
+    "prts_note": 82,
+    "npc": 83,
+    "npc_group": 84,
+    "npc_template": 85,
+    "npc_voice_profile": 86,
+    "environmental_npc": 87,
+    "npc_camp_tag": 88,
+    "npc_career_tag": 89,
+    "audio_dialog_channel": 90,
+    "wwise_event": 91,
+    "responsive_dialog_group": 92,
+    "responsive_speaker": 93,
+    "responsive_trigger": 94,
+    "responsive_trigger_key": 95,
+    "responsive_trigger_type": 96,
+    "responsive_event_template": 97,
+    "responsive_response": 98,
+    "bark_group": 99,
+    "bark_variant": 100,
+    "bark_text": 101,
+    "bark_table_const": 102,
+    "weapon": 10,
+    "equipment": 11,
+    "enemy": 12,
+    "enemy_template": 13,
+    "enemy_attribute_template": 14,
+    "enemy_display_type": 15,
+    "enemy_ability": 16,
+    "enemy_tag": 17,
+    "enemy_attribute_modifier": 18,
+    "buff": 19,
+    "general_ability": 20,
+    "use_item_effect": 21,
+    "gameplay_skill_level": 22,
+    "skill_tag": 23,
+    "gameplay_blackboard_key": 24,
+    "ability_entity": 25,
+    "global_effect": 26,
+    "global_effect_param": 27,
+    "potential_talent_effect": 28,
+    "factory_recipe": 20,
+    "factory_item": 21,
+    "factory_machine": 22,
+    "factory_craft_group": 23,
+    "factory_craft_showing_type": 24,
+    "equipment_formula": 25,
+    "equipment_formula_pack": 26,
+    "equipment_suit": 27,
+    "gameplay_domain": 28,
+    "gameplay_property_curve": 29,
+    "gameplay_stat_property": 30,
+    "gameplay_unlock": 31,
+    "item": 32,
+    "item_type": 33,
+    "item_showing_type": 34,
+    "item_obtain_way": 35,
+    "reward": 36,
+    "reward_drop": 37,
+    "shop_group": 38,
+    "shop": 39,
+    "shop_goods": 40,
+    "shop_goods_tag": 41,
+    "gameplay_skill_group": 42,
+    "gameplay_skill": 43,
+    "gameplay_talent_group": 44,
+    "gameplay_talent": 45,
+    "gameplay_progression": 46,
+    "asset_entity": 47,
+    "asset": 48,
+    "actor": 49,
+    "audio": 50,
+    "file": 51,
 }
-
 NODE_ID_PREFIXES = (
     "story",
     "option_group",
     "option",
+    "option_override",
+    "runtime_option_route_audit_group",
+    "runtime_option_route_conflict",
     "line",
+    "sns_chat",
+    "sns_topic",
+    "sns_option",
+    "sns_dialog",
+    "sns_content",
+    "sns_const",
+    "radio",
+    "radio_line",
+    "remote_common",
+    "remote_common_line",
+    "audio_cue",
+    "audio_cue_handler",
+    "audio_voice_extra",
+    "emotion_voice_config",
+    "voice_interjection",
+    "voice_id_conflict",
+    "audio_dialog_custom_event",
+    "audio_dialog_config",
+    "text_voice_id",
+    "audio_vo_tone",
+    "audio_speaker_type_weight",
+    "audio_sequence_dialog_set",
+    "audio_sequence_dialog",
+    "audio_battle_building",
+    "audio_collection",
+    "audio_drop",
+    "audio_factory",
+    "audio_factory_announcement",
+    "audio_item_drag_drop",
+    "audio_item_type_drag_drop",
+    "audio_level",
+    "dialog_text",
+    "dialog_option",
+    "dialog_summary",
+    "dialog_summary_map",
+    "domain_depot_deliver_target_dialog",
+    "decoded_config_file",
+    "decoded_config_family",
+    "decoded_config_group",
+    "model_config",
+    "model_config_model",
+    "model_radius",
+    "model_radius_config",
+    "interactive_table_config",
+    "interactive_template",
+    "interactive_object",
+    "interactive_template_data",
+    "world_entity_registry",
+    "world_entity",
+    "world_entity_detail",
+    "teleport_validation_config",
+    "teleport_point",
+    "mission_area_config",
+    "mission_area",
+    "subgame_instance_config",
+    "subgame_instance",
+    "subgame_group",
+    "spawner_config",
+    "spawner_enemy_entry",
+    "gameplay_effect",
+    "gameplay_tag",
+    "buff_parameter",
+    "buff_icon",
+    "skill_parameter",
+    "skill_icon",
+    "level_script",
+    "level_script_property",
+    "level_script_template",
+    "level_script_template_group",
+    "level_script_start_type",
+    "level_script_montage",
+    "npc_montage_category",
+    "npc_montage_body",
+    "npc_montage_action",
+    "animation_config",
+    "animation_state",
+    "facial_morph",
+    "actor_animation_ref",
+    "animation_cutscene_ref",
+    "animation_path_ref",
+    "ai_config",
+    "atmospheric_npc_cluster",
+    "char_interact_perform_config",
+    "char_interact_asset_reference",
+    "char_interact_ccs_reference",
+    "interactive_collection",
+    "interactive_component",
+    "interactive_component_type",
+    "interactive_property_key",
+    "interactive_logic_type",
+    "interactive_trigger_shape",
+    "interactive_guide_shape",
+    "model_view_state_controller",
+    "model_view_clip_ref",
+    "model_view_animator_name",
+    "dialog_id_table_config",
+    "dialog_registry_scene",
+    "bamboo_raft_task_group",
+    "quest_task",
+    "damage_text_style",
+    "damage_text_animation",
+    "damage_text_node_name",
+    "damage_text_ui_resource",
+    "lipsync_clip",
+    "lipsync_language",
+    "navmesh_area",
+    "navmesh_area_id",
+    "navmesh_state_container",
+    "navmesh_state_record",
+    "fmv_binding",
+    "fmv_clip",
+    "mission_runtime_asset",
+    "mission_runtime_action",
+    "mission_runtime_action_type",
+    "guide_group",
+    "mission_runtime_chapter_panel",
+    "mission_runtime_condition",
+    "mission_runtime_condition_type",
+    "mission_runtime_tracking_type",
+    "enemy_data_asset",
+    "map_config",
+    "map_scene_state",
+    "map_variable",
+    "map_domain",
+    "map_streaming_asset",
+    "map_config_condition_type",
+    "level_script_task_extra",
+    "level_script_task_uid",
+    "level_script_task_objective",
+    "level_script_task_progress_display_mode",
+    "level_script_task_track_point_type",
+    "level_mount_point",
+    "level_mount_type",
+    "level_gen_parent_data",
+    "level_gen_doodad_group",
+    "level_gen_doodad_logic",
+    "factory_mine",
+    "factory_mine_proto",
+    "ui_level_map_config",
+    "ui_map_static_element",
+    "ui_map_static_element_type",
+    "ui_map_tier_name",
+    "level_basic_info",
+    "level_short_id_scene",
+    "level_short_id",
+    "map_brief_info",
+    "map_sublevel_brief",
+    "ui_map_region_info",
+    "factory_area",
+    "map_region",
+    "factory_mine_team",
+    "map_mark_detail_type",
+    "map_mark_visibility_type",
+    "map_mark_logic_ref",
+    "system_interactive",
+    "minigame",
+    "sewage_treat_plant",
+    "world_entity_text_registry",
+    "world_entity_instance",
+    "world_entity_script_slot",
+    "world_entity_config",
+    "world_entity_config_property",
+    "npc_proxy_brief",
+    "world_entity_segment",
     "mission",
+    "map",
+    "level",
+    "level_loading",
+    "scene_area",
+    "map_mark",
+    "map_mark_template",
+    "map_mark_type",
+    "map_mark_category",
+    "track_map_point",
+    "track_map_link",
+    "scene_collectable",
+    "factory_region",
+    "settlement_poi",
+    "shop_channel_poi",
+    "character",
+    "character_break_stage",
+    "character_level_checkpoint",
+    "character_stat_checkpoint",
+    "character_breakthrough",
+    "character_potential",
+    "character_tag",
+    "character_tag_desc",
+    "tag",
+    "tag_group",
+    "character_profession",
+    "character_type",
+    "character_team",
+    "character_preset",
+    "weapon_skill_recommendation",
+    "dungeon",
+    "character_tutorial",
+    "character_tutorial_stage",
+    "character_tutorial_step",
+    "character_trial",
+    "character_guide",
+    "training_recommendation",
+    "attribute_meta",
+    "attribute_display_config",
+    "attribute_display_entry",
+    "composite_attribute",
+    "attribute_filter",
+    "interactive_attribute",
+    "setting_tab",
+    "setting_item",
+    "setting_quality_subsetting",
+    "setting_quality_option",
+    "setting_gamepad_item",
+    "setting_gamepad_implicit_item",
+    "setting_gamepad_option",
+    "setting_text_key",
+    "setting_function",
+    "ui_label",
+    "input_action",
+    "input_scope",
+    "input_key",
+    "spaceship_npc_proxy",
+    "spaceship_skill",
+    "spaceship_room_type",
+    "spaceship_room_attr",
+    "spaceship_room_level",
+    "spaceship_empty_room",
+    "spaceship_formula",
+    "spaceship_clue",
+    "env_talk",
+    "i18n_text",
+    "system_jump",
+    "activity",
+    "activity_tag",
+    "activity_condition",
+    "activity_task",
+    "activity_stage",
+    "activity_milestone",
+    "activity_banner",
+    "activity_push",
+    "achievement_category",
+    "achievement_group",
+    "achievement",
+    "achievement_level",
+    "achievement_condition",
+    "achievement_statistic",
+    "factory_tech_group",
+    "factory_tech_category",
+    "factory_tech_layer",
+    "factory_tech",
+    "factory_tech_condition",
+    "factory_building",
+    "factory_building_type",
+    "factory_renderer_template",
+    "factory_blueprint_machine_icon",
+    "manual_craft_unlock",
+    "prts_page",
+    "prts_category",
+    "prts_first_level",
+    "prts_entry",
+    "rich_content",
+    "rich_content_line",
+    "reading_popup",
+    "reading_popup_icon",
+    "prts_reading",
+    "prts_reading_entry",
+    "prts_investigation",
+    "prts_investigation_group",
+    "prts_note",
+    "npc",
+    "npc_group",
+    "npc_template",
+    "npc_voice_profile",
+    "environmental_npc",
+    "npc_camp_tag",
+    "npc_career_tag",
+    "audio_dialog_channel",
+    "wwise_event",
+    "responsive_dialog_group",
+    "responsive_speaker",
+    "responsive_trigger",
+    "responsive_trigger_key",
+    "responsive_trigger_type",
+    "responsive_event_template",
+    "responsive_response",
+    "bark_group",
+    "bark_variant",
+    "bark_text",
+    "bark_table_const",
+    "weapon",
+    "equipment",
+    "enemy",
+    "enemy_template",
+    "enemy_attribute_template",
+    "enemy_display_type",
+    "enemy_ability",
+    "enemy_tag",
+    "enemy_attribute_modifier",
+    "buff",
+    "general_ability",
+    "use_item_effect",
+    "gameplay_skill_level",
+    "skill_tag",
+    "gameplay_blackboard_key",
+    "ability_entity",
+    "global_effect",
+    "global_effect_param",
+    "potential_talent_effect",
+    "factory_recipe",
+    "factory_item",
+    "factory_machine",
+    "factory_craft_group",
+    "factory_craft_showing_type",
+    "equipment_formula",
+    "equipment_formula_pack",
+    "equipment_suit",
+    "gameplay_domain",
+    "gameplay_property_curve",
+    "gameplay_stat_property",
+    "gameplay_unlock",
+    "item",
+    "item_type",
+    "item_showing_type",
+    "item_obtain_way",
+    "reward",
+    "reward_drop",
+    "shop_group",
+    "shop",
+    "shop_goods",
+    "shop_goods_tag",
+    "gameplay_skill_group",
+    "gameplay_skill",
+    "gameplay_talent_group",
+    "gameplay_talent",
+    "gameplay_progression",
+    "asset_entity",
+    "asset",
     "actor",
     "audio",
     "video",
     "timeline",
     "timeline_option_route",
     "runtime_jump_clip",
-    "file",
-    "table_row",
+    "runtime_option_route_audit_group",
+    "runtime_option_route_conflict",
 )
-
 OPTION_BRANCH_EDGE_KINDS = (
     "option_anchor_after",
     "option_first_line",
@@ -1885,6 +15762,14 @@ OPTION_BRANCH_EDGE_KINDS = (
     "timeline_route_skips_line",
     "timeline_route_continues_to_option",
     "timeline_route_runtime_jump",
+    "runtime_audit_expected_first_line",
+    "runtime_audit_runtime_first_line",
+    "runtime_audit_directional_first_line",
+    "runtime_audit_nearby_jump",
+    "has_runtime_route_conflict",
+    "runtime_route_conflict_expected_first_line",
+    "runtime_route_conflict_runtime_first_line",
+    "runtime_first_line_candidate_owner",
 )
 
 ISSUE_EVIDENCE_EDGE_KINDS = (
@@ -1899,8 +15784,45 @@ ISSUE_EVIDENCE_EDGE_KINDS = (
     "timeline_route_skips_line",
     "timeline_route_continues_to_option",
     "timeline_route_runtime_jump",
+    "runtime_audit_expected_first_line",
+    "runtime_audit_runtime_first_line",
+    "runtime_audit_directional_first_line",
+    "runtime_audit_nearby_jump",
+    "has_runtime_route_conflict",
+    "runtime_route_conflict_expected_first_line",
+    "runtime_route_conflict_runtime_first_line",
+    "runtime_first_line_candidate_owner",
 )
-
+ASSET_USED_BY_INCOMING_EDGE_KINDS = (
+    "has_gameplay_asset",
+    "has_gameplay_asset_entity",
+    "uses_icon_asset",
+    "uses_visual_asset",
+    "visual_token_matches_export_base_asset",
+    "previewed_by",
+    "uses_material",
+    "uses_texture_pathid",
+    "entity_has_lod_model",
+    "entity_uses_material",
+    "entity_uses_texture",
+)
+ASSET_USED_BY_OUTGOING_EDGE_KINDS = (
+    "referenced_by_material",
+    "referenced_by_model",
+)
+ASSET_USES_EDGE_KINDS = (
+    "has_gameplay_asset_entity",
+    "uses_icon_asset",
+    "uses_visual_asset",
+    "visual_token_matches_export_base_asset",
+    "previewed_by",
+    "uses_material",
+    "uses_texture",
+    "uses_texture_pathid",
+    "entity_has_lod_model",
+    "entity_uses_material",
+    "entity_uses_texture",
+)
 
 def exact_node_candidates(term: str) -> list[str]:
     candidates = [term]
@@ -1938,13 +15860,33 @@ def resolve_seed_node(conn: sqlite3.Connection, term: str, nodes: list[dict[str,
           CASE aliases.kind
             WHEN 'story_key' THEN 0
             WHEN 'line_id' THEN 1
-            ELSE 2
+            WHEN 'character_id' THEN 2
+            WHEN 'weapon_id' THEN 3
+            WHEN 'equipment_id' THEN 4
+            WHEN 'equipment_formula_id' THEN 5
+            WHEN 'equipment_suit_id' THEN 6
+            WHEN 'gameplay_domain_id' THEN 7
+            WHEN 'gameplay_stat_property_key' THEN 8
+            WHEN 'item_id' THEN 9
+            WHEN 'gameplay_skill_id' THEN 10
+            WHEN 'asset_entity_id' THEN 11
+            ELSE 19
           END,
           CASE nodes.kind
             WHEN 'story' THEN 0
             WHEN 'option' THEN 1
             WHEN 'line' THEN 2
-            ELSE 3
+            WHEN 'character' THEN 3
+            WHEN 'weapon' THEN 4
+            WHEN 'equipment' THEN 5
+            WHEN 'equipment_formula' THEN 6
+            WHEN 'equipment_suit' THEN 7
+            WHEN 'gameplay_domain' THEN 8
+            WHEN 'gameplay_stat_property' THEN 9
+            WHEN 'item' THEN 10
+            WHEN 'asset_entity' THEN 11
+            WHEN 'asset' THEN 12
+            ELSE 19
           END
         LIMIT 1
         """,
@@ -2031,6 +15973,108 @@ def query_graph(db_path: Path, term: str, *, limit: int = 40, kind: str = "") ->
         return {"seedNode": seed, "nodes": nodes, "aliases": aliases, "relatedToFirstNode": related}
 
 
+def usage_node_ref(row: sqlite3.Row, side: str) -> dict[str, Any]:
+    data = parse_json_text(row[f"{side}Data"])
+    ref: dict[str, Any] = {
+        "id": row[f"{side}Id"],
+        "key": node_key(row[f"{side}Id"]),
+        "kind": row[f"{side}Kind"],
+        "name": row[f"{side}Name"],
+    }
+    if row[f"{side}Path"]:
+        ref["path"] = row[f"{side}Path"]
+    if isinstance(data, dict):
+        for key in (
+            "type",
+            "size",
+            "preview",
+            "pid",
+            "category",
+            "materialLike",
+            "modelBase",
+            "lodModelCount",
+            "materialCount",
+            "textureCount",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                ref[key] = value
+    return ref
+
+
+def usage_edge_ref(row: sqlite3.Row, actor_side: str, seed: str) -> dict[str, Any]:
+    ref = usage_node_ref(row, actor_side)
+    ref["edge"] = row["edge"]
+    ref["direction"] = "incoming" if row["dstId"] == seed else "outgoing"
+    if row["source"]:
+        ref["source"] = row["source"]
+    if row["evidence"]:
+        ref["evidence"] = row["evidence"]
+    edge_data = parse_json_text(row["edgeData"])
+    if edge_data:
+        ref["edgeData"] = edge_data
+    return ref
+
+
+def asset_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "asset") -> dict[str, Any]:
+    lookup = query_graph(db_path, term, limit=min(max(limit, 1), 20), kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "usedBy": [], "uses": []}
+
+    incoming_placeholders = ",".join("?" for _ in ASSET_USED_BY_INCOMING_EDGE_KINDS)
+    outgoing_placeholders = ",".join("?" for _ in ASSET_USED_BY_OUTGOING_EDGE_KINDS)
+    uses_placeholders = ",".join("?" for _ in ASSET_USES_EDGE_KINDS)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        used_by_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.kind IN ({incoming_placeholders}) AND e.dst = ?)
+               OR (e.kind IN ({outgoing_placeholders}) AND e.src = ?)
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (*ASSET_USED_BY_INCOMING_EDGE_KINDS, seed, *ASSET_USED_BY_OUTGOING_EDGE_KINDS, seed, limit),
+        ).fetchall()
+        uses_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE e.kind IN ({uses_placeholders})
+              AND e.src = ?
+            ORDER BY e.kind, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (*ASSET_USES_EDGE_KINDS, seed, limit),
+        ).fetchall()
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "aliases": lookup.get("aliases") or [],
+        "usedBy": [
+            usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+            for row in used_by_rows
+        ],
+        "uses": [usage_edge_ref(row, "dst", seed) for row in uses_rows],
+    }
+
+
 def compact_node_ref(row: sqlite3.Row, edge_row: sqlite3.Row | None = None) -> dict[str, Any]:
     data = parse_json_text(row["data"])
     ref: dict[str, Any] = {
@@ -2042,7 +16086,18 @@ def compact_node_ref(row: sqlite3.Row, edge_row: sqlite3.Row | None = None) -> d
     if row["path"]:
         ref["path"] = row["path"]
     if isinstance(data, dict):
-        for key in ("actor", "actorId", "audio", "text", "timestamp", "duration"):
+        for key in (
+            "actor",
+            "actorId",
+            "audio",
+            "text",
+            "timestamp",
+            "duration",
+            "modelBase",
+            "lodModelCount",
+            "materialCount",
+            "textureCount",
+        ):
             value = data.get(key)
             if value not in (None, "", [], {}):
                 ref[key] = value
@@ -2086,6 +16141,51 @@ def option_sort_key(option: dict[str, Any]) -> tuple[int, str]:
         return (int(match.group(1)), option["key"])
     return (999999, option["key"])
 
+
+def annotate_option_branch_precedence(branches: dict[str, list[dict[str, Any]]]) -> None:
+    manual_first_lines = {
+        safe_key(ref.get("key"))
+        for ref in branches.get("option_first_line", [])
+        if ref.get("source") == "webui/option_override" and safe_key(ref.get("key"))
+    }
+    inferred_first_lines = {
+        safe_key(ref.get("key"))
+        for ref in branches.get("option_first_line", [])
+        if ref.get("source") != "webui/option_override" and safe_key(ref.get("key"))
+    }
+    for edge_kind, refs in branches.items():
+        for ref in refs:
+            source = safe_key(ref.get("source"))
+            if source == "webui/option_override":
+                ref["precedence"] = "manual_authoritative"
+                ref["webuiOnly"] = True
+                if edge_kind == "option_first_line":
+                    if not inferred_first_lines:
+                        ref["classification"] = "manual_only"
+                    elif safe_key(ref.get("key")) in inferred_first_lines:
+                        ref["classification"] = "manual_matches_inference"
+                    else:
+                        ref["classification"] = "manual_conflicts_inference"
+                        ref["inferredFirstLineIds"] = sorted(inferred_first_lines)
+            elif edge_kind.startswith("option_") or edge_kind.startswith("timeline_"):
+                if source == "timeline_route_branch":
+                    ref["precedence"] = "runtime_route_evidence"
+                    match_label = "runtime_route_matches_manual"
+                    conflict_label = "runtime_route_conflicts_manual"
+                elif source == "timeline_line_orders":
+                    ref["precedence"] = "runtime_timeline_evidence"
+                    match_label = "runtime_timeline_matches_manual"
+                    conflict_label = "runtime_timeline_conflicts_manual"
+                else:
+                    ref["precedence"] = "diagnostic_inference"
+                    match_label = "inference_matches_manual"
+                    conflict_label = "inference_conflicts_manual"
+                if edge_kind == "option_first_line" and manual_first_lines:
+                    if safe_key(ref.get("key")) in manual_first_lines:
+                        ref["classification"] = match_label
+                    else:
+                        ref["classification"] = conflict_label
+                        ref["manualFirstLineIds"] = sorted(manual_first_lines)
 
 def story_arrangement(db_path: Path, story_key: str, *, limit_lines: int = 0) -> dict[str, Any]:
     with sqlite3.connect(db_path) as conn:
@@ -2280,6 +16380,7 @@ def story_arrangement(db_path: Path, story_key: str, *, limit_lines: int = 0) ->
                     option["branches"].setdefault(branch_row["edgeKind"], []).append(
                         compact_node_ref(target_row, branch_row)
                     )
+                annotate_option_branch_precedence(option["branches"])
                 group["options"].append(option)
             group["options"].sort(key=option_sort_key)
             groups.append(group)
@@ -2434,6 +16535,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     build = sub.add_parser("build", help="Build the SQLite source graph")
     build.add_argument("--db", type=Path, default=DEFAULT_DB)
     build.add_argument("--language", default="CN")
+    build.add_argument("--skip-gameplay", action="store_true")
     build.add_argument("--skip-asset-maps", action="store_true")
     build.add_argument("--skip-reference-rows", action="store_true")
     build.add_argument("--include-all-material-json", action="store_true")
@@ -2444,6 +16546,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     query.add_argument("--db", type=Path, default=DEFAULT_DB)
     query.add_argument("--limit", type=int, default=40)
     query.add_argument("--kind", default="", help="Optional node kind filter, such as story, option, line, or audio.")
+
+    used_by = sub.add_parser("used-by", help="Show what uses an asset/pathid plus direct asset dependencies")
+    used_by.add_argument("term")
+    used_by.add_argument("--db", type=Path, default=DEFAULT_DB)
+    used_by.add_argument("--limit", type=int, default=40)
+    used_by.add_argument("--kind", default="asset", help="Node kind to resolve before usage lookup; defaults to asset.")
 
     story = sub.add_parser("story", help="Show recovered line order and option branch evidence for one story key")
     story.add_argument("story_key")
@@ -2464,6 +16572,7 @@ def main(argv: list[str] | None = None) -> int:
         builder = SourceGraphBuilder(
             db_path=args.db if hasattr(args, "db") else DEFAULT_DB,
             language=getattr(args, "language", "CN"),
+            include_gameplay=not getattr(args, "skip_gameplay", False),
             include_asset_maps=not getattr(args, "skip_asset_maps", False),
             include_reference_rows=not getattr(args, "skip_reference_rows", False),
             include_all_material_json=getattr(args, "include_all_material_json", False),
@@ -2483,6 +16592,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "query":
         result = query_graph(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "used-by":
+        result = asset_usage(args.db, args.term, limit=args.limit, kind=args.kind)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if args.command == "story":

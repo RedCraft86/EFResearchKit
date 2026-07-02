@@ -1,4 +1,4 @@
-﻿// Endfield conversation browser - single-file vanilla JS.
+// Endfield conversation browser - single-file vanilla JS.
 // Loads data/manifest.json and language sidecars, then lazy-loads conversations.
 // Left pane is a 3-level tree (kind / story-line / mission) with a
 // virtualized scroll that supports mixed row heights.
@@ -23,8 +23,6 @@ const STORY_SPLITTER_STORAGE_KEY = "webui_story_splitter_width";
 const ASSET_SPLITTER_STORAGE_KEY = "webui_asset_splitter_width";
 const REFERENCE_SPLITTER_STORAGE_KEY = "webui_reference_splitter_width";
 const GAMEPLAY_SPLITTER_STORAGE_KEY = "webui_gameplay_splitter_width";
-const GAME_DATA_SPLITTER_STORAGE_KEY = "webui_game_data_splitter_width";
-const DECODED_SPLITTER_STORAGE_KEY = "webui_decoded_splitter_width";
 const UPDATES_SPLITTER_STORAGE_KEY = "webui_updates_splitter_width";
 const FILTER_SPLITTER_STORAGE_PREFIX = "webui_filter_splitter_height_";
 const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
@@ -177,18 +175,6 @@ function initPaneSplitters() {
     storageKey: GAMEPLAY_SPLITTER_STORAGE_KEY,
   });
   setupPaneSplitter({
-    container: "#game-data-app",
-    pane: "#game-data-left",
-    splitter: "#game-data-splitter",
-    storageKey: GAME_DATA_SPLITTER_STORAGE_KEY,
-  });
-  setupPaneSplitter({
-    container: "#decoded-app",
-    pane: "#decoded-left",
-    splitter: "#decoded-splitter",
-    storageKey: DECODED_SPLITTER_STORAGE_KEY,
-  });
-  setupPaneSplitter({
     container: "#updates-app",
     pane: "#updates-left",
     splitter: "#updates-splitter",
@@ -198,9 +184,8 @@ function initPaneSplitters() {
   setupFilterSplitter({ pane: "#left", panel: "#filter-panel", splitter: "#filter-splitter", list: "#list-wrap", storageKey: `${FILTER_SPLITTER_STORAGE_PREFIX}story` });
   setupFilterSplitter({ pane: "#asset-left", panel: "#asset-filter-panel", splitter: "#asset-filter-splitter", list: "#asset-list-wrap", storageKey: `${FILTER_SPLITTER_STORAGE_PREFIX}assets` });
   setupFilterSplitter({ pane: "#reference-left", panel: "#reference-filter-panel", splitter: "#reference-filter-splitter", list: "#reference-list", storageKey: `${FILTER_SPLITTER_STORAGE_PREFIX}reference` });
-  setupFilterSplitter({ pane: "#game-data-left", panel: "#game-data-filter-panel", splitter: "#game-data-filter-splitter", list: "#game-data-list", storageKey: `${FILTER_SPLITTER_STORAGE_PREFIX}game_data` });
-  setupFilterSplitter({ pane: "#decoded-left", panel: "#decoded-filter-panel", splitter: "#decoded-filter-splitter", list: "#decoded-list", storageKey: `${FILTER_SPLITTER_STORAGE_PREFIX}decoded` });
   setupFilterSplitter({ pane: "#updates-left", panel: "#updates-filter-panel", splitter: "#updates-filter-splitter", list: "#updates-list", storageKey: `${FILTER_SPLITTER_STORAGE_PREFIX}updates` });
+  setupFilterSplitter({ pane: "#gameplay-left", panel: "#gameplay-filter-panel", splitter: "#gameplay-filter-splitter", list: "#gameplay-list", storageKey: `${FILTER_SPLITTER_STORAGE_PREFIX}gameplay` });
 }
 
 function setupPaneSplitter({ container, pane, splitter, storageKey, minRightWidth = 0 }) {
@@ -524,12 +509,15 @@ function syncUiLanguageSwitch() {
 }
 
 function resolveInitialUiLocale(languageCode) {
+  // The saved preference wins over any ?ui= in the URL, so a stale cross-page
+  // link (which embeds the locale at click time) can't override the user's
+  // remembered choice.
+  const stored = normalizeUiLocale(storageGet(UI_LOCALE_STORAGE_KEY));
+  if (stored) return stored;
+
   const params = new URLSearchParams(window.location.search);
   const fromQuery = normalizeUiLocale(params.get("ui") || params.get("uiLang"));
   if (fromQuery) return fromQuery;
-
-  const stored = normalizeUiLocale(storageGet(UI_LOCALE_STORAGE_KEY));
-  if (stored) return stored;
 
   return resolveUiLocale(getLanguageInfo(languageCode || STATE.language));
 }
@@ -3004,6 +2992,11 @@ function resolveInitialLanguage() {
   return (STATE.manifest && STATE.manifest.defaultLanguage) || DEFAULT_LANGUAGE_INFO.code;
 }
 
+function resolveInitialStoryKey() {
+  const params = new URLSearchParams(window.location.search);
+  return String(params.get("story") || params.get("conv") || "").trim();
+}
+
 function applyUiStrings() {
   document.documentElement.lang = STATE.uiLocale === "zh" ? "zh-CN" : "en";
 
@@ -3112,6 +3105,8 @@ function clearConversationPane() {
   $("#conv-warnings").hidden = true;
   $("#conv-related").replaceChildren();
   $("#conv-related").hidden = true;
+  $("#conv-gameplay-link").replaceChildren();
+  $("#conv-gameplay-link").hidden = true;
   $("#conv-meta").textContent = "";
   $("#conv-lines").replaceChildren();
   syncRevealCurrentButton();
@@ -3136,9 +3131,9 @@ async function loadManifest() {
   return manifest;
 }
 
-async function switchLanguage(languageCode, { preserveSelection = true } = {}) {
+async function switchLanguage(languageCode, { preserveSelection = true, requestedSelection = "" } = {}) {
   const info = getLanguageInfo(languageCode);
-  const previousKey = preserveSelection ? STATE.selectedKey : null;
+  const previousKey = requestedSelection || (preserveSelection ? STATE.selectedKey : null);
   const token = ++STATE.indexRequestToken;
 
   STATE.language = info.code;
@@ -3231,12 +3226,13 @@ async function init() {
     ensureStoryPanelToggle();
 
     const initialLanguage = resolveInitialLanguage();
+    const initialStoryKey = resolveInitialStoryKey();
     setUiLocale(resolveInitialUiLocale(initialLanguage), { persist: false, refresh: false });
     const storyOrderPromise = loadStoryOrderPayload();
     void loadOptionOverridePayload();
     void ensureInlineImageAssetLookup();
     void ensureWikiVideoAssetLookup();
-    await switchLanguage(initialLanguage, { preserveSelection: false });
+    await switchLanguage(initialLanguage, { preserveSelection: false, requestedSelection: initialStoryKey });
     void storyOrderPromise.then(() => {
       if (applyStoryOrderGroupingOverridesToEntries(STATE.entries)) {
         STATE.readingArchiveLinksByKey = buildReadingArchiveLinkIndex(STATE.entries);
@@ -3618,6 +3614,8 @@ async function loadConv(key, { force = false } = {}) {
   $("#conv-warnings").hidden = true;
   $("#conv-related").replaceChildren();
   $("#conv-related").hidden = true;
+  $("#conv-gameplay-link").replaceChildren();
+  $("#conv-gameplay-link").hidden = true;
   $("#conv-meta").textContent = uiText("loading");
   $("#conv-lines").innerHTML = "";
 
@@ -6037,6 +6035,50 @@ function renderArchiveLinksBlock(entry, conv) {
   return box;
 }
 
+function gameplayIdForWikiKey(key) {
+  const normalized = String(key || "").trim();
+  if (normalized.startsWith("wiki_chr_")) return `chr_${normalized.slice("wiki_chr_".length)}`;
+  if (normalized.startsWith("wiki_wpn_")) return `wpn_${normalized.slice("wiki_wpn_".length)}`;
+  if (normalized.startsWith("wiki_eny_")) return `eny_${normalized.slice("wiki_eny_".length)}`;
+  if (normalized.startsWith("wiki_item_equip_")) return `item_equip_${normalized.slice("wiki_item_equip_".length)}`;
+  if (normalized.startsWith("wiki_item_")) return `item_${normalized.slice("wiki_item_".length)}`;
+  return "";
+}
+
+function gameplayHrefForWikiEntry(entry, conv) {
+  const gameplayId = gameplayIdForWikiKey((entry && entry.k) || (conv && conv.key) || "");
+  if (!gameplayId) return "";
+  const params = new URLSearchParams();
+  params.set("lang", STATE.language || "CN");
+  params.set("ui", STATE.uiLocale || "zh");
+  params.set("gameplay", gameplayId);
+  return `?${params.toString()}#gameplay`;
+}
+
+// Compact "Gameplay" link tag, styled identically to the gameplay page's
+// story-wiki tag so a linked item looks the same on both pages.
+function renderGameplayLinkTag(entry, conv) {
+  const href = gameplayHrefForWikiEntry(entry, conv);
+  if (!href) return null;
+  const link = document.createElement("a");
+  link.className = "gameplay-detail-tag gameplay-detail-wiki-link gameplay-wiki-link";
+  link.href = href;
+  const label = document.createElement("span");
+  label.textContent = uiText("gameplayLinkHeading") || "Gameplay Data";
+  link.append(label);
+  return link;
+}
+
+// Fill (or clear) the header's gameplay-link slot for the current conversation.
+function syncConvGameplayLink(entry, conv) {
+  const slot = $("#conv-gameplay-link");
+  if (!slot) return;
+  slot.replaceChildren();
+  const tag = renderGameplayLinkTag(entry, conv);
+  if (tag) slot.appendChild(tag);
+  slot.hidden = !tag;
+}
+
 function renderConv(conv) {
   if (!conv) return;
   showConvPane();
@@ -6134,6 +6176,7 @@ function renderConv(conv) {
     meta.push(`level_refs=${missionExtras.levelRefs.map(formatLevelRef).join(", ")}`);
   }
   $("#conv-meta").textContent = meta.join(" | ");
+  syncConvGameplayLink(entry, conv);
 
   const warningWrap = $("#conv-warnings");
   warningWrap.replaceChildren();
@@ -6189,10 +6232,8 @@ function renderConv(conv) {
       banner.appendChild(detail);
       banner.appendChild(list);
       relatedWrap.appendChild(banner);
-      relatedWrap.hidden = false;
-    } else {
-      relatedWrap.hidden = true;
     }
+    relatedWrap.hidden = relatedWrap.childElementCount === 0;
   }
 
   const wrap = $("#conv-lines");
@@ -8777,8 +8818,8 @@ function exportedAssetHref(relPath) {
 
 function highlightTextFragment(text, q) {
   let safe = escapeHtml(text || "");
-  if (q) {
-    const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "ig");
+  const re = window.WebUI.highlightRegex(q);
+  if (re) {
     safe = safe.replace(re, (m) => `<mark>${m}</mark>`);
   }
   return safe;

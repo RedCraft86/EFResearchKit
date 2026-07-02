@@ -566,19 +566,17 @@
 
   function resolveViewFromHash() {
     const hash = (window.location.hash || "").replace(/^#/, "").toLowerCase();
-    if (hash === "assets" || hash === "reference" || hash === "updates" || hash === "gameplay" || hash === "game-data" || hash === "decoded") return hash;
+    if (hash === "assets" || hash === "gameplay" || hash === "reference" || hash === "updates") return hash;
     return "story";
   }
 
   function updateHashForView(view) {
     const nextHash =
       view === "assets" ? "#assets"
-        : view === "reference" ? "#reference"
-          : view === "gameplay" ? "#gameplay"
-            : view === "game-data" ? "#game-data"
-              : view === "decoded" ? "#decoded"
-                : view === "updates" ? "#updates"
-                  : "#story";
+        : view === "gameplay" ? "#gameplay"
+          : view === "reference" ? "#reference"
+            : view === "updates" ? "#updates"
+              : "#story";
     if (window.location.hash === nextHash) return;
     const url = `${window.location.pathname}${window.location.search}${nextHash}`;
     history.replaceState(null, "", url);
@@ -604,22 +602,12 @@
       document.title = gameplayTitle;
       return;
     }
-    if (view === "game-data") {
-      const dataTitle = ($("#game-data-title") && $("#game-data-title").textContent) || "Endfield Game Data";
-      document.title = dataTitle;
-      return;
-    }
-    if (view === "decoded") {
-      const decodedTitle = ($("#decoded-title") && $("#decoded-title").textContent) || "Endfield Decoded Files";
-      document.title = decodedTitle;
-      return;
-    }
     const storyTitle = ($("#app-title") && $("#app-title").textContent) || "Endfield Story Browser";
     document.title = storyTitle;
   }
 
   function setActiveView(view, { updateHash = true } = {}) {
-    ASSET_STATE.activeView = view === "assets" || view === "reference" || view === "updates" || view === "gameplay" || view === "game-data" || view === "decoded" ? view : "story";
+    ASSET_STATE.activeView = view === "assets" || view === "gameplay" || view === "reference" || view === "updates" ? view : "story";
     document.body.dataset.activeView = ASSET_STATE.activeView;
 
     $$(".view-tab").forEach((button) => {
@@ -1454,10 +1442,15 @@
   function applyAssetFilters() {
     syncFilterSectionActiveCounts();
     const filters = ASSET_STATE.filters;
-    const q = filters.q;
+    const tokens = window.WebUI.parseQuery(filters.q);
+    const scores = new Map();
 
     ASSET_STATE.filtered = ASSET_STATE.entries.filter((entry) => {
-      if (q && !entry.searchText.includes(q)) return false;
+      if (tokens.length) {
+        const score = window.WebUI.queryScore(entry.searchText, tokens);
+        if (score <= 0) return false;
+        scores.set(entry, score);
+      }
       if (filters.sources.size && !filters.sources.has(entry.source)) return false;
       if (filters.types.size && !filters.types.has(entry.ext || entry.kind)) return false;
       if (filters.categories.size) {
@@ -1467,6 +1460,8 @@
       return true;
     });
 
+    ASSET_STATE.searchTokens = tokens;
+    ASSET_STATE.searchScores = tokens.length ? scores : null;
     ASSET_STATE.filtered.sort((a, b) => compareAssets(a, b, filters.sort));
     $("#asset-shown").textContent = ASSET_STATE.filtered.length.toLocaleString();
     $("#asset-total").textContent = ASSET_STATE.entries.length.toLocaleString();
@@ -1514,6 +1509,13 @@
   }
 
   function rebuildAssetTree({ resetScroll = true } = {}) {
+    // Multi-word query: skip the source tree and show a flat list ranked by how
+    // many keywords each asset matched.
+    if ((ASSET_STATE.searchTokens || []).length > 1) {
+      rebuildFlatAssetSearch({ resetScroll });
+      return;
+    }
+
     const tree = {};
     for (const entry of ASSET_STATE.filtered) {
       const source = entry.source || assetUiText("rootFolder");
@@ -1579,6 +1581,27 @@
           pushItem(entry, 2);
         }
       }
+    }
+
+    ASSET_STATE.rows = rows;
+    ASSET_STATE.totalH = offset;
+    $("#asset-list-spacer").style.height = `${offset}px`;
+    if (resetScroll) $("#asset-list-wrap").scrollTop = 0;
+    renderAssetList();
+  }
+
+  function rebuildFlatAssetSearch({ resetScroll = true } = {}) {
+    const scores = ASSET_STATE.searchScores || new Map();
+    const items = [...ASSET_STATE.filtered].sort((a, b) => {
+      const delta = (scores.get(b) || 0) - (scores.get(a) || 0);
+      return delta || compareAssets(a, b, ASSET_STATE.filters.sort);
+    });
+
+    const rows = [];
+    let offset = 0;
+    for (const entry of items) {
+      rows.push({ type: "item", level: 0, entry, top: offset, h: ASSET_ITEM_ROW_H });
+      offset += ASSET_ITEM_ROW_H;
     }
 
     ASSET_STATE.rows = rows;

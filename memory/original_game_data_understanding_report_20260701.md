@@ -64,9 +64,10 @@ Additional durable memory reviewed:
 ## Executive Assessment
 
 The project has strong coverage of raw extraction, indexing, CN Story/Text
-Tables display, texture extraction, audio linkage, and broad asset discovery.
-The WebUI-facing data is coherent enough to browse most story, table, audio,
-video, and asset references from extracted game data.
+Tables display, texture extraction, audio linkage, broad asset discovery, and
+queryable SNS/radio/remote communication table bridges. The WebUI-facing data
+is coherent enough to browse most story, table, audio, video, and asset
+references from extracted game data.
 
 After reading the memory notes, the main assessment changes in two ways:
 
@@ -92,10 +93,10 @@ Current confidence by area:
 | Text/reference tables | High for extraction, moderate for meaning | Tables and IDs are mostly accessible; gameplay semantics and formulas are not fully decoded. |
 | Binary config formats | Moderate to high by family | Many MemoryPack-like families have exact or bounded decoders; nested bodies and FlatBuffer schemas remain partial. |
 | Numerical systems | Moderate for recovered schemas, low for formulas | Many fields and values are decoded; exact runtime formulas and evaluators remain partial. |
-| Audio | High for story linkage, moderate for full semantics | Event/media links and line usage are strong; non-story semantic classification can improve. |
+| Audio | High for story linkage, moderate for full semantics | Event/media links, line usage, raw SNS/radio/remote bridges, and voice-extra table joins are strong; deeper Wwise/runtime behavior remains partial. |
 | Video | Moderate | Narrative and FMV links are partially bound; some references and standalone files remain unresolved. |
 | Texture assets | High | Texture2D extraction and collision handling are verified by dedicated audits. |
-| Models/materials | Moderate | Broad asset indexes exist, but semantic entity-level reconstruction is incomplete. |
+| Models/materials | Moderate | Broad asset indexes and PathID-resolved material/texture relations exist, but semantic entity-level reconstruction is incomplete. |
 | Asset bundles | High at VFS layer, partial at per-AB clean-certification layer | Bundle entries are indexed without missing chunks, but older logs cannot certify every AB warning-free. |
 | MonoBehaviour/gameplay payloads | Moderate and improving | Large classes of managed-reference payloads are decoded or bounded; remaining incomplete files are concentrated in known schema gaps. |
 | Characters/animation | Deep for selected actors, partial game-wide | Wulfa/Zhuangfy/Mifu recovery is substantial; general game-wide animation reconstruction is not solved. |
@@ -128,36 +129,41 @@ basic access to packed files.
 
 The source graph is large enough to support cross-domain investigation:
 
-- Nodes: 666,982.
-- Edges: 507,277.
-- Aliases: 519,921.
-- Files: 290,040.
+- Nodes: 756,400.
+- Edges: 1,064,312.
+- Aliases: 1,184,043.
+- Files: 334,269.
 
 Selected node counts:
 
-- Assets: 254,597.
-- Audio: 34,542.
-- Lines: 38,232.
-- Stories: 9,354.
-- Options: 4,219.
-- Option groups: 2,722.
-- Missions: 649.
-- Actors: 1,604.
-- Videos: 928.
-- Table rows: 27,544.
+- Assets: 292,020.
+- Audio: 35,151.
+- Lines: 39,216.
+- Stories: 9,570.
+- Options: 4,376.
+- Option groups: 2,854.
+- Missions: 655.
+- Actors: 1,629.
+- Videos: 942.
+- Table rows: 29,162.
 
 Selected edge counts:
 
-- `indexes_asset`: 254,597.
-- `has_line`: 39,874.
-- `uses_audio`: 24,315.
-- `has_story`: 9,271.
-- `has_option`: 4,217.
-- `option_enters_story` / `option_first_line`: 2,449 each.
-- `option_path_line`: 6,284.
-- `has_narrative_video`: 316.
+- `indexes_asset`: 292,020.
+- `has_line`: 40,863.
+- `uses_audio`: 24,738.
+- `has_story`: 9,472.
+- `has_option`: 5,299.
+- `option_enters_story`: 3,039.
+- `option_first_line`: 3,037.
+- `option_path_line`: 7,168.
+- `has_narrative_video`: 320.
 - `source_references_story`: 933.
 - `has_story_source_link`: 861.
+- `uses_texture`: 229,557.
+- `uses_material`: 8,450.
+- `referenced_by_material`: 190,457.
+- `referenced_by_model`: 37,702.
 
 The graph is useful as an evidence index. It should not be mistaken for full
 runtime simulation.
@@ -304,23 +310,225 @@ Strong or exact current examples include:
 - Several NavMesh, teleport, mission-area, matrix, bamboo-raft, damage-text,
   and small gameplay config roots that consume exactly.
 
+2026-07-01 decoded config graph progress: the source graph now promotes these
+exact WebUI Data-index decodes into queryable evidence nodes. The fast CN graph
+contains 1,201 unique `model_config_model` rows, 1,125 `model_radius` rows, 271
+interactive templates, 923 interactive objects, 542 interactive template-data
+nodes, and 893 world entities from the exact MemoryPack families above. This
+makes questions such as "which radius row belongs to this model id?", "which
+interactive object aliases this template?", and "which world entity uses this
+interactive detail or enemy?" answerable from SQLite. The corrected graph now
+links `detailId` matches to 66 Gameplay enemy nodes, 66 enemy templates, 3 NPCs,
+594 interactive objects, 267 model rows, 267 model-radius rows, 214 audio
+collections, and 65 audio dialog channels. A follow-up exact
+`TeleportValidationDataTable` graph pass adds 8 validation config nodes, 222
+unique teleport points, 444 config-to-point edges, and 106 point-to-level links
+across 17 level ids, preserving position, rotation, nullable `mapId`, flag word,
+and integer tails. The exact mission-area pass adds 2 mission-area config nodes,
+73 unique area rows, 146 config-to-area edges, and 37 prefix-backed links to 9
+existing mission nodes. The exact subgame-instance pass adds 2 config nodes, 4
+unique subgame instances, 1 default group, 8 config-to-instance edges, 4 group
+edges, and 12 failure/quit/success text edges. The bounded `SpawnerConfig` pass
+adds 436 unique spawner configs, 1,057 enemy rows, 178 distinct enemy keys, 61
+born-buff keys, 23 blackboard keys, 16 prewarn audio-event keys, and 22 prewarn
+effect keys while preserving enemy levels, force flags, wave keys, override AI,
+born-buff blackboard values, fixed rotations, and prewarn timings. The bounded
+`BuffData` pass adds 4,616 file-to-buff definition edges collapsed to 2,325
+unique buff ids, 268 gameplay tag strings, 1,254 parameter strings, 779 linked
+buff ids, 703 effect keys, 145 audio keys, and 106 icon ids from guarded
+length-prefixed string evidence. The bounded `SkillData` pass adds 4,191
+file-to-skill definition edges collapsed to 2,108 unique skill ids, 833 linked
+buff ids, 311 gameplay tag strings, 3,323 parameter strings, 3,900 effect keys,
+3,156 audio keys, and 43 icon ids from the same guarded string evidence plus
+post-tail status samples. The LevelScript inventory/reference pass adds 7,414
+file-to-script definition edges collapsed to 3,756 unique level scripts, 148
+level-folder links, 35 level-script templates, 20 template groups, 3 start types,
+120 montage refs, and high-signal string edges for 3,135 story keys, 393
+mission-like ids, 683 audio keys, 148 effect keys, 157 buff ids, and 27 template
+refs while preserving action-map/list-count totals. The LevelConfig/LevelData
+pass adds 290 LevelConfig file edges collapsed to 149 level configs, 1,593
+LevelData file edges collapsed to 810 level-data nodes, 149 config-to-level
+links, 139 config map-id links, 149 default-scene-config links, 810
+level-to-LevelData links, plus bounded LevelData string edges for 303 level
+scripts, 360 story keys, 511 mission-like ids, 26 audio keys, 103 effect keys, 5
+buff ids, 347 montage ids, 19 asset paths, 4,635 task markers, and 13,370
+parameter strings. The NPCMontageJson pass adds 6,800 file-to-montage definition
+edges collapsed to 3,392 unique montage tags, plus 2 montage categories, 47
+bodies, 1,078 actions, and category/body/action edges for each defined montage
+tag. The `AnimationConfig` pass adds 213 file-to-config definition edges
+collapsed to 107 config nodes, 584 states, 315 facial morph paths, 197 actor
+animation refs, 3 cutscene-like refs, 34 montage refs joined to existing
+montage nodes, and 1 generic skeleton/bone path ref from guarded MemoryPack
+string evidence; controller graphs, blend trees, clip bindings, animation
+curves, and runtime playback conditions remain outside this pass. The
+`AtmosphericNpcData` pass adds 15,452 file-row occurrence edges collapsed to
+7,760 atmospheric NPC row aliases on `environmental_npc` nodes, with 7,760
+template links, 7,760 level links, 7,577 AI-config links, 4,866 montage links,
+2,427 facial-morph links, 994 cluster links, and 615 envTalk links from the
+same bounded row-string evidence. The `CharInteractPerformCfgs` pass adds 318
+file-to-config definition edges collapsed to 159 perform configs, with 83 exact
+active-tag edges, 54 status-tag refs, 102 montage refs, 37 actor/template refs,
+146 effect refs, 46 intra-family perform refs, 52 asset-path refs, and 13 CCS
+refs from a strong parsed prefix plus bounded body string evidence. The
+`DialogIdTable` registry pass adds exact runtime registration evidence for
+4,918 scenes, 3,589 line ids, and 4,131 option ids. The
+`InteractiveTemplateData` pass adds 3,234 source-qualified component nodes, 79
+component-type nodes, 296 property-key nodes, 33 logic-type nodes, 574 category
+tag edges, 418 model edges, 488 raw-byte audio edges, and exact component links
+for first/payload/stop components, trigger/guide shapes, and selected property
+maps. The InteractiveData collection pass adds 935 collection ids, 1,843
+Persistent/StreamingAssets source-file definition edges, and 935 collection-to-level
+links across 214 level ids while leaving the 21-element `totalCnt` arrays
+uninterpreted. The `ModelViewStateControllerData` pass adds 399 model-view
+controller nodes, 798 source-file definition edges, 582 clip-ref nodes, 750
+animator-name nodes, 923 exact clip edges, 823 animator-body clip refs, 619
+exact effect-id edges, and 872 animator-body effect refs; the config-model to
+asset-entity join remains 0 for this family. The `Json_NavMesh` pass adds exact
+MemoryPack graph evidence for 139 LunaArea polygon rows, 17 owner-qualified
+area ids, 6 NavMeshStateContainer owners, 569 state rows, and 57 bounds-to-area
+id refs across Persistent/StreamingAssets copies. The `BambooRaftTaskTable` pass
+adds exact graph evidence for 7 task-group hashes, 13 quest task ids, 26
+source-file task refs, and 13 mission-prefix links. The `damage_text` pass adds
+20 UI combat-text style rows, 10 animation refs, 58 UI node names, and 8
+filtered `ui_*` resources. The `LipSync` pass adds 64,920 aggregate
+language/audio clip nodes from 129,732 source entries and links every clip to an
+audio stem. The `MissionRuntimeAsset` pass adds 884 mission runtime/meta assets,
+3,984 quest-task links, 3,334 previous-quest dependencies, 3,155 objective text
+links, condition/tracking/action type nodes, and exact mission-area and
+narrative refs. The `AIConfig/EnemyTemplateDataSummary` pass adds 78
+enemy data asset path nodes from 156 Persistent/StreamingAssets source
+mappings, 156 file-to-template preload edges, and 78 deduplicated
+template-to-asset preload edges. The `MapConfig` pass adds 139 map-config
+nodes, 197 unique numeric level-id edges with 31,992 grid-cell counts kept
+as payload data, 149 string level links, 99 scene states, 39 map variables,
+and exact quest/mission/map-variable condition refs. The
+`GameplayConfigScriptTaskExtraInfoTable` pass adds 4 level-script task
+extra nodes, one level link set, and 5 task title/objective text refs. The
+`LevelMountPoint` pass adds 92 level-qualified mount leaves, 7 mount types,
+and exact position/rotation payloads for `base01_lv001` and `base01_lv003`.
+The `LevelGenForRuntime` pass adds 267 doodad groups, 1,967 doodad logic
+ids, 68 runtime factory regions, 202 mine nodes, and exact mine output item
+refs. The `UILevelMapLoadConfig` pass adds 17 UI map configs, 220 static map
+elements, 58 tier names, target-level refs, and UI text refs. The
+`GameplayConfig` map/level lookup pass adds 149 level-basic-info rows, 21
+short-id scenes, 86 short-id rows, 142 map-brief rows, 211 map-local sublevel
+rows, and 1,009 sublevel enemy refs from the decoded text JSON tables. The
+placed-map pass adds 1,993 map-mark nodes, 268 map regions, 46 mine-team nodes,
+and high-confidence mark-to-level, mark-to-region, teleport, reward, item,
+activity, minigame, and doodad logic refs. The text `WorldEntityRegistry` pass
+adds 15,083 placed world-entity instances, 2,591 script slots, 77 config nodes,
+154 config properties, 1,646 NPC proxy briefs, and exact detail/script joins to
+existing entity and level-script nodes.
+These decoded-config passes still do not prove runtime formula usage,
+full SpawnerConfig tail semantics,
+BuffData timeline action execution, SkillData target/action execution,
+LevelScript action-body control flow, LevelData object placement or control
+flow, montage clip playback semantics, full exported model/icon reconstruction,
+or runtime proof for effect asset dependencies. A strict suffix-normalized
+gameplay-effect-to-asset name-match now exists for a small slice, but the lean
+asset-index entity join for config model IDs is still empty.
+
 Partial but useful current examples include:
 
-- `BuffData`: top-level schema, id verification, stacking settings for large
-  subsets, selected prefix/tail values, and visible tags/parameters/references.
-- `SkillData`: top-level schema, strict id rows, switch config, skill tags,
-  target/buff settings, and UI range hints for common branches.
-- `LevelScriptData`: all 3,658 files validate through a compact action-map
-  helper, exposing script ids, action-map shape, UID records, list counts, and
-  source hints while leaving full action payload semantics bounded.
-- `Interactive/InteractiveData`: 25-member template roots and many component
-  bodies parse far enough to expose names, component families, property maps,
-  audio rows, guide geometry, trigger observers, hittable data, and interactive
-  state properties.
-- `AnimationConfig`, `AtmosphericNpcData`, `CharInteractPerformCfgs`,
-  `LevelConfig`, `LevelData`, `LevelScriptTemplateData`, NPC montage rows,
-  `SpawnerConfig`, and other families have verified top-level ids/counts and
-  meaningful previews.
+- `BuffData`: queryable buff definitions plus bounded string-reference edges for
+  visible tags, parameters, linked buffs, audio, effects, and icons; top-level
+  schema, id verification, and selected prefix/tail values remain evidence, not
+  runtime formula proof.
+- `SkillData`: queryable skill definitions plus bounded string-reference edges
+  for visible tags, parameters, linked buffs, audio, effects, and icons; strict
+  id rows, switch-tail status, target/buff settings, and UI range hints remain
+  evidence, not runtime action or targeting proof.
+- `LevelScriptData`: queryable script/template inventory across 7,414 files and
+  3,756 unique script ids, including level ownership, start types, action-map
+  counts, UID counts, list-count summaries, and high-signal story/audio/effect/
+  buff/template/montage references; generic keys, per-action bodies, and control
+  flow remain bounded future work.
+- `LevelConfig`/`LevelData`: queryable level config/data inventory across 290
+  config files and 1,593 data files, including config-to-level/map/default-scene
+  links, level-to-data ownership, and bounded string references for scripts,
+  story keys, missions, audio, effects, buffs, montages, task markers, params,
+  and asset paths; object placement and control-flow semantics remain future
+  work.
+- `NPCMontageJson`: queryable montage-tag definitions across 6,800 files and
+  3,392 unique tags, including category, body, and action metadata joined onto
+  the same montage nodes referenced by LevelScript and LevelData; animation clip
+  payloads and playback rules remain future work.
+- `AnimationConfig`: queryable config definitions across 213 files and 107
+  unique configs, with bounded string-scan references to state names, facial
+  morph paths, montage paths, actor animation refs, cutscene-like ids, and one
+  skeleton/bone path; controller graphs, blend trees, clip bindings, animation
+  curves, and runtime playback conditions remain future work.
+- `AtmosphericNpcData`: queryable atmospheric/environmental NPC row inventory
+  across 276 decoded tables, including row-to-template, level, AI config,
+  montage, facial morph, cluster, and envTalk references; full row payloads,
+  coordinates, placement volumes, behavior trees, schedules, and playback timing
+  remain future work.
+- `CharInteractPerformCfgs`: queryable common-interaction perform configs across
+  318 decoded files and 159 unique perform ids, including active/status tags,
+  montage refs, character/NPC-template refs, effects, inherited perform configs,
+  asset paths, and CCS paths; action dictionaries, timing, IK/follow rules,
+  interrupt behavior, and runtime interaction state machines remain future work.
+- `Interactive/InteractiveData`: queryable template/component inventory across
+  542 decoded source files and 271 template ids, including exact component
+  nodes, component-type links, category tags, model ids, raw-byte audio refs,
+  property keys, logic types, trigger shapes, guide shapes, trigger observers,
+  common perform data, hittable data, and selected property maps; the separate
+  Collections JSON now contributes 935 collection ids and level links across 214
+  level ids, while component execution/control flow, numeric enum meaning, and
+  `totalCnt` counter semantics remain future work.
+- `ModelViewStateControllerData`: queryable model-view controller inventory
+  across 798 decoded source files and 399 model ids, including model links,
+  exact clip/effect refs, bounded animator-body clip/effect refs, animator-name
+  refs, and `preTickAnimator` payload evidence; animator state machines,
+  transitions, timing, camera/emissive hash meaning, and asset-entity joins
+  remain future work.
+- `Json/NavMesh`: queryable LunaArea polygon rows and NavMeshStateContainer
+  rows for six owners, with owner-qualified area-id links and level/map owner
+  links; numeric bounds/list evidence is preserved without inferring navigation
+  behavior or walkability.
+- `BambooRaftTaskTable`: queryable bamboo-raft task-group hashes and 13 exact
+  quest task ids, with mission-prefix links such as `e8m2_q#10` to `e8m2`;
+  hash meaning, quest order, and task execution remain future work.
+- `GPUISystemConfig/damage_text`: queryable UI combat-text style rows,
+  animation refs, UI node names, and filtered `ui_*` resource refs; numeric
+  placeholders, text samples, prefab hierarchy, and runtime rendering behavior
+  remain future work.
+- `LipSync`: queryable aggregate language/audio clip nodes across Chinese,
+  English, Japanese, and Korean, linked back to audio stems; per-record curve
+  nodes, phoneme/viseme meaning, and timing semantics remain intentionally out
+  of scope.
+- `MissionRuntimeAsset`: queryable mission runtime/meta assets, quest task DAG
+  edges, previous-quest dependencies, objective text refs, condition/tracking
+  type refs, level/reward links, and narrative refs; this is static authored
+  mission evidence, not observed runtime chronology or condition evaluation.
+- `AIConfig/EnemyTemplateDataSummary`: queryable enemy-template preload
+  mappings for 78 template ids to exact `EnemyData/*.asset` paths, with
+  Persistent/StreamingAssets source-file evidence; these are preload path
+  refs, not full AI behavior, behavior-tree, or renderable model bindings.
+- `MapConfig`: queryable map config nodes for 139 map ids, including
+  domain names, streaming map asset paths, unique numeric/string level links,
+  scene states, map variables, and quest/mission/map-variable condition
+  refs; grid placement, streaming behavior, state evaluation, and UI map
+  rendering remain future work.
+- `GameplayConfigScriptTaskExtraInfoTable`: queryable task-extra display
+  metadata for four `map01_lv007` level-script tasks, including task title
+  and objective text refs; runtime challenge execution and progress logic
+  remain future work.
+- `LevelMountPoint`: queryable static mount leaves for `base01_lv001` and
+  `base01_lv003`, with mount type, tree path, position, and rotation
+  payloads; runtime attachment rules, cabin interaction behavior, and
+  display/spawn usage remain future work.
+- `LevelGenForRuntime`: queryable static factory generation data, including
+  parent data ids, doodad groups, center/outer doodad logic ids, runtime
+  factory regions, mines, mine proto ids, mine output items, and map-mark
+  refs; resource refresh formulas, gathering logic, factory simulation, and
+  map-mark visibility remain future work.
+- `UILevelMapLoadConfig`: queryable UI map config nodes, static map
+  elements, static-element types, tier names, target-level refs, and text
+  refs; chunk/grid/mist geometry, LOD selection, coordinate projection, and
+  actual UI rendering remain future work.
+- `LevelScriptTemplateData` and other partially previewed families have verified
+  top-level ids/counts and meaningful previews.
 
 The remaining risk is nested semantics. A decoded field name or count proves
 structure; it does not automatically prove gameplay meaning, formula behavior,
@@ -334,7 +542,8 @@ The CN WebUI output contains thousands of conversation files, hundreds of
 mission data files, over one hundred thousand reference rows, actor metadata,
 audio links, source links, and narrative video references. The generated
 source graph links lines, stories, options, missions, actors, audio, videos,
-and selected table rows.
+selected table rows, and exact DialogText/DialogOption/Summary support-table
+evidence.
 
 The current system is good at answering questions such as:
 
@@ -345,6 +554,214 @@ The current system is good at answering questions such as:
 - Which option groups exist?
 - Which source file appears to back a story key?
 - Which table rows and text IDs are visible to the WebUI?
+- Which raw DialogText/DialogOption/Summary rows support a generated line,
+  option, or story?
+
+2026-07-01 source graph dialog-support progress: a fast CN rebuild verified
+1,026,124 graph nodes and 1,698,548 edges after adding exact support-table
+semantics for DialogText, DialogOption, DialogSummary, DialogSummaryMap, and
+DomainDepotDeliverTargetDialog. The pass adds 17,528 `dialog_text`, 4,343
+`dialog_option`, 997 `dialog_summary`, 931 `dialog_summary_map`, and 15
+`domain_depot_deliver_target_dialog` nodes, with 0 orphan edges from those
+sources. It links all 17,528 dialog text rows to generated line nodes and
+generated WebUI story ownership, 17,329 to non-sentinel audio, 15,337 to
+actors, 4,219 dialog options to generated option nodes, 908 summary maps to
+story nodes, and all 30 domain-depot initial/repeat dialog refs to story nodes.
+The graph no longer emits the `audio:0` sentinel as an audio node or edge
+target.
+
+2026-07-01 source graph DialogIdTable registry progress: a fast CN rebuild to
+`tmp/source_graph_dialog_registry.sqlite` verified runtime registry evidence
+from exact `DialogIdTable` decoding and the generated dialog registry JSON. The
+pass adds 1 `dialog_id_table_config` node, 2 decoded source-file definition
+edges, 4,918 `dialog_registry_scene` nodes, 4,918 registry-to-story links, 3,589
+registered line links, 4,131 registered option links, and matching line/option
+to-story edges. This proves runtime registration structure for scenes, trunks,
+lines, and options; it does not supersede generated WebUI line order,
+scene-graph option placement, or timeline route evidence.
+
+2026-07-01 source graph NavMesh progress: a fast CN rebuild to
+`tmp/source_graph_navmesh.sqlite` verified exact decoded NavMesh evidence from
+`Json_NavMesh.json`. The pass adds 139 `navmesh_area` polygon rows, 17
+owner-qualified `navmesh_area_id` nodes, 6 `navmesh_state_container` owners,
+569 `navmesh_state_record` rows, 278 area source-file definition edges, 1,138
+state-record source-file definition edges, and 57 bounds-to-area-id refs. This
+proves decoded geometry/state inventory by NavMesh owner; it does not infer
+walkability, pathfinding behavior, or numeric state/list semantics.
+
+2026-07-01 source graph BambooRaftTaskTable progress: a fast CN rebuild to
+`tmp/source_graph_bamboo.sqlite` verified exact decoded task references from
+`Json/NonGeneratedConfigs/BambooRaftTaskTable.json`. The pass adds 7
+`bamboo_raft_task_group` hash nodes, 13 `quest_task` nodes, 14 group source-file
+definition edges, 26 task-ref source-file definition edges, 13 group-to-task
+edges, and 13 mission-prefix links across `e5m1`, `e6m1`, `e6m4`, `e8m2`,
+`sm2l1m1`, and `sm2l1m3`. It preserves hash/field payload evidence without
+inferring quest order or bamboo-raft gameplay mechanics.
+
+2026-07-01 source graph GPUISystemConfig damage_text progress: a fast CN
+rebuild to `tmp/source_graph_damage_text.sqlite` verified exact UI combat-text
+row evidence from `Json/GPUISystemConfig/damage_text.json`. The pass adds 20
+`damage_text_style` row nodes, 10 `damage_text_animation` nodes, 58
+`damage_text_node_name` nodes, 8 filtered `damage_text_ui_resource` nodes, 40
+row source-file definition edges, 22 animation refs, 143 node-name refs, and 23
+`ui_*` resource refs. Numeric placeholders and non-`ui_*` strings remain
+payload-only evidence; the graph does not infer UI prefab hierarchy or runtime
+rendering behavior.
+
+2026-07-01 source graph LipSync aggregate progress: a fast CN rebuild to
+`tmp/source_graph_lipsync.sqlite` verified aggregate clip evidence from the
+large `Json_LipSync.json` group. The pass adds 129,732 source-file definition
+edges collapsed to 64,920 `lipsync_clip` language/audio nodes, 4 language nodes,
+64,920 language edges, and 64,920 audio-stem links. Language splits are Chinese
+16,248, English 16,224, Japanese 16,223, and Korean 16,225 unique clips. Source
+entries sum to 43,043,103 curve records and unique clip nodes sum to 21,553,022
+records after source collapse; per-record curve nodes and phoneme/viseme timing
+semantics remain intentionally out of scope.
+
+2026-07-01 source graph MissionRuntimeAsset progress: a fast CN rebuild to
+`tmp/source_graph_mission_runtime.sqlite` verified static mission runtime JSON
+semantics from `Json_MissionRuntimeAsset.json`. The pass adds 884
+`mission_runtime_asset` nodes, 1,756 source-file definition edges, 884
+asset-to-mission links, 813 level links, 494 reward links, 331 mission-name text
+links, 324 mission-description text links, 3,984 mission quest links, 3,334
+previous-quest dependencies, 3,155 objective text links, 55 condition-type
+nodes, 7 tracking-type nodes, 6 action-type nodes, 1,134 mission-area tracking
+links, 345 action narrative refs, and 579 quest narrative refs. It is strong
+static quest DAG and authored tracking evidence; it does not prove observed
+runtime chronology, condition evaluation, action execution, or exact
+player-visible mission order.
+
+2026-07-01 mission runtime action-level progress: action-map entries now get
+first-class `mission_runtime_action` nodes and field-level edges for direct
+action references. A fast CN temp graph build verified 495 collapsed action
+nodes, 495 `mission_runtime_has_action` edges, 345 radio-play edges, 69
+media-guide-group edges, 64 guide-group edges, 69 guide text edges, 17
+chapter-panel edges, and 7 static `_nextID` action links. The useful lookups are
+now field-specific, for example `radio_a1m9_2`, `guide_group_connector_intro`,
+and `chr_0013_aglina_e1`. These are authored action-map references, not proof
+that those actions execute in a particular runtime chronology.
+
+2026-07-01 mission runtime condition progress: objective conditions now become
+first-class graph nodes with typed references to levels, level scripts, script
+property keys, world-entity script slots, quest state, mission state, factory
+tech, item/money counts, mission areas, and dialog/story completion checks. A
+fast CN temp graph build verified 4,725 `mission_runtime_condition` nodes, 761
+nested sub-condition edges, 200 level-script property checks, 201
+world-entity-slot checks, 149 quest-state checks, 79 mission-state checks, 60
+factory-tech checks, 231 item/money checks, 707 mission-area reach checks, and
+449 dialog-finish story refs. This improves static runtime-condition semantics,
+but still does not execute the conditions or prove live mission order.
+
+2026-07-01 script task display-metadata progress: source graph now ingests the
+larger `Json/GameplayConfig/ScriptTaskExtraInfoTable.json` surface as well as
+the small wrapper group. A fast CN temp graph build verified 536 collapsed
+`level_script_task_extra` rows, 536 task UID nodes, 671 objective nodes, 1,052
+source definition edges, 536 links to `level_script`, 638 objective text edges,
+285 title text edges, and 7 single-description text edges. This connects task
+UI/tracking text such as `dungeon_train_train02_title` and
+`map01_lv007:2800200002:0174178d` to level scripts while avoiding claims about
+quest-task identity or runtime completion formulas.
+
+2026-07-01 source graph AIConfig progress: a fast CN rebuild to
+`tmp/source_graph_aiconfig.sqlite` verified exact enemy-template preload
+mappings from `Json_AIConfig.json` `EnemyTemplateDataSummary.json`. The pass
+adds 78 `enemy_data_asset` nodes, 156 file-to-template preload edges split as
+Persistent 78 and StreamingAssets 78, 78 deduplicated template-to-asset
+preload edges, and 78 path plus 78 stem aliases. This is static preload-path
+evidence only; it does not prove AI behavior trees, spawn behavior, renderable
+model binding, or asset presence in the lean asset index.
+
+2026-07-01 source graph MapConfig progress: a fast CN rebuild to
+`tmp/source_graph_mapconfig.sqlite` verified exact map config JSON from
+`Json_MapConfig.json`. The pass adds 139 `map_config` nodes, 270
+source-file definition edges, 139 config-to-map links, 48 domain nodes, 68
+streaming map asset path nodes, 197 unique numeric level-id edges, 149
+string level links, 99 scene-state nodes, 39 map variables, 4 condition
+types, 32 quest condition refs, 5 mission refs, and 9 map-variable refs.
+The original 31,992 `levelIds` grid entries are preserved as counts on
+config node payloads rather than emitted as per-cell edges. This is static
+authored map metadata, not proof of streaming behavior, condition evaluation,
+grid placement semantics, or UI map rendering.
+
+2026-07-01 source graph script-task extra progress: a fast CN rebuild to
+`tmp/source_graph_script_task_extra.sqlite` verified the small
+`GameplayConfigScriptTaskExtraInfoTable` pass. It adds 4
+`level_script_task_extra` nodes, 8 source-file definition edges, 4 level
+links to `map01_lv007`, 1 task-title text link, and 4 objective text links.
+This is static display/tracking metadata, not proof of level-script
+execution, objective progress logic, or runtime challenge state.
+
+2026-07-01 source graph LevelMountPoint progress: a fast CN rebuild to
+`tmp/source_graph_level_mount_point.sqlite` verified exact static mount
+leaves from `Json_LevelMountPoint.json`. It adds 92 `level_mount_point`
+nodes, 184 source-file definition edges, 92 level links split across
+`base01_lv001` and `base01_lv003`, 7 mount-type nodes, and 92 type links.
+Each mount point keeps its level-qualified tree path plus position and
+rotation payloads. This is static authored transform data, not proof of
+runtime attachment rules, cabin interaction behavior, or display/spawn usage.
+
+2026-07-01 source graph LevelGenForRuntime progress: a fast CN rebuild to
+`tmp/source_graph_level_gen.sqlite` verified exact static factory
+generation data from `Json_LevelGenForRuntime.json`. It adds 70 parent data
+nodes, 267 doodad groups, 1,967 doodad logic ids, 68 runtime factory
+regions, 202 mines, 4 mine proto ids, 202 mine output item links, 267 center
+links, 1,700 outer links, and 56 doodad map-mark links. This is static
+authored generation metadata, not proof of resource refresh formulas,
+gathering logic, factory simulation behavior, or map-mark visibility.
+
+2026-07-01 source graph UILevelMapLoadConfig progress: a fast CN rebuild
+to `tmp/source_graph_ui_level_map.sqlite` verified bounded UI map-load
+metadata from `Json_UILevelMapLoadConfig.json`. It adds 17
+`ui_level_map_config` nodes, 220 static map elements, 7 static-element
+types, 54 target-level refs, 2 region-level refs, 157 static-element text
+refs, 58 tier-name nodes, and 58 tier text refs. Chunk/grid/mist and tier
+geometry arrays are payload counts only; this is static UI map metadata,
+not proof of UI map rendering, fog/mist reveal behavior, chunk LOD
+selection, or coordinate projection.
+
+2026-07-01 source graph GameplayConfig map/level lookup progress: a fast CN
+rebuild to `tmp/source_graph_gameplay_map_level.sqlite` verified four decoded
+text JSON lookup tables from `Json_GameplayConfig.json`. The pass adds 270
+source-file map-id definition edges, 149 `level_basic_info` nodes with level,
+level-config, domain, map-UI, region-UI, and factory-area links, 21 short-id
+scene nodes plus 86 `level_short_id` nodes, and 142 `map_brief_info` nodes
+with 211 map-local sublevel nodes and 1,009 enemy refs. Numeric
+`MapBriefInfoTable` map ids only join to `map` nodes through `MapIdTable`, and
+sublevel ids are preserved as map-local subdata ids rather than inferred level
+ids. Placed map marks, map regions, and mine teams remain a separate pass.
+
+2026-07-01 source graph GameplayConfig placed-map progress: a fast CN rebuild
+to `tmp/source_graph_gameplay_map_placement.sqlite` verified decoded
+`LevelMapMark`, `MapRegionTable`, and `MinePointTeamTable` text JSON. The pass
+adds 1,993 unique map-mark nodes from 3,915 source rows, 268 map-region nodes,
+46 factory mine-team nodes, 1,877 region-derived level-to-mark links, 1,803
+mist-region links, 884 tier-region links, 79 teleport refs, 42 reward refs, 109
+item refs, 103 minigame refs, 300 mark core-doodad refs, and 150 mine-team
+doodad refs. Geometry remains payload-level, and the top-level numeric keys are
+not treated as map ids. This is static placed-map evidence, not proof of live
+visibility, activation, fog reveal, resource refresh, or runtime map rendering.
+
+2026-07-01 source graph text WorldEntityRegistry progress: a fast CN rebuild to
+`tmp/source_graph_world_entity_text.sqlite` verified decoded text
+`Json/GameplayConfig/WorldEntityRegistry.json`. The pass adds 15,083 collapsed
+world-entity instance nodes from 30,129 source rows, 2,591 script-slot nodes,
+77 config nodes, 154 config-property nodes, 1,646 NPC proxy briefs, and 1,646
+segment nodes. It links instances and script slots to existing enemy,
+enemy-template, interactive-detail, model, model-radius, audio, and level-script
+nodes where exact detail or script ids already resolve. Position, rotation, and
+config values remain payload-level, and numeric prefixes are not treated as
+level or map ids. This is static registry evidence, not proof of runtime spawn,
+visibility, lifetime, or script execution.
+
+Useful support-table checks include:
+
+```bat
+python tools\endfield_source_graph.py query dlg_a1m10_1_001 --kind dialog_text
+python tools\endfield_source_graph.py query dlg_spaceship_creditshop_trade --kind dialog_option
+python tools\endfield_source_graph.py query summary_a1m2_1_001 --kind dialog_summary
+python tools\endfield_source_graph.py query dlg_a1m2_1 --kind dialog_summary_map
+python tools\endfield_source_graph.py query ahe_map02_v1d2d0_depot --kind domain_depot_deliver_target_dialog
+```
 
 ### Line Order Inside Dialog Scenes
 
@@ -404,18 +821,19 @@ Understanding is strong at file/index level.
 
 The WebUI asset index reports:
 
-- Total asset entries: 251,697.
-- Images: 132,003.
-- Models: 53,626.
+- Total asset entries: 292,020.
+- Images: 158,259.
+- Models: 64,987.
 - Videos: 942.
-- JSON: 65,126.
+- JSON: 67,832.
+- Relation records: 84,103.
+- Material JSON records with texture links: 48,470.
+- Resolved texture links: 190,457.
 
 This is enough to search and browse a broad slice of exported game assets. The
-source graph also indexes 254,597 asset nodes, which roughly matches the asset
-index scale.
-
-The limitation is semantic mapping. Many assets are known as exported files,
-path IDs, type buckets, or recovered paths. Fewer are known as fully explained
+source graph also indexes 292,020 asset nodes, which matches the active full
+asset index scale. The limitation is semantic mapping. Many assets are known as
+exported files, path IDs, type buckets, or recovered paths. Fewer are known as fully explained
 game concepts such as "this exact model is used by this mission prop in this
 runtime scene with this material variant and this animation state".
 
@@ -425,19 +843,69 @@ Understanding is strong for story-facing audio.
 
 The source graph includes:
 
-- Audio nodes: 34,542.
+- Audio nodes: 35,320.
 - `audio_path` edges: 25,245.
 - `defines_audio` edges: 25,245.
 - `speaker_channel` edges: 25,245.
-- `uses_audio` edges: 24,315.
+- `uses_audio` edges: 24,738.
+- `radio_line_uses_audio` edges: 4,103.
+- `remote_common_line_uses_voice` edges: 284.
+- `audio_voice_extra_for_audio` edges: 25,245.
+- `audio_cue_handler_uses_event` edges: 221.
+- `text_voice_id_uses_audio` edges: 153.
+- `audio_vo_tone_has_variant_audio` edges: 291.
+- `audio_sequence_dialog_uses_audio` edges: 100.
+- `audio_factory_uses_event` edges: 240.
+- `audio_item_drag_drop_uses_event` edges: 146.
+- `audio_level_uses_event` edges: 105.
 
 The WebUI build also post-processes generated conversation JSON with playable
 `audioSrc` links. This makes the story audio experience usable and gives a
 solid evidence base for line-to-audio investigation.
 
-Remaining audio improvements are mostly about semantic classification,
-coverage validation outside story voice, and deeper Wwise/runtime behavior, not
-basic line playback.
+2026-07-01 source graph narrative/audio progress: a fast CN rebuild verified
+939,999 graph nodes and 1,532,614 edges after adding semantic ingestion for SNS,
+radio, remote-common, audio cue, emotion voice, audio dialog custom event, and
+AudioVoiceExtraData tables. The new slice adds 122 `sns_chat`, 108 `sns_topic`,
+1,284 `sns_option`, 288 `sns_dialog`, 5,684 `sns_content`, 2,375 `radio`, 4,103
+`radio_line`, 30 `remote_common`, 284 `remote_common_line`, 175 `audio_cue`, 264
+`audio_cue_handler`, and 25,245 `audio_voice_extra` nodes, with 0 orphan edges
+from those sources. SNS content is preserved as raw table content rather than
+forced into generated story line IDs; radio lines, remote lines, and matching
+voice-extra keys link to generated `line` nodes where the WebUI story corpus has
+them. Useful checks include:
+
+```bat
+python tools\endfield_source_graph.py query sns_a1m1_1 --kind sns_dialog
+python tools\endfield_source_graph.py query option_sns_a1m1_1_1_001 --kind sns_option
+python tools\endfield_source_graph.py query radio_a1m6d1_1 --kind radio
+python tools\endfield_source_graph.py query remotecomm_c13m2_1 --kind remote_common
+python tools\endfield_source_graph.py query -1000413093 --kind audio_voice_extra
+```
+
+2026-07-01 source graph audio-config progress: a follow-up fast CN rebuild
+verified 942,880 graph nodes and 1,538,834 edges after adding support/config
+semantics for TextVoId, voice tone groups, speaker weights, battle/factory/item
+SFX tables, factory announcements, and level audio settings. The pass adds 180
+`text_voice_id`, 115 `audio_vo_tone`, 38 corrected `audio_sequence_dialog`, 571
+`audio_item_drag_drop`, 73 `audio_factory`, and 103 `audio_level` nodes, among
+others, with 0 orphan edges from those sources. `AudioSequenceDialog` now links
+38 sequence records to responsive responses and 100 sequence entries to
+`AudioDialog` rows, audio nodes, and generated line nodes where present instead of collapsing under a single `audio_sequence:sequence`
+node. Useful checks include:
+
+```bat
+python tools\endfield_source_graph.py query black_a1m6d2_3_001 --kind text_voice_id
+python tools\endfield_source_graph.py query -1008092446 --kind audio_vo_tone
+python tools\endfield_source_graph.py query audio_sequence_dialog:1:-1043173561
+python tools\endfield_source_graph.py query air_dancer_1 --kind audio_factory
+python tools\endfield_source_graph.py query base01_lv001 --kind audio_level
+```
+
+Remaining audio improvements are now mostly about deeper Wwise/runtime behavior,
+tone/voice intent classification, and coverage validation outside story voice,
+not basic line playback, raw communication-table bridging, or basic
+support/config table linkage.
 
 ### Updates and Change Tracking
 
@@ -500,12 +968,35 @@ A CN rebuild found 959 responsive lines with `audioPaths`, all 959 linked to
 That is useful supporting evidence, but it is not the same as full branch proof.
 The current representation is practical and mostly coherent, but not fully
 authoritative for every branch.
+
 Memory notes explain the current promotion rule more precisely: timeline/audio
 monotonicity is supporting evidence only. Option responses should be promoted
 only when authored source evidence binds option indices to response lines. The
 next runtime target is the writer of the `DialogOptionPlayableAsset` active
 clip gate at `+0x18`; without that, several option-response groups remain
 inferred rather than proven.
+
+2026-07-01 source graph progress: `webui/overrides/options.json` is now ingested
+as explicitly WebUI-only `option_override` evidence. The fast CN build verified
+43 override nodes and 587 `webui/option_override` edges, including manual
+response `option_first_line` / `option_path_line` edges that keep their
+`webuiOnly` marker in edge data. This improves auditability of display fixes,
+but it still does not upgrade manual overrides into original game-source proof.
+
+2026-07-01 option-branch audit progress:
+`scripts/story_recovery/build_option_override_branch_conflict_audit.py` now
+writes generated reports under `reports/source_graph/` that classify every
+manual response option as matching inferred first-line evidence, conflicting
+with it, or manual-only. The current audit verifies 74 manual response options:
+26 match inference, 24 conflict with inferred first lines, and 24 are
+manual-only. Runtime-jump evidence is still sparse, but the join highlights
+`dlg_e6m1_10` and `dlg_e6m4_14` as high-signal conflicts where nearby Runtime
+Jump evidence supports the manual first line over the old inferred edge. The
+`story` source graph query now carries the same distinction inline by tagging
+manual override branch refs as `manual_authoritative`, `option_branch_risk` refs
+as `diagnostic_inference`, and timeline-derived refs as runtime evidence;
+conflicting `option_first_line` refs name the opposing manual or inferred
+first-line IDs.
 
 ### Mission Timeline and Global Story Order
 
@@ -594,6 +1085,16 @@ Together, these reports show good but incomplete video understanding. Many
 important narrative links are attached, but standalone videos and unresolved
 refs need more classification.
 
+2026-07-01 FMV binding graph progress: `export_full/recovered/video_bindings.json`
+is now ingested as queryable source graph evidence. A fast CN temp graph build
+to `tmp/source_graph_video_bindings.sqlite` verified 29 `fmv_binding` nodes, 29
+`fmv_clip` nodes, 84 `fmv_binding_uses_video` edges, 29 story-target edges, 29
+mission edges, 29 timeline-clip edges, 58 source-file edges, 58 playable PathID
+edges, and 110 `unbound_video_candidate` diagnostic edges. Binding video paths
+are normalized back to the existing `StreamingAssets-structured` and
+`Persistent-structured` video nodes, and `sceneIsHint` remains explicit payload
+data rather than being treated as authoritative story proof.
+
 ### Text Tables and I18n Coverage
 
 Understanding is high for extraction and partial for completeness/meaning.
@@ -654,16 +1155,291 @@ schemas. Focused examples include:
 
 2026-07-01 WebUI progress: `scripts/build_gameplay_data.py` now promotes a
 compact, inspectable subset of progression semantics into the Gameplay tab. It
-samples weapon upgrade curves with cumulative costs, weapon base-ATK stat
-checkpoints, weapon breakthrough materials and skill bounds, weapon talent bound
-templates, character level EXP checkpoints, global character break-stage caps,
-playable-capped character stat checkpoints from `CharacterTable.attributes`,
-per-character breakthrough materials, and potential unlock effects/items. The
-builder preserves raw stat metadata separately: the current CN export has 2,820
-playable character stat rows and 3,090 raw rows, with raw character curves
-extending to level 99 while the playable level curve caps at 90. This improves
-practical access to numerical progression data, but it still stops short of
-full formula/runtime simulation.
+samples weapon upgrade curves with cumulative costs, weapon base-ATK stat rows
+annotated by breakthrough stage, weapon breakthrough materials and skill bounds,
+weapon talent bound templates, character level EXP checkpoints, global character
+break-stage caps, playable-capped character stat checkpoints from
+`CharacterTable.attributes`, per-character breakthrough materials, and potential
+unlock effects/items. The builder preserves raw stat metadata separately: the
+current CN export has 2,632 visible character stat rows and 2,884 raw rows, with
+raw character curves extending to level 99 while the playable level curve caps at
+90. This improves practical access to numerical progression data, but it still
+stops short of full formula/runtime simulation.
+
+2026-07-01 WebUI equipment-stat progress: Equipment entries now expose
+localized part/domain/formula/suit context plus per-property stat curves derived
+from `EquipTable` display attributes and enhancement arrays. The current CN
+Gameplay payload verifies 220 equipment entries, 838 nested equipment property
+curves, 40 composite-attribute curves, and 28 emitted stat keys. The builder now
+filters placeholder `attrType == 0` rows, preserves the base modifier as its own
+property curve, and labels composite attributes such as all-skill damage,
+fire/natural damage, and cold/pulse damage. These curves make equipment
+progression inspectable in the WebUI, while formula evaluation and exact runtime
+combat math remain outside the static payload.
+
+2026-07-01 WebUI enemy-table progress: the Gameplay builder now emits 290 enemy
+entries from merged `EnemyTable`, `EnemyAttributeTemplateTable`, display,
+ability, tag, and drop tables. The CN payload verifies 610 visible Gameplay
+entries total: 72 weapons, 220 equipment records, 28 visible character records,
+and 290 enemies. Enemy stat recovery contributes 9,800 distinct authored
+stat-template rows and 29,000 per-enemy stat references, with HP/ATK/DEF
+checkpoints exposed in the WebUI. It also exposes 406 ability references, 194
+born-buff references, drops, combat scalars, resilience fields, independent
+attributes, and raw attr modifiers. This is authored table semantics, not a full
+runtime combat formula or modifier-order reconstruction.
+
+2026-07-01 source graph progress: `tools/endfield_source_graph.py` now ingests
+the generated Gameplay payload, a pre-Gameplay item/economy table pass, an early
+world/map table pass, a pre-Gameplay combat semantics pass, selected structured
+factory tables, Spaceship/base tables, Activity/Achievement/SystemJump tables,
+and factory tech-tree/unlock, PRTS Archive, Reading, RichContent, NPC, ambient
+voice, and responsive bark tables as evidence graph nodes and relationships. A fast CN verification build with `--skip-asset-maps --skip-reference-rows
+--skip-followups` produced 72 weapon nodes, 220 equipment nodes, 30 character
+nodes, 290 enemy nodes, 78 enemy template nodes, 98 enemy attribute-template
+nodes, 134 enemy ability nodes, 217 buff nodes, 6 map nodes, 208 level nodes,
+147 level loading nodes, 74 scene area nodes, 34 map marks, 155 map mark
+templates, 39 map mark types, 5 map mark categories, 32 track-map points, 64
+track-map links, 37 scene collectables, 69 factory regions, 5 settlement POIs, 5
+shop-channel POIs, 497 skill nodes, 4,807 skill level nodes, 33 skill tag nodes,
+405 gameplay blackboard key nodes, 80 use-item effect nodes, 9 general ability
+nodes, 14 ability entity nodes, 19 global effect nodes, 54 global effect param
+nodes, 251 potential talent effect nodes, 526 talent nodes, 1,240 progression
+nodes, 2,425 item nodes, 93 item type nodes, 11 item showing-type nodes, 232
+item obtain-way nodes, 5,722 reward nodes, 1,252 reward-drop nodes, 19 shop
+groups, 28 shops, 687 shop goods, 6 shop goods tags, 392 factory recipe nodes,
+485 factory item descriptor nodes, 38 factory machine nodes, 20 factory craft
+group nodes, 22 factory showing-type nodes, 3,820 required-item edges, 290
+`uses_enemy_attribute_template` edges, 406 `has_enemy_ability` edges, 194
+`starts_with_buff` edges, 266 `drops_item` edges, and 6,716
+`has_gameplay_asset` edges including 839 item-to-asset edges. The two hidden
+Endministrator rows remain as `CharacterTable` graph nodes but are no longer
+separate visible Gameplay entries. Exact queries such as `chr_0017_yvonne`,
+`wpn_pistol_0001`, `eny_0018_lbtough`, `item_gold`,
+`reward_payshop_wpn_claym_0003`, `domainshop_goods_map01_10001`,
+`chr_0002_endminm_attack1`, `item_proc_bomb_1`, `atk_scale`, `map01`,
+`mark_arrow`, `chr_0017_yvonne:stat:90:4`, `chr_0017_yvonne:potential:1`,
+`chr_0017_yvonne:breakthrough:charBreak20`, `aglina_indie`,
+`dung_aglina_chartrain01`, `attr_1`,
+`component_activity_xiranite_cmpt_1`, `aglina_base01_lv001`,
+`spaceship_skill_chr_0004_pelica_1_1`,
+`growcabin_plant_crylplant_1_1`, `envEmoji_common_adaptationwork`,
+`activity_weekly_task_1`, `week10_task1`, `achv_adv_tundra_box`,
+`jump_activity_conditional_multistage_1`, `tech_jinlong_1_battle_cannon_2`,
+`air_dancer_1`, `hdwk_item_drop_agfly_1_1`, `nar_002_settlement`,
+`text_002_settelment`, `rp_radio_c16m4_50`, `research_001`, `chaosheng`,
+`CommonKid`, `action_dash_start`, and `-1006722661` now resolve to semantic
+nodes with source table rows and neighbors. This improves
+cross-domain lookup; it still does not prove formulas beyond generated
+source-table evidence.
+
+2026-07-01 source graph character-progression progress: generated Gameplay
+character payloads now expose break-stage ranges, level EXP/gold checkpoints,
+visible stat checkpoints, breakthrough unlocks, potential levels, potential
+blackboard parameters, potential unlock items, and default weapons as first-class
+queryable graph facts. A fast rebuild on the current CN payload verified 140
+character break-stage nodes, 196 level-checkpoint nodes, 2,632 stat-checkpoint
+nodes, 18,424 stat-property value edges, 112 breakthrough nodes, 140 potential
+nodes, 794 potential blackboard edges, 101 potential unlock-item edges, and 28
+default-weapon edges. The current generated CN Gameplay payload used for this
+check reports 515 visible entries: 72 weapons, 220 equipment records, 28
+characters, 78 visible enemy entries, and 117 usable items, while retaining 290
+enemy variants as generated payload evidence. This improves exact lookup for
+character numerical progression; runtime formula evaluation and modifier order
+remain future work.
+
+2026-07-01 source graph character-support and attribute-dictionary progress:
+character tags, tag descriptions, professions, element types, presets, teams,
+weapon recommendations, weapon-skill recommendations, tutorials, trials,
+training thresholds, and shared attribute display metadata are now queryable. A
+fast rebuild verified 635 character presets, 2,340 preset-equipment edges, 832
+team preset-list edges, 274 character-tag edges, 108 tag-description nodes, 115
+recommended-weapon edges, 174 recommended weapon-skill edges, 22 tutorial
+dungeons, 97 tutorial stages, 336 tutorial-step refs, 7 trial rows, 80 training
+recommendation rows, 94 attribute meta rows, 86 attribute show entries, 25
+composite-attribute member edges, 21 attribute-filter entries, and 51
+interactive attribute rows. That scouted slice has since landed in the
+Spaceship/base graph pass below.
+
+2026-07-01 source graph Spaceship/base progress: Spaceship NPC proxies, behavior
+EnvTalk refs, base skills, room types, room attrs, room levels, empty rooms,
+growth/manufacture formulas, clue rows, EnvTalk rows, audio refs, item refs, and
+local I18n text references are now queryable. A fast CN rebuild verified 52
+spaceship NPC proxy nodes, 140 spaceship skill nodes, 8 room type nodes, 18 room
+attrs, 15 room levels, 6 empty rooms, 38 formulas, 7 clues, 1,704 EnvTalk nodes,
+516 I18n text ref nodes, 52 proxy-to-character edges, 234 behavior EnvTalk
+edges, 108 character skill refs, 140 skill-to-room-type refs, 31 room-level item
+costs, 23 formula unlocks, 68 formula item edges, 2,537 EnvTalk audio refs, and
+1,046 I18n text-use edges. The scouted Activity/Achievement plus SystemJump
+slice has since landed below.
+
+2026-07-01 source graph Activity/Achievement/SystemJump progress: root
+activities, activity tags, activity conditions, weekly and multistage tasks,
+activity stages, milestones, banners, push bubbles, achievement
+categories/groups, achievements, achievement levels, achievement conditions,
+achievement statistic rows, and authored system jumps are now queryable. The
+corrected fast CN rebuild verified 600 authored system-jump definitions, 64
+authored activity definitions, 23 activity tags, 300 activity conditions, 276
+activity tasks, 150 activity stages, 5 milestones, 18 banners, 34 push bubbles,
+8 achievement categories, 12 groups, 114 achievements, 156 achievement levels,
+200 achievement conditions, 3 achievement statistic rows, 63 activity-tag edges,
+276 activity-task edges, 350 activity-stage edges, 332 stage reward edges, 156
+achievement-level edges, 200 level-condition edges, 66 jump-to-activity edges,
+13 jump-to-factory-tech edges, 1 jump-to-factory-tech-group edge, and 50
+jump-to-manual-craft-unlock edges. The scouted factory tech-tree/unlock bridge
+has since landed below.
+
+2026-07-01 source graph factory tech-tree/unlock progress: `FacSTT*` tech
+groups/categories/layers/nodes/conditions, machine-to-tech links,
+blueprint-to-machine item links, factory buildings, building types, renderer
+templates, blueprint machine icons, manual-craft formula unlocks, and
+manual-craft upgrade rows are now queryable. The corrected fast CN rebuild
+verified 2 tech groups, 11 categories, 6 layers, 71 authored tech nodes, 5 tech
+conditions, 94 factory buildings, 31 referenced building types, 113 renderer
+templates, 61 blueprint machine icon nodes, 168 manual-craft unlock nodes, 55
+tech prerequisite edges, 128 tech unlock-item edges, 75 tech action refs, 72
+machine-to-tech links, 59 blueprint item links, 89 building item links, 82
+building map-mark refs, 97 building renderer-template refs, 168 manual-craft
+formula unlock links, 45 manual-craft upgrade links, 13 system jumps to exact
+factory techs, and 1 system jump to a factory tech group. The scouted PRTS
+Archive / Reading / RichContent bridge has since landed below.
+
+2026-07-01 source graph PRTS Archive/Reading/RichContent progress: PRTS
+page/category/first-level/archive entries, RichContent roots and content lines,
+Reading popup rows/icons, PRTS reading roots/entries, investigations/groups/notes,
+and SystemJump PRTS detail targets are now queryable. The corrected fast CN
+rebuild verified 422 PRTS entry nodes, 586 RichContent roots, 2,991 RichContent
+line nodes, 576 reading popups, 14 referenced popup icon nodes with 6 authored
+icon-map definitions, 21 PRTS reading roots, 36 PRTS reading entries, 13
+investigation nodes, 29 investigation groups, 29 notes, 414 canonical
+first-level-to-entry edges, 105 PRTS entry-to-story targets, 391
+entry-to-RichContent targets, 247 popup-to-story targets, 548 popup-to-RichContent
+targets, 2 reading-entry story targets, 28 reading-entry RichContent targets, 47
+direct investigation entry refs, 58 investigation-to-group refs, 94
+group-to-entry refs, 58 group-to-note refs, 25 system jumps to PRTS entries,
+and 5 system
+jumps to PRTS investigations. Investigation grouping intentionally keeps the two
+source evidence paths from `PrtsInvestigate.categoryDataList` and
+`PrtsInvestigateCategory.list`; inferred PRTS page buckets remain out of scope
+until backed by a table or UI binding. The scouted NPC / Ambient Voice /
+Responsive Bark bridge has since landed below.
+
+2026-07-01 source graph NPC/Ambient Voice/Responsive Bark progress: NPC rows,
+NPC groups, NPC templates, voice profiles, environmental NPCs, atmosphere
+camp/career tags, audio dialog channels, responsive trigger groups, responsive
+speakers/triggers/responses, AIBark rules, AIBark text, and bark constants are
+now queryable. The corrected fast CN rebuild verified 359 NPC nodes, 939 NPC
+groups, 543 unique NPC templates from 676 source rows, 1,239 voice profiles, 43
+environmental NPC rows, 676 audio dialog channel nodes including 33 channel
+aliases, 1,142 Wwise event nodes, 72 responsive speakers, 9,521 responsive
+triggers, 165 global responsive trigger types, 4,325 responsive responses, 928
+bark text rows, 359 NPC-to-group links, 33 NPC-to-EnvTalk links, 689 voice
+profile-to-template links, 541 Wwise-channel and 635 voActor-channel voice
+profile links, 642 channel-to-actor matches, 13,919 trigger-response occurrence
+edges, 4,304 unique response-to-AudioDialog/audio links, 868 response-to-bark-
+text links, and 928 bark text-to-line links. NPC template/dataKey asset joins
+remain intentionally absent because current exact asset entity aliases do not
+match those IDs; SNS, radio, remote-common, cue, and full voice-extra tables
+remain a broader narrative/audio pass.
+
+2026-07-01 source graph item/economy progress: item, reward, reward-drop, and
+shop table semantics are now queryable before Gameplay ingestion. A fast source
+graph rebuild verified 2,376 authored item rows, 2,035 obtain-way edges, 288
+item outcome edges, 5,722 reward nodes, 16,865 guaranteed reward item edges,
+2,344 probabilistic reward item edges, 1,252 reward-drop nodes, 3,319 reward-drop
+item edges, 19 shop groups, 28 shops, 687 shop goods, 687 shop currency-price
+edges, 673 shop reward edges, and 214 shop goods tag edges. This recovers static
+economy relationships; runtime pricing conditions, refresh rules, random shop
+selection, and reward probability formulas remain future work.
+
+2026-07-01 source graph combat-semantics progress: buff configs, skill patch
+levels, use-item actions, general abilities, ability-entity stats, global
+effects, and potential talent effects are now queryable from authored tables. A
+fast source graph rebuild verified 479 skill patch rows, 4,807 skill level
+nodes, 14,838 skill-level blackboard value edges, 80 use-item effect nodes, 83
+use-item-to-buff edges, 1 use-item-to-skill edge, 202 use-item blackboard edges,
+9 general abilities, 2 general-ability map-ban edges, 14 ability entity stat
+nodes, 19 global effects, 54 global effect params, 251 potential talent effects,
+57 talent buff edges, 30 talent attach-skill edges, 331 talent skill-blackboard
+modifier edges, 30 talent skill-param modifier edges, and 51 talent stat
+modifier edges. A later BuffData decoded-config graph pass verified 4,616
+BuffData files, 2,325 unique buff ids, 1,416 gameplay-tag string edges, 13,373
+parameter-string edges, 1,862 linked-buff string edges, 1,404 effect-key edges,
+273 audio-event edges, and 391 icon edges. A later SkillData decoded-config graph
+pass verified 4,191 SkillData files, 2,108 unique skill ids, 1,786 gameplay-tag
+string edges, 49,988 parameter-string edges, 3,000 linked-buff string edges,
+9,527 effect-key edges, 6,178 audio-event edges, and 188 icon edges. This
+recovers static combat parameter and reference evidence; runtime skill execution
+order, skill targeting, buff stacking, BuffData timeline action behavior, and
+formula evaluation remain future work.
+
+2026-07-01 decoded parameter blackboard bridge progress: a post-decoded-config
+source graph pass now connects decoded BuffData/SkillData parameter strings to
+authored `gameplay_blackboard_key` nodes by exact name. A fast CN temp graph
+build verified 214 buff-parameter bridge edges, 357 skill-parameter bridge
+edges, and 391 distinct blackboard keys covered by at least one decoded
+parameter string. This makes lookups such as `atk_scale` or `atb_gain` traverse
+from decoded config strings to SkillPatch/potential/GamePlay blackboard
+consumers, while still avoiding claims about runtime formula behavior or
+parameter typing.
+
+2026-07-01 attribute consumer graph progress: source graph now links
+CharacterTable base/main/sub attribute ids, PotentialTalentEffectTable attr
+modifiers, AbilityEntityAttrTable `atk`/`maxHp`, AttributeShowConfig display
+modifiers, and `AttributeMetaTable` rows to explicit attribute/stat nodes. A
+fast CN temp graph build verified 83,636 character base-attribute edges, 58
+main/sub attribute edges, 51 potential talent attribute-meta edges, 28
+ability-entity stat-property edges, 86 display modifier-property edges, and 40
+mapped `attribute_meta_has_stat_property` edges. This makes numeric attributes
+queryable by character, potential, and stat key while still avoiding runtime
+formula or modifier-order claims.
+
+2026-07-01 source graph world/map progress: map, level, loading, scene-area,
+map-mark, track-map, scene collectable, factory-region, settlement POI, and shop
+channel POI table semantics are now queryable. A fast source graph rebuild
+verified 3 authored map rows plus 6 total map nodes including inferred map
+prefixes, 188 level rows, 147 level loading rows, 122 level-to-map edges, 74
+scene areas, 34 map marks, 155 unique map mark templates from 173 template rows,
+32 track-map points, 64 track-map links, 37 scene collectables, 37 collectable
+item edges, 69 factory region edges, 5 settlement POI edges, and 5 shop-channel
+POI edges. This turns static map tables into a navigable world graph; runtime
+streaming, object placement, and quest-dependent visibility remain future work.
+
+2026-07-01 source graph factory progress: manual, machine, and hub factory
+recipes are now queryable from selected structured tables. The fast graph
+rebuild verified 392 `factory_recipe` nodes, 615 ingredient edges, 468 output
+edges, 76 formula-item unlock edges, 257 machine edges, 76 domain edges, 135
+showing-type edges, and 316 craft-group edges. Factory item descriptors add 485
+`factory_item` nodes and domain visibility/transfer edges. This recovers static
+factory recipe and item relationships; power, logistics, timing, and unlock
+runtime rules remain future work.
+
+2026-07-01 source graph equipment-semantic progress: equipment formula,
+domain, suit, unlock, and stat-property details are now queryable instead of
+only compacted into progression blobs. A fast CN source graph rebuild verified
+220 `equipment_formula` nodes, 27 formula packs, 22 suits, 2 gameplay domains,
+22 unlock keys, 838 equipment property curves, 24 stat-property nodes, 220
+`crafted_by_formula` edges, 220 formula output edges, 220 domain edges, 182 suit
+edges, and 838 property-curve-to-stat edges. Formula queries now show output
+equipment, source `EquipFormulaTable` rows, formula packs, unlock keys, and
+material costs. This improves static equipment semantics, but it still does not
+simulate runtime crafting or combat formulas.
+
+2026-07-01 source graph progression-cost progress: Gameplay item-cost
+traversal now follows `itemBundle`, `items`, equipment formula materials, and
+positive `goldCost` fields. A fast CN source graph rebuild verified 3,820
+`requires_item` edges total: 1,268 from progression nodes, 1,008 from skill
+groups, 1,104 from talent nodes, 440 from equipment formula nodes, and 736 total
+edges to `item_gold`. The builder filters numeric item counts at or below 0, so
+zero-cost placeholder rows no longer become required-item evidence.
+
+2026-07-01 WebUI semantic-link progress: Gameplay entries now link to Story
+wiki pages only when the current Story index contains the matching `wiki_*`
+entry, and Story wiki pages link back to the relevant Gameplay entry through
+`?gameplay=...#gameplay`. The current CN payload verifies 321 resolved links:
+72 weapons, 220 equipment records, and 29 character-story links across 28
+visible character entries. `chr_9000_endmin` now carries both
+`wiki_chr_0002_endminm` and `wiki_chr_0003_endminf`, so the hidden male/female
+Endministrator wiki records resolve through the single visible Gameplay entry.
 
 - `AbilitySystemData` field order and many serialized fields for 28 character
   rows, including skill bundles, command mappings, combo conditions, UI data,
@@ -746,16 +1522,92 @@ Remaining limitations:
 
 Understanding is moderate.
 
-The asset index has 53,626 model entries and 65,126 JSON entries, and the
-source graph includes material, mesh, texture, shader, and asset relationships.
+The asset index has 64,987 model entries, 67,832 JSON entries, and 84,103
+relation records. The source graph includes material, mesh, texture, shader,
+and asset-index material/texture relationships.
 This supports browsing and targeted lookup.
+
+2026-07-01 source graph asset progress: Gameplay entries and Gameplay cost/drop
+item nodes now get conservative asset neighbors when an exact gameplay ID, icon
+ID, model-path stem, or item ID appears inside an exported asset path. The fast
+CN source graph build verifies 6,716 `has_gameplay_asset` edges: 2,078 weapon
+edges, 2,039 character edges, 1,760 equipment edges, and 839 Gameplay item edges
+across 96 item nodes. The item links split into 836 image edges and 3
+`item_gold` drop-model edges; `item_charpotentialup_chr_9000_endmin` remains
+unmatched. This maps common weapon meshes/materials, character UI/portrait
+textures, equipment icon textures, item icons, and drop models to semantic
+Gameplay nodes without using fuzzy localized-name matching.
+
+2026-07-01 asset relation progress: the full asset index now resolves Material
+`m_Texture.m_PathID` references when Unity texture names are blank, so the
+current index no longer has an empty relation surface. The rebuilt index has
+84,103 relation records, including 56,789 entries with `textures`, 8,319 with
+`materials`, 27,314 with `referencedByMaterials`, and 5,657 with
+`referencedByModels`. A fast source graph rebuild verified 291,078 `asset_pid`
+aliases, 291,078 `asset_pathid` aliases, 229,557 `uses_texture` edges, 8,450
+`uses_material` edges, 190,457 `referenced_by_material` edges, and 37,702
+`referenced_by_model` edges. Asset queries can now follow many material and
+texture "used by" chains without scanning all Material JSON during graph use.
+
+2026-07-01 renderable asset entity progress: source graph asset ingestion now
+groups exported LOD model files into `asset_entity` nodes keyed by source plus
+normalized model base. A fast graph rebuild verified 10,465 `asset_entity`
+nodes, 30,482 `entity_has_lod_model` edges, 1,962 `entity_uses_material` edges,
+and 8,581 `entity_uses_texture` edges. Queries such as
+`python tools\endfield_source_graph.py used-by actor_aglina_body_01 --kind asset_entity`
+resolve semantic renderable groups, and texture `used-by` queries now return
+entity-level consumers before the raw material/model details.
+
+2026-07-01 weapon-to-renderable progress: weapon Gameplay nodes now link to
+renderable `asset_entity` groups through exact `modelPath` stem matches. A fast
+graph rebuild verified 132 `has_gameplay_asset_entity` edges across 71 weapon
+sources and 132 renderable entity targets; `wpn_lance_0003` (`寻路者道标`) is the
+only weapon without a renderable entity candidate. The relationship makes
+queries like `used-by wpn_sword_0019_01 --kind asset_entity` surface the
+semantic weapon before lower-level material/model rows.
+
+2026-07-01 gameplay-effect asset-name progress: source graph now adds strict
+suffix-normalized name-match edges from `gameplay_effect` keys to exported
+`asset` rows whose stem equals `<effectKey>_p[0-9A-F]{16}`. A fast CN temp graph
+build verified 232 `effect_name_matches_export_base_asset` edges from 223
+effects to 232 concrete asset rows, split across 225 model assets and 7 JSON
+assets. Direct exact effect-to-asset alias matches remain zero, and broader
+prefix matches were rejected because they create false collisions. This improves
+lookup for effect-adjacent exported assets but remains export-filename evidence,
+not runtime dependency proof.
+
+2026-07-01 visual-token asset bridge progress: semantic nodes with top-level
+icon/image tokens now link to exported image assets through the same strict
+PathID-suffix stem rule. A fast CN temp graph build verified 32,422
+`uses_icon_asset` edges and 340 `uses_visual_asset` edges across 8,008 typed
+source nodes, 1,507 visual tokens, and 10,620 image assets. This improves item,
+NPC, PRTS, SNS, system jump, activity banner, scene collectable, spaceship, and
+map-mark visual lookup while excluding generic `table_row` duplicates. The edge
+is field-backed export-name evidence, not a runtime Sprite-vs-Texture2D loading
+or atlas-selection proof.
+
+2026-07-01 postmodel asset-binding progress: source graph asset ingestion now
+adds exported model files whose normalized stem ends in `_postmodel` to
+`asset_entity` groups, alongside the existing LOD model grouping. Decoded model
+references match exact normalized bases, append-only `_postmodel` variants, and
+the existing delimiter-boundary entity-prefix rule. A fast CN temp graph build
+verified 10,678 `asset_entity` nodes and recovered 215
+`model_config_asset_entity`, 82 `interactive_template_asset_entity`, and 86
+`model_view_state_controller_asset_entity` edges. Example resolved lookups are
+`chr_0012_avywen_postmodel`, `int_collection_common`, and
+`int_base01_autodoor_1`. This improves direct renderable lookup for decoded
+model, interactive, and MVSC data, but it is still filename/export evidence and
+not a semantic remap from gameplay ids to unrelated actor, monster, or broad
+substring asset families.
 
 The deeper semantic model is still incomplete:
 
-- Many model files are not yet mapped to gameplay entities or runtime prefab
-  usage.
-- Material and texture dependency chains are not fully normalized for every
-  asset.
+- Exported LOD model files are now grouped into renderable `asset_entity` nodes,
+  but many entities are still not mapped to gameplay records or runtime prefab
+  placement.
+- Material and texture dependency chains are now normalized for many
+  PathID-resolved Material JSON links, but runtime material variants, shader
+  behavior, and scene-specific swaps are not fully classified.
 - Scene/level placement is partially represented, but not complete enough for
   a full in-game object map.
 - Asset variants, LODs, effects, and runtime swaps require more classification.
@@ -906,6 +1758,18 @@ Success metric:
 - No contradictions between inferred first lines and nearby Runtime Jump Track
   evidence.
 
+2026-07-01 story option-proof progress: manual option overrides are now
+graph-indexed, conflict-audited, and joined to Timeline option-flow writer/gate
+evidence. The conflict audit still verifies 74 manual response options: 26 match
+inference, 24 conflict, and 24 are manual-only. It now joins 20 Timeline
+option-flow groups, confirms all 5 required IL2CPP writer/gate fact kinds are
+present, and classifies 21 of 24 manual-vs-inferred conflicts as strict option
+rows whose candidate runtime `+0x18` fields are all zero. Nearby Runtime Jump
+proof still supports the manual first line for the high-signal `dlg_e6m1_10` and
+`dlg_e6m4_14` conflicts. The next proof step is no longer finding the `+0x18`
+writer; it is binding authored Timeline option rows to active runtime clips
+strongly enough to promote edges without relying on display-only overrides.
+
 ### 3. Move Global Story Order from Static Recovery Toward Observed Runtime
 
 Static mission recovery still diverges heavily from OCR/manual main-story
@@ -975,6 +1839,14 @@ Success metric:
 
 - More binary config families move from "identified" to "exactly consumed" or
   "bounded partial with named fields", with no silent guessing.
+
+2026-07-01 progress: exact `ModelTable`, `ModelRadiusTable`,
+`InteractiveTable`, `InteractiveTemplateData`,
+`GameplayConfigWorldEntityRegistry`, teleport, mission-area, and subgame decodes
+are now first-class source graph nodes and edges, backed by the current WebUI
+Data index plus bounded row parsers for the verified MemoryPack shapes.
+`SpawnerConfig` now contributes bounded enemy-library graph evidence without
+claiming full-file tail semantics.
 
 ### 4c. Rebuild And Rank Current MonoBehaviour Gaps
 
@@ -1148,6 +2020,52 @@ Success metric:
 - Routine WebUI refreshes remain fast, while heavy full/debug exports are
   clearly opt-in and benchmarked.
 
+
+### 2026-07-01 Runtime Option Audit Graph Progress
+
+The source graph now carries generated nearby Runtime Jump option-route audits as queryable evidence. A fast CN build verified audit group/conflict nodes plus expected, runtime, directional first-line, conflict-owner, and nearby jump edges for `dlg_c28m3_10`, `dlg_c28m3_23`, `dlg_e6m1_10`, and `dlg_e6m4_14`. `option_branch_gaps.json` now includes audit-only scene rows with report paths, so runtime option proof is visible even when a scene is absent from the inferred-anchor report.
+
+This improves the semantic proof trail for risky option branches, especially the e6m1/e6m4 conflicts, but it does not promote routes automatically. The audit source is generated diagnostic evidence and still needs manual review or stronger runtime binding before changing authoritative WebUI overrides.
+
+
+### 2026-07-01 Settings Semantics Graph Progress
+
+The source graph now models the settings tables that were previously a large unselected I18n cluster: setting tabs/items, quality subsettings/options, gamepad setting rows/options, input actions, scopes, keys, function hooks, hint-text keys, and mutex settings. A fast CN build verified 8 tabs, 139 shared setting items, 55 quality options, 88 input actions, 5 input scopes, 10 input keys, 14 mutex links, 132 action-reference edges, 81 scope edges, 120 function-reference edges, and 255 setting-related i18n text links.
+
+This improves non-story UI/system text explainability and makes settings controls queryable from either the setting id or the input action id.
+
+### 2026-07-01 Tag Taxonomy Graph Progress
+
+The source graph now models the generic tag taxonomy in `TagDataTable` and `TagGroupDataTable` separately from activity, enemy, and gameplay tags. A fast CN build verified 77 canonical tags, 6 tag groups, 77 tag-to-group edges, 89 taxonomy i18n text links, 8 preserved hidden-tag rows, and 69 exact bridges from existing `character_tag` assignment nodes to canonical `tag` nodes.
+
+This closes a high-count leftover UI/system text cluster and makes character tag assignments explainable through the canonical label/group dictionary without forcing unrelated bloc or gameplay tag ids into the taxonomy.
+
+
+### 2026-07-01 Character Support Text Bridge Progress
+
+The source graph now links existing character tag-description and character tutorial-step nodes to their I18n text records. A fast CN build verified 104 character tag-description text edges plus 672 tutorial-step text edges split evenly between step descriptions and icon descriptions.
+
+This does not change character/tutorial structure; it closes a text explainability gap where `CharacterTagDesTable` and `DungeonCharTutorialStepTable` were structurally modeled but still appeared as large unhandled I18n clusters.
+
+
+### 2026-07-01 Attribute Display Text Bridge Progress
+
+The source graph now links attribute display/filter entries to their I18n text records. A fast CN build verified 150 attribute display-entry text edges: 109 from normal attribute display config, 20 from composite attribute display config, and 21 from attribute filter rows.
+
+This keeps the existing numeric attribute graph intact while making the visible stat names and filter labels queryable through `i18n_text` evidence.
+
+### 2026-07-01 UI Label Graph Progress
+
+The source graph now models another group of small UI/system dictionaries as generic `ui_label` nodes rather than leaving their localized text ids as unstructured leftovers. The new coverage spans battle-pass task labels, settlement/social/building labels, factory tag labels, cash-shop pack tags, money source labels, report reasons, system menu labels, tower-defense groups, bloc labels, and character battle tags. A fast CN build verified 243 labels across 16 tables, 297 text-id links, 25 social sign-to-tab links, 20 factory tag-to-type links, and 39 tag/character-tag reference links.
+
+This improves lookup for non-story UI strings and lightweight taxonomy/config labels while leaving dedicated domains such as shop goods tags and enemy tags to their existing ingesters.
+
+### 2026-07-01 Tag Text Bridge Progress
+
+The source graph now adds explicit label-text edges for activity tags and shop goods tags, and it ingests `EnemyTagTable` directly through combat semantics. A fast CN build verified 23 activity tag label links, 6 shop goods tag label links, and 5 enemy tag label links with direct `defines_enemy_tag` evidence.
+
+This is a narrow explainability bridge for tag-like tables that already had domain nodes, not a new tag taxonomy.
+
 ## Caveats
 
 - Some reports are historical snapshots. Current headline metrics should come
@@ -1171,9 +2089,11 @@ Success metric:
 The project understands the original game data well enough to provide a broad
 static WebUI over story, text tables, audio, videos, assets, and many recovered
 config structures. Extraction health is strong, texture output is verified, the
-source graph is large and useful, CN story display is mostly reconstructed, and
-several binary/MonoBehaviour payload families now have real schema recovery
-rather than only raw dumps.
+source graph is large and useful, CN story display is mostly reconstructed, raw
+SNS/radio/remote/audio and DialogText/DialogOption support bridges are
+queryable, and several
+binary/MonoBehaviour payload families now have real schema recovery rather than
+only raw dumps.
 
 The next level is semantic proof. The highest-value improvements are to finish
 the small remaining story gap hotlist, prove more option routes with runtime
