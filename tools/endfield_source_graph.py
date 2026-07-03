@@ -38,6 +38,10 @@ from build_data_index import (
 EXPORT_ROOT = ROOT / "export_full"
 WEBUI_DATA = ROOT / "webui" / "data"
 WEBUI_OPTION_OVERRIDES = ROOT / "webui" / "overrides" / "options.json"
+GAMEPLAY_CONFIG_ROOT = EXPORT_ROOT / "structured" / "StreamingAssets" / "Data" / "Json" / "GameplayConfig"
+NPC_PROXY_TABLE_PATH = GAMEPLAY_CONFIG_ROOT / "NpcProxyTable.json"
+NPC_PROXY_EX_TABLE_PATH = GAMEPLAY_CONFIG_ROOT / "NpcProxyExDataTable.json"
+ATMOSPHERIC_NPC_CLUSTER_TABLE_PATH = GAMEPLAY_CONFIG_ROOT / "AtmosphericNpcClusterDataTable.json"
 UNITY_CHARACTER_ROOT = (
     ROOT
     / "unity_endfield_graph_shader_lab"
@@ -2939,6 +2943,7 @@ class SourceGraphBuilder:
         self.asset_paths: list[str] = []
         self.gameplay_item_asset_cache: dict[str, list[str]] = {}
         self.audio_dialog_row_cache: dict[str, Any] | None = None
+        self.game_system_unlock_type_cache: dict[str, dict[str, Any]] | None = None
         self.alias_count = 0
 
     @property
@@ -3297,6 +3302,8 @@ class SourceGraphBuilder:
             self.commit_step("structuredTables")
             self.ingest_npc_voice_bark_semantics()
             self.commit_step("npcVoiceBark")
+            self.ingest_npc_proxy_world_dialog_semantics()
+            self.commit_step("npcProxyWorldDialog")
             self.ingest_narrative_audio_semantics()
             self.commit_step("narrativeAudio")
             self.ingest_audio_config_semantics()
@@ -6802,11 +6809,15 @@ class SourceGraphBuilder:
         for field, payload in (("displayItemId", detail_map), ("pieceItemId", visibility_map)):
             item_node = self.add_item_node(payload.get(field), source=source)
             if item_node:
-                self.add_edge(mark_node, item_node, "map_mark_displays_item", source=source, evidence=f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}")
+                evidence = f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}"
+                self.add_edge(mark_node, item_node, "map_mark_displays_item", source=source, evidence=evidence)
+                self.add_edge(item_node, mark_node, "item_displayed_by_map_mark", source=source, evidence=evidence)
         for field, payload in (("rewardId", detail_map), ("rewardId", visibility_map)):
             reward_node = self.add_reward_node(payload.get(field), source=source)
             if reward_node:
-                self.add_edge(mark_node, reward_node, "map_mark_rewards", source=source, evidence=f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}")
+                evidence = f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}"
+                self.add_edge(mark_node, reward_node, "map_mark_rewards", source=source, evidence=evidence)
+                self.add_edge(reward_node, mark_node, "reward_used_by_map_mark", source=source, evidence=evidence)
         teleport_node = self.add_node("teleport_point", safe_key(detail_map.get("teleportValidationId")), name=safe_key(detail_map.get("teleportValidationId")), source=source) if safe_key(detail_map.get("teleportValidationId")) else ""
         if teleport_node:
             self.add_alias(detail_map.get("teleportValidationId"), teleport_node, kind="teleport_point_id", source=source)
@@ -6814,7 +6825,9 @@ class SourceGraphBuilder:
         for field, payload in (("systemInstId", detail_map), ("systemInsId", visibility_map)):
             system_node = self.add_system_interactive_node(payload.get(field), source=source)
             if system_node:
-                self.add_edge(mark_node, system_node, "map_mark_system_instance", source=source, evidence=f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}")
+                evidence = f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}"
+                self.add_edge(mark_node, system_node, "map_mark_system_instance", source=source, evidence=evidence)
+                self.add_edge(system_node, mark_node, "system_interactive_used_by_map_mark", source=source, evidence=evidence)
         for field, payload in (("logicIdGlobal", detail_map), ("entityLogicIdGlobal", visibility_map), ("intLogicIdGlobal", visibility_map), ("logicId", visibility_map)):
             logic_node = self.add_map_mark_logic_ref_node(payload.get(field), source=source)
             if logic_node:
@@ -6822,11 +6835,15 @@ class SourceGraphBuilder:
         for field, payload in (("activityId", detail_map), ("activityId", visibility_map)):
             activity_node = self.add_activity_node(payload.get(field), source=source)
             if activity_node:
-                self.add_edge(mark_node, activity_node, "map_mark_activity", source=source, evidence=f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}")
+                evidence = f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}"
+                self.add_edge(mark_node, activity_node, "map_mark_activity", source=source, evidence=evidence)
+                self.add_edge(activity_node, mark_node, "activity_used_by_map_mark", source=source, evidence=evidence)
         for field, payload in (("activityStageId", detail_map), ("activityStageId", visibility_map)):
             stage_node = self.add_activity_stage_node(payload.get(field), source=source)
             if stage_node:
-                self.add_edge(mark_node, stage_node, "map_mark_activity_stage", source=source, evidence=f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}")
+                evidence = f"{'detailedData' if payload is detail_map else 'visibilityData'}.{field}"
+                self.add_edge(mark_node, stage_node, "map_mark_activity_stage", source=source, evidence=evidence)
+                self.add_edge(stage_node, mark_node, "activity_stage_used_by_map_mark", source=source, evidence=evidence)
         for field, payload in (("settlementId", detail_map), ("settlementId", visibility_map)):
             settlement_id = safe_key(payload.get(field))
             if not settlement_id:
@@ -6845,7 +6862,9 @@ class SourceGraphBuilder:
             for index, value in enumerate(values):
                 minigame_node = self.add_minigame_node(value, source=source)
                 if minigame_node:
-                    self.add_edge(mark_node, minigame_node, "map_mark_minigame", source=source, evidence=f"visibilityData.{field}[{index}]")
+                    evidence = f"visibilityData.{field}[{index}]"
+                    self.add_edge(mark_node, minigame_node, "map_mark_minigame", source=source, evidence=evidence)
+                    self.add_edge(minigame_node, mark_node, "minigame_used_by_map_mark", source=source, evidence=evidence)
         for field, payload in (("coreLogicId", detail_map), ("allCoreEntity", visibility_map)):
             values = payload.get(field)
             if not isinstance(values, list):
@@ -8322,6 +8341,7 @@ class SourceGraphBuilder:
             area_id_node = self.add_navmesh_area_id_node(owner, area_id, source=source)
             if area_id_node:
                 self.add_edge(area_node, area_id_node, "navmesh_area_has_area_id", source=source, evidence="areaId")
+                self.add_edge(area_id_node, area_node, "navmesh_area_id_has_area", source=source, evidence="areaId")
 
     def add_navmesh_state_container_edges(self, file_node: str, entry: dict[str, Any]) -> None:
         raw_data = self.read_decoded_config_bytes(entry)
@@ -8381,6 +8401,7 @@ class SourceGraphBuilder:
                     area_id_node = self.add_navmesh_area_id_node(owner, row.get("areaId"), source=source)
                     if area_id_node:
                         self.add_edge(record_node, area_id_node, "navmesh_state_record_references_area_id", source=source, evidence="areaId")
+                        self.add_edge(area_id_node, record_node, "navmesh_area_id_used_by_state_record", source=source, evidence="areaId")
 
     def add_model_view_state_controller_edges(self, file_node: str, entry: dict[str, Any]) -> None:
         raw_data = self.read_decoded_config_bytes(entry)
@@ -12609,6 +12630,7 @@ class SourceGraphBuilder:
                         item_node = self.add_item_node(step.get("costItemId1"), source=table)
                         if item_node:
                             self.add_edge(step_node, item_node, "manual_refresh_costs_item", source=table, evidence="costItemId1", data={"count": step.get("costItemCount1"), "index": index})
+                            self.add_edge(item_node, step_node, "item_cost_for_manual_refresh", source=table, evidence="costItemId1", data={"count": step.get("costItemCount1"), "index": index})
         elif table == "ShopMonthlyPassRewardTable" and isinstance(row, dict):
             pass_node = self.add_economy_metadata_node("shop_monthly_pass_reward", row.get("goodsId") or row_key, source=table, data=compact_payload(row, depth=2))
             if pass_node:
@@ -12800,6 +12822,7 @@ class SourceGraphBuilder:
         mission_node = self.add_mission_ref_node(level.get("upgradeMissionId"), source=source)
         if mission_node:
             self.add_edge(level_node, mission_node, "settlement_level_upgrade_mission", source=source, evidence="upgradeMissionId")
+            self.add_edge(mission_node, level_node, "mission_upgrades_settlement_level", source=source, evidence="upgradeMissionId")
         trade_map = level.get("settlementTradeItemMap") if isinstance(level.get("settlementTradeItemMap"), dict) else {}
         for trade_key, trade in trade_map.items():
             if isinstance(trade, dict):
@@ -12815,9 +12838,11 @@ class SourceGraphBuilder:
         item_node = self.add_item_node(item_id, source=source)
         if item_node:
             self.add_edge(trade_node, item_node, "settlement_trade_item", source=source, evidence="itemId", data={"rewardMoneyCount": trade.get("rewardMoneyCount"), "stmExp": trade.get("stmExp")})
+            self.add_edge(item_node, trade_node, "item_traded_by_settlement", source=source, evidence="itemId", data={"rewardMoneyCount": trade.get("rewardMoneyCount"), "stmExp": trade.get("stmExp")})
         activity_node = self.add_activity_node(trade.get("activityId"), source=source)
         if activity_node:
             self.add_edge(trade_node, activity_node, "settlement_trade_item_activity", source=source, evidence="activityId")
+            self.add_edge(activity_node, trade_node, "activity_uses_settlement_trade_item", source=source, evidence="activityId")
 
     def add_domain_degree_source_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
         source_type = row.get("sourceType") if row.get("sourceType") is not None else row_key
@@ -12833,6 +12858,7 @@ class SourceGraphBuilder:
             view_type = self.add_domain_core_node("mission_view_type", row.get("missionViewType"), source=table)
             if view_type:
                 self.add_edge(mission_type, view_type, "mission_type_uses_view_type", source=table, evidence="missionViewType")
+                self.add_edge(view_type, mission_type, "mission_view_type_has_mission_type", source=table, evidence="missionViewType")
 
     def add_domain_core_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
         if table == "DomainDataTable" and isinstance(row, dict):
@@ -12883,17 +12909,37 @@ class SourceGraphBuilder:
         level_node = self.add_level_node(level_id, source=source)
         if level_node:
             self.add_edge(owner_node, level_node, edge_kind, source=source, evidence=evidence)
+            reverse_kind = {
+                "domain_depot_in_level": "level_has_domain_depot",
+                "domain_depot_buyer_in_level": "level_has_domain_depot_buyer",
+                "domain_depot_target_in_level": "level_has_domain_depot_target",
+            }.get(edge_kind)
+            if reverse_kind:
+                self.add_edge(level_node, owner_node, reverse_kind, source=source, evidence=evidence)
 
     def add_domain_depot_domain_edge(self, owner_node: str, domain_id: Any, *, edge_kind: str, source: str, evidence: str) -> None:
         domain_node = self.add_gameplay_domain_node(domain_id, source=source)
         if domain_node:
             self.add_edge(owner_node, domain_node, edge_kind, source=source, evidence=evidence)
+            reverse_kind = {
+                "domain_depot_in_domain": "domain_has_domain_depot",
+                "domain_depot_buyer_in_domain": "domain_has_domain_depot_buyer",
+                "domain_depot_target_in_domain": "domain_has_domain_depot_target",
+            }.get(edge_kind)
+            if reverse_kind:
+                self.add_edge(domain_node, owner_node, reverse_kind, source=source, evidence=evidence)
 
     def add_domain_depot_inferred_depot_edges(self, owner_node: str, level_id: Any, depot_by_level: dict[str, list[str]], *, edge_kind: str, source: str, evidence: str) -> None:
         for depot_id in depot_by_level.get(safe_key(level_id), []):
             depot_node = self.add_domain_depot_node(depot_id, source=source)
             if depot_node:
                 self.add_edge(owner_node, depot_node, edge_kind, source=source, evidence=evidence, data={"inference": "shared level/refLevelId"})
+                reverse_kind = {
+                    "domain_depot_buyer_for_depot": "domain_depot_has_buyer",
+                    "domain_depot_target_for_depot": "domain_depot_has_target",
+                }.get(edge_kind)
+                if reverse_kind:
+                    self.add_edge(depot_node, owner_node, reverse_kind, source=source, evidence=evidence, data={"inference": "shared level/refLevelId"})
 
     def add_domain_depot_row_edges(self, table: str, row_key: str, row: Any, row_node: str, depot_by_level: dict[str, list[str]]) -> None:
         if table == "DomainDepotConst":
@@ -12904,6 +12950,7 @@ class SourceGraphBuilder:
                     mission_node = self.add_mission_ref_node(row, source=table)
                     if mission_node:
                         self.add_edge(const_node, mission_node, "domain_depot_const_mission", source=table, evidence="rowValue")
+                        self.add_edge(mission_node, const_node, "mission_referenced_by_domain_depot_const", source=table, evidence="rowValue")
             return
         if not isinstance(row, dict):
             return
@@ -12930,6 +12977,7 @@ class SourceGraphBuilder:
                 mission_node = self.add_mission_ref_node(row.get("unlockQuestId"), source=table)
                 if mission_node:
                     self.add_edge(depot_node, mission_node, "domain_depot_unlock_quest", source=table, evidence="unlockQuestId")
+                    self.add_edge(mission_node, depot_node, "mission_unlocks_domain_depot", source=table, evidence="unlockQuestId")
                 self.add_alias(row.get("levelObjId"), depot_node, kind="level_object_id", source=table)
                 self.add_alias(row.get("depotImage"), depot_node, kind="asset_stem", source=table)
                 self.add_tag_i18n_edges(depot_node, row.get("depotName"), source=table, edge_kind="domain_depot_name_text")
@@ -12959,6 +13007,7 @@ class SourceGraphBuilder:
                 dialog_node = self.add_semantic_node("domain_depot_deliver_target_dialog", row.get("targetId"), source=table)
                 if dialog_node:
                     self.add_edge(target_node, dialog_node, "domain_depot_target_dialog", source=table, evidence="targetId")
+                    self.add_edge(dialog_node, target_node, "domain_depot_deliver_target_dialog_for_target", source=table, evidence="targetId")
                 if safe_key(row.get("targetId")).startswith("recycle"):
                     recycle_node = self.add_semantic_node("domain_depot_recycle_target", row.get("targetId"), source=table, data={"entityType": row.get("entityType")})
                     if recycle_node:
@@ -12981,10 +13030,12 @@ class SourceGraphBuilder:
                             item_type_node = self.add_domain_depot_item_type_node(item_type, source=table)
                             if item_type_node:
                                 self.add_edge(upgrade_node, item_type_node, "domain_depot_level_unlocks_item_type", source=table, evidence=f"levelList[{level_key}].deliverItemTypeList[{index}]", data={"index": index})
+                                self.add_edge(item_type_node, upgrade_node, "domain_depot_item_type_unlocked_by_level", source=table, evidence=f"levelList[{level_key}].deliverItemTypeList[{index}]", data={"index": index})
                         for index, pack_type in enumerate(level.get("deliverPackTypeList") or []):
                             pack_type_node = self.add_domain_depot_pack_type_node(pack_type, source=table)
                             if pack_type_node:
                                 self.add_edge(upgrade_node, pack_type_node, "domain_depot_level_unlocks_pack_type", source=table, evidence=f"levelList[{level_key}].deliverPackTypeList[{index}]", data={"index": index})
+                                self.add_edge(pack_type_node, upgrade_node, "domain_depot_pack_type_unlocked_by_level", source=table, evidence=f"levelList[{level_key}].deliverPackTypeList[{index}]", data={"index": index})
         elif table == "DomainDepotPackValueTable":
             depot_node = self.add_domain_depot_node(row_key, source=table)
             if depot_node:
@@ -12999,8 +13050,10 @@ class SourceGraphBuilder:
                         pack_type_node = self.add_domain_depot_pack_type_node(value.get("deliverPackType"), source=table)
                         if item_type_node:
                             self.add_edge(value_node, item_type_node, "domain_depot_pack_value_item_type", source=table, evidence=f"packValueList[{index}].deliverItemType")
+                            self.add_edge(item_type_node, value_node, "domain_depot_item_type_used_by_pack_value", source=table, evidence=f"packValueList[{index}].deliverItemType")
                         if pack_type_node:
                             self.add_edge(value_node, pack_type_node, "domain_depot_pack_value_pack_type", source=table, evidence=f"packValueList[{index}].deliverPackType")
+                            self.add_edge(pack_type_node, value_node, "domain_depot_pack_type_used_by_pack_value", source=table, evidence=f"packValueList[{index}].deliverPackType")
         elif table == "DomainDepotDeliverItemTypeTable":
             type_node = self.add_domain_depot_item_type_node(row.get("deliverItemType") or row_key, name=row.get("typeDesc"), source=table, data={"deliverItemType": row.get("deliverItemType"), "priceFactor": row.get("priceFactor"), "typeIcon": row.get("typeIcon")})
             if type_node:
@@ -13023,6 +13076,7 @@ class SourceGraphBuilder:
                     item_type_node = self.add_domain_depot_item_type_node(item_type, source=table)
                     if item_type_node:
                         self.add_edge(reduce_node, item_type_node, "domain_depot_integrity_reduce_affects_item_type", source=table, evidence=f"effectiveType[{index}]", data={"index": index})
+                        self.add_edge(item_type_node, reduce_node, "domain_depot_item_type_affected_by_integrity_reduce", source=table, evidence=f"effectiveType[{index}]", data={"index": index})
         elif table == "DomainPoiTable":
             poi_node = self.add_semantic_node("domain_poi_type", row.get("domainPoiType") if "domainPoiType" in row else row_key, name=row.get("name"), source=table, data={"domainPoiType": row.get("domainPoiType"), "phaseId": row.get("phaseId"), "unlockSystemType": row.get("unlockSystemType"), "overviewSortId": row.get("overviewSortId")})
             if poi_node:
@@ -13032,6 +13086,12 @@ class SourceGraphBuilder:
                 self.add_tag_i18n_edges(poi_node, row.get("name"), source=table, edge_kind="domain_poi_type_name_text")
                 self.add_tag_i18n_edges(poi_node, row.get("unlockToastTitle"), source=table, edge_kind="domain_poi_type_unlock_toast_text")
                 self.add_tag_i18n_edges(poi_node, row.get("upgradeToastTitle"), source=table, edge_kind="domain_poi_type_upgrade_toast_text")
+                unlock_key = safe_key(row.get("unlockSystemType"))
+                if unlock_key:
+                    unlock_node = self.add_node("gameplay_unlock", unlock_key, name=unlock_key, source=table)
+                    self.add_alias(unlock_key, unlock_node, kind="gameplay_unlock_id", source=table)
+                    self.add_edge(poi_node, unlock_node, "domain_poi_type_unlock_system", source=table, evidence="unlockSystemType")
+                    self.add_edge(unlock_node, poi_node, "gameplay_unlock_controls_domain_poi_type", source=table, evidence="unlockSystemType")
                 if safe_key(row.get("phaseId")) == "DomainDepotPackage":
                     feature_node = self.add_semantic_node("domain_depot_feature", row.get("phaseId"), source=table, data={"domainPoiType": row.get("domainPoiType")})
                     if feature_node:
@@ -13393,6 +13453,7 @@ class SourceGraphBuilder:
                 item_node = self.add_item_node(row.get("itemId"), source=table)
                 if item_node:
                     self.add_edge(doodad_node, item_node, "world_doodad_item", source=table, evidence="itemId")
+                    self.add_edge(item_node, doodad_node, "item_used_by_world_doodad", source=table, evidence="itemId")
                 for index, reward_id in enumerate(row.get("pickableRewardId") or []):
                     self.add_reward_ref_edge(doodad_node, reward_id, edge_kind="world_doodad_pickable_reward", source=table, evidence=f"pickableRewardId[{index}]", data={"index": index})
                 self.add_harvestable_model_refs(doodad_node, [row.get("modelName")], source=table, evidence="modelName")
@@ -13420,6 +13481,10 @@ class SourceGraphBuilder:
                     step_node = self.add_node("planting_step", f"{safe_key(crop_id)}:{index}", name=f"{safe_key(crop_id)} step {index}", source=table, data={"index": index, "plantingStepType": step.get("plantingStepType"), "parameter": compact_payload(step.get("plantingStepParameter"), depth=2)})
                     self.add_alias(f"{safe_key(crop_id)}:{index}", step_node, kind="planting_step_id", source=table)
                     self.add_edge(crop_node, step_node, "planting_crop_has_step", source=table, evidence=f"plantingSteps[{index}]", data={"index": index, "plantingStepType": step.get("plantingStepType")})
+                    type_node = self.add_world_harvestable_node("planting_step_type", step.get("plantingStepType"), source=table)
+                    if type_node:
+                        self.add_edge(step_node, type_node, "planting_step_has_type", source=table, evidence=f"plantingSteps[{index}].plantingStepType")
+                        self.add_edge(type_node, step_node, "planting_step_type_used_by_step", source=table, evidence=f"plantingSteps[{index}].plantingStepType")
         elif table == "RewardSoilTable":
             reward_id = row.get("rewardId") or row_key
             soil_reward_node = self.add_world_harvestable_node("soil_reward", reward_id, source=table, data={"itemBundleCount": len(row.get("itemBundles") or []), "probItemBundleCount": len(row.get("probItemBundles") or [])})
@@ -13448,9 +13513,11 @@ class SourceGraphBuilder:
                 self.add_edge(row_node, fertilize_node, "defines_fertilize_item", source=table)
                 if item_node:
                     self.add_edge(item_node, fertilize_node, "item_has_fertilize_config", source=table, evidence="id")
+                    self.add_edge(fertilize_node, item_node, "fertilize_config_for_item", source=table, evidence="id")
                 effect_node = self.add_world_harvestable_node("fertilize_effect", row.get("fertilizeType"), source=table)
                 if effect_node:
                     self.add_edge(fertilize_node, effect_node, "fertilize_item_has_effect_type", source=table, evidence="fertilizeType")
+                    self.add_edge(effect_node, fertilize_node, "fertilize_effect_used_by_item", source=table, evidence="fertilizeType")
                 for field in ("detailIconId", "startEffectId"):
                     self.add_alias(row.get(field), fertilize_node, kind="asset_stem", source=table)
         elif table == "FertilizeIncreaseTable":
@@ -14808,16 +14875,24 @@ class SourceGraphBuilder:
             self.add_alias(item_name, item_node, kind="item_name", source=source)
         return item_node
 
-    def add_item_type_node(self, type_id: Any, *, name: Any = None, source: str = "") -> str:
+    def add_item_type_node(self, type_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
         type_key = safe_key(type_id)
         if not type_key:
             return ""
         type_name = table_display_text(name) or type_key
-        type_node = self.add_node("item_type", type_key, name=type_name, source=source)
+        type_node = self.add_node("item_type", type_key, name=type_name, source=source, data=data)
         self.add_alias(type_key, type_node, kind="item_type_id", source=source)
         if type_name != type_key:
             self.add_alias(type_name, type_node, kind="item_type_name", source=source)
         return type_node
+
+    def add_item_valuable_tab_node(self, tab_id: Any, *, source: str = "", data: Any = None) -> str:
+        tab_key = safe_key(tab_id)
+        if not tab_key:
+            return ""
+        tab_node = self.add_node("item_valuable_tab", tab_key, name=tab_key, source=source, data=data)
+        self.add_alias(tab_key, tab_node, kind="item_valuable_tab_id", source=source)
+        return tab_node
 
     def add_item_showing_type_node(self, showing_type: Any, *, name: Any = None, source: str = "") -> str:
         showing_key = safe_key(showing_type)
@@ -14914,9 +14989,11 @@ class SourceGraphBuilder:
         type_node = self.add_item_type_node(row.get("type"), source=table)
         if type_node:
             self.add_edge(item_node, type_node, "item_has_type", source=table, evidence="type")
+            self.add_edge(type_node, item_node, "item_type_has_item", source=table, evidence="type")
         showing_node = self.add_item_showing_type_node(row.get("showingType"), source=table)
         if showing_node:
             self.add_edge(item_node, showing_node, "item_has_showing_type", source=table, evidence="showingType")
+            self.add_edge(showing_node, item_node, "item_showing_type_has_item", source=table, evidence="showingType")
         for index, obtain_id in enumerate(row.get("obtainWayIds") or []):
             obtain_key = safe_key(obtain_id)
             if not obtain_key:
@@ -14932,9 +15009,19 @@ class SourceGraphBuilder:
 
     def add_item_type_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
         type_id = row.get("itemType") if "itemType" in row else row_key
-        type_node = self.add_item_type_node(type_id, name=row.get("name"), source=table)
+        type_node = self.add_item_type_node(type_id, name=row.get("name"), source=table, data={"unlockSystemType": row.get("unlockSystemType"), "valuableTabType": row.get("valuableTabType")})
         self.add_edge(row_node, type_node, "defines_item_type", source=table)
         self.add_tag_i18n_edges(type_node, row.get("name"), source=table, edge_kind="item_type_name_text")
+        unlock_key = safe_key(row.get("unlockSystemType"))
+        if unlock_key:
+            unlock_node = self.add_node("gameplay_unlock", unlock_key, name=unlock_key, source=table)
+            self.add_alias(unlock_key, unlock_node, kind="gameplay_unlock_id", source=table)
+            self.add_edge(type_node, unlock_node, "item_type_unlock_system", source=table, evidence="unlockSystemType")
+            self.add_edge(unlock_node, type_node, "gameplay_unlock_controls_item_type", source=table, evidence="unlockSystemType")
+        tab_node = self.add_item_valuable_tab_node(row.get("valuableTabType"), source=table)
+        if tab_node:
+            self.add_edge(type_node, tab_node, "item_type_valuable_tab", source=table, evidence="valuableTabType")
+            self.add_edge(tab_node, type_node, "valuable_tab_has_item_type", source=table, evidence="valuableTabType")
 
     def add_item_showing_type_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
         showing_node = self.add_item_showing_type_node(row.get("type") if "type" in row else row_key, name=row.get("name"), source=table)
@@ -15153,6 +15240,45 @@ class SourceGraphBuilder:
             self.add_alias(prop_name, node, kind="gameplay_stat_property_name", source=source)
         return node
 
+    def add_attribute_modifier_kind_node(self, code: Any, *, source: str = "") -> str:
+        code_key = safe_key(code)
+        if not code_key:
+            return ""
+        node = self.add_node("attribute_modifier_kind", code_key, name=f"modifier {code_key}", source=source, data={"code": code})
+        self.add_alias(code_key, node, kind="attribute_modifier_kind_code", source=source)
+        self.add_alias(f"attribute_modifier_kind:{code_key}", node, kind="attribute_modifier_kind_id", source=source)
+        return node
+
+    def attribute_modifier_edge_data(self, entry: dict[str, Any], *, index: int) -> dict[str, Any]:
+        value_format = entry.get("valueFormat")
+        return {
+            "index": index,
+            "attributeModifier": entry.get("attributeModifier"),
+            "valueFormat": value_format,
+            "showPercent": entry.get("showPercent"),
+            "isReduce": entry.get("isReduce"),
+            "inverseFormat": isinstance(value_format, str) and "1-value" in value_format,
+            "displayIndex": entry.get("index"),
+        }
+
+    def add_attribute_modifier_kind_usage(
+        self,
+        entry_node: str,
+        entry: dict[str, Any],
+        *,
+        source: str,
+        evidence: str,
+        edge_kind: str,
+        reverse_kind: str,
+        index: int,
+    ) -> None:
+        modifier_node = self.add_attribute_modifier_kind_node(entry.get("attributeModifier"), source=source)
+        if not modifier_node:
+            return
+        data = self.attribute_modifier_edge_data(entry, index=index)
+        self.add_edge(entry_node, modifier_node, edge_kind, source=source, evidence=evidence, data=data)
+        self.add_edge(modifier_node, entry_node, reverse_kind, source=source, evidence=evidence, data=data)
+
     def add_attribute_display_entry_node(self, key: str, entry: dict[str, Any], *, source: str) -> str:
         entry_node = self.add_node(
             "attribute_display_entry",
@@ -15224,6 +15350,15 @@ class SourceGraphBuilder:
             modifier_node = self.add_gameplay_stat_property_node(entry.get("attributeModifier"), source=table)
             if modifier_node:
                 self.add_edge(entry_node, modifier_node, "attribute_display_entry_uses_modifier_property", source=table, evidence="attributeModifier")
+            self.add_attribute_modifier_kind_usage(
+                entry_node,
+                entry,
+                source=table,
+                evidence=f"list[{index}].attributeModifier",
+                edge_kind="attribute_display_entry_uses_modifier_kind",
+                reverse_kind="attribute_modifier_kind_used_by_display_entry",
+                index=index,
+            )
             if meta_node:
                 self.add_edge(entry_node, meta_node, "display_entry_for_attribute_meta", source=table, evidence="attributeType")
 
@@ -15252,6 +15387,15 @@ class SourceGraphBuilder:
                 continue
             entry_node = self.add_attribute_display_entry_node(f"composite:{composite_id}:{index}", entry, source=table)
             self.add_edge(config_node, entry_node, "composite_attribute_show_includes_modifier", source=table, evidence=f"list[{index}]", data={"attributeModifier": entry.get("attributeModifier")})
+            self.add_attribute_modifier_kind_usage(
+                entry_node,
+                entry,
+                source=table,
+                evidence=f"list[{index}].attributeModifier",
+                edge_kind="composite_attribute_display_entry_uses_modifier_kind",
+                reverse_kind="attribute_modifier_kind_used_by_display_entry",
+                index=index,
+            )
             self.add_edge(entry_node, composite_node, "display_entry_for_composite_attribute", source=table, evidence="compositeAttribute")
 
     def add_attribute_filter_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
@@ -15266,6 +15410,15 @@ class SourceGraphBuilder:
                 continue
             entry_node = self.add_attribute_display_entry_node(f"filter:{filter_id}:{index}", entry, source=table)
             self.add_edge(filter_node, entry_node, "attribute_filter_includes", source=table, evidence=f"list[{index}]")
+            self.add_attribute_modifier_kind_usage(
+                entry_node,
+                entry,
+                source=table,
+                evidence=f"list[{index}].attributeModifier",
+                edge_kind="attribute_filter_entry_uses_modifier_kind",
+                reverse_kind="attribute_modifier_kind_used_by_filter_entry",
+                index=index,
+            )
             composite_id = safe_key(entry.get("compositeAttr"))
             if composite_id:
                 composite_node = self.add_node("composite_attribute", composite_id, name=composite_id, source=table)
@@ -15530,6 +15683,75 @@ class SourceGraphBuilder:
                 if stage_node:
                     self.add_edge(cost_node, stage_node, "character_break_cost_stage", source=table, evidence="breakStage")
                 self.add_character_progression_required_items(cost_node, entry.get("requiredItem"), edge_kind="character_break_cost_requires_item", source=table, evidence_prefix="requiredItem")
+            skill_group_nodes: dict[str, str] = {}
+            for group_key, group in (row.get("skillGroupMap") or {}).items():
+                if not isinstance(group, dict):
+                    continue
+                group_id = safe_key(group.get("skillGroupId") or group_key)
+                group_node = self.add_character_progression_node("character_skill_group", group_id, name=group.get("name") or group_id, source=table, data={"charId": char_id, "skillGroupId": group_id, "skillGroupType": group.get("skillGroupType"), "icon": group.get("icon"), "skillCount": len(group.get("skillIdList") or [])})
+                if not group_node:
+                    continue
+                skill_group_nodes[group_id] = group_node
+                self.add_edge(char_node, group_node, "character_has_skill_group", source=table, evidence=f"skillGroupMap.{group_key}")
+                self.add_tag_i18n_edges(group_node, group.get("name"), source=table, edge_kind="character_skill_group_name_text")
+                self.add_tag_i18n_edges(group_node, group.get("desc"), source=table, edge_kind="character_skill_group_desc_text")
+                for index, skill_id in enumerate(group.get("skillIdList") or []):
+                    skill_node = self.add_gameplay_skill_ref_node(skill_id, source=table)
+                    if skill_node:
+                        data = {"index": index, "skillGroupId": group_id, "skillGroupType": group.get("skillGroupType")}
+                        self.add_edge(group_node, skill_node, "skill_group_has_skill", source=table, evidence=f"skillIdList[{index}]", data=data)
+                        self.add_edge(skill_node, group_node, "skill_used_by_character_skill_group", source=table, evidence=f"skillIdList[{index}]", data=data)
+            for index, entry in enumerate(row.get("skillLevelUp") or []):
+                if not isinstance(entry, dict):
+                    continue
+                group_id = safe_key(entry.get("skillGroupId"))
+                level = entry.get("level")
+                cost_node = self.add_character_progression_node("character_skill_level_cost", f"{char_id}:{group_id}:{level}", name=f"{group_id} level {level}", source=table, data={"charId": char_id, "skillGroupId": group_id, "level": level, "goldCost": entry.get("goldCost"), "itemCount": len(entry.get("itemBundle") or [])})
+                if not cost_node:
+                    continue
+                self.add_edge(char_node, cost_node, "character_has_skill_level_cost", source=table, evidence=f"skillLevelUp[{index}]")
+                group_node = skill_group_nodes.get(group_id) if group_id else ""
+                if group_node:
+                    data = {"level": level, "goldCost": entry.get("goldCost")}
+                    self.add_edge(cost_node, group_node, "character_skill_level_cost_for_group", source=table, evidence="skillGroupId", data=data)
+                    self.add_edge(group_node, cost_node, "skill_group_has_level_cost", source=table, evidence=f"skillLevelUp[{index}]", data=data)
+                if entry.get("goldCost") is not None:
+                    gold_node = self.add_item_node("item_gold", source=table)
+                    if gold_node:
+                        data = {"count": entry.get("goldCost"), "level": level}
+                        self.add_edge(cost_node, gold_node, "character_skill_level_cost_requires_gold", source=table, evidence="goldCost", data=data)
+                        self.add_edge(gold_node, cost_node, "item_gold_cost_for_character_skill_level_cost", source=table, evidence="goldCost", data=data)
+                self.add_character_progression_required_items(cost_node, entry.get("itemBundle"), edge_kind="character_skill_level_cost_requires_item", source=table, evidence_prefix="itemBundle")
+            for talent_key, talent in (row.get("talentNodeMap") or {}).items():
+                if not isinstance(talent, dict):
+                    continue
+                node_id = safe_key(talent.get("nodeId") or talent_key)
+                attr_info = talent.get("attributeNodeInfo") if isinstance(talent.get("attributeNodeInfo"), dict) else {}
+                attr_modifier = attr_info.get("attributeModifier") if isinstance(attr_info.get("attributeModifier"), dict) else {}
+                passive_info = talent.get("passiveSkillNodeInfo") if isinstance(talent.get("passiveSkillNodeInfo"), dict) else {}
+                factory_info = talent.get("factorySkillNodeInfo") if isinstance(talent.get("factorySkillNodeInfo"), dict) else {}
+                talent_node = self.add_character_progression_node("character_talent_node", f"{char_id}:{node_id}", name=attr_info.get("title") or passive_info.get("name") or node_id, source=table, data={"charId": char_id, "nodeId": node_id, "nodeType": talent.get("nodeType"), "requiredItemCount": len(talent.get("requiredItem") or []), "attributeModifier": compact_payload(attr_modifier, depth=2), "passiveSkillNodeInfo": compact_payload(passive_info, depth=2), "factorySkillNodeInfo": compact_payload(factory_info, depth=2)})
+                if not talent_node:
+                    continue
+                self.add_edge(char_node, talent_node, "character_has_talent_node", source=table, evidence=f"talentNodeMap.{talent_key}")
+                self.add_alias(node_id, talent_node, kind="character_talent_node_id", source=table)
+                self.add_tag_i18n_edges(talent_node, attr_info.get("title"), source=table, edge_kind="character_talent_node_name_text")
+                self.add_tag_i18n_edges(talent_node, attr_info.get("desc"), source=table, edge_kind="character_talent_node_desc_text")
+                self.add_tag_i18n_edges(talent_node, passive_info.get("name"), source=table, edge_kind="character_talent_node_name_text")
+                self.add_character_progression_required_items(talent_node, talent.get("requiredItem"), edge_kind="character_talent_node_requires_item", source=table, evidence_prefix="requiredItem")
+                effect_id = safe_key(passive_info.get("talentEffectId"))
+                if effect_id:
+                    effect_node = self.add_node("potential_talent_effect", effect_id, name=effect_id, source=table)
+                    self.add_alias(effect_id, effect_node, kind="potential_talent_effect_id", source=table)
+                    self.add_edge(talent_node, effect_node, "character_talent_node_uses_effect", source=table, evidence="passiveSkillNodeInfo.talentEffectId")
+                    self.add_edge(effect_node, talent_node, "potential_talent_effect_used_by_character_talent_node", source=table, evidence="passiveSkillNodeInfo.talentEffectId")
+                attr_type = attr_modifier.get("attrType")
+                if safe_key(attr_type) and safe_key(attr_type) != "0":
+                    meta_node = self.add_attribute_meta_node(attr_type, source=table)
+                    if meta_node:
+                        data = {"attrType": attr_type, "attrValue": attr_modifier.get("attrValue"), "modifierType": attr_modifier.get("modifierType"), "modifyAttributeType": attr_modifier.get("modifyAttributeType")}
+                        self.add_edge(talent_node, meta_node, "character_talent_node_modifies_attribute_meta", source=table, evidence="attributeNodeInfo.attributeModifier.attrType", data=data)
+                        self.add_edge(meta_node, talent_node, "attribute_meta_modified_by_character_talent_node", source=table, evidence="attributeNodeInfo.attributeModifier.attrType", data=data)
 
     def add_character_ref_node(self, char_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
         char_key = safe_key(char_id)
@@ -15796,6 +16018,7 @@ class SourceGraphBuilder:
                 group_node = self.add_wiki_node("wiki_group", group.get("groupId"), name=group.get("groupName"), source=table, data={"iconId": group.get("iconId"), "categoryId": row_key})
                 if group_node:
                     self.add_edge(category_node, group_node, "wiki_category_has_group", source=table, evidence=f"list[{index}]")
+                    self.add_edge(group_node, category_node, "wiki_group_in_category", source=table, evidence=f"list[{index}]")
                     self.add_alias(group.get("iconId"), group_node, kind="icon_id", source=table)
                     self.add_tag_i18n_edges(group_node, group.get("groupName"), source=table, edge_kind="wiki_group_name_text")
         elif table == "WikiEntryTable" and isinstance(row, dict):
@@ -15804,6 +16027,7 @@ class SourceGraphBuilder:
                 entry_node = self.add_wiki_entry_node(entry_id, source=table)
                 if entry_node and domain_node:
                     self.add_edge(domain_node, entry_node, "domain_has_wiki_entry", source=table, evidence=f"list[{index}]")
+                    self.add_edge(entry_node, domain_node, "wiki_entry_in_domain", source=table, evidence=f"list[{index}]")
         elif table == "WikiEntryDataTable" and isinstance(row, dict):
             entry_id = safe_key(row.get("id") or row_key)
             entry_node = self.add_wiki_entry_node(entry_id, source=table, data={"groupId": row.get("groupId"), "order": row.get("order"), "prtsId": row.get("prtsId"), "refItemId": row.get("refItemId"), "refMonsterTemplateId": row.get("refMonsterTemplateId")})
@@ -15813,13 +16037,16 @@ class SourceGraphBuilder:
                 group_node = self.add_wiki_node("wiki_group", row.get("groupId"), source=table)
                 if group_node:
                     self.add_edge(group_node, entry_node, "wiki_group_has_entry", source=table, evidence="groupId")
+                    self.add_edge(entry_node, group_node, "wiki_entry_in_group", source=table, evidence="groupId")
                 item_node = self.add_item_node(row.get("refItemId"), source=table)
                 if item_node:
                     self.add_edge(entry_node, item_node, "wiki_entry_refers_item", source=table, evidence="refItemId")
+                    self.add_edge(item_node, entry_node, "item_referenced_by_wiki_entry", source=table, evidence="refItemId")
                 enemy_node = self.add_node("enemy", safe_key(row.get("refMonsterTemplateId")), name=safe_key(row.get("refMonsterTemplateId")), source=table) if safe_key(row.get("refMonsterTemplateId")) else ""
                 if enemy_node:
                     self.add_alias(row.get("refMonsterTemplateId"), enemy_node, kind="enemy_id", source=table)
                     self.add_edge(entry_node, enemy_node, "wiki_entry_refers_enemy", source=table, evidence="refMonsterTemplateId")
+                    self.add_edge(enemy_node, entry_node, "enemy_referenced_by_wiki_entry", source=table, evidence="refMonsterTemplateId")
                 self.add_alias(row.get("prtsId"), entry_node, kind="prts_id", source=table)
         elif table == "WikiEntryDataReverseTable" and isinstance(row, str):
             source_key = safe_key(row_key)
@@ -15839,16 +16066,19 @@ class SourceGraphBuilder:
                 self.add_video_stem_edge(page_node, row.get("video"), edge_kind="wiki_tutorial_page_uses_video", source=table, evidence="video", data={"videoDeviceType": row.get("videoDeviceType")})
                 if tutorial_node:
                     self.add_edge(tutorial_node, page_node, "wiki_tutorial_has_page", source=table, evidence="tutorialId", data={"order": row.get("order")})
+                    self.add_edge(page_node, tutorial_node, "wiki_tutorial_page_in_tutorial", source=table, evidence="tutorialId", data={"order": row.get("order")})
                 for index, entry_id in enumerate(row.get("refWikiEntryIds") or []):
                     entry_node = self.add_wiki_entry_node(entry_id, source=table)
                     if entry_node:
                         self.add_edge(page_node, entry_node, "wiki_tutorial_page_refs_entry", source=table, evidence=f"refWikiEntryIds[{index}]")
+                        self.add_edge(entry_node, page_node, "wiki_entry_referenced_by_tutorial_page", source=table, evidence=f"refWikiEntryIds[{index}]")
         elif table == "WikiTutorialPageByEntryTable" and isinstance(row, dict):
             tutorial_node = self.add_wiki_node("wiki_tutorial", row_key, source=table)
             for index, page_id in enumerate(row.get("pageIds") or []):
                 page_node = self.add_wiki_node("wiki_tutorial_page", page_id, source=table)
                 if tutorial_node and page_node:
                     self.add_edge(tutorial_node, page_node, "wiki_tutorial_has_page", source=table, evidence=f"pageIds[{index}]", data={"index": index})
+                    self.add_edge(page_node, tutorial_node, "wiki_tutorial_page_in_tutorial", source=table, evidence=f"pageIds[{index}]", data={"index": index})
         elif table == "WikiLimitedGuideTable" and isinstance(row, dict):
             guide_node = self.add_wiki_node("wiki_limited_guide", row.get("guideGroupId") or row_key, source=table, data={"wikiEntryId": row.get("wikiEntryId")})
             guide_group_node = self.add_guide_group_node(row.get("guideGroupId") or row_key, source=table)
@@ -15860,6 +16090,7 @@ class SourceGraphBuilder:
                     self.add_edge(guide_group_node, guide_node, "guide_group_used_by_wiki_limited_guide", source=table, evidence="guideGroupId")
                 if entry_node:
                     self.add_edge(guide_node, entry_node, "wiki_limited_guide_entry", source=table, evidence="wikiEntryId")
+                    self.add_edge(entry_node, guide_node, "wiki_entry_used_by_limited_guide", source=table, evidence="wikiEntryId")
         elif table == "WikiCraftJumpTable" and isinstance(row, dict):
             item_node = self.add_item_node(row.get("itemId") or row_key, source=table)
             if item_node:
@@ -15867,11 +16098,13 @@ class SourceGraphBuilder:
                     ref_node = self.add_wiki_node("wiki_craft_ref", row.get(field), source=table)
                     if ref_node:
                         self.add_edge(item_node, ref_node, edge_kind, source=table, evidence=field)
+                        self.add_edge(ref_node, item_node, f"{edge_kind}_used_by_item", source=table, evidence=field)
         elif table == "WikiDefaultCraftTable" and isinstance(row, str):
             source_item = self.add_item_node(row_key, source=table)
             craft_item = self.add_item_node(row, source=table)
             if source_item and craft_item:
                 self.add_edge(source_item, craft_item, "wiki_default_craft_item", source=table, evidence="rowValue")
+                self.add_edge(craft_item, source_item, "item_has_wiki_default_craft_source", source=table, evidence="rowValue")
         elif table == "WikiEnemyDropTable" and isinstance(row, dict):
             enemy_node = self.add_node("enemy", row_key, name=row_key, source=table)
             self.add_alias(row_key, enemy_node, kind="enemy_id", source=table)
@@ -15879,6 +16112,7 @@ class SourceGraphBuilder:
                 item_node = self.add_item_node(item_id, source=table)
                 if item_node:
                     self.add_edge(enemy_node, item_node, "wiki_enemy_drops_item", source=table, evidence=f"dropItemIds[{index}]")
+                    self.add_edge(item_node, enemy_node, "item_dropped_by_wiki_enemy", source=table, evidence=f"dropItemIds[{index}]")
 
     def add_system_tip_node(self, kind: str, key: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
         tip_key = safe_key(key)
@@ -15923,6 +16157,7 @@ class SourceGraphBuilder:
                 mission_node = self.add_mission_ref_node(row.get("unlockMissionId"), source=table)
                 if mission_node:
                     self.add_edge(node, mission_node, "loading_tip_unlocks_after_mission", source=table, evidence="unlockMissionId")
+                    self.add_edge(mission_node, node, "mission_unlocks_loading_tip", source=table, evidence="unlockMissionId")
         elif table == "HyperlinkTextTable":
             link_id = safe_key(row.get("id") or row_key)
             node = self.add_system_tip_node("hyperlink_text", link_id, source=table, data={"id": link_id, "richTextId": row.get("richTextId"), "jumpWikiId": row.get("jumpWikiId"), "iconPath": row.get("iconPath")})
@@ -15937,6 +16172,7 @@ class SourceGraphBuilder:
                     wiki_node = self.add_node("wiki_entry", wiki_id, name=wiki_id, source=table)
                     self.add_alias(wiki_id, wiki_node, kind="wiki_entry_id", source=table)
                     self.add_edge(node, wiki_node, "hyperlink_jumps_to_wiki", source=table, evidence="jumpWikiId")
+                    self.add_edge(wiki_node, node, "wiki_entry_used_by_hyperlink", source=table, evidence="jumpWikiId")
         elif table in {"CommonDeathTips", "DungeonDeathTips", "EnemyRelatedDeathTips", "TrainingDeathTips"}:
             node = self.add_system_tip_node("death_tip", f"{table}:{row_key}", source=table, data={"table": table, "key": row_key})
             if node:
@@ -15946,10 +16182,12 @@ class SourceGraphBuilder:
                     enemy_node = self.add_node("enemy", row_key, name=row_key, source=table)
                     self.add_alias(row_key, enemy_node, kind="enemy_id", source=table)
                     self.add_edge(node, enemy_node, "death_tip_related_enemy", source=table, evidence="rowKey")
+                    self.add_edge(enemy_node, node, "enemy_has_death_tip", source=table, evidence="rowKey")
                 elif table == "DungeonDeathTips":
                     dungeon_node = self.add_node("dungeon", row_key, name=row_key, source=table)
                     self.add_alias(row_key, dungeon_node, kind="dungeon_id", source=table)
                     self.add_edge(node, dungeon_node, "death_tip_related_dungeon", source=table, evidence="rowKey")
+                    self.add_edge(dungeon_node, node, "dungeon_has_death_tip", source=table, evidence="rowKey")
         elif table == "BattlePassForecastTipTable":
             tip_id = safe_key(row.get("forecastTipId") or row_key)
             node = self.add_system_tip_node("battlepass_forecast_tip", tip_id, source=table, data={"forecastTipId": tip_id, "priority": row.get("priority")})
@@ -16000,6 +16238,7 @@ class SourceGraphBuilder:
             char_node = self.add_character_ref_node(match.group(0), source=source)
             if char_node:
                 self.add_edge(picture_node, char_node, "picture_for_character", source=source, evidence="pictureId")
+                self.add_edge(char_node, picture_node, "character_has_profile_picture", source=source, evidence="pictureId")
 
     def add_profile_social_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
         if table == "PictureTable" and isinstance(row, dict):
@@ -16011,9 +16250,11 @@ class SourceGraphBuilder:
                 type_node = self.add_profile_social_node("profile_picture_type", row.get("pictureType"), source=table)
                 if type_node:
                     self.add_edge(type_node, picture_node, "profile_picture_type_has_picture", source=table, evidence="pictureType")
+                    self.add_edge(picture_node, type_node, "profile_picture_in_type", source=table, evidence="pictureType")
                 item_node = self.add_item_node(row.get("unlockCharPictureItem"), source=table)
                 if item_node:
                     self.add_edge(picture_node, item_node, "profile_picture_unlock_item", source=table, evidence="unlockCharPictureItem")
+                    self.add_edge(item_node, picture_node, "item_unlocks_profile_picture", source=table, evidence="unlockCharPictureItem")
                 self.add_alias(row.get("imgId"), picture_node, kind="asset_stem", source=table)
                 self.add_picture_character_edge(picture_node, row.get("pictureId") or row_key, source=table)
         elif table == "PictureItemTable" and isinstance(row, str):
@@ -16021,6 +16262,7 @@ class SourceGraphBuilder:
             picture_node = self.add_profile_social_node("profile_picture", row, source=table)
             if item_node and picture_node:
                 self.add_edge(item_node, picture_node, "item_unlocks_profile_picture", source=table, evidence="rowValue")
+                self.add_edge(picture_node, item_node, "profile_picture_unlock_item", source=table, evidence="rowKey")
         elif table == "PictureTypeTable" and isinstance(row, dict):
             type_node = self.add_profile_social_node("profile_picture_type", row_key, source=table, data={"pictureCount": len(row.get("typeList") or [])})
             if type_node:
@@ -16031,6 +16273,7 @@ class SourceGraphBuilder:
                     picture_node = self.add_profile_social_node("profile_picture", entry.get("pictureId"), source=table)
                     if picture_node:
                         self.add_edge(type_node, picture_node, "profile_picture_type_has_picture", source=table, evidence=f"typeList[{index}]")
+                        self.add_edge(picture_node, type_node, "profile_picture_in_type", source=table, evidence=f"typeList[{index}]")
         elif table == "PictureGenderTable" and isinstance(row, dict):
             picture_node = self.add_profile_social_node("profile_picture", row.get("pictureId") or row_key, source=table, data={"gender": row.get("gender")})
             reverse_node = self.add_profile_social_node("profile_picture", row.get("reversePictureId"), source=table)
@@ -16045,6 +16288,7 @@ class SourceGraphBuilder:
                 item_node = self.add_item_node(row.get("itemId"), source=table)
                 if item_node:
                     self.add_edge(avatar_node, item_node, "user_avatar_unlock_item", source=table, evidence="itemId")
+                    self.add_edge(item_node, avatar_node, "item_unlocks_user_avatar", source=table, evidence="itemId")
                 self.add_alias(row.get("icon"), avatar_node, kind="asset_stem", source=table)
         elif table == "BusinessCardTopicTable" and isinstance(row, dict):
             card_node = self.add_profile_social_node("business_card_topic", row.get("id") or row_key, source=table, data={"sort": row.get("sort"), "color": row.get("color"), "expand": row.get("expand"), "panelPrefab": row.get("panelPrefab"), "watchPrefab": row.get("watchPrefab")})
@@ -16053,6 +16297,7 @@ class SourceGraphBuilder:
                 item_node = self.add_item_node(row.get("itemId"), source=table)
                 if item_node:
                     self.add_edge(card_node, item_node, "business_card_unlock_item", source=table, evidence="itemId")
+                    self.add_edge(item_node, card_node, "item_unlocks_business_card_topic", source=table, evidence="itemId")
                 for field in ("icon", "panelPrefab", "watchPrefab"):
                     self.add_alias(row.get(field), card_node, kind="asset_stem", source=table)
         elif table == "MailSenderTable" and isinstance(row, dict):
@@ -16070,6 +16315,7 @@ class SourceGraphBuilder:
                 sender_node = self.add_profile_social_node("mail_sender", row.get("senderId"), source=table)
                 if sender_node:
                     self.add_edge(mail_node, sender_node, "mail_template_sender", source=table, evidence="senderId")
+                    self.add_edge(sender_node, mail_node, "mail_sender_used_by_template", source=table, evidence="senderId")
                 self.add_reward_ref_edge(mail_node, row.get("rewardId"), edge_kind="mail_template_reward", source=table, evidence="rewardId")
         elif table == "FriendChatEmotionTable" and isinstance(row, dict):
             emotion_node = self.add_profile_social_node("friend_chat_emotion", row_key, source=table, data={"tabName": row.get("tabName"), "sortId": row.get("sortId"), "tabSort": row.get("tabSort")})
@@ -16078,6 +16324,7 @@ class SourceGraphBuilder:
                 tab_node = self.add_profile_social_node("friend_chat_emotion_tab", row.get("tabName"), source=table)
                 if tab_node:
                     self.add_edge(tab_node, emotion_node, "friend_chat_emotion_tab_has_emotion", source=table, evidence="tabName")
+                    self.add_edge(emotion_node, tab_node, "friend_chat_emotion_in_tab", source=table, evidence="tabName")
                 for field in ("emotionImgPath", "tabImgPath"):
                     self.add_alias(row.get(field), emotion_node, kind="asset_stem", source=table)
         elif table == "FriendChatTabEmotionTable" and isinstance(row, dict):
@@ -16094,6 +16341,7 @@ class SourceGraphBuilder:
                 tab_node = self.add_profile_social_node("friend_chat_text_tab", row.get("tabName"), source=table)
                 if tab_node:
                     self.add_edge(tab_node, text_node, "friend_chat_text_tab_has_text", source=table, evidence="tabName")
+                    self.add_edge(text_node, tab_node, "friend_chat_text_in_tab", source=table, evidence="tabName")
         elif table == "FriendChatTabTextTable" and isinstance(row, dict):
             tab_node = self.add_profile_social_node("friend_chat_text_tab", row.get("tabName") or row_key, name=row.get("tabText"), source=table, data={"tabSort": row.get("tabSort")})
             if tab_node:
@@ -16195,7 +16443,13 @@ class SourceGraphBuilder:
                 if item_node:
                     self.add_edge(season_node, item_node, "battlepass_season_weapon_box", source=table, evidence="weaponBoxId")
                     self.add_edge(item_node, season_node, "item_used_as_battlepass_weapon_box", source=table, evidence="weaponBoxId")
-                self.add_alias(row.get("bussinessCardId"), season_node, kind="business_card_id", source=table)
+                business_card_id = safe_key(row.get("bussinessCardId"))
+                if business_card_id:
+                    card_node = self.add_profile_social_node("business_card_topic", business_card_id, source=table)
+                    if card_node:
+                        self.add_edge(season_node, card_node, "battlepass_season_business_card_topic", source=table, evidence="bussinessCardId")
+                        self.add_edge(card_node, season_node, "business_card_topic_used_by_battlepass_season", source=table, evidence="bussinessCardId")
+                    self.add_alias(business_card_id, season_node, kind="business_card_id", source=table)
         elif table == "BattlePassTaskGroupTable" and isinstance(row, dict):
             group_node = self.add_battlepass_node("battlepass_task_group", row.get("groupId") or row_key, name=row.get("name"), source=table, data={"labelId": row.get("labelId"), "sortId": row.get("sortId"), "isDefault": row.get("isDefault")})
             if group_node:
@@ -16845,6 +17099,12 @@ class SourceGraphBuilder:
                 elif value_key.startswith("map") or "_lv" in value_key:
                     ref_node = self.add_level_node(value_key, source=source)
                     edge_kind = "game_mechanic_condition_param_level"
+                elif re.fullmatch(r"[a-z]\d+m\d+(?:d\d+)?_q#\d+", value_key):
+                    ref_node = self.add_quest_task_node(value_key, source=source)
+                    edge_kind = "game_mechanic_condition_param_quest_task"
+                elif re.fullmatch(r"[a-z]\d+m\d+(?:d\d+)?", value_key):
+                    ref_node = self.add_mission_ref_node(value_key, source=source)
+                    edge_kind = "game_mechanic_condition_param_mission"
                 else:
                     ref_node = self.add_game_mechanic_ref_node(value_key, source=source)
                     edge_kind = "game_mechanic_condition_param_mechanic"
@@ -16856,6 +17116,8 @@ class SourceGraphBuilder:
                         "game_mechanic_condition_param_character": "character_used_by_game_mechanic_condition_param",
                         "game_mechanic_condition_param_enemy": "enemy_used_by_game_mechanic_condition_param",
                         "game_mechanic_condition_param_level": "level_used_by_game_mechanic_condition_param",
+                        "game_mechanic_condition_param_quest_task": "quest_task_used_by_game_mechanic_condition_param",
+                        "game_mechanic_condition_param_mission": "mission_used_by_game_mechanic_condition_param",
                         "game_mechanic_condition_param_mechanic": "game_mechanic_used_by_condition_param",
                     }.get(edge_kind)
                     if reverse_kind:
@@ -17294,21 +17556,26 @@ class SourceGraphBuilder:
             self.add_alias(Path(model_path).stem, weapon_node, kind="model_name", source=table)
             self.add_model_asset_entity_edges(weapon_node, (model_path,), edge_kind="weapon_model_asset_entity", source=table, evidence="modelPath")
         template_specs = (
-            ("levelTemplateId", "weapon_upgrade_template", "weapon_uses_upgrade_template"),
-            ("breakthroughTemplateId", "weapon_breakthrough_template", "weapon_uses_breakthrough_template"),
-            ("talentTemplateId", "weapon_talent_template", "weapon_uses_talent_template"),
+            ("levelTemplateId", "weapon_upgrade_template", "weapon_uses_upgrade_template", "weapon_upgrade_template_used_by_weapon"),
+            ("breakthroughTemplateId", "weapon_breakthrough_template", "weapon_uses_breakthrough_template", "weapon_breakthrough_template_used_by_weapon"),
+            ("talentTemplateId", "weapon_talent_template", "weapon_uses_talent_template", "weapon_talent_template_used_by_weapon"),
         )
-        for field, kind, edge_kind in template_specs:
+        for field, kind, edge_kind, reverse_kind in template_specs:
             template_node = self.add_weapon_template_node(kind, row.get(field), source=table)
             if template_node:
-                self.add_edge(weapon_node, template_node, edge_kind, source=table, evidence=field)
+                data = {"field": field}
+                self.add_edge(weapon_node, template_node, edge_kind, source=table, evidence=field, data=data)
+                self.add_edge(template_node, weapon_node, reverse_kind, source=table, evidence=field, data=data)
         for index, skill_id in enumerate(row.get("weaponSkillList") or []):
             skill_key = safe_key(skill_id)
             if not skill_key:
                 continue
             skill_node = self.add_gameplay_skill_ref_node(skill_key, source=table)
             edge_kind = "weapon_has_potential_skill" if skill_key == safe_key(row.get("weaponPotentialSkill")) else "weapon_has_skill_entry"
-            self.add_edge(weapon_node, skill_node, edge_kind, source=table, evidence=f"weaponSkillList[{index}]", data={"index": index})
+            reverse_kind = "gameplay_skill_used_as_weapon_potential" if edge_kind == "weapon_has_potential_skill" else "gameplay_skill_used_by_weapon"
+            data = {"index": index}
+            self.add_edge(weapon_node, skill_node, edge_kind, source=table, evidence=f"weaponSkillList[{index}]", data=data)
+            self.add_edge(skill_node, weapon_node, reverse_kind, source=table, evidence=f"weaponSkillList[{index}]", data=data)
         for index, item_id in enumerate(row.get("potentialUpItemList") or []):
             item_node = self.add_item_node(item_id, source=table)
             if item_node:
@@ -17550,7 +17817,9 @@ class SourceGraphBuilder:
             if not skill_key:
                 continue
             skill_node = self.add_node("weapon_skill_recommendation", skill_key, name=skill_key, source=table)
-            self.add_edge(char_node, skill_node, "character_recommends_weapon_skill", source=table, evidence=f"weaponSkillIds[{index}]")
+            data = {"index": index}
+            self.add_edge(char_node, skill_node, "character_recommends_weapon_skill", source=table, evidence=f"weaponSkillIds[{index}]", data=data)
+            self.add_edge(skill_node, char_node, "weapon_skill_recommended_by_character", source=table, evidence=f"weaponSkillIds[{index}]", data=data)
             self.add_alias(skill_key, skill_node, kind="weapon_skill_recommendation_id", source=table)
 
     def add_guide_group_node(self, guide_group_id: Any, *, source: str = "", data: Any = None) -> str:
@@ -17632,9 +17901,16 @@ class SourceGraphBuilder:
             return
         trial_node = self.add_node("character_trial", dungeon_id, name=dungeon_id, source=table, data={"activityId": row.get("activityId"), "jumpId": row.get("jumpId"), "rewardId": row.get("rewardId"), "sortId": row.get("sortId")})
         self.add_edge(row_node, trial_node, "defines_activity_character_trial", source=table)
-        reward_node = self.add_reward_node(row.get("rewardId"), source=table)
-        if reward_node:
-            self.add_edge(trial_node, reward_node, "trial_grants_reward", source=table, evidence="rewardId")
+        activity_node = self.add_activity_node(row.get("activityId"), source=table)
+        if activity_node:
+            self.add_edge(activity_node, trial_node, "activity_has_character_trial", source=table, evidence="activityId")
+            self.add_edge(trial_node, activity_node, "character_trial_in_activity", source=table, evidence="activityId")
+        dungeon_node = self.add_dungeon_node(dungeon_id, source=table)
+        if dungeon_node:
+            self.add_edge(trial_node, dungeon_node, "activity_character_trial_uses_dungeon", source=table, evidence="dungeonId")
+            self.add_edge(dungeon_node, trial_node, "dungeon_used_by_activity_character_trial", source=table, evidence="dungeonId")
+        self.add_system_jump_edge(trial_node, row.get("jumpId"), edge_kind="character_trial_jumps_to", source=table, evidence="jumpId")
+        self.add_reward_ref_edge(trial_node, row.get("rewardId"), edge_kind="trial_grants_reward", source=table, evidence="rewardId")
         self.add_alias(row.get("activityId"), trial_node, kind="activity_id", source=table)
         self.add_alias(row.get("jumpId"), trial_node, kind="jump_id", source=table)
         self.add_alias(row.get("bgRolePath"), trial_node, kind="asset_stem", source=table)
@@ -17656,6 +17932,19 @@ class SourceGraphBuilder:
         node = self.add_node("training_recommendation", rec_id, name=f"enemy level {rec_id}", source=table, data={"enemyLv": row.get("enemyLv"), "squadLvSum": row.get("squadLvSum"), "squadWeaponLvSum": row.get("squadWeaponLvSum"), "squadSkillLvSum": row.get("squadSkillLvSum"), "squadEquipLvSum": row.get("squadEquipLvSum")})
         self.add_edge(row_node, node, "defines_training_recommendation", source=table)
         self.add_alias(rec_id, node, kind="training_recommendation_id", source=table)
+        enemy_level = safe_key(row.get("enemyLv") if row.get("enemyLv") is not None else row_key)
+        if enemy_level:
+            enemy_node = self.add_node("combat_enemy_level", enemy_level, name=f"enemy level {enemy_level}", source=table, data={"enemyLv": row.get("enemyLv")})
+            self.add_alias(enemy_level, enemy_node, kind="combat_enemy_level", source=table)
+            self.add_edge(node, enemy_node, "training_recommendation_for_enemy_level", source=table, evidence="enemyLv")
+            self.add_edge(enemy_node, node, "enemy_level_has_training_recommendation", source=table, evidence="enemyLv")
+        for axis in ("squadLvSum", "squadWeaponLvSum", "squadSkillLvSum", "squadEquipLvSum"):
+            value = row.get(axis)
+            axis_node = self.add_node("training_power_axis", axis, name=axis, source=table)
+            self.add_alias(axis, axis_node, kind="training_power_axis_id", source=table)
+            data = {"value": value}
+            self.add_edge(node, axis_node, "training_recommendation_requires_axis", source=table, evidence=axis, data=data)
+            self.add_edge(axis_node, node, "training_power_axis_used_by_recommendation", source=table, evidence=axis, data=data)
 
     def add_character_support_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
         if table == "CharId2DungeonIdTable":
@@ -18365,6 +18654,25 @@ class SourceGraphBuilder:
                 self.add_setting_text_edges(system_node, row.get("systemName"), source=table, edge_kind="game_system_name_text")
                 self.add_setting_text_edges(system_node, row.get("systemDesc"), source=table, edge_kind="game_system_desc_text")
 
+    def game_system_by_unlock_type(self) -> dict[str, dict[str, Any]]:
+        if self.game_system_unlock_type_cache is not None:
+            return self.game_system_unlock_type_cache
+        path = self.export_root / "structured" / "StreamingAssets" / "Table" / "GameSystemConfigTable.json"
+        payload = read_json(path, {})
+        lookup: dict[str, dict[str, Any]] = {}
+        if isinstance(payload, dict):
+            for row_key, row in payload.items():
+                if not isinstance(row, dict):
+                    continue
+                unlock_key = safe_key(row.get("unlockSystemType"))
+                system_id = safe_key(row.get("systemId") or row_key)
+                if unlock_key and system_id:
+                    entry = dict(row)
+                    entry["_systemKey"] = system_id
+                    lookup[unlock_key] = entry
+        self.game_system_unlock_type_cache = lookup
+        return lookup
+
     def add_rich_text_style_edges(self, table: str, table_node: str, payload: dict[str, Any]) -> None:
         for row_key, row in payload.items():
             if not isinstance(row, dict):
@@ -18670,6 +18978,7 @@ class SourceGraphBuilder:
             self.add_alias(asset_key, owner_node, kind="asset_stem", source=source)
             asset_node = self.add_node("asset_ref", asset_key, name=asset_key, source=source)
             self.add_edge(owner_node, asset_node, "lookup_references_asset", source=source, evidence=f"{evidence_prefix}[{index}]")
+            self.add_edge(asset_node, owner_node, "asset_ref_used_by_lookup", source=source, evidence=f"{evidence_prefix}[{index}]")
 
     def add_factory_interaction_lookup_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
         if table == "FactorySpecialPowerPoleTable" and isinstance(row, dict):
@@ -18691,6 +19000,7 @@ class SourceGraphBuilder:
                 tab_node = self.add_factory_interaction_lookup_node("map_reminder_tab", row.get("tabType"), source=table)
                 if tab_node:
                     self.add_edge(remind_node, tab_node, "map_reminder_in_tab", source=table, evidence="tabType")
+                    self.add_edge(tab_node, remind_node, "map_reminder_tab_has_reminder", source=table, evidence="tabType")
             return
         if table == "FactorySeedItemTable" and isinstance(row, dict):
             seed_node = self.add_factory_interaction_lookup_node("factory_seed_item", row.get("id") or row_key, source=table, data={"growTotalProgress": row.get("growTotalProgress"), "doodadId": row.get("doodadId"), "modelKey": row.get("modelKey"), "growingModelKey": row.get("growingModelKey")})
@@ -18699,9 +19009,11 @@ class SourceGraphBuilder:
                 item_node = self.add_item_node(row.get("id") or row_key, source=table)
                 if item_node:
                     self.add_edge(seed_node, item_node, "factory_seed_item_item", source=table, evidence="id")
+                    self.add_edge(item_node, seed_node, "item_has_factory_seed_config", source=table, evidence="id")
                 doodad_node = self.add_system_interactive_node(row.get("doodadId"), source=table)
                 if doodad_node:
                     self.add_edge(seed_node, doodad_node, "factory_seed_item_doodad", source=table, evidence="doodadId")
+                    self.add_edge(doodad_node, seed_node, "system_interactive_used_by_factory_seed_item", source=table, evidence="doodadId")
                 for field in ("modelKey", "growingModelKey"):
                     self.add_factory_lookup_asset_aliases(seed_node, row.get(field), source=table, evidence_prefix=field)
             return
@@ -18713,8 +19025,10 @@ class SourceGraphBuilder:
                 mark_node = self.add_map_mark_template_node(row.get("markId"), source=table)
                 if interactive_node:
                     self.add_edge(binding_node, interactive_node, "interactive_mark_binding_interactive", source=table, evidence="id")
+                    self.add_edge(interactive_node, binding_node, "system_interactive_has_mark_binding", source=table, evidence="id")
                 if mark_node:
                     self.add_edge(binding_node, mark_node, "interactive_mark_binding_mark_template", source=table, evidence="markId")
+                    self.add_edge(mark_node, binding_node, "map_mark_template_has_interactive_binding", source=table, evidence="markId")
             return
         if table in {"LimitedFormulaCraftIdReverseTable", "LimitedFormulaItemIdReverseTable"}:
             reverse_node = self.add_factory_interaction_lookup_node("limited_formula_reverse", f"{table}:{row_key}", source=table, data={"sourceId": row_key, "formulaId": row})
@@ -18724,8 +19038,10 @@ class SourceGraphBuilder:
                 source_node = self.add_item_node(row_key, source=table) if safe_key(row_key).startswith("item_") else self.add_factory_recipe_node(row_key, source=table)
                 if formula_node:
                     self.add_edge(reverse_node, formula_node, "limited_formula_reverse_formula", source=table, evidence="rowValue")
+                    self.add_edge(formula_node, reverse_node, "factory_recipe_has_limited_formula_reverse", source=table, evidence="rowValue")
                 if source_node:
                     self.add_edge(reverse_node, source_node, "limited_formula_reverse_source", source=table, evidence="rowKey")
+                    self.add_edge(source_node, reverse_node, "limited_formula_source_has_reverse_entry", source=table, evidence="rowKey")
             return
         if table == "OriginiumStaminaCost":
             cost_node = self.add_factory_interaction_lookup_node("originium_stamina_cost", row_key, source=table, data={"purchaseCount": row_key, "staminaCost": row})
@@ -18740,11 +19056,14 @@ class SourceGraphBuilder:
                     item_node = self.add_item_node(row.get(field), source=table)
                     if item_node:
                         self.add_edge(box_node, item_node, edge_kind, source=table, evidence=field)
+                        reverse_kind = "item_has_gem_customization_box_config" if field == "boxItemId" else "item_is_gem_customization_result"
+                        self.add_edge(item_node, box_node, reverse_kind, source=table, evidence=field)
                 for term_field in ("term1Type", "term2Type", "term3Type"):
                     for index, term_type in enumerate(row.get(term_field) or []):
                         term_node = self.add_factory_interaction_lookup_node("gem_customization_term_type", term_type, source=table)
                         if term_node:
                             self.add_edge(box_node, term_node, "gem_customization_locks_term_type", source=table, evidence=f"{term_field}[{index}]", data={"slot": term_field, "index": index})
+                            self.add_edge(term_node, box_node, "gem_customization_term_type_locked_by_box", source=table, evidence=f"{term_field}[{index}]", data={"slot": term_field, "index": index})
             return
         if table == "FactoryQuickBarTypeTable" and isinstance(row, dict):
             quickbar_node = self.add_factory_interaction_lookup_node("factory_quickbar_type", row.get("id") or row_key, name=row.get("name"), source=table, data={"icon": row.get("icon"), "priority": row.get("priority")})
@@ -18768,10 +19087,13 @@ class SourceGraphBuilder:
                 show_node = self.add_factory_interaction_lookup_node("activity_dungeon_show_state", row.get("showState"), source=table)
                 if level_node:
                     self.add_edge(state_node, level_node, "activity_dungeon_state_level", source=table, evidence="rowKey")
+                    self.add_edge(level_node, state_node, "level_has_activity_dungeon_state", source=table, evidence="rowKey")
                 if stage_node:
                     self.add_edge(state_node, stage_node, "activity_dungeon_state_stage", source=table, evidence="activityStage")
+                    self.add_edge(stage_node, state_node, "activity_stage_has_activity_dungeon_state", source=table, evidence="activityStage")
                 if show_node:
                     self.add_edge(state_node, show_node, "activity_dungeon_state_show_state", source=table, evidence="showState")
+                    self.add_edge(show_node, state_node, "activity_dungeon_show_state_has_activity_dungeon_state", source=table, evidence="showState")
             return
         if table == "ActivityDungeonFightingStageTable" and isinstance(row, dict):
             stage_node = self.add_activity_stage_node(row_key, source=table, data={"levelId": row.get("levelId"), "questId": row.get("questId")})
@@ -18781,13 +19103,19 @@ class SourceGraphBuilder:
                 quest_node = self.add_quest_task_node(row.get("questId"), source=table)
                 if level_node:
                     self.add_edge(stage_node, level_node, "activity_stage_level", source=table, evidence="levelId")
+                    self.add_edge(level_node, stage_node, "level_has_activity_dungeon_fighting_stage", source=table, evidence="levelId")
                 if quest_node:
                     self.add_edge(stage_node, quest_node, "activity_stage_quest", source=table, evidence="questId")
+                    self.add_edge(quest_node, stage_node, "quest_task_used_by_activity_stage", source=table, evidence="questId")
             return
         if table == "ActivityCleaningStageDataTable" and isinstance(row, dict):
             stage_node = self.add_factory_interaction_lookup_node("activity_cleaning_stage", row_key, source=table, data={"img": row.get("img")})
             if stage_node:
                 self.add_edge(row_node, stage_node, "defines_activity_cleaning_stage", source=table)
+                activity_stage = self.add_activity_stage_node(row_key, source=table)
+                if activity_stage:
+                    self.add_edge(stage_node, activity_stage, "activity_cleaning_stage_overlay", source=table, evidence="rowKey")
+                    self.add_edge(activity_stage, stage_node, "activity_stage_has_cleaning_stage_overlay", source=table, evidence="rowKey")
                 self.add_factory_lookup_asset_aliases(stage_node, row.get("img"), source=table, evidence_prefix="img")
             return
         if table == "FactoryHubCraftTypeListTable" and isinstance(row, dict):
@@ -18798,6 +19126,7 @@ class SourceGraphBuilder:
                     building_node = self.add_factory_building_node(building_id, source=table)
                     if building_node:
                         self.add_edge(list_node, building_node, "factory_hub_craft_type_has_building", source=table, evidence=f"list[{index}]", data={"index": index})
+                        self.add_edge(building_node, list_node, "factory_building_in_hub_craft_type_list", source=table, evidence=f"list[{index}]", data={"index": index})
             return
         if table == "LTItemTyp2ItemTypeTable" and isinstance(row, dict):
             conversion_node = self.add_factory_interaction_lookup_node("item_type_conversion", row_key, source=table, data={"fromType": row_key, "itemType": row.get("itemType")})
@@ -18807,8 +19136,10 @@ class SourceGraphBuilder:
                 to_node = self.add_item_type_node(row.get("itemType"), source=table)
                 if from_node:
                     self.add_edge(conversion_node, from_node, "item_type_conversion_from", source=table, evidence="rowKey")
+                    self.add_edge(from_node, conversion_node, "item_type_source_for_conversion", source=table, evidence="rowKey")
                 if to_node:
                     self.add_edge(conversion_node, to_node, "item_type_conversion_to", source=table, evidence="itemType")
+                    self.add_edge(to_node, conversion_node, "item_type_target_for_conversion", source=table, evidence="itemType")
             return
         if table in {"ExpItemMap", "ExpItemDataMap"}:
             exp_value = row.get("expGain") if isinstance(row, dict) else row
@@ -18819,6 +19150,7 @@ class SourceGraphBuilder:
                 item_node = self.add_item_node(row_key, source=table)
                 if item_node:
                     self.add_edge(exp_node, item_node, "exp_item_value_item", source=table, evidence="rowKey")
+                    self.add_edge(item_node, exp_node, "item_has_exp_value_config", source=table, evidence="rowKey")
             return
 
     def ingest_mode_constant_semantics(self) -> None:
@@ -18866,6 +19198,7 @@ class SourceGraphBuilder:
                 template_node = self.add_interactive_template_ref_node(row.get("interactiveTemplateId"), source=table)
                 if template_node:
                     self.add_edge(wrapper_node, template_node, "interactive_fac_wrapper_template", source=table, evidence="interactiveTemplateId")
+                    self.add_edge(template_node, wrapper_node, "interactive_template_has_fac_wrapper", source=table, evidence="interactiveTemplateId")
             return
         if table == "PsTrophyTable" and isinstance(row, dict):
             trophy_node = self.add_mode_constant_node("ps_trophy", row.get("objectId") or row_key, source=table, data={"objectId": row.get("objectId"), "trophyId": row.get("trophyId")})
@@ -18881,8 +19214,10 @@ class SourceGraphBuilder:
                 self.add_edge(row_node, map_node, "defines_factory_building_type_map", source=table)
                 if source_type:
                     self.add_edge(map_node, source_type, "factory_building_type_map_source", source=table, evidence="rowKey")
+                    self.add_edge(source_type, map_node, "factory_building_type_source_for_map", source=table, evidence="rowKey")
                 if target_type:
                     self.add_edge(map_node, target_type, "factory_building_type_map_target", source=table, evidence="rowValue")
+                    self.add_edge(target_type, map_node, "factory_building_type_target_for_map", source=table, evidence="rowValue")
             return
         if table == "ActivityHighDifficultySpecialStageTable" and isinstance(row, dict):
             stage_node = self.add_mode_constant_node("activity_high_difficulty_special_stage", row_key, source=table, data={"bgName": row.get("bgName")})
@@ -18891,6 +19226,7 @@ class SourceGraphBuilder:
                 activity_stage = self.add_activity_stage_node(row_key, source=table)
                 if activity_stage:
                     self.add_edge(stage_node, activity_stage, "high_difficulty_special_stage_activity_stage", source=table, evidence="rowKey")
+                    self.add_edge(activity_stage, stage_node, "activity_stage_has_high_difficulty_special_stage", source=table, evidence="rowKey")
                 self.add_alias(row.get("bgName"), stage_node, kind="asset_stem", source=table)
             return
         if table == "CharGatherBehaviourTable" and isinstance(row, dict):
@@ -19001,6 +19337,58 @@ class SourceGraphBuilder:
         self.add_alias(talk_key, node, kind="env_talk_id", source=source)
         return node
 
+    def add_npc_proxy_node(self, proxy_id: Any, *, source: str = "", data: Any = None) -> str:
+        proxy_key = safe_key(proxy_id)
+        if not proxy_key:
+            return ""
+        node = self.add_node("npc_proxy", proxy_key, name=proxy_key, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=proxy_key, source=source, data=data)
+        self.add_alias(proxy_key, node, kind="npc_proxy_id", source=source)
+        return node
+
+    def add_npc_proxy_ex_entry_node(self, proxy_id: Any, index: int, *, source: str = "", data: Any = None) -> str:
+        proxy_key = safe_key(proxy_id)
+        if not proxy_key:
+            return ""
+        entry_key = f"{proxy_key}:ex:{index + 1}"
+        node = self.add_node("npc_proxy_ex_entry", entry_key, name=entry_key, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=entry_key, source=source, data=data)
+        self.add_alias(entry_key, node, kind="npc_proxy_ex_entry_id", source=source)
+        return node
+
+    def add_atmospheric_npc_cluster_node(self, cluster_id: Any, *, source: str = "", data: Any = None) -> str:
+        cluster_key = safe_key(cluster_id)
+        if not cluster_key:
+            return ""
+        node = self.add_node("atmospheric_npc_cluster", cluster_key, name=cluster_key, source=source, data=data)
+        if data is not None:
+            self.update_node_details(node, name=cluster_key, source=source, data=data)
+        self.add_alias(cluster_key, node, kind="atmospheric_npc_cluster_id", source=source)
+        return node
+
+    def add_npc_proxy_env_talk_edge(self, proxy_node: str, talk_id: Any, *, source: str, evidence: str, data: Any = None) -> None:
+        talk_node = self.add_env_talk_node(talk_id, source=source)
+        if not talk_node:
+            return
+        self.add_edge(proxy_node, talk_node, "npc_proxy_uses_env_talk", source=source, evidence=evidence, data=data)
+        self.add_edge(talk_node, proxy_node, "env_talk_used_by_npc_proxy", source=source, evidence=evidence, data=data)
+
+    def add_npc_proxy_ex_env_talk_edge(self, entry_node: str, talk_id: Any, *, source: str, evidence: str, data: Any = None) -> None:
+        talk_node = self.add_env_talk_node(talk_id, source=source)
+        if not talk_node:
+            return
+        self.add_edge(entry_node, talk_node, "npc_proxy_ex_entry_uses_env_talk", source=source, evidence=evidence, data=data)
+        self.add_edge(talk_node, entry_node, "env_talk_used_by_npc_proxy_ex_entry", source=source, evidence=evidence, data=data)
+
+    def add_atmospheric_cluster_env_talk_edge(self, cluster_node: str, talk_id: Any, *, source: str, evidence: str) -> None:
+        talk_node = self.add_env_talk_node(talk_id, source=source)
+        if not talk_node:
+            return
+        self.add_edge(cluster_node, talk_node, "atmospheric_cluster_uses_env_talk", source=source, evidence=evidence)
+        self.add_edge(talk_node, cluster_node, "env_talk_used_by_atmospheric_cluster", source=source, evidence=evidence)
+
     def add_spaceship_proxy_node(self, proxy_id: Any, *, source: str = "", data: Any = None) -> str:
         proxy_key = safe_key(proxy_id)
         if not proxy_key:
@@ -19095,6 +19483,7 @@ class SourceGraphBuilder:
             skill_node = self.add_spaceship_skill_node(skill.get("skillId"), source=table, data={"skillIndex": skill.get("skillIndex"), "unlockHint": table_text(skill.get("unlockHint"))})
             if skill_node:
                 self.add_edge(char_node, skill_node, "character_has_spaceship_skill", source=table, evidence=f"skillList[{index}]", data={"skillIndex": skill.get("skillIndex")})
+                self.add_edge(skill_node, char_node, "spaceship_skill_owned_by_character", source=table, evidence=f"skillList[{index}]", data={"skillIndex": skill.get("skillIndex")})
                 self.add_i18n_text_edges(skill_node, skill.get("unlockHint"), source=table)
 
     def add_spaceship_skill_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
@@ -19121,6 +19510,7 @@ class SourceGraphBuilder:
         room_node = self.add_spaceship_room_type_node(row.get("roomType"), source=table)
         if room_node:
             self.add_edge(skill_node, room_node, "spaceship_skill_applies_to_room_type", source=table, evidence="roomType")
+            self.add_edge(room_node, skill_node, "spaceship_room_type_has_skill", source=table, evidence="roomType")
         self.add_i18n_text_edges(skill_node, {"name": row.get("name"), "desc": row.get("desc"), "talentName": row.get("talentName")}, source=table)
 
     def add_env_talk_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
@@ -19191,10 +19581,12 @@ class SourceGraphBuilder:
         if dialog_id:
             story_node = self.add_node("story", dialog_id, name=dialog_id, source=table)
             self.add_edge(level_node, story_node, "spaceship_room_level_upgrade_dialog", source=table, evidence="upgradeDialogId")
+            self.add_edge(story_node, level_node, "story_used_by_spaceship_room_level_upgrade", source=table, evidence="upgradeDialogId")
         condition_id = safe_key(row.get("conditionId"))
         if condition_id:
             condition_node = self.add_spaceship_room_level_node(condition_id, source=table)
             self.add_edge(level_node, condition_node, "spaceship_room_level_condition", source=table, evidence="conditionId")
+            self.add_edge(condition_node, level_node, "spaceship_room_level_required_by_level", source=table, evidence="conditionId")
         self.add_i18n_text_edges(level_node, row, source=table)
 
     def add_spaceship_room_level_helper_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
@@ -19205,6 +19597,7 @@ class SourceGraphBuilder:
             self.add_edge(row_node, level_node, "defines_spaceship_room_level_helper", source=table)
         if level_node and room_node:
             self.add_edge(level_node, room_node, "spaceship_room_level_for_type", source=table, evidence="roomType", data={"level": row.get("level")})
+            self.add_edge(room_node, level_node, "spaceship_room_type_has_room_level", source=table, evidence="roomType", data={"level": row.get("level")})
 
     def add_spaceship_specialized_room_level_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
         level_id = safe_key(row.get("id") or row_key)
@@ -19215,17 +19608,30 @@ class SourceGraphBuilder:
         room_node = self.add_spaceship_room_type_node(row.get("roomType"), source=table)
         if room_node:
             self.add_edge(level_node, room_node, "spaceship_room_level_for_type", source=table, evidence="roomType", data={"level": row.get("level")})
+            self.add_edge(room_node, level_node, "spaceship_room_type_has_room_level", source=table, evidence="roomType", data={"level": row.get("level")})
         reward_node = self.add_reward_node(row.get("rewardId"), source=table)
         if reward_node:
             self.add_edge(level_node, reward_node, "spaceship_room_level_reward", source=table, evidence="rewardId")
+            self.add_edge(reward_node, level_node, "reward_used_by_spaceship_room_level", source=table, evidence="rewardId")
         for index, recipe_id in enumerate(row.get("unlockRecipe") or []):
             formula_node = self.add_node("spaceship_formula", recipe_id, name=recipe_id, source=table)
             self.add_edge(level_node, formula_node, "spaceship_room_level_unlocks_formula", source=table, evidence=f"unlockRecipe[{index}]")
+            self.add_edge(formula_node, level_node, "spaceship_formula_unlocked_by_room_level", source=table, evidence=f"unlockRecipe[{index}]")
             self.add_alias(recipe_id, formula_node, kind="spaceship_formula_id", source=table)
+        for index, field_id in enumerate(row.get("unlockPlantingField") or []):
+            field_key = safe_key(field_id)
+            if not field_key:
+                continue
+            field_node = self.add_spaceship_semantic_node("spaceship_grow_cabin_planting_field", field_key, source=table, data={"fieldId": field_id})
+            if field_node:
+                data = {"index": index, "level": row.get("level")}
+                self.add_edge(level_node, field_node, "spaceship_room_level_unlocks_planting_field", source=table, evidence=f"unlockPlantingField[{index}]", data=data)
+                self.add_edge(field_node, level_node, "spaceship_planting_field_unlocked_by_room_level", source=table, evidence=f"unlockPlantingField[{index}]", data=data)
         unlock_room_type = safe_key(row.get("unlockRoomType"))
         if unlock_room_type:
             unlock_room_node = self.add_spaceship_room_type_node(unlock_room_type, source=table)
             self.add_edge(level_node, unlock_room_node, "spaceship_room_level_unlocks_room_type", source=table, evidence="unlockRoomType")
+            self.add_edge(unlock_room_node, level_node, "spaceship_room_type_unlocked_by_room_level", source=table, evidence="unlockRoomType")
         self.add_i18n_text_edges(level_node, row, source=table)
 
     def add_spaceship_empty_room_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
@@ -19262,12 +19668,19 @@ class SourceGraphBuilder:
             if reverse_kind:
                 self.add_edge(item_node, formula_node, reverse_kind, source=source, evidence=evidence, data=data)
 
+    def add_spaceship_formula_showing_type_ref(self, formula_node: str, type_id: Any, *, source: str, evidence: str) -> None:
+        showing = self.add_spaceship_semantic_node("spaceship_formula_showing_type", type_id, source=source)
+        if showing:
+            self.add_edge(formula_node, showing, "spaceship_formula_has_showing_type", source=source, evidence=evidence)
+            self.add_edge(showing, formula_node, "spaceship_formula_showing_type_has_formula", source=source, evidence=evidence)
+
     def add_spaceship_grow_formula_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
         formula_id = safe_key(row.get("id") or row_key)
         formula_node = self.add_spaceship_formula_node(formula_id, source=table, data={"id": formula_id, "kind": "grow", "level": row.get("level"), "type": row.get("type"), "rarity": row.get("rarity"), "roomAttrType": row.get("roomAttrType"), "totalProgress": row.get("totalProgress"), "sortId": row.get("sortId"), "growingPostmodelId": row.get("growingPostmodelId"), "finishPostmodelId": row.get("finishPostmodelId")})
         if not formula_node:
             return
         self.add_edge(row_node, formula_node, "defines_spaceship_formula", source=table)
+        self.add_spaceship_formula_showing_type_ref(formula_node, row.get("type"), source=table, evidence="type")
         self.add_spaceship_formula_item_edge(formula_node, row.get("seedItemId"), edge_kind="spaceship_formula_consumes_item", source=table, evidence="seedItemId", count=row.get("seedItemCount"))
         self.add_spaceship_formula_item_edge(formula_node, row.get("outcomeItemId"), edge_kind="spaceship_formula_produces_item", source=table, evidence="outcomeItemId", count=row.get("outcomeItemCount"))
         seed_formula_node = self.add_spaceship_formula_node(row.get("seedFormulaId"), source=table)
@@ -19283,6 +19696,7 @@ class SourceGraphBuilder:
         if not formula_node:
             return
         self.add_edge(row_node, formula_node, "defines_spaceship_formula", source=table)
+        self.add_spaceship_formula_showing_type_ref(formula_node, row.get("type"), source=table, evidence="type")
         self.add_spaceship_formula_item_edge(formula_node, row.get("materialItemId"), edge_kind="spaceship_formula_consumes_item", source=table, evidence="materialItemId", count=row.get("materialItemCount"))
         self.add_spaceship_formula_item_edge(formula_node, row.get("outcomeseedItemId"), edge_kind="spaceship_formula_produces_item", source=table, evidence="outcomeseedItemId", count=row.get("outcomeseedItemCount"))
 
@@ -19714,6 +20128,14 @@ class SourceGraphBuilder:
                     ref_node = self.add_factory_machine_node(ref, source=source)
                     edge_kind = "factory_tech_condition_references_machine"
                 self.add_edge(condition_node, ref_node, edge_kind, source=source, evidence=evidence)
+                reverse_kind = {
+                    "factory_tech_condition_references_level": "level_used_by_factory_tech_condition",
+                    "factory_tech_condition_references_item": "item_used_by_factory_tech_condition",
+                    "factory_tech_condition_references_domain": "domain_used_by_factory_tech_condition",
+                    "factory_tech_condition_references_machine": "factory_machine_used_by_factory_tech_condition",
+                }.get(edge_kind)
+                if reverse_kind:
+                    self.add_edge(ref_node, condition_node, reverse_kind, source=source, evidence=evidence)
 
     def add_factory_tech_condition_edges(self, owner_node: str, condition: dict[str, Any], *, edge_kind: str, source: str, evidence: str) -> None:
         condition_id = safe_key(condition.get("conditionId"))
@@ -19749,6 +20171,13 @@ class SourceGraphBuilder:
                     ref_node = self.add_factory_machine_node(ref, source=source)
                     edge_kind = "factory_tech_action_references_machine"
                 self.add_edge(tech_node, ref_node, edge_kind, source=source, evidence=evidence)
+                reverse_kind = {
+                    "factory_tech_action_references_item": "item_used_by_factory_tech_action",
+                    "factory_tech_action_references_domain": "domain_used_by_factory_tech_action",
+                    "factory_tech_action_references_machine": "factory_machine_used_by_factory_tech_action",
+                }.get(edge_kind)
+                if reverse_kind:
+                    self.add_edge(ref_node, tech_node, reverse_kind, source=source, evidence=evidence)
 
     def add_factory_tech_group_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
         group_node = self.add_factory_tech_group_node(row.get("groupId") or row_key, name=row.get("groupName"), source=table, data={"domainId": row.get("domainId"), "costPointType": row.get("costPointType"), "adventurebookRewardId": row.get("adventurebookRewardId")})
@@ -19759,6 +20188,7 @@ class SourceGraphBuilder:
         domain_node = self.add_gameplay_domain_node(row.get("domainId"), source=table)
         if domain_node:
             self.add_edge(group_node, domain_node, "factory_tech_group_domain", source=table, evidence="domainId")
+            self.add_edge(domain_node, group_node, "domain_has_factory_tech_group", source=table, evidence="domainId")
         cost_item = self.add_item_node(row.get("costPointType"), source=table)
         if cost_item:
             self.add_edge(group_node, cost_item, "factory_tech_group_uses_point_item", source=table, evidence="costPointType")
@@ -19767,14 +20197,17 @@ class SourceGraphBuilder:
             category_node = self.add_factory_tech_category_node(category_id, source=table)
             if category_node:
                 self.add_edge(group_node, category_node, "factory_tech_group_has_category", source=table, evidence=f"categoryIds[{index}]")
+                self.add_edge(category_node, group_node, "factory_tech_category_in_group", source=table, evidence=f"categoryIds[{index}]")
         for index, layer_id in enumerate(row.get("layerIds") or []):
             layer_node = self.add_factory_tech_layer_node(layer_id, source=table)
             if layer_node:
                 self.add_edge(group_node, layer_node, "factory_tech_group_has_layer", source=table, evidence=f"layerIds[{index}]")
+                self.add_edge(layer_node, group_node, "factory_tech_layer_in_group", source=table, evidence=f"layerIds[{index}]")
         for index, tech_id in enumerate(row.get("techIds") or []):
             tech_node = self.add_factory_tech_node(tech_id, source=table)
             if tech_node:
                 self.add_edge(group_node, tech_node, "factory_tech_group_has_tech", source=table, evidence=f"techIds[{index}]")
+                self.add_edge(tech_node, group_node, "factory_tech_in_group", source=table, evidence=f"techIds[{index}]")
         for index, dungeon_id in enumerate(row.get("blackboxIds") or []):
             dungeon_node = self.add_dungeon_node(dungeon_id, source=table)
             if dungeon_node:
@@ -19793,10 +20226,12 @@ class SourceGraphBuilder:
         group_node = self.add_factory_tech_group_node(row.get("groupId"), source=table)
         if group_node:
             self.add_edge(group_node, category_node, "factory_tech_group_has_category", source=table, evidence="groupId")
+            self.add_edge(category_node, group_node, "factory_tech_category_in_group", source=table, evidence="groupId")
         for index, tech_id in enumerate(row.get("techIds") or []):
             tech_node = self.add_factory_tech_node(tech_id, source=table)
             if tech_node:
                 self.add_edge(category_node, tech_node, "factory_tech_category_has_tech", source=table, evidence=f"techIds[{index}]")
+                self.add_edge(tech_node, category_node, "factory_tech_in_category", source=table, evidence=f"techIds[{index}]")
         self.add_i18n_text_edges(category_node, row, source=table)
 
     def add_factory_tech_layer_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
@@ -19807,9 +20242,11 @@ class SourceGraphBuilder:
         group_node = self.add_factory_tech_group_node(row.get("groupId"), source=table)
         if group_node:
             self.add_edge(group_node, layer_node, "factory_tech_group_has_layer", source=table, evidence="groupId")
+            self.add_edge(layer_node, group_node, "factory_tech_layer_in_group", source=table, evidence="groupId")
         pre_layer = self.add_factory_tech_layer_node(row.get("preLayer"), source=table)
         if pre_layer:
             self.add_edge(layer_node, pre_layer, "factory_tech_layer_requires_layer", source=table, evidence="preLayer")
+            self.add_edge(pre_layer, layer_node, "factory_tech_layer_required_by_layer", source=table, evidence="preLayer")
         for index, item in enumerate(row.get("costItems") or []):
             if not isinstance(item, dict):
                 continue
@@ -19821,6 +20258,7 @@ class SourceGraphBuilder:
             tech_node = self.add_factory_tech_node(tech_id, source=table)
             if tech_node:
                 self.add_edge(layer_node, tech_node, "factory_tech_layer_has_tech", source=table, evidence=f"techIds[{index}]")
+                self.add_edge(tech_node, layer_node, "factory_tech_in_layer", source=table, evidence=f"techIds[{index}]")
         for index, dungeon_id in enumerate(row.get("blackboxIds") or []):
             dungeon_node = self.add_dungeon_node(dungeon_id, source=table)
             if dungeon_node:
@@ -19837,12 +20275,15 @@ class SourceGraphBuilder:
         group_node = self.add_factory_tech_group_node(row.get("groupId"), source=table)
         if group_node:
             self.add_edge(group_node, tech_node, "factory_tech_group_has_tech", source=table, evidence="groupId")
+            self.add_edge(tech_node, group_node, "factory_tech_in_group", source=table, evidence="groupId")
         category_node = self.add_factory_tech_category_node(row.get("category"), source=table)
         if category_node:
             self.add_edge(category_node, tech_node, "factory_tech_category_has_tech", source=table, evidence="category")
+            self.add_edge(tech_node, category_node, "factory_tech_in_category", source=table, evidence="category")
         layer_node = self.add_factory_tech_layer_node(row.get("layer"), source=table)
         if layer_node:
             self.add_edge(layer_node, tech_node, "factory_tech_layer_has_tech", source=table, evidence="layer")
+            self.add_edge(tech_node, layer_node, "factory_tech_in_layer", source=table, evidence="layer")
         for index, pre_node in enumerate(row.get("preNode") or []):
             pre_tech = self.add_factory_tech_node(pre_node, source=table)
             if pre_tech:
@@ -20886,9 +21327,11 @@ class SourceGraphBuilder:
         if self.node_exists("story", content_key):
             story_node = self.node_id("story", content_key)
             self.add_edge(owner_node, story_node, story_edge, source=source, evidence=evidence)
+            self.add_edge(story_node, owner_node, f"{story_edge}_source", source=source, evidence=evidence)
         if self.node_exists("rich_content", content_key):
             rich_node = self.add_rich_content_node(content_key, source=source)
             self.add_edge(owner_node, rich_node, rich_edge, source=source, evidence=evidence)
+            self.add_edge(rich_node, owner_node, f"{rich_edge}_source", source=source, evidence=evidence)
 
     def add_rich_content_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
         content_id = safe_key(row_key)
@@ -20905,6 +21348,7 @@ class SourceGraphBuilder:
             if not line_node:
                 continue
             self.add_edge(content_node, line_node, "rich_content_has_line", source=table, evidence=f"contentList[{index}]")
+            self.add_edge(line_node, content_node, "rich_content_line_in_content", source=table, evidence=f"contentList[{index}]")
             for text_id in self.iter_i18n_text_ids(item.get("content")):
                 text_node = self.add_i18n_text_node(text_id, source=table)
                 if text_node:
@@ -20926,6 +21370,7 @@ class SourceGraphBuilder:
         page_key = row.get("categoryId") or row_key
         if self.node_exists("prts_page", page_key):
             self.add_edge(self.node_id("prts_page", page_key), category_node, "prts_page_has_category", source=table, evidence="categoryId")
+            self.add_edge(category_node, self.node_id("prts_page", page_key), "prts_category_in_page", source=table, evidence="categoryId")
         self.add_alias(row.get("tabIcon"), category_node, kind="asset_stem", source=table)
         self.add_i18n_text_edges(category_node, row, source=table)
 
@@ -20938,10 +21383,12 @@ class SourceGraphBuilder:
         category_node = self.add_prts_category_node(row.get("categoryId"), source=table)
         if category_node:
             self.add_edge(category_node, first_node, "prts_category_has_first_level", source=table, evidence="categoryId")
+            self.add_edge(first_node, category_node, "prts_first_level_in_category", source=table, evidence="categoryId")
         for index, entry_id in enumerate(row.get("itemIds") or []):
             entry_node = self.add_prts_entry_node(entry_id, source=table)
             if entry_node:
                 self.add_edge(first_node, entry_node, "prts_first_level_has_entry", source=table, evidence=f"itemIds[{index}]")
+                self.add_edge(entry_node, first_node, "prts_entry_in_first_level", source=table, evidence=f"itemIds[{index}]")
         self.add_alias(row.get("icon"), first_node, kind="asset_stem", source=table)
         self.add_i18n_text_edges(first_node, row, source=table)
 
@@ -20962,6 +21409,10 @@ class SourceGraphBuilder:
             "PrtsMultimedia": "defines_prts_multimedia_entry",
         }.get(table, "defines_prts_entry")
         self.add_edge(row_node, entry_node, edge_kind, source=table)
+        first_node = self.add_prts_first_level_node(row.get("firstLvId"), source=table)
+        if first_node:
+            self.add_edge(first_node, entry_node, "prts_first_level_has_entry", source=table, evidence="firstLvId")
+            self.add_edge(entry_node, first_node, "prts_entry_in_first_level", source=table, evidence="firstLvId")
         if canonical:
             self.add_prts_content_target_edges(entry_node, row.get("contentId"), source=table, evidence="contentId", story_edge="prts_entry_targets_story", rich_edge="prts_entry_targets_rich_content")
             self.add_i18n_text_edges(entry_node, row, source=table)
@@ -20985,6 +21436,7 @@ class SourceGraphBuilder:
         icon_node = self.add_reading_popup_icon_node(f"{row.get('bgType')}:{row.get('iconType')}", source=table)
         if icon_node:
             self.add_edge(popup_node, icon_node, "reading_popup_uses_icon", source=table, evidence="bgType/iconType")
+            self.add_edge(icon_node, popup_node, "reading_popup_icon_used_by_popup", source=table, evidence="bgType/iconType")
         self.add_prts_content_target_edges(popup_node, row.get("contentId"), source=table, evidence="contentId", story_edge="reading_popup_targets_story", rich_edge="reading_popup_targets_rich_content")
         self.add_i18n_text_edges(popup_node, row, source=table)
 
@@ -21004,6 +21456,7 @@ class SourceGraphBuilder:
             prts_entry = self.add_prts_entry_node(entry.get("prtsId"), source=table)
             if prts_entry:
                 self.add_edge(entry_node, prts_entry, "prts_reading_entry_refs_prts_entry", source=table, evidence="prtsId")
+                self.add_edge(prts_entry, entry_node, "prts_entry_referenced_by_reading_entry", source=table, evidence="prtsId")
             self.add_prts_content_target_edges(entry_node, entry.get("contentId"), source=table, evidence="contentId", story_edge="prts_reading_entry_targets_story", rich_edge="prts_reading_entry_targets_rich_content")
             self.add_i18n_text_edges(entry_node, entry, source=table)
 
@@ -21018,14 +21471,17 @@ class SourceGraphBuilder:
         if not group_node:
             return ""
         self.add_edge(investigation_node, group_node, "prts_investigation_has_group", source=source, evidence=evidence_prefix)
+        self.add_edge(group_node, investigation_node, "prts_investigation_group_in_investigation", source=source, evidence=evidence_prefix)
         for index, entry_id in enumerate(group.get("collectionIdList") or []):
             entry_node = self.add_prts_entry_node(entry_id, source=source)
             if entry_node:
                 self.add_edge(group_node, entry_node, "prts_investigation_group_has_entry", source=source, evidence=f"{evidence_prefix}.collectionIdList[{index}]")
+                self.add_edge(entry_node, group_node, "prts_entry_in_investigation_group", source=source, evidence=f"{evidence_prefix}.collectionIdList[{index}]")
         for index, note_id in enumerate(group.get("noteIdList") or []):
             note_node = self.add_prts_note_node(note_id, source=source)
             if note_node:
                 self.add_edge(group_node, note_node, "prts_investigation_group_has_note", source=source, evidence=f"{evidence_prefix}.noteIdList[{index}]")
+                self.add_edge(note_node, group_node, "prts_note_in_investigation_group", source=source, evidence=f"{evidence_prefix}.noteIdList[{index}]")
         self.add_i18n_text_edges(group_node, group, source=source)
         return group_node
 
@@ -21038,19 +21494,23 @@ class SourceGraphBuilder:
         domain_node = self.add_gameplay_domain_node(row.get("domainId"), source=table)
         if domain_node:
             self.add_edge(investigation_node, domain_node, "prts_investigation_uses_domain", source=table, evidence="domainId")
+            self.add_edge(domain_node, investigation_node, "domain_has_prts_investigation", source=table, evidence="domainId")
         unlock_entry = self.add_prts_entry_node(row.get("unlockPrts"), source=table)
         if unlock_entry:
             self.add_edge(investigation_node, unlock_entry, "prts_investigation_unlocks_entry", source=table, evidence="unlockPrts")
+            self.add_edge(unlock_entry, investigation_node, "prts_entry_unlocked_by_investigation", source=table, evidence="unlockPrts")
         for index, entry_id in enumerate(row.get("collectionIdList") or []):
             entry_node = self.add_prts_entry_node(entry_id, source=table)
             if entry_node:
                 self.add_edge(investigation_node, entry_node, "prts_investigation_has_entry", source=table, evidence=f"collectionIdList[{index}]")
+                self.add_edge(entry_node, investigation_node, "prts_entry_in_investigation", source=table, evidence=f"collectionIdList[{index}]")
         for index, item in enumerate(row.get("rewardItemList") or []):
             if not isinstance(item, dict):
                 continue
             item_node = self.add_item_node(item.get("id"), source=table)
             if item_node:
                 self.add_edge(investigation_node, item_node, "prts_investigation_rewards_item", source=table, evidence=f"rewardItemList[{index}]", data={"count": item.get("count")})
+                self.add_edge(item_node, investigation_node, "item_rewarded_by_prts_investigation", source=table, evidence=f"rewardItemList[{index}]", data={"count": item.get("count")})
         for index, group in enumerate(row.get("categoryDataList") or []):
             if isinstance(group, dict):
                 self.add_prts_investigation_group_edges(investigation_node, group, group_id=f"{investigation_id}:group:{group.get('index') or index + 1}", source=table, evidence_prefix=f"categoryDataList[{index}]")
@@ -21119,6 +21579,139 @@ class SourceGraphBuilder:
                 )
                 self.add_edge(table_node, row_node, "has_row", source="structured/npc_voice_bark")
                 self.add_npc_voice_bark_row_edges(table_key, row_key, row, row_node)
+
+    def ingest_npc_proxy_world_dialog_semantics(self) -> None:
+        dataset = self.add_node("dataset", "gameplay_config_npc_proxy_semantics", path=slash(GAMEPLAY_CONFIG_ROOT))
+        proxy_payload = read_json(NPC_PROXY_TABLE_PATH, {})
+        proxy_table = proxy_payload.get("dataTable") if isinstance(proxy_payload, dict) and isinstance(proxy_payload.get("dataTable"), dict) else {}
+        proxy_ex_payload = read_json(NPC_PROXY_EX_TABLE_PATH, {})
+        proxy_ex_data = proxy_ex_payload.get("data") if isinstance(proxy_ex_payload, dict) and isinstance(proxy_ex_payload.get("data"), dict) else {}
+        proxy_info_data = proxy_ex_payload.get("proxyInfoData") if isinstance(proxy_ex_payload, dict) and isinstance(proxy_ex_payload.get("proxyInfoData"), dict) else {}
+        cluster_payload = read_json(ATMOSPHERIC_NPC_CLUSTER_TABLE_PATH, {})
+        cluster_table = cluster_payload.get("dataTable") if isinstance(cluster_payload, dict) and isinstance(cluster_payload.get("dataTable"), dict) else {}
+
+        proxy_table_node = self.add_node("table", "NpcProxyTable", name="NpcProxyTable", source="GameplayConfig", path=slash(NPC_PROXY_TABLE_PATH), data={"proxyCount": len(proxy_table)})
+        self.add_edge(dataset, proxy_table_node, "has_table", source="structured/npc_proxy")
+        self.add_file(slash(NPC_PROXY_TABLE_PATH), kind="structured_gameplay_config", source="GameplayConfig")
+        for row_key, row in sorted(proxy_table.items(), key=lambda item: safe_key(item[0])):
+            if not isinstance(row, dict):
+                continue
+            proxy_id = safe_key(row.get("proxyId") or row_key)
+            if not proxy_id:
+                continue
+            info = proxy_info_data.get(proxy_id) if isinstance(proxy_info_data.get(proxy_id), dict) else {}
+            odds = row.get("envTalkOdd") if isinstance(row.get("envTalkOdd"), list) else []
+            proxy_data = compact_payload(
+                {
+                    "proxyId": proxy_id,
+                    "levelId": row.get("levelId"),
+                    "levelLogicId": row.get("levelLogicId"),
+                    "npcGroupId": row.get("npcGroupId"),
+                    "type": row.get("type"),
+                    "clusterId": row.get("clusterId"),
+                    "envTalkCount": len(row.get("envTalkIds") or []),
+                    "envTalkOverrideNpc": row.get("envTalkOverrideNpc"),
+                    "npcProxyType": info.get("npcProxyType"),
+                    "npcId": info.get("npcId"),
+                    "npcNameId": info.get("npcNameId"),
+                    "mapId": info.get("mapId"),
+                    "position": row.get("position"),
+                    "rotation": row.get("rotation"),
+                },
+                depth=3,
+            )
+            row_node = self.add_node("table_row", f"NpcProxyTable:{proxy_id}", name=proxy_id, source="NpcProxyTable", data=compact_payload(row, depth=2))
+            self.add_edge(proxy_table_node, row_node, "has_row", source="structured/npc_proxy")
+            proxy_node = self.add_npc_proxy_node(proxy_id, source="NpcProxyTable", data=proxy_data)
+            self.add_edge(row_node, proxy_node, "defines_npc_proxy", source="NpcProxyTable")
+            group_node = self.add_npc_group_node(row.get("npcGroupId"), source="NpcProxyTable")
+            if group_node:
+                self.add_edge(proxy_node, group_node, "npc_proxy_in_group", source="NpcProxyTable", evidence="npcGroupId")
+            level_node = self.add_level_node(row.get("levelId"), source="NpcProxyTable")
+            if level_node:
+                self.add_edge(proxy_node, level_node, "npc_proxy_in_level", source="NpcProxyTable", evidence="levelId")
+                self.add_edge(level_node, proxy_node, "level_has_npc_proxy", source="NpcProxyTable", evidence="levelId")
+                self.add_level_map_edge(level_node, row.get("levelId"), source="NpcProxyTable", evidence="levelId", map_id=info.get("mapId"))
+            map_node = self.add_map_node(info.get("mapId"), source="NpcProxyTable")
+            if map_node:
+                self.add_edge(proxy_node, map_node, "npc_proxy_on_map", source="NpcProxyTable", evidence="proxyInfoData.mapId")
+                self.add_edge(map_node, proxy_node, "map_has_npc_proxy", source="NpcProxyTable", evidence="proxyInfoData.mapId")
+            npc_name_id = safe_key(info.get("npcNameId"))
+            if npc_name_id:
+                name_node = self.add_semantic_node("npc_proxy_name", npc_name_id, source="NpcProxyExDataTable", data={"npcId": info.get("npcId"), "mapId": info.get("mapId")})
+                self.add_edge(proxy_node, name_node, "npc_proxy_info_uses_npc_name", source="NpcProxyExDataTable", evidence="proxyInfoData.npcNameId")
+                self.add_edge(name_node, proxy_node, "npc_proxy_name_used_by_proxy", source="NpcProxyExDataTable", evidence="proxyInfoData.npcNameId")
+            self.add_alias(info.get("npcId"), proxy_node, kind="npc_proxy_info_npc_id", source="NpcProxyExDataTable")
+            for index, talk_id in enumerate(row.get("envTalkIds") or []):
+                data = {"odd": odds[index]} if index < len(odds) else None
+                self.add_npc_proxy_env_talk_edge(proxy_node, talk_id, source="NpcProxyTable", evidence=f"envTalkIds[{index}]", data=data)
+            for brief_node in self.alias_node_ids(proxy_id, kind="npc_proxy_brief_id"):
+                self.add_edge(brief_node, proxy_node, "npc_proxy_brief_matches_authored_proxy", source="source_graph/npc_proxy_bridge", evidence=proxy_id)
+                self.add_edge(proxy_node, brief_node, "npc_proxy_has_brief", source="source_graph/npc_proxy_bridge", evidence=proxy_id)
+
+        ex_table_node = self.add_node("table", "NpcProxyExDataTable", name="NpcProxyExDataTable", source="GameplayConfig", path=slash(NPC_PROXY_EX_TABLE_PATH), data={"proxyCount": len(proxy_ex_data)})
+        self.add_edge(dataset, ex_table_node, "has_table", source="structured/npc_proxy")
+        self.add_file(slash(NPC_PROXY_EX_TABLE_PATH), kind="structured_gameplay_config", source="GameplayConfig")
+        for proxy_id_raw, entries in sorted(proxy_ex_data.items(), key=lambda item: safe_key(item[0])):
+            proxy_id = safe_key(proxy_id_raw)
+            if not proxy_id or not isinstance(entries, list):
+                continue
+            proxy_node = self.add_npc_proxy_node(proxy_id, source="NpcProxyExDataTable")
+            for index, entry in enumerate(entries):
+                if not isinstance(entry, dict):
+                    continue
+                entry_node = self.add_npc_proxy_ex_entry_node(
+                    proxy_id,
+                    index,
+                    source="NpcProxyExDataTable",
+                    data=compact_payload({"proxyId": proxy_id, "index": index, "dialogId": entry.get("dialogId"), "missionId": entry.get("missionId"), "addDialogExOption": entry.get("addDialogExOption"), "envTalkData": entry.get("envTalkData")}, depth=3),
+                )
+                if not entry_node:
+                    continue
+                self.add_edge(ex_table_node, entry_node, "defines_npc_proxy_ex_entry", source="NpcProxyExDataTable", evidence=f"{proxy_id}[{index}]")
+                self.add_edge(proxy_node, entry_node, "npc_proxy_has_ex_entry", source="NpcProxyExDataTable", evidence=f"data[{index}]")
+                story_id = safe_key(entry.get("dialogId"))
+                if story_id:
+                    story_node = self.add_node("story", story_id, name=story_id, source="NpcProxyExDataTable")
+                    self.add_edge(entry_node, story_node, "npc_proxy_ex_entry_targets_story", source="NpcProxyExDataTable", evidence="dialogId")
+                    self.add_edge(story_node, entry_node, "story_targeted_by_npc_proxy_ex_entry", source="NpcProxyExDataTable", evidence="dialogId")
+                mission_node = self.add_mission_ref_node(entry.get("missionId"), source="NpcProxyExDataTable")
+                if mission_node:
+                    self.add_edge(entry_node, mission_node, "npc_proxy_ex_entry_in_mission", source="NpcProxyExDataTable", evidence="missionId")
+                    self.add_edge(mission_node, entry_node, "mission_has_npc_proxy_ex_entry", source="NpcProxyExDataTable", evidence="missionId")
+                env_talk_data = entry.get("envTalkData") if isinstance(entry.get("envTalkData"), dict) else {}
+                env_talk_ids = env_talk_data.get("envTalkIds") if isinstance(env_talk_data.get("envTalkIds"), list) else []
+                for talk_index, talk_id in enumerate(env_talk_ids):
+                    self.add_npc_proxy_ex_env_talk_edge(entry_node, talk_id, source="NpcProxyExDataTable", evidence=f"envTalkData.envTalkIds[{talk_index}]")
+
+        cluster_table_node = self.add_node("table", "AtmosphericNpcClusterDataTable", name="AtmosphericNpcClusterDataTable", source="GameplayConfig", path=slash(ATMOSPHERIC_NPC_CLUSTER_TABLE_PATH), data={"clusterCount": len(cluster_table)})
+        self.add_edge(dataset, cluster_table_node, "has_table", source="structured/npc_proxy")
+        self.add_file(slash(ATMOSPHERIC_NPC_CLUSTER_TABLE_PATH), kind="structured_gameplay_config", source="GameplayConfig")
+        for row_key, row in sorted(cluster_table.items(), key=lambda item: safe_key(item[0])):
+            if not isinstance(row, dict):
+                continue
+            cluster_id = safe_key(row.get("clusterId") or row_key)
+            if not cluster_id:
+                continue
+            row_node = self.add_node("table_row", f"AtmosphericNpcClusterDataTable:{cluster_id}", name=cluster_id, source="AtmosphericNpcClusterDataTable", data=compact_payload(row, depth=2))
+            self.add_edge(cluster_table_node, row_node, "has_row", source="structured/npc_proxy")
+            cluster_node = self.add_atmospheric_npc_cluster_node(
+                cluster_id,
+                source="AtmosphericNpcClusterDataTable",
+                data=compact_payload({"clusterId": cluster_id, "levelId": row.get("levelId"), "envTalkId": row.get("envTalkId"), "npcCount": len(row.get("npcIds") or []), "position": row.get("position")}, depth=3),
+            )
+            self.add_edge(row_node, cluster_node, "defines_atmospheric_npc_cluster", source="AtmosphericNpcClusterDataTable")
+            level_node = self.add_level_node(row.get("levelId"), source="AtmosphericNpcClusterDataTable")
+            if level_node:
+                self.add_edge(cluster_node, level_node, "atmospheric_cluster_in_level", source="AtmosphericNpcClusterDataTable", evidence="levelId")
+                self.add_edge(level_node, cluster_node, "level_has_atmospheric_cluster", source="AtmosphericNpcClusterDataTable", evidence="levelId")
+                self.add_level_map_edge(level_node, row.get("levelId"), source="AtmosphericNpcClusterDataTable", evidence="levelId")
+            self.add_atmospheric_cluster_env_talk_edge(cluster_node, row.get("envTalkId"), source="AtmosphericNpcClusterDataTable", evidence="envTalkId")
+            for index, npc_id in enumerate(row.get("npcIds") or []):
+                npc_node = self.add_environmental_npc_node(npc_id, source="AtmosphericNpcClusterDataTable")
+                if npc_node:
+                    self.add_edge(cluster_node, npc_node, "atmospheric_cluster_has_npc", source="AtmosphericNpcClusterDataTable", evidence=f"npcIds[{index}]")
+                    self.add_edge(npc_node, cluster_node, "environmental_npc_in_atmospheric_cluster", source="AtmosphericNpcClusterDataTable", evidence=f"npcIds[{index}]")
 
     def add_npc_node(self, npc_id: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
         npc_key = safe_key(npc_id)
@@ -21344,6 +21937,46 @@ class SourceGraphBuilder:
         self.add_alias(template_key, node, kind="responsive_event_template_id", source=source)
         return node
 
+    def add_responsive_policy_node(self, kind: str, value: Any, *, source: str = "") -> str:
+        value_key = safe_key(value)
+        if not value_key:
+            return ""
+        node = self.add_node(kind, value_key, name=value_key, source=source, data={"value": value})
+        self.add_alias(value_key, node, kind=f"{kind}_value", source=source)
+        self.add_alias(f"{kind}:{value_key}", node, kind=f"{kind}_id", source=source)
+        return node
+
+    def responsive_trigger_policy_data(self, trigger_type: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "cdTime": trigger_type.get("cdTime"),
+            "chatCd": trigger_type.get("chatCd"),
+            "delay": trigger_type.get("delay"),
+            "priority": trigger_type.get("priority"),
+            "probability": trigger_type.get("probability"),
+            "samePriorityInterrupt": trigger_type.get("samePriorityInterrupt"),
+        }
+
+    def add_responsive_trigger_policy_edge(
+        self,
+        type_node: str,
+        trigger_type: dict[str, Any],
+        field: str,
+        *,
+        policy_kind: str,
+        edge_kind: str,
+        reverse_edge_kind: str,
+        source: str,
+    ) -> None:
+        if field not in trigger_type:
+            return
+        policy_node = self.add_responsive_policy_node(policy_kind, trigger_type.get(field), source=source)
+        if not policy_node:
+            return
+        data = self.responsive_trigger_policy_data(trigger_type)
+        data[field] = trigger_type.get(field)
+        self.add_edge(type_node, policy_node, edge_kind, source=source, evidence=field, data=data)
+        self.add_edge(policy_node, type_node, reverse_edge_kind, source=source, evidence=field, data=data)
+
     def add_responsive_response_node(self, response_id: Any, *, source: str = "") -> str:
         response_key = safe_key(response_id)
         if not response_key:
@@ -21443,6 +22076,7 @@ class SourceGraphBuilder:
         group_node = self.add_npc_group_node(row.get("npcGroupId"), source=table)
         if group_node:
             self.add_edge(npc_node, group_node, "npc_in_group", source=table, evidence="npcGroupId")
+            self.add_edge(group_node, npc_node, "npc_group_has_npc", source=table, evidence="npcGroupId")
         if self.node_exists("npc_template", row.get("dataKey")):
             template_node = self.node_id("npc_template", row.get("dataKey"))
             self.add_edge(npc_node, template_node, "npc_uses_template", source=table, evidence="dataKey")
@@ -21548,6 +22182,22 @@ class SourceGraphBuilder:
                 base_node = self.add_responsive_trigger_type_node(base_type, source=table)
                 if base_node:
                     self.add_edge(type_node, base_node, "responsive_trigger_type_extends", source=table, evidence="baseTriggerType")
+            for field, policy_kind, edge_kind, reverse_kind in (
+                ("cdType", "responsive_cd_type", "responsive_trigger_type_has_cd_type", "responsive_cd_type_used_by_trigger_type"),
+                ("voLimitType", "responsive_vo_limit_type", "responsive_trigger_type_has_vo_limit_type", "responsive_vo_limit_type_used_by_trigger_type"),
+                ("interruptType", "responsive_interrupt_type", "responsive_trigger_type_has_interrupt_type", "responsive_interrupt_type_used_by_trigger_type"),
+                ("invalidStates", "responsive_invalid_state_mask", "responsive_trigger_type_has_invalid_state_mask", "responsive_invalid_state_mask_used_by_trigger_type"),
+                ("bandLimitCount", "responsive_band_limit_count", "responsive_trigger_type_has_band_limit_count", "responsive_band_limit_count_used_by_trigger_type"),
+            ):
+                self.add_responsive_trigger_policy_edge(
+                    type_node,
+                    trigger_type,
+                    field,
+                    policy_kind=policy_kind,
+                    edge_kind=edge_kind,
+                    reverse_edge_kind=reverse_kind,
+                    source=table,
+                )
 
     def add_bark_text_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
         text_node = self.add_bark_text_node(row_key, source=table, data={"barkText": table_text(row.get("barkText"))})
@@ -22145,10 +22795,20 @@ class SourceGraphBuilder:
             if event_node:
                 self.add_edge(owner_node, event_node, edge_kind, source=source, evidence=evidence_prefix)
 
-    def add_audio_config_owner_edges(self, config_node: str, row_key: str, *, source: str, owner_edges: tuple[tuple[str, str], ...]) -> None:
-        for kind, edge_kind in owner_edges:
+    def add_audio_config_owner_edges(self, config_node: str, row_key: str, *, source: str, owner_edges: tuple[tuple[str, str] | tuple[str, str, str], ...]) -> None:
+        for owner_edge in owner_edges:
+            kind, edge_kind = owner_edge[:2]
             if self.node_exists(kind, row_key):
-                self.add_edge(config_node, self.node_id(kind, row_key), edge_kind, source=source, evidence="rowKey")
+                owner_node = self.node_id(kind, row_key)
+                self.add_edge(config_node, owner_node, edge_kind, source=source, evidence="rowKey")
+                if len(owner_edge) > 2:
+                    self.add_edge(owner_node, config_node, owner_edge[2], source=source, evidence="rowKey")
+
+    def add_audio_drop_item_model_key_edges(self, drop_node: str, row_key: str, *, source: str) -> None:
+        for item_node in self.alias_node_ids(row_key, kind="model_key"):
+            if item_node.startswith("item:"):
+                self.add_edge(item_node, drop_node, "item_uses_audio_drop_config", source=source, evidence="modelKey")
+                self.add_edge(drop_node, item_node, "audio_drop_config_used_by_item", source=source, evidence="modelKey")
 
     def add_audio_sfx_config_edges(
         self,
@@ -22160,7 +22820,7 @@ class SourceGraphBuilder:
         kind: str,
         define_edge: str,
         event_edge: str,
-        owner_edges: tuple[tuple[str, str], ...] = (),
+        owner_edges: tuple[tuple[str, str] | tuple[str, str, str], ...] = (),
     ) -> None:
         config_node = self.add_semantic_node(kind, row_key, source=table, data=compact_payload(row, depth=2))
         if not config_node:
@@ -22231,21 +22891,24 @@ class SourceGraphBuilder:
         elif table == "AudioSpeakerTypeWeights":
             self.add_audio_speaker_type_weight_edges(table, row_key, row, row_node)
         elif table == "AudioBattleBuildings" and isinstance(row, dict):
-            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_battle_building", define_edge="defines_audio_battle_building", event_edge="audio_battle_building_uses_event", owner_edges=(("factory_building", "audio_battle_building_for_factory_building"), ("factory_machine", "audio_battle_building_for_factory_machine")))
+            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_battle_building", define_edge="defines_audio_battle_building", event_edge="audio_battle_building_uses_event", owner_edges=(("factory_building", "audio_battle_building_for_factory_building", "factory_building_uses_audio_battle_building"), ("factory_machine", "audio_battle_building_for_factory_machine", "factory_machine_uses_audio_battle_building")))
         elif table == "AudioCollection" and isinstance(row, dict):
             self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_collection", define_edge="defines_audio_collection", event_edge="audio_collection_uses_event")
         elif table == "AudioDrop" and isinstance(row, dict):
             self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_drop", define_edge="defines_audio_drop", event_edge="audio_drop_uses_event")
+            drop_node = self.node_id("audio_drop", row_key)
+            if self.node_exists("audio_drop", row_key):
+                self.add_audio_drop_item_model_key_edges(drop_node, row_key, source=table)
         elif table == "AudioFactory" and isinstance(row, dict):
-            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_factory", define_edge="defines_audio_factory", event_edge="audio_factory_uses_event", owner_edges=(("factory_building", "audio_factory_for_factory_building"), ("factory_machine", "audio_factory_for_factory_machine")))
+            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_factory", define_edge="defines_audio_factory", event_edge="audio_factory_uses_event", owner_edges=(("factory_building", "audio_factory_for_factory_building", "factory_building_uses_audio_factory"), ("factory_machine", "audio_factory_for_factory_machine", "factory_machine_uses_audio_factory")))
         elif table == "AudioFactoryAnnouncement" and isinstance(row, dict):
             self.add_audio_factory_announcement_edges(table, row_key, row, row_node)
         elif table == "AudioItemDragAndDrop" and isinstance(row, dict):
-            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_item_drag_drop", define_edge="defines_audio_item_drag_drop", event_edge="audio_item_drag_drop_uses_event", owner_edges=(("item", "audio_item_drag_drop_for_item"), ("factory_item", "audio_item_drag_drop_for_factory_item"), ("factory_machine", "audio_item_drag_drop_for_factory_machine")))
+            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_item_drag_drop", define_edge="defines_audio_item_drag_drop", event_edge="audio_item_drag_drop_uses_event", owner_edges=(("item", "audio_item_drag_drop_for_item", "item_uses_audio_item_drag_drop"), ("factory_item", "audio_item_drag_drop_for_factory_item", "factory_item_uses_audio_item_drag_drop"), ("factory_machine", "audio_item_drag_drop_for_factory_machine", "factory_machine_uses_audio_item_drag_drop")))
         elif table == "AudioItemTypeDragAndDrop" and isinstance(row, dict):
-            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_item_type_drag_drop", define_edge="defines_audio_item_type_drag_drop", event_edge="audio_item_type_drag_drop_uses_event", owner_edges=(("item_type", "audio_item_type_drag_drop_for_item_type"),))
+            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_item_type_drag_drop", define_edge="defines_audio_item_type_drag_drop", event_edge="audio_item_type_drag_drop_uses_event", owner_edges=(("item_type", "audio_item_type_drag_drop_for_item_type", "item_type_uses_audio_item_type_drag_drop"),))
         elif table == "AudioLevel" and isinstance(row, dict):
-            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_level", define_edge="defines_audio_level", event_edge="audio_level_uses_event", owner_edges=(("level", "audio_level_for_level"),))
+            self.add_audio_sfx_config_edges(table, row_key, row, row_node, kind="audio_level", define_edge="defines_audio_level", event_edge="audio_level_uses_event", owner_edges=(("level", "audio_level_for_level", "level_uses_audio_level"),))
 
 
     def ingest_dialog_support_semantics(self) -> None:
@@ -22295,7 +22958,9 @@ class SourceGraphBuilder:
             return
         self.add_edge(row_node, option_node, "defines_dialog_option", source=table)
         if self.node_exists("option", row_key):
-            self.add_edge(option_node, self.node_id("option", row_key), "dialog_option_generated_option", source=table, evidence="rowKey")
+            generated_option_node = self.node_id("option", row_key)
+            self.add_edge(option_node, generated_option_node, "dialog_option_generated_option", source=table, evidence="rowKey")
+            self.add_edge(generated_option_node, option_node, "generated_option_has_dialog_option", source=table, evidence="rowKey")
         self.add_i18n_text_edges(option_node, row, source=table)
 
     def add_dialog_summary_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
@@ -22550,6 +23215,17 @@ class SourceGraphBuilder:
             for item in value:
                 yield from self.iter_audio_cue_expr_strings(item)
 
+    def iter_audio_cue_expr_string_entries(self, value: Any, *, path: str) -> Iterable[dict[str, Any]]:
+        if isinstance(value, dict):
+            string_value = safe_key(value.get("stringValue"))
+            if string_value:
+                yield {"value": string_value, "exprType": value.get("exprType"), "exprPath": path}
+            for index, child in enumerate(value.get("children") or []):
+                yield from self.iter_audio_cue_expr_string_entries(child, path=f"{path}.children[{index}]")
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                yield from self.iter_audio_cue_expr_string_entries(item, path=f"{path}[{index}]")
+
     def add_audio_cue_handler_edges(self, cue_node: str, handler: Any, *, handler_id: str, source: str, evidence: str, level_id: Any = None) -> None:
         if not isinstance(handler, dict):
             return
@@ -22560,14 +23236,24 @@ class SourceGraphBuilder:
         if safe_key(level_id) and self.node_exists("level", level_id):
             self.add_edge(handler_node, self.node_id("level", level_id), "audio_cue_handler_for_level", source=source, evidence="levelHandlerMap")
         seen: set[str] = set()
-        for expr in (handler.get("conditionExpr"), handler.get("behaviourExpr")):
-            for string_value in self.iter_audio_cue_expr_strings(expr):
-                if string_value in seen:
-                    continue
-                seen.add(string_value)
-                event_node = self.add_wwise_event_node(string_value, source=source)
-                if event_node:
-                    self.add_edge(handler_node, event_node, "audio_cue_handler_uses_event", source=source, evidence=string_value)
+        for string_value in self.iter_audio_cue_expr_strings(handler.get("behaviourExpr")):
+            if string_value in seen:
+                continue
+            seen.add(string_value)
+            event_node = self.add_wwise_event_node(string_value, source=source)
+            if event_node:
+                self.add_edge(handler_node, event_node, "audio_cue_handler_uses_event", source=source, evidence=string_value)
+        for entry in self.iter_audio_cue_expr_string_entries(handler.get("conditionExpr"), path="conditionExpr"):
+            condition_key = safe_key(entry.get("value"))
+            if not condition_key:
+                continue
+            condition_node = self.add_semantic_node("audio_cue_condition_key", condition_key, source=source, data={"exprType": entry.get("exprType")})
+            if not condition_node:
+                continue
+            data = {"exprType": entry.get("exprType"), "exprPath": entry.get("exprPath"), "handlerEvidence": evidence}
+            condition_evidence = f"{entry.get('exprPath')}:{condition_key}"
+            self.add_edge(handler_node, condition_node, "audio_cue_handler_condition_key", source=source, evidence=condition_evidence, data=data)
+            self.add_edge(condition_node, handler_node, "audio_cue_condition_key_used_by_handler", source=source, evidence=condition_evidence, data=data)
 
     def add_audio_cue_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
         direct_handlers = row.get("directHandlers") if isinstance(row.get("directHandlers"), list) else []
@@ -22853,6 +23539,10 @@ class SourceGraphBuilder:
                 "activity_web_entry_jump": "system_jump_used_by_activity_web_entry",
                 "activity_web_stage_jump": "system_jump_used_by_activity_web_stage",
                 "battlepass_task_jump": "system_jump_used_by_battlepass_task",
+                "character_trial_jumps_to": "system_jump_used_by_character_trial",
+                "distribution_info_jump": "system_jump_used_by_distribution_info",
+                "gacha_pool_trial_jump": "system_jump_used_by_gacha_pool",
+                "gacha_recommendation_jump": "system_jump_used_by_gacha_recommendation",
             }.get(edge_kind)
             if reverse_kind:
                 self.add_edge(jump_node, owner_node, reverse_kind, source=source, evidence=evidence)
@@ -22885,6 +23575,28 @@ class SourceGraphBuilder:
                 "game_mechanic_extra_reward": "reward_used_by_game_mechanic_extra",
                 "game_mechanic_hunter_reward": "reward_used_by_game_mechanic_hunter",
                 "world_game_mechanic_first_pass_reward": "reward_used_by_world_game_mechanic_first_pass",
+                "domain_development_level_reward": "reward_used_by_domain_development_level",
+                "trial_grants_reward": "reward_granted_by_character_trial",
+                "gacha_const_reward_ref": "reward_used_by_gacha_const",
+                "gacha_pool_once_reward": "reward_used_by_gacha_pool_once",
+                "gacha_pool_every_pull_reward": "reward_used_by_gacha_pool_every_pull",
+                "gacha_pool_cumulative_reward": "reward_used_by_gacha_pool_cumulative",
+                "gacha_pool_interval_reward": "reward_used_by_gacha_pool_interval",
+                "gacha_weapon_pool_interval_reward": "reward_used_by_gacha_weapon_pool_interval",
+                "world_energy_group_first_pass_reward": "reward_used_by_world_energy_group_first_pass",
+                "ether_submit_reward": "reward_used_by_ether_submit_level",
+                "world_doodad_pickable_reward": "reward_used_by_world_doodad_pickable",
+                "world_tree_breaking_reward": "reward_used_by_world_tree_breaking",
+                "world_tree_broken_reward": "reward_used_by_world_tree_broken",
+                "planting_crop_reward": "reward_used_by_planting_crop",
+                "planting_crop_increased_reward": "reward_used_by_planting_crop_increased",
+                "mail_template_reward": "reward_used_by_mail_template",
+                "adventure_level_reward": "reward_used_by_adventure_level",
+                "tower_defense_stage_reward": "reward_used_by_tower_defense_stage",
+                "kite_station_task_reward_by_level": "reward_used_by_kite_station_task_level",
+                "kite_station_milestone_reward": "reward_used_by_kite_station_milestone",
+                "factory_tech_group_rewards": "reward_used_by_factory_tech_group",
+                "game_mechanic_group_first_pass_reward": "reward_used_by_game_mechanic_group_first_pass",
             }.get(edge_kind)
             if reverse_kind:
                 self.add_edge(reward_node, owner_node, reverse_kind, source=source, evidence=evidence, data=data)
@@ -22963,6 +23675,19 @@ class SourceGraphBuilder:
                 else:
                     continue
                 self.add_edge(condition_node, ref_node, edge_kind, source=source, evidence=evidence)
+                reverse_kind = {
+                    "activity_condition_refs_system_jump": "system_jump_used_by_activity_condition_param",
+                    "activity_condition_refs_reward": "reward_used_by_activity_condition_param",
+                    "activity_condition_refs_item": "item_used_by_activity_condition_param",
+                    "activity_condition_refs_character": "character_used_by_activity_condition_param",
+                    "activity_condition_refs_achievement": "achievement_used_by_activity_condition_param",
+                    "activity_condition_refs_stage": "activity_stage_used_by_activity_condition_param",
+                    "activity_condition_refs_activity": "activity_used_by_activity_condition_param",
+                    "activity_condition_refs_dungeon": "dungeon_used_by_activity_condition_param",
+                    "activity_condition_refs_mission": "mission_used_by_activity_condition_param",
+                }.get(edge_kind)
+                if reverse_kind:
+                    self.add_edge(ref_node, condition_node, reverse_kind, source=source, evidence=evidence)
 
     def add_activity_condition_edges(self, owner_node: str, conditions: Any, *, edge_kind: str, source: str, evidence_prefix: str) -> None:
         for index, condition in enumerate(self.iter_activity_conditions(conditions)):
@@ -22997,6 +23722,7 @@ class SourceGraphBuilder:
             stage_node = self.add_activity_stage_node(condition.get("stageId"), source=source)
             if stage_node:
                 self.add_edge(condition_node, stage_node, "activity_condition_refs_stage", source=source, evidence=f"{evidence}.stageId")
+                self.add_edge(stage_node, condition_node, "activity_stage_used_by_activity_condition_param", source=source, evidence=f"{evidence}.stageId")
             self.add_activity_parameter_refs(condition_node, condition.get("parameters"), source=source, evidence_prefix=evidence)
 
     def add_system_jump_target_edges(self, jump_node: str, phase_id: str, phase_args: Any, *, source: str) -> None:
@@ -23064,6 +23790,20 @@ class SourceGraphBuilder:
         if not jump_node:
             return
         self.add_edge(row_node, jump_node, "defines_system_jump", source=table)
+        bind_key = safe_key(row.get("bindSystem"))
+        game_system = self.game_system_by_unlock_type().get(bind_key) if bind_key else None
+        if game_system:
+            system_node = self.add_setting_metadata_node(
+                "game_system_config",
+                game_system.get("systemId") or game_system.get("_systemKey"),
+                name=game_system.get("systemName"),
+                source=table,
+                data={"systemId": game_system.get("systemId"), "unlockSystemType": game_system.get("unlockSystemType")},
+            )
+            if system_node:
+                edge_data = {"bindSystem": row.get("bindSystem")}
+                self.add_edge(jump_node, system_node, "system_jump_bound_to_game_system", source=table, evidence="bindSystem", data=edge_data)
+                self.add_edge(system_node, jump_node, "game_system_has_system_jump", source=table, evidence="bindSystem", data=edge_data)
         self.add_alias(row.get("iconId"), jump_node, kind="asset_stem", source=table)
         self.add_system_jump_target_edges(jump_node, phase_id, row.get("phaseArgs"), source=table)
         self.add_i18n_text_edges(jump_node, row, source=table)
@@ -23087,10 +23827,12 @@ class SourceGraphBuilder:
         mission_node = self.add_mission_ref_node(row.get("introMissionQuestId"), source=table)
         if mission_node:
             self.add_edge(activity_node, mission_node, "activity_intro_mission", source=table, evidence="introMissionQuestId")
+            self.add_edge(mission_node, activity_node, "mission_used_by_activity_intro", source=table, evidence="introMissionQuestId")
         for index, tag_id in enumerate(row.get("tagIds") or []):
             tag_node = self.add_activity_tag_node(tag_id, source=table)
             if tag_node:
                 self.add_edge(activity_node, tag_node, "activity_has_tag", source=table, evidence=f"tagIds[{index}]")
+                self.add_edge(tag_node, activity_node, "activity_tag_used_by_activity", source=table, evidence=f"tagIds[{index}]")
         for field in ("bgImg", "tabImg", "tabImgColor", "tabImgGender", "popUpPanelId"):
             self.add_alias(row.get(field), activity_node, kind="asset_stem", source=table)
         self.add_activity_condition_edges(activity_node, row.get("conditions"), edge_kind="activity_has_condition", source=table, evidence_prefix="conditions")
@@ -23381,6 +24123,12 @@ class SourceGraphBuilder:
             target_node = self.add_item_node(ref_key, source=source)
         if target_node:
             self.add_edge(owner_node, target_node, edge_kind, source=source, evidence=evidence, data=data)
+            reverse_kind = {
+                "activity_benefit_big_reward_ref": "showcase_ref_used_by_activity_benefit_big_reward",
+                "activity_benefit_reward_ref": "showcase_ref_used_by_activity_benefit_reward",
+            }.get(edge_kind)
+            if reverse_kind:
+                self.add_edge(target_node, owner_node, reverse_kind, source=source, evidence=evidence, data=data)
 
     def add_activity_catalog_game_ref(self, owner_node: str, game_id: Any, *, edge_kind: str, source: str, evidence: str, data: Any = None) -> str:
         game_key = safe_key(game_id)
@@ -23445,6 +24193,7 @@ class SourceGraphBuilder:
                         achievement_node = self.add_achievement_node(series.get("achieveId"), source=table)
                         if achievement_node:
                             self.add_edge(series_node, achievement_node, "activity_game_entrance_series_achievement", source=table, evidence="achieveId")
+                            self.add_edge(achievement_node, series_node, "achievement_used_by_activity_game_entrance_series", source=table, evidence="achieveId")
                         for field in ("bgImg", "bgPrefab"):
                             self.add_alias(series.get(field), series_node, kind="asset_stem", source=table)
         elif table == "ActivityGameEntranceGameTable":
@@ -23468,6 +24217,7 @@ class SourceGraphBuilder:
                 self.add_edge(row_node, series_node, "defines_activity_game_entrance_series_achieve", source=table)
             if series_node and achievement_node:
                 self.add_edge(series_node, achievement_node, "activity_game_entrance_series_achievement", source=table, evidence="achieveId")
+                self.add_edge(achievement_node, series_node, "achievement_used_by_activity_game_entrance_series", source=table, evidence="achieveId")
         elif table == "HighDifficultySeriesTable":
             series_node = self.add_activity_catalog_node("high_difficulty_series", row_key, name=row.get("name"), source=table, data={"achieveId": row.get("achieveId"), "sortId": row.get("sortId"), "newSeriesSortId": row.get("newSeriesSortId"), "bgImg": row.get("bgImg")})
             if series_node:
@@ -23476,6 +24226,7 @@ class SourceGraphBuilder:
                 achievement_node = self.add_achievement_node(row.get("achieveId"), source=table)
                 if achievement_node:
                     self.add_edge(series_node, achievement_node, "high_difficulty_series_achievement", source=table, evidence="achieveId")
+                    self.add_edge(achievement_node, series_node, "achievement_used_by_high_difficulty_series", source=table, evidence="achieveId")
                 self.add_alias(row.get("bgImg"), series_node, kind="asset_stem", source=table)
         elif table == "HighDifficultyGameTable":
             series_node = self.add_activity_catalog_node("high_difficulty_series", row.get("seriesId") or row_key, source=table, data={"gameCount": len(row.get("gameList") or [])})
@@ -23500,6 +24251,7 @@ class SourceGraphBuilder:
                         task_node = self.add_activity_catalog_node("ps_activity_task", task.get("objectId"), source=table, data=compact_payload(task, depth=2))
                         if task_node:
                             self.add_edge(ps_node, task_node, "ps_activity_has_task", source=table, evidence=f"activityTasks[{index}]", data={"index": index})
+                            self.add_edge(task_node, ps_node, "ps_activity_task_in_activity", source=table, evidence=f"activityTasks[{index}]", data={"index": index})
         elif table == "PsActivityTaskTable":
             task_node = self.add_activity_catalog_node("ps_activity_task", row.get("objectId") or row_key, source=table, data={"activityId": row.get("activityId"), "startMissionId": row.get("startMissionId"), "endMissionId": row.get("endMissionId")})
             if task_node:
@@ -23507,10 +24259,17 @@ class SourceGraphBuilder:
                 ps_node = self.add_activity_catalog_node("ps_activity", row.get("activityId"), source=table)
                 if ps_node:
                     self.add_edge(ps_node, task_node, "ps_activity_has_task", source=table, evidence="activityId")
+                    self.add_edge(task_node, ps_node, "ps_activity_task_in_activity", source=table, evidence="activityId")
                 for field, edge_kind in (("startMissionId", "ps_activity_task_start_mission"), ("endMissionId", "ps_activity_task_end_mission")):
                     mission_node = self.add_mission_ref_node(row.get(field), source=table)
                     if mission_node:
                         self.add_edge(task_node, mission_node, edge_kind, source=table, evidence=field)
+                        reverse_kind = {
+                            "ps_activity_task_start_mission": "mission_used_by_ps_activity_task_start",
+                            "ps_activity_task_end_mission": "mission_used_by_ps_activity_task_end",
+                        }.get(edge_kind)
+                        if reverse_kind:
+                            self.add_edge(mission_node, task_node, reverse_kind, source=table, evidence=field)
         elif table == "ActivitySubmitFoodTable":
             stage_node = self.add_activity_catalog_node("activity_submit_food_stage", row.get("stageId") or row_key, name=row.get("name"), source=table, data={"submitItemId": row.get("submitItemId"), "tipManualCraftId": row.get("tipManualCraftId"), "unlockShow": row.get("unlockShow"), "showImg": row.get("showImg")})
             if stage_node:
@@ -23681,6 +24440,7 @@ class SourceGraphBuilder:
                     item_node = self.add_item_node(reward_id, source=table)
                     if item_node:
                         self.add_edge(entry_node, item_node, "adventure_activity_reward_item", source=table, evidence=f"rewardList[{index}]", data={"index": index})
+                        self.add_edge(item_node, entry_node, "item_used_by_adventure_activity_reward", source=table, evidence=f"rewardList[{index}]", data={"index": index})
         elif table == "ActivityWebTable":
             web_node = self.add_activity_catalog_node("activity_web_entry", row_key, source=table, data={"jumpId": row.get("jumpId"), "disableAudio": row.get("disableAudio")})
             if web_node:
@@ -24206,7 +24966,41 @@ class SourceGraphBuilder:
                 continue
             stat_node = self.add_gameplay_stat_property_node(field, source=table)
             if stat_node:
-                self.add_edge(entity_node, stat_node, "ability_entity_sets_stat_property", source=table, evidence=field, data={"value": value})
+                data = {"value": value}
+                self.add_edge(entity_node, stat_node, "ability_entity_sets_stat_property", source=table, evidence=field, data=data)
+                self.add_edge(stat_node, entity_node, "stat_property_set_by_ability_entity", source=table, evidence=field, data=data)
+
+    def add_global_effect_param_target_edges(
+        self,
+        param_node: str,
+        param_value: Any,
+        *,
+        source: str,
+        evidence_prefix: str,
+    ) -> None:
+        if not isinstance(param_value, dict):
+            return
+        for index, raw_value in enumerate(param_value.get("valueStringList") or []):
+            value_key = safe_key(raw_value)
+            if not value_key:
+                continue
+            data = {"value": value_key, "stringIndex": index}
+            evidence = f"{evidence_prefix}.valueStringList[{index}]"
+            if value_key.startswith("stm_"):
+                settlement_node = self.add_settlement_node(value_key, source=source)
+                if settlement_node:
+                    self.add_edge(param_node, settlement_node, "global_effect_param_refers_settlement", source=source, evidence=evidence, data=data)
+                    self.add_edge(settlement_node, param_node, "settlement_referenced_by_global_effect_param", source=source, evidence=evidence, data=data)
+            elif value_key.startswith("activity_limited_formula_") and "_stage_" in value_key:
+                stage_node = self.add_activity_catalog_node("activity_limited_formula_stage", value_key, source=source)
+                if stage_node:
+                    self.add_edge(param_node, stage_node, "global_effect_param_refers_activity_limited_formula_stage", source=source, evidence=evidence, data=data)
+                    self.add_edge(stage_node, param_node, "activity_limited_formula_stage_referenced_by_global_effect_param", source=source, evidence=evidence, data=data)
+            elif value_key.startswith("activity_limited_formula_"):
+                formula_node = self.add_activity_catalog_node("activity_limited_formula", value_key, source=source)
+                if formula_node:
+                    self.add_edge(param_node, formula_node, "global_effect_param_refers_activity_limited_formula", source=source, evidence=evidence, data=data)
+                    self.add_edge(formula_node, param_node, "activity_limited_formula_referenced_by_global_effect_param", source=source, evidence=evidence, data=data)
 
     def add_global_effect_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
         effect_id = safe_key(row.get("effectId") or row_key)
@@ -24226,6 +25020,7 @@ class SourceGraphBuilder:
             for index, value in enumerate(values):
                 param_node = self.add_node("global_effect_param", f"{effect_id}:{field}:{index}", name=f"{effect_id} {field} {index}", source=table, data=compact_payload(value, depth=2))
                 self.add_edge(effect_node, param_node, "global_effect_has_param", source=table, evidence=f"{field}[{index}]")
+                self.add_global_effect_param_target_edges(param_node, value, source=table, evidence_prefix=f"{field}[{index}]")
 
     def add_potential_talent_effect_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
         effect_id = safe_key(row.get("id") or row_key)
@@ -24270,10 +25065,12 @@ class SourceGraphBuilder:
                 stat_node = self.add_node("gameplay_stat_property", attr_key, name=attr_key, source=table, data={"key": attr_key, "rawAttrType": attr.get("attrType")})
                 edge_data = {"index": index, "modifyType": modify_type, "attrType": attr.get("attrType"), "attrValue": attr.get("attrValue"), "modifierType": attr.get("modifierType"), "modifyAttributeType": attr.get("modifyAttributeType")}
                 self.add_edge(effect_node, stat_node, "potential_talent_modifies_stat_property", source=table, evidence=f"dataList[{index}].attrModifier", data=edge_data)
+                self.add_edge(stat_node, effect_node, "stat_property_modified_by_potential_talent", source=table, evidence=f"dataList[{index}].attrModifier", data=edge_data)
                 self.add_alias(attr_key, stat_node, kind="gameplay_stat_property_key", source=table)
                 meta_node = self.add_attribute_meta_node(attr.get("attrType"), source=table)
                 if meta_node:
                     self.add_edge(effect_node, meta_node, "potential_talent_modifies_attribute_meta", source=table, evidence=f"dataList[{index}].attrModifier.attrType", data=edge_data)
+                    self.add_edge(meta_node, effect_node, "attribute_meta_modified_by_potential_talent", source=table, evidence=f"dataList[{index}].attrModifier.attrType", data=edge_data)
 
     def add_enemy_tag_table_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
         tag_id = safe_key(row.get("tagId") or row_key)
@@ -24675,6 +25472,7 @@ class SourceGraphBuilder:
         if showing_type:
             showing_node = self.add_node("factory_craft_showing_type", showing_type, name=showing_type, source=table)
             self.add_edge(recipe_node, showing_node, "has_factory_showing_type", source=table, evidence="showingType")
+            self.add_edge(showing_node, recipe_node, "factory_showing_type_has_recipe", source=table, evidence="showingType")
             self.add_alias(showing_type, showing_node, kind="factory_craft_showing_type_id", source=table)
         formula_group_id = safe_key(row.get("formulaGroupId"))
         if formula_group_id:
@@ -24918,6 +25716,8 @@ class SourceGraphBuilder:
                 continue
             level_node = self.add_level_node(level_id, source=table)
             self.add_edge(point_node, level_node, edge_kind, source=table, evidence=field)
+            reverse_kind = "level_has_track_point_start" if field == "start" else "level_has_track_point_end"
+            self.add_edge(level_node, point_node, reverse_kind, source=table, evidence=field)
             self.add_level_map_edge(level_node, level_id, source=table, evidence="inferred_level_prefix")
 
     def add_track_map_link_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
@@ -24930,6 +25730,12 @@ class SourceGraphBuilder:
                 continue
             level_node = self.add_level_node(level_id, source=table)
             self.add_edge(link_node, level_node, edge_kind, source=table, evidence=field)
+            reverse_kind = {
+                "start": "level_has_track_link_start",
+                "mid": "level_has_track_link_mid",
+                "end": "level_has_track_link_end",
+            }[field]
+            self.add_edge(level_node, link_node, reverse_kind, source=table, evidence=field)
             self.add_level_map_edge(level_node, level_id, source=table, evidence="inferred_level_prefix")
 
     def add_scene_collectable_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
@@ -24948,6 +25754,7 @@ class SourceGraphBuilder:
             self.add_edge(level_node, collectable_node, "level_has_scene_collectable", source=table, evidence=str(index))
             self.add_edge(level_node, item_node, "level_has_collectable_item", source=table, evidence=str(index), data={"maxCount": item.get("maxCount")})
             self.add_edge(collectable_node, item_node, "scene_collectable_item", source=table, evidence="itemId")
+            self.add_edge(item_node, collectable_node, "item_used_by_scene_collectable", source=table, evidence="itemId", data={"sceneId": scene_id, "maxCount": item.get("maxCount")})
             image_path = safe_key(item.get("imagePath"))
             if image_path:
                 self.add_alias(image_path, collectable_node, kind="asset_stem", source=table)
@@ -24963,6 +25770,7 @@ class SourceGraphBuilder:
             convert_node = self.add_item_node(item.get("convertTargetItemId"), source=table)
             if convert_node:
                 self.add_edge(collectable_node, convert_node, "scene_collectable_converts_to_item", source=table, evidence="convertTargetItemId", data={"convertRequiredCount": item.get("convertRequiredCount")})
+                self.add_edge(convert_node, collectable_node, "item_receives_scene_collectable_conversion", source=table, evidence="convertTargetItemId", data={"sourceItemId": item_id, "convertRequiredCount": item.get("convertRequiredCount")})
 
     def add_scene_collectable_interactive_refs(self) -> None:
         rows = self.db.execute(
@@ -25020,6 +25828,52 @@ class SourceGraphBuilder:
         self.add_edge(level_node, poi_node, "level_has_shop_channel_poi", source=table, evidence="channelPartner")
         self.add_alias(poi_id, poi_node, kind="shop_channel_poi_id", source=table)
         self.add_level_map_edge(level_node, level_id, source=table, evidence="inferred_level_prefix")
+
+    def add_audio_rtpc_parameter_node(self, parameter_id: Any, *, source: str = "", data: Any = None) -> str:
+        parameter_key = safe_key(parameter_id)
+        if not parameter_key:
+            return ""
+        node = self.add_node("audio_rtpc_parameter", parameter_key, name=parameter_key, source=source, data=data)
+        self.add_alias(parameter_key, node, kind="audio_rtpc_parameter_id", source=source)
+        return node
+
+    def add_audio_dialog_rtpc_edges(self, audio_node: str, row_key: str, row: dict[str, Any], *, source: str, path: str) -> None:
+        for field, language in (
+            ("RTPCMap", ""),
+            ("RTPCMapCN", "CN"),
+            ("RTPCMapEN", "EN"),
+            ("RTPCMapJP", "JP"),
+            ("RTPCMapKR", "KR"),
+        ):
+            rtpc_map = row.get(field)
+            if not isinstance(rtpc_map, dict):
+                continue
+            for parameter_id, value in sorted(rtpc_map.items(), key=lambda item: safe_key(item[0])):
+                parameter_node = self.add_audio_rtpc_parameter_node(parameter_id, source=source)
+                if not parameter_node:
+                    continue
+                data = {
+                    "dialogId": row_key,
+                    "field": field,
+                    "language": language,
+                    "value": value,
+                    "path": path,
+                    "speakerChannel": row.get("speakerChannel"),
+                }
+                evidence = f"{field}.{safe_key(parameter_id)}"
+                self.add_edge(audio_node, parameter_node, "audio_has_rtpc_value", source=source, evidence=evidence, data=data)
+                self.add_edge(parameter_node, audio_node, "audio_rtpc_parameter_used_by_audio", source=source, evidence=evidence, data=data)
+
+    def add_audio_dialog_override_event_edge(self, audio_node: str, row_key: str, row: dict[str, Any], *, source: str, path: str) -> None:
+        event_id = safe_key(row.get("overrideWwiseEvent"))
+        if not event_id:
+            return
+        event_node = self.add_wwise_event_node(event_id, source=source)
+        if not event_node:
+            return
+        data = {"dialogId": row_key, "path": path, "speakerChannel": row.get("speakerChannel")}
+        self.add_edge(audio_node, event_node, "audio_dialog_overrides_wwise_event", source=source, evidence="overrideWwiseEvent", data=data)
+        self.add_edge(event_node, audio_node, "wwise_event_overrides_audio_dialog", source=source, evidence="overrideWwiseEvent", data=data)
 
     def add_structured_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
         if table in {"FactoryManualCraftTable", "FactoryMachineCraftTable", "FactoryHubCraftTable"} and isinstance(row, dict):
@@ -25086,6 +25940,8 @@ class SourceGraphBuilder:
             if path:
                 file_node = self.add_file(path, kind="wem_path", source="AudioDialog")
                 self.add_edge(audio_node, file_node, "audio_path", source="AudioDialog")
+            self.add_audio_dialog_rtpc_edges(audio_node, row_key, row, source="AudioDialog", path=path)
+            self.add_audio_dialog_override_event_edge(audio_node, row_key, row, source="AudioDialog", path=path)
         elif table == "CharacterTable" and isinstance(row, dict):
             char_id = safe_key(row.get("charId") or row_key)
             char_node = self.add_node(
@@ -27053,6 +27909,9 @@ QUERY_KIND_PRIORITY = {
     "character_break_stage": 14.3,
     "character_break_node": 14.4,
     "character_break_cost": 14.5,
+    "character_skill_group": 14.6,
+    "character_skill_level_cost": 14.7,
+    "character_talent_node": 14.8,
     "character_tag": 15,
     "character_battle_tag": 15.5,
     "character_tag_desc": 16,
@@ -27097,11 +27956,14 @@ QUERY_KIND_PRIORITY = {
     "character_trial": 26,
     "character_guide": 27,
     "training_recommendation": 28,
+    "combat_enemy_level": 28.1,
+    "training_power_axis": 28.2,
     "attribute_meta": 29,
     "attribute_display_config": 30,
     "attribute_display_entry": 31,
     "composite_attribute": 32,
     "attribute_filter": 33,
+    "attribute_modifier_kind": 33.5,
     "interactive_attribute": 34,
     "setting_tab": 34.1,
     "setting_item": 34.2,
@@ -27214,6 +28076,7 @@ QUERY_KIND_PRIORITY = {
     "activity_cleaning_stage": 34.859974,
     "factory_hub_craft_type_list": 34.859975,
     "item_type_conversion": 34.859976,
+    "item_valuable_tab": 34.8599765,
     "exp_item_value": 34.859977,
     "spaceship_npc_proxy": 35,
     "spaceship_skill": 36,
@@ -27240,6 +28103,7 @@ QUERY_KIND_PRIORITY = {
     "spaceship_char_gift_talk": 42.15,
     "spaceship_scene": 42.16,
     "spaceship_game_mode": 42.17,
+    "spaceship_grow_cabin_planting_field": 42.18,
     "env_talk": 43,
     "text_table_key": 43.9,
     "i18n_text": 44,
@@ -27365,6 +28229,11 @@ QUERY_KIND_PRIORITY = {
     "responsive_trigger": 94,
     "responsive_trigger_key": 95,
     "responsive_trigger_type": 96,
+    "responsive_cd_type": 96.1,
+    "responsive_vo_limit_type": 96.2,
+    "responsive_interrupt_type": 96.3,
+    "responsive_invalid_state_mask": 96.4,
+    "responsive_band_limit_count": 96.5,
     "responsive_event_template": 97,
     "responsive_response": 98,
     "bark_group": 99,
@@ -27853,6 +28722,9 @@ NODE_ID_PREFIXES = (
     "character_break_stage",
     "character_break_node",
     "character_break_cost",
+    "character_skill_group",
+    "character_skill_level_cost",
+    "character_talent_node",
     "character_tag",
     "character_battle_tag",
     "character_tag_desc",
@@ -27897,11 +28769,14 @@ NODE_ID_PREFIXES = (
     "character_trial",
     "character_guide",
     "training_recommendation",
+    "combat_enemy_level",
+    "training_power_axis",
     "attribute_meta",
     "attribute_display_config",
     "attribute_display_entry",
     "composite_attribute",
     "attribute_filter",
+    "attribute_modifier_kind",
     "interactive_attribute",
     "setting_tab",
     "setting_item",
@@ -28014,6 +28889,7 @@ NODE_ID_PREFIXES = (
     "activity_cleaning_stage",
     "factory_hub_craft_type_list",
     "item_type_conversion",
+    "item_valuable_tab",
     "exp_item_value",
     "spaceship_npc_proxy",
     "spaceship_skill",
@@ -28040,6 +28916,7 @@ NODE_ID_PREFIXES = (
     "spaceship_char_gift_talk",
     "spaceship_scene",
     "spaceship_game_mode",
+    "spaceship_grow_cabin_planting_field",
     "env_talk",
     "i18n_text",
     "i18n_text_value",
@@ -28148,6 +29025,11 @@ NODE_ID_PREFIXES = (
     "responsive_trigger",
     "responsive_trigger_key",
     "responsive_trigger_type",
+    "responsive_cd_type",
+    "responsive_vo_limit_type",
+    "responsive_interrupt_type",
+    "responsive_invalid_state_mask",
+    "responsive_band_limit_count",
     "responsive_event_template",
     "responsive_response",
     "bark_group",
