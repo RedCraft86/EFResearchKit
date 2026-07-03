@@ -244,3 +244,159 @@ Current output scans `2,348` Lua files across both roots, groups them into `1,17
 Focused module coverage is: SNS `57`, RemoteComm `36`, Dialog `32`, map marks `86`, and mission UI `95`. Top focused modules include `Common/Utils/SNSUtils.lua`, `Phase/SNS/PhaseSNS.lua`, `UI/Widgets/SNSDialogContentCore.lua`; `LuaSystem/RadioSystem.lua`, `UI/Panels/RemoteComm/RemoteCommCtrl.lua`, `Phase/RemoteComm/PhaseRemoteComm.lua`; `UI/Widgets/FriendDialogueSendArea.lua`, `Phase/Dialog/PhaseDialog.lua`; `Phase/Map/PhaseMap.lua`, `UI/Widgets/LevelMapMark.lua`, `Common/Utils/MapUtils.lua`; and `UI/Panels/Mission/MissionCtrl.lua`, `UI/Panels/MissionHud/MissionHudCtrl.lua`, `UI/Panels/CommonTaskTrackHud/CommonTaskTrackHudCtrl.lua`.
 
 This makes Lua the best next WebUI/source-graph enrichment path: add graph edges from Lua modules to table ids/enums/CS APIs and use the focus report to prioritize SNS/Dialog/RemoteComm/map-mark/mission consumer links before spending more effort on opaque ExtendData or unsafe FindTargetAction chain parsing.
+
+## Follow-up: Lua source graph consumer edges
+
+`tools/endfield_source_graph.py` now ingests `reports/mission_order/lua_consumer_reference_audit.json` late in the source-graph build, after structured/reference table ingests, so existing table nodes keep their stronger `StreamingAssets/Table` sources while Lua fills missing table references. The importer adds queryable `lua_module`, `lua_focus_area`, `lua_table_reference`, `lua_enum_reference`, and `lua_cs_reference` nodes plus module-to-focus, module-to-table, module-to-unmatched-table, module-to-enum, and module-to-CS edges.
+
+Validation:
+
+```bat
+python -B -m py_compile tools\endfield_source_graph.py
+python tools\endfield_source_graph.py build --skip-asset-maps --skip-reference-rows --skip-followups
+python tools\endfield_source_graph.py query SNSUtils --kind lua_module
+python tools\endfield_source_graph.py query sns --kind lua_focus_area
+python tools\endfield_source_graph.py query SNSChatType.Group --kind lua_enum_reference
+python tools\endfield_source_graph.py query CS.Beyond.Gameplay.MissionSystem.QuestState.Completed --kind lua_cs_reference
+```
+
+The quick source-graph build produced `1,686,855` nodes and `3,119,360` edges before the model-prefab follow-up below. Lua-specific coverage from SQLite is `724` Lua module nodes, `5` focus-area nodes, `8` unmatched Lua table-reference nodes, `237` Lua enum-reference nodes, `251` Lua CS-reference nodes, `306` module-to-focus edges, `2,018` matched Lua module-to-table edges, `9` unmatched Lua table-reference edges, `372` enum edges, and `323` CS API/reference edges. `SNSDialogTable` now remains sourced from `StreamingAssets/Table` while still receiving `sNSDialogTable` Lua aliases and Lua consumer edges.
+
+## Follow-up: model prefab source graph split
+
+`tools/endfield_source_graph.py` now splits `ModelConfigTable.prefabPath` into queryable `model_prefab` nodes, linked from each model config by `model_config_uses_prefab`. The old aliases remain on the model config, but prefab stems and full prefab paths can now resolve to the prefab node directly, which should help actor/model recovery where the config id and the Unity prefab asset name diverge.
+
+Validation:
+
+```bat
+python -B -m py_compile tools\endfield_source_graph.py
+python tools\endfield_source_graph.py build --skip-asset-maps --skip-reference-rows --skip-followups
+```
+
+The rebuild produced `1,688,007` nodes, `3,120,562` edges, and `2,277,552` aliases. SQLite counts show `1,152` `model_prefab` nodes and `1,202` `model_config_uses_prefab` edges.
+
+## Follow-up: source graph query and toolchain audit
+
+The model-prefab split needed query cleanup before more recovery data was worth adding. `tools/endfield_source_graph.py` now keeps full prefab paths as primary `prefab_path` aliases on `model_prefab` nodes and uses `model_config_prefab_path` for the model-row side, so exact prefab path or prefab-stem queries seed the prefab node first. `query_graph()` also dedupes exact/fuzzy node results by id and applies `--kind` to alias rows, which makes focused queries such as `query sns --kind lua_focus_area` readable instead of mixing unrelated SNS aliases.
+
+Lua module focus data is normalized: every `lua_module.data.focus` value is now a list, and modules created from detailed findings keep hit counts in `focusCounts`. Rebuild validation produced `1,688,007` nodes, `3,120,771` edges, and `2,277,552` aliases. SQLite checks showed `1,152` `prefab_path` aliases to `model_prefab`, `1,202` `model_config_prefab_path` aliases to `model_config_model`, `209` `model_config_used_by_interactive_template` reverse edges, and all `724` Lua modules with list-shaped focus data.
+
+Toolchain audit status: AnimeStudio remains the production extractor. The local CLI exposes `dump`, `stream`, and `vfs-index` with repeated `--block-type`, `--file-regex`, and `--fallback-assets`; the latest export summary is clean for VFS indexes and Texture2D output but is an asset-only run, not a fresh story/MonoBehaviour health check. The strongest current AnimeStudio blocker is partial MonoBehaviour JSON, especially historical `Partially decoded MonoBehaviour` warnings in story JSON logs, not VFS access or texture conversion. `tools/fluffy-dumper-src` is a useful VFS/audio/index parity/reference tool; its local dirty `vfs-index` patch passes `cargo check`, but it does not cover Unity object, TypeTree, MonoBehaviour, or IL2CPP schema recovery. IL2CPP metadata was refreshed from the current cache with `python tools\endfield-il2cpp\catalog_option_flow_metadata.py --only-focus --body-context 4`; the focused catalog now reports metadata v29, `61,338` types, `469,596` methods, and `283,933` fields. `python tools\endfield-il2cpp\map_body_targets_to_gameassembly.py` still maps `30/30` body targets against the installed `GameAssembly.dll`, resolving `209` direct calls, `63` dialog-related calls, and `14` direct calls to catalog targets.
+
+## Follow-up: AnimeStudio partial MonoBehaviour reporting
+
+`scripts/export_full_from_game.py` now parses `Partially decoded MonoBehaviour ...` AnimeStudio warnings into the existing log issue summary. It records total partial MonoBehaviour count, groups by decoder path, exception type, and normalized reason, and surfaces `partial_mono` plus sample lines in the Markdown export summary. This is reporting-only; it does not change export behavior or parser recovery.
+
+Validation used the June 27 story JSON logs directly through `summarize_animestudio_log_issues`. StreamingAssets counted `11,948` partial MonoBehaviour warnings: `11,778` `EndOfStreamException` and `170` `InvalidDataException`, all from `serialized TypeTree`; the top normalized reason was `No bytes remain while reading data:ReferencedObjectData at position <offset>.` with `9,515` hits. Persistent counted `1,486` partial warnings: `1,427` `EndOfStreamException` and `59` `InvalidDataException`, all from `serialized TypeTree`; the same top reason had `1,175` hits. A report-only smoke run of `scripts\export_full_from_game.py` also completed, and the ignored latest summary was restored to the prior AnimeStudio asset summary afterward.
+
+## Follow-up: current toolchain and online comparison pass
+
+Rechecked the local recovery toolchain on 2026-07-02:
+
+- AnimeStudio CLI exists at
+  `tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe`.
+  `dump`, `stream`, `vfs-index`, and `audio` expose `--fallback-assets`; the
+  VFS commands also expose repeated `--block-type` and `--file-regex` where
+  expected. `.\scripts\animestudio\rebuild.bat -Target CLI -NoRestore`
+  completed with existing warnings and no errors.
+- `tools\fluffy-dumper-src\target\release\fluffy-dumper.exe` and
+  `usm-convert.exe` are callable. `cargo build --release` completed with
+  existing `vgmstream` warnings only. The checkout remains intentionally dirty
+  with the local Endfield fallback-assets/indexer patch.
+- `tools\Il2CppDumper-v6.7.46\Il2CppDumper.exe` is callable; public GitHub
+  release metadata still shows v6.7.46 as the latest release.
+- `tools\Cpp2IL-2022.0.7\Cpp2IL-2022.0.7-Windows.exe --help` works, but this
+  local build is old compared with current Cpp2IL development and should be a
+  comparison path, not the first extractor.
+- `python tools\endfield-il2cpp\catalog_option_flow_metadata.py --only-focus`
+  works against cached metadata v29 (`58,618,724` bytes,
+  `61,338` types, `469,596` methods, `283,933` fields).
+- `tools\Ruri.ShaderDecompiler` is present with local build artifacts and is a
+  shader-symbol experiment, not an integrated WebUI path.
+
+Online comparison targets checked:
+
+- `https://github.com/Escartem/AnimeStudio`: active AssetStudio-successor base;
+  upstream README presents it as an up-to-date AssetStudio base with current
+  .NET builds.
+- `https://github.com/EIHRTeam/EndfieldStudio`: Endfield-specific comparison
+  target for VFS decryption, UnityFS deobfuscation, and asset decoding.
+- `https://git.nekolab.app/fluffield/fluffy-dumper`: original Rust VFS/audio
+  reference for the local patched fluffy checkout.
+- `https://github.com/Perfare/Il2CppDumper`: useful for DummyDll/script output
+  and IL2CPP analysis helpers, but not a replacement for Endfield VFS handling.
+- `https://github.com/SamboyCoding/Cpp2IL`: useful for IL2CPP method/body
+  comparison; current development branch is explicitly in flux.
+- `https://github.com/AssetRipper/AssetRipper`: current Unity asset parser to
+  compare on small bundle samples.
+- `https://github.com/Perfare/AssetStudio`: older baseline; latest public
+  release is 2022-era, so prefer AnimeStudio/AssetRipper for new experiments.
+- `https://github.com/ShiyumeMeguri/Ruri.ShaderDecompiler`: shader symbol
+  recovery comparison path.
+
+Safe next experiments:
+
+- VFS parity: compare AnimeStudio and fluffy `vfs-index` on one skipped block
+  under `tmp\`, starting with ExtendData or Lua.
+- MonoBehaviour schema probe: direct AnimeStudio CLI on a tiny selected
+  MonoBehaviour set, comparing `serialized-first` and `script-first` with
+  `tools\DummyDll`.
+- EndfieldStudio sample: build/run only list or one small table/Lua dump into
+  `tmp\endfieldstudio_probe\`.
+- IL2CPP route probe: focus one body chain such as
+  `DialogTimelineManager._SelectIndexInTimeline` against unresolved WebUI
+  option groups.
+- Shader probe: run Ruri on one exported shader plus related Material JSON and
+  check whether recovered symbols help enough to integrate.
+
+## Follow-up: 2026-07-03 tool parity and shader probe
+
+Local tool state from the parallel survey:
+
+- `tools/AnimeStudio` is at local commit `aad1379` and ahead of its tracked
+  upstream. The built CLI reports the expected VFS/audio commands and
+  `--fallback-assets` support.
+- `tools/fluffy-dumper-src` is a dirty local `tmp` branch with the patched
+  `vfs-index`/audio support. Treat it as a parity/reference tool, not as a
+  clean vendored upstream.
+- `tools/Il2CppDumper-v6.7.46` still matches the latest stable public
+  Il2CppDumper release line.
+- `tools/Cpp2IL-2022.0.7` works locally, but current public Cpp2IL preview
+  builds are newer and should be tested under `tmp/` before replacing local
+  assumptions.
+- `tools/EndfieldStudio-main` runs locally but is older than current upstream
+  commits; use a side clone under `tmp/` for comparison.
+- `tools/Ruri.ShaderDecompiler` runs locally from `bin-flat/` and can decompile
+  the bundled Endfield DXBC fixture.
+
+Online targets checked by the subagent survey:
+
+- `https://github.com/Escartem/AnimeStudio`
+- `https://github.com/EIHRTeam/EndfieldStudio`
+- `https://github.com/Perfare/Il2CppDumper`
+- `https://github.com/SamboyCoding/Cpp2IL`
+- `https://github.com/AssetRipper/AssetRipper`
+- `https://github.com/ShiyumeMeguri/Ruri.ShaderDecompiler`
+
+HotfixAudio parity was rechecked with AnimeStudio and patched fluffy-dumper:
+both tools indexed the same one-file `HotfixAudio` block byte-identically and
+decoded the same `23` WEM files from `hotfix_main.pck`. The only difference is
+output folder naming (`unmapped/hotfix/` vs `unmapped/chinese/`). The detailed
+result is in `memory/hotfix_audio_recovery_20260702.md`.
+
+Ruri shader fixture probe:
+
+```bat
+.\tools\Ruri.ShaderDecompiler\bin-flat\Release\net8.0\Ruri.ShaderDecompiler.exe "tools\Ruri.ShaderDecompiler\Test\UnityBinary\EndField\litpoly.shader.sub0.pass0.blob1.HGBuffer.dxbc.bin" - --metadata "tools\Ruri.ShaderDecompiler\Test\UnityBinary\EndField\litpoly.shader.sub0.pass0.blob1.HGBuffer.metadata.json" > tmp\ruri_litpoly_hgbuffer_probe.hlsl
+```
+
+Result: `tmp\ruri_litpoly_hgbuffer_probe.hlsl` was written as a `25,294` byte
+HLSL file with constant buffers and recovered vertex inputs. This confirms Ruri
+is viable for isolated DXBC fixture decompilation. The next useful code change
+is not to wire Ruri into the WebUI; it is to make AnimeStudio emit selected raw
+DXBC/SPIR-V sidecars for shader snippets so Ruri can be tested against real
+exported shader bytes without relying on fixture paths.
+
+The immediate code push after this audit was the source-graph material PathID
+asset-link slice recorded in
+`memory/material_pathid_asset_source_graph_recovery_20260702.md`.

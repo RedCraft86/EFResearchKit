@@ -167,7 +167,9 @@ audio-only maintenance. It indexes shared files under
 generated conversation JSON when a line's `audio` id matches a decoded file,
 streams Wwise bank HIRC metadata from VFS `*banks.pck` payloads via AnimeStudio
 `stream`, and links cutscene audio events such as `au_sfx_*`/`au_vo_*` when
-the event graph reaches decoded media.
+the event graph reaches decoded media. Pass `--block hotfix-audio` for an
+explicit HotfixAudio decode; it is treated as shared audio storage but is not
+part of `--block all`.
 
 `pack_webui.bat` runs `scripts/pack_webui.py` and creates split
 shareable zips. The main story zip contains `serve.py`, `webui/`, generated
@@ -747,6 +749,19 @@ gameplay-video OCR/audio workflow.
   stores complete body-middle hex for parser replay in JSON, lists ambiguous
   first-FindTarget records, and keeps selector tag byte hits as non-proof
   prioritization hints.
+- `story_recovery/build_findtarget_selector_replay_audit.py`: replays the saved
+  FindTargetAction body-middle byte shapes against the current TargetSettings
+  envelope helper and selector formatter tag maps. It writes
+  `reports/mission_order/findtarget_selector_replay_audit.json` / `.md`, keeps
+  selector matches as tag-only hints, consumes only locally proven empty-payload
+  selector prefixes, and reports exact boundary proof and chain-safe FindTarget
+  counters separately from noisy union-tag candidates.
+- `story_recovery/build_findtarget_selector_payload_priority_audit.py`: ranks
+  nonzero FindTarget selector tag hints and actual `0x0000` selector formatter
+  tags against MemoryPack metadata setter complexity. It writes
+  `reports/mission_order/findtarget_selector_payload_priority_audit.json` /
+  `.md` and identifies empty-payload selector targets for bounded byte-probe
+  follow-up work.
 - `story_recovery/build_lua_consumer_reference_audit.py`: scans extracted Lua
   roots and writes `reports/mission_order/lua_consumer_reference_audit.json` /
   `.md`. It deduplicates Persistent/StreamingAssets modules by relative Lua
@@ -761,6 +776,11 @@ gameplay-video OCR/audio workflow.
   writes `reports/mission_order/skipped_vfs_block_audit.json` / `.md` with
   counts, sizes, top directories, largest files, and story/SNS/UI signal
   samples so broad raw dumps can be prioritized.
+- `story_recovery/build_hotfix_audio_event_audit.py`: streams
+  `hotfix-audio` PCK payloads directly from VFS, parses embedded Wwise bank
+  HIRC metadata, and writes
+  `reports/mission_order/hotfix_audio_event_audit.json` / `.md` with
+  HotfixAudio media ids mapped to event hashes and any known event names.
 - `story_recovery/build_levelscript_header_chain_audit.py`: uses the compact
   `ActionHeader.nextId` payload field on `headerList` rows to walk from
   event/listener records into `actionList` chains. It writes
