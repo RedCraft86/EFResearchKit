@@ -60,7 +60,27 @@ in dedicated memory notes.
 - Where: broad `json_by_type` export + `scripts/build_decoded_index.py`-style
   scan to a fresh index; long-running, schedule deliberately.
 - Success: current (not historical) incomplete counts per class family.
-- Status: pending; run after P2 lands to amortize one broad pass.
+- Status: landed 2026-07-05. Full story-scope re-export (maps + json_by_type,
+  both roots, current CLI with all 2026-07-03 decoder passes plus the
+  2026-07-05 projectile EffectActionCfg effect-list recovery) completed with 0
+  command failures; decoded index rebuilt at `webui/data/decoded`
+  (1,064,294 MonoBehaviour files, 1,478 groups); frontier report and tail
+  audit refreshed. Current truth: 1,063,575 decoded / 719 partial (99.93%),
+  residual schemas ProjectileTemplateData 310, AbilityEntityTemplateData 162,
+  EnemyTemplateData 156, LineFollower 48, CharacterTemplateData 30, plus 15
+  small camera/dialog/remote-factory files. Console partial-MonoBehaviour
+  warnings are genuinely zero since 2026-06-29 (11,948 → 221 → 0 as the
+  managed-reference and animator-dependency fixes landed); partiality now
+  lives in in-JSON `$partial` diagnostics, which is what the index measures.
+  Caveat: the tail audit's per-layout "problem refs" counts rose for
+  EffectActionCfg (961 → 1,497) because newly decoded effect-list entries
+  carry honest semantic-only `$partial` markers; read file-level counts for
+  progress and layout counts for target selection. See
+  `memory/monobehaviour_index_rebuild_20260705.md`. Next structural targets:
+  `AbilityEntityTemplateData` root payload sections (162 files, 49 metadata
+  fields, 2 mapped bodies) and `SelectorData`/`TargetSettings` (74 refs in
+  CharacterTemplateData; same blocker gating BuffData FindTargetAction chain
+  consumption in P2).
 
 ### P4. Per-AB clean/dirty status manifests beyond Texture2D
 - Goal: extend the `asset_status/convert_by_type_Texture2D.json` manifest
@@ -96,18 +116,47 @@ in dedicated memory notes.
   traversal in recovered MonoBehaviour/asset maps, not filename matching.
 - Success: nonzero `model_config_asset_entity` edges with source evidence;
   `int_doodad_ore_cluster_*` family resolves to renderable owners.
-- Status: pending (see `memory/model_config_asset_binding_audit_20260701.md`).
+- Status: in progress. Current source-graph follow-up report now classifies
+  1,280 decoded model config rows against 10,678 asset entities, with 215
+  direct `model_config_asset_entity` edges, 200 strong exact rows, 10
+  ambiguous rows, and 10 name-only candidate rows. The original 0-match audit
+  is stale as a baseline but still documents why naive matching was
+  insufficient. Remaining gap is the 161 referenced rows with no exported
+  renderable candidate, including
+  `int_doodad_ore_cluster_*`; use
+  `python tools\endfield_source_graph.py model-bindings --status no_exported_renderable_candidate`
+  to inspect them.
 
 ### P7. Formula recovery pilot (2-3 systems)
 - Goal: map table columns to IL2CPP getter/evaluator methods for character
   growth, weapon ATK, and one damage path; one fully proven formula chain.
-- Status: pending; benefits from P1 tooling.
+- Status: in progress. Character growth and attribute/stat table evidence is
+  already queryable, and 2026-07-06 source graph work adds authored weapon ATK
+  level checkpoints from `WeaponUpgradeTemplateTable.list[]`: 1,890 normal
+  upgrade rows now link to `gameplay_stat_property:atk`, with matching
+  checkpoint nodes for the cumulative upgrade-sum rows. This improves the
+  weapon ATK pilot slice while still stopping short of IL2CPP evaluator proof
+  or runtime formula execution. A follow-up damage-path slice links the five
+  authored `EnemyDamageTakenLevelTable` scalar tiers to the all-damage-taken
+  stat/composite vocabulary for queryable static damage-scalar evidence, while
+  leaving DamageAction / DamageUnit evaluator recovery out of scope. See
+  `memory/weapon_atk_checkpoint_source_graph_recovery_20260706.md` and
+  `memory/enemy_damage_taken_scalar_source_graph_recovery_20260706.md`.
 
 ### P8. Cleanup queue (cheap, background)
 - Classify 110 unbound FMV-scope videos and 18 unresolved narrative refs.
 - Ingest decoded managed-reference `soundName`s into the audio catalog.
 - Keep the 35-scene story gap hotlist shrinking with tagged evidence only.
-- Status: pending.
+- Status: in progress. Decoded managed-reference `soundName` / audio event
+  refs are now source-graph audio links with reverse lookup from audio nodes;
+  see `memory/monobehaviour_soundname_audio_source_graph_recovery_20260706.md`.
+  Unresolved narrative-video candidates now have a generated source-graph
+  follow-up report that separates 3 `hasGeneratedStoryTarget` groups from 4
+  `noGeneratedStoryTarget` groups; see
+  `memory/unresolved_narrative_video_followup_report_20260706.md`.
+  Remaining cleanup is to classify or bind the 110 unbound FMV-scope variants,
+  decide the 3 actionable narrative-video groups, and continue shrinking the
+  story-gap hotlist with tagged evidence only.
 
 ## Ground rules for all items
 

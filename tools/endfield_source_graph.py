@@ -60,6 +60,7 @@ DIALOG_ID_TABLE_INDEX_PATH = EXPORT_ROOT / "recovered" / "dialog_id_table_index.
 RUNTIME_OPTION_ROUTE_AUDIT_GLOB = "runtime_jump_option_route_audit_CN*_nearby*.json"
 LUA_CONSUMER_REFERENCE_AUDIT_PATH = ROOT / "reports" / "mission_order" / "lua_consumer_reference_audit.json"
 MONOBEHAVIOUR_FRONTIER_REPORT_PATH = ROOT / "reports" / "monobehaviour_frontier_latest.json"
+MONOBEHAVIOUR_FRONTIER_TAIL_AUDIT_PATH = ROOT / "reports" / "monobehaviour_frontier_tail_audit.json"
 OPTION_FLOW_BODY_TARGETS_GAMEASSEMBLY_PATH = ROOT / "reports" / "option_flow_body_targets_gameassembly.json"
 OPTION_FLOW_ACTIVE_CLIP_FIELD_ANALYSIS_PATH = ROOT / "reports" / "option_flow_active_clip_field_analysis.json"
 TEXTURE2D_RAW_HASH_COLLISION_AUDIT_PATH = ROOT / "reports" / "texture2d_raw_hash_collision_audit.json"
@@ -87,7 +88,8 @@ ASSET_MAPS = {
 STORY_KEY_RE = re.compile(
     r"\b(?:dlg|radio|sns|cutscene|remotecomm|black|timeline|envtalk|responsive|prts|reading)_[A-Za-z0-9_]{2,160}"
 )
-ASSET_ACTOR_RE = re.compile(r"(?:^|[/\\])(?:S|T|M|A|AC)_actor_([A-Za-z0-9]+)", re.IGNORECASE)
+ASSET_ACTOR_RE = re.compile(r"(?:^|[/\\])(?:S|T|M|A|AC)_actor_(?:lod_)?([A-Za-z0-9]+)", re.IGNORECASE)
+ASSET_ENTITY_ACTOR_RE = re.compile(r"(?:^|[:/\\])actor_(?:lod_)?([A-Za-z0-9]+)", re.IGNORECASE)
 LINE_AUDIO_RE = re.compile(r"\bau_[A-Za-z0-9_]{2,160}\b")
 LINE_AUDIO_BYTES_RE = re.compile(rb"\bau_[A-Za-z0-9_]{2,160}\b")
 PATH_ID_EXPORT_STEM_RE = re.compile(r"^(?P<base>.+)_p(?P<path_id>[0-9A-Fa-f]{16})$")
@@ -997,6 +999,13 @@ STAT_ATTR_KEYS = {
     85: "ether_damage_taken_scalar",
     87: "infliction",
 }
+ENEMY_DAMAGE_TAKEN_SCALAR_FIELDS = {
+    "physicalDmgResistScalar": "physical_damage_taken_scalar",
+    "naturalDmgResistScalar": "natural_damage_taken_scalar",
+    "fireDmgResistScalar": "fire_damage_taken_scalar",
+    "crystDmgResistScalar": "cryst_damage_taken_scalar",
+    "pulseDmgResistScalar": "pulse_damage_taken_scalar",
+}
 DECODED_CONFIG_TARGET_TYPES = {
     "AnimationConfig",
     "AIConfigEnemyTemplateDataSummary",
@@ -1107,6 +1116,44 @@ def slash(path: Path) -> str:
         return path.as_posix()
 
 
+def resolve_runtime_audit_asset_path(path_text: Any) -> dict[str, Any]:
+    rel = str(path_text or "").replace("\\", "/").strip()
+    if not rel:
+        return {}
+    exact = ROOT / rel
+    if exact.exists():
+        return {
+            "assetTrackPathStatus": "exists",
+            "assetTrackExists": True,
+            "assetTrackResolvedPath": slash(exact),
+        }
+    basename = Path(rel).name
+    if not basename:
+        return {
+            "assetTrackPathStatus": "missing",
+            "assetTrackExists": False,
+        }
+    search_root = EXPORT_ROOT / "recovered" / "AnimeStudio-cli" / "timeline_extract"
+    matches = sorted(search_root.rglob(basename)) if search_root.exists() else []
+    if len(matches) == 1:
+        return {
+            "assetTrackPathStatus": "basename_resolved",
+            "assetTrackExists": False,
+            "assetTrackResolvedPath": slash(matches[0]),
+        }
+    if len(matches) > 1:
+        return {
+            "assetTrackPathStatus": "basename_ambiguous",
+            "assetTrackExists": False,
+            "assetTrackResolvedCount": len(matches),
+            "assetTrackResolvedPath": slash(matches[0]),
+        }
+    return {
+        "assetTrackPathStatus": "missing",
+        "assetTrackExists": False,
+    }
+
+
 def read_json(path: Path, default: Any = None) -> Any:
     try:
         with path.open("r", encoding="utf-8") as handle:
@@ -1176,6 +1223,22 @@ def model_asset_entity_candidate_bases(token: Any) -> list[str]:
     return _unique_preserve(candidate for candidate in candidates if candidate)
 
 
+def model_config_family_prefixes(*tokens: Any) -> list[str]:
+    prefixes: list[str] = []
+    for token in tokens:
+        token_key = safe_key(token)
+        if not token_key:
+            continue
+        for value in (token_key, Path(token_key).stem):
+            base = normalized_model_entity_base(value)
+            if base.endswith("_postmodel"):
+                base = base.removesuffix("_postmodel")
+            parts = [part for part in base.split("_") if part]
+            for length in range(len(parts) - 1, 2, -1):
+                prefixes.append("_".join(parts[:length]))
+    return _unique_preserve(prefix for prefix in prefixes if prefix)
+
+
 def exported_model_entity_base(rel: str) -> str:
     stem = Path(rel).stem
     logical_stem = path_id_export_base_stem(stem) or stem
@@ -1183,6 +1246,28 @@ def exported_model_entity_base(rel: str) -> str:
     if ASSET_LOD_SUFFIX_RE.search(stripped) or stripped.lower().endswith("_postmodel"):
         return normalized_model_entity_base(stem)
     return ""
+
+
+def exported_material_entity_base(rel: str) -> str:
+    stem = Path(rel).stem
+    logical_stem = path_id_export_base_stem(stem) or stem
+    stripped = ASSET_SINGLE_PREFIX_RE.sub("", logical_stem, count=1)
+    return stripped.replace("+", "_").lower()
+
+
+def exported_texture_entity_base(rel: str) -> str:
+    stem = Path(rel).stem
+    logical_stem = path_id_export_base_stem(stem) or stem
+    stripped = ASSET_SINGLE_PREFIX_RE.sub("", logical_stem, count=1).replace("+", "_").lower()
+    for suffix in ("_rgb_e", "_mro", "_orm", "_mask", "_basecolor", "_albedo", "_normal", "_d", "_e", "_n"):
+        if stripped.endswith(suffix):
+            return stripped[: -len(suffix)]
+    return stripped
+
+
+def asset_entity_source_for_rel(rel: str) -> str:
+    source = rel.split("/", 1)[0]
+    return source.removesuffix("-materials")
 
 
 def compact_payload(value: Any, *, depth: int = 2, list_limit: int = 12) -> Any:
@@ -3341,6 +3426,8 @@ class SourceGraphBuilder:
             self.commit_step("luaConsumers")
             self.ingest_monobehaviour_frontier_report()
             self.commit_step("monoBehaviourFrontier")
+            self.ingest_monobehaviour_frontier_tail_audit()
+            self.commit_step("monoBehaviourFrontierTailAudit")
             if self.include_asset_maps:
                 self.ingest_asset_maps()
                 self.commit_step("assetMaps")
@@ -3354,7 +3441,14 @@ class SourceGraphBuilder:
                 self.commit_step("texture2dRawHashCollisions")
             self.finalize_indices()
             summary = self.summary(started)
-            write_summary(summary)
+            try:
+                default_db = DEFAULT_DB.resolve()
+                current_db = self.db_path.resolve()
+            except OSError:
+                default_db = DEFAULT_DB.absolute()
+                current_db = self.db_path.absolute()
+            summary_dir = GRAPH_DIR if current_db == default_db else self.db_path.parent
+            write_summary(summary, output_dir=summary_dir)
             if self.emit_followups:
                 emit_followup_indexes(self.db_path, summary)
             return summary
@@ -3373,6 +3467,8 @@ class SourceGraphBuilder:
         asset_entity_groups: dict[tuple[str, str], dict[str, Any]] = defaultdict(
             lambda: {"source": "", "base": "", "models": {}, "materials": {}, "textures": {}}
         )
+        fallback_materials_by_entity_key: dict[tuple[str, str], dict[str, dict[str, Any]]] = defaultdict(dict)
+        fallback_textures_by_entity_key: dict[tuple[str, str], dict[str, dict[str, Any]]] = defaultdict(dict)
 
         def asset_node_for_rel(rel_value: Any) -> str:
             rel_text = safe_key(rel_value)
@@ -3471,6 +3567,22 @@ class SourceGraphBuilder:
                     group["source"] = source
                     group["base"] = model_base
                     group["models"][rel] = {"pid": pid} if pid else {}
+            elif kind == "json" and "/Material/" in rel:
+                material_base = exported_material_entity_base(rel)
+                if material_base:
+                    entity_key = (asset_entity_source_for_rel(rel), material_base)
+                    fallback_materials_by_entity_key[entity_key][rel] = {
+                        "evidence": Path(rel).stem,
+                        "data": {"rel": rel, "pid": pid, "match": "filenameBase"},
+                    }
+            elif kind == "image" and (entry.get("mt") or "/Texture2D/" in rel):
+                texture_base = exported_texture_entity_base(rel)
+                if texture_base:
+                    entity_key = (asset_entity_source_for_rel(rel), texture_base)
+                    fallback_textures_by_entity_key[entity_key][rel] = {
+                        "evidence": Path(rel).stem,
+                        "data": {"rel": rel, "pid": pid, "match": "filenameBase"},
+                    }
             if entry.get("p"):
                 preview = asset_node_for_rel(entry["p"])
                 self.add_edge(node, preview, "previewed_by", source="webui/assets")
@@ -3570,6 +3682,11 @@ class SourceGraphBuilder:
             model_base = safe_key(group.get("base"))
             if not source or not model_base:
                 continue
+            entity_key = (source, model_base)
+            for material_rel, material_info in sorted(fallback_materials_by_entity_key.get(entity_key, {}).items()):
+                group["materials"].setdefault(material_rel, material_info)
+            for texture_rel, texture_info in sorted(fallback_textures_by_entity_key.get(entity_key, {}).items()):
+                group["textures"].setdefault(texture_rel, texture_info)
             for material_rel, material_info in sorted(group["materials"].items()):
                 material_relation = relation_lookup.get(material_rel) or {}
                 if not isinstance(material_relation, dict):
@@ -4512,6 +4629,17 @@ class SourceGraphBuilder:
             return b""
 
     def add_model_asset_entity_edges(self, owner_node: str, tokens: Iterable[Any], *, edge_kind: str, source: str, evidence: str) -> None:
+        reverse_kind = {
+            "model_config_asset_entity": "asset_entity_used_by_model_config",
+            "model_view_state_controller_asset_entity": "asset_entity_used_by_model_view_state_controller",
+            "interactive_template_asset_entity": "asset_entity_used_by_interactive_template",
+            "harvestable_uses_model_asset": "asset_entity_used_by_harvestable",
+            "world_tree_uses_model_asset": "asset_entity_used_by_world_tree",
+            "planting_crop_uses_model_asset": "asset_entity_used_by_planting_crop",
+            "weapon_model_asset_entity": "asset_entity_used_by_weapon_model",
+            "enemy_uses_model_asset": "asset_entity_used_by_enemy",
+            "monobehaviour_frontier_entry_model_asset_entity": "asset_entity_used_by_monobehaviour_frontier_entry",
+        }.get(edge_kind)
         seen_entities: set[str] = set()
         for token in tokens:
             token_key = safe_key(token)
@@ -4538,6 +4666,15 @@ class SourceGraphBuilder:
                         evidence=evidence,
                         data={"token": token_key, "modelBase": node_key(entity_node)},
                     )
+                    if reverse_kind:
+                        self.add_edge(
+                            entity_node,
+                            owner_node,
+                            reverse_kind,
+                            source=source,
+                            evidence=evidence,
+                            data={"token": token_key, "modelBase": node_key(entity_node)},
+                        )
 
     def ingest_decoded_config_semantics(self) -> None:
         group_root = WEBUI_DATA / "game_data" / "groups"
@@ -6043,6 +6180,14 @@ class SourceGraphBuilder:
                     model_node,
                     prefab_node,
                     "model_config_uses_prefab",
+                    source="webui/game_data",
+                    evidence="prefabPath",
+                    data={"prefabStem": prefab_stem},
+                )
+                self.add_edge(
+                    prefab_node,
+                    model_node,
+                    "model_prefab_used_by_model_config",
                     source="webui/game_data",
                     evidence="prefabPath",
                     data={"prefabStem": prefab_stem},
@@ -11640,6 +11785,7 @@ class SourceGraphBuilder:
                         "optionIndexAfterJump": jump.get("optionIndexAfterJump"),
                         "sourceReport": source_path,
                     }
+                    jump_data.update(resolve_runtime_audit_asset_path(jump.get("assetTrack")))
                     jump_node = self.add_node(
                         "runtime_jump_clip",
                         jump_key,
@@ -16596,6 +16742,7 @@ class SourceGraphBuilder:
             self.add_alias(enemy_key, enemy_node, kind="enemy_id", source=source)
             level = levels[index] if index < len(levels) else None
             self.add_edge(dungeon_node, enemy_node, "dungeon_enemy", source=source, evidence=f"enemyIds[{index}]", data={"level": level})
+            self.add_edge(enemy_node, dungeon_node, "enemy_used_by_dungeon", source=source, evidence=f"enemyIds[{index}]", data={"level": level})
 
     def add_dungeon_reward_edges(self, owner_node: str, row: dict[str, Any], *, source: str, fields: Iterable[tuple[str, str]]) -> None:
         for field, edge_kind in fields:
@@ -16611,22 +16758,27 @@ class SourceGraphBuilder:
                 type_node = self.add_dungeon_catalog_node("dungeon_type", row.get("dungeonCategory"), source=table)
                 if type_node:
                     self.add_edge(dungeon_node, type_node, "dungeon_has_type", source=table, evidence="dungeonCategory")
+                    self.add_edge(type_node, dungeon_node, "dungeon_type_has_dungeon", source=table, evidence="dungeonCategory")
                 series_node = self.add_dungeon_catalog_node("dungeon_series", row.get("dungeonSeriesId"), source=table)
                 if series_node:
                     self.add_edge(series_node, dungeon_node, "dungeon_series_includes", source=table, evidence="dungeonSeriesId")
+                    self.add_edge(dungeon_node, series_node, "dungeon_in_series", source=table, evidence="dungeonSeriesId")
                 for field in ("sceneId", "levelId"):
                     level_node = self.add_level_node(row.get(field), source=table)
                     if level_node:
                         self.add_edge(dungeon_node, level_node, "dungeon_uses_level", source=table, evidence=field)
+                        self.add_edge(level_node, dungeon_node, "level_has_dungeon", source=table, evidence=field)
                         self.add_level_map_edge(level_node, row.get(field), source=table, evidence=field)
                 self.add_dungeon_enemy_edges(dungeon_node, row, source=table)
                 self.add_dungeon_reward_edges(dungeon_node, row, source=table, fields=(("rewardId", "dungeon_reward"), ("firstPassRewardId", "dungeon_first_pass_reward"), ("extraRewardId", "dungeon_extra_reward"), ("hunterModeRewardId", "dungeon_hunter_reward"), ("customRewardId", "dungeon_custom_reward")))
                 char_node = self.add_character_ref_node(row.get("relatedCharId"), source=table)
                 if char_node:
                     self.add_edge(dungeon_node, char_node, "dungeon_related_character", source=table, evidence="relatedCharId")
+                    self.add_edge(char_node, dungeon_node, "character_related_to_dungeon", source=table, evidence="relatedCharId")
                 domain_node = self.add_gameplay_domain_node(row.get("domainId"), source=table)
                 if domain_node:
                     self.add_edge(dungeon_node, domain_node, "dungeon_in_domain", source=table, evidence="domainId")
+                    self.add_edge(domain_node, dungeon_node, "domain_has_dungeon", source=table, evidence="domainId")
                 for field in ("dungeonPicPath", "dungeonImg"):
                     self.add_alias(row.get(field), dungeon_node, kind="asset_stem", source=table)
         elif table == "DungeonSeriesTable" and isinstance(row, dict):
@@ -16637,13 +16789,16 @@ class SourceGraphBuilder:
                 category_node = self.add_game_mechanic_node("game_mechanic_category", row.get("gameCategory"), source=table)
                 if category_node:
                     self.add_edge(series_node, category_node, "dungeon_series_game_category", source=table, evidence="gameCategory")
+                    self.add_edge(category_node, series_node, "game_mechanic_category_has_dungeon_series", source=table, evidence="gameCategory")
                 category2_node = self.add_dungeon_catalog_node("dungeon_category2nd", row.get("dungeonCategory2nd"), source=table)
                 if category2_node:
                     self.add_edge(series_node, category2_node, "dungeon_series_category2nd", source=table, evidence="dungeonCategory2nd")
+                    self.add_edge(category2_node, series_node, "dungeon_category2nd_has_series", source=table, evidence="dungeonCategory2nd")
                 for index, dungeon_id in enumerate(row.get("includeDungeonIds") or []):
                     dungeon_node = self.add_dungeon_node(dungeon_id, source=table)
                     if dungeon_node:
                         self.add_edge(series_node, dungeon_node, "dungeon_series_includes", source=table, evidence=f"includeDungeonIds[{index}]")
+                        self.add_edge(dungeon_node, series_node, "dungeon_in_series", source=table, evidence=f"includeDungeonIds[{index}]")
                 for field in ("dungeonImg", "dungeonRoleImg"):
                     self.add_alias(row.get(field), series_node, kind="asset_stem", source=table)
         elif table == "DungeonTypeTable" and isinstance(row, dict):
@@ -16656,6 +16811,7 @@ class SourceGraphBuilder:
                     mark_node = self.add_node("map_mark_type", mark_type, name=mark_type, source=table)
                     self.add_alias(mark_type, mark_node, kind="map_mark_type_id", source=table)
                     self.add_edge(type_node, mark_node, "dungeon_type_map_mark_type", source=table, evidence="mapMarkType")
+                    self.add_edge(mark_node, type_node, "map_mark_type_used_by_dungeon_type", source=table, evidence="mapMarkType")
         elif table == "DungeonCategory2ndTable" and isinstance(row, dict):
             category_node = self.add_dungeon_catalog_node("dungeon_category2nd", row.get("dungeonCategory2nd") if row.get("dungeonCategory2nd") is not None else row_key, name=row.get("name"), source=table)
             if category_node:
@@ -16675,6 +16831,7 @@ class SourceGraphBuilder:
                 domain_node = self.add_gameplay_domain_node(row.get("domainId"), source=table)
                 if domain_node:
                     self.add_edge(dungeon_node, domain_node, "factory_dungeon_domain", source=table, evidence="domainId")
+                    self.add_edge(domain_node, dungeon_node, "domain_has_factory_dungeon", source=table, evidence="domainId")
                 guide_node = self.add_node("guide_group", safe_key(row.get("afterDirectlyGetRewardGuideGroupId")), name=safe_key(row.get("afterDirectlyGetRewardGuideGroupId")), source=table) if safe_key(row.get("afterDirectlyGetRewardGuideGroupId")) else ""
                 if guide_node:
                     self.add_alias(row.get("afterDirectlyGetRewardGuideGroupId"), guide_node, kind="guide_group_id", source=table)
@@ -16684,6 +16841,7 @@ class SourceGraphBuilder:
                     dep_node = self.add_dungeon_node(dep_id, source=table)
                     if dep_node:
                         self.add_edge(dungeon_node, dep_node, "factory_dungeon_requires", source=table, evidence=f"preDependencies[{index}]")
+                        self.add_edge(dep_node, dungeon_node, "factory_dungeon_required_by", source=table, evidence=f"preDependencies[{index}]")
         elif table == "SimulationTrainingLevelTable" and isinstance(row, dict):
             level_id = row.get("gamblingBattleLevel") if row.get("gamblingBattleLevel") is not None else row_key
             level_node = self.add_dungeon_catalog_node("simulation_training_level", level_id, source=table, data={"costDomainMoney": row.get("costDomainMoney"), "domainDevExp": row.get("domainDevExp"), "doubleLimit": row.get("doubleLimit"), "isFinalMaxLevel": row.get("isFinalMaxLevel"), "pointAwardCount": len(row.get("pointAward") or [])})
@@ -17493,6 +17651,74 @@ class SourceGraphBuilder:
             out["last"] = compact_payload(last, depth=1)
         return out
 
+    def add_weapon_upgrade_level_checkpoints(self, template_node: str, template_id: str, levels: Any, *, kind: str, source: str) -> None:
+        if not isinstance(levels, list):
+            return
+        stat_node = self.add_gameplay_stat_property_node("atk", source=source)
+        checkpoint_kind = "weapon_upgrade_level_checkpoint"
+        for index, entry in enumerate(levels):
+            if not isinstance(entry, dict):
+                continue
+            level = entry.get("weaponLv")
+            level_key = safe_key(level if level is not None else index + 1)
+            if not level_key:
+                continue
+            checkpoint_id = f"{kind}:{template_id}:level:{level_key}"
+            data = {
+                "templateId": template_id,
+                "templateKind": kind,
+                "level": level,
+                "baseAtk": entry.get("baseAtk"),
+                "lvUpExp": entry.get("lvUpExp"),
+                "lvUpGold": entry.get("lvUpGold"),
+                "lvUpExpSum": entry.get("lvUpExpSum"),
+                "lvUpGoldSum": entry.get("lvUpGoldSum"),
+                "index": index,
+            }
+            checkpoint_node = self.add_node(
+                checkpoint_kind,
+                checkpoint_id,
+                name=f"{template_id} Lv {level_key}",
+                source=source,
+                data=compact_payload(data, depth=1),
+            )
+            self.add_alias(checkpoint_id, checkpoint_node, kind=f"{checkpoint_kind}_id", source=source)
+            self.add_alias(f"{template_id}:level:{level_key}", checkpoint_node, kind=f"{checkpoint_kind}_id", source=source)
+            self.add_edge(
+                template_node,
+                checkpoint_node,
+                "weapon_upgrade_template_has_level_checkpoint",
+                source=source,
+                evidence=f"list[{index}]",
+                data=data,
+            )
+            self.add_edge(
+                checkpoint_node,
+                template_node,
+                "weapon_upgrade_level_checkpoint_for_template",
+                source=source,
+                evidence=f"list[{index}]",
+                data=data,
+            )
+            if stat_node and entry.get("baseAtk") is not None:
+                stat_data = {"value": entry.get("baseAtk"), "statKey": "atk", "level": level, "templateKind": kind}
+                self.add_edge(
+                    checkpoint_node,
+                    stat_node,
+                    "weapon_upgrade_checkpoint_has_stat_property",
+                    source=source,
+                    evidence="baseAtk",
+                    data=stat_data,
+                )
+                self.add_edge(
+                    stat_node,
+                    checkpoint_node,
+                    "stat_property_used_by_weapon_upgrade_checkpoint",
+                    source=source,
+                    evidence="baseAtk",
+                    data=stat_data,
+                )
+
     def ingest_weapon_semantics(self) -> None:
         table_root = EXPORT_ROOT / "structured" / "StreamingAssets" / "Table"
         dataset = self.add_node("dataset", "structured_weapon_semantics", name="Structured weapon tables", path=slash(table_root))
@@ -17589,6 +17815,7 @@ class SourceGraphBuilder:
         if not template_node:
             return
         self.add_edge(row_node, template_node, edge_kind, source=table)
+        self.add_weapon_upgrade_level_checkpoints(template_node, template_id, levels, kind=kind, source=table)
         if kind == "weapon_upgrade_sum_template":
             upgrade_node = self.add_weapon_template_node("weapon_upgrade_template", template_id, source=table)
             if upgrade_node:
@@ -17852,6 +18079,7 @@ class SourceGraphBuilder:
         dungeon_node = self.add_dungeon_node(tutorial_id, source=table)
         self.add_edge(row_node, tutorial_node, "defines_character_tutorial", source=table)
         self.add_edge(tutorial_node, dungeon_node, "tutorial_uses_dungeon", source=table, evidence="rowKey")
+        self.add_edge(dungeon_node, tutorial_node, "dungeon_used_by_tutorial", source=table, evidence="rowKey")
         self.add_alias(tutorial_id, tutorial_node, kind="character_tutorial_id", source=table)
         for index, stage in enumerate(row.get("tutorialStageData") or []):
             if not isinstance(stage, dict):
@@ -17877,8 +18105,10 @@ class SourceGraphBuilder:
         tutorial_node = self.add_node("character_tutorial", safe_key(row), name=safe_key(row), source=table)
         self.add_edge(row_node, char_node, "defines_character_training_dungeon", source=table)
         self.add_edge(char_node, dungeon_node, "character_training_dungeon", source=table, evidence="rowValue")
+        self.add_edge(dungeon_node, char_node, "dungeon_used_by_character_training", source=table, evidence="rowValue")
         self.add_edge(char_node, tutorial_node, "character_has_tutorial", source=table, evidence=safe_key(row))
         self.add_edge(tutorial_node, dungeon_node, "tutorial_uses_dungeon", source=table, evidence="CharId2DungeonIdTable")
+        self.add_edge(dungeon_node, tutorial_node, "dungeon_used_by_tutorial", source=table, evidence="CharId2DungeonIdTable")
 
     def add_character_trial_edges(self, table: str, row_key: str, row: dict[str, Any], row_node: str) -> None:
         dungeon_id = safe_key(row.get("dungeonId") or row_key)
@@ -17888,6 +18118,7 @@ class SourceGraphBuilder:
         dungeon_node = self.add_dungeon_node(dungeon_id, source=table)
         self.add_edge(row_node, trial_node, "defines_character_trial", source=table)
         self.add_edge(trial_node, dungeon_node, "trial_uses_dungeon", source=table, evidence="dungeonId")
+        self.add_edge(dungeon_node, trial_node, "dungeon_used_by_trial", source=table, evidence="dungeonId")
         self.add_alias(dungeon_id, trial_node, kind="character_trial_id", source=table)
         self.add_alias(row.get("guideGroupId"), trial_node, kind="guide_group_id", source=table)
         guide_group_node = self.add_guide_group_node(row.get("guideGroupId"), source=table, data={"dungeonId": dungeon_id})
@@ -21861,6 +22092,7 @@ class SourceGraphBuilder:
         line_node = self.node_id("line", response_key)
         if self.node_exists("line", response_key):
             self.add_edge(response_node, line_node, "responsive_response_line_node", source=source, evidence=response_evidence)
+            self.add_edge(line_node, response_node, "line_used_by_responsive_response", source=source, evidence=response_evidence)
         row = self.audio_dialog_rows().get(response_key)
         if not isinstance(row, dict):
             return
@@ -22205,7 +22437,9 @@ class SourceGraphBuilder:
             return
         self.add_edge(row_node, text_node, "defines_bark_text", source=table)
         if self.node_exists("line", row_key):
-            self.add_edge(text_node, self.node_id("line", row_key), "bark_text_line_node", source=table, evidence=row_key)
+            line_node = self.node_id("line", row_key)
+            self.add_edge(text_node, line_node, "bark_text_line_node", source=table, evidence=row_key)
+            self.add_edge(line_node, text_node, "line_has_bark_text", source=table, evidence=row_key)
         self.add_i18n_text_edges(text_node, row.get("barkText"), source=table)
         for text_id in self.iter_i18n_text_ids(row.get("barkText")):
             i18n_node = self.add_i18n_text_node(text_id, source=table)
@@ -22367,12 +22601,34 @@ class SourceGraphBuilder:
     def add_story_target_edge(self, owner_node: str, story_id: Any, *, edge_kind: str, source: str, evidence: str) -> None:
         story_key = safe_key(story_id)
         if story_key and self.node_exists("story", story_key):
-            self.add_edge(owner_node, self.node_id("story", story_key), edge_kind, source=source, evidence=evidence)
+            story_node = self.node_id("story", story_key)
+            self.add_edge(owner_node, story_node, edge_kind, source=source, evidence=evidence)
+            reverse_kind = {
+                "dialog_summary_map_targets_story": "story_targeted_by_dialog_summary_map",
+                "domain_depot_initial_dialog": "story_used_as_domain_depot_initial_dialog",
+                "domain_depot_repeat_dialog": "story_used_as_domain_depot_repeat_dialog",
+                "sns_dialog_targets_story": "story_targeted_by_sns_dialog",
+                "radio_targets_story": "story_targeted_by_radio",
+                "remote_common_targets_story": "story_targeted_by_remote_common",
+                "audio_dialog_custom_event_targets_story": "story_targeted_by_audio_dialog_custom_event",
+            }.get(edge_kind)
+            if reverse_kind:
+                self.add_edge(story_node, owner_node, reverse_kind, source=source, evidence=evidence)
 
     def add_line_target_edge(self, owner_node: str, line_id: Any, *, edge_kind: str, source: str, evidence: str) -> None:
         line_key = safe_key(line_id)
         if line_key and self.node_exists("line", line_key):
-            self.add_edge(owner_node, self.node_id("line", line_key), edge_kind, source=source, evidence=evidence)
+            line_node = self.node_id("line", line_key)
+            self.add_edge(owner_node, line_node, edge_kind, source=source, evidence=evidence)
+            reverse_kind = {
+                "text_voice_id_line_node": "line_has_text_voice_id_mapping",
+                "dialog_text_line_node": "line_has_dialog_text",
+                "radio_line_node": "line_used_by_radio_row",
+                "remote_common_line_node": "line_used_by_remote_common_row",
+                "audio_voice_extra_line_node": "line_has_audio_voice_extra",
+            }.get(edge_kind)
+            if reverse_kind:
+                self.add_edge(line_node, owner_node, reverse_kind, source=source, evidence=evidence)
 
     def add_story_edges_for_line_target(self, owner_node: str, line_id: Any, *, edge_kind: str, source: str, evidence: str) -> None:
         line_key = safe_key(line_id)
@@ -24604,6 +24860,18 @@ class SourceGraphBuilder:
             self.add_edge(owner_node, meta_node, edge_kind, source=source, evidence=f"{evidence_prefix}[{index}]", data=data)
             self.add_edge(meta_node, owner_node, "attribute_meta_used_by_enemy", source=source, evidence=f"{evidence_prefix}[{index}]", data={**data, "edgeKind": edge_kind})
 
+    def add_enemy_damage_taken_scalar_edges(self, owner_node: str, row: dict[str, Any], *, source: str) -> None:
+        for field, stat_key in ENEMY_DAMAGE_TAKEN_SCALAR_FIELDS.items():
+            value = row.get(field)
+            if value is None:
+                continue
+            stat_node = self.add_gameplay_stat_property_node(stat_key, source=source)
+            if not stat_node:
+                continue
+            data = {"field": field, "statKey": stat_key, "value": value}
+            self.add_edge(owner_node, stat_node, "enemy_attribute_template_sets_damage_taken_scalar", source=source, evidence=field, data=data)
+            self.add_edge(stat_node, owner_node, "damage_taken_scalar_set_by_enemy_attribute_template", source=source, evidence=field, data=data)
+
     def add_enemy_row_edges(self, table: str, row_key: str, row: Any, row_node: str) -> None:
         if table == "DisplayEnemyTypeTable" and isinstance(row, dict):
             type_node = self.add_enemy_display_type_node(row_key, name=row.get("name"), source=table)
@@ -24612,10 +24880,19 @@ class SourceGraphBuilder:
                 self.add_tag_i18n_edges(type_node, row.get("name"), source=table, edge_kind="enemy_display_type_name_text")
             return
         if table == "EnemyDamageTakenLevelTable" and isinstance(row, dict):
-            level_node = self.add_semantic_node("enemy_damage_taken_level", row.get("damageTakenLevel") or row_key, name=row.get("name"), source=table, data={"damageTakenLevel": row.get("damageTakenLevel"), "damageTakenScalar": row.get("damageTakenScalar")})
+            data = {"damageTakenLevel": row.get("damageTakenLevel"), "damageTakenScalar": row.get("damageTakenScalar")}
+            level_node = self.add_semantic_node("enemy_damage_taken_level", row.get("damageTakenLevel") or row_key, name=row.get("name"), source=table, data=data)
             if level_node:
                 self.add_edge(row_node, level_node, "defines_enemy_damage_taken_level", source=table)
                 self.add_tag_i18n_edges(level_node, row.get("name"), source=table, edge_kind="enemy_damage_taken_level_name_text")
+                stat_node = self.add_gameplay_stat_property_node("all_damage_taken_scalar", source=table)
+                if stat_node:
+                    self.add_edge(level_node, stat_node, "enemy_damage_taken_level_scales_stat_property", source=table, evidence="damageTakenScalar", data=data)
+                    self.add_edge(stat_node, level_node, "stat_property_scaled_by_enemy_damage_taken_level", source=table, evidence="damageTakenScalar", data=data)
+                composite_node = self.add_node("composite_attribute", "AllDamageTakenScalar", name="AllDamageTakenScalar", source=table)
+                self.add_alias("AllDamageTakenScalar", composite_node, kind="composite_attribute_id", source=table)
+                self.add_edge(level_node, composite_node, "enemy_damage_taken_level_scales_composite_attribute", source=table, evidence="damageTakenScalar", data=data)
+                self.add_edge(composite_node, level_node, "composite_attribute_scaled_by_enemy_damage_taken_level", source=table, evidence="damageTakenScalar", data=data)
             return
         if not isinstance(row, dict):
             return
@@ -24665,6 +24942,7 @@ class SourceGraphBuilder:
             if not attr_node:
                 return
             self.add_edge(row_node, attr_node, "defines_enemy_attribute_template", source=table)
+            self.add_enemy_damage_taken_scalar_edges(attr_node, row, source=table)
             self.add_enemy_attribute_meta_edges(attr_node, row.get("levelIndependentAttributes"), edge_kind="enemy_attribute_template_independent_attr", source=table, evidence_prefix="levelIndependentAttributes.attrs")
             for level_index, level_entry in enumerate(row.get("levelDependentAttributes") or []):
                 if isinstance(level_entry, dict):
@@ -26435,6 +26713,103 @@ class SourceGraphBuilder:
             self.add_monobehaviour_frontier_counter_edges(group_node, group, "layouts", "monobehaviour_layout", "monobehaviour_frontier_layout")
             self.ingest_monobehaviour_frontier_group_entries(group_node, group, group_root)
 
+    def ingest_monobehaviour_frontier_tail_audit(self) -> None:
+        path = MONOBEHAVIOUR_FRONTIER_TAIL_AUDIT_PATH
+        payload = read_json(path, {})
+        if not isinstance(payload, dict) or not payload:
+            return
+        summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+        report_node = self.add_node(
+            "monobehaviour_frontier_tail_audit_report",
+            "monobehaviour_frontier_tail_audit",
+            name="MonoBehaviour frontier tail audit",
+            source="reports",
+            path=slash(path),
+            data={
+                "generated": payload.get("generated"),
+                "inputs": payload.get("inputs") or {},
+                "summary": summary,
+            },
+        )
+        self.add_alias("monobehaviour frontier tail audit", report_node, kind="report_title", source="reports")
+
+        def add_target(item: dict[str, Any], *, category: str, rank: int) -> None:
+            layout = safe_key(item.get("layout"))
+            if not layout:
+                return
+            target_node = self.add_node(
+                "monobehaviour_tail_audit_type",
+                f"{category}:{layout}",
+                name=safe_key(item.get("simpleName")) or layout,
+                source="monobehaviour_frontier_tail_audit",
+                data={
+                    "layout": layout,
+                    "simpleName": item.get("simpleName"),
+                    "category": category,
+                    "rank": rank,
+                    "band": item.get("band"),
+                    "priorityScore": item.get("priorityScore"),
+                    "groupCount": item.get("groupCount"),
+                    "residualFiles": item.get("residualFiles"),
+                    "entryCount": item.get("entryCount"),
+                    "problemRefs": item.get("problemRefs"),
+                    "uniqueAssetCount": item.get("uniqueAssetCount"),
+                    "statusCounts": item.get("statusCounts") or {},
+                    "metadataFieldCount": item.get("metadataFieldCount"),
+                    "bodyTargetCount": item.get("bodyTargetCount"),
+                    "recommendation": item.get("recommendation"),
+                },
+            )
+            self.add_alias(layout, target_node, kind="monobehaviour_tail_audit_layout", source="monobehaviour_frontier_tail_audit")
+            simple_name = safe_key(item.get("simpleName"))
+            if simple_name:
+                self.add_alias(simple_name, target_node, kind="monobehaviour_tail_audit_type_name", source="monobehaviour_frontier_tail_audit")
+            edge_kind = "monobehaviour_tail_audit_ranked_type" if category == "ranked" else "monobehaviour_tail_audit_watch_type"
+            self.add_edge(report_node, target_node, edge_kind, source="monobehaviour_frontier_tail_audit", evidence=str(rank), data={"rank": rank, "priorityScore": item.get("priorityScore")})
+
+            band = safe_key(item.get("band"))
+            if band:
+                band_node = self.add_node("monobehaviour_tail_audit_band", band, name=band, source="monobehaviour_frontier_tail_audit")
+                self.add_edge(target_node, band_node, "monobehaviour_tail_type_in_band", source="monobehaviour_frontier_tail_audit", evidence="band")
+
+            recommendation = safe_key(item.get("recommendation"))
+            if recommendation:
+                rec_node = self.add_node("monobehaviour_tail_audit_recommendation", recommendation, name=recommendation, source="monobehaviour_frontier_tail_audit")
+                self.add_edge(target_node, rec_node, "monobehaviour_tail_type_recommendation", source="monobehaviour_frontier_tail_audit", evidence="recommendation")
+
+            for schema in item.get("topSchemas") or []:
+                if not isinstance(schema, dict):
+                    continue
+                schema_key = safe_key(schema.get("value"))
+                if schema_key:
+                    schema_node = self.add_node("monobehaviour_schema", schema_key, name=schema_key, source="monobehaviour_frontier_tail_audit")
+                    self.add_edge(target_node, schema_node, "monobehaviour_tail_type_top_schema", source="monobehaviour_frontier_tail_audit", evidence="topSchemas", data={"count": schema.get("count")})
+
+            for error in item.get("topErrorKinds") or []:
+                if not isinstance(error, dict):
+                    continue
+                error_key = safe_key(error.get("value"))
+                if error_key:
+                    error_node = self.add_node("monobehaviour_decode_error", error_key, name=error_key, source="monobehaviour_frontier_tail_audit")
+                    self.add_edge(target_node, error_node, "monobehaviour_tail_type_top_error", source="monobehaviour_frontier_tail_audit", evidence="topErrorKinds", data={"count": error.get("count")})
+
+            for group in item.get("groups") or []:
+                if not isinstance(group, dict):
+                    continue
+                group_id = safe_key(group.get("id"))
+                if not group_id:
+                    continue
+                group_node = self.add_node("monobehaviour_frontier_group", group_id, name=group_id.rsplit("/", 1)[-1], source="decoded_index")
+                self.add_edge(target_node, group_node, "monobehaviour_tail_type_affects_group", source="monobehaviour_frontier_tail_audit", evidence="groups", data=compact_payload(group, depth=2))
+                self.add_edge(group_node, target_node, "monobehaviour_frontier_group_has_tail_type", source="monobehaviour_frontier_tail_audit", evidence="groups", data=compact_payload(group, depth=2))
+
+        for index, item in enumerate(payload.get("rankedTypes") or [], start=1):
+            if isinstance(item, dict):
+                add_target(item, category="ranked", rank=index)
+        for index, item in enumerate(payload.get("watchTypes") or [], start=1):
+            if isinstance(item, dict):
+                add_target(item, category="watch", rank=index)
+
     def ingest_monobehaviour_frontier_group_entries(self, group_node: str, group: dict[str, Any], group_root: Path) -> None:
         group_file = safe_key(group.get("file"))
         if not group_file or not group_root:
@@ -26602,6 +26977,8 @@ class SourceGraphBuilder:
                 add("locator", item, path, field)
             elif lower_field in {"defaulthiteffect", "effectname", "vfxkey", "prewarneffectkey", "hitflashasset"} or (("effect" in lower_field or "vfx" in lower_field) and item_text.startswith(("P_", "E_", "fx", "vfx"))):
                 add("effect", item, path, field)
+            elif lower_field in {"soundname", "audioeventkey", "eventname"} and LINE_AUDIO_RE.fullmatch(item_text):
+                add("audio", item, path, field)
             elif lower_field in {"maxpotentialeffectbuffid", "buffid"} or lower_field.endswith("buffid"):
                 add("buff", item, path, field)
             elif lower_field == "class" and "componentlist" in lower_path:
@@ -26640,42 +27017,63 @@ class SourceGraphBuilder:
                 if category == "skill":
                     target = self.add_gameplay_skill_ref_node(value, source=source)
                     edge_kind = "monobehaviour_frontier_entry_uses_skill"
+                    reverse_edge_kind = "skill_used_by_monobehaviour_frontier_entry"
                 elif category == "model":
                     target = self.add_node("model_config_model", value, name=value, source=source)
                     self.add_alias(value, target, kind="model_id", source=source)
                     self.add_model_asset_entity_edges(entry_node, (value,), edge_kind="monobehaviour_frontier_entry_model_asset_entity", source=source, evidence=evidence)
                     edge_kind = "monobehaviour_frontier_entry_uses_model"
+                    reverse_edge_kind = "model_used_by_monobehaviour_frontier_entry"
                 elif category == "ai_config":
                     target = self.add_ai_config_node(value, source=source)
                     edge_kind = "monobehaviour_frontier_entry_uses_ai_config"
+                    reverse_edge_kind = "ai_config_used_by_monobehaviour_frontier_entry"
                 elif category == "animation_config":
                     target = self.add_animation_config_ref_node(value, source=source)
                     edge_kind = "monobehaviour_frontier_entry_uses_animation_config"
+                    reverse_edge_kind = "animation_config_used_by_monobehaviour_frontier_entry"
                 elif category == "blackboard_key":
                     target = self.add_blackboard_key_node(value, source=source)
                     edge_kind = "monobehaviour_frontier_entry_uses_blackboard_key"
+                    reverse_edge_kind = "blackboard_key_used_by_monobehaviour_frontier_entry"
                 elif category == "effect":
                     target = self.add_node("gameplay_effect", value, name=value, source=source)
                     self.add_alias(value, target, kind="gameplay_effect_id", source=source)
                     edge_kind = "monobehaviour_frontier_entry_uses_gameplay_effect"
+                    reverse_edge_kind = "gameplay_effect_used_by_monobehaviour_frontier_entry"
                 elif category == "buff":
                     target = self.add_buff_ref_node(value, source=source)
                     edge_kind = "monobehaviour_frontier_entry_uses_buff"
+                    reverse_edge_kind = "buff_used_by_monobehaviour_frontier_entry"
+                elif category == "audio":
+                    self.add_audio_target_edge(
+                        entry_node,
+                        value,
+                        edge_kind="monobehaviour_frontier_entry_uses_audio",
+                        source=source,
+                        evidence=evidence,
+                        reverse_edge_kind="audio_used_by_monobehaviour_frontier_entry",
+                    )
+                    continue
                 elif category == "mode":
                     target = self.add_node("monobehaviour_mode_id", value, name=value, source=source_root or source)
                     self.add_alias(value, target, kind="monobehaviour_mode_id", source=source)
                     edge_kind = "monobehaviour_frontier_entry_uses_mode"
+                    reverse_edge_kind = "mode_used_by_monobehaviour_frontier_entry"
                 elif category == "locator":
                     target = self.add_node("monobehaviour_locator", value, name=value, source=source_root or source)
                     self.add_alias(value, target, kind="monobehaviour_locator", source=source)
                     edge_kind = "monobehaviour_frontier_entry_uses_locator"
+                    reverse_edge_kind = "locator_used_by_monobehaviour_frontier_entry"
                 elif category == "component_class":
                     target = self.add_node("monobehaviour_managed_class", value, name=value, source=source)
                     self.add_alias(value, target, kind="monobehaviour_managed_class", source=source)
                     edge_kind = "monobehaviour_frontier_entry_has_component_class"
+                    reverse_edge_kind = "component_class_used_by_monobehaviour_frontier_entry"
                 else:
                     continue
                 self.add_edge(entry_node, target, edge_kind, source=source, evidence=evidence, data=data)
+                self.add_edge(target, entry_node, reverse_edge_kind, source=source, evidence=evidence, data=data)
 
     def projectile_curve_summary(self, curve: Any) -> dict[str, Any]:
         if not isinstance(curve, dict):
@@ -27002,9 +27400,13 @@ class SourceGraphBuilder:
         }
 
 
-def write_summary(summary: dict[str, Any]) -> None:
-    DEFAULT_SUMMARY_JSON.parent.mkdir(parents=True, exist_ok=True)
-    DEFAULT_SUMMARY_JSON.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+def write_summary(summary: dict[str, Any], *, output_dir: Path = GRAPH_DIR) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    summary_json = output_dir / "summary.json"
+    summary_md = output_dir / "summary.md"
+    summary["summaryJson"] = slash(summary_json)
+    summary["summaryMarkdown"] = slash(summary_md)
+    summary_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     lines = [
         "# Endfield Source Graph",
         "",
@@ -27025,7 +27427,7 @@ def write_summary(summary: dict[str, Any]) -> None:
     for key, count in summary.get("edgesByKind", {}).items():
         lines.append(f"- `{key}`: `{count}`")
     lines.append("")
-    DEFAULT_SUMMARY_MD.write_text("\n".join(lines), encoding="utf-8")
+    summary_md.write_text("\n".join(lines), encoding="utf-8")
 
 
 def emit_followup_indexes(db_path: Path, summary: dict[str, Any]) -> None:
@@ -27033,6 +27435,7 @@ def emit_followup_indexes(db_path: Path, summary: dict[str, Any]) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         emit_voice_audio_links(conn)
+        emit_unresolved_narrative_video_candidates(conn)
         emit_character_recovery_candidates(conn)
         emit_model_config_asset_binding_candidates(conn)
         emit_option_branch_gaps(conn)
@@ -27064,7 +27467,7 @@ def parse_json_text(data: Any) -> dict[str, Any]:
 
 
 def emit_voice_audio_links(conn: sqlite3.Connection) -> None:
-    rows = conn.execute(
+    story_rows = conn.execute(
         """
         SELECT
             line.id AS lineNode,
@@ -27081,9 +27484,9 @@ def emit_voice_audio_links(conn: sqlite3.Connection) -> None:
         ORDER BY line.name
         """
     ).fetchall()
-    linked = []
-    unresolved = []
-    for row in rows:
+    story_linked = []
+    story_unresolved = []
+    for row in story_rows:
         line_data = parse_json_text(row["lineData"])
         audio_data = parse_json_text(row["audioData"])
         record = {
@@ -27097,17 +27500,204 @@ def emit_voice_audio_links(conn: sqlite3.Connection) -> None:
             "speaker": audio_data.get("speaker"),
         }
         if record["audioPath"]:
-            linked.append(record)
+            story_linked.append(record)
         else:
-            unresolved.append(record)
+            story_unresolved.append(record)
+
+    path_rows = conn.execute(
+        """
+        SELECT e.kind AS edgeKind, e.source AS edgeSource, e.evidence AS edgeEvidence,
+               owner.id AS ownerNode, owner.kind AS ownerKind, owner.name AS ownerName, owner.path AS ownerPath,
+               audio.id AS audioNode, audio.name AS audioId, audio.path AS audioPath, audio.data AS audioData
+        FROM edges e
+        JOIN nodes owner ON owner.id = e.src
+        JOIN nodes audio ON audio.id = e.dst
+        WHERE audio.kind = 'audio'
+          AND audio.path IS NOT NULL
+          AND audio.path != ''
+          AND owner.kind != 'audio'
+          AND e.kind NOT IN ('defines_audio', 'audio_voice_extra_for_audio', 'lipsync_for_audio')
+        ORDER BY e.kind, owner.kind, owner.name, audio.name
+        """
+    ).fetchall()
+    path_backed_links = []
+    path_edge_counts: Counter[str] = Counter()
+    path_owner_counts: Counter[str] = Counter()
+    for row in path_rows:
+        audio_data = parse_json_text(row["audioData"])
+        path_edge_counts[row["edgeKind"]] += 1
+        path_owner_counts[row["ownerKind"]] += 1
+        if len(path_backed_links) < 5000:
+            path_backed_links.append({
+                "edgeKind": row["edgeKind"],
+                "source": row["edgeSource"],
+                "evidence": row["edgeEvidence"],
+                "ownerNode": row["ownerNode"],
+                "ownerKind": row["ownerKind"],
+                "ownerName": row["ownerName"],
+                "ownerPath": row["ownerPath"],
+                "audioId": row["audioId"],
+                "audioPath": audio_data.get("path") or row["audioPath"],
+                "duration": audio_data.get("duration"),
+                "speaker": audio_data.get("speaker"),
+            })
+
+    story_audio_ids = {safe_key(row["audioId"]) for row in story_rows if safe_key(row["audioId"])}
+    path_audio_ids = {safe_key(row["audioId"]) for row in path_rows if safe_key(row["audioId"])}
     payload = {
         "generated": int(time.time()),
-        "linked": len(linked),
-        "unresolved": len(unresolved),
-        "links": linked[:5000],
-        "unresolvedExamples": unresolved[:500],
+        "summary": {
+            "storyLineAudioRefs": len(story_rows),
+            "storyLineLinked": len(story_linked),
+            "storyLineUnresolved": len(story_unresolved),
+            "pathBackedUsageLinks": len(path_rows),
+            "pathBackedUniqueAudio": len(path_audio_ids),
+            "storyAudioIdsAlsoPathBacked": len(story_audio_ids & path_audio_ids),
+        },
+        "pathBackedUsageByEdge": dict(sorted(path_edge_counts.items())),
+        "pathBackedUsageByOwnerKind": dict(sorted(path_owner_counts.items())),
+        "pathBackedLinks": path_backed_links,
+        "storyLineLinks": story_linked[:5000],
+        "storyLineUnresolvedExamples": story_unresolved[:500],
     }
     (GRAPH_DIR / "voice_audio_links.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    lines = [
+        "# Voice Audio Links",
+        "",
+        "This generated source-graph follow-up separates WebUI story-line audio ids from graph relations that already resolve to path-backed AudioDialog audio nodes. It is an evidence report, not an audio relinking step.",
+        "",
+        "## Summary",
+        "",
+    ]
+    for key, value in payload["summary"].items():
+        lines.append(f"- `{key}`: `{value}`")
+    lines.extend(["", "## Path-Backed Usage By Edge", ""])
+    for edge_kind, count in sorted(path_edge_counts.items(), key=lambda item: (-item[1], item[0])):
+        lines.append(f"- `{edge_kind}`: `{count}`")
+    lines.extend(["", "## Sample Path-Backed Links", ""])
+    if path_backed_links:
+        lines.append("| Edge | Owner | Audio | Path | Duration | Speaker |")
+        lines.append("| --- | --- | --- | --- | ---: | --- |")
+        for item in path_backed_links[:80]:
+            lines.append(
+                f"| `{item['edgeKind']}` | `{item['ownerKind']}:{item['ownerName']}` | `{item['audioId']}` | `{item['audioPath']}` | {item.get('duration') or ''} | `{item.get('speaker') or ''}` |"
+            )
+    else:
+        lines.append("No path-backed audio usage links found.")
+    lines.append("")
+    (GRAPH_DIR / "voice_audio_links.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def related_node_values(conn: sqlite3.Connection, node_id: str, edge_kind: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT target.id, target.kind, target.name, target.path, target.source, edge.evidence, edge.data
+        FROM edges edge
+        JOIN nodes target ON target.id = edge.dst
+        WHERE edge.src = ? AND edge.kind = ?
+        ORDER BY target.name, target.path, edge.evidence
+        """,
+        (node_id, edge_kind),
+    ).fetchall()
+    values: list[dict[str, Any]] = []
+    for row in rows:
+        values.append({
+            "id": row["id"],
+            "kind": row["kind"],
+            "name": row["name"],
+            "path": row["path"],
+            "source": row["source"],
+            "evidence": row["evidence"],
+            "data": parse_json_text(row["data"]),
+        })
+    return values
+
+
+def emit_unresolved_narrative_video_candidates(conn: sqlite3.Connection) -> None:
+    rows = conn.execute(
+        """
+        SELECT id, name, data
+        FROM nodes
+        WHERE kind = 'narrative_video_unresolved_candidate'
+        ORDER BY name, id
+        """
+    ).fetchall()
+    records: list[dict[str, Any]] = []
+    status_counts: Counter[str] = Counter()
+    actionable: list[dict[str, Any]] = []
+    for row in rows:
+        data = parse_json_text(row["data"])
+        status = safe_key(data.get("candidateStatus")) or "unknown"
+        stem = safe_key(data.get("stem") or row["name"])
+        standalone_key = f"video_{stem or 'unknown'}"
+        recommendation = (
+            "manual_attach_candidate_needs_timeline_or_playback_check"
+            if status == "hasGeneratedStoryTarget"
+            else "keep_standalone_until_generated_target_exists"
+        )
+        status_counts[status] += 1
+        record = {
+            "node": row["id"],
+            "stem": stem,
+            "standaloneVideoKey": standalone_key,
+            "candidateStatus": status,
+            "recommendation": recommendation,
+            "keyCandidates": [item["name"] for item in related_node_values(conn, row["id"], "narrative_video_unresolved_key_candidate")],
+            "existingStoryCandidates": [item["name"] for item in related_node_values(conn, row["id"], "narrative_video_unresolved_existing_story_candidate")],
+            "files": [item["path"] or item["name"] for item in related_node_values(conn, row["id"], "narrative_video_unresolved_file")],
+            "relVideos": [item["path"] or item["name"] for item in related_node_values(conn, row["id"], "narrative_video_unresolved_rel_video")],
+            "raw": compact_payload(data, depth=2),
+        }
+        records.append(record)
+        if status == "hasGeneratedStoryTarget":
+            actionable.append(record)
+
+    payload = {
+        "generated": int(time.time()),
+        "count": len(records),
+        "statusCounts": dict(sorted(status_counts.items())),
+        "actionableStatus": "hasGeneratedStoryTarget",
+        "actionableCount": len(actionable),
+        "records": records,
+        "actionable": actionable,
+    }
+    json_path = GRAPH_DIR / "unresolved_narrative_video_candidates.json"
+    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    lines = [
+        "# Unresolved Narrative Video Candidates",
+        "",
+        "This generated source-graph follow-up groups unresolved narrative-video audit candidates by status and graph-linked story/video evidence. It is a query aid, not a recovery override.",
+        "",
+        "## Summary",
+        "",
+        f"- Candidates: `{len(records)}`",
+        f"- Actionable `hasGeneratedStoryTarget`: `{len(actionable)}`",
+    ]
+    for status, count in sorted(status_counts.items()):
+        lines.append(f"- `{status}`: `{count}`")
+    lines.extend(["", "## Actionable Candidates", ""])
+    if actionable:
+        lines.append("| Stem | Standalone key | Key candidates | Existing stories | Rel videos | Recommendation |")
+        lines.append("| --- | --- | --- | --- | ---: | --- |")
+        for item in actionable:
+            key_candidates = ", ".join(f"`{value}`" for value in item["keyCandidates"]) or ""
+            existing = ", ".join(f"`{value}`" for value in item["existingStoryCandidates"]) or ""
+            lines.append(f"| `{item['stem']}` | `{item['standaloneVideoKey']}` | {key_candidates} | {existing} | {len(item['relVideos'])} | `{item['recommendation']}` |")
+    else:
+        lines.append("No unresolved candidates with generated story targets were found.")
+    lines.extend(["", "## All Candidates", ""])
+    if records:
+        lines.append("| Status | Stem | Standalone key | Key candidates | Existing stories | Files | Rel videos | Recommendation |")
+        lines.append("| --- | --- | --- | --- | --- | ---: | ---: | --- |")
+        for item in records:
+            key_candidates = ", ".join(f"`{value}`" for value in item["keyCandidates"]) or ""
+            existing = ", ".join(f"`{value}`" for value in item["existingStoryCandidates"]) or ""
+            lines.append(f"| `{item['candidateStatus']}` | `{item['stem']}` | `{item['standaloneVideoKey']}` | {key_candidates} | {existing} | {len(item['files'])} | {len(item['relVideos'])} | `{item['recommendation']}` |")
+    else:
+        lines.append("No unresolved narrative-video candidate nodes found.")
+    lines.append("")
+    (GRAPH_DIR / "unresolved_narrative_video_candidates.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def emit_character_recovery_candidates(conn: sqlite3.Connection) -> None:
@@ -27115,17 +27705,16 @@ def emit_character_recovery_candidates(conn: sqlite3.Connection) -> None:
         """
         SELECT id, kind, name, path, source, data
         FROM nodes
-        WHERE kind IN ('asset', 'unity_asset', 'material', 'mesh', 'texture', 'animation_clip')
+        WHERE kind IN ('asset', 'asset_entity', 'unity_asset', 'material', 'mesh', 'texture', 'animation_clip')
         """
     ).fetchall()
     grouped: dict[str, Counter[str]] = defaultdict(Counter)
     examples: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
     for row in rows:
         haystack = " ".join(str(row[key] or "") for key in ("id", "name", "path", "source"))
-        match = ASSET_ACTOR_RE.search(haystack)
-        if not match:
+        actor = character_asset_actor_key(haystack)
+        if not actor:
             continue
-        actor = match.group(1).lower()
         grouped[actor][row["kind"]] += 1
         bucket = examples[actor][row["kind"]]
         if len(bucket) < 8:
@@ -27134,6 +27723,7 @@ def emit_character_recovery_candidates(conn: sqlite3.Connection) -> None:
     for actor, counts in sorted(grouped.items()):
         score = (
             counts.get("mesh", 0) * 4
+            + counts.get("asset_entity", 0) * 4
             + counts.get("material", 0) * 3
             + counts.get("texture", 0) * 2
             + counts.get("animation_clip", 0) * 2
@@ -27155,6 +27745,49 @@ def emit_character_recovery_candidates(conn: sqlite3.Connection) -> None:
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    lines = [
+        "# Character Recovery Candidates",
+        "",
+        "This generated source-graph follow-up groups actor-like exported assets, renderable asset entities, materials, textures, meshes, and animation clips by conservative actor name tokens. It is a review aid, not a character recovery manifest.",
+        "",
+        f"- Candidates: `{len(candidates)}`",
+        "",
+        "## Top Candidates",
+        "",
+        "| Actor | Score | Asset entities | Assets | Materials | Textures | Meshes | Animation clips | Examples |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for candidate in candidates[:80]:
+        counts = Counter(candidate.get("counts") or {})
+        examples = candidate.get("examples") if isinstance(candidate.get("examples"), dict) else {}
+        example_values: list[str] = []
+        for kind in ("asset_entity", "asset", "material", "texture", "mesh", "animation_clip"):
+            for value in examples.get(kind) or []:
+                if value not in example_values:
+                    example_values.append(value)
+                if len(example_values) >= 5:
+                    break
+            if len(example_values) >= 5:
+                break
+        lines.append(
+            f"| `{candidate['actor']}` | {candidate['score']} | {counts.get('asset_entity', 0)} | {counts.get('asset', 0)} | {counts.get('material', 0)} | {counts.get('texture', 0)} | {counts.get('mesh', 0)} | {counts.get('animation_clip', 0)} | "
+            + ", ".join(f"`{value}`" for value in example_values)
+            + " |"
+        )
+    lines.append("")
+    (GRAPH_DIR / "character_recovery_candidates.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def character_asset_actor_key(haystack: str) -> str:
+    match = ASSET_ACTOR_RE.search(haystack)
+    if not match:
+        match = ASSET_ENTITY_ACTOR_RE.search(haystack)
+    if not match:
+        return ""
+    actor = safe_key(match.group(1)).lower()
+    if actor in {"lod"}:
+        return ""
+    return actor
 
 
 
@@ -27236,6 +27869,78 @@ def emit_model_config_asset_binding_candidates(conn: sqlite3.Connection) -> None
                     candidates.append(entity)
         return _unique_preserve(candidate_bases), candidates
 
+    def controller_alias_bases(token: Any) -> list[str]:
+        token_key = safe_key(token)
+        if not token_key:
+            return []
+        stem = Path(token_key).stem
+        base = normalized_model_entity_base(stem).replace("+", "_")
+        bases = [base]
+        state_suffixes = (
+            "_closeidle_01",
+            "_openidle_01",
+            "_close_01",
+            "_open_01",
+            "_idle_01",
+            "_available",
+            "_disable",
+            "_disabled",
+            "_on",
+            "_off",
+        )
+        for suffix in state_suffixes:
+            if base.endswith(suffix):
+                bases.append(base[: -len(suffix)])
+        return _unique_preserve(value for value in bases if value)
+
+    def controller_alias_entities(model_node: str) -> list[dict[str, Any]]:
+        rows = conn.execute(
+            """
+            SELECT
+                controller.id AS controllerNode,
+                controller.name AS controllerName,
+                ref.id AS refNode,
+                ref.name AS refName,
+                edge.kind AS edgeKind,
+                edge.evidence AS evidence
+            FROM edges model_edge
+            JOIN nodes controller ON controller.id = model_edge.dst
+            JOIN edges edge ON edge.src = controller.id
+            JOIN nodes ref ON ref.id = edge.dst
+            WHERE model_edge.src = ?
+              AND model_edge.kind = 'model_config_used_by_model_view_state_controller'
+              AND edge.kind IN (
+                'model_view_state_controller_has_clip_asset',
+                'model_view_state_controller_animator_references_clip',
+                'model_view_state_controller_references_effect',
+                'model_view_state_controller_animator_references_effect'
+              )
+            ORDER BY controller.name, edge.kind, ref.name
+            """,
+            (model_node,),
+        ).fetchall()
+        aliases: list[dict[str, Any]] = []
+        seen: set[tuple[str, str, str]] = set()
+        for row in rows:
+            for base in controller_alias_bases(row["refName"]):
+                for entity in entity_by_base.get(base, []):
+                    entity_node = safe_key(entity.get("node"))
+                    key = (safe_key(row["refNode"]), base, entity_node)
+                    if not entity_node or key in seen:
+                        continue
+                    seen.add(key)
+                    aliases.append({
+                        "controllerNode": row["controllerNode"],
+                        "controllerName": row["controllerName"],
+                        "refNode": row["refNode"],
+                        "refName": row["refName"],
+                        "edgeKind": row["edgeKind"],
+                        "evidence": row["evidence"],
+                        "candidateBase": base,
+                        "entity": entity,
+                    })
+        return aliases
+
     def classify_direct_edge(edge: dict[str, Any]) -> dict[str, Any]:
         edge_data = edge.get("edgeData") if isinstance(edge.get("edgeData"), dict) else {}
         entity_data = edge.get("entityData") if isinstance(edge.get("entityData"), dict) else {}
@@ -27267,7 +27972,10 @@ def emit_model_config_asset_binding_candidates(conn: sqlite3.Connection) -> None
         tokens = [model_id, prefab_path, prefab_stem]
         bases, candidates = candidate_entities(tokens)
         direct = [classify_direct_edge(edge) for edge in direct_edges(row["id"])]
+        controller_aliases = controller_alias_entities(row["id"])
         world_uses = count_edges("world_entity_uses_model", row["id"], "incoming")
+        world_instance_uses = count_edges("world_entity_instance_uses_model", row["id"], "incoming")
+        placement_uses = world_uses + world_instance_uses
         interactive_uses = count_edges("interactive_template_uses_model", row["id"], "incoming")
         has_radius = count_edges("model_config_has_radius", row["id"], "outgoing") > 0 or conn.execute("SELECT 1 FROM nodes WHERE kind = 'model_radius' AND name = ? LIMIT 1", (model_id,)).fetchone() is not None
         direct_strengths = [edge.get("matchStrength") for edge in direct]
@@ -27277,7 +27985,7 @@ def emit_model_config_asset_binding_candidates(conn: sqlite3.Connection) -> None
             status = "ambiguous_graph_edge"
         elif candidates:
             status = "candidate_name_match"
-        elif world_uses or interactive_uses:
+        elif placement_uses or interactive_uses:
             status = "no_exported_renderable_candidate"
         else:
             status = "runtime_only_or_unreferenced"
@@ -27292,16 +28000,59 @@ def emit_model_config_asset_binding_candidates(conn: sqlite3.Connection) -> None
             "status": status,
             "hasRadius": has_radius,
             "worldEntityUses": world_uses,
+            "worldEntityInstanceUses": world_instance_uses,
+            "placementUses": placement_uses,
             "interactiveTemplateUses": interactive_uses,
             "candidateBases": bases,
             "directEdges": direct[:8],
             "candidateEntities": candidates[:12],
+            "controllerAliasEntities": controller_aliases[:12],
         }
         records.append(record)
 
+    resolved_records = [
+        item
+        for item in records
+        if item.get("directEdges")
+    ]
+    for item in records:
+        if item.get("status") != "no_exported_renderable_candidate":
+            continue
+        prefixes = model_config_family_prefixes(item.get("modelId"), item.get("prefabStem"), item.get("prefabPath"))
+        if not prefixes:
+            continue
+        siblings: list[dict[str, Any]] = []
+        seen_sibling_nodes: set[str] = set()
+        for prefix in prefixes:
+            for sibling in resolved_records:
+                if sibling is item:
+                    continue
+                sibling_id = safe_key(sibling.get("modelId")).lower()
+                sibling_stem = safe_key(sibling.get("prefabStem")).lower()
+                if not (sibling_id.startswith(f"{prefix}_") or sibling_stem.startswith(f"{prefix}_")):
+                    continue
+                sibling_node = safe_key(sibling.get("modelNode"))
+                if not sibling_node or sibling_node in seen_sibling_nodes:
+                    continue
+                seen_sibling_nodes.add(sibling_node)
+                siblings.append({
+                    "modelNode": sibling_node,
+                    "modelId": sibling.get("modelId"),
+                    "status": sibling.get("status"),
+                    "familyPrefix": prefix,
+                    "prefabStem": sibling.get("prefabStem"),
+                    "directEdges": sibling.get("directEdges", [])[:3],
+                })
+                if len(siblings) >= 8:
+                    break
+            if len(siblings) >= 8:
+                break
+        if siblings:
+            item["resolvedSiblingModels"] = siblings
+
     records.sort(key=lambda item: (
         0 if item["status"] == "strong_exact_graph_edge" else 1 if item["status"] == "ambiguous_graph_edge" else 2 if item["status"] == "candidate_name_match" else 3 if item["status"] == "no_exported_renderable_candidate" else 4,
-        -(item.get("worldEntityUses") or 0) - (item.get("interactiveTemplateUses") or 0),
+        -(item.get("placementUses") or item.get("worldEntityUses") or 0) - (item.get("interactiveTemplateUses") or 0),
         item.get("modelId") or "",
     ))
     payload = {
@@ -27313,6 +28064,7 @@ def emit_model_config_asset_binding_candidates(conn: sqlite3.Connection) -> None
         "candidateEntityMatches": candidate_total,
         "strongExactGraphEdgeRows": status_counts.get("strong_exact_graph_edge", 0),
         "ambiguousGraphEdgeRows": status_counts.get("ambiguous_graph_edge", 0),
+        "controllerAliasCandidateRows": sum(1 for item in records if item.get("controllerAliasEntities")),
         "records": records,
     }
     json_path = GRAPH_DIR / "model_config_asset_binding_candidates.json"
@@ -27331,17 +28083,28 @@ def emit_model_config_asset_binding_candidates(conn: sqlite3.Connection) -> None
         f"- Strong exact graph-edge rows: `{status_counts.get('strong_exact_graph_edge', 0)}`",
         f"- Ambiguous graph-edge rows: `{status_counts.get('ambiguous_graph_edge', 0)}`",
         f"- Candidate entity matches: `{candidate_total}`",
+        f"- Rows with model-view-controller alias candidates: `{sum(1 for item in records if item.get('controllerAliasEntities'))}`",
     ]
     for status, count in sorted(status_counts.items()):
         lines.append(f"- `{status}`: `{count}`")
     lines.extend(["", "## Top Referenced Unbound Models", ""])
     unbound = [item for item in records if item["status"] == "no_exported_renderable_candidate"][:40]
     if unbound:
-        lines.append("| Model id | World uses | Interactive uses | Radius | Prefab stem |")
-        lines.append("| --- | ---: | ---: | --- | --- |")
+        lines.append("| Model id | World uses | Instance uses | Interactive uses | Radius | Prefab stem | Controller aliases | Resolved siblings |")
+        lines.append("| --- | ---: | ---: | ---: | --- | --- | --- | --- |")
         for item in unbound:
+            siblings = ", ".join(
+                f"`{sibling.get('modelId')}`"
+                for sibling in item.get("resolvedSiblingModels", [])[:4]
+                if sibling.get("modelId")
+            )
+            controller_aliases = ", ".join(
+                f"`{(alias.get('entity') or {}).get('base')}`"
+                for alias in item.get("controllerAliasEntities", [])[:4]
+                if (alias.get("entity") or {}).get("base")
+            )
             lines.append(
-                f"| `{item['modelId']}` | {item['worldEntityUses']} | {item['interactiveTemplateUses']} | {str(item['hasRadius']).lower()} | `{item['prefabStem']}` |"
+                f"| `{item['modelId']}` | {item['worldEntityUses']} | {item.get('worldEntityInstanceUses') or 0} | {item['interactiveTemplateUses']} | {str(item['hasRadius']).lower()} | `{item['prefabStem']}` | {controller_aliases} | {siblings} |"
             )
     else:
         lines.append("No referenced unbound model rows found.")
@@ -27436,11 +28199,14 @@ def emit_option_branch_gaps(conn: sqlite3.Connection) -> None:
     seen_scene_keys: set[str] = set()
     if isinstance(scenes, list):
         for scene in scenes:
-            key = scene.get("scene") or scene.get("key") or scene.get("storyKey")
+            key = scene.get("key") or scene.get("storyKey")
+            if not key and isinstance(scene.get("scene"), str):
+                key = scene.get("scene")
             if not key:
                 continue
             seen_scene_keys.add(key)
             scene = dict(scene)
+            scene["storyKey"] = key
             scene["graphOptionEdges"] = edge_counts.get(key, 0)
             stats = audit_stats.get(key)
             if stats:
@@ -27470,30 +28236,228 @@ def emit_option_branch_gaps(conn: sqlite3.Connection) -> None:
         "count": len(output_scenes),
     }
     (GRAPH_DIR / "option_branch_gaps.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    lines = [
+        "# Option Branch Gaps",
+        "",
+        "This generated source-graph follow-up combines inferred option-anchor gaps with runtime jump option-route audit evidence. It is diagnostic evidence only and does not promote option routes or WebUI overrides.",
+        "",
+        "## Summary",
+        "",
+        f"- Scenes: `{len(output_scenes)}`",
+        f"- Audit-only scenes: `{sum(1 for scene in output_scenes if scene.get('auditOnly'))}`",
+        f"- Runtime conflict scenes: `{sum(1 for scene in output_scenes if scene.get('runtimeAuditConflicts'))}`",
+    ]
+    recommendation_counts: Counter[str] = Counter()
+    for scene in output_scenes:
+        for recommendation, count in (scene.get("runtimeAuditRecommendations") or {}).items():
+            recommendation_counts[safe_key(recommendation)] += int(count or 0)
+    for recommendation, count in sorted(recommendation_counts.items()):
+        lines.append(f"- `{recommendation}`: `{count}`")
+    lines.extend(["", "## Scenes", ""])
+    if output_scenes:
+        lines.append("| Scene | Audit only | Graph option edges | Runtime groups | Conflicts | Nearby jumps | Recommendations |")
+        lines.append("| --- | --- | ---: | ---: | ---: | ---: | --- |")
+        for scene in output_scenes:
+            scene_key = scene.get("storyKey") or scene.get("key") or scene.get("scene")
+            recommendations = ", ".join(
+                f"`{key}`={value}"
+                for key, value in sorted((scene.get("runtimeAuditRecommendations") or {}).items())
+            )
+            lines.append(
+                f"| `{scene_key}` | {str(bool(scene.get('auditOnly'))).lower()} | {scene.get('graphOptionEdges', 0)} | {scene.get('runtimeAuditGroups', 0)} | {scene.get('runtimeAuditConflicts', 0)} | {scene.get('runtimeAuditNearbyJumps', 0)} | {recommendations} |"
+            )
+    else:
+        lines.append("No option branch gap scenes found.")
+    lines.append("")
+    (GRAPH_DIR / "option_branch_gaps.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def emit_map_level_index(conn: sqlite3.Connection) -> None:
-    rows = conn.execute(
+    mark_rows = conn.execute(
         """
-        SELECT level.name AS levelId, mark.name AS markId, mark.data AS markData
+        SELECT level.name AS levelId, mark.name AS markId, mark.data AS markData,
+               e.source AS edgeSource, e.evidence AS edgeEvidence
         FROM edges e
         JOIN nodes level ON level.id = e.src
         JOIN nodes mark ON mark.id = e.dst
-        WHERE e.kind = 'has_map_mark'
+        WHERE e.kind = 'level_has_map_mark'
         ORDER BY level.name, mark.name
         """
     ).fetchall()
-    levels: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in rows:
+    levels: dict[str, dict[str, Any]] = defaultdict(lambda: {
+        "levelId": "",
+        "maps": set(),
+        "marks": [],
+        "levelData": [],
+        "levelDataCount": 0,
+        "levelScriptCount": 0,
+        "missionRuntimeCount": 0,
+    })
+    for row in mark_rows:
+        level_id = safe_key(row["levelId"])
+        if not level_id:
+            continue
         data = parse_json_text(row["markData"])
-        levels[row["levelId"]].append({
+        level = levels[level_id]
+        level["levelId"] = level_id
+        level["marks"].append({
             "markId": row["markId"],
-            "markInfoId": data.get("markInfoId"),
+            "markInfoId": data.get("markInfoId") or data.get("templateId"),
+            "templateId": data.get("templateId"),
             "pos": data.get("pos"),
+            "source": row["edgeSource"],
+            "evidence": row["edgeEvidence"],
         })
+
+    map_rows = conn.execute(
+        """
+        SELECT level.name AS levelId, map.name AS mapId
+        FROM edges e
+        JOIN nodes level ON level.id = e.src
+        JOIN nodes map ON map.id = e.dst
+        WHERE e.kind = 'level_belongs_to_map'
+        ORDER BY level.name, map.name
+        """
+    ).fetchall()
+    maps: dict[str, dict[str, Any]] = defaultdict(lambda: {"mapId": "", "levels": set(), "sublevels": []})
+    for row in map_rows:
+        level_id = safe_key(row["levelId"])
+        map_id = safe_key(row["mapId"])
+        if not level_id or not map_id:
+            continue
+        level = levels[level_id]
+        level["levelId"] = level_id
+        level["maps"].add(map_id)
+        maps[map_id]["mapId"] = map_id
+        maps[map_id]["levels"].add(level_id)
+
+    level_data_rows = conn.execute(
+        """
+        SELECT level.name AS levelId, data.name AS levelDataId, data.path AS levelDataPath,
+               e.source AS edgeSource, e.evidence AS edgeEvidence
+        FROM edges e
+        JOIN nodes level ON level.id = e.src
+        JOIN nodes data ON data.id = e.dst
+        WHERE e.kind = 'level_has_level_data'
+        ORDER BY level.name, data.name
+        """
+    ).fetchall()
+    for row in level_data_rows:
+        level_id = safe_key(row["levelId"])
+        if not level_id:
+            continue
+        level = levels[level_id]
+        level["levelId"] = level_id
+        level["levelData"].append({
+            "id": row["levelDataId"],
+            "path": row["levelDataPath"],
+            "source": row["edgeSource"],
+            "evidence": row["edgeEvidence"],
+        })
+    for level in levels.values():
+        level["levelDataCount"] = len(level["levelData"])
+
+    for edge_kind, field in (("level_has_level_script", "levelScriptCount"), ("level_has_mission_runtime", "missionRuntimeCount")):
+        rows = conn.execute(
+            """
+            SELECT level.name AS levelId, COUNT(*) AS count
+            FROM edges e
+            JOIN nodes level ON level.id = e.src
+            WHERE e.kind = ?
+            GROUP BY level.name
+            """,
+            (edge_kind,),
+        ).fetchall()
+        for row in rows:
+            level_id = safe_key(row["levelId"])
+            if not level_id:
+                continue
+            level = levels[level_id]
+            level["levelId"] = level_id
+            level[field] = int(row["count"] or 0)
+
+    sublevel_rows = conn.execute(
+        """
+        SELECT map.name AS mapId, sub.name AS subLevelId, sub.data AS subData,
+               enemy.name AS enemyId
+        FROM edges ms
+        JOIN nodes map ON map.id = ms.src
+        JOIN nodes sub ON sub.id = ms.dst
+        LEFT JOIN edges se ON se.src = sub.id AND se.kind = 'map_sublevel_brief_has_enemy'
+        LEFT JOIN nodes enemy ON enemy.id = se.dst
+        WHERE ms.kind = 'map_has_sublevel_brief'
+        ORDER BY map.name, sub.name, enemy.name
+        """
+    ).fetchall()
+    sublevels_by_map: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    for row in sublevel_rows:
+        map_id = safe_key(row["mapId"])
+        sublevel_id = safe_key(row["subLevelId"])
+        if not map_id or not sublevel_id:
+            continue
+        map_entry = maps[map_id]
+        map_entry["mapId"] = map_id
+        sublevels = sublevels_by_map[map_id]
+        sublevel = sublevels.get(sublevel_id)
+        if sublevel is None:
+            data = parse_json_text(row["subData"])
+            sublevel = {
+                "subLevelId": sublevel_id,
+                "subDataParentId": data.get("subDataParentId"),
+                "mapIdNum": data.get("mapIdNum"),
+                "source": data.get("source"),
+                "enemies": [],
+            }
+            sublevels[sublevel_id] = sublevel
+        enemy_id = safe_key(row["enemyId"])
+        if enemy_id and enemy_id not in sublevel["enemies"]:
+            sublevel["enemies"].append(enemy_id)
+
+    for map_id, sublevels in sublevels_by_map.items():
+        maps[map_id]["sublevels"] = list(sublevels.values())
+
+    output_levels = []
+    for level_id, level in sorted(levels.items()):
+        marks = level["marks"]
+        output_levels.append({
+            "levelId": level_id,
+            "maps": sorted(level["maps"]),
+            "markCount": len(marks),
+            "levelDataCount": level["levelDataCount"],
+            "levelScriptCount": level["levelScriptCount"],
+            "missionRuntimeCount": level["missionRuntimeCount"],
+            "levelData": level["levelData"],
+            "marks": marks,
+        })
+
+    output_maps = []
+    for map_id, map_entry in sorted(maps.items()):
+        sublevels = map_entry["sublevels"]
+        output_maps.append({
+            "mapId": map_id,
+            "levelCount": len(map_entry["levels"]),
+            "levels": sorted(map_entry["levels"]),
+            "sublevelCount": len(sublevels),
+            "enemyRefCount": sum(len(sublevel["enemies"]) for sublevel in sublevels),
+            "sublevels": sublevels,
+        })
+
+    summary = {
+        "mapCount": len(output_maps),
+        "levelCount": len(output_levels),
+        "mapLevelPairCount": sum(map_entry["levelCount"] for map_entry in output_maps),
+        "mapMarkCount": sum(level["markCount"] for level in output_levels),
+        "sublevelCount": sum(map_entry["sublevelCount"] for map_entry in output_maps),
+        "sublevelEnemyRefCount": sum(map_entry["enemyRefCount"] for map_entry in output_maps),
+        "levelDataCount": sum(level["levelDataCount"] for level in output_levels),
+        "levelScriptCount": sum(level["levelScriptCount"] for level in output_levels),
+        "missionRuntimeCount": sum(level["missionRuntimeCount"] for level in output_levels),
+    }
     payload = {
         "generated": int(time.time()),
-        "levels": [{"levelId": level, "marks": marks} for level, marks in sorted(levels.items())],
+        "summary": summary,
+        "maps": output_maps,
+        "levels": output_levels,
     }
     (GRAPH_DIR / "map_level_index.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -27646,6 +28610,10 @@ QUERY_KIND_PRIORITY = {
     "monobehaviour_frontier_report": 42.91,
     "monobehaviour_frontier_group": 42.92,
     "monobehaviour_decode_status": 42.93,
+    "monobehaviour_frontier_tail_audit_report": 42.931,
+    "monobehaviour_tail_audit_type": 42.932,
+    "monobehaviour_tail_audit_band": 42.933,
+    "monobehaviour_tail_audit_recommendation": 42.934,
     "monobehaviour_domain": 42.94,
     "monobehaviour_schema": 42.95,
     "monobehaviour_schema_group": 42.96,
@@ -28243,6 +29211,7 @@ QUERY_KIND_PRIORITY = {
     "weapon": 10,
     "weapon_upgrade_template": 10.1,
     "weapon_upgrade_sum_template": 10.2,
+    "weapon_upgrade_level_checkpoint": 10.25,
     "weapon_breakthrough_template": 10.3,
     "weapon_talent_template": 10.4,
     "equipment": 11,
@@ -28468,6 +29437,10 @@ NODE_ID_PREFIXES = (
     "monobehaviour_frontier_report",
     "monobehaviour_frontier_group",
     "monobehaviour_decode_status",
+    "monobehaviour_frontier_tail_audit_report",
+    "monobehaviour_tail_audit_type",
+    "monobehaviour_tail_audit_band",
+    "monobehaviour_tail_audit_recommendation",
     "monobehaviour_domain",
     "monobehaviour_schema",
     "monobehaviour_schema_group",
@@ -29039,6 +30012,7 @@ NODE_ID_PREFIXES = (
     "weapon",
     "weapon_upgrade_template",
     "weapon_upgrade_sum_template",
+    "weapon_upgrade_level_checkpoint",
     "weapon_breakthrough_template",
     "weapon_talent_template",
     "equipment",
@@ -29291,6 +30265,830 @@ ASSET_USES_EDGE_KINDS = (
     "shader_program_has_snippet",
 )
 ASSET_USAGE_KIND_FALLBACKS = ("asset", "unity_asset", "unity_pathid", "shader_program", "texture2d_raw_hash_collision_group", "asset_container")
+STAT_USAGE_KIND_FALLBACKS = ("gameplay_stat_property", "attribute_meta", "composite_attribute")
+FORMULA_USAGE_KIND_FALLBACKS = (
+    "equipment_formula",
+    "factory_recipe",
+    "spaceship_formula",
+    "activity_limited_formula",
+    "activity_limited_formula_stage",
+    "limited_formula_reverse",
+    "equipment_formula_pack",
+)
+FACTORY_FLOW_KIND_FALLBACKS = (
+    "factory_miner",
+    "factory_fluid_machine",
+    "factory_machine",
+    "factory_recipe",
+    "factory_item",
+    "item",
+    "factory_liquid",
+    "factory_building",
+    "factory_logistic_unit",
+    "factory_underground_pipe",
+    "factory_tech",
+    "factory_mine",
+    "factory_region",
+)
+ENTITY_ASSET_KIND_FALLBACKS = (
+    "asset_entity",
+    "model_config_model",
+    "model_prefab",
+    "world_entity",
+    "world_entity_instance",
+    "interactive_template",
+)
+
+ENTITY_ASSET_EDGE_KINDS = (
+    "entity_has_lod_model",
+    "model_lod_of_asset_entity",
+    "entity_uses_material",
+    "material_used_by_asset_entity",
+    "entity_uses_texture",
+    "texture_used_by_asset_entity",
+    "model_config_asset_entity",
+    "asset_entity_used_by_model_config",
+    "model_view_state_controller_asset_entity",
+    "asset_entity_used_by_model_view_state_controller",
+    "interactive_template_asset_entity",
+    "asset_entity_used_by_interactive_template",
+    "weapon_model_asset_entity",
+    "asset_entity_used_by_weapon_model",
+    "monobehaviour_frontier_entry_model_asset_entity",
+    "asset_entity_used_by_monobehaviour_frontier_entry",
+    "has_gameplay_asset_entity",
+    "asset_entity_used_by_gameplay",
+)
+
+ENTITY_MATERIAL_DETAIL_EDGE_KINDS = (
+    "uses_shader",
+    "uses_shader_pathid",
+    "uses_texture",
+    "uses_texture_pathid",
+    "material_shader_pathid_resolves_unity_asset",
+    "material_texture_pathid_resolves_unity_asset",
+    "material_texture_pathid_exports_asset",
+)
+
+ENTITY_SEMANTIC_MATERIAL_EDGE_KINDS = (
+    "uses_shader",
+    "uses_shader_pathid",
+    "uses_texture",
+    "uses_texture_pathid",
+)
+
+SHADER_USAGE_KIND_FALLBACKS = (
+    "shader_program",
+    "shader",
+    "shader_family",
+    "shader_bytecode_backend",
+    "shader_snippet",
+    "unity_pathid",
+    "material",
+)
+
+SHADER_USAGE_EDGE_KINDS = (
+    "shader_export_has_program",
+    "shader_program_family",
+    "shader_program_has_backend",
+    "shader_program_has_snippet",
+    "shader_program_named_shader",
+    "shader_program_pathid",
+    "shader_snippet_backend",
+    "uses_shader",
+    "uses_shader_pathid",
+    "material_shader_pathid_resolves_unity_asset",
+    "material_used_by_asset_entity",
+)
+
+MATERIAL_USAGE_KIND_FALLBACKS = (
+    "material",
+    "asset",
+    "asset_entity",
+    "unity_pathid",
+    "shader_program",
+    "shader",
+    "texture",
+)
+
+MATERIAL_USAGE_EXPLICIT_EDGE_KINDS = (
+    "uses_material",
+    "referenced_by_material",
+    "entity_uses_material",
+    "material_used_by_asset_entity",
+    "entity_uses_texture",
+    "texture_used_by_asset_entity",
+    "uses_texture",
+    "uses_texture_pathid",
+    "uses_shader",
+    "uses_shader_pathid",
+    "material_shader_pathid_resolves_unity_asset",
+    "unity_asset_used_by_material_shader_slot",
+    "shader_used_by_material_slot",
+    "material_uses_shader_program",
+    "shader_program_used_by_material",
+    "material_texture_pathid_resolves_unity_asset",
+    "unity_asset_used_by_material_texture_slot",
+    "material_texture_pathid_exports_asset",
+    "asset_export_used_by_material_texture_slot",
+    "shader_program_pathid",
+    "shader_program_family",
+    "shader_program_has_backend",
+    "shader_program_named_shader",
+)
+
+EFFECT_USAGE_KIND_FALLBACKS = (
+    "gameplay_effect",
+    "global_effect",
+    "global_effect_param",
+    "potential_talent_effect",
+    "use_item_effect",
+    "domain_level_effect",
+    "fertilize_effect",
+    "asset",
+    "buff",
+    "gameplay_skill",
+    "level_script",
+    "level_data",
+    "model_view_state_controller",
+    "char_interact_perform",
+    "spawner_enemy_entry",
+)
+
+EFFECT_USAGE_EXPLICIT_EDGE_KINDS = (
+    "skill_data_references_effect",
+    "gameplay_effect_used_by_skill_data",
+    "buff_data_references_effect",
+    "gameplay_effect_used_by_buff_data",
+    "level_script_references_effect",
+    "gameplay_effect_used_by_level_script",
+    "level_script_template_references_effect",
+    "gameplay_effect_used_by_level_script_template",
+    "level_data_references_effect",
+    "gameplay_effect_used_by_level_data",
+    "spawner_enemy_prewarn_effect",
+    "model_view_state_controller_references_effect",
+    "gameplay_effect_used_by_model_view_state_controller",
+    "model_view_state_controller_animator_references_effect",
+    "gameplay_effect_used_by_model_view_state_controller_animator",
+    "char_interact_references_effect",
+    "gameplay_effect_used_by_char_interact",
+    "monobehaviour_frontier_entry_uses_gameplay_effect",
+    "gameplay_effect_used_by_monobehaviour_frontier_entry",
+    "factory_battle_attack_range_effect",
+    "gameplay_effect_used_by_factory_battle_attack_range",
+    "effect_name_matches_export_base_asset",
+    "asset_matched_by_gameplay_effect",
+    "defines_potential_talent_effect",
+    "uses_potential_talent_effect",
+    "character_potential_effect",
+    "potential_effect_used_by_character_potential",
+    "character_talent_node_uses_effect",
+    "potential_talent_effect_used_by_character_talent_node",
+    "potential_talent_attaches_buff",
+    "potential_talent_attaches_skill",
+    "potential_talent_modifies_skill_blackboard",
+    "potential_talent_modifies_skill_param",
+    "potential_talent_modifies_stat_property",
+    "potential_talent_modifies_attribute_meta",
+    "potential_talent_uses_blackboard_key",
+    "defines_use_item_effect",
+    "item_has_use_effect",
+    "use_effect_applies_buff",
+    "use_effect_runs_skill",
+    "use_effect_uses_blackboard_key",
+    "defines_global_effect",
+    "defines_ether_submit_global_effect",
+    "ether_submit_applies_effect",
+    "global_effect_has_param",
+    "global_effect_domain",
+    "ether_submit_global_effect_blackboard",
+    "activity_global_effect_group_effect",
+    "domain_development_level_has_effect",
+    "domain_level_effect_applies_to_level",
+    "defines_fertilize_effect",
+    "fertilize_item_has_effect_type",
+    "fertilize_effect_used_by_item",
+)
+
+ANIMATION_USAGE_KIND_FALLBACKS = (
+    "level_script_montage",
+    "animation_config",
+    "animation_state",
+    "facial_morph",
+    "actor_animation_ref",
+    "animation_cutscene_ref",
+    "animation_path_ref",
+    "model_view_state_controller",
+    "model_view_clip_ref",
+    "model_view_animator_name",
+    "animation_clip",
+    "lipsync_clip",
+    "damage_text_animation",
+    "runtime_jump_clip",
+    "timeline_option_clip",
+    "fmv_clip",
+    "asset_entity",
+    "asset",
+    "audio",
+)
+
+ANIMATION_USAGE_EXPLICIT_EDGE_KINDS = (
+    "animation_config_data_defines_config",
+    "animation_config_references_state",
+    "animation_state_used_by_animation_config",
+    "animation_config_references_facial_morph",
+    "facial_morph_used_by_animation_config",
+    "animation_config_references_montage",
+    "level_script_montage_used_by_animation_config",
+    "animation_config_references_actor_animation",
+    "actor_animation_ref_used_by_animation_config",
+    "animation_config_references_cutscene",
+    "animation_cutscene_ref_used_by_animation_config",
+    "animation_config_references_path",
+    "animation_path_ref_used_by_animation_config",
+    "monobehaviour_frontier_entry_uses_animation_config",
+    "animation_config_used_by_monobehaviour_frontier_entry",
+    "npc_montage_data_defines_montage",
+    "npc_montage_has_category",
+    "npc_montage_has_body",
+    "npc_montage_has_action",
+    "level_script_references_montage",
+    "level_script_montage_used_by_level_script",
+    "level_script_template_references_montage",
+    "level_script_montage_used_by_level_script_template",
+    "level_data_references_montage",
+    "level_script_montage_used_by_level_data",
+    "char_interact_references_montage",
+    "level_script_montage_used_by_char_interact",
+    "atmospheric_npc_uses_montage",
+    "atmospheric_npc_uses_facial_morph",
+    "defines_model_view_state_controller",
+    "model_view_state_controller_uses_model",
+    "model_config_used_by_model_view_state_controller",
+    "model_view_state_controller_asset_entity",
+    "asset_entity_used_by_model_view_state_controller",
+    "model_view_state_controller_has_clip_asset",
+    "model_view_state_controller_animator_references_clip",
+    "model_view_state_controller_has_animator_name",
+    "model_view_state_controller_references_effect",
+    "model_view_state_controller_animator_references_effect",
+    "has_animation_clip",
+    "defines_lipsync_clip",
+    "lipsync_clip_language",
+    "lipsync_for_audio",
+    "audio_has_lipsync_clip",
+    "damage_text_uses_animation",
+    "timeline_line_clip",
+    "timeline_option_clip",
+    "runtime_jump_clip",
+    "fmv_binding_timeline_clip",
+    "fmv_clip_used_by_binding",
+)
+
+VIDEO_USAGE_KIND_FALLBACKS = (
+    "fmv_binding",
+    "video",
+    "story",
+    "mission",
+    "fmv_clip",
+    "unity_pathid",
+    "unity_asset",
+    "asset",
+    "narrative_video_stem",
+    "narrative_video_override_rule",
+    "narrative_video_unresolved_candidate",
+)
+
+VIDEO_USAGE_EDGE_KINDS = (
+    "defines_fmv_binding",
+    "fmv_binding_targets_story",
+    "story_has_fmv_binding",
+    "fmv_binding_in_mission",
+    "mission_has_fmv_binding",
+    "fmv_binding_uses_video",
+    "video_used_by_fmv_binding",
+    "fmv_binding_timeline_clip",
+    "fmv_clip_used_by_binding",
+    "fmv_binding_source_file",
+    "fmv_binding_playable_pathid",
+    "fmv_playable_pathid_resolves_unity_asset",
+    "unity_asset_used_by_fmv_playable_pathid",
+    "fmv_playable_pathid_exports_asset",
+    "asset_export_used_by_fmv_playable_pathid",
+    "indexes_video",
+    "unbound_video_candidate",
+    "has_narrative_video",
+    "video_used_by_story_narrative",
+    "has_narrative_video_override_rule",
+    "story_has_narrative_video_override_rule",
+    "narrative_video_override_targets_story",
+    "narrative_video_override_copies_audio_from_story",
+    "story_audio_copied_by_narrative_video_override",
+    "narrative_video_override_uses_stem",
+    "narrative_video_stem_resolves_video",
+    "narrative_video_stem_has_standalone_story_key",
+    "story_is_standalone_narrative_video_key_for_stem",
+    "narrative_video_stem_key_candidate",
+    "story_is_narrative_video_stem_candidate",
+    "narrative_video_stem_matched_file",
+    "narrative_video_candidate_resolves_video",
+    "narrative_video_stem_matched_story_key",
+    "story_matched_by_narrative_video_stem",
+    "has_narrative_video_known_false_suppression",
+    "narrative_video_false_suppression_targets_story",
+    "story_has_narrative_video_false_suppression",
+    "narrative_video_false_suppression_uses_stem",
+    "narrative_video_false_suppression_file",
+    "has_narrative_video_filename_candidate",
+    "narrative_video_filename_candidate_targets_story",
+    "story_has_narrative_video_filename_candidate",
+    "narrative_video_filename_candidate_uses_stem",
+    "narrative_video_filename_candidate_file",
+    "has_narrative_video_unresolved_candidate",
+    "narrative_video_unresolved_candidate_status",
+    "narrative_video_unresolved_candidate_uses_stem",
+    "narrative_video_unresolved_file",
+    "narrative_video_unresolved_rel_video",
+    "narrative_video_unresolved_key_candidate",
+    "story_is_narrative_video_unresolved_candidate_key",
+    "narrative_video_unresolved_existing_story_candidate",
+    "story_is_existing_narrative_video_unresolved_candidate",
+)
+
+ITEM_USAGE_KIND_FALLBACKS = (
+    "item",
+    "reward",
+    "reward_drop",
+    "item_obtain_way",
+    "item_obtain_condition",
+    "item_type",
+    "item_showing_type",
+    "item_valuable_tab",
+    "usable_item_chest",
+    "limited_time_item",
+    "gift_item",
+    "checkin_stage",
+    "daily_activation_reward",
+    "money_config",
+    "money_exchange",
+    "shop_goods",
+    "shop",
+    "shop_group",
+    "cash_goods",
+    "cash_shop_goods",
+    "cash_shop",
+    "cash_shop_group",
+    "cash_shop_tab",
+    "equipment",
+    "equipment_formula",
+    "equipment_suit",
+    "gem_preset",
+    "gem_term",
+    "gem_tag",
+    "gem_term_pool",
+    "factory_item",
+    "factory_recipe",
+    "factory_mine",
+    "factory_liquid",
+    "factory_miner",
+    "planting_crop",
+    "soil_reward",
+    "fertilize_item",
+    "world_doodad",
+    "activity",
+    "activity_stage",
+    "activity_task",
+    "activity_submit_item",
+    "activity_limited_formula",
+    "business_card_topic",
+    "profile_picture",
+    "user_avatar",
+    "mail_template",
+    "battlepass_season",
+    "battlepass_level",
+    "battlepass_reward_preview",
+)
+
+ITEM_USAGE_EXPLICIT_EDGE_KINDS = (
+    "asset_used_as_icon_by",
+    "uses_icon_asset",
+    "uses_visual_asset",
+    "visual_token_matches_export_base_asset",
+)
+
+ACTOR_USAGE_KIND_FALLBACKS = (
+    "actor",
+    "character",
+    "actor_image",
+    "asset_entity",
+    "model_config_model",
+    "model_prefab",
+    "model_radius",
+    "world_entity",
+    "npc_voice_profile",
+    "text_voice_id",
+    "audio_voice_extra",
+    "profile_picture",
+    "user_avatar",
+    "business_card_topic",
+    "spaceship_character_gift",
+    "gameplay_skill",
+    "gameplay_talent",
+    "weapon",
+    "character_trial",
+)
+
+ACTOR_USAGE_EXPLICIT_EDGE_KINDS = (
+    "has_actor_name",
+    "mentions_actor",
+    "actor_mentioned_by_story",
+    "spoken_by",
+    "actor_speaks_line",
+    "actor_has_speaker_channel",
+    "audio_used_by_actor_speaker_channel",
+    "actor_speaks_dialog_text",
+    "dialog_text_actor",
+    "actor_speaks_audio_sequence_dialog",
+    "audio_sequence_dialog_speaker_actor",
+    "character_speaks_audio_sequence_dialog",
+    "audio_sequence_dialog_speaker_character",
+    "actor_owns_sns_chat",
+    "sns_chat_owner_actor",
+    "character_owns_sns_chat",
+    "actor_used_by_sns_option",
+    "sns_option_uses_actor",
+    "character_used_by_sns_option",
+    "actor_speaks_sns_content",
+    "sns_content_speaker_actor",
+    "character_speaks_sns_content",
+    "actor_speaks_radio_line",
+    "radio_line_actor",
+    "env_talk_actor",
+    "character_speaks_radio_line",
+    "actor_used_by_remote_common_line_middle",
+    "remote_common_line_middle_actor",
+    "character_used_by_remote_common_line_middle",
+    "remote_common_line_middle_character",
+    "actor_speaks_remote_common_line",
+    "remote_common_line_actor",
+    "character_speaks_remote_common_line",
+    "remote_common_line_character",
+    "responsive_speaker_is_actor",
+    "responsive_speaker_is_character",
+    "response_audio_anchor_speaker",
+    "response_audio_candidate_speaker",
+    "speaker_channel",
+    "has_profile_voice",
+    "text_voice_id_uses_audio",
+    "audio_used_by_text_voice_id",
+    "text_voice_id_line_node",
+    "audio_voice_extra_for_audio",
+    "audio_voice_extra_for_dialog_row",
+    "audio_voice_extra_line_node",
+    "npc_info_matches_actor",
+    "npc_info_uses_vo_actor",
+    "npc_info_uses_vo_actor_channel",
+    "npc_info_uses_wwise_actor",
+    "npc_info_uses_wwise_channel",
+    "defines_character",
+    "defines_character_growth",
+    "defines_character_potential",
+    "defined_by_row",
+    "character_growth_default_weapon",
+    "default_weapon",
+    "uses_default_weapon",
+    "character_growth_profession",
+    "character_growth_type",
+    "character_has_profession",
+    "character_has_type",
+    "has_character_potential",
+    "has_character_breakthrough",
+    "has_character_level_checkpoint",
+    "has_character_stat_checkpoint",
+    "has_character_tag",
+    "character_has_bloc",
+    "character_has_preset",
+    "preset_uses_character",
+    "character_recommends_weapon",
+    "character_recommends_weapon_skill",
+    "character_training_dungeon",
+    "dungeon_related_character",
+    "team_requires_character",
+    "game_mechanic_condition_param_character",
+    "character_used_by_game_mechanic_condition_param",
+    "entity_has_lod_model",
+    "model_lod_of_asset_entity",
+    "entity_uses_material",
+    "material_used_by_asset_entity",
+    "entity_uses_texture",
+    "texture_used_by_asset_entity",
+    "has_gameplay_asset_entity",
+    "asset_entity_used_by_gameplay",
+    "has_gameplay_asset",
+    "asset_used_by_gameplay",
+    "model_config_has_model",
+    "model_config_has_radius",
+    "model_config_uses_prefab",
+    "model_config_asset_entity",
+    "model_view_state_controller_uses_model",
+    "model_view_state_controller_asset_entity",
+    "interactive_template_uses_model",
+    "interactive_template_asset_entity",
+    "world_entity_uses_model",
+    "world_entity_instance_uses_model",
+    "world_entity_script_slot_uses_model",
+    "monobehaviour_frontier_entry_uses_model",
+    "monobehaviour_frontier_entry_model_asset_entity",
+    "weapon_model_asset_entity",
+    "asset_entity_used_by_weapon_model",
+    "character_has_actor_image",
+    "defines_actor_image",
+    "character_has_avatar_image",
+    "character_has_bust_image",
+    "character_has_mission_panel_image",
+    "picture_for_character",
+    "profile_picture_unlock_item",
+    "item_unlocks_profile_picture",
+    "profile_picture_type_has_picture",
+    "profile_picture_name_text",
+    "profile_picture_author_text",
+    "character_has_spaceship_gift_dialogs",
+    "spaceship_character_gift_has_entry",
+    "character_has_spaceship_proxy",
+    "spaceship_proxy_for_character",
+    "character_uses_spaceship_proxy",
+    "character_uses_friend_spaceship_proxy",
+    "character_has_spaceship_skill",
+    "gacha_char_initial_weapon",
+    "gacha_char_perfect_weapon",
+    "gacha_info_for_character",
+    "gacha_pool_contains_character",
+    "gacha_pool_up_character",
+    "preset_uses_weapon",
+    "defines_character_trial",
+    "defines_activity_character_trial",
+    "trial_uses_dungeon",
+    "trial_grants_reward",
+)
+
+TEXT_USAGE_KIND_FALLBACKS = (
+    "i18n_text",
+    "text_table_key",
+    "dialog_text",
+    "bark_text",
+    "text_voice_id",
+    "dialog_option",
+    "ui_label",
+    "setting_text_key",
+    "hyperlink_text",
+    "rich_text_style",
+    "friend_chat_text",
+    "item_gather_text",
+    "reference_row",
+    "reference_table",
+    "i18n_reference_file",
+    "table_row",
+    "item",
+    "character",
+    "reward",
+    "mission_runtime_asset",
+    "quest_task",
+    "wiki_tutorial_page",
+    "game_mechanic",
+    "map_mark_template",
+    "activity",
+    "cash_shop",
+    "shop_goods",
+    "factory_system_blueprint",
+    "tag",
+    "gameplay_tag",
+    "character_tag",
+)
+
+TEXT_USAGE_EXPLICIT_EDGE_KINDS = (
+    "uses_i18n_text",
+    "i18n_text_used_by",
+    "text_table_key_i18n_text",
+    "i18n_text_used_by_text_table_key",
+    "defines_text_table_key",
+    "i18n_reference_file_references_text",
+    "i18n_text_used_by_reference_file",
+    "i18n_reference_index_top_text",
+    "i18n_top_text_used_by_file",
+    "has_i18n_text",
+    "has_reference_table",
+    "has_reference_row",
+    "defines_dialog_text",
+    "dialog_text_line_node",
+    "dialog_text_story_node",
+    "bark_text_uses_i18n_text",
+    "line_has_bark_text",
+    "rich_content_uses_i18n_text",
+    "rich_content_line_uses_i18n_text",
+)
+
+MISSION_FLOW_KIND_FALLBACKS = (
+    "mission_runtime_asset",
+    "mission",
+    "quest_task",
+    "mission_runtime_action",
+    "mission_runtime_condition",
+    "level",
+    "story",
+)
+
+MISSION_FLOW_EDGE_KINDS = (
+    "defines_mission_runtime_asset",
+    "mission_runtime_asset_for_mission",
+    "mission_runtime_in_level",
+    "level_has_mission_runtime",
+    "mission_runtime_rewards",
+    "reward_used_by_mission_runtime",
+    "mission_runtime_name_text",
+    "mission_runtime_description_text",
+    "mission_runtime_has_quest",
+    "quest_task_in_mission",
+    "quest_task_depends_on_previous",
+    "quest_task_rewards",
+    "quest_objective_text",
+    "quest_description_override_text",
+    "quest_has_runtime_condition",
+    "quest_objective_condition_type",
+    "quest_references_narrative",
+    "story_used_by_mission_runtime_quest",
+    "sns_dialog_used_by_mission_runtime_quest",
+    "remote_common_used_by_mission_runtime_quest",
+    "radio_used_by_mission_runtime_quest",
+    "mission_runtime_has_action",
+    "mission_runtime_action_type",
+    "mission_runtime_action_next",
+    "mission_runtime_action_previous",
+    "mission_runtime_action_text",
+    "i18n_text_used_by_mission_runtime_action",
+    "mission_runtime_action_plays_radio",
+    "radio_used_by_mission_runtime_action",
+    "mission_runtime_action_references_narrative",
+    "mission_runtime_action_map_references_narrative",
+    "radio_used_by_mission_runtime_action_map",
+    "mission_runtime_action_media_guide_group",
+    "guide_group_used_by_mission_runtime_media_action",
+    "mission_runtime_action_guide_group",
+    "guide_group_used_by_mission_runtime_action",
+    "mission_runtime_action_shows_chapter_panel",
+    "chapter_panel_used_by_mission_runtime_action",
+    "mission_runtime_condition_type",
+    "condition_has_sub_condition",
+    "condition_reaches_level",
+    "condition_reaches_mission_area",
+    "condition_checks_dialog_finish",
+    "story_used_by_mission_runtime_condition",
+    "condition_checks_level",
+    "condition_checks_level_script",
+    "condition_checks_level_script_property",
+    "condition_checks_level_script_property_key",
+    "condition_checks_world_entity_script_slot",
+    "condition_checks_quest_state",
+    "condition_checks_mission_state",
+    "condition_requires_item_count",
+    "condition_requires_factory_tech",
+    "condition_checks_guide_group_complete",
+    "condition_compare_operator",
+    "condition_has_type",
+    "condition_has_parameter",
+    "condition_parameter_quest",
+    "condition_parameter_item",
+    "condition_parameter_value",
+)
+
+PROGRESSION_FLOW_KIND_FALLBACKS = (
+    "character",
+    "character_level_cost",
+    "character_level_checkpoint",
+    "character_breakthrough",
+    "character_break_cost",
+    "character_break_stage",
+    "character_potential",
+    "character_talent_node",
+    "character_skill_group",
+    "character_skill_level_cost",
+    "weapon",
+    "weapon_upgrade_template",
+    "weapon_upgrade_sum_template",
+    "weapon_breakthrough_template",
+    "weapon_talent_template",
+    "equipment",
+    "equipment_formula",
+    "equipment_formula_pack",
+    "equipment_suit",
+    "equipment_enhance_cost",
+    "gem_preset",
+    "gem_term",
+    "gem_tag",
+    "gem_enhance_rule",
+    "attribute_meta",
+    "gameplay_stat_property",
+    "composite_attribute",
+    "item",
+    "reward",
+)
+
+PROGRESSION_FLOW_EXPLICIT_EDGE_KINDS = (
+    "has_character_level_checkpoint",
+    "has_character_stat_checkpoint",
+    "stat_checkpoint_has_property",
+    "stat_property_used_by_character_checkpoint",
+    "character_has_breakthrough",
+    "unlocks_character_break_stage",
+    "character_has_break_cost",
+    "character_break_cost_requires_item",
+    "item_required_by_character_break_cost_requires_item",
+    "character_break_cost_stage",
+    "character_break_cost_uses_node",
+    "character_level_cost_requires_gold",
+    "item_gold_cost_for_character_level_cost",
+    "level_checkpoint_gold_cost",
+    "item_gold_cost_for_level_checkpoint",
+    "has_character_potential",
+    "character_potential_cost_item",
+    "item_cost_for_character_potential",
+    "character_potential_effect",
+    "potential_effect_used_by_character_potential",
+    "character_potential_unlocks_item",
+    "uses_potential_talent_effect",
+    "potential_talent_modifies_attribute_meta",
+    "attribute_meta_modified_by_potential_talent",
+    "potential_talent_modifies_stat_property",
+    "stat_property_modified_by_potential_talent",
+    "potential_talent_modifies_blackboard_key",
+    "character_has_skill_level_cost",
+    "character_skill_level_cost_for_group",
+    "skill_group_has_level_cost",
+    "character_skill_level_cost_requires_gold",
+    "character_skill_level_cost_requires_item",
+    "character_growth_main_attribute_meta",
+    "character_growth_sub_attribute_meta",
+    "character_growth_default_weapon",
+    "character_recommends_weapon",
+    "character_recommends_weapon_skill",
+    "weapon_uses_upgrade_template",
+    "weapon_uses_breakthrough_template",
+    "weapon_uses_talent_template",
+    "defines_weapon_upgrade_template",
+    "defines_weapon_upgrade_sum_template",
+    "weapon_upgrade_has_sum_template",
+    "weapon_upgrade_template_has_level_checkpoint",
+    "weapon_upgrade_checkpoint_has_stat_property",
+    "weapon_breakthrough_requires_item",
+    "item_required_by_weapon_breakthrough",
+    "weapon_potential_requires_item",
+    "item_required_by_weapon_potential",
+    "weapon_potential_item_for_weapon",
+    "weapon_has_skill_entry",
+    "weapon_has_potential_skill",
+    "equipment_crafted_by_formula",
+    "equipment_formula_outputs_equipment",
+    "equipment_formula_cost_item",
+    "item_cost_for_equipment_formula",
+    "equipment_formula_cost_currency",
+    "currency_cost_for_equipment_formula",
+    "equipment_formula_pack_has_formula",
+    "equipment_formula_in_pack",
+    "equipment_formula_unlock_key",
+    "unlock_key_unlocks_equipment_formula",
+    "equipment_in_suit",
+    "equipment_suit_includes_equipment",
+    "has_equipment_suit",
+    "equipment_runtime_attribute",
+    "equipment_display_attribute",
+    "equipment_display_base_attribute",
+    "equipment_display_attribute_composite",
+    "has_equipment_property_curve",
+    "equipment_enhance_cost_consumes_item",
+    "item_consumed_by_equipment_enhance_cost",
+    "gem_preset_has_term",
+    "gem_preset_item",
+    "gem_preset_real_item",
+    "gem_term_has_tag",
+    "gem_tag_combo_has_tag",
+    "gem_tag_combo_recommended_weapon",
+    "gem_enhance_rule_cost_item",
+    "item_cost_for_gem_enhance_rule",
+    "gem_dismantle_group_has_rule",
+    "gem_dismantle_rule_domain",
+    "gem_dismantle_rule_gold_item",
+    "gem_dismantle_rule_output_item",
+    "attribute_meta_has_stat_property",
+    "attribute_meta_used_by_character_base",
+    "character_base_attribute_meta",
+    "attribute_meta_used_by_equipment",
+    "attribute_display_entry_uses_modifier_property",
+    "interactive_attribute_sets_property",
+    "requires_item",
+    "item_required_by_gameplay",
+    "has_gameplay_progression",
+    "skill_level_uses_blackboard_key",
+)
 
 def exact_node_candidates(term: str) -> list[str]:
     candidates = [term]
@@ -29566,6 +31364,3077 @@ def asset_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "") ->
             for row in used_by_rows
         ],
         "uses": [usage_edge_ref(row, "dst", seed) for row in uses_rows],
+    }
+
+
+def resolve_entity_asset_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in ENTITY_ASSET_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def entity_asset_category(edge_kind: str) -> str:
+    if edge_kind in {"entity_has_lod_model", "model_lod_of_asset_entity"}:
+        return "lodModels"
+    if "material" in edge_kind and "texture" not in edge_kind and "shader" not in edge_kind:
+        return "materials"
+    if "texture" in edge_kind:
+        return "textures"
+    if "shader" in edge_kind:
+        return "shaders"
+    if "model_config" in edge_kind or "model_view" in edge_kind:
+        return "modelConfig"
+    if "interactive" in edge_kind:
+        return "interactive"
+    if "weapon" in edge_kind:
+        return "weapon"
+    if "monobehaviour" in edge_kind or "gameplay" in edge_kind:
+        return "gameplay"
+    return "other"
+
+
+def semantic_material_ref_from_asset(row: sqlite3.Row) -> tuple[str, str]:
+    path = safe_key(row["dstPath"]) or safe_key(row["dstName"])
+    if not path:
+        return "", ""
+    stem = Path(path).stem
+    material_name = re.sub(r"_p[0-9A-Fa-f]{8,}$", "", stem)
+    source = ""
+    first_part = path.replace("\\", "/").split("/", 1)[0]
+    if first_part.endswith("-materials"):
+        source = first_part.removesuffix("-materials")
+    elif first_part in {"StreamingAssets", "Persistent"}:
+        source = first_part
+    return source, material_name
+
+
+def entity_assets(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_entity_asset_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "assetSummary": {}, "relations": []}
+
+    relation_limit = max(limit, 1)
+    direct_placeholders = ",".join("?" for _ in ENTITY_ASSET_EDGE_KINDS)
+    material_placeholders = ",".join("?" for _ in ENTITY_MATERIAL_DETAIL_EDGE_KINDS)
+    semantic_material_placeholders = ",".join("?" for _ in ENTITY_SEMANTIC_MATERIAL_EDGE_KINDS)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        count_rows = conn.execute(
+            f"""
+            SELECT kind AS edge, COUNT(*) AS count
+            FROM edges
+            WHERE (src = ? OR dst = ?)
+              AND kind IN ({direct_placeholders})
+            GROUP BY kind
+            ORDER BY kind
+            """,
+            (seed, seed, *ENTITY_ASSET_EDGE_KINDS),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+              AND e.kind IN ({direct_placeholders})
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, *ENTITY_ASSET_EDGE_KINDS, relation_limit),
+        ).fetchall()
+        material_relation_rows = conn.execute(
+            """
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE e.src = ?
+              AND e.kind = 'entity_uses_material'
+            ORDER BY dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, relation_limit),
+        ).fetchall()
+
+        material_ids = _unique_preserve(
+            row["dstId"]
+            for row in material_relation_rows
+        )
+        semantic_material_ids: list[str] = []
+        semantic_material_rows: list[sqlite3.Row] = []
+        material_detail_rows: list[sqlite3.Row] = []
+        if material_ids:
+            material_id_placeholders = ",".join("?" for _ in material_ids)
+            material_detail_rows = conn.execute(
+                f"""
+                SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                       src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                       dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+                FROM edges e
+                JOIN nodes src ON src.id = e.src
+                JOIN nodes dst ON dst.id = e.dst
+                WHERE e.src IN ({material_id_placeholders})
+                  AND e.kind IN ({material_placeholders})
+                ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+                LIMIT ?
+                """,
+                (*material_ids, *ENTITY_MATERIAL_DETAIL_EDGE_KINDS, relation_limit),
+            ).fetchall()
+            material_ref_pairs = _unique_preserve(
+                semantic_material_ref_from_asset(row)
+                for row in material_relation_rows
+            )
+            for source, material_name in material_ref_pairs:
+                if not material_name:
+                    continue
+                rows = conn.execute(
+                    """
+                    SELECT id, kind, name, source, path, data
+                    FROM nodes
+                    WHERE kind = 'material'
+                      AND LOWER(name) = LOWER(?)
+                      AND (? = '' OR source = ?)
+                    ORDER BY source, name
+                    """,
+                    (material_name, source, source),
+                ).fetchall()
+                for row in rows:
+                    if row["id"] not in semantic_material_ids:
+                        semantic_material_ids.append(row["id"])
+                        semantic_material_rows.append(row)
+        semantic_material_detail_rows: list[sqlite3.Row] = []
+        shader_program_rows: list[sqlite3.Row] = []
+        shader_family_rows: list[sqlite3.Row] = []
+        if semantic_material_ids:
+            semantic_material_id_placeholders = ",".join("?" for _ in semantic_material_ids)
+            semantic_material_detail_rows = conn.execute(
+                f"""
+                SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                       src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                       dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+                FROM edges e
+                JOIN nodes src ON src.id = e.src
+                JOIN nodes dst ON dst.id = e.dst
+                WHERE e.src IN ({semantic_material_id_placeholders})
+                  AND e.kind IN ({semantic_material_placeholders})
+                ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+                LIMIT ?
+                """,
+                (*semantic_material_ids, *ENTITY_SEMANTIC_MATERIAL_EDGE_KINDS, relation_limit),
+            ).fetchall()
+            pathid_ids = _unique_preserve(
+                row["dstId"]
+                for row in semantic_material_detail_rows
+                if row["dstKind"] == "unity_pathid"
+            )
+            if pathid_ids:
+                pathid_placeholders = ",".join("?" for _ in pathid_ids)
+                shader_program_rows = conn.execute(
+                    f"""
+                    SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                           src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                           dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+                    FROM edges e
+                    JOIN nodes src ON src.id = e.src
+                    JOIN nodes dst ON dst.id = e.dst
+                    WHERE e.dst IN ({pathid_placeholders})
+                      AND e.kind = 'shader_program_pathid'
+                    ORDER BY src.source, src.name
+                    LIMIT ?
+                    """,
+                    (*pathid_ids, relation_limit),
+                ).fetchall()
+                shader_program_ids = _unique_preserve(row["srcId"] for row in shader_program_rows)
+                if shader_program_ids:
+                    shader_program_placeholders = ",".join("?" for _ in shader_program_ids)
+                    shader_family_rows = conn.execute(
+                        f"""
+                        SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                               src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                               dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+                        FROM edges e
+                        JOIN nodes src ON src.id = e.src
+                        JOIN nodes dst ON dst.id = e.dst
+                        WHERE e.src IN ({shader_program_placeholders})
+                          AND e.kind IN ('shader_program_family', 'shader_program_has_backend')
+                        ORDER BY e.kind, src.source, src.name, dst.name
+                        LIMIT ?
+                        """,
+                        (*shader_program_ids, relation_limit),
+                    ).fetchall()
+
+    relations = [
+        usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+        for row in relation_rows
+    ]
+    material_relations = [usage_edge_ref(row, "dst", seed) for row in material_relation_rows]
+    material_details = [usage_edge_ref(row, "dst", row["srcId"]) for row in material_detail_rows]
+    semantic_material_details = [usage_edge_ref(row, "dst", row["srcId"]) for row in semantic_material_detail_rows]
+    shader_programs = [usage_edge_ref(row, "src", row["dstId"]) for row in shader_program_rows]
+    shader_details = [usage_edge_ref(row, "dst", row["srcId"]) for row in shader_family_rows]
+    asset_summary: dict[str, list[dict[str, Any]]] = {}
+    for relation in relations:
+        category = entity_asset_category(safe_key(relation.get("edge")))
+        asset_summary.setdefault(category, []).append(relation)
+    if material_relations:
+        asset_summary["materials"] = material_relations
+    if material_details:
+        for detail in material_details:
+            category = entity_asset_category(safe_key(detail.get("edge")))
+            asset_summary.setdefault(f"material{category[:1].upper()}{category[1:]}", []).append(detail)
+    if semantic_material_rows:
+        asset_summary["semanticMaterials"] = [compact_node_ref(row) for row in semantic_material_rows]
+    for detail in semantic_material_details:
+        category = entity_asset_category(safe_key(detail.get("edge")))
+        asset_summary.setdefault(f"semanticMaterial{category[:1].upper()}{category[1:]}", []).append(detail)
+    if shader_programs:
+        asset_summary["shaderPrograms"] = shader_programs
+    if shader_details:
+        asset_summary["shaderDetails"] = shader_details
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "assetSummary": asset_summary,
+        "relations": relations,
+        "materialRelations": material_relations,
+        "materialDetails": material_details,
+        "semanticMaterials": [compact_node_ref(row) for row in semantic_material_rows],
+        "semanticMaterialDetails": semantic_material_details,
+        "shaderPrograms": shader_programs,
+        "shaderDetails": shader_details,
+        "caveats": [
+            "exported_asset_entity_evidence_only",
+            "semantic_material_nodes_are_matched_from_material_asset_filenames",
+            "not_full_runtime_renderer_or_animation_controller_reconstruction",
+        ],
+    }
+
+
+def resolve_material_usage_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in MATERIAL_USAGE_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def material_usage_relation_clause(alias: str = "e") -> str:
+    explicit = ", ".join(repr(kind) for kind in MATERIAL_USAGE_EXPLICIT_EDGE_KINDS)
+    return f"""
+              AND (
+                   {alias}.kind LIKE '%material%'
+                OR {alias}.kind LIKE '%texture%'
+                OR {alias}.kind LIKE '%shader%'
+                OR {alias}.kind IN ({explicit})
+              )
+    """
+
+
+def material_usage_category(edge_kind: str) -> str:
+    if "texture" in edge_kind:
+        return "textures"
+    if "shader" in edge_kind:
+        return "shaders"
+    if edge_kind.startswith("entity_uses_material") or edge_kind == "uses_material" or edge_kind == "referenced_by_material":
+        return "materials"
+    if "entity" in edge_kind:
+        return "entities"
+    if "pathid" in edge_kind or "unity_asset" in edge_kind or "asset_export" in edge_kind:
+        return "pathidsAssets"
+    if "material" in edge_kind:
+        return "materials"
+    return "other"
+
+
+def material_ref_from_asset_path(path: str, name: str = "") -> tuple[str, str]:
+    rel = safe_key(path) or safe_key(name)
+    if not rel:
+        return "", ""
+    stem = Path(rel).stem
+    material_name = re.sub(r"_p[0-9A-Fa-f]{8,}$", "", stem)
+    source = ""
+    first_part = rel.replace("\\", "/").split("/", 1)[0]
+    if first_part.endswith("-materials"):
+        source = first_part.removesuffix("-materials")
+    elif first_part in {"StreamingAssets", "Persistent"}:
+        source = first_part
+    return source, material_name
+
+
+def material_asset_pattern_for_material(row: sqlite3.Row | None) -> str:
+    if not row:
+        return ""
+    source = safe_key(row["source"])
+    name = safe_key(row["name"])
+    if not name:
+        return ""
+    if source:
+        return f"{source}-materials/Material/{name}_p%.json"
+    return f"%/Material/{name}_p%.json"
+
+
+def material_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_material_usage_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "materialSummary": {}, "relations": []}
+
+    relation_limit = max(limit, 1)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        focus_ids = [seed]
+        semantic_material_rows: list[sqlite3.Row] = []
+        material_asset_rows: list[sqlite3.Row] = []
+
+        if seed_row and seed_row["kind"] == "material":
+            semantic_material_rows.append(seed_row)
+            pattern = material_asset_pattern_for_material(seed_row)
+            if pattern:
+                material_asset_rows = conn.execute(
+                    """
+                    SELECT id, kind, name, source, path, data
+                    FROM nodes
+                    WHERE kind = 'asset'
+                      AND path LIKE ?
+                    ORDER BY source, path
+                    LIMIT ?
+                    """,
+                    (pattern, relation_limit),
+                ).fetchall()
+                focus_ids.extend(row["id"] for row in material_asset_rows)
+        elif seed_row and seed_row["kind"] == "asset":
+            source, material_name = material_ref_from_asset_path(seed_row["path"], seed_row["name"])
+            if material_name:
+                rows = conn.execute(
+                    """
+                    SELECT id, kind, name, source, path, data
+                    FROM nodes
+                    WHERE kind = 'material'
+                      AND LOWER(name) = LOWER(?)
+                      AND (? = '' OR source = ?)
+                    ORDER BY source, name
+                    LIMIT ?
+                    """,
+                    (material_name, source, source, relation_limit),
+                ).fetchall()
+                semantic_material_rows.extend(rows)
+                focus_ids.extend(row["id"] for row in rows)
+                if "/Material/" in safe_key(seed_row["path"]).replace("\\", "/"):
+                    material_asset_rows.append(seed_row)
+
+        direct_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+            {material_usage_relation_clause("e")}
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, relation_limit),
+        ).fetchall()
+
+        pathid_ids = _unique_preserve(
+            [
+                row["dstId"]
+                for row in direct_rows
+                if row["dstKind"] == "unity_pathid"
+            ]
+            + [
+                row["srcId"]
+                for row in direct_rows
+                if row["srcKind"] == "unity_pathid"
+            ]
+            + [seed if seed_row and seed_row["kind"] == "unity_pathid" else ""]
+        )
+        pathid_ids = [value for value in pathid_ids if value]
+        if pathid_ids:
+            focus_ids.extend(pathid_ids)
+
+        for row in material_asset_rows:
+            focus_ids.append(row["id"])
+        for row in semantic_material_rows:
+            focus_ids.append(row["id"])
+        focus_ids = _unique_preserve(focus_ids)
+        focus_placeholders = ",".join("?" for _ in focus_ids)
+
+        count_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, COUNT(1) AS count
+            FROM edges e
+            WHERE (e.src IN ({focus_placeholders}) OR e.dst IN ({focus_placeholders}))
+            {material_usage_relation_clause("e")}
+            GROUP BY e.kind
+            ORDER BY e.kind
+            """,
+            (*focus_ids, *focus_ids),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src IN ({focus_placeholders}) OR e.dst IN ({focus_placeholders}))
+            {material_usage_relation_clause("e")}
+            ORDER BY CASE WHEN e.src = ? OR e.dst = ? THEN 0 ELSE 1 END,
+                     e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (*focus_ids, *focus_ids, seed, seed, relation_limit),
+        ).fetchall()
+
+    focus_id_set = set(focus_ids)
+    relations = [
+        usage_edge_ref(
+            row,
+            "dst" if row["srcId"] in focus_id_set else "src",
+            row["srcId"] if row["srcId"] in focus_id_set else row["dstId"],
+        )
+        for row in relation_rows
+    ]
+    material_summary: dict[str, list[dict[str, Any]]] = {}
+    if semantic_material_rows:
+        material_summary["semanticMaterials"] = [compact_node_ref(row) for row in semantic_material_rows]
+    if material_asset_rows:
+        material_summary["materialAssets"] = [compact_node_ref(row) for row in material_asset_rows]
+    for relation in relations:
+        category = material_usage_category(safe_key(relation.get("edge")))
+        material_summary.setdefault(category, []).append(relation)
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "focusNodeIds": focus_ids,
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "materialSummary": material_summary,
+        "relations": relations,
+        "semanticMaterials": [compact_node_ref(row) for row in semantic_material_rows],
+        "materialAssets": [compact_node_ref(row) for row in material_asset_rows],
+        "caveats": [
+            "material_json_slot_and_asset_index_evidence_only",
+            "pathid_resolution_depends_on_current_AnimeStudio_asset_maps",
+            "not_runtime_material_variant_selection_or_renderer_fidelity",
+        ],
+    }
+
+
+def resolve_effect_usage_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in EFFECT_USAGE_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def effect_usage_relation_clause(alias: str = "e") -> str:
+    explicit = ", ".join(repr(kind) for kind in EFFECT_USAGE_EXPLICIT_EDGE_KINDS)
+    return f"""
+              AND (
+                   {alias}.kind LIKE '%effect%'
+                OR {alias}.kind LIKE '%vfx%'
+                OR {alias}.kind IN ({explicit})
+              )
+    """
+
+
+def effect_usage_category(edge_kind: str) -> str:
+    if "asset" in edge_kind or "export" in edge_kind or "name_matches" in edge_kind:
+        return "assets"
+    if "skill_data" in edge_kind or "skill" in edge_kind:
+        return "skills"
+    if "buff_data" in edge_kind or "buff" in edge_kind:
+        return "buffs"
+    if "level_script" in edge_kind or "level_data" in edge_kind:
+        return "levelScripts"
+    if "spawner" in edge_kind or "prewarn" in edge_kind:
+        return "spawners"
+    if "model_view" in edge_kind or "animator" in edge_kind:
+        return "modelView"
+    if "char_interact" in edge_kind or "monobehaviour" in edge_kind:
+        return "monobehaviour"
+    if "potential" in edge_kind or "talent" in edge_kind or "character" in edge_kind:
+        return "characterPotential"
+    if "use_item" in edge_kind or "use_effect" in edge_kind or "item_has_use" in edge_kind:
+        return "useItems"
+    if "global_effect" in edge_kind or "ether_submit" in edge_kind or "activity_global" in edge_kind:
+        return "globalEffects"
+    if "domain" in edge_kind or "fertilize" in edge_kind or "factory_battle" in edge_kind:
+        return "worldDomain"
+    return "other"
+
+
+def effect_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_effect_usage_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "effectSummary": {}, "relations": []}
+
+    relation_limit = max(limit, 1)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        direct_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+            {effect_usage_relation_clause("e")}
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, relation_limit),
+        ).fetchall()
+        effect_ids = [seed] if seed_row and safe_key(seed_row["kind"]) in {"gameplay_effect", "global_effect", "potential_talent_effect", "use_item_effect", "domain_level_effect", "fertilize_effect"} else []
+        effect_ids.extend(row["srcId"] for row in direct_rows if row["srcKind"] in EFFECT_USAGE_KIND_FALLBACKS and "effect" in safe_key(row["srcKind"]))
+        effect_ids.extend(row["dstId"] for row in direct_rows if row["dstKind"] in EFFECT_USAGE_KIND_FALLBACKS and "effect" in safe_key(row["dstKind"]))
+        focus_ids = _unique_preserve([seed, *effect_ids])
+        focus_placeholders = ",".join("?" for _ in focus_ids)
+        count_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, COUNT(1) AS count
+            FROM edges e
+            WHERE (e.src IN ({focus_placeholders}) OR e.dst IN ({focus_placeholders}))
+            {effect_usage_relation_clause("e")}
+            GROUP BY e.kind
+            ORDER BY e.kind
+            """,
+            (*focus_ids, *focus_ids),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src IN ({focus_placeholders}) OR e.dst IN ({focus_placeholders}))
+            {effect_usage_relation_clause("e")}
+            ORDER BY CASE WHEN e.src = ? OR e.dst = ? THEN 0 ELSE 1 END,
+                     e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (*focus_ids, *focus_ids, seed, seed, relation_limit),
+        ).fetchall()
+        focus_rows = conn.execute(
+            f"""
+            SELECT id, kind, name, source, path, data
+            FROM nodes
+            WHERE id IN ({focus_placeholders})
+            ORDER BY kind, name
+            LIMIT ?
+            """,
+            (*focus_ids, relation_limit),
+        ).fetchall()
+
+    focus_id_set = set(focus_ids)
+    relations = [
+        usage_edge_ref(
+            row,
+            "dst" if row["srcId"] in focus_id_set else "src",
+            row["srcId"] if row["srcId"] in focus_id_set else row["dstId"],
+        )
+        for row in relation_rows
+    ]
+    effect_summary: dict[str, list[dict[str, Any]]] = {"focusNodes": [compact_node_ref(row) for row in focus_rows]}
+    for relation in relations:
+        category = effect_usage_category(safe_key(relation.get("edge")))
+        effect_summary.setdefault(category, []).append(relation)
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "focusNodeIds": focus_ids,
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "effectSummary": effect_summary,
+        "relations": relations,
+        "caveats": [
+            "authored_static_effect_reference_and_export_name_match_evidence_only",
+            "effect_asset_matches_are_suffix_normalized_filename_matches_not_runtime_prefab_binding_proof",
+            "does_not_decode_effect_action_execution_timing_targeting_or_renderer_behavior",
+        ],
+    }
+
+
+def resolve_animation_usage_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in ANIMATION_USAGE_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def animation_usage_relation_clause(alias: str = "e") -> str:
+    explicit = ", ".join(repr(kind) for kind in ANIMATION_USAGE_EXPLICIT_EDGE_KINDS)
+    return f"""
+              AND (
+                   {alias}.kind LIKE '%animation%'
+                OR {alias}.kind LIKE '%montage%'
+                OR {alias}.kind LIKE '%model_view%'
+                OR {alias}.kind LIKE '%animator%'
+                OR {alias}.kind LIKE '%clip%'
+                OR {alias}.kind LIKE '%facial_morph%'
+                OR {alias}.kind LIKE '%lipsync%'
+                OR {alias}.kind IN ({explicit})
+              )
+    """
+
+
+def animation_usage_category(edge_kind: str) -> str:
+    if "animation_clip" in edge_kind or edge_kind == "has_animation_clip":
+        return "animationClips"
+    if "animation_config" in edge_kind or "animation_state" in edge_kind or "actor_animation" in edge_kind or "cutscene" in edge_kind:
+        return "animationConfigs"
+    if "montage" in edge_kind:
+        return "montages"
+    if "facial_morph" in edge_kind:
+        return "facialMorphs"
+    if "model_view" in edge_kind or "animator" in edge_kind:
+        return "modelView"
+    if "lipsync" in edge_kind:
+        return "lipsync"
+    if "timeline" in edge_kind or "runtime_jump" in edge_kind or "fmv_clip" in edge_kind:
+        return "timelineClips"
+    if "damage_text" in edge_kind:
+        return "damageText"
+    if "asset_entity" in edge_kind or "model_config" in edge_kind:
+        return "assetsModels"
+    if "effect" in edge_kind:
+        return "effects"
+    if "audio" in edge_kind:
+        return "audio"
+    return "other"
+
+
+def animation_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_animation_usage_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "animationSummary": {}, "relations": []}
+
+    relation_limit = max(limit, 1)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        direct_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+            {animation_usage_relation_clause("e")}
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, relation_limit),
+        ).fetchall()
+        focus_ids = [seed]
+        focus_ids.extend(row["srcId"] for row in direct_rows if row["srcKind"] in ANIMATION_USAGE_KIND_FALLBACKS)
+        focus_ids.extend(row["dstId"] for row in direct_rows if row["dstKind"] in ANIMATION_USAGE_KIND_FALLBACKS)
+        focus_ids = _unique_preserve(focus_ids)
+        focus_placeholders = ",".join("?" for _ in focus_ids)
+        count_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, COUNT(1) AS count
+            FROM edges e
+            WHERE (e.src IN ({focus_placeholders}) OR e.dst IN ({focus_placeholders}))
+            {animation_usage_relation_clause("e")}
+            GROUP BY e.kind
+            ORDER BY e.kind
+            """,
+            (*focus_ids, *focus_ids),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src IN ({focus_placeholders}) OR e.dst IN ({focus_placeholders}))
+            {animation_usage_relation_clause("e")}
+            ORDER BY CASE WHEN e.src = ? OR e.dst = ? THEN 0 ELSE 1 END,
+                     e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (*focus_ids, *focus_ids, seed, seed, relation_limit),
+        ).fetchall()
+        focus_rows = conn.execute(
+            f"""
+            SELECT id, kind, name, source, path, data
+            FROM nodes
+            WHERE id IN ({focus_placeholders})
+            ORDER BY kind, name
+            LIMIT ?
+            """,
+            (*focus_ids, relation_limit),
+        ).fetchall()
+
+    focus_id_set = set(focus_ids)
+    relations = [
+        usage_edge_ref(
+            row,
+            "dst" if row["srcId"] in focus_id_set else "src",
+            row["srcId"] if row["srcId"] in focus_id_set else row["dstId"],
+        )
+        for row in relation_rows
+    ]
+    animation_summary: dict[str, list[dict[str, Any]]] = {"focusNodes": [compact_node_ref(row) for row in focus_rows]}
+    for relation in relations:
+        category = animation_usage_category(safe_key(relation.get("edge")))
+        animation_summary.setdefault(category, []).append(relation)
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "focusNodeIds": focus_ids,
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "animationSummary": animation_summary,
+        "relations": relations,
+        "caveats": [
+            "authored_static_animation_montage_clip_and_lipsync_reference_evidence_only",
+            "does_not_reconstruct_runtime_animator_state_machines_blend_trees_masks_or_ik",
+            "clip_and_montage_refs_do_not_prove_runtime_playback_timing_or_active_controller_state",
+        ],
+    }
+
+
+def resolve_shader_usage_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in SHADER_USAGE_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def shader_usage_category(edge_kind: str) -> str:
+    if edge_kind == "shader_program_has_snippet" or edge_kind == "shader_snippet_backend":
+        return "snippets"
+    if "backend" in edge_kind:
+        return "backends"
+    if "family" in edge_kind:
+        return "family"
+    if "pathid" in edge_kind:
+        return "pathids"
+    if "material" in edge_kind or edge_kind.startswith("uses_shader"):
+        return "materials"
+    if "named_shader" in edge_kind:
+        return "shaderNames"
+    return "other"
+
+
+def material_source_from_node_id(node_id: Any) -> str:
+    parts = safe_key(node_id).split(":", 2)
+    if len(parts) >= 3 and parts[0] == "material":
+        return parts[1]
+    return ""
+
+
+def shader_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_shader_usage_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "shaderSummary": {}, "relations": []}
+
+    relation_limit = max(limit, 1)
+    placeholders = ",".join("?" for _ in SHADER_USAGE_EDGE_KINDS)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        count_rows = conn.execute(
+            f"""
+            SELECT kind AS edge, COUNT(*) AS count
+            FROM edges
+            WHERE (src = ? OR dst = ?)
+              AND kind IN ({placeholders})
+            GROUP BY kind
+            ORDER BY kind
+            """,
+            (seed, seed, *SHADER_USAGE_EDGE_KINDS),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+              AND e.kind IN ({placeholders})
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, *SHADER_USAGE_EDGE_KINDS, relation_limit),
+        ).fetchall()
+        pathid_rows = conn.execute(
+            """
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? AND e.kind IN ('shader_program_pathid', 'uses_shader_pathid'))
+               OR (e.dst = ? AND e.kind = 'shader_program_pathid')
+            ORDER BY e.kind, src.source, src.name, dst.name
+            LIMIT ?
+            """,
+            (seed, seed, relation_limit),
+        ).fetchall()
+
+        pathid_ids = _unique_preserve(
+            [
+                row["dstId"]
+                for row in pathid_rows
+                if row["srcId"] == seed and row["edge"] in {"shader_program_pathid", "uses_shader_pathid"}
+            ]
+            + [seed if seed_row and seed_row["kind"] == "unity_pathid" else ""]
+        )
+        pathid_ids = [value for value in pathid_ids if value]
+        material_rows: list[sqlite3.Row] = []
+        pathid_program_rows: list[sqlite3.Row] = []
+        material_entity_rows: list[sqlite3.Row] = []
+        if pathid_ids:
+            pathid_placeholders = ",".join("?" for _ in pathid_ids)
+            material_rows = conn.execute(
+                f"""
+                SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                       src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                       dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+                FROM edges e
+                JOIN nodes src ON src.id = e.src
+                JOIN nodes dst ON dst.id = e.dst
+                WHERE e.dst IN ({pathid_placeholders})
+                  AND e.kind IN ('uses_shader_pathid', 'material_shader_pathid_resolves_unity_asset')
+                ORDER BY src.source, src.name, e.kind
+                LIMIT ?
+                """,
+                (*pathid_ids, relation_limit),
+            ).fetchall()
+            material_refs = _unique_preserve(
+                (material_source_from_node_id(row["srcId"]), safe_key(row["srcName"]))
+                for row in material_rows
+                if safe_key(row["srcName"])
+            )
+            remaining_entity_rows = relation_limit
+            for material_source, material_name in material_refs:
+                if remaining_entity_rows <= 0:
+                    break
+                material_asset_pattern = f"{material_source}-materials/Material/{material_name}_p%.json" if material_source else f"%/Material/{material_name}_p%.json"
+                rows = conn.execute(
+                    """
+                    SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                           src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                           dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+                    FROM edges e
+                    JOIN nodes src ON src.id = e.src
+                    JOIN nodes dst ON dst.id = e.dst
+                    JOIN nodes material_asset ON material_asset.id = e.src OR material_asset.id = e.dst
+                    WHERE material_asset.kind = 'asset'
+                      AND material_asset.path LIKE ?
+                      AND e.kind IN ('entity_uses_material', 'material_used_by_asset_entity')
+                    ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name
+                    LIMIT ?
+                    """,
+                    (material_asset_pattern, remaining_entity_rows),
+                ).fetchall()
+                material_entity_rows.extend(rows)
+                remaining_entity_rows -= len(rows)
+            pathid_program_rows = conn.execute(
+                f"""
+                SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                       src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                       dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+                FROM edges e
+                JOIN nodes src ON src.id = e.src
+                JOIN nodes dst ON dst.id = e.dst
+                WHERE e.dst IN ({pathid_placeholders})
+                  AND e.kind = 'shader_program_pathid'
+                ORDER BY src.source, src.name
+                LIMIT ?
+                """,
+                (*pathid_ids, relation_limit),
+            ).fetchall()
+
+    relations = [
+        usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+        for row in relation_rows
+    ]
+    pathid_relations = [
+        usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+        for row in pathid_rows
+    ]
+    materials = [usage_edge_ref(row, "src", row["dstId"]) for row in material_rows]
+    pathid_programs = [usage_edge_ref(row, "src", row["dstId"]) for row in pathid_program_rows]
+    material_entities = [
+        usage_edge_ref(row, "src" if row["dstKind"] == "asset" else "dst", row["dstId"] if row["dstKind"] == "asset" else row["srcId"])
+        for row in material_entity_rows
+    ]
+    shader_summary: dict[str, list[dict[str, Any]]] = {}
+    for relation in relations:
+        category = shader_usage_category(safe_key(relation.get("edge")))
+        shader_summary.setdefault(category, []).append(relation)
+    if pathid_relations:
+        shader_summary["pathidRelations"] = pathid_relations
+    if materials:
+        shader_summary["materialsUsingPathid"] = materials
+    if pathid_programs:
+        shader_summary["programsForPathid"] = pathid_programs
+    if material_entities:
+        shader_summary["entitiesUsingMaterials"] = material_entities
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "shaderSummary": shader_summary,
+        "relations": relations,
+        "pathidRelations": pathid_relations,
+        "materialsUsingPathid": materials,
+        "programsForPathid": pathid_programs,
+        "entitiesUsingMaterials": material_entities,
+        "caveats": [
+            "shader_payload_and_material_reference_evidence_only",
+            "not_hlsl_decompilation_or_runtime_renderer_fidelity",
+        ],
+    }
+
+
+def resolve_video_usage_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in VIDEO_USAGE_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def video_usage_category(edge_kind: str) -> str:
+    if "story" in edge_kind or "narrative_video" in edge_kind and "stem" not in edge_kind:
+        return "story"
+    if "mission" in edge_kind:
+        return "mission"
+    if "video" in edge_kind and "narrative_video" not in edge_kind:
+        return "videos"
+    if "clip" in edge_kind:
+        return "clips"
+    if "pathid" in edge_kind:
+        return "pathids"
+    if "unity_asset" in edge_kind or "asset_export" in edge_kind:
+        return "assets"
+    if "source_file" in edge_kind:
+        return "sourceFiles"
+    if "stem" in edge_kind:
+        return "stems"
+    if "unresolved" in edge_kind or "false_suppression" in edge_kind:
+        return "audit"
+    return "other"
+
+
+def video_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_video_usage_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "videoSummary": {}, "relations": []}
+
+    relation_limit = max(limit, 1)
+    placeholders = ",".join("?" for _ in VIDEO_USAGE_EDGE_KINDS)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        count_rows = conn.execute(
+            f"""
+            SELECT kind AS edge, COUNT(*) AS count
+            FROM edges
+            WHERE (src = ? OR dst = ?)
+              AND kind IN ({placeholders})
+            GROUP BY kind
+            ORDER BY kind
+            """,
+            (seed, seed, *VIDEO_USAGE_EDGE_KINDS),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+              AND e.kind IN ({placeholders})
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, *VIDEO_USAGE_EDGE_KINDS, relation_limit),
+        ).fetchall()
+
+        pathid_ids = _unique_preserve(
+            [seed if seed_row and seed_row["kind"] == "unity_pathid" else ""]
+            + [
+                row["dstId"]
+                for row in relation_rows
+                if row["edge"] == "fmv_binding_playable_pathid" and row["dstKind"] == "unity_pathid"
+            ]
+        )
+        pathid_ids = [value for value in pathid_ids if value]
+        playable_owner_rows: list[sqlite3.Row] = []
+        playable_asset_rows: list[sqlite3.Row] = []
+        if pathid_ids:
+            pathid_placeholders = ",".join("?" for _ in pathid_ids)
+            playable_owner_rows = conn.execute(
+                f"""
+                SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                       src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                       dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+                FROM edges e
+                JOIN nodes src ON src.id = e.src
+                JOIN nodes dst ON dst.id = e.dst
+                WHERE e.dst IN ({pathid_placeholders})
+                  AND e.kind = 'fmv_binding_playable_pathid'
+                ORDER BY src.kind, src.name, e.evidence
+                LIMIT ?
+                """,
+                (*pathid_ids, relation_limit),
+            ).fetchall()
+            playable_owner_ids = _unique_preserve(row["srcId"] for row in playable_owner_rows)
+            if playable_owner_ids:
+                owner_placeholders = ",".join("?" for _ in playable_owner_ids)
+                playable_asset_rows = conn.execute(
+                    f"""
+                    SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                           src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                           dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+                    FROM edges e
+                    JOIN nodes src ON src.id = e.src
+                    JOIN nodes dst ON dst.id = e.dst
+                    WHERE e.src IN ({owner_placeholders})
+                      AND e.kind IN ('fmv_playable_pathid_resolves_unity_asset', 'fmv_playable_pathid_exports_asset')
+                    ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name
+                    LIMIT ?
+                    """,
+                    (*playable_owner_ids, relation_limit),
+                ).fetchall()
+
+    relations = [
+        usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+        for row in relation_rows
+    ]
+    playable_owners = [usage_edge_ref(row, "src", row["dstId"]) for row in playable_owner_rows]
+    playable_assets = [usage_edge_ref(row, "dst", row["srcId"]) for row in playable_asset_rows]
+
+    video_summary: dict[str, list[dict[str, Any]]] = {}
+    for relation in relations:
+        category = video_usage_category(safe_key(relation.get("edge")))
+        video_summary.setdefault(category, []).append(relation)
+    if playable_owners:
+        video_summary["playableOwners"] = playable_owners
+    if playable_assets:
+        video_summary["playableAssets"] = playable_assets
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "videoSummary": video_summary,
+        "relations": relations,
+        "playableOwners": playable_owners,
+        "playableAssets": playable_assets,
+        "caveats": [
+            "fmv_binding_and_narrative_video_reference_evidence_only",
+            "pathid_asset_resolution_requires_source_root_matched_AssetMap_rows",
+            "not_runtime_playback_order_or_video_decoder_fidelity",
+        ],
+    }
+
+
+def resolve_item_usage_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in ITEM_USAGE_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def item_usage_relation_clause(alias: str = "e") -> str:
+    explicit = ", ".join(repr(kind) for kind in ITEM_USAGE_EXPLICIT_EDGE_KINDS)
+    return f"""
+              AND (
+                   {alias}.kind LIKE '%item%'
+                OR {alias}.kind LIKE '%reward%'
+                OR {alias}.kind LIKE '%shop%'
+                OR {alias}.kind LIKE '%cost%'
+                OR {alias}.kind LIKE '%currency%'
+                OR {alias}.kind LIKE '%money%'
+                OR {alias}.kind LIKE '%obtain%'
+                OR {alias}.kind LIKE '%unlock%'
+                OR {alias}.kind LIKE '%gift%'
+                OR {alias}.kind LIKE '%checkin%'
+                OR {alias}.kind LIKE '%equip%'
+                OR {alias}.kind LIKE '%gem%'
+                OR {alias}.kind LIKE '%factory%'
+                OR {alias}.kind LIKE '%crop%'
+                OR {alias}.kind LIKE '%soil%'
+                OR {alias}.kind LIKE '%battlepass%'
+                OR {alias}.kind LIKE '%activity%'
+                OR {alias}.kind IN ({explicit})
+              )
+    """
+
+
+def item_usage_category(edge_kind: str) -> str:
+    if "reward" in edge_kind or "checkin" in edge_kind or "daily_activation" in edge_kind:
+        return "rewards"
+    if "shop" in edge_kind or "cash" in edge_kind or "recharge" in edge_kind:
+        return "shops"
+    if "cost" in edge_kind or "currency" in edge_kind or "money" in edge_kind:
+        return "costsCurrencies"
+    if "obtain" in edge_kind or "unlock" in edge_kind:
+        return "obtainUnlock"
+    if "equip" in edge_kind or "gem" in edge_kind:
+        return "equipmentGems"
+    if "factory" in edge_kind:
+        return "factory"
+    if "crop" in edge_kind or "soil" in edge_kind or "doodad" in edge_kind:
+        return "worldResources"
+    if "gift" in edge_kind or "profile" in edge_kind or "mail" in edge_kind:
+        return "profileSocial"
+    if "battlepass" in edge_kind or "activity" in edge_kind or "adventure" in edge_kind:
+        return "activities"
+    if "icon" in edge_kind or "visual" in edge_kind or "asset" in edge_kind:
+        return "visuals"
+    if "type" in edge_kind or "show" in edge_kind:
+        return "grouping"
+    return "other"
+
+
+def item_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_item_usage_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "itemSummary": {}, "relations": []}
+
+    relation_limit = max(limit, 1)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        count_rows = conn.execute(
+            f"""
+            SELECT kind AS edge, COUNT(*) AS count
+            FROM edges e
+            WHERE (src = ? OR dst = ?)
+            {item_usage_relation_clause("e")}
+            GROUP BY kind
+            ORDER BY kind
+            """,
+            (seed, seed),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+            {item_usage_relation_clause("e")}
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, relation_limit),
+        ).fetchall()
+        reward_link_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+              AND (src.kind = 'reward' OR dst.kind = 'reward')
+            {item_usage_relation_clause("e")}
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, relation_limit),
+        ).fetchall()
+
+        reward_ids = _unique_preserve(
+            [
+                row["srcId"]
+                for row in [*relation_rows, *reward_link_rows]
+                if row["srcKind"] == "reward"
+            ]
+            + [
+                row["dstId"]
+                for row in [*relation_rows, *reward_link_rows]
+                if row["dstKind"] == "reward"
+            ]
+            + [seed if seed_row and seed_row["kind"] == "reward" else ""]
+        )
+        reward_ids = [value for value in reward_ids if value]
+        reward_context_rows: list[sqlite3.Row] = []
+        if reward_ids:
+            reward_placeholders = ",".join("?" for _ in reward_ids)
+            reward_context_rows = conn.execute(
+                f"""
+                SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                       src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                       dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+                FROM edges e
+                JOIN nodes src ON src.id = e.src
+                JOIN nodes dst ON dst.id = e.dst
+                WHERE (e.src IN ({reward_placeholders}) OR e.dst IN ({reward_placeholders}))
+                {item_usage_relation_clause("e")}
+                ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+                LIMIT ?
+                """,
+                (*reward_ids, *reward_ids, relation_limit),
+            ).fetchall()
+
+    relations = [
+        usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+        for row in relation_rows
+    ]
+    reward_links = [
+        usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+        for row in reward_link_rows
+    ]
+    reward_context = [
+        usage_edge_ref(
+            row,
+            "src" if row["dstKind"] == "reward" else "dst",
+            row["dstId"] if row["dstKind"] == "reward" else row["srcId"],
+        )
+        for row in reward_context_rows
+    ]
+    item_summary: dict[str, list[dict[str, Any]]] = {}
+    for relation in relations:
+        category = item_usage_category(safe_key(relation.get("edge")))
+        item_summary.setdefault(category, []).append(relation)
+    if reward_links:
+        item_summary["rewardLinks"] = reward_links
+    if reward_context:
+        item_summary["rewardContext"] = reward_context
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "itemSummary": item_summary,
+        "relations": relations,
+        "rewardLinks": reward_links,
+        "rewardContext": reward_context,
+        "caveats": [
+            "authored_table_and_extracted_reference_evidence_only",
+            "not_live_inventory_shop_availability_or_drop_roll_simulation",
+            "reward_context_is_one_hop_from_rewards_seen_in_direct_item_relations",
+        ],
+    }
+
+
+def resolve_actor_usage_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in ACTOR_USAGE_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def actor_usage_relation_clause(alias: str = "e") -> str:
+    explicit = ", ".join(repr(kind) for kind in ACTOR_USAGE_EXPLICIT_EDGE_KINDS)
+    return f"""
+              AND (
+                   {alias}.kind LIKE '%actor%'
+                OR {alias}.kind LIKE '%character%'
+                OR {alias}.kind LIKE '%speaker%'
+                OR {alias}.kind LIKE '%dialog%'
+                OR {alias}.kind LIKE '%voice%'
+                OR {alias}.kind LIKE '%sns%'
+                OR {alias}.kind LIKE '%radio%'
+                OR {alias}.kind LIKE '%remote_common%'
+                OR {alias}.kind LIKE '%profile%'
+                OR {alias}.kind LIKE '%avatar%'
+                OR {alias}.kind LIKE '%business_card%'
+                OR {alias}.kind LIKE '%weapon%'
+                OR {alias}.kind LIKE '%talent%'
+                OR {alias}.kind LIKE '%skill%'
+                OR {alias}.kind LIKE '%growth%'
+                OR {alias}.kind LIKE '%break%'
+                OR {alias}.kind LIKE '%potential%'
+                OR {alias}.kind IN ({explicit})
+              )
+    """
+
+
+def actor_usage_category(edge_kind: str) -> str:
+    if "story" in edge_kind or "line" in edge_kind or "dialog" in edge_kind:
+        return "storyDialog"
+    if "audio" in edge_kind or "voice" in edge_kind or "speaker" in edge_kind:
+        return "audioVoice"
+    if "sns" in edge_kind or "radio" in edge_kind or "remote_common" in edge_kind:
+        return "narrativeChannels"
+    if "asset" in edge_kind or "model" in edge_kind or "material" in edge_kind or "texture" in edge_kind:
+        return "assets"
+    if "growth" in edge_kind or "break" in edge_kind or "potential" in edge_kind or "attribute" in edge_kind:
+        return "progression"
+    if "skill" in edge_kind or "talent" in edge_kind or "weapon" in edge_kind:
+        return "gameplay"
+    if "profile" in edge_kind or "picture" in edge_kind or "avatar" in edge_kind or "business_card" in edge_kind or "mail" in edge_kind:
+        return "profileSocial"
+    return "other"
+
+
+def actor_usage_token(seed_row: sqlite3.Row | None, term: str) -> str:
+    for value in (
+        seed_row["name"] if seed_row else "",
+        node_key(seed_row["id"]) if seed_row else "",
+        term,
+    ):
+        token = safe_key(value).lower()
+        if not token:
+            continue
+        if token.startswith("chr_"):
+            parts = token.split("_")
+            if len(parts) >= 3:
+                return parts[-1]
+        if token.startswith("actor_"):
+            parts = token.split("_")
+            if len(parts) >= 2:
+                return parts[1]
+            token = token[len("actor_"):]
+        if token.startswith("abilityentity_chr_"):
+            parts = token.split("_")
+            if len(parts) >= 4:
+                return parts[3]
+        if token.startswith("sns_chr_"):
+            parts = token.split("_")
+            if len(parts) >= 4:
+                return parts[-1]
+        if re.match(r"^[a-z0-9]+$", token):
+            return token
+    return ""
+
+
+def actor_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_actor_usage_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "actorSummary": {}, "relations": []}
+
+    relation_limit = max(limit, 1)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        count_rows = conn.execute(
+            f"""
+            SELECT kind AS edge, COUNT(*) AS count
+            FROM edges e
+            WHERE (src = ? OR dst = ?)
+            {actor_usage_relation_clause("e")}
+            GROUP BY kind
+            ORDER BY kind
+            """,
+            (seed, seed),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+            {actor_usage_relation_clause("e")}
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, relation_limit),
+        ).fetchall()
+
+        token = actor_usage_token(seed_row, term)
+        character_rows: list[sqlite3.Row] = []
+        asset_entity_rows: list[sqlite3.Row] = []
+        candidate_relation_rows: list[sqlite3.Row] = []
+        if token:
+            like_token = f"%{token}%"
+            character_rows = conn.execute(
+                """
+                SELECT id, kind, name, source, path, data
+                FROM nodes
+                WHERE kind IN ('character', 'actor')
+                  AND LOWER(name) LIKE ?
+                  AND id <> ?
+                ORDER BY kind, name, source
+                LIMIT ?
+                """,
+                (like_token, seed, relation_limit),
+            ).fetchall()
+            asset_entity_rows = conn.execute(
+                """
+                SELECT id, kind, name, source, path, data
+                FROM nodes
+                WHERE kind IN ('asset_entity', 'model_config_model', 'world_entity')
+                  AND LOWER(name) LIKE ?
+                ORDER BY kind, name, source
+                LIMIT ?
+                """,
+                (like_token, relation_limit),
+            ).fetchall()
+            candidate_ids = _unique_preserve(
+                [row["id"] for row in character_rows]
+                + [row["id"] for row in asset_entity_rows]
+            )
+            if candidate_ids:
+                candidate_placeholders = ",".join("?" for _ in candidate_ids)
+                candidate_relation_rows = conn.execute(
+                    f"""
+                    SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                           src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                           dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+                    FROM edges e
+                    JOIN nodes src ON src.id = e.src
+                    JOIN nodes dst ON dst.id = e.dst
+                    WHERE (e.src IN ({candidate_placeholders}) OR e.dst IN ({candidate_placeholders}))
+                    {actor_usage_relation_clause("e")}
+                    ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+                    LIMIT ?
+                    """,
+                    (*candidate_ids, *candidate_ids, relation_limit),
+                ).fetchall()
+
+    relations = [
+        usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+        for row in relation_rows
+    ]
+    candidate_relations = [
+        usage_edge_ref(
+            row,
+            "src" if any(row["dstId"] == candidate["id"] for candidate in [*character_rows, *asset_entity_rows]) else "dst",
+            row["dstId"] if any(row["dstId"] == candidate["id"] for candidate in [*character_rows, *asset_entity_rows]) else row["srcId"],
+        )
+        for row in candidate_relation_rows
+    ]
+    actor_summary: dict[str, list[dict[str, Any]]] = {}
+    for relation in relations:
+        category = actor_usage_category(safe_key(relation.get("edge")))
+        actor_summary.setdefault(category, []).append(relation)
+    if character_rows:
+        actor_summary["characterCandidates"] = [compact_node_ref(row) for row in character_rows]
+    if asset_entity_rows:
+        actor_summary["assetEntityCandidates"] = [compact_node_ref(row) for row in asset_entity_rows]
+    for relation in candidate_relations:
+        category = actor_usage_category(safe_key(relation.get("edge")))
+        actor_summary.setdefault(f"candidate{category[:1].upper()}{category[1:]}", []).append(relation)
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "token": actor_usage_token(seed_row, term),
+        "aliases": lookup.get("aliases") or [],
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "actorSummary": actor_summary,
+        "relations": relations,
+        "characterCandidates": [compact_node_ref(row) for row in character_rows],
+        "assetEntityCandidates": [compact_node_ref(row) for row in asset_entity_rows],
+        "candidateRelations": candidate_relations,
+        "caveats": [
+            "direct_edges_are_graph_evidence_but_candidate_matches_are_token_based",
+            "actor_ids_character_ids_and_asset_entity_names_are_not_always_one_to_one",
+            "not_runtime_party_roster_voice_selection_or_animation_playback_proof",
+        ],
+    }
+
+
+def resolve_text_usage_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in TEXT_USAGE_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def text_usage_relation_clause(alias: str = "e") -> str:
+    explicit = ", ".join(repr(kind) for kind in TEXT_USAGE_EXPLICIT_EDGE_KINDS)
+    return f"""
+              AND (
+                   {alias}.kind LIKE '%text%'
+                OR {alias}.kind LIKE '%i18n%'
+                OR {alias}.kind LIKE '%name%'
+                OR {alias}.kind LIKE '%desc%'
+                OR {alias}.kind LIKE '%label%'
+                OR {alias}.kind LIKE '%title%'
+                OR {alias}.kind LIKE '%hint%'
+                OR {alias}.kind LIKE '%objective%'
+                OR {alias}.kind LIKE '%voice%'
+                OR {alias}.kind LIKE '%dialog%'
+                OR {alias}.kind LIKE '%bark%'
+                OR {alias}.kind LIKE '%hyperlink%'
+                OR {alias}.kind IN ({explicit})
+              )
+    """
+
+
+def text_usage_category(edge_kind: str) -> str:
+    if "i18n_reference" in edge_kind or "reference_file" in edge_kind or "i18n_top" in edge_kind:
+        return "referenceFiles"
+    if "text_table_key" in edge_kind or edge_kind == "defines_text_table_key":
+        return "textTableKeys"
+    if "dialog" in edge_kind or "bark" in edge_kind or "voice" in edge_kind or "audio" in edge_kind or "line" in edge_kind:
+        return "storyDialog"
+    if "factory" in edge_kind:
+        return "factory"
+    if "item" in edge_kind or "shop" in edge_kind or "cash" in edge_kind or "reward" in edge_kind or "battlepass" in edge_kind:
+        return "itemsEconomy"
+    if "skill" in edge_kind or "buff" in edge_kind or "mechanic" in edge_kind or "attribute" in edge_kind or "weapon" in edge_kind or "enemy" in edge_kind or "dungeon" in edge_kind:
+        return "gameplay"
+    if "mission" in edge_kind or "quest" in edge_kind or "level_script" in edge_kind or "map" in edge_kind:
+        return "mapMission"
+    if "profile" in edge_kind or "friend_chat" in edge_kind or "mail" in edge_kind or "business_card" in edge_kind or "avatar" in edge_kind:
+        return "profileSocial"
+    if "tutorial" in edge_kind or "wiki" in edge_kind or "loading" in edge_kind or "death_tip" in edge_kind or "hyperlink" in edge_kind or "rich" in edge_kind or "setting" in edge_kind or "ui_label" in edge_kind:
+        return "uiHelp"
+    if "tag" in edge_kind:
+        return "tags"
+    return "other"
+
+
+def text_usage_relation_category(relation: dict[str, Any]) -> str:
+    edge_data = relation.get("edgeData")
+    edge_kind = ""
+    if isinstance(edge_data, dict):
+        edge_kind = safe_key(edge_data.get("edgeKind"))
+    if not edge_kind:
+        edge_kind = safe_key(relation.get("edge"))
+    return text_usage_category(edge_kind)
+
+
+def text_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_text_usage_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "textSummary": {}, "relations": []}
+
+    relation_limit = max(limit, 1)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        count_rows = conn.execute(
+            f"""
+            SELECT kind AS edge, COUNT(*) AS count
+            FROM edges e
+            WHERE (src = ? OR dst = ?)
+            {text_usage_relation_clause("e")}
+            GROUP BY kind
+            ORDER BY kind
+            """,
+            (seed, seed),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+            {text_usage_relation_clause("e")}
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, relation_limit),
+        ).fetchall()
+
+        seed_is_i18n = bool(seed_row and seed_row["kind"] == "i18n_text")
+        i18n_ids = [seed] if seed_is_i18n else []
+        i18n_target_rows: list[sqlite3.Row] = []
+        if not seed_is_i18n:
+            i18n_target_rows = conn.execute(
+                """
+                SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                       src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                       dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+                FROM edges e
+                JOIN nodes src ON src.id = e.src
+                JOIN nodes dst ON dst.id = e.dst
+                WHERE (e.src = ? OR e.dst = ?)
+                  AND (src.kind = 'i18n_text' OR dst.kind = 'i18n_text')
+                  AND e.kind IN ('uses_i18n_text', 'i18n_text_used_by', 'text_table_key_i18n_text', 'i18n_text_used_by_text_table_key')
+                ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+                LIMIT ?
+                """,
+                (seed, seed, relation_limit),
+            ).fetchall()
+        i18n_ids.extend(row["srcId"] for row in i18n_target_rows if row["srcKind"] == "i18n_text")
+        i18n_ids.extend(row["dstId"] for row in i18n_target_rows if row["dstKind"] == "i18n_text")
+        i18n_ids = _unique_preserve(i18n_ids)
+
+        i18n_consumer_rows: list[sqlite3.Row] = []
+        i18n_count_rows: list[sqlite3.Row] = []
+        if i18n_ids:
+            placeholders = ",".join("?" for _ in i18n_ids)
+            i18n_count_rows = conn.execute(
+                f"""
+                SELECT e.kind AS edge, COUNT(*) AS count
+                FROM edges e
+                WHERE (e.src IN ({placeholders}) OR e.dst IN ({placeholders}))
+                {text_usage_relation_clause("e")}
+                GROUP BY e.kind
+                ORDER BY e.kind
+                """,
+                (*i18n_ids, *i18n_ids),
+            ).fetchall()
+            i18n_consumer_rows = conn.execute(
+                f"""
+                SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                       src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                       dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+                FROM edges e
+                JOIN nodes src ON src.id = e.src
+                JOIN nodes dst ON dst.id = e.dst
+                WHERE (e.src IN ({placeholders}) OR e.dst IN ({placeholders}))
+                {text_usage_relation_clause("e")}
+                ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+                LIMIT ?
+                """,
+                (*i18n_ids, *i18n_ids, relation_limit),
+            ).fetchall()
+
+    relations = [
+        usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+        for row in relation_rows
+    ]
+    i18n_targets = [
+        usage_edge_ref(row, "dst" if row["srcId"] == seed else "src", seed)
+        for row in i18n_target_rows
+    ]
+    i18n_id_set = set(i18n_ids)
+    i18n_consumers = [
+        usage_edge_ref(
+            row,
+            "dst" if row["srcId"] in i18n_id_set else "src",
+            row["srcId"] if row["srcId"] in i18n_id_set else row["dstId"],
+        )
+        for row in i18n_consumer_rows
+    ]
+
+    text_summary: dict[str, list[dict[str, Any]]] = {}
+    for relation in relations:
+        category = text_usage_relation_category(relation)
+        text_summary.setdefault(category, []).append(relation)
+    if i18n_targets:
+        text_summary["i18nTargets"] = i18n_targets
+    for relation in i18n_consumers:
+        category = text_usage_relation_category(relation)
+        text_summary.setdefault(f"i18n{category[:1].upper()}{category[1:]}", []).append(relation)
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "i18nTextIds": i18n_ids,
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "i18nEdgeCounts": {row["edge"]: row["count"] for row in i18n_count_rows},
+        "textSummary": text_summary,
+        "relations": relations,
+        "i18nTargets": i18n_targets,
+        "i18nConsumers": i18n_consumers,
+        "caveats": [
+            "default_graph_i18n_text_nodes_are_ids_not_localized_display_values",
+            "reference_file_edges_are_static_scan_evidence_not_runtime_ui_occurrences",
+            "domain_specific_name_desc_label_edges_are_stronger_than_broad_i18n_reference_file_edges",
+        ],
+    }
+
+
+def resolve_mission_flow_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in MISSION_FLOW_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def mission_flow_category(edge_kind: str) -> str:
+    if "defines_mission_runtime_asset" in edge_kind or "asset_for_mission" in edge_kind:
+        return "assets"
+    if "level" in edge_kind or "mission_area" in edge_kind:
+        return "levelsAreas"
+    if "reward" in edge_kind:
+        return "rewards"
+    if "text" in edge_kind or "name" in edge_kind or "description" in edge_kind:
+        return "text"
+    if "quest" in edge_kind and "condition" not in edge_kind:
+        if "depends" in edge_kind or "previous" in edge_kind:
+            return "questDependencies"
+        return "quests"
+    if "condition" in edge_kind or edge_kind.startswith("condition_"):
+        return "conditions"
+    if "action" in edge_kind or "guide_group" in edge_kind or "chapter_panel" in edge_kind:
+        return "actions"
+    if "narrative" in edge_kind or "story" in edge_kind or "dialog" in edge_kind or "radio" in edge_kind or "remote_common" in edge_kind or "sns" in edge_kind:
+        return "narrative"
+    return "other"
+
+
+def mission_flow_order_sql(alias: str = "e") -> str:
+    return f"""
+            CASE
+              WHEN {alias}.kind IN ('defines_mission_runtime_asset', 'mission_runtime_asset_for_mission') THEN 0
+              WHEN {alias}.kind IN ('mission_runtime_in_level', 'level_has_mission_runtime') THEN 1
+              WHEN {alias}.kind = 'mission_runtime_has_quest' THEN 2
+              WHEN {alias}.kind IN ('quest_task_depends_on_previous', 'quest_task_in_mission') THEN 3
+              WHEN {alias}.kind = 'mission_runtime_has_action' THEN 4
+              WHEN {alias}.kind LIKE '%condition%' THEN 5
+              WHEN {alias}.kind LIKE '%narrative%' OR {alias}.kind LIKE '%story%' OR {alias}.kind LIKE '%dialog%' OR {alias}.kind LIKE '%radio%' THEN 6
+              WHEN {alias}.kind LIKE '%reward%' THEN 7
+              WHEN {alias}.kind LIKE '%text%' OR {alias}.kind LIKE '%name%' OR {alias}.kind LIKE '%description%' THEN 8
+              ELSE 9
+            END
+    """
+
+
+def mission_flow_related_asset_ids(conn: sqlite3.Connection, seed: str, seed_kind: str, limit: int) -> list[str]:
+    if seed_kind == "mission_runtime_asset":
+        return [seed]
+    rows: list[sqlite3.Row] = []
+    if seed_kind == "mission":
+        rows = conn.execute(
+            """
+            SELECT src AS assetId
+            FROM edges
+            WHERE dst = ?
+              AND kind = 'mission_runtime_asset_for_mission'
+            ORDER BY src
+            LIMIT ?
+            """,
+            (seed, limit),
+        ).fetchall()
+    elif seed_kind == "quest_task":
+        rows = conn.execute(
+            """
+            SELECT src AS assetId
+            FROM edges
+            WHERE dst = ?
+              AND kind = 'mission_runtime_has_quest'
+            ORDER BY src
+            LIMIT ?
+            """,
+            (seed, limit),
+        ).fetchall()
+    elif seed_kind == "mission_runtime_action":
+        rows = conn.execute(
+            """
+            SELECT src AS assetId
+            FROM edges
+            WHERE dst = ?
+              AND kind = 'mission_runtime_has_action'
+            ORDER BY src
+            LIMIT ?
+            """,
+            (seed, limit),
+        ).fetchall()
+    elif seed_kind == "mission_runtime_condition":
+        rows = conn.execute(
+            """
+            SELECT asset.src AS assetId
+            FROM edges quest_condition
+            JOIN edges asset ON asset.dst = quest_condition.src
+                           AND asset.kind = 'mission_runtime_has_quest'
+            WHERE quest_condition.dst = ?
+              AND quest_condition.kind = 'quest_has_runtime_condition'
+            ORDER BY asset.src
+            LIMIT ?
+            """,
+            (seed, limit),
+        ).fetchall()
+    elif seed_kind == "level":
+        rows = conn.execute(
+            """
+            SELECT dst AS assetId
+            FROM edges
+            WHERE src = ?
+              AND kind = 'level_has_mission_runtime'
+            ORDER BY dst
+            LIMIT ?
+            """,
+            (seed, limit),
+        ).fetchall()
+    elif seed_kind == "story":
+        rows = conn.execute(
+            """
+            SELECT owner.src AS assetId
+            FROM edges story_edge
+            JOIN edges owner ON owner.dst = story_edge.src
+                            AND owner.kind = 'mission_runtime_has_quest'
+            WHERE story_edge.dst = ?
+              AND story_edge.kind IN ('quest_references_narrative', 'story_used_by_mission_runtime_quest')
+            UNION
+            SELECT owner.src AS assetId
+            FROM edges story_edge
+            JOIN edges owner ON owner.dst = story_edge.src
+                            AND owner.kind = 'mission_runtime_has_action'
+            WHERE story_edge.dst = ?
+              AND story_edge.kind IN ('mission_runtime_action_references_narrative', 'mission_runtime_action_map_references_narrative')
+            ORDER BY assetId
+            LIMIT ?
+            """,
+            (seed, seed, limit),
+        ).fetchall()
+    return _unique_preserve(row["assetId"] for row in rows)
+
+
+def mission_flow(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_mission_flow_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "missionSummary": {}, "relations": []}
+
+    relation_limit = max(limit, 1)
+    edge_placeholders = ",".join("?" for _ in MISSION_FLOW_EDGE_KINDS)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        seed_kind = seed_row["kind"] if seed_row else ""
+        asset_ids = mission_flow_related_asset_ids(conn, seed, seed_kind, relation_limit)
+        if not asset_ids and seed_kind == "mission_runtime_asset":
+            asset_ids = [seed]
+
+        focus_ids = _unique_preserve([seed, *asset_ids])
+        if asset_ids:
+            asset_placeholders = ",".join("?" for _ in asset_ids)
+            quest_rows = conn.execute(
+                f"""
+                SELECT dst AS id
+                FROM edges
+                WHERE src IN ({asset_placeholders})
+                  AND kind = 'mission_runtime_has_quest'
+                ORDER BY evidence, dst
+                LIMIT ?
+                """,
+                (*asset_ids, relation_limit * 4),
+            ).fetchall()
+            action_rows = conn.execute(
+                f"""
+                SELECT dst AS id
+                FROM edges
+                WHERE src IN ({asset_placeholders})
+                  AND kind = 'mission_runtime_has_action'
+                ORDER BY evidence, dst
+                LIMIT ?
+                """,
+                (*asset_ids, relation_limit * 2),
+            ).fetchall()
+            quest_ids = _unique_preserve(row["id"] for row in quest_rows)
+            action_ids = _unique_preserve(row["id"] for row in action_rows)
+            if quest_ids:
+                quest_placeholders = ",".join("?" for _ in quest_ids)
+                condition_rows = conn.execute(
+                    f"""
+                    SELECT dst AS id
+                    FROM edges
+                    WHERE src IN ({quest_placeholders})
+                      AND kind = 'quest_has_runtime_condition'
+                    ORDER BY evidence, dst
+                    LIMIT ?
+                    """,
+                    (*quest_ids, relation_limit * 4),
+                ).fetchall()
+                condition_ids = _unique_preserve(row["id"] for row in condition_rows)
+            else:
+                condition_ids = []
+            focus_ids = _unique_preserve([*focus_ids, *quest_ids, *action_ids, *condition_ids])
+
+        focus_placeholders = ",".join("?" for _ in focus_ids)
+        count_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, COUNT(1) AS count
+            FROM edges e
+            WHERE (e.src IN ({focus_placeholders}) OR e.dst IN ({focus_placeholders}))
+              AND e.kind IN ({edge_placeholders})
+            GROUP BY e.kind
+            ORDER BY e.kind
+            """,
+            (*focus_ids, *focus_ids, *MISSION_FLOW_EDGE_KINDS),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src IN ({focus_placeholders}) OR e.dst IN ({focus_placeholders}))
+              AND e.kind IN ({edge_placeholders})
+            ORDER BY CASE WHEN e.src = ? OR e.dst = ? THEN -1 ELSE {mission_flow_order_sql("e")} END,
+                     e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (*focus_ids, *focus_ids, *MISSION_FLOW_EDGE_KINDS, seed, seed, relation_limit),
+        ).fetchall()
+        asset_rows = conn.execute(
+            f"""
+            SELECT id, kind, name, source, path, data
+            FROM nodes
+            WHERE id IN ({",".join("?" for _ in asset_ids) if asset_ids else "''"})
+            ORDER BY name
+            """,
+            tuple(asset_ids),
+        ).fetchall() if asset_ids else []
+
+    focus_id_set = set(focus_ids)
+    relations = [
+        usage_edge_ref(
+            row,
+            "dst" if row["srcId"] in focus_id_set else "src",
+            row["srcId"] if row["srcId"] in focus_id_set else row["dstId"],
+        )
+        for row in relation_rows
+    ]
+    mission_summary: dict[str, list[dict[str, Any]]] = {}
+    if asset_rows:
+        mission_summary["missionRuntimeAssets"] = [compact_node_ref(row) for row in asset_rows]
+    for relation in relations:
+        category = mission_flow_category(safe_key(relation.get("edge")))
+        mission_summary.setdefault(category, []).append(relation)
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "missionRuntimeAssetIds": asset_ids,
+        "focusNodeIds": focus_ids,
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "missionSummary": mission_summary,
+        "relations": relations,
+        "caveats": [
+            "static_authored_mission_runtime_graph_not_observed_player_chronology",
+            "condition_and_action_edges_expose_references_not_runtime_evaluator_results",
+            "quest_dependency_edges_are_authored_prevQuestId_links_not proof_of_live_account_state",
+        ],
+    }
+
+
+def resolve_progression_flow_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in PROGRESSION_FLOW_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def progression_flow_relation_clause(alias: str = "e") -> str:
+    explicit = ", ".join(repr(kind) for kind in PROGRESSION_FLOW_EXPLICIT_EDGE_KINDS)
+    return f"""
+              AND (
+                   {alias}.kind LIKE '%progression%'
+                OR {alias}.kind LIKE '%character_%'
+                OR {alias}.kind LIKE '%weapon_%'
+                OR {alias}.kind LIKE '%equipment_%'
+                OR {alias}.kind LIKE '%gem_%'
+                OR {alias}.kind LIKE '%attribute_%'
+                OR {alias}.kind LIKE '%stat_property%'
+                OR {alias}.kind LIKE '%potential%'
+                OR {alias}.kind LIKE '%break%'
+                OR {alias}.kind LIKE '%level_cost%'
+                OR {alias}.kind LIKE '%checkpoint%'
+                OR {alias}.kind LIKE '%requires_item%'
+                OR {alias}.kind LIKE '%cost%'
+                OR {alias}.kind LIKE '%formula%'
+                OR {alias}.kind LIKE '%suit%'
+                OR {alias}.kind IN ({explicit})
+              )
+    """
+
+
+def progression_flow_category(edge_kind: str) -> str:
+    if "character_level" in edge_kind or "checkpoint" in edge_kind:
+        return "characterLevels"
+    if "break" in edge_kind:
+        return "breakthrough"
+    if "potential" in edge_kind or "talent" in edge_kind:
+        return "potentialTalent"
+    if "skill_level" in edge_kind or "skill_group" in edge_kind or "skill_entry" in edge_kind or "potential_skill" in edge_kind:
+        return "skills"
+    if "weapon" in edge_kind:
+        return "weapons"
+    if "equipment_formula" in edge_kind or "crafted_by_formula" in edge_kind or "formula_outputs_equipment" in edge_kind:
+        return "equipmentFormulas"
+    if "equipment" in edge_kind or "suit" in edge_kind:
+        return "equipment"
+    if "gem" in edge_kind:
+        return "gems"
+    if "attribute" in edge_kind or "stat_property" in edge_kind or "composite" in edge_kind:
+        return "statsAttributes"
+    if "cost" in edge_kind or "requires_item" in edge_kind or "required_by" in edge_kind:
+        return "costs"
+    if "gameplay" in edge_kind or "blackboard" in edge_kind:
+        return "gameplay"
+    return "other"
+
+
+def progression_flow_order_sql(alias: str = "e") -> str:
+    return f"""
+            CASE
+              WHEN {alias}.kind LIKE '%level_checkpoint%' OR {alias}.kind LIKE '%character_level%' THEN 0
+              WHEN {alias}.kind LIKE '%break%' THEN 1
+              WHEN {alias}.kind LIKE '%potential%' OR {alias}.kind LIKE '%talent%' THEN 2
+              WHEN {alias}.kind LIKE '%skill%' THEN 3
+              WHEN {alias}.kind LIKE '%weapon%' THEN 4
+              WHEN {alias}.kind LIKE '%equipment_formula%' OR {alias}.kind LIKE '%crafted_by_formula%' THEN 5
+              WHEN {alias}.kind LIKE '%equipment%' OR {alias}.kind LIKE '%suit%' THEN 6
+              WHEN {alias}.kind LIKE '%gem%' THEN 7
+              WHEN {alias}.kind LIKE '%cost%' OR {alias}.kind LIKE '%requires_item%' THEN 8
+              WHEN {alias}.kind LIKE '%stat_property%' OR {alias}.kind LIKE '%attribute_%' THEN 9
+              WHEN {alias}.kind LIKE '%gameplay%' OR {alias}.kind LIKE '%blackboard%' THEN 10
+              ELSE 10
+            END
+    """
+
+
+def progression_flow_related_ids(conn: sqlite3.Connection, seed: str, relation_limit: int) -> list[str]:
+    rows = conn.execute(
+        f"""
+        SELECT CASE WHEN e.src = ? THEN e.dst ELSE e.src END AS id
+        FROM edges e
+        JOIN nodes other ON other.id = CASE WHEN e.src = ? THEN e.dst ELSE e.src END
+        WHERE (e.src = ? OR e.dst = ?)
+        {progression_flow_relation_clause("e")}
+          AND other.kind IN ({",".join(repr(kind) for kind in PROGRESSION_FLOW_KIND_FALLBACKS)})
+        ORDER BY {progression_flow_order_sql("e")}, e.kind, other.kind, other.name
+        LIMIT ?
+        """,
+        (seed, seed, seed, seed, relation_limit * 4),
+    ).fetchall()
+    return _unique_preserve(row["id"] for row in rows)
+
+
+def progression_flow(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_progression_flow_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "progressionSummary": {}, "relations": []}
+
+    relation_limit = max(limit, 1)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        related_ids = progression_flow_related_ids(conn, seed, relation_limit)
+        focus_ids = _unique_preserve([seed, *related_ids])
+        focus_placeholders = ",".join("?" for _ in focus_ids)
+        count_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, COUNT(1) AS count
+            FROM edges e
+            WHERE (e.src IN ({focus_placeholders}) OR e.dst IN ({focus_placeholders}))
+            {progression_flow_relation_clause("e")}
+            GROUP BY e.kind
+            ORDER BY e.kind
+            """,
+            (*focus_ids, *focus_ids),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src IN ({focus_placeholders}) OR e.dst IN ({focus_placeholders}))
+            {progression_flow_relation_clause("e")}
+            ORDER BY CASE WHEN e.src = ? OR e.dst = ? THEN 0 ELSE 1 END,
+                     {progression_flow_order_sql("e")}, e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (*focus_ids, *focus_ids, seed, seed, relation_limit),
+        ).fetchall()
+        focus_rows = conn.execute(
+            f"""
+            SELECT id, kind, name, source, path, data
+            FROM nodes
+            WHERE id IN ({focus_placeholders})
+            ORDER BY kind, name
+            LIMIT ?
+            """,
+            (*focus_ids, relation_limit),
+        ).fetchall()
+
+    focus_id_set = set(focus_ids)
+    relations = [
+        usage_edge_ref(
+            row,
+            "dst" if row["srcId"] in focus_id_set else "src",
+            row["srcId"] if row["srcId"] in focus_id_set else row["dstId"],
+        )
+        for row in relation_rows
+    ]
+    progression_summary: dict[str, list[dict[str, Any]]] = {}
+    progression_summary["focusNodes"] = [compact_node_ref(row) for row in focus_rows]
+    for relation in relations:
+        category = progression_flow_category(safe_key(relation.get("edge")))
+        progression_summary.setdefault(category, []).append(relation)
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "focusNodeIds": focus_ids,
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "progressionSummary": progression_summary,
+        "relations": relations,
+        "caveats": [
+            "authored_static_progression_and_cost_evidence_only",
+            "does_not_simulate_runtime_formula_evaluation_modifier_order_or_rng",
+            "item_cost_edges_show_config_requirements_not_live_inventory_or_account_state",
+        ],
+    }
+
+
+def resolve_stat_usage_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in STAT_USAGE_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def stat_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_stat_usage_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "relations": []}
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        count_rows = conn.execute(
+            """
+            SELECT kind AS edge, COUNT(*) AS count
+            FROM edges
+            WHERE (src = ? OR dst = ?)
+              AND (
+                   kind LIKE '%stat_property%'
+                OR kind LIKE '%attribute_meta%'
+                OR kind LIKE '%composite_attribute%'
+                OR kind LIKE '%damage_taken_scalar%'
+              )
+            GROUP BY kind
+            ORDER BY kind
+            """,
+            (seed, seed),
+        ).fetchall()
+        relation_rows = conn.execute(
+            """
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+              AND (
+                   e.kind LIKE '%stat_property%'
+                OR e.kind LIKE '%attribute_meta%'
+                OR e.kind LIKE '%composite_attribute%'
+                OR e.kind LIKE '%damage_taken_scalar%'
+              )
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, limit),
+        ).fetchall()
+
+    relations = [
+        usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+        for row in relation_rows
+    ]
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "relations": relations,
+        "caveats": [
+            "authored_static_stat_and_attribute_evidence_only",
+            "does_not_simulate_runtime_formula_evaluation_modifier_order_or_damage_pipeline",
+        ],
+    }
+
+
+def resolve_formula_usage_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in FORMULA_USAGE_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def formula_relation_clause(alias: str = "e") -> str:
+    return f"""
+              AND (
+                   {alias}.kind LIKE '%formula%'
+                OR {alias}.kind LIKE '%recipe%'
+              )
+    """
+
+
+def formula_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_formula_usage_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "relations": []}
+
+    relation_limit = max(limit, 1)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        count_rows = conn.execute(
+            f"""
+            SELECT kind AS edge, COUNT(*) AS count
+            FROM edges e
+            WHERE (src = ? OR dst = ?)
+            {formula_relation_clause("e")}
+            GROUP BY kind
+            ORDER BY kind
+            """,
+            (seed, seed),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+            {formula_relation_clause("e")}
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, relation_limit),
+        ).fetchall()
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "relations": [
+            usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+            for row in relation_rows
+        ],
+        "caveats": [
+            "authored_config_formula_evidence_only",
+            "not_runtime_crafting_or_factory_simulation",
+        ],
+    }
+
+
+def resolve_factory_flow_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in FACTORY_FLOW_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def factory_flow_relation_clause(alias: str = "e") -> str:
+    return f"""
+              AND (
+                   {alias}.kind LIKE '%factory%'
+                OR {alias}.kind LIKE '%recipe%'
+                OR {alias}.kind LIKE '%miner%'
+                OR {alias}.kind LIKE '%fluid%'
+                OR {alias}.kind LIKE '%liquid%'
+                OR {alias}.kind LIKE '%logistic%'
+                OR {alias}.kind LIKE '%power%'
+                OR {alias}.kind LIKE '%pipe%'
+                OR {alias}.kind LIKE '%machine%'
+                OR {alias}.kind LIKE '%blueprint%'
+              )
+    """
+
+
+def factory_flow_category(edge_kind: str) -> str:
+    if "recipe" in edge_kind or "craft" in edge_kind or "ingredient" in edge_kind:
+        return "recipe"
+    if "miner" in edge_kind or "mine" in edge_kind:
+        return "mining"
+    if "fluid" in edge_kind or "liquid" in edge_kind:
+        return "fluid"
+    if "logistic" in edge_kind or "pipe" in edge_kind or "transmission" in edge_kind:
+        return "logistics"
+    if "power" in edge_kind or "battery" in edge_kind or "fuel" in edge_kind:
+        return "power"
+    if "tech" in edge_kind or "unlock" in edge_kind or "blueprint" in edge_kind:
+        return "tech"
+    if "building" in edge_kind or "machine" in edge_kind or "renderer" in edge_kind:
+        return "machine"
+    if "item" in edge_kind:
+        return "item"
+    return "other"
+
+
+def factory_flow(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_factory_flow_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "flowHints": {}, "relations": []}
+
+    relation_limit = max(limit, 1)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        count_rows = conn.execute(
+            f"""
+            SELECT kind AS edge, COUNT(*) AS count
+            FROM edges e
+            WHERE (src = ? OR dst = ?)
+            {factory_flow_relation_clause("e")}
+            GROUP BY kind
+            ORDER BY kind
+            """,
+            (seed, seed),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+            {factory_flow_relation_clause("e")}
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, relation_limit),
+        ).fetchall()
+
+    relations = [
+        usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+        for row in relation_rows
+    ]
+    flow_hints: dict[str, list[dict[str, Any]]] = {}
+    for relation in relations:
+        category = factory_flow_category(safe_key(relation.get("edge")))
+        flow_hints.setdefault(category, []).append(relation)
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "flowHints": flow_hints,
+        "relations": relations,
+        "caveats": [
+            "authored_factory_config_evidence_only",
+            "not_runtime_logistics_power_or_throughput_simulation",
+        ],
+    }
+
+
+GAMEPLAY_PARAMETER_KIND_FALLBACKS = (
+    "gameplay_blackboard_key",
+    "buff_parameter",
+    "skill_parameter",
+)
+
+GAMEPLAY_PARAMETER_BRIDGE_EDGE_KINDS = (
+    "buff_parameter_matches_blackboard_key",
+    "skill_parameter_matches_blackboard_key",
+    "blackboard_key_matches_buff_parameter",
+    "blackboard_key_matches_skill_parameter",
+)
+
+
+def resolve_gameplay_parameter_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in GAMEPLAY_PARAMETER_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def gameplay_parameter_relation_clause(alias: str = "e") -> str:
+    return f"""
+              AND (
+                   {alias}.kind LIKE '%blackboard%'
+                OR {alias}.kind LIKE '%param%'
+                OR {alias}.kind IN (
+                    'buff_data_has_param_string',
+                    'skill_data_has_param_string',
+                    'level_data_has_param_string'
+                )
+              )
+    """
+
+
+def gameplay_parameter_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_gameplay_parameter_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "relations": [], "bridges": []}
+
+    bridge_placeholders = ",".join("?" for _ in GAMEPLAY_PARAMETER_BRIDGE_EDGE_KINDS)
+    relation_limit = max(limit, 1)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        count_rows = conn.execute(
+            f"""
+            SELECT kind AS edge, COUNT(*) AS count
+            FROM edges e
+            WHERE (src = ? OR dst = ?)
+            {gameplay_parameter_relation_clause("e")}
+            GROUP BY kind
+            ORDER BY kind
+            """,
+            (seed, seed),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+            {gameplay_parameter_relation_clause("e")}
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, relation_limit),
+        ).fetchall()
+        bridge_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+              AND e.kind IN ({bridge_placeholders})
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, *GAMEPLAY_PARAMETER_BRIDGE_EDGE_KINDS, relation_limit),
+        ).fetchall()
+
+        bridged_ids = _unique_preserve(
+            row["srcId"] if row["dstId"] == seed else row["dstId"]
+            for row in bridge_rows
+        )
+        bridged_relations: list[dict[str, Any]] = []
+        remaining = relation_limit
+        for bridged_id in bridged_ids:
+            if remaining <= 0:
+                break
+            rows = conn.execute(
+                f"""
+                SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                       src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                       dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+                FROM edges e
+                JOIN nodes src ON src.id = e.src
+                JOIN nodes dst ON dst.id = e.dst
+                WHERE (e.src = ? OR e.dst = ?)
+                {gameplay_parameter_relation_clause("e")}
+                  AND e.kind NOT IN ({bridge_placeholders})
+                ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+                LIMIT ?
+                """,
+                (bridged_id, bridged_id, *GAMEPLAY_PARAMETER_BRIDGE_EDGE_KINDS, remaining),
+            ).fetchall()
+            for row in rows:
+                bridged_relations.append(usage_edge_ref(row, "src" if row["dstId"] == bridged_id else "dst", bridged_id))
+            remaining -= len(rows)
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "relations": [
+            usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+            for row in relation_rows
+        ],
+        "bridges": [
+            usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+            for row in bridge_rows
+        ],
+        "bridgedRelations": bridged_relations,
+    }
+
+
+MAP_USAGE_KIND_FALLBACKS = (
+    "map",
+    "level",
+    "map_config",
+    "level_config",
+    "map_sublevel_brief",
+    "map_brief_info",
+    "map_scene_state",
+    "map_variable",
+    "map_mark",
+    "map_mark_template",
+    "level_basic_info",
+    "level_short_id_scene",
+    "level_script",
+    "level_data",
+    "spawner_config",
+    "spawner_enemy_entry",
+    "enemy",
+)
+
+MAP_USAGE_EDGE_KINDS = (
+    "defines_map",
+    "defines_map_config",
+    "gameplay_config_map_id_table_defines_map",
+    "map_config_defines_map",
+    "map_has_config",
+    "map_config_in_domain",
+    "map_config_uses_streaming_asset",
+    "map_config_has_level_id",
+    "map_config_has_level_str_id",
+    "map_config_defines_map_variable",
+    "map_config_has_scene_state",
+    "map_scene_condition_type",
+    "map_scene_condition_quest",
+    "map_scene_condition_mission",
+    "map_scene_condition_map_variable",
+    "map_has_level",
+    "level_belongs_to_map",
+    "defines_level_basic_info",
+    "level_basic_info_for_level",
+    "level_basic_info_uses_level_config",
+    "level_basic_info_in_domain",
+    "level_basic_info_has_map_ui",
+    "level_basic_info_has_region_ui",
+    "level_basic_info_has_factory_area",
+    "defines_level_short_id_scene",
+    "level_short_id_scene_for_level",
+    "level_short_id_scene_has_short_id",
+    "level_config_data_defines_config",
+    "level_config_defines_level",
+    "level_config_has_map_id",
+    "level_config_uses_default_scene_config",
+    "map_has_sublevel_brief",
+    "map_sublevel_brief_in_map",
+    "map_has_brief_info",
+    "map_brief_info_for_map",
+    "map_brief_info_has_sublevel",
+    "map_sublevel_in_brief_info",
+    "map_sublevel_brief_has_enemy",
+    "enemy_used_by_map_sublevel_brief",
+    "level_has_level_data",
+    "level_data_file_defines_level_data",
+    "level_data_references_level_script",
+    "level_has_level_script",
+    "level_script_data_defines_script",
+    "level_script_data_defines_template",
+    "level_has_mission_runtime",
+    "mission_runtime_in_level",
+    "level_has_map_mark",
+    "map_mark_in_level",
+    "defines_map_mark",
+    "map_mark_uses_template",
+    "map_mark_template_used_by_mark",
+    "defines_map_mark_template",
+    "map_mark_template_has_type",
+    "map_mark_type_has_template",
+    "level_has_atmospheric_npc",
+    "atmospheric_npc_in_level",
+    "level_has_interactive_collection",
+    "level_data_references_level",
+    "level_data_references_mission",
+    "level_data_references_story",
+    "level_data_references_buff",
+    "level_data_references_audio",
+    "level_data_references_effect",
+    "level_data_references_asset_path",
+    "level_data_has_task_marker",
+    "defines_spawner_config",
+    "spawner_config_has_enemy",
+    "spawner_enemy_uses_enemy",
+    "enemy_used_by_spawner_entry",
+    "spawner_enemy_starts_with_buff",
+    "spawner_enemy_prewarn_audio",
+    "spawner_enemy_prewarn_effect",
+    "spawner_buff_uses_blackboard_key",
+)
+
+
+def resolve_map_usage_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    for fallback_kind in MAP_USAGE_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def map_usage_category(edge_kind: str) -> str:
+    if "map_config" in edge_kind or edge_kind in {"defines_map", "gameplay_config_map_id_table_defines_map", "map_has_config"}:
+        return "mapConfig"
+    if "level_config" in edge_kind or "level_basic_info" in edge_kind or "level_short_id" in edge_kind:
+        return "levelConfig"
+    if "map_has_level" in edge_kind or "level_belongs_to_map" in edge_kind or "sublevel" in edge_kind:
+        return "mapLevels"
+    if "scene_condition" in edge_kind or "map_variable" in edge_kind or "scene_state" in edge_kind:
+        return "sceneStateConditions"
+    if "map_mark" in edge_kind or "track_map" in edge_kind:
+        return "mapMarks"
+    if "level_data" in edge_kind or "level_script" in edge_kind:
+        return "levelScripts"
+    if "mission" in edge_kind or "story" in edge_kind:
+        return "missionStory"
+    if "spawner" in edge_kind or "enemy" in edge_kind:
+        return "spawnersEnemies"
+    if "atmospheric_npc" in edge_kind or "interactive" in edge_kind:
+        return "worldObjects"
+    if "audio" in edge_kind or "effect" in edge_kind or "buff" in edge_kind:
+        return "gameplayRefs"
+    if "asset" in edge_kind or "streaming" in edge_kind:
+        return "assets"
+    return "other"
+
+
+def map_level_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_map_usage_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "mapSummary": {}, "relations": []}
+
+    placeholders = ",".join("?" for _ in MAP_USAGE_EDGE_KINDS)
+    relation_limit = max(limit, 1)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        count_rows = conn.execute(
+            f"""
+            SELECT kind AS edge, COUNT(*) AS count
+            FROM edges
+            WHERE (src = ? OR dst = ?)
+              AND kind IN ({placeholders})
+            GROUP BY kind
+            ORDER BY kind
+            """,
+            (seed, seed, *MAP_USAGE_EDGE_KINDS),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+              AND e.kind IN ({placeholders})
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, *MAP_USAGE_EDGE_KINDS, relation_limit),
+        ).fetchall()
+
+    relations = [
+        usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+        for row in relation_rows
+    ]
+    map_summary: dict[str, list[dict[str, Any]]] = {}
+    for relation in relations:
+        category = map_usage_category(safe_key(relation.get("edge")))
+        map_summary.setdefault(category, []).append(relation)
+
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "edgeCounts": {row["edge"]: row["count"] for row in count_rows},
+        "mapSummary": map_summary,
+        "relations": relations,
+        "caveats": [
+            "authored_static_map_level_table_and_decoded_config_reference_evidence_only",
+            "level_to_map_edges_can_be_explicit_or_prefix_inferred_check_edge_evidence",
+            "does_not_reconstruct_runtime_streaming_visibility_spawn_state_or_player_position",
+        ],
+    }
+
+
+AUDIO_USAGE_KIND_FALLBACKS = (
+    "audio",
+    "line",
+    "dialog_text",
+    "radio_line",
+    "remote_common_line",
+    "responsive_response",
+)
+
+AUDIO_USAGE_EDGE_KINDS = (
+    "uses_audio",
+    "audio_used_by_line",
+    "dialog_text_uses_audio",
+    "audio_used_by_dialog_text",
+    "radio_line_uses_audio",
+    "audio_used_by_radio_line",
+    "env_talk_uses_audio",
+    "audio_used_by_env_talk",
+    "remote_common_line_uses_voice",
+    "remote_common_line_uses_audio",
+    "remote_common_line_uses_music",
+    "audio_used_by_remote_common_line_voice",
+    "audio_used_by_remote_common_line",
+    "audio_used_by_remote_common_line_music",
+    "responsive_response_uses_audio",
+    "audio_used_by_responsive_response",
+    "audio_sequence_dialog_uses_audio",
+    "audio_used_by_sequence_dialog",
+    "text_voice_id_uses_audio",
+    "audio_used_by_text_voice_id",
+    "audio_voice_extra_for_audio",
+    "audio_voice_extra_line_node",
+    "audio_voice_extra_for_dialog_row",
+    "audio_vo_tone_for_audio",
+    "audio_vo_tone_has_variant_audio",
+    "audio_used_by_vo_tone",
+    "audio_used_by_vo_tone_variant",
+    "skill_data_references_audio",
+    "audio_used_by_skill_data",
+    "buff_data_references_audio",
+    "audio_used_by_buff_data",
+    "level_data_references_audio",
+    "audio_used_by_level_data",
+    "level_script_references_audio",
+    "audio_used_by_level_script",
+    "spawner_enemy_prewarn_audio",
+    "audio_used_by_spawner_enemy_prewarn",
+    "interactive_template_uses_audio",
+    "audio_used_by_interactive_template",
+    "monobehaviour_frontier_entry_uses_audio",
+    "audio_used_by_monobehaviour_frontier_entry",
+    "audio_factory_announcement_uses_voice",
+    "audio_used_by_factory_announcement",
+    "actor_has_speaker_channel",
+    "speaker_channel",
+    "audio_path",
+    "defines_audio",
+    "decoded_audio_index_names_event",
+    "decoded_audio_index_has_event_evidence",
+    "decoded_audio_file_media",
+    "decoded_audio_file_hotfix_media",
+)
+
+
+def resolve_audio_usage_lookup(db_path: Path, term: str, *, limit: int, kind: str = "") -> tuple[dict[str, Any], str]:
+    lookup_limit = min(max(limit, 1), 20)
+    if kind:
+        return query_graph(db_path, term, limit=lookup_limit, kind=kind), kind
+    term_key = safe_key(term)
+    if term_key:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            for candidate in _unique_preserve([term_key, Path(term_key).stem]):
+                if not candidate:
+                    continue
+                if conn.execute("SELECT 1 FROM nodes WHERE id = ? AND kind = 'audio' LIMIT 1", (f"audio:{candidate}",)).fetchone():
+                    return query_graph(db_path, candidate, limit=lookup_limit, kind="audio"), "audio"
+                row = conn.execute(
+                    """
+                    SELECT audio.name
+                    FROM edges edge
+                    JOIN nodes row_node ON row_node.id = edge.src
+                    JOIN nodes audio ON audio.id = edge.dst
+                    WHERE row_node.id = ?
+                      AND edge.kind = 'defines_audio'
+                      AND audio.kind = 'audio'
+                    LIMIT 1
+                    """,
+                    (f"table_row:AudioDialog:{candidate}",),
+                ).fetchone()
+                if row:
+                    return query_graph(db_path, row["name"], limit=lookup_limit, kind="audio"), "audio"
+    for fallback_kind in AUDIO_USAGE_KIND_FALLBACKS:
+        lookup = query_graph(db_path, term, limit=lookup_limit, kind=fallback_kind)
+        if safe_key(lookup.get("seedNode")):
+            return lookup, fallback_kind
+    return query_graph(db_path, term, limit=lookup_limit), ""
+
+
+def audio_usage(db_path: Path, term: str, *, limit: int = 40, kind: str = "") -> dict[str, Any]:
+    lookup, resolved_kind = resolve_audio_usage_lookup(db_path, term, limit=limit, kind=kind)
+    seed = safe_key(lookup.get("seedNode"))
+    if not seed:
+        return {"term": term, "seedNode": "", "matches": lookup.get("nodes") or [], "edgeCounts": {}, "relations": []}
+
+    placeholders = ",".join("?" for _ in AUDIO_USAGE_EDGE_KINDS)
+    relation_limit = max(limit, 1)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        seed_row = conn.execute(
+            "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+            (seed,),
+        ).fetchone()
+        path_rows = conn.execute(
+            """
+            SELECT file_node.id AS fileNode, file_node.path AS audioPath, edge.source, edge.evidence, edge.data
+            FROM edges edge
+            JOIN nodes file_node ON file_node.id = edge.dst
+            WHERE edge.src = ?
+              AND edge.kind = 'audio_path'
+            ORDER BY file_node.path
+            """,
+            (seed,),
+        ).fetchall()
+        count_rows = conn.execute(
+            f"""
+            SELECT kind AS edge, COUNT(*) AS count
+            FROM edges
+            WHERE (src = ? OR dst = ?)
+              AND kind IN ({placeholders})
+            GROUP BY kind
+            ORDER BY kind
+            """,
+            (seed, seed, *AUDIO_USAGE_EDGE_KINDS),
+        ).fetchall()
+        relation_rows = conn.execute(
+            f"""
+            SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                   src.id AS srcId, src.kind AS srcKind, src.name AS srcName, src.path AS srcPath, src.data AS srcData,
+                   dst.id AS dstId, dst.kind AS dstKind, dst.name AS dstName, dst.path AS dstPath, dst.data AS dstData
+            FROM edges e
+            JOIN nodes src ON src.id = e.src
+            JOIN nodes dst ON dst.id = e.dst
+            WHERE (e.src = ? OR e.dst = ?)
+              AND e.kind IN ({placeholders})
+            ORDER BY e.kind, src.kind, src.name, dst.kind, dst.name, e.evidence
+            LIMIT ?
+            """,
+            (seed, seed, *AUDIO_USAGE_EDGE_KINDS, relation_limit),
+        ).fetchall()
+
+    seed_data = parse_json_text(seed_row["data"]) if seed_row else {}
+    path_values = _unique_preserve(
+        [seed_row["path"] if seed_row else "", seed_data.get("path")]
+        + [row["audioPath"] for row in path_rows]
+    )
+    path_values = [value for value in path_values if safe_key(value)]
+    resolved_audio = {}
+    if seed_row and seed_row["kind"] == "audio":
+        resolved_audio = {
+            "audioId": seed_row["name"],
+            "audioPath": path_values[0] if path_values else None,
+            "pathEvidence": bool(path_values),
+            "duration": seed_data.get("duration"),
+            "speaker": seed_data.get("speaker"),
+            "voType": seed_data.get("voType"),
+            "codec": seed_data.get("codec"),
+            "audioDialogRowId": seed_data.get("id"),
+        }
+    edge_counts = {row["edge"]: row["count"] for row in count_rows}
+    caveats = []
+    if seed_row and seed_row["kind"] == "audio":
+        if path_values:
+            caveats.append("path_backed_audio")
+        else:
+            caveats.append("no_audio_path_evidence")
+        if edge_counts.get("uses_audio") or edge_counts.get("audio_used_by_line"):
+            caveats.append("story_line_audio_reference")
+        if not path_values and (edge_counts.get("uses_audio") or edge_counts.get("audio_used_by_line")):
+            caveats.append("story_line_reference_unresolved_to_wem")
+    return {
+        "term": term,
+        "seedNode": seed,
+        "seed": compact_node_ref(seed_row) if seed_row else {"id": seed, "key": node_key(seed)},
+        "resolvedKind": resolved_kind,
+        "aliases": lookup.get("aliases") or [],
+        "resolvedAudio": resolved_audio,
+        "pathEvidence": [
+            {
+                "audioPath": row["audioPath"],
+                "source": row["source"],
+                "evidence": row["evidence"],
+                "data": parse_json_text(row["data"]),
+            }
+            for row in path_rows
+        ],
+        "caveats": caveats,
+        "edgeCounts": edge_counts,
+        "relations": [
+            usage_edge_ref(row, "src" if row["dstId"] == seed else "dst", seed)
+            for row in relation_rows
+        ],
     }
 
 
@@ -30022,6 +34891,548 @@ def recovery_issues(db_path: Path, *, code: str = "", limit: int = 40) -> dict[s
         }
 
 
+def unresolved_narrative_videos(db_path: Path, *, actionable_only: bool = False) -> dict[str, Any]:
+    report_path = GRAPH_DIR / "unresolved_narrative_video_candidates.json"
+    if not report_path.exists():
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            emit_unresolved_narrative_video_candidates(conn)
+    payload = read_json(report_path, {})
+    records = payload.get("actionable") if actionable_only else payload.get("records")
+    if not isinstance(records, list):
+        records = []
+    return {
+        "sourceReport": slash(report_path),
+        "actionableOnly": actionable_only,
+        "count": len(records),
+        "statusCounts": payload.get("statusCounts"),
+        "actionableCount": payload.get("actionableCount"),
+        "records": records,
+    }
+
+
+def option_branch_gaps(
+    db_path: Path,
+    *,
+    audit_only: bool = False,
+    conflicts_only: bool = False,
+    recommendation: str = "",
+    limit: int = 40,
+) -> dict[str, Any]:
+    report_path = GRAPH_DIR / "option_branch_gaps.json"
+    if not report_path.exists():
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            emit_option_branch_gaps(conn)
+    payload = read_json(report_path, {})
+    scenes = payload.get("scenes")
+    if not isinstance(scenes, list):
+        scenes = []
+    recommendation_filter = safe_key(recommendation)
+    filtered: list[dict[str, Any]] = []
+    for scene in scenes:
+        if not isinstance(scene, dict):
+            continue
+        if audit_only and not scene.get("auditOnly"):
+            continue
+        if conflicts_only and not int(scene.get("runtimeAuditConflicts") or 0):
+            continue
+        recommendations = scene.get("runtimeAuditRecommendations") if isinstance(scene.get("runtimeAuditRecommendations"), dict) else {}
+        if recommendation_filter and recommendation_filter not in recommendations:
+            continue
+        filtered.append(scene)
+        if len(filtered) >= limit:
+            break
+    return {
+        "sourceReport": slash(report_path),
+        "sourceInput": payload.get("sourceReport"),
+        "returned": len(filtered),
+        "totalScenes": len(scenes),
+        "auditOnly": audit_only,
+        "conflictsOnly": conflicts_only,
+        "recommendation": recommendation_filter,
+        "scenes": filtered,
+    }
+
+
+def fetch_compact_node(conn: sqlite3.Connection, node_id: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT id, kind, name, source, path, data FROM nodes WHERE id = ?",
+        (node_id,),
+    ).fetchone()
+    return compact_node_ref(row) if row else None
+
+
+def option_route_audit(
+    db_path: Path,
+    *,
+    story: str = "",
+    conflicts_only: bool = False,
+    recommendation: str = "",
+    limit: int = 40,
+) -> dict[str, Any]:
+    story_filter = safe_key(story)
+    recommendation_filter = safe_key(recommendation)
+    group_limit = max(limit, 1)
+    groups: list[dict[str, Any]] = []
+    recommendation_counts: Counter[str] = Counter()
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        audit_rows = conn.execute(
+            """
+            SELECT id, kind, name, source, path, data
+            FROM nodes
+            WHERE kind = 'runtime_option_route_audit_group'
+            ORDER BY name, path
+            """
+        ).fetchall()
+        for row in audit_rows:
+            data = parse_json_text(row["data"])
+            scene_key = safe_key(data.get("sceneKey"))
+            group_key = safe_key(data.get("group"))
+            if story_filter and scene_key != story_filter:
+                continue
+            recommendation_value = safe_key(data.get("recommendation"))
+            if recommendation_filter and recommendation_value != recommendation_filter:
+                continue
+            conflict_count = int(data.get("runtimePathConflictCount") or 0)
+            if conflicts_only and not conflict_count:
+                continue
+            recommendation_counts[recommendation_value or ""] += 1
+            option_ids = [safe_key(option_id) for option_id in (data.get("optionIds") or []) if safe_key(option_id)]
+            option_placeholders = ",".join("?" for _ in option_ids)
+            options = [
+                fetch_compact_node(conn, f"option:{option_id}") or {"id": f"option:{option_id}", "key": option_id, "kind": "option"}
+                for option_id in option_ids
+            ]
+
+            conflicts: list[dict[str, Any]] = []
+            conflict_rows = conn.execute(
+                """
+                SELECT conflict.id, conflict.kind, conflict.name, conflict.source, conflict.path, conflict.data,
+                       e.source AS edgeSource, e.evidence AS edgeEvidence, e.data AS edgeData
+                FROM edges e
+                JOIN nodes conflict ON conflict.id = e.dst
+                WHERE e.src = ?
+                  AND e.kind = 'runtime_audit_has_conflict'
+                ORDER BY e.evidence, conflict.name
+                """,
+                (row["id"],),
+            ).fetchall()
+            for conflict_row in conflict_rows:
+                conflict = compact_node_ref(conflict_row)
+                conflict_data = parse_json_text(conflict_row["data"])
+                expected_id = safe_key(conflict_data.get("expectedFirstLineId"))
+                runtime_id = safe_key(conflict_data.get("runtimeFirstLineId"))
+                owner_id = safe_key(conflict_data.get("runtimeFirstLineCandidateOwner"))
+                if expected_id:
+                    conflict["expectedFirstLine"] = fetch_compact_node(conn, f"line:{expected_id}") or {"id": f"line:{expected_id}", "key": expected_id, "kind": "line"}
+                if runtime_id:
+                    conflict["runtimeFirstLine"] = fetch_compact_node(conn, f"line:{runtime_id}") or {"id": f"line:{runtime_id}", "key": runtime_id, "kind": "line"}
+                if owner_id:
+                    conflict["runtimeFirstLineCandidateOwner"] = fetch_compact_node(conn, f"option:{owner_id}") or {"id": f"option:{owner_id}", "key": owner_id, "kind": "option"}
+                conflicts.append(conflict)
+
+            first_line_maps: dict[str, list[dict[str, Any]]] = {}
+            nearby_jumps: list[dict[str, Any]] = []
+            if option_ids:
+                map_rows = conn.execute(
+                    f"""
+                    SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                           opt.id AS optionId, opt.kind AS optionKind, opt.name AS optionName, opt.path AS optionPath, opt.data AS optionData,
+                           line.id AS lineId, line.kind AS lineKind, line.name AS lineName, line.path AS linePath, line.data AS lineData
+                    FROM edges e
+                    JOIN nodes opt ON opt.id = e.src
+                    JOIN nodes line ON line.id = e.dst
+                    WHERE opt.id IN ({option_placeholders})
+                      AND e.kind IN ('runtime_audit_expected_first_line', 'runtime_audit_runtime_first_line', 'runtime_audit_directional_first_line')
+                    ORDER BY e.kind, opt.name, line.name, e.evidence
+                    """,
+                    tuple(f"option:{option_id}" for option_id in option_ids),
+                ).fetchall()
+                for map_row in map_rows:
+                    edge_data = parse_json_text(map_row["edgeData"])
+                    if scene_key and safe_key(edge_data.get("sceneKey")) != scene_key:
+                        continue
+                    if group_key and safe_key(edge_data.get("group")) != group_key:
+                        continue
+                    first_line_maps.setdefault(map_row["edge"], []).append({
+                        "option": compact_node_ref({
+                            "id": map_row["optionId"],
+                            "kind": map_row["optionKind"],
+                            "name": map_row["optionName"],
+                            "path": map_row["optionPath"],
+                            "data": map_row["optionData"],
+                        }),
+                        "line": compact_node_ref({
+                            "id": map_row["lineId"],
+                            "kind": map_row["lineKind"],
+                            "name": map_row["lineName"],
+                            "path": map_row["linePath"],
+                            "data": map_row["lineData"],
+                        }),
+                        "source": map_row["source"],
+                        "evidence": map_row["evidence"],
+                        "edgeData": edge_data,
+                    })
+                jump_rows = conn.execute(
+                    f"""
+                    SELECT e.kind AS edge, e.source, e.evidence, e.data AS edgeData,
+                           opt.id AS optionId, opt.kind AS optionKind, opt.name AS optionName, opt.path AS optionPath, opt.data AS optionData,
+                           jump.id AS jumpId, jump.kind AS jumpKind, jump.name AS jumpName, jump.path AS jumpPath, jump.data AS jumpData
+                    FROM edges e
+                    JOIN nodes opt ON opt.id = e.src
+                    JOIN nodes jump ON jump.id = e.dst
+                    WHERE opt.id IN ({option_placeholders})
+                      AND e.kind = 'runtime_audit_nearby_jump'
+                    ORDER BY opt.name, e.evidence, jump.name
+                    """,
+                    tuple(f"option:{option_id}" for option_id in option_ids),
+                ).fetchall()
+                for jump_row in jump_rows:
+                    edge_data = parse_json_text(jump_row["edgeData"])
+                    if scene_key and safe_key(edge_data.get("sceneKey")) != scene_key:
+                        continue
+                    if group_key and safe_key(edge_data.get("group")) != group_key:
+                        continue
+                    nearby_jumps.append({
+                        "option": compact_node_ref({
+                            "id": jump_row["optionId"],
+                            "kind": jump_row["optionKind"],
+                            "name": jump_row["optionName"],
+                            "path": jump_row["optionPath"],
+                            "data": jump_row["optionData"],
+                        }),
+                        "jump": compact_node_ref({
+                            "id": jump_row["jumpId"],
+                            "kind": jump_row["jumpKind"],
+                            "name": jump_row["jumpName"],
+                            "path": jump_row["jumpPath"],
+                            "data": jump_row["jumpData"],
+                        }),
+                        "source": jump_row["source"],
+                        "evidence": jump_row["evidence"],
+                        "edgeData": edge_data,
+                    })
+
+            groups.append({
+                "auditGroup": compact_node_ref(row),
+                "sceneKey": scene_key,
+                "group": group_key,
+                "recommendation": recommendation_value,
+                "optionIds": option_ids,
+                "options": options,
+                "candidateLineIds": data.get("candidateLineIds") or [],
+                "commonContinuationLineId": data.get("commonContinuationLineId"),
+                "runtimePathConflictCount": conflict_count,
+                "directionalFirstLineConflictCount": data.get("directionalFirstLineConflictCount"),
+                "nearbyRuntimeJumpCount": data.get("nearbyRuntimeJumpCount"),
+                "sourceReport": data.get("sourceReport") or row["path"],
+                "conflicts": conflicts,
+                "firstLineEvidence": first_line_maps,
+                "nearbyRuntimeJumps": nearby_jumps,
+            })
+            if len(groups) >= group_limit:
+                break
+    return {
+        "story": story_filter,
+        "conflictsOnly": conflicts_only,
+        "recommendation": recommendation_filter,
+        "returned": len(groups),
+        "recommendationCounts": dict(sorted((k, v) for k, v in recommendation_counts.items() if k)),
+        "groups": groups,
+        "caveats": [
+            "runtime_jump_audit_evidence_is_static_timeline_recovery_not_live_playback",
+            "expected_first_line_can_reflect_current_inference_or_manual_override_not_independent_runtime_truth",
+            "nearby_runtime_jump_edges_are_diagnostic_until_their_option_index_mapping_is_proven",
+        ],
+    }
+
+
+def scene_order_gaps(
+    db_path: Path,
+    *,
+    warning: str = "",
+    mission: str = "",
+    line_status: str = "",
+    option_status: str = "",
+    term: str = "",
+    placement: str = "",
+    limit: int = 40,
+) -> dict[str, Any]:
+    warning_filter = safe_key(warning)
+    mission_filter = safe_key(mission)
+    line_status_filter = safe_key(line_status)
+    option_status_filter = safe_key(option_status)
+    term_filter = safe_key(term).lower()
+    placement_filter = safe_key(placement)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT id, name, source, path, data
+            FROM nodes
+            WHERE kind = 'scene_order_gap'
+            ORDER BY name
+            """
+        ).fetchall()
+        warning_rows = conn.execute(
+            """
+            SELECT edge.src AS gapNode, warning.name AS warningCode
+            FROM edges edge
+            JOIN nodes warning ON warning.id = edge.dst
+            WHERE edge.kind = 'scene_order_gap_has_warning'
+            ORDER BY edge.src, edge.evidence, warning.name
+            """
+        ).fetchall()
+        placement_rows = conn.execute(
+            """
+            SELECT edge.src AS gapNode, evidence.name AS evidenceKind
+            FROM edges edge
+            JOIN nodes evidence ON evidence.id = edge.dst
+            WHERE edge.kind = 'scene_order_gap_has_placement_evidence'
+            ORDER BY edge.src, edge.evidence, evidence.name
+            """
+        ).fetchall()
+        count_rows = conn.execute(
+            """
+            SELECT src AS gapNode, kind AS edgeKind, COUNT(*) AS count
+            FROM edges
+            WHERE kind IN (
+                'scene_order_gap_ordered_line',
+                'scene_order_gap_uncovered_line',
+                'scene_order_gap_option_group',
+                'scene_order_gap_option_group_has_option',
+                'scene_order_gap_unauthored_option',
+                'scene_order_gap_placement_quest',
+                'scene_order_gap_placement_neighbor',
+                'scene_order_gap_placement_source_file',
+                'scene_order_gap_placement_timeline'
+            )
+            GROUP BY src, kind
+            """
+        ).fetchall()
+        option_count_rows = conn.execute(
+            """
+            SELECT gap_edge.src AS gapNode, option_edge.kind AS edgeKind, COUNT(*) AS count
+            FROM edges gap_edge
+            JOIN edges option_edge ON option_edge.src = gap_edge.dst
+            WHERE gap_edge.kind = 'scene_order_gap_option_group'
+              AND option_edge.kind IN (
+                  'scene_order_gap_option_group_has_option',
+                  'scene_order_gap_unauthored_option'
+              )
+            GROUP BY gap_edge.src, option_edge.kind
+            """
+        ).fetchall()
+
+    warnings_by_gap: dict[str, list[str]] = defaultdict(list)
+    for row in warning_rows:
+        warnings_by_gap[row["gapNode"]].append(row["warningCode"])
+    placements_by_gap: dict[str, list[str]] = defaultdict(list)
+    for row in placement_rows:
+        placements_by_gap[row["gapNode"]].append(row["evidenceKind"])
+    counts_by_gap: dict[str, dict[str, int]] = defaultdict(dict)
+    for row in count_rows:
+        counts_by_gap[row["gapNode"]][row["edgeKind"]] = int(row["count"] or 0)
+    for row in option_count_rows:
+        counts_by_gap[row["gapNode"]][row["edgeKind"]] = int(row["count"] or 0)
+
+    all_records: list[dict[str, Any]] = []
+    warning_counts: Counter[str] = Counter()
+    line_status_counts: Counter[str] = Counter()
+    option_status_counts: Counter[str] = Counter()
+    placement_counts: Counter[str] = Counter()
+
+    for row in rows:
+        data = parse_json_text(row["data"])
+        gap_warnings = _unique_preserve((data.get("warningCodes") or []) + warnings_by_gap.get(row["id"], []))
+        gap_placements = _unique_preserve((data.get("scenePlacementEvidenceKinds") or []) + placements_by_gap.get(row["id"], []))
+        warning_counts.update(gap_warnings)
+        if data.get("lineOrderStatus"):
+            line_status_counts[safe_key(data.get("lineOrderStatus"))] += 1
+        if data.get("optionLayoutStatus"):
+            option_status_counts[safe_key(data.get("optionLayoutStatus"))] += 1
+        placement_counts.update(gap_placements)
+
+        edge_counts = counts_by_gap.get(row["id"], {})
+        ordered_line_edges = edge_counts.get("scene_order_gap_ordered_line", 0)
+        uncovered_line_edges = edge_counts.get("scene_order_gap_uncovered_line", 0)
+        option_group_edges = edge_counts.get("scene_order_gap_option_group", 0)
+        option_edges = edge_counts.get("scene_order_gap_option_group_has_option", 0)
+        unauthored_option_edges = edge_counts.get("scene_order_gap_unauthored_option", 0)
+        record = {
+            "storyKey": data.get("key") or row["name"],
+            "mission": data.get("mission"),
+            "kind": data.get("kind"),
+            "title": data.get("title"),
+            "warningCodes": gap_warnings,
+            "lineOrderStatus": data.get("lineOrderStatus"),
+            "lineOrderReasonCode": data.get("lineOrderReasonCode"),
+            "lineOrderPatternCode": data.get("lineOrderPatternCode"),
+            "optionLayoutStatus": data.get("optionLayoutStatus"),
+            "optionLayoutReason": data.get("optionLayoutReason"),
+            "optionPositionPatternCode": data.get("optionPositionPatternCode"),
+            "inferredOptionLayout": data.get("inferredOptionLayout"),
+            "inferredOptionResponse": data.get("inferredOptionResponse"),
+            "scenePlacementEvidenceKinds": gap_placements,
+            "lineCount": data.get("lineCount") if data.get("lineCount") is not None else ordered_line_edges + uncovered_line_edges,
+            "meaningfulLineCount": data.get("meaningfulLineCount"),
+            "lineOrderCoveredCount": data.get("lineOrderCoveredCount") if data.get("lineOrderCoveredCount") is not None else ordered_line_edges,
+            "lineOrderUncoveredCount": data.get("lineOrderUncoveredCount") if data.get("lineOrderUncoveredCount") is not None else uncovered_line_edges,
+            "orderedLineEdges": ordered_line_edges,
+            "uncoveredLineEdges": uncovered_line_edges,
+            "optionGroupCount": data.get("optionGroupCount") if data.get("optionGroupCount") is not None else option_group_edges,
+            "optionCount": data.get("optionCount") if data.get("optionCount") is not None else option_edges,
+            "optionGroupEdges": option_group_edges,
+            "optionEdges": option_edges,
+            "unauthoredOptionEdges": unauthored_option_edges,
+            "placementQuestEdges": edge_counts.get("scene_order_gap_placement_quest", 0),
+            "placementNeighborEdges": edge_counts.get("scene_order_gap_placement_neighbor", 0),
+            "placementSourceFileEdges": edge_counts.get("scene_order_gap_placement_source_file", 0),
+            "placementTimelineEdges": edge_counts.get("scene_order_gap_placement_timeline", 0),
+            "path": row["path"] or data.get("path"),
+            "source": row["source"],
+        }
+        all_records.append(record)
+
+    filtered: list[dict[str, Any]] = []
+    for record in all_records:
+        if warning_filter and warning_filter not in [safe_key(item) for item in record["warningCodes"]]:
+            continue
+        if mission_filter and safe_key(record.get("mission")) != mission_filter:
+            continue
+        if line_status_filter and safe_key(record.get("lineOrderStatus")) != line_status_filter:
+            continue
+        if option_status_filter and safe_key(record.get("optionLayoutStatus")) != option_status_filter:
+            continue
+        if placement_filter and placement_filter not in [safe_key(item) for item in record["scenePlacementEvidenceKinds"]]:
+            continue
+        if term_filter:
+            haystack = " ".join(
+                safe_key(value).lower()
+                for value in (
+                    record.get("storyKey"),
+                    record.get("mission"),
+                    record.get("kind"),
+                    record.get("title"),
+                    record.get("path"),
+                    " ".join(record["warningCodes"]),
+                    " ".join(record["scenePlacementEvidenceKinds"]),
+                )
+            )
+            if term_filter not in haystack:
+                continue
+        filtered.append(record)
+        if len(filtered) >= limit:
+            break
+
+    return {
+        "totalScenes": len(all_records),
+        "returned": len(filtered),
+        "warning": warning_filter,
+        "mission": mission_filter,
+        "lineStatus": line_status_filter,
+        "optionStatus": option_status_filter,
+        "term": term_filter,
+        "placement": placement_filter,
+        "warningCounts": dict(sorted(warning_counts.items())),
+        "lineOrderStatusCounts": dict(sorted(line_status_counts.items())),
+        "optionLayoutStatusCounts": dict(sorted(option_status_counts.items())),
+        "placementEvidenceCounts": dict(sorted(placement_counts.items())),
+        "scenes": filtered,
+    }
+
+
+def model_binding_candidates(
+    db_path: Path,
+    *,
+    status: str = "",
+    term: str = "",
+    min_world_uses: int = 0,
+    min_interactive_uses: int = 0,
+    with_siblings: bool = False,
+    sort: str = "report",
+    limit: int = 40,
+) -> dict[str, Any]:
+    report_path = GRAPH_DIR / "model_config_asset_binding_candidates.json"
+    if not report_path.exists():
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            emit_model_config_asset_binding_candidates(conn)
+    payload = read_json(report_path, {})
+    records = payload.get("records")
+    if not isinstance(records, list):
+        records = []
+    status_filter = safe_key(status)
+    term_filter = safe_key(term).lower()
+    min_world_uses = max(min_world_uses, 0)
+    min_interactive_uses = max(min_interactive_uses, 0)
+    sort_mode = safe_key(sort) or "report"
+    if sort_mode not in {"report", "world", "interactive", "usage"}:
+        sort_mode = "report"
+    filtered: list[dict[str, Any]] = []
+    filtered_status_counts: Counter[str] = Counter()
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            continue
+        if status_filter and safe_key(record.get("status")) != status_filter:
+            continue
+        world_uses = int(record.get("worldEntityUses") or 0)
+        placement_uses = int(record.get("placementUses") or world_uses)
+        interactive_uses = int(record.get("interactiveTemplateUses") or 0)
+        if placement_uses < min_world_uses:
+            continue
+        if interactive_uses < min_interactive_uses:
+            continue
+        if with_siblings and not record.get("resolvedSiblingModels"):
+            continue
+        if term_filter:
+            haystack = " ".join(
+                safe_key(record.get(field)).lower()
+                for field in ("modelId", "prefabPath", "prefabStem")
+            )
+            if term_filter not in haystack:
+                continue
+        filtered_status_counts[safe_key(record.get("status"))] += 1
+        row = dict(record)
+        row["_reportIndex"] = index
+        filtered.append(row)
+    if sort_mode == "world":
+        filtered.sort(key=lambda row: (-(int(row.get("placementUses") or row.get("worldEntityUses") or 0)), row["_reportIndex"]))
+    elif sort_mode == "interactive":
+        filtered.sort(key=lambda row: (-(int(row.get("interactiveTemplateUses") or 0)), row["_reportIndex"]))
+    elif sort_mode == "usage":
+        filtered.sort(
+            key=lambda row: (
+                -(int(row.get("placementUses") or row.get("worldEntityUses") or 0) + int(row.get("interactiveTemplateUses") or 0)),
+                row["_reportIndex"],
+            )
+        )
+    limited = []
+    for row in filtered[:limit]:
+        output_row = dict(row)
+        output_row.pop("_reportIndex", None)
+        limited.append(output_row)
+    return {
+        "sourceReport": slash(report_path),
+        "status": status_filter,
+        "term": term_filter,
+        "minWorldUses": min_world_uses,
+        "minInteractiveUses": min_interactive_uses,
+        "withSiblings": with_siblings,
+        "sort": sort_mode,
+        "returned": len(limited),
+        "filteredTotal": len(filtered),
+        "totalRecords": len(records),
+        "statusCounts": payload.get("statusCounts"),
+        "filteredStatusCounts": dict(sorted(filtered_status_counts.items())),
+        "directModelConfigAssetEntityEdges": payload.get("directModelConfigAssetEntityEdges"),
+        "candidateEntityMatches": payload.get("candidateEntityMatches"),
+        "records": limited,
+    }
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command")
@@ -30053,6 +35464,180 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Optional node kind to force before usage lookup. By default tries asset, unity_asset, then unity_pathid.",
     )
 
+    entity_assets_cmd = sub.add_parser("entity-assets", help="Show asset-entity LOD model, material, texture, shader, and gameplay binding evidence")
+    entity_assets_cmd.add_argument("term")
+    entity_assets_cmd.add_argument("--db", type=Path, default=DEFAULT_DB)
+    entity_assets_cmd.add_argument("--limit", type=int, default=40)
+    entity_assets_cmd.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as asset_entity, model_config_model, world_entity_instance, or interactive_template.",
+    )
+
+    shader_usage_cmd = sub.add_parser("shader-usage", help="Show shader program, PathID, backend, snippet, and material reference evidence")
+    shader_usage_cmd.add_argument("term")
+    shader_usage_cmd.add_argument("--db", type=Path, default=DEFAULT_DB)
+    shader_usage_cmd.add_argument("--limit", type=int, default=40)
+    shader_usage_cmd.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as shader_program, shader, shader_family, shader_snippet, unity_pathid, or material.",
+    )
+
+    material_usage_cmd = sub.add_parser("material-usage", help="Show material JSON slots, texture/shader PathIDs, exported assets, and asset-entity consumers")
+    material_usage_cmd.add_argument("term")
+    material_usage_cmd.add_argument("--db", type=Path, default=DEFAULT_DB)
+    material_usage_cmd.add_argument("--limit", type=int, default=40)
+    material_usage_cmd.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as material, asset, asset_entity, unity_pathid, shader_program, or texture.",
+    )
+
+    effect_usage_cmd = sub.add_parser("effect-usage", help="Show gameplay/global/use-item effect references, exported asset matches, and authored consumers")
+    effect_usage_cmd.add_argument("term")
+    effect_usage_cmd.add_argument("--db", type=Path, default=DEFAULT_DB)
+    effect_usage_cmd.add_argument("--limit", type=int, default=40)
+    effect_usage_cmd.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as gameplay_effect, global_effect, potential_talent_effect, use_item_effect, or asset.",
+    )
+
+    animation_usage_cmd = sub.add_parser("animation-usage", help="Show animation config, montage, model-view clip, lipsync, timeline clip, and facial-morph evidence")
+    animation_usage_cmd.add_argument("term")
+    animation_usage_cmd.add_argument("--db", type=Path, default=DEFAULT_DB)
+    animation_usage_cmd.add_argument("--limit", type=int, default=40)
+    animation_usage_cmd.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as animation_config, level_script_montage, model_view_state_controller, model_view_clip_ref, lipsync_clip, or animation_clip.",
+    )
+
+    video_usage_cmd = sub.add_parser("video-usage", help="Show FMV binding, narrative video, PathID, and playable asset evidence")
+    video_usage_cmd.add_argument("term")
+    video_usage_cmd.add_argument("--db", type=Path, default=DEFAULT_DB)
+    video_usage_cmd.add_argument("--limit", type=int, default=40)
+    video_usage_cmd.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as fmv_binding, video, story, mission, fmv_clip, unity_pathid, or narrative_video_stem.",
+    )
+
+    item_usage_cmd = sub.add_parser("item-usage", help="Show item, reward, shop, obtain, cost, unlock, and economy graph relations")
+    item_usage_cmd.add_argument("term")
+    item_usage_cmd.add_argument("--db", type=Path, default=DEFAULT_DB)
+    item_usage_cmd.add_argument("--limit", type=int, default=40)
+    item_usage_cmd.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as item, reward, item_obtain_way, shop_goods, cash_shop_goods, equipment, or factory_item.",
+    )
+
+    actor_usage_cmd = sub.add_parser("actor-usage", help="Show actor, character, story, voice, gameplay, and asset evidence")
+    actor_usage_cmd.add_argument("term")
+    actor_usage_cmd.add_argument("--db", type=Path, default=DEFAULT_DB)
+    actor_usage_cmd.add_argument("--limit", type=int, default=40)
+    actor_usage_cmd.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as actor, character, asset_entity, profile_picture, user_avatar, or weapon.",
+    )
+
+    text_usage_cmd = sub.add_parser("text-usage", help="Show text key, i18n id, localized-reference, dialog, UI, and domain text-field evidence")
+    text_usage_cmd.add_argument("term")
+    text_usage_cmd.add_argument("--db", type=Path, default=DEFAULT_DB)
+    text_usage_cmd.add_argument("--limit", type=int, default=40)
+    text_usage_cmd.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as i18n_text, text_table_key, dialog_text, item, mission_runtime_asset, or ui_label.",
+    )
+
+    mission_flow_cmd = sub.add_parser("mission-flow", help="Show static MissionRuntimeAsset quest DAG, conditions, actions, rewards, levels, and narrative refs")
+    mission_flow_cmd.add_argument("term")
+    mission_flow_cmd.add_argument("--db", type=Path, default=DEFAULT_DB)
+    mission_flow_cmd.add_argument("--limit", type=int, default=40)
+    mission_flow_cmd.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as mission_runtime_asset, mission, quest_task, mission_runtime_action, mission_runtime_condition, level, or story.",
+    )
+
+    progression_flow_cmd = sub.add_parser(
+        "progression-usage",
+        aliases=["progression-flow"],
+        help="Show static character, weapon, equipment, gem, stat, attribute, and cost progression evidence",
+    )
+    progression_flow_cmd.add_argument("term")
+    progression_flow_cmd.add_argument("--db", type=Path, default=DEFAULT_DB)
+    progression_flow_cmd.add_argument("--limit", type=int, default=40)
+    progression_flow_cmd.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as character, weapon, equipment, character_potential, attribute_meta, gameplay_stat_property, or item.",
+    )
+
+    stat_used_by = sub.add_parser("stat-usage", help="Show authored graph consumers/producers of a stat or attribute node")
+    stat_used_by.add_argument("term")
+    stat_used_by.add_argument("--db", type=Path, default=DEFAULT_DB)
+    stat_used_by.add_argument("--limit", type=int, default=40)
+    stat_used_by.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as gameplay_stat_property, attribute_meta, or composite_attribute.",
+    )
+
+    formula_used_by = sub.add_parser("formula-usage", help="Show formula, recipe, pack, output, cost, and unlock graph relations")
+    formula_used_by.add_argument("term")
+    formula_used_by.add_argument("--db", type=Path, default=DEFAULT_DB)
+    formula_used_by.add_argument("--limit", type=int, default=40)
+    formula_used_by.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as equipment_formula, factory_recipe, spaceship_formula, or activity_limited_formula.",
+    )
+
+    factory_flow_cmd = sub.add_parser("factory-flow", help="Show authored factory machine, recipe, item, fluid, mining, logistics, power, and tech graph relations")
+    factory_flow_cmd.add_argument("term")
+    factory_flow_cmd.add_argument("--db", type=Path, default=DEFAULT_DB)
+    factory_flow_cmd.add_argument("--limit", type=int, default=40)
+    factory_flow_cmd.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as factory_machine, factory_miner, factory_fluid_machine, factory_recipe, or factory_item.",
+    )
+
+    blackboard_used_by = sub.add_parser("blackboard-usage", aliases=["gameplay-usage"], help="Show blackboard/skill/buff parameter usage and exact-name bridges")
+    blackboard_used_by.add_argument("term")
+    blackboard_used_by.add_argument("--db", type=Path, default=DEFAULT_DB)
+    blackboard_used_by.add_argument("--limit", type=int, default=40)
+    blackboard_used_by.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as gameplay_blackboard_key, buff_parameter, or skill_parameter.",
+    )
+
+    map_used_by = sub.add_parser("map-usage", aliases=["level-usage"], help="Show map, level, sublevel, spawner, and enemy graph relations")
+    map_used_by.add_argument("term")
+    map_used_by.add_argument("--db", type=Path, default=DEFAULT_DB)
+    map_used_by.add_argument("--limit", type=int, default=40)
+    map_used_by.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as map, level, map_sublevel_brief, spawner_config, or enemy.",
+    )
+
+    audio_used_by = sub.add_parser("audio-usage", help="Show audio, line, and audio-config graph relations")
+    audio_used_by.add_argument("term")
+    audio_used_by.add_argument("--db", type=Path, default=DEFAULT_DB)
+    audio_used_by.add_argument("--limit", type=int, default=40)
+    audio_used_by.add_argument(
+        "--kind",
+        default="",
+        help="Optional node kind to force, such as audio, line, dialog_text, radio_line, or remote_common_line.",
+    )
+
     story = sub.add_parser("story", help="Show recovered line order and option branch evidence for one story key")
     story.add_argument("story_key")
     story.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -30062,6 +35647,44 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     issues.add_argument("--db", type=Path, default=DEFAULT_DB)
     issues.add_argument("--code", default="", help="Optional warning code filter, such as inferredOptionResponse.")
     issues.add_argument("--limit", type=int, default=40)
+
+    unresolved_videos = sub.add_parser("unresolved-videos", help="List unresolved narrative-video candidate groups")
+    unresolved_videos.add_argument("--db", type=Path, default=DEFAULT_DB)
+    unresolved_videos.add_argument("--actionable", action="store_true", help="Only show candidates with generated story targets.")
+
+    option_gaps = sub.add_parser("option-gaps", help="List inferred option-anchor gaps plus runtime route audit evidence")
+    option_gaps.add_argument("--db", type=Path, default=DEFAULT_DB)
+    option_gaps.add_argument("--audit-only", action="store_true", help="Only show scenes present from runtime audit evidence.")
+    option_gaps.add_argument("--conflicts", action="store_true", help="Only show scenes with runtime route conflicts.")
+    option_gaps.add_argument("--recommendation", default="", help="Optional runtime audit recommendation filter.")
+    option_gaps.add_argument("--limit", type=int, default=40)
+
+    option_route_audit_cmd = sub.add_parser("option-route-audit", help="Show compact runtime jump option-route audit groups, conflicts, first-line mappings, and nearby jumps")
+    option_route_audit_cmd.add_argument("--db", type=Path, default=DEFAULT_DB)
+    option_route_audit_cmd.add_argument("--story", default="", help="Optional story key filter, such as dlg_e6m1_10.")
+    option_route_audit_cmd.add_argument("--conflicts", action="store_true", help="Only show audit groups with runtime route conflicts.")
+    option_route_audit_cmd.add_argument("--recommendation", default="", help="Optional runtime audit recommendation filter.")
+    option_route_audit_cmd.add_argument("--limit", type=int, default=40)
+
+    scene_gaps = sub.add_parser("scene-gaps", help="List scene-order gap hotlist records from the source graph")
+    scene_gaps.add_argument("--db", type=Path, default=DEFAULT_DB)
+    scene_gaps.add_argument("--warning", default="", help="Optional warning filter, such as sceneOrderDisorder.")
+    scene_gaps.add_argument("--mission", default="", help="Optional mission id filter, such as c28m3.")
+    scene_gaps.add_argument("--line-status", default="", help="Optional line-order status filter, such as partial.")
+    scene_gaps.add_argument("--option-status", default="", help="Optional option-layout status filter, such as inferred.")
+    scene_gaps.add_argument("--term", default="", help="Optional substring filter over story, mission, title, path, warning, or placement evidence.")
+    scene_gaps.add_argument("--placement", default="", help="Optional scene placement evidence filter, such as timelineEvidence.")
+    scene_gaps.add_argument("--limit", type=int, default=40)
+
+    model_bindings = sub.add_parser("model-bindings", help="List decoded model-config to asset-entity binding candidates")
+    model_bindings.add_argument("--db", type=Path, default=DEFAULT_DB)
+    model_bindings.add_argument("--status", default="", help="Optional status filter, such as strong_exact_graph_edge or no_exported_renderable_candidate.")
+    model_bindings.add_argument("--term", default="", help="Optional substring filter over model id and prefab path.")
+    model_bindings.add_argument("--min-world-uses", type=int, default=0, help="Only include records used by at least this many world entity rows.")
+    model_bindings.add_argument("--min-interactive-uses", type=int, default=0, help="Only include records used by at least this many interactive template rows.")
+    model_bindings.add_argument("--with-siblings", action="store_true", help="Only include records with resolved sibling model evidence.")
+    model_bindings.add_argument("--sort", choices=("report", "world", "interactive", "usage"), default="report", help="Sort matching rows before applying --limit.")
+    model_bindings.add_argument("--limit", type=int, default=40)
 
     return parser.parse_args(argv)
 
@@ -30088,7 +35711,7 @@ def main(argv: list[str] | None = None) -> int:
             f"{summary['totals']['aliases']} aliases"
         )
         print(f"Wrote {summary['database']}")
-        print(f"Wrote {slash(DEFAULT_SUMMARY_JSON)}")
+        print(f"Wrote {summary.get('summaryJson') or slash(DEFAULT_SUMMARY_JSON)}")
         if summary["options"]["emitFollowups"]:
             print(f"Wrote follow-up indexes under {slash(GRAPH_DIR)}")
         return 0
@@ -30100,12 +35723,130 @@ def main(argv: list[str] | None = None) -> int:
         result = asset_usage(args.db, args.term, limit=args.limit, kind=args.kind)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
+    if args.command == "entity-assets":
+        result = entity_assets(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "shader-usage":
+        result = shader_usage(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "material-usage":
+        result = material_usage(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "effect-usage":
+        result = effect_usage(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "animation-usage":
+        result = animation_usage(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "video-usage":
+        result = video_usage(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "item-usage":
+        result = item_usage(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "actor-usage":
+        result = actor_usage(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "text-usage":
+        result = text_usage(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "mission-flow":
+        result = mission_flow(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command in ("progression-usage", "progression-flow"):
+        result = progression_flow(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "stat-usage":
+        result = stat_usage(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "formula-usage":
+        result = formula_usage(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "factory-flow":
+        result = factory_flow(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command in ("blackboard-usage", "gameplay-usage"):
+        result = gameplay_parameter_usage(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command in ("map-usage", "level-usage"):
+        result = map_level_usage(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "audio-usage":
+        result = audio_usage(args.db, args.term, limit=args.limit, kind=args.kind)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
     if args.command == "story":
         result = story_arrangement(args.db, args.story_key, limit_lines=args.limit_lines)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if args.command == "issues":
         result = recovery_issues(args.db, code=args.code, limit=args.limit)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "unresolved-videos":
+        result = unresolved_narrative_videos(args.db, actionable_only=args.actionable)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "option-gaps":
+        result = option_branch_gaps(
+            args.db,
+            audit_only=args.audit_only,
+            conflicts_only=args.conflicts,
+            recommendation=args.recommendation,
+            limit=args.limit,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "option-route-audit":
+        result = option_route_audit(
+            args.db,
+            story=args.story,
+            conflicts_only=args.conflicts,
+            recommendation=args.recommendation,
+            limit=args.limit,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "scene-gaps":
+        result = scene_order_gaps(
+            args.db,
+            warning=args.warning,
+            mission=args.mission,
+            line_status=args.line_status,
+            option_status=args.option_status,
+            term=args.term,
+            placement=args.placement,
+            limit=args.limit,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "model-bindings":
+        result = model_binding_candidates(
+            args.db,
+            status=args.status,
+            term=args.term,
+            min_world_uses=args.min_world_uses,
+            min_interactive_uses=args.min_interactive_uses,
+            with_siblings=args.with_siblings,
+            sort=args.sort,
+            limit=args.limit,
+        )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     raise SystemExit(f"Unknown command: {args.command}")
