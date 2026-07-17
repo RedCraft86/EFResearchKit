@@ -36,7 +36,24 @@ precedence for one-off commands.
 - `scripts/verify_export_freshness.py`
 - `scripts/story_builder/refresh_evidence.py`
 - `scripts/story_builder/build.py --languages CN --default-language CN --skip-audio-link`
+- `scripts/build_mission_pipeline_data.py`
 - `scripts/build_gameplay_data.py --languages CN --default-language CN`
+- `scripts/build_progression_data.py --languages CN --default-language CN`
+- `scripts/build_projectile_data.py`
+- `scripts/build_economy_data.py --languages CN --default-language CN`
+- `scripts/build_world_data.py --languages CN --default-language CN`
+- optional asset/audio refresh when requested
+- `tools/endfield_source_graph.py build --language CN`
+- `scripts/build_presentation_data.py --languages CN`
+- `scripts/build_combat_relationships.py --languages CN`
+
+Presentation and Combat check source-graph freshness against their generated
+inputs. Presentation emits a stable empty degraded payload instead of reading
+missing or stale graph evidence. Combat checks its generated Gameplay, manifest,
+asset-index, AbilityEntity, and CharacterTemplate inputs. A stale graph is not
+opened; the payload records the reason and falls back to authored Gameplay plus
+exact AnimeStudio evidence. The wrapper rebuild order keeps the normal output
+graph-backed without allowing stale edges to retain direct confidence.
 
 The freshness verifier uses a fast non-empty check for required generated output
 folders by default; pass `--full-output-counts` directly to
@@ -81,6 +98,25 @@ or `--skip-asset-updates` for a text-only feed. The wrapper reads
 `--game-root`; pass it only for optional decoded-impact mapping from a
 non-default installed
 `Endfield_Data` root. It does not choose the export trees.
+
+For an explicit one-off comparison between two already extracted versions, use:
+
+```bat
+.\build_updates.bat --previous-export-root "D:\exports\Endfield_old" --export-root "D:\exports\Endfield_new" --refresh-previous-export-baseline
+```
+
+The old extraction supplies the cached comparison baseline; the new extraction
+is scanned against it. `--refresh-previous-export-baseline` is required after
+replacing the contents at a previously used old-export path and is safe to use
+for an intentional one-off comparison. The command writes the WebUI feed plus
+`reports/updates/game-data-change-summary.json/.md`. Use `--full-export-scan`
+only for a broad audit of every file in the two export roots; the default
+focused scope is the correct mode for the Updates page.
+
+`build_updates_by_patch.bat --check` compares the installed client's original
+VFS snapshot without changing published state. The wrapper's default `--apply`
+mode uses that result to stage changed extraction work and invokes
+`build_updates.bat` itself after archive/current publication.
 
 `export_assets.bat` runs `scripts/build_assets.py` for the compact WebUI media
 indexes, then runs `scripts/build_audio.py --skip-decode` to relink existing
@@ -153,7 +189,7 @@ Still-unparsed payloads may include
 clues, not a typed managed-reference schema decode.
 
 `export_full_from_game.py` writes detailed stage logs and summaries under
-`../reports/`. Nonzero AnimeStudio subprocesses now make the wrapper return
+`../reports/export/`. Nonzero AnimeStudio subprocesses now make the wrapper return
 nonzero after the summary is written, so `export.bat` and `export_assets.bat`
 stop on partial type-sliced failure. Metadata-only MonoBehaviour JSON is a
 bounded fallback for objects with impossible schema fields. Per-asset
@@ -167,7 +203,13 @@ audio-only maintenance. It indexes shared files under
 generated conversation JSON when a line's `audio` id matches a decoded file,
 streams Wwise bank HIRC metadata from VFS `*banks.pck` payloads via AnimeStudio
 `stream`, and links cutscene audio events such as `au_sfx_*`/`au_vo_*` when
-the event graph reaches decoded media. Pass `--block hotfix-audio` for an
+the event graph reaches decoded media. The default decode uses one fallback-aware
+AnimeStudio `audio --block all` process; `--shared-output` keeps common
+SFX/music separate from language voice without reloading the VFS once per audio
+block or decoding the same PCKs again with reversed source roots. The CLI reads
+one PCK at a time and limits concurrent converters. Generated indexes categorize voice by story/character/enemy use and
+resolved Wwise media by SFX, voice-event, music, cue, ambience, or UI event.
+Pass `--block hotfix-audio` for an
 explicit HotfixAudio decode; it is treated as shared audio storage but is not
 part of `--block all`.
 
@@ -180,6 +222,10 @@ Extract the story zip first, then extract the assets and audio zips into the
 same directory when media or audio is wanted. Packaging excludes 3D/model
 payloads and does not include
 `scratch/`, `reports/`, or `tmp/`.
+Pass `--skip-audio` when only the story and companion assets zips are needed.
+When the Assets browser is excluded, the packaged `assets.js` navigation shim
+must preserve the source WebUI's debug-only view gating, safe hash fallbacks,
+and keyboard exclusion for hidden tabs.
 
 ## Folder Contract
 
@@ -194,19 +240,25 @@ Expected active inputs and outputs:
   and package media resolution.
 - `../.game-data-tracker/`: persistent state for exported WebUI text JSON and
   asset update tracking.
-- `../reports/`: durable generated reports and summaries written by exporters
-  or builders. These are outputs, not package inputs, and should not contain
+- `../reports/`: generated reports grouped by topic. Most are outputs, but a
+  small number of recovery reports are explicit inputs to later audit or Story
+  build stages; scripts keep those paths within their topic directories. Reports
+  are never package inputs and should not contain
   agent investigation conclusions.
+  Routine outputs use `reports/export/`, `reports/story/build/`,
+  `reports/updates/`, and `reports/assets/`; manual Story recovery evidence
+  uses `reports/story/recovery/`. The source graph, mission-order audits, and
+  gameplay OCR corpus keep their established topic roots under `reports/`.
 - `../videos/`: local gameplay video inputs used by the optional OCR/audio
   story-order recovery tools. Completed `.mp4` files are inputs to
   `story_recovery/build_gameplay_video_ocr_audit.py`; downloader `.m4s` parts
   and `.lock` files are ignored as incomplete work.
 - `../memory/`: observations, conclusions, older exploration notes, status
   snapshots, and archived scripts.
-- `../scratch/`: disposable probes, temporary prototypes, logs, generated
-  previews, and experiment output that has not become part of a maintained
-  workflow.
-- `../tmp/`: disposable intermediate output and temporary files.
+- `../scratch/`: topic-grouped probes, prototypes, and previews that may be
+  revisited. Use `scratch/<topic>/<task>/`; do not add loose root files.
+- `../tmp/`: topic-grouped disposable intermediates and run output. Use
+  `tmp/<topic>/<task-or-run>/`, and remove completed runs after validation.
 - `../tools/`: the tracked source-graph helper, tracked IL2CPP diagnostics
   used by optional recovery audits, and ignored local vendor/tool caches. If a
   workflow needs reusable helper data such as AnimeStudio DummyDlls, place it
@@ -223,7 +275,10 @@ Expected active inputs and outputs:
   2D/3D/animation asset conversion unless `--with-assets` is passed. The
   structured dump defaults to `--structured-dump-mode webui`, and
   `scripts\build_audio.py` streams Wwise bank metadata directly from VFS for
-  event relinking. `--structured-dump-mode full` keeps the same production skip
+  event relinking. Structured dump and VFS-index commands configure
+  `StreamingAssets` and `Persistent` as sibling fallbacks so AnimeStudio can
+  resolve authoritative `.blc` metadata and `.chk` payloads from either root.
+  `--structured-dump-mode full` keeps the same production skip
   rules, and `--structured-dump-mode debug` is the broad VFS diagnostic mode.
   `..\export_assets.bat` runs those heavier asset passes separately. Summaries
   are written under `..\reports\`, but the workflow does not require `reports`,
@@ -235,6 +290,27 @@ Expected active inputs and outputs:
   `export_full/` data.
 - `track_export_changes.py`: generic file-tree scanner used by the WebUI
   Updates builder.
+- `track_game_data_updates.py`: streams AnimeStudio `vfs-index --jsonl` records
+  for `StreamingAssets` and `Persistent` into a compact SQLite source snapshot.
+  It compares logical VFS files by source/block/path plus data MD5 and length,
+  reports chunk-only repacks separately, rejects truncated scans, missing
+  chunks, duplicate identities, and newly missing blocks, and never promotes a
+  candidate implicitly. `baseline-current` seeds from only the installed
+  current version; `check` writes a candidate/change plan without changing the
+  baseline. Candidate promotion is owned by the transactional patch workflow
+  and occurs only after staged export validation, publication, WebUI rebuild,
+  and Updates-feed generation succeed.
+- `game_data_update_workflow.py`: transactional patch orchestration behind
+  `..\build_updates_by_patch.bat`. `--init-baseline` verifies that the existing
+  export matches the installed sources, then atomically attaches the source
+  snapshot under `export_full/recovered/AnimeStudio-cli/`. `--check` remains
+  read-only. Default `--apply` clones the complete current export into sibling
+  staging, selectively dumps changed direct VFS files, refreshes broader
+  AnimeStudio/audio scopes only when affected, verifies the installed logical
+  snapshot again, archives the previous export, publishes the staged current
+  export, rebuilds WebUI data, invokes the Updates feed comparison, and advances
+  the baseline only after success. It journals folder rotation and restores the
+  previous export/WebUI data on handled post-rotation failures.
 - `build_updates.py`: writes `webui/data/updates/latest.json` by comparing
   WebUI-facing text JSON roots and exported asset roots in a previous exported
   game-data tree, default `..\export_1d2\`, with the current `..\export_full\`.
@@ -282,16 +358,67 @@ Expected active inputs and outputs:
   `WeaponBasicTable`, `WeaponUpgradeTemplate*`, `WeaponBreakThroughTemplateTable`,
   `WeaponTalentTemplateTable`, `ItemTable`, `EquipTable`, `EquipFormulaTable`,
   `EquipSuitTable`, `CharacterTable`, `CharGrowthTable`, `CharLevelUpTable`,
-  `CharBreak*`, `CharacterPotentialTable`, `SkillPatchTable`, and
-  talent/profession/type lookup tables. It resolves localized display names,
+  `CharBreak*`, `CharacterPotentialTable`, `SkillPatchTable`, `EnemyTable`,
+  `EnemyAttributeTemplateTable`, `EnemyAbilityDescTable`, `UseItemTable`,
+  `UsableItemChestTable`, `RewardTable`, and talent/profession/type lookup
+  tables. It resolves localized display names,
   default weapon links, skill blackboard values, level-up costs, weapon upgrade
   checkpoints, weapon base-ATK stat checkpoints, breakthrough material costs,
   equipment display/property stat curves, domain/formula/suit context,
   character break-stage caps, capped character stat checkpoints from
   `CharacterTable.attributes`, character breakthrough costs, potential unlock
-  effects, and Story wiki cross-links when a matching `wiki_*` Story page exists.
+  effects, enemy variants/stat curves/abilities/combat scalars/buffs/drops,
+  usable-item actions and chest rewards, and Story wiki cross-links when a
+  matching `wiki_*` Story page exists.
   It is run by `..\export.bat` after the Story builder and can be run
   directly for extra languages with `--languages CN EN JP --default-language CN`.
+- `build_mission_pipeline_data.py`: builds the language-neutral, lazy
+  `webui/data/mission_pipeline/index.json` and per-mission graph payloads from
+  exported `MissionRuntimeAsset`. It preserves predecessor and condition-state
+  edges as authored evidence, annotates the client/server protocol proven in
+  the current native binary, retains exact dialog finish `0`, and never treats
+  `flowIndex` as an exclusive branch selector. `export.bat` runs it after Story
+  so the experimental debug-only page can merge names and objective text from
+  the selected language's existing mission sidecars. Story bundle generation
+  also localizes base/quest-override mission descriptions and emits per-quest
+  Story-file attachments only for direct runtime or uniquely resolved
+  LevelData/NPC evidence.
+- `build_projectile_data.py`: curates exact AnimeStudio projectile
+  MonoBehaviour payloads into `webui/data/gameplay/projectiles.json`. It keeps
+  byte-completeness and semantic confidence separate; use `--require-exact` for
+  a strict audit run.
+- `build_progression_data.py`: builds
+  `webui/data/lang/<LANG>/progression/index.json` as an endpoint-valid graph of
+  authored character/weapon/equipment progression, item costs/use/obtain paths,
+  rewards, probable bundle entries, drop pools, and wiki enemy drops. Every
+  relation keeps direct table/row/path evidence; the payload explicitly excludes
+  live account state, availability, probabilities, and optimization claims.
+- `build_combat_relationships.py`: builds
+  `webui/data/lang/<LANG>/gameplay/combat_relationships.json` from curated
+  Gameplay data, the exact inherited AbilityEntity prefix/component RID list,
+  the guarded/mirrored opening through `useFrameTick`, the exact 92-byte
+  `surroundingConfig`, and the source graph when available. It preserves direct
+  versus inferred evidence, qualifies metadata-order/enum/hash meanings,
+  excludes bytes from `followMountPointConfig` onward, and adds exact-consumed Character TargetSettings only when their owner
+  RIDs are reachable from the template component graph. It degrades to
+  authored Gameplay plus available AnimeStudio prefix evidence when the
+  optional graph is absent.
+- `build_economy_data.py`: builds the language-scoped Factory view from
+  authored recipe, machine, technology, logistics, utility, shop, reward, and
+  activity tables. The output preserves raw ids/values and does not infer live
+  simulation or account state.
+- `build_world_data.py`: builds `webui/data/lang/<LANG>/world/index.json` from
+  authored map/level tables, decoded WorldEntityRegistry/NPC proxy data,
+  exact-prefix spawner configs, enemy/model/audio tables, and level-script
+  filenames. It deduplicates mirrored roots while preserving source provenance
+  and labels inferred level-prefix map links.
+- `build_presentation_data.py`: builds
+  `webui/data/lang/<LANG>/presentation/index.json` from the current local source
+  graph. It selects authored model/controller/material/animation/effect roots,
+  follows a curated set of direct and inferred presentation edges, caps
+  high-degree asset relationships, rejects generic Unity asset/path-id nodes,
+  and records omissions plus the static/runtime evidence boundary. A missing or
+  stale graph produces a deterministic empty degraded payload.
 - `build_data_index.py`: builds a legacy local decoded-config index from final
   decoded config files under `export_full/structured/StreamingAssets/Data/Json`
   and `export_full/structured/Persistent/Data/Json` by default. It writes
@@ -316,7 +443,7 @@ Expected active inputs and outputs:
   `build_decoded_index.py` index into the current MonoBehaviour recovery
   frontier. It reports residual partial/unparsed groups, top schema/domain/
   registry buckets, and compact group records to
-  `reports/monobehaviour_frontier_latest.json/.md` by default.
+  `reports/assets/diagnostics/monobehaviour_frontier_latest.json/.md` by default.
 - `build_audio.py`: decodes audio via AnimeStudio CLI, stores shared
   SFX/music once under `export_full/structured/Audio/shared/`, indexes
   language voice files under `export_full/structured/Audio/<LANG>/`, parses Wwise bank
@@ -327,7 +454,7 @@ Expected active inputs and outputs:
   payloads and their `_debug.source` blocks.
 - `hash_export_pngs.py`: hashes every `.png` file under `..\export_full\` with
   parallel readers and writes `path,hash` CSV rows to
-  `..\reports\export_full_png_hashes.csv` by default.
+  `..\reports\assets\export_full_png_hashes.csv` by default.
 - `find_duplicate_dialog_lines.py`: scans generated
   `webui/data/lang/<LANG>/conv/*.json` files for exact repeated spoken line
   text across different missions, reporting the speaker, mission, scene, and
@@ -387,9 +514,13 @@ These are kept because the WebUI story builders import or use them:
   ordering evidence from `MissionRuntimeAsset`.
 - `story_builder/dialog_registry.py`: extracts
   `Beyond.Gameplay.DialogIdTable` (the runtime's authoritative dialog
-  registry) into a sceneKey index used by `scene_order_gap_shared.py` for
-  evidence-grounded "registered vs cut content" classification. Runs as
-  part of `export.bat` between the main export step and the build steps.
+  registry) printable identifier vocabulary into a sceneKey index used by
+  `scene_order_gap_shared.py` for evidence-grounded "registered vs cut
+  content" classification. `option_dlg_*` rows are kept as option vocabulary
+  and never counted as dialog roots or trunk lines. The decoded
+  `DialogBriefInfo` schema has no branch or option-placement field; trunk/line
+  decomposition is token-shape classification only. Runs as part of
+  `export.bat` between the main export step and the build steps.
 - `story_builder/source_links.py`: scans `MissionRuntimeAsset`,
   `LevelScriptData`, and `LevelScriptTemplateData` for `dlg_*`, `radio_*`,
   `sns_*`, `cutscene_*`, `remotecomm_*`, and reading-popup references. It
@@ -427,7 +558,7 @@ These are kept because the WebUI story builders import or use them:
 - `story_builder/` also scans narrative video folders under
   `Data/Video/PC/Narrative/Cutscene` and `RemoteComm`, attaches matching
   `narrativeVideos` to dialog/cutscene/remotecomm conv JSON, and writes
-  `reports/narrative_videos_<LANG>.json` / `.md`.
+  `reports/story/build/narrative_videos_<LANG>.json` / `.md`.
 - `story_recovery/build_narrative_video_override_audit.py` validates
   `webui/overrides/narrative_videos.json` against the generated Story video
   report, `narrative_video_evidence.json`, video indexes, and conv payloads.
@@ -437,7 +568,7 @@ These are kept because the WebUI story builders import or use them:
 - `story_recovery/build_option_override_coverage_audit.py` validates
   current `inferredOptionLayout` and `inferredOptionResponse` warning records
   against `webui/overrides/options.json`. It writes
-  `reports/option_override_coverage_<LANG>.json` / `.md` and distinguishes
+  `reports/story/recovery/options/option_override_coverage_<LANG>.json` / `.md` and distinguishes
   raw recovery uncertainty from manual WebUI display coverage.
 - `webui/overrides/options.json` is a runtime WebUI-only manual
   override file for known option recovery gaps. It can pin option groups with
@@ -445,6 +576,10 @@ These are kept because the WebUI story builders import or use them:
   inferred option replies with `responses.<optionId>: ["<lineId>"]`. Edit it
   and refresh the browser; no Story rebuild is needed. Overrides do not promote
   new automatic evidence, and overridden rows are tagged in the Story view.
+  Generated Story index entries with option issues include compact
+  `optionIssueTargets` metadata. The frontend uses those stable targets to
+  remove an issue counter only when the runtime override covers every affected
+  group/option; partial coverage remains in the outstanding queue.
 
 ## Story Recovery Tools
 
@@ -453,22 +588,43 @@ These tools are not part of `export.bat`. Most live under
 scan; the root-level Bilibili downloader is listed here because it feeds the
 gameplay-video OCR/audio workflow.
 
+- `story_recovery/build_source_story_partial_order.py`: builds a strict,
+  source-only per-mission partial-order and branch audit from the generated
+  Story index, mission bundles, and conversation payloads. It does not read
+  `webui/overrides/story_order.json`, OCR proposals, numeric scene suffixes,
+  generated UI rank, or `sceneOrderInfo.questOrder`. Strong source edges are
+  condensed into an SCC DAG and transitively reduced; weak file/order clues,
+  cycles, isolated scenes, rejected option evidence, and option groups with no
+  explicit route remain visible instead of being forced into a total order.
+  Intra-dialog option routes are promoted only from direct
+  DialogTree/DialogTreeFragment paths or the exact decoded Runtime Jump Track
+  signature. Run
+  `python scripts\story_recovery\build_source_story_partial_order.py`; it
+  writes `reports/mission_order/source_story_partial_order_<LANG>.json` / `.md`.
+- `story_recovery/build_source_story_gap_queue.py`: reuses the strict partial
+  order in memory and ranks the remaining source-recovery work by mission and
+  evidence frontier. The score is triage only, never chronology. It separates
+  core Story isolation from ambient `env`/standalone-video rows, and scores a
+  quest attachment gap only when diagnostic Story evidence exists but no
+  strict attachment does. Run
+  `python scripts\story_recovery\build_source_story_gap_queue.py --language CN`;
+  it writes `reports/mission_order/source_story_gap_queue_<LANG>.json` / `.md`.
 - `story_recovery/build_runtime_jump_option_route_audit.py`: audits remaining
   live `inferredOptionResponse` warning groups against nearby Runtime Jump
   Track clips, including forward skip ranges, reverse/directional ranges, and
   `needChangeOptionAfterJump` markers. It writes
-  `reports/runtime_jump_option_route_audit_<LANG>.json` / `.md`. Use it
+  `reports/story/recovery/options/runtime_jump_option_route_audit_<LANG>.json` / `.md`. Use it
   before promoting any new automatic option-route rule. Pass
   `--include-promoted-risk-groups` only when you intentionally want to inspect
   already anchored diagnostic `optionBranchRisk` rows.
 - `story_recovery/build_option_route_evidence_controls.py`: summarizes
   positive Runtime Jump route controls from `timeline_line_orders.json` beside
   the current negative-control `runtime_jump_option_route_audit` queue. It
-  writes `reports/option_route_evidence_controls_<LANG>_priority.json` / `.md`
+  writes `reports/story/recovery/options/option_route_evidence_controls_<LANG>_priority.json` / `.md`
   and documents the evidence bar for promoting inferred option responses.
 - `story_recovery/build_priority_story_order_audit.py`: summarizes the current
   main-story, event, major-mission, and character-story recovery surface from
-  the built WebUI data. It writes `reports/priority_story_order_<LANG>.json` /
+  the built WebUI data. It writes `reports/story/recovery/order/priority_story_order_<LANG>.json` /
   `.md`, including ordered/unknown totals, remaining inferred responses,
   non-runtime option-layout rows, uncovered line warnings, and top unknown
   missions.
@@ -502,7 +658,7 @@ gameplay-video OCR/audio workflow.
   `--frame-step 10` for the current default cadence, `--dry-run` to inspect
   pending videos, `--limit-frames` for smoke tests, and `--force` only when
   intentionally reprocessing completed videos. Decoded sampled-frame JPEGs are
-  kept by default under `tmp/gameplay_video_ocr/frames/`; reruns reuse existing
+  kept by default under `tmp/ocr/gameplay_video_ocr/frames/`; reruns reuse existing
   frame files and append only missing sampled frames. Pass `--discard-frames`
   only for a disposable run. The default OCR language is Simplified Chinese
   (`chi_sim`; for EasyOCR mapped to `ch_sim`). PP-OCRv5 weights are cached under
@@ -536,7 +692,7 @@ gameplay-video OCR/audio workflow.
   switch) is passed. The PaddleOCR GPU path uses a locally built
   `paddlepaddle-gpu` wheel with Blackwell `sm_120` support; it imports `torch`
   first so paddle reuses torch's bundled CUDA 12.8 / cuDNN 9 runtime DLLs (see
-  `memory/` notes / `scratch/paddle_build/`). The PP-OCRv5 server default
+  `memory/` notes / `scratch/ocr/paddle_build/`). The PP-OCRv5 server default
   `--paddleocr-frame-batch-size 40` was benchmarked on cached P10 gameplay
   crops on an RTX 5080; batch 56 was effectively tied, while 64+ regressed.
 - `story_recovery/build_gameplay_video_story_order.py`: full OCR/audio-to-order
@@ -547,7 +703,7 @@ gameplay-video OCR/audio workflow.
   matching so mission-title overlays do not place SNS, archive, or other story
   files by title alone.
   Audio matching uses ffmpeg to build cached mono speech-band RMS/delta
-  fingerprints under `tmp/gameplay_video_ocr/audio/`. A sparse landmark
+  fingerprints under `tmp/ocr/gameplay_video_ocr/audio/`. A sparse landmark
   prefilter keeps the expensive normalized correlation pass to the strongest
   candidate offsets instead of scanning every video window for every template.
   `au_music*` templates are skipped by default so gameplay BGM is treated as
@@ -789,11 +945,13 @@ gameplay-video OCR/audio workflow.
 - `story_recovery/build_levelscript_header_chain_audit.py`: uses the compact
   `ActionHeader.nextId` payload field on `headerList` rows to walk from
   event/listener records into `actionList` chains. It writes
-  `reports/mission_order/levelscript_header_chain_audit.json` / `.md`;
-  current recovery finds `10,085` header rows, all `10,085` named, `9,961`
-  rows targeting `actionList`, `123` duplicate-local-id ambiguous action
-  targets, `0` missing positive targets, `1,647` event chains with named play
-  actions, and `1,791` chains with scene-like text.
+  `reports/mission_order/levelscript_header_chain_audit.json` / `.md`. The
+  Story builder also decodes the recovered `LevelEvent_OnDialogExit` opcode:
+  when the header names exactly one Story scene and each linked action record
+  resolves to at most one Story scene, it emits the action-chain sequence as
+  strong `levelscriptDialogExit` partial-order edges with file, level, script,
+  local-id, and chain-position provenance. Ambiguous and self-only chains are
+  retained by the audit but not promoted.
 - `story_recovery/build_option_playable_semantics_audit.py`: audits remaining
   `inferredOptionResponse` groups against decoded
   `DialogOptionPlayableAsset` fields such as `logicId`, `trunkId`,
@@ -817,8 +975,10 @@ gameplay-video OCR/audio workflow.
   `inferredOptionResponse` groups against raw Timeline trunk clips. It reports
   whether candidate response clips carry useful non-default `optionIndex`
   values, resolves `misc_dlg_*` WebUI aliases to underlying `dlg_*` Timeline
-  entries, and separates promotable `trunkClipOptionIndexRoute` cases from the
-  common default `optionIndex=0` adjacent layouts that are diagnostic only.
+  entries, and separates promotable `trunkClipOptionIndexRoute` cases from
+  default `optionIndex=0` adjacent layouts. Current native control flow proves
+  zero-index trunk clips are shared continuation unless an overlapping raw
+  Runtime Jump window supplies option-indexed route evidence.
 - `story_recovery/build_timeline_binding_audit.py`: checks whether unresolved
   option responses separate cleanly by Timeline track, track binding, actor
   binding, or option-clip placement.
@@ -832,9 +992,13 @@ gameplay-video OCR/audio workflow.
     dialogTree source matched; `DialogTrunkBehaviour` would iterate
     `DialogTextTable` rows by sceneKey prefix, which produces the same
     sequence we already emit.
+  Option-key suffix and sparse line-gap placements on unregistered scenes are
+  surfaced separately as table-only display recovery; they are not treated as
+  recoverable live-runtime option positions.
 - `story_recovery/annotate_conv_with_registry.py`: standalone refresher for stamping each
   dialog conv JSON's `_debug` block with a `runtimeRegistry` evidence record
-  (registered flag, trunk count, per-trunk line ids from `DialogIdTable`).
+  (registered-root flag and option-id vocabulary from `DialogIdTable`; the
+  current table has no per-trunk line tokens).
   The Story builder does this during normal exports; the refresher is useful
   when updating existing conv files without a full rebuild. Pure evidence
   surfacing; no inference.
@@ -871,5 +1035,7 @@ overlaid when applicable.
 
 The old archived-script bucket has been retired. UE5 pose-demo helpers live
 with the UE project under `../ue5_zhuangfy_pose_demo 5.3/Scripts/`.
-Put new experiments in `../scratch/` or `../tmp/`, and move observations or
-conclusions to `../memory/` when they need to be kept.
+Put new experiments in `../scratch/<topic>/<task>/` and disposable runs in
+`../tmp/<topic>/<task-or-run>/`. Move observations or conclusions to
+`../memory/` when they need to be kept, and keep both work-directory roots
+free of loose entries.

@@ -31,8 +31,8 @@ EXPORT_ROOT = ROOT / "export_full"
 DEFAULT_MRA_DIR = EXPORT_ROOT / "structured" / "StreamingAssets" / "Data" / "Json" / "MissionRuntimeAsset"
 DEFAULT_TIMELINE_ORDERS = EXPORT_ROOT / "recovered" / "AnimeStudio-cli" / "timeline_line_orders.json"
 DEFAULT_GENERATED_MISSION_DIR = ROOT / "webui" / "data" / "lang" / "CN" / "mission"
-DEFAULT_OUT_JSON = ROOT / "reports" / "mission_timeline_recovery_CN.json"
-DEFAULT_OUT_MD = ROOT / "reports" / "mission_timeline_recovery_CN.md"
+DEFAULT_OUT_JSON = ROOT / "reports" / "story" / "build" / "mission_timeline_recovery_CN.json"
+DEFAULT_OUT_MD = ROOT / "reports" / "story" / "build" / "mission_timeline_recovery_CN.md"
 
 # Mission ID prefixes the WebUI builders treat as authored story missions.
 # Tutorial / debug buckets (db, dm, hidden, map*) are excluded.
@@ -48,6 +48,7 @@ STRONG_ORDER_EDGE_KINDS = frozenset({
     "authoredDirect",
     "authoredMenu",
     "levelscriptSceneChain",
+    "levelscriptDialogExit",
     "radioContinuation",
 })
 WEAK_ORDER_EDGE_KINDS = frozenset({
@@ -2036,7 +2037,7 @@ def build_quest_spatial_track(
 
 # Scene kinds the WebUI treats as orderable story scenes. Mirrors
 # ORDER_INCLUDE_KINDS in
-# scratch/main_story_order_compare/recover_main_story_order_compare.py.
+# scratch/story/main_story_order_compare/recover_main_story_order_compare.py.
 SCENE_ORDER_INCLUDE_KINDS = frozenset({
     "black",
     "cutscene",
@@ -2118,7 +2119,7 @@ def build_scene_order_info(
     """Resolve additive per-scene static order CONFIDENCE + PHASE for the WebUI.
 
     Ports the per-key resolution from
-    scratch/main_story_order_compare/recover_main_story_order_compare.py so the
+    scratch/story/main_story_order_compare/recover_main_story_order_compare.py so the
     maintained builder emits the same questOrder / orderSource / confidence /
     evidenceKinds the scratch report's ``keyInfo`` carries. This is STATIC
     recovery only: confidence never folds in any OCR-derived signal. It adds no

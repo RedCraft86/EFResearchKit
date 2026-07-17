@@ -10,7 +10,7 @@ metadata method indexes emitted by `catalog_option_flow_metadata.py`.
 
 Usage:
   python tools/endfield-il2cpp/map_body_targets_to_gameassembly.py
-  python tools/endfield-il2cpp/map_body_targets_to_gameassembly.py --catalog reports/option_flow_runtime_metadata.json
+  python tools/endfield-il2cpp/map_body_targets_to_gameassembly.py --catalog reports/story/recovery/options/option_flow_runtime_metadata.json
 """
 from __future__ import annotations
 
@@ -31,21 +31,22 @@ if hasattr(sys.stdout, "reconfigure"):
 
 DEFAULT_GAMEASSEMBLY = Path(r"D:\Program Files\Endfield Game\GameAssembly.dll")
 DEFAULT_METADATA = Path("export_full/recovered/il2cpp/global-metadata.dat")
-DEFAULT_CATALOG = Path("reports/option_flow_runtime_metadata_focus.json")
-DEFAULT_JSON = Path("reports/option_flow_body_targets_gameassembly.json")
-DEFAULT_MD = Path("reports/option_flow_body_targets_gameassembly.md")
+DEFAULT_CATALOG = Path("reports/story/recovery/options/option_flow_runtime_metadata_focus.json")
+DEFAULT_JSON = Path("reports/story/recovery/options/option_flow_body_targets_gameassembly.json")
+DEFAULT_MD = Path("reports/story/recovery/options/option_flow_body_targets_gameassembly.md")
 # CodeRegistration VA is build-specific (HGP relocates it each GameAssembly build).
-# Current value is for the May-27 install. When a game update breaks the mapping
+# Current value is for the July-11 install. When a game update breaks the mapping
 # (symptom: "VA outside image" in parse_codegen_modules), re-derive it with
-# scratch/il2cpp_gameplay_sim/stage0/find_code_registration.py and update here.
-# Prior build was 0x18A31FAC0.
-DEFAULT_CODE_REGISTRATION = 0x18C439740
+# scratch/reverse_engineering/il2cpp_gameplay_sim/stage0/find_code_registration.py and update here.
+# Prior build was 0x18C439740.
+DEFAULT_CODE_REGISTRATION = 0x18B9217D0
 DEFAULT_BODY_SUMMARY_METHOD_RE = (
     r"GenPlayable|InitDialogOptions|"
     r"DialogChooseOption|DialogTimelineDoNext|DialogTimelineGetAllTimelinePlayable|"
     r"DialogTimelineGetAllActiveClips|DialogTimelineDisableLoopInRange|"
     r"TryTriggerTrunkBindingOption|_TryDoNext|_SelectIndexInTimeline|"
-    r"SelectIndex|OnJumpForward|SetDialogOption|ResetDialogOption"
+    r"SelectIndex|OnJumpForward|SetDialogOption|ResetDialogOption|"
+    r"TryGetJumpClip|DoJump|DoReverseJump|_CheckIfTimeJumping|_TrySelectBranch"
 )
 ARG_GP_REGISTERS = ("rcx", "rdx", "r8", "r9")
 ARG_XMM_REGISTERS = ("xmm0", "xmm1", "xmm2", "xmm3")

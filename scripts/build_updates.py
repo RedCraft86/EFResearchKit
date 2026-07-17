@@ -30,7 +30,7 @@ from typing import Any
 from common import (
     EXPORT_ROOT,
     OUT_DIR,
-    REPORTS_DIR,
+    UPDATES_REPORTS_DIR,
     ROOT,
     display_extension,
     normalize_posix,
@@ -52,8 +52,8 @@ DEFAULT_STATE_DIR = ROOT / ".game-data-tracker"
 DEFAULT_EXPORT_ROOT = EXPORT_ROOT
 DEFAULT_PREVIOUS_EXPORT_ROOT = ROOT / "export_1d2"
 DEFAULT_OUT = OUT_DIR / "updates" / "latest.json"
-DEFAULT_REPORT_JSON = REPORTS_DIR / "game-data-change-summary.json"
-DEFAULT_REPORT_MD = REPORTS_DIR / "game-data-change-summary.md"
+DEFAULT_REPORT_JSON = UPDATES_REPORTS_DIR / "game-data-change-summary.json"
+DEFAULT_REPORT_MD = UPDATES_REPORTS_DIR / "game-data-change-summary.md"
 TRACKER = ROOT / "scripts" / "track_export_changes.py"
 SCHEMA_VERSION = 1
 ASSET_STATE_SCHEMA_VERSION = 1
@@ -1557,6 +1557,8 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("--prune-previous-export-untracked is not valid with --baseline-only.")
         assert_safe_previous_export_prune(previous_export_root, export_root)
     if args.baseline_only:
+        report_json.unlink(missing_ok=True)
+        report_md.unlink(missing_ok=True)
         raw_payload = empty_tracker_payload()
     else:
         if not previous_export_root.exists():

@@ -40,6 +40,7 @@ Use the parent wrappers for normal Endfield exports:
 ```bat
 .\export.bat --export-from-game
 .\export_assets.bat --export-from-game
+.\build_updates_by_patch.bat
 ```
 
 Both pass AnimeStudio options through to `scripts\export_full_from_game.py`. Keep `--animestudio-jobs` conservative unless the machine has enough free RAM:
@@ -59,8 +60,9 @@ Asset conversion uses more shards than workers by default: `--animestudio-shards
 with `--animestudio-jobs 8`; the shared pool consumes those shards alongside
 other AnimeStudio type requests. Adjust `--animestudio-shards` separately to tune
 per-process asset slice size. Non-sharded JSON type jobs use
-`--animestudio-type-job-mode auto` by default, merging them into one AnimeStudio
-process; pass `parallel` only when comparing against the older per-type path.
+`--animestudio-type-job-mode auto` by default, merging map-filtered JSON while
+running broad Story JSON types sequentially in isolated processes; pass
+`parallel` only when comparing concurrent per-type jobs.
 `export_assets.bat --export-from-game` now defaults to the full WebUI-facing
 image/model asset export plus `Material` JSON; add `--webui-assets` when only
 WebUI-referenced Texture2D media is needed, or `--debug-assets` for exhaustive
@@ -81,6 +83,10 @@ AnimeStudio.CLI now owns the Endfield VFS paths used by the WebUI wrappers:
 `dump`, `audio`, `stream`, and `vfs-index` must expose `--fallback-assets`. Use direct
 subcommand calls for parity probes or targeted extraction; use the parent
 wrappers for normal WebUI exports.
+
+`vfs-index --jsonl` writes streaming header/block/chunk/file/summary records for
+the original-data snapshot tracker without materializing the large duplicated
+JSON index shape. The default remains the existing JSON document format.
 
 ## Direct CLI Shape
 
@@ -105,13 +111,32 @@ Common direct options:
 After wrapper runs, start with:
 
 ```text
-reports\export_full_summary.md
-reports\StreamingAssets\*.stdout.log
-reports\StreamingAssets\*.stderr.log
-reports\Persistent\*.stdout.log
-reports\Persistent\*.stderr.log
+reports\export\export_full_summary.md
+reports\export\runs\<timestamp>\StreamingAssets\*.stdout.log
+reports\export\runs\<timestamp>\StreamingAssets\*.stderr.log
+reports\export\runs\<timestamp>\Persistent\*.stdout.log
+reports\export\runs\<timestamp>\Persistent\*.stderr.log
 export_full\recovered\AnimeStudio-cli\animestudio_type_manifest.json
 ```
+
+Use the `reports_run_root` recorded in the latest JSON summary to locate the
+matching timestamped logs. Do not write exporter logs or summaries directly at
+the `reports/` root.
+
+The exporter keeps five timestamped run directories under
+`reports/export/runs/` by default. Override this with
+`--report-runs-to-keep N`; use `0` only when intentionally disabling pruning.
+The separate `benchmark_export.py` wrapper keeps ten runs per label under
+`reports/export/benchmarks/` and writes its latest summary under
+`reports/export/`.
+
+Put revisitable exporter probes under `scratch/animestudio/<task>/` and
+disposable decode/export intermediates under `tmp/animestudio/<task-or-run>/`.
+Put IL2CPP or native-code-only probes under
+`scratch/reverse_engineering/<task>/` or
+`tmp/reverse_engineering/<task-or-run>/`. Do not write loose files or run
+directories at the root of `scratch/` or `tmp/`; remove completed temporary
+runs after validation.
 
 `Export ... error` means one asset conversion failed inside a stage; other assets in that process may still export. A nonzero AnimeStudio subprocess now fails the wrapper. A MonoBehaviour `metadata-only JSON` warning means the tool preserved object metadata and raw hashes after schema decode failed, instead of dropping the object entirely.
 

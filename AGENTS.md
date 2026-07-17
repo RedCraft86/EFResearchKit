@@ -6,8 +6,10 @@ Keep root-level docs and workflow guidance focused on:
 
 - the static WebUI in `webui/`
 
-Move observations, conclusions, older exploration notes, and status snapshots to
-`memory/`. Do not use `reports/` for investigation conclusions.
+Fold durable observations, conclusions, and recovery status into the existing
+topic documents under `memory/`. Do not recreate one-file-per-investigation or
+dated status snapshots. Generated inventories belong in `reports/`, and
+disposable evidence belongs in `scratch/` or `tmp/`.
 
 ## Commands
 
@@ -18,6 +20,9 @@ Move observations, conclusions, older exploration notes, and status snapshots to
 .\export.bat --export-from-game
 .\build_updates.bat
 .\build_updates.bat --init-build
+.\build_updates_by_patch.bat --init-baseline
+.\build_updates_by_patch.bat --check
+.\build_updates_by_patch.bat
 .\export_assets.bat
 python serve.py
 python serve.py 9000
@@ -41,7 +46,7 @@ prints optional `export_assets.bat --export-from-game` and
 default WebUI server. Pass `--no-serve` when setup should finish without
 starting `serve.py`.
 
-`export.bat` is the canonical Story/Text Tables WebUI rebuild from an existing
+`export.bat` is the canonical Story/Text Tables and curated semantic-view WebUI rebuild from an existing
 `export_full/`. It verifies that `export_full/` matches the current installed
 `Endfield_Data` fingerprints before the long WebUI builders run, then builds CN
 Story/Text Tables data by default. It does not export from installed game data by
@@ -50,11 +55,17 @@ default. Pass `--export-from-game` only when the user explicitly asks to refresh
 rebuild asset indexes and relink/decode CN audio after generated conversations
 are rebuilt. Combining `--export-from-game --with-assets` runs one AnimeStudio
 Story+asset export instead of separate Story and asset exporter invocations.
+After semantic-view builders and any requested asset/audio work, `export.bat`
+rebuilds `reports/source_graph/endfield_source_graph.sqlite` and then builds the
+Presentation and Combat views. Presentation emits a stable empty degraded
+payload when its graph is missing or older than its generated inputs. The Combat builder refuses graph edges when the database predates
+its Gameplay/manifest/asset/AbilityEntity/CharacterTemplate inputs and records a
+visible degraded-mode reason instead of treating stale edges as direct.
 `export.bat` does not refresh `webui/overrides/story_order.json`; active Story
 order is user-managed there, while OCR recovery writes proposed order references
 under `webui/data/story_order_ocr.json`. Every `export.bat` run writes a
-wall-time and process-tree RAM benchmark under `reports/export_benchmarks/` and updates
-`reports/export_benchmark_latest.md/json`.
+wall-time and process-tree RAM benchmark under `reports/export/benchmarks/` and updates
+`reports/export/export_benchmark_latest.md/json`.
 Use `build_updates.bat` for the standalone Updates feed comparison. Use
 `build_updates.bat --init-build` for first-time/baseline-only builds where the
 Updates feed should be baselined instead of reporting changes. It reads the
@@ -76,9 +87,9 @@ maintenance. The audio builder writes shared SFX/music once under
 `export_full/structured/Audio/shared/` and language voice under
 `export_full/structured/Audio/<LANG>/`, parses Wwise bank event-to-media links, and post-processes generated
 conversation JSON with playable `audioSrc` links. The default exporter mode is
-`--animestudio-type-job-mode auto`: it merges non-sharded JSON type jobs inside
-one AnimeStudio process while keeping map-filtered asset conversion sharded;
-use `parallel` only when comparing against the older one-process-per-type path.
+`--animestudio-type-job-mode auto`: it merges map-filtered JSON, runs broad Story
+JSON types sequentially in isolated processes, and keeps map-filtered asset
+conversion sharded; use `parallel` only when comparing concurrent per-type jobs.
 
 Useful direct commands:
 
@@ -93,7 +104,14 @@ python scripts\story_builder\refresh_evidence.py
 python scripts\story_builder\source_links.py
 python scripts\story_builder\build.py --languages CN --default-language CN
 python scripts\story_builder\build.py --languages CN EN JP --default-language CN
+python scripts\build_mission_pipeline_data.py
 python scripts\build_gameplay_data.py
+python scripts\build_progression_data.py
+python scripts\build_projectile_data.py
+python scripts\build_combat_relationships.py --languages CN
+python scripts\build_economy_data.py --languages CN --default-language CN
+python scripts\build_world_data.py --languages CN --default-language CN
+python scripts\build_presentation_data.py --languages CN
 python scripts\story_recovery\build_option_override_coverage_audit.py --language CN
 python scripts\build_assets.py
 python scripts\build_audio.py
@@ -129,11 +147,19 @@ Browser behavior:
   with no popup/modal preview.
 - Non-emoji SNS media such as `sns_image_*` and `sns_sticker_*` render at
   normal image proportions with bounded hover/modal previews.
-- Story recovery issue filters, source/debug blocks, mission timeline evidence,
-  cutscene debug panels, and manual order-edit controls are behind
-  `Show debug info`.
+- Story recovery issue and method filters stay visible in every mode.
+  Source/debug blocks, mission timeline evidence, cutscene debug panels, and
+  manual order-edit controls are behind `Show debug info`.
 - The Story reset button returns filters to Story sort while preserving
   expanded mission groups.
+- Normal semantic navigation exposes Gameplay. Mission Pipeline, Progression, Combat & Projectiles,
+  the retained standalone Combat graph, Factory, World, and Presentation are
+  deferred and hidden unless `Show debug info` is enabled; disabling debug while
+  one is active must normalize to a visible page and URL.
+- Combat & Projectiles groups records by evidence-backed character/enemy sender
+  and must label identifier-only ownership as inferred. World groups by authored
+  level IDs and may plot X/Z positions, but rows without an exported level ID
+  must remain unassigned rather than being inferred from coordinates.
 
 Export freshness:
 
@@ -173,7 +199,7 @@ Setup and export internals:
 - `--animestudio-mono-behaviour-type-tree-priority script-first` is for
   targeted MonoBehaviour schema experiments; the default is `serialized-first`.
   Script-first must fall back cleanly when no usable DummyDlls are available.
-- After installed-game refreshes, check `reports/export_full_summary.md` for
+- After installed-game refreshes, check `reports/export/export_full_summary.md` for
   stage return codes and AnimeStudio export errors.
 
 Browser data inputs and outputs:
@@ -185,7 +211,14 @@ Browser data inputs and outputs:
   `webui/data/`.
 - Generated browser outputs include `webui/data/manifest.json`,
   `webui/data/lang/<code>/index.json`, `conv/*.json`, `mission/*.json`,
-  `reference/**`, `webui/data/assets/index.json`, and
+  `reference/**`, `webui/data/mission_pipeline/index.json`,
+  `webui/data/mission_pipeline/missions/*.json`, `webui/data/gameplay/projectiles.json`,
+  `webui/data/lang/<code>/progression/index.json`,
+  `webui/data/lang/<code>/gameplay/combat_relationships.json`,
+  `webui/data/lang/<code>/economy/index.json`,
+  `webui/data/lang/<code>/world/index.json`,
+  `webui/data/lang/<code>/presentation/index.json`,
+  `webui/data/assets/index.json`, and
   `webui/data/updates/latest.json`.
 - The current `export.bat` skips raw VFS output and source inventory because
   the browser does not need them.
@@ -206,21 +239,46 @@ Script notes:
 
 - `scripts/README.md` lists the maintained script map and workflow contracts.
 - New one-off exploration scripts should start in `scratch/` or `tmp/`.
-- Durable conclusions belong in `memory/`; reusable helpers should move into
-  maintained workflow code only with matching docs and intentional tracking.
+- Durable conclusions belong in the matching consolidated `memory/` topic;
+  reusable helpers should move into maintained workflow code only with
+  matching docs and intentional tracking.
+
+## Memory Maintenance Rule
+
+`memory/` is intentionally flat and limited to the topic files indexed by
+`memory/README.md`. Treat those files as living sources of truth:
+
+- update the current conclusion, evidence boundary, commands, and recovery
+  queue in the owning topic;
+- fold useful session history into concise evidence notes instead of adding a
+  dated Markdown file;
+- keep changing counts, exhaustive inventories, and generated audits in
+  `reports/`, with links from memory only when they remain useful;
+- keep disposable probes and intermediate output in `scratch/` or `tmp/`;
+- add a new memory file only for a genuinely new durable topic, and update
+  `memory/README.md`, this guidance list, and relevant active docs together.
+
+The owning topics are WebUI, Story recovery, game-data recovery, semantic asset
+recovery, AnimeStudio exporter recovery, and character render/animation
+recovery. Cross-topic improvement plans should be split into the recovery
+queues of those owning files rather than maintained as a second status source.
 
 ## Current Guidance Locations
 
-Older `memory/` exploration archives have been retired into the active docs.
-Do not recreate duplicate README-shaped snapshots in `memory/`; update the
-current source of truth instead:
+The former exploration archive has been consolidated. Do not recreate duplicate
+README-shaped or dated snapshots; update the current source of truth instead:
 
 - user-facing active workflow: `README.md`
 - agent-facing repo rules: `AGENTS.md`
 - script/workflow contract: `scripts/README.md`
 - WebUI frontend scope: `webui/README.md`
+- memory topic index and writing rules: `memory/README.md`
 - detailed WebUI recovery notes: `memory/webui_recovery.md`
-- shader/animation recovery snapshots: dedicated files in `memory/`
+- Story reconstruction conclusions: `memory/game_story_recovery.md`
+- game-data formats, semantics, and source graph: `memory/game_data_recovery.md`
+- semantic asset/entity recovery: `memory/asset_recovery.md`
+- AnimeStudio exporter recovery: `memory/animestudio_recovery.md`
+- character render/animation recovery: `memory/character_render_and_animation_recovery.md`
 
 ## Project Local Skills
 
@@ -245,10 +303,9 @@ active docs (`README.md`, `scripts/README.md`, `webui/README.md`, and
 skill when graph evidence is relevant.
 
 The retired exploration snapshots were collapsed because they mixed active
-workflow guidance with stale conclusions, obsolete package behavior based on
-`reports/`, and Blender/actor recovery detail outside the root active scope.
-Keep generated reports in `reports/`, durable conclusions in `memory/`, and
-disposable experiments in `scratch/` or `tmp/`.
+workflow guidance with stale conclusions and repeated generated-report status.
+Keep generated reports in `reports/`, concise durable conclusions in the six
+owning memory topics, and disposable experiments in `scratch/` or `tmp/`.
 
 ## Update Tracking Rule
 
@@ -270,11 +327,42 @@ export_full
 
 when no wrapper config or explicit flags are supplied. Pass
 `--previous-export-root PATH` for a one-off different saved previous export.
+The direct two-extraction command that also generates the WebUI page is:
+
+```bat
+.\build_updates.bat --previous-export-root OLD --export-root NEW --refresh-previous-export-baseline
+```
+
+`OLD` is the saved extracted version and `NEW` is the current extracted
+version. `build_updates_by_patch.bat --check` is detection-only; the default
+no-argument patch mode invokes the extracted-tree feed comparison itself after
+successful staging and rotation.
 Scanner cache and feed history live under `.game-data-tracker/`; the cached
 baseline is built from the previous export folder, then the current export root
 is scanned against it using the same focused roots. Do not point this
 comparison at `webui/`, `reports/`, `memory/`, or `scratch/`. WebUI edits and
 generated output outside the export roots must not appear as game-data updates.
+
+`build_updates_by_patch.bat` is the original installed-data patch workflow.
+`--init-baseline` builds a logical VFS snapshot from only the current installed
+version and attaches it under the current export without requiring a previous
+export. Use `build_updates.bat --init-build` separately when an empty first
+WebUI feed is desired. `--check` is detection-only. With no mode, the wrapper
+runs `--apply`: logical no-change, version-only, and chunk-only repack results
+leave all published state untouched; logical changes clone the complete current
+export into sibling staging, selectively dump changed Table/JsonData/Video/
+AuditVideo/Lua files, refresh broad AnimeStudio or CN audio scopes only when
+their source blocks changed, re-scan the installed VFS, and then publish.
+
+Patch publication moves the previous `export_full` to the configured previous
+export path, using a snapshot-suffixed sibling if that path already exists,
+renames staging to the canonical `export_full`, rebuilds WebUI data, invokes
+`build_updates.bat` against archive/current, and advances the baseline only
+after all required work succeeds. On a post-rotation failure it restores the
+previous export and WebUI data and retains the failed new tree under
+`.game-data-tracker/original-data/failed/`. The current and archive roots must
+be on the same volume. A transaction journal under the operational root blocks
+new runs if an interrupted publication needs inspection.
 
 The builder scans exported assets in the same two export folders by default to
 add image/model/video/audio asset-level entries to the Updates page. Asset
@@ -298,13 +386,29 @@ folder so the cached scanner baseline is rebuilt.
 - Prefer the layout rooted at `serve.py`, `export.bat`, `webui/`,
   `scripts/`, and `unity_endfield_graph_shader_lab/`.
 - Keep `README.md` focused on active WebUI user-facing usage.
-- Keep observations, conclusions, investigation notes, and status snapshots in
-  `memory/`.
+- Fold durable observations and conclusions into the matching consolidated
+  `memory/` topic; do not add per-session or dated status files.
 - Keep `reports/` for durable generated reports only, not agent conclusions or
   narrative writeups.
-- Use `scratch/` for attempts, tool prototypes, generated previews, and tools
-  written during exploration before they are promoted.
-- Use `tmp/` for temporary results, intermediate output, and disposable files.
+- Keep routine reports grouped by topic: exporter summaries, run logs, and
+  benchmarks under `reports/export/`; Story build summaries under
+  `reports/story/build/`; manual Story recovery evidence under
+  `reports/story/recovery/`; update summaries under `reports/updates/`; and
+  asset diagnostics under `reports/assets/`. Do not add loose report files at
+  the `reports/` root.
+- Keep the roots of `scratch/` and `tmp/` free of loose files and one-off run
+  directories. Write experiments as `scratch/<topic>/<task>/` and disposable
+  intermediates as `tmp/<topic>/<task-or-run>/`. Prefer the active topic names
+  `webui`, `story`, `assets`, `animestudio`, `source_graph`,
+  `character_recovery`, `game_data`, `updates`, `ocr`, and
+  `reverse_engineering`; use `tests`, `tools`, or `misc` only when needed.
+- Use `scratch/` for attempts, tool prototypes, and generated previews that may
+  be revisited. Promote reusable helpers to maintained code or delete stale
+  experiments.
+- Use `tmp/` for disposable results and intermediates. Remove completed run
+  directories after validation, and never cite `tmp/` as durable evidence.
+- For self-contained `ue5_*` or `unity_*` projects, prefer that project's own
+  scratch/temp area instead of the repo-root work directories.
 - Put durable shared helper code under the maintained script/tool surface.
   `tools/` is ignored by default except for already tracked helper scripts, so
   new promoted tools need intentional tracking and documentation.
@@ -333,6 +437,13 @@ WebUI:
 - `scripts/story_builder/build.py`
 - `scripts/story_builder/timeline_action_evidence.py`
 - `scripts/build_gameplay_data.py`
+- `scripts/build_mission_pipeline_data.py`
+- `scripts/build_progression_data.py`
+- `scripts/build_projectile_data.py`
+- `scripts/build_combat_relationships.py`
+- `scripts/build_economy_data.py`
+- `scripts/build_world_data.py`
+- `scripts/build_presentation_data.py`
 - `scripts/build_assets.py`
 - legacy local index helpers `scripts/build_data_index.py` and
   `scripts/build_decoded_index.py` are not active WebUI pages
