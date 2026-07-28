@@ -2,10 +2,10 @@
 """Build and query a local Endfield source graph database.
 
 The graph is intentionally evidence-first. It connects recovered WebUI story
-data, source-link evidence, exported assets, AnimeStudio asset maps, material
-texture references, character recovery manifests, selected structured tables,
-Lua consumer-reference audits, and a few derived follow-up indexes into one
-SQLite database.
+and Mission Pipeline context data, source-link evidence, exported assets,
+AnimeStudio asset maps, material texture references, character recovery
+manifests, selected structured tables, Lua consumer-reference audits, and a few
+derived follow-up indexes into one SQLite database.
 """
 
 from __future__ import annotations
@@ -37,6 +37,7 @@ from build_data_index import (
 )
 EXPORT_ROOT = ROOT / "export_full"
 WEBUI_DATA = ROOT / "webui" / "data"
+MISSION_PIPELINE_ROOT = WEBUI_DATA / "mission_pipeline"
 WEBUI_OPTION_OVERRIDES = ROOT / "webui" / "overrides" / "options.json"
 GAMEPLAY_CONFIG_ROOT = EXPORT_ROOT / "structured" / "StreamingAssets" / "Data" / "Json" / "GameplayConfig"
 NPC_PROXY_TABLE_PATH = GAMEPLAY_CONFIG_ROOT / "NpcProxyTable.json"
@@ -3004,6 +3005,7 @@ class SourceGraphBuilder:
         language: str = "CN",
         include_gameplay: bool = True,
         include_asset_maps: bool = True,
+        relevant_asset_maps_only: bool = False,
         include_reference_rows: bool = True,
         include_all_material_json: bool = False,
         include_i18n_values: bool = False,
@@ -3016,6 +3018,14 @@ class SourceGraphBuilder:
         self.include_gameplay = include_gameplay
         self.db_path = db_path
         self.include_asset_maps = include_asset_maps
+        self.relevant_asset_maps_only = relevant_asset_maps_only and include_asset_maps
+        self.asset_map_scope = (
+            "none"
+            if not include_asset_maps
+            else "relevant"
+            if self.relevant_asset_maps_only
+            else "full"
+        )
         self.include_reference_rows = include_reference_rows
         self.include_all_material_json = include_all_material_json
         self.include_i18n_values = include_i18n_values
@@ -3036,6 +3046,8 @@ class SourceGraphBuilder:
         self.audio_dialog_row_cache: dict[str, Any] | None = None
         self.game_system_unlock_type_cache: dict[str, dict[str, Any]] | None = None
         self.alias_count = 0
+        self.asset_map_required_path_ids = 0
+        self.asset_map_matched_path_ids = 0
 
     @property
     def db(self) -> sqlite3.Connection:
@@ -3249,6 +3261,7 @@ class SourceGraphBuilder:
         try:
             self.db.execute("INSERT INTO meta(key, value) VALUES (?, ?)", ("generated", str(int(started))))
             self.db.execute("INSERT INTO meta(key, value) VALUES (?, ?)", ("language", self.language))
+            self.db.execute("INSERT INTO meta(key, value) VALUES (?, ?)", ("asset_map_scope", self.asset_map_scope))
             self.ingest_assets()
             self.commit_step("assets")
             self.ingest_skipped_vfs_block_audits()
@@ -3257,6 +3270,12 @@ class SourceGraphBuilder:
             self.commit_step("videos")
             self.ingest_webui_story()
             self.commit_step("story")
+            self.ingest_mission_pipeline_story_scope()
+            self.commit_step("missionPipelineStoryScope")
+            self.ingest_mission_pipeline_env_talk_context()
+            self.commit_step("missionPipelineEnvTalkContext")
+            self.ingest_mission_pipeline_native_runtime_receivers()
+            self.commit_step("missionPipelineNativeRuntimeReceivers")
             self.ingest_video_bindings()
             self.commit_step("videoBindings")
             self.ingest_narrative_video_override_audit()
@@ -3269,6 +3288,8 @@ class SourceGraphBuilder:
             self.commit_step("itemAcquisition")
             self.ingest_item_submission_semantics()
             self.commit_step("itemSubmission")
+            self.ingest_mission_pipeline_submission_context()
+            self.commit_step("missionPipelineSubmissionContext")
             self.ingest_reward_catalog_semantics()
             self.commit_step("rewardCatalog")
             self.ingest_equipment_gem_semantics()
@@ -9735,6 +9756,917 @@ class SourceGraphBuilder:
             self.add_scene_graph_edges(conv, story_node)
             self.add_recovery_warnings(conv, story_node)
 
+    def ingest_mission_pipeline_story_scope(self) -> None:
+        """Add explicit non-owning quest scope recovered by the pipeline builder."""
+        mission_root = MISSION_PIPELINE_ROOT / "missions"
+        if not mission_root.is_dir():
+            return
+        source = "webui/mission_pipeline"
+        for mission_path in sorted(mission_root.glob("*.json")):
+            payload = read_json(mission_path, {})
+            mission_id = safe_key((payload.get("mission") or {}).get("id")) or mission_path.stem
+            mission_node = self.add_node(
+                "mission",
+                mission_id,
+                name=mission_id,
+                source=source,
+            )
+            file_rel = slash(mission_path)
+            file_node = self.add_file(
+                file_rel,
+                kind="mission_pipeline",
+                source=source,
+            )
+            self.add_edge(
+                file_node,
+                mission_node,
+                "mission_pipeline_defines_mission",
+                source=source,
+                evidence="mission.id",
+            )
+            for node_index, node in enumerate(payload.get("nodes") or []):
+                if not isinstance(node, dict):
+                    continue
+                quest_id = safe_key(node.get("id"))
+                contexts = node.get("storyScopeContexts") or []
+                if not quest_id or not contexts:
+                    continue
+                quest_node = self.add_quest_task_node(quest_id, source=source)
+                self.add_edge(
+                    quest_node,
+                    mission_node,
+                    "quest_task_in_mission",
+                    source=source,
+                    evidence=f"nodes[{node_index}].id",
+                )
+                for context_index, context in enumerate(contexts):
+                    if not isinstance(context, dict):
+                        continue
+                    story_key = safe_key(context.get("key"))
+                    if not story_key:
+                        continue
+                    evidence = (
+                        f"nodes[{node_index}].storyScopeContexts[{context_index}]"
+                    )
+                    boundary = {
+                        "relation": context.get("relation"),
+                        "sourceRelation": context.get("sourceRelation"),
+                        "confidence": context.get("confidence"),
+                        "scopeDiscriminator": context.get("scopeDiscriminator"),
+                        "questPredicateEvidence": context.get(
+                            "questPredicateEvidence"
+                        ),
+                        "ownershipStatus": context.get("ownershipStatus"),
+                        "playbackOwnership": False,
+                        "orderEvidence": False,
+                    }
+                    story_node = self.add_node(
+                        "story",
+                        story_key,
+                        name=story_key,
+                        source=source,
+                    )
+                    self.add_alias(
+                        story_key,
+                        story_node,
+                        kind="story_key",
+                        source=source,
+                    )
+                    self.add_edge(
+                        quest_node,
+                        story_node,
+                        "quest_scopes_story_via_objective_level_script",
+                        source=source,
+                        evidence=evidence,
+                        data=boundary,
+                    )
+                    self.add_edge(
+                        story_node,
+                        quest_node,
+                        "story_scoped_to_quest_via_objective_level_script",
+                        source=source,
+                        evidence=evidence,
+                        data=boundary,
+                    )
+                    for script_index, script_id_raw in enumerate(
+                        context.get("scriptIds") or []
+                    ):
+                        script_id = safe_key(script_id_raw)
+                        if not script_id:
+                            continue
+                        script_node = self.add_node(
+                            "level_script",
+                            script_id,
+                            name=script_id,
+                            source=source,
+                        )
+                        self.add_alias(
+                            script_id,
+                            script_node,
+                            kind="level_script_id",
+                            source=source,
+                        )
+                        self.add_edge(
+                            quest_node,
+                            script_node,
+                            "quest_objective_scopes_level_script",
+                            source=source,
+                            evidence=f"{evidence}.scriptIds[{script_index}]",
+                            data=boundary,
+                        )
+                        self.add_edge(
+                            script_node,
+                            story_node,
+                            "level_script_hosts_quest_scoped_story",
+                            source=source,
+                            evidence=f"{evidence}.scriptIds[{script_index}]",
+                            data=boundary,
+                        )
+
+    def ingest_mission_pipeline_env_talk_context(self) -> None:
+        """Add exact atmospheric-switcher envTalk context without ownership.
+
+        Mission Pipeline has already applied the fail-closed join: a cluster's
+        complete non-empty NPC set must be contained by exactly one active
+        switcher group on the same exact level, and the group/config identities
+        must agree. This consumer accepts only that explicit relation and keeps
+        a context node between mission/quest state and the Story file so no
+        direct mission-to-Story ownership edge can be mistaken for playback.
+        """
+        mission_root = MISSION_PIPELINE_ROOT / "missions"
+        if not mission_root.is_dir():
+            return
+        source = "webui/mission_pipeline/env_talk_context"
+        dataset = self.add_node(
+            "dataset",
+            "mission_pipeline_atmospheric_env_talk_context",
+            name="Mission Pipeline atmospheric envTalk context",
+            source=source,
+            path=slash(MISSION_PIPELINE_ROOT),
+            data={
+                "relation": "atmosphericSwitcherStateContext",
+                "causality": "context",
+                "playbackOwnership": False,
+                "orderEvidence": False,
+            },
+        )
+        accepted_contexts: set[str] = set()
+        accepted_missions: set[str] = set()
+        accepted_story_keys: set[str] = set()
+        condition_quest_ids: set[str] = set()
+        context_rows = 0
+        skipped_rows = 0
+
+        for mission_path in sorted(mission_root.glob("*.json")):
+            payload = read_json(mission_path, {})
+            if not isinstance(payload, dict):
+                continue
+            mission_id = (
+                safe_key((payload.get("mission") or {}).get("id"))
+                or mission_path.stem
+            )
+            mission_node = self.add_mission_ref_node(mission_id, source=source)
+            file_rel = slash(mission_path)
+            file_node = self.add_file(
+                file_rel,
+                kind="mission_pipeline",
+                source=source,
+            )
+            context_rows_payload = payload.get("envTalkContext") or []
+            for context_index, context in enumerate(context_rows_payload):
+                if (
+                    not isinstance(context, dict)
+                    or safe_key(context.get("relation"))
+                    != "atmosphericSwitcherStateContext"
+                ):
+                    continue
+                story_key = safe_key(context.get("storyKey"))
+                env_talk_id = safe_key(context.get("envTalkId"))
+                cluster_id = safe_key(context.get("clusterId"))
+                switcher_id = safe_key(context.get("switcherId"))
+                group_id = safe_key(context.get("switcherGroupId"))
+                level_id = safe_key(context.get("levelId"))
+                npc_ids = sorted(
+                    {
+                        safe_key(value)
+                        for value in (context.get("npcIds") or [])
+                        if safe_key(value)
+                    }
+                )
+                if (
+                    not story_key
+                    or not env_talk_id
+                    or story_key != f"env_{env_talk_id}"
+                    or not cluster_id
+                    or not switcher_id
+                    or not group_id
+                    or not level_id
+                    or not npc_ids
+                ):
+                    skipped_rows += 1
+                    continue
+
+                context_key = f"{switcher_id}:{group_id}:{cluster_id}:{story_key}"
+                evidence = (
+                    f"{mission_path.name}:envTalkContext[{context_index}]"
+                )
+                boundary = {
+                    "relation": "atmosphericSwitcherStateContext",
+                    "causality": "context",
+                    "ownershipStatus": "non_owning_context",
+                    "playbackOwnership": False,
+                    "orderEvidence": False,
+                    "completionEvidence": False,
+                    "serverExchangeEvidence": False,
+                    "joinPolicy": (
+                        "same_level_complete_cluster_npc_set_unique_active_group"
+                    ),
+                    "missionId": mission_id,
+                    "questIds": sorted(
+                        {
+                            safe_key(value)
+                            for value in (context.get("questIds") or [])
+                            if safe_key(value)
+                        }
+                    ),
+                    "conditionMissionIds": sorted(
+                        {
+                            safe_key(value)
+                            for value in (context.get("conditionMissionIds") or [])
+                            if safe_key(value)
+                        }
+                    ),
+                    "conditionQuestIds": sorted(
+                        {
+                            safe_key(value)
+                            for value in (context.get("conditionQuestIds") or [])
+                            if safe_key(value)
+                        }
+                    ),
+                    "bindMissionId": safe_key(context.get("bindMissionId")),
+                    "switcherId": switcher_id,
+                    "switcherGroupId": group_id,
+                    "clusterId": cluster_id,
+                    "levelId": level_id,
+                    "envTalkId": env_talk_id,
+                    "storyKey": story_key,
+                    "clusterNpcIds": npc_ids,
+                }
+                structural_boundary = {
+                    key: value
+                    for key, value in boundary.items()
+                    if key
+                    not in {
+                        "missionId",
+                        "questIds",
+                        "conditionMissionIds",
+                        "conditionQuestIds",
+                        "bindMissionId",
+                    }
+                }
+
+                context_node = self.add_node(
+                    "atmospheric_env_talk_state_context",
+                    context_key,
+                    name=f"{group_id} -> {cluster_id}",
+                    source=source,
+                    path=file_rel,
+                    data=compact_payload(structural_boundary, depth=3),
+                )
+                self.add_alias(
+                    context_key,
+                    context_node,
+                    kind="atmospheric_env_talk_context_id",
+                    source=source,
+                )
+                switcher_node = self.add_node(
+                    "atmospheric_npc_switcher",
+                    switcher_id,
+                    name=switcher_id,
+                    source=source,
+                )
+                self.add_alias(
+                    switcher_id,
+                    switcher_node,
+                    kind="atmospheric_npc_switcher_id",
+                    source=source,
+                )
+                group_node = self.add_node(
+                    "atmospheric_npc_switcher_group",
+                    group_id,
+                    name=group_id,
+                    source=source,
+                    data={"switcherId": switcher_id, "levelId": level_id},
+                )
+                self.add_alias(
+                    group_id,
+                    group_node,
+                    kind="atmospheric_npc_switcher_group_id",
+                    source=source,
+                )
+                cluster_node = self.add_atmospheric_npc_cluster_node(
+                    cluster_id,
+                    source=source,
+                    data={
+                        "clusterId": cluster_id,
+                        "levelId": level_id,
+                        "envTalkId": env_talk_id,
+                        "npcCount": len(npc_ids),
+                    },
+                )
+                env_talk_node = self.add_env_talk_node(
+                    env_talk_id,
+                    source=source,
+                )
+                story_node = self.add_node(
+                    "story",
+                    story_key,
+                    name=story_key,
+                    source=source,
+                )
+                self.add_alias(
+                    story_key,
+                    story_node,
+                    kind="story_key",
+                    source=source,
+                )
+                level_node = self.add_level_node(level_id, source=source)
+
+                self.add_edge(
+                    dataset,
+                    context_node,
+                    "has_atmospheric_env_talk_state_context",
+                    source=source,
+                    evidence=context_key,
+                    data=structural_boundary,
+                )
+                self.add_edge(
+                    file_node,
+                    context_node,
+                    "mission_pipeline_file_has_atmospheric_env_talk_context",
+                    source=source,
+                    evidence=evidence,
+                    data=boundary,
+                )
+                self.add_edge(
+                    mission_node,
+                    context_node,
+                    "mission_has_atmospheric_env_talk_state_context",
+                    source=source,
+                    evidence=evidence,
+                    data=boundary,
+                )
+                self.add_edge(
+                    context_node,
+                    mission_node,
+                    "atmospheric_env_talk_state_context_for_mission",
+                    source=source,
+                    evidence=evidence,
+                    data=boundary,
+                )
+                self.add_edge(
+                    switcher_node,
+                    group_node,
+                    "atmospheric_switcher_has_group",
+                    source=source,
+                    evidence=context_key,
+                    data=structural_boundary,
+                )
+                self.add_edge(
+                    context_node,
+                    group_node,
+                    "atmospheric_env_talk_context_uses_switcher_group",
+                    source=source,
+                    evidence=context_key,
+                    data=structural_boundary,
+                )
+                self.add_edge(
+                    group_node,
+                    cluster_node,
+                    "atmospheric_switcher_group_contains_env_talk_cluster",
+                    source=source,
+                    evidence=context_key,
+                    data=structural_boundary,
+                )
+                self.add_edge(
+                    cluster_node,
+                    group_node,
+                    "atmospheric_env_talk_cluster_matched_by_switcher_group",
+                    source=source,
+                    evidence=context_key,
+                    data=structural_boundary,
+                )
+                self.add_edge(
+                    cluster_node,
+                    env_talk_node,
+                    "atmospheric_cluster_uses_env_talk",
+                    source=source,
+                    evidence="envTalkId",
+                    data=structural_boundary,
+                )
+                self.add_edge(
+                    env_talk_node,
+                    story_node,
+                    "env_talk_has_story_file",
+                    source=source,
+                    evidence=f"storyKey={story_key}",
+                    data=structural_boundary,
+                )
+                self.add_edge(
+                    story_node,
+                    env_talk_node,
+                    "story_represents_env_talk",
+                    source=source,
+                    evidence=f"envTalkId={env_talk_id}",
+                    data=structural_boundary,
+                )
+                self.add_edge(
+                    context_node,
+                    story_node,
+                    "atmospheric_env_talk_context_reaches_story",
+                    source=source,
+                    evidence=context_key,
+                    data=structural_boundary,
+                )
+                self.add_edge(
+                    story_node,
+                    context_node,
+                    "story_has_atmospheric_env_talk_state_context",
+                    source=source,
+                    evidence=context_key,
+                    data=structural_boundary,
+                )
+                if level_node:
+                    self.add_edge(
+                        context_node,
+                        level_node,
+                        "atmospheric_env_talk_context_in_level",
+                        source=source,
+                        evidence="levelId",
+                        data=structural_boundary,
+                    )
+                    self.add_edge(
+                        group_node,
+                        level_node,
+                        "atmospheric_switcher_group_in_level",
+                        source=source,
+                        evidence="levelId",
+                        data=structural_boundary,
+                    )
+
+                for quest_index, quest_id in enumerate(boundary["questIds"]):
+                    quest_node = self.add_quest_task_node(quest_id, source=source)
+                    self.add_edge(
+                        quest_node,
+                        mission_node,
+                        "quest_task_in_mission",
+                        source=source,
+                        evidence=f"{evidence}.questIds[{quest_index}]",
+                        data=boundary,
+                    )
+                for quest_index, quest_id in enumerate(
+                    boundary["conditionQuestIds"]
+                ):
+                    quest_node = self.add_quest_task_node(quest_id, source=source)
+                    self.add_edge(
+                        quest_node,
+                        context_node,
+                        "quest_state_conditions_atmospheric_env_talk_context",
+                        source=source,
+                        evidence=(
+                            f"{evidence}.conditionQuestIds[{quest_index}]"
+                        ),
+                        data=boundary,
+                    )
+                for condition_index, condition_mission_id in enumerate(
+                    boundary["conditionMissionIds"]
+                ):
+                    condition_mission = self.add_mission_ref_node(
+                        condition_mission_id,
+                        source=source,
+                    )
+                    self.add_edge(
+                        condition_mission,
+                        context_node,
+                        "mission_state_conditions_atmospheric_env_talk_context",
+                        source=source,
+                        evidence=(
+                            f"{evidence}.conditionMissionIds[{condition_index}]"
+                        ),
+                        data=boundary,
+                    )
+                if boundary["bindMissionId"]:
+                    bind_mission = self.add_mission_ref_node(
+                        boundary["bindMissionId"],
+                        source=source,
+                    )
+                    self.add_edge(
+                        bind_mission,
+                        context_node,
+                        "mission_binds_atmospheric_env_talk_context",
+                        source=source,
+                        evidence=f"{evidence}.bindMissionId",
+                        data=boundary,
+                    )
+
+                accepted_contexts.add(context_key)
+                accepted_missions.add(mission_id)
+                accepted_story_keys.add(story_key)
+                condition_quest_ids.update(boundary["conditionQuestIds"])
+                context_rows += 1
+
+        self.ingest_counts["missionPipelineEnvTalkContext.rows"] = context_rows
+        self.ingest_counts[
+            "missionPipelineEnvTalkContext.uniqueContexts"
+        ] = len(accepted_contexts)
+        self.ingest_counts[
+            "missionPipelineEnvTalkContext.missions"
+        ] = len(accepted_missions)
+        self.ingest_counts[
+            "missionPipelineEnvTalkContext.storyFiles"
+        ] = len(accepted_story_keys)
+        self.ingest_counts[
+            "missionPipelineEnvTalkContext.conditionQuestIds"
+        ] = len(condition_quest_ids)
+        self.ingest_counts[
+            "missionPipelineEnvTalkContext.skippedRows"
+        ] = skipped_rows
+
+    def ingest_mission_pipeline_native_runtime_receivers(self) -> None:
+        """Index exact unowned native playback receivers without mission edges.
+
+        Mission Pipeline publishes one row per current-build serialized event
+        receiver whose complete ActionHeader-to-playback path is known but whose
+        mission/quest producer is not. The receiver identity is the exact
+        level/script/header tuple. Story source files must agree with that tuple
+        before the row is accepted.
+        """
+        index_path = MISSION_PIPELINE_ROOT / "index.json"
+        payload = read_json(index_path, {})
+        if not isinstance(payload, dict):
+            return
+        story_coverage = payload.get("storyCoverage")
+        if not isinstance(story_coverage, dict):
+            return
+        rows = story_coverage.get("missionlessNativeRuntimeNodes")
+        if not isinstance(rows, list):
+            return
+
+        source = "webui/mission_pipeline/native_runtime_receivers"
+        receiver_identity_counts: Counter[tuple[str, str, int]] = Counter()
+        for candidate in rows:
+            if not isinstance(candidate, dict):
+                continue
+            candidate_selector = candidate.get("selector")
+            if not isinstance(candidate_selector, dict):
+                continue
+            candidate_level_id = safe_key(
+                candidate_selector.get("levelId")
+            )
+            candidate_script_id = safe_key(
+                candidate_selector.get("listenerScriptId")
+            )
+            candidate_header_id = candidate_selector.get(
+                "listenerHeaderLocalId"
+            )
+            if (
+                candidate_level_id
+                and candidate_script_id
+                and isinstance(candidate_header_id, int)
+                and candidate_header_id >= 0
+            ):
+                receiver_identity_counts[(
+                    candidate_level_id,
+                    candidate_script_id,
+                    candidate_header_id,
+                )] += 1
+        index_rel = slash(index_path)
+        dataset = self.add_node(
+            "dataset",
+            "mission_pipeline_native_runtime_receiver_frontier",
+            name="Mission Pipeline unresolved native runtime receivers",
+            source=source,
+            path=index_rel,
+            data={
+                "relation": "exact_native_runtime_receiver_playback",
+                "playbackEvidence": True,
+                "missionOwnershipEvidence": False,
+                "orderEvidence": False,
+            },
+        )
+        index_file = self.add_file(
+            index_rel,
+            kind="mission_pipeline",
+            source=source,
+        )
+        accepted_receivers: set[str] = set()
+        accepted_story_keys: set[str] = set()
+        accepted_event_names: set[str] = set()
+        accepted_level_ids: set[str] = set()
+        mapping_ids: set[str] = set()
+        accepted_rows = 0
+        skipped_rows = 0
+
+        for row_index, row in enumerate(rows):
+            if not isinstance(row, dict):
+                skipped_rows += 1
+                continue
+            selector = (
+                row.get("selector")
+                if isinstance(row.get("selector"), dict)
+                else {}
+            )
+            level_id = safe_key(selector.get("levelId"))
+            script_id = safe_key(selector.get("listenerScriptId"))
+            header_local_id = selector.get("listenerHeaderLocalId")
+            event_name = safe_key(row.get("eventName"))
+            mapping_id = safe_key(row.get("payloadSchemaMappingId"))
+            story_files = row.get("storyFiles")
+            receiver_identity_count = (
+                receiver_identity_counts[(
+                    level_id,
+                    script_id,
+                    header_local_id,
+                )]
+                if isinstance(header_local_id, int)
+                else 0
+            )
+            if (
+                safe_key(row.get("relation"))
+                != "exact_native_runtime_receiver_playback"
+                or safe_key(row.get("confidence"))
+                != "exact_current_build_memorypack_fields"
+                or safe_key(row.get("missionOwnerStatus")) != "unresolved"
+                or row.get("storyBinding") is not False
+                or not level_id
+                or not script_id
+                or not isinstance(header_local_id, int)
+                or header_local_id < 0
+                or receiver_identity_count != 1
+                or not event_name
+                or not mapping_id.startswith("gameassembly-")
+                or not isinstance(story_files, list)
+                or not story_files
+            ):
+                skipped_rows += 1
+                continue
+
+            normalized_story_rows: list[dict[str, Any]] = []
+            expected_suffix = (
+                f"/LevelScriptData/{level_id}/{script_id}.json"
+            )
+            row_valid = True
+            for story_index, story_row in enumerate(story_files):
+                if not isinstance(story_row, dict):
+                    row_valid = False
+                    break
+                story_key = safe_key(story_row.get("key"))
+                native_actions = sorted(
+                    {
+                        safe_key(value)
+                        for value in (story_row.get("nativeActions") or [])
+                        if safe_key(value)
+                    }
+                )
+                source_files = sorted(
+                    {
+                        safe_key(value).replace("\\", "/")
+                        for value in (story_row.get("sourceFiles") or [])
+                        if safe_key(value)
+                    }
+                )
+                if (
+                    not story_key
+                    or not native_actions
+                    or not source_files
+                    or not any(
+                        f"/{source_file}".endswith(expected_suffix)
+                        for source_file in source_files
+                    )
+                ):
+                    row_valid = False
+                    break
+                normalized_story_rows.append({
+                    "index": story_index,
+                    "key": story_key,
+                    "kind": safe_key(story_row.get("kind")),
+                    "nativeActions": native_actions,
+                    "sourceFiles": source_files,
+                })
+            if not row_valid:
+                skipped_rows += 1
+                continue
+
+            receiver_key = (
+                f"{level_id}:{script_id}:{header_local_id}"
+            )
+            boundary = {
+                "relation": "exact_native_runtime_receiver_playback",
+                "confidence": "exact_current_build_memorypack_fields",
+                "missionOwnerStatus": "unresolved",
+                "missionStoryBinding": False,
+                "playbackEvidence": True,
+                "playbackOwnership": False,
+                "missionOwnershipEvidence": False,
+                "orderEvidence": False,
+                "completionEvidence": False,
+                "serverExchange": row.get("serverExchange") is True,
+                "transport": safe_key(row.get("transport")),
+                "eventName": event_name,
+                "eventSummary": safe_key(row.get("eventSummary")),
+                "levelId": level_id,
+                "listenerScriptId": script_id,
+                "listenerHeaderLocalId": header_local_id,
+                "payloadSchemaMappingId": mapping_id,
+                "selector": compact_payload(selector, depth=3),
+                "runtimeTarget": compact_payload(
+                    row.get("runtimeTarget"),
+                    depth=3,
+                ),
+                "ownershipBoundary": safe_key(
+                    row.get("ownershipBoundary")
+                ),
+            }
+            receiver_node = self.add_node(
+                "native_runtime_receiver",
+                receiver_key,
+                name=f"{event_name} @ {script_id}#{header_local_id}",
+                source=source,
+                path=index_rel,
+                data=boundary,
+            )
+            self.add_alias(
+                receiver_key,
+                receiver_node,
+                kind="native_runtime_receiver_key",
+                source=source,
+            )
+            self.add_alias(
+                f"{script_id}:{header_local_id}",
+                receiver_node,
+                kind="level_script_header_key",
+                source=source,
+            )
+            event_node = self.add_node(
+                "native_runtime_event",
+                event_name,
+                name=event_name,
+                source=source,
+            )
+            self.add_alias(
+                event_name,
+                event_node,
+                kind="native_runtime_event_name",
+                source=source,
+            )
+            level_node = self.add_level_node(level_id, source=source)
+            script_node = self.add_node(
+                "level_script",
+                script_id,
+                name=script_id,
+                source=source,
+            )
+            self.add_alias(
+                script_id,
+                script_node,
+                kind="level_script_id",
+                source=source,
+            )
+
+            evidence = (
+                "storyCoverage.missionlessNativeRuntimeNodes"
+                f"[{row_index}]"
+            )
+            self.add_edge(
+                dataset,
+                receiver_node,
+                "has_unresolved_native_runtime_receiver",
+                source=source,
+                evidence=evidence,
+                data=boundary,
+            )
+            self.add_edge(
+                index_file,
+                receiver_node,
+                "mission_pipeline_index_has_native_runtime_receiver",
+                source=source,
+                evidence=evidence,
+                data=boundary,
+            )
+            self.add_edge(
+                receiver_node,
+                event_node,
+                "native_runtime_receiver_uses_event",
+                source=source,
+                evidence="eventName",
+                data=boundary,
+            )
+            self.add_edge(
+                receiver_node,
+                script_node,
+                "native_runtime_receiver_uses_level_script",
+                source=source,
+                evidence="selector.listenerScriptId",
+                data=boundary,
+            )
+            if level_node:
+                self.add_edge(
+                    receiver_node,
+                    level_node,
+                    "native_runtime_receiver_in_level",
+                    source=source,
+                    evidence="selector.levelId",
+                    data=boundary,
+                )
+
+            for story_row in normalized_story_rows:
+                story_key = story_row["key"]
+                story_node = self.add_node(
+                    "story",
+                    story_key,
+                    name=story_key,
+                    source=source,
+                )
+                self.add_alias(
+                    story_key,
+                    story_node,
+                    kind="story_key",
+                    source=source,
+                )
+                story_boundary = {
+                    **boundary,
+                    "storyKey": story_key,
+                    "storyKind": story_row["kind"],
+                    "nativeActions": story_row["nativeActions"],
+                    "sourceFiles": story_row["sourceFiles"],
+                }
+                story_evidence = (
+                    f"{evidence}.storyFiles[{story_row['index']}]"
+                )
+                self.add_edge(
+                    receiver_node,
+                    story_node,
+                    "native_runtime_receiver_reaches_story",
+                    source=source,
+                    evidence=story_evidence,
+                    data=story_boundary,
+                )
+                self.add_edge(
+                    story_node,
+                    receiver_node,
+                    "story_has_unresolved_native_runtime_receiver",
+                    source=source,
+                    evidence=story_evidence,
+                    data=story_boundary,
+                )
+                for source_index, source_file in enumerate(
+                    story_row["sourceFiles"]
+                ):
+                    source_file_node = self.add_file(
+                        source_file,
+                        kind="level_script",
+                        source=source,
+                    )
+                    self.add_edge(
+                        source_file_node,
+                        receiver_node,
+                        "level_script_file_defines_native_runtime_receiver",
+                        source=source,
+                        evidence=(
+                            f"{story_evidence}.sourceFiles[{source_index}]"
+                        ),
+                        data=story_boundary,
+                    )
+                accepted_story_keys.add(story_key)
+
+            accepted_receivers.add(receiver_key)
+            accepted_event_names.add(event_name)
+            accepted_level_ids.add(level_id)
+            mapping_ids.add(mapping_id)
+            accepted_rows += 1
+
+        self.ingest_counts[
+            "missionPipelineNativeRuntimeReceivers.rows"
+        ] = accepted_rows
+        self.ingest_counts[
+            "missionPipelineNativeRuntimeReceivers.uniqueReceivers"
+        ] = len(accepted_receivers)
+        self.ingest_counts[
+            "missionPipelineNativeRuntimeReceivers.storyFiles"
+        ] = len(accepted_story_keys)
+        self.ingest_counts[
+            "missionPipelineNativeRuntimeReceivers.eventFamilies"
+        ] = len(accepted_event_names)
+        self.ingest_counts[
+            "missionPipelineNativeRuntimeReceivers.levels"
+        ] = len(accepted_level_ids)
+        self.ingest_counts[
+            "missionPipelineNativeRuntimeReceivers.mappingIds"
+        ] = len(mapping_ids)
+        self.ingest_counts[
+            "missionPipelineNativeRuntimeReceivers.skippedRows"
+        ] = skipped_rows
+
     def ingest_option_overrides(self) -> None:
         payload = read_json(WEBUI_OPTION_OVERRIDES, {})
         scenes = payload.get("scenes") if isinstance(payload, dict) else {}
@@ -13696,6 +14628,327 @@ class SourceGraphBuilder:
                 row_node = self.add_node("table_row", f"{table}:{row_key}", name=str(row_key), source=table, data=compact_payload(row, depth=2))
                 self.add_edge(table_node, row_node, "has_row", source="structured/item_submission")
                 self.add_item_submission_row_edges(table, row_key, row, row_node)
+
+    def ingest_mission_pipeline_submission_context(self) -> None:
+        """Join authored quest objectives to SubmitItem and co-gated context.
+
+        Direct quest-to-submission edges mean only that the authored objective
+        requires the named SubmitItem row. Dialog and LevelScript siblings are
+        represented through explicit context nodes so they cannot be mistaken
+        for submission UI ownership or mission/Story ordering.
+        """
+        mission_root = MISSION_PIPELINE_ROOT / "missions"
+        if not mission_root.is_dir():
+            return
+        source = "webui/mission_pipeline/submission_context"
+        for mission_path in sorted(mission_root.glob("*.json")):
+            payload = read_json(mission_path, {})
+            mission_id = (
+                safe_key((payload.get("mission") or {}).get("id"))
+                or mission_path.stem
+            )
+            mission_node = self.add_node(
+                "mission",
+                mission_id,
+                name=mission_id,
+                source=source,
+            )
+            file_node = self.add_file(
+                slash(mission_path),
+                kind="mission_pipeline",
+                source=source,
+            )
+            self.add_edge(
+                file_node,
+                mission_node,
+                "mission_pipeline_defines_mission",
+                source=source,
+                evidence="mission.id",
+            )
+            direct_story_edges = (
+                (payload.get("storyOrder") or {}).get("directEdges") or []
+            )
+            for node_index, node in enumerate(payload.get("nodes") or []):
+                if not isinstance(node, dict):
+                    continue
+                quest_id = safe_key(node.get("id"))
+                objectives = node.get("objectives") or []
+                if not quest_id or not any(
+                    isinstance(objective, dict)
+                    and (
+                        objective.get("submissionChecks")
+                        or objective.get("submissionDialogCoGates")
+                        or objective.get("submissionLevelScriptCoGates")
+                    )
+                    for objective in objectives
+                ):
+                    continue
+                quest_node = self.add_quest_task_node(quest_id, source=source)
+                self.add_edge(
+                    quest_node,
+                    mission_node,
+                    "quest_task_in_mission",
+                    source=source,
+                    evidence=f"nodes[{node_index}].id",
+                )
+                for objective_index, objective in enumerate(objectives):
+                    if not isinstance(objective, dict):
+                        continue
+                    objective_number = objective.get("index") or objective_index + 1
+                    for check_index, check in enumerate(
+                        objective.get("submissionChecks") or []
+                    ):
+                        if not isinstance(check, dict):
+                            continue
+                        submission_id = safe_key(check.get("submissionId"))
+                        submit_node = self.add_submit_item_node(
+                            submission_id,
+                            source=source,
+                        )
+                        evidence = (
+                            f"nodes[{node_index}].objectives[{objective_index}]"
+                            f".submissionChecks[{check_index}]"
+                        )
+                        boundary = {
+                            "missionId": mission_id,
+                            "questId": quest_id,
+                            "objectiveIndex": objective_number,
+                            "conditionId": check.get("conditionId"),
+                            "tableDefined": check.get("tableDefined"),
+                            "requirementGroups": check.get("requirementGroups") or [],
+                            "objectiveRequirement": True,
+                            "playbackOwnership": False,
+                            "openUiOwnership": False,
+                            "orderEvidence": False,
+                        }
+                        self.add_edge(
+                            quest_node,
+                            submit_node,
+                            "quest_objective_requires_submit_item",
+                            source=source,
+                            evidence=evidence,
+                            data=boundary,
+                        )
+                        self.add_edge(
+                            submit_node,
+                            quest_node,
+                            "submit_item_required_by_quest_objective",
+                            source=source,
+                            evidence=evidence,
+                            data=boundary,
+                        )
+                    for co_gate_index, co_gate in enumerate(
+                        objective.get("submissionDialogCoGates") or []
+                    ):
+                        if not isinstance(co_gate, dict):
+                            continue
+                        submission_id = safe_key(co_gate.get("submissionId"))
+                        dialog_id = safe_key(co_gate.get("dialogId"))
+                        if not submission_id or not dialog_id:
+                            continue
+                        evidence = (
+                            f"nodes[{node_index}].objectives[{objective_index}]"
+                            f".submissionDialogCoGates[{co_gate_index}]"
+                        )
+                        boundary = {
+                            **compact_payload(co_gate, depth=2),
+                            "missionId": mission_id,
+                            "questId": quest_id,
+                            "objectiveIndex": objective_number,
+                            "playbackOwnership": False,
+                            "openUiOwnership": False,
+                            "orderEvidence": False,
+                        }
+                        context_key = (
+                            f"{quest_id}:objective:{objective_number}:"
+                            f"{submission_id}:dialog:{dialog_id}:"
+                            f"{safe_key(co_gate.get('finishId'))}"
+                        )
+                        context_node = self.add_semantic_node(
+                            "mission_submission_dialog_co_gate",
+                            context_key,
+                            source=source,
+                            data=boundary,
+                        )
+                        submit_node = self.add_submit_item_node(
+                            submission_id,
+                            source=source,
+                        )
+                        story_node = self.add_node(
+                            "story",
+                            dialog_id,
+                            name=dialog_id,
+                            source=source,
+                        )
+                        self.add_alias(
+                            dialog_id,
+                            story_node,
+                            kind="story_key",
+                            source=source,
+                        )
+                        self.add_edge(
+                            quest_node,
+                            context_node,
+                            "quest_has_submission_dialog_co_gate",
+                            source=source,
+                            evidence=evidence,
+                            data=boundary,
+                        )
+                        self.add_edge(
+                            context_node,
+                            submit_node,
+                            "submission_dialog_co_gate_tests_submit_item",
+                            source=source,
+                            evidence=evidence,
+                            data=boundary,
+                        )
+                        self.add_edge(
+                            context_node,
+                            story_node,
+                            "submission_dialog_co_gate_tests_dialog_finish",
+                            source=source,
+                            evidence=evidence,
+                            data=boundary,
+                        )
+                    for co_gate_index, co_gate in enumerate(
+                        objective.get("submissionLevelScriptCoGates") or []
+                    ):
+                        if not isinstance(co_gate, dict):
+                            continue
+                        submission_id = safe_key(co_gate.get("submissionId"))
+                        script_id = safe_key(co_gate.get("scriptId"))
+                        if not submission_id or not script_id:
+                            continue
+                        evidence = (
+                            f"nodes[{node_index}].objectives[{objective_index}]"
+                            f".submissionLevelScriptCoGates[{co_gate_index}]"
+                        )
+                        boundary = {
+                            **compact_payload(co_gate, depth=2),
+                            "missionId": mission_id,
+                            "questId": quest_id,
+                            "objectiveIndex": objective_number,
+                            "playbackOwnership": False,
+                            "openUiOwnership": False,
+                            "orderEvidence": False,
+                        }
+                        context_key = (
+                            f"{quest_id}:objective:{objective_number}:"
+                            f"{submission_id}:levelscript:{script_id}"
+                        )
+                        context_node = self.add_semantic_node(
+                            "mission_submission_level_script_co_gate",
+                            context_key,
+                            source=source,
+                            data=boundary,
+                        )
+                        submit_node = self.add_submit_item_node(
+                            submission_id,
+                            source=source,
+                        )
+                        script_node = self.add_node(
+                            "level_script",
+                            script_id,
+                            name=script_id,
+                            source=source,
+                        )
+                        self.add_alias(
+                            script_id,
+                            script_node,
+                            kind="level_script_id",
+                            source=source,
+                        )
+                        self.add_edge(
+                            quest_node,
+                            context_node,
+                            "quest_has_submission_level_script_co_gate",
+                            source=source,
+                            evidence=evidence,
+                            data=boundary,
+                        )
+                        self.add_edge(
+                            quest_node,
+                            script_node,
+                            "quest_objective_requires_level_script_stage_max",
+                            source=source,
+                            evidence=evidence,
+                            data=boundary,
+                        )
+                        self.add_edge(
+                            context_node,
+                            submit_node,
+                            "submission_level_script_co_gate_tests_submit_item",
+                            source=source,
+                            evidence=evidence,
+                            data=boundary,
+                        )
+                        self.add_edge(
+                            context_node,
+                            script_node,
+                            "submission_level_script_co_gate_tests_stage_max",
+                            source=source,
+                            evidence=evidence,
+                            data=boundary,
+                        )
+                        for story_edge_index, story_edge in enumerate(
+                            direct_story_edges
+                        ):
+                            if (
+                                not isinstance(story_edge, dict)
+                                or safe_key(story_edge.get("sourceScript"))
+                                != script_id
+                                or story_edge.get("kind")
+                                != "levelscriptDialogExit"
+                                or story_edge.get("tier") != "strong"
+                            ):
+                                continue
+                            for field, edge_kind in (
+                                (
+                                    "from",
+                                    "level_script_exact_dialog_exit_trigger",
+                                ),
+                                (
+                                    "to",
+                                    "level_script_exact_dialog_playback_target",
+                                ),
+                            ):
+                                story_id = safe_key(story_edge.get(field))
+                                if not story_id:
+                                    continue
+                                story_node = self.add_node(
+                                    "story",
+                                    story_id,
+                                    name=story_id,
+                                    source=source,
+                                )
+                                self.add_alias(
+                                    story_id,
+                                    story_node,
+                                    kind="story_key",
+                                    source=source,
+                                )
+                                story_evidence = (
+                                    f"storyOrder.directEdges[{story_edge_index}]"
+                                )
+                                story_boundary = {
+                                    **boundary,
+                                    "storyEdgeKind": story_edge.get("kind"),
+                                    "storyEdgeTier": story_edge.get("tier"),
+                                    "headerLocalId": story_edge.get(
+                                        "headerLocalId"
+                                    ),
+                                    "targetLocalId": story_edge.get(
+                                        "targetLocalId"
+                                    ),
+                                }
+                                self.add_edge(
+                                    script_node,
+                                    story_node,
+                                    edge_kind,
+                                    source=source,
+                                    evidence=story_evidence,
+                                    data=story_boundary,
+                                )
 
     def add_item_submission_node(self, kind: str, key: Any, *, name: Any = None, source: str = "", data: Any = None) -> str:
         return self.add_semantic_node(kind, key, name=name, source=source, data=data)
@@ -26331,6 +27584,8 @@ class SourceGraphBuilder:
 
     def ingest_asset_maps(self) -> None:
         dataset = self.add_node("dataset", "animestudio_asset_maps", name="AnimeStudio asset maps")
+        relevant_path_ids = self.relevant_asset_map_path_ids() if self.relevant_asset_maps_only else None
+        matched_relevant_path_ids: set[tuple[str, str]] = set()
         batch = 0
         for source, path in ASSET_MAPS.items():
             if not path.exists():
@@ -26339,6 +27594,10 @@ class SourceGraphBuilder:
             self.add_edge(dataset, source_node, "has_asset_map", source="AnimeStudio/maps")
             for entry in iter_asset_entries(path):
                 path_id = entry.get("PathID")
+                if relevant_path_ids is not None and safe_key(path_id) not in relevant_path_ids.get(source, set()):
+                    continue
+                if relevant_path_ids is not None:
+                    matched_relevant_path_ids.add((source, safe_key(path_id)))
                 name = safe_key(entry.get("Name")) or f"pathid_{path_id}"
                 key = f"{source}:{path_id}" if path_id is not None else f"{source}:{name}:{entry.get('Offset')}"
                 node = self.add_node(
@@ -26376,6 +27635,67 @@ class SourceGraphBuilder:
                 batch += 1
                 if batch % 25000 == 0:
                     self.db.commit()
+
+        if relevant_path_ids is not None:
+            self.asset_map_required_path_ids = sum(
+                len(path_ids) for path_ids in relevant_path_ids.values()
+            )
+            self.asset_map_matched_path_ids = len(matched_relevant_path_ids)
+            self.ingest_counts["assetMaps.relevantPathIds"] = self.asset_map_required_path_ids
+            self.ingest_counts["assetMaps.matchedPathIds"] = self.asset_map_matched_path_ids
+            self.ingest_counts["assetMaps.matchedEntries"] = batch
+            self.db.execute(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+                ("asset_map_required_path_ids", str(self.asset_map_required_path_ids)),
+            )
+            self.db.execute(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+                ("asset_map_matched_path_ids", str(self.asset_map_matched_path_ids)),
+            )
+
+    def relevant_asset_map_path_ids(self) -> dict[str, set[str]]:
+        """Return only original AssetMap identities consumed by WebUI graph edges.
+
+        Material and shader owners carry the exact StreamingAssets/Persistent
+        source used by the original map. FMV owners instead serialize that
+        source in the binding edge payload. Keeping the complete matching map
+        row preserves name/export-base fallback edges while avoiding millions
+        of unrelated Unity rows in the WebUI build.
+        """
+        relevant: dict[str, set[str]] = defaultdict(set)
+        rows = self.db.execute(
+            """
+            SELECT owner.source, pathid.id
+            FROM edges edge
+            JOIN nodes owner ON owner.id = edge.src
+            JOIN nodes pathid ON pathid.id = edge.dst
+            WHERE edge.kind IN (
+                'uses_shader_pathid',
+                'uses_texture_pathid',
+                'shader_program_pathid'
+            )
+            """
+        ).fetchall()
+        for source, pathid_node in rows:
+            source_key = safe_key(source)
+            path_id = node_key(pathid_node)
+            if source_key in ASSET_MAPS and path_id:
+                relevant[source_key].add(path_id)
+
+        fmv_rows = self.db.execute(
+            """
+            SELECT edge.dst, edge.data
+            FROM edges edge
+            WHERE edge.kind = 'fmv_binding_playable_pathid'
+            """
+        ).fetchall()
+        for pathid_node, edge_data in fmv_rows:
+            data = parse_json_text(edge_data) if edge_data else {}
+            source_key = safe_key(data.get("sourceRoot")) if isinstance(data, dict) else ""
+            path_id = node_key(pathid_node)
+            if source_key in ASSET_MAPS and path_id:
+                relevant[source_key].add(path_id)
+        return relevant
 
     def link_material_pathid_unity_assets(self) -> None:
         shader_rows = self.db.execute(
@@ -27399,6 +28719,9 @@ class SourceGraphBuilder:
             "options": {
                 "includeGameplay": self.include_gameplay,
                 "includeAssetMaps": self.include_asset_maps,
+                "assetMapScope": self.asset_map_scope,
+                "assetMapRequiredPathIds": self.asset_map_required_path_ids,
+                "assetMapMatchedPathIds": self.asset_map_matched_path_ids,
                 "includeReferenceRows": self.include_reference_rows,
                 "includeAllMaterialJson": self.include_all_material_json,
                 "includeI18nValues": self.include_i18n_values,
@@ -27425,6 +28748,7 @@ def write_summary(summary: dict[str, Any], *, output_dir: Path = GRAPH_DIR) -> N
         f"- Edges: `{summary['totals']['edges']}`",
         f"- Aliases: `{summary['totals']['aliases']}`",
         f"- Files: `{summary['totals']['files']}`",
+        f"- Asset-map scope: `{summary.get('options', {}).get('assetMapScope', 'full')}`",
         "",
         "## Nodes By Kind",
         "",
@@ -28724,6 +30048,11 @@ QUERY_KIND_PRIORITY = {
     "animation_cutscene_ref": 88,
     "animation_path_ref": 89,
     "ai_config": 90,
+    "native_runtime_receiver": 90.3,
+    "native_runtime_event": 90.4,
+    "atmospheric_npc_switcher": 90.5,
+    "atmospheric_npc_switcher_group": 90.6,
+    "atmospheric_env_talk_state_context": 90.7,
     "atmospheric_npc_cluster": 91,
     "char_interact_perform_config": 92,
     "char_interact_asset_reference": 93,
@@ -29545,6 +30874,11 @@ NODE_ID_PREFIXES = (
     "animation_cutscene_ref",
     "animation_path_ref",
     "ai_config",
+    "native_runtime_receiver",
+    "native_runtime_event",
+    "atmospheric_npc_switcher",
+    "atmospheric_npc_switcher_group",
+    "atmospheric_env_talk_state_context",
     "atmospheric_npc_cluster",
     "char_interact_perform_config",
     "char_interact_asset_reference",
@@ -30918,6 +32252,20 @@ MISSION_FLOW_EDGE_KINDS = (
     "mission_runtime_has_quest",
     "quest_task_in_mission",
     "quest_task_depends_on_previous",
+    "mission_has_atmospheric_env_talk_state_context",
+    "atmospheric_env_talk_state_context_for_mission",
+    "quest_state_conditions_atmospheric_env_talk_context",
+    "mission_state_conditions_atmospheric_env_talk_context",
+    "mission_binds_atmospheric_env_talk_context",
+    "atmospheric_env_talk_context_uses_switcher_group",
+    "atmospheric_switcher_group_contains_env_talk_cluster",
+    "atmospheric_env_talk_context_reaches_story",
+    "story_has_atmospheric_env_talk_state_context",
+    "native_runtime_receiver_reaches_story",
+    "story_has_unresolved_native_runtime_receiver",
+    "native_runtime_receiver_uses_event",
+    "native_runtime_receiver_uses_level_script",
+    "native_runtime_receiver_in_level",
     "quest_task_rewards",
     "quest_objective_text",
     "quest_description_override_text",
@@ -35449,7 +36797,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     build.add_argument("--db", type=Path, default=DEFAULT_DB)
     build.add_argument("--language", default="CN")
     build.add_argument("--skip-gameplay", action="store_true")
-    build.add_argument("--skip-asset-maps", action="store_true")
+    asset_map_mode = build.add_mutually_exclusive_group()
+    asset_map_mode.add_argument("--skip-asset-maps", action="store_true")
+    asset_map_mode.add_argument(
+        "--relevant-asset-maps",
+        action="store_true",
+        help=(
+            "Ingest only original AssetMap rows referenced by material, shader, "
+            "texture, or FMV graph edges. This preserves WebUI Presentation links "
+            "without indexing every unrelated Unity object."
+        ),
+    )
     build.add_argument("--skip-reference-rows", action="store_true")
     build.add_argument("--include-all-material-json", action="store_true")
     build.add_argument("--include-i18n-values", action="store_true", help="Opt in to per-language I18nTextTable_* value nodes; can add many nodes.")
@@ -35705,6 +37063,7 @@ def main(argv: list[str] | None = None) -> int:
             language=getattr(args, "language", "CN"),
             include_gameplay=not getattr(args, "skip_gameplay", False),
             include_asset_maps=not getattr(args, "skip_asset_maps", False),
+            relevant_asset_maps_only=getattr(args, "relevant_asset_maps", False),
             include_reference_rows=not getattr(args, "skip_reference_rows", False),
             include_all_material_json=getattr(args, "include_all_material_json", False),
             include_i18n_values=getattr(args, "include_i18n_values", False),
