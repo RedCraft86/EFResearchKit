@@ -550,6 +550,64 @@ class SourceStoryPartialOrderTests(unittest.TestCase):
         self.assertTrue(all(edge["tier"] == "strong" for edge in native_edges))
         self.assertEqual(result["summary"]["comparableScenePairs"], 3)
 
+    def test_while_action_path_is_reachability_not_global_story_order(self) -> None:
+        candidates = {"radio_m1_1": "radio", "radio_m1_2": "radio"}
+        payload = mission_payload([])
+
+        def owner(path: list[tuple[int, str]]) -> dict:
+            return {
+                "status": "exact_serialized_control_path",
+                "headerName": "ScriptEvent_OnLeaderEnterTriggerVolume",
+                "headerLocalId": 4,
+                "path": [
+                    {"localId": local_id, "edge": edge}
+                    for local_id, edge in path
+                ],
+            }
+
+        payload["flow"]["missionStoryConnections"] = [
+            {
+                "key": "radio_m1_1",
+                "levelScriptOccurrences": [{
+                    "levelId": "map_test",
+                    "scriptId": "70000000001",
+                    "sourceFile": "fixture.json",
+                    "nativeEventOwners": [owner([
+                        (5, "ActionHeader.nextId"),
+                        (6, "WhileAction.doAction"),
+                    ])],
+                }],
+            },
+            {
+                "key": "radio_m1_2",
+                "levelScriptOccurrences": [{
+                    "levelId": "map_test",
+                    "scriptId": "70000000001",
+                    "sourceFile": "fixture.json",
+                    "nativeEventOwners": [owner([
+                        (5, "ActionHeader.nextId"),
+                        (6, "WhileAction.doAction"),
+                        (7, "ActionBase.nextId"),
+                    ])],
+                }],
+            },
+        ]
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            candidates,
+            payload,
+        )
+
+        self.assertEqual(
+            [],
+            [
+                edge
+                for edge in result["directEdges"]
+                if edge["kind"] == "levelscriptNativeControlPath"
+            ],
+        )
+
     def test_exact_native_path_admits_cross_owner_scene_context(self) -> None:
         candidates = {"radio_m1_1": "radio"}
         payload = mission_payload([])
@@ -901,6 +959,167 @@ class SourceStoryPartialOrderTests(unittest.TestCase):
             ["dlg_override_only"],
         )
 
+    def test_preload_only_source_node_is_definition_not_unresolved(
+        self,
+    ) -> None:
+        candidates = {"radio_m1_1": "radio"}
+        payload = mission_payload([{
+            "from": "radio_m1_1",
+            "to": "cutscene_test_preload",
+            "kind": "levelscriptSceneChain",
+            "fromActionClasses": ["play_radio"],
+            "toActionClasses": ["preload_cutscene"],
+            "sourceFiles": ["preload-source.json"],
+            "levelIds": ["level_preload"],
+        }])
+        next(
+            node
+            for node in payload["flow"]["sceneGraph"]["nodes"]
+            if node["key"] == "cutscene_test_preload"
+        )["kind"] = "cutscene"
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            candidates,
+            payload,
+        )
+
+        self.assertEqual(result["unresolvedSourceNodes"], [])
+        self.assertEqual(
+            result["definitionOnlySourceNodes"],
+            [{
+                "key": "cutscene_test_preload",
+                "kind": "cutscene",
+                "incidentEdgeKinds": ["levelscriptSceneChain"],
+                "recordClasses": ["preload_cutscene"],
+                "sourceFiles": ["preload-source.json"],
+                "levelIds": ["level_preload"],
+            }],
+        )
+        self.assertEqual(
+            result["summary"]["definitionOnlySourceNodeCount"],
+            1,
+        )
+
+    def test_final_playback_source_node_remains_unresolved(self) -> None:
+        candidates = {"radio_m1_1": "radio"}
+        payload = mission_payload([{
+            "from": "radio_m1_1",
+            "to": "cutscene_missing_playback",
+            "kind": "levelscriptSceneChain",
+            "fromActionClasses": ["play_radio"],
+            "toActionClasses": ["play_cutscene"],
+        }])
+        next(
+            node
+            for node in payload["flow"]["sceneGraph"]["nodes"]
+            if node["key"] == "cutscene_missing_playback"
+        )["kind"] = "cutscene"
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            candidates,
+            payload,
+        )
+
+        self.assertEqual(
+            [row["key"] for row in result["unresolvedSourceNodes"]],
+            ["cutscene_missing_playback"],
+        )
+        self.assertEqual(result["definitionOnlySourceNodes"], [])
+
+    def test_global_final_playback_overrides_preload_only_incident_edge(
+        self,
+    ) -> None:
+        candidates = {"radio_m1_1": "radio"}
+        payload = mission_payload([{
+            "from": "radio_m1_1",
+            "to": "cutscene_played_elsewhere",
+            "kind": "levelscriptSceneChain",
+            "fromActionClasses": ["play_radio"],
+            "toActionClasses": ["preload_cutscene"],
+        }])
+        next(
+            node
+            for node in payload["flow"]["sceneGraph"]["nodes"]
+            if node["key"] == "cutscene_played_elsewhere"
+        )["kind"] = "cutscene"
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            candidates,
+            payload,
+            exact_playback_source_keys={"cutscene_played_elsewhere"},
+        )
+
+        self.assertEqual(
+            [row["key"] for row in result["unresolvedSourceNodes"]],
+            ["cutscene_played_elsewhere"],
+        )
+        self.assertEqual(result["definitionOnlySourceNodes"], [])
+
+    def test_exact_playback_source_file_adds_cross_owner_context(
+        self,
+    ) -> None:
+        payload = mission_payload([{
+            "from": "radio_m1_1",
+            "to": "cutscene_other_owner_1",
+            "kind": "levelscriptSceneChain",
+            "sourceFiles": ["source.json"],
+        }])
+        candidates, context_keys = (
+            partial_order._expand_levelscript_playback_context_candidates(
+                {"radio_m1_1": "radio"},
+                payload,
+                {"cutscene_other_owner_1": "cutscene"},
+                {"cutscene_other_owner_1": {"source.json"}},
+            )
+        )
+
+        self.assertEqual(
+            candidates["cutscene_other_owner_1"],
+            "cutscene",
+        )
+        self.assertEqual(
+            context_keys,
+            {"cutscene_other_owner_1"},
+        )
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            candidates,
+            payload,
+            exact_levelscript_playback_context_keys=context_keys,
+        )
+        context_node = next(
+            node
+            for node in result["nodes"]
+            if node["key"] == "cutscene_other_owner_1"
+        )
+        self.assertEqual(
+            context_node["membership"],
+            "exactLevelScriptPlaybackContext",
+        )
+
+    def test_playback_context_requires_same_source_file(self) -> None:
+        payload = mission_payload([{
+            "from": "radio_m1_1",
+            "to": "cutscene_other_owner_1",
+            "kind": "levelscriptSceneChain",
+            "sourceFiles": ["mission-source.json"],
+        }])
+
+        candidates, context_keys = (
+            partial_order._expand_levelscript_playback_context_candidates(
+                {"radio_m1_1": "radio"},
+                payload,
+                {"cutscene_other_owner_1": "cutscene"},
+                {"cutscene_other_owner_1": {"other-source.json"}},
+            )
+        )
+
+        self.assertEqual(candidates, {"radio_m1_1": "radio"})
+        self.assertEqual(context_keys, set())
+
     def test_quest_forks_and_merges_are_preserved(self) -> None:
         candidates = {"dlg_a": "dlg"}
         payload = mission_payload(
@@ -996,6 +1215,208 @@ class SourceStoryPartialOrderTests(unittest.TestCase):
         self.assertEqual(groups[0]["provenance"]["kind"], "DialogTimelineRuntimeJump")
         self.assertEqual(result["summary"]["dialogLineOptionRouteCount"], 2)
 
+    def test_exact_timeline_clip_option_indices_are_source_backed(self) -> None:
+        conv = {
+            "key": "dlg_m1_clip_indices",
+            "optionGroups": [{
+                "g": 1,
+                "after": "dlg_m1_clip_indices_001",
+                "options": [
+                    {
+                        "id": "option_1",
+                        "branchLines": [
+                            "dlg_m1_clip_indices_002",
+                            "dlg_m1_clip_indices_003",
+                        ],
+                    },
+                    {
+                        "id": "option_2",
+                        "branchLines": ["dlg_m1_clip_indices_004"],
+                    },
+                ],
+                "optionBranchRisk": {
+                    "code": "timelineClipOptionIndexBranches",
+                    "reason": "runtimeClipOptionIndex",
+                    "source": "dialogTimeline",
+                    "candidateMapping": "trunkClipOptionIndex",
+                    "optionIndex": [1, 2],
+                    "branchLineIdsByOption": {
+                        "option_1": [
+                            "dlg_m1_clip_indices_002",
+                            "dlg_m1_clip_indices_003",
+                        ],
+                        "option_2": ["dlg_m1_clip_indices_004"],
+                    },
+                    "commonContinuationLineId":
+                        "dlg_m1_clip_indices_005",
+                    "assetTracks": ["Dialog Option Track.json"],
+                },
+            }],
+        }
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"dlg_m1_clip_indices": "dlg"},
+            mission_payload([]),
+            [("conv/dlg_m1_clip_indices.json", conv)],
+        )
+
+        groups = result["branches"]["dialogLineOptions"]
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(
+            groups[0]["provenance"]["kind"],
+            "DialogTimelineClipOptionIndex",
+        )
+        self.assertEqual(
+            [option["branchLineIds"] for option in groups[0]["options"]],
+            [
+                [
+                    "dlg_m1_clip_indices_002",
+                    "dlg_m1_clip_indices_003",
+                ],
+                ["dlg_m1_clip_indices_004"],
+            ],
+        )
+        self.assertEqual(result["summary"]["dialogLineOptionRouteCount"], 2)
+
+    def test_pre_dialog_runtime_jump_signature_is_source_backed(self) -> None:
+        conv = {
+            "key": "dlg_m1_pre",
+            "optionGroups": [{
+                "g": 1,
+                "position": "pre",
+                "options": [
+                    {"id": "option_1", "branchLines": ["dlg_m1_pre_001"]},
+                    {"id": "option_2", "branchLines": ["dlg_m1_pre_004"]},
+                ],
+                "optionBranchRisk": {
+                    "code": "timelineRouteBranches",
+                    "reason": "runtimeJumpTrack",
+                    "source": "dialogTimeline",
+                    "branchLineIdsByOption": {
+                        "option_1": [
+                            "dlg_m1_pre_001",
+                            "dlg_m1_pre_002",
+                            "dlg_m1_pre_003",
+                        ],
+                        "option_2": [
+                            "dlg_m1_pre_004",
+                            "dlg_m1_pre_005",
+                            "dlg_m1_pre_006",
+                        ],
+                    },
+                    "assetTracks": ["Runtime Jump Track.json"],
+                },
+            }],
+        }
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"dlg_m1_pre": "dlg"},
+            mission_payload([]),
+            [("conv/dlg_m1_pre.json", conv)],
+        )
+
+        groups = result["branches"]["dialogLineOptions"]
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["after"], "")
+        self.assertEqual(groups[0]["provenance"]["kind"], "DialogTimelineRuntimeJump")
+        self.assertEqual(result["summary"]["dialogLineOptionRouteCount"], 2)
+
+    def test_direct_dialog_tree_branch_debug_is_source_provenance(self) -> None:
+        conv = {
+            "key": "dlg_m1_direct",
+            "optionGroups": [{
+                "g": 1,
+                "after": "dlg_m1_direct_001",
+                "options": [{
+                    "id": "option_1",
+                    "branchLines": ["dlg_m1_direct_002"],
+                    "_debug": {
+                        "branchLineSources": [{
+                            "kind": "DialogTree",
+                            "sourceKey": "dlg_m1_direct",
+                            "file": "export_full/source/DialogTree/dlg_m1_direct.json",
+                        }],
+                    },
+                }, {
+                    "id": "option_2",
+                    "branchLines": ["dlg_m1_direct_003"],
+                    "_debug": {
+                        "branchLineSources": [{
+                            "kind": "DialogTree",
+                            "sourceKey": "dlg_m1_direct",
+                            "file": "export_full/source/DialogTree/dlg_m1_direct.json",
+                        }],
+                    },
+                }],
+            }],
+        }
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"dlg_m1_direct": "dlg"},
+            mission_payload([]),
+            [("conv/dlg_m1_direct.json", conv)],
+        )
+
+        groups = result["branches"]["dialogLineOptions"]
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["provenance"]["kind"], "DialogTreeBranchLines")
+        self.assertEqual(
+            groups[0]["provenance"]["sourceFiles"],
+            ["export_full/source/DialogTree/dlg_m1_direct.json"],
+        )
+
+    def test_runtime_jump_direct_continuation_is_a_complete_route(self) -> None:
+        conv = {
+            "key": "dlg_m1_direct_continue",
+            "optionGroups": [{
+                "g": 1,
+                "after": "dlg_m1_direct_continue_001",
+                "options": [
+                    {
+                        "id": "option_1",
+                        "branchLines": ["dlg_m1_direct_continue_002"],
+                    },
+                    {"id": "option_2"},
+                ],
+                "optionBranchRisk": {
+                    "code": "timelineRouteBranches",
+                    "reason": "runtimeJumpTrack",
+                    "source": "dialogTimeline",
+                    "branchLineIdsByOption": {
+                        "option_1": ["dlg_m1_direct_continue_002"],
+                        "option_2": [],
+                    },
+                    "directContinuationOptionIds": ["option_2"],
+                    "commonContinuationLineId":
+                        "dlg_m1_direct_continue_003",
+                    "assetTracks": ["Runtime Jump Track.json"],
+                },
+            }],
+        }
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"dlg_m1_direct_continue": "dlg"},
+            mission_payload([]),
+            [("conv/dlg_m1_direct_continue.json", conv)],
+        )
+
+        groups = result["branches"]["dialogLineOptions"]
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(result["summary"]["dialogLineOptionRouteCount"], 2)
+        self.assertEqual(
+            groups[0]["directContinuationOptionIds"],
+            ["option_2"],
+        )
+        self.assertEqual(
+            groups[0]["options"][1]["continuationLineId"],
+            "dlg_m1_direct_continue_003",
+        )
+        self.assertTrue(groups[0]["options"][1]["directContinuation"])
+
     def test_inferred_option_routes_are_excluded(self) -> None:
         conv = {
             "key": "dlg_m1_3",
@@ -1021,6 +1442,14 @@ class SourceStoryPartialOrderTests(unittest.TestCase):
             result["branches"]["excludedDialogLineOptions"][0]["exclusionReason"],
             "inferredOrUnsupportedRisk",
         )
+        self.assertEqual(
+            result["summary"]["actionableExcludedDialogLineOptionGroupCount"],
+            1,
+        )
+        self.assertEqual(
+            result["summary"]["closedExcludedDialogLineOptionGroupCount"],
+            0,
+        )
 
     def test_option_group_without_explicit_route_stays_unknown(self) -> None:
         conv = {
@@ -1040,6 +1469,449 @@ class SourceStoryPartialOrderTests(unittest.TestCase):
         self.assertEqual(
             result["branches"]["noExplicitRouteGroups"][0]["reason"],
             "noExplicitSourceRoute",
+        )
+        self.assertEqual(
+            result["summary"]["branchingNoExplicitRouteGroupCount"],
+            1,
+        )
+        self.assertEqual(
+            result["summary"]["singleOptionNoExplicitRouteGroupCount"],
+            0,
+        )
+
+    def test_complete_authored_terminal_outcomes_are_closed_not_missing(self) -> None:
+        conv = {
+            "key": "dlg_m1_terminal",
+            "optionGroups": [{
+                "g": 1,
+                "after": "dlg_m1_terminal_001",
+                "options": [{"id": "option_1"}, {"id": "option_2"}],
+            }],
+            "sceneGraphLinks": [{
+                "sourceKey": "dlg_m1_terminal",
+                "file": "export_full/source/DialogTree/dlg_m1_terminal.json",
+                "after": "dlg_m1_terminal_001",
+                "options": [{
+                    "optionId": "option_1",
+                    "terminal": "openUi",
+                    "outcomeKind": "terminalOnly",
+                }, {
+                    "optionId": "option_2",
+                    "terminal": "finish",
+                    "outcomeKind": "terminalOnly",
+                }],
+            }],
+        }
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"dlg_m1_terminal": "dlg"},
+            mission_payload([]),
+            [("conv/dlg_m1_terminal.json", conv)],
+        )
+
+        self.assertEqual(result["branches"]["noExplicitRouteGroups"], [])
+        self.assertEqual(
+            result["summary"]["closedExcludedDialogLineOptionGroupCount"],
+            1,
+        )
+        row = result["branches"]["closedExcludedDialogLineOptions"][0]
+        self.assertEqual(
+            row["exclusionReason"],
+            "authoredNonLineOptionOutcomes",
+        )
+        self.assertEqual(
+            row["outcomesByOption"]["option_1"][0]["terminal"],
+            "openUi",
+        )
+
+    def test_partial_authored_terminal_outcomes_remain_actionable(self) -> None:
+        conv = {
+            "key": "dlg_m1_partial_terminal",
+            "optionGroups": [{
+                "g": 1,
+                "after": "dlg_m1_partial_terminal_001",
+                "options": [{"id": "option_1"}, {"id": "option_2"}],
+            }],
+            "sceneGraphLinks": [{
+                "sourceKey": "dlg_m1_partial_terminal",
+                "file":
+                    "export_full/source/DialogTree/dlg_m1_partial_terminal.json",
+                "after": "dlg_m1_partial_terminal_001",
+                "options": [{
+                    "optionId": "option_1",
+                    "terminal": "finish",
+                    "outcomeKind": "terminalOnly",
+                }],
+            }],
+        }
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"dlg_m1_partial_terminal": "dlg"},
+            mission_payload([]),
+            [("conv/dlg_m1_partial_terminal.json", conv)],
+        )
+
+        self.assertEqual(result["branches"]["noExplicitRouteGroups"], [])
+        self.assertEqual(
+            result["summary"]["actionableExcludedDialogLineOptionGroupCount"],
+            1,
+        )
+        row = result["branches"]["actionableExcludedDialogLineOptions"][0]
+        self.assertEqual(
+            row["exclusionReason"],
+            "incompleteAuthoredNonLineOptionOutcomes",
+        )
+
+    def test_partial_authored_outcome_closes_proven_definition_only_rows(
+        self,
+    ) -> None:
+        conv = {
+            "key": "dlg_m1_partial_definition",
+            "optionGroups": [{
+                "g": 1,
+                "after": "dlg_m1_partial_definition_001",
+                "options": [{"id": "option_1"}, {"id": "option_2"}],
+                "_debug": {
+                    "partialAuthoredOptionCoverage": {
+                        "authoredOptionIds": ["option_1"],
+                        "definitionOnlyOptionIds": ["option_2"],
+                    },
+                },
+            }],
+            "sceneGraphLinks": [{
+                "sourceKey": "dlg_m1_partial_definition",
+                "file":
+                    "export_full/source/DialogTree/"
+                    "dlg_m1_partial_definition.json",
+                "after": "dlg_m1_partial_definition_001",
+                "options": [{
+                    "optionId": "option_1",
+                    "terminal": "finish",
+                    "outcomeKind": "terminalOnly",
+                }],
+            }],
+        }
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"dlg_m1_partial_definition": "dlg"},
+            mission_payload([]),
+            [("conv/dlg_m1_partial_definition.json", conv)],
+        )
+
+        self.assertEqual(
+            result["summary"]["actionableExcludedDialogLineOptionGroupCount"],
+            0,
+        )
+        row = result["branches"]["closedExcludedDialogLineOptions"][0]
+        self.assertEqual(
+            row["exclusionReason"],
+            "authoredOutcomesWithDefinitionOnlyRows",
+        )
+        self.assertEqual(row["definitionOnlyOptionIds"], ["option_2"])
+        self.assertEqual(row["coveredOptionIds"], ["option_1"])
+
+    def test_unregistered_scene_without_authored_consumer_is_closed(
+        self,
+    ) -> None:
+        conv = {
+            "key": "dlg_m1_unregistered",
+            "_debug": {
+                "runtimeRegistry": {
+                    "registered": False,
+                    "sceneKey": "dlg_m1_unregistered",
+                    "reason": "sceneKey is not present in DialogIdTable",
+                },
+            },
+            "optionGroups": [{
+                "g": 1,
+                "options": [{"id": "option_1"}, {"id": "option_2"}],
+            }],
+        }
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"dlg_m1_unregistered": "dlg"},
+            mission_payload([]),
+            [("conv/dlg_m1_unregistered.json", conv)],
+        )
+
+        self.assertEqual(result["branches"]["noExplicitRouteGroups"], [])
+        self.assertEqual(
+            result["summary"]["actionableExcludedDialogLineOptionGroupCount"],
+            0,
+        )
+        row = result["branches"]["closedExcludedDialogLineOptions"][0]
+        self.assertEqual(
+            row["exclusionReason"],
+            "unregisteredSceneWithoutAuthoredOptionConsumer",
+        )
+        self.assertFalse(row["runtimeRegistry"]["registered"])
+
+    def test_unregistered_sibling_template_risk_is_closed(self) -> None:
+        conv = {
+            "key": "dlg_m1_unregistered_risk",
+            "_debug": {
+                "runtimeRegistry": {
+                    "registered": False,
+                    "sceneKey": "dlg_m1_unregistered_risk",
+                },
+            },
+            "optionGroups": [{
+                "g": 1,
+                "options": [{"id": "option_1"}, {"id": "option_2"}],
+                "optionBranchRisk": {
+                    "code": "siblingSceneTextBranches",
+                    "reason": "siblingSceneTemplate",
+                    "source": "siblingSceneGraphText",
+                },
+            }],
+        }
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"dlg_m1_unregistered_risk": "dlg"},
+            mission_payload([]),
+            [("conv/dlg_m1_unregistered_risk.json", conv)],
+        )
+
+        row = result["branches"]["closedExcludedDialogLineOptions"][0]
+        self.assertEqual(
+            row["exclusionReason"],
+            "unregisteredSceneWithoutAuthoredOptionConsumer",
+        )
+        self.assertEqual(
+            row["retainedRiskEvidence"]["code"],
+            "siblingSceneTextBranches",
+        )
+
+    def test_definition_only_branch_lines_do_not_create_actionable_gap(
+        self,
+    ) -> None:
+        conv = {
+            "key": "dlg_m1_partial_branch",
+            "optionGroups": [{
+                "g": 1,
+                "options": [{
+                    "id": "option_1",
+                    "branchLines": ["dlg_m1_partial_branch_001"],
+                }, {
+                    "id": "option_2",
+                    "branchLines": ["dlg_m1_partial_branch_002"],
+                }],
+                "_debug": {
+                    "partialAuthoredOptionCoverage": {
+                        "authoredOptionIds": ["option_1"],
+                        "definitionOnlyOptionIds": ["option_2"],
+                    },
+                },
+            }],
+            "sceneGraphLinks": [{
+                "sourceKey": "dlg_m1_partial_branch",
+                "file": "export_full/source/DialogTree/partial.json",
+                "after": "",
+                "options": [{
+                    "optionId": "option_1",
+                    "firstLineId": "dlg_m1_partial_branch_001",
+                    "pathLineIds": ["dlg_m1_partial_branch_001"],
+                }],
+            }],
+        }
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"dlg_m1_partial_branch": "dlg"},
+            mission_payload([]),
+            [("conv/dlg_m1_partial_branch.json", conv)],
+        )
+
+        self.assertEqual(
+            len(result["branches"]["dialogLineOptions"]),
+            1,
+        )
+        self.assertEqual(
+            result["branches"]["closedExcludedDialogLineOptions"][0][
+                "exclusionReason"
+            ],
+            "branchLinesForDefinitionOnlyRows",
+        )
+        self.assertEqual(
+            result["summary"]["actionableExcludedDialogLineOptionGroupCount"],
+            0,
+        )
+
+    def test_exact_dialog_tree_option_node_layout_negatives_are_closed(
+        self,
+    ) -> None:
+        for code, reason in (
+            (
+                "separateDialogTreeOptionNodes",
+                "distinctAuthoredOptionNodes",
+            ),
+            (
+                "orphanDialogTreeOptionDefinitions",
+                "optionNodeHasNoOutgoingConnection",
+            ),
+        ):
+            with self.subTest(code=code):
+                conv = {
+                    "key": f"dlg_m1_{code}",
+                    "optionGroups": [{
+                        "g": 1,
+                        "options": [
+                            {"id": "option_1"},
+                            {"id": "option_2"},
+                        ],
+                        "optionBranchRisk": {
+                            "code": code,
+                            "reason": reason,
+                            "source": "dialogTree",
+                        },
+                    }],
+                }
+                result = partial_order.build_mission_partial_order(
+                    "m1",
+                    {conv["key"]: "dlg"},
+                    mission_payload([]),
+                    [(f"conv/{conv['key']}.json", conv)],
+                )
+
+                row = result["branches"][
+                    "closedExcludedDialogLineOptions"
+                ][0]
+                self.assertEqual(
+                    row["exclusionReason"],
+                    "closedDialogTreeOptionLayout",
+                )
+                self.assertEqual(
+                    result["summary"][
+                        "actionableExcludedDialogLineOptionGroupCount"
+                    ],
+                    0,
+                )
+
+    def test_single_option_without_route_is_not_a_missing_choice_branch(self) -> None:
+        conv = {
+            "key": "dlg_m1_ack",
+            "optionGroups": [{
+                "g": 1,
+                "after": "dlg_m1_ack_001",
+                "options": [{"id": "option_ack"}],
+            }],
+        }
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"dlg_m1_ack": "dlg"},
+            mission_payload([]),
+            [("conv/dlg_m1_ack.json", conv)],
+        )
+
+        self.assertEqual(
+            result["summary"]["singleOptionNoExplicitRouteGroupCount"],
+            1,
+        )
+        self.assertEqual(
+            result["summary"]["branchingNoExplicitRouteGroupCount"],
+            0,
+        )
+        self.assertEqual(
+            result["branches"]["singleOptionNoExplicitRouteGroups"][0][
+                "storyKey"
+            ],
+            "dlg_m1_ack",
+        )
+
+    def test_shared_and_cosmetic_exclusions_are_closed_option_evidence(self) -> None:
+        conversations = [
+            ("conv/dlg_m1_shared.json", {
+                "key": "dlg_m1_shared",
+                "optionGroups": [{
+                    "g": 1,
+                    "after": "dlg_m1_shared_001",
+                    "options": [{"id": "option_1"}, {"id": "option_2"}],
+                    "optionBranchRisk": {
+                        "code": "sharedTimelineContinuation",
+                        "reason": "defaultTrunkClipContinuation",
+                    },
+                }],
+            }),
+            ("conv/dlg_m1_cosmetic.json", {
+                "key": "dlg_m1_cosmetic",
+                "optionGroups": [{
+                    "g": 1,
+                    "after": "dlg_m1_cosmetic_001",
+                    "options": [{"id": "option_1"}, {"id": "option_2"}],
+                    "optionBranchRisk": {
+                        "code": "cosmeticChoice",
+                        "reason": "treeSourcedConvergence",
+                    },
+                }],
+            }),
+            ("conv/dlg_m1_sequential.json", {
+                "key": "dlg_m1_sequential",
+                "optionGroups": [{
+                    "g": 1,
+                    "after": "dlg_m1_sequential_001",
+                    "options": [{"id": "option_1"}, {"id": "option_2"}],
+                    "optionBranchRisk": {
+                        "code": "sequentialTimelineOptionPrompts",
+                        "reason": "distinctZeroIndexTimelineSlots",
+                    },
+                }],
+            }),
+            ("conv/dlg_m1_terminal_slot.json", {
+                "key": "dlg_m1_terminal_slot",
+                "optionGroups": [{
+                    "g": 1,
+                    "after": "dlg_m1_terminal_slot_001",
+                    "options": [{"id": "option_1"}, {"id": "option_2"}],
+                    "optionBranchRisk": {
+                        "code": "terminalTimelineOptionSlot",
+                        "reason": "afterLastLocalTimelineLine",
+                    },
+                }],
+            }),
+            ("conv/dlg_m1_foreign_options.json", {
+                "key": "dlg_m1_foreign_options",
+                "optionGroups": [{
+                    "g": 1,
+                    "after": "dlg_m1_foreign_options_001",
+                    "options": [{"id": "option_1"}, {"id": "option_2"}],
+                    "optionBranchRisk": {
+                        "code": "foreignTimelineOptionDefinitions",
+                        "reason": "cinematicConsumesForeignOptionIds",
+                    },
+                }],
+            }),
+        ]
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {
+                "dlg_m1_shared": "dlg",
+                "dlg_m1_cosmetic": "dlg",
+                "dlg_m1_sequential": "dlg",
+                "dlg_m1_terminal_slot": "dlg",
+                "dlg_m1_foreign_options": "dlg",
+            },
+            mission_payload([]),
+            conversations,
+        )
+
+        self.assertEqual(
+            result["summary"]["closedExcludedDialogLineOptionGroupCount"],
+            5,
+        )
+        self.assertEqual(
+            result["summary"]["actionableExcludedDialogLineOptionGroupCount"],
+            0,
+        )
+        self.assertEqual(
+            len(result["branches"]["closedExcludedDialogLineOptions"]),
+            5,
         )
 
     def test_manual_option_evidence_is_never_promoted(self) -> None:

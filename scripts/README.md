@@ -302,12 +302,17 @@ that index, run:
 
 ```bat
 python scripts\story_recovery\build_animestudio_story_carrier_audit.py
+python scripts\story_recovery\build_animestudio_story_gameobject_audit.py
+python scripts\story_recovery\build_animestudio_story_reverse_pptr_audit.py
+python scripts\story_recovery\build_cutscene_timeline_event_surface_audit.py
+python scripts\story_recovery\build_animestudio_story_guide_consumer_audit.py
 ```
 
-The audit reads the current source-gap queue and reports only exact actionable
-Story values that occur in typed Story-id fields on the same completely decoded
-object as typed mission/quest or scene/script identifiers. It validates the
-merged summary, stage signature, and output hashes first. Partial/truncated
+The carrier audit reads the current source-gap queue and reports only exact
+actionable Story values that occur in typed Story-id fields on the same
+completely decoded object as typed mission/quest or scene/script identifiers.
+It validates the merged summary, stage signature, and output hashes first.
+Partial/truncated
 objects, unresolved MonoScript identity, substrings, names, neighboring
 objects, PathID proximity, OCR, and manual overrides are rejected. Output goes
 to `reports/story/recovery/animestudio_story_carrier_audit.{json,md}`. Rows are
@@ -316,6 +321,74 @@ ownership or playback, and the audit never creates an order edge.
 `--output-root` is the `export_full` root, not its nested
 `recovered/AnimeStudio-cli` directory; the default already uses the repository
 `export_full`.
+
+The GameObject audit consumes the same validated index but follows only exact,
+resolved `m_GameObject` PPtrs from actionable Story-bearing objects. It maps
+their physical chunk offsets through the current VFS index, extracts only the
+original logical AssetBundles, exports their GameObjects in a temporary
+`tmp/story/` work directory, and resolves exact sibling component PathIDs plus
+the complete recursive Transform child hierarchy back through the typed object
+index. Child traversal is accepted only when each parent `m_Children` relation
+agrees with the child's `m_Father`; unresolved or inconsistent hierarchies fail
+closed. Output goes to
+`reports/story/recovery/animestudio_story_gameobject_audit.{json,md}`.
+GameObject co-membership and Transform ancestry are exact serialized evidence,
+but a typed mission/runtime sibling or descendant is still only a candidate
+until native consumer semantics prove playback or ownership; neither supplies
+order by itself.
+Pass `--game-root PATH` or set `ENDFIELD_GAME_ROOT` when the installed
+`Endfield_Data` root is not at the repository default.
+
+The reverse-PPtr audit scans the complete validated object index a second time
+for exact resolved references into the current actionable Story-bearing
+objects. It separates same-file Timeline composition from cross-file
+`PlayableDirector.m_PlayableAsset` bindings, then exports only the director
+host bundles and resolves their exact Transform ancestry, descendants, typed
+components, and `CutsceneRootComponent._timelineName` values. Output goes to
+`reports/story/recovery/animestudio_story_reverse_pptr_audit.{json,md}`.
+The current hash-gated native mapping additionally promotes a cross-Story row
+to a root playback alias only when that exact CutsceneRoot's resolved
+`_director` PPtr lands on the same PlayableDirector:
+`TimelineHandle.get_director` resolves the root's `topDirector`,
+`CutsceneRootComponent.get_topDirector` returns `_director`, and
+`TimelineHandle.Play` invokes it. A root playback alias proves which
+TimelineAsset that loaded root plays; it still must not be converted into
+mission ownership or relative Story order.
+Mission Pipeline consumes the compact alias rows only when the report schema,
+native mapping and binary hashes, object-index stage signature, and latest
+export source fingerprints all remain current. It publishes the exact
+CutsceneRoot-to-native-action-to-Story chain as an ownership-unresolved debug
+route and corpus count. A second, narrower composition is admitted only when
+an independently connected owner route already terminates at that exact root
+and contains a native playback action. That composition extends owner context
+to the played TimelineAsset without creating Story chronology. On the current
+export this recovers only `cutscene_gm02m4_1`; condition/dependency routes and
+the other three aliases remain non-owning.
+
+The cutscene Timeline event-surface audit consumes those exact root playback
+aliases and scans the complete CAB identity of every played TimelineAsset in
+the published object indexes. It validates the exact target object as a fully
+decoded typed `UnityEngine.Timeline.TimelineAsset`, inventories every script
+class in the CAB, and reports any event/signal/marker/mission/quest/level/global
+track or scalar surface for manual semantic review. Output goes to
+`reports/story/recovery/cutscene_timeline_event_surface_audit.{json,md}`.
+A clean negative closes only Timeline-emitted event context for those exact
+played assets; it does not prove that a root is unused or definition-only and
+does not create mission ownership, activation, or Story order.
+
+The guide-consumer audit scans the same current, source-fingerprint-validated
+merged index for exact typed `GuideRuntimeAsset` managed references. It accepts
+only `FacSetInteractLockedState` actions that serialize `radioId` and a factory
+instance key in the same action, live in a `guide_blackbox_*` asset, and
+co-carry no mission, quest, scene, or script owner. The current native
+`Execute` mapping is hash-gated and proves that the locked branch passes
+`instKey` and `radioId` to `RemoteFactoryInteract.LockBuildingInteract`.
+Its compact report feeds the source-gap queue and Mission Pipeline only while
+the report, object-index stage signature, latest export source fingerprint,
+and native mapping all agree. `export.bat --export-from-game
+--animestudio-object-index` refreshes this audit automatically. The
+classification removes known factory tutorial content from mission recovery;
+it never adds mission ownership or Story order.
 
 When MonoBehaviour TypeTree decoding fails inside a managed-reference registry,
 AnimeStudio now emits partial JSON instead of collapsing to metadata-only JSON
@@ -595,6 +668,10 @@ Expected active inputs and outputs:
   `ActivityConditionalMultiStageTable`, and `DungeonTable` cross-references are
   retained as non-owning prerequisite/association/scene-host evidence. Blank
   `rankRelatedId` values and name similarity do not create edges.
+  `QuestStateEqual` (18) and `MissionStateEqual` (19) identify only the quest
+  or mission state that gates SubGame availability; `CheckPassGameMechanicsId`
+  (5031) identifies a preceding challenge. None makes the gated SubGame's
+  Story playback mission-owned.
   A separate exact-runtime-receiver inventory organizes unlinked playback under
   current-build serialized event selectors without changing mission ownership.
   The current CN payload has 182 nodes, 182 unique Story files, and 210
@@ -1079,6 +1156,21 @@ Expected active inputs and outputs:
   `f_cs_video_e9m3_1` remain diagnostics; prefix resemblance does not create a
   Story edge.
 
+  The offline video index also inventories exported FMV config definitions as
+  a separate evidence class. The current export has `72` definitions. Forty-six
+  female/male definitions resolve through an already-authoritative canonical
+  base binding, leaving `13` without an authoritative Timeline,
+  MissionRuntime, or LevelScript binding. Definition records retain exact
+  config/source PathIDs and
+  `NumIdStrTable.fmv_id` values, but always set
+  `placementEvidence=false`; they do not populate the scene/mission binding
+  indexes. For the 13 true definition-only rows, the builder follows exact
+  default-playable, track, clip, and clip-asset PathIDs and records authored
+  subtitle text ids and audio event keys in `timelineEvidence`. It does not
+  synthesize missing localization or media. Standalone video cards, the
+  generated report, and the source graph may display this provenance without
+  turning it into playback, ownership, or order.
+
   SNS uses a distinct field-backed final boundary:
   `MainCharForceSNSBrain._StartSNSUI` (`0x06014493`, index `83090`, RVA
   `0x70ef8b4`) reads the exact `SNSDialogTable` dialog key from
@@ -1186,6 +1278,22 @@ Expected active inputs and outputs:
   that protection is active; do not weaken or bypass the anti-cheat. The
   launcher and importer remain useful for a future supported capture
   environment.
+
+  `story_recovery/build_local_runtime_artifact_audit.py` is the supported
+  injection-free follow-up for artifacts produced by normal play. It scans
+  only `Player*.log` and `ClientData/**/*.json` under Unity persistent data,
+  matches exact keys from the generated Story index, and accepts a typed JSON
+  candidate only when one object co-carries a typed Story field with a typed
+  mission/quest or scene/script field. Reports go to
+  `reports/story/recovery/local_runtime_artifact_audit.{json,md}`. They retain
+  relative redacted filenames, game identifiers, counts, and line numbers,
+  but no arbitrary log text, account directory ids, or absolute user paths.
+  This is observational evidence only and never creates authored ownership,
+  playback, branch, completion, or order edges.
+
+  ```bat
+  python scripts\story_recovery\build_local_runtime_artifact_audit.py
+  ```
 
   Captures default to `scratch/story/runtime_trace/`; hook errors and missing
   playback-key probes are written to a sibling diagnostics JSONL. The current
@@ -1471,19 +1579,29 @@ These are kept because the WebUI story builders import or use them:
   by the Story builder. It scans dialog `timeline_extract` outputs plus the
   full story-scoped AnimeStudio `json_by_type/MonoBehaviour` exports, so
   gameplay cutscene playables such as `*_cutscene_*_actor.playable` can bind
-  `BeyondFMVPlayableAsset.fmvId` back to a cutscene entry. Timeline-backed
-  links are preserved into
+  `BeyondFMVPlayableAsset.fmvId` back to a cutscene entry. It also consumes
+  typed LevelScript `PlayFmvAction` occurrences when the exact decoded native
+  `_moviePath` / `_fmvId` field and native schema mapping agree with the
+  normalized `cutscene_*` Story key. Timeline- and LevelScript-backed links are
+  preserved into
   `webui/data/lang/<LANG>/narrative_video_evidence.json` so a WebUI video can
-  be traced to the exact `BeyondFMVPlayableAsset` / Timeline source instead of
-  relying on filename matching. Narrative videos that only match by name are
-  emitted as standalone `video` story files grouped by mission, while resolved
-  mappings attach to the dialog, cutscene, remotecomm, or other story file and
-  keep the standalone row adjacent in Story sort. Timeline / playable evidence
-  supplies authored inline placement when available. Manual attach and
-  suppression rules in `webui/overrides/narrative_videos.json` cover known
-  filename mismatches and known false attachments while keeping standalone
-  video rows. An attach rule can also set `audioFrom` to copy source cutscene
-  audio events into the attached target during the audio relink step.
+  be traced to the exact playable or native LevelScript source instead of
+  relying on filename matching. An exact LevelScript FMV action can materialize
+  a missing `cutscene_*` Story card, which in turn lets existing LevelScript
+  control-path evidence participate in the Mission Pipeline. Gender-prefixed
+  video variants inherit only the exact canonical base-FMV binding. Narrative
+  videos that only match by name are emitted as standalone `video` story files
+  grouped by mission, while resolved mappings attach to the dialog, cutscene,
+  remotecomm, or other story file and keep the standalone row adjacent in
+  Story sort. Timeline / playable evidence supplies authored inline placement
+  when available. Manual attach and suppression rules in
+  `webui/overrides/narrative_videos.json` cover known filename mismatches and
+  known false attachments while keeping standalone video rows. An attach rule
+  can also set `audioFrom` to copy source cutscene audio events into the
+  attached target during the audio relink step. The source graph resolves an
+  FMV edge to the exact scene when that generated Story node exists, otherwise
+  retains the established fallback Story hint, and keeps typed LevelScript
+  source-file edges alongside playable-asset sources.
 - `story_builder/` also scans narrative video folders under
   `Data/Video/PC/Narrative/Cutscene` and `RemoteComm`, attaches matching
   `narrativeVideos` to dialog/cutscene/remotecomm conv JSON, and writes
@@ -1591,6 +1709,26 @@ gameplay-video OCR/audio workflow.
   scene-graph clues do not expand the candidate set. Current CN data admits 21
   such context placements across 14 missions and exposes 31 additional strong
   edges.
+  A second, weaker cross-owner candidate rule requires three exact inputs:
+  an already indexed Story card, a typed final-playback occurrence, and a
+  `levelscriptSceneChain` edge carrying the same source file. These nodes are
+  labeled `exactLevelScriptPlaybackContext`; they remain supported/weak
+  context and never become authored mission ownership or strict chronology.
+  Current CN data adds 11 such cutscene placements and leaves the stronger 21
+  native-control-path placements unchanged. Per-endpoint action classes remain
+  on generic scene-chain edges. A missing endpoint that is only
+  `preload_cutscene` is reported separately under
+  `definitionOnlySourceNodes`, unless another exact final-playback occurrence
+  for that Story key exists anywhere in the installed corpus. Current schema
+  `sourceStoryPartialOrder.v18` has zero unresolved source nodes and preserves
+  two `e9m2` preload-only definitions.
+  Source-graph ingestion preserves the same boundary through explicit
+  `mission_story_context` nodes for exact playback context and
+  `mission_story_definition` nodes for preload-only references. It never emits
+  a direct mission-to-Story ownership edge for either class, and it does not
+  create an indexed Story card for a preload-only identifier. A generic
+  source-reference placeholder may still exist because the LevelScript
+  literally contains that id.
   Native `Branch` (`0x002d/0x09`) is distinct from conditional fan-out. Its
   runtime fields are `_idList` and `m_index`; the installed
   `GameAssembly.dll` `Branch.Execute` body reads the indexed list entry, uses
@@ -1662,9 +1800,35 @@ gameplay-video OCR/audio workflow.
   into an SCC DAG and transitively reduced; weak file/order clues,
   cycles, isolated scenes, rejected option evidence, and option groups with no
   explicit route remain visible instead of being forced into a total order.
-  Intra-dialog option routes are promoted only from direct
-  DialogTree/DialogTreeFragment paths or the exact decoded Runtime Jump Track
-  signature. Run
+  Intra-dialog option routes are promoted from direct
+  DialogTree/DialogTreeFragment paths, the exact decoded Runtime Jump Track
+  signature, or complete distinct positive Timeline clip `optionIndex`
+  coverage. The latter fails closed unless every branch clip matches its
+  authored option index and every in-window Runtime Jump occurs after that
+  option's last response clip and converges forward to the shared continuation.
+  Runtime Jump paths are reduced to their option-exclusive prefixes;
+  a choice that skips directly to the shared continuation is represented
+  explicitly instead of requiring a fabricated response line, including
+  option slots before the first local dialog line. Zero-index Timeline trunk
+  clips remain shared even when fewer local lines than options remain.
+  Distinct zero-index Timeline slots are sequential prompts, a slot after the
+  last local line has no local line route, and same-text local table options
+  are definition-only when the exact cinematic consumes a complete foreign
+  option-id/finish-number set. When a generated same-prefix table group is
+  only partly present in every recovered DialogTree, scene-link, and Timeline
+  consumer, the absent ids remain visible as definition-only rows instead of
+  being counted as missing authored branches. Complete authored menu, UI,
+  loop, and terminal outcomes are likewise retained as closed non-line
+  outcomes rather than missing line routes. An option target that reaches an
+  exact `DialogTreeIfNode` retains every serialized conditional outcome (line
+  path, OpenUI, or Finish); a following option/submenu node is explicitly not
+  classified as a conditional branch. Same-prefix ids serialized on distinct
+  DialogTree option nodes are closed as separate conditional prompts, while
+  ids on one disconnected option node with no outgoing connection are closed
+  as orphan definitions. Neither layout is promoted into a fabricated choice
+  fork. Source-less option rows on a scene absent from the runtime
+  `DialogIdTable` are also closed only after the complete collector finds no
+  authored route or outcome consumer. Run
   `python scripts\story_recovery\build_source_story_partial_order.py`; it
   writes `reports/mission_order/source_story_partial_order_<LANG>.json` / `.md`.
 - `story_recovery/build_source_story_order_cross_reference.py`: compares only
@@ -1721,6 +1885,13 @@ gameplay-video OCR/audio workflow.
   `original_text_definition_without_consumer` classification are also excluded
   from actionable isolation after the bounded LevelScript, DialogTree, and
   Timeline consumer search.
+  Authored non-mission isolation is also closed without an edge. Speaker radio
+  continuation and character SNS topics come only from their keyed tables.
+  `radio_blackbox_common_1` comes from the separately freshness-checked
+  GuideRuntime audit: 13 exact `FacSetInteractLockedState` actions across 10
+  factory tutorial assets, with current native `Execute` semantics and no
+  mission/quest owner. Filename shapes never admit this class, and guide action
+  ids or `nextId` values never become mission order.
   Run
   `python scripts\story_recovery\build_source_story_gap_queue.py --language CN`;
   it writes `reports/mission_order/source_story_gap_queue_<LANG>.json` / `.md`.
@@ -1914,19 +2085,25 @@ gameplay-video OCR/audio workflow.
   Mission Pipeline's exact unresolved runtime receivers to their hosting
   LevelScripts, decodes each top-level start policy and validated LevelData
   member-22 container, and intersects them with literal manual-control targets,
-  typed MissionRuntime objective operands, and original-data SubGame
-  `bindScriptId` rows. It writes
+  typed MissionRuntime objective operands, original-data SubGame
+  `bindScriptId` rows, and exact `DungeonTable.sceneId` hosts. It writes
   `reports/story/recovery/native_receiver_activation_frontier.json` / `.md`;
   the normal Mission Pipeline builder also refreshes this report and publishes
   compact fail-closed annotations on all receiver nodes for the debug UI.
-  Current recovery covers `158` receiver nodes on `93` scripts: `10` have an
-  exact SubGame activation scope, `54` are Manual with no decoded static
-  shape/task/parent carrier, and none is named by a typed MissionRuntime
-  objective or an incoming literal cross-script manual-control row. All `12`
+  Current recovery covers `161` receiver nodes / `185` Story placements on
+  `95` scripts and `155` Story keys: `10` have an exact SubGame activation
+  scope, `55` are Manual with no decoded static shape/task/parent carrier, and
+  none has an incoming literal cross-script manual-control row. One receiver
+  script is read by a typed MissionRuntime objective. The compact debug
+  annotation publishes its exact mission, quest, objective index, and
+  condition types with explicit false ownership, activation, and Story-playback
+  flags. That condition observes its `isFinished` property and does not
+  activate or own its playback.
+  All `12`
   non-SubGame scripts with non-empty authored start shapes have zero complete
-  exact shape matches in the same-level MissionArea table. Of `24` receiver
-  scripts with task maps, all `24` now decode completely as `31` tasks and
-  `54` conditions across `11` concrete root `GameCondition` types. None is
+  exact shape matches in the same-level MissionArea table. Of `25` receiver
+  scripts with task maps, all `25` now decode completely as `32` tasks and
+  `55` conditions across `11` concrete root `GameCondition` types. None is
   `CheckMissionState`; the exact entity, spawner, dialog, area, property,
   stage, monster, and combine operands are published as dependency/completion
   evidence, not activation or ownership. A complete typed operand pass resolves
@@ -1938,15 +2115,27 @@ gameplay-video OCR/audio workflow.
   The report also indexes exact
   `CheckLevelScriptTaskFinished(scene, script, task)` consumers. The current
   MissionRuntime corpus has two such conditions globally, but neither matches
-  any of the `31` receiver tasks, so schema v5 publishes `0` typed task
-  consumers.
+  any of the `32` receiver tasks, so the report publishes `0` typed task
+  consumers. It also finds `18` receiver scripts and `14` Story keys
+  on `6` exact Dungeon/SubGame scenes, producing `40` scene-context
+  placements (`7` bound-script and `33` sibling-script placements) and `31`
+  availability-prerequisite annotations. Same-scene placement is loading
+  context only. In particular, `dung02_bdg002/41100000004` plays
+  `cutscene_e9m3_2` while its first boss-rush SubGame is unlocked by
+  `e9m4_q#1`, proving that a scene's unlock identity cannot be promoted to
+  Story ownership or activation. Nine receiver scripts / ten Story keys also
+  share a scene with a typed `DungeonSubGameData.dungeonMissionId`. All nine
+  are sibling scripts, not the mission shell's bound script. The mismatches
+  `c6m3` shell vs. `c6m1` Story and `c13m2d5` shell vs. `c13m2` Story prove
+  that this mission id is non-owning scene/runtime context rather than a
+  playback attachment.
   Exact level/script/task joins add
   display/tracking metadata for `13` tasks and SubGame main-task bindings for
   `10`; all ten SubGame rows have null `dungeonMissionId`. The `82` distinct
   task/condition ids have zero MissionRuntimeAsset occurrence. Only the already
   SubGame-scoped
   `map02_lv002/22800950006` contains exact serialized MissionRuntime-id string
-  tokens (`a1m6d6`, `a1m6d7`); all `83` non-SubGame receiver scripts contain
+  tokens (`a1m6d6`, `a1m6d7`); all `85` non-SubGame receiver scripts contain
   none. These
   classifications narrow the producer queue and create no mission, quest,
   playback, or order edge.
@@ -2044,7 +2233,29 @@ gameplay-video OCR/audio workflow.
   `ExitLevelCustomPerformance`, not to an unknown high opcode. Other exact
   presentation-chain mappings include `0x04ca/0x09`
   `ToggleClearScreenButRadio`, `0x02fe/0x0a` `MainCharMoveTo`, and compact
-  `0x0e34/0x00` -> tag `0x0034`/14 members `CallServer`. High
+  `0x0e34/0x00` -> tag `0x0034`/14 members `CallServer`. The current typed
+  CallServer corpus serializes each hash-shaped event name as `#` plus its own
+  eight-hex-digit action UID. Builders retain these as
+  `levelscriptCallServerSelfUidCallback` diagnostics but exclude them from
+  Story nodes, order edges, and mission ownership. The two current typed
+  `PlayDialogAndHideSceneObjectAction` (`0x035a/0x0f`) punctuation-only
+  payloads, `#` beside `dlg_sm2l5m1_7` and `%` beside `dlg_sm2l5m1_8`, are
+  likewise retained as `levelscriptNonNodeScalarPayload` diagnostics rather
+  than emitted as graph identifiers. This recognizer requires exact
+  action-list membership and a co-record dialog id. The same fail-closed graph
+  hygiene recognizes the four current one-character parameters beside real
+  cutscene ids in typed `StartCutsceneAndControlSceneObjectAction` and
+  `StartCutsceneAndHideSceneObjectAction` records. It retains `P`, `Y`, `e`,
+  and `A` as non-node diagnostics and emits no graph edge for them. Remaining
+  generic-symbol edges retain their weak topology. Physical
+  `ActionSerializedMap` membership—not overlapping union tags—controls their
+  annotations: action-list boundaries carry exact formatter-derived
+  `sourceActions`, while header-list boundaries carry `sourceEvents`, for
+  WebUI debug chips/tooltips. The localized build joins these fields onto the
+  exact matching `timelineRecovery.sourceBackedSceneEdges` copy by
+  source/target/kind. Knowing that a symbol belongs to camera, audio, guide,
+  level-sequence, or custom-event action context does not promote order or
+  mission ownership. High
   event/gate/terminal records such as `0x0a03/0x00`, `0x0bed/0x00`, current
   trigger events `0x12be/0x00` and `0x12c0/0x00`, dialog exit
   `0x1355/0x00`, and quest-state change `0x1385/0x00` are outside that
@@ -2117,6 +2328,38 @@ gameplay-video OCR/audio workflow.
   exact registry casing, and reports nearby table names as triage rather than
   data-flow proof. Table-fed ids, handles, concatenation, and parameters remain
   unresolved instead of being guessed.
+- `story_recovery/build_cutscene_case_resolution_audit.py`: follows the exact
+  current-build `GameAction.PlayCutsceneAndGetHandle -> CutsceneManager ->
+  GetGenderedCutsceneId -> TryGetCinematicData -> CachedPathAssetLoader ->
+  StringPathHash` chain for the Lua literal `Cutscene_e0m0_1`. It validates the
+  Lua and IFix audits, maps null open-generic slots through concrete IL2CPP
+  MethodSpecs, and writes
+  `reports/story/recovery/cutscene_case_resolution_audit.{json,md}`. The current
+  result proves case-sensitive resource lookup and permanently rejects that
+  spelling as playback evidence for lowercase `cutscene_e0m0_1` on the reviewed
+  build. Binary, metadata, or IFix fingerprint drift fails closed.
+- `story_recovery/build_string_path_hash_story_audit.py`: validates the skipped
+  `StringPathHash.bin` layout as an 8-byte bucket table, a
+  `hash:int64 + stringPoolOffset:uint64` entry table, and a length-prefixed
+  UTF-16 path pool. It recovers every resource path/hash containing the three
+  unresolved CutsceneRoot selector keys, then searches the complete structured
+  export, both AnimeStudio object indexes, and an optional adjacent
+  `CompressData.bin` dump for exact binary/text consumers. It writes
+  `reports/story/recovery/string_path_hash_story_audit.{json,md}` and treats
+  hash registration as resource availability only: the reverse lookup does not
+  prove playback, chronology, or mission/quest ownership. The normal WebUI
+  export intentionally skips ExtendData, so prepare the bounded offline inputs
+  first:
+
+  ```bat
+  call endfield_paths.bat
+  tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe dump --streaming-assets "%ENDFIELD_GAME_ROOT%\Endfield_Data\StreamingAssets" --output tmp\story\root_selector_string_path_hash --block-type initial-extend-data --block-type extend-data --file-regex "(?i)StringPathHash"
+  tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe dump --streaming-assets "%ENDFIELD_GAME_ROOT%\Endfield_Data\StreamingAssets" --output tmp\story\root_selector_compress_data --block-type initial-extend-data --block-type extend-data --file-regex "(?i)CompressData"
+  python scripts\story_recovery\build_string_path_hash_story_audit.py
+  ```
+
+  The current 7.24 GB exact-consumer census takes about nine minutes on this
+  checkout and is not part of `export.bat`.
 - `story_recovery/build_skipped_vfs_block_audit.py`: summarizes an
   AnimeStudio/fluffy-dumper `vfs-index` JSON for WebUI-skipped VFS blocks such
   as Lua, ExtendData, Streaming, DynamicStreaming, and BundleManifest. It

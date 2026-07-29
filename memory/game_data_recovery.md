@@ -767,9 +767,20 @@ chains end to end: `0x04ca/0x09` is
 generated setter names and exact EOF payload decodes agree. Finally, raw
 `0x0e34/0x00` normalizes to ActionBase tag `0x0034`/14 members
 `CallServer`. Its generated six fields decode as null client-output UIDs,
-`event_args`, a hash-like event name, `useCustomEvent=false`,
+`event_args`, an event name, `useCustomEvent=false`,
 `waitForCallback=true`, and `withEventArgs=false`; no mission or quest
-identity is serialized in that server handoff. The script therefore contains
+identity is serialized in that server handoff. Across the complete current
+typed corpus, every hash-shaped event name equals `#` plus the same
+CallServer action-record UID. This closes the value as an action-local
+callback/correlation label rather than a handler hash, Story node, mission
+owner, or chronology edge. The Story builder now preserves it only as a
+diagnostic callback record and excludes it from scene-graph nodes and edges.
+The adjacent graph audit also found one distinct punctuation-only `#` string
+in `PlayDialogAndHideSceneObjectAction` `0x035a/0x0f` (record UID
+`15196cb4`, `map02_lv005/23200050003`) beside the actual dialog id. It is
+retained as a typed non-node scalar diagnostic and does not become an
+identifier or edge.
+The script therefore contains
 no hidden submission id, item id, UI key, branch target, or typed SubmitItem
 OpenUI action. Mission Pipeline schema 14 emits one
 LevelScript co-gate and the source graph joins the quest, submission, script,
@@ -862,19 +873,70 @@ inherit its mission. The next useful binary surface must co-carry or resolve a
 full scene/script address and an authored mission/quest owner; the proven quit
 consumer alone cannot provide either missing identity.
 
-Those seven missionless intersections are now represented rather than hidden.
+Those ten missionless intersections are now represented rather than hidden.
 The coverage builder joins each missionless row's exact `bindScriptId` to the
-same script id on a decoded native playback occurrence, yielding seven runtime
-nodes, eight unique Story files, and eleven SubGame-to-Story placements. The
-four boss-rush rows share `cutscene_e1m8_2`; the three WorldChallenge rows cover
-seven activity Story files. These remain outside connected-mission coverage.
-The strongest original-data owner candidates were also exhausted: boss-rush
-`_01` has a `QuestStateEqual(e1m8_q#4)` unlock prerequisite, not a playback
-owner, while activity stage 6 co-identifies `missionId=a1m6d6` and
-`rankRelatedId=activity_qingxi_qiangti_6` but native runtime storage keeps stage
-mission state separate from rank-related game-mechanic info. Stages 3/4 have
-blank `rankRelatedId`. All seven target scripts are parent-zero roots with one
-MainTask, no mission/quest literal, and no exact MissionRuntime occurrence.
+same script id on a decoded native playback occurrence, yielding ten runtime
+nodes, nine unique Story files, and fourteen SubGame-to-Story placements. Four
+boss-rush rows share `cutscene_e1m8_2`, three share
+`cutscene_e3m5_1`, and the three WorldChallenge rows cover seven activity Story
+files. These remain outside connected-mission coverage. The strongest
+original-data owner candidates were also exhausted. Boss-rush
+`dung01_bossrush01_01` has a `QuestStateEqual(e1m8_q#4)` unlock prerequisite,
+while `dung01_bossrush03_01` has the adjacent enum value
+`MissionStateEqual(e3m5)`. The latter's exact node reaches
+`bindScriptId=17500000002 -> cutscene_e3m5_1`, but the mission state gates only
+SubGame availability; it does not own or trigger playback. Activity stage 6
+co-identifies `missionId=a1m6d6` and
+`rankRelatedId=activity_qingxi_qiangti_6`, but native runtime storage keeps
+stage mission state separate from rank-related game-mechanic info. Stages 3/4
+have blank `rankRelatedId`. All ten target scripts are parent-zero roots with
+one MainTask, no mission/quest literal, and no exact MissionRuntime occurrence.
+
+`DungeonTable.sceneId` now supplies a broader, still non-owning host join for
+the unresolved native receiver frontier. Eighteen receiver scripts carrying
+fourteen Story keys live on six exact scenes used by typed SubGame rows,
+producing forty receiver/SubGame context placements. Seven placements are the
+SubGame's exact `bindScriptId`; thirty-three are other LevelScripts in the same
+scene and are explicitly labeled siblings. The attached condition rows produce
+thirty-one availability annotations, not owner edges. The strongest negative
+control is `dung02_bdg002/41100000004 -> cutscene_e9m3_2`: its same-scene
+first-tier boss rush is unlocked by `QuestStateEqual(e9m4_q#1)`. This
+cross-named current-build row demonstrates that even an exact dungeon scene
+plus quest/mission prerequisite cannot be promoted to Story ownership,
+activation, or order.
+
+The typed SubGame payload further sharpens three raid scenes without changing
+that result. `DungeonSubGameData.dungeonMissionId` supplies nine exact
+receiver-scene mission-shell contexts covering ten Story keys, but all nine
+receivers differ from the row's `bindScriptId`. The shipped rows disprove
+sibling inheritance: `dung_wolfgd_01` carries `c6m3` while its sibling scripts
+play `c6m1` Story, and `dung_aglina_01` carries `c13m2d5` while its siblings
+play `c13m2` Story. `dung_kamiu_01`'s `c33m2` name agreement is therefore not
+admissible ownership evidence. Keep `dungeonMissionId` as typed SubGame
+mission-shell context unless the receiver itself is the bound script or a
+separate exact control edge connects the two.
+
+The remaining serialized SubGame whitelist fields are now census-closed as an
+ownership route. Across all 469 typed rows, `missionWhitelist` and
+`logicIdWhitelist` are always empty. Exactly one row,
+`f1m18d1_1`, carries a `proxyWhitelist` (three proxy ids). Those proxies resolve
+to two nonempty NpcProxyEx dialogs, `dlg_f1m18d1_4` and
+`dlg_f1m18d1_8`, and every NpcProxyEx `missionId` on the three rows is blank.
+Both dialogs already have stronger exact evidence: q4 checks completion of
+`dlg_f1m18d1_4`, while the bound LevelScript contains the native
+`dlg_f1m18d1_8` playback. The third proxy has no dialog. Whatever additional
+runtime filtering the whitelist performs, the complete shipped instance
+surface contributes zero new unlinked Story owner, quest placement, or order
+edge.
+
+The DungeonSubGame death-presentation tail is also exhausted for Story
+recovery. All 250 typed Dungeon rows have an empty
+`conditionalDeathPerformanceEntries` collection. Sixteen enable
+`useTeamDieBlackscreen`, but their only nonempty hint is the shared localization
+key `dungeon_blackscreen_text`; no row serializes a `black_*`, dialog, radio,
+cutscene, mission-option, or LevelScript action id in these fields. They prove
+generic team-death presentation policy only and cannot attach any unassigned
+black Story file to the row's otherwise exact `dungeonMissionId`.
 
 The companion installed-VFS scan also closes the server-action-enum shortcut.
 Across 90,659 JsonData/Table candidates, 532 structured files were schema-
@@ -1985,8 +2047,24 @@ remain gated on the recovery work below:
    The current ten missionless SubGame playback rows are now closed across
    their complete exported exact-reference and receiver-task surfaces: nine
    unique Story files across fourteen placements, one non-owning activity
-   mission association, one quest unlock, five prior-challenge gates, and zero
-   MissionRuntime task consumers. Prioritize a different registry surface
+   mission association, one quest unlock, one mission-state unlock, five
+   prior-challenge gates, and zero MissionRuntime task consumers. The broader
+   exact-scene join adds eighteen receiver scripts across six Dungeon/SubGame
+   scenes, but thirty-three of forty placements are sibling scripts and the
+   `cutscene_e9m3_2` / `e9m4_q#1` mismatch rejects availability as ownership.
+   Nine sibling receivers also see a typed `dungeonMissionId`; the
+   `c6m3`/`c6m1` and `c13m2d5`/`c13m2` counterexamples reject mission-shell
+   inheritance.
+   The sibling `missionWhitelist`/`logicIdWhitelist` fields are empty in all
+   469 rows. The sole nonempty `proxyWhitelist` belongs to `f1m18d1_1`; its two
+   dialogs are already covered by stronger quest-condition/native-playback
+   evidence and its NpcProxyEx rows carry no mission id. Do not repeat this
+   whitelist census on the current export.
+   `conditionalDeathPerformanceEntries` is empty on all 250 DungeonSubGame
+   rows. The 16 enabled team-death blackscreens use only the generic
+   `dungeon_blackscreen_text` key or blank values, so this tail adds no
+   `black_*` Story carrier.
+   Prioritize a different registry surface
    rather than repeating these SubGame/task/display joins.
    Do not revisit the current loading-pipeline carrier unless the installed
    binary or IFix payload changes. Never promote Story naming, OCR, gameplay

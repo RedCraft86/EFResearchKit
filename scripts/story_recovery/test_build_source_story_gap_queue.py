@@ -83,6 +83,63 @@ def mission_payload(
 
 
 class SourceStoryGapQueueTests(unittest.TestCase):
+    def test_option_frontier_scores_only_multi_choice_and_actionable_exclusions(
+        self,
+    ) -> None:
+        partial = partial_mission(
+            "e1m1",
+            scenes=["dlg_a"],
+            no_route_groups=5,
+            excluded_groups=4,
+        )
+        partial["summary"].update({
+            "branchingNoExplicitRouteGroupCount": 2,
+            "singleOptionNoExplicitRouteGroupCount": 3,
+            "actionableExcludedDialogLineOptionGroupCount": 1,
+            "closedExcludedDialogLineOptionGroupCount": 3,
+        })
+
+        row = gap_queue.build_gap_row(
+            partial,
+            mission_payload(),
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["noExplicitOptionRouteGroups"], 5)
+        self.assertEqual(
+            row["metrics"]["actionableNoExplicitOptionRouteGroups"],
+            2,
+        )
+        self.assertEqual(
+            row["metrics"]["singleOptionNoExplicitRouteGroups"],
+            3,
+        )
+        self.assertEqual(row["metrics"]["excludedOptionEvidenceGroups"], 4)
+        self.assertEqual(
+            row["metrics"]["actionableExcludedOptionEvidenceGroups"],
+            1,
+        )
+        self.assertEqual(
+            row["metrics"]["closedExcludedOptionEvidenceGroups"],
+            3,
+        )
+        self.assertEqual(
+            row["scoreContributions"][
+                "actionableNoExplicitOptionRouteGroups"
+            ],
+            4,
+        )
+        self.assertEqual(
+            row["scoreContributions"][
+                "actionableExcludedOptionEvidenceGroups"
+            ],
+            2,
+        )
+        self.assertEqual(
+            row["frontierContributions"]["dialog-option-runtime"],
+            6,
+        )
+
     def test_main_story_sorts_before_higher_scoring_event(self) -> None:
         main = partial_mission("e1m1", scenes=["a"], isolated=["a"])
         event = partial_mission("a1m1", scenes=["a", "b", "c"], isolated=["a", "b", "c"])
@@ -184,6 +241,60 @@ class SourceStoryGapQueueTests(unittest.TestCase):
             "closed_exact_native_event_path_no_relative_order",
         )
 
+    def test_equivalent_duplicate_native_path_is_closed_not_actionable(self) -> None:
+        partial = partial_mission(
+            "e1m1",
+            scenes=["radio_a"],
+            weak_only=["radio_a"],
+        )
+        payload = mission_payload(connections=[{
+            "key": "radio_a",
+            "levelScriptOccurrences": [{
+                "levelId": "lv1",
+                "scriptId": "1001",
+                "sourceFile": "LevelScriptData/lv1/1001.json",
+                "actionMapRole": "actionList#3 linked",
+                "actionName": "Play3DRadio",
+                "recordClass": "play_radio",
+                "localId": 8,
+                "allStoryKeysInRecord": ["radio_a"],
+                "nativeEventOwners": [{
+                    "status":
+                        "exact_serialized_control_path_equivalent_duplicates",
+                    "headerName": "ScriptEvent_OnScriptStageChanged",
+                    "headerLocalId": 4,
+                    "eventDetail": {
+                        "summary": "local LevelScript stage changes to 2",
+                    },
+                    "path": [
+                        {
+                            "localId": 7,
+                            "equivalentRecordOffsets": [100, 200],
+                        },
+                        {"localId": 8},
+                    ],
+                }],
+            }],
+        }])
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["actionableWeakOnlyScenes"], 0)
+        self.assertEqual(
+            row["metrics"]["closedExactNativeWeakOnlyScenes"],
+            1,
+        )
+        self.assertEqual(
+            row["closedExactNativeWeakOnlyScenes"][0]["nativeEventPaths"][0][
+                "controlPathStatus"
+            ],
+            "exact_serialized_control_path_equivalent_duplicates",
+        )
+
     def test_incomplete_native_weak_only_scene_remains_actionable(self) -> None:
         partial = partial_mission(
             "e1m1",
@@ -253,6 +364,40 @@ class SourceStoryGapQueueTests(unittest.TestCase):
             row["nonActionableWeakOnlySceneKeys"],
             ["dlg_a"],
         )
+
+    def test_weak_only_stop_radio_is_not_a_playback_decoder_gap(self) -> None:
+        partial = partial_mission(
+            "e1m1",
+            scenes=["radio_a", "cutscene_b"],
+            weak_only=["radio_a"],
+            edges=[{
+                "from": "radio_a",
+                "to": "cutscene_b",
+                "kind": "levelscriptFileOrder",
+                "tier": "weak",
+                "sourceFiles": ["LevelScriptData/lv1/1001.json"],
+            }],
+        )
+        action_story_occurrences = {
+            "radio_a": [{
+                "sourceFile": "LevelScriptData/lv1/1001.json",
+                "actionMapRole": "actionList#2 root",
+                "actionCode": "0x04b5",
+                "actionKind": "0x09",
+                "localId": 10,
+            }],
+        }
+
+        row = gap_queue.build_gap_row(
+            partial,
+            mission_payload(),
+            mission_bundle_exists=True,
+            action_story_occurrences=action_story_occurrences,
+        )
+
+        self.assertEqual(row["metrics"]["actionableWeakOnlyScenes"], 0)
+        self.assertEqual(row["metrics"]["nonActionableWeakOnlyScenes"], 1)
+        self.assertEqual(row["nonActionableWeakOnlySceneKeys"], ["radio_a"])
 
     def test_native_index_closes_exact_stub_weak_scene(self) -> None:
         partial = partial_mission(
@@ -1172,6 +1317,50 @@ class NonMissionContentClosureTests(unittest.TestCase):
         self.assertEqual(
             keys["sns_topic_chr_0004_pelica_1"]["field"], "includeDialogIds"
         )
+
+    def test_exact_guide_runtime_radio_is_closed_without_order(self) -> None:
+        story_key = "radio_blackbox_common_1"
+        partial = partial_mission(
+            "blackbox_common",
+            scenes=[story_key],
+            isolated=[story_key],
+        )
+        partial["nodes"][0]["kind"] = "radio"
+        row = gap_queue.build_gap_row(
+            partial,
+            mission_payload(),
+            mission_bundle_exists=True,
+            non_mission_content={
+                story_key: {
+                    "evidenceKind": "guide_runtime_asset",
+                    "content": "factory_interaction_lock_guide_radio",
+                    "assetType":
+                        "Beyond.Gameplay.Actions.GuideRuntimeAsset",
+                    "consumerClass":
+                        "Beyond.Gameplay.Actions."
+                        "FacSetInteractLockedState",
+                    "assetCount": 10,
+                    "actionCount": 13,
+                    "assetNames": ["guide_blackbox_test"],
+                    "guideLevelIds": ["blackbox_test"],
+                    "nativeMappingId": "mapping-v1",
+                    "nativeMethod": {"token": "0x06008a6d"},
+                    "orderBoundary": "no mission or Story order edge",
+                    "evidenceReport": "report.json",
+                },
+            },
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(
+            row["metrics"]["closedNonMissionContentIsolatedScenes"], 1
+        )
+        closed = row["closedNonMissionContentIsolatedScenes"][0]
+        self.assertEqual(
+            closed["recoveryStatus"],
+            "closed_exact_guide_runtime_non_mission_content",
+        )
+        self.assertEqual(closed["actionCount"], 13)
 
     def test_lookalike_key_not_in_any_table_stays_actionable(self) -> None:
         # Same filename shape, absent from the tables: must NOT be closed.

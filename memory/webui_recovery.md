@@ -54,6 +54,15 @@ fell from about 72 seconds to 0.4 seconds, Timeline action candidate enumeration
 fell to about 6.5 seconds, and FMV binding recovery fell from about 269 seconds
 to about 32 seconds with identical non-timestamp output.
 
+Narrative-video recovery also consumes exact typed LevelScript
+`PlayFmvAction` target fields. The WebUI treats those as authoritative only
+when the native field mapping and normalized `cutscene_*` key agree, preserves
+the LevelScript source details in the cutscene debug payload, and may create a
+cutscene card that was previously only a source-side Mission Pipeline node.
+The current CN build exposes 298 cutscene cards and 53 video-attached Story
+keys; 180/188 video references are attached. Gender-prefixed FMV files inherit
+only an already-proved canonical base binding.
+
 The 2026-07-21 CN Story build profile found repeated LevelScript path
 resolution/decoding, all-pairs weak spatial checks, duplicate LevelScript file
 reads, repeated DialogTree JSON parsing, an accidental recursive scan below an
@@ -265,11 +274,44 @@ Mission Pipeline:
   event, LevelScript, playback action, and Story terminal. Unresolved playback
   retains an ownership-gap step and definition-only files remain separate;
   compact exact serialized event/action paths are expandable rather than being
-  flattened into the attachment label.
+  flattened into the attachment label. The route normalizer also unwraps the
+  `listener` retained in `worldEntityLevelScriptEvidence`; all 30 currently
+  published mission-tracked world-entity routes therefore expose their exact
+  native paths instead of collapsing to context rows with zero paths. For
+  example, the live `e6m4` card for `radio_e6m4_18` shows Leader slot `80001`
+  at script `22800110022` header `6`, then `Split.actions[0]` local `8` and
+  `PlayRadio`.
+- The generated trigger manifest and live Mission Pipeline now expose the
+  recovered `WhileAction.doAction` control edge. A verified e6m1 card for
+  `radio_e6m1_10` displays Leader slot `80003`, script `22800080005`, header
+  `24`, then `WhileAction` local `25`, its `doAction` target `26`,
+  `IfElseAction` local `28`, `Split` local `29`, and `PlayRadio` local `34`.
+  The e7m2, e8m1, and equivalent-duplicate e1m2 paths are present in the same
+  trigger manifest. Cards continue to label host-only and world-entity routes
+  as context/dependency rather than quest activation or relative Story order.
+- The same live view now exposes the last recovered weak-only LevelScript
+  control paths. On `sm1l3m2`, `radio_sm1l3m2_8` shows custom event
+  `WaitArea`, script `300010007` header `22`, `SwitchInt` local `23`,
+  phase-zero `WaitForSecondsInTriggerVolume` local `31`, and its typed success
+  edge to `PlayRadio` local `32`; the phase-one and loop-body paths to
+  `radio_sm1l3m2_10` and `_12` are present on the same card. On dungeon
+  mission `c31m3d5`, `radio_c31m3_16` shows
+  `ScriptEvent_OnStartScriptControlledCharMode`, script `35400010010` header
+  `130`, `SwitchString` local `141`, case `chr_9000_endmin` to
+  `ScriptedCharPatrolStart` local `131`, `Split` local `132`, and
+  `PlayRadioAndWait` local `133`. These stay labeled as exact local trigger
+  reachability/context: they do not imply server quest activation or global
+  Story order. The rebuild has 282 native branch groups and still 1,426 strong
+  Story-order edges, so the new typed branch path did not invent chronology.
 - Lazy mission payloads embed the source-only Story partial order with reduced
   causal edges, topological frontiers, cycles, quest forks/joins, and exact
   option branches. Exact native Split/IfElse/Switch Story arms and strictly
   observed downstream convergence are displayed in the same partial graph.
+  Cross-owner cards joined by the same exact typed LevelScript playback source
+  file are retained as `exactLevelScriptPlaybackContext`, not silently
+  reassigned to the selected mission. Generic cutscene preloads remain in a
+  separate `definitionOnlySourceNodes` list. The current CN payload has 11 of
+  the former, two of the latter, and zero unresolved source nodes.
   Conditional rows show their exact event selector plus decoded PureGetter or
   inline-Param predicate operands; exact class-only predicates remain labeled
   without inventing their inner value. Current generated data has exact event
@@ -291,6 +333,31 @@ Mission Pipeline:
   completed token trace: `CallServer.Execute` reads the pushed `ctxToken` as
   `netToken` and returns it on `CS_SCENE_LEVEL_SCRIPT_EVENT_TRIGGER`, making it
   round-trip correlation context rather than a hidden mission carrier. The
+  Story graph applies the same boundary to serialized CallServer event names:
+  values equal to `#` plus their own typed action-record UID are retained under
+  `levelscriptCallServerCallbacks` with explicit non-Story/non-order/non-owner
+  flags and are excluded from nodes, edges, scene placement, and Mission
+  Pipeline ownership. This removes the former hash-terminal pseudo-scenes
+  without discarding source-file or preceding-scene diagnostics. The current
+  punctuation-only `#` and `%` values in two typed
+  `PlayDialogAndHideSceneObjectAction` records are handled the same way under
+  `levelscriptNonNodeScalarPayloads`: visible diagnostic provenance, no graph
+  node or edge. That guard requires exact action-list membership and a
+  co-record dialog id. The same exact guard now covers four one-character
+  parameters (`P`, `Y`, `e`, and `A`) serialized beside real cutscene ids in
+  typed
+  `StartCutsceneAndControlSceneObjectAction` and
+  `StartCutsceneAndHideSceneObjectAction` records. Those parameters remain
+  inspectable with source/action identity and explicit false Story,
+  mission-owner, and order flags, but no longer appear as graph events. For
+  the remaining generic-symbol topology, all 208 Story-boundary edges are
+  typed from physical serialized-map membership: 200 carry exact
+  formatter-derived `sourceActions`, and eight header-list boundaries carry
+  exact formatter-derived `sourceEvents`. Debug chips and tooltips show those
+  names without promoting the weak `levelscriptChain` relation. The localized
+  builder also copies them onto exact matching
+  `timelineRecovery.sourceBackedSceneEdges` rows, which are the parallel edge
+  copy rendered by the Story panel. The
   runtime contract also exposes the complete recursive protobuf identity
   census: zero mission/quest + LevelScript/Story co-carriers across 983 current
   enum-backed CS/SC message classes. Its three weaker scene rows remain
@@ -406,7 +473,7 @@ Mission Pipeline:
 - Keeps exact native playback visible even when no mission owner exists. The
   global native-boundary panel now renders ten missionless SubGame nodes as
   `SubGame -> bindScriptId -> native playback -> Story`, covering nine unique
-  Story files and fourteen placements. They remain included in the 1,213
+  Story files and fourteen placements. They remain included in the 1,208
   unlinked-mission files and are not counted as connected Story. Exact original-
   data prerequisites/associations are shown as dashed non-owning edges: the
   boss-rush quest/prior-challenge unlock chain and activity stage 6's explicit
@@ -429,6 +496,13 @@ Mission Pipeline:
   shown so causality is not mistaken for mission ownership. Same-script
   task-map mission-state dependencies show exact task/condition ids and
   offsets, plus a visible `not linked to playback control path` boundary.
+  The same cards now publish exact Dungeon/SubGame scene context for 18
+  receiver scripts and 14 Story keys across six scenes. All 40 placements
+  distinguish the seven exact bound scripts from 33 siblings, and attached
+  quest/mission/prior-challenge prerequisites remain visibly non-owning.
+  Nine sibling receivers additionally show the typed dungeon mission shell;
+  mismatched shipped mission/Story families make the `no mission owner`
+  boundary visible even when another shell happens to share the Story prefix.
 - Organizes its left browser like Story: collapsible mission-type groups with
   naturally ordered mission rows. Graph dragging suppresses node selection
   after a movement threshold, and the unmodified wheel controls graph scale.
@@ -446,8 +520,8 @@ Mission Pipeline:
 - Story files are attached per quest only from authored runtime references or
   bounded LevelData, LevelScript, variant-runtime, and unique NPC-proxy
   evidence, never from mission-id co-membership or spatial proximity alone.
-- The generated CN coverage is currently 4,060 of 5,273 unique Story files
-  across 4,345 mission placements; 1,213 remain unlinked. Of the connected
+- The generated CN coverage is currently 4,065 of 5,273 unique Story files
+  across 4,361 mission placements; 1,208 remain unlinked. Of the connected
   total, 106 have non-MissionRuntime nominal Story owners and enter the metric
   only because accepted generated pipeline edges connect them. This is an
   accounting repair; the unlinked denominator is not widened with unrelated

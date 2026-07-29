@@ -108,6 +108,7 @@ from .mission_recovery import (
     mission_files as mission_timeline_files,
     recover_mission as recover_source_mission_timeline,
     render_markdown as render_mission_timeline_markdown,
+    source_backed_call_server_callbacks_from_scene_graph,
     source_backed_scene_edges_from_scene_graph,
     source_backed_hash_terminals_from_scene_graph,
     source_backed_story_call_contexts_from_scene_graph,
@@ -323,6 +324,7 @@ _CUTSCENE_ASSET_CACHE: dict[str, dict] | None = None
 _CUTSCENE_SUBTITLE_TRACK_CACHE: dict[str, list[dict]] | None = None
 _NARRATIVE_VIDEO_CACHE: list[dict] | None = None
 _VIDEO_BINDINGS_CACHE: dict[str, dict] | None = None
+_VIDEO_DEFINITIONS_CACHE: dict[str, dict] | None = None
 VIDEO_BINDINGS_PATH = EXPORT_ROOT / "recovered" / "video_bindings.json"
 _DIALOG_REF_FIELDS = ("_dialogId", "snsDialogId")
 _CUTSCENE_REF_FIELDS = ("_cutsceneId",)

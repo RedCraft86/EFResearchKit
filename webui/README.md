@@ -169,8 +169,17 @@ available through expandable guidance.
   manifest renders the proven chain as quest/mission ownership, server message,
   native event, LevelScript, native action, and Story terminal steps. Unresolved
   playback keeps an explicit ownership gap, while definition-only files remain
-  visibly distinct. Every recovered serialized event occurrence renders in its
-  own causal lane with its event summary and selector fields, listening
+  visibly distinct. Exact, build-pinned CutsceneRoot playback aliases render as
+  `Story root -> native playback action -> Story file` debug routes with their
+  own corpus count. An alias remains non-owning unless an independently
+  connected route terminates at that exact root through a native playback
+  action; when it does, the UI renders the complete composed owner route and
+  removes the target from that mission's unassigned queue. The composition
+  never implies relative Story order. Build-pinned candidates rejected by native resolution remain
+  route-free and, with `Show debug info` enabled, render on the unassigned Story
+  card as recovery boundaries rather than graph edges. Every recovered
+  serialized event occurrence renders in its own causal lane with its event
+  summary and selector fields, listening
   LevelScript/header, transport boundary, and complete native action chain;
   multiple lanes are alternatives or distinct occurrences rather than an
   inferred sequence.
@@ -289,9 +298,14 @@ available through expandable guidance.
   Native receiver activation cards additionally expose every fully decoded
   task-map condition and its exact entity, spawner, dialog, destination,
   property, stage, monster, or combine operand. The current receiver corpus has
-  24 fully decoded task-map scripts, 31 tasks, and 54 conditions. These rows
+  25 fully decoded task-map scripts, 32 tasks, and 55 conditions. These rows
   describe evaluation/completion requirements only; the UI must not present
   them as activation, mission ownership, or execution order.
+  One receiver script is also named by a typed MissionRuntime objective. Its
+  card exposes the exact mission/quest/objective and condition type as a
+  `Quest observer` boundary row with ownership, activation, and Story playback
+  all false; observing a LevelScript property does not prove that the quest
+  starts the playback or that playback writes the property.
   Each condition also shows an exact authored operand source when available:
   current-script or logic-id WorldEntity rows, same-level LevelScripts,
   MissionArea/SpawnerConfig rows, or same-receiver Story keys. The current
@@ -305,6 +319,16 @@ available through expandable guidance.
   `ScriptTaskExtraInfoTable` title keys and SubGame main-task ids. The current
   corpus has 13 task-info joins and ten SubGame task joins; every matched
   SubGame row lacks `dungeonMissionId`.
+  Receiver cards also show exact `DungeonTable.sceneId` / SubGame context:
+  `18` receiver scripts and `14` Story files share `6` authored dungeon
+  scenes, for `40` context placements. Only `7` placements are the SubGame's
+  exact `bindScriptId`; the other `33` are explicitly labeled sibling scripts.
+  Quest, mission-state, and prior-challenge unlock rows are availability
+  prerequisites only and never become Story ownership, activation, or order.
+  Nine sibling receivers additionally show the typed
+  `DungeonSubGameData.dungeonMissionId` mission shell. The card retains
+  `no mission owner`; the shell mission identifies the SubGame, not a different
+  LevelScript's Story playback.
   A separate mission-lifecycle section shows exact NPC accept dialogs and
   explicit `NpcProxyEx.missionId` context. A collapsed `Unassigned Story`
   section keeps all remaining same-owner mission scenes visible without
@@ -313,8 +337,8 @@ available through expandable guidance.
   variants without a standalone Story group, and client-action inspection
   follows the authored `_nextID` chain. Native addresses describe the installed
   build's fallback implementation; IFix-dispatched hotfix behavior may differ.
-  The current CN coverage audit connects 4,060 of 5,273 unique Story files
-  across 4,345 mission placements; 1,213 remain unlinked, including 153 with
+  The current CN coverage audit connects 4,065 of 5,273 unique Story files
+  across 4,361 mission placements; 1,208 remain unlinked, including 153 with
   exact native playback but no decoded mission/quest trigger. OCR, manual
   overrides, and observed gameplay do not change these counts.
 
@@ -436,7 +460,9 @@ available through expandable guidance.
   Missionless rows are still useful: when the same `bindScriptId` occurs on an
   exact decoded native Story-playback action, the global boundary panel shows a
   missionless `SubGame -> script -> playback -> Story` node. These nodes remain
-  outside mission-connected Story coverage. Dashed edges show only exact non-
+  outside mission-connected Story coverage. Exact quest/mission-state unlock
+  prerequisites are labeled as SubGame availability context and never as
+  playback ownership or activation. Dashed edges show only exact non-
   owning cross-references from the activity-stage and GameMechanic condition
   tables; naming and blank association fields remain invisible.
   The same boundary panel separately renders exact serialized runtime-receiver

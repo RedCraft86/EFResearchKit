@@ -26,9 +26,66 @@ from scripts.story_builder.levelscript_binary import (
     extract_levelscript_uid_records,
     levelscript_native_header_name,
 )
+from scripts.story_builder.mission_recovery import (
+    enrich_source_backed_scene_edge_context,
+    is_call_server_self_uid_callback,
+    is_play_dialog_hide_non_identifier_payload,
+    typed_cutscene_single_char_parameter_action,
+    source_backed_call_server_callbacks_from_scene_graph,
+    source_backed_hash_terminals_from_scene_graph,
+)
 
 
 class MissionFlowLevelScriptEventTests(unittest.TestCase):
+    def test_timeline_scene_edges_receive_only_exact_graph_context(self):
+        timeline = {
+            "sourceBackedSceneEdges": [
+                {
+                    "from": "state",
+                    "to": "dlg_testm1_1",
+                    "kind": "levelscriptChain",
+                },
+                {
+                    "from": "state",
+                    "to": "dlg_testm1_2",
+                    "kind": "levelscriptChain",
+                },
+            ],
+        }
+        graph = {
+            "edges": [
+                {
+                    "from": "state",
+                    "to": "dlg_testm1_1",
+                    "kind": "levelscriptChain",
+                    "sourceActions": ["StartDialogAction"],
+                    "sourceActionClasses": ["play_dialog"],
+                },
+                {
+                    "from": "state",
+                    "to": "dlg_testm1_2",
+                    "kind": "authoredDirect",
+                    "sourceEvents": ["LevelEvent_OnCustomEvent"],
+                },
+            ],
+        }
+        self.assertEqual(
+            1,
+            enrich_source_backed_scene_edge_context(timeline, graph),
+        )
+        self.assertEqual(
+            ["StartDialogAction"],
+            timeline["sourceBackedSceneEdges"][0]["sourceActions"],
+        )
+        self.assertEqual(
+            ["play_dialog"],
+            timeline["sourceBackedSceneEdges"][0]["sourceActionClasses"],
+        )
+        self.assertNotIn(
+            "sourceEvents",
+            timeline["sourceBackedSceneEdges"][1],
+        )
+
     def test_prepared_control_context_reuses_typed_record_decodes(self):
         header = {
             "code": 0x1052,
@@ -1129,6 +1186,7 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
             "unionTag": 0x0034,
             "serializedMemberCount": 14,
             "payloadStart": 0,
+            "uid": "5bd318ba",
         }
         detail = decode_levelscript_record_payload(
             payload,
@@ -1151,6 +1209,11 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
                     "path": None,
                 },
                 "eventName": "#5bd318ba",
+                "eventNameIdentity": "record-uid-prefixed",
+                "callbackCorrelationLabel": True,
+                "storyGraphRole": "diagnostic-only",
+                "missionOwnershipEvidence": False,
+                "orderEvidence": False,
                 "useCustomEvent": False,
                 "waitForCallback": True,
                 "withEventArgs": False,
@@ -1158,6 +1221,178 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
                 "trailingBytes": 0,
             },
             detail["callServer"],
+        )
+        step = {
+            "source": {
+                "code": "0x0e34",
+                "kind": "0x00",
+                "uid": "5bd318ba",
+            },
+        }
+        self.assertTrue(is_call_server_self_uid_callback("#5bd318ba", step))
+        self.assertFalse(is_call_server_self_uid_callback("#2f436d36", step))
+        self.assertEqual(
+            [],
+            source_backed_hash_terminals_from_scene_graph({
+                "levelscriptHashTerminals": [{
+                    "sceneKey": "dlg_sm2l7m1_9",
+                    "hash": "#5bd318ba",
+                    "direction": "story->hash",
+                    "hashStep": step,
+                }],
+            }),
+        )
+        callbacks = source_backed_call_server_callbacks_from_scene_graph({
+            "levelscriptCallServerCallbacks": [{
+                "kind": "levelscriptCallServerSelfUidCallback",
+                "file": "LevelScriptData/map02_lv006/22999990003.json",
+                "levelId": "map02_lv006",
+                "precedingSceneKey": "dlg_sm2l7m1_9",
+                "callbackLabel": "#5bd318ba",
+                "recordUid": "5bd318ba",
+                "sourceStep": step,
+            }],
+        })
+        self.assertEqual(1, len(callbacks))
+        self.assertFalse(callbacks[0]["storyNode"])
+        self.assertFalse(callbacks[0]["missionOwnershipEvidence"])
+        self.assertFalse(callbacks[0]["orderEvidence"])
+
+    def test_play_dialog_hide_punctuation_payload_is_not_a_graph_node(self):
+        step = {
+            "payloads": [
+                {
+                    "text": "#",
+                    "nodeKey": "#",
+                    "kind": "levelscriptSymbol",
+                },
+                {
+                    "text": "dlg_sm2l5m1_7",
+                    "sceneKey": "dlg_sm2l5m1_7",
+                    "nodeKey": "dlg_sm2l5m1_7",
+                    "kind": "runtimeDialog",
+                },
+            ],
+            "_debug": {
+                "source": {
+                    "code": "0x035a",
+                    "kind": "0x0f",
+                    "uid": "15196cb4",
+                    "actionMapRole": "actionList#1 root",
+                },
+            },
+        }
+        self.assertTrue(is_play_dialog_hide_non_identifier_payload("#", step))
+        self.assertTrue(is_play_dialog_hide_non_identifier_payload("%", step))
+        self.assertFalse(
+            is_play_dialog_hide_non_identifier_payload("#a354645e", step)
+        )
+        step_without_dialog = {
+            **step,
+            "payloads": [step["payloads"][0]],
+        }
+        self.assertFalse(
+            is_play_dialog_hide_non_identifier_payload("#", step_without_dialog)
+        )
+        step_with_header_membership = {
+            **step,
+            "_debug": {
+                "source": {
+                    **step["_debug"]["source"],
+                    "actionMapRole": "headerList#1",
+                },
+            },
+        }
+        self.assertFalse(
+            is_play_dialog_hide_non_identifier_payload(
+                "#",
+                step_with_header_membership,
+            )
+        )
+        other_action = {
+            "payloads": step["payloads"],
+            "_debug": {
+                "source": {
+                    "code": "0x0357",
+                    "kind": "0x14",
+                    "uid": "15196cb4",
+                    "actionMapRole": "actionList#1 root",
+                },
+            },
+        }
+        self.assertFalse(
+            is_play_dialog_hide_non_identifier_payload("#", other_action)
+        )
+
+    def test_typed_cutscene_single_char_parameter_is_not_a_graph_node(self):
+        step = {
+            "payloads": [
+                {
+                    "text": "P",
+                    "nodeKey": "P",
+                    "kind": "levelscriptSymbol",
+                },
+                {
+                    "text": "cutscene_e6m1_2_1",
+                    "sceneKey": "cutscene_e6m1_2_1",
+                    "nodeKey": "cutscene_e6m1_2_1",
+                    "kind": "cutscene",
+                },
+            ],
+            "_debug": {
+                "source": {
+                    "code": "0x049c",
+                    "kind": "0x12",
+                    "uid": "63889ee7",
+                    "actionMapRole": "actionList#1 root",
+                },
+            },
+        }
+        self.assertEqual(
+            "StartCutsceneAndHideSceneObjectAction",
+            typed_cutscene_single_char_parameter_action("P", step),
+        )
+        self.assertEqual(
+            "",
+            typed_cutscene_single_char_parameter_action(
+                "cutscene_e6m1_2_1",
+                step,
+            ),
+        )
+        self.assertEqual(
+            "",
+            typed_cutscene_single_char_parameter_action("parameterName", step),
+        )
+        step["_debug"]["source"]["code"] = "0x0357"
+        step["_debug"]["source"]["kind"] = "0x14"
+        self.assertEqual(
+            "",
+            typed_cutscene_single_char_parameter_action("P", step),
+        )
+        step["_debug"]["source"]["code"] = "0x049c"
+        step["_debug"]["source"]["kind"] = "0x12"
+        step["_debug"]["source"]["actionMapRole"] = "headerList#1"
+        self.assertEqual(
+            "",
+            typed_cutscene_single_char_parameter_action("P", step),
+        )
+
+    def test_story_boundary_context_actions_use_formatter_names(self):
+        self.assertEqual(
+            "AddCameraControlState",
+            levelscript_native_action_name({
+                "layout": "plain",
+                "code": 0x0F0B,
+                "kind": 0,
+            }),
+        )
+        self.assertEqual(
+            "RequireSettlementShow",
+            levelscript_native_action_name({
+                "layout": "fa",
+                "code": 0x0392,
+                "kind": 0x0B,
+            }),
         )
 
     def test_uid_parser_accepts_dont_log_and_wide_compact_member_count(self):
@@ -1243,6 +1478,104 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
             {"value": True, "idRef": -1, "paramSource": 100, "path": "radio"},
             inline_condition["conditionParam"],
         )
+
+        while_payload = (
+            b"\x04\x00"
+            + struct.pack("<iii", 58, -1, -1)
+            + struct.pack("<i", 26)
+        )
+        while_action = decode_levelscript_record_payload(
+            while_payload,
+            {
+                "code": 0x0501,
+                "kind": 0x0A,
+                "unionTag": 0x0501,
+                "serializedMemberCount": 0x0A,
+                "payloadStart": 0,
+            },
+            next_start=len(while_payload),
+            action_map_role="actionList#1 root",
+        )
+        self.assertEqual(26, while_action["whileDoActionLocalId"])
+        self.assertEqual(
+            {
+                "value": False,
+                "idRef": 58,
+                "paramSource": -1,
+                "path": None,
+            },
+            while_action["whileConditionParam"],
+        )
+        self.assertEqual([26], while_action["branchLocalRefs"])
+        self.assertEqual("typed-while-action-body", while_action["branchRole"])
+        self.assertEqual(58, while_action["whileConditionActionLocalId"])
+
+        malformed_while = decode_levelscript_record_payload(
+            while_payload + b"\x00",
+            {
+                "code": 0x0501,
+                "kind": 0x0A,
+                "unionTag": 0x0501,
+                "serializedMemberCount": 0x0A,
+                "payloadStart": 0,
+            },
+            next_start=len(while_payload) + 1,
+            action_map_role="actionList#1 root",
+        )
+        self.assertNotIn("whileDoActionLocalId", malformed_while)
+
+    def test_control_path_traverses_typed_while_action_body(self):
+        header = {
+            "code": 0x1052,
+            "kind": 0x00,
+            "start": 10,
+            "localId": 1,
+            "nextId": 0,
+            "strings": [],
+            "plainStrings": [],
+        }
+        while_action = {
+            "code": 0x0501,
+            "kind": 0x0A,
+            "start": 100,
+            "localId": 3,
+            "nextId": -1,
+            "strings": [],
+            "plainStrings": [],
+        }
+        target = {
+            "code": 0x0363,
+            "kind": 0x0D,
+            "start": 200,
+            "localId": 4,
+            "nextId": -1,
+            "strings": [{"text": "radio_testm1_1"}],
+            "plainStrings": [],
+        }
+        records = [header, while_action, target]
+        membership = {
+            10: "headerList#1",
+            100: "actionList#1 root",
+            200: "actionList#2 root",
+        }
+
+        def decode(_data, record, **_kwargs):
+            if record is header:
+                return {"actionHeader": {"nextId": 3}}
+            if record is while_action:
+                return {"whileDoActionLocalId": 4}
+            return {}
+
+        with mock.patch(
+            "scripts.story_builder.level_bindings.decode_levelscript_record_payload",
+            side_effect=decode,
+        ):
+            paths = _levelscript_native_control_paths_to_record(
+                bytes(300), records, membership, target
+            )
+        self.assertEqual(1, len(paths))
+        self.assertEqual([3, 4], paths[0]["pathLocalIds"])
+        self.assertEqual("WhileAction.doAction", paths[0]["path"][-1]["edge"])
 
     def test_control_path_traverses_typed_branch_sequence_entries(self):
         header = {
@@ -1450,6 +1783,213 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
                     "SwitchInt.case[0]=0",
                     paths[0]["path"][1]["edge"],
                 )
+
+    def test_switch_string_decodes_exact_case_targets_and_rejects_trailing_bytes(self):
+        value_param = (
+            b"\x04"
+            + (-1).to_bytes(4, "little", signed=True)
+            + (142).to_bytes(4, "little", signed=True)
+            + (-1).to_bytes(4, "little", signed=True)
+            + (-1).to_bytes(4, "little", signed=True)
+        )
+        payload = (
+            struct.pack("<Iii", 2, 131, -1)
+            + struct.pack("<I", 2)
+            + struct.pack("<I", len(b"chr_9000_endmin"))
+            + b"chr_9000_endmin"
+            + struct.pack("<I", len(b"chr_0031_mifu"))
+            + b"chr_0031_mifu"
+            + struct.pack("<i", 0)
+            + value_param
+        )
+        record = {
+            "code": 0x04BF,
+            "kind": 0x0C,
+            "unionTag": 0x04BF,
+            "serializedMemberCount": 0x0C,
+            "payloadStart": 0,
+        }
+        decoded = decode_levelscript_record_payload(
+            payload,
+            record,
+            next_start=len(payload),
+            action_map_role="actionList#1 root",
+        )
+        self.assertEqual("SwitchString", decoded["actionBaseAction"])
+        self.assertEqual([131, -1], decoded["switchStringCaseActionLocalIds"])
+        self.assertEqual(
+            ["chr_9000_endmin", "chr_0031_mifu"],
+            decoded["switchStringCaseValues"],
+        )
+        self.assertEqual(0, decoded["switchStringDefaultActionLocalId"])
+        self.assertEqual(142, decoded["switchStringValueGetterLocalId"])
+        self.assertEqual([131], decoded["branchLocalRefs"])
+        self.assertEqual(
+            "switch-string-four-fields-exact-eof",
+            decoded["payloadShape"],
+        )
+
+        malformed = decode_levelscript_record_payload(
+            payload + b"\x00",
+            record,
+            next_start=len(payload) + 1,
+            action_map_role="actionList#1 root",
+        )
+        self.assertNotIn("switchStringCaseActionLocalIds", malformed)
+
+    def test_wait_trigger_volume_decodes_exact_success_target_and_receiver(self):
+        default_tail = struct.pack("<iii", -1, 0, -1)
+        seconds = b"\x04" + struct.pack("<f", 40.0) + default_tail
+        current_script = (
+            b"\x04"
+            + (0).to_bytes(8, "little")
+            + (0).to_bytes(8, "little")
+            + struct.pack("<iii", -1, 1002, -1)
+        )
+        trigger_slot = b"\x04" + struct.pack("<i", 80001) + default_tail
+        payload = (
+            b"\xff"
+            + struct.pack("<i", 0)
+            + seconds
+            + struct.pack("<i", 32)
+            + current_script
+            + trigger_slot
+        )
+        record = {
+            "code": 0x04F9,
+            "kind": 0x0E,
+            "unionTag": 0x04F9,
+            "serializedMemberCount": 0x0E,
+            "payloadStart": 0,
+        }
+        decoded = decode_levelscript_record_payload(
+            payload,
+            record,
+            next_start=len(payload),
+            action_map_role="actionList#1 root",
+        )
+        self.assertEqual(
+            "WaitForSecondsInTriggerVolume",
+            decoded["actionBaseAction"],
+        )
+        self.assertEqual(0, decoded["waitFailActionLocalId"])
+        self.assertEqual(32, decoded["waitSuccessActionLocalId"])
+        self.assertEqual(40.0, decoded["waitSeconds"]["value"])
+        self.assertEqual("current_script", decoded["waitScriptPtr"]["mode"])
+        self.assertEqual(80001, decoded["waitTriggerSlotId"]["value"])
+        self.assertEqual([32], decoded["branchLocalRefs"])
+
+        malformed = decode_levelscript_record_payload(
+            payload + b"\x00",
+            record,
+            next_start=len(payload) + 1,
+            action_map_role="actionList#1 root",
+        )
+        self.assertNotIn("waitSuccessActionLocalId", malformed)
+
+    def test_control_path_traverses_switch_string_and_wait_success_targets(self):
+        header = {
+            "code": 0x12BA,
+            "kind": 0,
+            "start": 10,
+            "localId": 1,
+            "nextId": 0,
+            "strings": [{"text": "WaitArea"}],
+            "plainStrings": [],
+        }
+        switch_string = {
+            "code": 0x04BF,
+            "kind": 0x0C,
+            "unionTag": 0x04BF,
+            "serializedMemberCount": 0x0C,
+            "start": 100,
+            "localId": 2,
+            "nextId": -1,
+            "strings": [],
+            "plainStrings": [],
+        }
+        wait = {
+            "code": 0x04F9,
+            "kind": 0x0E,
+            "unionTag": 0x04F9,
+            "serializedMemberCount": 0x0E,
+            "start": 200,
+            "localId": 3,
+            "nextId": -1,
+            "strings": [],
+            "plainStrings": [],
+        }
+        target = {
+            "code": 0x0363,
+            "kind": 0x0D,
+            "start": 300,
+            "localId": 4,
+            "nextId": -1,
+            "strings": [{"text": "radio_testm1_1"}],
+            "plainStrings": [],
+        }
+        records = [header, switch_string, wait, target]
+        membership = {
+            10: "headerList#1",
+            100: "actionList#1 root",
+            200: "actionList#2 root",
+            300: "actionList#3 root",
+        }
+
+        def decode(_data, record, **_kwargs):
+            if record is header:
+                return {"actionHeader": {"nextId": 2}}
+            if record is switch_string:
+                return {
+                    "switchStringCaseActionLocalIds": [3],
+                    "switchStringCaseValues": ["chr_9000_endmin"],
+                    "switchStringDefaultActionLocalId": 0,
+                }
+            if record is wait:
+                return {
+                    "waitSuccessActionLocalId": 4,
+                    "waitFailActionLocalId": 0,
+                    "waitScriptPtr": {"mode": "current_script"},
+                }
+            return {}
+
+        with mock.patch(
+            "scripts.story_builder.level_bindings.decode_levelscript_record_payload",
+            side_effect=decode,
+        ):
+            paths = _levelscript_native_control_paths_to_record(
+                bytes(400), records, membership, target
+            )
+        self.assertEqual(1, len(paths))
+        self.assertEqual([2, 3, 4], paths[0]["pathLocalIds"])
+        self.assertEqual(
+            "SwitchString.case[0]=chr_9000_endmin",
+            paths[0]["path"][1]["edge"],
+        )
+        self.assertEqual(
+            "WaitForSecondsInTriggerVolume.successAction",
+            paths[0]["path"][2]["edge"],
+        )
+
+        def decode_cross_script(_data, record, **_kwargs):
+            detail = decode(_data, record, **_kwargs)
+            if record is wait:
+                detail["waitScriptPtr"] = {
+                    "mode": "explicit_script",
+                    "scriptId": "300010008",
+                }
+            return detail
+
+        with mock.patch(
+            "scripts.story_builder.level_bindings.decode_levelscript_record_payload",
+            side_effect=decode_cross_script,
+        ):
+            self.assertEqual(
+                [],
+                _levelscript_native_control_paths_to_record(
+                    bytes(400), records, membership, target
+                ),
+            )
 
     def test_entity_hp_header_separates_filter_level_mask_and_exact_condition(self):
         payload = bytearray(84)

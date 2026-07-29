@@ -198,6 +198,41 @@ class SourceGraphAssetMapScopeTests(unittest.TestCase):
                                 ],
                             }
                         ],
+                        "flow": {
+                            "sceneGraph": {
+                                "edges": [{
+                                    "from": "radio_testm1_1",
+                                    "to": "cutscene_preload_only",
+                                    "kind": "levelscriptSceneChain",
+                                    "sourceFiles": ["preload-source.json"],
+                                    "levelIds": ["level_preload"],
+                                }],
+                            },
+                        },
+                        "storyOrder": {
+                            "nodes": [{
+                                "key": "cutscene_other_owner_1",
+                                "kind": "cutscene",
+                                "membership":
+                                    "exactLevelScriptPlaybackContext",
+                                "relationStatus": "weak-only",
+                            }],
+                            "directEdges": [{
+                                "from": "radio_testm1_1",
+                                "to": "cutscene_other_owner_1",
+                                "kind": "levelscriptSceneChain",
+                                "sourceFiles": ["playback-source.json"],
+                                "levelIds": ["level_playback"],
+                            }],
+                            "definitionOnlySourceNodes": [{
+                                "key": "cutscene_preload_only",
+                                "kind": "cutscene",
+                                "incidentEdgeKinds": [
+                                    "levelscriptSceneChain",
+                                ],
+                                "recordClasses": ["preload_cutscene"],
+                            }],
+                        },
                     }
                 ),
                 encoding="utf-8",
@@ -241,6 +276,55 @@ class SourceGraphAssetMapScopeTests(unittest.TestCase):
                         WHERE kind = 'quest_objective_scopes_level_script'
                         """
                     ).fetchone()
+                )
+                context_row = builder.db.execute(
+                    """
+                    SELECT data FROM edges
+                    WHERE kind =
+                        'level_script_playback_context_targets_story'
+                    """
+                ).fetchone()
+                self.assertIsNotNone(context_row)
+                context_data = json.loads(context_row[0])
+                self.assertEqual(
+                    context_data["sourceFiles"],
+                    ["playback-source.json"],
+                )
+                self.assertTrue(context_data["playbackTarget"])
+                self.assertFalse(context_data["missionOwnership"])
+                self.assertFalse(context_data["orderEvidence"])
+                self.assertIsNone(
+                    builder.db.execute(
+                        """
+                        SELECT 1 FROM edges
+                        WHERE src = 'mission:testm1'
+                          AND dst = 'story:cutscene_other_owner_1'
+                        """
+                    ).fetchone()
+                )
+                definition_row = builder.db.execute(
+                    """
+                    SELECT data FROM edges
+                    WHERE kind =
+                        'mission_has_definition_only_story_reference'
+                    """
+                ).fetchone()
+                self.assertIsNotNone(definition_row)
+                definition_data = json.loads(definition_row[0])
+                self.assertEqual(
+                    definition_data["recordClasses"],
+                    ["preload_cutscene"],
+                )
+                self.assertEqual(
+                    definition_data["sourceFiles"],
+                    ["preload-source.json"],
+                )
+                self.assertFalse(definition_data["playbackTarget"])
+                self.assertFalse(
+                    builder.node_exists(
+                        "story",
+                        "cutscene_preload_only",
+                    )
                 )
             finally:
                 builder.close()
@@ -705,6 +789,204 @@ class SourceGraphAssetMapScopeTests(unittest.TestCase):
                         "missionPipelineNativeRuntimeReceivers.skippedRows"
                     ],
                     2,
+                )
+            finally:
+                builder.close()
+
+    def test_video_bindings_prefer_existing_exact_scene_and_keep_source_file(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            recovered = root / "recovered"
+            recovered.mkdir()
+            (recovered / "video_bindings.json").write_text(
+                json.dumps(
+                    {
+                        "bindings": {
+                            "cs_video_dlg_e9m2_3": {
+                                "fmvId": "cs_video_dlg_e9m2_3",
+                                "scene": "cutscene_dlg_e9m2_3",
+                                "mission": "e9m2",
+                                "fallbackSceneHint": "dlg_e9m2_3",
+                                "sources": [{
+                                    "kind": "levelscriptFmvAction",
+                                    "sourceFile": "export_full/levelscript.json",
+                                }],
+                            },
+                            "cs_video_dlg_e10m1_1": {
+                                "fmvId": "cs_video_dlg_e10m1_1",
+                                "scene": "e10m1_1",
+                                "fallbackSceneHint": "dlg_e10m1_1",
+                                "sources": [{
+                                    "kind": "timelinePlayable",
+                                    "asset": "export_full/playable.json",
+                                }],
+                            },
+                        },
+                        "definitions": {
+                            "cs_video_e1m3_3": {
+                                "fmvId": "cs_video_e1m3_3",
+                                "numericIds": [18],
+                                "placementEvidence": False,
+                                "videos": [
+                                    (
+                                        "export_full/structured/"
+                                        "StreamingAssets/Data/Video/PC/"
+                                        "Narrative/Cutscene/"
+                                        "cs_video_e1m3_3.mp4"
+                                    )
+                                ],
+                                "sources": [{
+                                    "kind": "fmvConfigDefinition",
+                                    "asset": (
+                                        "export_full/recovered/"
+                                        "cs_video_e1m3_3.json"
+                                    ),
+                                    "pathId": 100,
+                                    "defaultPlayablePathId": 200,
+                                }],
+                                "timelineEvidence": {
+                                    "subtitleTextIds": [
+                                        "fmv_e1m3_3_01"
+                                    ],
+                                    "audioEventKeys": [
+                                        "au_vo_fmv_e1m3_3"
+                                    ],
+                                    "placementEvidence": False,
+                                },
+                            }
+                        },
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            builder = endfield_source_graph.SourceGraphBuilder(
+                db_path=root / "graph.sqlite",
+                include_asset_maps=False,
+            )
+            builder.open()
+            try:
+                builder.add_node("story", "cutscene_dlg_e9m2_3")
+                builder.add_node("story", "dlg_e10m1_1")
+                with patch.object(
+                    endfield_source_graph,
+                    "EXPORT_ROOT",
+                    root,
+                ):
+                    builder.ingest_video_bindings()
+
+                targets = {
+                    row[0]: (row[1], row[2])
+                    for row in builder.db.execute(
+                        """
+                        SELECT src, dst, evidence
+                        FROM edges
+                        WHERE kind = 'fmv_binding_targets_story'
+                        """
+                    ).fetchall()
+                }
+                self.assertEqual(
+                    targets[
+                        "fmv_binding:cs_video_dlg_e9m2_3"
+                    ],
+                    ("story:cutscene_dlg_e9m2_3", "scene"),
+                )
+                self.assertEqual(
+                    targets[
+                        "fmv_binding:cs_video_dlg_e10m1_1"
+                    ],
+                    ("story:dlg_e10m1_1", "fallbackSceneHint"),
+                )
+                source_edges = {
+                    (row[0], row[1])
+                    for row in builder.db.execute(
+                        """
+                        SELECT dst, evidence
+                        FROM edges
+                        WHERE kind = 'fmv_binding_source_file'
+                        """
+                    ).fetchall()
+                }
+                self.assertIn(
+                    (
+                        "file:export_full/levelscript.json",
+                        "sources[0].sourceFile",
+                    ),
+                    source_edges,
+                )
+                definition_data = json.loads(
+                    builder.db.execute(
+                        """
+                        SELECT data
+                        FROM nodes
+                        WHERE id = 'fmv_definition:cs_video_e1m3_3'
+                        """
+                    ).fetchone()[0]
+                )
+                self.assertFalse(
+                    definition_data["placementEvidence"]
+                )
+                self.assertFalse(
+                    definition_data["hasAuthoritativeBinding"]
+                )
+                definition_edges = {
+                    (row[0], row[1])
+                    for row in builder.db.execute(
+                        """
+                        SELECT kind, dst
+                        FROM edges
+                        WHERE src =
+                            'fmv_definition:cs_video_e1m3_3'
+                        """
+                    ).fetchall()
+                }
+                self.assertIn(
+                    (
+                        "fmv_definition_resolves_video",
+                        (
+                            "video:StreamingAssets-structured/"
+                            "Data/Video/PC/Narrative/Cutscene/"
+                            "cs_video_e1m3_3.mp4"
+                        ),
+                    ),
+                    definition_edges,
+                )
+                self.assertIn(
+                    (
+                        "fmv_definition_subtitle_text",
+                        "text_key:fmv_e1m3_3_01",
+                    ),
+                    definition_edges,
+                )
+                self.assertIn(
+                    (
+                        "fmv_definition_audio_event",
+                        "audio:au_vo_fmv_e1m3_3",
+                    ),
+                    definition_edges,
+                )
+                self.assertIn(
+                    (
+                        "fmv_definition_pathid",
+                        "unity_pathid:100",
+                    ),
+                    definition_edges,
+                )
+                self.assertNotIn(
+                    (
+                        "fmv_binding_targets_story",
+                        "story:dlg_e1m3_3",
+                    ),
+                    definition_edges,
+                )
+                self.assertIn(
+                    (
+                        "file:export_full/playable.json",
+                        "sources[0].asset",
+                    ),
+                    source_edges,
                 )
             finally:
                 builder.close()

@@ -9348,7 +9348,21 @@ class SourceGraphBuilder:
             self.add_alias(fmv_id, binding_node, kind="fmv_id", source="video_bindings")
             self.add_alias(binding.get("baseFmvId"), binding_node, kind="fmv_base_id", source="video_bindings")
 
-            story_key = safe_key(binding.get("fallbackSceneHint"))
+            scene_key = safe_key(binding.get("scene"))
+            fallback_story_key = safe_key(binding.get("fallbackSceneHint"))
+            if (
+                scene_key
+                and not binding.get("sceneIsHint")
+                and self.node_exists("story", scene_key)
+            ):
+                story_key = scene_key
+                story_evidence = "scene"
+            elif fallback_story_key:
+                story_key = fallback_story_key
+                story_evidence = "fallbackSceneHint"
+            else:
+                story_key = scene_key
+                story_evidence = "scene"
             if story_key:
                 story_node = self.add_node("story", story_key, source="video_bindings")
                 self.add_edge(
@@ -9356,7 +9370,7 @@ class SourceGraphBuilder:
                     story_node,
                     "fmv_binding_targets_story",
                     source="video_bindings",
-                    evidence="fallbackSceneHint",
+                    evidence=story_evidence,
                     data={"scene": binding.get("scene"), "sceneIsHint": bool(binding.get("sceneIsHint"))},
                 )
                 self.add_edge(
@@ -9364,7 +9378,7 @@ class SourceGraphBuilder:
                     binding_node,
                     "story_has_fmv_binding",
                     source="video_bindings",
-                    evidence="fallbackSceneHint",
+                    evidence=story_evidence,
                     data={"scene": binding.get("scene"), "sceneIsHint": bool(binding.get("sceneIsHint"))},
                 )
             mission_id = safe_key(binding.get("mission") or binding.get("fallbackMissionHint"))
@@ -9449,10 +9463,15 @@ class SourceGraphBuilder:
             for source_index, source_row in enumerate(binding.get("sources") or []):
                 if not isinstance(source_row, dict):
                     continue
-                source_file = safe_key(source_row.get("asset"))
+                source_field = (
+                    "asset"
+                    if safe_key(source_row.get("asset"))
+                    else "sourceFile"
+                )
+                source_file = safe_key(source_row.get(source_field))
                 if source_file:
                     file_node = self.add_file(source_file, kind="fmv_binding_source", source=safe_key(source_row.get("kind")) or "video_bindings", data=compact_payload(source_row, depth=2))
-                    self.add_edge(binding_node, file_node, "fmv_binding_source_file", source="video_bindings", evidence=f"sources[{source_index}].asset", data=compact_payload(source_row, depth=2))
+                    self.add_edge(binding_node, file_node, "fmv_binding_source_file", source="video_bindings", evidence=f"sources[{source_index}].{source_field}", data=compact_payload(source_row, depth=2))
                 path_id = safe_key(source_row.get("pathId"))
                 if path_id:
                     pid_node = self.add_node("unity_pathid", path_id, name=f"pathid:{path_id}", source="video_bindings")
@@ -9470,6 +9489,232 @@ class SourceGraphBuilder:
                             "asset": source_file,
                         },
                     )
+
+        definitions = payload.get("definitions")
+        if isinstance(definitions, dict):
+            for definition_key, definition in sorted(definitions.items()):
+                if not isinstance(definition, dict):
+                    continue
+                fmv_id = safe_key(
+                    definition.get("fmvId") or definition_key
+                )
+                if not fmv_id:
+                    continue
+                definition_node = self.add_node(
+                    "fmv_definition",
+                    fmv_id,
+                    name=fmv_id,
+                    source="video_bindings",
+                    data={
+                        "fmvId": fmv_id,
+                        "numericIds": list(
+                            definition.get("numericIds") or []
+                        ),
+                        "placementEvidence": False,
+                        "videoCount": len(
+                            definition.get("videos") or []
+                        ),
+                        "sourceCount": len(
+                            definition.get("sources") or []
+                        ),
+                        "authoritativeBindingFmvId": definition.get(
+                            "authoritativeBindingFmvId"
+                        ),
+                        "hasAuthoritativeBinding": bool(
+                            definition.get(
+                                "authoritativeBindingFmvId"
+                            )
+                        ),
+                        "timelineEvidence": compact_payload(
+                            definition.get("timelineEvidence") or {},
+                            depth=3,
+                            list_limit=80,
+                        ),
+                    },
+                )
+                self.add_edge(
+                    dataset,
+                    definition_node,
+                    "defines_fmv_definition",
+                    source="video_bindings",
+                    evidence=fmv_id,
+                    data={"placementEvidence": False},
+                )
+                self.add_alias(
+                    fmv_id,
+                    definition_node,
+                    kind="fmv_definition_id",
+                    source="video_bindings",
+                )
+                authoritative_binding_id = safe_key(
+                    definition.get("authoritativeBindingFmvId")
+                )
+                if authoritative_binding_id:
+                    binding_node = self.add_node(
+                        "fmv_binding",
+                        authoritative_binding_id,
+                        name=authoritative_binding_id,
+                        source="video_bindings",
+                    )
+                    self.add_edge(
+                        definition_node,
+                        binding_node,
+                        "fmv_definition_has_authoritative_binding",
+                        source="video_bindings",
+                        evidence="authoritativeBindingFmvId",
+                        data={
+                            "placementEvidence": False,
+                            "genderVariant": (
+                                authoritative_binding_id != fmv_id
+                            ),
+                        },
+                    )
+                for numeric_id in definition.get("numericIds") or []:
+                    self.add_alias(
+                        f"fmv_id:{numeric_id}",
+                        definition_node,
+                        kind="fmv_numeric_id",
+                        source="video_bindings",
+                    )
+                timeline_evidence = (
+                    definition.get("timelineEvidence")
+                    if isinstance(
+                        definition.get("timelineEvidence"), dict
+                    )
+                    else {}
+                )
+                for text_index, text_id in enumerate(
+                    timeline_evidence.get("subtitleTextIds") or []
+                ):
+                    text_key = safe_key(text_id)
+                    if not text_key:
+                        continue
+                    text_node = self.add_node(
+                        "text_key",
+                        text_key,
+                        name=text_key,
+                        source="video_bindings",
+                    )
+                    self.add_edge(
+                        definition_node,
+                        text_node,
+                        "fmv_definition_subtitle_text",
+                        source="video_bindings",
+                        evidence=(
+                            f"timelineEvidence.subtitleTextIds"
+                            f"[{text_index}]"
+                        ),
+                        data={"placementEvidence": False},
+                    )
+                for audio_index, audio_id in enumerate(
+                    timeline_evidence.get("audioEventKeys") or []
+                ):
+                    audio_key = safe_key(audio_id)
+                    if not audio_key:
+                        continue
+                    audio_node = self.add_node(
+                        "audio",
+                        audio_key,
+                        name=audio_key,
+                        source="video_bindings",
+                    )
+                    self.add_edge(
+                        definition_node,
+                        audio_node,
+                        "fmv_definition_audio_event",
+                        source="video_bindings",
+                        evidence=(
+                            f"timelineEvidence.audioEventKeys"
+                            f"[{audio_index}]"
+                        ),
+                        data={"placementEvidence": False},
+                    )
+                for video_index, video_path in enumerate(
+                    definition.get("videos") or []
+                ):
+                    rel = self.normalized_video_binding_path(video_path)
+                    if not rel:
+                        continue
+                    video_node = self.add_node(
+                        "video",
+                        rel,
+                        name=Path(rel).name,
+                        source=rel.split("/", 1)[0],
+                        path=rel,
+                    )
+                    self.add_edge(
+                        definition_node,
+                        video_node,
+                        "fmv_definition_resolves_video",
+                        source="video_bindings",
+                        evidence=f"definitions[{fmv_id}].videos[{video_index}]",
+                        data={"placementEvidence": False},
+                    )
+                    self.add_edge(
+                        video_node,
+                        definition_node,
+                        "video_has_fmv_definition",
+                        source="video_bindings",
+                        evidence=f"definitions[{fmv_id}].videos[{video_index}]",
+                        data={"placementEvidence": False},
+                    )
+                for source_index, source_row in enumerate(
+                    definition.get("sources") or []
+                ):
+                    if not isinstance(source_row, dict):
+                        continue
+                    source_file = safe_key(source_row.get("asset"))
+                    if source_file:
+                        file_node = self.add_file(
+                            source_file,
+                            kind="fmv_definition_source",
+                            source="video_bindings",
+                            data=compact_payload(source_row, depth=2),
+                        )
+                        self.add_edge(
+                            definition_node,
+                            file_node,
+                            "fmv_definition_source_file",
+                            source="video_bindings",
+                            evidence=(
+                                f"definitions[{fmv_id}]"
+                                f".sources[{source_index}].asset"
+                            ),
+                            data={"placementEvidence": False},
+                        )
+                    for field_name in (
+                        "pathId",
+                        "defaultPlayablePathId",
+                    ):
+                        path_id = safe_key(source_row.get(field_name))
+                        if not path_id:
+                            continue
+                        pathid_node = self.add_node(
+                            "unity_pathid",
+                            path_id,
+                            name=f"pathid:{path_id}",
+                            source="video_bindings",
+                        )
+                        self.add_alias(
+                            f"pathid:{path_id}",
+                            pathid_node,
+                            kind="unity_pathid",
+                            source="video_bindings",
+                        )
+                        self.add_edge(
+                            definition_node,
+                            pathid_node,
+                            "fmv_definition_pathid",
+                            source="video_bindings",
+                            evidence=(
+                                f"definitions[{fmv_id}]"
+                                f".sources[{source_index}].{field_name}"
+                            ),
+                            data={
+                                "field": field_name,
+                                "placementEvidence": False,
+                            },
+                        )
 
         for index, video_path in enumerate(payload.get("unboundVideos") or []):
             rel = self.normalized_video_binding_path(video_path)
@@ -9784,6 +10029,200 @@ class SourceGraphBuilder:
                 source=source,
                 evidence="mission.id",
             )
+            story_order = (
+                payload.get("storyOrder")
+                if isinstance(payload.get("storyOrder"), dict)
+                else {}
+            )
+            story_order_edges = [
+                edge
+                for edge in story_order.get("directEdges") or []
+                if isinstance(edge, dict)
+            ]
+            scene_graph_edges = [
+                edge
+                for edge in (
+                    ((payload.get("flow") or {}).get("sceneGraph") or {}).get(
+                        "edges"
+                    )
+                    or []
+                )
+                if isinstance(edge, dict)
+            ]
+            for order_node_index, order_node in enumerate(
+                story_order.get("nodes") or []
+            ):
+                if (
+                    not isinstance(order_node, dict)
+                    or order_node.get("membership")
+                    != "exactLevelScriptPlaybackContext"
+                ):
+                    continue
+                story_key = safe_key(order_node.get("key"))
+                if not story_key:
+                    continue
+                incident_edges = [
+                    edge
+                    for edge in story_order_edges
+                    if story_key
+                    in {
+                        safe_key(edge.get("from")),
+                        safe_key(edge.get("to")),
+                    }
+                    and safe_key(edge.get("kind"))
+                    == "levelscriptSceneChain"
+                ]
+                boundary = {
+                    "membership": "exactLevelScriptPlaybackContext",
+                    "relationStatus": order_node.get("relationStatus"),
+                    "sourceFiles": sorted({
+                        safe_key(source_file)
+                        for edge in incident_edges
+                        for source_file in edge.get("sourceFiles") or []
+                        if safe_key(source_file)
+                    }),
+                    "levelIds": sorted({
+                        safe_key(level_id)
+                        for edge in incident_edges
+                        for level_id in edge.get("levelIds") or []
+                        if safe_key(level_id)
+                    }),
+                    "playbackTarget": True,
+                    "missionOwnership": False,
+                    "questOwnership": False,
+                    "orderEvidence": False,
+                }
+                context_node = self.add_node(
+                    "mission_story_context",
+                    (
+                        f"{mission_id}:exactLevelScriptPlaybackContext:"
+                        f"{story_key}"
+                    ),
+                    name=f"{mission_id} LevelScript playback context {story_key}",
+                    source=source,
+                    data=boundary,
+                )
+                story_node = self.add_node(
+                    "story",
+                    story_key,
+                    name=story_key,
+                    source=source,
+                )
+                evidence = (
+                    f"storyOrder.nodes[{order_node_index}].membership"
+                )
+                self.add_edge(
+                    mission_node,
+                    context_node,
+                    "mission_has_level_script_playback_context",
+                    source=source,
+                    evidence=evidence,
+                    data=boundary,
+                )
+                self.add_edge(
+                    context_node,
+                    story_node,
+                    "level_script_playback_context_targets_story",
+                    source=source,
+                    evidence=evidence,
+                    data=boundary,
+                )
+                self.add_edge(
+                    story_node,
+                    context_node,
+                    "story_has_level_script_playback_context",
+                    source=source,
+                    evidence=evidence,
+                    data=boundary,
+                )
+
+            for definition_index, definition in enumerate(
+                story_order.get("definitionOnlySourceNodes") or []
+            ):
+                if not isinstance(definition, dict):
+                    continue
+                story_key = safe_key(definition.get("key"))
+                record_classes = sorted({
+                    safe_key(value)
+                    for value in definition.get("recordClasses") or []
+                    if safe_key(value)
+                })
+                if (
+                    not story_key
+                    or not record_classes
+                    or any(
+                        record_class != "preload_cutscene"
+                        for record_class in record_classes
+                    )
+                ):
+                    continue
+                incident_edges = [
+                    edge
+                    for edge in scene_graph_edges
+                    if story_key
+                    in {
+                        safe_key(edge.get("from")),
+                        safe_key(edge.get("to")),
+                    }
+                    and safe_key(edge.get("kind"))
+                    == "levelscriptSceneChain"
+                ]
+                boundary = {
+                    "storyKey": story_key,
+                    "recordClasses": record_classes,
+                    "sourceFiles": sorted({
+                        safe_key(source_file)
+                        for source_file in (
+                            list(definition.get("sourceFiles") or [])
+                            + [
+                                value
+                                for edge in incident_edges
+                                for value in edge.get("sourceFiles") or []
+                            ]
+                        )
+                        if safe_key(source_file)
+                    }),
+                    "levelIds": sorted({
+                        safe_key(level_id)
+                        for level_id in (
+                            list(definition.get("levelIds") or [])
+                            + [
+                                value
+                                for edge in incident_edges
+                                for value in edge.get("levelIds") or []
+                            ]
+                        )
+                        if safe_key(level_id)
+                    }),
+                    "playbackTarget": False,
+                    "missionOwnership": False,
+                    "questOwnership": False,
+                    "orderEvidence": False,
+                }
+                definition_node = self.add_node(
+                    "mission_story_definition",
+                    f"{mission_id}:preload_cutscene:{story_key}",
+                    name=f"{mission_id} preload definition {story_key}",
+                    source=source,
+                    data=boundary,
+                )
+                self.add_alias(
+                    story_key,
+                    definition_node,
+                    kind="definition_only_story_ref",
+                    source=source,
+                )
+                self.add_edge(
+                    mission_node,
+                    definition_node,
+                    "mission_has_definition_only_story_reference",
+                    source=source,
+                    evidence=(
+                        "storyOrder.definitionOnlySourceNodes"
+                        f"[{definition_index}]"
+                    ),
+                    data=boundary,
+                )
             for node_index, node in enumerate(payload.get("nodes") or []):
                 if not isinstance(node, dict):
                     continue
@@ -31890,6 +32329,7 @@ ANIMATION_USAGE_EXPLICIT_EDGE_KINDS = (
 
 VIDEO_USAGE_KIND_FALLBACKS = (
     "fmv_binding",
+    "fmv_definition",
     "video",
     "story",
     "mission",
@@ -31904,6 +32344,14 @@ VIDEO_USAGE_KIND_FALLBACKS = (
 
 VIDEO_USAGE_EDGE_KINDS = (
     "defines_fmv_binding",
+    "defines_fmv_definition",
+    "fmv_definition_resolves_video",
+    "video_has_fmv_definition",
+    "fmv_definition_source_file",
+    "fmv_definition_pathid",
+    "fmv_definition_has_authoritative_binding",
+    "fmv_definition_subtitle_text",
+    "fmv_definition_audio_event",
     "fmv_binding_targets_story",
     "story_has_fmv_binding",
     "fmv_binding_in_mission",

@@ -47,6 +47,43 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertEqual(route["controlPathCount"], 1)
         self.assertEqual(route["nativePaths"][0]["headerLocalId"], 4)
 
+    def test_trigger_route_reads_world_entity_listener_evidence(self):
+        row = {
+            "key": "radio_testm1_1",
+            "relation": "mission_tracked_world_entity_levelscript_context",
+            "direction": "context",
+            "worldEntityLevelScriptEvidence": [{
+                "levelId": "map_test",
+                "scriptId": "70000000001",
+                "sourceFile": "LevelScriptData/map_test/70000000001.json",
+                "nativeAction": "PlayRadio",
+                "listener": {
+                    "status": "exact_serialized_control_path",
+                    "headerName": "ScriptEvent_OnLeaderEnterTriggerVolume",
+                    "headerLocalId": 6,
+                    "eventDetail": {
+                        "summary": "leader enters trigger slot 80001",
+                    },
+                    "path": [{
+                        "edge": "Split.actions[0]",
+                        "localId": 8,
+                        "actionName": "PlayRadio",
+                        "recordClass": "play_radio",
+                    }],
+                },
+            }],
+        }
+
+        route = pipeline.build_story_trigger_route(row, mission_id="testm1")
+
+        self.assertEqual(
+            route["eventNames"],
+            ["ScriptEvent_OnLeaderEnterTriggerVolume"],
+        )
+        self.assertEqual(route["actionNames"], ["PlayRadio"])
+        self.assertEqual(route["controlPathCount"], 1)
+        self.assertEqual(route["nativePaths"][0]["headerLocalId"], 6)
+
     def test_publish_source_story_partial_order_embeds_lazy_mission_graph(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -1730,6 +1767,12 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                     "conditionType": 18,
                     "parameter": [{"valueStringList": ["testm1_q#2", "0"]}],
                 },
+                "fixture_mission_condition": {
+                    "conditionId": "fixture_mission_condition",
+                    "gameMechanicsId": "missionless_test",
+                    "conditionType": 19,
+                    "parameter": [{"valueStringList": ["testm1", "0"]}],
+                },
             }), encoding="utf-8")
             dungeon_table.write_text(json.dumps({
                 "missionless_test": {
@@ -1821,7 +1864,18 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             self.assertFalse(runtime_node["storyBinding"])
             self.assertEqual(
                 [row["relation"] for row in runtime_node["associations"]],
-                ["activity_stage_mission_association", "subgame_unlock_quest_prerequisite"],
+                [
+                    "activity_stage_mission_association",
+                    "subgame_unlock_quest_prerequisite",
+                    "subgame_unlock_mission_prerequisite",
+                ],
+            )
+            mission_prerequisite = runtime_node["associations"][2]
+            self.assertEqual(mission_prerequisite["targetType"], "mission")
+            self.assertEqual(mission_prerequisite["targetId"], "testm1")
+            self.assertEqual(
+                mission_prerequisite["conditionTypeName"],
+                "MissionStateEqual",
             )
             self.assertTrue(all(not row["ownership"] for row in runtime_node["associations"]))
             self.assertEqual(runtime_node["sceneHosts"][0]["sceneId"], "dung_fixture")
@@ -2025,12 +2079,298 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
                 )
             self.assertTrue(row["luaFile"].endswith(".lua"))
 
-    def test_case_unproven_gender_select_cutscene_is_not_pinned(self) -> None:
-        # "Cutscene_e0m0_1" occurs zero times in export_full; admitting it would
-        # assume case-insensitive resolution that has not been proved.
+    def test_case_sensitive_gender_select_cutscene_is_not_pinned(self) -> None:
+        # The current native resolver preserves "Cutscene_e0m0_1" into
+        # case-sensitive StringPathHash resource lookup, so it cannot prove
+        # playback of lowercase "cutscene_e0m0_1".
         keys = {row["storyKey"] for row in pipeline.LUA_STORY_PLAYBACK_CALL_SITES}
         self.assertNotIn("cutscene_e0m0_1", keys)
         self.assertNotIn("Cutscene_e0m0_1", keys)
+
+    def test_every_rejected_candidate_has_auditable_provenance(self) -> None:
+        admitted = {
+            row["storyKey"] for row in pipeline.LUA_STORY_PLAYBACK_CALL_SITES
+        }
+        for row in pipeline.LUA_STORY_PLAYBACK_REJECTIONS:
+            for field in (
+                "storyKey", "luaLiteral", "luaFile", "luaSymbol", "luaCall",
+                "nativeEntry", "reason", "confidence", "auditReport", "note",
+            ):
+                self.assertTrue(
+                    str(row.get(field) or "").strip(),
+                    f"{row.get('storyKey')} missing {field}",
+                )
+            self.assertNotIn(row["storyKey"], admitted)
+            self.assertNotEqual(row["luaLiteral"], row["storyKey"])
+            self.assertEqual(
+                row["reason"],
+                "case_sensitive_native_resource_lookup",
+            )
+            self.assertTrue(row["auditReport"].endswith(".json"))
+
+    def test_rejected_candidate_is_published_without_a_trigger_route(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            story_root = root / "lang"
+            language_root = story_root / "CN"
+            mission_root = language_root / "mission"
+            report_root = root / "reports"
+            mission_root.mkdir(parents=True)
+            (language_root / "index.json").write_text(json.dumps({
+                "entries": [{
+                    "k": "cutscene_e0m0_1",
+                    "d": "cutscene",
+                    "m": "e0m0",
+                    "p": "fixture",
+                }],
+            }), encoding="utf-8")
+            (mission_root / "e0m0.json").write_text(json.dumps({
+                "flow": {},
+            }), encoding="utf-8")
+            table_paths = [
+                root / "SubGameInstanceDataTable.json",
+                root / "ActivityConditionalMultiStageTable.json",
+                root / "GameMechanicConditionTable.json",
+                root / "DungeonTable.json",
+                root / "TextVoIdTable.json",
+            ]
+            for path in table_paths:
+                path.write_text("{}", encoding="utf-8")
+
+            report = pipeline.build_story_binding_coverage(
+                {"missions": [{"id": "e0m0"}]},
+                root / "pipeline" / "index.json",
+                story_root,
+                "CN",
+                report_root,
+                *table_paths,
+            )
+
+        row = report["storyTriggerManifest"]["cutscene_e0m0_1"]
+        self.assertEqual(row["attachmentStatus"], "unlinked_no_trigger_route")
+        self.assertEqual(row["routes"], [])
+        self.assertEqual(
+            row["rejectedPlaybackCandidates"],
+            list(pipeline.LUA_STORY_PLAYBACK_REJECTIONS),
+        )
+        self.assertEqual(
+            report["counts"]["rejectedStoryPlaybackCandidates"],
+            1,
+        )
+
+    def test_root_playback_alias_is_non_owning_trigger_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            story_root = root / "lang"
+            language_root = story_root / "CN"
+            mission_root = language_root / "mission"
+            report_root = root / "reports"
+            mission_root.mkdir(parents=True)
+            (language_root / "index.json").write_text(json.dumps({
+                "entries": [{
+                    "k": "cutscene_fixture_asset",
+                    "d": "cutscene",
+                    "m": "fixture",
+                    "p": "fixture",
+                }],
+            }), encoding="utf-8")
+            (mission_root / "fixture.json").write_text(
+                json.dumps({"flow": {}}),
+                encoding="utf-8",
+            )
+            table_paths = [
+                root / "SubGameInstanceDataTable.json",
+                root / "ActivityConditionalMultiStageTable.json",
+                root / "GameMechanicConditionTable.json",
+                root / "DungeonTable.json",
+                root / "TextVoIdTable.json",
+            ]
+            for path in table_paths:
+                path.write_text("{}", encoding="utf-8")
+            alias = {
+                "rootStoryKey": "cutscene_fixture_root",
+                "playableAssetStoryKey": "cutscene_fixture_asset",
+                "relation": "cutscene_root_director_playable_asset",
+                "edgeStatus": (
+                    "exact_root_playback_alias_no_chronology_or_mission_owner"
+                ),
+                "cutsceneRootGameObjectPathId": 7,
+                "cutsceneRootComponentPathId": 8,
+                "directorObject": {
+                    "serializedFile": "CAB-host",
+                    "pathId": 9,
+                    "source": "VFS/hash/chunk.chk",
+                },
+                "nativeMappingId": (
+                    "gameassembly-2026-07-28-"
+                    "cutscene-root-director-playback-v1"
+                ),
+                "evidenceReport": (
+                    "reports/story/recovery/"
+                    "animestudio_story_reverse_pptr_audit.json"
+                ),
+                "ownership": False,
+                "chronology": False,
+            }
+            with patch.object(
+                pipeline,
+                "story_root_playback_aliases",
+                return_value=[alias],
+            ):
+                report = pipeline.build_story_binding_coverage(
+                    {"missions": [{"id": "fixture"}]},
+                    root / "pipeline" / "index.json",
+                    story_root,
+                    "CN",
+                    report_root,
+                    *table_paths,
+                )
+
+        manifest = report["storyTriggerManifest"][
+            "cutscene_fixture_asset"
+        ]
+        self.assertEqual(
+            manifest["attachmentStatus"],
+            "trigger_known_owner_unresolved",
+        )
+        self.assertEqual(len(manifest["routes"]), 1)
+        route = manifest["routes"][0]
+        self.assertEqual(
+            route["causality"],
+            "playback_alias_owner_unresolved",
+        )
+        self.assertEqual(
+            [step["kind"] for step in route["steps"]],
+            ["story_root", "native_action", "story"],
+        )
+        self.assertEqual(report["counts"]["connectedUniqueStoryFiles"], 0)
+        self.assertEqual(report["counts"]["rootPlaybackAliasRows"], 1)
+        self.assertEqual(report["counts"]["rootPlaybackAliasFiles"], 1)
+        self.assertEqual(report["rootPlaybackAliases"], [alias])
+
+    def test_owned_root_playback_route_composes_alias_owner_context(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            story_root = root / "lang"
+            language_root = story_root / "CN"
+            mission_root = language_root / "mission"
+            report_root = root / "reports"
+            mission_root.mkdir(parents=True)
+            (language_root / "index.json").write_text(json.dumps({
+                "entries": [
+                    {
+                        "k": "cutscene_fixture_root",
+                        "d": "cutscene",
+                        "m": "fixture",
+                        "p": "fixture",
+                    },
+                    {
+                        "k": "cutscene_fixture_asset",
+                        "d": "cutscene",
+                        "m": "fixture",
+                        "p": "fixture",
+                    },
+                ],
+            }), encoding="utf-8")
+            (mission_root / "fixture.json").write_text(json.dumps({
+                "flow": {
+                    "missionStoryConnections": [{
+                        "key": "cutscene_fixture_root",
+                        "relation":
+                            "mission_global_var_native_playback_context",
+                        "direction": "context",
+                        "nativeActions": ["PlayCutsceneAction"],
+                        "confidence":
+                            "native_exact_unique_mission_global_var_context",
+                        "evidenceTier": "native_exact_context",
+                        "sourceFiles": ["fixture_levelscript.json"],
+                    }],
+                },
+            }), encoding="utf-8")
+            table_paths = [
+                root / "SubGameInstanceDataTable.json",
+                root / "ActivityConditionalMultiStageTable.json",
+                root / "GameMechanicConditionTable.json",
+                root / "DungeonTable.json",
+                root / "TextVoIdTable.json",
+            ]
+            for path in table_paths:
+                path.write_text("{}", encoding="utf-8")
+            alias = {
+                "rootStoryKey": "cutscene_fixture_root",
+                "playableAssetStoryKey": "cutscene_fixture_asset",
+                "relation": "cutscene_root_director_playable_asset",
+                "edgeStatus": (
+                    "exact_root_playback_alias_no_chronology_or_mission_owner"
+                ),
+                "cutsceneRootGameObjectPathId": 7,
+                "cutsceneRootComponentPathId": 8,
+                "directorObject": {
+                    "serializedFile": "CAB-host",
+                    "pathId": 9,
+                    "source": "VFS/hash/chunk.chk",
+                },
+                "nativeMappingId": (
+                    "gameassembly-2026-07-28-"
+                    "cutscene-root-director-playback-v1"
+                ),
+                "evidenceReport": (
+                    "reports/story/recovery/"
+                    "animestudio_story_reverse_pptr_audit.json"
+                ),
+                "ownership": False,
+                "chronology": False,
+            }
+            with patch.object(
+                pipeline,
+                "story_root_playback_aliases",
+                return_value=[alias],
+            ):
+                report = pipeline.build_story_binding_coverage(
+                    {"missions": [{"id": "fixture"}]},
+                    root / "pipeline" / "index.json",
+                    story_root,
+                    "CN",
+                    report_root,
+                    *table_paths,
+                )
+
+        manifest = report["storyTriggerManifest"][
+            "cutscene_fixture_asset"
+        ]
+        self.assertEqual(manifest["attachmentStatus"], "connected")
+        composed = next(
+            route
+            for route in manifest["routes"]
+            if route["causality"] == "playback_alias_owner_connected"
+        )
+        self.assertEqual(composed["missionId"], "fixture")
+        self.assertEqual(
+            [step["kind"] for step in composed["steps"]],
+            [
+                "mission",
+                "native_action",
+                "story_root",
+                "native_action",
+                "story",
+            ],
+        )
+        self.assertEqual(report["counts"]["connectedUniqueStoryFiles"], 2)
+        self.assertEqual(report["counts"]["unlinkedUniqueStoryFiles"], 0)
+        self.assertEqual(
+            report["counts"]["composedRootPlaybackAliasRows"],
+            1,
+        )
+        self.assertEqual(
+            report["counts"]["composedRootPlaybackAliasFiles"],
+            1,
+        )
+        self.assertEqual(
+            report["composedRootPlaybackAliases"][0]["missionId"],
+            "fixture",
+        )
 
     def test_pinned_story_keys_are_lowercase_exact(self) -> None:
         for row in pipeline.LUA_STORY_PLAYBACK_CALL_SITES:

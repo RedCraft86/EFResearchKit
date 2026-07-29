@@ -22,6 +22,10 @@ from .mission_recovery import (
     decode_mission_script_conditions,
     decode_mission_world_entity_condition_groups,
     decode_mission_world_entity_condition_refs,
+    enrich_source_backed_scene_edge_context,
+    is_call_server_self_uid_callback,
+    is_play_dialog_hide_non_identifier_payload,
+    typed_cutscene_single_char_parameter_action,
 )
 
 _RADIO_CONTINUATION_REPORT_PATH = (
@@ -2998,8 +3002,10 @@ def build_language_bundle(
         tree_after: dict[str, str] = {}
         tree_after_sources: dict[str, list[str]] = {}
         tree_branches: dict[str, list[str]] = {}
+        tree_branch_sources: dict[str, list[dict]] = {}
         tree_merge: dict[str, str] = {}
         tree_converge: dict[str, str] = {}
+        tree_option_node_layouts: dict[str, list[dict]] = {}
         tree_pre: set[str] = set()
         tree_pre_sources: dict[str, list[str]] = {}
         scene_link_after: dict[str, str] = {}
@@ -3031,8 +3037,12 @@ def build_language_bundle(
             tree_after = tree_meta.get("after", {}) or {}
             tree_after_sources = tree_meta.get("afterSources", {}) or {}
             tree_branches = tree_meta.get("branches", {}) or {}
+            tree_branch_sources = tree_meta.get("branchSources", {}) or {}
             tree_merge = tree_meta.get("merge", {}) or {}
             tree_converge = tree_meta.get("converge", {}) or {}
+            tree_option_node_layouts = (
+                tree_meta.get("optionNodeLayouts", {}) or {}
+            )
             tree_pre_sources = tree_meta.get("preSources", {}) or {}
             cinematic_finish_groups = [
                 group
@@ -3109,6 +3119,14 @@ def build_language_bundle(
                     elif anchor.get("position") == "pre":
                         timeline_authored_option_ids.add(opt_id)
                         timeline_pre.add(opt_id)
+                        if timeline_line_ids and opt_id not in timeline_after_line_ids:
+                            timeline_after_line_ids[opt_id] = timeline_line_ids
+                            timeline_after_line_timings[opt_id] = timeline_line_timing_by_id
+                            timeline_after_runtime_jump_clips[opt_id] = (
+                                list(timeline.get("runtimeJumpClips") or [])
+                                if "runtimeJumpClips" in timeline
+                                else None
+                            )
         line_idxs: list[tuple[int, str]] = []
         valid_line_ids: set[str] = set()
         if lines:
@@ -3358,6 +3376,93 @@ def build_language_bundle(
                     "source": "siblingSceneGraphText",
                     "sources": source_bits,
                 }
+            return {}
+        def foreign_timeline_option_definition_for_group(
+            group_opt_ids: list[str],
+            sibling_text_risk: dict,
+        ) -> dict:
+            """Close local table-only options when the cinematic consumes foreign ids."""
+            if sibling_text_risk.get("code") != "siblingSceneTextBranches":
+                return {}
+            if any(opt_id in authored_option_ids for opt_id in group_opt_ids):
+                return {}
+            sibling_mapping = sibling_text_risk.get("siblingOptionIdsByOption") or {}
+            foreign_option_ids = [
+                str(sibling_mapping.get(opt_id) or "")
+                for opt_id in group_opt_ids
+            ]
+            if (
+                not all(foreign_option_ids)
+                or any(
+                    _dialog_tree_option_prefix(option_id) == conv_key
+                    for option_id in foreign_option_ids
+                )
+            ):
+                return {}
+            for finish_group in cinematic_finish_groups:
+                timeline_name = str(finish_group.get("timeline") or "")
+                finish_nums = [
+                    value
+                    for value in (finish_group.get("finishNums") or [])
+                    if isinstance(value, int) and not isinstance(value, bool)
+                ]
+                if not timeline_name or len(finish_nums) < 2:
+                    continue
+                for timeline in timeline_entries:
+                    entry_name = str(
+                        timeline.get("timeline")
+                        or timeline.get("sourceKey")
+                        or ""
+                    )
+                    if entry_name != timeline_name:
+                        continue
+                    rows_by_id = {
+                        str(row.get("id") or ""): row
+                        for row in (timeline.get("optionRows") or [])
+                        if isinstance(row, dict) and str(row.get("id") or "")
+                    }
+                    if any(opt_id in rows_by_id for opt_id in group_opt_ids):
+                        continue
+                    foreign_rows = [
+                        rows_by_id.get(option_id) or {}
+                        for option_id in foreign_option_ids
+                    ]
+                    if not all(foreign_rows):
+                        continue
+                    if not all(row.get("changeFinishNum") == 1 for row in foreign_rows):
+                        continue
+                    target_finish_nums = [
+                        row.get("targetFinishNum")
+                        for row in foreign_rows
+                    ]
+                    if set(target_finish_nums) != set(finish_nums):
+                        continue
+                    return {
+                        "code": "foreignTimelineOptionDefinitions",
+                        "reason": "cinematicConsumesForeignOptionIds",
+                        "detail": (
+                            "The local DialogTree launches this exact cinematic "
+                            "Timeline, but the Timeline consumes only sibling-scene "
+                            "option ids and maps them completely onto its authored "
+                            "finish numbers. The same-text local option rows are "
+                            "unconsumed table definitions, not missing local routes."
+                        ),
+                        "after": sibling_text_risk.get("after") or "",
+                        "optionIds": group_opt_ids,
+                        "foreignOptionIds": foreign_option_ids,
+                        "timeline": timeline_name,
+                        "finishNums": finish_nums,
+                        "targetFinishNums": target_finish_nums,
+                        "source": "dialogTimeline",
+                        "sources": _unique_preserve([
+                            str(finish_group.get("file") or ""),
+                            str(timeline.get("file") or ""),
+                            *[
+                                str(value)
+                                for value in (sibling_text_risk.get("sources") or [])
+                            ],
+                        ]),
+                    }
             return {}
         def sibling_scene_template_branch_for_group(
             group_opt_ids: list[str],
@@ -3629,6 +3734,7 @@ def build_language_bundle(
             | tree_pre
             | scene_link_authored_option_ids
             | timeline_authored_option_ids
+            | set(tree_option_node_layouts)
         )
         authored_group_count = 0
         pre_group_count = 0
@@ -3665,13 +3771,99 @@ def build_language_bundle(
                     str(route.get("source") or ""),
                 ),
             )
+        def dialog_tree_option_node_layout_for_group(
+            group_opt_ids: list[str],
+            after_id: str,
+        ) -> dict:
+            if len(group_opt_ids) < 2:
+                return {}
+            layouts_by_option = {
+                option_id: [
+                    layout
+                    for layout in (
+                        tree_option_node_layouts.get(option_id) or []
+                    )
+                    if isinstance(layout, dict)
+                    and layout.get("nodeId") is not None
+                ]
+                for option_id in group_opt_ids
+            }
+            if any(
+                not layouts_by_option.get(option_id)
+                for option_id in group_opt_ids
+            ):
+                return {}
+            node_ids_by_option = {
+                option_id: {
+                    (
+                        str(layout.get("sourceKey") or ""),
+                        str(layout.get("file") or ""),
+                        str(layout.get("nodeId") or ""),
+                    )
+                    for layout in layouts
+                }
+                for option_id, layouts in layouts_by_option.items()
+            }
+            shared_node_ids = set.intersection(
+                *node_ids_by_option.values()
+            )
+            if not shared_node_ids:
+                return {
+                    "code": "separateDialogTreeOptionNodes",
+                    "reason": "distinctAuthoredOptionNodes",
+                    "detail": (
+                        "The same-prefix table ids are authored on distinct "
+                        "DialogTree option nodes. They are separate conditional "
+                        "prompts, not arms of one runtime choice fork."
+                    ),
+                    "after": after_id,
+                    "optionIds": group_opt_ids,
+                    "source": "dialogTree",
+                    "optionNodeLayouts": layouts_by_option,
+                }
+            shared_layouts = [
+                layout
+                for layouts in layouts_by_option.values()
+                for layout in layouts
+                if (
+                    str(layout.get("sourceKey") or ""),
+                    str(layout.get("file") or ""),
+                    str(layout.get("nodeId") or ""),
+                )
+                in shared_node_ids
+            ]
+            if shared_layouts and all(
+                not layout.get("outgoingNodeIds")
+                for layout in shared_layouts
+            ):
+                return {
+                    "code": "orphanDialogTreeOptionDefinitions",
+                    "reason": "optionNodeHasNoOutgoingConnection",
+                    "detail": (
+                        "The registered DialogTree serializes these option ids "
+                        "on a disconnected option node with no outgoing "
+                        "connection. The rows are authored definitions but do "
+                        "not form a playable route in this tree."
+                    ),
+                    "after": after_id,
+                    "optionIds": group_opt_ids,
+                    "source": "dialogTree",
+                    "optionNodeLayouts": layouts_by_option,
+                }
+            return {}
         def timeline_route_branch_for_group(group_opt_ids: list[str], after_id: str) -> dict:
-            if len(group_opt_ids) < 2 or not after_id:
+            if len(group_opt_ids) < 2:
                 return {}
-            if any(tree_branches.get(opt_id) for opt_id in group_opt_ids):
+            if any(
+                any(line_id in valid_line_ids for line_id in (tree_branches.get(opt_id) or []))
+                for opt_id in group_opt_ids
+            ):
                 return {}
-            anchors = [timeline_after.get(opt_id) or "" for opt_id in group_opt_ids]
-            if not all(anchor == after_id for anchor in anchors):
+            if after_id:
+                anchors = [timeline_after.get(opt_id) or "" for opt_id in group_opt_ids]
+                if not all(anchor == after_id for anchor in anchors):
+                    return {}
+            elif not all(opt_id in timeline_pre for opt_id in group_opt_ids):
                 return {}
             routes = [preferred_timeline_option_route(opt_id) for opt_id in group_opt_ids]
             # A route is acceptable when either it lists per-option lines OR it
@@ -3683,22 +3875,20 @@ def build_language_bundle(
                 for route in routes
             ):
                 return {}
-            branch_line_ids_by_option: dict[str, list[str]] = {}
+            route_classification = classify_runtime_jump_option_routes(
+                group_opt_ids,
+                routes,
+                local_ordered_line_ids,
+                after_line_id=after_id,
+            )
+            if route_classification.get("status") != "branched":
+                return {}
+            branch_line_ids_by_option = route_classification[
+                "branchLineIdsByOption"
+            ]
             skipped_line_ids_by_option: dict[str, list[str]] = {}
             reverse_range_line_ids_by_option: dict[str, list[str]] = {}
-            terminating_option_ids: list[str] = []
             for opt_id, route in zip(group_opt_ids, routes):
-                path_line_ids = [
-                    str(line_id)
-                    for line_id in (route.get("pathLineIds") or [])
-                    if line_id in valid_line_ids
-                ]
-                terminates_slot = bool(route.get("terminatesSlot"))
-                if terminates_slot and not path_line_ids:
-                    terminating_option_ids.append(opt_id)
-                elif not path_line_ids:
-                    return {}
-                branch_line_ids_by_option[opt_id] = path_line_ids
                 skipped_line_ids_by_option[opt_id] = [
                     str(line_id)
                     for line_id in (route.get("skippedLineIds") or [])
@@ -3709,12 +3899,6 @@ def build_language_bundle(
                     for line_id in (route.get("reverseRangeLineIds") or [])
                     if line_id in valid_line_ids
                 ]
-            distinct_branch_signatures = {
-                ("__terminatesSlot__",) if opt_id in terminating_option_ids else tuple(value)
-                for opt_id, value in branch_line_ids_by_option.items()
-            }
-            if len(distinct_branch_signatures) < 2:
-                return {}
             continuation_option_ids = _unique_preserve([
                 str(option_id)
                 for route in routes
@@ -3739,6 +3923,15 @@ def build_language_bundle(
                     for opt_id, line_ids in reverse_range_line_ids_by_option.items()
                     if line_ids
                 },
+                "directContinuationOptionIds": route_classification.get(
+                    "directContinuationOptionIds"
+                ) or [],
+                "commonContinuationLineId": route_classification.get(
+                    "commonContinuationLineId"
+                ) or "",
+                "commonContinuationLineIds": route_classification.get(
+                    "commonContinuationLineIds"
+                ) or [],
                 "continuationOptionIds": continuation_option_ids,
                 "source": "dialogTimeline",
                 "optionIndex": [
@@ -3752,20 +3945,23 @@ def build_language_bundle(
                     if str(raw_range.get("track") or raw_range.get("assetTrack") or "").strip()
                 ]),
             }
+            terminating_option_ids = route_classification.get(
+                "terminatingOptionIds"
+            ) or []
             if terminating_option_ids:
                 payload["terminatingOptionIds"] = terminating_option_ids
             return payload
         def following_line_risk_for_group(group_opt_ids: list[str], after_id: str) -> dict:
-            if len(group_opt_ids) < 2 or not after_id:
+            if len(group_opt_ids) < 2:
                 return {}
-            if any(tree_branches.get(opt_id) for opt_id in group_opt_ids):
-                return {}
-            anchors = [timeline_after.get(opt_id) or "" for opt_id in group_opt_ids]
-            if not all(anchor == after_id for anchor in anchors):
+            if any(
+                any(line_id in valid_line_ids for line_id in (tree_branches.get(opt_id) or []))
+                for opt_id in group_opt_ids
+            ):
                 return {}
             # Dialog tree shows all options converge to the same response trunk.
-            # Only emit cosmeticChoice when Timeline anchors already matched (so this
-            # is a group that would otherwise have become inferredFollowingLines).
+            # This is complete authored route evidence on its own: every
+            # serialized option edge reaches the same visible trunk.
             if all(opt_id in tree_converge for opt_id in group_opt_ids):
                 trunk_ids = {tree_converge[opt_id] for opt_id in group_opt_ids}
                 if len(trunk_ids) == 1:
@@ -3785,34 +3981,132 @@ def build_language_bundle(
                             "commonContinuationLineId": common_trunk,
                             "source": "dialogTree",
                         }
+            preferred_rows = [preferred_timeline_option_row(opt_id) for opt_id in group_opt_ids]
+            option_indices = [
+                row.get("optionIndex") if isinstance(row.get("optionIndex"), int) else None
+                for row in preferred_rows
+            ]
+            option_starts = [
+                float(row.get("start"))
+                if isinstance(row.get("start"), (int, float))
+                else None
+                for row in preferred_rows
+            ]
+            authored_after_anchors = [
+                timeline_after.get(opt_id) or ""
+                for opt_id in group_opt_ids
+            ]
+            if (
+                all(option_index == 0 for option_index in option_indices)
+                and all(start is not None for start in option_starts)
+                and len({round(start, 6) for start in option_starts}) == len(group_opt_ids)
+                and all(authored_after_anchors)
+                and len(set(authored_after_anchors)) == len(group_opt_ids)
+            ):
+                return {
+                    "code": "sequentialTimelineOptionPrompts",
+                    "reason": "distinctZeroIndexTimelineSlots",
+                    "detail": (
+                        "These option ids share a text-table group but occur in "
+                        "distinct authored Timeline slots, each with raw "
+                        "optionIndex 0 and a different preceding line. They are "
+                        "sequential single-option prompts, not one choice fork."
+                    ),
+                    "after": after_id,
+                    "optionIds": group_opt_ids,
+                    "candidateLineIds": [],
+                    "source": "dialogTimeline",
+                    "optionIndex": option_indices,
+                    "optionStartTimes": option_starts,
+                    "optionAnchors": authored_after_anchors,
+                }
+            if after_id:
+                anchors = authored_after_anchors
+                if not all(anchor == after_id for anchor in anchors):
+                    return {}
+            elif not all(opt_id in timeline_pre for opt_id in group_opt_ids):
+                return {}
             timeline_line_ids: list[str] = []
             timeline_line_timing_by_id: dict[str, dict] = {}
             for opt_id in group_opt_ids:
                 candidate_order = timeline_after_line_ids.get(opt_id) or []
-                if after_id in candidate_order:
-                    timeline_line_ids = candidate_order
+                visible_candidate_order = [
+                    line_id
+                    for line_id in candidate_order
+                    if line_id in valid_line_ids
+                ]
+                if (
+                    (after_id and after_id in visible_candidate_order)
+                    or (not after_id and visible_candidate_order)
+                ):
+                    timeline_line_ids = visible_candidate_order
                     timeline_line_timing_by_id = timeline_after_line_timings.get(opt_id) or {}
                     break
-            if not timeline_line_ids or after_id not in timeline_line_ids:
+            if not timeline_line_ids or (after_id and after_id not in timeline_line_ids):
                 return {}
-            after_index = timeline_line_ids.index(after_id)
+            after_index = timeline_line_ids.index(after_id) if after_id else -1
             candidate_line_ids = [
                 line_id
                 for line_id in timeline_line_ids[after_index + 1 : after_index + 1 + len(group_opt_ids)]
                 if line_id in valid_line_ids
             ]
-            if len(candidate_line_ids) != len(group_opt_ids):
+            runtime_jump_clips = (
+                timeline_after_runtime_jump_clips.get(group_opt_ids[0])
+                if group_opt_ids
+                else None
+            )
+            if not candidate_line_ids:
+                positive_jumps_after_option = []
+                if isinstance(runtime_jump_clips, list) and all(
+                    start is not None for start in option_starts
+                ):
+                    option_start = min(option_starts)
+                    positive_jumps_after_option = [
+                        clip
+                        for clip in runtime_jump_clips
+                        if (
+                            isinstance(clip, dict)
+                            and isinstance(clip.get("optionIndex"), int)
+                            and clip.get("optionIndex") > 0
+                            and isinstance(clip.get("start"), (int, float))
+                            and float(clip["start"]) >= option_start - 1e-6
+                        )
+                    ]
+                if (
+                    after_id
+                    and after_index == len(timeline_line_ids) - 1
+                    and all(start is not None for start in option_starts)
+                    and len({round(start, 6) for start in option_starts}) == 1
+                    and isinstance(runtime_jump_clips, list)
+                    and not positive_jumps_after_option
+                    and not any(
+                        preferred_timeline_option_route(opt_id)
+                        for opt_id in group_opt_ids
+                    )
+                ):
+                    return {
+                        "code": "terminalTimelineOptionSlot",
+                        "reason": "afterLastLocalTimelineLine",
+                        "detail": (
+                            "The authored option slot follows the final local "
+                            "dialog line, and the decoded Timeline contains no "
+                            "later local line or positive option-index Runtime "
+                            "Jump. It has no intra-dialog line route; this does "
+                            "not claim that an external scene cannot follow."
+                        ),
+                        "after": after_id,
+                        "optionIds": group_opt_ids,
+                        "candidateLineIds": [],
+                        "source": "dialogTimeline",
+                        "optionIndex": option_indices,
+                        "optionStartTimes": option_starts,
+                    }
                 return {}
             common_continuation_id = ""
             for line_id in timeline_line_ids[after_index + 1 + len(group_opt_ids) :]:
                 if line_id in valid_line_ids:
                     common_continuation_id = line_id
                     break
-            preferred_rows = [preferred_timeline_option_row(opt_id) for opt_id in group_opt_ids]
-            option_indices = [
-                row.get("optionIndex") if isinstance(row.get("optionIndex"), int) else None
-                for row in preferred_rows
-            ]
             candidate_clip_indices = [
                 (timeline_line_timing_by_id.get(line_id) or {}).get("clipOptionIndex")
                 for line_id in candidate_line_ids
@@ -3831,11 +4125,6 @@ def build_language_bundle(
                 for row in candidate_timing_rows
                 if isinstance(row.get("start"), (int, float))
             ]
-            runtime_jump_clips = (
-                timeline_after_runtime_jump_clips.get(group_opt_ids[0])
-                if group_opt_ids
-                else None
-            )
             continuation_classification = classify_zero_index_timeline_continuation(
                 option_indices,
                 candidate_clip_indices,
@@ -3877,6 +4166,7 @@ def build_language_bundle(
                     "reason": reason,
                     "detail": detail,
                     "after": after_id,
+                    **({"position": "pre"} if not after_id else {}),
                     "optionIds": group_opt_ids,
                     "candidateLineIds": [],
                     "candidateWindowLineIds": candidate_line_ids,
@@ -3965,6 +4255,53 @@ def build_language_bundle(
                         if line_id in valid_line_ids:
                             common_continuation_id = line_id
                             break
+            clip_route_classification = {}
+            if candidate_mapping:
+                clip_route_classification = (
+                    classify_timeline_clip_option_index_routes(
+                        group_opt_ids,
+                        option_indices,
+                        branch_line_ids_by_option,
+                        branch_clip_indices_by_option,
+                        timeline_line_timing_by_id,
+                        runtime_jump_clips,
+                        common_continuation_id,
+                    )
+                )
+            if clip_route_classification.get("status") == "exact":
+                return {
+                    "code": "timelineClipOptionIndexBranches",
+                    "reason": "runtimeClipOptionIndex",
+                    "detail": (
+                        "The authored Timeline option rows use distinct positive "
+                        "optionIndex values, and every response trunk clip carries "
+                        "the matching runtime optionIndex. Any Runtime Jump inside "
+                        "the branch window occurs only after that option's final "
+                        "response clip and converges forward to the shared "
+                        "continuation."
+                    ),
+                    "after": after_id,
+                    "optionIds": group_opt_ids,
+                    "branchLineIdsByOption": branch_line_ids_by_option,
+                    "branchLineClipOptionIndexByOption":
+                        branch_clip_indices_by_option,
+                    "commonContinuationLineId": common_continuation_id,
+                    "source": "dialogTimeline",
+                    "optionIndex": option_indices,
+                    "candidateMapping": candidate_mapping,
+                    "candidateLineClipOptionIndex": candidate_clip_indices,
+                    "assetTracks": _unique_preserve([
+                        str(row.get("assetTrack") or "")
+                        for row in preferred_rows
+                        if row.get("assetTrack")
+                    ]),
+                    "convergenceRuntimeJumps": (
+                        clip_route_classification.get(
+                            "convergenceRuntimeJumps"
+                        )
+                        or []
+                    ),
+                }
             detail = (
                 "Timeline option metadata anchors this group to a trunk line, "
                 "but the option entries do not name explicit target trunk ids; "
@@ -4380,6 +4717,13 @@ def build_language_bundle(
                 ]
                 if branch_lines:
                     opt["branchLines"] = expand_transparent_single_option_branch(branch_lines)
+                    sources = [
+                        source
+                        for source in (tree_branch_sources.get(opt_id) or [])
+                        if isinstance(source, dict)
+                    ]
+                    if sources:
+                        opt.setdefault("_debug", {})["branchLineSources"] = sources
             pre_option_ids = [opt_id for opt_id in group_opt_ids if opt_id in tree_pre]
             timeline_pre_option_ids = [opt_id for opt_id in group_opt_ids if opt_id in timeline_pre]
             text_alias_pre_option_ids = list(group_opt_ids) if g in text_alias_pre_by_group else []
@@ -4519,6 +4863,14 @@ def build_language_bundle(
                         group_opt_ids,
                         group.get("after") or "",
                     )
+                if sibling_text_branch.get("code") == "siblingSceneTextBranches":
+                    sibling_text_branch = (
+                        foreign_timeline_option_definition_for_group(
+                            group_opt_ids,
+                            sibling_text_branch,
+                        )
+                        or sibling_text_branch
+                    )
                 sibling_branch_lines_by_option = sibling_text_branch.get("branchLineIdsByOption") or {}
                 sibling_after = str(sibling_text_branch.get("after") or "")
                 if sibling_after in valid_line_ids:
@@ -4562,10 +4914,19 @@ def build_language_bundle(
                             "lineIds": remaining_line_ids,
                         }
             branch_convergence_risk = normalize_group_branch_convergence(group, opts, group_opt_ids)
+            dialog_tree_node_layout = {}
+            if not any(opt.get("branchLines") for opt in opts):
+                dialog_tree_node_layout = (
+                    dialog_tree_option_node_layout_for_group(
+                        group_opt_ids,
+                        group.get("after") or "",
+                    )
+                )
             following_line_risk = (
                 timeline_route_branch
                 or sibling_text_branch
                 or branch_convergence_risk
+                or dialog_tree_node_layout
                 or following_line_risk_for_group(group_opt_ids, group.get("after") or "")
             )
             original_following_line_risk = dict(following_line_risk) if following_line_risk else {}
@@ -4643,7 +5004,24 @@ def build_language_bundle(
                 sibling_text_group_count += 1
             if following_line_risk:
                 group["optionBranchRisk"] = following_line_risk
-                if following_line_risk.get("code") == "inferredFollowingLines":
+                if (
+                    following_line_risk.get("code")
+                    == "timelineClipOptionIndexBranches"
+                ):
+                    branch_map = (
+                        following_line_risk.get("branchLineIdsByOption")
+                        or {}
+                    )
+                    for opt in opts:
+                        opt_id = opt.get("id") or ""
+                        branch_lines = [
+                            line_id
+                            for line_id in (branch_map.get(opt_id) or [])
+                            if line_id in valid_line_ids
+                        ]
+                        if branch_lines:
+                            opt["branchLines"] = branch_lines
+                elif following_line_risk.get("code") == "inferredFollowingLines":
                     strong_raw_index_mapping = (
                         following_line_risk.get("candidateMapping") == "trunkClipOptionIndex"
                         and bool(following_line_risk.get("branchLineIdsByOption"))
@@ -4741,6 +5119,18 @@ def build_language_bundle(
                 group_detail["manualLayoutOverride"] = True
             if manual_response_applied:
                 group_detail["manualResponseOverride"] = True
+            if authored_group_option_ids and unauthored_group_option_ids:
+                group.setdefault("_debug", {})[
+                    "partialAuthoredOptionCoverage"
+                ] = {
+                    "authoredOptionIds": authored_group_option_ids,
+                    "definitionOnlyOptionIds": unauthored_group_option_ids,
+                    "reason": (
+                        "The generated text-table group contains option ids that "
+                        "are absent from every recovered DialogTree, scene-link, "
+                        "and Timeline option consumer for this scene."
+                    ),
+                }
             group_details.append(group_detail)
             out.append(group)
         has_meaningful_option_text = any(
@@ -5410,8 +5800,23 @@ def build_language_bundle(
             def add_option_branch_methods(branch_risk: dict) -> None:
                 if branch_risk.get("code") == "timelineRouteBranches":
                     add("optionBranch:runtimeJump")
+                elif (
+                    branch_risk.get("code")
+                    == "timelineClipOptionIndexBranches"
+                ):
+                    add("optionBranch:runtimeClipOptionIndex")
                 elif branch_risk.get("code") == "siblingSceneTextBranches":
                     add("optionBranch:siblingSceneText")
+                elif (
+                    branch_risk.get("code")
+                    == "separateDialogTreeOptionNodes"
+                ):
+                    add("optionBranch:separateDialogTreeOptionNodes")
+                elif (
+                    branch_risk.get("code")
+                    == "orphanDialogTreeOptionDefinitions"
+                ):
+                    add("optionBranch:orphanDialogTreeOptionDefinitions")
                 elif branch_risk.get("candidateMapping") == "trunkClipOptionIndex":
                     add("optionBranch:rawIndexMatched")
                 elif branch_risk.get("code") == "inferredFollowingLines":
@@ -7100,6 +7505,58 @@ def build_language_bundle(
         }
         return report
     cutscene_assets = _load_cutscene_assets()
+    for ref in narrative_video_assets:
+        if ref.get("kind") != "cutscene":
+            continue
+        binding = (
+            ref.get("binding")
+            if isinstance(ref.get("binding"), dict)
+            else {}
+        )
+        if (
+            not binding
+            or binding.get("isHint")
+            or "levelscriptFmvAction"
+            not in set(binding.get("sourceKinds") or [])
+        ):
+            continue
+        for candidate in ref.get("authoritativeKeys") or []:
+            candidate_key = str(candidate or "")
+            if not candidate_key.startswith("cutscene_"):
+                continue
+            canonical = _canonical_cutscene_key(candidate_key)
+            if not canonical:
+                continue
+            cutscene = ensure_cutscene_asset(canonical)
+            bindings = cutscene.setdefault("levelscriptFmvBindings", [])
+            fmv_id = str(binding.get("fmvId") or ref.get("stem") or "")
+            sources = [
+                source
+                for source in (binding.get("evidence") or [])
+                if isinstance(source, dict)
+                and source.get("kind") == "levelscriptFmvAction"
+            ]
+            row = next(
+                (
+                    item
+                    for item in bindings
+                    if item.get("fmvId") == fmv_id
+                    and item.get("sources") == sources
+                ),
+                None,
+            )
+            if row is None:
+                row = {
+                    "fmvId": fmv_id,
+                    "videos": [],
+                    "sources": sources,
+                }
+                bindings.append(row)
+            video = str(ref.get("rel") or "")
+            if video and video not in row["videos"]:
+                row["videos"].append(video)
+            if "levelscript-fmv" not in cutscene["tags"]:
+                cutscene["tags"].append("levelscript-fmv")
     cutscene_text_by_key = cutscene_text_lines(set(cutscene_assets), _load_cutscene_subtitle_tracks())
     source_backed_cutscene_keys = story_source_backed_cutscene_keys()
     video_backed_cutscene_keys = narrative_video_backed_cutscene_keys()
@@ -7150,19 +7607,22 @@ def build_language_bundle(
         if target_key in cutscene_assets:
             existing = cutscene_assets[target_key].setdefault("suppressedTextOnlyGroups", [])
             existing.extend(groups)
-    timeline_bound_cutscene_video_keys: set[str] = set()
+    authoritatively_bound_cutscene_video_keys: set[str] = set()
     for ref in narrative_video_assets:
         if ref.get("kind") != "cutscene":
             continue
         binding = ref.get("binding") if isinstance(ref.get("binding"), dict) else {}
         if not binding or binding.get("isHint"):
             continue
-        if "timelinePlayable" not in set(binding.get("sourceKinds") or []):
+        if not {
+            "timelinePlayable",
+            "levelscriptFmvAction",
+        } & set(binding.get("sourceKinds") or []):
             continue
         for candidate in ref.get("authoritativeKeys") or ref.get("keyCandidates") or []:
             candidate_key = str(candidate or "")
             if candidate_key in cutscene_assets:
-                timeline_bound_cutscene_video_keys.add(candidate_key)
+                authoritatively_bound_cutscene_video_keys.add(candidate_key)
     print(f"Writing {len(cutscene_assets)} cutscene conversations...")
     for cutscene_key, cutscene in sorted(cutscene_assets.items()):
         mission, scene = _infer_cutscene_mission_and_scene(cutscene_key, known_cutscene_missions)
@@ -7203,6 +7663,13 @@ def build_language_bundle(
             )
             if names:
                 summary_rows.append({"text": f"Suppressed duplicate text groups: {names}"})
+        if cutscene.get("levelscriptFmvBindings"):
+            summary_rows.append({
+                "text": (
+                    "Playback source: exact LevelScript FMV target field "
+                    f"({len(cutscene['levelscriptFmvBindings'])} binding(s))"
+                ),
+            })
         if cutscene.get("textOnlyUnconfirmed"):
             summary_rows.append({
                 "text": "Text-only candidate: no matching AnimeStudio cutscene asset, source link, or narrative video was found.",
@@ -7226,7 +7693,7 @@ def build_language_bundle(
             lines
             and not cutscene.get("hasSubtitleTrack")
             and (
-                cutscene_key in timeline_bound_cutscene_video_keys
+                cutscene_key in authoritatively_bound_cutscene_video_keys
                 or fmv_clips_by_key.get(cutscene_key)
             )
         ):
@@ -7260,6 +7727,8 @@ def build_language_bundle(
                 "useBlackScreen": bool(cutscene.get("useBlackScreen")),
                 "isTransition": bool(cutscene.get("isTransition")),
                 "hasSubtitleTrack": bool(cutscene.get("hasSubtitleTrack")),
+                "levelscriptFmvBindings":
+                    cutscene.get("levelscriptFmvBindings") or [],
                 "suppressedTextOnlyGroups": cutscene.get("suppressedTextOnlyGroups") or [],
                 "textOnlyUnconfirmed": bool(cutscene.get("textOnlyUnconfirmed")),
             },
@@ -11423,7 +11892,10 @@ def build_language_bundle(
             elif not resolved_key:
                 unresolved_videos.append(ref)
         authoritative_evidence: list[dict] = []
-        def timeline_video_evidence_rows(key: str, refs: list[dict]) -> list[dict]:
+        def authoritative_video_evidence_rows(
+            key: str,
+            refs: list[dict],
+        ) -> list[dict]:
             rows: list[dict] = []
             seen: set[tuple[str, str, str]] = set()
             for ref in refs:
@@ -11431,11 +11903,16 @@ def build_language_bundle(
                 if not binding or binding.get("isHint"):
                     continue
                 source_kinds = set(binding.get("sourceKinds") or [])
-                if "timelinePlayable" not in source_kinds:
+                accepted_source_kinds = {
+                    "timelinePlayable",
+                    "levelscriptFmvAction",
+                } & source_kinds
+                if not accepted_source_kinds:
                     continue
                 evidence_sources = [
                     source for source in (binding.get("evidence") or [])
-                    if isinstance(source, dict) and source.get("kind") == "timelinePlayable"
+                    if isinstance(source, dict)
+                    and source.get("kind") in accepted_source_kinds
                 ]
                 clips = [
                     clip for clip in (binding.get("clips") or [])
@@ -11449,6 +11926,20 @@ def build_language_bundle(
                 if evidence_key in seen:
                     continue
                 seen.add(evidence_key)
+                method = (
+                    "timelinePlayable"
+                    if "timelinePlayable" in accepted_source_kinds
+                    else "levelscriptFmvAction"
+                )
+                why = (
+                    "Timeline FMV clip references a BeyondFMVPlayableAsset; "
+                    "that playable's fmvId selects this narrative video."
+                    if method == "timelinePlayable"
+                    else
+                    "The exact decoded native LevelScript FMV target field "
+                    "selects this narrative video and normalizes to this "
+                    "cutscene Story key."
+                )
                 rows.append({
                     "webuiKey": key,
                     "webuiFile": f"data/lang/{language_code}/conv/{key}.json",
@@ -11466,11 +11957,8 @@ def build_language_bundle(
                         "sourceKinds": sorted(source_kinds),
                     },
                     "evidence": {
-                        "method": "timelinePlayable",
-                        "why": (
-                            "Timeline FMV clip references a BeyondFMVPlayableAsset; "
-                            "that playable's fmvId selects this narrative video."
-                        ),
+                        "method": method,
+                        "why": why,
                         "sources": evidence_sources,
                         "clips": clips[:8],
                     },
@@ -11528,8 +12016,15 @@ def build_language_bundle(
                 else:
                     label, target = "scene", scene
                 attached_note = " (also embedded inline)" if resolved_kind else ""
+                source_kinds = set(binding.get("sourceKinds") or [])
+                if "timelinePlayable" in source_kinds:
+                    binding_label = "timeline-bound"
+                elif "levelscriptFmvAction" in source_kinds:
+                    binding_label = "LevelScript FMV-action-bound"
+                else:
+                    binding_label = "authoritatively bound"
                 return (
-                    f"Attachment status: timeline-bound to {label} `{target}`{attached_note}; kept standalone in WebUI",
+                    f"Attachment status: {binding_label} to {label} `{target}`{attached_note}; kept standalone in WebUI",
                     "standaloneVideoBoundButKeptSeparate",
                 )
             resolved_key = next(
@@ -11603,6 +12098,54 @@ def build_language_bundle(
                     {"text": f"Files: {len(refs)} exported variant(s)"},
                     {"text": attachment_text},
                 ]
+                definition = next(
+                    (
+                        ref.get("definition")
+                        for ref in refs
+                        if isinstance(ref.get("definition"), dict)
+                    ),
+                    None,
+                )
+                if isinstance(definition, dict):
+                    numeric_ids = [
+                        str(value)
+                        for value in (
+                            definition.get("numericIds") or []
+                        )
+                    ]
+                    numeric_note = (
+                        f"; fmv_id={','.join(numeric_ids)}"
+                        if numeric_ids
+                        else ""
+                    )
+                    summary_rows.append({
+                        "text": (
+                            "Definition status: exported FMV config exists"
+                            f"{numeric_note}; definition is not playback or "
+                            "mission-placement evidence."
+                        ),
+                    })
+                    timeline_evidence = (
+                        definition.get("timelineEvidence")
+                        if isinstance(
+                            definition.get("timelineEvidence"), dict
+                        )
+                        else {}
+                    )
+                    if timeline_evidence:
+                        summary_rows.append({
+                            "text": (
+                                "Definition timeline: "
+                                f"{timeline_evidence.get('trackCount', 0)} "
+                                "track(s), "
+                                f"{timeline_evidence.get('clipCount', 0)} "
+                                "clip(s), "
+                                f"{timeline_evidence.get('subtitleClipCount', 0)} "
+                                "subtitle clip(s), "
+                                f"{len(timeline_evidence.get('audioEventKeys') or [])} "
+                                "audio event(s)."
+                            ),
+                        })
                 if text_candidates:
                     candidate_preview = " / ".join(
                         str(row.get("text") or "")
@@ -11692,7 +12235,9 @@ def build_language_bundle(
             if not refs:
                 continue
             attached_refs += len(refs)
-            authoritative_evidence.extend(timeline_video_evidence_rows(key, refs))
+            authoritative_evidence.extend(
+                authoritative_video_evidence_rows(key, refs)
+            )
             compact_refs = [compact_narrative_video_ref(ref) for ref in refs[:16]]
             omitted = max(0, len(refs) - len(compact_refs))
             entry["vid"] = narrative_video_index_summary(refs)
@@ -12376,6 +12921,10 @@ def build_language_bundle(
         seen_story_call_items: set[tuple[str, str, int, int, str]] = set()
         hash_terminal_contexts: list[dict] = []
         seen_hash_terminal_contexts: set[tuple] = set()
+        call_server_callback_contexts: list[dict] = []
+        seen_call_server_callback_contexts: set[tuple] = set()
+        non_node_scalar_contexts: list[dict] = []
+        seen_non_node_scalar_contexts: set[tuple] = set()
         if flow:
             for quest in flow.get("quests") or []:
                 for hint in quest.get("tracking") or []:
@@ -12393,7 +12942,17 @@ def build_language_bundle(
             }
             compact_source = {
                 key: source_info.get(key)
-                for key in ("layout", "code", "kind", "uid", "start")
+                for key in (
+                    "layout",
+                    "code",
+                    "kind",
+                    "uid",
+                    "start",
+                    "actionMapRole",
+                    "actionName",
+                    "recordClass",
+                    "headerName",
+                )
                 if source_info.get(key) not in (None, "", [], {})
             }
             if compact_source:
@@ -12427,6 +12986,101 @@ def build_language_bundle(
                             continue
                         file_ref = chain.get("file") or ""
                         level_id = chain.get("levelId") or ""
+                        if is_call_server_self_uid_callback(node_key, step):
+                            source_step = compact_levelscript_step(step, node_key, raw_text)
+                            source_info = source_step.get("source") or {}
+                            callback_signature = (
+                                file_ref,
+                                level_id,
+                                str(source_info.get("uid") or "").casefold(),
+                                node_key.casefold(),
+                            )
+                            if callback_signature not in seen_call_server_callback_contexts:
+                                seen_call_server_callback_contexts.add(callback_signature)
+                                preceding_scene_key = next(
+                                    (
+                                        key
+                                        for key in reversed(sequence)
+                                        if _is_story_scene_graph_kind(
+                                            _scene_graph_node_kind(key, available)
+                                        )
+                                    ),
+                                    "",
+                                )
+                                callback = {
+                                    "kind": "levelscriptCallServerSelfUidCallback",
+                                    "file": file_ref,
+                                    "levelId": level_id,
+                                    "callbackLabel": node_key,
+                                    "recordUid": source_info.get("uid") or "",
+                                    "identityRole": "self_uid_callback_label",
+                                    "storyNode": False,
+                                    "missionOwnershipEvidence": False,
+                                    "orderEvidence": False,
+                                    "sourceStep": source_step,
+                                }
+                                if preceding_scene_key:
+                                    callback["precedingSceneKey"] = preceding_scene_key
+                                call_server_callback_contexts.append(callback)
+                            continue
+                        if is_play_dialog_hide_non_identifier_payload(node_key, step):
+                            source_step = compact_levelscript_step(step, node_key, raw_text)
+                            source_info = source_step.get("source") or {}
+                            scalar_signature = (
+                                file_ref,
+                                level_id,
+                                str(source_info.get("uid") or "").casefold(),
+                                node_key,
+                            )
+                            if scalar_signature not in seen_non_node_scalar_contexts:
+                                seen_non_node_scalar_contexts.add(scalar_signature)
+                                non_node_scalar_contexts.append({
+                                    "kind": "levelscriptNonNodeScalarPayload",
+                                    "file": file_ref,
+                                    "levelId": level_id,
+                                    "payloadText": node_key,
+                                    "nativeAction": "PlayDialogAndHideSceneObjectAction",
+                                    "identityRole": "punctuation_only_non_identifier",
+                                    "storyNode": False,
+                                    "missionOwnershipEvidence": False,
+                                    "orderEvidence": False,
+                                    "sourceStep": source_step,
+                                })
+                            continue
+                        typed_cutscene_action = (
+                            typed_cutscene_single_char_parameter_action(
+                                node_key,
+                                step,
+                            )
+                        )
+                        if typed_cutscene_action:
+                            source_step = compact_levelscript_step(
+                                step,
+                                node_key,
+                                raw_text,
+                            )
+                            source_info = source_step.get("source") or {}
+                            scalar_signature = (
+                                file_ref,
+                                level_id,
+                                str(source_info.get("uid") or "").casefold(),
+                                node_key,
+                            )
+                            if scalar_signature not in seen_non_node_scalar_contexts:
+                                seen_non_node_scalar_contexts.add(scalar_signature)
+                                non_node_scalar_contexts.append({
+                                    "kind": "levelscriptNonNodeScalarPayload",
+                                    "file": file_ref,
+                                    "levelId": level_id,
+                                    "payloadText": node_key,
+                                    "nativeAction": typed_cutscene_action,
+                                    "identityRole": "typed_cutscene_action_parameter",
+                                    "storyNode": False,
+                                    "missionOwnershipEvidence": False,
+                                    "orderEvidence": False,
+                                    "sourceStep": source_step,
+                                })
+                            continue
                         if file_ref and _is_story_scene_graph_key(node_key, available):
                             signature = (file_ref, level_id, start, payload_index, node_key)
                             if signature not in seen_story_call_items:
@@ -12446,12 +13100,19 @@ def build_language_bundle(
                     continue
                 seen_chain_signatures.add(signature)
                 chain_nodes.update(sequence)
-                scene_sequence = _compact_scene_graph_sequence(sequence, available)
+                scene_sequence, scene_sequence_steps = (
+                    _compact_scene_graph_sequence_steps(
+                        sequence,
+                        sequence_steps,
+                        available,
+                    )
+                )
                 if scene_sequence:
                     scene_chain_sequences.append({
                         "file": chain.get("file") or "",
                         "levelId": chain.get("levelId") or "",
                         "sequence": scene_sequence,
+                        "steps": scene_sequence_steps,
                     })
                 if len(sequence) < 2:
                     continue
@@ -12459,6 +13120,7 @@ def build_language_bundle(
                     "file": chain.get("file") or "",
                     "levelId": chain.get("levelId") or "",
                     "sequence": sequence,
+                    "steps": sequence_steps,
                 })
                 for pos, (src, dst) in enumerate(zip(sequence, sequence[1:])):
                     src_kind = _scene_graph_node_kind(src, available)
@@ -12859,7 +13521,8 @@ def build_language_bundle(
                                     edge["sourceKeys"].append(source_key)
         for chain in chain_sequences:
             sequence = chain.get("sequence") or []
-            for src, dst in zip(sequence, sequence[1:]):
+            sequence_steps = chain.get("steps") or []
+            for pos, (src, dst) in enumerate(zip(sequence, sequence[1:])):
                 if edge := ensure_edge(src, dst, "levelscriptChain"):
                     file_ref = chain.get("file") or ""
                     if file_ref:
@@ -12871,6 +13534,27 @@ def build_language_bundle(
                         refs = edge.setdefault("levelIds", [])
                         if level_id not in refs:
                             refs.append(level_id)
+                    for step_index in (pos, pos + 1):
+                        if step_index >= len(sequence_steps):
+                            continue
+                        source_info = (
+                            sequence_steps[step_index].get("source") or {}
+                        )
+                        action_name = source_info.get("actionName") or ""
+                        if action_name:
+                            refs = edge.setdefault("sourceActions", [])
+                            if action_name not in refs:
+                                refs.append(action_name)
+                        record_class = source_info.get("recordClass") or ""
+                        if record_class:
+                            refs = edge.setdefault("sourceActionClasses", [])
+                            if record_class not in refs:
+                                refs.append(record_class)
+                        header_name = source_info.get("headerName") or ""
+                        if header_name:
+                            refs = edge.setdefault("sourceEvents", [])
+                            if header_name not in refs:
+                                refs.append(header_name)
         chain_start_meta: dict[str, dict] = defaultdict(lambda: {
             "sourceFiles": [],
             "levelIds": [],
@@ -12878,6 +13562,7 @@ def build_language_bundle(
         })
         for chain in scene_chain_sequences:
             sequence = chain.get("sequence") or []
+            sequence_steps = chain.get("steps") or []
             if sequence:
                 first_scene = sequence[0]
                 meta = chain_start_meta[first_scene]
@@ -12903,6 +13588,27 @@ def build_language_bundle(
                     edge.setdefault("positions", [])
                     if pos not in edge["positions"]:
                         edge["positions"].append(pos)
+                    for endpoint, step_index in (
+                        ("from", pos),
+                        ("to", pos + 1),
+                    ):
+                        if step_index >= len(sequence_steps):
+                            continue
+                        source_info = (
+                            sequence_steps[step_index].get("source") or {}
+                        )
+                        action_name = source_info.get("actionName") or ""
+                        if action_name:
+                            field = f"{endpoint}Actions"
+                            refs = edge.setdefault(field, [])
+                            if action_name not in refs:
+                                refs.append(action_name)
+                        record_class = source_info.get("recordClass") or ""
+                        if record_class:
+                            field = f"{endpoint}ActionClasses"
+                            refs = edge.setdefault(field, [])
+                            if record_class not in refs:
+                                refs.append(record_class)
         # Levelscript file-order edges (weak ordering hints).
         # File-order tokens within a single SerializeReference dump usually
         # track authored event flow even when the records aren't UID-linked,
@@ -13178,6 +13884,10 @@ def build_language_bundle(
             payload["levelscriptStoryCallContexts"] = story_call_contexts
         if hash_terminal_contexts:
             payload["levelscriptHashTerminals"] = hash_terminal_contexts
+        if call_server_callback_contexts:
+            payload["levelscriptCallServerCallbacks"] = call_server_callback_contexts
+        if non_node_scalar_contexts:
+            payload["levelscriptNonNodeScalarPayloads"] = non_node_scalar_contexts
         if scene_file_order:
             payload["sceneFileOrder"] = {
                 key: value
@@ -13649,6 +14359,11 @@ def build_language_bundle(
         for mission in mission_timeline_recovery_payload.get("missions") or []
         if mission.get("mission")
     }
+    for mission, timeline_recovery in mission_timelines_by_mission.items():
+        enrich_source_backed_scene_edge_context(
+            timeline_recovery,
+            mission_scene_graphs.get(mission),
+        )
 
     recovered_attachment_types = {
         "scriptCondition": (

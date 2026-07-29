@@ -38,6 +38,9 @@ from story_builder.mission_recovery import (  # noqa: E402
     natural_key,
     scene_order_infer_kind,
 )
+from story_builder.level_bindings import (  # noqa: E402
+    build_levelscript_action_story_occurrences,
+)
 from story_builder.spawner_binary import (  # noqa: E402
     SPAWNER_WAVE_RUNTIME_MAPPING_ID,
     SpawnerWaveDecodeError,
@@ -45,7 +48,7 @@ from story_builder.spawner_binary import (  # noqa: E402
 )
 
 
-SCHEMA = "sourceStoryPartialOrder.v11"
+SCHEMA = "sourceStoryPartialOrder.v18"
 SPAWNER_CONFIG_ROOTS = (
     ROOT / "export_full" / "structured" / "StreamingAssets"
     / "Data" / "Json" / "SpawnerConfig",
@@ -123,7 +126,15 @@ EDGE_EVIDENCE_FIELDS = (
     "spawnerDependencyPath",
     "runtimeMappingId",
     "schemaMappingId",
+    "fromActions",
+    "toActions",
+    "fromActionClasses",
+    "toActionClasses",
 )
+
+DEFINITION_ONLY_SOURCE_RECORD_CLASSES = frozenset({
+    "preload_cutscene",
+})
 
 SOURCE_STORY_NODE_KINDS = frozenset({
     "black",
@@ -142,11 +153,13 @@ SOURCE_STORY_NODE_KINDS = frozenset({
 EVIDENCE_POLICY = {
     "uses": [
         "index-backed nominal Story scene membership",
+        "cross-owner Story context only when an indexed Story card, exact typed LevelScript final-playback occurrence, and mission scene-chain source file all agree",
         "cross-owner Story context only when an exact serialized native control path strictly prefixes or extends an index-backed scene path under the same event header",
         "MissionRuntimeAsset questPrev edges backed by prevQuestIdList",
         "DialogTree authoredDirect option routes",
         "DialogTree/DialogTreeFragment option-to-line branchLines verified against sceneGraphLinks",
         "Dialog Timeline Runtime Jump routes with the exact timelineRouteBranches/runtimeJumpTrack signature",
+        "Dialog Timeline branch clips with complete distinct positive runtime optionIndex coverage and convergent post-response jumps",
         "LevelScript LevelEvent_OnDialogExit action-chain edges",
         "exact serialized LevelScript event-to-action strict path-prefix edges",
         "exact LevelEvent_OnQuestStateChanged typed playback action paths",
@@ -430,12 +443,22 @@ def _compact_option_risk(risk: dict[str, Any]) -> dict[str, Any]:
         "candidateLineIds",
         "candidateWindowLineIds",
         "commonContinuationLineId",
+        "commonContinuationLineIds",
+        "directContinuationOptionIds",
+        "terminatingOptionIds",
         "optionIndex",
+        "optionStartTimes",
+        "optionAnchors",
+        "foreignOptionIds",
+        "timeline",
+        "finishNums",
+        "targetFinishNums",
         "candidateLineClipOptionIndex",
         "optionIndexPattern",
         "candidateLineClipOptionIndexPattern",
         "candidateMapping",
         "assetTracks",
+        "optionNodeLayouts",
     )
     return {
         field: risk[field]
@@ -479,6 +502,70 @@ def _dialog_tree_routes(conv: dict[str, Any]) -> dict[str, list[dict[str, Any]]]
                 "endNodeType": safe_key(debug.get("endNodeType")),
             })
     return routes
+
+
+def _dialog_tree_non_line_outcomes(
+    conv: dict[str, Any],
+) -> dict[str, list[dict[str, Any]]]:
+    """Index exact authored option outcomes that do not target local lines."""
+    story_key = safe_key(conv.get("key"))
+    outcomes: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for link in conv.get("sceneGraphLinks") or []:
+        if not isinstance(link, dict):
+            continue
+        source_key = safe_key(link.get("sourceKey"))
+        source_debug = (link.get("_debug") or {}).get("source") or {}
+        source_file = safe_key(link.get("file")) or safe_key(source_debug.get("file"))
+        if not source_file:
+            continue
+        provenance_kind = (
+            "DialogTree"
+            if not source_key or source_key == story_key
+            else "DialogTreeFragment"
+        )
+        for raw in link.get("options") or []:
+            if not isinstance(raw, dict):
+                continue
+            option_id = safe_key(raw.get("optionId"))
+            if not option_id:
+                continue
+            path_line_ids = _string_list(raw.get("pathLineIds"))
+            has_non_line_outcome = bool(
+                safe_key(raw.get("terminal"))
+                or safe_key(raw.get("outcomeKind"))
+                or safe_key(raw.get("firstSceneKey"))
+                or _string_list(raw.get("submenuSceneKeys"))
+                or isinstance(raw.get("conditionalOutcomes"), list)
+                or isinstance(raw.get("loop"), dict)
+            )
+            if not has_non_line_outcome:
+                continue
+            outcome = {
+                "kind": provenance_kind,
+                "sourceKey": source_key,
+                "sourceFile": source_file,
+                "after": safe_key(link.get("after")),
+                "firstLineId": safe_key(raw.get("firstLineId")),
+                "firstSceneKey": safe_key(raw.get("firstSceneKey")),
+                "pathLineIds": path_line_ids,
+                "sceneKeys": _string_list(raw.get("sceneKeys")),
+                "submenuSceneKeys": _string_list(raw.get("submenuSceneKeys")),
+                "outcomeKind": safe_key(raw.get("outcomeKind")),
+                "terminal": safe_key(raw.get("terminal")),
+            }
+            if isinstance(raw.get("conditionalOutcomes"), list):
+                outcome["conditionalOutcomes"] = raw[
+                    "conditionalOutcomes"
+                ]
+            loop = raw.get("loop")
+            if isinstance(loop, dict) and loop:
+                outcome["loop"] = loop
+            outcomes[option_id].append({
+                key: value
+                for key, value in outcome.items()
+                if value not in (None, "", [], {})
+            })
+    return outcomes
 
 
 def _route_covers_branch_lines(route: dict[str, Any], branch_lines: list[str]) -> bool:
@@ -525,19 +612,50 @@ def _is_runtime_jump_branch_risk(risk: dict[str, Any]) -> bool:
     )
 
 
+def _is_timeline_clip_option_index_branch_risk(risk: dict[str, Any]) -> bool:
+    return (
+        safe_key(risk.get("code")) == "timelineClipOptionIndexBranches"
+        and safe_key(risk.get("reason")) == "runtimeClipOptionIndex"
+        and safe_key(risk.get("source")) == "dialogTimeline"
+        and safe_key(risk.get("candidateMapping")) == "trunkClipOptionIndex"
+        and isinstance(risk.get("branchLineIdsByOption"), dict)
+        and bool(risk.get("branchLineIdsByOption"))
+    )
+
+
 def collect_dialog_line_option_branches(
     conv: dict[str, Any],
     conversation_file: str,
 ) -> dict[str, list[dict[str, Any]]]:
     """Collect strictly source-backed intra-dialog option-to-line routes.
 
-    Allowed routes are either direct DialogTree paths that exactly cover the
-    emitted ``branchLines`` without inferred/manual risk, or the exact Runtime
-    Jump signature checked by ``_is_runtime_jump_branch_risk``. Everything else
-    remains explicit in an exclusion or no-route bucket.
+    Allowed routes are direct DialogTree paths that exactly cover the emitted
+    ``branchLines`` without inferred/manual risk, exact Runtime Jump routes, or
+    complete distinct positive Timeline clip optionIndex routes. Everything
+    else remains explicit in an exclusion or no-route bucket.
     """
     story_key = safe_key(conv.get("key"))
     direct_routes = _dialog_tree_routes(conv)
+    non_line_outcomes = _dialog_tree_non_line_outcomes(conv)
+    runtime_registry = (
+        (conv.get("_debug") or {}).get("runtimeRegistry")
+        if isinstance(conv.get("_debug"), dict)
+        and isinstance((conv.get("_debug") or {}).get("runtimeRegistry"), dict)
+        else {}
+    )
+    unregistered_scene = runtime_registry.get("registered") is False
+    compact_runtime_registry = {
+        key: runtime_registry[key]
+        for key in (
+            "registered",
+            "sceneKey",
+            "reason",
+            "hasSummary",
+            "summaryKey",
+            "summaryNote",
+        )
+        if runtime_registry.get(key) not in (None, "")
+    }
     allowed: list[dict[str, Any]] = []
     excluded: list[dict[str, Any]] = []
     no_route: list[dict[str, Any]] = []
@@ -565,9 +683,12 @@ def collect_dialog_line_option_branches(
             "conversationFile": conversation_file,
         }
 
-        if _is_runtime_jump_branch_risk(risk) and not has_manual and not risk_tagged_options:
+        if (
+            _is_timeline_clip_option_index_branch_risk(risk)
+            and not has_manual
+            and not risk_tagged_options
+        ):
             branch_map = risk.get("branchLineIdsByOption") or {}
-            skipped_map = risk.get("skippedLineIdsByOption") or {}
             runtime_options: list[dict[str, Any]] = []
             complete = True
             for option in options:
@@ -579,8 +700,63 @@ def collect_dialog_line_option_branches(
                 runtime_options.append({
                     **_compact_dialog_option(option),
                     "branchLineIds": branch_lines,
-                    "skippedLineIds": _string_list(skipped_map.get(option_id)),
                 })
+            if complete and runtime_options:
+                allowed.append({
+                    **base,
+                    "provenance": {
+                        "kind": "DialogTimelineClipOptionIndex",
+                        "code": "timelineClipOptionIndexBranches",
+                        "reason": "runtimeClipOptionIndex",
+                        "source": "dialogTimeline",
+                        "assetTracks": _string_list(
+                            risk.get("assetTracks")
+                        ),
+                        "optionIndex": risk.get("optionIndex") or [],
+                        "candidateMapping": "trunkClipOptionIndex",
+                    },
+                    "options": runtime_options,
+                    "commonContinuationLineId": safe_key(
+                        risk.get("commonContinuationLineId")
+                    ),
+                })
+                continue
+            excluded.append({
+                **base,
+                "optionIds": option_ids,
+                "exclusionReason": "incompleteTimelineClipOptionIndexMapping",
+                "riskEvidence": _compact_option_risk(risk),
+            })
+            continue
+
+        if _is_runtime_jump_branch_risk(risk) and not has_manual and not risk_tagged_options:
+            branch_map = risk.get("branchLineIdsByOption") or {}
+            skipped_map = risk.get("skippedLineIdsByOption") or {}
+            common_continuation = safe_key(risk.get("commonContinuationLineId"))
+            direct_continuation_ids = set(
+                _string_list(risk.get("directContinuationOptionIds"))
+            )
+            runtime_options: list[dict[str, Any]] = []
+            complete = True
+            for option in options:
+                option_id = safe_key(option.get("id"))
+                branch_lines = _string_list(branch_map.get(option_id))
+                is_direct_continuation = (
+                    option_id in direct_continuation_ids
+                    and bool(common_continuation)
+                )
+                if not option_id or (not branch_lines and not is_direct_continuation):
+                    complete = False
+                    break
+                runtime_option = {
+                    **_compact_dialog_option(option),
+                    "branchLineIds": branch_lines,
+                    "skippedLineIds": _string_list(skipped_map.get(option_id)),
+                }
+                if is_direct_continuation:
+                    runtime_option["directContinuation"] = True
+                    runtime_option["continuationLineId"] = common_continuation
+                runtime_options.append(runtime_option)
             if complete and runtime_options:
                 allowed.append({
                     **base,
@@ -606,6 +782,11 @@ def collect_dialog_line_option_branches(
                     "continuationOptionIds": _string_list(
                         risk.get("continuationOptionIds") or group.get("continuationOptionIds")
                     ),
+                    "directContinuationOptionIds": sorted(
+                        direct_continuation_ids,
+                        key=natural_key,
+                    ),
+                    "commonContinuationLineId": common_continuation,
                 })
                 continue
             excluded.append({
@@ -613,6 +794,27 @@ def collect_dialog_line_option_branches(
                 "optionIds": option_ids,
                 "exclusionReason": "incompleteRuntimeJumpMapping",
                 "riskEvidence": _compact_option_risk(risk),
+            })
+            continue
+
+        if (
+            unregistered_scene
+            and (
+                has_manual
+                or risk_tagged_options
+                or (
+                    risk
+                    and risk_code not in {"dialogTreeBranchConvergence"}
+                )
+            )
+        ):
+            excluded.append({
+                **base,
+                "optionIds": option_ids,
+                "exclusionReason":
+                    "unregisteredSceneWithoutAuthoredOptionConsumer",
+                "runtimeRegistry": compact_runtime_registry,
+                "retainedRiskEvidence": _compact_option_risk(risk),
             })
             continue
 
@@ -640,14 +842,28 @@ def collect_dialog_line_option_branches(
             })
             continue
         if risk and risk_code not in {"dialogTreeBranchConvergence"}:
+            if risk_code in {
+                "sequentialTimelineOptionPrompts",
+                "terminalTimelineOptionSlot",
+                "foreignTimelineOptionDefinitions",
+            }:
+                exclusion_reason = "closedTimelineOptionLayout"
+            elif risk_code in {
+                "separateDialogTreeOptionNodes",
+                "orphanDialogTreeOptionDefinitions",
+            }:
+                exclusion_reason = "closedDialogTreeOptionLayout"
+            elif risk_code in {
+                "sharedTimelineContinuation",
+                "defaultTimelineContinuation",
+            }:
+                exclusion_reason = "sharedOrDefaultCandidates"
+            else:
+                exclusion_reason = "inferredOrUnsupportedRisk"
             excluded.append({
                 **base,
                 "optionIds": option_ids,
-                "exclusionReason": (
-                    "sharedOrDefaultCandidates"
-                    if risk_code in {"sharedTimelineContinuation", "defaultTimelineContinuation"}
-                    else "inferredOrUnsupportedRisk"
-                ),
+                "exclusionReason": exclusion_reason,
                 "riskEvidence": _compact_option_risk(risk),
             })
             continue
@@ -671,6 +887,33 @@ def collect_dialog_line_option_branches(
                 None,
             )
             if not matching_route:
+                debug = (
+                    option.get("_debug")
+                    if isinstance(option.get("_debug"), dict)
+                    else {}
+                )
+                authored_sources = [
+                    source
+                    for source in (debug.get("branchLineSources") or [])
+                    if (
+                        isinstance(source, dict)
+                        and safe_key(source.get("kind"))
+                        in {"DialogTree", "DialogTreeFragment"}
+                        and safe_key(source.get("file"))
+                    )
+                ]
+                if authored_sources:
+                    source = authored_sources[0]
+                    matching_route = {
+                        "kind": safe_key(source.get("kind")),
+                        "sourceKey": safe_key(source.get("sourceKey")),
+                        "sourceFile": safe_key(source.get("file")),
+                        "after": after,
+                        "firstLineId": branch_lines[0],
+                        "pathLineIds": branch_lines,
+                        "outcomeKind": "sameScenePath",
+                    }
+            if not matching_route:
                 direct_failures.append({
                     **_compact_dialog_option(option),
                     "branchLineIds": branch_lines,
@@ -685,6 +928,45 @@ def collect_dialog_line_option_branches(
                 "provenance": _compact_dialog_tree_provenance(matching_route),
             })
 
+        group_debug = (
+            group.get("_debug")
+            if isinstance(group.get("_debug"), dict)
+            else {}
+        )
+        partial_coverage = (
+            group_debug.get("partialAuthoredOptionCoverage")
+            if isinstance(
+                group_debug.get("partialAuthoredOptionCoverage"),
+                dict,
+            )
+            else {}
+        )
+        definition_only_option_ids = set(
+            _string_list(partial_coverage.get("definitionOnlyOptionIds"))
+        )
+        definition_only_failures = [
+            row
+            for row in direct_failures
+            if row.get("optionId") in definition_only_option_ids
+        ]
+        direct_failures = [
+            row
+            for row in direct_failures
+            if row.get("optionId") not in definition_only_option_ids
+        ]
+        if definition_only_failures:
+            excluded.append({
+                **base,
+                "optionIds": [
+                    row["optionId"] for row in definition_only_failures
+                ],
+                "exclusionReason": "branchLinesForDefinitionOnlyRows",
+                "definitionOnlyOptionIds": sorted(
+                    definition_only_option_ids,
+                    key=natural_key,
+                ),
+                "options": definition_only_failures,
+            })
         if direct_failures:
             excluded.append({
                 **base,
@@ -708,11 +990,90 @@ def collect_dialog_line_option_branches(
             })
             continue
         if not any_branch_lines and not direct_failures:
-            no_route.append({
-                **base,
-                "options": [_compact_dialog_option(option) for option in options],
-                "reason": "noExplicitSourceRoute",
-            })
+            outcomes_by_option = {
+                option_id: non_line_outcomes.get(option_id) or []
+                for option_id in option_ids
+            }
+            covered_option_ids = [
+                option_id
+                for option_id, outcomes in outcomes_by_option.items()
+                if outcomes
+            ]
+            if option_ids and len(covered_option_ids) == len(option_ids):
+                excluded.append({
+                    **base,
+                    "optionIds": option_ids,
+                    "exclusionReason": "authoredNonLineOptionOutcomes",
+                    "outcomesByOption": outcomes_by_option,
+                })
+                continue
+            if covered_option_ids:
+                authored_option_ids = set(
+                    _string_list(partial_coverage.get("authoredOptionIds"))
+                )
+                definition_only_option_ids = set(
+                    _string_list(
+                        partial_coverage.get("definitionOnlyOptionIds")
+                    )
+                )
+                uncovered_option_ids = set(option_ids) - set(
+                    covered_option_ids
+                )
+                if (
+                    set(covered_option_ids).issubset(authored_option_ids)
+                    and uncovered_option_ids
+                    and uncovered_option_ids == definition_only_option_ids
+                ):
+                    excluded.append({
+                        **base,
+                        "optionIds": option_ids,
+                        "exclusionReason":
+                            "authoredOutcomesWithDefinitionOnlyRows",
+                        "coveredOptionIds": covered_option_ids,
+                        "definitionOnlyOptionIds": sorted(
+                            definition_only_option_ids,
+                            key=natural_key,
+                        ),
+                        "outcomesByOption": {
+                            option_id: outcomes
+                            for option_id, outcomes
+                            in outcomes_by_option.items()
+                            if outcomes
+                        },
+                    })
+                    continue
+                excluded.append({
+                    **base,
+                    "optionIds": option_ids,
+                    "exclusionReason":
+                        "incompleteAuthoredNonLineOptionOutcomes",
+                    "coveredOptionIds": covered_option_ids,
+                    "outcomesByOption": {
+                        option_id: outcomes
+                        for option_id, outcomes in outcomes_by_option.items()
+                        if outcomes
+                    },
+                })
+                continue
+            compact_options = [
+                _compact_dialog_option(option)
+                for option in options
+            ]
+            if unregistered_scene:
+                excluded.append({
+                    **base,
+                    "optionIds": option_ids,
+                    "options": compact_options,
+                    "exclusionReason":
+                        "unregisteredSceneWithoutAuthoredOptionConsumer",
+                    "runtimeRegistry": compact_runtime_registry,
+                })
+            else:
+                no_route.append({
+                    **base,
+                    "options": compact_options,
+                    "reason": "noExplicitSourceRoute",
+                })
 
     return {
         "dialogLineOptions": allowed,
@@ -870,6 +1231,15 @@ def _strict_native_path_prefix(
     source_path: tuple[tuple[Any, ...], ...],
     target_path: tuple[tuple[Any, ...], ...],
 ) -> bool:
+    # WhileAction can execute its body repeatedly. A path through doAction is
+    # exact reachability evidence, but collapsing repeated Story files into
+    # one node would make a prefix look like a false global chronology edge.
+    if any(
+        step[1] == "WhileAction.doAction"
+        for path in (source_path, target_path)
+        for step in path
+    ):
+        return False
     source_ids = tuple(step[0] for step in source_path)
     target_ids = tuple(step[0] for step in target_path)
     return (
@@ -1838,6 +2208,9 @@ def build_mission_partial_order(
     candidate_kinds: dict[str, str],
     mission_payload: dict[str, Any] | None,
     dialog_payloads: list[tuple[str, dict[str, Any]]] | None = None,
+    exact_playback_source_keys: set[str] | None = None,
+    exact_levelscript_playback_context_keys: set[str] | None = None,
+    exact_native_control_path_context_keys: set[str] | None = None,
 ) -> dict[str, Any]:
     """Build one source-only mission partial order from generated source evidence."""
     mission_payload = mission_payload if isinstance(mission_payload, dict) else {}
@@ -1848,10 +2221,20 @@ def build_mission_partial_order(
         if isinstance(mission_payload.get("timelineRecovery"), dict)
         else {}
     )
-    candidate_kinds, native_context_scene_keys = (
-        _expand_native_control_path_candidates(flow, candidate_kinds)
-    )
+    if exact_native_control_path_context_keys is None:
+        candidate_kinds, native_context_scene_keys = (
+            _expand_native_control_path_candidates(flow, candidate_kinds)
+        )
+    else:
+        candidate_kinds = dict(candidate_kinds)
+        native_context_scene_keys = set(
+            exact_native_control_path_context_keys
+        )
     candidate_keys = set(candidate_kinds)
+    exact_playback_source_keys = exact_playback_source_keys or set()
+    exact_levelscript_playback_context_keys = (
+        exact_levelscript_playback_context_keys or set()
+    )
     graph_node_kinds = {
         safe_key(node.get("key")): safe_key(node.get("kind"))
         for node in scene_graph.get("nodes") or []
@@ -1860,6 +2243,14 @@ def build_mission_partial_order(
 
     direct_edges: list[dict[str, Any]] = []
     unresolved_nodes: dict[str, set[str]] = defaultdict(set)
+    definition_only_nodes: dict[str, dict[str, set[str]]] = defaultdict(
+        lambda: {
+            "incidentEdgeKinds": set(),
+            "recordClasses": set(),
+            "sourceFiles": set(),
+            "levelIds": set(),
+        }
+    )
     for source_edge in scene_graph.get("edges") or []:
         if not isinstance(source_edge, dict):
             continue
@@ -1872,11 +2263,45 @@ def build_mission_partial_order(
             continue
         if tier not in {"strong", "supported"}:
             continue
-        for key in (src, dst):
+        for endpoint, key in (("from", src), ("to", dst)):
             if key in candidate_keys or not key:
                 continue
             if graph_node_kinds.get(key) in SOURCE_STORY_NODE_KINDS:
-                unresolved_nodes[key].add(kind)
+                endpoint_classes = {
+                    safe_key(value)
+                    for value in source_edge.get(
+                        f"{endpoint}ActionClasses"
+                    ) or []
+                    if safe_key(value)
+                }
+                if (
+                    kind == "levelscriptSceneChain"
+                    and endpoint_classes
+                    and endpoint_classes
+                    <= DEFINITION_ONLY_SOURCE_RECORD_CLASSES
+                    and key not in exact_playback_source_keys
+                ):
+                    definition_only_nodes[key][
+                        "incidentEdgeKinds"
+                    ].add(kind)
+                    definition_only_nodes[key][
+                        "recordClasses"
+                    ].update(endpoint_classes)
+                    definition_only_nodes[key]["sourceFiles"].update(
+                        safe_key(value)
+                        for value in source_edge.get("sourceFiles") or []
+                        if safe_key(value)
+                    )
+                    definition_only_nodes[key]["levelIds"].update(
+                        safe_key(value)
+                        for value in source_edge.get("levelIds") or []
+                        if safe_key(value)
+                    )
+                else:
+                    unresolved_nodes[key].add(kind)
+
+    for key in unresolved_nodes:
+        definition_only_nodes.pop(key, None)
 
     direct_edges.extend(_native_control_path_story_edges(flow, candidate_keys))
     direct_edges.extend(_quest_state_action_path_story_edges(flow, candidate_keys))
@@ -1964,7 +2389,12 @@ def build_mission_partial_order(
             "membership": (
                 "exactNativeControlPathContext"
                 if scene_key in native_context_scene_keys
-                else "index"
+                else (
+                    "exactLevelScriptPlaybackContext"
+                    if scene_key
+                    in exact_levelscript_playback_context_keys
+                    else "index"
+                )
             ),
             "component": component_by_scene[scene_key],
             "relationStatus": status,
@@ -2067,6 +2497,45 @@ def build_mission_partial_order(
     dialog_line_options.sort(key=dialog_row_sort_key)
     excluded_dialog_line_options.sort(key=dialog_row_sort_key)
     no_explicit_route_groups.sort(key=dialog_row_sort_key)
+    single_option_no_explicit_route_groups = [
+        row
+        for row in no_explicit_route_groups
+        if len(row.get("options") or []) == 1
+    ]
+    branching_no_explicit_route_groups = [
+        row
+        for row in no_explicit_route_groups
+        if len(row.get("options") or []) > 1
+    ]
+    closed_excluded_dialog_line_options = [
+        row
+        for row in excluded_dialog_line_options
+        if row.get("exclusionReason")
+        in {
+            "sharedOrDefaultCandidates",
+            "authoredNonLineOptionOutcomes",
+            "authoredOutcomesWithDefinitionOnlyRows",
+            "branchLinesForDefinitionOnlyRows",
+            "closedDialogTreeOptionLayout",
+            "closedTimelineOptionLayout",
+            "unregisteredSceneWithoutAuthoredOptionConsumer",
+        }
+        or (
+            row.get("exclusionReason") == "inferredOrUnsupportedRisk"
+            and safe_key((row.get("riskEvidence") or {}).get("code"))
+            == "cosmeticChoice"
+        )
+    ]
+    closed_excluded_ids = {
+        (safe_key(row.get("storyKey")), row.get("group"))
+        for row in closed_excluded_dialog_line_options
+    }
+    actionable_excluded_dialog_line_options = [
+        row
+        for row in excluded_dialog_line_options
+        if (safe_key(row.get("storyKey")), row.get("group"))
+        not in closed_excluded_ids
+    ]
     dialog_line_route_count = sum(len(row.get("options") or []) for row in dialog_line_options)
     dialog_line_count = sum(
         len(option.get("branchLineIds") or [])
@@ -2087,6 +2556,10 @@ def build_mission_partial_order(
         len(row.get("options") or [])
         for row in no_explicit_route_groups
     )
+    branching_no_explicit_route_option_count = sum(
+        len(row.get("options") or [])
+        for row in branching_no_explicit_route_groups
+    )
     cycles = [component for component in components if component["cyclic"]]
     tier_counts = Counter(edge["tier"] for edge in direct_edges)
     kind_counts = Counter(edge["kind"] for edge in direct_edges)
@@ -2101,6 +2574,8 @@ def build_mission_partial_order(
         "summary": {
             "sceneCount": len(candidate_keys),
             "nativeControlPathContextSceneCount": len(native_context_scene_keys),
+            "exactLevelScriptPlaybackContextSceneCount":
+                len(exact_levelscript_playback_context_keys),
             "directEdgeCount": len(direct_edges),
             "strongEdgeCount": tier_counts.get("strong", 0),
             "supportedEdgeCount": tier_counts.get("supported", 0),
@@ -2112,6 +2587,7 @@ def build_mission_partial_order(
             "isolatedSceneCount": len(isolated),
             "weakOnlySceneCount": len(weak_only),
             "unknownSceneCount": len(unknown),
+            "definitionOnlySourceNodeCount": len(definition_only_nodes),
             "totalScenePairs": total_pairs,
             "comparableScenePairs": comparable_pairs,
             "unorderedScenePairs": total_pairs - comparable_pairs,
@@ -2131,8 +2607,18 @@ def build_mission_partial_order(
             "dialogLineOptionLineCount": dialog_line_count,
             "excludedDialogLineOptionGroupCount": len(excluded_dialog_line_options),
             "excludedDialogLineOptionCount": excluded_dialog_line_option_count,
+            "actionableExcludedDialogLineOptionGroupCount":
+                len(actionable_excluded_dialog_line_options),
+            "closedExcludedDialogLineOptionGroupCount":
+                len(closed_excluded_dialog_line_options),
             "noExplicitRouteGroupCount": len(no_explicit_route_groups),
             "noExplicitRouteOptionCount": no_explicit_route_option_count,
+            "branchingNoExplicitRouteGroupCount":
+                len(branching_no_explicit_route_groups),
+            "branchingNoExplicitRouteOptionCount":
+                branching_no_explicit_route_option_count,
+            "singleOptionNoExplicitRouteGroupCount":
+                len(single_option_no_explicit_route_groups),
             "dialogLineOptionProvenance": dict(sorted(dialog_line_provenance_counts.items())),
             "edgeKinds": dict(sorted(kind_counts.items())),
         },
@@ -2149,7 +2635,15 @@ def build_mission_partial_order(
             "nativeControlMerges": native_control_merges,
             "dialogLineOptions": dialog_line_options,
             "excludedDialogLineOptions": excluded_dialog_line_options,
+            "actionableExcludedDialogLineOptions":
+                actionable_excluded_dialog_line_options,
+            "closedExcludedDialogLineOptions":
+                closed_excluded_dialog_line_options,
             "noExplicitRouteGroups": no_explicit_route_groups,
+            "branchingNoExplicitRouteGroups":
+                branching_no_explicit_route_groups,
+            "singleOptionNoExplicitRouteGroups":
+                single_option_no_explicit_route_groups,
             "questForks": quest_branches,
             "questMerges": quest_merges,
         },
@@ -2168,6 +2662,22 @@ def build_mission_partial_order(
             }
             for key, kinds in sorted(unresolved_nodes.items(), key=lambda item: natural_key(item[0]))
         ],
+        "definitionOnlySourceNodes": [
+            {
+                "key": key,
+                "kind": graph_node_kinds.get(key) or "unknown",
+                "incidentEdgeKinds": sorted(
+                    evidence["incidentEdgeKinds"]
+                ),
+                "recordClasses": sorted(evidence["recordClasses"]),
+                "sourceFiles": sorted(evidence["sourceFiles"]),
+                "levelIds": sorted(evidence["levelIds"]),
+            }
+            for key, evidence in sorted(
+                definition_only_nodes.items(),
+                key=lambda item: natural_key(item[0]),
+            )
+        ],
         "warnings": warnings,
     }
 
@@ -2179,6 +2689,55 @@ def _split_missions(values: list[str]) -> set[str]:
         for mission in str(value).split(",")
         if mission.strip()
     }
+
+
+def _expand_levelscript_playback_context_candidates(
+    candidate_kinds: dict[str, str],
+    mission_payload: dict[str, Any],
+    index_kind_by_key: dict[str, str],
+    playback_source_files_by_key: dict[str, set[str]],
+) -> tuple[dict[str, str], set[str]]:
+    """Add exact cross-owner playback cards as context, not ownership."""
+    expanded = dict(candidate_kinds)
+    context_keys: set[str] = set()
+    flow = (
+        mission_payload.get("flow")
+        if isinstance(mission_payload.get("flow"), dict)
+        else {}
+    )
+    scene_graph = (
+        flow.get("sceneGraph")
+        if isinstance(flow.get("sceneGraph"), dict)
+        else {}
+    )
+    for edge in scene_graph.get("edges") or []:
+        if (
+            not isinstance(edge, dict)
+            or safe_key(edge.get("kind")) != "levelscriptSceneChain"
+        ):
+            continue
+        edge_source_files = {
+            safe_key(value)
+            for value in edge.get("sourceFiles") or []
+            if safe_key(value)
+        }
+        if not edge_source_files:
+            continue
+        for endpoint in ("from", "to"):
+            story_key = safe_key(edge.get(endpoint))
+            if (
+                not story_key
+                or story_key in expanded
+                or story_key not in index_kind_by_key
+                or not (
+                    edge_source_files
+                    & playback_source_files_by_key.get(story_key, set())
+                )
+            ):
+                continue
+            expanded[story_key] = index_kind_by_key[story_key]
+            context_keys.add(story_key)
+    return expanded, context_keys
 
 
 def build_report(
@@ -2193,6 +2752,11 @@ def build_report(
     index_payload = read_json(index_path, {})
     index_entries = index_payload.get("entries") if isinstance(index_payload, dict) else []
     index_entries = index_entries if isinstance(index_entries, list) else []
+    index_kind_by_key = {
+        safe_key(entry.get("k")): safe_key(entry.get("d")) or "unknown"
+        for entry in index_entries
+        if isinstance(entry, dict) and safe_key(entry.get("k"))
+    }
     missions = sorted(
         {
             safe_key(entry.get("m"))
@@ -2204,6 +2768,22 @@ def build_report(
     if selected_missions:
         missions = [mission for mission in missions if mission in selected_missions]
 
+    playback_source_files_by_key: dict[str, set[str]] = defaultdict(set)
+    for story_key, occurrences in (
+        build_levelscript_action_story_occurrences().items()
+    ):
+        for occurrence in occurrences:
+            if (
+                not isinstance(occurrence, dict)
+                or not safe_key(
+                    occurrence.get("recordClass")
+                ).startswith("play_")
+            ):
+                continue
+            source_file = safe_key(occurrence.get("sourceFile"))
+            if source_file:
+                playback_source_files_by_key[story_key].add(source_file)
+    exact_playback_source_keys = set(playback_source_files_by_key)
     rows: list[dict[str, Any]] = []
     totals: Counter[str] = Counter()
     edge_kind_totals: Counter[str] = Counter()
@@ -2218,11 +2798,22 @@ def build_report(
             if isinstance(mission_payload.get("flow"), dict)
             else {}
         )
-        dialog_candidate_kinds, _native_context_scene_keys = (
-            _expand_native_control_path_candidates(mission_flow, candidate_kinds)
+        candidate_kinds, exact_native_control_path_context_keys = (
+            _expand_native_control_path_candidates(
+                mission_flow,
+                candidate_kinds,
+            )
+        )
+        candidate_kinds, exact_levelscript_playback_context_keys = (
+            _expand_levelscript_playback_context_candidates(
+                candidate_kinds,
+                mission_payload,
+                index_kind_by_key,
+                playback_source_files_by_key,
+            )
         )
         dialog_payloads: list[tuple[str, dict[str, Any]]] = []
-        for story_key in sorted(dialog_candidate_kinds, key=natural_key):
+        for story_key in sorted(candidate_kinds, key=natural_key):
             if not story_key.startswith("dlg_"):
                 continue
             conversation_path = conversation_dir / f"{story_key}.json"
@@ -2236,6 +2827,9 @@ def build_report(
             candidate_kinds,
             mission_payload,
             dialog_payloads,
+            exact_playback_source_keys,
+            exact_levelscript_playback_context_keys,
+            exact_native_control_path_context_keys,
         )
         row["missionData"] = (
             mission_path.relative_to(ROOT).as_posix() if mission_path.is_file() else ""
@@ -2246,6 +2840,9 @@ def build_report(
         totals["scenes"] += summary["sceneCount"]
         totals["nativeControlPathContextScenes"] += summary[
             "nativeControlPathContextSceneCount"
+        ]
+        totals["exactLevelScriptPlaybackContextScenes"] += summary[
+            "exactLevelScriptPlaybackContextSceneCount"
         ]
         totals["directEdges"] += summary["directEdgeCount"]
         totals["strongEdges"] += summary["strongEdgeCount"]
@@ -2258,6 +2855,9 @@ def build_report(
         totals["isolatedScenes"] += summary["isolatedSceneCount"]
         totals["weakOnlyScenes"] += summary["weakOnlySceneCount"]
         totals["unknownScenes"] += summary["unknownSceneCount"]
+        totals["definitionOnlySourceNodes"] += summary[
+            "definitionOnlySourceNodeCount"
+        ]
         totals["totalScenePairs"] += summary["totalScenePairs"]
         totals["comparableScenePairs"] += summary["comparableScenePairs"]
         totals["unorderedScenePairs"] += summary["unorderedScenePairs"]
@@ -2276,8 +2876,23 @@ def build_report(
         totals["dialogLineOptionLines"] += summary["dialogLineOptionLineCount"]
         totals["excludedDialogLineOptionGroups"] += summary["excludedDialogLineOptionGroupCount"]
         totals["excludedDialogLineOptions"] += summary["excludedDialogLineOptionCount"]
+        totals["actionableExcludedDialogLineOptionGroups"] += (
+            summary["actionableExcludedDialogLineOptionGroupCount"]
+        )
+        totals["closedExcludedDialogLineOptionGroups"] += (
+            summary["closedExcludedDialogLineOptionGroupCount"]
+        )
         totals["noExplicitRouteGroups"] += summary["noExplicitRouteGroupCount"]
         totals["noExplicitRouteOptions"] += summary["noExplicitRouteOptionCount"]
+        totals["branchingNoExplicitRouteGroups"] += (
+            summary["branchingNoExplicitRouteGroupCount"]
+        )
+        totals["branchingNoExplicitRouteOptions"] += (
+            summary["branchingNoExplicitRouteOptionCount"]
+        )
+        totals["singleOptionNoExplicitRouteGroups"] += (
+            summary["singleOptionNoExplicitRouteGroupCount"]
+        )
         totals["missingMissionBundles"] += int("missingMissionBundle" in row["warnings"])
         totals["missionsWithStrongEdges"] += int(summary["strongEdgeCount"] > 0)
         totals["missionsWithCycles"] += int(summary["cycleCount"] > 0)
@@ -2348,9 +2963,15 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"operand decodes, `{summary.get('nativeClassOnlyPredicates', 0)}` exact class-only, "
         f"and `{summary.get('nativeUnresolvedPredicates', 0)}` unresolved",
         f"- excluded option evidence: `{summary.get('excludedDialogLineOptions', 0)}` options "
-        f"in `{summary.get('excludedDialogLineOptionGroups', 0)}` groups",
+        f"in `{summary.get('excludedDialogLineOptionGroups', 0)}` groups "
+        f"(`{summary.get('actionableExcludedDialogLineOptionGroups', 0)}` still "
+        f"actionable, `{summary.get('closedExcludedDialogLineOptionGroups', 0)}` "
+        "closed shared/cosmetic)",
         f"- option groups with no explicit route: `{summary.get('noExplicitRouteGroups', 0)}` "
-        f"(`{summary.get('noExplicitRouteOptions', 0)}` options)",
+        f"(`{summary.get('noExplicitRouteOptions', 0)}` options); "
+        f"`{summary.get('branchingNoExplicitRouteGroups', 0)}` are multi-choice "
+        f"groups and `{summary.get('singleOptionNoExplicitRouteGroups', 0)}` are "
+        "single-option acknowledgements",
         "",
         "## Evidence Policy",
         "",
