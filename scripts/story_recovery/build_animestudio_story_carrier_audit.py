@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter, defaultdict
 import gzip
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -34,9 +35,7 @@ from export_full_from_game import (  # noqa: E402
     animestudio_object_index_dir,
     load_animestudio_object_index_summary,
 )
-
-
-SCHEMA = "animestudioStoryCarrierAudit.v1"
+SCHEMA = "animestudioStoryCarrierAudit.v3"
 DEFAULT_OUTPUT_ROOT = ROOT / "export_full"
 DEFAULT_GAP_QUEUE = (
     ROOT / "reports" / "mission_order" / "source_story_gap_queue_CN.json"
@@ -70,6 +69,10 @@ RUNTIME_ID_FIELDS = frozenset({
     "scriptid",
 })
 ARRAY_SUFFIX_RE = re.compile(r"\[[0-9]+\]$")
+GENDERED_CUTSCENE_TARGET_RE = re.compile(
+    r"^(?:f|m|fm)_(cutscene_.+)$",
+    re.IGNORECASE,
+)
 
 
 class AuditError(RuntimeError):
@@ -116,13 +119,28 @@ def load_gap_targets(path: Path) -> dict[str, set[str]]:
         mission = str(row.get("mission") or "").strip()
         if not mission:
             continue
-        for key in row.get("actionableCoreIsolatedSceneKeys") or []:
+        for key in row.get("coreIsolatedSceneKeys") or []:
             story_key = str(key or "").strip()
             if story_key:
                 targets[story_key].add(mission)
     if not targets:
-        raise AuditError(f"{path}: no actionable Story keys")
+        raise AuditError(f"{path}: no core-isolated Story keys")
     return dict(targets)
+
+
+def target_set_sha256(target_missions: dict[str, set[str]]) -> str:
+    """Hash the exact key/mission target set independently of queue scoring."""
+    canonical = {
+        key: sorted(target_missions[key])
+        for key in sorted(target_missions)
+    }
+    encoded = json.dumps(
+        canonical,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def scalar_rows(row: dict[str, Any]) -> list[dict[str, Any]]:
@@ -144,6 +162,28 @@ def scalar_rows(row: dict[str, Any]) -> list[dict[str, Any]]:
             "fieldClass": scalar_field_class(item[0]),
         })
     return values
+
+
+def canonical_target_story_key(
+    value: Any,
+    target_missions: dict[str, set[str]],
+) -> str:
+    """Resolve an exact scalar value to the audited canonical Story key.
+
+    Gendered root Timeline assets serialize ``f_cutscene_*``,
+    ``m_cutscene_*``, or ``fm_cutscene_*`` while the Story builder
+    intentionally groups them under the canonical ``cutscene_*`` key. This
+    matcher strips only that exact gender prefix; component suffixes, locale
+    suffixes, hashes, and fuzzy spellings are deliberately not normalized.
+    """
+    if not isinstance(value, str):
+        return ""
+    story_value = value.strip()
+    if story_value in target_missions:
+        return story_value
+    match = GENDERED_CUTSCENE_TARGET_RE.fullmatch(story_value)
+    canonical = match.group(1) if match else ""
+    return canonical if canonical in target_missions else ""
 
 
 def mission_from_quest_id(value: str) -> str:
@@ -202,10 +242,14 @@ def audit_object_row(
         raise AuditError(str(exc)) from exc
     scalars = scalar_rows(row)
     matches = [
-        field
+        (field, story_key)
         for field in scalars
-        if isinstance(field["value"], str)
-        and field["value"] in target_missions
+        if (
+            story_key := canonical_target_story_key(
+                field["value"],
+                target_missions,
+            )
+        )
     ]
     if not matches:
         return [], [], counts
@@ -230,8 +274,7 @@ def audit_object_row(
     )
     accepted: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
-    for match in matches:
-        story_key = str(match["value"])
+    for match, story_key in matches:
         expected_missions = set(target_missions[story_key])
         recovered_owner_missions = owner_missions(owner_fields)
         if not recovered_owner_missions:
@@ -257,6 +300,12 @@ def audit_object_row(
 
         candidate = {
             "storyKey": story_key,
+            "sourceStoryValue": str(match["value"]),
+            "storyValueNormalization": (
+                "exact"
+                if str(match["value"]) == story_key
+                else "canonical_cutscene_variant"
+            ),
             "expectedGapMissions": sorted(expected_missions),
             "source": source,
             "object": identity,
@@ -431,25 +480,43 @@ def build_report(
         row["object"]["serializedFile"],
         row["object"]["pathId"],
     ))
+    candidate_story_keys = sorted({
+        row["storyKey"]
+        for row in candidates
+    })
+    target_story_key_missions = {
+        key: sorted(target_missions[key])
+        for key in sorted(target_missions)
+    }
     return {
         "_schema": SCHEMA,
         "gapQueue": str(gap_queue),
+        "targetField": "coreIsolatedSceneKeys",
+        "targetSetSha256": target_set_sha256(target_missions),
         "targetStoryKeys": len(target_missions),
+        "targetStoryKeyMissions": target_story_key_missions,
         "sources": [result["index"] for result in source_results],
         "summary": {
             **dict(sorted(totals.items())),
             "typedCarrierCandidates": len(candidates),
-            "candidateStoryKeys": len({
-                row["storyKey"] for row in candidates
-            }),
+            "candidateStoryKeys": len(candidate_story_keys),
+            "noCandidateStoryKeys": (
+                len(target_missions) - len(candidate_story_keys)
+            ),
         },
+        "candidateStoryKeys": candidate_story_keys,
+        "noCandidateStoryKeys": sorted(
+            set(target_missions) - set(candidate_story_keys)
+        ),
         "candidates": candidates,
         "rejectedExactValueMatchSamples": rejected[:100],
         "evidencePolicy": {
             "accepted": (
-                "exact target Story value in a typed Story-id field, complete "
-                "decoded schema row, resolved object/script type, and a typed "
-                "owner or runtime id in the same serialized object"
+                "exact target Story value, or an exact f_/m_/fm_ root "
+                "cutscene variant canonicalized by the Story builder, in a typed "
+                "Story-id field; complete decoded schema row; resolved "
+                "object/script type; and a typed owner or runtime id in the "
+                "same serialized object"
             ),
             "notAccepted": (
                 "partial/truncated objects, unresolved MonoScript identity, "
@@ -471,7 +538,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         "# AnimeStudio Story Carrier Audit",
         "",
         (
-            f"- Target actionable Story keys: `{report['targetStoryKeys']}`"
+            f"- Target core-isolated Story keys: `{report['targetStoryKeys']}`"
         ),
         (
             f"- Object rows scanned: "
@@ -481,6 +548,10 @@ def render_markdown(report: dict[str, Any]) -> str:
             f"- Typed same-object carrier candidates: "
             f"`{summary.get('typedCarrierCandidates', 0)}` across "
             f"`{summary.get('candidateStoryKeys', 0)}` Story keys"
+        ),
+        (
+            f"- Keys with no typed same-object candidate: "
+            f"`{summary.get('noCandidateStoryKeys', 0)}`"
         ),
         "",
         "This is a candidate audit, not an ownership or ordering graph. "

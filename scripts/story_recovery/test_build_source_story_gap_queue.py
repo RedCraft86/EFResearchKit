@@ -790,6 +790,233 @@ class SourceStoryGapQueueTests(unittest.TestCase):
         self.assertEqual(row["metrics"]["strictQuestIdsWithStoryAttachment"], 1)
         self.assertEqual(row["questIdsWithoutStrictStoryAttachment"], ["e1m1_q#2"])
 
+    def test_validated_non_owning_quest_diagnostic_is_not_actionable(self) -> None:
+        partial = partial_mission("e1m1", scenes=["dlg_a"])
+        payload = mission_payload(
+            quest_ids=["e1m1_q#2"],
+            placements={
+                "dlg_a": {
+                    "sceneKey": "dlg_a",
+                    "questIds": ["e1m1_q#2"],
+                    "questAttachSources": [{
+                        "questId": "e1m1_q#2",
+                        "source": "variantMissionRuntime",
+                    }],
+                },
+            },
+        )
+        closure = {
+            "questId": "e1m1_q#2",
+            "missionId": "e1m1",
+            "recoveryStatus": "closed_fixture_non_owning_diagnostic",
+            "graphEffect": "none",
+        }
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+            quest_attachment_diagnostic_index={"e1m1_q#2": closure},
+        )
+
+        self.assertEqual(row["questIdsWithoutStrictStoryAttachment"], [])
+        self.assertEqual(row["closedQuestAttachmentDiagnostics"], [closure])
+        self.assertEqual(row["metrics"]["closedQuestAttachmentDiagnostics"], 1)
+        self.assertEqual(
+            row["scoreContributions"]["questIdsWithoutStrictStoryAttachment"],
+            0,
+        )
+
+    def test_npc_proxy_dialog_context_is_not_actionable_quest_attachment(
+        self,
+    ) -> None:
+        partial = partial_mission("e1m1", scenes=["dlg_a"])
+        payload = mission_payload(
+            quest_ids=["e1m1_q#2"],
+            placements={
+                "dlg_a": {
+                    "sceneKey": "dlg_a",
+                    "questIds": ["e1m1_q#2"],
+                    "questAttachSources": [{
+                        "questId": "e1m1_q#2",
+                        "source": "npcProxyDialog",
+                        "npcProxyId": "npc_e1m1_wait",
+                        "dialogId": "dlg_a",
+                    }],
+                },
+            },
+        )
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(
+            row["questIdsWithoutStrictStoryAttachment"],
+            [],
+        )
+        self.assertEqual(
+            row["questIdsWithoutAnyStoryEvidence"],
+            ["e1m1_q#2"],
+        )
+        self.assertEqual(row["diagnosticQuestAttachmentSources"], {})
+
+    def test_unique_objective_script_owner_is_strict_quest_attachment(
+        self,
+    ) -> None:
+        partial = partial_mission(
+            "e1m1",
+            scenes=["cutscene_a"],
+            isolated=["cutscene_a"],
+        )
+        payload = mission_payload(
+            quest_ids=["e1m1_q#1"],
+            placements={
+                "cutscene_a": {
+                    "sceneKey": "cutscene_a",
+                    "questIds": ["e1m1_q#1"],
+                    "questAttachSources": [{"source": "scriptCondition"}],
+                },
+            },
+            connections=[{
+                "key": "cutscene_a",
+                "relation": "levelscript_mission_context",
+                "confidence": "scoped_script",
+                "hasUnscopedOrOtherMissionOccurrences": False,
+                "scopeEvidenceKinds": ["mission_condition_checks_script"],
+                "levelScriptOccurrences": [{
+                    "scopeEvidenceKinds": [
+                        "mission_condition_checks_script",
+                    ],
+                    "missionConditions": [{
+                        "missionId": "e1m1",
+                        "questId": "e1m1_q#1",
+                    }],
+                }],
+            }],
+        )
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["strictQuestIdsWithStoryAttachment"], 1)
+        self.assertEqual(row["questIdsWithoutStrictStoryAttachment"], [])
+
+    def test_exact_dialog_finish_dependency_is_strict_quest_attachment(
+        self,
+    ) -> None:
+        partial = partial_mission("e7m4", scenes=["dlg_e7m4_4"])
+        payload = mission_payload(quest_ids=["e7m4_q#2"])
+        payload["flow"]["quests"] = [{
+            "id": "e7m4_q#2",
+            "storyConnections": [{
+                "key": "dlg_e7m4_4",
+                "kind": "dialog",
+                "relation": "objective_condition",
+                "direction": "story_to_quest",
+                "phase": "progress",
+                "confidence": "direct",
+                "source": (
+                    "MissionRuntimeAsset.questDic[*].objectiveList[0]"
+                    ".condition._dialogId"
+                ),
+                "objectiveIndex": 1,
+                "conditionType": "CheckTalkOptionFinish",
+                "finishId": 1,
+            }],
+        }]
+        payload["timelineRecovery"]["scenePlacement"] = {
+            "dlg_e7m4_4": {
+                "sceneKey": "dlg_e7m4_4",
+                "questIds": ["e7m4_q#2"],
+                "questAttachSources": [{"source": "missionStoryRef"}],
+            },
+        }
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["strictQuestIdsWithStoryAttachment"], 1)
+        self.assertEqual(row["questIdsWithoutStrictStoryAttachment"], [])
+
+        payload["flow"]["quests"][0]["storyConnections"][0][
+            "source"
+        ] = "derived dialog completion"
+        invalid = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+        self.assertEqual(
+            invalid["questIdsWithoutStrictStoryAttachment"],
+            ["e7m4_q#2"],
+        )
+
+    def test_exact_sns_tracking_reference_is_strict_attachment_only(
+        self,
+    ) -> None:
+        partial = partial_mission("e2m1", scenes=["sns_e2m1_1"])
+        payload = mission_payload(
+            quest_ids=["e2m1_q#1"],
+            placements={
+                "sns_e2m1_1": {
+                    "sceneKey": "sns_e2m1_1",
+                    "questIds": ["e2m1_q#1"],
+                    "questAttachSources": [{
+                        "questId": "e2m1_q#1",
+                        "source": "missionStoryRef",
+                    }],
+                },
+            },
+        )
+        payload["flow"]["quests"] = [{
+            "id": "e2m1_q#1",
+            "storyConnections": [{
+                "key": "sns_e2m1_1",
+                "kind": "sns",
+                "relation": "objective_tracking_story_reference",
+                "direction": "context",
+                "phase": "tracking",
+                "confidence": "native_typed_context",
+                "source": (
+                    "MissionRuntimeAsset.questDic[*].objectiveList[0]"
+                    ".trackingInfoList[0].snsDialogId"
+                ),
+                "objectiveIndex": 1,
+                "trackingIndex": 0,
+                "trackingType": "SnsTrackingInfo",
+                "playback": False,
+            }],
+        }]
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["strictQuestIdsWithStoryAttachment"], 1)
+        self.assertEqual(row["questIdsWithoutStrictStoryAttachment"], [])
+
+        payload["flow"]["quests"][0]["storyConnections"][0]["playback"] = True
+        invalid = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+        self.assertEqual(
+            invalid["questIdsWithoutStrictStoryAttachment"],
+            ["e2m1_q#1"],
+        )
+
     def test_missing_bundle_is_explicit_high_priority_gap(self) -> None:
         partial = partial_mission("e1m1", scenes=["dlg_a"])
 
@@ -866,6 +1093,208 @@ class SourceStoryGapQueueTests(unittest.TestCase):
             0,
         )
 
+    def test_compact_top_level_native_path_closes_exact_isolated_scene(
+        self,
+    ) -> None:
+        partial = partial_mission(
+            "e1m1",
+            scenes=["dlg_a"],
+            isolated=["dlg_a"],
+        )
+        payload = mission_payload(connections=[{
+            "key": "dlg_a",
+            "levelIds": ["lv1"],
+            "scriptIds": ["1001"],
+            "sourceFiles": [
+                "MissionRuntimeAsset/e1m1.json",
+                "LevelScriptData/lv1/1001.json",
+            ],
+            "nativeEventOwners": [{
+                "status": "exact_serialized_control_path",
+                "headerName": "ScriptEvent_OnLeaderEnterTriggerVolume",
+                "headerLocalId": 4,
+                "path": [{
+                    "localId": 5,
+                    "actionName": "StartDialogAndTeleportAction",
+                    "recordClass": "play_dialog",
+                    "texts": ["teleport_id", "dlg_a"],
+                }],
+            }],
+        }])
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(row["metrics"]["closedExactNativeIsolatedScenes"], 1)
+        self.assertEqual(
+            row["closedExactNativeIsolatedScenes"][0]["nativeEventPaths"][0][
+                "actionName"
+            ],
+            "StartDialogAndTeleportAction",
+        )
+
+    def test_timeline_embedded_black_with_exact_parent_path_is_closed(
+        self,
+    ) -> None:
+        partial = partial_mission(
+            "e10m4",
+            scenes=["black_e10m4_1"],
+            isolated=["black_e10m4_1"],
+        )
+        payload = mission_payload(connections=[{
+            "key": "black_e10m4_1",
+            "relation": "timeline_dialog_contains_black",
+            "confidence": "native_exact_host",
+            "storyOwnerMission": "e10m4",
+            "parentStoryKey": "dlg_e10m4_5",
+            "occurrenceCount": 1,
+            "textIds": ["black_e10m4_1_001"],
+            "timelines": ["dlgtl_e10m4_5_sub_1"],
+            "sourceFiles": ["CAB-story"],
+            "timelineAttachments": [{
+                "key": "black_e10m4_1",
+                "textId": "black_e10m4_1_001",
+                "dialogKey": "dlg_e10m4_5",
+                "timeline": "dlgtl_e10m4_5_sub_1",
+                "sourceFile": "CAB-story",
+                "dialogJoin": "dialog_id_table_used_timeline",
+                "assetPath": "center_text.json",
+                "trackPath": "trunk_track.json",
+                "rootPath": "timeline_root.json",
+            }],
+            "parentDialogNativeOccurrences": [{
+                "levelId": "dungeon",
+                "scriptId": "1001",
+                "sourceFile": "LevelScriptData/dungeon/1001.json",
+                "actionName": "StartDialogAndTeleportAction",
+                "recordClass": "play_dialog",
+                "localId": 8,
+                "allStoryKeysInRecord": ["dlg_e10m4_5"],
+                "levelDataHosts": [{
+                    "missionId": "e10m4d5",
+                    "levelDataFile": "LevelData/dungeon/e10m4d5.json",
+                }],
+                "nativeEventOwners": [{
+                    "status": "exact_serialized_control_path",
+                    "headerName": "ScriptEvent_OnLeaderEnterTriggerVolume",
+                    "headerLocalId": 6,
+                    "path": [{"localId": 7}, {"localId": 8}],
+                }],
+            }],
+        }])
+        payload["flow"]["_sourceVariantMissionIds"] = ["e10m4d5"]
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(row["metrics"]["closedExactNativeIsolatedScenes"], 1)
+        closure = row["closedExactNativeIsolatedScenes"][0]
+        self.assertEqual(
+            closure["recoveryStatus"],
+            "closed_exact_native_timeline_embedded_playback_context_"
+            "no_file_order",
+        )
+        self.assertEqual(closure["graphEffect"], "none")
+
+    def test_timeline_foreign_dialog_with_exact_parent_path_is_closed(
+        self,
+    ) -> None:
+        partial = partial_mission(
+            "e11m3",
+            scenes=["dlg_e11m3_16"],
+            isolated=["dlg_e11m3_16"],
+        )
+        payload = mission_payload(connections=[{
+            "key": "dlg_e11m3_16",
+            "relation": "timeline_dialog_contains_foreign_dialog",
+            "confidence": "native_exact_host",
+            "storyOwnerMission": "e11m3",
+            "parentStoryKey": "dlg_e11m3_7",
+            "occurrenceCount": 1,
+            "textIds": [
+                "dlg_e11m3_16_001",
+                "dlg_e11m3_16_002",
+            ],
+            "optionIds": [
+                "option_dlg_e11m3_16_1_001",
+                "option_dlg_e11m3_16_1_002",
+            ],
+            "timelines": ["dlgtl_e11m3_7_sub_1"],
+            "sourceFiles": ["CAB-story"],
+            "graphEffect": "none",
+            "timelineDialogContainments": [{
+                "key": "dlg_e11m3_16",
+                "rawDialogKey": "dlg_e11m3_16",
+                "dialogKey": "dlg_e11m3_7",
+                "timeline": "dlgtl_e11m3_7_sub_1",
+                "sourceFile": "CAB-story",
+                "lineIds": [
+                    "dlg_e11m3_16_001",
+                    "dlg_e11m3_16_002",
+                ],
+                "optionIds": [
+                    "option_dlg_e11m3_16_1_001",
+                    "option_dlg_e11m3_16_1_002",
+                ],
+                "beforeParentLineId": "dlg_e11m3_7_009",
+                "afterParentLineId": "dlg_e11m3_7_005",
+                "dialogJoin": "dialog_id_table_used_timeline",
+                "placementStatus":
+                    "exact_contiguous_foreign_dialog_lines_"
+                    "with_parent_on_both_sides",
+                "graphEffect": "none",
+            }],
+            "parentDialogNativeOccurrences": [{
+                "levelId": "map02_lv008",
+                "scriptId": "23100080005",
+                "sourceFile":
+                    "LevelScriptData/map02_lv008/23100080005.json",
+                "actionName": "StartDialogAndTeleportAction",
+                "recordClass": "play_dialog",
+                "localId": 5,
+                "allStoryKeysInRecord": ["dlg_e11m3_7"],
+                "levelDataHosts": [{
+                    "missionId": "e11m3",
+                    "levelDataFile": "LevelData/e11m3.json",
+                }],
+                "nativeEventOwners": [{
+                    "status": "exact_serialized_control_path",
+                    "headerName":
+                        "ScriptEvent_OnLeaderEnterTriggerVolume",
+                    "headerLocalId": 4,
+                    "path": [{"localId": 5}],
+                }],
+            }],
+        }])
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(row["metrics"]["closedExactNativeIsolatedScenes"], 1)
+        closure = row["closedExactNativeIsolatedScenes"][0]
+        self.assertEqual(
+            closure["recoveryStatus"],
+            "closed_exact_native_timeline_foreign_dialog_playback_"
+            "context_no_file_order",
+        )
+        self.assertEqual(
+            closure["beforeParentLineIds"],
+            ["dlg_e11m3_7_009"],
+        )
+        self.assertEqual(closure["graphEffect"], "none")
+
     def test_exact_npc_proxy_runtime_config_is_closed_without_order(self) -> None:
         partial = partial_mission(
             "e1m1",
@@ -911,6 +1340,359 @@ class SourceStoryGapQueueTests(unittest.TestCase):
         self.assertEqual(
             row["scoreContributions"]["actionableCoreIsolatedScenes"],
             0,
+        )
+
+    def test_exact_levelscript_interactive_config_is_closed_without_order(
+        self,
+    ) -> None:
+        partial = partial_mission(
+            "e1m1",
+            scenes=["text_e1m1_1"],
+            isolated=["text_e1m1_1"],
+        )
+        payload = mission_payload(connections=[{
+            "key": "text_e1m1_1",
+            "relation": "levelscript_interactive_narrative_config",
+            "confidence": "native_exact_serialized_config",
+            "source": (
+                "exact counted LevelScriptData interactive map -> 25-member "
+                "LevelInteractiveData -> componentProperties[94].type_id; "
+                "ReadingPopUpTable is joined only when TYPE_ID names a popup row"
+            ),
+            "storyOwnerMission": "e1m1",
+            "storyBinding": True,
+            "ownership": False,
+            "nativeMappingId":
+                "levelscript-interactive-narrative-config-v1",
+            "orderBoundary": (
+                "interactive-map order, local interactive id, object position, "
+                "and Story suffix do not establish relative Story chronology"
+            ),
+            "levelIds": ["map_test"],
+            "scriptIds": ["1001"],
+            "localInteractiveId": 40001,
+            "entityDetailIds": ["int_narrative_scene_book"],
+            "entityTemplateIds": ["int_narrative_scene"],
+            "narrativeComponentKey": 94,
+            "interactiveMapCount": 1,
+            "rawTypeId": "rp_text_e1m1_1",
+            "storyKeyResolution": "reading_popup_content_id",
+            "questContextIds": ["e1m1_q#2"],
+            "sourceFiles": [
+                "export_full/structured/StreamingAssets/Data/Json/"
+                "LevelScriptData/map_test/1001.json",
+            ],
+        }])
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(
+            row["metrics"]["closedExactRuntimeConfigIsolatedScenes"],
+            1,
+        )
+        closure = row["closedExactRuntimeConfigIsolatedScenes"][0]
+        self.assertEqual(
+            "levelscript_interactive_narrative_config",
+            closure["relation"],
+        )
+        self.assertEqual([40001], closure["localInteractiveIds"])
+        self.assertEqual(["e1m1_q#2"], closure["questContextIds"])
+
+    def test_exact_leveldata_interactive_config_is_closed_without_order(
+        self,
+    ) -> None:
+        partial = partial_mission(
+            "e1m1",
+            scenes=["text_e1m1_2"],
+            isolated=["text_e1m1_2"],
+        )
+        payload = mission_payload(connections=[{
+            "key": "text_e1m1_2",
+            "relation": "leveldata_interactive_narrative_config",
+            "confidence": "native_exact_serialized_config",
+            "source": (
+                "exact counted LevelData interactive list -> 25-member "
+                "LevelInteractiveData bounded by the next record or validated "
+                "member-21 suffix (nonempty BriefData dictionary or complete "
+                "empty-script suffix), including an exact null or "
+                "decoded mission/quest-state progress lock -> "
+                "componentProperties[94].type_id"
+            ),
+            "storyOwnerMission": "e1m1",
+            "storyBinding": True,
+            "ownership": False,
+            "nativeMappingId":
+                "leveldata-interactive-narrative-config-v5",
+            "orderBoundary": (
+                "interactive-list order, record index, entity logic id, "
+                "object position, and Story suffix do not establish relative "
+                "Story chronology"
+            ),
+            "levelIds": ["map_test"],
+            "levelDataAssets": ["map_test_lv_data_sub_e1m1"],
+            "interactiveRecordIndex": 1,
+            "interactiveListCount": 3,
+            "interactiveRecordOffset": 100,
+            "interactiveRecordEndOffset": 200,
+            "interactiveRecordBoundarySource": "next_record",
+            "entityLogicId": 10002,
+            "entityDetailIds": ["int_narrative_scene_book"],
+            "entityTemplateIds": ["int_narrative_scene"],
+            "narrativeComponentKey": 94,
+            "progressLockConditionStatus": "null",
+            "rawTypeId": "rp_text_e1m1_2",
+            "storyKeyResolution": "reading_popup_content_id",
+            "sourceFiles": [
+                "export_full/structured/StreamingAssets/Data/Json/"
+                "LevelData/map_test/map_test_lv_data_sub_e1m1.json",
+            ],
+        }])
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(
+            row["metrics"]["closedExactRuntimeConfigIsolatedScenes"],
+            1,
+        )
+        closure = row["closedExactRuntimeConfigIsolatedScenes"][0]
+        self.assertEqual(
+            "leveldata_interactive_narrative_config",
+            closure["relation"],
+        )
+        self.assertEqual([1], closure["interactiveRecordIndexes"])
+        self.assertEqual([10002], closure["entityLogicIds"])
+
+        connection = payload["flow"]["missionStoryConnections"][0]
+        connection.update({
+            "progressLockConditionStatus": "decoded",
+            "progressLockConditionUnionTag": 16,
+            "progressLockConditionSerializedMemberCount": 3,
+            "progressLockConditionType":
+                "SimpleConditionCheckQuestState",
+            "progressLockConditionTree": {
+                "unionTag": 16,
+                "serializedMemberCount": 3,
+                "conditionType": "SimpleConditionCheckQuestState",
+                "ownerKind": "quest",
+                "ownerId": "e1m1_q#2",
+                "compareOperator": 0,
+                "compareTarget": 3,
+            },
+            "progressLockConditions": [{
+                "unionTag": 16,
+                "serializedMemberCount": 3,
+                "conditionType": "SimpleConditionCheckQuestState",
+                "ownerKind": "quest",
+                "ownerId": "e1m1_q#2",
+                "compareOperator": 0,
+                "compareTarget": 3,
+            }],
+        })
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(
+            row["metrics"]["closedExactRuntimeConfigIsolatedScenes"],
+            1,
+        )
+        closure = row["closedExactRuntimeConfigIsolatedScenes"][0]
+        self.assertEqual(
+            closure["progressLocks"][0]["conditionType"],
+            "SimpleConditionCheckQuestState",
+        )
+        self.assertEqual(
+            closure["progressLocks"][0]["conditions"][0]["ownerId"],
+            "e1m1_q#2",
+        )
+
+        connection["progressLockConditionStatus"] = "null"
+        connection["progressLockConditions"] = []
+        connection.pop("progressLockConditionUnionTag")
+        connection.pop("progressLockConditionSerializedMemberCount")
+        connection.pop("progressLockConditionType")
+        connection.pop("progressLockConditionTree")
+        connection[
+            "interactiveRecordIndex"
+        ] = 2
+        connection[
+            "interactiveRecordBoundarySource"
+        ] = "leveldata_member21_start"
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 1)
+        self.assertEqual(
+            row["metrics"]["closedExactRuntimeConfigIsolatedScenes"],
+            0,
+        )
+
+        connection["levelDataMember21Offset"] = 200
+        connection["levelScriptBriefDictionaryCountOffset"] = 204
+        connection["levelScriptBriefDictionaryCount"] = 1
+        connection["levelIdNum"] = 10
+        connection["levelDataFinalBoundaryValidation"] = (
+            "nonempty_levelscript_brief_dictionary"
+        )
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(
+            row["metrics"]["closedExactRuntimeConfigIsolatedScenes"],
+            1,
+        )
+
+        connection["levelScriptBriefDictionaryCount"] = 0
+        connection["levelScriptDataPathDictionaryCountOffset"] = 208
+        connection["levelScriptDataPathDictionaryCount"] = 0
+        connection["levelDataSafeZoneOffset"] = 260
+        connection["levelDataSceneId"] = "map_test"
+        connection["levelDataSpecificDataOffset"] = 280
+        connection["levelDataEmptySuffixEndOffset"] = 320
+        connection["levelDataFinalBoundaryValidation"] = (
+            "complete_empty_script_suffix_to_eof"
+        )
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(
+            row["metrics"]["closedExactRuntimeConfigIsolatedScenes"],
+            1,
+        )
+
+    def test_exact_leveldata_horn_dialog_config_is_closed_without_order(
+        self,
+    ) -> None:
+        partial = partial_mission(
+            "sm1l1m9",
+            scenes=["dlg_sm1l1m9_11"],
+            isolated=["dlg_sm1l1m9_11"],
+        )
+        payload = mission_payload(connections=[{
+            "key": "dlg_sm1l1m9_11",
+            "relation": "leveldata_interactive_narrative_config",
+            "confidence": "native_exact_serialized_config",
+            "source": (
+                "exact counted LevelData interactive list -> 25-member "
+                "LevelInteractiveData bounded by the next record or validated "
+                "member-21 suffix (nonempty BriefData dictionary or complete "
+                "empty-script suffix), including an exact null or decoded "
+                "mission/quest-state progress lock -> "
+                "int_horn.properties.dialog_id; the byte-identical authored "
+                "Horn template and current native Horn flow validate the "
+                "dialog consumer"
+            ),
+            "storyOwnerMission": "sm1l1m9",
+            "storyBinding": True,
+            "ownership": False,
+            "nativeMappingId":
+                "leveldata-interactive-horn-dialog-config-v1",
+            "narrativeConsumerKind": "horn_dialog_property",
+            "interactiveHornNativeMappingId":
+                "gameassembly-2026-07-29-interactive-horn-dialog-v1",
+            "interactiveHornTemplateSha256": (
+                "1200acb7208de5e4b9e861dc511cc3a3d4f1f5c56dd4b59f1"
+                "dcb0ef7ab2ea33e"
+            ),
+            "orderBoundary": (
+                "interactive-list order, record index, entity logic id, "
+                "object position, and Story suffix do not establish relative "
+                "Story chronology"
+            ),
+            "levelIds": ["map01_lv001"],
+            "levelDataAssets": ["map01_lv001_lv_data_sub_sm1l1m9"],
+            "interactiveRecordIndex": 2,
+            "interactiveListCount": 3,
+            "interactiveRecordOffset": 2155,
+            "interactiveRecordEndOffset": 3099,
+            "interactiveRecordBoundarySource":
+                "leveldata_member21_start",
+            "levelDataMember21Offset": 3099,
+            "levelScriptBriefDictionaryCountOffset": 3103,
+            "levelScriptBriefDictionaryCount": 7,
+            "levelIdNum": 1,
+            "levelDataFinalBoundaryValidation":
+                "nonempty_levelscript_brief_dictionary",
+            "entityLogicId": 2100280047,
+            "entityDetailIds": ["int_horn"],
+            "entityTemplateIds": ["int_horn"],
+            "dialogIdEntryOffset": 2800,
+            "progressLockConditionStatus": "decoded",
+            "progressLockConditionUnionTag": 16,
+            "progressLockConditionSerializedMemberCount": 3,
+            "progressLockConditionType":
+                "SimpleConditionCheckQuestState",
+            "progressLockConditionTree": {
+                "unionTag": 16,
+                "serializedMemberCount": 3,
+                "conditionType": "SimpleConditionCheckQuestState",
+                "ownerKind": "quest",
+                "ownerId": "sm1l1m9_q#16",
+                "compareOperator": 0,
+                "compareTarget": 3,
+            },
+            "progressLockConditions": [{
+                "unionTag": 16,
+                "serializedMemberCount": 3,
+                "conditionType": "SimpleConditionCheckQuestState",
+                "ownerKind": "quest",
+                "ownerId": "sm1l1m9_q#16",
+                "compareOperator": 0,
+                "compareTarget": 3,
+            }],
+            "rawTypeId": "dlg_sm1l1m9_11",
+            "storyKeyResolution": "direct_story_key",
+            "sourceFiles": [
+                "export_full/structured/StreamingAssets/Data/Json/"
+                "LevelData/map01_lv001/"
+                "map01_lv001_lv_data_sub_sm1l1m9.json",
+            ],
+            "nativeConsumer": (
+                "data_int_horn dialog_id -> authored dialog flow -> "
+                "OnDialogExit -> ReqInteractHorn(finishId)"
+            ),
+        }])
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(
+            row["metrics"]["closedExactRuntimeConfigIsolatedScenes"],
+            1,
+        )
+        closure = row["closedExactRuntimeConfigIsolatedScenes"][0]
+        self.assertEqual(
+            ["horn_dialog_property"],
+            closure["narrativeConsumerKinds"],
+        )
+        self.assertEqual([2], closure["interactiveRecordIndexes"])
+        self.assertEqual(
+            ["leveldata-interactive-horn-dialog-config-v1"],
+            closure["nativeMappingIds"],
         )
 
     def test_exact_embedded_dialog_tree_line_context_closes_without_file_edge(
@@ -1202,6 +1984,613 @@ class SourceStoryGapQueueTests(unittest.TestCase):
         )
         self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 1)
 
+    def test_npc_proxy_cross_mission_context_closes_nominal_story_gap(
+        self,
+    ) -> None:
+        partial = partial_mission(
+            "e11m1",
+            scenes=["dlg_e11m1_30"],
+            isolated=["dlg_e11m1_30"],
+        )
+        payload = mission_payload(connections=[{
+            "key": "dlg_e11m1_30",
+            "relation": "npc_proxy_ex_mission_context",
+            "confidence": "direct_mission_scope",
+            "source": "NpcProxyExDataTable.data[*].missionId + dialogId",
+            "npcProxyId": "shenjiaoe_map02_v1d40_002",
+            "npcProxyMissionId": "e11m2",
+            "storyOwnerMission": "e11m1",
+            "contextMissionBundle": "e11m2",
+            "selectionOrderStatus": (
+                "one_based_active_row_selection_only_no_cross_row_chronology"
+            ),
+            "nativeMappingId": "npc-proxy-dialog-selection-native-v1",
+            "gameAssemblySha256": (
+                "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2"
+                "B983FB9D45677D80FFCE"
+            ),
+        }])
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        closure = row["closedExactRuntimeConfigIsolatedScenes"][0]
+        self.assertEqual(
+            closure["recoveryStatus"],
+            "closed_exact_cross_mission_runtime_config_no_relative_order",
+        )
+        self.assertEqual(closure["missionId"], "e11m2")
+        self.assertEqual(closure["nominalStoryMissionId"], "e11m1")
+        self.assertTrue(closure["contextMissionMismatch"])
+        self.assertEqual(closure["contextMissionBundles"], ["e11m2"])
+
+    def test_exact_cross_mission_dialog_finish_dependency_closes_story_gap(
+        self,
+    ) -> None:
+        partial = partial_mission(
+            "e9m2",
+            scenes=["dlg_e9m2_14"],
+            isolated=["dlg_e9m2_14"],
+        )
+        dependent = mission_payload()
+        dependent["flow"]["quests"] = [{
+            "id": "e9m9_q#1",
+            "storyConnections": [{
+                "key": "dlg_e9m2_14",
+                "kind": "dialog",
+                "relation": "objective_condition",
+                "direction": "story_to_quest",
+                "phase": "progress",
+                "confidence": "direct",
+                "source": (
+                    "MissionRuntimeAsset.questDic[*].objectiveList[0]"
+                    ".condition._dialogId"
+                ),
+                "objectiveIndex": 1,
+                "conditionType": "CheckTalkOptionFinish",
+                "finishId": -1,
+            }],
+        }]
+        report = gap_queue.build_gap_report(
+            {
+                "_schema": "partial",
+                "language": "CN",
+                "missions": [partial],
+            },
+            {
+                "e9m2": mission_payload(),
+                "e9m9": dependent,
+            },
+            {"e9m2", "e9m9"},
+        )
+
+        row = report["missions"][0]
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        closure = row["closedExactRuntimeConfigIsolatedScenes"][0]
+        self.assertEqual(
+            closure["recoveryStatus"],
+            (
+                "closed_exact_mission_dialog_finish_dependency_"
+                "no_relative_order"
+            ),
+        )
+        self.assertEqual(closure["dependentMissionIds"], ["e9m9"])
+        self.assertEqual(closure["dependentQuestIds"], ["e9m9_q#1"])
+        self.assertEqual(closure["finishIds"], [-1])
+
+    def test_exact_cross_mission_runtime_configs_close_story_gaps(
+        self,
+    ) -> None:
+        partial = partial_mission(
+            "e6m1",
+            scenes=["radio_e6m1_20", "radio_e6m1_21"],
+            isolated=["radio_e6m1_20", "radio_e6m1_21"],
+        )
+        for node in partial["nodes"]:
+            node["kind"] = "radio"
+        dependent = mission_payload(connections=[
+            {
+                "key": "radio_e6m1_20",
+                "relation":
+                    "airwall_mission_state_radio_playback_context",
+                "direction": "context",
+                "phase": "airwall_mission_state_gate",
+                "confidence": "native_exact_serialized_co_carrier",
+                "evidenceTier": "direct",
+                "storyOwnerMission": "e6m1",
+                "missionStateId": "e6m1d5",
+                "storyBinding": True,
+                "ownership": False,
+                "dependencyOnly": False,
+                "questActivation": False,
+                "questPlayback": False,
+                "questCompletion": False,
+                "nativeMappingId":
+                    "leveldata-airwall-mission-radio-memorypack-v1d4",
+                "nativeConsumer":
+                    "AirWall pushback -> GameAction.PlayRadio",
+                "levelIds": ["indie_dg005"],
+                "sourceFiles": ["indie_dg005_lv_data_sub_e6m1.json"],
+                "sourcePath": "LevelData/indie_dg005/e6m1.json",
+                "recordOffset": 5,
+                "recordEndOffset": 242,
+                "serializedMemberCount": 8,
+                "airWallGroupId": "25600010001",
+                "airWallSlotId": 0,
+                "airWallDefaultOn": False,
+                "targetMissionStateChecks": [{
+                    "transition": "rise",
+                    "id": "e6m1d5",
+                    "isQuest": False,
+                    "targetMissionId": "e6m1d5",
+                    "detailState": 2,
+                    "comparison": "equal",
+                }],
+            },
+            {
+                "key": "radio_e6m1_21",
+                "relation": "focus_mode_interact_locked_radio",
+                "direction": "context",
+                "phase": "interact_locked",
+                "confidence": "direct_mission_scope",
+                "storyOwnerMission": "e6m1",
+                "focusModeId": "e6m1_ZhuangfyBanGongShi",
+                "focusModeMissionId": "e6m1d5",
+                "focusModeField": "radioIdInteractLocked",
+                "subDataParentId": 25600010000,
+            },
+        ])
+        report = gap_queue.build_gap_report(
+            {
+                "_schema": "partial",
+                "language": "CN",
+                "missions": [partial],
+            },
+            {
+                "e6m1": mission_payload(),
+                "e6m1d5": dependent,
+            },
+            {"e6m1", "e6m1d5"},
+        )
+
+        row = report["missions"][0]
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(
+            {
+                closure["relation"]
+                for closure in row[
+                    "closedExactRuntimeConfigIsolatedScenes"
+                ]
+            },
+            {
+                "airwall_mission_state_radio_playback_context",
+                "focus_mode_interact_locked_radio",
+            },
+        )
+
+    def test_exact_cross_mission_leveldata_playback_closes_story_gap(
+        self,
+    ) -> None:
+        story_key = "radio_e2m7_11"
+        occurrence = {
+            "levelId": "dung02_dg003",
+            "scriptId": "29800030004",
+            "sourceFile": "LevelScriptData/dung02_dg003/29800030004.json",
+            "actionMapRole": "actionList#45 linked",
+            "actionCode": "0x0363",
+            "actionKind": "0x0d",
+            "localId": 60,
+            "actionName": "PlayRadio",
+            "recordClass": "play_radio",
+            "nativeMappingId": "gameassembly-test-actionbase",
+            "allStoryKeysInRecord": [story_key],
+            "nativeEventOwnerStatus": "exact_serialized_control_path",
+            "nativeEventOwners": [{
+                "status": "exact_serialized_control_path",
+                "headerName": "LevelEvent_OnBattleSignal",
+                "headerLocalId": 57,
+                "eventDetail": {
+                    "summary": "battle signal radio_0079_07_boss_4",
+                },
+                "path": [
+                    {"localId": 58},
+                    {
+                        "localId": 60,
+                        "actionName": "PlayRadio",
+                        "recordClass": "play_radio",
+                    },
+                ],
+            }],
+            "levelDataHosts": [{
+                "missionId": "e9m3",
+                "levelId": "dung02_dg003",
+                "scriptId": "29800030004",
+                "levelDataFile": "LevelData/dung02_dg003/e9m3.json",
+                "encoding": "leveldata_member22_levelscriptbriefdata",
+                "nativeSchema": (
+                    "LevelData/43.member22:"
+                    "Dictionary<u64,LevelScriptBriefData/8>"
+                ),
+                "briefData": [{"scriptId": "29800030004"}],
+            }],
+            "scopeEvidenceKinds": [
+                "mission_leveldata_member22_contains_validated_"
+                "levelscript_brief",
+            ],
+        }
+        connection = {
+            "key": story_key,
+            "kind": "radio",
+            "relation": "leveldata_levelscript_mission_context",
+            "direction": "context",
+            "phase": "context",
+            "confidence": "native_exact_host",
+            "storyOwnerMission": "e2m7",
+            "levelDataHostMissionId": "e9m3",
+            "questTriggerStatus": "unresolved",
+            "occurrenceCount": 1,
+            "allOccurrenceCount": 1,
+            "hasUnscopedOrOtherMissionOccurrences": False,
+            "nativeActions": ["PlayRadio"],
+            "opcodes": ["0x0363/0x0d"],
+            "levelIds": ["dung02_dg003"],
+            "scriptIds": ["29800030004"],
+            "sourceFiles": [
+                "LevelScriptData/dung02_dg003/29800030004.json",
+            ],
+            "levelDataFiles": ["LevelData/dung02_dg003/e9m3.json"],
+            "levelScriptOccurrences": [occurrence],
+        }
+        partial = partial_mission(
+            "e2m7",
+            scenes=[story_key],
+            isolated=[story_key],
+        )
+        report = gap_queue.build_gap_report(
+            {
+                "_schema": "partial",
+                "language": "CN",
+                "missions": [partial],
+            },
+            {
+                "e2m7": mission_payload(),
+                "e9m3": mission_payload(connections=[connection]),
+            },
+            {"e2m7", "e9m3"},
+        )
+
+        row = report["missions"][0]
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        closure = row["closedExactNativeIsolatedScenes"][0]
+        self.assertEqual(closure["sceneKey"], story_key)
+        self.assertEqual(
+            closure["recoveryStatus"],
+            "closed_exact_native_event_path_no_relative_order",
+        )
+        self.assertEqual(
+            closure["nativeEventPaths"][0]["headerName"],
+            "LevelEvent_OnBattleSignal",
+        )
+
+        invalid = dict(connection)
+        invalid["confidence"] = "derived"
+        self.assertFalse(
+            gap_queue._exact_cross_owner_leveldata_story_context(
+                invalid,
+                "e2m7",
+                "e9m3",
+            )
+        )
+
+    def test_exact_cross_mission_condition_playback_closes_story_gap(
+        self,
+    ) -> None:
+        story_key = "dlg_e8m3_1"
+        source_file = "LevelScriptData/map02_lv004/23400020010.json"
+        occurrence = {
+            "levelId": "map02_lv004",
+            "scriptId": "23400020010",
+            "sourceFile": source_file,
+            "actionMapRole": "actionList#8 linked",
+            "localId": 12,
+            "actionName": "StartDialogAndTeleportAction",
+            "recordClass": "play_dialog",
+            "nativeMappingId": "gameassembly-test-actionbase",
+            "allStoryKeysInRecord": [story_key],
+            "nativeEventOwnerStatus": "exact_serialized_control_path",
+            "nativeEventOwners": [{
+                "status": "exact_serialized_control_path",
+                "headerName": "ScriptEvent_OnLeaderEnterTriggerVolume",
+                "headerLocalId": 6,
+                "eventDetail": {
+                    "summary": "leader enters trigger slot 80001",
+                },
+                "path": [
+                    {"localId": 7},
+                    {
+                        "localId": 12,
+                        "actionName": "StartDialogAndTeleportAction",
+                        "recordClass": "play_dialog",
+                    },
+                ],
+            }],
+            "missionConditions": [{
+                "missionId": "e8m2",
+                "questId": "e8m2_q#14d5",
+                "conditionType": "CheckLevelScriptPropertyBool",
+                "sourceFile": "MissionRuntimeAsset/e8m2.json",
+            }],
+            "scopeEvidenceKinds": ["mission_condition_checks_script"],
+        }
+        connection = {
+            "key": story_key,
+            "kind": "dialog",
+            "relation": "levelscript_mission_context",
+            "direction": "context",
+            "phase": "context",
+            "confidence": "scoped_script",
+            "storyOwnerMission": "e8m3",
+            "levelScriptMissionId": "e8m2",
+            "occurrenceCount": 1,
+            "allOccurrenceCount": 1,
+            "hasUnscopedOrOtherMissionOccurrences": False,
+            "scopeEvidenceKinds": ["mission_condition_checks_script"],
+            "levelScriptOccurrences": [occurrence],
+        }
+        partial = partial_mission(
+            "e8m3",
+            scenes=[story_key],
+            isolated=[story_key],
+        )
+        report = gap_queue.build_gap_report(
+            {
+                "_schema": "partial",
+                "language": "CN",
+                "missions": [partial],
+            },
+            {
+                "e8m2": mission_payload(connections=[connection]),
+                "e8m3": mission_payload(),
+            },
+            {"e8m2", "e8m3"},
+        )
+
+        row = report["missions"][0]
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        closure = row["closedExactNativeIsolatedScenes"][0]
+        self.assertEqual(closure["sceneKey"], story_key)
+        self.assertEqual(
+            closure["nativeEventPaths"][0]["headerName"],
+            "ScriptEvent_OnLeaderEnterTriggerVolume",
+        )
+
+        invalid = dict(connection)
+        invalid["scopeEvidenceKinds"] = ["script_contains_mission_or_quest_ref"]
+        self.assertFalse(
+            gap_queue._exact_cross_owner_mission_condition_story_context(
+                invalid,
+                "e8m3",
+                "e8m2",
+            )
+        )
+
+    def test_dialog_finish_dependency_requires_exact_typed_source(self) -> None:
+        partial = partial_mission(
+            "e9m2",
+            scenes=["dlg_e9m2_14"],
+            isolated=["dlg_e9m2_14"],
+        )
+        payload = mission_payload(connections=[{
+            "key": "dlg_e9m2_14",
+            "relation": "objective_condition",
+            "direction": "story_to_quest",
+            "phase": "progress",
+            "confidence": "direct",
+            "source": "derived dialog completion",
+            "objectiveIndex": 1,
+            "conditionType": "CheckTalkOptionFinish",
+            "finishId": -1,
+            "contextMissionBundle": "e9m9",
+            "contextQuestId": "e9m9_q#1",
+        }])
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 1)
+        self.assertEqual(
+            row["metrics"]["closedExactRuntimeConfigIsolatedScenes"],
+            0,
+        )
+
+    def test_exact_mission_client_action_closes_and_attaches_quest(
+        self,
+    ) -> None:
+        story_key = "radio_e6m3_10d3"
+        partial = partial_mission(
+            "e6m3",
+            scenes=[story_key],
+            isolated=[story_key],
+        )
+        partial["nodes"][0]["kind"] = "radio"
+        payload = mission_payload(quest_ids=["e6m3_q#16"])
+        payload["flow"]["quests"] = [{
+            "id": "e6m3_q#16",
+            "storyConnections": [{
+                "key": story_key,
+                "kind": "radio",
+                "relation": "client_action_succeed",
+                "direction": "quest_to_story",
+                "phase": "succeed",
+                "confidence": "native_typed_direct",
+                "source": (
+                    "MissionRuntimeAsset.clientActionMapKey[0] -> "
+                    "actionMapRaw.actionList[7]._radioId"
+                ),
+                "actionSlot": 2,
+                "actionId": 7,
+                "actionType": "PlayRadio",
+            }],
+        }]
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(row["metrics"]["strictQuestIdsWithStoryAttachment"], 1)
+        self.assertEqual(row["metrics"]["questIdsWithoutStrictStoryAttachment"], 0)
+        closure = row["closedExactRuntimeConfigIsolatedScenes"][0]
+        self.assertEqual(
+            closure["recoveryStatus"],
+            "closed_exact_mission_quest_client_action_no_relative_order",
+        )
+        self.assertEqual(closure["questIds"], ["e6m3_q#16"])
+        self.assertEqual(closure["actionTypes"], ["PlayRadio"])
+
+    def test_exact_cross_mission_client_action_closes_story_gap(
+        self,
+    ) -> None:
+        story_key = "radio_e2m2_1"
+        partial = partial_mission(
+            "e2m2",
+            scenes=[story_key],
+            isolated=[story_key],
+        )
+        partial["nodes"][0]["kind"] = "radio"
+        dependent = mission_payload()
+        dependent["flow"]["quests"] = [{
+            "id": "e2m1_q#3",
+            "storyConnections": [{
+                "key": story_key,
+                "kind": "radio",
+                "relation": "client_action_succeed",
+                "direction": "quest_to_story",
+                "phase": "succeed",
+                "confidence": "native_typed_direct",
+                "source": (
+                    "MissionRuntimeAsset.clientActionMapKey[1] -> "
+                    "actionMapRaw.actionList[16]._radioId"
+                ),
+                "actionSlot": 2,
+                "actionId": 16,
+                "actionType": "PlayRadio",
+            }],
+        }]
+        report = gap_queue.build_gap_report(
+            {
+                "_schema": "partial",
+                "language": "CN",
+                "missions": [partial],
+            },
+            {
+                "e2m1": dependent,
+                "e2m2": mission_payload(),
+            },
+            {"e2m1", "e2m2"},
+        )
+
+        row = report["missions"][0]
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        closure = row["closedExactRuntimeConfigIsolatedScenes"][0]
+        self.assertEqual(closure["sceneKey"], story_key)
+        self.assertEqual(closure["contextMissionIds"], ["e2m1"])
+        self.assertTrue(closure["contextMissionMismatch"])
+        self.assertEqual(closure["questIds"], ["e2m1_q#3"])
+        self.assertEqual(
+            closure["sourceFiles"],
+            [
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/e2m1.json"
+            ],
+        )
+
+    def test_cross_mission_client_action_requires_exact_native_shape(
+        self,
+    ) -> None:
+        story_key = "radio_e2m2_1"
+        partial = partial_mission(
+            "e2m2",
+            scenes=[story_key],
+            isolated=[story_key],
+        )
+        dependent = mission_payload()
+        dependent["flow"]["quests"] = [{
+            "id": "e2m1_q#3",
+            "storyConnections": [{
+                "key": story_key,
+                "relation": "client_action_succeed",
+                "direction": "quest_to_story",
+                "phase": "succeed",
+                "confidence": "native_typed_direct",
+                "source": "derived client action",
+                "actionSlot": 1,
+                "actionId": 16,
+                "actionType": "PlayRadio",
+            }],
+        }]
+        report = gap_queue.build_gap_report(
+            {
+                "_schema": "partial",
+                "language": "CN",
+                "missions": [partial],
+            },
+            {
+                "e2m1": dependent,
+                "e2m2": mission_payload(),
+            },
+            {"e2m1", "e2m2"},
+        )
+
+        row = report["missions"][0]
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 1)
+        self.assertEqual(
+            row["metrics"]["closedExactRuntimeConfigIsolatedScenes"],
+            0,
+        )
+
+    def test_mission_client_action_requires_exact_slot_and_source(self) -> None:
+        story_key = "radio_e6m3_10d3"
+        partial = partial_mission(
+            "e6m3",
+            scenes=[story_key],
+            isolated=[story_key],
+        )
+        payload = mission_payload(quest_ids=["e6m3_q#16"])
+        payload["flow"]["quests"] = [{
+            "id": "e6m3_q#16",
+            "storyConnections": [{
+                "key": story_key,
+                "relation": "client_action_succeed",
+                "direction": "quest_to_story",
+                "phase": "succeed",
+                "confidence": "native_typed_direct",
+                "source": "derived client action",
+                "actionSlot": 1,
+                "actionId": 7,
+                "actionType": "PlayRadio",
+            }],
+        }]
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 1)
+        self.assertEqual(row["metrics"]["strictQuestIdsWithStoryAttachment"], 0)
+        self.assertEqual(row["metrics"]["questIdsWithoutAnyStoryEvidence"], 1)
+
     def test_exact_definition_only_isolated_scene_is_closed(self) -> None:
         partial = partial_mission(
             "e1m1",
@@ -1245,6 +2634,2114 @@ class SourceStoryGapQueueTests(unittest.TestCase):
                 "recoveryStatus"
             ],
             "closed_current_build_definition_without_consumer",
+        )
+
+    def test_declared_cutscene_definitions_cover_every_host_gate(self) -> None:
+        self.assertEqual(
+            set(gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS),
+            set(gap_queue.OFFLINE_EXHAUSTION_REVERSE_HOST_COUNTS),
+        )
+        self.assertEqual(
+            set(gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS),
+            set(gap_queue.OFFLINE_EXHAUSTION_GAMEOBJECT_ROW_COUNTS),
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS[
+                "cutscene_e11m6_rift_camera_state1to2"
+            ]["timelineRegistryId"],
+            483,
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS[
+                "cutscene_e11m6_zhuangcomein"
+            ]["timelineRegistryId"],
+            547,
+        )
+
+    def test_declared_e11m2_alias_chain_is_composition_only(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_ROOT_PLAYBACK_ALIASES,
+            {
+                "cutscene_e11m2_liexi_xs_m_01_last_02": (
+                    "cutscene_e11m2_liexi_xs_m_01_last_01",
+                    "cutscene_e11m2_liexi_xs_m_01_last_02",
+                ),
+                "cutscene_e11m2_liexi_xs_m_01_last_03": (
+                    "cutscene_e11m2_liexi_xs_m_01_last_02",
+                    "cutscene_e11m2_liexi_xs_m_01_last_03",
+                ),
+            },
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_GAMEOBJECT_ROW_COUNTS[
+                "cutscene_e11m2_liexi_xs_m_01_last_03"
+            ],
+            0,
+        )
+
+    def test_declared_e11m2_radio_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E11M2_RADIOS,
+            {
+                "radio_e11m2_22",
+                "radio_e11m2_25",
+                "radio_e11m2_27",
+                "radio_e11m2_30",
+                "radio_e11m2_33",
+                "radio_e11m2_34",
+                "radio_e11m2_35",
+                "radio_e11m2_36",
+                "radio_e11m2_37",
+            },
+        )
+
+    def test_declared_e2m1_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENES_BY_MISSION["e2m1"],
+            {"cutscene_e2m1_1"},
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_TEXT_ONLY_CUTSCENES[
+                "cutscene_e2m1_1"
+            ],
+            {
+                "missionId": "e2m1",
+                "definitionRowKeys": (
+                    "cutscene_e2m1_1_01",
+                    "cutscene_e2m1_1_02",
+                ),
+            },
+        )
+
+    def test_declared_e2m2_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E2M2_RADIOS,
+            {"radio_e2m2_7"},
+        )
+        expected_dialogs = {
+            "dlg_e2m2_7": (
+                "dlg_e2m2_7",
+                "tata_map01_i002",
+                1,
+                12,
+                3,
+            ),
+            "misc_dlg_e2m2_1d5": (
+                "dlg_e2m2_1d5",
+                "fabian_map01_lv005",
+                0,
+                11,
+                1,
+            ),
+            "misc_dlg_e2m2_4d5": (
+                "dlg_e2m2_4d5",
+                "ailaizha_map01_lv005",
+                0,
+                7,
+                2,
+            ),
+        }
+        for story_key, (
+            registry_key,
+            proxy_id,
+            entry_index,
+            line_count,
+            option_count,
+        ) in expected_dialogs.items():
+            definition = (
+                gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[story_key]
+            )
+            self.assertEqual(
+                definition.get("registryKey", story_key),
+                registry_key,
+            )
+            self.assertEqual(
+                definition["npcProxyConsumer"]["proxyId"],
+                proxy_id,
+            )
+            self.assertEqual(
+                definition["npcProxyConsumer"]["entryIndex"],
+                entry_index,
+            )
+            self.assertEqual(
+                definition["npcProxyConsumer"]["entry"]["missionId"],
+                "",
+            )
+            self.assertEqual(len(definition["lineIds"]), line_count)
+            self.assertEqual(len(definition["optionIds"]), option_count)
+
+    def test_declared_e1m1_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENES_BY_MISSION["e1m1"],
+            {
+                "cutscene_e1m1_3_1_test",
+                "cutscene_e1m1_4",
+                "cutscene_e1m1_6",
+            },
+        )
+        roots = {
+            "cutscene_e1m1_3_1_test": (70, 1, 1, 1),
+            "cutscene_e1m1_4": (190, 2, 2, 2),
+        }
+        for story_key, (
+            registry_id,
+            file_count,
+            gameobject_count,
+            host_count,
+        ) in roots.items():
+            definition = (
+                gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS[story_key]
+            )
+            self.assertEqual(
+                definition["timelineRegistryId"],
+                registry_id,
+            )
+            self.assertEqual(len(definition["files"]), file_count)
+            self.assertEqual(
+                gap_queue.OFFLINE_EXHAUSTION_GAMEOBJECT_ROW_COUNTS[story_key],
+                gameobject_count,
+            )
+            self.assertEqual(
+                gap_queue.OFFLINE_EXHAUSTION_REVERSE_HOST_COUNTS[story_key],
+                host_count,
+            )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_TEXT_ONLY_CUTSCENES[
+                "cutscene_e1m1_6"
+            ]["definitionRowKeys"],
+            tuple(
+                f"cutscene_e1m1_6_{number:02d}"
+                for number in range(1, 6)
+            ),
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e1m1_6"
+        ]
+        self.assertEqual(len(dialog["lineIds"]), 5)
+        self.assertEqual(dialog["optionIds"], ())
+        self.assertEqual(
+            dialog["npcProxyConsumer"]["proxyId"],
+            "chen_map01_e1m1Basement1",
+        )
+        self.assertEqual(
+            dialog["npcProxyConsumer"]["entry"]["missionId"],
+            "",
+        )
+
+    def test_declared_e9m2_offline_frontier_is_exact(self) -> None:
+        cutscenes = {
+            "cutscene_dung02_dg002_e9m2_lightthewall": 327,
+            "cutscene_dung02_dg002_e9m2_zipline01": 325,
+            "cutscene_dung02_dg002_e9m2_zipline02": 334,
+            "cutscene_dung02_dg002_e9m2_zipline03": 333,
+            "cutscene_dung02_dg002_e9m2_zipline06": 326,
+        }
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENES_BY_MISSION["e9m2"],
+            set(cutscenes),
+        )
+        for story_key, registry_id in cutscenes.items():
+            self.assertEqual(
+                gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS[
+                    story_key
+                ]["timelineRegistryId"],
+                registry_id,
+            )
+            self.assertEqual(
+                gap_queue.OFFLINE_EXHAUSTION_REVERSE_HOST_COUNTS[story_key],
+                1,
+            )
+            self.assertEqual(
+                gap_queue.OFFLINE_EXHAUSTION_GAMEOBJECT_ROW_COUNTS[story_key],
+                1,
+            )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E9M2_RADIOS,
+            {
+                "radio_e9m2_12",
+                "radio_e9m2_33",
+                "radio_e9m2_34",
+                "radio_e9m2_41",
+                "radio_e9m2_44",
+                "radio_e9m2_49",
+                "radio_e9m2_50",
+                "radio_e9m2_51",
+            },
+        )
+
+    def test_declared_e9m3_radio_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E9M3_RADIOS,
+            {
+                "radio_e9m3_3",
+                "radio_e9m3_7",
+                "radio_e9m3_8",
+                "radio_e9m3_9",
+                "radio_e9m3_13",
+                "radio_e9m3_20",
+                "radio_e9m3_22",
+            },
+        )
+
+    def test_declared_e8m2_radio_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E8M2_RADIOS,
+            {
+                "radio_e8m2_1",
+                "radio_e8m2_9",
+                "radio_e8m2_15",
+                "radio_e8m2_16",
+            },
+        )
+
+    def test_declared_e3m4_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E3M4_RADIOS,
+            {"radio_e3m4_1", "radio_e3m4_2"},
+        )
+        cutscene = gap_queue.OFFLINE_EXHAUSTION_TEXT_ONLY_CUTSCENES[
+            "cutscene_e3m4_1"
+        ]
+        self.assertEqual(
+            cutscene["definitionRowKeys"],
+            tuple(
+                f"cutscene_e3m4_1_{number:02d}"
+                for number in range(1, 12)
+            ),
+        )
+        self.assertIn("cs_video_e3m5_4", cutscene["consumerBoundary"])
+        self.assertIn("cutscene_e3m5_4", cutscene["consumerBoundary"])
+        dialog = gap_queue.OFFLINE_EXHAUSTION_TEXT_ONLY_DIALOGS[
+            "dlg_e3m4_9"
+        ]
+        self.assertEqual(dialog["lineIds"], ("dlg_e3m4_9_001",))
+        self.assertEqual(
+            dialog["missingAudioIds"],
+            ("au_dlg_e3m4_9_001",),
+        )
+
+    def test_declared_e1m10_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E1M10_RADIOS,
+            {"radio_e1m10_0d2"},
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "misc_dlg_e1m10_2d7"
+        ]
+        self.assertEqual(dialog["registryKey"], "dlg_e1m10_2d7")
+        self.assertEqual(len(dialog["lineIds"]), 6)
+        self.assertEqual(dialog["optionIds"], ())
+
+    def test_declared_e9m4_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E9M4_RADIOS,
+            {"radio_e9m4_1", "radio_e9m4_4d5"},
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e9m4_14"
+        ]
+        self.assertEqual(
+            dialog["lineIds"],
+            (
+                "dlg_e9m4_14_001",
+                "dlg_e9m4_14_002",
+                "dlg_e9m4_14_003",
+                "dlg_e9m4_14_004",
+                "dlg_e9m4_14_005",
+                "dlg_e9m4_14_006",
+                "dlg_e9m4_14_009",
+            ),
+        )
+        self.assertEqual(dialog["optionIds"], ())
+        self.assertEqual(
+            dialog["npcProxyConsumer"],
+            {
+                "proxyId": "lizhui_map02_e9m4",
+                "entryIndex": 0,
+                "entry": {
+                    "addDialogExOption": False,
+                    "envTalkData": {"envTalkOverrideNpc": True},
+                    "dialogExOptionData": [],
+                    "dialogId": "dlg_e9m4_14",
+                },
+            },
+        )
+
+    def test_declared_e4m1_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E4M1_RADIOS,
+            {"radio_e4m1_106", "radio_e4m1_107"},
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_TEXT_ONLY_CUTSCENES[
+                "cutscene_e4m1_1"
+            ],
+            {
+                "missionId": "e4m1",
+                "definitionRowKeys": (
+                    "cutscene_e4m1_1_01",
+                    "cutscene_e4m1_1_02",
+                ),
+            },
+        )
+
+    def test_declared_e1m4_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E1M4_RADIOS,
+            {
+                "radio_e1m4_0d5",
+                "radio_e1m4_1d5",
+                "radio_e1m4_2d5",
+            },
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_RADIO_AUDIO_VARIANTS[
+                "radio_e1m4_0d5"
+            ],
+            {
+                "au_radio_e1m4_0d5_001": (
+                    "au_radio_e1m4_0d5_001_f",
+                    "au_radio_e1m4_0d5_001_m",
+                ),
+            },
+        )
+
+    def test_declared_e2m3_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E2M3_RADIOS,
+            {"radio_e2m3_4", "radio_e2m3_6", "radio_e2m3_15"},
+        )
+
+    def test_declared_e3m2_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E3M2_RADIOS,
+            {"radio_e3m2_0d5", "radio_e3m2_4d5"},
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e3m2_3"
+        ]
+        self.assertEqual(
+            dialog["lineIds"],
+            ("dlg_e3m2_3_001", "dlg_e3m2_3_002"),
+        )
+        self.assertEqual(dialog["optionIds"], ())
+        self.assertEqual(
+            dialog["missingAudioIds"],
+            ("au_dlg_e3m2_3_001", "au_dlg_e3m2_3_002"),
+        )
+        self.assertEqual(
+            dialog["npcProxyConsumer"]["proxyId"],
+            "angelu_map01_e3m201",
+        )
+        self.assertNotIn(
+            "missionId",
+            dialog["npcProxyConsumer"]["entry"],
+        )
+
+    def test_declared_e5m4_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E5M4_RADIOS,
+            {"radio_e5m4_1", "radio_e5m4_1d5", "radio_e5m4_2"},
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_RADIO_MISSING_AUDIO_IDS,
+            {
+                "radio_e5m4_1": {
+                    f"au_radio_e5m4_1_{number:03d}"
+                    for number in range(1, 5)
+                },
+                "radio_e5m4_1d5": {
+                    f"au_radio_e5m4_1d5_{number:03d}"
+                    for number in range(1, 4)
+                },
+                "radio_e5m4_2": {
+                    f"au_radio_e5m4_2_{number:03d}"
+                    for number in range(1, 4)
+                },
+                "radio_e5m5_1": {
+                    "au_radio_e5m5_1_001",
+                    "au_radio_e5m5_1_002",
+                },
+                "radio_e5m5_2": {"au_radio_e5m5_2_001"},
+            },
+        )
+
+    def test_declared_e0m2_offline_frontier_is_exact(self) -> None:
+        cutscenes = {
+            "cutscene_e0m2_3_3": (
+                262,
+                "cutscene_e0m2_3_3_p8B24FED0A23FB54B.json",
+                "cutscene_e0m2_3_3",
+            ),
+            "cutscene_e0m2_99": (
+                237,
+                "m_cutscene_e0m2_99_pEA3DAF65D39D43C5.json",
+                "m_cutscene_e0m2_99",
+            ),
+        }
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENES_BY_MISSION["e0m2"],
+            set(cutscenes),
+        )
+        for story_key, (
+            registry_id,
+            filename,
+            definition_name,
+        ) in cutscenes.items():
+            definition = (
+                gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS[story_key]
+            )
+            self.assertEqual(
+                definition["timelineRegistryId"],
+                registry_id,
+            )
+            self.assertEqual(len(definition["files"]), 1)
+            self.assertEqual(definition["files"][0][0], filename)
+            self.assertEqual(definition["files"][0][2], definition_name)
+            self.assertEqual(
+                gap_queue.OFFLINE_EXHAUSTION_GAMEOBJECT_ROW_COUNTS[story_key],
+                1,
+            )
+            self.assertEqual(
+                gap_queue.OFFLINE_EXHAUSTION_REVERSE_HOST_COUNTS[story_key],
+                1,
+            )
+
+    def test_declared_e8m3_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E8M3_RADIOS,
+            {"radio_e8m3_27"},
+        )
+
+    def test_declared_e8m1_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E8M1_RADIOS,
+            {"radio_e8m1_9"},
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e8m1_10"
+        ]
+        self.assertEqual(len(dialog["lineIds"]), 13)
+        self.assertEqual(len(dialog["optionIds"]), 5)
+        self.assertEqual(
+            dialog["npcProxyConsumer"],
+            {
+                "proxyId": "ximo_map02_default",
+                "entryIndex": 0,
+                "entry": {
+                    "addDialogExOption": False,
+                    "envTalkData": {"envTalkOverrideNpc": True},
+                    "dialogExOptionData": [],
+                    "dialogId": "dlg_e8m1_10",
+                    "missionId": "",
+                },
+            },
+        )
+
+    def test_declared_e10m2_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E10M2_RADIOS,
+            {"radio_e10m2_1"},
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e10m2_8"
+        ]
+        self.assertEqual(dialog["lineIds"], ("dlg_e10m2_8_001",))
+        self.assertEqual(dialog["optionIds"], ())
+        self.assertNotIn("npcProxyConsumer", dialog)
+
+    def test_declared_e8m5_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E8M5_RADIOS,
+            {"radio_e8m5_4"},
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e8m5_6"
+        ]
+        self.assertEqual(
+            dialog["lineIds"],
+            ("dlg_e8m5_6_001", "dlg_e8m5_6_002"),
+        )
+        self.assertEqual(dialog["optionIds"], ())
+        self.assertEqual(
+            dialog["ownedTimeline"],
+            {
+                "timeline": "dlgtl_e8m5_6_sub_1",
+                "sourceFile": "CAB-42aad6a7bfd8d23c4e3f6c1e0d515744",
+                "trackPathId": -7243836360867709977,
+                "fullLineIds": (
+                    "dlg_e8m5_6_001",
+                    "dlg_e8m5_6_002",
+                ),
+            },
+        )
+
+    def test_declared_e3m1_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E3M1_RADIOS,
+            {"radio_e3m1_3"},
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENES_BY_MISSION["e3m1"],
+            {"cutscene_e3m1_1"},
+        )
+        definition = gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS[
+            "cutscene_e3m1_1"
+        ]
+        self.assertEqual(definition["timelineRegistryId"], 191)
+        self.assertEqual(len(definition["files"]), 2)
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_GAMEOBJECT_ROW_COUNTS[
+                "cutscene_e3m1_1"
+            ],
+            2,
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_REVERSE_HOST_COUNTS[
+                "cutscene_e3m1_1"
+            ],
+            2,
+        )
+
+    def test_declared_e2m5d5_offline_frontier_is_exact(self) -> None:
+        expected = {
+            "misc_dlg_e2m5d5_1d5": {
+                "registryKey": "dlg_e2m5d5_1d5",
+                "lineCount": 3,
+                "proxyId": "pelica_map01_e2m5d5",
+                "missionIdPresent": False,
+            },
+            "misc_dlg_e2m5d5_1d7": {
+                "registryKey": "dlg_e2m5d5_1d7",
+                "lineCount": 5,
+                "proxyId": "chen_map01_e2m5d5",
+                "missionIdPresent": True,
+            },
+        }
+        for story_key, facts in expected.items():
+            definition = (
+                gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[story_key]
+            )
+            self.assertEqual(definition["missionId"], "e2m5d5")
+            self.assertEqual(
+                definition["registryKey"],
+                facts["registryKey"],
+            )
+            self.assertEqual(len(definition["lineIds"]), facts["lineCount"])
+            self.assertEqual(definition["optionIds"], ())
+            consumer = definition["npcProxyConsumer"]
+            self.assertEqual(consumer["proxyId"], facts["proxyId"])
+            self.assertEqual(consumer["entryIndex"], 0)
+            self.assertEqual(
+                "missionId" in consumer["entry"],
+                facts["missionIdPresent"],
+            )
+            self.assertFalse(consumer["entry"].get("missionId"))
+
+    def test_exact_lua_controller_playback_closes_isolated_cutscene(
+        self,
+    ) -> None:
+        lua_file = (
+            "Lua/Data/LuaScripts/Phase/GenderChange/"
+            "PhaseGenderChange.lua"
+        )
+        manifest = {
+            "cutscene_e1m10_1": {
+                "attachmentStatus": "trigger_known_owner_unresolved",
+                "key": "cutscene_e1m10_1",
+                "nominalMissionId": "e1m10",
+                "routes": [{
+                    "causality": "playback_owner_unresolved",
+                    "confidence": "shipped_lua_literal_plus_native_entry",
+                    "direction": "playback",
+                    "evidenceTier": "direct",
+                    "luaCall": "GameAction.PlayCutscene",
+                    "luaFile": lua_file,
+                    "luaSymbol": "CUT_SCENE_ID",
+                    "missionId": None,
+                    "nativeEntry":
+                        "Beyond.Gameplay.Actions.GameAction::PlayCutscene",
+                    "ownerStatus": "unresolved",
+                    "phase": "gender_change",
+                    "questId": None,
+                    "questTriggerStatus":
+                        "no_mission_or_quest_identity_serialized",
+                    "relation": "lua_controller_playback",
+                    "scope": "phase",
+                    "serverExchange": False,
+                    "sourceFiles": [lua_file],
+                    "steps": [
+                        {
+                            "id": lua_file,
+                            "kind": "luaController",
+                            "phase": "gender_change",
+                        },
+                        {
+                            "id":
+                                "Beyond.Gameplay.Actions.GameAction::"
+                                "PlayCutscene",
+                            "kind": "nativePlayback",
+                        },
+                    ],
+                    "storyKey": "cutscene_e1m10_1",
+                }],
+            },
+        }
+        rows = (
+            gap_queue
+            ._closed_exact_lua_controller_playback_isolated_scenes(
+                manifest,
+                {"cutscene_e1m10_1"},
+                "e1m10",
+            )
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["sceneKey"], "cutscene_e1m10_1")
+        self.assertEqual(rows[0]["relation"], "lua_controller_playback")
+        self.assertEqual(rows[0]["graphEffect"], "none")
+        self.assertEqual(
+            gap_queue
+            ._closed_exact_lua_controller_playback_isolated_scenes(
+                {
+                    "cutscene_e1m10_1": {
+                        **manifest["cutscene_e1m10_1"],
+                        "routes": [{
+                            **manifest["cutscene_e1m10_1"]["routes"][0],
+                            "missionId": "e1m10",
+                        }],
+                    },
+                },
+                {"cutscene_e1m10_1"},
+                "e1m10",
+            ),
+            [],
+        )
+
+    def test_declared_e6m2_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E6M2_RADIOS,
+            {"radio_e6m2_3", "radio_e6m2_7"},
+        )
+        expected_dialogs = {
+            "dlg_e6m2_1": (
+                "zhuangfy_indie_dg005_e6m1Final",
+                0,
+                17,
+                5,
+                True,
+            ),
+            "dlg_e6m2_2": (
+                "mifu_indie_dg005_e6m1DianTiKou",
+                2,
+                6,
+                2,
+                False,
+            ),
+        }
+        for story_key, (
+            proxy_id,
+            entry_index,
+            line_count,
+            option_count,
+            has_mission_id,
+        ) in expected_dialogs.items():
+            definition = (
+                gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[story_key]
+            )
+            consumer = definition["npcProxyConsumer"]
+            self.assertEqual(consumer["proxyId"], proxy_id)
+            self.assertEqual(consumer["entryIndex"], entry_index)
+            self.assertEqual(
+                "missionId" in consumer["entry"],
+                has_mission_id,
+            )
+            self.assertEqual(len(definition["lineIds"]), line_count)
+            self.assertEqual(len(definition["optionIds"]), option_count)
+
+    def test_declared_dialog_definitions_preserve_shared_timeline_boundary(
+        self,
+    ) -> None:
+        self.assertEqual(
+            set(gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS),
+            {
+                "dlg_e1m1_6",
+                "dlg_e1m2_6",
+                "misc_dlg_e1m3_5d5",
+                "misc_dlg_e1m10_2d7",
+                "dlg_e2m2_7",
+                "misc_dlg_e2m2_1d5",
+                "misc_dlg_e2m2_4d5",
+                "dlg_e2m4_10",
+                "dlg_e2m5_6",
+                "misc_dlg_e2m5d5_1d5",
+                "misc_dlg_e2m5d5_1d7",
+                "dlg_e2m6_12",
+                "dlg_e2m8d5_2",
+                "dlg_e2m8d5_3",
+                "dlg_e3m2_3",
+                "dlg_e3m3_12",
+                "dlg_e3m3_13",
+                "dlg_e5m1_3",
+                "dlg_e5m2_2",
+                "dlg_e5m2_8",
+                "misc_dlg_e5m2_3d5",
+                "dlg_e6m1_14",
+                "dlg_e6m1_15",
+                "dlg_e6m2_1",
+                "dlg_e6m2_2",
+                "dlg_e6m3_6",
+                "dlg_e6m3_12",
+                "misc_dlg_e6m3_3d5",
+                "dlg_e9m4_14",
+                "dlg_e7m2_11",
+                "dlg_e7m2_13",
+                "dlg_e7m3_13",
+                "dlg_e7m3_15",
+                "dlg_e7m3_16",
+                "dlg_e7m4_7",
+                "dlg_e8m1_10",
+                "dlg_e8m5_6",
+                "dlg_e10m1_7",
+                "dlg_e10m2_8",
+                "dlg_e10m3_3",
+                "dlg_e10m3_9",
+                "dlg_e10m4_21",
+                "dlg_e11m2_17",
+                "dlg_e11m2_18",
+                "dlg_e11m5_9",
+                "dlg_e11m5_10",
+                "dlg_e11m5_11",
+                "dlg_e11m5_12",
+                "dlg_e11m5_13",
+                "dlg_e11m5_18",
+                "dlg_e11m5_19",
+                "dlg_e11m6_9",
+                "dlg_e11m8_9",
+                "dlg_e11m8d5_1",
+            },
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_POSITIVE_DIALOG_KEYS,
+            {
+                "dlg_e10m3_9",
+                "dlg_e11m5_9",
+                "dlg_e11m8_9",
+            },
+        )
+        shared = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e11m6_9"
+        ]["sharedTimeline"]
+        self.assertEqual(shared["ownerDialogKey"], "dlg_e11m5_9")
+        self.assertEqual(shared["trackPathId"], 5795311945645305682)
+        self.assertEqual(
+            shared["embeddedLineIds"],
+            (
+                "dlg_e11m6_9_005",
+                "dlg_e11m6_9_006",
+                "dlg_e11m6_9_007",
+                "dlg_e11m6_9_003",
+                "dlg_e11m6_9_008",
+                "dlg_e11m6_9_004",
+            ),
+        )
+
+    def test_declared_e1m3_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E1M3_RADIOS,
+            {
+                "radio_e1m3_3",
+                "radio_e1m3_4",
+                "radio_e1m3_7",
+                "radio_e1m3_18",
+            },
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS[
+                "cutscene_e1m3_1"
+            ]["timelineRegistryId"],
+            89,
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_REVERSE_HOST_COUNTS[
+                "cutscene_e1m3_1"
+            ],
+            1,
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+                "misc_dlg_e1m3_5d5"
+            ]["registryKey"],
+            "dlg_e1m3_5d5",
+        )
+
+    def test_declared_e1m2_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E1M2_RADIOS,
+            {
+                "radio_e1m2_2d5",
+                "radio_e1m2_3d5",
+                "radio_e1m2_5",
+                "radio_e1m2_7d7",
+            },
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e1m2_6"
+        ]
+        self.assertEqual(len(dialog["lineIds"]), 4)
+        self.assertEqual(
+            dialog["optionIds"],
+            ("option_dlg_e1m2_6_1_001",),
+        )
+        self.assertEqual(
+            dialog["npcProxyConsumer"]["proxyId"],
+            "chen_map01_e1m2Factory",
+        )
+        self.assertEqual(
+            dialog["npcProxyConsumer"]["entry"]["missionId"],
+            "",
+        )
+        self.assertEqual(
+            dialog["extraConfigSha256"],
+            "89B14D65387F1567990671228000339E8AEC0EE76D7529324C3AD2204F490D48",
+        )
+
+    def test_declared_e10m1_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E10M1_RADIOS,
+            {
+                "radio_e10m1_6",
+                "radio_e10m1_9",
+            },
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e10m1_7"
+        ]
+        self.assertEqual(dialog["lineIds"], ("dlg_e10m1_7_001",))
+        self.assertEqual(dialog["optionIds"], ())
+        self.assertEqual(
+            dialog["missingAudioIds"],
+            ("au_dlg_e10m1_7_001",),
+        )
+        self.assertEqual(
+            dialog["extraConfigSha256"],
+            "95BB5B09DEA22F63EFBB5506FBF1900AFC43D7DC3C6411F8281E33216DA7E5FA",
+        )
+
+    def test_declared_e5m2_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E5M2_RADIOS,
+            {"radio_e5m2_3"},
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e5m2_2"
+        ]
+        self.assertEqual(len(dialog["lineIds"]), 29)
+        self.assertEqual(
+            dialog["ownedTimeline"]["timeline"],
+            "dlgtl_e5m2_2_sub_1",
+        )
+        self.assertEqual(
+            dialog["ownedTimeline"]["trackPathId"],
+            -6721394561739517947,
+        )
+        self.assertEqual(
+            len(dialog["ownedTimeline"]["fullLineIds"]),
+            29,
+        )
+        self.assertEqual(
+            dialog["missingAudioIds"],
+            ("au_dlg_e5m2_2_003",),
+        )
+        self.assertEqual(
+            dialog["npcProxyConsumer"]["entryIndex"],
+            1,
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+                "dlg_e5m2_8"
+            ]["optionIds"],
+            (
+                "option_dlg_e5m2_8_1_001",
+                "option_dlg_e5m2_8_1_002",
+            ),
+        )
+        misc = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "misc_dlg_e5m2_3d5"
+        ]
+        self.assertEqual(misc["registryKey"], "dlg_e5m2_3d5")
+        self.assertEqual(misc["npcProxyConsumer"]["entryIndex"], 1)
+        self.assertNotIn("missionId", misc["npcProxyConsumer"]["entry"])
+
+    def test_declared_e5m1_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E5M1_RADIOS,
+            {
+                "radio_e5m1_7",
+                "radio_e5m1_10d8",
+                "radio_e5m1_12",
+                "radio_e5m1_15",
+            },
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e5m1_3"
+        ]
+        self.assertEqual(
+            dialog["lineIds"],
+            ("dlg_e5m1_3_001", "dlg_e5m1_3_002"),
+        )
+        self.assertEqual(
+            dialog["optionIds"],
+            (
+                "option_dlg_e5m1_3_1_001",
+                "option_dlg_e5m1_3_1_002",
+            ),
+        )
+        self.assertEqual(dialog["npcProxyConsumer"]["entryIndex"], 1)
+        self.assertEqual(
+            dialog["npcProxyConsumer"]["proxyId"],
+            "pelica_base01_lv001_e5m1back",
+        )
+
+    def test_declared_e2m4_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E2M4_RADIOS,
+            {
+                "radio_e2m4_4",
+                "radio_e2m4_5d5",
+                "radio_e2m4_11",
+                "radio_e2m4_14",
+                "radio_e2m4_15",
+                "radio_e2m4_19",
+                "radio_e2m4_22",
+            },
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e2m4_10"
+        ]
+        self.assertEqual(len(dialog["lineIds"]), 5)
+        self.assertEqual(
+            dialog["optionIds"],
+            (
+                "option_dlg_e2m4_10_1_001",
+                "option_dlg_e2m4_10_1_002",
+            ),
+        )
+
+    def test_declared_e2m6_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E2M6_RADIOS,
+            {"radio_e2m6_2", "radio_e2m6_7d2", "radio_e2m6_7d4"},
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e2m6_12"
+        ]
+        self.assertEqual(len(dialog["lineIds"]), 24)
+        self.assertEqual(len(dialog["optionIds"]), 4)
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENES_BY_MISSION["e2m6"],
+            {"cutscene_e2m6_designer_AngelSurrounding"},
+        )
+        self.assertNotIn(
+            "cutscene_e2m6_designer_anchorperish_001",
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS,
+        )
+        self.assertEqual(
+            len(
+                gap_queue.OFFLINE_EXHAUSTION_TEXT_ONLY_DIALOGS[
+                    "dlg_e2m6_18"
+                ]["lineIds"]
+            ),
+            7,
+        )
+
+    def test_declared_e2m7_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E2M7_RADIOS,
+            {
+                "radio_e2m7_9",
+                "radio_e2m7_10",
+                "radio_e2m7_16",
+            },
+        )
+
+    def test_declared_e2m5_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E2M5_RADIOS,
+            {
+                "radio_e2m5_5",
+                "radio_e2m5_27",
+                "radio_e2m5_29",
+            },
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENES_BY_MISSION["e2m5"],
+            {
+                "cutscene_e2m5_2",
+                "cutscene_e2m5_3",
+            },
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_TEXT_ONLY_CUTSCENES[
+                "cutscene_e2m5_2"
+            ]["definitionRowKeys"],
+            (
+                "cutscene_e2m5_2_01",
+                "cutscene_e2m5_2_11",
+            ),
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e2m5_6"
+        ]
+        self.assertEqual(len(dialog["lineIds"]), 6)
+        self.assertEqual(len(dialog["optionIds"]), 2)
+        self.assertEqual(
+            dialog["extraConfigSha256"],
+            "ECB4AAE557503DD87DD1D3C02088A41277EE32D977BAE4998BB23D457A1239EF",
+        )
+        self.assertEqual(
+            dialog["npcProxyConsumer"],
+            {
+                "proxyId": "tata_map01_i008",
+                "entryIndex": 0,
+                "entry": {
+                    "addDialogExOption": False,
+                    "envTalkData": {"envTalkOverrideNpc": True},
+                    "dialogExOptionData": [],
+                    "dialogId": "dlg_e2m5_6",
+                    "missionId": "",
+                },
+            },
+        )
+
+    def test_exact_native_context_isolated_scenes_are_fail_closed(
+        self,
+    ) -> None:
+        trigger_zone = {
+            "key": "radio_e1m3_13",
+            "relation":
+                "radio_trigger_zone_mission_state_playback_context",
+            "direction": "context",
+            "phase": "mission_state_trigger_zone",
+            "confidence": "native_exact_serialized_co_carrier",
+            "evidenceTier": "direct",
+            "storyOwnerMission": "e1m3",
+            "storyBinding": True,
+            "ownership": False,
+            "missionStateId": "e1m3",
+            "missionStateGateRoles": [
+                "hideBeforeMissionId",
+                "hideCompleteMissionId",
+            ],
+            "nativeMappingId": "radio-zone-test",
+            "nativeConsumer": "OnEnter -> GameAction.PlayRadio",
+            "unionTag": 9,
+            "serializedMemberCount": 7,
+            "specificDataListCount": 1,
+            "levelIds": ["map01_lv001"],
+            "sourceFiles": ["level-data.json"],
+            "recordOffset": 10,
+            "recordEndOffset": 20,
+        }
+        tracked_world_entity = {
+            "key": "radio_e1m3_32",
+            "relation":
+                "mission_tracked_world_entity_levelscript_context",
+            "direction": "context",
+            "phase": "local_leader_trigger_world_entity_context",
+            "confidence": "native_exact_mission_navigation_context",
+            "evidenceTier": "derived_exact_foreign_key",
+            "storyOwnerMission": "e1m3",
+            "storyBinding": True,
+            "ownership": False,
+            "questActivation": False,
+            "questPlayback": False,
+            "questCompletion": False,
+            "candidateQuestIds": ["e1m3_q#44"],
+            "trackingRows": [{
+                "missionId": "e1m3",
+                "questId": "e1m3_q#44",
+            }],
+            "worldEntityIds": ["2100130040"],
+            "levelIds": ["map01_lv001"],
+            "scriptIds": ["2100130014"],
+            "sourceFiles": ["level-script.json"],
+            "worldEntityLevelScriptEvidence": [{
+                "nativeAction": "PlayRadio",
+                "playbackRecordOffset": 711,
+                "listener": {
+                    "status": "exact_serialized_control_path",
+                    "path": [{
+                        "actionName": "PlayRadio",
+                        "recordClass": "play_radio",
+                        "texts": ["radio_e1m3_32"],
+                    }],
+                },
+            }],
+        }
+        rows = gap_queue._closed_exact_native_context_isolated_scenes(
+            {
+                "missionStoryConnections": [
+                    trigger_zone,
+                    tracked_world_entity,
+                ],
+            },
+            {"radio_e1m3_13", "radio_e1m3_32"},
+            "e1m3",
+        )
+        self.assertEqual(
+            [row["sceneKey"] for row in rows],
+            ["radio_e1m3_13", "radio_e1m3_32"],
+        )
+        invalid_tracked = dict(tracked_world_entity)
+        invalid_tracked["questPlayback"] = True
+        self.assertEqual(
+            [
+                row["sceneKey"]
+                for row in (
+                    gap_queue
+                    ._closed_exact_native_context_isolated_scenes(
+                        {
+                            "missionStoryConnections": [
+                                trigger_zone,
+                                invalid_tracked,
+                            ],
+                        },
+                        {"radio_e1m3_13", "radio_e1m3_32"},
+                        "e1m3",
+                    )
+                )
+            ],
+            ["radio_e1m3_13"],
+        )
+
+    def test_declared_e7m2_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E7M2_RADIOS,
+            {
+                "radio_e7m2_2",
+                "radio_e7m2_9",
+                "radio_e7m2_12",
+                "radio_e7m2_18",
+            },
+        )
+        cutscene = gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS[
+            "cutscene_e7m2_designer_QingBoZhai"
+        ]
+        self.assertEqual(cutscene["timelineRegistryId"], 406)
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_REVERSE_HOST_COUNTS[
+                "cutscene_e7m2_designer_QingBoZhai"
+            ],
+            1,
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+                "dlg_e7m2_13"
+            ]["missingAudioIds"],
+            (
+                "au_dlg_e7m2_13_001",
+                "au_dlg_e7m2_13_002",
+            ),
+        )
+        self.assertEqual(
+            set(gap_queue.OFFLINE_EXHAUSTION_TEXT_DEFINITIONS)
+            & {"text_e7m2_2", "text_e7m2_3"},
+            {"text_e7m2_2"},
+        )
+
+    def test_declared_e3m3_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E3M3_RADIOS,
+            {
+                "radio_e3m3_1d5",
+                "radio_e3m3_1d7",
+                "radio_e3m3_2",
+                "radio_e3m3_2d5",
+                "radio_e3m3_3",
+                "radio_e3m3_4d5",
+                "radio_e3m3_5",
+                "radio_e3m3_6",
+            },
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e3m3_12"
+        ]
+        self.assertEqual(len(dialog["lineIds"]), 18)
+        self.assertEqual(
+            dialog["optionIds"],
+            (
+                "option_dlg_e3m3_12_1_001",
+                "option_dlg_e3m3_12_1_002",
+                "option_dlg_e3m3_12_1_003",
+                "option_dlg_e3m3_12_1_004",
+            ),
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+                "dlg_e3m3_13"
+            ]["lineIds"],
+            (
+                "dlg_e3m3_13_001",
+                "dlg_e3m3_13_002",
+                "dlg_e3m3_13_003",
+                "dlg_e3m3_13_004",
+            ),
+        )
+
+    def test_declared_e0m0_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E0M0_RADIOS,
+            {"radio_e0m0_9d5", "radio_e0m0_10", "radio_e0m0_21"},
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_RADIO_AUDIO_VARIANTS[
+                "radio_e0m0_10"
+            ],
+            {
+                f"au_radio_e0m0_10_{number:03d}": (
+                    f"au_radio_e0m0_10_{number:03d}_f",
+                    f"au_radio_e0m0_10_{number:03d}_m",
+                )
+                for number in range(1, 4)
+            },
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS[
+                "cutscene_e0m0_11111"
+            ],
+            {"timelineRegistryId": None, "files": ()},
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS[
+                "cutscene_e0m0_1"
+            ]["timelineRegistryId"],
+            158,
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_TEXT_DEFINITIONS[
+                "text_e0m0_1"
+            ]["contentTextIds"],
+            (
+                2511221695470576053,
+                5177474080784617714,
+                8007409330529367903,
+            ),
+        )
+
+    def test_declared_e10m3_partial_frontier_is_exact(self) -> None:
+        self.assertNotIn(
+            "e10m3",
+            gap_queue.OFFLINE_EXHAUSTION_RADIOS_BY_MISSION,
+        )
+        owned = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e10m3_9"
+        ]["ownedTimeline"]
+        self.assertEqual(
+            owned["trackPathIds"],
+            (-3513721562143553181, 4679925721215633763),
+        )
+        self.assertEqual(len(owned["fullLineIds"]), 19)
+        self.assertEqual(
+            set(gap_queue.OFFLINE_EXHAUSTION_TEXT_DEFINITIONS)
+            & {"text_e10m3_4", "text_e10m3_6", "text_e10m3_8"},
+            {"text_e10m3_4", "text_e10m3_6", "text_e10m3_8"},
+        )
+        rows = gap_queue._closed_exact_runtime_config_isolated_scenes(
+            {
+                "missionStoryConnections": [{
+                    "key": "radio_e10m3_10",
+                    "relation": "focus_mode_interact_locked_radio",
+                    "direction": "context",
+                    "phase": "interact_locked",
+                    "confidence": "direct_mission_scope",
+                    "storyOwnerMission": "e10m3",
+                    "focusModeField": "radioIdInteractLocked",
+                    "focusModeId": "Zfy_e10m3",
+                    "focusModeMissionId": "e10m3d5",
+                    "subDataParentId": 22800780000,
+                }],
+            },
+            {"radio_e10m3_10"},
+            "e10m3",
+        )
+        self.assertEqual(
+            [(row["sceneKey"], row["relation"]) for row in rows],
+            [(
+                "radio_e10m3_10",
+                "focus_mode_interact_locked_radio",
+            )],
+        )
+        text_only = gap_queue.OFFLINE_EXHAUSTION_TEXT_ONLY_DIALOGS
+        self.assertEqual(
+            set(text_only),
+            {
+                "dlg_e3m4_9",
+                "dlg_e10m4_16",
+                "dlg_e10m4_17",
+                "dlg_e10m3_10",
+                "dlg_e10m3_11",
+                "dlg_e10m3_12",
+                "dlg_e2m6_18",
+                "dlg_e11m8_13",
+                "dlg_e11m8_14",
+                "dlg_e11m8d5_2",
+            },
+        )
+        self.assertEqual(len(text_only["dlg_e10m3_10"]["lineIds"]), 8)
+        self.assertEqual(len(text_only["dlg_e10m3_11"]["lineIds"]), 4)
+        self.assertEqual(len(text_only["dlg_e10m3_12"]["lineIds"]), 16)
+
+    def test_declared_e6m3_definition_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E6M3_RADIOS,
+            {
+                "radio_e6m3_10d6",
+                "radio_e6m3_21",
+                "radio_e6m3_22",
+                "radio_e6m3_23",
+            },
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_TEXT_ONLY_CUTSCENES[
+                "cutscene_e6m3_2"
+            ]["definitionRowKeys"],
+            tuple(
+                f"cutscene_e6m3_2_{number:02d}"
+                for number in range(1, 15)
+            ),
+        )
+        misc = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "misc_dlg_e6m3_3d5"
+        ]
+        self.assertEqual(misc["registryKey"], "dlg_e6m3_3d5")
+        self.assertEqual(misc["definitionName"], "dlg_e6m3_3d5")
+        self.assertEqual(
+            set(gap_queue.OFFLINE_EXHAUSTION_TEXT_DEFINITIONS),
+            {
+                "text_e0m0_1",
+                "text_e6m3_1",
+                "text_e6m3_4",
+                "text_e6m5_1",
+                "text_e7m2_2",
+                "text_e7m3_1",
+                "text_e7m4_1",
+                "text_e10m3_4",
+                "text_e10m3_6",
+                "text_e10m3_8",
+                "text_e10m4_1",
+            },
+        )
+
+    def test_declared_e6m5_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E6M5_RADIOS,
+            {"radio_e6m5_4"},
+        )
+        definition = gap_queue.OFFLINE_EXHAUSTION_TEXT_DEFINITIONS[
+            "text_e6m5_1"
+        ]
+        self.assertEqual(
+            definition["contentTextIds"],
+            (2915169207318156019, -3317420327824307745),
+        )
+        self.assertEqual(
+            definition["prtsDefinition"],
+            {
+                "rowId": "nar_collection_map02_69_1",
+                "row": {
+                    "contentId": "text_e6m5_1",
+                    "desc": {"id": 0, "text": ""},
+                    "firstLvId": "collection_map02_69",
+                    "id": "nar_collection_map02_69_1",
+                    "name": {"id": 6370990046482612204, "text": ""},
+                    "order": 1,
+                    "overrideRadioId": "",
+                    "type": "text",
+                },
+            },
+        )
+
+    def test_declared_e2m8d5_offline_frontier_is_exact(self) -> None:
+        expected = {
+            "dlg_e2m8d5_2": {
+                "lines": (
+                    "dlg_e2m8d5_2_001",
+                    "dlg_e2m8d5_2_002",
+                    "dlg_e2m8d5_2_004",
+                    "dlg_e2m8d5_2_006",
+                    "dlg_e2m8d5_2_007",
+                ),
+                "options": (
+                    "option_dlg_e2m8d5_2_1_001",
+                    "option_dlg_e2m8d5_2_1_002",
+                ),
+                "proxyId": "pelica_map01_e2m8d5",
+                "entryIndex": 2,
+                "missionIdPresent": False,
+            },
+            "dlg_e2m8d5_3": {
+                "lines": tuple(
+                    f"dlg_e2m8d5_3_{number:03d}"
+                    for number in range(1, 6)
+                ),
+                "options": ("option_dlg_e2m8d5_3_1_001",),
+                "proxyId": "chen_map01_e2m8d5",
+                "entryIndex": 0,
+                "missionIdPresent": True,
+            },
+        }
+        for story_key, facts in expected.items():
+            definition = (
+                gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[story_key]
+            )
+            self.assertEqual(definition["missionId"], "e2m8d5")
+            self.assertEqual(definition["lineIds"], facts["lines"])
+            self.assertEqual(definition["optionIds"], facts["options"])
+            consumer = definition["npcProxyConsumer"]
+            self.assertEqual(consumer["proxyId"], facts["proxyId"])
+            self.assertEqual(consumer["entryIndex"], facts["entryIndex"])
+            self.assertEqual(
+                "missionId" in consumer["entry"],
+                facts["missionIdPresent"],
+            )
+            self.assertFalse(consumer["entry"].get("missionId"))
+
+    def test_declared_e11m8d5_offline_frontier_is_exact(self) -> None:
+        registered = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e11m8d5_1"
+        ]
+        self.assertEqual(len(registered["lineIds"]), 10)
+        self.assertEqual(len(registered["optionIds"]), 2)
+        self.assertEqual(len(registered["missingAudioIds"]), 10)
+        consumer = registered["npcProxyConsumer"]
+        self.assertEqual(consumer["proxyId"], "lizy_map02_v1d4d0_world")
+        self.assertEqual(consumer["entryIndex"], 0)
+        self.assertEqual(consumer["entry"]["missionId"], "")
+        text_only = gap_queue.OFFLINE_EXHAUSTION_TEXT_ONLY_DIALOGS[
+            "dlg_e11m8d5_2"
+        ]
+        self.assertEqual(
+            text_only["lineIds"],
+            ("dlg_e11m8d5_2_001", "dlg_e11m8d5_2_002"),
+        )
+        self.assertEqual(
+            text_only["missingAudioIds"],
+            ("au_dlg_e11m8d5_2_001", "au_dlg_e11m8d5_2_002"),
+        )
+
+    def test_declared_e5m5_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E5M5_RADIOS,
+            {"radio_e5m5_1", "radio_e5m5_2"},
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_RADIO_MISSING_AUDIO_IDS[
+                "radio_e5m5_1"
+            ],
+            {"au_radio_e5m5_1_001", "au_radio_e5m5_1_002"},
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_RADIO_MISSING_AUDIO_IDS[
+                "radio_e5m5_2"
+            ],
+            {"au_radio_e5m5_2_001"},
+        )
+
+    def test_declared_e6m1_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E6M1_RADIOS,
+            {"radio_e6m1_19"},
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e6m1_14"
+        ]
+        self.assertEqual(len(dialog["lineIds"]), 4)
+        self.assertEqual(
+            dialog["npcProxyConsumer"]["proxyId"],
+            "lugang_map02_e6m1ZhenLie",
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e6m1_15"
+        ]
+        self.assertEqual(len(dialog["lineIds"]), 3)
+        self.assertEqual(len(dialog["optionIds"]), 2)
+        self.assertEqual(
+            {
+                row["proxyId"]
+                for row in dialog["npcProxyConsumers"]
+            },
+            {
+                "puyuan_map02_default",
+                "puyuan_map02_e6m1ZhenLie",
+            },
+        )
+
+    def test_declared_e10m4_definition_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            set(gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS)
+            & {"dlg_e10m4_16", "dlg_e10m4_17", "dlg_e10m4_21"},
+            {"dlg_e10m4_21"},
+        )
+        self.assertEqual(
+            set(gap_queue.OFFLINE_EXHAUSTION_TEXT_ONLY_DIALOGS)
+            & {"dlg_e10m4_16", "dlg_e10m4_17", "dlg_e10m4_21"},
+            {"dlg_e10m4_16", "dlg_e10m4_17"},
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+                "dlg_e10m4_21"
+            ]["missingAudioIds"],
+            (
+                "au_dlg_e10m4_21_001",
+                "au_dlg_e10m4_21_002",
+                "au_dlg_e10m4_21_003",
+            ),
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+                "dlg_e10m4_21"
+            ]["extraConfigSha256"],
+            "BBA7D588A2B3D0B9A44D8D4D9D58A14246096C41E85ABA330357BAFC32140B94",
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_TEXT_ONLY_DIALOGS[
+                "dlg_e10m4_16"
+            ]["audioVariants"],
+            {
+                "au_dlg_e10m4_16_001": (
+                    "au_dlg_e10m4_16_001_f",
+                    "au_dlg_e10m4_16_001_m",
+                ),
+            },
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_TEXT_ONLY_DIALOGS[
+                "dlg_e10m4_17"
+            ]["missingAudioIds"],
+            (
+                "au_dlg_e10m4_17_001",
+                "au_dlg_e10m4_17_002",
+            ),
+        )
+        self.assertEqual(
+            set(gap_queue.OFFLINE_EXHAUSTION_SNS_DEFINITIONS),
+            {"sns_e7m4_1", "sns_e10m4_1"},
+        )
+        self.assertEqual(
+            set(
+                gap_queue.OFFLINE_EXHAUSTION_SNS_DEFINITIONS[
+                    "sns_e10m4_1"
+                ]["optionNextContentIds"]
+            ),
+            {
+                "option_sns_e10m4_1_1_001",
+                "option_sns_e10m4_1_2_001",
+                "option_sns_e10m4_1_3_001",
+                "option_sns_e10m4_1_5_001",
+            },
+        )
+        self.assertIn(
+            "text_e10m4_1",
+            gap_queue.OFFLINE_EXHAUSTION_TEXT_DEFINITIONS,
+        )
+
+    def test_current_quest_attachment_diagnostics_are_exact(self) -> None:
+        mission_dir = (
+            gap_queue.ROOT / "webui" / "data" / "lang" / "CN" / "mission"
+        )
+        payloads = {
+            mission: gap_queue.load_mission_payload_with_variants(
+                mission_dir,
+                mission,
+            )
+            for mission in ("e5m2", "e10m4")
+        }
+
+        index, status = gap_queue.build_quest_attachment_diagnostic_index(
+            payloads
+        )
+
+        self.assertEqual(status["status"], "active")
+        self.assertEqual(status["sourceHashMismatches"], [])
+        self.assertEqual(
+            set(index),
+            {
+                "e5m2_q#33",
+                "e5m2d5_q#12",
+                "e10m4d5_q#31",
+                "e10m4d5_q#34",
+                "e10m4d5_q#35",
+            },
+        )
+        self.assertEqual(
+            index["e10m4d5_q#31"]["propertyKey"],
+            "enemyStart1",
+        )
+        self.assertEqual(
+            index["e10m4d5_q#35"]["propertyKey"],
+            "enemyStart2",
+        )
+        self.assertEqual(
+            index["e10m4d5_q#34"]["conditionType"],
+            "GameConditionServerPlaceHolder",
+        )
+        self.assertEqual(index["e5m2_q#33"]["propertyKey"], "bridge")
+        self.assertEqual(
+            index["e5m2d5_q#12"]["recoveryStatus"],
+            "closed_weak_leveldata_reference_without_typed_story_bridge",
+        )
+        self.assertEqual(
+            index["e5m2d5_q#12"]["diagnosticStoryKeys"],
+            ["radio_e5m2_7d5", "radio_e5m2_18"],
+        )
+
+    def test_quest_attachment_diagnostics_fail_closed_on_shape_change(
+        self,
+    ) -> None:
+        mission_dir = (
+            gap_queue.ROOT / "webui" / "data" / "lang" / "CN" / "mission"
+        )
+        payloads = {
+            mission: gap_queue.load_mission_payload_with_variants(
+                mission_dir,
+                mission,
+            )
+            for mission in ("e5m2", "e10m4")
+        }
+        flow = gap_queue._flow(payloads["e5m2"])
+        quest = next(
+            row
+            for row in flow["quests"]
+            if row["id"] == "e5m2d5_q#12"
+        )
+        quest["storyConnections"][0]["relation"] = "new_typed_route"
+
+        index, status = gap_queue.build_quest_attachment_diagnostic_index(
+            payloads
+        )
+
+        self.assertEqual(index, {})
+        self.assertEqual(
+            status["status"],
+            "inactive_generated_shape_validation_failed",
+        )
+        self.assertEqual(
+            status["validationFailures"],
+            ["e5m2d5_q#12"],
+        )
+
+    def test_quest_attachment_diagnostics_fail_closed_on_hash_change(
+        self,
+    ) -> None:
+        index, status = gap_queue.build_quest_attachment_diagnostic_index(
+            {},
+            source_path_overrides={
+                "missionRuntime:e5m2": Path(__file__),
+            },
+        )
+
+        self.assertEqual(index, {})
+        self.assertEqual(
+            status["status"],
+            "inactive_source_validation_failed",
+        )
+        self.assertEqual(
+            status["sourceHashMismatches"],
+            ["missionRuntime:e5m2"],
+        )
+
+    def test_declared_e6m4_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E6M4_RADIOS,
+            {
+                "radio_e6m4_5",
+                "radio_e6m4_9",
+                "radio_e6m4_15",
+                "radio_e6m4_25",
+                "radio_e6m4_35",
+                "radio_e6m4_36",
+                "radio_e6m4_37",
+            },
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS[
+                "cutscene_e6m4_1"
+            ]["timelineRegistryId"],
+            400,
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS[
+                "cutscene_e6m4_hydrantStart"
+            ]["timelineRegistryId"],
+            324,
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_REVERSE_HOST_COUNTS[
+                "cutscene_e6m4_hydrantStart"
+            ],
+            1,
+        )
+
+    def test_declared_e7m3_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E7M3_RADIOS,
+            {"radio_e7m3_16", "radio_e7m3_26"},
+        )
+        self.assertEqual(
+            len(
+                gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+                    "dlg_e7m3_13"
+                ]["optionIds"]
+            ),
+            3,
+        )
+        self.assertEqual(
+            len(
+                gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+                    "dlg_e7m3_15"
+                ]["optionIds"]
+            ),
+            6,
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+                "dlg_e7m3_16"
+            ]["optionIds"],
+            ("option_dlg_e7m3_16_1_001",),
+        )
+
+    def test_declared_e7m4_offline_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E7M4_RADIOS,
+            {"radio_e7m4_3"},
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e7m4_7"
+        ]
+        self.assertEqual(len(dialog["lineIds"]), 3)
+        self.assertEqual(
+            dialog["missingAudioIds"],
+            (
+                "au_dlg_e7m4_7_001",
+                "au_dlg_e7m4_7_002",
+                "au_dlg_e7m4_7_003",
+            ),
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_SNS_DEFINITIONS[
+                "sns_e7m4_1"
+            ]["contentIds"],
+            (-1, 1, 2, 3, 4, 5, 6, 7),
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_SNS_DEFINITIONS[
+                "sns_e7m4_1"
+            ]["contentParamsByContentId"],
+            {4: ("sns_image_e7m4_1",)},
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_TEXT_DEFINITIONS[
+                "text_e7m4_1"
+            ]["contentTextIds"],
+            (
+                -11413322245013826,
+                -7389517897749196338,
+            ),
+        )
+
+    def test_declared_e11m8_partial_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E11M8_RADIOS,
+            {"radio_e11m8_5"},
+        )
+        dialog = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e11m8_9"
+        ]
+        self.assertEqual(len(dialog["lineIds"]), 30)
+        self.assertEqual(len(dialog["ownedTimeline"]["fullLineIds"]), 30)
+        self.assertEqual(
+            dialog["optionIds"],
+            (
+                "option_dlg_e11m8_9_1_001",
+                "option_dlg_e11m8_9_1_002",
+            ),
+        )
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_TEXT_ONLY_DIALOGS[
+                "dlg_e11m8_13"
+            ]["missingAudioIds"],
+            (),
+        )
+        self.assertEqual(
+            set(gap_queue.OFFLINE_EXHAUSTION_TEXT_TABLE_ONLY_STORIES),
+            {"black_e11m8_12", "black_e11m8_39"},
+        )
+        disconnected = {
+            "key": "black_e11m8_27",
+            "relation": "dialog_tree_narrative_action",
+            "storyOwnerMission": "e11m8",
+            "parentStoryKey": "dlg_e11m8_3",
+            "confidence": "native_exact_parent_quest",
+            "evidenceTier": "native_direct",
+            "scopeCompleteness": "complete",
+            "allParentStoryKeys": ["dlg_e11m8_3"],
+            "nativeMappingId":
+                gap_queue.DIALOG_TREE_NARRATIVE_CONNECTION_MAPPING_ID,
+            "sourceFiles": ["dlg_e11m8_3.json"],
+            "sourcePathIds": ["90FF60230D4F7FDA"],
+            "occurrenceCount": 1,
+            "dialogTreeNarrativeActions": [{
+                "dialogKey": "dlg_e11m8_3",
+                "actionType":
+                    "Beyond.Gameplay.DialogNarrativeMaskActionData",
+                "nativeMappingId":
+                    gap_queue.DIALOG_TREE_NARRATIVE_CONNECTION_MAPPING_ID,
+                "reachableFromPrimeNode": False,
+                "primeToActionNodePath": [],
+                "primeToActionConnectionPath": [],
+                "incomingNodeIds": ["12"],
+                "outgoingNodeIds": ["14"],
+                "textId": "black_e11m8_27_001",
+                "actionPath": "nodes[13].actions[0]",
+                "nodeId": "13",
+                "sourceFile": "dlg_e11m8_3.json",
+                "sourcePathId": "90FF60230D4F7FDA",
+            }],
+        }
+        rows = (
+            gap_queue
+            ._closed_exact_disconnected_dialog_tree_context_isolated_scenes(
+                {"missionStoryConnections": [disconnected]},
+                {"black_e11m8_27"},
+                "e11m8",
+            )
+        )
+        self.assertEqual(
+            [row["sceneKey"] for row in rows],
+            ["black_e11m8_27"],
+        )
+        disconnected["dialogTreeNarrativeActions"][0][
+            "incomingNodeIds"
+        ] = []
+        self.assertEqual(
+            [
+                row["sceneKey"]
+                for row in (
+                    gap_queue
+                    ._closed_exact_disconnected_dialog_tree_context_isolated_scenes(
+                        {"missionStoryConnections": [disconnected]},
+                        {"black_e11m8_27"},
+                        "e11m8",
+                    )
+                )
+            ],
+            ["black_e11m8_27"],
+        )
+        disconnected["dialogTreeNarrativeActions"][0][
+            "outgoingNodeIds"
+        ] = []
+        self.assertEqual(
+            gap_queue
+            ._closed_exact_disconnected_dialog_tree_context_isolated_scenes(
+                {"missionStoryConnections": [disconnected]},
+                {"black_e11m8_27"},
+                "e11m8",
+            ),
+            [],
+        )
+        disconnected["dialogTreeNarrativeActions"][0][
+            "incomingNodeIds"
+        ] = ["12"]
+        disconnected["dialogTreeNarrativeActions"][0][
+            "outgoingNodeIds"
+        ] = ["14"]
+        disconnected["dialogTreeNarrativeActions"][0][
+            "reachableFromPrimeNode"
+        ] = True
+        self.assertEqual(
+            gap_queue
+            ._closed_exact_disconnected_dialog_tree_context_isolated_scenes(
+                {"missionStoryConnections": [disconnected]},
+                {"black_e11m8_27"},
+                "e11m8",
+            ),
+            [],
+        )
+
+    def test_declared_e11m3_radio_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E11M3_RADIOS,
+            {
+                "radio_e11m3_3",
+                "radio_e11m3_15",
+                "radio_e11m3_18",
+                "radio_e11m3_22",
+                "radio_e11m3_23",
+            },
+        )
+
+    def test_declared_e11m5_frontier_preserves_owned_mixed_timeline(
+        self,
+    ) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E11M5_RADIOS,
+            {
+                "radio_e11m5_12",
+                "radio_e11m5_19",
+                "radio_e11m5_20",
+                "radio_e11m5_21",
+                "radio_e11m5_22",
+                "radio_e11m5_23",
+                "radio_e11m5_24",
+            },
+        )
+        owned = gap_queue.OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[
+            "dlg_e11m5_9"
+        ]["ownedTimeline"]
+        self.assertEqual(owned["timeline"], "dlgtl_e11m5_9_sub_1")
+        self.assertEqual(owned["trackPathId"], 5795311945645305682)
+        self.assertEqual(
+            owned["fullLineIds"][9:15],
+            (
+                "dlg_e11m6_9_005",
+                "dlg_e11m6_9_006",
+                "dlg_e11m6_9_007",
+                "dlg_e11m6_9_003",
+                "dlg_e11m6_9_008",
+                "dlg_e11m6_9_004",
+            ),
+        )
+
+    def test_declared_e11m6_radio_frontier_is_exact(self) -> None:
+        self.assertEqual(
+            gap_queue.OFFLINE_EXHAUSTION_E11M6_RADIOS,
+            {
+                "radio_e11m6_10",
+                "radio_e11m6_13",
+                *{
+                    f"radio_e11m6_{number}"
+                    for number in range(19, 39)
+                },
+            },
+        )
+
+    def test_exact_build_offline_exhausted_scene_is_deferred_only(self) -> None:
+        story_key = "radio_e11m4_29"
+        partial = partial_mission(
+            "e11m4",
+            scenes=[story_key],
+            isolated=[story_key],
+        )
+        partial["nodes"][0]["kind"] = "radio"
+        payload = mission_payload()
+        payload["flow"]["unlinked"] = [story_key]
+        evidence = {
+            story_key: {
+                "sceneKey": story_key,
+                "missionId": "e11m4",
+                "recoveryStatus":
+                    "deferred_current_build_offline_surface_exhausted",
+                "evidenceKind":
+                    "radio_definition_without_recovered_consumer",
+                "graphEffect": "none",
+            },
+        }
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+            offline_exhaustion_index=evidence,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(
+            row["metrics"]["deferredOfflineExhaustedIsolatedScenes"],
+            1,
+        )
+        self.assertEqual(
+            row["deferredOfflineExhaustedIsolatedScenes"][0][
+                "evidenceKind"
+            ],
+            "radio_definition_without_recovered_consumer",
+        )
+        self.assertEqual(row["score"], 0)
+
+    def test_exact_owned_timeline_dialog_can_defer_without_unlinked_flag(
+        self,
+    ) -> None:
+        story_key = "dlg_e11m5_9"
+        partial = partial_mission(
+            "e11m5",
+            scenes=[story_key],
+            isolated=[story_key],
+        )
+        evidence = {
+            story_key: {
+                "sceneKey": story_key,
+                "missionId": "e11m5",
+                "recoveryStatus":
+                    "deferred_current_build_offline_surface_exhausted",
+                "evidenceKind":
+                    "registered_dialog_definition_without_recovered_activator",
+                "sharedTimelineContext": {
+                    "relation":
+                        "owned_dialog_timeline_exact_mixed_story_context",
+                    "graphEffect": "none",
+                },
+                "graphEffect": "none",
+            },
+        }
+
+        row = gap_queue.build_gap_row(
+            partial,
+            mission_payload(),
+            mission_bundle_exists=True,
+            offline_exhaustion_index=evidence,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(
+            row["metrics"]["deferredOfflineExhaustedIsolatedScenes"],
+            1,
+        )
+        self.assertEqual(row["score"], 0)
+
+    def test_offline_exhausted_scene_with_runtime_route_reopens(self) -> None:
+        story_key = "radio_e11m4_29"
+        partial = partial_mission(
+            "e11m4",
+            scenes=[story_key],
+            isolated=[story_key],
+        )
+        partial["nodes"][0]["kind"] = "radio"
+        payload = mission_payload()
+        payload["flow"]["unlinked"] = [story_key]
+        payload["flow"]["unlinkedNativePlayback"] = [{
+            "key": story_key,
+            "relation": "native_story_playback_unscoped",
+        }]
+        evidence = {
+            story_key: {
+                "sceneKey": story_key,
+                "missionId": "e11m4",
+                "recoveryStatus":
+                    "deferred_current_build_offline_surface_exhausted",
+                "graphEffect": "none",
+            },
+        }
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+            offline_exhaustion_index=evidence,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 1)
+        self.assertEqual(
+            row["metrics"]["deferredOfflineExhaustedIsolatedScenes"],
+            0,
         )
 
 

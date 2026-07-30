@@ -25,6 +25,7 @@ from .mission_recovery import (
     enrich_source_backed_scene_edge_context,
     is_call_server_self_uid_callback,
     is_play_dialog_hide_non_identifier_payload,
+    natural_key,
     typed_cutscene_single_char_parameter_action,
 )
 
@@ -951,6 +952,21 @@ def is_typed_dialog_tree_runtime_action_connection(
             "levelscript_quest_processing_action",
             "levelscript_quest_completed_action",
         }
+    )
+
+
+def suppresses_generic_levelscript_mission_context(connection: dict) -> bool:
+    """Return whether an existing Story connection makes the fallback redundant.
+
+    ``levelscript_condition_scope`` is intentionally not suppressing. That
+    per-quest diagnostic records only that the quest observes the containing
+    script; the later generic pass can add the exact native playback
+    occurrence, completeness boundary, and MissionRuntime condition evidence
+    needed to distinguish a fully scoped script from a favorable subset.
+    """
+    return (
+        str(connection.get("relation") or "")
+        != "levelscript_condition_scope"
     )
 
 
@@ -14224,6 +14240,33 @@ def build_language_bundle(
             continue
         black_timeline_groups[(black_key, dialog_key)].append(attachment)
 
+    # Dialog Timelines can also contain a complete block of lines belonging to
+    # another emitted dialog.  Require one registered Timeline owner, complete
+    # current DialogTextTable membership, one contiguous foreign block, and
+    # parent lines on both sides.  Mission scope is inherited later only from
+    # the parent dialog's independently recovered typed playback context.
+    foreign_dialog_timeline_groups: dict[
+        tuple[str, str],
+        list[dict],
+    ] = defaultdict(list)
+    for containment in recover_foreign_dialog_timeline_containments(
+        dialog_id_registry,
+        all_story_entry_keys,
+        {str(line_id) for line_id in dialogs},
+    ):
+        if not isinstance(containment, dict):
+            continue
+        story_key = str(containment.get("key") or "")
+        dialog_key = str(containment.get("dialogKey") or "")
+        if (
+            story_key in all_story_entry_keys
+            and dialog_key
+            and story_key != dialog_key
+        ):
+            foreign_dialog_timeline_groups[
+                (story_key, dialog_key)
+            ].append(containment)
+
     # Native NarrativeBlackScreen actions serialize exact TextTable line ids,
     # not a conversation key. Resolve those ids through the already emitted
     # black conversations and require every id in an action to name the same
@@ -14611,13 +14654,21 @@ def build_language_bundle(
         preexisting_attached_story_keys_by_mission[attached_mission].update(
             str(row.get("key") or "")
             for row in flow_payload.get("missionStoryConnections") or []
-            if isinstance(row, dict) and row.get("key")
+            if (
+                isinstance(row, dict)
+                and row.get("key")
+                and suppresses_generic_levelscript_mission_context(row)
+            )
         )
         preexisting_attached_story_keys_by_mission[attached_mission].update(
             str(row.get("key") or "")
             for quest in flow_payload.get("quests") or []
             for row in quest.get("storyConnections") or []
-            if isinstance(row, dict) and row.get("key")
+            if (
+                isinstance(row, dict)
+                and row.get("key")
+                and suppresses_generic_levelscript_mission_context(row)
+            )
         )
     mission_runtime_id_set = set(mission_runtime_ids)
     quest_owner_candidates: dict[str, set[str]] = defaultdict(set)
@@ -15311,6 +15362,392 @@ def build_language_bundle(
             })
 
     action_story_occurrences = build_levelscript_action_story_occurrences()
+
+    # LevelScriptData can author narrative interactives directly rather than
+    # through an ActionBase playback row. Recover the counted
+    # LevelInteractiveData map and component-94 TYPE_ID binding as exact source
+    # configuration. This binds the Story file to its script and interactive,
+    # but does not claim that script activation, interaction timing, quest
+    # causality, or relative Story order has been recovered.
+    levelscript_interactive_narrative_contexts = (
+        build_levelscript_interactive_narrative_story_contexts(
+            set(all_story_entry_keys)
+        )
+    )
+    for context in levelscript_interactive_narrative_contexts:
+        story_key = resolve_scene_ref_out_key(
+            str(context.get("storyKey") or ""),
+            all_story_entry_keys,
+        )
+        target_mission = str(story_owner_by_key.get(story_key) or "")
+        if (
+            not story_key
+            or not target_mission
+            or target_mission not in mission_flows_payload
+        ):
+            continue
+        level_id = str(context.get("levelId") or "")
+        script_id = str(context.get("scriptId") or "")
+        condition_rows = list(
+            script_condition_bindings.get((level_id, script_id)) or []
+        )
+        condition_missions = sorted({
+            str(row.get("missionId") or "")
+            for row in condition_rows
+            if row.get("missionId")
+        })
+        scoped_condition_rows = (
+            condition_rows
+            if condition_missions == [target_mission]
+            else []
+        )
+        quest_ids = sorted({
+            str(row.get("questId") or "")
+            for row in scoped_condition_rows
+            if row.get("questId")
+        }, key=natural_key)
+        connection = {
+            "key": story_key,
+            "kind": story_kind_by_key.get(story_key, "story"),
+            "relation": "levelscript_interactive_narrative_config",
+            "direction": "context",
+            "phase": "interactive_narrative_configuration",
+            "confidence": "native_exact_serialized_config",
+            "evidenceTier": "native_exact_context",
+            "source": (
+                "exact counted LevelScriptData interactive map -> 25-member "
+                "LevelInteractiveData -> componentProperties[94].type_id; "
+                "ReadingPopUpTable is joined only when TYPE_ID names a popup row"
+            ),
+            "storyOwnerMission": target_mission,
+            "storyBinding": True,
+            "ownership": False,
+            "dependencyOnly": False,
+            "questTriggerStatus": (
+                "exact_same_script_mission_condition_context_without_"
+                "interactive_causality"
+                if scoped_condition_rows
+                else "source_config_only_activation_and_quest_unresolved"
+            ),
+            "questContextIds": quest_ids,
+            "missionRuntimeScriptConditionContext": scoped_condition_rows,
+            "activationBoundary": (
+                "the source LevelScript and local interactive are exact; "
+                "serialized data does not establish when the script becomes "
+                "active or when the player performs the interaction"
+            ),
+            "orderBoundary": (
+                "interactive-map order, local interactive id, object position, "
+                "and Story suffix do not establish relative Story chronology"
+            ),
+            "executionSide": context.get("executionSide") or "client",
+            "networkRole": "local_interactive_narrative_dispatch",
+            "serverExchange": False,
+            "clientRequest": False,
+            "expectedServerReply": False,
+            "levelIds": [level_id],
+            "scriptIds": [script_id],
+            "sourceFiles": sorted({
+                str(context.get("sourceFile") or ""),
+                str(context.get("readingPopupTableSourceFile") or ""),
+                str(context.get("entityTemplatePath") or ""),
+            } - {""}),
+            "nativeMappingId": context.get("nativeMappingId"),
+            "nativeConsumer": context.get("nativeConsumer"),
+            "storyKeyResolution": context.get("storyKeyResolution"),
+            "rawTypeId": context.get("rawTypeId"),
+            "readingPopupId": context.get("readingPopupId"),
+            "interactiveMapCount": context.get("interactiveMapCount"),
+            "interactiveMapCountOffset":
+                context.get("interactiveMapCountOffset"),
+            "interactiveMapEndOffset": context.get("interactiveMapEndOffset"),
+            "interactiveRecordIndex": context.get("recordIndex"),
+            "interactiveRecordOffset": context.get("recordOffset"),
+            "interactiveRecordEndOffset": context.get("recordEndOffset"),
+            "localInteractiveId": context.get("localInteractiveId"),
+            "entityDetailIds": [str(context.get("entityDetailId") or "")],
+            "entityTemplateIds": [str(context.get("entityTemplateId") or "")],
+            "entityTemplatePaths": [
+                str(context.get("entityTemplatePath") or "")
+            ],
+            "narrativeComponentKey": context.get("narrativeComponentKey"),
+            "narrativeParamMapOffset": context.get(
+                "narrativeParamMapOffset"
+            ),
+            "narrativeParamMapEndOffset": context.get(
+                "narrativeParamMapEndOffset"
+            ),
+            "typeIdEntryOffset": context.get("typeIdEntryOffset"),
+            "propertiesCount": context.get("propertiesCount"),
+        }
+        connections = mission_flows_payload[target_mission].setdefault(
+            "missionStoryConnections",
+            [],
+        )
+        signature = (
+            story_key,
+            connection["relation"],
+            level_id,
+            script_id,
+            context.get("localInteractiveId"),
+        )
+        if not any((
+            str(existing.get("key") or ""),
+            str(existing.get("relation") or ""),
+            next(iter(existing.get("levelIds") or []), ""),
+            next(iter(existing.get("scriptIds") or []), ""),
+            existing.get("localInteractiveId"),
+        ) == signature for existing in connections if isinstance(existing, dict)):
+            connections.append(connection)
+
+    # LevelData also owns a counted LevelInteractiveData list. Accept records
+    # whose end is supplied by the next typed list item; accept the final item
+    # only when either the adjacent nonempty LevelScriptBriefData dictionary
+    # or the complete environment-only empty-script suffix validates the
+    # member-21 boundary. Null progress locks and the exact current-build
+    # mission/quest-state condition forms are accepted. StreamingAssets and
+    # Persistent bytes must agree.
+    horn_dialog_definition_consumers: dict[
+        str,
+        list[tuple[str, str, dict]],
+    ] = defaultdict(list)
+    for consumer_mission, flow_payload in mission_flows_payload.items():
+        for quest in flow_payload.get("quests") or []:
+            if not isinstance(quest, dict):
+                continue
+            quest_id = str(quest.get("id") or "")
+            for dialog_id in quest.get("dialogs") or []:
+                dialog_id = str(dialog_id or "").strip()
+                if dialog_id:
+                    horn_dialog_definition_consumers[dialog_id].append(
+                        (consumer_mission, quest_id, quest)
+                    )
+    leveldata_interactive_narrative_contexts = (
+        build_leveldata_interactive_narrative_story_contexts(
+            set(all_story_entry_keys),
+            available_horn_dialog_definition_keys=set(
+                horn_dialog_definition_consumers
+            ),
+        )
+    )
+    for context in leveldata_interactive_narrative_contexts:
+        raw_context_key = str(context.get("storyKey") or "")
+        story_key = resolve_scene_ref_out_key(
+            raw_context_key,
+            all_story_entry_keys,
+        )
+        definition_consumer = None
+        if (
+            not story_key
+            and context.get("narrativeConsumerKind")
+            == "horn_dialog_property"
+        ):
+            consumers = horn_dialog_definition_consumers.get(
+                raw_context_key
+            ) or []
+            if len(consumers) == 1:
+                definition_consumer = consumers[0]
+                story_key = raw_context_key
+        target_mission = (
+            definition_consumer[0]
+            if definition_consumer
+            else str(story_owner_by_key.get(story_key) or "")
+        )
+        if (
+            not story_key
+            or not target_mission
+            or target_mission not in mission_flows_payload
+        ):
+            continue
+        level_id = str(context.get("levelId") or "")
+        leveldata_asset = str(context.get("levelDataAsset") or "")
+        consumer_kind = str(
+            context.get("narrativeConsumerKind")
+            or "narrative_component"
+        )
+        dialog_definition_only = bool(definition_consumer)
+        if consumer_kind == "horn_dialog_property":
+            source = (
+                "exact counted LevelData interactive list -> 25-member "
+                "LevelInteractiveData bounded by the next record or validated "
+                "member-21 suffix (nonempty BriefData dictionary or complete "
+                "empty-script suffix), including an exact null or decoded "
+                "mission/quest-state progress lock -> "
+                "int_horn.properties.dialog_id; the byte-identical authored "
+                "Horn template and current native Horn flow validate the "
+                "dialog consumer"
+            )
+        else:
+            source = (
+                "exact counted LevelData interactive list -> 25-member "
+                "LevelInteractiveData bounded by the next record or validated "
+                "member-21 suffix (nonempty BriefData dictionary or complete "
+                "empty-script suffix), including an exact null or "
+                "decoded mission/quest-state progress lock -> "
+                "componentProperties[94].type_id"
+            )
+        connection = {
+            "key": story_key,
+            "kind": story_kind_by_key.get(story_key, "story"),
+            "relation": "leveldata_interactive_narrative_config",
+            "direction": "context",
+            "phase": "interactive_narrative_configuration",
+            "confidence": "native_exact_serialized_config",
+            "evidenceTier": "native_exact_context",
+            "source": source,
+            "storyOwnerMission":
+                "" if dialog_definition_only else target_mission,
+            "dialogDefinitionConsumerMission":
+                target_mission if dialog_definition_only else "",
+            "dialogDefinitionConsumerQuestId":
+                definition_consumer[1] if definition_consumer else "",
+            "dialogDefinitionOnly": dialog_definition_only,
+            "storyBinding": not dialog_definition_only,
+            "dialogDefinitionBinding": dialog_definition_only,
+            "ownership": False,
+            "dependencyOnly": False,
+            "questTriggerStatus": (
+                (
+                    "exact_registered_dialog_definition_consumer_with_"
+                    "separate_progress_lock_without_story_ownership_"
+                    "or_chronology"
+                    if dialog_definition_only
+                    else
+                    "exact_progress_lock_condition_without_story_ownership_"
+                    "or_chronology"
+                )
+                if context.get("progressLockConditionStatus") == "decoded"
+                else "source_config_only_activation_and_quest_unresolved"
+            ),
+            "activationBoundary": (
+                "the LevelData asset and narrative-capable interactive are "
+                "exact; "
+                "an exact progress lock constrains interactive availability "
+                "when present, but does not establish object instantiation, "
+                "player interaction timing, Story ownership, or chronology"
+            ),
+            "orderBoundary": (
+                "interactive-list order, record index, entity logic id, "
+                "object position, and Story suffix do not establish relative "
+                "Story chronology"
+            ),
+            "executionSide": context.get("executionSide") or "client",
+            "networkRole": "local_interactive_story_dispatch",
+            "serverExchange": False,
+            "clientRequest": False,
+            "expectedServerReply": False,
+            "levelIds": [level_id],
+            "levelDataAssets": [leveldata_asset],
+            "sourceFiles": sorted({
+                str(context.get("sourceFile") or ""),
+                str(context.get("verifiedMirrorFile") or ""),
+                str(context.get("readingPopupTableSourceFile") or ""),
+                str(context.get("entityTemplatePath") or ""),
+                str(
+                    context.get("interactiveHornTemplateSourceFile")
+                    or ""
+                ),
+                str(
+                    context.get(
+                        "interactiveHornTemplateVerifiedMirrorFile"
+                    )
+                    or ""
+                ),
+            } - {""}),
+            "nativeMappingId": context.get("nativeMappingId"),
+            "nativeConsumer": context.get("nativeConsumer"),
+            "narrativeConsumerKind": consumer_kind,
+            "storyKeyResolution": context.get("storyKeyResolution"),
+            "rawTypeId": context.get("rawTypeId"),
+            "readingPopupId": context.get("readingPopupId"),
+            "interactiveListCount": context.get("interactiveListCount"),
+            "interactiveListCountOffset":
+                context.get("interactiveListCountOffset"),
+            "interactiveRecordIndex": context.get("recordIndex"),
+            "interactiveRecordOffset": context.get("recordOffset"),
+            "interactiveRecordEndOffset": context.get("recordEndOffset"),
+            "interactiveRecordBoundarySource":
+                context.get("recordBoundarySource"),
+            "levelDataMember21Offset":
+                context.get("levelDataMember21Offset"),
+            "levelIdNum": context.get("levelIdNum"),
+            "levelScriptBriefDictionaryCountOffset":
+                context.get("levelScriptBriefDictionaryCountOffset"),
+            "levelScriptBriefDictionaryCount":
+                context.get("levelScriptBriefDictionaryCount"),
+            "levelScriptDataPathDictionaryCountOffset":
+                context.get("levelScriptDataPathDictionaryCountOffset"),
+            "levelScriptDataPathDictionaryCount":
+                context.get("levelScriptDataPathDictionaryCount"),
+            "levelDataSafeZoneOffset":
+                context.get("levelDataSafeZoneOffset"),
+            "levelDataSceneId": context.get("levelDataSceneId"),
+            "levelDataSpecificDataOffset":
+                context.get("levelDataSpecificDataOffset"),
+            "levelDataEmptySuffixEndOffset":
+                context.get("levelDataEmptySuffixEndOffset"),
+            "levelDataFinalBoundaryValidation":
+                context.get("levelDataFinalBoundaryValidation"),
+            "entityLogicId": context.get("embeddedLogicId"),
+            "entityDetailIds": [str(context.get("entityDetailId") or "")],
+            "entityTemplateIds": [str(context.get("entityTemplateId") or "")],
+            "entityTemplatePaths": [
+                str(context.get("entityTemplatePath") or "")
+            ],
+            "narrativeComponentKey": context.get("narrativeComponentKey"),
+            "narrativeParamMapOffset": context.get(
+                "narrativeParamMapOffset"
+            ),
+            "narrativeParamMapEndOffset": context.get(
+                "narrativeParamMapEndOffset"
+            ),
+            "typeIdEntryOffset": context.get("typeIdEntryOffset"),
+            "dialogIdEntryOffset": context.get("dialogIdEntryOffset"),
+            "interactiveHornTemplateSha256":
+                context.get("interactiveHornTemplateSha256"),
+            "interactiveHornNativeMappingId":
+                context.get("interactiveHornNativeMappingId"),
+            "propertiesCount": context.get("propertiesCount"),
+            "progressLockConditionStatus":
+                context.get("progressLockConditionStatus"),
+            "progressLockConditionUnionTag":
+                context.get("progressLockConditionUnionTag"),
+            "progressLockConditionSerializedMemberCount":
+                context.get("progressLockConditionSerializedMemberCount"),
+            "progressLockConditionType":
+                context.get("progressLockConditionType"),
+            "progressLockConditionOperator":
+                context.get("progressLockConditionOperator"),
+            "progressLockSerializedRuntimeFlag":
+                context.get("progressLockSerializedRuntimeFlag"),
+            "progressLockConditionTree":
+                context.get("progressLockConditionTree"),
+            "progressLockConditions":
+                context.get("progressLockConditions") or [],
+        }
+        connections = (
+            definition_consumer[2].setdefault("storyConnections", [])
+            if definition_consumer
+            else mission_flows_payload[target_mission].setdefault(
+                "missionStoryConnections",
+                [],
+            )
+        )
+        signature = (
+            story_key,
+            connection["relation"],
+            level_id,
+            leveldata_asset,
+            context.get("recordOffset"),
+        )
+        if not any((
+            str(existing.get("key") or ""),
+            str(existing.get("relation") or ""),
+            next(iter(existing.get("levelIds") or []), ""),
+            next(iter(existing.get("levelDataAssets") or []), ""),
+            existing.get("interactiveRecordOffset"),
+        ) == signature for existing in connections if isinstance(existing, dict)):
+            connections.append(connection)
 
     # ON_SPAWNER_COMPLETE carries an exact uint64 SpawnerPtr from the server
     # completion push into the local LevelEvent.  A current SpawnerConfig can
@@ -19369,6 +19806,108 @@ def build_language_bundle(
             connections.append(connection)
             preexisting_attached_story_keys_by_mission[target_mission].add(black_key)
 
+    # Complete foreign-dialog line blocks use the same exact parent-playback
+    # scope as black Timeline containment, but remain a distinct relation:
+    # the flat Timeline proves nested playback and option routing, not a
+    # precedence edge between the two Story files.
+    for (
+        story_key,
+        dialog_key,
+    ), containment_rows in sorted(
+        foreign_dialog_timeline_groups.items()
+    ):
+        parent_occurrences = list(
+            native_story_playback_index.get(dialog_key) or []
+        )
+        scoped_by_mission, shared_hosts = leveldata_scoped_occurrences(
+            parent_occurrences
+        )
+        if shared_hosts:
+            shared_leveldata_hosts_by_story[story_key].extend({
+                **row,
+                "parentStoryKey": dialog_key,
+            } for row in shared_hosts)
+        story_owner = story_owner_by_key.get(story_key) or ""
+        for target_mission, scoped_occurrences in sorted(
+            scoped_by_mission.items()
+        ):
+            connection = {
+                "key": story_key,
+                "kind": story_kind_by_key.get(story_key, "dialog"),
+                "relation":
+                    "timeline_dialog_contains_foreign_dialog",
+                "direction": "context",
+                "phase": "timeline_contained",
+                "confidence": "native_exact_host",
+                "source": (
+                    "exact DialogIdTable used-Timeline owner + complete "
+                    "contiguous foreign DialogTextTable line block with "
+                    "parent lines on both sides + typed parent-dialog "
+                    "playback + exact same-level validated Mission "
+                    "LevelData BriefData host"
+                ),
+                "storyOwnerMission": story_owner,
+                "levelDataHostMissionId": target_mission,
+                "parentStoryKey": dialog_key,
+                "questTriggerStatus": "unresolved",
+                "occurrenceCount": len(containment_rows),
+                "textIds": sorted({
+                    str(line_id)
+                    for row in containment_rows
+                    for line_id in row.get("lineIds") or []
+                    if line_id
+                }),
+                "optionIds": sorted({
+                    str(option_id)
+                    for row in containment_rows
+                    for option_id in row.get("optionIds") or []
+                    if option_id
+                }),
+                "timelines": sorted({
+                    str(row.get("timeline") or "")
+                    for row in containment_rows
+                    if row.get("timeline")
+                }),
+                "sourceFiles": sorted({
+                    str(row.get("sourceFile") or "")
+                    for row in containment_rows
+                    if row.get("sourceFile")
+                }),
+                "levelDataFiles": sorted({
+                    str(host.get("levelDataFile") or "")
+                    for row in scoped_occurrences
+                    for host in row.get("levelDataHosts") or []
+                    if host.get("levelDataFile")
+                }),
+                "timelineDialogContainments": containment_rows,
+                "parentDialogNativeOccurrences": scoped_occurrences,
+                "placementBoundary": (
+                    "the exact parent Timeline plays the complete foreign "
+                    "dialog block, but parent lines occur on both sides so "
+                    "no Story-file precedence edge is created"
+                ),
+                "graphEffect": "none",
+            }
+            connections = mission_flows_payload[target_mission].setdefault(
+                "missionStoryConnections",
+                [],
+            )
+            signature = (
+                story_key,
+                connection["relation"],
+                dialog_key,
+            )
+            if any((
+                str(existing.get("key") or ""),
+                str(existing.get("relation") or ""),
+                str(existing.get("parentStoryKey") or ""),
+            ) == signature for existing in connections if isinstance(existing, dict)):
+                continue
+            connections.append(connection)
+            preexisting_attached_story_keys_by_mission[target_mission].add(
+                story_key
+            )
+
     # Apply exact system-feature carriers only after every stronger attachment
     # family.  This is a positive typed/native relation, but still mission-shell
     # context rather than quest placement, and it must never duplicate a Story
@@ -20627,6 +21166,83 @@ def build_language_bundle(
         ).append(connection)
         preexisting_attached_story_keys_by_mission[target_mission].add(black_key)
 
+    for (
+        story_key,
+        dialog_key,
+    ), containment_rows in sorted(
+        foreign_dialog_timeline_groups.items()
+    ):
+        parent_contexts = direct_parent_contexts.get(dialog_key) or {}
+        if len(parent_contexts) != 1:
+            continue
+        target_mission = next(iter(parent_contexts))
+        if story_key in preexisting_attached_story_keys_by_mission[
+            target_mission
+        ]:
+            continue
+        context_rows = parent_contexts[target_mission]
+        connection = {
+            "key": story_key,
+            "kind": story_kind_by_key.get(story_key, "dialog"),
+            "relation": "timeline_dialog_contains_foreign_dialog",
+            "direction": "context",
+            "phase": "timeline_contained",
+            "confidence": "native_exact_parent_context",
+            "source": (
+                "exact DialogIdTable used-Timeline owner + complete "
+                "contiguous foreign DialogTextTable line block with parent "
+                "lines on both sides + unique direct original-data mission "
+                "context of the parent dialog"
+            ),
+            "storyOwnerMission":
+                story_owner_by_key.get(story_key) or "",
+            "parentStoryKey": dialog_key,
+            "questTriggerStatus":
+                "unresolved_parent_has_no_unique_quest",
+            "occurrenceCount": len(containment_rows),
+            "parentScopeRelations": sorted({
+                str(row.get("relation") or "")
+                for row in context_rows
+                if row.get("relation")
+            }),
+            "textIds": sorted({
+                str(line_id)
+                for row in containment_rows
+                for line_id in row.get("lineIds") or []
+                if line_id
+            }),
+            "optionIds": sorted({
+                str(option_id)
+                for row in containment_rows
+                for option_id in row.get("optionIds") or []
+                if option_id
+            }),
+            "timelines": sorted({
+                str(row.get("timeline") or "")
+                for row in containment_rows
+                if row.get("timeline")
+            }),
+            "sourceFiles": sorted({
+                str(row.get("sourceFile") or "")
+                for row in containment_rows
+                if row.get("sourceFile")
+            }),
+            "timelineDialogContainments": containment_rows,
+            "placementBoundary": (
+                "the exact parent Timeline plays the complete foreign "
+                "dialog block, but parent lines occur on both sides so no "
+                "Story-file precedence edge is created"
+            ),
+            "graphEffect": "none",
+        }
+        mission_flows_payload[target_mission].setdefault(
+            "missionStoryConnections",
+            [],
+        ).append(connection)
+        preexisting_attached_story_keys_by_mission[target_mission].add(
+            story_key
+        )
+
     # These residual native listeners carry no mission selector in their event
     # payloads. Recover quest context only when an independent,
     # typed original-data foreign-key chain closes that gap:
@@ -21311,6 +21927,12 @@ def build_language_bundle(
         for quest in flow_payload.get("quests") or []:
             if not isinstance(quest, dict):
                 continue
+            definition_connections = [
+                row
+                for row in quest.get("storyConnections") or []
+                if isinstance(row, dict)
+                and row.get("dialogDefinitionOnly") is True
+            ]
             quest_available = set(owner_available)
             quest_available.update(
                 str(row.get("key") or "")
@@ -21319,6 +21941,9 @@ def build_language_bundle(
                 and str(row.get("key") or "") in all_story_entry_keys
             )
             connections = quest_attached_story_connections(quest, quest_available)
+            for row in definition_connections:
+                if row not in connections:
+                    connections.append(row)
             if connections:
                 quest["storyConnections"] = connections
             else:

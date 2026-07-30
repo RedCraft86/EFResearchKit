@@ -10,6 +10,7 @@ Run from the repository root:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import time
 from collections import Counter, defaultdict
@@ -27,6 +28,10 @@ try:
         write_text_if_changed,
     )
     from story_builder.levelscript_binary import decode_levelscript_encounter_module_target
+    from story_builder.mission_assets import (
+        mission_runtime_source_summary,
+        select_complete_mission_runtime_root,
+    )
     from story_recovery.build_envtalk_attachment import (
         build_report as build_envtalk_attachment_report,
     )
@@ -62,6 +67,10 @@ except ModuleNotFoundError:  # imported as ``scripts.build_mission_pipeline_data
     from scripts.story_builder.levelscript_binary import (
         decode_levelscript_encounter_module_target,
     )
+    from scripts.story_builder.mission_assets import (
+        mission_runtime_source_summary,
+        select_complete_mission_runtime_root,
+    )
     from scripts.story_recovery.build_envtalk_attachment import (
         build_report as build_envtalk_attachment_report,
     )
@@ -87,8 +96,16 @@ except ModuleNotFoundError:  # imported as ``scripts.build_mission_pipeline_data
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_MISSION_ROOT = (
+STREAMING_MISSION_ROOT = (
     ROOT / "export_full" / "structured" / "StreamingAssets" / "Data" / "Json" / "MissionRuntimeAsset"
+)
+PERSISTENT_MISSION_ROOT = (
+    ROOT / "export_full" / "structured" / "Persistent" / "Data" / "Json"
+    / "MissionRuntimeAsset"
+)
+DEFAULT_MISSION_ROOT = select_complete_mission_runtime_root(
+    STREAMING_MISSION_ROOT,
+    PERSISTENT_MISSION_ROOT,
 )
 DEFAULT_SUBGAME_TABLE = (
     ROOT
@@ -178,6 +195,24 @@ DEFAULT_STORY_DATA_ROOT = ROOT / "webui" / "data" / "lang"
 DEFAULT_REPORT_ROOT = ROOT / "reports" / "story" / "build"
 DEFAULT_ORDER_REPORT_ROOT = ROOT / "reports" / "mission_order"
 DEFAULT_MISSION_GRAPH_REPORT_ROOT = ROOT / "reports" / "mission_graph"
+DEFAULT_SOURCE_STORY_GAP_QUEUE = (
+    DEFAULT_ORDER_REPORT_ROOT / "source_story_gap_queue_CN.json"
+)
+SOURCE_STORY_GAP_QUEUE_SCHEMA = "sourceStoryGapQueue.v78"
+DEFAULT_DYNAMIC_SCENE_MISSION_CONTROL_AUDIT = (
+    ROOT
+    / "reports"
+    / "story"
+    / "recovery"
+    / "dynamic_scene_mission_control_audit.json"
+)
+DEFAULT_DYNAMIC_SCENE_LEVELSCRIPT_ACTION_BRIDGE_AUDIT = (
+    ROOT
+    / "reports"
+    / "story"
+    / "recovery"
+    / "dynamic_scene_levelscript_action_bridge_audit.json"
+)
 MISSION_RUNTIME_TRACE_SCHEMA = "missionRuntimeTrace.v1"
 # v3 added per-mission ``missionGraph`` and quest-tracked ambient lines. v4
 # extends ``envTalkContext`` with exact atmospheric-switcher state context. v5
@@ -200,7 +235,23 @@ MISSION_RUNTIME_TRACE_SCHEMA = "missionRuntimeTrace.v1"
 # preserving their explicit mission-owner and chronology gaps.
 # v16 composes an alias with an independently connected root playback route;
 # the composition recovers owner context without creating Story chronology.
-SCHEMA_VERSION = 16
+# v17 preserves authored quest tracking markers, visibility filters, and
+# mission-variable defaults as debug context without creating graph edges.
+# v18 pins the native tracking-property evaluator and server-sync path while
+# preserving the unknown server producer/timing boundary. v19 adds exact
+# top-level LevelScript narrative-interactive configuration routes. v20 adds
+# next-record-bounded LevelData narrative-interactive configuration routes.
+# v21 admits final records only through the exact LevelData member-21/member-22
+# boundary and retains that boundary provenance in trigger routes.
+# v22 retains exact decoded mission/quest-state progress locks on LevelData
+# narrative-interactive routes without treating their owner ids as Story
+# ownership or chronology.
+# v23 retains nested combined-condition structure and raw NotEqual leaves.
+# v24 admits final environment-only LevelData rows through the exact complete
+# empty-script member suffix and retains its boundary provenance.
+# v25 admits an exact authored ``int_horn.properties.dialog_id`` consumer with
+# current-template/native provenance while preserving the ownership/order gap.
+SCHEMA_VERSION = 25
 PIPELINE_STORY_KINDS = {"dlg", "sns", "cutscene", "black", "remotecomm", "radio"}
 BATTLE_SIGNAL_PRODUCER_MAPPING_ID = (
     "gameassembly-2026-07-22-ability-actiondata-0x0134"
@@ -555,10 +606,10 @@ RUNTIME_CONTRACT = {
         },
         "authoredMissionProperties": {
             "missionFiles": 490,
-            "missionsWithProperties": 70,
-            "propertyRows": 214,
-            "uniquePropertyKeys": 186,
-            "valueTypeCounts": {"1": 10, "3": 204},
+            "missionsWithProperties": 71,
+            "propertyRows": 217,
+            "uniquePropertyKeys": 189,
+            "valueTypeCounts": {"1": 10, "3": 207},
             "serializedFieldKeys": [
                 "key",
                 "type",
@@ -568,6 +619,91 @@ RUNTIME_CONTRACT = {
                 "valueString",
             ],
             "levelScriptPointerFieldRows": 0,
+        },
+        "trackingPropertyFilterRuntime": {
+            "conditionType": (
+                "Beyond.Gameplay.SimpleConditionCheckMissionVariableInt"
+            ),
+            "authoredRows": 204,
+            "authoredMissions": 46,
+            "authoredVariables": 110,
+            "evaluator": {
+                "symbol": (
+                    "SimpleConditionCheckMissionVariableInt."
+                    "GetResultWithoutListening"
+                ),
+                "token": "0x06004b72",
+                "address": "0x18736e6b0",
+                "flow": [
+                    "MissionSystem.TryGetSaveProperty(missionId, missionVarName)",
+                    "TableUtils.DoCompare(value, compareOperator, compareTarget)",
+                ],
+            },
+            "listener": {
+                "start": {
+                    "symbol": (
+                        "SimpleConditionCheckMissionVariableInt."
+                        "InnerStartListening"
+                    ),
+                    "token": "0x06004b6f",
+                    "address": "0x18736e8ec",
+                    "operation": "EventManager.BindGlobal",
+                },
+                "end": {
+                    "symbol": (
+                        "SimpleConditionCheckMissionVariableInt."
+                        "InnerEndListening"
+                    ),
+                    "token": "0x06004b70",
+                    "address": "0x18736e7e8",
+                    "operation": "EventManager.UnBindGlobal",
+                },
+                "onChange": {
+                    "symbol": (
+                        "SimpleConditionCheckMissionVariableInt."
+                        "_OnMissionVarChange"
+                    ),
+                    "token": "0x06004b71",
+                    "address": "0x18736ea90",
+                    "operation": (
+                        "match changed mission/property identity and "
+                        "reevaluate the condition"
+                    ),
+                },
+            },
+            "serverUpdate": {
+                "message": "SC_UPDATE_MISSION_PROPERTY (124)",
+                "direction": "server_to_client",
+                "fields": [
+                    "missionId",
+                    "properties{propertyId -> DYNAMIC_PARAMETER}",
+                ],
+                "handler": "MissionSystem.Handle_UpdateMissionProperty",
+                "token": "0x060052a1",
+                "address": "0x1873c02e4",
+                "flow": [
+                    "MissionPropertyKeyIdTable.TryGetPropertyKey",
+                    "ParamVariableExtensions.ToVariable",
+                    "MissionData.propertyDict.TryInsert",
+                    "EventManager.SendGlobal",
+                ],
+            },
+            "finding": (
+                "Tracking filters are local conditions over server-synchronized "
+                "MissionData.propertyDict values. They control marker/HUD "
+                "visibility, but the exported client does not contain the "
+                "server-side producer or timing rule for an individual property."
+            ),
+            "boundary": (
+                "The exact client evaluator and inbound update path do not prove "
+                "which server rule changes a property, when it changes, or that "
+                "the change starts/completes a quest or plays Story."
+            ),
+            "classification": (
+                "server_synchronized_tracking_visibility_no_graph_edge"
+            ),
+            "storyBindingsAdded": 0,
+            "missionOrderEdgesAdded": 0,
         },
         "missionPropertyWriters": [
             {
@@ -2839,6 +2975,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--story-language", default="CN")
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
     parser.add_argument(
+        "--source-story-gap-queue",
+        type=Path,
+        default=DEFAULT_SOURCE_STORY_GAP_QUEUE,
+        help=(
+            "fresh source-story gap queue whose exact offline-exhaustion "
+            "boundaries are projected into Story trigger metadata"
+        ),
+    )
+    parser.add_argument(
         "--runtime-trace-bundle",
         type=Path,
         help=(
@@ -2863,6 +3008,145 @@ def write_json(path: Path, value: Any) -> None:
 def repo_path(path: Path) -> str:
     path = path.resolve()
     return path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.as_posix()
+
+
+def offline_story_kind(story_key: str) -> str:
+    """Preserve the Story kind for denominator-neutral recovery overlays."""
+    if story_key.startswith("radio_"):
+        return "radio"
+    if story_key.startswith("cutscene_"):
+        return "cutscene"
+    if story_key.startswith("sns_"):
+        return "sns"
+    if story_key.startswith("black_"):
+        return "black"
+    if story_key.startswith(("dlg_", "misc_dlg_")):
+        return "dlg"
+    return "text"
+
+
+def publish_offline_story_recovery(
+    story_trigger_manifest: dict[str, dict[str, Any]],
+    gap_queue_path: Path | None,
+) -> dict[str, Any]:
+    """Attach fail-closed offline recovery boundaries without adding routes.
+
+    The source-story gap queue is a recovery worklist, not graph evidence.
+    Only its exact current schema and active, graph-neutral evidence block are
+    accepted. Published rows annotate existing manifest records. Story kinds
+    outside the coverage denominator are emitted in a separate overlay with an
+    explicit denominator-neutral status. Neither path changes an existing
+    ``attachmentStatus`` nor adds trigger routes.
+    """
+    inactive = {
+        "status": "unavailable",
+        "schema": "",
+        "mappingId": "",
+        "graphEffect": "none",
+        "publishedStoryKeys": 0,
+        "outsidePipelineCoverageStoryKeys": 0,
+        "storyTriggerManifestOverlay": {},
+        "questAttachmentDiagnosticStatus": "unavailable",
+        "questAttachmentDiagnosticMappingId": "",
+        "questAttachmentDiagnostics": {},
+        "source": repo_path(gap_queue_path) if gap_queue_path else "",
+    }
+    if gap_queue_path is None or not gap_queue_path.is_file():
+        return inactive
+    payload = read_json(gap_queue_path)
+    if not isinstance(payload, dict):
+        return inactive
+    schema = str(payload.get("_schema") or "")
+    status = payload.get("offlineExhaustionEvidence")
+    if (
+        schema != SOURCE_STORY_GAP_QUEUE_SCHEMA
+        or not isinstance(status, dict)
+        or status.get("status") != "active"
+        or status.get("graphEffect") != "none"
+        or status.get("sourceHashMismatches")
+    ):
+        return {
+            **inactive,
+            "schema": schema,
+            "status": "rejected_stale_or_incompatible",
+        }
+
+    published = 0
+    published_keys: set[str] = set()
+    manifest_overlay: dict[str, dict[str, Any]] = {}
+    diagnostic_status = payload.get("questAttachmentDiagnosticEvidence")
+    diagnostic_active = (
+        isinstance(diagnostic_status, dict)
+        and diagnostic_status.get("status") == "active"
+        and diagnostic_status.get("graphEffect") == "none"
+        and not diagnostic_status.get("sourceHashMismatches")
+        and not diagnostic_status.get("validationFailures")
+    )
+    quest_attachment_diagnostics: dict[str, dict[str, Any]] = {}
+    for mission in payload.get("missions") or []:
+        if not isinstance(mission, dict):
+            continue
+        if diagnostic_active:
+            for row in mission.get("closedQuestAttachmentDiagnostics") or []:
+                if not isinstance(row, dict) or row.get("graphEffect") != "none":
+                    continue
+                quest_id = str(row.get("questId") or "")
+                if not quest_id:
+                    continue
+                quest_attachment_diagnostics[quest_id] = {
+                    key: value
+                    for key, value in row.items()
+                    if key not in {"sourceHashes", "expectedSourceHashes"}
+                }
+        for row in mission.get("deferredOfflineExhaustedIsolatedScenes") or []:
+            if not isinstance(row, dict) or row.get("graphEffect") != "none":
+                continue
+            story_key = str(row.get("sceneKey") or "")
+            if not story_key:
+                continue
+            # Keep the exact negative-evidence boundary useful in the static UI
+            # while dropping bulk source hashes and internal queue metrics.
+            recovery = {
+                key: value
+                for key, value in row.items()
+                if key not in {"sceneKey", "gameAssemblySha256"}
+            }
+            manifest_row = story_trigger_manifest.get(story_key)
+            if isinstance(manifest_row, dict):
+                manifest_row["offlineRecovery"] = recovery
+                published += 1
+                published_keys.add(story_key)
+            else:
+                manifest_overlay[story_key] = {
+                    "key": story_key,
+                    "kind": offline_story_kind(story_key),
+                    "nominalMissionId": str(row.get("missionId") or ""),
+                    "attachmentStatus":
+                        "offline_exhausted_outside_pipeline_coverage_denominator",
+                    "routes": [],
+                    "offlineRecovery": recovery,
+                }
+
+    return {
+        "status": "active",
+        "schema": schema,
+        "mappingId": str(status.get("mappingId") or ""),
+        "graphEffect": "none",
+        "publishedStoryKeys": len(published_keys),
+        "publishedRows": published,
+        "outsidePipelineCoverageStoryKeys": len(manifest_overlay),
+        "storyTriggerManifestOverlay": manifest_overlay,
+        "questAttachmentDiagnosticStatus": (
+            "active" if diagnostic_active else "unavailable"
+        ),
+        "questAttachmentDiagnosticMappingId": (
+            str(diagnostic_status.get("mappingId") or "")
+            if diagnostic_active
+            else ""
+        ),
+        "questAttachmentDiagnostics": quest_attachment_diagnostics,
+        "source": repo_path(gap_queue_path),
+    }
 
 
 def classify_definition_only_current_build_consumers(
@@ -3349,13 +3633,57 @@ def build_story_trigger_route(
         row.get("sourceFiles"),
         [path.get("sourceFile") for path in native_paths],
     )
+    timeline_dialog_containments = [
+        containment
+        for containment in row.get("timelineDialogContainments") or []
+        if isinstance(containment, dict)
+    ]
+    parent_story_key = str(row.get("parentStoryKey") or "")
+    timeline_ids = _unique_route_strings(
+        row.get("timelines"),
+        [
+            containment.get("timeline")
+            for containment in timeline_dialog_containments
+        ],
+    )
+    embedded_line_ids = _unique_route_strings(
+        row.get("textIds"),
+        [
+            line_id
+            for containment in timeline_dialog_containments
+            for line_id in containment.get("lineIds") or []
+        ],
+    )
+    embedded_option_ids = _unique_route_strings(
+        row.get("optionIds"),
+        [
+            option_id
+            for containment in timeline_dialog_containments
+            for option_id in containment.get("optionIds") or []
+        ],
+    )
+    before_parent_line_ids = _unique_route_strings([
+        containment.get("beforeParentLineId")
+        for containment in timeline_dialog_containments
+    ])
+    after_parent_line_ids = _unique_route_strings([
+        containment.get("afterParentLineId")
+        for containment in timeline_dialog_containments
+    ])
 
     owner_step = {
         "kind": "ownership_gap" if owner_status == "unresolved" else scope,
         "id": quest_id if scope == "quest" and quest_id else mission_id,
         "phase": str(row.get("phase") or ""),
     }
-    story_step = {"kind": "story", "id": key}
+    story_step = {
+        "kind": (
+            "dialog_definition"
+            if row.get("dialogDefinitionOnly") is True
+            else "story"
+        ),
+        "id": key,
+    }
     middle_steps: list[dict[str, Any]] = []
     if row.get("serverMessage"):
         middle_steps.append({
@@ -3371,8 +3699,96 @@ def build_story_trigger_route(
         })
     if script_ids:
         middle_steps.append({"kind": "levelscript", "ids": script_ids})
+    if relation == "leveldata_interactive_narrative_config":
+        leveldata_assets = _unique_route_strings(row.get("levelDataAssets"))
+        if leveldata_assets:
+            middle_steps.append({
+                "kind": "leveldata",
+                "ids": leveldata_assets,
+            })
+        progress_conditions = [
+            dict(condition)
+            for condition in row.get("progressLockConditions") or []
+            if isinstance(condition, dict)
+        ]
+        if (
+            row.get("progressLockConditionStatus") == "decoded"
+            and progress_conditions
+        ):
+            condition_summaries: list[str] = []
+
+            def summarize_condition(node: object, depth: int = 0) -> None:
+                if not isinstance(node, dict):
+                    return
+                if node.get("conditionType") == "CombinedConditionRuntime":
+                    condition_summaries.append(
+                        (
+                            f"{'nested ' if depth else ''}combined operator "
+                            f"{node.get('conditionOperator')} runtime flag "
+                            f"{str(node.get('serializedRuntimeFlag')).lower()}"
+                        )
+                    )
+                    for child in node.get("conditions") or []:
+                        summarize_condition(child, depth + 1)
+                    return
+                condition_summaries.append(
+                    (
+                        f"{node.get('ownerKind')} "
+                        f"{node.get('ownerId')} state "
+                        f"{node.get('compareTarget')} "
+                        f"(compare {node.get('compareOperator')})"
+                    )
+                )
+
+            tree = row.get("progressLockConditionTree")
+            if isinstance(tree, dict):
+                summarize_condition(tree)
+            else:
+                for condition in progress_conditions:
+                    summarize_condition(condition)
+            middle_steps.append({
+                "kind": "availability_condition",
+                "id": str(row.get("progressLockConditionType") or ""),
+                "summaries": condition_summaries,
+            })
+    if (
+        relation in {
+            "levelscript_interactive_narrative_config",
+            "leveldata_interactive_narrative_config",
+        }
+        and (
+            row.get("localInteractiveId") is not None
+            or row.get("entityLogicId") is not None
+        )
+    ):
+        interactive_summaries = _unique_route_strings(
+            row.get("rawTypeId"),
+            row.get("entityTemplateIds"),
+        )
+        middle_steps.append({
+            "kind": "narrative_interactive",
+            "id": str(
+                row.get("localInteractiveId")
+                if row.get("localInteractiveId") is not None
+                else row.get("entityLogicId")
+            ),
+            "summaries": interactive_summaries,
+        })
     if action_names:
         middle_steps.append({"kind": "native_action", "ids": action_names})
+    if relation == "timeline_dialog_contains_foreign_dialog":
+        if parent_story_key:
+            middle_steps.append({
+                "kind": "parent_story",
+                "id": parent_story_key,
+            })
+        if timeline_ids:
+            middle_steps.append({
+                "kind": "dialog_timeline",
+                "ids": timeline_ids,
+                "beforeParentLineIds": before_parent_line_ids,
+                "afterParentLineIds": after_parent_line_ids,
+            })
     if direction == "story_to_quest":
         steps = [story_step, *middle_steps, owner_step]
     else:
@@ -3394,6 +3810,76 @@ def build_story_trigger_route(
         "eventSummaries": event_summaries,
         "actionNames": action_names,
         "scriptIds": script_ids,
+        "levelDataAssets":
+            _unique_route_strings(row.get("levelDataAssets")),
+        "localInteractiveId": row.get("localInteractiveId"),
+        "entityLogicId": row.get("entityLogicId"),
+        "interactiveRecordIndex": row.get("interactiveRecordIndex"),
+        "interactiveRecordBoundarySource":
+            str(row.get("interactiveRecordBoundarySource") or ""),
+        "narrativeConsumerKind":
+            str(row.get("narrativeConsumerKind") or ""),
+        "dialogDefinitionOnly":
+            row.get("dialogDefinitionOnly") is True,
+        "dialogDefinitionBinding":
+            row.get("dialogDefinitionBinding") is True,
+        "dialogDefinitionConsumerMission":
+            str(row.get("dialogDefinitionConsumerMission") or ""),
+        "dialogDefinitionConsumerQuestId":
+            str(row.get("dialogDefinitionConsumerQuestId") or ""),
+        "dialogIdEntryOffset": row.get("dialogIdEntryOffset"),
+        "interactiveHornTemplateSha256":
+            str(row.get("interactiveHornTemplateSha256") or ""),
+        "interactiveHornNativeMappingId":
+            str(row.get("interactiveHornNativeMappingId") or ""),
+        "levelDataMember21Offset": row.get("levelDataMember21Offset"),
+        "levelIdNum": row.get("levelIdNum"),
+        "levelScriptBriefDictionaryCountOffset":
+            row.get("levelScriptBriefDictionaryCountOffset"),
+        "levelScriptBriefDictionaryCount":
+            row.get("levelScriptBriefDictionaryCount"),
+        "levelScriptDataPathDictionaryCountOffset":
+            row.get("levelScriptDataPathDictionaryCountOffset"),
+        "levelScriptDataPathDictionaryCount":
+            row.get("levelScriptDataPathDictionaryCount"),
+        "levelDataSafeZoneOffset": row.get("levelDataSafeZoneOffset"),
+        "levelDataSceneId": str(row.get("levelDataSceneId") or ""),
+        "levelDataSpecificDataOffset":
+            row.get("levelDataSpecificDataOffset"),
+        "levelDataEmptySuffixEndOffset":
+            row.get("levelDataEmptySuffixEndOffset"),
+        "levelDataFinalBoundaryValidation":
+            str(row.get("levelDataFinalBoundaryValidation") or ""),
+        "progressLockConditionStatus":
+            str(row.get("progressLockConditionStatus") or ""),
+        "progressLockConditionUnionTag":
+            row.get("progressLockConditionUnionTag"),
+        "progressLockConditionSerializedMemberCount":
+            row.get("progressLockConditionSerializedMemberCount"),
+        "progressLockConditionType":
+            str(row.get("progressLockConditionType") or ""),
+        "progressLockConditionOperator":
+            row.get("progressLockConditionOperator"),
+        "progressLockSerializedRuntimeFlag":
+            row.get("progressLockSerializedRuntimeFlag"),
+        "progressLockConditionTree":
+            row.get("progressLockConditionTree"),
+        "progressLockConditions": [
+            dict(condition)
+            for condition in row.get("progressLockConditions") or []
+            if isinstance(condition, dict)
+        ],
+        "rawTypeId": str(row.get("rawTypeId") or ""),
+        "entityDetailIds": _unique_route_strings(row.get("entityDetailIds")),
+        "entityTemplateIds": _unique_route_strings(row.get("entityTemplateIds")),
+        "parentStoryKey": parent_story_key,
+        "timelineIds": timeline_ids,
+        "embeddedLineIds": embedded_line_ids,
+        "embeddedOptionIds": embedded_option_ids,
+        "beforeParentLineIds": before_parent_line_ids,
+        "afterParentLineIds": after_parent_line_ids,
+        "placementBoundary": str(row.get("placementBoundary") or ""),
+        "graphEffect": str(row.get("graphEffect") or ""),
         "controlPathCount": int(row.get("nativeControlPathCount") or len(native_paths)),
         "nativePaths": native_paths,
         "sourceFiles": source_files,
@@ -3841,6 +4327,425 @@ def is_exact_battle_signal_producer_route(
     )
 
 
+def load_dynamic_scene_identity_cross_references(
+    audit_path: Path = DEFAULT_DYNAMIC_SCENE_MISSION_CONTROL_AUDIT,
+    action_bridge_path: Path | None = None,
+) -> dict[str, Any] | None:
+    """Publish compact candidate-only DynamicScene/LevelScript cross-references.
+
+    The source audit intentionally proves no runtime ownership bridge. Refuse
+    publication if that boundary changes so a future positive result receives
+    an explicit graph-admission review instead of silently inheriting this
+    non-owning WebUI path.
+    """
+    audit = read_json(audit_path)
+    if not isinstance(audit, dict) or audit.get("schemaVersion") != 1:
+        return None
+    boundary = audit.get("nativeIdentityBoundary")
+    if (
+        not isinstance(boundary, dict)
+        or boundary.get("classification")
+        != "exact_cross_reference_not_runtime_owner"
+        or boundary.get("directBridgeFound") is not False
+        or boundary.get("missionActivationBridgeFound") not in (None, False)
+        or boundary.get("missionGraphAction") != "none"
+    ):
+        return None
+
+    if action_bridge_path is None and audit_path == DEFAULT_DYNAMIC_SCENE_MISSION_CONTROL_AUDIT:
+        action_bridge_path = DEFAULT_DYNAMIC_SCENE_LEVELSCRIPT_ACTION_BRIDGE_AUDIT
+    bridge_report: dict[str, Any] = {}
+    bridges_by_logic_id: dict[str, dict[str, Any]] = {}
+    if action_bridge_path is not None and action_bridge_path.is_file():
+        candidate_bridge_report = read_json(action_bridge_path)
+        bridge_boundary = (
+            candidate_bridge_report.get("boundary")
+            if isinstance(candidate_bridge_report, dict)
+            else None
+        )
+        trigger_volume_boundary = (
+            bridge_boundary.get("levelScriptTriggerVolumeBoundary")
+            if isinstance(bridge_boundary, dict)
+            else None
+        )
+        identity_source = (
+            (candidate_bridge_report.get("sources") or {}).get("identityAudit")
+            if isinstance(candidate_bridge_report, dict)
+            else None
+        )
+        current_audit_sha = hashlib.sha256(audit_path.read_bytes()).hexdigest()
+        if (
+            not isinstance(candidate_bridge_report, dict)
+            or candidate_bridge_report.get("schemaVersion") != 1
+            or not isinstance(bridge_boundary, dict)
+            or bridge_boundary.get("classification")
+            != "exact_local_context_without_mission_activation_edge"
+            or bridge_boundary.get("missionActivationBridgeFound") is not False
+            or bridge_boundary.get("missionGraphAction") != "none"
+            or not isinstance(trigger_volume_boundary, dict)
+            or trigger_volume_boundary.get("classification")
+            != (
+                "exact_local_trigger_geometry_without_dynamic_scene_"
+                "or_mission_foreign_key"
+            )
+            or trigger_volume_boundary.get("foreignKeyBridgeFound") is not False
+            or trigger_volume_boundary.get("schemaMappingId")
+            != "current-global-metadata-levelscript-trigger-volume-data-fields"
+            or trigger_volume_boundary.get("leaderDeclaredFieldCount") != 0
+            or not isinstance(identity_source, dict)
+            or identity_source.get("sha256") != current_audit_sha
+        ):
+            return None
+        bridge_report = candidate_bridge_report
+        for bridge_row in bridge_report.get("bridgeRows") or []:
+            if (
+                not isinstance(bridge_row, dict)
+                or bridge_row.get("missionOwnerStatus") != "unresolved"
+                or bridge_row.get("storyBinding") is not False
+                or bridge_row.get("orderEvidence") is not False
+                or bridge_row.get("missionGraphAction") != "none"
+            ):
+                continue
+            logic_id = str(bridge_row.get("logicId") or "")
+            exact_actions: list[dict[str, Any]] = []
+            shared_story_keys: set[str] = set()
+            for action in bridge_row.get("exactTargetActions") or []:
+                target = action.get("targetParam") if isinstance(action, dict) else None
+                visible = action.get("visibleParam") if isinstance(action, dict) else None
+                if (
+                    not isinstance(action, dict)
+                    or action.get("actionName")
+                    not in {
+                        "ShowSceneDecorationNew",
+                        "ShowSceneDecorationWithHandle",
+                    }
+                    or action.get("serializedMemberCount") != 10
+                    or action.get("payloadFullyConsumed") is not True
+                    or str(action.get("targetDynamicEntityLogicId") or "")
+                    != logic_id
+                    or not isinstance(target, dict)
+                    or target.get("idRef") != -1
+                    or target.get("paramSource") != 0
+                    or target.get("path") is not None
+                    or not isinstance(visible, dict)
+                    or visible.get("idRef") != -1
+                    or visible.get("paramSource") != 0
+                    or visible.get("path") is not None
+                ):
+                    continue
+                story_links: list[dict[str, Any]] = []
+                shared_selector_slots: set[int] = set()
+                for link in action.get("storyControlPathLinks") or []:
+                    if not isinstance(link, dict):
+                        continue
+                    story_key = str(link.get("storyKey") or "")
+                    shared_paths: list[dict[str, Any]] = []
+                    for shared in link.get("sharedControlPaths") or []:
+                        if (
+                            not isinstance(shared, dict)
+                            or shared.get("status")
+                            != "exact_serialized_shared_control_path"
+                        ):
+                            continue
+                        event_detail = shared.get("eventDetail") or {}
+                        trigger_slot_id = event_detail.get(
+                            "triggerSlotIdFilter"
+                        )
+                        if isinstance(trigger_slot_id, int):
+                            shared_selector_slots.add(trigger_slot_id)
+                        shared_paths.append(compact_dict({
+                            "relation": str(shared.get("relation") or ""),
+                            "headerName": str(shared.get("headerName") or ""),
+                            "headerLocalId": shared.get("headerLocalId"),
+                            "eventSummary": str(event_detail.get("summary") or ""),
+                            "triggerSlotId": trigger_slot_id,
+                            "storyPathLocalIds":
+                                shared.get("storyPathLocalIds") or [],
+                            "decorationPathLocalIds":
+                                shared.get("decorationPathLocalIds") or [],
+                        }))
+                    if story_key and shared_paths:
+                        shared_story_keys.add(story_key)
+                        story_links.append({
+                            "storyKey": story_key,
+                            "storyRecordOffset": link.get("storyRecordOffset"),
+                            "storyActionName": str(
+                                link.get("storyActionName") or ""
+                            ),
+                            "sharedControlPaths": shared_paths,
+                        })
+                local_trigger_context: dict[str, Any] | None = None
+                if shared_selector_slots:
+                    candidate_context = action.get("localTriggerVolumeContext")
+                    schema = (
+                        candidate_context.get("schema")
+                        if isinstance(candidate_context, dict)
+                        else None
+                    )
+                    selector_slots = (
+                        candidate_context.get("selectorSlotIds")
+                        if isinstance(candidate_context, dict)
+                        else None
+                    )
+                    matched_slots = (
+                        candidate_context.get("matchedSlotIds")
+                        if isinstance(candidate_context, dict)
+                        else None
+                    )
+                    if (
+                        not isinstance(candidate_context, dict)
+                        or candidate_context.get("status")
+                        != (
+                            "exact_local_levelscript_trigger_volume_without_"
+                            "foreign_identity"
+                        )
+                        or sorted(selector_slots or [])
+                        != sorted(shared_selector_slots)
+                        or sorted(matched_slots or [])
+                        != sorted(shared_selector_slots)
+                        or candidate_context.get("missingSlotIds") not in ([], None)
+                        or candidate_context.get("scriptIdVerified") is not True
+                        or candidate_context.get("triggerVolumesStatus")
+                        != "present"
+                        or candidate_context.get("triggerVolumesParseStatus")
+                        != "decoded"
+                        or candidate_context.get(
+                            "dynamicSceneIdentityFieldPresent"
+                        ) is not False
+                        or candidate_context.get(
+                            "missionOrQuestIdentityFieldPresent"
+                        ) is not False
+                        or candidate_context.get("foreignKeyBridgeFound")
+                        is not False
+                        or candidate_context.get("missionGraphAction") != "none"
+                        or not isinstance(schema, dict)
+                        or schema.get("baseDeclaredFieldCount") != 8
+                        or schema.get("leaderDeclaredFieldCount") != 0
+                        or schema.get("serializedMemberCount") != 8
+                        or schema.get("mappingId")
+                        != (
+                            "current-global-metadata-levelscript-trigger-"
+                            "volume-data-fields"
+                        )
+                    ):
+                        continue
+                    compact_volumes: list[dict[str, Any]] = []
+                    for volume in candidate_context.get("triggerVolumes") or []:
+                        if (
+                            not isinstance(volume, dict)
+                            or volume.get("slotId") not in shared_selector_slots
+                            or volume.get("keySlotId") != volume.get("slotId")
+                            or volume.get("triggerVolumeType") != "Leader"
+                            or volume.get("memberCount") != 8
+                        ):
+                            continue
+                        shape_list = volume.get("shapeList") or {}
+                        if (
+                            not isinstance(shape_list, dict)
+                            or shape_list.get("parseStatus") != "decoded"
+                        ):
+                            continue
+                        shapes = [
+                            compact_dict({
+                                "shapeType": shape.get("shapeType"),
+                                "position": shape.get("position"),
+                                "radius": shape.get("radius"),
+                                "rotation": shape.get("rotation"),
+                                "size": shape.get("size"),
+                            })
+                            for shape in shape_list.get("shapes") or []
+                            if isinstance(shape, dict)
+                        ]
+                        compact_volumes.append(compact_dict({
+                            "slotId": volume.get("slotId"),
+                            "triggerVolumeType":
+                                volume.get("triggerVolumeType"),
+                            "triggerCountLimit":
+                                volume.get("triggerCountLimit"),
+                            "enterCheckOnGround":
+                                volume.get("enterCheckOnGround"),
+                            "isImportant": volume.get("isImportant"),
+                            "triggerOnPole": volume.get("triggerOnPole"),
+                            "waitSrvRes": volume.get("waitSrvRes"),
+                            "shapes": shapes,
+                        }))
+                    if {
+                        volume.get("slotId") for volume in compact_volumes
+                    } != shared_selector_slots:
+                        continue
+                    local_trigger_context = {
+                        "status": candidate_context.get("status"),
+                        "selectorSlotIds": sorted(shared_selector_slots),
+                        "triggerVolumes": compact_volumes,
+                        "schemaMappingId": schema.get("mappingId"),
+                        "foreignKeyBridgeFound": False,
+                        "missionGraphAction": "none",
+                    }
+                exact_actions.append(compact_dict({
+                    "actionName": action.get("actionName"),
+                    "unionTag": action.get("unionTag"),
+                    "serializedMemberCount":
+                        action.get("serializedMemberCount"),
+                    "recordOffset": action.get("recordOffset"),
+                    "actionMapRole": action.get("actionMapRole"),
+                    "localId": action.get("localId"),
+                    "nextId": action.get("nextId"),
+                    "targetDynamicEntityLogicId":
+                        action.get("targetDynamicEntityLogicId"),
+                    "visible": action.get("visible"),
+                    "sourceFile": action.get("sourceFile"),
+                    "storyControlPathLinks": story_links,
+                    "localTriggerVolumeContext": local_trigger_context,
+                }))
+            if logic_id and exact_actions:
+                bridges_by_logic_id[logic_id] = {
+                    "classification": str(
+                        bridge_row.get("classification") or ""
+                    ),
+                    "exactTargetActions": exact_actions,
+                    "sharedStoryKeys": sorted(shared_story_keys),
+                    "missionOwnerStatus": "unresolved",
+                    "storyBinding": False,
+                    "orderEvidence": False,
+                    "missionGraphAction": "none",
+                }
+
+    rows: list[dict[str, Any]] = []
+    for candidate in audit.get("storyIdentityCandidates") or []:
+        if not isinstance(candidate, dict):
+            continue
+        logic_id = str(candidate.get("logicId") or "")
+        scene = str(candidate.get("scene") or "")
+        conditions: list[dict[str, Any]] = []
+        seen_conditions: set[str] = set()
+        for control in candidate.get("missionControls") or []:
+            if not isinstance(control, dict):
+                continue
+            for condition in control.get("conditions") or []:
+                if not isinstance(condition, dict):
+                    continue
+                identifier = str(condition.get("identifier") or "")
+                if not identifier:
+                    continue
+                row = {
+                    "identifier": identifier,
+                    "isQuest": condition.get("isQuest") is True,
+                    "state": condition.get("state"),
+                    "isSame": condition.get("isSame") is True,
+                    "compareType": control.get("compareType"),
+                    "toBeTrue": control.get("toBeTrue") is True,
+                }
+                signature = json.dumps(row, sort_keys=True, separators=(",", ":"))
+                if signature not in seen_conditions:
+                    seen_conditions.add(signature)
+                    conditions.append(row)
+
+        story_occurrences: list[dict[str, Any]] = []
+        seen_occurrences: set[str] = set()
+        for occurrence in candidate.get("storyOccurrences") or []:
+            if not isinstance(occurrence, dict):
+                continue
+            story_key = str(occurrence.get("storyKey") or "")
+            script_id = str(occurrence.get("scriptId") or "")
+            if not story_key or not script_id or script_id != logic_id:
+                continue
+            row = compact_dict({
+                "storyKey": story_key,
+                "levelId": str(occurrence.get("levelId") or ""),
+                "scriptId": script_id,
+                "recordOffset": occurrence.get("recordOffset"),
+                "actionName": str(occurrence.get("actionName") or ""),
+                "sourceFile": str(occurrence.get("sourceFile") or ""),
+                "nativeEventOwnerStatus": str(
+                    occurrence.get("nativeEventOwnerStatus") or ""
+                ),
+            })
+            signature = json.dumps(row, sort_keys=True, separators=(",", ":"))
+            if signature not in seen_occurrences:
+                seen_occurrences.add(signature)
+                story_occurrences.append(row)
+        if not logic_id or not scene or not conditions or not story_occurrences:
+            continue
+        published_row = {
+            "scene": scene,
+            "logicId": logic_id,
+            "scriptId": logic_id,
+            "conditions": conditions,
+            "storyOccurrences": story_occurrences,
+            "dynamicSourceFile": str(candidate.get("sourceFile") or ""),
+            "classification": boundary["classification"],
+            "missionOwnerStatus": "unresolved",
+            "storyBinding": False,
+            "orderEvidence": False,
+            "missionGraphAction": "none",
+        }
+        bridge = bridges_by_logic_id.get(logic_id)
+        if bridge:
+            occurrence_keys = {
+                occurrence["storyKey"] for occurrence in story_occurrences
+            }
+            if set(bridge.get("sharedStoryKeys") or []).issubset(occurrence_keys):
+                published_row["localContextBridge"] = bridge
+        rows.append(published_row)
+
+    rows.sort(key=lambda row: (
+        row["scene"],
+        natural_quest_key(row["logicId"]),
+        row["dynamicSourceFile"],
+    ))
+    return {
+        "classification": boundary["classification"],
+        "finding": (
+            "Exact authored DynamicScene logic ids equal exported LevelScript "
+            "script ids and co-carry mission/quest state conditions. One current "
+            "LevelScript also targets its matching DynamicScene root on the "
+            "same local control path as Story playback. No evidence shows that "
+            "the DynamicScene mission condition activates that LevelScript "
+            "header, so every row remains non-owning context."
+        ),
+        "boundary": boundary.get("promotionRequirement"),
+        "directBridgeFound": False,
+        "missionActivationBridgeFound": False,
+        "missionGraphAction": "none",
+        "reportJson": repo_path(audit_path),
+        "actionBridgeReportJson": (
+            repo_path(action_bridge_path)
+            if bridge_report and action_bridge_path is not None
+            else ""
+        ),
+        "counts": {
+            "candidateRoots": len(rows),
+            "storyOccurrences": sum(
+                len(row["storyOccurrences"]) for row in rows
+            ),
+            "exactTargetBridgeRoots": sum(
+                bool(row.get("localContextBridge")) for row in rows
+            ),
+            "sharedControlPathStoryOccurrences": sum(
+                len(
+                    (row.get("localContextBridge") or {}).get(
+                        "sharedStoryKeys"
+                    ) or []
+                )
+                for row in rows
+            ),
+            "exactLocalTriggerVolumeContexts": sum(
+                bool(
+                    action.get("localTriggerVolumeContext")
+                )
+                for row in rows
+                for action in (
+                    (row.get("localContextBridge") or {}).get(
+                        "exactTargetActions"
+                    ) or []
+                )
+            ),
+            "triggerVolumeForeignKeyBridges": 0,
+        },
+        "rows": rows,
+    }
+
+
 def build_story_binding_coverage(
     pipeline_index: dict[str, Any],
     pipeline_index_path: Path,
@@ -3873,6 +4778,7 @@ def build_story_binding_coverage(
         for row in pipeline_index.get("missions") or []
         if isinstance(row, dict) and row.get("id")
     }
+    all_index_rows: dict[str, dict[str, Any]] = {}
     all_story_rows: dict[str, dict[str, Any]] = {}
     story_rows: dict[str, dict[str, Any]] = {}
     for row in story_index.get("entries") or []:
@@ -3881,13 +4787,15 @@ def build_story_binding_coverage(
         key = str(row.get("k") or "")
         kind = str(row.get("d") or "")
         mission_id = str(row.get("m") or "")
-        if key and kind in PIPELINE_STORY_KINDS:
+        if key:
             normalized_row = {
                 "key": key,
                 "kind": kind,
                 "missionId": mission_id,
                 "preview": str(row.get("p") or ""),
             }
+            all_index_rows[key] = normalized_row
+        if key and kind in PIPELINE_STORY_KINDS:
             all_story_rows[key] = normalized_row
             if mission_id in mission_ids:
                 story_rows[key] = normalized_row
@@ -3948,6 +4856,8 @@ def build_story_binding_coverage(
     missionless_subgame_nodes: dict[str, dict[str, Any]] = {}
     missionless_native_runtime_nodes: dict[str, dict[str, Any]] = {}
     story_trigger_routes: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    context_only_trigger_route_keys: set[str] = set()
+    definition_only_interactive_config_keys: set[str] = set()
     sidecars_read = 0
 
     def add_trigger_route(route: dict[str, Any] | None) -> None:
@@ -4085,6 +4995,26 @@ def build_story_binding_coverage(
             ))
         for row, quest_id, scope in _scoped_connection_rows(flow):
             key = str(row.get("key") or "")
+            if (
+                str(row.get("relation") or "") in {
+                    "levelscript_interactive_narrative_config",
+                    "leveldata_interactive_narrative_config",
+                }
+                and (
+                    key in all_index_rows
+                    or row.get("dialogDefinitionOnly") is True
+                )
+            ):
+                if row.get("dialogDefinitionOnly") is True:
+                    definition_only_interactive_config_keys.add(key)
+                if key not in all_story_rows:
+                    context_only_trigger_route_keys.add(key)
+                add_trigger_route(build_story_trigger_route(
+                    row,
+                    mission_id=mission_id,
+                    quest_id=quest_id,
+                    scope=scope,
+                ))
             if key not in story_rows and key in all_story_rows:
                 story_rows[key] = {
                     **all_story_rows[key],
@@ -4435,6 +5365,8 @@ def build_story_binding_coverage(
     story_files_with_trigger_routes = 0
     unlinked_files_with_trigger_routes = 0
     trigger_route_count = 0
+    context_only_trigger_route_files = 0
+    context_only_trigger_route_count = 0
     for key, story in sorted(story_rows.items(), key=lambda item: natural_quest_key(item[0])):
         routes = list(story_trigger_routes.get(key, {}).values())
         routes.sort(key=lambda route: (
@@ -4480,6 +5412,51 @@ def build_story_binding_coverage(
                 rejected_playback_by_key[key]
             )
         story_trigger_manifest[key] = manifest_row
+    for key in sorted(context_only_trigger_route_keys, key=natural_quest_key):
+        if key in story_trigger_manifest:
+            continue
+        story = all_index_rows.get(key)
+        if not story and key in definition_only_interactive_config_keys:
+            routes_for_key = list(story_trigger_routes[key].values())
+            story = {
+                "key": key,
+                "kind": "dialogDefinition",
+                "missionId": next(
+                    (
+                        str(route.get("missionId") or "")
+                        for route in routes_for_key
+                        if route.get("missionId")
+                    ),
+                    "",
+                ),
+            }
+        if not story:
+            continue
+        routes = list(story_trigger_routes[key].values())
+        routes.sort(key=lambda route: (
+            natural_quest_key(str(route.get("missionId") or "")),
+            natural_quest_key(str(route.get("questId") or "")),
+            str(route.get("causality") or ""),
+            str(route.get("relation") or ""),
+        ))
+        if not routes:
+            continue
+        context_only_trigger_route_files += 1
+        context_only_trigger_route_count += len(routes)
+        trigger_route_count += len(routes)
+        story_trigger_manifest[key] = {
+            "key": key,
+            "kind": story["kind"],
+            "nominalMissionId": story["missionId"],
+            "attachmentStatus":
+                (
+                    "registered_dialog_definition_context_only"
+                    if key in definition_only_interactive_config_keys
+                    else
+                    "context_only_outside_pipeline_coverage_denominator"
+                ),
+            "routes": routes,
+        }
     kind_counts: dict[str, dict[str, int]] = {}
     for kind in sorted(PIPELINE_STORY_KINDS):
         total = sum(1 for row in story_rows.values() if row["kind"] == kind)
@@ -4544,8 +5521,9 @@ def build_story_binding_coverage(
         )
     )
 
+    dynamic_scene_identity = load_dynamic_scene_identity_cross_references()
     report = {
-        "schemaVersion": 3,
+        "schemaVersion": 10,
         "generated": int(time.time()),
         "language": language,
         "policy": (
@@ -4571,6 +5549,19 @@ def build_story_binding_coverage(
             "connectionEvidenceRows": evidence_row_count,
             "storyTriggerRoutes": trigger_route_count,
             "storyFilesWithTriggerRoutes": story_files_with_trigger_routes,
+            "contextOnlyTriggerRouteFiles":
+                context_only_trigger_route_files,
+            "contextOnlyTriggerRoutes": context_only_trigger_route_count,
+            "definitionOnlyInteractiveConfigFiles": len({
+                key
+                for key in definition_only_interactive_config_keys
+                if key in story_trigger_manifest
+            }),
+            "definitionOnlyInteractiveConfigRoutes": sum(
+                len(story_trigger_manifest[key].get("routes") or [])
+                for key in definition_only_interactive_config_keys
+                if key in story_trigger_manifest
+            ),
             "unlinkedStoryFilesWithTriggerRoutes": unlinked_files_with_trigger_routes,
             "rootPlaybackAliasFiles": len({
                 row["playableAssetStoryKey"]
@@ -4711,6 +5702,7 @@ def build_story_binding_coverage(
         ],
         "missionlessSubGamePlaybackNodes": missionless_nodes,
         "missionlessNativeRuntimeNodes": missionless_runtime_nodes,
+        "dynamicSceneIdentityCrossReferences": dynamic_scene_identity,
         "partiallyConnectedDialogTreeNarrativeKeys": sorted(
             unresolved_dialog_tree_containment & connected_keys,
             key=natural_quest_key,
@@ -4926,6 +5918,9 @@ FACT_KEYS = (
     "levelId",
     "_scriptId",
     "scriptId",
+    "missionId",
+    "missionVarName",
+    "compareOperator",
     "_propertyKey",
     "_key",
     "_guideGroupId",
@@ -5110,6 +6105,81 @@ def condition_tree(condition: Any) -> dict[str, Any] | None:
     return row
 
 
+def vector3_row(value: Any) -> dict[str, float] | None:
+    if not isinstance(value, dict):
+        return None
+    try:
+        return {
+            "x": float(value.get("x", 0.0)),
+            "y": float(value.get("y", 0.0)),
+            "z": float(value.get("z", 0.0)),
+        }
+    except (TypeError, ValueError):
+        return None
+
+
+def tracking_info_row(info: Any, index: int) -> dict[str, Any] | None:
+    """Keep exact quest-marker configuration without creating graph edges."""
+    if not isinstance(info, dict):
+        return None
+    row: dict[str, Any] = {
+        "index": index,
+        "type": type_name(info.get("$type")) or "TrackingInfo",
+    }
+    for key in (
+        "sceneId",
+        "npcProxyId",
+        "missionAreaId",
+        "jumpId",
+        "trackScriptEntity",
+        "entityLogicId",
+        "scriptId",
+        "entitySlotId",
+        "guidingArea",
+        "shapeType",
+        "radius",
+        "routePointCount",
+        "snsDialogId",
+        "useFilterCondition",
+    ):
+        if key in info and info[key] not in (None, "", [], {}):
+            row[key] = compact_scalar(info[key])
+        elif key in {"trackScriptEntity", "useFilterCondition"} and key in info:
+            row[key] = bool(info[key])
+    for key in ("trackingPos", "position", "rotation"):
+        vector = vector3_row(info.get(key))
+        if vector is not None:
+            row[key] = vector
+    filter_condition = condition_tree(info.get("filterCondition"))
+    if filter_condition:
+        row["filterCondition"] = filter_condition
+    return row
+
+
+def mission_property_rows(mission: dict[str, Any]) -> list[dict[str, Any]]:
+    """Normalize authored mission-variable defaults without assigning writers."""
+    output: list[dict[str, Any]] = []
+    for raw in mission.get("properties") or []:
+        if not isinstance(raw, dict) or raw.get("key") in (None, ""):
+            continue
+        value = raw.get("value") or {}
+        values: list[dict[str, Any]] = []
+        for item in value.get("valueArray") or []:
+            if not isinstance(item, dict):
+                continue
+            values.append({
+                key: item[key]
+                for key in ("valueBit64", "valueString")
+                if key in item
+            })
+        output.append({
+            "key": str(raw["key"]),
+            "type": value.get("type"),
+            "values": values,
+        })
+    return output
+
+
 def condition_objects(condition: Any) -> list[dict[str, Any]]:
     if not isinstance(condition, dict):
         return []
@@ -5191,6 +6261,15 @@ def objective_row(objective: dict[str, Any], index: int) -> dict[str, Any]:
         if isinstance(prop, str):
             properties.add(prop)
     description = objective.get("description") or {}
+    tracking = [
+        normalized
+        for tracking_index, info in enumerate(
+            objective.get("trackingInfoList") or []
+        )
+        if (
+            normalized := tracking_info_row(info, tracking_index)
+        ) is not None
+    ]
     return {
         "index": index,
         "conditionId": condition.get("uniqueId") if isinstance(condition, dict) else "",
@@ -5209,6 +6288,7 @@ def objective_row(objective: dict[str, Any], index: int) -> dict[str, Any]:
         "questStateRefs": quest_state_refs,
         "levelScriptIds": sorted(level_scripts),
         "propertyKeys": sorted(properties),
+        "tracking": tracking,
     }
 
 
@@ -5453,6 +6533,9 @@ def build_mission(
             key=lambda row: (natural_quest_key(row.get("questId") or ""), row.get("storyKey") or ""),
         ),
     }
+    properties = mission_property_rows(mission)
+    if properties:
+        payload["mission"]["properties"] = properties
     summary = {
         "id": mission_id,
         "nameKey": payload["mission"]["nameKey"],
@@ -5481,6 +6564,18 @@ def build_mission(
         "activityStageHostedQuestCount": sum(
             1 for node in nodes if node.get("activityStageHosts")
         ),
+        "trackingInfoCount": sum(
+            len(objective.get("tracking") or [])
+            for node in nodes
+            for objective in node.get("objectives") or []
+        ),
+        "trackingObjectiveCount": sum(
+            1
+            for node in nodes
+            for objective in node.get("objectives") or []
+            if objective.get("tracking")
+        ),
+        "missionPropertyCount": len(properties),
         "conditionTypes": sorted(condition_counts),
         "caseStudy": mission_id in CASE_STUDIES,
         "file": f"missions/{mission_id}.json",
@@ -5689,10 +6784,28 @@ def build_all(
         if stale.name not in produced:
             stale.unlink()
     summaries.sort(key=lambda row: natural_quest_key(row["id"]))
+    default_mission_root = select_complete_mission_runtime_root(
+        STREAMING_MISSION_ROOT,
+        PERSISTENT_MISSION_ROOT,
+    )
+    if mission_root.resolve() == default_mission_root.resolve():
+        source_summary = mission_runtime_source_summary(
+            STREAMING_MISSION_ROOT,
+            PERSISTENT_MISSION_ROOT,
+        )
+        source_summary["selectedRoot"] = repo_path(
+            Path(source_summary["selectedRoot"])
+        )
+    else:
+        source_summary = {
+            "selectedRoot": repo_path(mission_root),
+            "selection": "explicit_mission_root",
+        }
     index = {
         "schemaVersion": SCHEMA_VERSION,
         "generated": int(time.time()),
         "source": mission_root.relative_to(ROOT).as_posix() if mission_root.is_relative_to(ROOT) else mission_root.as_posix(),
+        "missionRuntimeSource": source_summary,
         "counts": {
             "missions": len(summaries),
             "quests": quest_count,
@@ -5743,6 +6856,18 @@ def build_all(
             "activityQuestLevelQuests": activity_host_registry["questCount"],
             "activityQuestLevelMissions": sum(
                 1 for row in summaries if row["activityStageHostCount"]
+            ),
+            "trackingInfoRows": sum(
+                row["trackingInfoCount"] for row in summaries
+            ),
+            "trackingObjectives": sum(
+                row["trackingObjectiveCount"] for row in summaries
+            ),
+            "missionPropertyRows": sum(
+                row["missionPropertyCount"] for row in summaries
+            ),
+            "missionsWithProperties": sum(
+                1 for row in summaries if row["missionPropertyCount"]
             ),
         },
         "conditionTypeMissionCounts": dict(sorted(condition_counts.items())),
@@ -5925,6 +7050,15 @@ def publish_quest_objective_story_scope(
                 "uniquely-decoded quest getter gates this Story playback path"
             )
             confidence = "derived_exact_quest_scope_path_predicate"
+        elif (
+            discriminator
+            == "exact_quest_condition_and_complete_native_playback_scope"
+        ):
+            evidence_text = (
+                "quest condition names this LevelScript and the complete exact "
+                "native Story occurrence carries that same quest condition"
+            )
+            confidence = "derived_exact_quest_condition_scope"
         else:
             evidence_text = (
                 "quest objective names the unique LevelScript that hosts "
@@ -6248,6 +7382,14 @@ def main() -> int:
     )
     node_attachment = None
     if coverage:
+        offline_recovery = publish_offline_story_recovery(
+            coverage["storyTriggerManifest"],
+            getattr(
+                args,
+                "source_story_gap_queue",
+                DEFAULT_SOURCE_STORY_GAP_QUEUE,
+            ).resolve(),
+        )
         report_stem = f"mission_pipeline_story_binding_coverage_{coverage['language']}"
         coverage_report = args.report_root.resolve() / f"{report_stem}.json"
         index["storyCoverage"] = {
@@ -6256,6 +7398,7 @@ def main() -> int:
             "counts": coverage["counts"],
             "nativePlaybackEventFamilies": coverage["nativePlaybackEventFamilies"],
             "storyTriggerManifest": coverage["storyTriggerManifest"],
+            "offlineRecoveryEvidence": offline_recovery,
             "rootPlaybackAliases":
                 coverage.get("rootPlaybackAliases") or [],
             "composedRootPlaybackAliases":
@@ -6263,6 +7406,8 @@ def main() -> int:
             "nonMissionContentKeys": coverage.get("nonMissionContentKeys") or [],
             "missionlessSubGamePlaybackNodes": coverage["missionlessSubGamePlaybackNodes"],
             "missionlessNativeRuntimeNodes": coverage["missionlessNativeRuntimeNodes"],
+            "dynamicSceneIdentityCrossReferences":
+                coverage.get("dynamicSceneIdentityCrossReferences"),
             "reportJson": repo_path(coverage_report),
             "reportMarkdown": repo_path(args.report_root.resolve() / f"{report_stem}.md"),
         }

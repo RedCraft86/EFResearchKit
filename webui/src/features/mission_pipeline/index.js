@@ -35,6 +35,12 @@
       title: "Mission Pipeline",
       scope: "Authored quest structure with an explicit native client/server boundary.",
       warning: "Predecessor arrows are client-visible prerequisites. The server still decides which quest state to synchronize next.",
+      missionSource: "MissionRuntime source",
+      sourceCompletePersistent: "complete Persistent override",
+      sourceStreamingFallback: "StreamingAssets fallback",
+      sourceExplicitRoot: "explicit mission root",
+      sourceChangedFiles: "changed base files",
+      sourceMissingFiles: "missing base files",
       missions: "missions",
       quests: "quests",
       connectedStory: "Story connected",
@@ -74,6 +80,10 @@
       exactReceiverNodes: "Exact serialized runtime receivers",
       exactReceiverNodesHint: "Each node is an original LevelScript event selector with an exact control path to Story playback. It organizes more recovered files without claiming a mission or quest owner.",
       activationFrontier: "offline activation frontier",
+      nominalMissionHostCheck: "nominal-mission LevelData check",
+      nominalMissionHostExcludes: "validated host excludes receiver script",
+      noSameLevelNominalMissionHost: "no same-level nominal-mission host",
+      nominalMissionCandidateBoundary: "filename/index candidate only; no mission owner or graph edge",
       activationClass: "static activation class",
       startPolicy: "LevelScript start policy",
       levelDataContainer: "validated LevelData container",
@@ -117,6 +127,20 @@
       noServerExchange: "no server exchange",
       carrierAudit: "Closed managed-carrier candidates",
       noGraphEdges: "zero mission graph edges",
+      dynamicSceneCrossReferences: "DynamicScene identity cross-references",
+      dynamicSceneCrossReferencesHint: "A DynamicScene object co-carries mission/quest state conditions, and its exact numeric logic id equals an exported LevelScript script id containing Story playback. One current row also has a typed LevelScript target and shared local Story path; the mission-condition-to-trigger activation edge is still missing, so no row gains mission ownership, playback causality, or order.",
+      dynamicSceneLogicId: "DynamicScene logic id",
+      levelScriptId: "LevelScript script id",
+      missionStateConditions: "co-carried state conditions",
+      candidateContextOnly: "candidate context only",
+      exactDynamicSceneLocalContext: "exact local control context",
+      typedDynamicSceneTargetAction: "typed DynamicScene target action",
+      exactLocalTriggerVolume: "exact embedded LevelScript trigger volume",
+      noTriggerForeignIdentity: "local geometry only; no DynamicScene, mission, quest, or foreign entity identity",
+      triggerVolumePosition: "position",
+      triggerVolumeRadius: "radius",
+      sameSerializedControlPath: "same serialized control path",
+      missionActivationGap: "mission condition to trigger activation remains unresolved",
       alternateActions: "mutually exclusive actions",
       currentAuthoredInstances: "current authored instances",
       runtimeContextOnly: "runtime subscription context only",
@@ -145,6 +169,11 @@
       runtimeObjectCandidates: "runtime/object candidates",
       unreviewedCandidates: "unreviewed candidates",
       trackingContextOnly: "HUD/map tracking context only",
+      trackingTargets: "Authored tracking targets",
+      trackingTargetsHint: "Quest-marker and HUD navigation configuration only. Mission-variable filters are evaluated locally against server-synchronized property values; the server producer and timing remain unknown, and no playback, completion, ownership, or ordering edge is created.",
+      trackingFilter: "marker visibility filter",
+      missionProperties: "Authored mission variables",
+      missionPropertiesHint: "Serialized initial values only. This block does not identify the runtime writer, trigger, or Story owner.",
       nonOwningCrossReference: "non-owning original-data cross-reference",
       unlockQuestPrerequisite: "unlock quest prerequisite",
       unlockMissionPrerequisite: "unlock mission-state prerequisite",
@@ -338,6 +367,7 @@
       storyOutgoingBadge: "Q→S",
       storyContextBadge: "CTX",
       relationObjectiveCondition: "objective waits on Story state",
+      relationObjectiveTrackingStory: "objective tracking references this Story file (attachment only; not playback or order)",
       relationFailureCondition: "Story state participates in failure guard",
       relationClientStart: "quest start launches Story action",
       relationClientSucceed: "quest success launches Story action",
@@ -369,6 +399,8 @@
       relationRadioTriggerMissionState: "one typed LevelData radio-trigger zone co-carries this radio and the named mission-state boundary; native OnEnter checks that state before playback (context, not quest ownership)",
       relationAirWallMissionState: "one exact LevelData AirWall co-carries typed mission/quest-state predicates and this pushback radio; synchronized state controls the wall, then later player contact can play the radio (context, not transition causality, ownership, or order)",
       relationNarrativeInteractiveMissionState: "one counted LevelInteractiveData entity co-carries the popup consumer id and mission-state FX key; the original narrative template and native component prove the local playback dependency (not ownership)",
+      relationLevelScriptInteractiveNarrative: "exact counted LevelScript interactive configuration binds this Story file to a local narrative object; activation and order remain unresolved",
+      relationLevelDataInteractiveNarrative: "exactly bounded LevelData interactive configuration binds this Story file to a local narrative-capable object through either component 94 or a validated int_horn dialog_id property; final records require a nonempty BriefData boundary or the complete empty-script suffix through EOF, and decoded progress locks are availability evidence rather than Story ownership or order",
       relationNativeEventShellPlayback: "a typed custom-event producer reaches this unique Story listener and the producer belongs to one validated mission LevelData shell (mission context, not one quest)",
       relationManualGuideCompletionPlayback: "an exact client-only guide-group start reaches this completion listener and its producer belongs to one mission-named LevelData shell (mission context, not one quest or a server exchange)",
       relationVariantRuntime: "variant MissionRuntime attaches this Story file",
@@ -414,6 +446,14 @@
       triggerPlaybackAlias: "root playback alias · owner unresolved",
       triggerPlaybackAliasConnected: "root playback alias · owner connected",
       triggerDefinition: "definition only · no consumer",
+      offlineRecoveryBoundary: "Offline recovery boundary",
+      offlineRecoveryNoGraphEdge: "no ownership or order edge",
+      offlineRecoveryConsumer: "Consumer boundary",
+      offlineRecoveryOrder: "Order boundary",
+      offlineRecoveryReopen: "Reopen when",
+      questAttachmentDiagnostic: "Story ownership unresolved",
+      questAttachmentDiagnosticHint: "Exact offline evidence closes this broad Story co-membership as non-owning. It does not create a quest-to-Story or order edge.",
+      questAttachmentDiagnosticStories: "Diagnostic Story context",
       rejectedPlaybackCandidate: "Rejected playback candidate",
       rejectedPlaybackBoundary: "binary-proven boundary · no graph edge",
       rejectedPlaybackLiteral: "Lua literal",
@@ -425,7 +465,13 @@
       triggerServerMessage: "server message",
       triggerNativeEvent: "native event",
       triggerLevelScript: "LevelScript",
+      triggerLevelData: "LevelData",
+      triggerAvailabilityCondition: "interactive availability condition",
+      triggerNarrativeInteractive: "narrative interactive",
+      triggerDialogDefinition: "dialog definition",
       triggerNativeAction: "playback action",
+      triggerParentStory: "parent Story file",
+      triggerDialogTimeline: "dialog Timeline",
       triggerStoryRoot: "CutsceneRoot Story key",
       triggerStory: "Story file",
       triggerExactPaths: "exact native paths",
@@ -479,6 +525,12 @@
       title: "任务流程",
       scope: "展示任务节点结构，并明确标出原生客户端与服务器之间的边界。",
       warning: "前置箭头只表示客户端可见的条件关系；下一个同步到客户端的任务状态仍由服务器决定。",
+      missionSource: "MissionRuntime 来源",
+      sourceCompletePersistent: "完整 Persistent 覆盖",
+      sourceStreamingFallback: "StreamingAssets 回退",
+      sourceExplicitRoot: "显式任务根目录",
+      sourceChangedFiles: "已变更基础文件",
+      sourceMissingFiles: "缺少基础文件",
       missions: "个任务",
       quests: "个任务节点",
       connectedStory: "已连接剧情",
@@ -517,6 +569,10 @@
       exactReceiverNodes: "精确序列化运行时接收器",
       exactReceiverNodesHint: "每个节点都来自原始 LevelScript 事件选择器，并有到剧情播放的精确控制路径；它能组织更多恢复文件，但不声明使命或任务所有者。",
       activationFrontier: "离线激活边界",
+      nominalMissionHostCheck: "名义使命 LevelData 检查",
+      nominalMissionHostExcludes: "已验证宿主不包含接收脚本",
+      noSameLevelNominalMissionHost: "同关卡不存在名义使命宿主",
+      nominalMissionCandidateBoundary: "仅文件名/索引候选；不表示使命所有者或图边",
       activationClass: "静态激活分类",
       startPolicy: "LevelScript 启动策略",
       levelDataContainer: "已验证的 LevelData 容器",
@@ -549,6 +605,20 @@
       noServerExchange: "不与服务器交换",
       carrierAudit: "已关闭的托管载体候选",
       noGraphEdges: "使命图边为零",
+      dynamicSceneCrossReferences: "DynamicScene 身份交叉引用",
+      dynamicSceneCrossReferencesHint: "DynamicScene 对象携带任务状态条件，其精确数字逻辑 ID 与包含剧情播放的 LevelScript 脚本 ID 相同。当前一行还具有类型化 LevelScript 目标和共享的本地剧情路径；任务条件到触发器激活的链路仍缺失，因此所有行都不表示任务所有权、播放因果或顺序。",
+      dynamicSceneLogicId: "DynamicScene 逻辑 ID",
+      levelScriptId: "LevelScript 脚本 ID",
+      missionStateConditions: "同对象携带的状态条件",
+      candidateContextOnly: "仅候选上下文",
+      exactDynamicSceneLocalContext: "精确本地控制上下文",
+      typedDynamicSceneTargetAction: "类型化 DynamicScene 目标动作",
+      exactLocalTriggerVolume: "精确嵌入的 LevelScript 触发区域",
+      noTriggerForeignIdentity: "仅本地几何；不含 DynamicScene、使命、任务或外部实体身份",
+      triggerVolumePosition: "位置",
+      triggerVolumeRadius: "半径",
+      sameSerializedControlPath: "相同序列化控制路径",
+      missionActivationGap: "任务条件到触发器激活的链路仍未解析",
       alternateActions: "互斥动作分支",
       currentAuthoredInstances: "当前原始实例",
       runtimeContextOnly: "仅运行时订阅上下文",
@@ -577,6 +647,11 @@
       runtimeObjectCandidates: "运行时/对象候选",
       unreviewedCandidates: "未审查候选",
       trackingContextOnly: "仅 HUD/地图追踪上下文",
+      trackingTargets: "原始追踪目标",
+      trackingTargetsHint: "仅表示任务标记和 HUD 导航配置。使命变量条件会在本地读取服务器同步的属性值，但服务器写入规则与时机仍未知，也不会创建播放、完成、归属或顺序边。",
+      trackingFilter: "标记可见性条件",
+      missionProperties: "原始使命变量",
+      missionPropertiesHint: "这里只显示序列化初始值，不识别运行时写入者、触发器或剧情归属。",
       nonOwningCrossReference: "不表示所有权的原始数据交叉参考",
       unlockQuestPrerequisite: "解锁任务前置条件",
       unlockMissionPrerequisite: "解锁使命状态前置条件",
@@ -783,6 +858,9 @@
       openInStory: "在剧情页打开",
       storyEvidence: "箭头方向来自运行时语义：条件是“剧情 → 任务”，原生 QuestAction 槽位与严格门控的任务完成事件是“任务 → 剧情”。LevelData、限定作用域的 LevelScript、变体运行时、作者单跳路线、精确 NPC 代理连接和唯一的类型化世界实体集合连接属于上下文；共享世界实体集合不证明任务或服务器触发。类型化 DialogTree 叙事遮罩只是本地呈现，不会产生服务器交换；使命接受对话保留在使命外壳。空间邻近与文件顺序猜测绝不会升级为连接。",
       noStoryFiles: "这个任务节点没有可由证据支持的剧情连接。",
+      relationLevelScriptInteractiveNarrative: "\u5e26\u7cbe\u786e\u8ba1\u6570\u8fb9\u754c\u7684 LevelScript \u4ea4\u4e92\u914d\u7f6e\u5c06\u6b64\u5267\u60c5\u6587\u4ef6\u7ed1\u5b9a\u5230\u672c\u5730\u53d9\u4e8b\u5bf9\u8c61\uff1b\u6fc0\u6d3b\u65f6\u673a\u4e0e\u987a\u5e8f\u4ecd\u672a\u89e3\u6790",
+      relationObjectiveTrackingStory: "\u4efb\u52a1\u76ee\u6807\u8ffd\u8e2a\u5f15\u7528\u6b64\u5267\u60c5\u6587\u4ef6\uff08\u4ec5\u8fde\u63a5\uff0c\u4e0d\u4ee3\u8868\u64ad\u653e\u6216\u987a\u5e8f\uff09",
+      relationLevelDataInteractiveNarrative: "\u5177\u6709\u7cbe\u786e\u8fb9\u754c\u7684 LevelData \u4ea4\u4e92\u914d\u7f6e\u901a\u8fc7\u7ec4\u4ef6 94 \u6216\u5df2\u9a8c\u8bc1\u7684 int_horn dialog_id \u5c5e\u6027\uff0c\u5c06\u6b64\u5267\u60c5\u6587\u4ef6\u7ed1\u5b9a\u5230\u672c\u5730\u53d9\u4e8b\u5bf9\u8c61\uff1b\u6700\u540e\u8bb0\u5f55\u5fc5\u987b\u7531\u975e\u7a7a BriefData \u8fb9\u754c\u6216\u5230 EOF \u7684\u5b8c\u6574\u7a7a\u811a\u672c\u540e\u7f00\u9a8c\u8bc1\uff0c\u5df2\u89e3\u6790\u7684\u8fdb\u5ea6\u9501\u4ec5\u662f\u53ef\u7528\u6027\u8bc1\u636e\uff0c\u4e0d\u662f\u5267\u60c5\u5f52\u5c5e\u6216\u987a\u5e8f",
       triggerRoute: "\u6062\u590d\u7684\u89e6\u53d1\u8def\u5f84",
       triggerPlayback: "\u64ad\u653e\u89e6\u53d1",
       triggerCondition: "\u5b8c\u6210\u6761\u4ef6",
@@ -792,6 +870,14 @@
       triggerPlaybackAlias: "\u6839\u64ad\u653e\u522b\u540d \u00b7 \u5f52\u5c5e\u672a\u89e3\u6790",
       triggerPlaybackAliasConnected: "\u6839\u64ad\u653e\u522b\u540d \u00b7 \u5f52\u5c5e\u5df2\u8fde\u63a5",
       triggerDefinition: "\u4ec5\u5b9a\u4e49 \u00b7 \u65e0\u6d88\u8d39\u8005",
+      offlineRecoveryBoundary: "\u79bb\u7ebf\u6062\u590d\u8fb9\u754c",
+      offlineRecoveryNoGraphEdge: "\u4e0d\u751f\u6210\u5f52\u5c5e\u6216\u987a\u5e8f\u8fb9",
+      offlineRecoveryConsumer: "\u6d88\u8d39\u8005\u8fb9\u754c",
+      offlineRecoveryOrder: "\u987a\u5e8f\u8fb9\u754c",
+      offlineRecoveryReopen: "\u91cd\u65b0\u8c03\u67e5\u6761\u4ef6",
+      questAttachmentDiagnostic: "\u5267\u60c5\u5f52\u5c5e\u672a\u89e3\u6790",
+      questAttachmentDiagnosticHint: "\u7cbe\u786e\u79bb\u7ebf\u8bc1\u636e\u5c06\u8fd9\u4e2a\u5bbd\u6cdb\u5267\u60c5\u5171\u73b0\u5173\u7cfb\u95ed\u5408\u4e3a\u975e\u5f52\u5c5e\u8bca\u65ad\uff1b\u4e0d\u751f\u6210\u4efb\u52a1\u5230\u5267\u60c5\u6216\u987a\u5e8f\u8fb9\u3002",
+      questAttachmentDiagnosticStories: "\u8bca\u65ad\u5267\u60c5\u4e0a\u4e0b\u6587",
       rejectedPlaybackCandidate: "\u5df2\u62d2\u7edd\u7684\u64ad\u653e\u5019\u9009",
       rejectedPlaybackBoundary: "\u4e8c\u8fdb\u5236\u5df2\u8bc1\u8fb9\u754c \u00b7 \u4e0d\u751f\u6210\u56fe\u8fb9",
       rejectedPlaybackLiteral: "Lua \u5b57\u9762\u91cf",
@@ -803,7 +889,13 @@
       triggerServerMessage: "\u670d\u52a1\u5668\u6d88\u606f",
       triggerNativeEvent: "\u539f\u751f\u4e8b\u4ef6",
       triggerLevelScript: "LevelScript",
+      triggerLevelData: "LevelData",
+      triggerAvailabilityCondition: "\u4ea4\u4e92\u53ef\u7528\u6761\u4ef6",
+      triggerNarrativeInteractive: "\u53d9\u4e8b\u4ea4\u4e92\u5bf9\u8c61",
+      triggerDialogDefinition: "\u5bf9\u8bdd\u5b9a\u4e49",
       triggerNativeAction: "\u64ad\u653e\u52a8\u4f5c",
+      triggerParentStory: "\u7236\u5267\u60c5\u6587\u4ef6",
+      triggerDialogTimeline: "\u5bf9\u8bdd Timeline",
       triggerStoryRoot: "CutsceneRoot \u5267\u60c5\u952e",
       triggerStory: "\u5267\u60c5\u6587\u4ef6",
       triggerExactPaths: "\u7cbe\u786e\u539f\u751f\u8def\u5f84",
@@ -1014,6 +1106,7 @@
           <div id="mp-corpus" class="mp-corpus" role="status" aria-live="polite"></div>
         </header>
         <div id="mp-warning" class="mp-boundary-warning" role="note"></div>
+        <div id="mp-source-provenance" class="mp-source-provenance" role="note" hidden></div>
         <div class="mp-layout">
           <aside class="mp-browser" aria-label="Mission browser">
             <div class="mp-browser-controls">
@@ -1249,6 +1342,34 @@
     ];
     if (state.index?.runtimeTrace) stats.push([runtimeCounts.storyPlaybacks, t("runtimeObserved")]);
     node.innerHTML = stats.map(([value, label]) => `<strong>${Number(value || 0).toLocaleString()}</strong><span>${esc(label)}</span>`).join("");
+
+    const sourceNode = byId("mp-source-provenance");
+    const source = state.index?.missionRuntimeSource;
+    if (!sourceNode) return;
+    if (!source?.selectedRoot) {
+      sourceNode.hidden = true;
+      sourceNode.innerHTML = "";
+      return;
+    }
+    const selectionLabels = {
+      complete_persistent_override: t("sourceCompletePersistent"),
+      streaming_assets_fallback: t("sourceStreamingFallback"),
+      explicit_mission_root: t("sourceExplicitRoot"),
+    };
+    const changedFiles = Array.isArray(source.persistentChangedBaseFiles)
+      ? source.persistentChangedBaseFiles
+      : [];
+    const missingFiles = Array.isArray(source.persistentMissingBaseFiles)
+      ? source.persistentMissingBaseFiles
+      : [];
+    sourceNode.hidden = false;
+    sourceNode.innerHTML = `
+      <strong>${esc(t("missionSource"))}: ${esc(selectionLabels[source.selection] || source.selection || "?")}</strong>
+      <code>${esc(source.selectedRoot)}</code>
+      <span>${esc(t("sourceChangedFiles"))}: ${Number(source.persistentChangedBaseFileCount || changedFiles.length).toLocaleString()} / ${Number(source.streamingFileCount || 0).toLocaleString()}</span>
+      ${changedFiles.length ? `<code>${esc(changedFiles.join(", "))}</code>` : ""}
+      <span>${esc(t("sourceMissingFiles"))}: ${Number(missingFiles.length).toLocaleString()}</span>
+    `;
   }
 
   function missionName(id) {
@@ -1478,6 +1599,7 @@
   function storyRelationLabel(relation) {
     const key = {
       objective_condition: "relationObjectiveCondition",
+      objective_tracking_story_reference: "relationObjectiveTrackingStory",
       failure_condition: "relationFailureCondition",
       client_action_start: "relationClientStart",
       client_action_succeed: "relationClientSucceed",
@@ -1513,6 +1635,8 @@
       airwall_mission_state_radio_playback_context: "relationAirWallMissionState",
       narrative_interactive_mission_state_dependency: "relationNarrativeInteractiveMissionState",
       narrative_interactive_mission_state_playback_context: "relationNarrativeInteractiveMissionState",
+      levelscript_interactive_narrative_config: "relationLevelScriptInteractiveNarrative",
+      leveldata_interactive_narrative_config: "relationLevelDataInteractiveNarrative",
       authoritative_scope_native_event_playback_context: "relationNativeEventShellPlayback",
       mission_shell_manual_guide_completion_playback_context: "relationManualGuideCompletionPlayback",
       variant_runtime_attachment: "relationVariantRuntime",
@@ -1804,6 +1928,55 @@
       .filter((candidate) => candidate && candidate.storyKey === row?.key);
   }
 
+  function offlineRecoveryHtml(row) {
+    const coverage = state.index?.storyCoverage || {};
+    const manifest = coverage.storyTriggerManifest || {};
+    const overlay = coverage.offlineRecoveryEvidence?.storyTriggerManifestOverlay || {};
+    const recovery = (
+      manifest[row?.key]?.offlineRecovery
+      || overlay[row?.key]?.offlineRecovery
+    );
+    if (!recovery || recovery.graphEffect !== "none") return "";
+    const boundaries = [
+      recovery.consumerBoundary
+        ? `<small><strong>${esc(t("offlineRecoveryConsumer"))}:</strong> ${esc(recovery.consumerBoundary)}</small>`
+        : "",
+      recovery.orderBoundary
+        ? `<small><strong>${esc(t("offlineRecoveryOrder"))}:</strong> ${esc(recovery.orderBoundary)}</small>`
+        : "",
+      recovery.reopenWhen
+        ? `<small><strong>${esc(t("offlineRecoveryReopen"))}:</strong> ${esc(recovery.reopenWhen)}</small>`
+        : "",
+    ].filter(Boolean).join("");
+    return `<div class="mp-playback-rejection mp-offline-recovery">
+      <header><strong>${esc(t("offlineRecoveryBoundary"))}</strong><span>${esc(t("offlineRecoveryNoGraphEdge"))}</span></header>
+      <b>${esc(recovery.evidenceKind || recovery.recoveryStatus || "")}</b>
+      ${boundaries}
+      ${recovery.nativeMappingId ? `<em><code>${esc(recovery.nativeMappingId)}</code></em>` : ""}
+    </div>`;
+  }
+
+  function questAttachmentDiagnostic(node) {
+    const rows = state.index?.storyCoverage?.offlineRecoveryEvidence?.questAttachmentDiagnostics || {};
+    const row = rows[node?.id];
+    return row?.graphEffect === "none" ? row : null;
+  }
+
+  function questAttachmentDiagnosticHtml(node) {
+    const row = questAttachmentDiagnostic(node);
+    if (!row) return "";
+    const storyKeys = (row.diagnosticStoryKeys || []).map((key) => `<code>${esc(key)}</code>`).join(" ");
+    return `<div class="mp-playback-rejection mp-offline-recovery">
+      <header><strong>${esc(t("questAttachmentDiagnostic"))}</strong><span>${esc(t("offlineRecoveryNoGraphEdge"))}</span></header>
+      <p>${esc(t("questAttachmentDiagnosticHint"))}</p>
+      <small><strong>${esc(t("offlineRecoveryConsumer"))}:</strong> ${esc(row.attachmentBoundary || "")}</small>
+      <small><strong>${esc(t("offlineRecoveryOrder"))}:</strong> ${esc(row.orderBoundary || "")}</small>
+      ${storyKeys ? `<small><strong>${esc(t("questAttachmentDiagnosticStories"))}:</strong> ${storyKeys}</small>` : ""}
+      <small><strong>${esc(t("offlineRecoveryReopen"))}:</strong> ${esc(row.reopenWhen || "")}</small>
+      ${row.nativeMappingId ? `<em><code>${esc(row.nativeMappingId)}</code></em>` : ""}
+    </div>`;
+  }
+
   function playbackRejectionHtml(candidate) {
     const reason = candidate.reason === "case_sensitive_native_resource_lookup"
       ? t("rejectedPlaybackCaseReason")
@@ -1847,7 +2020,13 @@
       server_message: "triggerServerMessage",
       native_event: "triggerNativeEvent",
       levelscript: "triggerLevelScript",
+      leveldata: "triggerLevelData",
+      availability_condition: "triggerAvailabilityCondition",
+      narrative_interactive: "triggerNarrativeInteractive",
+      dialog_definition: "triggerDialogDefinition",
       native_action: "triggerNativeAction",
+      parent_story: "triggerParentStory",
+      dialog_timeline: "triggerDialogTimeline",
       story_root: "triggerStoryRoot",
       story: "triggerStory",
     })[kind] || "triggerContext");
@@ -1944,12 +2123,14 @@
     const details = storyConnectionDetails(row);
     const routeHtml = storyTriggerRoutes(row, questId).map(triggerRouteHtml).join("");
     const rejectionHtml = storyPlaybackRejections(row).map(playbackRejectionHtml).join("");
+    const offlineHtml = offlineRecoveryHtml(row);
     const evidence = [row.confidence, row.source || row.evidence].filter(Boolean).join(" · ");
     return `<a class="is-${className}" href="${esc(storyHref(row.key))}" title="${esc(`${t("openInStory")} · ${evidence}`)}">
       <span>${esc(storyDisplayKind(row))}</span><code>${esc(row.key)}</code><b aria-hidden="true">→</b>
       <em>${esc(details.join(" · "))}</em>${evidence ? `<small>${esc(evidence)}</small>` : ""}
       ${routeHtml}
       ${rejectionHtml}
+      ${offlineHtml}
     </a>`;
   }
 
@@ -2387,6 +2568,21 @@
     </details>`;
   }
 
+  function missionPropertiesHtml() {
+    const properties = state.mission?.mission?.properties || [];
+    if (!properties.length) return "";
+    const rows = properties.map((row) => `<article class="mp-property-row">
+      <code>${esc(row.key || "?")}</code>
+      <span>type ${esc(row.type ?? "?")}</span>
+      <strong>${esc(JSON.stringify(row.values || []))}</strong>
+    </article>`).join("");
+    return `<details class="mp-mission-story mp-mission-properties">
+      <summary>${esc(t("missionProperties"))} <span>${properties.length.toLocaleString()}</span></summary>
+      <p>${esc(t("missionPropertiesHint"))}</p>
+      <div class="mp-property-list">${rows}</div>
+    </details>`;
+  }
+
   function renderMissionSummary() {
     const target = byId("mp-mission-summary");
     if (!target || !state.mission) return;
@@ -2429,7 +2625,7 @@
   // keeps its own summary, hints and boundary notes verbatim, and the order
   // inside each band is the order it had in the flat stack.
   const SUMMARY_SECTIONS = [
-    ["structure", "summarySectionStructure", () => [missionGraphHtml(), storyOrderHtml()]],
+    ["structure", "summarySectionStructure", () => [missionGraphHtml(), storyOrderHtml(), missionPropertiesHtml()]],
     ["runtime", "summarySectionRuntime", () => [nativeRuntimeBindingsHtml(), runtimeTraceHtml()]],
     ["story", "summarySectionStory", () => [
       missionStoryConnectionsHtml(),
@@ -2478,6 +2674,19 @@
   function runtimeContractHtml() {
     const contract = state.index?.runtimeContract || {};
     const coveragePolicy = state.index?.storyCoverage?.policy || "";
+    const dynamicSceneAudit = state.index?.storyCoverage?.dynamicSceneIdentityCrossReferences || {};
+    const currentMissionId = String(state.missionId || state.mission?.mission?.id || "");
+    const dynamicSceneRows = (dynamicSceneAudit.rows || []).filter((row) => (
+      row
+      && row.missionGraphAction === "none"
+      && row.storyBinding === false
+      && row.orderEvidence === false
+      && (row.conditions || []).some((condition) => {
+        const identifier = String(condition?.identifier || "");
+        return identifier === currentMissionId
+          || identifier.startsWith(`${currentMissionId}_q#`);
+      })
+    ));
     const missionlessNodes = (state.index?.storyCoverage?.missionlessSubGamePlaybackNodes || [])
       .filter((row) => row && row.subGameId && row.bindScriptId);
     const missionlessAudit = contract.subGameMissionRegistry?.missionlessPlaybackAudit || {};
@@ -2488,6 +2697,7 @@
     const protocolOnlyRows = (contract.protocolOnly || []).filter((row) => row && row.message);
     const missionOptionAudit = contract.missionOptionCarrierAudit || null;
     const missionPropertyAudit = contract.missionPropertyScriptPtrAudit || null;
+    const trackingFilterRuntime = missionPropertyAudit?.trackingPropertyFilterRuntime || null;
     const paramSourceAudit = contract.paramSourceMissionContextAudit || null;
     const managedCarrierCensus = contract.managedIdentityCarrierCensus || null;
     const nestedCarrierCensus = contract.nestedManagedIdentityCarrierCensus || null;
@@ -2526,7 +2736,7 @@
       ${protocolOnlyRows.length ? `<section class="mp-local-only mp-protocol-capabilities"><header><strong>${esc(protocolLabel("capability"))}</strong><span>${esc(protocolLabel("schemaOnly"))}</span></header><div>${protocolOnlyRows.map((row) => `<article class="mp-contract-card"><span>${esc(protocolLabel(row.boundary === "runtime_unconfirmed" ? "runtimeUnconfirmed" : "senderUnconfirmed"))}</span><strong>${esc(row.message)}</strong><div class="mp-contract-tags"><b>${esc(row.confidence || "protocol_schema_only")}</b></div>${(row.fields || []).length ? `<small><b>${esc(t("protocolFields"))}:</b> ${(row.fields || []).map((field) => `<code>${esc(field)}</code>`).join(" ")}</small>` : ""}${row.possibleServerPush ? `<small><b>${esc(protocolLabel("possible"))}:</b> <code>${esc(row.possibleServerPush)}</code></small>` : ""}<p>${esc(row.effect || "")}</p></article>`).join("")}</div></section>` : ""}
       ${missionOptionAudit?.finding || missionPropertyAudit?.finding || paramSourceAudit?.finding || managedCarrierCensus?.finding || nestedCarrierCensus?.finding ? `<section class="mp-local-only mp-carrier-audits"><header><strong>${esc(t("carrierAudit"))}</strong><span>${esc(t("noGraphEdges"))}</span></header><div>
         ${missionOptionAudit?.finding ? `<article class="mp-contract-card is-boundary-only"><span>${esc(missionOptionAudit.classification || "schema_only")}</span><strong>${esc(missionOptionAudit.managedCarrier?.type || "MissionOptionData")}</strong><div class="mp-contract-tags"><b>${esc(t("alternateActions"))}</b><b>${esc(t("currentAuthoredInstances"))}: ${Number(missionOptionAudit.authoredInstanceSearch?.matches || 0).toLocaleString()}</b></div><small><b>${esc(t("protocolFields"))}:</b> ${(missionOptionAudit.managedCarrier?.fields || []).map((field) => `<code>${esc(`${field.name}@${field.offset}`)}</code>`).join(" ")}</small><code>${esc(missionOptionAudit.nativeConsumer?.symbol || "")}${missionOptionAudit.nativeConsumer?.address ? ` @ ${esc(missionOptionAudit.nativeConsumer.address)}` : ""}</code><p>${esc(missionOptionAudit.finding)}</p><small>${esc(missionOptionAudit.boundary || "")}</small></article>` : ""}
-        ${missionPropertyAudit?.finding ? `<article class="mp-contract-card is-boundary-only"><span>${esc(missionPropertyAudit.classification || "runtime_context_only")}</span><strong>MissionRuntimeAsset.properties → MissionData.propertyDict → ParamVariable.m_scriptPtr</strong><div class="mp-contract-tags"><b>${esc(t("runtimeContextOnly"))}</b><b>${esc(t("authoredPropertyRows"))}: ${Number(missionPropertyAudit.authoredMissionProperties?.propertyRows || 0).toLocaleString()}</b></div><small><b>${esc(t("protocolFields"))}:</b> <code>properties@${esc(missionPropertyAudit.managedLayout?.MissionRuntimeAsset?.properties?.offset || "")}</code> <code>propertyDic@${esc(missionPropertyAudit.managedLayout?.MissionRuntimeAsset?.propertyDic?.offset || "")}</code> <code>m_scriptPtr@${esc(missionPropertyAudit.managedLayout?.ParamVariable?.m_scriptPtr?.offset || "")}</code></small><code>${esc((missionPropertyAudit.missionPropertyWriters || []).map((row) => row.symbol).join(" · "))} → ToVariable</code><p>${esc(missionPropertyAudit.finding)}</p><small>${esc(missionPropertyAudit.boundary || "")}</small></article>` : ""}
+        ${missionPropertyAudit?.finding ? `<article class="mp-contract-card is-boundary-only"><span>${esc(missionPropertyAudit.classification || "runtime_context_only")}</span><strong>MissionRuntimeAsset.properties → MissionData.propertyDict → ParamVariable.m_scriptPtr</strong><div class="mp-contract-tags"><b>${esc(t("runtimeContextOnly"))}</b><b>${esc(t("authoredPropertyRows"))}: ${Number(missionPropertyAudit.authoredMissionProperties?.propertyRows || 0).toLocaleString()}</b>${trackingFilterRuntime ? `<b>${esc(t("trackingFilter"))}: ${Number(trackingFilterRuntime.authoredRows || 0).toLocaleString()}</b>` : ""}</div><small><b>${esc(t("protocolFields"))}:</b> <code>properties@${esc(missionPropertyAudit.managedLayout?.MissionRuntimeAsset?.properties?.offset || "")}</code> <code>propertyDic@${esc(missionPropertyAudit.managedLayout?.MissionRuntimeAsset?.propertyDic?.offset || "")}</code> <code>m_scriptPtr@${esc(missionPropertyAudit.managedLayout?.ParamVariable?.m_scriptPtr?.offset || "")}</code></small><code>${esc((missionPropertyAudit.missionPropertyWriters || []).map((row) => row.symbol).join(" · "))} → ToVariable</code><p>${esc(missionPropertyAudit.finding)}</p>${trackingFilterRuntime ? `<small><b>${esc(t("trackingFilter"))}:</b> <code>${esc(trackingFilterRuntime.evaluator?.symbol || "")}</code> → <code>${esc(trackingFilterRuntime.serverUpdate?.message || "")}</code></small><code>${esc((trackingFilterRuntime.evaluator?.flow || []).join(" → "))}</code><p>${esc(trackingFilterRuntime.finding || "")}</p><small>${esc(trackingFilterRuntime.boundary || "")}</small>` : ""}<small>${esc(missionPropertyAudit.boundary || "")}</small></article>` : ""}
         ${paramSourceAudit?.finding ? `<article class="mp-contract-card is-boundary-only"><span>${esc(paramSourceAudit.classification || "implicit_context_only")}</span><strong>ParamSource.CURRENT_MISSION_ID = ${Number(paramSourceAudit.managedContract?.currentMissionId || 0)}</strong><div class="mp-contract-tags"><b>${esc(t("implicitMissionContext"))}</b><b>${esc(t("missionRuntimeUses"))}: ${Number(paramSourceAudit.authoredMissionRuntime?.currentMissionIdOccurrences || 0).toLocaleString()}</b><b>${esc(t("levelScriptUses"))}: ${Number(paramSourceAudit.authoredLevelScripts?.validatedParamTails || 0).toLocaleString()}</b></div><small><b>${esc(t("protocolFields"))}:</b> <code>Param&lt;T&gt;.paramSource ${esc(paramSourceAudit.managedContract?.paramSourceFieldToken || "")}</code> <code>get_isCurrentMissionId ${esc(paramSourceAudit.managedContract?.currentMissionGetterToken || "")}</code></small><code>${Number(paramSourceAudit.authoredLevelScripts?.levelScriptFiles || 0).toLocaleString()} LevelScripts · ${Number(paramSourceAudit.authoredLevelScripts?.uidRecords || 0).toLocaleString()} UID records</code><p>${esc(paramSourceAudit.finding)}</p><small>${esc(paramSourceAudit.boundary || "")}</small></article>` : ""}
         ${managedCarrierCensus?.finding ? `<article class="mp-contract-card is-boundary-only"><span>${esc(managedCarrierCensus.classification || "all_direct_managed_identity_carriers_reviewed")}</span><strong>${esc(t("directManagedCandidates"))}: ${Number(managedCarrierCensus.metadata?.directCandidateTypes || 0).toLocaleString()}</strong><div class="mp-contract-tags"><b>${esc(t("runtimeObjectCandidates"))}: ${Number(managedCarrierCensus.metadata?.runtimeObjectCandidates || 0).toLocaleString()}</b><b>${esc(t("unreviewedCandidates"))}: ${Number(managedCarrierCensus.metadata?.unreviewedCandidates || 0).toLocaleString()}</b><b>${esc(t("trackingContextOnly"))}</b></div><small><b>${esc(t("protocolFields"))}:</b> <code>missionId ${esc(managedCarrierCensus.trackingClosure?.commonTrackingFields?.missionId?.token || "")}@${esc(managedCarrierCensus.trackingClosure?.commonTrackingFields?.missionId?.offset || "")}</code> <code>sceneId ${esc(managedCarrierCensus.trackingClosure?.commonTrackingFields?.sceneId?.token || "")}@${esc(managedCarrierCensus.trackingClosure?.commonTrackingFields?.sceneId?.offset || "")}</code></small><code>${(managedCarrierCensus.trackingClosure?.nativeConsumers || []).map((row) => `${esc(row.symbol || "")}${row.address ? ` @ ${esc(row.address)}` : ""}`).join(" · ")}</code><p>${esc(managedCarrierCensus.finding)}</p><small>${esc(managedCarrierCensus.trackingClosure?.finding || "")}</small><small>${esc(managedCarrierCensus.boundary || "")}</small></article>` : ""}
         ${nestedCarrierCensus?.finding ? `<article class="mp-contract-card is-boundary-only">
@@ -2553,6 +2763,31 @@
           <small>${esc(nestedCarrierCensus.boundary || "")}</small>
         </article>` : ""}
       </div></section>` : ""}
+      ${dynamicSceneRows.length ? `<section class="mp-missionless-runtime mp-dynamic-scene-crossrefs">
+        <header><strong>${esc(t("dynamicSceneCrossReferences"))} <span>${dynamicSceneRows.length}</span></strong><p>${esc(t("dynamicSceneCrossReferencesHint"))}</p></header>
+        <div class="mp-missionless-runtime-grid">${dynamicSceneRows.map((row) => {
+          const conditions = (row.conditions || []).filter((condition) => condition?.identifier);
+          const stories = (row.storyOccurrences || []).filter((story) => story?.storyKey);
+          const bridge = row.localContextBridge || null;
+          const bridgeDetails = (bridge?.exactTargetActions || []).flatMap((action) => (
+            (action.storyControlPathLinks || []).flatMap((link) => (
+              (link.sharedControlPaths || []).map((path) => ({action, link, path}))
+            ))
+          ));
+          const triggerVolumes = (bridge?.exactTargetActions || []).flatMap((action) => (
+            action.localTriggerVolumeContext?.triggerVolumes || []
+          ));
+          return `<article>
+            <header><code>${esc(row.scene || "?")}</code><b>${esc(t(bridgeDetails.length ? "exactDynamicSceneLocalContext" : "candidateContextOnly"))}</b></header>
+            <div class="mp-runtime-chain"><span>${esc(t("dynamicSceneLogicId"))}</span><code>${esc(row.logicId || "?")}</code><i aria-hidden="true">=</i><span>${esc(t("levelScriptId"))}</span><code>${esc(row.scriptId || "?")}</code><i aria-hidden="true">⇢</i><b>Story</b></div>
+            <p><span>${esc(t("missionStateConditions"))}</span><code>${esc(conditions.map((condition) => `${condition.identifier} ${condition.isSame ? "=" : "!="} ${condition.state ?? "?"}`).join(" · "))}</code></p>
+            <div class="mp-missionless-story-links">${stories.map((story) => `<a href="${esc(storyHref(story.storyKey))}" title="${esc(story.sourceFile || "")}"><span>${esc(story.actionName || "Story")}</span><code>${esc(story.storyKey)}</code><b aria-hidden="true">→</b><small>${esc(`${story.levelId || "?"}/${story.scriptId || "?"} @ ${story.recordOffset ?? "?"}`)}</small></a>`).join("")}</div>
+            ${bridgeDetails.length ? `<div class="mp-runtime-associations"><strong>${esc(t("typedDynamicSceneTargetAction"))}</strong>${bridgeDetails.map(({action, link, path}) => `<div><span>${esc(path.eventSummary || path.headerName || t("sameSerializedControlPath"))}</span><code>${esc(`${path.headerName || "header"} #${path.headerLocalId ?? "?"}${path.triggerSlotId != null ? ` · slot ${path.triggerSlotId}` : ""}`)}</code><i aria-hidden="true">→</i><a href="${esc(storyHref(link.storyKey))}"><code>${esc(link.storyKey || "?")}</code></a><i aria-hidden="true">→</i><code>${esc(`${action.actionName || "action"}(${action.targetDynamicEntityLogicId || "?"}, visible=${String(Boolean(action.visible))})`)}</code><small>${esc(`${t("sameSerializedControlPath")}: ${(path.decorationPathLocalIds || []).map((id) => `#${id}`).join(" → ")}`)}</small></div>`).join("")}<small>${esc(t("missionActivationGap"))}</small></div>` : ""}
+            ${triggerVolumes.length ? `<div class="mp-runtime-associations"><strong>${esc(t("exactLocalTriggerVolume"))}</strong>${triggerVolumes.map((volume) => `<div><span>Leader slot ${esc(volume.slotId ?? "?")}</span>${(volume.shapes || []).map((shape) => { const position = shape.position || {}; return `<code>${esc(shape.shapeType || "?")}${shape.radius != null ? ` · ${t("triggerVolumeRadius")} ${shape.radius}` : ""}</code>${position.x != null && position.y != null && position.z != null ? `<small>${esc(`${t("triggerVolumePosition")}: ${position.x}, ${position.y}, ${position.z}`)}</small>` : ""}`; }).join("")}</div>`).join("")}<small>${esc(t("noTriggerForeignIdentity"))}</small></div>` : ""}
+            <div class="mp-runtime-associations"><strong>${esc(t("noMissionOwner"))}</strong><div><span>${esc(dynamicSceneAudit.classification || row.classification || "")}</span><b>${esc(t("noGraphEdges"))}</b><small>${esc(dynamicSceneAudit.boundary || dynamicSceneAudit.finding || "")}</small></div></div>
+          </article>`;
+        }).join("")}</div>
+      </section>` : ""}
       ${eventFamilies.length ? `<section class="mp-gap-queue">
         <header><strong>${esc(t("nativeGapQueue"))}</strong><p>${esc(t("nativeGapQueueHint"))}</p></header>
         ${coveragePolicy ? `<p class="mp-gap-policy"><b>${esc(t("evidencePolicy"))}:</b> ${esc(coveragePolicy)}</p>` : ""}
@@ -2590,6 +2825,11 @@
           const activation = row.activationFrontier || {};
           const activationHosts = (activation.levelDataHosts || [])
             .filter((host) => host && host.fileName);
+          const nominalHostComparison = activation.nominalMissionHostComparison || {};
+          const nominalStoryCandidates = (nominalHostComparison.storyCandidates || [])
+            .filter((candidate) => candidate && candidate.nominalMissionId);
+          const nominalMissionHosts = (nominalHostComparison.sameLevelMissionNamedHosts || [])
+            .filter((host) => host && host.fileName && host.missionId);
           const activationDungeonContexts = (activation.dungeonSceneContexts || [])
             .filter((context) => context && context.subGameId && context.sceneId);
           const activationAssociationLabel = (relation) => ({
@@ -2692,6 +2932,16 @@
               <div><span>${esc(t("activationClass"))}</span><i aria-hidden="true">→</i><code>${esc(String(activation.activationClass).replaceAll("_", " "))}</code><b>${esc(t("noMissionOwner"))}</b></div>
               <div><span>${esc(t("startPolicy"))}</span><i aria-hidden="true">→</i><code>${esc(`${activation.startTypeName || "unresolved"} · shapes ${activation.startShapeListStatus || "unresolved"}/${activation.startShapeListCount ?? 0} · taskMap ${activation.taskMapStatus || "unresolved"}/${activation.taskMapCount ?? 0}`)}</code></div>
               ${activationHosts.map((host) => `<div><span>${esc(t("levelDataContainer"))}</span><i aria-hidden="true">→</i><code>${esc(host.fileName)}</code><b>${esc(host.hostMissionId || "generic")}</b><small>${esc(`${host.dictionaryEntryCount ?? "?"} LevelScripts`)}</small></div>`).join("")}
+              ${nominalStoryCandidates.map((candidate) => {
+                const matchingHosts = nominalMissionHosts.filter((host) => host.missionId === candidate.nominalMissionId);
+                const excludedHosts = matchingHosts.filter((host) => host.dictionaryValidated && !host.receiverScriptPresent);
+                const label = excludedHosts.length ? t("nominalMissionHostExcludes") : t("noSameLevelNominalMissionHost");
+                const detail = excludedHosts.length
+                  ? excludedHosts.map((host) => `${host.fileName} · ${host.dictionaryEntryCount ?? "?"} LevelScripts`).join(" · ")
+                  : t("nominalMissionCandidateBoundary");
+                return `<div class="is-boundary"><span>${esc(t("nominalMissionHostCheck"))}</span><i aria-hidden="true">→</i><code>${esc(`${candidate.storyKey || "Story"} → ${candidate.nominalMissionId}`)}</code><b>${esc(label)}</b><small>${esc(detail)}</small></div>`;
+              }).join("")}
+              ${nominalStoryCandidates.length ? `<small>${esc(t("nominalMissionCandidateBoundary"))}</small>` : ""}
               ${(activation.subGameIds || []).map((subGameId) => `<div><span>SubGame bindScriptId</span><i aria-hidden="true">→</i><code>${esc(subGameId)}</code><b>${esc(t("noMissionOwner"))}</b></div>`).join("")}
               ${activationDungeonContexts.flatMap((context) => [
                 `<div><span>${esc(t("dungeonSceneContext"))}</span><i aria-hidden="true">→</i><code>${esc(`${context.subGameId} · ${context.sceneId}`)}</code><b>${esc(context.receiverIsBoundScript ? t("boundReceiverScript") : t("siblingReceiverScript"))}</b><small>${esc([context.dungeonSeriesId, `bindScriptId ${context.bindScriptId}`].filter(Boolean).join(" · "))}</small></div>`,
@@ -2888,6 +3138,7 @@
     )];
     const runtimeActions = questRuntimeActions(node, localizedMap);
     const runtimeObservations = (node.runtimeStoryObservations || []).filter((row) => row && row.storyKey);
+    const attachmentDiagnostic = questAttachmentDiagnostic(node);
     const description = missionDescriptionInfo(node, localizedMap);
     const storyCounts = storyConnectionCounts(node, localizedMap);
     const network = node.network?.outbound;
@@ -2906,9 +3157,9 @@
       const activityId = row.paramData?.activityId || row.dialogKey || "";
       return `${t("openUiAction")}: ${activityId}`;
     }).join("; ");
-    const tooltip = [objectiveText(node, localizedMap), description.text, activitySummary, runtimeSummary, storySummary].filter(Boolean).join("\n\n");
+    const tooltip = [objectiveText(node, localizedMap), description.text, activitySummary, runtimeSummary, storySummary, attachmentDiagnostic ? t("questAttachmentDiagnosticHint") : ""].filter(Boolean).join("\n\n");
     return `<button class="${classes.join(" ")}" type="button" data-quest="${esc(node.id)}" aria-pressed="${selected}" style="left:${position.x}px;top:${position.y}px" title="${esc(tooltip)}">
-      <span class="mp-card-top"><code>${esc(questShortLabel(node.id))}</code><span class="mp-card-badges">${node.mainPath ? `<span>${esc(t("main"))}</span>` : ""}${isHiddenQuest(node) ? `<span class="is-hidden">${esc(t("hidden"))}</span>` : ""}${storyCounts.incoming ? `<span class="is-story is-incoming">${esc(t("storyIncomingBadge"))} ${storyCounts.incoming}</span>` : ""}${storyCounts.outgoing ? `<span class="is-story is-outgoing">${esc(t("storyOutgoingBadge"))} ${storyCounts.outgoing}</span>` : ""}${storyCounts.context ? `<span class="is-story is-context">${esc(t("storyContextBadge"))} ${storyCounts.context}</span>` : ""}${runtimeObservations.length ? `<span class="is-runtime">${esc(t("runtimeObserved"))} ${runtimeObservations.length}</span>` : ""}${runtimeActions.length ? `<span>${esc(t("openUiAction"))} ${runtimeActions.length}</span>` : ""}<span>${esc(t("flow"))} ${Number(node.flowIndex || 0)}</span></span></span>
+      <span class="mp-card-top"><code>${esc(questShortLabel(node.id))}</code><span class="mp-card-badges">${node.mainPath ? `<span>${esc(t("main"))}</span>` : ""}${isHiddenQuest(node) ? `<span class="is-hidden">${esc(t("hidden"))}</span>` : ""}${storyCounts.incoming ? `<span class="is-story is-incoming">${esc(t("storyIncomingBadge"))} ${storyCounts.incoming}</span>` : ""}${storyCounts.outgoing ? `<span class="is-story is-outgoing">${esc(t("storyOutgoingBadge"))} ${storyCounts.outgoing}</span>` : ""}${storyCounts.context ? `<span class="is-story is-context">${esc(t("storyContextBadge"))} ${storyCounts.context}</span>` : ""}${attachmentDiagnostic ? `<span class="is-story is-context">${esc(t("questAttachmentDiagnostic"))}</span>` : ""}${runtimeObservations.length ? `<span class="is-runtime">${esc(t("runtimeObserved"))} ${runtimeObservations.length}</span>` : ""}${runtimeActions.length ? `<span>${esc(t("openUiAction"))} ${runtimeActions.length}</span>` : ""}<span>${esc(t("flow"))} ${Number(node.flowIndex || 0)}</span></span></span>
       <strong>${esc(objectiveText(node, localizedMap))}</strong>
       <span class="mp-card-description">${esc(description.text || t("noDescription"))}</span>
       <span class="mp-condition-row">${runtimeActions.map((row) => `<span title="${esc(t("notStoryFile"))}">${esc(t("openUiAction"))}: ${esc(row.paramData?.activityId || row.dialogKey || "")}</span>`).join("")}${activityLevels.map((value) => `<span title="${esc(t("activityStageLevelHint"))}">${esc(t("activityStageLevel"))}: ${esc(value)}</span>`).join("")}${conditions.map((value) => `<span>${esc(value)}</span>`).join("")}${(node.conditionTypes || []).length > 3 ? `<span>+${node.conditionTypes.length - 3}</span>` : ""}</span>
@@ -3015,6 +3266,26 @@
     return `<div class="mp-condition-tree"><code>${esc(condition.type)}</code>${factHtml ? `<div class="mp-condition-facts">${factHtml}</div>` : ""}${children ? `<div class="mp-condition-children">${children}</div>` : ""}</div>`;
   }
 
+  function objectiveTrackingHtml(tracking) {
+    if (!tracking?.length) return "";
+    const rows = tracking.map((row) => {
+      const facts = Object.entries(row)
+        .filter(([key]) => !["index", "type", "filterCondition"].includes(key))
+        .map(([key, value]) => `<span><b>${esc(key)}</b>: ${esc(typeof value === "object" ? JSON.stringify(value) : value)}</span>`)
+        .join("");
+      return `<article class="mp-tracking-row">
+        <header><code>${esc(row.type || "TrackingInfo")}</code><small>#${Number(row.index || 0) + 1}</small></header>
+        ${facts ? `<div class="mp-condition-facts">${facts}</div>` : ""}
+        ${row.filterCondition ? `<div class="mp-tracking-filter"><strong>${esc(t("trackingFilter"))}</strong>${renderConditionTree(row.filterCondition)}</div>` : ""}
+      </article>`;
+    }).join("");
+    return `<details class="mp-objective-tracking" open>
+      <summary>${esc(t("trackingTargets"))} <span>${tracking.length.toLocaleString()}</span></summary>
+      <p>${esc(t("trackingTargetsHint"))}</p>
+      <div class="mp-tracking-list">${rows}</div>
+    </details>`;
+  }
+
   function objectiveHtml(objective, questId) {
     const finishRows = (objective.dialogFinishes || []).map((row) => `<span class="mp-finish-chip"><b>${esc(row.dialogId)}</b> · ${row.finishId < 0 ? esc(t("anyFinish")) : `${esc(t("finish"))} ${esc(row.finishId)}`}</span>`).join("");
     const localIds = new Set((state.mission?.nodes || []).map((node) => node.id));
@@ -3029,6 +3300,7 @@
     return `<article class="mp-objective"><header><strong>${esc(t("objectives"))} ${objective.index}</strong><span class="mp-authority is-${esc(objective.authority)}">${esc(objective.authority)}</span></header>
       <p>${esc(objective.descriptionKey || t("noObjective"))}</p>
       <div class="mp-objective-special">${finishRows}${stateRows}${placeholderRows}${submissionRows}${submissionCoGates}${submissionLevelScriptCoGates}</div>
+      ${objectiveTrackingHtml(objective.tracking)}
       ${renderConditionTree(objective.condition)}
     </article>`;
   }
@@ -3118,6 +3390,7 @@
       ${runtimeActionHtml ? `<section class="mp-inspector-section"><h3>${esc(t("runtimeActions"))}</h3>${runtimeActionHtml}</section>` : ""}
       <section class="mp-inspector-section"><h3>${esc(t("objectives"))}</h3>${(node.objectives || []).map((objective) => objectiveHtml(objective, node.id)).join("") || `<p>${esc(t("noObjective"))}</p>`}${node.failedCondition ? `<div class="mp-failed-condition"><strong>failedCondition</strong>${renderConditionTree(node.failedCondition)}</div>` : ""}</section>
       ${storyFilesHtml(node)}
+      ${questAttachmentDiagnosticHtml(node)}
       ${runtimeObservedHtml ? `<section class="mp-inspector-section mp-runtime-observed-section"><h3>${esc(t("runtimeTraceOverlay"))}</h3><p>${esc(t("runtimeTraceHint"))}</p><div class="mp-runtime-observation-list">${runtimeObservedHtml}</div><small>${esc(t("noAuthoredPromotion"))}</small></section>` : ""}
       ${actionHtml ? `<section class="mp-inspector-section"><h3>${esc(t("clientActions"))}</h3>${actionHtml}</section>` : ""}
       ${protocolHtml(node)}

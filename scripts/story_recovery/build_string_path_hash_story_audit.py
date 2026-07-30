@@ -36,7 +36,20 @@ DEFAULT_HASH_BIN = (
     / "Main"
     / "StringPathHash.bin"
 )
+DEFAULT_INITIAL_HASH_BIN = (
+    ROOT
+    / "tmp"
+    / "story"
+    / "root_selector_string_path_hash"
+    / "Data"
+    / "ExtendData"
+    / "Initial"
+    / "InitStringPathHash.bin"
+)
 DEFAULT_STRUCTURED_ROOT = ROOT / "export_full" / "structured" / "StreamingAssets"
+DEFAULT_NATIVE_BINARIES = (
+    Path(r"D:\Program Files\Endfield Game\GameAssembly.dll"),
+)
 DEFAULT_OBJECT_INDEXES = (
     ROOT
     / "export_full"
@@ -374,7 +387,17 @@ def scan_object_indexes(
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
     started = time.perf_counter()
     table, all_rows = parse_string_path_hash(args.string_path_hash)
-    selected = selected_hash_paths(all_rows, args.target)
+    initial_table, initial_rows = parse_string_path_hash(
+        args.initial_string_path_hash
+    )
+    selected = [
+        {**row, "registry": "main"}
+        for row in selected_hash_paths(all_rows, args.target)
+    ]
+    selected.extend(
+        {**row, "registry": "initial"}
+        for row in selected_hash_paths(initial_rows, args.target)
+    )
     missing_targets = [
         target
         for target in args.target
@@ -387,7 +410,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     print(
-        f"validated {table['entryCount']:,} StringPathHash entries; "
+        f"validated {table['entryCount']:,} main + "
+        f"{initial_table['entryCount']:,} initial StringPathHash entries; "
         f"selected {len(selected)} target paths",
         flush=True,
     )
@@ -412,6 +436,15 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     print(
         f"adjacent-binary scan: {extra_binaries['filesRead']:,} files / "
         f"{extra_binaries['hitCount']} hits in "
+        f"{time.perf_counter() - phase:.1f}s",
+        flush=True,
+    )
+    phase = time.perf_counter()
+    native_binaries = scan_binary_paths(args.native_binary, selected)
+    print(
+        f"native-binary scan: {native_binaries['filesRead']:,} files / "
+        f"{native_binaries['bytesRead']:,} bytes / "
+        f"{native_binaries['hitCount']} hits in "
         f"{time.perf_counter() - phase:.1f}s; "
         f"total {time.perf_counter() - started:.1f}s",
         flush=True,
@@ -420,9 +453,10 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         structured["hitCount"]
         + object_indexes["hitCount"]
         + extra_binaries["hitCount"]
+        + native_binaries["hitCount"]
     )
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 3,
         "scope": {
             "targets": list(args.target),
             "purpose": (
@@ -432,22 +466,35 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             ),
         },
         "stringPathHashTable": table,
+        "stringPathHashTables": {
+            "main": table,
+            "initial": initial_table,
+        },
         "targetHashPaths": selected,
         "counts": {
             "targets": len(args.target),
             "targetResourcePaths": len(selected),
+            "mainTargetResourcePaths": sum(
+                row["registry"] == "main" for row in selected
+            ),
+            "initialTargetResourcePaths": sum(
+                row["registry"] == "initial" for row in selected
+            ),
             "structuredFilesScanned": structured["filesRead"],
             "structuredBytesScanned": structured["bytesRead"],
             "objectIndexFilesScanned": object_indexes["filesRead"],
             "objectIndexLinesScanned": object_indexes["linesRead"],
             "extraBinaryFilesScanned": extra_binaries["filesRead"],
             "extraBinaryBytesScanned": extra_binaries["bytesRead"],
+            "nativeBinaryFilesScanned": native_binaries["filesRead"],
+            "nativeBinaryBytesScanned": native_binaries["bytesRead"],
             "exactConsumerHits": total_hits,
         },
         "consumerCensus": {
             "structuredBinary": structured,
             "objectIndexText": object_indexes,
             "extraBinary": extra_binaries,
+            "nativeBinary": native_binaries,
         },
         "nativeSemantics": {
             "valueType": "Beyond.Resource.StringPathHash",
@@ -471,7 +518,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
                 "The validated binary is a hash-to-resource-path diagnostic "
                 "dictionary. The selected paths are registered, but no exact "
                 "64-bit hash consumer occurs in the scanned structured data, "
-                "AnimeStudio object indexes, or supplied adjacent binaries."
+                "AnimeStudio object indexes, supplied adjacent binaries, or "
+                "current native binaries."
                 if total_hits == 0
                 else "At least one exact hash occurrence requires typed review."
             ),
@@ -489,7 +537,10 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
 def write_markdown(path: Path, report: dict[str, Any]) -> None:
     counts = report["counts"]
     conclusion = report["conclusion"]
-    table = report["stringPathHashTable"]
+    tables = report.get(
+        "stringPathHashTables",
+        {"main": report["stringPathHashTable"]},
+    )
     lines = [
         "# StringPathHash Story audit",
         "",
@@ -501,21 +552,34 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         "",
         "## Validated format",
         "",
-        f"- source: `{table['file']}`",
-        f"- SHA-256: `{table['sha256']}`",
-        f"- entries / strings: {table['entryCount']:,}",
-        f"- bucket table: {table['bucketTableBytes']:,} bytes",
-        f"- entry table: {table['entryTableBytes']:,} bytes as "
-        "`hash:int64 + stringPoolOffset:uint64`",
-        "- string pool: `byteLength:uint32 + UTF-16LE bytes + null:uint16`",
-        "",
-        "Native metadata identifies `StringPathHash` as an eight-byte hash value "
-        "and `StringPathHashBinary` as the owner of the main/init mapping "
-        "dictionaries. Its public lookup direction is hash to original path.",
-        "",
-        "## Selected roots",
-        "",
     ]
+    for name, table in tables.items():
+        lines.extend(
+            [
+                f"### `{name}` registry",
+                "",
+                f"- source: `{table['file']}`",
+                f"- SHA-256: `{table['sha256']}`",
+                f"- entries / strings: {table['entryCount']:,}",
+                f"- bucket table: {table['bucketTableBytes']:,} bytes",
+                f"- entry table: {table['entryTableBytes']:,} bytes as "
+                "`hash:int64 + stringPoolOffset:uint64`",
+                "- string pool: "
+                "`byteLength:uint32 + UTF-16LE bytes + null:uint16`",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "Native metadata identifies `StringPathHash` as an eight-byte hash "
+            "value and `StringPathHashBinary` as the owner of the main/init "
+            "mapping dictionaries. Its public lookup direction is hash to "
+            "original path.",
+            "",
+            "## Selected roots",
+            "",
+        ]
+    )
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in report["targetHashPaths"]:
         grouped.setdefault(row["target"], []).append(row)
@@ -523,7 +587,10 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         lines.append(f"### `{target}`")
         lines.append("")
         for row in rows:
-            lines.append(f"- `{row['hashHex']}` -> `{row['path']}`")
+            lines.append(
+                f"- `{row.get('registry', 'main')}` "
+                f"`{row['hashHex']}` -> `{row['path']}`"
+            )
         lines.append("")
     lines.extend(
         [
@@ -537,6 +604,10 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
             f"- adjacent supplied binaries: {counts['extraBinaryFilesScanned']:,} "
             f"files / {counts['extraBinaryBytesScanned']:,} bytes; "
             f"{report['consumerCensus']['extraBinary']['hitCount']} hits",
+            f"- current native binaries: "
+            f"{counts['nativeBinaryFilesScanned']:,} files / "
+            f"{counts['nativeBinaryBytesScanned']:,} bytes; "
+            f"{report['consumerCensus']['nativeBinary']['hitCount']} hits",
             "",
             "Both little- and big-endian 64-bit byte forms were searched in binary "
             "sources; signed, unsigned, and hexadecimal text forms were searched "
@@ -571,6 +642,15 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_STRUCTURED_ROOT,
     )
     parser.add_argument(
+        "--initial-string-path-hash",
+        type=Path,
+        default=DEFAULT_INITIAL_HASH_BIN,
+        help=(
+            "Targeted VFS dump of "
+            "Data/ExtendData/Initial/InitStringPathHash.bin."
+        ),
+    )
+    parser.add_argument(
         "--object-index",
         type=Path,
         action="append",
@@ -583,6 +663,13 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=None,
         help="Adjacent decoded binary to search; may be repeated.",
+    )
+    parser.add_argument(
+        "--native-binary",
+        type=Path,
+        action="append",
+        default=None,
+        help="Current native binary to search; may be repeated.",
     )
     parser.add_argument(
         "--target",
@@ -598,6 +685,11 @@ def parse_args() -> argparse.Namespace:
     )
     args.extra_binary = (
         tuple(args.extra_binary) if args.extra_binary else DEFAULT_EXTRA_BINARIES
+    )
+    args.native_binary = (
+        tuple(args.native_binary)
+        if args.native_binary
+        else DEFAULT_NATIVE_BINARIES
     )
     args.target = tuple(args.target) if args.target else DEFAULT_TARGETS
     return args

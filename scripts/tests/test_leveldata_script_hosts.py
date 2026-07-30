@@ -9,10 +9,13 @@ from unittest.mock import patch
 from scripts.story_builder import level_bindings
 from scripts.story_builder.level_bindings import (
     _find_exact_bytes_offsets,
+    _leveldata_interactive_final_record_boundary,
     _parse_leveldata_mission_host_name,
     build_leveldata_airwall_mission_radio_contexts,
+    build_leveldata_interactive_narrative_story_contexts,
     build_level_function_area_radio_trigger_story_contexts,
     build_level_interactive_narrative_mission_story_contexts,
+    build_levelscript_interactive_narrative_story_contexts,
     build_leveldata_authoritative_scope_script_host_index,
     build_leveldata_mission_area_script_host_index,
     build_leveldata_world_entity_quest_script_context,
@@ -21,8 +24,11 @@ from scripts.story_builder.level_bindings import (
     find_levelscript_brief_data_entries,
     parse_leveldata_levelscript_brief_dictionary,
     parse_leveldata_airwall_groups,
+    parse_leveldata_interactive_horn_dialog_records,
+    parse_leveldata_interactive_narrative_records,
     parse_level_function_area_radio_trigger_zone_entry,
     parse_level_interactive_narrative_mission_context,
+    parse_levelscript_interactive_narrative_maps,
     parse_levelscript_brief_data_entry,
 )
 
@@ -113,6 +119,31 @@ class LevelDataScriptHostTests(unittest.TestCase):
         )
 
     @classmethod
+    def _param_entry(
+        cls,
+        key: str,
+        value_type: int,
+        atoms: list[tuple[int, str | None]],
+    ) -> bytes:
+        return (
+            b"\x02"
+            + cls._mp_string(key)
+            + b"\x02"
+            + value_type.to_bytes(4, "little", signed=True)
+            + len(atoms).to_bytes(4, "little", signed=True)
+            + b"".join(
+                b"\x02"
+                + bits.to_bytes(8, "little")
+                + (
+                    (-1).to_bytes(4, "little", signed=True)
+                    if value is None
+                    else cls._mp_string(value)
+                )
+                for bits, value in atoms
+            )
+        )
+
+    @classmethod
     def _airwall_mission_check(
         cls,
         check_id: str,
@@ -190,6 +221,94 @@ class LevelDataScriptHostTests(unittest.TestCase):
                 + cls._param_string_entry("type_id", popup_id)
             )
         return payload + b"\xff\x00\x00\x00"
+
+    @classmethod
+    def _levelscript_narrative_interactive_record(
+        cls,
+        entity_detail_id: str,
+        type_id: str,
+        *,
+        progress_lock: bytes = b"\xff",
+    ) -> bytes:
+        component_map = (
+            (1).to_bytes(4, "little", signed=True)
+            + (94).to_bytes(4, "little", signed=True)
+            + (1).to_bytes(4, "little", signed=True)
+            + cls._param_string_entry("type_id", type_id)
+        )
+        derived_suffix = (
+            (-1).to_bytes(4, "little", signed=True)
+            + (-1).to_bytes(4, "little", signed=True)
+            + b"\x00\x00\x00"
+            + (-1).to_bytes(4, "little", signed=True)
+            + (-1).to_bytes(4, "little", signed=True)
+            + b"\x00\x00\x00\x00"
+            + progress_lock
+            + (0).to_bytes(4, "little", signed=True)
+        )
+        return (
+            b"\x19"
+            + (b"\x00" * 24)
+            + cls._mp_string(entity_detail_id)
+            + (b"\x00" * 52)
+            + component_map
+            + derived_suffix
+        )
+
+    @classmethod
+    def _leveldata_horn_interactive_record(
+        cls,
+        dialog_id: str,
+        *,
+        progress_lock: bytes = b"\xff",
+    ) -> bytes:
+        component_map = (
+            (2).to_bytes(4, "little", signed=True)
+            + (0).to_bytes(4, "little", signed=True)
+            + (0).to_bytes(4, "little", signed=True)
+            + (132).to_bytes(4, "little", signed=True)
+            + (0).to_bytes(4, "little", signed=True)
+        )
+        properties = [
+            cls._param_entry(
+                "audio_key",
+                8,
+                [
+                    (0, "au_int_horn_2nd_song"),
+                    (0, "au_int_horn_3rd_song"),
+                    (0, "au_int_horn_1st_song"),
+                ],
+            ),
+            cls._param_entry("dialog_id", 7, [(0, dialog_id)]),
+            cls._param_entry(
+                "horn_lang_key",
+                28,
+                [(0, "lang_int_horn_2")],
+            ),
+            cls._param_entry("max_count", 3, [(2**64 - 1, None)]),
+            cls._param_entry("index", 3, [(0, None)]),
+            cls._param_entry("state", 3, [(0, None)]),
+            cls._param_entry("count", 3, [(0, None)]),
+        ]
+        derived_suffix = (
+            (-1).to_bytes(4, "little", signed=True)
+            + (-1).to_bytes(4, "little", signed=True)
+            + b"\x00\x00\x00"
+            + (-1).to_bytes(4, "little", signed=True)
+            + (-1).to_bytes(4, "little", signed=True)
+            + b"\x00\x00\x00\x00"
+            + progress_lock
+            + len(properties).to_bytes(4, "little", signed=True)
+            + b"".join(properties)
+        )
+        return (
+            b"\x19"
+            + (b"\x00" * 24)
+            + cls._mp_string("int_horn")
+            + (b"\x00" * 52)
+            + component_map
+            + derived_suffix
+        )
 
     @staticmethod
     def _brief_entry(
@@ -608,6 +727,584 @@ class LevelDataScriptHostTests(unittest.TestCase):
             self.assertEqual("radio_c16m4_51", rows[0]["storyKey"])
             self.assertEqual("int_narrative_common", rows[0]["entityTemplateId"])
             self.assertEqual(2, rows[0]["interactiveListCount"])
+
+    def test_levelscript_interactive_narrative_map_is_counted_and_typed(
+        self,
+    ) -> None:
+        first = self._levelscript_narrative_interactive_record(
+            "int_narrative_scene_notebook",
+            "text_test_1",
+        )
+        second = self._levelscript_narrative_interactive_record(
+            "int_narrative_chip",
+            "rp_text_test_2",
+        )
+        payload = (
+            (2).to_bytes(4, "little", signed=True)
+            + (40001).to_bytes(4, "little", signed=False)
+            + first
+            + (40002).to_bytes(4, "little", signed=False)
+            + second
+        )
+        script_id_offset = len(payload)
+        data = payload + (123).to_bytes(8, "little", signed=False)
+
+        maps = parse_levelscript_interactive_narrative_maps(
+            data,
+            script_id_offset,
+        )
+        self.assertEqual(1, len(maps))
+        self.assertEqual(2, maps[0]["mapCount"])
+        self.assertEqual(
+            [40001, 40002],
+            [
+                row["localInteractiveId"]
+                for row in maps[0]["records"]
+            ],
+        )
+        self.assertEqual(
+            ["text_test_1", "rp_text_test_2"],
+            [row["typeId"] for row in maps[0]["records"]],
+        )
+
+        wrong_count = (
+            (3).to_bytes(4, "little", signed=True)
+            + data[4:]
+        )
+        self.assertEqual(
+            [],
+            parse_levelscript_interactive_narrative_maps(
+                wrong_count,
+                script_id_offset,
+            ),
+        )
+
+    def test_levelscript_interactive_narrative_context_resolves_popup(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            level_dir = root / "LevelScriptData" / "map_test"
+            level_dir.mkdir(parents=True)
+            record = self._levelscript_narrative_interactive_record(
+                "int_narrative_chip",
+                "rp_text_test_2",
+            )
+            payload = (
+                (1).to_bytes(4, "little", signed=True)
+                + (40002).to_bytes(4, "little", signed=False)
+                + record
+            )
+            script_id_offset = len(payload)
+            (level_dir / "123.json").write_bytes(
+                payload + (123).to_bytes(8, "little", signed=False)
+            )
+            popup_path = root / "ReadingPopUpTable.json"
+            popup_path.write_text(
+                json.dumps({
+                    "rp_text_test_2": {"contentId": "text_test_2"},
+                }),
+                encoding="utf-8",
+            )
+            summary = {
+                "serializedMemberCount": 27,
+                "scriptId": "123",
+                "scriptIdVerified": True,
+                "probableScriptIdOffset": script_id_offset,
+                "triggerVolumesStatus": "null",
+            }
+            interactive_index = {
+                "objectToTemplate": {
+                    "int_narrative_chip": "int_narrative_mission",
+                },
+                "coreTemplatePaths": {
+                    "int_narrative_mission": "data_int_narrative_mission.json",
+                },
+                "sourceFile": "InteractiveTable.json",
+                "verifiedMirrorFile": "",
+            }
+            with (
+                patch.object(
+                    level_bindings,
+                    "decode_levelscript_binary_file",
+                    return_value=summary,
+                ),
+                patch.object(
+                    level_bindings,
+                    "_load_interactive_object_template_index",
+                    return_value=interactive_index,
+                ),
+            ):
+                rows = build_levelscript_interactive_narrative_story_contexts(
+                    {"text_test_2"},
+                    levelscript_root=root / "LevelScriptData",
+                    reading_popup_path=popup_path,
+                )
+            self.assertEqual(1, len(rows))
+            self.assertEqual("text_test_2", rows[0]["storyKey"])
+            self.assertEqual(
+                "reading_popup_content_id",
+                rows[0]["storyKeyResolution"],
+            )
+            self.assertEqual(40002, rows[0]["localInteractiveId"])
+            self.assertEqual("123", rows[0]["scriptId"])
+
+    def test_leveldata_interactive_narrative_excludes_unbounded_final_record(
+        self,
+    ) -> None:
+        records = [
+            self._levelscript_narrative_interactive_record(
+                "int_narrative_scene_book",
+                "text_test_1",
+            ),
+            self._levelscript_narrative_interactive_record(
+                "int_narrative_scene_chip",
+                "rp_text_test_2",
+            ),
+            self._levelscript_narrative_interactive_record(
+                "int_narrative_scene_pad",
+                "text_test_3",
+            ),
+        ]
+        data = (
+            b"\x2b"
+            + (3).to_bytes(4, "little", signed=True)
+            + b"".join(records)
+        )
+
+        rows = parse_leveldata_interactive_narrative_records(data)
+
+        self.assertEqual(
+            ["text_test_1", "rp_text_test_2"],
+            [row["typeId"] for row in rows],
+        )
+        self.assertEqual([0, 1], [row["recordIndex"] for row in rows])
+        self.assertTrue(all(row["interactiveListCount"] == 3 for row in rows))
+        self.assertTrue(all(
+            row["recordBoundarySource"] == "next_record"
+            for row in rows
+        ))
+
+        final_boundary = len(data)
+        rows = parse_leveldata_interactive_narrative_records(
+            data,
+            final_record_end_offset=final_boundary,
+        )
+        self.assertEqual(
+            ["text_test_1", "rp_text_test_2", "text_test_3"],
+            [row["typeId"] for row in rows],
+        )
+        self.assertEqual(
+            "leveldata_member21_start",
+            rows[-1]["recordBoundarySource"],
+        )
+
+    def test_leveldata_interactive_narrative_decodes_state_progress_locks(
+        self,
+    ) -> None:
+        mission_completed = (
+            b"\x0c\x03"
+            + (0).to_bytes(4, "little", signed=True)
+            + (3).to_bytes(4, "little", signed=True)
+            + self._mp_string("e6m1")
+        )
+        mission_processing = (
+            b"\x0c\x03"
+            + (0).to_bytes(4, "little", signed=True)
+            + (2).to_bytes(4, "little", signed=True)
+            + self._mp_string("e6m1")
+        )
+        combined = (
+            b"\x00\x03"
+            + (1).to_bytes(4, "little", signed=True)
+            + b"\x00"
+            + (2).to_bytes(4, "little", signed=True)
+            + mission_completed
+            + mission_processing
+        )
+        quest_not_equal = (
+            b"\x10\x03"
+            + (1).to_bytes(4, "little", signed=True)
+            + (3).to_bytes(4, "little", signed=True)
+            + self._mp_string("c6m1_q#7")
+        )
+        nested = (
+            b"\x00\x03"
+            + (0).to_bytes(4, "little", signed=True)
+            + b"\x00"
+            + (2).to_bytes(4, "little", signed=True)
+            + mission_completed
+            + combined
+        )
+        records = [
+            self._levelscript_narrative_interactive_record(
+                "int_narrative_scene_book",
+                "dlg_test_1",
+                progress_lock=mission_completed,
+            ),
+            self._levelscript_narrative_interactive_record(
+                "int_narrative_scene_pad",
+                "dlg_test_2",
+                progress_lock=combined,
+            ),
+            self._levelscript_narrative_interactive_record(
+                "int_narrative_scene_empty",
+                "dlg_test_3",
+                progress_lock=nested,
+            ),
+            self._levelscript_narrative_interactive_record(
+                "int_narrative_scene_document",
+                "dlg_test_4",
+                progress_lock=quest_not_equal,
+            ),
+        ]
+        data = (
+            b"\x2b"
+            + (4).to_bytes(4, "little", signed=True)
+            + b"".join(records)
+        )
+
+        rows = parse_leveldata_interactive_narrative_records(
+            data,
+            final_record_end_offset=len(data),
+        )
+
+        self.assertEqual(4, len(rows))
+        self.assertEqual(
+            "SimpleConditionCheckMissionState",
+            rows[0]["progressLockConditionType"],
+        )
+        self.assertEqual(
+            "CombinedConditionRuntime",
+            rows[1]["progressLockConditionType"],
+        )
+        self.assertEqual(
+            [3, 2],
+            [
+                condition["compareTarget"]
+                for condition in rows[1]["progressLockConditions"]
+            ],
+        )
+        self.assertEqual(
+            [3, 3, 2],
+            [
+                condition["compareTarget"]
+                for condition in rows[2]["progressLockConditions"]
+            ],
+        )
+        self.assertEqual(
+            "CombinedConditionRuntime",
+            rows[2]["progressLockConditionTree"]["conditions"][1][
+                "conditionType"
+            ],
+        )
+        self.assertEqual(
+            1,
+            rows[3]["progressLockConditions"][0]["compareOperator"],
+        )
+
+    def test_leveldata_interactive_final_boundary_requires_member22_dictionary(
+        self,
+    ) -> None:
+        records = [
+            self._levelscript_narrative_interactive_record(
+                "int_narrative_scene_book",
+                "text_test_1",
+            ),
+            self._levelscript_narrative_interactive_record(
+                "int_narrative_scene_pad",
+                "text_test_2",
+            ),
+        ]
+        record_end = 1 + 4 + sum(len(record) for record in records)
+        data = (
+            b"\x2b"
+            + (2).to_bytes(4, "little", signed=True)
+            + b"".join(records)
+            + (77).to_bytes(4, "little", signed=True)
+            + (1).to_bytes(4, "little", signed=True)
+            + self._brief_entry(123)
+        )
+
+        boundary = _leveldata_interactive_final_record_boundary(
+            data,
+            {123},
+        )
+
+        self.assertIsNotNone(boundary)
+        self.assertEqual(record_end, boundary["recordEndOffset"])
+        self.assertEqual(77, boundary["levelIdNum"])
+        self.assertEqual(
+            record_end + 4,
+            boundary["levelScriptBriefDictionaryCountOffset"],
+        )
+        self.assertIsNone(
+            _leveldata_interactive_final_record_boundary(data, {999})
+        )
+
+    def test_leveldata_interactive_final_boundary_accepts_exact_empty_suffix(
+        self,
+    ) -> None:
+        record = self._levelscript_narrative_interactive_record(
+            "int_narrative_scene_book",
+            "text_test_1",
+        )
+        record_end = 1 + 4 + len(record)
+        suffix = (
+            (77).to_bytes(4, "little", signed=True)
+            + (0).to_bytes(4, "little", signed=True) * 14
+            + b"\x01\x00\x00\x00\x00"
+            + self._mp_string("map_test")
+            + (0).to_bytes(4, "little", signed=True) * 2
+            + b"\xff"
+            + (0).to_bytes(4, "little", signed=True) * 3
+        )
+        data = (
+            b"\x2b"
+            + (1).to_bytes(4, "little", signed=True)
+            + record
+            + suffix
+        )
+
+        boundary = _leveldata_interactive_final_record_boundary(
+            data,
+            set(),
+            expected_level_id="map_test",
+        )
+        rows = parse_leveldata_interactive_narrative_records(
+            data,
+            final_record_end_offset=boundary["recordEndOffset"],
+        )
+
+        self.assertEqual(record_end, boundary["recordEndOffset"])
+        self.assertEqual(
+            "complete_empty_script_suffix_to_eof",
+            boundary["levelDataFinalBoundaryValidation"],
+        )
+        self.assertEqual(0, boundary["levelScriptBriefDictionaryCount"])
+        self.assertEqual("text_test_1", rows[0]["typeId"])
+
+    def test_leveldata_horn_dialog_consumer_requires_exact_template(
+        self,
+    ) -> None:
+        progress_lock = (
+            b"\x10\x03"
+            + (0).to_bytes(4, "little", signed=True)
+            + (3).to_bytes(4, "little", signed=True)
+            + self._mp_string("sm1l1m9_q#16")
+        )
+        record = self._leveldata_horn_interactive_record(
+            "dlg_sm1l1m9_11",
+            progress_lock=progress_lock,
+        )
+        record_end = 1 + 4 + len(record)
+        suffix = (
+            (77).to_bytes(4, "little", signed=True)
+            + (0).to_bytes(4, "little", signed=True) * 14
+            + b"\x01\x00\x00\x00\x00"
+            + self._mp_string("map_test")
+            + (0).to_bytes(4, "little", signed=True) * 2
+            + b"\xff"
+            + (0).to_bytes(4, "little", signed=True) * 3
+        )
+        data = (
+            b"\x2b"
+            + (1).to_bytes(4, "little", signed=True)
+            + record
+            + suffix
+        )
+        boundary = _leveldata_interactive_final_record_boundary(
+            data,
+            set(),
+            expected_level_id="map_test",
+        )
+        parsed = parse_leveldata_interactive_horn_dialog_records(
+            data,
+            final_record_end_offset=boundary["recordEndOffset"],
+        )
+
+        self.assertEqual(record_end, boundary["recordEndOffset"])
+        self.assertEqual(1, len(parsed))
+        self.assertEqual("dlg_sm1l1m9_11", parsed[0]["dialogId"])
+        self.assertEqual([0, 132], parsed[0]["componentPropertyKeys"])
+        self.assertEqual(
+            "SimpleConditionCheckQuestState",
+            parsed[0]["progressLockConditionType"],
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            streaming = root / "Streaming" / "map_test"
+            persistent = root / "Persistent" / "map_test"
+            streaming.mkdir(parents=True)
+            persistent.mkdir(parents=True)
+            source_path = streaming / "map_test_lv_data_sub_fixture.json"
+            mirror_path = persistent / source_path.name
+            source_path.write_bytes(data)
+            mirror_path.write_bytes(data)
+            horn_template = (
+                b"int_horn dialog_id $33@_dialogId $33@_finishId "
+                b"[HORN]OnDialogExit: finishid:"
+            )
+            horn_source = root / "Streaming" / "data_int_horn.json"
+            horn_mirror = root / "Persistent" / "data_int_horn.json"
+            horn_source.write_bytes(horn_template)
+            horn_mirror.write_bytes(horn_template)
+            interactive_index = {
+                "objectToTemplate": {"int_horn": "int_horn"},
+                "coreTemplatePaths": {
+                    "int_horn": "data_int_horn.json",
+                },
+                "sourceFile": "InteractiveTable.json",
+                "verifiedMirrorFile": "Persistent/InteractiveTable.json",
+            }
+            with (
+                patch.object(
+                    level_bindings,
+                    "_load_interactive_object_template_index",
+                    return_value=interactive_index,
+                ),
+                patch.object(
+                    level_bindings,
+                    "LEVELDATA_HORN_TEMPLATE_SHA256",
+                    level_bindings.hashlib.sha256(
+                        horn_template
+                    ).hexdigest(),
+                ),
+            ):
+                contexts = (
+                    build_leveldata_interactive_narrative_story_contexts(
+                        {"dlg_sm1l1m9_11"},
+                        leveldata_root=root / "Streaming",
+                        persistent_leveldata_root=root / "Persistent",
+                        levelscript_root=root / "LevelScriptData",
+                        reading_popup_path=root / "ReadingPopUpTable.json",
+                        horn_template_path=horn_source,
+                        persistent_horn_template_path=horn_mirror,
+                    )
+                )
+                self.assertEqual(1, len(contexts))
+                self.assertEqual(
+                    "horn_dialog_property",
+                    contexts[0]["narrativeConsumerKind"],
+                )
+                self.assertEqual(
+                    "sm1l1m9_q#16",
+                    contexts[0]["progressLockConditions"][0]["ownerId"],
+                )
+
+                definition_contexts = (
+                    build_leveldata_interactive_narrative_story_contexts(
+                        set(),
+                        available_horn_dialog_definition_keys={
+                            "dlg_sm1l1m9_11"
+                        },
+                        leveldata_root=root / "Streaming",
+                        persistent_leveldata_root=root / "Persistent",
+                        levelscript_root=root / "LevelScriptData",
+                        reading_popup_path=root / "ReadingPopUpTable.json",
+                        horn_template_path=horn_source,
+                        persistent_horn_template_path=horn_mirror,
+                    )
+                )
+                self.assertEqual(1, len(definition_contexts))
+                self.assertEqual(
+                    "registered_dialog_definition",
+                    definition_contexts[0]["storyKeyResolution"],
+                )
+                self.assertFalse(definition_contexts[0]["storyBinding"])
+                self.assertTrue(
+                    definition_contexts[0]["dialogDefinitionBinding"]
+                )
+
+                horn_mirror.write_bytes(horn_template + b" mismatch")
+                contexts = (
+                    build_leveldata_interactive_narrative_story_contexts(
+                        {"dlg_sm1l1m9_11"},
+                        leveldata_root=root / "Streaming",
+                        persistent_leveldata_root=root / "Persistent",
+                        levelscript_root=root / "LevelScriptData",
+                        reading_popup_path=root / "ReadingPopUpTable.json",
+                        horn_template_path=horn_source,
+                        persistent_horn_template_path=horn_mirror,
+                    )
+                )
+                self.assertEqual([], contexts)
+
+    def test_leveldata_interactive_narrative_context_requires_exact_mirror(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            streaming = root / "Streaming" / "map_test"
+            persistent = root / "Persistent" / "map_test"
+            streaming.mkdir(parents=True)
+            persistent.mkdir(parents=True)
+            records = [
+                self._levelscript_narrative_interactive_record(
+                    "int_narrative_scene_book",
+                    "rp_text_test_1",
+                ),
+                self._levelscript_narrative_interactive_record(
+                    "int_narrative_scene_pad",
+                    "text_unbounded",
+                ),
+            ]
+            data = (
+                b"\x2b"
+                + (2).to_bytes(4, "little", signed=True)
+                + b"".join(records)
+            )
+            source_path = streaming / "map_test_lv_data_sub_fixture.json"
+            mirror_path = persistent / source_path.name
+            source_path.write_bytes(data)
+            mirror_path.write_bytes(data)
+            popup_path = root / "ReadingPopUpTable.json"
+            popup_path.write_text(
+                json.dumps({
+                    "rp_text_test_1": {"contentId": "text_test_1"},
+                }),
+                encoding="utf-8",
+            )
+            interactive_index = {
+                "objectToTemplate": {
+                    "int_narrative_scene_book":
+                        "int_narrative_scene",
+                },
+                "coreTemplatePaths": {
+                    "int_narrative_scene":
+                        "data_int_narrative_scene.json",
+                },
+                "sourceFile": "InteractiveTable.json",
+                "verifiedMirrorFile": "Persistent/InteractiveTable.json",
+            }
+            with patch.object(
+                level_bindings,
+                "_load_interactive_object_template_index",
+                return_value=interactive_index,
+            ):
+                rows = build_leveldata_interactive_narrative_story_contexts(
+                    {"text_test_1"},
+                    leveldata_root=root / "Streaming",
+                    persistent_leveldata_root=root / "Persistent",
+                    reading_popup_path=popup_path,
+                )
+                self.assertEqual(1, len(rows))
+                self.assertEqual("text_test_1", rows[0]["storyKey"])
+                self.assertEqual(
+                    "reading_popup_content_id",
+                    rows[0]["storyKeyResolution"],
+                )
+                self.assertEqual("map_test", rows[0]["levelId"])
+
+                mirror_path.write_bytes(data + b"\x00")
+                rows = build_leveldata_interactive_narrative_story_contexts(
+                    {"text_test_1"},
+                    leveldata_root=root / "Streaming",
+                    persistent_leveldata_root=root / "Persistent",
+                    reading_popup_path=popup_path,
+                )
+                self.assertEqual([], rows)
 
     def test_mission_area_parent_root_scopes_file_without_filename_inference(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

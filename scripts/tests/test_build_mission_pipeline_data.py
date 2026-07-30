@@ -1,3 +1,4 @@
+import hashlib
 import json
 import tempfile
 import unittest
@@ -14,6 +15,459 @@ def condition(kind, **values):
 
 
 class MissionPipelineBuilderTests(unittest.TestCase):
+    def test_offline_story_recovery_schema_tracks_source_queue(self):
+        self.assertEqual(
+            pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA,
+            "sourceStoryGapQueue.v78",
+        )
+
+    def test_offline_story_recovery_annotates_without_creating_graph_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            queue_path = Path(temporary) / "gap_queue.json"
+            queue_path.write_text(
+                json.dumps({
+                    "_schema": pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA,
+                    "offlineExhaustionEvidence": {
+                        "status": "active",
+                        "mappingId": "fixture-offline-v1",
+                        "graphEffect": "none",
+                        "sourceHashMismatches": [],
+                    },
+                    "missions": [{
+                        "mission": "testm1",
+                        "deferredOfflineExhaustedIsolatedScenes": [{
+                            "sceneKey": "dlg_testm1_1",
+                            "missionId": "testm1",
+                            "recoveryStatus":
+                                "deferred_current_build_offline_surface_exhausted",
+                            "evidenceKind":
+                                "registered_dialog_definition_without_recovered_activator",
+                            "consumerBoundary": "no exact activator",
+                            "orderBoundary": "definition order is not chronology",
+                        "reopenWhen": "source changes",
+                        "graphEffect": "none",
+                        "gameAssemblySha256": "fixture",
+                    }, {
+                        "sceneKey": "text_testm1_1",
+                        "missionId": "testm1",
+                        "recoveryStatus":
+                            "deferred_current_build_offline_surface_exhausted",
+                        "evidenceKind":
+                            "reading_popup_definition_without_recovered_activator",
+                        "consumerBoundary": "no exact activator",
+                        "orderBoundary": "definition order is not chronology",
+                        "reopenWhen": "source changes",
+                        "graphEffect": "none",
+                        "gameAssemblySha256": "fixture",
+                    }, {
+                        "sceneKey": "radio_testm1_1",
+                        "missionId": "testm1",
+                        "recoveryStatus":
+                            "deferred_current_build_offline_surface_exhausted",
+                        "evidenceKind":
+                            "radio_definition_without_recovered_consumer",
+                        "consumerBoundary": "no exact activator",
+                        "orderBoundary": "definition order is not chronology",
+                        "reopenWhen": "source changes",
+                        "graphEffect": "none",
+                        "gameAssemblySha256": "fixture",
+                        }],
+                    }],
+                }),
+                encoding="utf-8",
+            )
+            manifest = {
+                "dlg_testm1_1": {
+                    "attachmentStatus": "definition_only_no_consumer",
+                    "routes": [],
+                }
+            }
+
+            result = pipeline.publish_offline_story_recovery(
+                manifest,
+                queue_path,
+            )
+
+        self.assertEqual(result["status"], "active")
+        self.assertEqual(result["publishedStoryKeys"], 1)
+        self.assertEqual(result["outsidePipelineCoverageStoryKeys"], 2)
+        self.assertEqual(
+            manifest["dlg_testm1_1"]["attachmentStatus"],
+            "definition_only_no_consumer",
+        )
+        self.assertEqual(manifest["dlg_testm1_1"]["routes"], [])
+        recovery = manifest["dlg_testm1_1"]["offlineRecovery"]
+        self.assertEqual(recovery["graphEffect"], "none")
+        self.assertNotIn("gameAssemblySha256", recovery)
+        overlay = result["storyTriggerManifestOverlay"]["text_testm1_1"]
+        self.assertEqual(overlay["routes"], [])
+        self.assertEqual(
+            overlay["attachmentStatus"],
+            "offline_exhausted_outside_pipeline_coverage_denominator",
+        )
+        radio_overlay = result["storyTriggerManifestOverlay"][
+            "radio_testm1_1"
+        ]
+        self.assertEqual(radio_overlay["kind"], "radio")
+        self.assertEqual(radio_overlay["routes"], [])
+
+    def test_offline_story_recovery_publishes_non_owning_quest_diagnostic(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            queue_path = Path(temporary) / "gap_queue.json"
+            queue_path.write_text(
+                json.dumps({
+                    "_schema": pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA,
+                    "offlineExhaustionEvidence": {
+                        "status": "active",
+                        "mappingId": "fixture-offline-v1",
+                        "graphEffect": "none",
+                        "sourceHashMismatches": [],
+                    },
+                    "questAttachmentDiagnosticEvidence": {
+                        "status": "active",
+                        "mappingId": "fixture-quest-negative-v1",
+                        "graphEffect": "none",
+                        "sourceHashMismatches": [],
+                        "validationFailures": [],
+                    },
+                    "missions": [{
+                        "mission": "testm1",
+                        "closedQuestAttachmentDiagnostics": [{
+                            "questId": "testm1_q#1",
+                            "missionId": "testm1",
+                            "recoveryStatus":
+                                "closed_server_placeholder_without_client_story_semantics",
+                            "attachmentBoundary": "no client Story field",
+                            "orderBoundary": "no order edge",
+                            "reopenWhen": "source changes",
+                            "graphEffect": "none",
+                        }],
+                        "deferredOfflineExhaustedIsolatedScenes": [],
+                    }],
+                }),
+                encoding="utf-8",
+            )
+
+            result = pipeline.publish_offline_story_recovery(
+                {},
+                queue_path,
+            )
+
+        self.assertEqual(result["questAttachmentDiagnosticStatus"], "active")
+        self.assertEqual(
+            result["questAttachmentDiagnosticMappingId"],
+            "fixture-quest-negative-v1",
+        )
+        diagnostic = result["questAttachmentDiagnostics"]["testm1_q#1"]
+        self.assertEqual(diagnostic["graphEffect"], "none")
+        self.assertEqual(diagnostic["attachmentBoundary"], "no client Story field")
+
+    def test_offline_story_recovery_fails_closed_on_schema_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            queue_path = Path(temporary) / "gap_queue.json"
+            queue_path.write_text(
+                json.dumps({
+                    "_schema": "sourceStoryGapQueue.v999",
+                    "offlineExhaustionEvidence": {
+                        "status": "active",
+                        "mappingId": "fixture-offline-v999",
+                        "graphEffect": "none",
+                        "sourceHashMismatches": [],
+                    },
+                    "missions": [],
+                }),
+                encoding="utf-8",
+            )
+            manifest = {
+                "dlg_testm1_1": {
+                    "attachmentStatus": "definition_only_no_consumer",
+                    "routes": [],
+                }
+            }
+
+            result = pipeline.publish_offline_story_recovery(
+                manifest,
+                queue_path,
+            )
+
+        self.assertEqual(result["status"], "rejected_stale_or_incompatible")
+        self.assertNotIn("offlineRecovery", manifest["dlg_testm1_1"])
+
+    def test_dynamic_scene_cross_references_remain_non_owning(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            audit_path = Path(temporary) / "dynamic_scene.json"
+            audit_path.write_text(
+                json.dumps({
+                    "schemaVersion": 1,
+                    "nativeIdentityBoundary": {
+                        "classification":
+                            "exact_cross_reference_not_runtime_owner",
+                        "directBridgeFound": False,
+                        "missionGraphAction": "none",
+                        "promotionRequirement": "typed runtime bridge required",
+                    },
+                    "storyIdentityCandidates": [{
+                        "scene": "map01",
+                        "logicId": "2100060003",
+                        "sourceFile": "DynamicStreaming/map01/fb_main.bytes",
+                        "missionControls": [{
+                            "compareType": 0,
+                            "toBeTrue": True,
+                            "conditions": [{
+                                "identifier": "e1m2_q#5",
+                                "isQuest": True,
+                                "state": 3,
+                                "isSame": True,
+                            }],
+                        }],
+                        "storyOccurrences": [{
+                            "storyKey": "cutscene_e1m3_1",
+                            "levelId": "map01_lv001",
+                            "scriptId": "2100060003",
+                            "recordOffset": 368,
+                            "actionName": "PlayFmvAction",
+                            "sourceFile":
+                                "LevelScriptData/map01_lv001/2100060003.json",
+                            "nativeEventOwnerStatus":
+                                "exact_serialized_control_path",
+                        }],
+                    }],
+                }),
+                encoding="utf-8",
+            )
+
+            published = pipeline.load_dynamic_scene_identity_cross_references(
+                audit_path
+            )
+
+        self.assertIsNotNone(published)
+        self.assertEqual(published["missionGraphAction"], "none")
+        self.assertFalse(published["directBridgeFound"])
+        self.assertEqual(published["counts"]["candidateRoots"], 1)
+        row = published["rows"][0]
+        self.assertEqual(row["logicId"], row["scriptId"])
+        self.assertEqual(row["missionOwnerStatus"], "unresolved")
+        self.assertFalse(row["storyBinding"])
+        self.assertFalse(row["orderEvidence"])
+
+    def test_dynamic_scene_cross_references_fail_closed_on_positive_bridge(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            audit_path = Path(temporary) / "dynamic_scene.json"
+            audit_path.write_text(
+                json.dumps({
+                    "schemaVersion": 1,
+                    "nativeIdentityBoundary": {
+                        "classification":
+                            "exact_cross_reference_not_runtime_owner",
+                        "directBridgeFound": True,
+                        "missionGraphAction": "none",
+                    },
+                    "storyIdentityCandidates": [],
+                }),
+                encoding="utf-8",
+            )
+
+            published = pipeline.load_dynamic_scene_identity_cross_references(
+                audit_path
+            )
+
+        self.assertIsNone(published)
+
+    def test_dynamic_scene_typed_target_bridge_stays_local_context(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            audit_path = root / "dynamic_scene.json"
+            bridge_path = root / "dynamic_scene_bridge.json"
+            audit = {
+                "schemaVersion": 1,
+                "nativeIdentityBoundary": {
+                    "classification":
+                        "exact_cross_reference_not_runtime_owner",
+                    "directBridgeFound": False,
+                    "missionActivationBridgeFound": False,
+                    "missionGraphAction": "none",
+                    "promotionRequirement":
+                        "mission condition activation edge required",
+                },
+                "storyIdentityCandidates": [{
+                    "scene": "map02",
+                    "logicId": "10100282001",
+                    "sourceFile": "DynamicStreaming/map02/fb_main.bytes",
+                    "missionControls": [{
+                        "conditions": [{
+                            "identifier": "c27m3_q#3",
+                            "isQuest": True,
+                            "state": 3,
+                            "isSame": True,
+                        }],
+                    }],
+                    "storyOccurrences": [{
+                        "storyKey": "dlg_c27m3_6",
+                        "levelId": "map02_lv001",
+                        "scriptId": "10100282001",
+                        "recordOffset": 7,
+                        "actionName": "StartDialogAndTeleportAction",
+                    }],
+                }],
+            }
+            audit_path.write_text(json.dumps(audit), encoding="utf-8")
+            bridge_path.write_text(
+                json.dumps({
+                    "schemaVersion": 1,
+                    "sources": {
+                        "identityAudit": {
+                            "sha256": hashlib.sha256(
+                                audit_path.read_bytes()
+                            ).hexdigest(),
+                        },
+                    },
+                    "boundary": {
+                        "classification":
+                            "exact_local_context_without_mission_activation_edge",
+                        "missionActivationBridgeFound": False,
+                        "missionGraphAction": "none",
+                        "levelScriptTriggerVolumeBoundary": {
+                            "classification":
+                                "exact_local_trigger_geometry_without_dynamic_scene_or_mission_foreign_key",
+                            "foreignKeyBridgeFound": False,
+                            "schemaMappingId":
+                                "current-global-metadata-levelscript-trigger-volume-data-fields",
+                            "leaderDeclaredFieldCount": 0,
+                        },
+                    },
+                    "bridgeRows": [{
+                        "logicId": "10100282001",
+                        "missionOwnerStatus": "unresolved",
+                        "storyBinding": False,
+                        "orderEvidence": False,
+                        "missionGraphAction": "none",
+                        "classification":
+                            "exact_dynamic_scene_target_and_shared_levelscript_control_path",
+                        "exactTargetActions": [{
+                            "actionName": "ShowSceneDecorationNew",
+                            "unionTag": "0x0485",
+                            "serializedMemberCount": 10,
+                            "recordOffset": 284,
+                            "localId": 6,
+                            "targetDynamicEntityLogicId": "10100282001",
+                            "visible": False,
+                            "payloadFullyConsumed": True,
+                            "targetParam": {
+                                "idRef": -1,
+                                "paramSource": 0,
+                                "path": None,
+                            },
+                            "visibleParam": {
+                                "idRef": -1,
+                                "paramSource": 0,
+                                "path": None,
+                            },
+                            "localTriggerVolumeContext": {
+                                "status":
+                                    "exact_local_levelscript_trigger_volume_without_foreign_identity",
+                                "selectorSlotIds": [80001],
+                                "matchedSlotIds": [80001],
+                                "missingSlotIds": [],
+                                "scriptIdVerified": True,
+                                "triggerVolumesStatus": "present",
+                                "triggerVolumesParseStatus": "decoded",
+                                "dynamicSceneIdentityFieldPresent": False,
+                                "missionOrQuestIdentityFieldPresent": False,
+                                "foreignKeyBridgeFound": False,
+                                "missionGraphAction": "none",
+                                "schema": {
+                                    "baseDeclaredFieldCount": 8,
+                                    "leaderDeclaredFieldCount": 0,
+                                    "serializedMemberCount": 8,
+                                    "mappingId":
+                                        "current-global-metadata-levelscript-trigger-volume-data-fields",
+                                },
+                                "triggerVolumes": [{
+                                    "keySlotId": 80001,
+                                    "slotId": 80001,
+                                    "triggerVolumeType": "Leader",
+                                    "memberCount": 8,
+                                    "triggerCountLimit": 1,
+                                    "enterCheckOnGround": False,
+                                    "isImportant": False,
+                                    "triggerOnPole": False,
+                                    "waitSrvRes": False,
+                                    "shapeList": {
+                                        "parseStatus": "decoded",
+                                        "shapes": [{
+                                            "shapeType": "Sphere",
+                                            "position": {
+                                                "x": -757.75,
+                                                "y": 234.828,
+                                                "z": -1185.85,
+                                            },
+                                            "radius": 59.0,
+                                        }],
+                                    },
+                                }],
+                            },
+                            "storyControlPathLinks": [{
+                                "storyKey": "dlg_c27m3_6",
+                                "storyRecordOffset": 7,
+                                "storyActionName":
+                                    "StartDialogAndTeleportAction",
+                                "sharedControlPaths": [{
+                                    "status":
+                                        "exact_serialized_shared_control_path",
+                                    "relation":
+                                        "decoration_follows_story_on_same_path",
+                                    "headerName":
+                                        "ScriptEvent_OnLeaderEnterTriggerVolume",
+                                    "headerLocalId": 4,
+                                    "eventDetail": {
+                                        "summary":
+                                            "leader enters trigger slot 80001",
+                                        "triggerSlotIdFilter": 80001,
+                                    },
+                                    "storyPathLocalIds": [5],
+                                    "decorationPathLocalIds": [5, 6],
+                                }],
+                            }],
+                        }],
+                    }],
+                }),
+                encoding="utf-8",
+            )
+
+            published = pipeline.load_dynamic_scene_identity_cross_references(
+                audit_path,
+                bridge_path,
+            )
+
+        self.assertIsNotNone(published)
+        self.assertEqual(published["counts"]["exactTargetBridgeRoots"], 1)
+        self.assertEqual(
+            published["counts"]["sharedControlPathStoryOccurrences"],
+            1,
+        )
+        row = published["rows"][0]
+        bridge = row["localContextBridge"]
+        self.assertFalse(bridge["storyBinding"])
+        self.assertFalse(bridge["orderEvidence"])
+        self.assertEqual(bridge["missionGraphAction"], "none")
+        path = bridge["exactTargetActions"][0][
+            "storyControlPathLinks"
+        ][0]["sharedControlPaths"][0]
+        self.assertEqual(path["triggerSlotId"], 80001)
+        self.assertEqual(path["decorationPathLocalIds"], [5, 6])
+        context = bridge["exactTargetActions"][0][
+            "localTriggerVolumeContext"
+        ]
+        self.assertFalse(context["foreignKeyBridgeFound"])
+        self.assertEqual(
+            context["triggerVolumes"][0]["shapes"][0]["shapeType"],
+            "Sphere",
+        )
+        self.assertEqual(
+            published["counts"]["exactLocalTriggerVolumeContexts"],
+            1,
+        )
+
     def test_trigger_route_reads_exact_levelscript_occurrence_paths(self):
         row = {
             "key": "radio_testm1_1",
@@ -83,6 +537,262 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertEqual(route["actionNames"], ["PlayRadio"])
         self.assertEqual(route["controlPathCount"], 1)
         self.assertEqual(route["nativePaths"][0]["headerLocalId"], 6)
+
+    def test_trigger_route_preserves_foreign_dialog_timeline_chain(self):
+        row = {
+            "key": "dlg_testm1_16",
+            "relation": "timeline_dialog_contains_foreign_dialog",
+            "direction": "context",
+            "phase": "timeline_contained",
+            "confidence": "native_exact_host",
+            "parentStoryKey": "dlg_testm1_7",
+            "timelines": ["dlgtl_testm1_7_sub_1"],
+            "textIds": [
+                "dlg_testm1_16_001",
+                "dlg_testm1_16_002",
+            ],
+            "optionIds": [
+                "option_dlg_testm1_16_1_001",
+                "option_dlg_testm1_16_1_002",
+            ],
+            "placementBoundary": "parent content on both sides",
+            "graphEffect": "none",
+            "timelineDialogContainments": [{
+                "timeline": "dlgtl_testm1_7_sub_1",
+                "lineIds": [
+                    "dlg_testm1_16_001",
+                    "dlg_testm1_16_002",
+                ],
+                "optionIds": [
+                    "option_dlg_testm1_16_1_001",
+                    "option_dlg_testm1_16_1_002",
+                ],
+                "beforeParentLineId": "dlg_testm1_7_009",
+                "afterParentLineId": "dlg_testm1_7_005",
+            }],
+            "parentDialogNativeOccurrences": [{
+                "levelId": "map_test",
+                "scriptId": "70000000001",
+                "sourceFile":
+                    "LevelScriptData/map_test/70000000001.json",
+                "actionName": "StartDialogAndTeleportAction",
+                "nativeEventOwners": [{
+                    "status": "exact_serialized_control_path",
+                    "headerName":
+                        "ScriptEvent_OnLeaderEnterTriggerVolume",
+                    "headerLocalId": 4,
+                    "eventDetail": {
+                        "summary": "leader enters trigger slot 80001",
+                    },
+                    "path": [{
+                        "edge": "nextId",
+                        "localId": 5,
+                        "actionName":
+                            "StartDialogAndTeleportAction",
+                        "recordClass": "play_dialog",
+                    }],
+                }],
+            }],
+        }
+
+        route = pipeline.build_story_trigger_route(
+            row,
+            mission_id="testm1",
+        )
+
+        self.assertEqual(route["causality"], "context")
+        self.assertEqual(
+            [step["kind"] for step in route["steps"]],
+            [
+                "mission",
+                "native_event",
+                "levelscript",
+                "native_action",
+                "parent_story",
+                "dialog_timeline",
+                "story",
+            ],
+        )
+        self.assertEqual(route["parentStoryKey"], "dlg_testm1_7")
+        self.assertEqual(
+            route["timelineIds"],
+            ["dlgtl_testm1_7_sub_1"],
+        )
+        self.assertEqual(
+            route["beforeParentLineIds"],
+            ["dlg_testm1_7_009"],
+        )
+        self.assertEqual(
+            route["afterParentLineIds"],
+            ["dlg_testm1_7_005"],
+        )
+        self.assertEqual(route["graphEffect"], "none")
+
+    def test_trigger_route_preserves_exact_narrative_interactive(self):
+        row = {
+            "key": "text_testm1_1",
+            "relation": "levelscript_interactive_narrative_config",
+            "direction": "context",
+            "scriptIds": ["70000000001"],
+            "localInteractiveId": 40001,
+            "rawTypeId": "rp_text_testm1_1",
+            "entityDetailIds": ["int_narrative_book"],
+            "entityTemplateIds": ["int_narrative_mission"],
+        }
+
+        route = pipeline.build_story_trigger_route(row, mission_id="testm1")
+
+        self.assertEqual(
+            [step["kind"] for step in route["steps"]],
+            ["mission", "levelscript", "narrative_interactive", "story"],
+        )
+        self.assertEqual(route["steps"][2]["id"], "40001")
+        self.assertEqual(
+            route["steps"][2]["summaries"],
+            ["rp_text_testm1_1", "int_narrative_mission"],
+        )
+        self.assertEqual(route["localInteractiveId"], 40001)
+        self.assertEqual(route["entityDetailIds"], ["int_narrative_book"])
+
+    def test_trigger_route_preserves_exact_leveldata_narrative_interactive(
+        self,
+    ):
+        row = {
+            "key": "text_testm1_2",
+            "relation": "leveldata_interactive_narrative_config",
+            "direction": "context",
+            "levelDataAssets": ["map_test_lv_data_sub_testm1"],
+            "entityLogicId": 10002,
+            "interactiveRecordIndex": 1,
+            "rawTypeId": "rp_text_testm1_2",
+            "entityDetailIds": ["int_narrative_book"],
+            "entityTemplateIds": ["int_narrative_scene"],
+            "progressLockConditionStatus": "decoded",
+            "progressLockConditionUnionTag": 0,
+            "progressLockConditionSerializedMemberCount": 3,
+            "progressLockConditionType": "CombinedConditionRuntime",
+            "progressLockConditionOperator": 1,
+            "progressLockSerializedRuntimeFlag": False,
+            "progressLockConditionTree": {
+                "unionTag": 0,
+                "serializedMemberCount": 3,
+                "conditionType": "CombinedConditionRuntime",
+                "conditionOperator": 1,
+                "serializedRuntimeFlag": False,
+                "conditions": [{
+                    "unionTag": 12,
+                    "serializedMemberCount": 3,
+                    "conditionType": "SimpleConditionCheckMissionState",
+                    "ownerKind": "mission",
+                    "ownerId": "testm0",
+                    "compareOperator": 0,
+                    "compareTarget": 3,
+                }],
+            },
+            "progressLockConditions": [{
+                "unionTag": 12,
+                "serializedMemberCount": 3,
+                "conditionType": "SimpleConditionCheckMissionState",
+                "ownerKind": "mission",
+                "ownerId": "testm0",
+                "compareOperator": 0,
+                "compareTarget": 3,
+            }],
+        }
+
+        route = pipeline.build_story_trigger_route(row, mission_id="testm1")
+
+        self.assertEqual(
+            [step["kind"] for step in route["steps"]],
+            [
+                "mission",
+                "leveldata",
+                "availability_condition",
+                "narrative_interactive",
+                "story",
+            ],
+        )
+        self.assertEqual(
+            route["steps"][1]["ids"],
+            ["map_test_lv_data_sub_testm1"],
+        )
+        self.assertEqual(
+            route["steps"][2]["id"],
+            "CombinedConditionRuntime",
+        )
+        self.assertIn(
+            "mission testm0 state 3",
+            route["steps"][2]["summaries"][1],
+        )
+        self.assertEqual(route["steps"][3]["id"], "10002")
+        self.assertEqual(route["entityLogicId"], 10002)
+        self.assertEqual(route["interactiveRecordIndex"], 1)
+        self.assertEqual(
+            route["progressLockConditions"][0]["ownerId"],
+            "testm0",
+        )
+        self.assertEqual(
+            route["progressLockConditionTree"]["conditionOperator"],
+            1,
+        )
+
+    def test_trigger_route_preserves_definition_only_horn_context(self):
+        row = {
+            "key": "dlg_testm1_11",
+            "relation": "leveldata_interactive_narrative_config",
+            "direction": "context",
+            "levelDataAssets": ["map_test_lv_data_sub_testm1"],
+            "entityLogicId": 10003,
+            "interactiveRecordIndex": 2,
+            "narrativeConsumerKind": "horn_dialog_property",
+            "dialogDefinitionOnly": True,
+            "dialogDefinitionBinding": True,
+            "dialogDefinitionConsumerMission": "testm1",
+            "dialogDefinitionConsumerQuestId": "testm1_q#3",
+            "dialogIdEntryOffset": 2800,
+            "interactiveHornNativeMappingId":
+                "gameassembly-test-interactive-horn-dialog-v1",
+            "progressLockConditionStatus": "decoded",
+            "progressLockConditionType":
+                "SimpleConditionCheckQuestState",
+            "progressLockConditions": [{
+                "conditionType": "SimpleConditionCheckQuestState",
+                "ownerKind": "quest",
+                "ownerId": "testm1_q#2",
+                "compareOperator": 0,
+                "compareTarget": 3,
+            }],
+            "rawTypeId": "dlg_testm1_11",
+            "entityDetailIds": ["int_horn"],
+            "entityTemplateIds": ["int_horn"],
+        }
+
+        route = pipeline.build_story_trigger_route(
+            row,
+            mission_id="testm1",
+            quest_id="testm1_q#3",
+            scope="quest",
+        )
+
+        self.assertEqual(
+            [step["kind"] for step in route["steps"]],
+            [
+                "quest",
+                "leveldata",
+                "availability_condition",
+                "narrative_interactive",
+                "dialog_definition",
+            ],
+        )
+        self.assertTrue(route["dialogDefinitionOnly"])
+        self.assertEqual(
+            "testm1_q#3",
+            route["dialogDefinitionConsumerQuestId"],
+        )
+        self.assertEqual(
+            "testm1_q#2",
+            route["progressLockConditions"][0]["ownerId"],
+        )
 
     def test_publish_source_story_partial_order_embeds_lazy_mission_graph(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -453,6 +1163,72 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertEqual("guide_group_team", row["facts"]["guideGroupId"])
         self.assertEqual(2, row["facts"]["completeType"])
 
+    def test_objective_retains_tracking_filter_without_creating_condition_edge(self):
+        row = pipeline.objective_row({
+            "description": {"key": "objective_tracking"},
+            "condition": condition("GameConditionServerPlaceHolder"),
+            "trackingInfoList": [{
+                "$type": (
+                    "Beyond.Gameplay.PosTrackingInfo, Gameplay.Beyond"
+                ),
+                "sceneId": "map_fixture",
+                "useFilterCondition": True,
+                "filterCondition": {
+                    "$type": (
+                        "Beyond.Gameplay.SimpleConditionCheckMissionVariableInt, "
+                        "Gameplay.Beyond"
+                    ),
+                    "missionId": "testm1",
+                    "missionVarName": "track_1",
+                    "compareOperator": 0,
+                    "compareTarget": 1,
+                },
+                "trackingPos": {"x": 1, "y": 2, "z": 3},
+            }],
+        }, 1)
+        self.assertEqual(row["tracking"], [{
+            "index": 0,
+            "type": "PosTrackingInfo",
+            "sceneId": "map_fixture",
+            "useFilterCondition": True,
+            "trackingPos": {"x": 1.0, "y": 2.0, "z": 3.0},
+            "filterCondition": {
+                "type": "SimpleConditionCheckMissionVariableInt",
+                "facts": {
+                    "compareTarget": 1,
+                    "missionId": "testm1",
+                    "missionVarName": "track_1",
+                    "compareOperator": 0,
+                },
+            },
+        }])
+        self.assertEqual(row["questStateRefs"], [])
+
+    def test_build_mission_retains_property_defaults_without_writer_claim(self):
+        fixture = self.fixture()
+        fixture["properties"] = [{
+            "key": "track_1",
+            "value": {
+                "type": 3,
+                "valueArray": [{
+                    "valueBit64": 1,
+                    "valueString": "",
+                }],
+            },
+        }]
+        payload, _ = pipeline.build_mission(
+            fixture,
+            pipeline.ROOT / "fixture" / "testm1.json",
+        )
+        self.assertEqual(payload["mission"]["properties"], [{
+            "key": "track_1",
+            "type": 3,
+            "values": [{
+                "valueBit64": 1,
+                "valueString": "",
+            }],
+        }])
+
     def fixture(self):
         return {
             "missionId": "testm1",
@@ -645,6 +1421,10 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "activityQuestLevelRows": 0,
                 "activityQuestLevelQuests": 0,
                 "activityQuestLevelMissions": 0,
+                "trackingInfoRows": 0,
+                "trackingObjectives": 0,
+                "missionPropertyRows": 0,
+                "missionsWithProperties": 0,
                 # The fixture has one mission with no cross-mission state
                 # condition and no envTalk consumer table, so both new lanes
                 # are legitimately empty rather than absent.
@@ -659,6 +1439,13 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             })
             self.assertTrue((output_root / "index.json").is_file())
             self.assertTrue((output_root / "missions" / "testm1.json").is_file())
+            self.assertEqual(
+                index["missionRuntimeSource"],
+                {
+                    "selectedRoot": mission_root.as_posix(),
+                    "selection": "explicit_mission_root",
+                },
+            )
             self.assertEqual(index["runtimeContract"]["outbound"][1]["message"], "CS_UPDATE_QUEST_OBJECTIVE")
             payload = json.loads((output_root / "missions" / "testm1.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["missionGraph"], {"upstream": {}, "downstream": {}})
@@ -1075,9 +1862,23 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         )
         authored = audit["authoredMissionProperties"]
         self.assertEqual(authored["missionFiles"], 490)
-        self.assertEqual(authored["missionsWithProperties"], 70)
-        self.assertEqual(authored["propertyRows"], 214)
+        self.assertEqual(authored["missionsWithProperties"], 71)
+        self.assertEqual(authored["propertyRows"], 217)
         self.assertEqual(authored["levelScriptPointerFieldRows"], 0)
+        tracking = audit["trackingPropertyFilterRuntime"]
+        self.assertEqual(tracking["authoredRows"], 204)
+        self.assertEqual(tracking["authoredMissions"], 46)
+        self.assertEqual(tracking["authoredVariables"], 110)
+        self.assertEqual(
+            tracking["evaluator"]["token"],
+            "0x06004b72",
+        )
+        self.assertEqual(
+            tracking["serverUpdate"]["message"],
+            "SC_UPDATE_MISSION_PROPERTY (124)",
+        )
+        self.assertEqual(tracking["storyBindingsAdded"], 0)
+        self.assertEqual(tracking["missionOrderEdgesAdded"], 0)
         self.assertEqual(len(audit["missionPropertyWriters"]), 3)
         self.assertEqual(
             audit["directCallCensus"]["missionSystemScriptPointerSetterCalls"],
@@ -1655,6 +2456,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 {"k": "sns_testm2_1", "d": "sns", "m": "testm2", "p": "three"},
                 {"k": "cutscene_map_test_1", "d": "cutscene", "m": "map_test", "p": "cross owner"},
                 {"k": "black_map_external_1", "d": "black", "m": "map_external", "p": "dependency only"},
+                {"k": "text_testm1_1", "d": "text", "m": "testm1", "p": "reading"},
                 {"k": "env_testm1_1", "d": "env", "m": "testm1", "p": "excluded"},
             ]}), encoding="utf-8")
             (mission_root / "testm1.json").write_text(json.dumps({"flow": {
@@ -1670,6 +2472,13 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 }]}],
                 "missionStoryConnections": [{
                     "key": "sns_testm2_1", "relation": "sns_authored_mission_link",
+                }, {
+                    "key": "text_testm1_1",
+                    "relation": "levelscript_interactive_narrative_config",
+                    "scriptIds": ["70000000002"],
+                    "localInteractiveId": 40001,
+                    "rawTypeId": "rp_text_testm1_1",
+                    "entityTemplateIds": ["int_narrative_mission"],
                 }],
                 "unlinkedNativePlayback": [{
                     "key": "radio_testm1_1",
@@ -1811,7 +2620,21 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             self.assertEqual(report["counts"]["storyFilesWithTriggerRoutes"], 4)
             self.assertEqual(report["counts"]["unlinkedStoryFilesWithTriggerRoutes"], 1)
             self.assertGreaterEqual(report["counts"]["storyTriggerRoutes"], 7)
+            self.assertEqual(
+                report["counts"]["contextOnlyTriggerRouteFiles"],
+                1,
+            )
+            self.assertEqual(report["counts"]["contextOnlyTriggerRoutes"], 1)
             trigger_manifest = report["storyTriggerManifest"]
+            text_route = trigger_manifest["text_testm1_1"]
+            self.assertEqual(
+                text_route["attachmentStatus"],
+                "context_only_outside_pipeline_coverage_denominator",
+            )
+            self.assertEqual(
+                [step["kind"] for step in text_route["routes"][0]["steps"]],
+                ["mission", "levelscript", "narrative_interactive", "story"],
+            )
             connected_route = trigger_manifest["dlg_testm1_1"]["routes"][0]
             self.assertEqual(connected_route["questId"], "testm1_q#1")
             self.assertEqual(connected_route["causality"], "playback")

@@ -1627,9 +1627,10 @@ def _find_final_trigger_volume_map(
     ``triggerVolumes`` is the final generated MemoryPack member of
     ``LevelScriptData``.  Fully decoding every polymorphic condition nested in
     the preceding ``taskMap`` is unnecessary for locating it: scan the bounded
-    file tail and accept only a strict current-build Leader map whose decoded
-    cursor lands exactly at EOF.  Key/slot equality, subtype tag, member count,
-    shape bodies, and field ranges are all validated by the entry decoder.
+    file tail and accept either the exact null/empty dictionary at EOF or a
+    strict current-build Leader map whose decoded cursor lands exactly at EOF.
+    Key/slot equality, subtype tag, member count, shape bodies, and field
+    ranges are all validated by the entry decoder.
     """
     if not data:
         return None, {}, None
@@ -1646,6 +1647,17 @@ def _find_final_trigger_volume_map(
             and len(decoded.get("volumes") or []) == raw_count
         ):
             return offset, decoded, cursor
+    empty_offset = len(data) - 4
+    if empty_offset >= lower:
+        decoded, cursor = _decode_trigger_volume_map(data, empty_offset)
+        if (
+            cursor == len(data)
+            and decoded.get("status") in {"null", "present"}
+            and not decoded.get("volumes")
+            and decoded.get("count") in {None, 0}
+        ):
+            decoded["parseStatus"] = "decoded"
+            return empty_offset, decoded, cursor
     return None, {}, None
 
 
@@ -6662,7 +6674,7 @@ def decode_levelscript_binary_summary(data: bytes, script_id: int) -> dict[str, 
     best = max(candidates, key=lambda item: int(item.get("score") or 0), default={})
     return {
         "serializedMemberCount": data[0],
-        "expectedMemberCount": 26,
+        "expectedMemberCount": 27,
         "actionMapStatus": action_map.get("status") or "",
         "actionMapRecordCount": action_map.get("recordCount"),
         "actionMapRecordStartOffsetHex": action_map.get("recordStartOffsetHex") or "",
@@ -6690,7 +6702,8 @@ def decode_levelscript_binary_summary(data: bytes, script_id: int) -> dict[str, 
         "triggerVolumesDetails": best.get("triggerVolumes") or {},
         "triggerVolumeSlotIds": (best.get("triggerVolumes") or {}).get("slotIds") or [],
         "note": (
-            "actionMap header plus scriptId/startType/shape-list trigger fields decoded from the top-level MemoryPack; "
+            "current 27-member top-level MemoryPack plus actionMap header and "
+            "scriptId/startType/shape-list trigger fields decoded; "
             "final current-build Leader trigger-volume maps include exact slot and geometry; "
             "action start/end opcodes are still not decoded"
         ),
