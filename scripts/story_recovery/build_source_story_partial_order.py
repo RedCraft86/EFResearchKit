@@ -12,7 +12,10 @@ generated UI rank, ``sceneOrderInfo.questOrder``, or scene-graph node ``order``.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
+import re
 import sys
 from collections import Counter, defaultdict, deque
 from datetime import datetime, timezone
@@ -41,6 +44,10 @@ from story_builder.mission_recovery import (  # noqa: E402
 from story_builder.level_bindings import (  # noqa: E402
     build_levelscript_action_story_occurrences,
 )
+from story_builder.anime_assets import (  # noqa: E402
+    recover_dialog_tree_narrative_mask_actions,
+    recover_dialog_tree_open_ui_content_actions,
+)
 from story_builder.spawner_binary import (  # noqa: E402
     SPAWNER_WAVE_RUNTIME_MAPPING_ID,
     SpawnerWaveDecodeError,
@@ -48,12 +55,18 @@ from story_builder.spawner_binary import (  # noqa: E402
 )
 
 
-SCHEMA = "sourceStoryPartialOrder.v19"
+SCHEMA = "sourceStoryPartialOrder.v22"
+READING_POPUP_TABLE_PATH = (
+    ROOT / "export_full" / "structured" / "StreamingAssets"
+    / "Table" / "ReadingPopUpTable.json"
+)
 VARIANT_FLOW_LIST_FIELDS = (
     "missionStoryConnections",
     "quests",
     "unlinkedNativePlayback",
     "unlinkedDefinitionOnly",
+    "unresolvedDialogTreeNarrativeActions",
+    "unlinkedDialogTreeNarrativeActions",
 )
 VARIANT_TIMELINE_LIST_FIELDS = (
     "branchPoints",
@@ -103,6 +116,7 @@ SUPPORTED_ORDER_EDGE_KINDS = frozenset({
 PROVEN_ORDER_EDGE_KINDS = (
     frozenset(STRONG_ORDER_EDGE_KINDS) - SUPPORTED_ORDER_EDGE_KINDS
 ) | frozenset({
+    "dialogTreeCrossStoryConditionalBranch",
     "dialogTreeCrossStoryTrunkContinuation",
     "levelscriptNativeControlPath",
     "levelscriptQuestStateActionPath",
@@ -147,7 +161,111 @@ EDGE_EVIDENCE_FIELDS = (
     "toActions",
     "fromActionClasses",
     "toActionClasses",
+    "condition",
+    "conditionTrueConnectionIndex",
+    "conditionFalseConnectionIndex",
+    "parentArmLineIds",
+    "childArmLineIds",
+    "nativeConsumers",
 )
+
+
+# Current-build declarations are deliberately narrow and hash locked.  They
+# turn an exact serialized DialogTree branch into chronology only after both
+# the carrier paths and the current GameAssembly branch-selection contract
+# have been audited.  A mismatch emits an actionable warning and no edge.
+DIALOG_TREE_CONDITIONAL_BRANCH_DECLARATIONS = {
+    ("gm02m14", "dlg_gm02m14_1", "dlg_gm02m14_3"): {
+        "sourceFile": (
+            "export_full/recovered/AnimeStudio-cli/StreamingAssets/"
+            "json_by_type/TextAsset/"
+            "dlg_gm02m14_1_p4C5228BE5CCE25DA.json"
+        ),
+        "sourceSha256": (
+            "018DFF862D1EBDA9B0336EDF81F1D862DC2E71271EE0C7695248F507261A00D1"
+        ),
+        "nativeMappingId": "dialog-tree-reachable-story-playback-native-v1",
+        "optionId": "option_dlg_gm02m14_1_2_001",
+        "optionAfterLineId": "dlg_gm02m14_1_005",
+        "branchAfterLineId": "dlg_gm02m14_1_006",
+        "branchNodeId": "9",
+        "parentLineIds": tuple(
+            f"dlg_gm02m14_1_{number:03d}" for number in range(1, 10)
+        ),
+        "parentArmLineIds": (
+            "dlg_gm02m14_1_007",
+            "dlg_gm02m14_1_008",
+            "dlg_gm02m14_1_009",
+        ),
+        "childArmLineIds": (
+            "dlg_gm02m14_3_001",
+            "dlg_gm02m14_3_002",
+            "dlg_gm02m14_3_003",
+        ),
+        "carrierNodePaths": {
+            "dlg_gm02m14_3_001": ("8", "9", "14"),
+            "dlg_gm02m14_3_002": ("8", "9", "14", "15"),
+            "dlg_gm02m14_3_003": ("8", "9", "14", "15", "16", "17"),
+        },
+        "carrierConnectionIndexes": {
+            "dlg_gm02m14_3_001": (10, 12),
+            "dlg_gm02m14_3_002": (10, 12, 16),
+            "dlg_gm02m14_3_003": (10, 12, 16, 17, 18),
+        },
+        "condition": {
+            "type": "Beyond.Gameplay.CheckLevelScriptPropertyBool",
+            "mapId": "map02_lv005",
+            "scriptId": 90002,
+            "key": "canskip",
+            "value": True,
+        },
+        "conditionTrueConnectionIndex": 1,
+        "conditionFalseConnectionIndex": 0,
+        "conditionTrueTargetNodeId": "14",
+        "conditionFalseTargetNodeId": "10",
+        "gameAssemblySha256": (
+            "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE"
+        ),
+        "nativeConsumers": (
+            {
+                "method": "DialogTreeIfNode.GetNextIndex",
+                "token": "0x06003be3",
+                "address": "0x1872a51f8",
+                "contract": (
+                    "returns outgoing index 1 exactly when "
+                    "GameCondition.result equals 1"
+                ),
+            },
+            {
+                "method": "GameCondition.Activate",
+                "token": "0x0600489f",
+                "address": "0x18332c000",
+            },
+            {
+                "method": "GameCondition.get_result",
+                "token": "0x06004884",
+                "address": "0x183a8ad10",
+            },
+        ),
+    },
+}
+
+
+def _configured_game_assembly_path() -> Path:
+    game_root = os.environ.get("ENDFIELD_GAME_ROOT", "").strip()
+    if not game_root:
+        paths_file = ROOT / "endfield_paths.bat"
+        text = paths_file.read_text(encoding="utf-8", errors="replace")
+        match = re.search(
+            r'^set\s+"ENDFIELD_GAME_ROOT=([^"\r\n]+)"',
+            text,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        game_root = match.group(1).strip() if match else ""
+    return (
+        Path(game_root).parent / "GameAssembly.dll"
+        if game_root else Path()
+    )
 
 
 def load_mission_payload_with_variants(
@@ -1240,6 +1358,341 @@ def _story_connection_rows(flow: dict[str, Any]) -> Iterable[dict[str, Any]]:
                 yield row
 
 
+def _dialog_tree_narrative_containments(
+    mission: str,
+    flow: dict[str, Any],
+    candidate_keys: set[str],
+    original_occurrences: list[dict[str, Any]] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return exact nested black-screen placements without creating file order.
+
+    A narrative action between two parent trunks proves line-level containment.
+    It does not prove how the parent DialogTree is activated, nor does it order
+    the complete child Story file before or after the complete parent file.
+    """
+    rows = (
+        flow.get("unresolvedDialogTreeNarrativeActions")
+        if "unresolvedDialogTreeNarrativeActions" in flow
+        else flow.get("unlinkedDialogTreeNarrativeActions")
+    )
+    containments: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, tuple[str, ...], tuple[str, ...]]] = set()
+    candidate_black_keys = sorted(
+        (key for key in candidate_keys if key.startswith("black_")),
+        key=lambda key: (-len(key), natural_key(key)),
+    )
+    source_rows = [row for row in rows or [] if isinstance(row, dict)]
+    for occurrence in original_occurrences or []:
+        if not isinstance(occurrence, dict):
+            continue
+        text_id = safe_key(occurrence.get("textId"))
+        matching_children = [
+            key for key in candidate_black_keys
+            if text_id.startswith(f"{key}_")
+        ]
+        if len(matching_children) != 1:
+            continue
+        source_rows.append({
+            "key": matching_children[0],
+            "parentStoryKey": safe_key(occurrence.get("dialogKey")),
+            "relation": "dialog_tree_narrative_action_unscoped",
+            "confidence": "native_exact_containment_unscoped",
+            "dialogTreeNarrativeActions": [occurrence],
+        })
+    for row in source_rows:
+        if not isinstance(row, dict):
+            continue
+        child_key = safe_key(row.get("key"))
+        parent_key = safe_key(row.get("parentStoryKey"))
+        occurrences = [
+            occurrence
+            for occurrence in row.get("dialogTreeNarrativeActions") or []
+            if isinstance(occurrence, dict)
+        ]
+        if (
+            safe_key(row.get("relation"))
+            != "dialog_tree_narrative_action_unscoped"
+            or child_key not in candidate_keys
+        ):
+            continue
+        header_valid = bool(
+            parent_key in candidate_keys
+            and child_key != parent_key
+            and safe_key(row.get("confidence"))
+            == "native_exact_containment_unscoped"
+            and occurrences
+        )
+        after_ids = sorted({
+            safe_key(line_id)
+            for occurrence in occurrences
+            if safe_key(occurrence.get("nativeMappingId"))
+            == "dialog-tree-narrative-mask-connection-native-v1"
+            and safe_key(occurrence.get("dialogKey")) == parent_key
+            and safe_key(occurrence.get("dialogTreeConnectionPlacementStatus"))
+            == "exact_unique_adjacent_parent_trunks"
+            for line_id in occurrence.get("embeddedAfterLineIds") or []
+            if safe_key(line_id)
+        }, key=natural_key)
+        before_ids = sorted({
+            safe_key(line_id)
+            for occurrence in occurrences
+            if safe_key(occurrence.get("nativeMappingId"))
+            == "dialog-tree-narrative-mask-connection-native-v1"
+            and safe_key(occurrence.get("dialogKey")) == parent_key
+            and safe_key(occurrence.get("dialogTreeConnectionPlacementStatus"))
+            == "exact_unique_adjacent_parent_trunks"
+            for line_id in occurrence.get("embeddedBeforeLineIds") or []
+            if safe_key(line_id)
+        }, key=natural_key)
+        valid_occurrences = [
+            occurrence
+            for occurrence in occurrences
+            if safe_key(occurrence.get("nativeMappingId"))
+            == "dialog-tree-narrative-mask-connection-native-v1"
+            and safe_key(occurrence.get("dialogKey")) == parent_key
+            and safe_key(occurrence.get("dialogTreeConnectionPlacementStatus"))
+            == "exact_unique_adjacent_parent_trunks"
+            and occurrence.get("reachableFromPrimeNode") is True
+            and occurrence.get("embeddedAfterLineIds")
+            and occurrence.get("embeddedBeforeLineIds")
+        ]
+        if (
+            not header_valid
+            or len(valid_occurrences) != len(occurrences)
+            or not after_ids
+            or not before_ids
+        ):
+            warnings.append({
+                "validator": "dialogTreeNarrativeContainment",
+                "check": "exact_unique_adjacent_parent_trunks",
+                "mission": mission,
+                "storyKey": child_key,
+                "parentStoryKey": parent_key,
+                "sourcePaths": sorted({
+                    safe_key(occurrence.get("sourceFile"))
+                    for occurrence in occurrences
+                    if safe_key(occurrence.get("sourceFile"))
+                }),
+                "expected": {
+                    "confidence": "native_exact_containment_unscoped",
+                    "mappingId":
+                        "dialog-tree-narrative-mask-connection-native-v1",
+                    "placementStatus":
+                        "exact_unique_adjacent_parent_trunks",
+                    "reachableFromPrimeNode": True,
+                    "candidateParent": True,
+                    "nonemptyAdjacentLineIds": True,
+                },
+                "actual": {
+                    "confidence": safe_key(row.get("confidence")),
+                    "occurrenceCount": len(occurrences),
+                    "validOccurrenceCount": len(valid_occurrences),
+                    "candidateParent": parent_key in candidate_keys,
+                    "embeddedAfterLineIds": after_ids,
+                    "embeddedBeforeLineIds": before_ids,
+                },
+            })
+            continue
+        signature = (child_key, parent_key, tuple(after_ids), tuple(before_ids))
+        if signature in seen:
+            continue
+        seen.add(signature)
+        containments.append({
+            "child": child_key,
+            "parent": parent_key,
+            "kind": "dialogTreeNarrativeMask",
+            "relation": "dialog_tree_narrative_action_containment",
+            "tier": "native_direct_containment",
+            "embeddedAfterLineIds": after_ids,
+            "embeddedBeforeLineIds": before_ids,
+            "textIds": sorted({
+                safe_key(occurrence.get("textId"))
+                for occurrence in valid_occurrences
+                if safe_key(occurrence.get("textId"))
+            }, key=natural_key),
+            "sourceFiles": sorted({
+                safe_key(occurrence.get("sourceFile"))
+                for occurrence in valid_occurrences
+                if safe_key(occurrence.get("sourceFile"))
+            }),
+            "nativeMappingId":
+                "dialog-tree-narrative-mask-connection-native-v1",
+            "orderBoundary": (
+                "exact line-level placement inside the parent DialogTree; "
+                "not a complete Story-file edge and not parent activation evidence"
+            ),
+        })
+    containments.sort(key=lambda row: (
+        natural_key(row["parent"]),
+        natural_key(row["child"]),
+    ))
+    return containments, warnings
+
+
+def _dialog_tree_open_ui_containments(
+    mission: str,
+    candidate_keys: set[str],
+    occurrences: list[dict[str, Any]] | None,
+    reading_popup_rows: dict[str, Any] | None,
+    *,
+    reading_popup_source: str = "",
+    reading_popup_sha256: str = "",
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Resolve exact DialogTree OpenUI popup consumers to Story content.
+
+    The typed DialogTree node proves containment in its parent dialog. The
+    ReadingPopUpTable join proves which ``text_*`` Story payload is opened.
+    Neither relationship proves how the parent dialog itself is activated.
+    """
+    popup_rows = reading_popup_rows if isinstance(reading_popup_rows, dict) else {}
+    containments: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    allowed_placements = {
+        "exact_between_adjacent_parent_trunks",
+        "exact_after_parent_trunk_at_finish",
+        "exact_prime_entry_before_parent_trunk",
+    }
+    for occurrence in occurrences or []:
+        if not isinstance(occurrence, dict):
+            continue
+        popup_id = safe_key(occurrence.get("readingPopupId"))
+        popup_row = popup_rows.get(popup_id)
+        child_key = (
+            safe_key(popup_row.get("contentId"))
+            if isinstance(popup_row, dict) else ""
+        )
+        parent_key = safe_key(occurrence.get("dialogKey"))
+        if child_key not in candidate_keys:
+            continue
+        after_ids = [
+            safe_key(value)
+            for value in occurrence.get("embeddedAfterLineIds") or []
+            if safe_key(value)
+        ]
+        before_ids = [
+            safe_key(value)
+            for value in occurrence.get("embeddedBeforeLineIds") or []
+            if safe_key(value)
+        ]
+        placement = safe_key(
+            occurrence.get("dialogTreeConnectionPlacementStatus")
+        )
+        expected_popup_row = {
+            "bgType": popup_row.get("bgType") if isinstance(popup_row, dict) else None,
+            "contentId": child_key,
+            "iconType": popup_row.get("iconType") if isinstance(popup_row, dict) else None,
+            "id": popup_id,
+            "overrideRadioId": "",
+            "title": {"id": 0, "text": ""},
+        }
+        boundary_valid = (
+            (placement == "exact_between_adjacent_parent_trunks" and after_ids and before_ids)
+            or (placement == "exact_after_parent_trunk_at_finish" and after_ids and not before_ids)
+            or (placement == "exact_prime_entry_before_parent_trunk" and not after_ids and before_ids)
+        )
+        valid = bool(
+            parent_key
+            and parent_key != child_key
+            and child_key.startswith("text_")
+            and popup_id
+            and popup_row == expected_popup_row
+            and occurrence.get("paramData") == {"id": popup_id}
+            and occurrence.get("panelType") == 17
+            and occurrence.get("actionEnum") == 57
+            and safe_key(occurrence.get("nativeMappingId"))
+            == "dialog-tree-open-ui-reading-popup-connection-native-v1"
+            and placement in allowed_placements
+            and occurrence.get("reachableFromPrimeNode") is True
+            and boundary_valid
+        )
+        if not valid:
+            warnings.append({
+                "validator": "dialogTreeOpenUIContainment",
+                "check": "exact_typed_open_ui_reading_popup_boundary",
+                "mission": mission,
+                "storyKey": child_key,
+                "parentStoryKey": parent_key,
+                "sourcePaths": sorted(filter(None, {
+                    safe_key(occurrence.get("sourceFile")),
+                    reading_popup_source,
+                })),
+                "sourceSha256": {
+                    safe_key(occurrence.get("sourceFile")):
+                        safe_key(occurrence.get("sourceSha256")),
+                    reading_popup_source: reading_popup_sha256,
+                },
+                "expected": {
+                    "popupRow": expected_popup_row,
+                    "paramData": {"id": popup_id},
+                    "panelType": 17,
+                    "actionEnum": 57,
+                    "mappingId":
+                        "dialog-tree-open-ui-reading-popup-connection-native-v1",
+                    "placementStatus": sorted(allowed_placements),
+                    "reachableFromPrimeNode": True,
+                    "typedParentCarrier": True,
+                },
+                "actual": {
+                    "popupRow": popup_row,
+                    "paramData": occurrence.get("paramData"),
+                    "panelType": occurrence.get("panelType"),
+                    "actionEnum": occurrence.get("actionEnum"),
+                    "mappingId": safe_key(occurrence.get("nativeMappingId")),
+                    "placementStatus": placement,
+                    "reachableFromPrimeNode":
+                        occurrence.get("reachableFromPrimeNode"),
+                    "typedParentCarrier": bool(parent_key),
+                    "embeddedAfterLineIds": after_ids,
+                    "embeddedBeforeLineIds": before_ids,
+                },
+            })
+            continue
+        signature = (
+            parent_key,
+            child_key,
+            safe_key(occurrence.get("nodeId")),
+        )
+        if signature in seen:
+            continue
+        seen.add(signature)
+        containments.append({
+            "child": child_key,
+            "parent": parent_key,
+            "parentStoryCandidate": parent_key in candidate_keys,
+            "kind": "dialogTreeOpenUIReadingPopup",
+            "relation": "dialog_tree_open_ui_reading_popup_containment",
+            "tier": "native_direct_containment",
+            "boundaryPlacement": placement,
+            "embeddedAfterLineIds": after_ids,
+            "embeddedBeforeLineIds": before_ids,
+            "readingPopupId": popup_id,
+            "panelType": 17,
+            "actionEnum": 57,
+            "sourceFiles": sorted(filter(None, {
+                safe_key(occurrence.get("sourceFile")),
+                reading_popup_source,
+            })),
+            "sourceSha256": {
+                safe_key(occurrence.get("sourceFile")):
+                    safe_key(occurrence.get("sourceSha256")),
+                reading_popup_source: reading_popup_sha256,
+            },
+            "nativeMappingId":
+                "dialog-tree-open-ui-reading-popup-connection-native-v1",
+            "orderBoundary": (
+                "exact popup placement inside the parent DialogTree; not a "
+                "complete Story-file edge and not parent activation evidence"
+            ),
+        })
+    containments.sort(key=lambda row: (
+        natural_key(row["parent"]),
+        natural_key(row["child"]),
+    ))
+    return containments, warnings
+
+
 def _dialog_tree_cross_story_trunk_edges(
     flow: dict[str, Any],
     candidate_keys: set[str],
@@ -1364,6 +1817,210 @@ def _dialog_tree_cross_story_trunk_edges(
     return edges
 
 
+def _dialog_tree_cross_story_conditional_edges(
+    mission: str,
+    flow: dict[str, Any],
+    candidate_keys: set[str],
+    dialog_payloads: list[tuple[str, dict[str, Any]]] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Validate hash-locked cross-file DialogTree conditional branches."""
+    payloads_by_key = {
+        safe_key(payload.get("key")): payload
+        for _path, payload in dialog_payloads or []
+        if isinstance(payload, dict) and safe_key(payload.get("key"))
+    }
+    rows_by_pair = {
+        (
+            safe_key(row.get("parentStoryKey")),
+            safe_key(row.get("key")),
+        ): row
+        for row in _story_connection_rows(flow)
+        if isinstance(row, dict)
+    }
+    edges: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    for (declared_mission, parent_key, child_key), declaration in (
+        DIALOG_TREE_CONDITIONAL_BRANCH_DECLARATIONS.items()
+    ):
+        if declared_mission != mission:
+            continue
+        source_file = declaration["sourceFile"]
+        source_path = ROOT / source_file
+        game_assembly_path = _configured_game_assembly_path()
+        source_sha256 = (
+            hashlib.sha256(source_path.read_bytes()).hexdigest().upper()
+            if source_path.is_file() else ""
+        )
+        game_assembly_sha256 = (
+            hashlib.sha256(game_assembly_path.read_bytes()).hexdigest().upper()
+            if game_assembly_path.is_file() else ""
+        )
+        row = rows_by_pair.get((parent_key, child_key)) or {}
+        parent_payload = payloads_by_key.get(parent_key) or {}
+        child_payload = payloads_by_key.get(child_key) or {}
+        parent_line_ids = {
+            safe_key(line.get("id"))
+            for line in parent_payload.get("lines") or []
+            if isinstance(line, dict) and safe_key(line.get("id"))
+        }
+        child_line_ids = {
+            safe_key(line.get("id"))
+            for line in child_payload.get("lines") or []
+            if isinstance(line, dict) and safe_key(line.get("id"))
+        }
+        carriers = {
+            safe_key(carrier.get("carrierValue")): carrier
+            for carrier in row.get("dialogTreeStoryPlaybackCarriers") or []
+            if isinstance(carrier, dict)
+            and safe_key(carrier.get("carrierValue"))
+        }
+        actual_carrier_paths = {
+            line_id: tuple(_string_list(carrier.get("nodePath")))
+            for line_id, carrier in carriers.items()
+        }
+        actual_connection_indexes = {
+            line_id: tuple(
+                int(connection.get("index"))
+                for connection in carrier.get("connectionPath") or []
+                if isinstance(connection, dict)
+                and isinstance(connection.get("index"), int)
+            )
+            for line_id, carrier in carriers.items()
+        }
+        conditional_routes = []
+        for link in parent_payload.get("sceneGraphLinks") or []:
+            if not isinstance(link, dict):
+                continue
+            for option in link.get("options") or []:
+                if (
+                    isinstance(option, dict)
+                    and safe_key(option.get("optionId"))
+                    == declaration["optionId"]
+                ):
+                    conditional_routes.append((link, option))
+        route_link, route = (
+            conditional_routes[0]
+            if len(conditional_routes) == 1 else ({}, {})
+        )
+        outcomes = route.get("conditionalOutcomes") or []
+        actual_outcomes = {
+            safe_key(outcome.get("targetNodeId")): tuple(
+                _string_list(outcome.get("pathLineIds"))
+            )
+            for outcome in outcomes
+            if isinstance(outcome, dict)
+            and safe_key(outcome.get("targetNodeId"))
+        }
+        expected_child_lines = set(declaration["childArmLineIds"])
+        current_parent_lines = {
+            safe_key(line_id)
+            for carrier in carriers.values()
+            for line_id in carrier.get("currentParentTrunkIds") or []
+            if safe_key(line_id)
+        }
+        expected = {
+            "sourceSha256": declaration["sourceSha256"],
+            "gameAssemblySha256": declaration["gameAssemblySha256"],
+            "candidateKeysPresent": True,
+            "relation": "dialog_tree_reachable_story_playback",
+            "confidence": "native_exact_parent_mission_context",
+            "certainty": "authored_reachable",
+            "nativeMappingId": declaration["nativeMappingId"],
+            "parentLineIds": sorted(
+                declaration["parentLineIds"], key=natural_key
+            ),
+            "childLineIds": sorted(expected_child_lines, key=natural_key),
+            "carrierNodePaths": declaration["carrierNodePaths"],
+            "carrierConnectionIndexes": declaration[
+                "carrierConnectionIndexes"
+            ],
+            "optionAfterLineId": declaration["optionAfterLineId"],
+            "branchAfterLineId": declaration["branchAfterLineId"],
+            "branchNodeId": declaration["branchNodeId"],
+            "outcomeKind": "authoredConditionalBranch",
+            "parentOutcome": tuple(declaration["parentArmLineIds"]),
+            # The emitted route stops at the child option node; the exact
+            # carrier closure above proves the terminal third child line.
+            "childOutcomePrefix": tuple(declaration["childArmLineIds"][:2]),
+        }
+        actual = {
+            "sourceSha256": source_sha256,
+            "gameAssemblySha256": game_assembly_sha256,
+            "candidateKeysPresent": {
+                parent_key, child_key
+            } <= candidate_keys,
+            "relation": safe_key(row.get("relation")),
+            "confidence": safe_key(row.get("confidence")),
+            "certainty": safe_key(row.get("certainty")),
+            "nativeMappingId": safe_key(row.get("nativeMappingId")),
+            "parentLineIds": sorted(current_parent_lines, key=natural_key),
+            "childLineIds": sorted(child_line_ids, key=natural_key),
+            "carrierNodePaths": actual_carrier_paths,
+            "carrierConnectionIndexes": actual_connection_indexes,
+            "optionAfterLineId": safe_key(route_link.get("after")),
+            "branchAfterLineId": safe_key(route.get("firstLineId")),
+            "branchNodeId": safe_key((route.get("_debug") or {}).get(
+                "endNodeId"
+            )),
+            "outcomeKind": safe_key(route.get("outcomeKind")),
+            "parentOutcome": actual_outcomes.get(
+                declaration["conditionFalseTargetNodeId"], ()
+            ),
+            "childOutcomePrefix": actual_outcomes.get(
+                declaration["conditionTrueTargetNodeId"], ()
+            ),
+        }
+        if actual != expected or parent_line_ids != set(
+            declaration["parentLineIds"]
+        ):
+            warnings.append({
+                "validator": "dialogTreeCrossStoryConditionalBranch",
+                "gate": "exactSerializedBranchCarrierAndNativePolarity",
+                "mission": mission,
+                "storyKeys": [parent_key, child_key],
+                "sourcePaths": [str(source_path), str(game_assembly_path)],
+                "sourceSha256": {
+                    source_file: source_sha256,
+                    "GameAssembly.dll": game_assembly_sha256,
+                },
+                "expected": expected,
+                "actual": actual,
+            })
+            continue
+        edges.append({
+            "from": parent_key,
+            "to": child_key,
+            "kind": "dialogTreeCrossStoryConditionalBranch",
+            "tier": "strong",
+            "source": (
+                "exact serialized DialogTree conditional arm plus current "
+                "GameAssembly outgoing-index polarity"
+            ),
+            "sourceFiles": [source_file],
+            "sourceSha256": {source_file: source_sha256},
+            "nativeMappingId": declaration["nativeMappingId"],
+            "optionId": declaration["optionId"],
+            "optionAfterLineId": declaration["optionAfterLineId"],
+            "branchAfterLineId": declaration["branchAfterLineId"],
+            "branchNodeId": declaration["branchNodeId"],
+            "parentArmLineIds": list(declaration["parentArmLineIds"]),
+            "childArmLineIds": list(declaration["childArmLineIds"]),
+            "condition": declaration["condition"],
+            "conditionTrueConnectionIndex": declaration[
+                "conditionTrueConnectionIndex"
+            ],
+            "conditionFalseConnectionIndex": declaration[
+                "conditionFalseConnectionIndex"
+            ],
+            "gameAssemblySha256": declaration["gameAssemblySha256"],
+            "nativeConsumers": list(declaration["nativeConsumers"]),
+            "runtimeReplacementPossible": bool(
+                row.get("runtimeReplacementPossible")
+            ),
+        })
+    return edges, warnings
+
+
 def _connection_native_occurrences(row: dict[str, Any]) -> list[dict[str, Any]]:
     occurrences: list[dict[str, Any]] = []
     for field in NATIVE_OCCURRENCE_FIELDS:
@@ -1377,6 +2034,7 @@ def _connection_native_occurrences(row: dict[str, Any]) -> list[dict[str, Any]]:
             "levelId": next(iter(row.get("levelIds") or []), ""),
             "scriptId": next(iter(row.get("scriptIds") or []), ""),
             "sourceFile": next(iter(row.get("sourceFiles") or []), ""),
+            "sourceFiles": row.get("sourceFiles") or [],
             "nativeEventOwners": row.get("nativeEventOwners") or [],
         })
     return occurrences
@@ -1387,11 +2045,11 @@ def _native_event_story_paths(
     candidate_keys: set[str] | None,
 ) -> dict[
     tuple[str, str, int, str],
-    set[tuple[str, tuple[tuple[Any, ...], ...], str, str]],
+    set[tuple[str, tuple[tuple[Any, ...], ...], tuple[str, ...], str, str]],
 ]:
     event_paths: dict[
         tuple[str, str, int, str],
-        set[tuple[str, tuple[tuple[Any, ...], ...], str, str]],
+        set[tuple[str, tuple[tuple[Any, ...], ...], tuple[str, ...], str, str]],
     ] = defaultdict(set)
     for row in _story_connection_rows(flow):
         story_key = safe_key(row.get("key"))
@@ -1401,10 +2059,20 @@ def _native_event_story_paths(
             level_id = safe_key(occurrence.get("levelId"))
             script_id = safe_key(occurrence.get("scriptId"))
             source_file = safe_key(occurrence.get("sourceFile"))
+            source_files = tuple(sorted({
+                source_file,
+                *[
+                    safe_key(value)
+                    for value in occurrence.get("sourceFiles") or []
+                ],
+            } - {""}, key=natural_key))
             for owner in occurrence.get("nativeEventOwners") or []:
                 if (
                     not isinstance(owner, dict)
-                    or owner.get("status") != "exact_serialized_control_path"
+                    or owner.get("status") not in {
+                        "exact_serialized_control_path",
+                        "exact_serialized_control_path_equivalent_duplicates",
+                    }
                     or not isinstance(owner.get("headerLocalId"), int)
                 ):
                     continue
@@ -1435,9 +2103,15 @@ def _native_event_story_paths(
                 event_paths[signature].add((
                     story_key,
                     path,
-                    source_file,
+                    source_files,
                     json.dumps(
                         owner.get("eventDetail") or {},
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    json.dumps(
+                        owner.get("downstreamControlPaths") or [],
                         ensure_ascii=False,
                         sort_keys=True,
                         separators=(",", ":"),
@@ -1488,10 +2162,10 @@ def _expand_native_control_path_candidates(
 
     for rows in _native_event_story_paths(flow, None).values():
         rows = list(rows)
-        for anchor_key, anchor_path, _source_file, _event_detail in rows:
+        for anchor_key, anchor_path, _source_files, _event_detail, _downstream in rows:
             if anchor_key not in anchor_keys:
                 continue
-            for external_key, external_path, _target_file, _target_detail in rows:
+            for external_key, external_path, _target_files, _target_detail, _target_downstream in rows:
                 if external_key in anchor_keys or external_key == anchor_key:
                     continue
                 if not (
@@ -1516,8 +2190,8 @@ def _native_control_path_story_edges(
 
     evidence_by_pair: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for signature, rows in event_paths.items():
-        for source_key, source_path, source_file, source_event_detail in rows:
-            for target_key, target_path, target_file, target_event_detail in rows:
+        for source_key, source_path, source_files, source_event_detail, _source_downstream in rows:
+            for target_key, target_path, target_files, target_event_detail, _target_downstream in rows:
                 if (
                     source_key == target_key
                     or not _strict_native_path_prefix(source_path, target_path)
@@ -1539,7 +2213,10 @@ def _native_control_path_story_edges(
                     ],
                     "sourcePath": list(source_path_ids),
                     "targetPath": list(target_path_ids),
-                    "sourceFiles": sorted({source_file, target_file} - {""}),
+                    "sourceFiles": sorted(
+                        {*source_files, *target_files},
+                        key=natural_key,
+                    ),
                 })
 
     conflicts = {
@@ -2318,17 +2995,25 @@ def _native_control_branches_and_merges(
             tuple[tuple[int, ...], str],
             dict[
                 tuple[int, str],
-                set[tuple[str, tuple[tuple[Any, ...], ...], str, str]],
+                set[
+                    tuple[
+                        str,
+                        tuple[tuple[Any, ...], ...],
+                        tuple[str, ...],
+                        str,
+                        str,
+                    ]
+                ],
             ],
         ] = defaultdict(lambda: defaultdict(set))
-        for story_key, path, source_file, event_detail in routes:
+        for story_key, path, source_file, event_detail, downstream in routes:
             for index, step in enumerate(path):
                 branch_kind = _native_branch_kind(step[1])
                 if not branch_kind:
                     continue
                 prefix = tuple(path_step[0] for path_step in path[:index])
                 groups[(prefix, branch_kind)][(step[0], step[1])].add(
-                    (story_key, path, source_file, event_detail)
+                    (story_key, path, source_file, event_detail, downstream)
                 )
 
         for (prefix, branch_kind), arms_by_key in groups.items():
@@ -2336,7 +3021,13 @@ def _native_control_branches_and_merges(
                 continue
             arm_rows: list[dict[str, Any]] = []
             all_routes: list[
-                tuple[str, tuple[tuple[Any, ...], ...], str, str]
+                tuple[
+                    str,
+                    tuple[tuple[Any, ...], ...],
+                    tuple[str, ...],
+                    str,
+                    str,
+                ]
             ] = []
             for (entry_local_id, edge), arm_routes in sorted(
                 arms_by_key.items(),
@@ -2348,7 +3039,12 @@ def _native_control_branches_and_merges(
                     "entryLocalId": entry_local_id,
                     "storyKeys": sorted({route[0] for route in arm_routes}, key=natural_key),
                 })
-            source_files = sorted({route[2] for route in all_routes if route[2]})
+            source_files = sorted({
+                source_file
+                for route in all_routes
+                for source_file in route[2]
+                if source_file
+            }, key=natural_key)
             predicate_json_rows = {
                 route[1][len(prefix) - 1][4]
                 for route in all_routes
@@ -2386,7 +3082,7 @@ def _native_control_branches_and_merges(
             common_ids: set[int] | None = None
             route_positions: list[dict[int, int]] = []
             branch_depth = len(prefix) + 1
-            for _story_key, path, _source_file, _event_detail in all_routes:
+            for _story_key, path, _source_files, _event_detail, _downstream in all_routes:
                 positions = {
                     step[0]: index
                     for index, step in enumerate(path)
@@ -2394,7 +3090,36 @@ def _native_control_branches_and_merges(
                 }
                 route_positions.append(positions)
                 common_ids = set(positions) if common_ids is None else common_ids & set(positions)
-            if common_ids:
+            merge_paths: list[list[int]] = []
+            if not common_ids:
+                common_ids = None
+                downstream_positions: list[dict[int, int]] = []
+                for route in all_routes:
+                    paths = json.loads(route[4])
+                    positions: dict[int, int] = {}
+                    for control_path in paths if isinstance(paths, list) else []:
+                        if not isinstance(control_path, list):
+                            continue
+                        local_ids = [
+                            step.get("localId")
+                            for step in control_path
+                            if isinstance(step, dict)
+                            and isinstance(step.get("localId"), int)
+                        ]
+                        for index, local_id in enumerate(local_ids):
+                            positions[local_id] = min(
+                                positions.get(local_id, index),
+                                index,
+                            )
+                    downstream_positions.append(positions)
+                    common_ids = (
+                        set(positions)
+                        if common_ids is None
+                        else common_ids & set(positions)
+                    )
+                if common_ids:
+                    route_positions = downstream_positions
+            if common_ids and route_positions:
                 merge_local_id = min(
                     common_ids,
                     key=lambda local_id: (
@@ -2403,9 +3128,34 @@ def _native_control_branches_and_merges(
                         local_id,
                     ),
                 )
+                for route in all_routes:
+                    paths = json.loads(route[4])
+                    candidates = [
+                        [
+                            step.get("localId")
+                            for step in control_path
+                            if isinstance(step, dict)
+                            and isinstance(step.get("localId"), int)
+                        ]
+                        for control_path in paths
+                        if isinstance(control_path, list)
+                        and any(
+                            isinstance(step, dict)
+                            and step.get("localId") == merge_local_id
+                            for step in control_path
+                        )
+                    ]
+                    if candidates:
+                        merge_paths.append(min(candidates, key=len))
                 merges.append({
                     **branch,
                     "mergeLocalId": merge_local_id,
+                    "convergenceStatus": (
+                        "exact_serialized_downstream_control_convergence"
+                        if merge_paths
+                        else "exact_observed_story_path_convergence"
+                    ),
+                    "mergePaths": merge_paths,
                     "downstreamStoryKeys": sorted(
                         {route[0] for route in all_routes}, key=natural_key
                     ),
@@ -2430,6 +3180,11 @@ def build_mission_partial_order(
     exact_playback_source_keys: set[str] | None = None,
     exact_levelscript_playback_context_keys: set[str] | None = None,
     exact_native_control_path_context_keys: set[str] | None = None,
+    dialog_tree_narrative_occurrences: list[dict[str, Any]] | None = None,
+    dialog_tree_open_ui_occurrences: list[dict[str, Any]] | None = None,
+    reading_popup_rows: dict[str, Any] | None = None,
+    reading_popup_source: str = "",
+    reading_popup_sha256: str = "",
 ) -> dict[str, Any]:
     """Build one source-only mission partial order from generated source evidence."""
     mission_payload = mission_payload if isinstance(mission_payload, dict) else {}
@@ -2535,6 +3290,42 @@ def build_mission_partial_order(
             dialog_payloads,
         )
     )
+    (
+        dialog_tree_conditional_edges,
+        dialog_tree_conditional_warnings,
+    ) = _dialog_tree_cross_story_conditional_edges(
+        mission,
+        flow,
+        candidate_keys,
+        dialog_payloads,
+    )
+    direct_edges.extend(dialog_tree_conditional_edges)
+    narrative_containments, narrative_containment_warnings = (
+        _dialog_tree_narrative_containments(
+            mission,
+            flow,
+            candidate_keys,
+            dialog_tree_narrative_occurrences,
+        )
+    )
+    open_ui_containments, open_ui_containment_warnings = (
+        _dialog_tree_open_ui_containments(
+            mission,
+            candidate_keys,
+            dialog_tree_open_ui_occurrences,
+            reading_popup_rows,
+            reading_popup_source=reading_popup_source,
+            reading_popup_sha256=reading_popup_sha256,
+        )
+    )
+    all_containments = [*narrative_containments, *open_ui_containments]
+    all_containments.sort(key=lambda row: (
+        natural_key(row["parent"]),
+        natural_key(row["child"]),
+    ))
+    embedded_scene_keys = {
+        row["child"] for row in all_containments
+    }
     _demote_reciprocal_quest_projections(direct_edges)
 
     direct_edges.sort(key=_edge_sort_key)
@@ -2605,6 +3396,8 @@ def build_mission_partial_order(
             status = "weak-only"
             weak_only.append(scene_key)
             unknown.append(scene_key)
+        elif scene_key in embedded_scene_keys:
+            status = "embedded"
         else:
             status = "isolated"
             isolated.append(scene_key)
@@ -2814,6 +3607,8 @@ def build_mission_partial_order(
             "weakOnlySceneCount": len(weak_only),
             "unknownSceneCount": len(unknown),
             "definitionOnlySourceNodeCount": len(definition_only_nodes),
+            "embeddedContainmentCount": len(all_containments),
+            "embeddedSceneCount": len(embedded_scene_keys),
             "totalScenePairs": total_pairs,
             "comparableScenePairs": comparable_pairs,
             "unorderedScenePairs": total_pairs - comparable_pairs,
@@ -2854,6 +3649,7 @@ def build_mission_partial_order(
         "reducedComponentEdges": reduced_component_edges,
         "topologicalLayers": layers,
         "directEdges": direct_edges,
+        "containments": all_containments,
         "cycles": cycles,
         "branches": {
             "sceneGraphOptions": scene_graph_option_branches,
@@ -2904,7 +3700,12 @@ def build_mission_partial_order(
                 key=lambda item: natural_key(item[0]),
             )
         ],
-        "warnings": warnings,
+        "warnings": [
+            *warnings,
+            *dialog_tree_conditional_warnings,
+            *narrative_containment_warnings,
+            *open_ui_containment_warnings,
+        ],
     }
 
 
@@ -3010,6 +3811,18 @@ def build_report(
             if source_file:
                 playback_source_files_by_key[story_key].add(source_file)
     exact_playback_source_keys = set(playback_source_files_by_key)
+    dialog_tree_narrative_occurrences = (
+        recover_dialog_tree_narrative_mask_actions()
+    )
+    dialog_tree_open_ui_occurrences = (
+        recover_dialog_tree_open_ui_content_actions()
+    )
+    reading_popup_rows = read_json(READING_POPUP_TABLE_PATH, {})
+    reading_popup_source = READING_POPUP_TABLE_PATH.relative_to(ROOT).as_posix()
+    reading_popup_sha256 = (
+        hashlib.sha256(READING_POPUP_TABLE_PATH.read_bytes()).hexdigest().upper()
+        if READING_POPUP_TABLE_PATH.is_file() else ""
+    )
     rows: list[dict[str, Any]] = []
     totals: Counter[str] = Counter()
     edge_kind_totals: Counter[str] = Counter()
@@ -3059,6 +3872,11 @@ def build_report(
             exact_playback_source_keys,
             exact_levelscript_playback_context_keys,
             exact_native_control_path_context_keys,
+            dialog_tree_narrative_occurrences,
+            dialog_tree_open_ui_occurrences,
+            reading_popup_rows,
+            reading_popup_source,
+            reading_popup_sha256,
         )
         row["missionData"] = (
             mission_path.relative_to(ROOT).as_posix() if mission_path.is_file() else ""
@@ -3095,6 +3913,8 @@ def build_report(
         totals["definitionOnlySourceNodes"] += summary[
             "definitionOnlySourceNodeCount"
         ]
+        totals["embeddedContainments"] += summary["embeddedContainmentCount"]
+        totals["embeddedScenes"] += summary["embeddedSceneCount"]
         totals["totalScenePairs"] += summary["totalScenePairs"]
         totals["comparableScenePairs"] += summary["comparableScenePairs"]
         totals["unorderedScenePairs"] += summary["unorderedScenePairs"]
@@ -3184,6 +4004,9 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- cyclic components: `{summary.get('cycles', 0)}` across "
         f"`{summary.get('missionsWithCycles', 0)}` missions",
         f"- isolated scenes: `{summary.get('isolatedScenes', 0)}`",
+        f"- exact nested DialogTree containments: "
+        f"`{summary.get('embeddedContainments', 0)}` across "
+        f"`{summary.get('embeddedScenes', 0)}` child scenes",
         f"- weak-only scenes: `{summary.get('weakOnlyScenes', 0)}`",
         f"- comparable source-proven pairs: `{summary.get('comparableScenePairs', 0)}` / "
         f"`{summary.get('totalScenePairs', 0)}` (`{summary.get('comparablePairRate', 0.0):.2%}`)",

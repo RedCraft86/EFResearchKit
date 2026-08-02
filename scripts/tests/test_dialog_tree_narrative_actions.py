@@ -6,6 +6,8 @@ from scripts.story_builder.anime_assets import (
     _extract_dialog_tree_left_subtitle_actions,
     _extract_dialog_tree_narrative_mask_actions,
     _extract_dialog_tree_open_ui_actions,
+    _extract_dialog_tree_open_ui_content_actions,
+    extract_dialog_tree_definition_evidence,
 )
 from scripts.story_builder.language_bundle import (
     classify_leveldata_mission_shell_occurrences,
@@ -24,6 +26,61 @@ LEFT_SUBTITLE_TYPE = "Beyond.Gameplay.DialogLeftSubtitleActionData"
 
 
 class DialogTreeNarrativeActionTests(unittest.TestCase):
+    def test_extracts_exact_dialog_tree_definition_shape(self) -> None:
+        payload = {
+            "_assetName": "dlg_fixture_1",
+            "type": "Beyond.Gameplay.DialogTree",
+            "nodes": [
+                {
+                    "$id": "0",
+                    "$type": "Beyond.Gameplay.DialogTreeTrunkNode",
+                    "_actorNodeData": {
+                        "mfTrunkActionData": {"_trunkId": "dlg_fixture_1_001"},
+                    },
+                },
+                {
+                    "$id": "1",
+                    "$type": "Beyond.Gameplay.DialogTreeOptionNode",
+                    "_normalOptions": [
+                        {"_optionId": "option_dlg_fixture_1_1_001"},
+                        {"_optionId": "option_dlg_fixture_1_1_002"},
+                    ],
+                },
+            ],
+            "connections": [{
+                "$type": "Beyond.Gameplay.DialogTreeConnection",
+                "_sourceNode": {"$ref": "0"},
+                "_targetNode": {"$ref": "1"},
+            }],
+        }
+
+        evidence = extract_dialog_tree_definition_evidence(
+            payload,
+            "dlg_fixture_1",
+        )
+
+        self.assertIsNotNone(evidence)
+        self.assertEqual(["dlg_fixture_1_001"], evidence["lineIds"])
+        self.assertEqual(2, evidence["nodeCount"])
+        self.assertEqual(1, evidence["connectionCount"])
+        self.assertEqual(1, evidence["branchingOptionGroupCount"])
+
+    def test_rejects_dialog_tree_definition_name_or_type_mismatch(self) -> None:
+        payload = {
+            "_assetName": "dlg_other_1",
+            "type": "Beyond.Gameplay.DialogTree",
+            "nodes": [],
+            "connections": [],
+        }
+        self.assertIsNone(
+            extract_dialog_tree_definition_evidence(payload, "dlg_fixture_1")
+        )
+        payload["_assetName"] = "dlg_fixture_1"
+        payload["type"] = "Beyond.Gameplay.OtherAsset"
+        self.assertIsNone(
+            extract_dialog_tree_definition_evidence(payload, "dlg_fixture_1")
+        )
+
     def test_script_condition_scope_keeps_richer_levelscript_fallback_open(
         self,
     ) -> None:
@@ -103,6 +160,73 @@ class DialogTreeNarrativeActionTests(unittest.TestCase):
         self.assertEqual(22, rows[0]["panelType"])
         self.assertEqual("activity_fixture", rows[0]["paramData"]["activityId"])
         self.assertEqual([1], rows[0]["finishIds"])
+
+    def test_extracts_inline_open_ui_with_exact_adjacent_trunks(self) -> None:
+        def trunk(node_id: str, line_id: str) -> dict:
+            return {
+                "$id": node_id,
+                "$type": "Beyond.Gameplay.DialogTreeTrunkNode",
+                "_actorNodeData": {
+                    "mfTrunkActionData": {"_trunkId": line_id},
+                },
+            }
+
+        payload = {
+            "type": "Beyond.Gameplay.DialogTree",
+            "nodes": [
+                trunk("0", "dlg_fixture_001"),
+                {
+                    "$id": "1",
+                    "$type": "Beyond.Gameplay.DialogTreeOpenUINode",
+                    "_actionData": {
+                        "$type": "Beyond.Gameplay.DialogOpenUIAction",
+                        "actionEnum": 57,
+                        "panelType": 17,
+                        "param": '{"id":"rp_text_fixture_1"}',
+                    },
+                },
+                trunk("2", "dlg_fixture_002"),
+            ],
+            "connections": [{
+                "$type": "Beyond.Gameplay.DialogTreeConnection",
+                "_sourceNode": {"$ref": source},
+                "_targetNode": {"$ref": target},
+            } for source, target in (("0", "1"), ("1", "2"))],
+        }
+
+        rows = _extract_dialog_tree_open_ui_content_actions(payload)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("rp_text_fixture_1", rows[0]["readingPopupId"])
+        self.assertEqual(
+            "exact_between_adjacent_parent_trunks",
+            rows[0]["dialogTreeConnectionPlacementStatus"],
+        )
+        self.assertEqual(["dlg_fixture_001"], rows[0]["embeddedAfterLineIds"])
+        self.assertEqual(["dlg_fixture_002"], rows[0]["embeddedBeforeLineIds"])
+
+    def test_open_ui_content_extractor_fails_closed_on_untyped_connection(self) -> None:
+        payload = {
+            "type": "Beyond.Gameplay.DialogTree",
+            "nodes": [{
+                "$id": "0",
+                "$type": "Beyond.Gameplay.DialogTreeOpenUINode",
+                "_actionData": {
+                    "$type": "Beyond.Gameplay.DialogOpenUIAction",
+                    "param": '{"id":"rp_text_fixture_1"}',
+                },
+            }, {
+                "$id": "1",
+                "$type": "Beyond.Gameplay.DialogTreeFinishNode",
+            }],
+            "connections": [{
+                "$type": "Fixture.NotDialogTreeConnection",
+                "_sourceNode": {"$ref": "0"},
+                "_targetNode": {"$ref": "1"},
+            }],
+        }
+
+        self.assertEqual([], _extract_dialog_tree_open_ui_content_actions(payload))
 
     def test_open_ui_dialog_tree_stays_runtime_action_not_story_alias(self) -> None:
         connection = {

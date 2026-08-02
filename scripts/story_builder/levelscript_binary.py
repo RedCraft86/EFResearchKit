@@ -2755,6 +2755,64 @@ def _decode_getter_int(payload: bytes) -> dict[str, Any]:
     })
 
 
+def _decode_getter_string(payload: bytes) -> dict[str, Any]:
+    """Decode the installed ``GetterString`` property-path payload.
+
+    The leading byte is the nullable/default string marker, followed by the
+    shared id/source/path fields.  Requiring exact EOF keeps arbitrary strings
+    in neighboring records from being promoted to authored property getters.
+    """
+    if len(payload) < 17 or payload[0] != 0x04:
+        return {}
+    value_size, id_ref, param_source, path_size = struct.unpack_from(
+        "<iiii", payload, 1
+    )
+    if (
+        value_size != -1
+        or id_ref != -1
+        or param_source < 0
+        or param_source > 0x10000
+        or path_size <= 0
+        or path_size > 1024
+        or 17 + path_size != len(payload)
+    ):
+        return {}
+    try:
+        path = payload[17:].decode("utf-8")
+    except UnicodeDecodeError:
+        return {}
+    return {
+        "value": None,
+        "idRef": id_ref,
+        "paramSource": param_source,
+        "path": path,
+        "payloadShape": "nullable-string-property-path-exact-eof",
+    }
+
+
+def _decode_start_dialog_action(payload: bytes) -> dict[str, Any]:
+    """Decode the exact dynamic dialog getter reference in StartDialogAction."""
+    if len(payload) < 17 or payload[0] != 0x04:
+        return {}
+    constant_size, getter_local_id, param_source, path_size = struct.unpack_from(
+        "<iiii", payload, 1
+    )
+    if not (
+        constant_size == -1
+        and 0 <= getter_local_id <= 0x10000
+        and param_source == -1
+        and path_size == -1
+    ):
+        return {}
+    return {
+        "dialogGetterLocalId": getter_local_id,
+        "constantDialogId": None,
+        "paramSource": param_source,
+        "path": None,
+        "payloadShape": "null-dialog-value-local-getter-ref-exact-prefix",
+    }
+
+
 def _decode_get_levelscript_stage_getter(payload: bytes) -> dict[str, Any]:
     script_ptr = _decode_levelscript_ptr_param(payload, 0)
     if script_ptr is None:
@@ -5589,6 +5647,10 @@ def decode_levelscript_record_payload(
         switch_int = _decode_switch_int_action(payload)
         if switch_int:
             out.update(switch_int)
+    if semantic_key == (0x049E, 0x0F):
+        start_dialog = _decode_start_dialog_action(payload)
+        if start_dialog:
+            out["startDialogAction"] = start_dialog
     if semantic_key == (0x04BF, 0x0C):
         switch_string = _decode_switch_string_action(payload)
         if switch_string:
@@ -5664,6 +5726,7 @@ def decode_levelscript_record_payload(
         (0x012F, 0x08),
         (0x013A, 0x08),
         (0x0184, 0x08),
+        (0x01A5, 0x08),
         (0x01AA, 0x0A),
         (0x01AC, 0x09),
         (0x01BA, 0x09),
@@ -5707,6 +5770,10 @@ def decode_levelscript_record_payload(
             getter_int = _decode_getter_int(getter_payload)
             if getter_int:
                 out["getterInt"] = getter_int
+        elif semantic_key == (0x01A5, 0x08):
+            getter_string = _decode_getter_string(getter_payload)
+            if getter_string:
+                out["getterString"] = getter_string
         elif semantic_key == (0x01AA, 0x0A):
             int_compare = _decode_number_compare_getter(
                 getter_payload,
@@ -5791,15 +5858,26 @@ def _tail_candidate(data: bytes, offset: int) -> dict[str, Any]:
     task_map_end: int | None = None
     if task_map_offset is not None and task_map_status == "null":
         task_map_end = task_map_offset + 4
+    elif (
+        task_map_offset is not None
+        and task_map_status == "present"
+        and task_map_count == 0
+    ):
+        # An empty dictionary has no records.  Its end is exact, so the next
+        # top-level member must begin immediately after the count.  Searching
+        # forward to the final trigger-volume-shaped bytes can otherwise make
+        # an embedded logic ID look like the repeated top-level script ID.
+        task_map_end = task_map_offset + 4
     trigger_volume_offset = task_map_end
     trigger_volume: dict[str, Any] = {}
+    trigger_volume_end: int | None = None
     if trigger_volume_offset is not None:
-        trigger_volume, _trigger_volume_end = _decode_trigger_volume_map(data, trigger_volume_offset)
+        trigger_volume, trigger_volume_end = _decode_trigger_volume_map(data, trigger_volume_offset)
     elif task_map_offset is not None and task_map_status == "present":
         (
             trigger_volume_offset,
             trigger_volume,
-            _trigger_volume_end,
+            trigger_volume_end,
         ) = _find_final_trigger_volume_map(
             data,
             search_start=task_map_offset + 4,
@@ -5816,6 +5894,14 @@ def _tail_candidate(data: bytes, offset: int) -> dict[str, Any]:
         score += 50_000
     if task_map_status in {"null", "present"}:
         score += 10_000
+    if (
+        trigger_volume_status in {"null", "present"}
+        and trigger_volume.get("parseStatus") != "truncated"
+        and trigger_volume_end == len(data)
+    ):
+        # A completely decoded final top-level member is stronger evidence
+        # than a locally plausible embedded ID and shape/list header.
+        score += 250_000
 
     return {
         "scriptIdOffset": offset,

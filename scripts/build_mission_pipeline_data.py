@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -198,7 +199,7 @@ DEFAULT_MISSION_GRAPH_REPORT_ROOT = ROOT / "reports" / "mission_graph"
 DEFAULT_SOURCE_STORY_GAP_QUEUE = (
     DEFAULT_ORDER_REPORT_ROOT / "source_story_gap_queue_CN.json"
 )
-SOURCE_STORY_GAP_QUEUE_SCHEMA = "sourceStoryGapQueue.v78"
+SOURCE_STORY_GAP_QUEUE_SCHEMA = "sourceStoryGapQueue.v107"
 DEFAULT_DYNAMIC_SCENE_MISSION_CONTROL_AUDIT = (
     ROOT
     / "reports"
@@ -251,7 +252,9 @@ MISSION_RUNTIME_TRACE_SCHEMA = "missionRuntimeTrace.v1"
 # empty-script member suffix and retains its boundary provenance.
 # v25 admits an exact authored ``int_horn.properties.dialog_id`` consumer with
 # current-template/native provenance while preserving the ownership/order gap.
-SCHEMA_VERSION = 25
+# v26 attaches hash-verified current-game DialogTree definitions to their exact
+# objective, repeatable-talk, and failed-dialog MissionRuntime observers.
+SCHEMA_VERSION = 26
 PIPELINE_STORY_KINDS = {"dlg", "sns", "cutscene", "black", "remotecomm", "radio"}
 BATTLE_SIGNAL_PRODUCER_MAPPING_ID = (
     "gameassembly-2026-07-22-ability-actiondata-0x0134"
@@ -3044,6 +3047,7 @@ def publish_offline_story_recovery(
         "mappingId": "",
         "graphEffect": "none",
         "publishedStoryKeys": 0,
+        "publishedRuntimeContextStoryKeys": 0,
         "outsidePipelineCoverageStoryKeys": 0,
         "storyTriggerManifestOverlay": {},
         "questAttachmentDiagnosticStatus": "unavailable",
@@ -3073,6 +3077,7 @@ def publish_offline_story_recovery(
 
     published = 0
     published_keys: set[str] = set()
+    published_runtime_context_keys: set[str] = set()
     manifest_overlay: dict[str, dict[str, Any]] = {}
     diagnostic_status = payload.get("questAttachmentDiagnosticEvidence")
     diagnostic_active = (
@@ -3127,6 +3132,80 @@ def publish_offline_story_recovery(
                     "offlineRecovery": recovery,
                 }
 
+        approved_runtime_contexts = {
+            (
+                "objective_tracking_story_reference",
+                "closed_exact_mission_tracking_context_no_relative_order",
+            ),
+            (
+                "dialog_tree_prime_reachable_story_playback_dependency",
+                "closed_exact_parent_dialog_dependency_no_relative_order",
+            ),
+            (
+                "mission_accept_dialog",
+                "closed_exact_mission_accept_dialog_no_relative_order",
+            ),
+            (
+                "sns_authored_mission_link",
+                "closed_exact_authored_sns_mission_link_no_relative_order",
+            ),
+        }
+        for row in mission.get(
+            "closedExactRuntimeConfigIsolatedScenes"
+        ) or []:
+            if not isinstance(row, dict):
+                continue
+            if (
+                str(row.get("relation") or ""),
+                str(row.get("recoveryStatus") or ""),
+            ) not in approved_runtime_contexts:
+                continue
+            story_key = str(row.get("sceneKey") or "")
+            if not story_key:
+                continue
+            recovery = {
+                key: value
+                for key, value in row.items()
+                if key != "sceneKey"
+            }
+            recovery["graphEffect"] = "none"
+            manifest_row = story_trigger_manifest.get(story_key)
+            if isinstance(manifest_row, dict):
+                manifest_row["runtimeContextRecovery"] = recovery
+                published_runtime_context_keys.add(story_key)
+
+        approved_native_contexts = {
+            (
+                "authoritative_scope_leveldata_mission_context",
+                "closed_exact_cross_mission_leveldata_shell_playback_context_no_relative_order",
+            ),
+            (
+                "cutscene_root_playback_alias_composed",
+                "closed_exact_composed_root_playback_context_no_relative_order",
+            ),
+        }
+        for row in mission.get("closedExactNativeIsolatedScenes") or []:
+            if not isinstance(row, dict):
+                continue
+            if (
+                str(row.get("relation") or ""),
+                str(row.get("recoveryStatus") or ""),
+            ) not in approved_native_contexts:
+                continue
+            story_key = str(row.get("sceneKey") or "")
+            if not story_key:
+                continue
+            recovery = {
+                key: value
+                for key, value in row.items()
+                if key != "sceneKey"
+            }
+            recovery["graphEffect"] = "none"
+            manifest_row = story_trigger_manifest.get(story_key)
+            if isinstance(manifest_row, dict):
+                manifest_row["runtimeContextRecovery"] = recovery
+                published_runtime_context_keys.add(story_key)
+
     return {
         "status": "active",
         "schema": schema,
@@ -3134,6 +3213,9 @@ def publish_offline_story_recovery(
         "graphEffect": "none",
         "publishedStoryKeys": len(published_keys),
         "publishedRows": published,
+        "publishedRuntimeContextStoryKeys": len(
+            published_runtime_context_keys
+        ),
         "outsidePipelineCoverageStoryKeys": len(manifest_overlay),
         "storyTriggerManifestOverlay": manifest_overlay,
         "questAttachmentDiagnosticStatus": (
@@ -3147,6 +3229,179 @@ def publish_offline_story_recovery(
         "questAttachmentDiagnostics": quest_attachment_diagnostics,
         "source": repo_path(gap_queue_path),
     }
+
+
+def publish_offline_recovery_mission_shells(
+    index: dict[str, Any],
+    output_root: Path,
+    offline_recovery: dict[str, Any],
+    gap_queue_path: Path,
+) -> list[str]:
+    """Publish navigable graph-neutral shells for exhausted non-runtime missions.
+
+    A Story mission can exist in authored tables without a MissionRuntimeAsset.
+    Its exact-build recovery boundary still belongs in Mission Pipeline, but a
+    shell must never imply quests, ownership, playback, or order edges.
+    """
+    if offline_recovery.get("status") != "active":
+        return []
+    queue = read_json(gap_queue_path)
+    if not isinstance(queue, dict):
+        return []
+    queue_rows = {
+        str(row.get("mission") or ""): row
+        for row in queue.get("missions") or []
+        if isinstance(row, dict) and row.get("mission")
+    }
+    existing = {
+        str(row.get("id") or "")
+        for row in index.get("missions") or []
+        if isinstance(row, dict) and row.get("id")
+    }
+    overlay = offline_recovery.get("storyTriggerManifestOverlay") or {}
+    keys_by_mission: dict[str, list[str]] = defaultdict(list)
+    for story_key, entry in overlay.items():
+        recovery = entry.get("offlineRecovery") if isinstance(entry, dict) else None
+        mission_id = str(
+            (recovery or {}).get("missionId")
+            or (entry or {}).get("nominalMissionId")
+            or ""
+        )
+        if mission_id and mission_id not in existing:
+            keys_by_mission[mission_id].append(str(story_key))
+
+    published: list[str] = []
+    mission_output = output_root / "missions"
+    mission_output.mkdir(parents=True, exist_ok=True)
+    for mission_id in sorted(keys_by_mission, key=natural_quest_key):
+        order_row = queue_rows.get(mission_id)
+        if not isinstance(order_row, dict):
+            continue
+        story_keys = sorted(keys_by_mission[mission_id], key=natural_quest_key)
+        metrics = order_row.get("metrics") or {}
+        components = [
+            {
+                "id": f"p{index}",
+                "sceneKeys": [story_key],
+                "cyclic": False,
+                "internalEdgeIndexes": [],
+            }
+            for index, story_key in enumerate(story_keys, start=1)
+        ]
+        story_order = {
+            "mission": mission_id,
+            "summary": {
+                "sceneCount": int(metrics.get("sceneCount") or len(story_keys)),
+                "strongEdgeCount": 0,
+                "weakEdgeCount": 0,
+                "cycleCount": 0,
+                "unorderedScenePairs": int(metrics.get("totalScenePairs") or 0),
+                "isolatedSceneCount": int(
+                    metrics.get("isolatedScenes") or len(story_keys)
+                ),
+                "weakOnlySceneCount": 0,
+            },
+            "nodes": [
+                {
+                    "key": story_key,
+                    "kind": offline_story_kind(story_key),
+                    "membership": "index",
+                    "component": component["id"],
+                    "relationStatus": "isolated",
+                }
+                for story_key, component in zip(story_keys, components)
+            ],
+            "components": components,
+            "componentEdges": [],
+            "reducedComponentEdges": [],
+            "topologicalLayers": [[row["id"] for row in components]],
+            "directEdges": [],
+            "containments": [],
+            "cycles": [],
+            "branches": {
+                "sceneGraphOptions": [],
+                "nativeControlBranches": [],
+                "nativeControlMerges": [],
+                "dialogLineOptions": [],
+                "questForks": [],
+                "questMerges": [],
+            },
+            "isolatedSceneKeys": story_keys,
+            "weakOnlySceneKeys": [],
+            "unknownSceneKeys": story_keys,
+            "unresolvedSourceNodes": [],
+            "sourceGapQueue": order_row,
+        }
+        payload = {
+            "schemaVersion": SCHEMA_VERSION,
+            "mission": {
+                "id": mission_id,
+                "nameKey": "",
+                "descriptionKey": "",
+                "levelId": "",
+                "missionType": None,
+                "rewardId": "",
+                "mainPath": [],
+                "entryQuestIds": [],
+                "nativeRuntimeBindings": [],
+                "source": repo_path(gap_queue_path),
+                "offlineRecoveryShell": True,
+                "sourceBoundary": (
+                    "No MissionRuntimeAsset exists in the current export; this "
+                    "shell exposes exact graph-neutral Story recovery only."
+                ),
+            },
+            "nodes": [],
+            "edges": [],
+            "caseStudy": None,
+            "missionGraph": {"upstream": {}, "downstream": {}},
+            "envTalkContext": [],
+            "storyOrder": story_order,
+        }
+        write_json(mission_output / f"{mission_id}.json", payload)
+        summary = {
+            "id": mission_id,
+            "nameKey": "",
+            "levelId": "",
+            "questCount": 0,
+            "mainPathCount": 0,
+            "entryCount": 0,
+            "fanoutCount": 0,
+            "multiPrevJoinCount": 0,
+            "activeJoinCount": 0,
+            "exactFinishCount": 0,
+            "serverPlaceholderCount": 0,
+            "serverPlaceholderQuestCount": 0,
+            "failureConditionCount": 0,
+            "externalDependencyCount": 0,
+            "submitItemConditionCount": 0,
+            "submitItemQuestCount": 0,
+            "submitItemDialogCoGateCount": 0,
+            "submitItemLevelScriptCoGateCount": 0,
+            "nativeRuntimeBindingCount": 0,
+            "activityStageHostCount": 0,
+            "activityStageHostedQuestCount": 0,
+            "trackingInfoCount": 0,
+            "trackingObjectiveCount": 0,
+            "missionPropertyCount": 0,
+            "conditionTypes": [],
+            "caseStudy": False,
+            "file": f"missions/{mission_id}.json",
+            "offlineRecoveryShell": True,
+            "offlineRecoveryStoryCount": len(story_keys),
+            "storyOrderSceneCount": int(metrics.get("sceneCount") or 0),
+            "storyOrderStrongEdgeCount": int(
+                metrics.get("strongEdgeCount") or 0
+            ),
+            "storyOrderCycleCount": int(metrics.get("sourceCycles") or 0),
+        }
+        index.setdefault("missions", []).append(summary)
+        published.append(mission_id)
+        existing.add(mission_id)
+    index["missions"].sort(key=lambda row: natural_quest_key(row["id"]))
+    index.setdefault("counts", {})["missions"] = len(index["missions"])
+    index["counts"]["offlineRecoveryMissionShells"] = len(published)
+    return published
 
 
 def classify_definition_only_current_build_consumers(
@@ -3885,7 +4140,23 @@ def build_story_trigger_route(
         "sourceFiles": source_files,
         "serverMessage": str(row.get("serverMessage") or ""),
         "serverFields": _unique_route_strings(row.get("serverFields")),
+        "upstreamServerStateSources": _unique_route_strings(
+            row.get("upstreamServerStateSources")
+        ),
         "serverExchange": row.get("serverExchange"),
+        "clientRequest": row.get("clientRequest"),
+        "expectedClientReply": row.get("expectedClientReply"),
+        "npcProxyId": str(row.get("npcProxyId") or ""),
+        "candidateQuestIds": _unique_route_strings(
+            row.get("candidateQuestIds")
+        ),
+        "activeRowIndex": row.get("activeRowIndex"),
+        "configuredDialogIds": _unique_route_strings(
+            row.get("configuredDialogIds")
+        ),
+        "selectionOrderStatus": str(
+            row.get("selectionOrderStatus") or ""
+        ),
         "questTriggerStatus": str(row.get("questTriggerStatus") or ""),
         "steps": steps,
     }
@@ -5916,11 +6187,17 @@ FACT_KEYS = (
     "sceneId",
     "_levelId",
     "levelId",
+    "_entityId",
+    "entityId",
     "_scriptId",
     "scriptId",
     "missionId",
     "missionVarName",
     "compareOperator",
+    "_compareValue",
+    "compareValue",
+    "_comparer",
+    "comparer",
     "_propertyKey",
     "_key",
     "_guideGroupId",
@@ -7171,6 +7448,207 @@ def publish_quest_objective_story_scope(
     return report
 
 
+def publish_quest_dialog_tree_definitions(
+    index: dict[str, Any],
+    output_root: Path,
+    story_data_root: Path,
+    language: str,
+) -> dict[str, Any]:
+    """Attach hash-verified DialogTree definitions to exact quest observers.
+
+    MissionRuntime ``CheckTalkOptionFinish`` and
+    ``CheckRepeatableTalkFinish`` prove that a quest observes a DialogTree
+    root. The recovered TextAsset proves that root's internal graph; it does
+    not prove which client action starts the dialog or add cross-file
+    chronology.
+    """
+    sidecar_root = story_data_root / language.upper() / "mission"
+    unique_story_keys: set[str] = set()
+    placements = 0
+    missions = 0
+    quests = 0
+    if not sidecar_root.is_dir():
+        result = {
+            "schema": "missionPipelineDialogTreeDefinitions.v1",
+            "published": {
+                "missions": 0,
+                "quests": 0,
+                "placements": 0,
+                "uniqueStoryKeys": 0,
+            },
+        }
+        index["dialogTreeDefinitions"] = result
+        return result
+
+    for summary in index.get("missions") or []:
+        if not isinstance(summary, dict):
+            continue
+        mission_id = str(summary.get("id") or "")
+        sidecar_path = sidecar_root / f"{mission_id}.json"
+        mission_path = output_root / str(summary.get("file") or "")
+        if not sidecar_path.is_file() or not mission_path.is_file():
+            continue
+        sidecar = read_json(sidecar_path)
+        timeline_recovery = (
+            sidecar.get("timelineRecovery")
+            if isinstance(sidecar, dict)
+            else None
+        )
+        raw_definitions = (
+            timeline_recovery.get("sceneDialogTreeEvidence")
+            if isinstance(timeline_recovery, dict)
+            else None
+        )
+        if not isinstance(raw_definitions, dict) or not raw_definitions:
+            continue
+
+        definitions: dict[str, dict[str, Any]] = {}
+        for scene_key, raw in raw_definitions.items():
+            if not isinstance(raw, dict):
+                raise ValueError(
+                    f"DialogTree evidence is not an object: {sidecar_path} {scene_key}"
+                )
+            source_file = str(raw.get("sourceFile") or "")
+            source_sha256 = str(raw.get("sourceSha256") or "").upper()
+            if (
+                str(raw.get("sceneKey") or "") != str(scene_key)
+                or raw.get("assetType") != "Beyond.Gameplay.DialogTree"
+                or raw.get("evidenceKind") != "exact_dialog_tree_definition"
+                or not re.fullmatch(r"[0-9A-F]{64}", source_sha256)
+                or not source_file
+            ):
+                raise ValueError(
+                    f"DialogTree evidence failed shape validation: "
+                    f"{sidecar_path} {scene_key}"
+                )
+            source_path = (ROOT / source_file).resolve()
+            if not source_path.is_relative_to(ROOT) or not source_path.is_file():
+                raise ValueError(
+                    f"DialogTree evidence source is missing/outside repo: "
+                    f"{sidecar_path} {scene_key} {source_file}"
+                )
+            actual_sha256 = hashlib.sha256(source_path.read_bytes()).hexdigest().upper()
+            if actual_sha256 != source_sha256:
+                raise ValueError(
+                    f"DialogTree evidence source hash mismatch: {sidecar_path} "
+                    f"{scene_key} expected={source_sha256} actual={actual_sha256}"
+                )
+            definitions[str(scene_key)] = raw
+
+        payload = read_json(mission_path)
+        if not isinstance(payload, dict):
+            continue
+        mission_placements = 0
+        mission_quests: set[str] = set()
+        mission_observed_dialogs: set[str] = set()
+        for node in payload.get("nodes") or []:
+            if not isinstance(node, dict):
+                continue
+            observers_by_dialog: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+            def collect_observers(
+                condition: Any,
+                relation: str,
+                objective_index: int | None = None,
+            ) -> None:
+                if isinstance(condition, list):
+                    for child in condition:
+                        collect_observers(child, relation, objective_index)
+                    return
+                if not isinstance(condition, dict):
+                    return
+                condition_type = str(condition.get("type") or "")
+                facts = condition.get("facts")
+                if (
+                    condition_type in {
+                        "CheckTalkOptionFinish",
+                        "CheckRepeatableTalkFinish",
+                    }
+                    and isinstance(facts, dict)
+                    and facts.get("dialogId")
+                ):
+                    dialog_id = str(facts["dialogId"])
+                    observer = {
+                        "relation": relation,
+                        "conditionType": condition_type,
+                    }
+                    if objective_index is not None:
+                        observer["objectiveIndex"] = objective_index
+                    if "finishId" in facts:
+                        observer["finishId"] = facts["finishId"]
+                    if observer not in observers_by_dialog[dialog_id]:
+                        observers_by_dialog[dialog_id].append(observer)
+                for value in condition.values():
+                    if isinstance(value, (dict, list)):
+                        collect_observers(value, relation, objective_index)
+
+            for objective in node.get("objectives") or []:
+                if isinstance(objective, dict):
+                    collect_observers(
+                        objective.get("condition"),
+                        "objective_condition",
+                        objective.get("index"),
+                    )
+            collect_observers(node.get("failedCondition"), "failed_condition")
+            observed_dialogs = set(observers_by_dialog)
+            mission_observed_dialogs.update(observed_dialogs)
+            rows = [
+                {
+                    **definitions[dialog_id],
+                    "missionObservers": observers_by_dialog[dialog_id],
+                }
+                for dialog_id in sorted(observed_dialogs, key=natural_quest_key)
+                if dialog_id in definitions
+            ]
+            if not rows:
+                continue
+            node["dialogTreeDefinitions"] = rows
+            mission_placements += len(rows)
+            mission_quests.add(str(node.get("id") or ""))
+            unique_story_keys.update(
+                str(row.get("sceneKey") or "") for row in rows
+            )
+        unplaced = sorted(
+            set(definitions) - mission_observed_dialogs,
+            key=natural_quest_key,
+        )
+        if unplaced:
+            raise ValueError(
+                "DialogTree definitions have no supported MissionRuntime "
+                f"observer: mission={mission_id} source={sidecar_path} "
+                f"expected={unplaced[:8]} "
+                f"actual={sorted(mission_observed_dialogs, key=natural_quest_key)[:16]}"
+            )
+        if not mission_placements:
+            continue
+        summary["dialogTreeDefinitionCount"] = mission_placements
+        summary["dialogTreeDefinitionQuestCount"] = len(mission_quests)
+        write_json(mission_path, payload)
+        placements += mission_placements
+        quests += len(mission_quests)
+        missions += 1
+
+    result = {
+        "schema": "missionPipelineDialogTreeDefinitions.v1",
+        "evidencePolicy": (
+            "Exact MissionRuntime CheckTalkOptionFinish or "
+            "CheckRepeatableTalkFinish observer plus a typed, hash-verified "
+            "current-game DialogTree TextAsset. Definition/internal branch "
+            "evidence only; no activation or cross-file order promotion."
+        ),
+        "sourceRoot": repo_path(sidecar_root),
+        "published": {
+            "missions": missions,
+            "quests": quests,
+            "placements": placements,
+            "uniqueStoryKeys": len(unique_story_keys),
+        },
+    }
+    index["dialogTreeDefinitions"] = result
+    write_json(output_root / "index.json", index)
+    return result
+
+
 def _compact_runtime_observation(row: dict[str, Any]) -> dict[str, Any]:
     keys = (
         "sessionId",
@@ -7362,6 +7840,12 @@ def main() -> int:
             DEFAULT_ACTIVITY_SNAPSHOT_STAGE_TABLE,
         ).resolve(),
     )
+    dialog_tree_definitions = publish_quest_dialog_tree_definitions(
+        index,
+        output_root,
+        args.story_data_root.resolve(),
+        args.story_language,
+    )
     order_report = publish_source_story_partial_order(
         index,
         output_root,
@@ -7389,6 +7873,18 @@ def main() -> int:
                 "source_story_gap_queue",
                 DEFAULT_SOURCE_STORY_GAP_QUEUE,
             ).resolve(),
+        )
+        offline_recovery["missionShells"] = (
+            publish_offline_recovery_mission_shells(
+                index,
+                output_root,
+                offline_recovery,
+                getattr(
+                    args,
+                    "source_story_gap_queue",
+                    DEFAULT_SOURCE_STORY_GAP_QUEUE,
+                ).resolve(),
+            ) if output_root == DEFAULT_OUTPUT_ROOT.resolve() else []
         )
         report_stem = f"mission_pipeline_story_binding_coverage_{coverage['language']}"
         coverage_report = args.report_root.resolve() / f"{report_stem}.json"
@@ -7473,6 +7969,12 @@ def main() -> int:
             )
     else:
         print(f"Story binding coverage skipped: no {args.story_language.upper()} Story bundle")
+    published_dialog_trees = dialog_tree_definitions.get("published") or {}
+    print(
+        "Quest DialogTree definitions: "
+        f"{published_dialog_trees.get('placements', 0)} placements across "
+        f"{published_dialog_trees.get('quests', 0)} quest nodes"
+    )
     if order_report:
         summary = order_report.get("summary") or {}
         print(

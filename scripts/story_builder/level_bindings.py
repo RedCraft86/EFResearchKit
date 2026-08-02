@@ -265,6 +265,7 @@ LEVELSCRIPT_NATIVE_ACTION_MAPPING_ID = (
 )
 LEVELSCRIPT_NATIVE_ACTION_NAMES: dict[tuple[int, int], str] = {
     (0x0001, 0x00): "ActionForSubGame_ConfirmLeaveSubGame",
+    (0x001F, 0x13): "BlackScreenFadeInAndOut",
     (0x0007, 0x0D): "AddBuffsToTargetsFromGodEntity",
     (0x0009, 0x0D): "AddBuffToTargetFromGodEntity",
     (0x000B, 0x0F): "AddCameraControlState",
@@ -760,6 +761,7 @@ LEVELSCRIPT_OPCODE_TABLE: dict[tuple[int, int], str] = {
     (0x0015, 0x09): "set_state",
     (0x0070, 0x13): "set_state",
     (0x0450, 0x0f): "show_guide",
+    (0x048C, 0x09): "play_reading_popup",
 }
 
 _LEVELSCRIPT_BLACK_LINE_ID_RE = re.compile(r"^black_.+_\d{3,}$", re.IGNORECASE)
@@ -812,6 +814,119 @@ def match_levelscript_native_black_record(
             line_id: sorted(offsets)
             for line_id, offsets in sorted(line_offsets.items())
         },
+    }
+
+
+def match_levelscript_native_reading_popup_record(
+    level_id: str,
+    script_id: str,
+    record: dict,
+    *,
+    leveldata_root: Path = LEVELDATA_DIR,
+    levelscript_root: Path = LEVELSCRIPT_DIR,
+    persistent_leveldata_root: Path = PERSISTENT_DATA_JSON_DIR / "LevelData",
+    reading_popup_path: Path = STREAMING_TABLE_DIR / "ReadingPopUpTable.json",
+) -> dict | None:
+    """Resolve one ShowUIReadingPopPanel property through exact BriefData.
+
+    The action stores a LevelScript property name, not a Story id.  Promotion
+    therefore requires the current-build native action tag, one exact property
+    name in the action, a completely framed member-22 BriefData dictionary,
+    an identical Persistent mirror, and one ReadingPopUpTable content id.
+    LevelData filenames contribute no Story identity or chronology.
+    """
+    if (
+        levelscript_record_semantic_key(record) != (0x048C, 0x09)
+        or levelscript_native_action_name(record) != "ShowUIReadingPopPanel"
+        or not str(script_id).isdigit()
+    ):
+        return None
+    property_names = _levelscript_record_texts(record)
+    if len(property_names) != 1:
+        return None
+    property_name = property_names[0]
+    try:
+        reading_rows = json.loads(reading_popup_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(reading_rows, dict):
+        return None
+    script_dir = levelscript_root / level_id
+    candidate_script_ids = {
+        int(path.stem)
+        for path in script_dir.glob("*.json")
+        if path.stem.isdigit()
+    }
+    if int(script_id) not in candidate_script_ids:
+        return None
+
+    matches: list[dict] = []
+    for path in sorted((leveldata_root / level_id).glob("*.json")):
+        mirror_path = persistent_leveldata_root / level_id / path.name
+        try:
+            data = read_bytes_cached(path)
+            mirror_data = read_bytes_cached(mirror_path)
+        except OSError:
+            continue
+        if data != mirror_data:
+            continue
+        brief = parse_leveldata_levelscript_brief_dictionary(
+            data,
+            candidate_script_ids,
+        ).get(int(script_id))
+        if not isinstance(brief, dict):
+            continue
+        properties = [
+            prop
+            for prop in brief.get("properties") or []
+            if isinstance(prop, dict) and prop.get("name") == property_name
+        ]
+        if len(properties) != 1:
+            continue
+        value = properties[0].get("value")
+        atoms = value.get("atoms") if isinstance(value, dict) else None
+        if (
+            not isinstance(value, dict)
+            or value.get("valueType") != 7
+            or value.get("atomCount") != 1
+            or not isinstance(atoms, list)
+            or len(atoms) != 1
+            or not isinstance(atoms[0], dict)
+        ):
+            continue
+        popup_id = str(atoms[0].get("text") or "").strip()
+        popup_row = reading_rows.get(popup_id)
+        story_key = str(
+            popup_row.get("contentId") if isinstance(popup_row, dict) else ""
+        ).strip()
+        if not popup_id or not story_key.startswith("text_"):
+            continue
+        matches.append({
+            "key": story_key,
+            "propertyName": property_name,
+            "readingPopupId": popup_id,
+            "levelDataFile": repo_rel(path),
+            "verifiedMirrorFile": repo_rel(mirror_path),
+            "levelDataSha256": hashlib.sha256(data).hexdigest().upper(),
+            "readingPopupTableSourceFile": repo_rel(reading_popup_path),
+            "briefData": brief,
+            "nativeMappingId": (
+                "gameassembly-show-ui-reading-popup-leveldata-property-v1"
+            ),
+        })
+    signatures = {
+        (match["key"], match["readingPopupId"], match["propertyName"])
+        for match in matches
+    }
+    if len(signatures) != 1 or not matches:
+        return None
+    return {
+        **matches[0],
+        "levelDataFiles": [match["levelDataFile"] for match in matches],
+        "verifiedMirrorFiles": [
+            match["verifiedMirrorFile"] for match in matches
+        ],
+        "hostCount": len(matches),
     }
 
 
@@ -940,6 +1055,7 @@ def _levelscript_native_control_paths_to_record(
     equivalent_record_offsets = context.get("equivalentRecordOffsets") or {}
     decoded_cache = context.get("decodedByStart") or {}
     next_starts = context.get("nextStarts") or {}
+    downstream_cache = context.setdefault("downstreamControlPaths", {})
     target_local_id = target_record.get("localId")
     if not isinstance(target_local_id, int):
         return []
@@ -1157,6 +1273,62 @@ def _levelscript_native_control_paths_to_record(
             if value not in ("", None, [], {})
         }
 
+    def downstream_control_paths(record: dict) -> list[list[dict]]:
+        """Return bounded exact paths from one action to every reachable action.
+
+        These paths use the same typed successor decoder and duplicate-local-id
+        gate as event-to-action traversal.  Publishing every reachable prefix,
+        rather than only leaf paths, lets downstream consumers prove branch
+        convergence without treating serialized record adjacency as control
+        flow.  Cycles are bounded per path and conflicting duplicate targets
+        remain absent from ``action_by_local``.
+        """
+        start_local_id = record.get("localId")
+        if isinstance(start_local_id, int) and start_local_id in downstream_cache:
+            return downstream_cache[start_local_id]
+        output: list[list[dict]] = []
+        seen: set[tuple[tuple[str, int], ...]] = set()
+        visited = (
+            frozenset({start_local_id})
+            if isinstance(start_local_id, int)
+            else frozenset()
+        )
+        queue: list[tuple[dict, list[dict], frozenset[int]]] = []
+        for edge, next_local_id in successors(record):
+            next_record = action_by_local.get(next_local_id)
+            if next_record is None or next_local_id in visited:
+                continue
+            queue.append((
+                next_record,
+                [compact_step(next_record, edge)],
+                visited | {next_local_id},
+            ))
+        while queue and len(output) < 64:
+            current, path, path_visited = queue.pop(0)
+            signature = tuple(
+                (str(step.get("edge") or "").strip(), int(step["localId"]))
+                for step in path
+                if isinstance(step.get("localId"), int)
+            )
+            if not signature or signature in seen:
+                continue
+            seen.add(signature)
+            output.append(path)
+            if len(path) >= 64:
+                continue
+            for edge, next_local_id in successors(current):
+                next_record = action_by_local.get(next_local_id)
+                if next_record is None or next_local_id in path_visited:
+                    continue
+                queue.append((
+                    next_record,
+                    [*path, compact_step(next_record, edge)],
+                    path_visited | {next_local_id},
+                ))
+        if isinstance(start_local_id, int):
+            downstream_cache[start_local_id] = output
+        return output
+
     paths: list[dict] = []
     seen_paths: set[tuple] = set()
     for header in ordered:
@@ -1218,6 +1390,11 @@ def _levelscript_native_control_paths_to_record(
                     "triggerSlotIds": list(header_detail.get("triggerSlotIds") or []),
                     "pathLocalIds": [step.get("localId") for step in path],
                     "path": path,
+                    "downstreamControlStatus":
+                        "exact_serialized_typed_reachability",
+                    "downstreamControlPaths": downstream_control_paths(
+                        current
+                    ),
                     "nativeHeaderMappingId": LEVELSCRIPT_NATIVE_HEADER_MAPPING_ID,
                 })
                 continue
@@ -1854,6 +2031,33 @@ def build_levelscript_action_story_occurrences(
                     ):
                         continue
                     story_hits = {fmv_story_key: [fmv_field_offset]}
+                reading_popup_action: dict = {}
+                if record_class == "play_reading_popup":
+                    reading_popup_action = (
+                        match_levelscript_native_reading_popup_record(
+                            level_dir.name,
+                            str(file_info.get("fileStem") or ""),
+                            record,
+                            levelscript_root=root,
+                        )
+                        or {}
+                    )
+                    popup_story_key = str(
+                        reading_popup_action.get("key") or ""
+                    )
+                    if not popup_story_key:
+                        continue
+                    property_offsets = [
+                        int(hit.get("offset"))
+                        for hit in record.get("plainStrings") or []
+                        if isinstance(hit, dict)
+                        and hit.get("text")
+                        == reading_popup_action.get("propertyName")
+                        and isinstance(hit.get("offset"), int)
+                    ]
+                    if not property_offsets:
+                        continue
+                    story_hits = {popup_story_key: property_offsets}
                 all_story_keys = sorted(story_hits)
                 for story_key, string_offsets in story_hits.items():
                     signature = (
@@ -1901,6 +2105,14 @@ def build_levelscript_action_story_occurrences(
                             and story_key == fmv_story_key
                         ):
                             out[story_key][-1]["fmvAction"] = fmv_action
+                        if (
+                            record_class == "play_reading_popup"
+                            and reading_popup_action
+                            and story_key == reading_popup_action.get("key")
+                        ):
+                            out[story_key][-1]["readingPopupAction"] = (
+                                reading_popup_action
+                            )
                         if control_context is None:
                             control_context = _prepare_levelscript_native_control_context(
                                 data,
@@ -7351,12 +7563,15 @@ def _looks_like_npc_patrol_data_start(data: bytes, offset: int) -> bool:
     try:
         move_style = struct.unpack_from("<i", data, offset + 1)[0]
         born_speed = struct.unpack_from("<f", data, offset + 5)[0]
-        lead_name_length = struct.unpack_from("<i", data, offset + 12)[0]
-        loop_type = struct.unpack_from("<i", data, offset + 16)[0]
-        patrol_id = struct.unpack_from("<i", data, offset + 20)[0]
-        point_count = struct.unpack_from("<i", data, offset + 24)[0]
     except struct.error:
         return False
+    lead_name = _read_leveldata_memorypack_string(data, offset + 12)
+    if lead_name is None:
+        return False
+    _lead_config_name, cursor = lead_name
+    if cursor + 12 > len(data):
+        return False
+    loop_type, patrol_id, point_count = struct.unpack_from("<iii", data, cursor)
     return bool(
         -1 <= move_style <= 64
         and math.isfinite(born_speed)
@@ -7364,11 +7579,74 @@ def _looks_like_npc_patrol_data_start(data: bytes, offset: int) -> bool:
         and data[offset + 9] in (0, 1)
         and data[offset + 10] in (0, 1)
         and data[offset + 11] in (0, 1)
-        and lead_name_length == 0
         and -1 <= loop_type <= 64
         and patrol_id > 0
         and 0 <= point_count <= 10_000
     )
+
+
+def _parse_leveldata_patrol_sub_action(
+    data: bytes,
+    offset: int,
+) -> dict | None:
+    """Decode the unambiguous tail of one current PatrolSubAction/26 row.
+
+    The installed ``Deserialize`` method (token ``0x06004bae``, current RVA
+    ``0x3467210``) proves the member count and write sequence.  Some exported
+    rows nevertheless differ in the widths used inside the 44-byte prefix
+    before ``radioId``.  Preserve that prefix as opaque serialized evidence;
+    the framed string and every later member have one exact physical layout.
+    Nested sub-action data must be null, keeping record boundaries fail-closed.
+    """
+    if offset < 0 or offset + 53 > len(data) or data[offset] != 0x1A:
+        return None
+    radio_decoded = _read_leveldata_memorypack_string(data, offset + 49)
+    if radio_decoded is None:
+        return None
+    radio_id, cursor = radio_decoded
+    if cursor + 27 > len(data):
+        return None
+    radio_wait_time, radius = struct.unpack_from("<ff", data, cursor)
+    repeat_anim, root_motion = data[cursor + 8 : cursor + 10]
+    rotation_offset, rotation_y = struct.unpack_from("<ff", data, cursor + 10)
+    snap_to_ground = struct.unpack_from("<i", data, cursor + 18)[0]
+    sub_action_marker = data[cursor + 22]
+    action_type = struct.unpack_from("<i", data, cursor + 23)[0]
+    wait_time = struct.unpack_from("<f", data, cursor + 27)[0]
+    record_end = cursor + 31
+    if (
+        not all(math.isfinite(value) for value in (
+            radio_wait_time,
+            radius,
+            rotation_offset,
+            rotation_y,
+            wait_time,
+        ))
+        or repeat_anim not in (0, 1)
+        or root_motion not in (0, 1)
+        or sub_action_marker != 0xFF
+        or not 0 <= action_type <= 64
+    ):
+        return None
+    return {
+        "recordOffset": offset,
+        "recordEndOffset": record_end,
+        "serializedMemberCount": 26,
+        "opaquePrefixOffset": offset + 5,
+        "opaquePrefixLength": 44,
+        "radioId": radio_id or "",
+        "radioWaitTime": radio_wait_time,
+        "radius": radius,
+        "repeatAnim": bool(repeat_anim),
+        "rootMotion": bool(root_motion),
+        "rotationOffset": rotation_offset,
+        "rotationY": rotation_y,
+        "snapToGround": snap_to_ground,
+        "subActionDataStatus": "null",
+        "type": action_type,
+        "waitTime": wait_time,
+        "payloadLayout": "patrol-sub-action-26-opaque-prefix-44-exact-tail",
+    }
 
 
 def parse_leveldata_npc_patrol_data_entry(
@@ -7379,11 +7657,9 @@ def parse_leveldata_npc_patrol_data_entry(
 ) -> dict | None:
     """Parse one current ``NpcPatrolData/9`` row and its typed points.
 
-    The six Story-facing patrol rows use the current fixed-null-string shape
-    of the 26-member patrol-point action object.  Variable-string action rows
-    are intentionally unsupported here; callers fail closed rather than
-    guessing their length.  Every accepted point, action, gait, and position
-    is consumed before the returned end offset.
+    Every accepted point, variable-string action, gait, and position is
+    consumed before the returned end offset. Nested event-pair and polymorphic
+    sub-action payloads remain deliberately unsupported.
     """
     if not _looks_like_npc_patrol_data_start(data, offset):
         return None
@@ -7425,21 +7701,15 @@ def parse_leveldata_npc_patrol_data_entry(
             return None
         action_count, cursor = actions_decoded
         action_offsets: list[int] = []
+        actions: list[dict] = []
         for _ in range(max(0, action_count)):
             action_offset = cursor
-            if cursor + 84 > len(data):
-                return None
-            action = data[cursor : cursor + 84]
-            if (
-                action[0] != 0x1A
-                or action[1:5] != b"\x00\x00\x00\x00"
-                or action[27:31] != b"\xff\xff\xff\xff"
-                or action[62] not in (0, 1)
-                or action[75] != 0xFF
-            ):
+            action = _parse_leveldata_patrol_sub_action(data, action_offset)
+            if action is None:
                 return None
             action_offsets.append(action_offset)
-            cursor += 84
+            actions.append(action)
+            cursor = int(action["recordEndOffset"])
         gait_decoded = _read_leveldata_i32(data, cursor)
         if gait_decoded is None:
             return None
@@ -7458,6 +7728,7 @@ def parse_leveldata_npc_patrol_data_entry(
             "actionCount": max(0, action_count),
             "actionRecordOffsets": action_offsets,
             "actionSerializedMemberCount": 26 if action_offsets else None,
+            "actions": actions,
             "enterGait": enter_gait,
             "position": {
                 "x": position[0],
@@ -7480,9 +7751,157 @@ def parse_leveldata_npc_patrol_data_entry(
         "leadConfigSoName": lead_config_name,
         "loopType": loop_type,
         "payloadShape": (
-            "npc-patrol-data-9-points-3-fixed-action-26-exact-consume"
+            "npc-patrol-data-9-points-3-action-26-exact-consume"
         ),
     }
+
+
+def _leveldata_npc_patrol_header(data: bytes, offset: int) -> dict | None:
+    if not _looks_like_npc_patrol_data_start(data, offset):
+        return None
+    cursor = offset + 12
+    lead_decoded = _read_leveldata_memorypack_string(data, cursor)
+    if lead_decoded is None:
+        return None
+    lead_config_name, cursor = lead_decoded
+    if cursor + 12 > len(data):
+        return None
+    loop_type, patrol_id, point_count = struct.unpack_from("<iii", data, cursor)
+    return {
+        "recordOffset": offset,
+        "pointsOffset": cursor + 12,
+        "serializedMemberCount": 9,
+        "leadConfigSoName": lead_config_name,
+        "loopType": loop_type,
+        "patrolId": patrol_id,
+        "pointCount": point_count,
+    }
+
+
+def build_leveldata_npc_patrol_radio_story_contexts(
+    available_story_keys: set[str],
+    *,
+    leveldata_root: Path = LEVELDATA_DIR,
+) -> list[dict]:
+    """Recover exact radio-bearing actions inside typed NPC patrol records.
+
+    This is playback context only.  The patrol record does not serialize a
+    mission or quest id, so its location in a mission-named file is never used
+    as ownership or chronology evidence.
+    """
+    rows: list[dict] = []
+    if not leveldata_root.exists():
+        return rows
+    for path in sorted(leveldata_root.rglob("*.json")):
+        try:
+            data = read_bytes_cached(path)
+        except OSError:
+            continue
+        search_offset = 0
+        while True:
+            radio_offset = data.find(b"radio_", search_offset)
+            if radio_offset < 0:
+                break
+            search_offset = radio_offset + 1
+            action_offset = radio_offset - 53
+            action = _parse_leveldata_patrol_sub_action(data, action_offset)
+            if (
+                action is None
+                or action.get("radioId") not in available_story_keys
+                or action.get("type") != 9
+            ):
+                continue
+            window_start = max(0, action_offset - 65_536)
+            window_end = min(len(data), action["recordEndOffset"] + 65_536)
+            patrol_headers: list[dict] = []
+            candidate_offset = data.find(b"\x09", window_start, window_end)
+            while candidate_offset >= 0:
+                header = _leveldata_npc_patrol_header(data, candidate_offset)
+                if header is not None:
+                    patrol_headers.append(header)
+                candidate_offset = data.find(
+                    b"\x09",
+                    candidate_offset + 1,
+                    window_end,
+                )
+            previous = [
+                header for header in patrol_headers
+                if header["recordOffset"] <= action_offset
+            ]
+            following = [
+                header for header in patrol_headers
+                if header["recordOffset"] >= action["recordEndOffset"]
+            ]
+            if not previous or not following:
+                continue
+            patrol = max(previous, key=lambda row: row["recordOffset"])
+            next_patrol_offset = min(
+                row["recordOffset"] for row in following
+            )
+            if not (
+                patrol["pointsOffset"] <= action_offset
+                < action["recordEndOffset"] <= next_patrol_offset
+            ):
+                continue
+            point_index = None
+            point_action_index = None
+            envelope_status = (
+                "exact_typed_neighbor_boundaries_partial_point_decode"
+            )
+            parsed_patrol = parse_leveldata_npc_patrol_data_entry(
+                data,
+                patrol["recordOffset"],
+                expected_patrol_id=patrol["patrolId"],
+            )
+            if (
+                parsed_patrol is not None
+                and parsed_patrol["recordEndOffset"] == next_patrol_offset
+            ):
+                matches = [
+                    (point["pointIndex"], action_index)
+                    for point in parsed_patrol["points"]
+                    for action_index, parsed_action in enumerate(
+                        point["actions"]
+                    )
+                    if parsed_action["recordOffset"] == action_offset
+                ]
+                if len(matches) != 1:
+                    continue
+                point_index, point_action_index = matches[0]
+                envelope_status = "exact_full_patrol_record_consume"
+            rows.append({
+                **action,
+                **patrol,
+                "radioActionSerializedMemberCount": action[
+                    "serializedMemberCount"
+                ],
+                "radioActionRecordOffset": action["recordOffset"],
+                "radioActionRecordEndOffset": action["recordEndOffset"],
+                "nextPatrolRecordOffset": next_patrol_offset,
+                "pointIndex": point_index,
+                "pointActionIndex": point_action_index,
+                "patrolEnvelopeStatus": envelope_status,
+                "levelId": path.parent.name,
+                "sourceFile": path.name,
+                "sourcePath": str(path),
+                "nativeMappingId": (
+                    "patrol-sub-action-26-deserialize-token-06004bae-"
+                    "rva-3467210-v1"
+                ),
+                "nativeConsumer": (
+                    "NewNpcAIPatrolController._PlayRadioSubAction "
+                    "(token 0x0600aed9); "
+                    "NpcAIPatrolController._ProcessRadioInRange "
+                    "(token 0x0600a961)"
+                ),
+            })
+    rows.sort(key=lambda row: (
+        str(row.get("radioId") or ""),
+        str(row.get("levelId") or ""),
+        str(row.get("sourceFile") or ""),
+        int(row.get("radioActionRecordOffset") or 0),
+    ))
+    return rows
 
 
 def _find_leveldata_npc_patrol_entries(
@@ -10079,6 +10498,27 @@ def _build_levelscript_scene_chain_map(
                 )
                 for record in chain
             ]
+            for record, step in zip(chain, steps):
+                if classify_levelscript_record(record) != "play_reading_popup":
+                    continue
+                popup_action = match_levelscript_native_reading_popup_record(
+                    level_id,
+                    str(file_info.get("fileStem") or ""),
+                    record,
+                )
+                if not popup_action:
+                    continue
+                popup_payloads = _annotate_binding_payloads(
+                    [str(popup_action["key"])],
+                    dialog_key_resolver,
+                    mission_id,
+                )
+                for payload in popup_payloads:
+                    payload["resolution"] = "leveldataReadingPopupProperty"
+                    payload["readingPopupId"] = popup_action["readingPopupId"]
+                    payload["levelDataFile"] = popup_action["levelDataFile"]
+                    if payload not in step["payloads"]:
+                        step["payloads"].append(payload)
             scene_keys: list[str] = []
             seen_scene_keys: set[str] = set()
             for step in steps:

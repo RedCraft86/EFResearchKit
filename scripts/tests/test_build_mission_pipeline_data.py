@@ -18,7 +18,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
     def test_offline_story_recovery_schema_tracks_source_queue(self):
         self.assertEqual(
             pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA,
-            "sourceStoryGapQueue.v78",
+            "sourceStoryGapQueue.v107",
         )
 
     def test_offline_story_recovery_annotates_without_creating_graph_evidence(self):
@@ -35,6 +35,54 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                     },
                     "missions": [{
                         "mission": "testm1",
+                        "closedExactRuntimeConfigIsolatedScenes": [{
+                            "sceneKey": "sns_testm1_1",
+                            "missionId": "testm1",
+                            "questId": "testm1_q#1",
+                            "relation":
+                                "objective_tracking_story_reference",
+                            "recoveryStatus":
+                                "closed_exact_mission_tracking_context_no_relative_order",
+                            "activationBoundary": "tracking is not playback",
+                            "orderBoundary": "tracking does not order files",
+                        }, {
+                            "sceneKey": "dlg_testm1_accept",
+                            "missionId": "testm1",
+                            "relation": "mission_accept_dialog",
+                            "recoveryStatus":
+                                "closed_exact_mission_accept_dialog_no_relative_order",
+                            "activationBoundary": "mission accept lifecycle",
+                            "orderBoundary": "accept does not order files",
+                        }, {
+                            "sceneKey": "sns_testm1_link",
+                            "missionId": "testm1",
+                            "relation": "sns_authored_mission_link",
+                            "recoveryStatus":
+                                "closed_exact_authored_sns_mission_link_no_relative_order",
+                            "activationBoundary": "authored mission link",
+                            "orderBoundary": "link does not order files",
+                        }],
+                        "closedExactNativeIsolatedScenes": [{
+                            "sceneKey": "radio_testm1_shell",
+                            "nominalStoryMissionId": "testm1",
+                            "contextMissionId": "testm2",
+                            "relation":
+                                "authoritative_scope_leveldata_mission_context",
+                            "recoveryStatus":
+                                "closed_exact_cross_mission_leveldata_shell_playback_context_no_relative_order",
+                            "activationBoundary": "exact playback in sibling shell",
+                            "orderBoundary": "shell does not order files",
+                        }, {
+                            "sceneKey": "cutscene_testm1_alias",
+                            "missionId": "testm1",
+                            "rootStoryKeys": ["cutscene_testm1_root"],
+                            "relation":
+                                "cutscene_root_playback_alias_composed",
+                            "recoveryStatus":
+                                "closed_exact_composed_root_playback_context_no_relative_order",
+                            "playbackBoundary": "exact composed playback",
+                            "orderBoundary": "alias does not order files",
+                        }],
                         "deferredOfflineExhaustedIsolatedScenes": [{
                             "sceneKey": "dlg_testm1_1",
                             "missionId": "testm1",
@@ -80,7 +128,33 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "dlg_testm1_1": {
                     "attachmentStatus": "definition_only_no_consumer",
                     "routes": [],
-                }
+                },
+                "sns_testm1_1": {
+                    "attachmentStatus": "connected",
+                    "routes": [{"relation": "objective_tracking_story_reference"}],
+                },
+                "dlg_testm1_accept": {
+                    "attachmentStatus": "connected",
+                    "routes": [{"relation": "mission_accept_dialog"}],
+                },
+                "sns_testm1_link": {
+                    "attachmentStatus": "connected",
+                    "routes": [{"relation": "sns_authored_mission_link"}],
+                },
+                "radio_testm1_shell": {
+                    "attachmentStatus": "connected",
+                    "routes": [{
+                        "relation":
+                            "authoritative_scope_leveldata_mission_context",
+                    }],
+                },
+                "cutscene_testm1_alias": {
+                    "attachmentStatus": "connected",
+                    "routes": [{
+                        "relation":
+                            "cutscene_root_playback_alias_composed",
+                    }],
+                },
             }
 
             result = pipeline.publish_offline_story_recovery(
@@ -90,6 +164,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "active")
         self.assertEqual(result["publishedStoryKeys"], 1)
+        self.assertEqual(result["publishedRuntimeContextStoryKeys"], 5)
         self.assertEqual(result["outsidePipelineCoverageStoryKeys"], 2)
         self.assertEqual(
             manifest["dlg_testm1_1"]["attachmentStatus"],
@@ -99,6 +174,38 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         recovery = manifest["dlg_testm1_1"]["offlineRecovery"]
         self.assertEqual(recovery["graphEffect"], "none")
         self.assertNotIn("gameAssemblySha256", recovery)
+        runtime_recovery = manifest["sns_testm1_1"][
+            "runtimeContextRecovery"
+        ]
+        self.assertEqual(runtime_recovery["graphEffect"], "none")
+        self.assertEqual(
+            runtime_recovery["questId"],
+            "testm1_q#1",
+        )
+        self.assertEqual(
+            manifest["dlg_testm1_accept"]["runtimeContextRecovery"][
+                "recoveryStatus"
+            ],
+            "closed_exact_mission_accept_dialog_no_relative_order",
+        )
+        self.assertEqual(
+            manifest["sns_testm1_link"]["runtimeContextRecovery"][
+                "recoveryStatus"
+            ],
+            "closed_exact_authored_sns_mission_link_no_relative_order",
+        )
+        self.assertEqual(
+            manifest["radio_testm1_shell"]["runtimeContextRecovery"][
+                "contextMissionId"
+            ],
+            "testm2",
+        )
+        self.assertEqual(
+            manifest["cutscene_testm1_alias"]["runtimeContextRecovery"][
+                "rootStoryKeys"
+            ],
+            ["cutscene_testm1_root"],
+        )
         overlay = result["storyTriggerManifestOverlay"]["text_testm1_1"]
         self.assertEqual(overlay["routes"], [])
         self.assertEqual(
@@ -192,6 +299,68 @@ class MissionPipelineBuilderTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "rejected_stale_or_incompatible")
         self.assertNotIn("offlineRecovery", manifest["dlg_testm1_1"])
+
+    def test_offline_recovery_publishes_graph_neutral_missing_mission_shell(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            queue_path = root / "gap_queue.json"
+            queue_path.write_text(
+                json.dumps({
+                    "missions": [{
+                        "mission": "gm_fixture",
+                        "metrics": {
+                            "sceneCount": 2,
+                            "strongEdgeCount": 0,
+                            "sourceCycles": 0,
+                        },
+                        "deferredOfflineExhaustedIsolatedScenes": [],
+                    }],
+                }),
+                encoding="utf-8",
+            )
+            index = {
+                "counts": {"missions": 1},
+                "missions": [{"id": "existing", "file": "missions/existing.json"}],
+            }
+            offline = {
+                "status": "active",
+                "storyTriggerManifestOverlay": {
+                    "dlg_gm_fixture_1": {
+                        "nominalMissionId": "gm_fixture",
+                        "offlineRecovery": {
+                            "missionId": "gm_fixture",
+                            "graphEffect": "none",
+                        },
+                    },
+                    "radio_gm_fixture_1": {
+                        "nominalMissionId": "gm_fixture",
+                        "offlineRecovery": {
+                            "missionId": "gm_fixture",
+                            "graphEffect": "none",
+                        },
+                    },
+                },
+            }
+            published = pipeline.publish_offline_recovery_mission_shells(
+                index,
+                root,
+                offline,
+                queue_path,
+            )
+            shell = json.loads(
+                (root / "missions/gm_fixture.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(published, ["gm_fixture"])
+        self.assertEqual(index["counts"]["missions"], 2)
+        self.assertEqual(index["counts"]["offlineRecoveryMissionShells"], 1)
+        summary = next(row for row in index["missions"] if row["id"] == "gm_fixture")
+        self.assertTrue(summary["offlineRecoveryShell"])
+        self.assertEqual(summary["offlineRecoveryStoryCount"], 2)
+        self.assertEqual(shell["nodes"], [])
+        self.assertEqual(shell["edges"], [])
+        self.assertTrue(shell["mission"]["offlineRecoveryShell"])
+        self.assertEqual(shell["storyOrder"]["mission"], "gm_fixture")
 
     def test_dynamic_scene_cross_references_remain_non_owning(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -736,6 +905,49 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             1,
         )
 
+    def test_trigger_route_preserves_shared_proxy_selection_boundary(self):
+        row = {
+            "key": "dlg_testm1_2",
+            "relation":
+                "unique_mission_tracked_npc_proxy_dialog_context",
+            "direction": "context",
+            "phase": "server_selected_proxy_state",
+            "confidence": "native_exact_mission_context",
+            "evidenceTier": "derived_exact_mission",
+            "ownership": False,
+            "npcProxyId": "proxy_a",
+            "candidateQuestIds": ["testm1_q#4", "testm1_q#12"],
+            "activeRowIndex": 2,
+            "configuredDialogIds": ["dlg_testm1_2", "dlg_testm1_1"],
+            "selectionOrderStatus": (
+                "one_based_active_row_selection_only_no_cross_row_chronology"
+            ),
+            "serverExchange": True,
+            "clientRequest": False,
+            "expectedClientReply": False,
+            "serverFields": ["proxyNumId", "activeCondIndex"],
+            "upstreamServerStateSources": ["SC_NPC_ACTIVE_CHANGE_NTF"],
+        }
+
+        route = pipeline.build_story_trigger_route(row, mission_id="testm1")
+
+        self.assertEqual(route["causality"], "dependency")
+        self.assertEqual(route["npcProxyId"], "proxy_a")
+        self.assertEqual(route["activeRowIndex"], 2)
+        self.assertEqual(
+            route["candidateQuestIds"],
+            ["testm1_q#4", "testm1_q#12"],
+        )
+        self.assertEqual(
+            route["configuredDialogIds"],
+            ["dlg_testm1_2", "dlg_testm1_1"],
+        )
+        self.assertEqual(
+            route["upstreamServerStateSources"],
+            ["SC_NPC_ACTIVE_CHANGE_NTF"],
+        )
+        self.assertIs(route["clientRequest"], False)
+
     def test_trigger_route_preserves_definition_only_horn_context(self):
         row = {
             "key": "dlg_testm1_11",
@@ -1162,6 +1374,26 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertEqual("CheckGuideGroupComplete", row["type"])
         self.assertEqual("guide_group_team", row["facts"]["guideGroupId"])
         self.assertEqual(2, row["facts"]["completeType"])
+
+    def test_interactive_int_condition_retains_generic_entity_comparison(self):
+        row = pipeline.condition_tree(condition(
+            "InteractiveCheckInt",
+            _levelId={"constValue": "map_fixture"},
+            _entityId={"constValue": {"logicId": 10100360003}},
+            _key={"constValue": "state"},
+            _compareValue={"constValue": 1},
+            _comparer={"constValue": 0},
+        ))
+        self.assertEqual(row, {
+            "type": "InteractiveCheckInt",
+            "facts": {
+                "levelId": "map_fixture",
+                "entityId": {"logicId": 10100360003},
+                "key": "state",
+                "compareValue": 1,
+                "comparer": 0,
+            },
+        })
 
     def test_objective_retains_tracking_filter_without_creating_condition_edge(self):
         row = pipeline.objective_row({
@@ -3360,6 +3592,184 @@ class MissionGraphPayloadTests(unittest.TestCase):
         payload, _ = pipeline.build_mission(base.fixture(), Path("testm1.json"))
         self.assertEqual(payload["missionGraph"], {"upstream": {}, "downstream": {}})
         self.assertEqual(payload["envTalkContext"], [])
+
+
+class MissionDialogTreeDefinitionPublisherTests(unittest.TestCase):
+    def fixture(self, root: Path, source_sha256: str) -> tuple[dict, Path, Path]:
+        output_root = root / "webui" / "data" / "mission_pipeline"
+        mission_root = output_root / "missions"
+        mission_root.mkdir(parents=True)
+        story_root = root / "webui" / "data" / "lang"
+        sidecar_root = story_root / "CN" / "mission"
+        sidecar_root.mkdir(parents=True)
+        (mission_root / "testm1.json").write_text(
+            json.dumps({
+                "nodes": [{
+                    "id": "testm1_q#1",
+                    "objectives": [{
+                        "index": 1,
+                        "condition": {
+                            "type": "CheckTalkOptionFinish",
+                            "facts": {
+                                "dialogId": "dlg_testm1_1",
+                                "finishId": -1,
+                            },
+                        },
+                        "dialogFinishes": [{
+                            "dialogId": "dlg_testm1_1",
+                            "finishId": -1,
+                        }],
+                    }],
+                }],
+            }),
+            encoding="utf-8",
+        )
+        (sidecar_root / "testm1.json").write_text(
+            json.dumps({
+                "timelineRecovery": {
+                    "sceneDialogTreeEvidence": {
+                        "dlg_testm1_1": {
+                            "sceneKey": "dlg_testm1_1",
+                            "assetType": "Beyond.Gameplay.DialogTree",
+                            "evidenceKind": "exact_dialog_tree_definition",
+                            "sourceFile": "assets/dlg_testm1_1.json",
+                            "sourceSha256": source_sha256,
+                            "lineIds": ["dlg_testm1_1_001"],
+                            "nodeCount": 2,
+                            "connectionCount": 1,
+                            "branchingOptionGroupCount": 0,
+                        },
+                    },
+                },
+            }),
+            encoding="utf-8",
+        )
+        index = {
+            "missions": [{
+                "id": "testm1",
+                "file": "missions/testm1.json",
+            }],
+        }
+        return index, output_root, story_root
+
+    def test_publishes_hash_verified_definition_on_exact_quest_observer(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "assets" / "dlg_testm1_1.json"
+            source.parent.mkdir()
+            source.write_bytes(b"dialog-tree-fixture")
+            digest = hashlib.sha256(source.read_bytes()).hexdigest().upper()
+            index, output_root, story_root = self.fixture(root, digest)
+
+            with patch.object(pipeline, "ROOT", root):
+                result = pipeline.publish_quest_dialog_tree_definitions(
+                    index,
+                    output_root,
+                    story_root,
+                    "CN",
+                )
+
+            mission = json.loads(
+                (output_root / "missions" / "testm1.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            evidence = mission["nodes"][0]["dialogTreeDefinitions"][0]
+            self.assertEqual("dlg_testm1_1", evidence["sceneKey"])
+            self.assertEqual([{
+                "relation": "objective_condition",
+                "conditionType": "CheckTalkOptionFinish",
+                "objectiveIndex": 1,
+                "finishId": -1,
+            }], evidence["missionObservers"])
+            self.assertEqual(1, result["published"]["placements"])
+            self.assertEqual(1, result["published"]["quests"])
+
+    def test_publishes_repeatable_and_failed_condition_observers(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "assets" / "dlg_testm1_1.json"
+            source.parent.mkdir()
+            source.write_bytes(b"dialog-tree-fixture")
+            digest = hashlib.sha256(source.read_bytes()).hexdigest().upper()
+            index, output_root, story_root = self.fixture(root, digest)
+            mission_path = output_root / "missions" / "testm1.json"
+            mission = json.loads(mission_path.read_text(encoding="utf-8"))
+            node = mission["nodes"][0]
+            node["objectives"][0]["condition"] = {
+                "type": "CombineCondition",
+                "children": [{
+                    "type": "CheckRepeatableTalkFinish",
+                    "facts": {"dialogId": "dlg_testm1_1", "finishId": -1},
+                }],
+            }
+            node["failedCondition"] = {
+                "type": "CheckTalkOptionFinish",
+                "facts": {"dialogId": "dlg_testm1_1", "finishId": 2},
+            }
+            mission_path.write_text(json.dumps(mission), encoding="utf-8")
+
+            with patch.object(pipeline, "ROOT", root):
+                pipeline.publish_quest_dialog_tree_definitions(
+                    index, output_root, story_root, "CN"
+                )
+
+            published = json.loads(mission_path.read_text(encoding="utf-8"))
+            observers = published["nodes"][0]["dialogTreeDefinitions"][0][
+                "missionObservers"
+            ]
+            self.assertEqual(
+                ["objective_condition", "failed_condition"],
+                [row["relation"] for row in observers],
+            )
+            self.assertEqual(
+                ["CheckRepeatableTalkFinish", "CheckTalkOptionFinish"],
+                [row["conditionType"] for row in observers],
+            )
+
+    def test_rejects_unplaced_definition_with_expected_actual_diagnostic(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "assets" / "dlg_testm1_1.json"
+            source.parent.mkdir()
+            source.write_bytes(b"dialog-tree-fixture")
+            digest = hashlib.sha256(source.read_bytes()).hexdigest().upper()
+            index, output_root, story_root = self.fixture(root, digest)
+            mission_path = output_root / "missions" / "testm1.json"
+            mission = json.loads(mission_path.read_text(encoding="utf-8"))
+            mission["nodes"][0]["objectives"] = []
+            mission_path.write_text(json.dumps(mission), encoding="utf-8")
+
+            with patch.object(pipeline, "ROOT", root):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    r"mission=testm1.*expected=\['dlg_testm1_1'\].*actual=\[\]",
+                ):
+                    pipeline.publish_quest_dialog_tree_definitions(
+                        index, output_root, story_root, "CN"
+                    )
+
+    def test_rejects_definition_source_hash_mismatch_with_diagnostic(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "assets" / "dlg_testm1_1.json"
+            source.parent.mkdir()
+            source.write_bytes(b"dialog-tree-fixture")
+            expected = "0" * 64
+            actual = hashlib.sha256(source.read_bytes()).hexdigest().upper()
+            index, output_root, story_root = self.fixture(root, expected)
+
+            with patch.object(pipeline, "ROOT", root):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    f"expected={expected} actual={actual}",
+                ):
+                    pipeline.publish_quest_dialog_tree_definitions(
+                        index,
+                        output_root,
+                        story_root,
+                        "CN",
+                    )
 
 
 if __name__ == "__main__":

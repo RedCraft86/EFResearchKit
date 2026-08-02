@@ -116,6 +116,150 @@ def mission_payload(
 
 
 class SourceStoryPartialOrderTests(unittest.TestCase):
+    @staticmethod
+    def narrative_containment_flow(*, placement_status: str) -> dict:
+        return {
+            "sceneGraph": {"nodes": [], "edges": []},
+            "unresolvedDialogTreeNarrativeActions": [{
+                "key": "black_m1_1",
+                "parentStoryKey": "dlg_m1_1",
+                "relation": "dialog_tree_narrative_action_unscoped",
+                "confidence": "native_exact_containment_unscoped",
+                "dialogTreeNarrativeActions": [{
+                    "textId": "black_m1_1_001",
+                    "dialogKey": "dlg_m1_1",
+                    "nativeMappingId":
+                        "dialog-tree-narrative-mask-connection-native-v1",
+                    "dialogTreeConnectionPlacementStatus": placement_status,
+                    "reachableFromPrimeNode": True,
+                    "embeddedAfterLineIds": ["dlg_m1_1_009"],
+                    "embeddedBeforeLineIds": ["dlg_m1_1_010"],
+                    "sourceFile": "TextAsset/dlg_m1_1.json",
+                }],
+            }],
+        }
+
+    def test_exact_dialog_tree_narrative_containment_is_visible_not_ordered(self) -> None:
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"black_m1_1": "black", "dlg_m1_1": "dlg"},
+            {"flow": self.narrative_containment_flow(
+                placement_status="exact_unique_adjacent_parent_trunks",
+            )},
+        )
+
+        self.assertEqual(result["directEdges"], [])
+        self.assertEqual(result["isolatedSceneKeys"], ["dlg_m1_1"])
+        self.assertEqual(result["unknownSceneKeys"], ["dlg_m1_1"])
+        self.assertEqual(result["containments"][0]["child"], "black_m1_1")
+        self.assertEqual(
+            result["containments"][0]["embeddedAfterLineIds"],
+            ["dlg_m1_1_009"],
+        )
+        child = next(row for row in result["nodes"] if row["key"] == "black_m1_1")
+        self.assertEqual(child["relationStatus"], "embedded")
+        self.assertEqual(result["warnings"], [])
+
+    def test_dialog_tree_narrative_containment_fails_closed_with_diagnostic(self) -> None:
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"black_m1_1": "black", "dlg_m1_1": "dlg"},
+            {"flow": self.narrative_containment_flow(
+                placement_status="not_exact_unique_adjacent_trunks",
+            )},
+        )
+
+        self.assertEqual(result["containments"], [])
+        self.assertEqual(
+            result["isolatedSceneKeys"],
+            ["black_m1_1", "dlg_m1_1"],
+        )
+        diagnostic = result["warnings"][0]
+        self.assertEqual(diagnostic["validator"], "dialogTreeNarrativeContainment")
+        self.assertEqual(diagnostic["storyKey"], "black_m1_1")
+        self.assertEqual(diagnostic["sourcePaths"], ["TextAsset/dlg_m1_1.json"])
+        self.assertEqual(diagnostic["actual"]["validOccurrenceCount"], 0)
+
+    @staticmethod
+    def open_ui_occurrence(*, placement_status: str) -> dict:
+        return {
+            "dialogKey": "dlg_m1_1",
+            "nodeId": "7",
+            "readingPopupId": "rp_text_m1_1",
+            "paramData": {"id": "rp_text_m1_1"},
+            "panelType": 17,
+            "actionEnum": 57,
+            "nativeMappingId":
+                "dialog-tree-open-ui-reading-popup-connection-native-v1",
+            "dialogTreeConnectionPlacementStatus": placement_status,
+            "reachableFromPrimeNode": True,
+            "embeddedAfterLineIds": ["dlg_m1_1_009"],
+            "embeddedBeforeLineIds": ["dlg_m1_1_010"],
+            "sourceFile": "TextAsset/dlg_m1_1.json",
+            "sourceSha256": "A" * 64,
+        }
+
+    def test_exact_dialog_tree_open_ui_popup_containment_is_visible(self) -> None:
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"text_m1_1": "text", "dlg_m1_1": "dlg"},
+            {"flow": {"sceneGraph": {"nodes": [], "edges": []}}},
+            dialog_tree_open_ui_occurrences=[self.open_ui_occurrence(
+                placement_status="exact_between_adjacent_parent_trunks",
+            )],
+            reading_popup_rows={"rp_text_m1_1": {
+                "bgType": 1,
+                "contentId": "text_m1_1",
+                "iconType": 3,
+                "id": "rp_text_m1_1",
+                "overrideRadioId": "",
+                "title": {"id": 0, "text": ""},
+            }},
+            reading_popup_source="Table/ReadingPopUpTable.json",
+            reading_popup_sha256="B" * 64,
+        )
+
+        self.assertEqual(result["directEdges"], [])
+        self.assertEqual(result["isolatedSceneKeys"], ["dlg_m1_1"])
+        self.assertEqual(result["containments"][0]["child"], "text_m1_1")
+        self.assertEqual(
+            result["containments"][0]["readingPopupId"],
+            "rp_text_m1_1",
+        )
+        child = next(row for row in result["nodes"] if row["key"] == "text_m1_1")
+        self.assertEqual(child["relationStatus"], "embedded")
+        self.assertEqual(result["warnings"], [])
+
+    def test_dialog_tree_open_ui_popup_containment_fails_closed(self) -> None:
+        occurrence = self.open_ui_occurrence(
+            placement_status="not_exact_story_boundary",
+        )
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"text_m1_1": "text", "dlg_m1_1": "dlg"},
+            {"flow": {"sceneGraph": {"nodes": [], "edges": []}}},
+            dialog_tree_open_ui_occurrences=[occurrence],
+            reading_popup_rows={"rp_text_m1_1": {
+                "bgType": 1,
+                "contentId": "text_m1_1",
+                "iconType": 3,
+                "id": "rp_text_m1_1",
+                "overrideRadioId": "",
+                "title": {"id": 0, "text": ""},
+            }},
+            reading_popup_source="Table/ReadingPopUpTable.json",
+            reading_popup_sha256="B" * 64,
+        )
+
+        self.assertEqual(result["containments"], [])
+        diagnostic = result["warnings"][0]
+        self.assertEqual(diagnostic["validator"], "dialogTreeOpenUIContainment")
+        self.assertEqual(diagnostic["storyKey"], "text_m1_1")
+        self.assertEqual(
+            diagnostic["actual"]["placementStatus"],
+            "not_exact_story_boundary",
+        )
+
     def test_declared_variant_mission_evidence_is_merged_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             mission_dir = Path(tmp)
@@ -284,6 +428,83 @@ class SourceStoryPartialOrderTests(unittest.TestCase):
             edge["kind"] == "dialogTreeCrossStoryTrunkContinuation"
             for edge in rejected["directEdges"]
         ))
+
+    def test_gm02m14_conditional_cross_story_branch_is_fail_closed(
+        self,
+    ) -> None:
+        mission_payload_path = (
+            partial_order.ROOT
+            / "webui" / "data" / "lang" / "CN" / "mission"
+            / "gm02m14.json"
+        )
+        conv_root = (
+            partial_order.ROOT
+            / "webui" / "data" / "lang" / "CN" / "conv"
+        )
+        payload = json.loads(mission_payload_path.read_text(encoding="utf-8"))
+        conversations = [
+            (
+                f"conv/{story_key}.json",
+                json.loads(
+                    (conv_root / f"{story_key}.json").read_text(
+                        encoding="utf-8"
+                    )
+                ),
+            )
+            for story_key in ("dlg_gm02m14_1", "dlg_gm02m14_3")
+        ]
+        candidates = {
+            "dlg_gm02m14_1": "dlg",
+            "dlg_gm02m14_3": "dlg",
+        }
+
+        row = partial_order.build_mission_partial_order(
+            "gm02m14", candidates, payload, conversations
+        )
+        edge = next(
+            edge for edge in row["directEdges"]
+            if edge["kind"] == "dialogTreeCrossStoryConditionalBranch"
+        )
+        self.assertEqual(
+            (edge["from"], edge["to"]),
+            ("dlg_gm02m14_1", "dlg_gm02m14_3"),
+        )
+        self.assertEqual(edge["conditionTrueConnectionIndex"], 1)
+        self.assertEqual(edge["conditionFalseConnectionIndex"], 0)
+        self.assertEqual(edge["condition"]["key"], "canskip")
+        self.assertTrue(edge["condition"]["value"])
+
+        corrupted = copy.deepcopy(payload)
+        connection = next(
+            row for row in corrupted["flow"]["missionStoryConnections"]
+            if row.get("key") == "dlg_gm02m14_3"
+        )
+        connection["dialogTreeStoryPlaybackCarriers"][0][
+            "connectionPath"
+        ][1]["index"] = 99
+        rejected = partial_order.build_mission_partial_order(
+            "gm02m14", candidates, corrupted, conversations
+        )
+        self.assertFalse(any(
+            edge["kind"] == "dialogTreeCrossStoryConditionalBranch"
+            for edge in rejected["directEdges"]
+        ))
+        diagnostic = next(
+            warning for warning in rejected["warnings"]
+            if isinstance(warning, dict)
+            and warning.get("validator")
+            == "dialogTreeCrossStoryConditionalBranch"
+        )
+        self.assertEqual(
+            diagnostic["gate"],
+            "exactSerializedBranchCarrierAndNativePolarity",
+        )
+        self.assertEqual(diagnostic["mission"], "gm02m14")
+        self.assertEqual(
+            diagnostic["actual"]["carrierConnectionIndexes"]
+            ["dlg_gm02m14_3_001"],
+            (10, 99),
+        )
 
     def test_spawner_part_killed_target_recovers_wave_begin_order(self) -> None:
         candidates = {
@@ -976,6 +1197,130 @@ class SourceStoryPartialOrderTests(unittest.TestCase):
         self.assertEqual(result["summary"]["nativeNamedPredicateCount"], 1)
         self.assertEqual(result["summary"]["nativeSemanticPredicateCount"], 1)
         self.assertEqual(result["summary"]["nativeClassOnlyPredicateCount"], 0)
+
+    def test_equivalent_duplicate_native_paths_preserve_exact_split(self) -> None:
+        candidates = {"radio_m1_1": "radio", "cutscene_m1_1": "cutscene"}
+        payload = mission_payload([])
+
+        def connection(
+            key: str,
+            arm_edge: str,
+            entry_id: int,
+            downstream_ids: list[int],
+        ) -> dict:
+            return {
+                "key": key,
+                "levelIds": ["map_test"],
+                "scriptIds": ["70000000001"],
+                "sourceFiles": [
+                    "MissionRuntimeAsset/m1.json",
+                    "LevelScriptData/map_test/70000000001.json",
+                ],
+                "nativeEventOwners": [{
+                        "status": (
+                            "exact_serialized_control_path_equivalent_duplicates"
+                        ),
+                        "headerName": "MissionEvent_OnClientGlobalVarChanged",
+                        "headerLocalId": 28,
+                        "path": [
+                            {
+                                "localId": 7,
+                                "edge": "ActionHeader.nextId",
+                                "equivalentRecordOffsets": [7, 1676],
+                            },
+                            {"localId": entry_id, "edge": arm_edge},
+                        ],
+                        "downstreamControlStatus":
+                            "exact_serialized_typed_reachability",
+                        "downstreamControlPaths": [
+                            [
+                                {
+                                    "localId": local_id,
+                                    "edge": "ActionBase.nextId",
+                                }
+                                for local_id in downstream_ids[:index]
+                            ]
+                            for index in range(1, len(downstream_ids) + 1)
+                        ],
+                    }],
+            }
+
+        payload["flow"]["missionStoryConnections"] = [
+            connection(
+                "radio_m1_1",
+                "Split.actions[0]",
+                17,
+                [18, 11],
+            ),
+            connection(
+                "cutscene_m1_1",
+                "Split.actions[1]",
+                8,
+                [9, 10, 11],
+            ),
+        ]
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            candidates,
+            payload,
+        )
+
+        self.assertEqual(result["summary"]["nativeControlBranchCount"], 1)
+        branch = result["branches"]["nativeControlBranches"][0]
+        self.assertEqual(branch["kind"], "splitFanout")
+        self.assertEqual(branch["branchLocalId"], 7)
+        self.assertEqual(
+            [arm["edge"] for arm in branch["arms"]],
+            ["Split.actions[0]", "Split.actions[1]"],
+        )
+        self.assertEqual(branch["sourceFiles"], [
+            "LevelScriptData/map_test/70000000001.json",
+            "MissionRuntimeAsset/m1.json",
+        ])
+        merge = result["branches"]["nativeControlMerges"][0]
+        self.assertEqual(merge["mergeLocalId"], 11)
+        self.assertEqual(
+            merge["convergenceStatus"],
+            "exact_serialized_downstream_control_convergence",
+        )
+        self.assertEqual(merge["mergePaths"], [[18, 11], [9, 10, 11]])
+
+    def test_unvalidated_duplicate_native_path_status_stays_excluded(self) -> None:
+        candidates = {"radio_m1_1": "radio", "cutscene_m1_1": "cutscene"}
+        payload = mission_payload([])
+        payload["flow"]["missionStoryConnections"] = [
+            {
+                "key": key,
+                "levelScriptOccurrences": [{
+                    "levelId": "map_test",
+                    "scriptId": "70000000001",
+                    "sourceFile": "fixture.json",
+                    "nativeEventOwners": [{
+                        "status": "duplicate_local_id_conflict",
+                        "headerName": "ScriptEvent_OnCustomEvent",
+                        "headerLocalId": 4,
+                        "path": [
+                            {"localId": 5, "edge": "ActionHeader.nextId"},
+                            {"localId": entry, "edge": edge},
+                        ],
+                    }],
+                }],
+            }
+            for key, entry, edge in (
+                ("radio_m1_1", 6, "Split.actions[0]"),
+                ("cutscene_m1_1", 7, "Split.actions[1]"),
+            )
+        ]
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            candidates,
+            payload,
+        )
+
+        self.assertEqual(result["summary"]["nativeControlBranchCount"], 0)
+        self.assertEqual(result["directEdges"], [])
 
     def test_chain_is_transitively_reduced(self) -> None:
         candidates = {"dlg_a": "dlg", "dlg_b": "dlg", "dlg_c": "dlg"}

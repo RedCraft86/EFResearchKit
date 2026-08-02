@@ -10,6 +10,8 @@ attachment, unresolved source nodes, and unverified option groups.  Main-story
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import hashlib
 import json
 import os
@@ -18,7 +20,7 @@ import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -44,10 +46,22 @@ from build_source_story_partial_order import (  # noqa: E402
 from build_animestudio_story_carrier_audit import (  # noqa: E402
     target_set_sha256,
 )
+from story_builder.level_bindings import (  # noqa: E402
+    _load_levelscript_binding_data,
+    _levelscript_native_control_paths_to_record,
+    parse_leveldata_levelscript_brief_dictionary,
+)
+from story_builder.levelscript_binary import (  # noqa: E402
+    decode_levelscript_record_payload,
+    decode_levelscript_task_conditions,
+    extract_levelscript_uid_records,
+    levelscript_action_map_membership,
+    levelscript_record_semantic_key,
+)
 from story_builder.mission_recovery import natural_key  # noqa: E402
 
 
-SCHEMA = "sourceStoryGapQueue.v78"
+SCHEMA = "sourceStoryGapQueue.v107"
 STORY_BINDING_COVERAGE_SCHEMA_VERSION = 10
 LEVELSCRIPT_INTERACTIVE_NARRATIVE_MAPPING_ID = (
     "levelscript-interactive-narrative-config-v1"
@@ -126,15 +140,1134 @@ NON_OWNING_DIAGNOSTIC_QUEST_ATTACH_SOURCES = frozenset({
 NPC_PROXY_DIALOG_SELECTION_GAMEASSEMBLY_SHA256 = (
     "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE"
 )
+UNIQUE_MISSION_TRACKED_PROXY_CONTEXTS = {
+    "gm01m14": {
+        "npcProxyId": "sesidun04_map01_001",
+        "levelId": "map01_lv006",
+        "subDataParentId": 3500120000,
+        "questIds": (
+            "gm01m14_q#4",
+            "gm01m14_q#5",
+            "gm01m14_q#6",
+            "gm01m14_q#8",
+            "gm01m14_q#11",
+            "gm01m14_q#12",
+        ),
+        "dialogIds": (
+            "dlg_gm01m14_2",
+            "dlg_gm01m14_1",
+            "dlg_gm01m14_3",
+            "dlg_gm01m14_6",
+        ),
+        "exDialogIds": (
+            "",
+            "dlg_gm01m14_2",
+            "dlg_gm01m14_1",
+            "dlg_gm01m14_3",
+            "dlg_gm01m14_6",
+        ),
+        "activeRowIndices": (2, 3, 4, 5),
+        "sourceHashes": {
+            (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m14.json"
+            ): "7638297AA25019BE648D3DFA9542BEDC1105855369A7BD78879430A5CFFE5464",
+            (
+                "export_full/structured/StreamingAssets/Data/Json/GameplayConfig/"
+                "NpcProxyExDataTable.json"
+            ): "19C9A7DC69DEED52A9EAFD26D216F31826065137490548E5917BE589BA11BBAC",
+            (
+                "export_full/structured/StreamingAssets/Data/Json/GameplayConfig/"
+                "NpcProxyTable.json"
+            ): "E683D0F7666451D7E7E22D863CC9F2C52AC79D1DBAA6F1A89BA2681829C5C5EA",
+            "export_full/recovered/dialog_id_table_index.json": (
+                "3FC412F637063386E7BE4934099A546E24858836FD6C221AA1C2F6BC4092B083"
+            ),
+        },
+    },
+}
 DIALOG_TREE_NARRATIVE_CONNECTION_MAPPING_ID = (
     "dialog-tree-narrative-mask-connection-native-v1"
 )
 OFFLINE_EXHAUSTION_MAPPING_ID = (
-    "current-build-offline-story-carrier-exhaustion-v55"
+    "current-build-offline-story-carrier-exhaustion-v89"
 )
 OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256 = (
     "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE"
 )
+OFFLINE_EXHAUSTION_ABSENT_BINARY_TOKENS = {
+    "dlg_gm01m13_2": "dlg_gm01m13_2",
+    "dlg_gm01m13_3": "dlg_gm01m13_3",
+    "dlg_gm01m13_5": "dlg_gm01m13_5",
+    "text_gm01m13_1": "text_gm01m13_1",
+    "misc_dlg_gm01m3_1d5": "dlg_gm01m3_1d5",
+    "radio_gm01m3_3d2": "radio_gm01m3_3d2",
+    "radio_gm01m3_3d8": "radio_gm01m3_3d8",
+    "sns_gm01m3_1": "sns_gm01m3_1",
+    "dlg_gm01m2_1": "dlg_gm01m2_1",
+    "dlg_gm01m2_2": "dlg_gm01m2_2",
+    "dlg_gm01m2_3": "dlg_gm01m2_3",
+    "dlg_gm01m2_5": "dlg_gm01m2_5",
+    "radio_gm01m17_4": "radio_gm01m17_4",
+    "radio_gm01m17_5": "radio_gm01m17_5",
+    "radio_gm01m17_9": "radio_gm01m17_9",
+    "radio_gm02m14_1": "radio_gm02m14_1",
+    "radio_gm02m14_12": "radio_gm02m14_12",
+    "radio_gm02m13_3": "radio_gm02m13_3",
+    "radio_gm02m13_4": "radio_gm02m13_4",
+    "radio_gm02m13_5": "radio_gm02m13_5",
+    "radio_gm02m17_2": "radio_gm02m17_2",
+    "radio_gm02m17_4": "radio_gm02m17_4",
+    "radio_gm02m15_9": "radio_gm02m15_9",
+    "radio_gm02m15_12": "radio_gm02m15_12",
+    "radio_gm02m21_4": "radio_gm02m21_4",
+    "radio_gm02m21_7": "radio_gm02m21_7",
+    "dlg_gm01m4_7": "dlg_gm01m4_7",
+    "misc_dlg_gm01m4_3d5": "dlg_gm01m4_3d5",
+    "radio_gm01m4_1": "radio_gm01m4_1",
+    "dlg_gm01m15_7": "dlg_gm01m15_7",
+    "text_gm01m15_1": "text_gm01m15_1",
+    "text_gm01m15_8": "text_gm01m15_8",
+    "text_gm01m17_1": "text_gm01m17_1",
+    "dlg_gm01m22_6": "dlg_gm01m22_6",
+    "dlg_gm01m22_7": "dlg_gm01m22_7",
+    "dlg_gm01m22_8": "dlg_gm01m22_8",
+    "dlg_gm02m8_2": "dlg_gm02m8_2",
+    "dlg_gm02m8_3": "dlg_gm02m8_3",
+    "dlg_gm02m8_4": "dlg_gm02m8_4",
+    "misc_dlg_gm01m22_2d5": "dlg_gm01m22_2d5",
+    "misc_dlg_gm01m22_3d2": "dlg_gm01m22_3d2",
+    "misc_dlg_gm01m22_3d8": "dlg_gm01m22_3d8",
+    "misc_dlg_gm01m22_4d0": "dlg_gm01m22_4d0",
+    "radio_gm01m22_1d2": "radio_gm01m22_1d2",
+    "radio_gm01m22_1d3": "radio_gm01m22_1d3",
+    "sns_gm01m22_2": "sns_gm01m22_2",
+    "text_gm01m22_5": "text_gm01m22_5",
+    "dlg_gm02m3_1": "dlg_gm02m3_1",
+    "dlg_gm02m3_2": "dlg_gm02m3_2",
+    "dlg_gm02m3_3": "dlg_gm02m3_3",
+    "dlg_gm02m3_4": "dlg_gm02m3_4",
+    "dlg_gm02m3_5": "dlg_gm02m3_5",
+    "radio_gm02m3_1": "radio_gm02m3_1",
+    "radio_gm02m3_2": "radio_gm02m3_2",
+    "radio_gm02m3_3": "radio_gm02m3_3",
+    "radio_gm02m3_4": "radio_gm02m3_4",
+    "radio_gm02m3_5": "radio_gm02m3_5",
+    "dlg_gm02m3_1X": "dlg_gm02m3_1X",
+    "dlg_gm02m3_1Y": "dlg_gm02m3_1Y",
+    "dlg_gm02m3_2Y": "dlg_gm02m3_2Y",
+    "dlg_gm02m3_2Z": "dlg_gm02m3_2Z",
+    "dlg_gm02m3_3Z": "dlg_gm02m3_3Z",
+    "dlg_gm02m3_3d": "dlg_gm02m3_3d",
+    "dlg_gm01m6_6": "dlg_gm01m6_6",
+    "dlg_gm01m6_7": "dlg_gm01m6_7",
+    "misc_dlg_gm01m6_1d5": "dlg_gm01m6_1d5",
+    "misc_dlg_gm01m6_3d7": "dlg_gm01m6_3d7",
+    "misc_dlg_gm01m6_4d5": "dlg_gm01m6_4d5",
+    "misc_dlg_gm01m6_4d7": "dlg_gm01m6_4d7",
+    "radio_gm01m6_0d5": "radio_gm01m6_0d5",
+    "radio_gm01m6_4d5": "radio_gm01m6_4d5",
+    "radio_gm01m6_6": "radio_gm01m6_6",
+    "dlg_gm01m7_1": "dlg_gm01m7_1",
+    "dlg_gm01m7_2": "dlg_gm01m7_2",
+    "dlg_gm01m7_3": "dlg_gm01m7_3",
+    "dlg_gm01m7_5": "dlg_gm01m7_5",
+    "dlg_gm01m7_7": "dlg_gm01m7_7",
+    "radio_gm01m7_9": "radio_gm01m7_9",
+    "sns_gm01m7_1": "sns_gm01m7_1",
+    "sns_gm01m7_2": "sns_gm01m7_2",
+    "text_gm01m7_1": "text_gm01m7_1",
+    "dlg_gm01m12_1": "dlg_gm01m12_1",
+    "dlg_gm01m12_3": "dlg_gm01m12_3",
+    "dlg_gm01m12_6": "dlg_gm01m12_6",
+    "dlg_gm01m12_8": "dlg_gm01m12_8",
+    "text_gm01m12_1": "text_gm01m12_1",
+    "text_gm01m12_3": "text_gm01m12_3",
+    "text_gm01m12_5": "text_gm01m12_5",
+    "text_gm01m12_6": "text_gm01m12_6",
+    "text_gm01m12_7": "text_gm01m12_7",
+    "radio_gm01m16_8": "radio_gm01m16_8",
+    "radio_gm01m16_13": "radio_gm01m16_13",
+    "radio_gm01m16_14": "radio_gm01m16_14",
+    "dlg_gm01m20_1": "dlg_gm01m20_1",
+    "dlg_gm01m20_5": "dlg_gm01m20_5",
+    "dlg_gm01m20_6": "dlg_gm01m20_6",
+    "dlg_gm01m20_7": "dlg_gm01m20_7",
+    "radio_gm01m20_1": "radio_gm01m20_1",
+    "radio_gm01m20_2": "radio_gm01m20_2",
+    "radio_gm01m20_3": "radio_gm01m20_3",
+    "radio_gm01m20_4": "radio_gm01m20_4",
+    "dlg_gm01m24_5": "dlg_gm01m24_5",
+    "radio_gm01m24_1d5": "radio_gm01m24_1d5",
+    "radio_gm01m24_2": "radio_gm01m24_2",
+    "radio_gm01m24_3": "radio_gm01m24_3",
+    "radio_gm01m24_4": "radio_gm01m24_4",
+    "dlg_gm01m25_5": "dlg_gm01m25_5",
+    "radio_gm01m25_1d5": "radio_gm01m25_1d5",
+    "radio_gm01m25_2": "radio_gm01m25_2",
+    "radio_gm01m25_3": "radio_gm01m25_3",
+    "radio_gm01m25_4": "radio_gm01m25_4",
+    "dlg_gm01m26_5": "dlg_gm01m26_5",
+    "radio_gm01m26_1d5": "radio_gm01m26_1d5",
+    "radio_gm01m26_2": "radio_gm01m26_2",
+    "radio_gm01m26_3": "radio_gm01m26_3",
+    "radio_gm01m26_4": "radio_gm01m26_4",
+    "dlg_gm01m27_1": "dlg_gm01m27_1",
+    "dlg_gm01m27_2": "dlg_gm01m27_2",
+    "dlg_gm01m27_3": "dlg_gm01m27_3",
+    "radio_gm01m27_1": "radio_gm01m27_1",
+    "radio_gm01m27_2": "radio_gm01m27_2",
+    "radio_gm01m27_3": "radio_gm01m27_3",
+    "dlg_gm01m5_1": "dlg_gm01m5_1",
+    "dlg_gm01m5_2": "dlg_gm01m5_2",
+    "dlg_gm01m5_3": "dlg_gm01m5_3",
+    "dlg_gm01m5_4": "dlg_gm01m5_4",
+    "radio_gm01m5_1": "radio_gm01m5_1",
+    "radio_gm01m5_2": "radio_gm01m5_2",
+    "radio_gm01m5_3": "radio_gm01m5_3",
+    "radio_gm01m5_4": "radio_gm01m5_4",
+    "dlg_gm02m1_1": "dlg_gm02m1_1",
+    "dlg_gm02m1_2": "dlg_gm02m1_2",
+    "misc_dlg_gm02m1_1d5": "dlg_gm02m1_1d5",
+    "radio_gm02m1_1": "radio_gm02m1_1",
+    "radio_gm02m1_2": "radio_gm02m1_2",
+    "radio_gm02m1_6": "radio_gm02m1_6",
+    "radio_gm02m1_7": "radio_gm02m1_7",
+    "radio_gm02m1_8": "radio_gm02m1_8",
+    "radio_gm02m20_7": "radio_gm02m20_7",
+    "radio_gm02m20_8": "radio_gm02m20_8",
+    "radio_gm02m20_10": "radio_gm02m20_10",
+    "radio_gm02m20_11": "radio_gm02m20_11",
+    "radio_gm02m20_13": "radio_gm02m20_13",
+    "dlg_gm02m23_3": "dlg_gm02m23_3",
+    "dlg_gm02m23_10": "dlg_gm02m23_10",
+    "radio_gm02m23_2": "radio_gm02m23_2",
+}
+OFFLINE_EXHAUSTION_MISSION_BRANCH_CONTEXTS = {
+    "gm01m7": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm01m7.json"
+        ),
+        "sourceSha256":
+            "3C6C04A5F5985E35A10EF3B87A9359B9CFA9CF2B4C379B9D3BA30E14ACB3B869",
+        "fork": {
+            "questId": "gm01m7_q#1",
+            "successorQuestIds": ("gm01m7_q#8", "gm01m7_q#14"),
+        },
+        "merge": {
+            "predecessorQuestIds": ("gm01m7_q#14", "gm01m7_q#8"),
+            "questId": "gm01m7_q#9",
+        },
+        "sharedTracking": {
+            "questIds": (
+                "gm01m7_q#8",
+                "gm01m7_q#14",
+                "gm01m7_q#9",
+            ),
+            "proxyId": "sesidun_map01_001",
+            "levelId": "map01_lv001",
+        },
+    },
+}
+OFFLINE_EXHAUSTION_MISSION_RELATED_ORIGINAL_DATA = {
+    "gm01m27": {
+        "relation": "same_nominal_mission_prts_terminal_bundle",
+        "groupId": "term_map01_lv001_gm01m27",
+        "levelId": "map01_lv001",
+        "entries": (
+            {
+                "order": 1,
+                "contentId": "text_gm01m27_1",
+                "prtsId": "nar_gm01m27_1",
+                "uniqId": "term_map01_lv001_gm01m27_1",
+                "numericId": 176,
+                "nameId": 2291375224637431152,
+            },
+            {
+                "order": 2,
+                "contentId": "text_gm01m27_2",
+                "prtsId": "nar_gm01m27_2",
+                "uniqId": "term_map01_lv001_gm01m27_2",
+                "numericId": 175,
+                "nameId": -1279490884708468702,
+            },
+        ),
+        "missionTextRows": {
+            "gm01m27_desc_008": -4721954571166861173,
+            "gm01m27_desc_010": 4234351872060234760,
+            "gm01m27_desc_026": -5260360960064451117,
+            "gm01m27_name": -1774444844579267245,
+            "objective_gm01m27_1_001": -1424917977080405441,
+            "objective_gm01m27_2_001": -6425752074915612424,
+            "objective_gm01m27_2_002": -6913698330769929737,
+            "objective_gm01m27_2_003": 5217138335650443298,
+            "objective_gm01m27_4_001": -1996591101611484771,
+            "objective_gm01m27_5_001": 3054271297337201381,
+            "objective_gm01m27_6_001": 3502640477416576227,
+        },
+        "sourceKeys": (
+            "prtsReadingTable",
+            "numIdStrTable",
+            "strIdNumTable",
+            "textTable",
+        ),
+    },
+}
+OFFLINE_EXHAUSTION_MISSION_LINEAR_CONTEXTS = {
+    "gm01m12": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm01m12.json"
+        ),
+        "sourceSha256":
+            "B5022E18326385BCCCC4ACFBC076A5563C5B18066D291D1CA63F2DB11AC12EBB",
+        "questSequence": tuple(
+            f"gm01m12_q#{number}"
+            for number in (15, 16, 13, 14, 1, 2, 3, 4, 12, 5, 6)
+        ),
+    },
+}
+OFFLINE_EXHAUSTION_MISSION_TOPOLOGY_CONTEXTS = {
+    "gm01m15": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm01m15.json"
+        ),
+        "sourceSha256":
+            "0397C4DAD94F167EE1EE571280C7723F8D17D0905FA5CCA71AA101B26B0D5622",
+        "mainPathQuestIds": tuple(
+            f"gm01m15_q#{number}"
+            for number in (2, 3, 4, 6, 7, 8, 14, 5, 10, 11, 12)
+        ),
+        "prevQuestIdsByQuest": {
+            "gm01m15_q#2": (),
+            "gm01m15_q#3": ("gm01m15_q#2",),
+            "gm01m15_q#4": ("gm01m15_q#3",),
+            "gm01m15_q#13": ("gm01m15_q#3",),
+            "gm01m15_q#6": ("gm01m15_q#4", "gm01m15_q#13"),
+            "gm01m15_q#7": ("gm01m15_q#6",),
+            "gm01m15_q#8": ("gm01m15_q#7",),
+            "gm01m15_q#14": ("gm01m15_q#8",),
+            "gm01m15_q#5": ("gm01m15_q#14",),
+            "gm01m15_q#10": ("gm01m15_q#5",),
+            "gm01m15_q#11": ("gm01m15_q#10",),
+            "gm01m15_q#12": ("gm01m15_q#11",),
+        },
+        "failedConditionsByQuest": {
+            f"gm01m15_q#{number}": None
+            for number in (2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14)
+        },
+    },
+    "gm01m4": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm01m4.json"
+        ),
+        "sourceSha256":
+            "43F95A2A63978A06F1CDCC73EC073154A88A7A3E1DB9C6EA2F4195862390868D",
+        "mainPathQuestIds": ("gm01m4_q#1", "gm01m4_q#2"),
+        "prevQuestIdsByQuest": {
+            "gm01m4_q#1": (),
+            "gm01m4_q#2": ("gm01m4_q#1",),
+        },
+        "failedConditionsByQuest": {
+            "gm01m4_q#1": None,
+            "gm01m4_q#2": None,
+        },
+    },
+    "gm02m13": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm02m13.json"
+        ),
+        "sourceSha256":
+            "5F1BFCD6CB10E46B4A613E59CD20E28501B1E283BFA15EAC8B0708E14D914A70",
+        "mainPathQuestIds": tuple(
+            f"gm02m13_q#{number}" for number in (5, 6, 7, 15)
+        ),
+        "prevQuestIdsByQuest": {
+            f"gm02m13_q#{quest}": tuple(
+                f"gm02m13_q#{previous}" for previous in predecessors
+            )
+            for quest, predecessors in {
+                5: (), 6: (5,), 7: (6,), 8: (5,), 9: (5,),
+                10: (6,), 11: (8,), 12: (8,), 13: (9,), 14: (9,),
+                15: (7, 10, 12, 11, 13, 14),
+            }.items()
+        },
+        "failedConditionsByQuest": {
+            **{
+                f"gm02m13_q#{number}": None
+                for number in (5, 7, 10, 11, 12, 13, 14, 15)
+            },
+            **{
+                f"gm02m13_q#{quest}": {
+                    "$type": (
+                        "Beyond.Gameplay.CombineCondition, Gameplay.Beyond"
+                    ),
+                    "uniqueId": unique_id,
+                    "useCurrentScope": False,
+                    "scopeMask": 1,
+                    "useGraphScope": True,
+                    "conditionEvalString": "{0}or{1}",
+                    "subConditions": [
+                        {
+                            "$type": (
+                                "Beyond.Gameplay.CheckTalkOptionFinish, "
+                                "Gameplay.Beyond"
+                            ),
+                            "uniqueId": leaf_id,
+                            "useCurrentScope": False,
+                            "scopeMask": 1,
+                            "useGraphScope": True,
+                            "_dialogId": {"constValue": dialog_id},
+                            "_finishId": {"constValue": 0},
+                        }
+                        for leaf_id, dialog_id in leaves
+                    ],
+                }
+                for quest, unique_id, leaves in (
+                    (6, "c5de1b18", (
+                        ("d0f334db", "dlg_gm02m13_3"),
+                        ("218fc83e", "dlg_gm02m13_4"),
+                    )),
+                    (8, "3707d033", (
+                        ("e5a9d6b4", "dlg_gm02m13_2"),
+                        ("3f7c0016", "dlg_gm02m13_4"),
+                    )),
+                    (9, "b37321d6", (
+                        ("7017c5b8", "dlg_gm02m13_3"),
+                        ("dbf73271", "dlg_gm02m13_2"),
+                    )),
+                )
+            },
+        },
+    },
+    "gm02m8": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm02m8.json"
+        ),
+        "sourceSha256":
+            "D927D6757223E97D50A88202804CCEAC6D1B48DD3BF4D76060992DDFBFE2D3DE",
+        "mainPathQuestIds": tuple(
+            f"gm02m8_q#{number}" for number in (1, 2, 3)
+        ),
+        "prevQuestIdsByQuest": {
+            "gm02m8_q#1": (),
+            "gm02m8_q#2": ("gm02m8_q#1",),
+            "gm02m8_q#3": ("gm02m8_q#2",),
+        },
+    },
+    "gm02m14": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm02m14.json"
+        ),
+        "sourceSha256":
+            "1427E0281C167DC04DE4AC9776CBEBB78C6E31158601EE95E089DDAB4312DA7C",
+        "mainPathQuestIds": tuple(
+            f"gm02m14_q#{number}"
+            for number in (1, 2, 3, 5, 6, 4, 7, 8, 9, 10, 11, 12)
+        ),
+        "prevQuestIdsByQuest": {
+            f"gm02m14_q#{quest}": tuple(
+                f"gm02m14_q#{previous}" for previous in predecessors
+            )
+            for quest, predecessors in {
+                1: (), 2: (1,), 3: (2,), 5: (3,), 6: (5,), 4: (6,),
+                7: (4,), 8: (7,), 9: (8,), 10: (9,), 11: (10,),
+                12: (11,),
+            }.items()
+        },
+    },
+    "gm02m15": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm02m15.json"
+        ),
+        "sourceSha256":
+            "026F401C4F0D6DE15235812563B91CD06798509963B8234488AA5D66273891E1",
+        "mainPathQuestIds": tuple(
+            f"gm02m15_q#{number}" for number in range(1, 9)
+        ),
+        "prevQuestIdsByQuest": {
+            f"gm02m15_q#{quest}": (
+                () if quest == 1 else (f"gm02m15_q#{quest - 1}",)
+            )
+            for quest in range(1, 9)
+        },
+        "objectiveConjunctionsByQuest": {
+            "gm02m15_q#5": ({
+                "objectiveIndex": 1,
+                "conditionType": "Beyond.Gameplay.CombineCondition",
+                "conditionEvalString": "{0} and {1} and {2}",
+                "subConditions": tuple({
+                    "conditionIndex": index,
+                    "conditionType": (
+                        "Beyond.Gameplay.CheckLevelScriptPropertyBool"
+                    ),
+                    "mapId": "map02_lv006",
+                    "scriptId": 25000120003,
+                    "key": key,
+                    "value": True,
+                    "comparer": 0,
+                    "sourceFile": (
+                        "export_full/structured/StreamingAssets/Data/Json/"
+                        "LevelScriptData/map02_lv006/25000120003.json"
+                    ),
+                } for index, key in enumerate(
+                    ("jianbei1", "jianbei2", "jianbei3")
+                )),
+            },),
+        },
+    },
+    "gm02m21": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm02m21.json"
+        ),
+        "sourceSha256":
+            "FBEE030B16BC77EC465523E7E0CCEF8CC77B50328C645C3694DEA9125730599F",
+        "mainPathQuestIds": tuple(
+            f"gm02m21_q#{number}" for number in range(1, 6)
+        ),
+        "prevQuestIdsByQuest": {
+            "gm02m21_q#1": (),
+            "gm02m21_q#2": ("gm02m21_q#1",),
+            "gm02m21_q#3": ("gm02m21_q#2",),
+            "gm02m21_q#4": ("gm02m21_q#3",),
+            "gm02m21_q#5": ("gm02m21_q#4",),
+            "gm02m21_q#6": ("gm02m21_q#1",),
+        },
+        "failedConditionsByQuest": {
+            **{f"gm02m21_q#{number}": None for number in range(1, 6)},
+            "gm02m21_q#6": {
+                "$type": "Beyond.Gameplay.CheckQuestState, Gameplay.Beyond",
+                "uniqueId": "7ed8c99f",
+                "useCurrentScope": False,
+                "scopeMask": 1,
+                "useGraphScope": True,
+                "_questId": {"constValue": "gm02m21_q#1"},
+                "_comparer": {"constValue": 1},
+                "_targetQuestState": {"constValue": 3},
+            },
+        },
+        "questStateDependenciesByQuest": {
+            "gm02m21_q#6": ({
+                "objectiveIndex": 1,
+                "targetQuestId": "gm02m21_q#2",
+                "comparer": 0,
+                "targetQuestState": 3,
+                "scopeMask": 1,
+                "useGraphScope": True,
+            },),
+        },
+        "objectiveConjunctionsByQuest": {
+            "gm02m21_q#2": ({
+                "objectiveIndex": 1,
+                "conditionType": "Beyond.Gameplay.CombineCondition",
+                "conditionEvalString": "{0}and{1}and{2}and{3}and{4}",
+                "subConditions": tuple({
+                    "conditionIndex": index,
+                    "conditionType": (
+                        "Beyond.Gameplay.CheckLevelScriptStage"
+                    ),
+                    "mapId": "map02_lv007",
+                    "scriptId": 10200190002,
+                    "stageValue": stage,
+                    "compareOperator": 3,
+                    "sourceFile": (
+                        "export_full/structured/StreamingAssets/Data/Json/"
+                        "LevelScriptData/map02_lv007/10200190002.json"
+                    ),
+                } for index, stage in enumerate((1, 2, 3, 4, 7))),
+            },),
+        },
+        "levelScriptPlaybackInventories": ({
+            "sourceFile": (
+                "export_full/structured/StreamingAssets/Data/Json/"
+                "LevelScriptData/map02_lv007/10200190002.json"
+            ),
+            "sourceSha256": (
+                "444389EA6AC01B7FBF9823A50FEDB8405711675520848A3C19FD9050DCE732A8"
+            ),
+            "playbackRecords": tuple({
+                "action": "PlayRadio",
+                "storyKey": f"radio_gm02m21_{number}",
+                "independentActionRoot": True,
+            } for number in (1, 2, 3, 5, 8)),
+            "absentStoryKeys": (
+                "radio_gm02m21_4",
+                "radio_gm02m21_7",
+            ),
+        },),
+    },
+    "gm02m17": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm02m17.json"
+        ),
+        "sourceSha256":
+            "1AA34C807318E0AB8226F69F5BED97D3C9B84563D8405F25F2BC07E0D8C9574D",
+        "mainPathQuestIds": ("gm02m17_q#1",),
+        "prevQuestIdsByQuest": {
+            "gm02m17_q#1": (),
+            "gm02m17_q#3": ("gm02m17_q#1",),
+            "gm02m17_q#5": ("gm02m17_q#3",),
+            "gm02m17_q#4": ("gm02m17_q#5", "gm02m17_q#1"),
+            "gm02m17_q#6": ("gm02m17_q#4",),
+        },
+        "failedConditionsByQuest": {
+            f"gm02m17_q#{number}": None for number in (1, 3, 4, 5, 6)
+        },
+    },
+    "gm01m13": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm01m13.json"
+        ),
+        "sourceSha256":
+            "383E76E5CA4C9AA632CAE2132D76182E644F992E092CBF43BB5D5EEE1844ED30",
+        "mainPathQuestIds": tuple(
+            f"gm01m13_q#{number}"
+            for number in (1, 2, 3, 4, 8, 9, 5, 7, 11)
+        ),
+        "prevQuestIdsByQuest": {
+            f"gm01m13_q#{quest}": tuple(
+                f"gm01m13_q#{previous}" for previous in predecessors
+            )
+            for quest, predecessors in {
+                1: (), 2: (1,), 3: (2,), 4: (3, 12), 5: (9,),
+                7: (5,), 8: (4,), 9: (8,), 11: (7,), 12: (2,),
+            }.items()
+        },
+    },
+    "gm01m17": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm01m17.json"
+        ),
+        "sourceSha256":
+            "B056CF7FE5496B477208487DA74B510828CE122E685ED32D67070B7AD84A7E82",
+        "mainPathQuestIds": tuple(
+            f"gm01m17_q#{number}"
+            for number in (1, 2, 13, 14, 16, 18)
+        ),
+        "prevQuestIdsByQuest": {
+            f"gm01m17_q#{quest}": tuple(
+                f"gm01m17_q#{previous}" for previous in predecessors
+            )
+            for quest, predecessors in {
+                1: (), 11: (), 12: (), 13: (2,), 14: (13,),
+                15: (13,), 16: (14,), 17: (15,), 18: (16,),
+                19: (17,), "1d1": (), 2: (1,), 20: (4,), 21: (6,),
+                22: (2,), 3: (2,), 4: (3,), 5: (4,), 6: (),
+                7: (), 8: (), 9: (),
+            }.items()
+        },
+        "failedConditionsByQuest": {
+            **{
+                f"gm01m17_q#{number}": None
+                for number in (
+                    1, 11, 12, 14, 15, 16, 17, 18, 19, "1d1", 2,
+                    20, 21, 22, 3, 4, 5, 6, 7, 8, 9,
+                )
+            },
+            "gm01m17_q#13": {
+                "$type": "Beyond.Gameplay.CheckQuestState, Gameplay.Beyond",
+                "uniqueId": "ea935d5b",
+                "useCurrentScope": False,
+                "scopeMask": 1,
+                "useGraphScope": True,
+                "_questId": {"constValue": "gm01m17_q#3"},
+                "_comparer": {"constValue": 0},
+                "_targetQuestState": {"constValue": 3},
+            },
+        },
+        "questStateDependenciesByQuest": {
+            "gm01m17_q#3": tuple({
+                "objectiveIndex": 1,
+                "conditionIndexPath": (condition_index, 1),
+                "targetQuestId": "gm01m17_q#13",
+                "comparer": 0,
+                "targetQuestState": 3,
+                "scopeMask": 1,
+                "useGraphScope": True,
+            } for condition_index in range(3)),
+            "gm01m17_q#4": ({
+                "objectiveIndex": 1,
+                "conditionIndexPath": (1,),
+                "targetQuestId": "gm01m17_q#13",
+                "comparer": 0,
+                "targetQuestState": 3,
+                "scopeMask": 1,
+                "useGraphScope": True,
+            },),
+        },
+    },
+    "gm02m20": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm02m20.json"
+        ),
+        "sourceSha256":
+            "39A69825551FB99F98FDBA0F9B72F771CA2BAA5E091174D363270329675785C7",
+        "mainPathQuestIds": tuple(
+            f"gm02m20_q#{number}"
+            for number in (1, 2, 10, 11, 3, 6, 4, 7, 5, 8)
+        ),
+        "prevQuestIdsByQuest": {
+            f"gm02m20_q#{quest}": tuple(
+                f"gm02m20_q#{previous}" for previous in predecessors
+            )
+            for quest, predecessors in {
+                1: (), 2: (1,), 10: (2,), 11: (10,), 3: (11,),
+                6: (3,), 4: (6,), 7: (4,), 5: (7,), 8: (5,),
+                9: (),
+            }.items()
+        },
+        "questStateDependenciesByQuest": {
+            "gm02m20_q#9": ({
+                "objectiveIndex": 1,
+                "targetQuestId": "gm02m20_q#1",
+                "comparer": 0,
+                "targetQuestState": 3,
+                "scopeMask": 1,
+                "useGraphScope": True,
+            },),
+        },
+    },
+    "gm01m16": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm01m16.json"
+        ),
+        "sourceSha256":
+            "36DA8C77813A10590B4F03866BD43BB7B8376CB6392BB1FBBC7E56AA96A4CAE7",
+        "mainPathQuestIds": tuple(
+            f"gm01m16_q#{number}"
+            for number in (1, 3, 34, 28, 10, 12, 40, 16, 21, 20, 24, 26)
+        ),
+        "prevQuestIdsByQuest": {
+            f"gm01m16_q#{quest}": tuple(
+                f"gm01m16_q#{previous}" for previous in predecessors
+            )
+            for quest, predecessors in {
+                1: (), 2: (), 3: (2, 1), 5: (2, 1), 7: (5,),
+                34: (3, 7), 4: (3, 7), 25: (34,), 27: (34,),
+                28: (34,), 41: (34,), 42: (34,), 8: (34,), 9: (34,),
+                10: (28,), 11: (9,), 12: (10,), 40: (12,), 16: (40,),
+                21: (16,), 20: (21,), 24: (20,), 26: (24,), 43: (27,),
+                44: (25,), 45: (41,),
+            }.items()
+        },
+    },
+    "gm01m20": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm01m20.json"
+        ),
+        "sourceSha256":
+            "01BC364A3A64CFFE8BE236B017020D76ACDBB42866862031A5DC4405B501E355",
+        "mainPathQuestIds": tuple(
+            f"gm01m20_q#{number}" for number in (7, 1, 6, 3, 4, 2)
+        ),
+        "prevQuestIdsByQuest": {
+            f"gm01m20_q#{quest}": tuple(
+                f"gm01m20_q#{previous}" for previous in predecessors
+            )
+            for quest, predecessors in {
+                7: (), 1: (7,), 6: (1,), 3: (6,), 4: (3,),
+                2: (4,), 10: (4,),
+            }.items()
+        },
+    },
+    "gm02m23": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/gm02m23.json"
+        ),
+        "sourceSha256":
+            "09987B7764C23CA0AA2A1BD4302BAA549E7833F9BE0498283E07814D74F3F5AB",
+        "mainPathQuestIds": tuple(
+            f"gm02m23_q#{number}"
+            for number in (1, 2, 11, 3, 7, 8, 13, 10, 6)
+        ),
+        "prevQuestIdsByQuest": {
+            f"gm02m23_q#{quest}": tuple(
+                f"gm02m23_q#{previous}" for previous in predecessors
+            )
+            for quest, predecessors in {
+                1: (), 2: (1,), 11: (2,), 3: (11,), 7: (3,),
+                8: (7,), 13: (8,), 10: (13,), 6: (10,), 9: (2,),
+            }.items()
+        },
+        "failedConditionsByQuest": {
+            **{
+                f"gm02m23_q#{number}": None
+                for number in (1, 2, 11, 3, 7, 8, 13, 10, 6)
+            },
+            "gm02m23_q#9": {
+                "$type": "Beyond.Gameplay.CheckQuestState, Gameplay.Beyond",
+                "uniqueId": "d234408a",
+                "useCurrentScope": False,
+                "scopeMask": 1,
+                "useGraphScope": True,
+                "_questId": {"constValue": "gm02m23_q#11"},
+                "_comparer": {"constValue": 0},
+                "_targetQuestState": {"constValue": 3},
+            },
+        },
+    },
+}
+OFFLINE_EXHAUSTION_LEVELDATA_DIALOG_BRANCH_CONTEXTS = {
+    "gm01m2": {
+        "levelId": "map01_lv001",
+        "scriptId": "2100210004",
+        "levelDataFile": (
+            "export_full/structured/StreamingAssets/Data/Json/LevelData/"
+            "map01_lv001/map01_lv001_lv_data_sub_gm01m2.json"
+        ),
+        "levelDataSha256":
+            "E54CF09A81D8A54C4677DF4CA2C727711F9B7E1174551997D4F5814414561378",
+        "levelScriptFile": (
+            "export_full/structured/StreamingAssets/Data/Json/LevelScriptData/"
+            "map01_lv001/2100210004.json"
+        ),
+        "levelScriptSha256":
+            "1A57F97CE96D2674C63B38410A05213F2816F911C2F36AD5BD745E2C45A68155",
+        "dictionaryEntryCount": 3,
+        "dictionaryScriptIds": (
+            "2100210004", "2100210017", "2100210019",
+        ),
+        "propertyCount": 38,
+        "propertyDialogs": {
+            "start_dialog": "dlg_gm01m2_1",
+            "succeed_dialog": "dlg_gm01m2_2",
+            "failed_dialog": "dlg_gm01m2_3",
+        },
+        "startDialogListener": {
+            "headerLocalId": 87,
+            "eventName": "LevelEvent_OnDialogEnter",
+            "nextLocalId": 88,
+            "propertyPath": "start_dialog",
+        },
+        "resultSwitch": {
+            "eventHeaderLocalId": 188,
+            "eventName": "ScriptEvent_OnCustomEvent",
+            "eventKey": "#72a43b08",
+            "switchLocalId": 189,
+            "getterLocalId": 240,
+            "getterPath": "result",
+            "switchCases": (
+                (0, -1), (1, 190), (2, 191), (3, 21),
+                (4, 192), (5, 193), (8, 217), (9, 194),
+            ),
+            "cases": ({
+                "value": 8,
+                "entryLocalId": 217,
+                "actionLocalId": 148,
+                "getterLocalId": 147,
+                "propertyPath": "succeed_dialog",
+                "pathLocalIds": (189, 217, 218, 220, 221, 222, 235, 236, 148),
+            }, {
+                "value": 9,
+                "entryLocalId": 194,
+                "actionLocalId": 151,
+                "getterLocalId": 150,
+                "propertyPath": "failed_dialog",
+                "pathLocalIds": (189, 194, 197, 198, 199, 212, 213, 151),
+            }),
+        },
+    },
+    "gm01m24": {
+        "levelId": "map01_lv006",
+        "scriptId": "3500190001",
+        "levelDataFile": (
+            "export_full/structured/StreamingAssets/Data/Json/LevelData/"
+            "map01_lv006/map01_lv006_lv_data_sub_gm01m24.json"
+        ),
+        "levelDataSha256":
+            "AA4A3915C3D1655CAA9A74F043EABAF7B1B9449CE2AC2990D5362D8E3BC21AC2",
+        "levelScriptFile": (
+            "export_full/structured/StreamingAssets/Data/Json/LevelScriptData/"
+            "map01_lv006/3500190001.json"
+        ),
+        "levelScriptSha256":
+            "34432759C834431DD12FE68F81167775D94F9002578D04E2F12FAC7994785B32",
+        "dictionaryEntryCount": 5,
+        "propertyCount": 37,
+        "dictionaryScriptIds": tuple(
+            str(3500190000 + number) for number in range(1, 6)
+        ),
+        "propertyDialogs": {
+            "start_dialog": "dlg_gm01m24_1",
+            "succeed_dialog": "dlg_gm01m24_2",
+            "failed_dialog": "dlg_gm01m24_3",
+        },
+        "startDialogListener": {
+            "headerLocalId": 80,
+            "eventName": "LevelEvent_OnDialogEnter",
+            "nextLocalId": 81,
+            "propertyPath": "start_dialog",
+        },
+        "resultSwitch": {
+            "eventHeaderLocalId": 233,
+            "eventName": "ScriptEvent_OnCustomEvent",
+            "eventKey": "#e9dcab93",
+            "switchLocalId": 181,
+            "getterLocalId": 180,
+            "getterPath": "result",
+            "switchCases": (
+                (0, -1), (1, 182), (2, 183), (3, 18),
+                (4, 184), (5, 185), (8, 209), (9, 186),
+            ),
+            "cases": ({
+                "value": 8,
+                "entryLocalId": 209,
+                "actionLocalId": 142,
+                "getterLocalId": 141,
+                "propertyPath": "succeed_dialog",
+                "pathLocalIds": (181, 209, 210, 212, 213, 214, 227, 228, 142),
+            }, {
+                "value": 9,
+                "entryLocalId": 186,
+                "actionLocalId": 145,
+                "getterLocalId": 144,
+                "propertyPath": "failed_dialog",
+                "pathLocalIds": (181, 186, 189, 190, 191, 204, 205, 145),
+            }),
+        },
+    },
+    "gm01m25": {
+        "levelId": "map01_lv007",
+        "scriptId": "2800020003",
+        "levelDataFile": (
+            "export_full/structured/StreamingAssets/Data/Json/LevelData/"
+            "map01_lv007/map01_lv007_lv_data_sub_01.json"
+        ),
+        "levelDataSha256":
+            "210C01BD69A88F6E8F66DB13EBA200E996A1F989615579B8E702923DD85A7DE0",
+        "levelScriptFile": (
+            "export_full/structured/StreamingAssets/Data/Json/LevelScriptData/"
+            "map01_lv007/2800020003.json"
+        ),
+        "levelScriptSha256":
+            "0B10781C03A03DA8710FA9A92AAF4247034771A7B8D4A5662D42BA7CE943ACF5",
+        "dictionaryEntryCount": 5,
+        "propertyCount": 37,
+        "dictionaryScriptIds": (
+            "2800020003", "2800020005", "2800020008",
+            "2800020014", "2800020015",
+        ),
+        "propertyDialogs": {
+            "start_dialog": "dlg_gm01m25_1",
+            "succeed_dialog": "dlg_gm01m25_2",
+            "failed_dialog": "dlg_gm01m25_3",
+        },
+        "startDialogListener": {
+            "headerLocalId": 78,
+            "eventName": "LevelEvent_OnDialogEnter",
+            "nextLocalId": 79,
+            "propertyPath": "start_dialog",
+        },
+        "resultSwitch": {
+            "eventHeaderLocalId": 231,
+            "eventName": "ScriptEvent_OnCustomEvent",
+            "eventKey": "#33fa174c",
+            "switchLocalId": 179,
+            "getterLocalId": 178,
+            "getterPath": "result",
+            "switchCases": (
+                (0, -1), (1, 180), (2, 181), (3, 18),
+                (4, 182), (5, 183), (8, 207), (9, 184),
+            ),
+            "cases": ({
+                "value": 8,
+                "entryLocalId": 207,
+                "actionLocalId": 140,
+                "getterLocalId": 139,
+                "propertyPath": "succeed_dialog",
+                "pathLocalIds": (179, 207, 208, 210, 211, 212, 225, 226, 140),
+            }, {
+                "value": 9,
+                "entryLocalId": 184,
+                "actionLocalId": 143,
+                "getterLocalId": 142,
+                "propertyPath": "failed_dialog",
+                "pathLocalIds": (179, 184, 187, 188, 189, 202, 203, 143),
+            }),
+        },
+    },
+    "gm01m26": {
+        "levelId": "map01_lv005",
+        "scriptId": "3400010017",
+        "levelDataFile": (
+            "export_full/structured/StreamingAssets/Data/Json/LevelData/"
+            "map01_lv005/map01_lv005_lv_data_sub_01.json"
+        ),
+        "levelDataSha256":
+            "7AEEE38BBBBEF778ACD6AE2F50A6F587652053E9CB57FACB5506621D091FD95D",
+        "levelScriptFile": (
+            "export_full/structured/StreamingAssets/Data/Json/LevelScriptData/"
+            "map01_lv005/3400010017.json"
+        ),
+        "levelScriptSha256":
+            "585D5E7B49C40765801D27867446D410F4D703FF8A62654CE776233D7C97879F",
+        "dictionaryEntryCount": 22,
+        "propertyCount": 37,
+        "dictionaryScriptIds": (
+            "3400010000", "3400010001", "3400010002", "3400010003",
+            "3400010004", "3400010009", "3400010010", "3400010011",
+            "3400010012", "3400010013", "3400010017", "3400010018",
+            "3400010019", "3400010020", "3400010021", "3400010027",
+            "3400010028", "3400010029", "3400010031", "3400010032",
+            "3400010033", "3400010044",
+        ),
+        "propertyDialogs": {
+            "start_dialog": "dlg_gm01m26_1",
+            "succeed_dialog": "dlg_gm01m26_2",
+            "failed_dialog": "dlg_gm01m26_3",
+        },
+        "startDialogListener": {
+            "headerLocalId": 79,
+            "eventName": "LevelEvent_OnDialogEnter",
+            "nextLocalId": 80,
+            "propertyPath": "start_dialog",
+        },
+        "resultSwitch": {
+            "eventHeaderLocalId": 232,
+            "eventName": "ScriptEvent_OnCustomEvent",
+            "eventKey": "#3ebdaf39",
+            "switchLocalId": 180,
+            "getterLocalId": 179,
+            "getterPath": "result",
+            "switchCases": (
+                (0, -1), (1, 181), (2, 182), (3, 22),
+                (4, 183), (5, 184), (8, 208), (9, 185),
+            ),
+            "cases": ({
+                "value": 8,
+                "entryLocalId": 208,
+                "actionLocalId": 141,
+                "getterLocalId": 140,
+                "propertyPath": "succeed_dialog",
+                "pathLocalIds": (180, 208, 209, 211, 212, 213, 226, 227, 141),
+            }, {
+                "value": 9,
+                "entryLocalId": 185,
+                "actionLocalId": 144,
+                "getterLocalId": 143,
+                "propertyPath": "failed_dialog",
+                "pathLocalIds": (180, 185, 188, 189, 190, 203, 204, 144),
+            }),
+        },
+    },
+}
+OFFLINE_EXHAUSTION_EMPTY_LEVELSCRIPT_CONTEXTS = {
+    "gm01m5": {
+        "levelId": "map01_lv001",
+        "scriptId": "2100100004",
+        "levelDataFile": (
+            "export_full/structured/StreamingAssets/Data/Json/LevelData/"
+            "map01_lv001/map01_lv001_lv_data_sub_gm01m5.json"
+        ),
+        "levelDataSha256":
+            "3F32678F67E08B81AFCBFA05F2283EB098DE3E0E3C091E08D69AA502F9B0C6EB",
+        "levelScriptFile": (
+            "export_full/structured/StreamingAssets/Data/Json/LevelScriptData/"
+            "map01_lv001/2100100004.json"
+        ),
+        "levelScriptSha256":
+            "561A82A611951483CD9DEEDAFDB7BDADE58DBCE163A3B3E393370BD4AF460112",
+        "dataPathHash": "15306503476277701362",
+        "levelScriptType": 0,
+        "maxStage": 1,
+    },
+}
+OFFLINE_EXHAUSTION_LEVELSCRIPT_TASK_CONSUMERS = {
+    "dlg_gm01m12_1": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/LevelScriptData/"
+            "map01_lv001/2100110001.json"
+        ),
+        "sourceSha256":
+            "86176021964C371921D28983D2394A934DF2F16C4C7892695D70EB71E01B8791",
+        "levelId": "map01_lv001",
+        "scriptId": "2100110001",
+        "taskKey": "f7239bd1",
+        "conditionKey": "10bf8411",
+        "postDialogAction": {
+            "eventName": "LevelEvent_OnDialogExit",
+            "headerLocalId": 11,
+            "actionLocalId": 12,
+            "actionUnionTag": "0x001f",
+            "serializedMemberCount": 19,
+            "actionName": "BlackScreenFadeInAndOut",
+        },
+    },
+    "dlg_gm01m12_3": {
+        "sourceFile": (
+            "export_full/structured/Persistent/Data/Json/LevelScriptData/"
+            "map01_lv001/2100110003.json"
+        ),
+        "sourceSha256":
+            "D47D6B43462380E1D399536BD2F016F93415EE24CA8C7B3F91A19E4681892A68",
+        "levelId": "map01_lv001",
+        "scriptId": "2100110003",
+        "taskKey": "f7239bd1",
+        "conditionKey": "10bf8411",
+    },
+}
+EXACT_PARENT_DIALOG_DEPENDENCIES = {
+    "dlg_a1m4_2": {
+        "missionId": "a1m4",
+        "questId": "a1m4_q#IntroDialog",
+        "parentStoryKey": "dlg_a1m4_1",
+        "sourceFile": (
+            "export_full/recovered/AnimeStudio-cli/StreamingAssets/"
+            "json_by_type/TextAsset/dlg_a1m4_1_p14B2A876733D2220.json"
+        ),
+        "sourceSha256":
+            "E1AD79F7324E3772BB1CB8D95352A55C955F1229C1867EF33541982AD5059382",
+        "sourcePathId": "14B2A876733D2220",
+        "carrierKind": "trunk",
+        "trunkIds": ("dlg_a1m4_2_001", "dlg_a1m4_2_002"),
+        "carrierCount": 2,
+    },
+    "dlg_gm01m22_6": {
+        "missionId": "gm01m22",
+        "questId": "gm01m22_q#27",
+        "parentStoryKey": "dlg_gm01m22_hapo",
+        "sourceFile": (
+            "export_full/recovered/AnimeStudio-cli/StreamingAssets/"
+            "json_by_type/TextAsset/dlg_gm01m22_hapo_p4AEE0BFF15D9FD8F.json"
+        ),
+        "sourceSha256":
+            "E8C224D75F98349C9272C16222538DC73BC0F99623DE974B2AC86941E85B5D08",
+        "sourcePathId": "4AEE0BFF15D9FD8F",
+        "carrierKind": "dialog",
+        "dialogIds": ("dlg_gm01m22_6",),
+        "carrierCount": 1,
+    },
+    "dlg_gm01m22_8": {
+        "missionId": "gm01m22",
+        "questId": "gm01m22_q#27",
+        "parentStoryKey": "dlg_gm01m22_hapo",
+        "sourceFile": (
+            "export_full/recovered/AnimeStudio-cli/StreamingAssets/"
+            "json_by_type/TextAsset/dlg_gm01m22_hapo_p4AEE0BFF15D9FD8F.json"
+        ),
+        "sourceSha256":
+            "E8C224D75F98349C9272C16222538DC73BC0F99623DE974B2AC86941E85B5D08",
+        "sourcePathId": "4AEE0BFF15D9FD8F",
+        "carrierKind": "dialog",
+        "dialogIds": ("dlg_gm01m22_8",),
+        "carrierCount": 1,
+    },
+}
 OFFLINE_EXHAUSTION_REVERSE_PPTR_MAPPING_ID = (
     "gameassembly-2026-07-28-cutscene-root-director-playback-v1"
 )
@@ -150,11 +1283,23 @@ OFFLINE_EXHAUSTION_AUDIO_DIALOG_SHA256 = (
 OFFLINE_EXHAUSTION_NUM_ID_STR_TABLE_SHA256 = (
     "13FE790D69B0B3CDD4B64CCA53BB41DA8BD0D45D31975004FA074B0EDBB73BDE"
 )
+OFFLINE_EXHAUSTION_STR_ID_NUM_TABLE_SHA256 = (
+    "9F7EAD0C728058952575EF0C085321A4E21834A336F661B061758EE827DAFBA7"
+)
 OFFLINE_EXHAUSTION_TEXT_TABLE_SHA256 = (
     "78CECB42561D80255AB2C38DD24F6699DDC6226D2DFF058FABC5E1EE50223CF3"
 )
 OFFLINE_EXHAUSTION_DIALOG_TEXT_TABLE_SHA256 = (
     "1C1BB59ACEA89212C9F2E34FE86457672FE5C8783FCD199F161D3F0DC9DEAD72"
+)
+OFFLINE_EXHAUSTION_DIALOG_OPTION_TABLE_SHA256 = (
+    "8D86E8A10025DC0B54F800750650738A360DEBA169A0E3B3C48CB72FB8857C29"
+)
+OFFLINE_EXHAUSTION_DIALOG_SUMMARY_MAP_TABLE_SHA256 = (
+    "86A9DF70D9AB2C797E09F0827FB5EADFC7DB67CB80A3AF21C40A4215972BA133"
+)
+OFFLINE_EXHAUSTION_DIALOG_SUMMARY_TABLE_SHA256 = (
+    "98CAC57FB20458208B174E34F8944B51296C8A967C28F7BBB56C75F04E5E792E"
 )
 OFFLINE_EXHAUSTION_READING_POPUP_TABLE_SHA256 = (
     "119BEFCA19E85FB11DF33D945FBA6374BB24E622F717CC50D7DA011BDB2A533C"
@@ -167,6 +1312,9 @@ OFFLINE_EXHAUSTION_PRTS_ALL_ITEM_TABLE_SHA256 = (
 )
 OFFLINE_EXHAUSTION_PRTS_RECORD_TABLE_SHA256 = (
     "7E9F2B5812494C045189C03C7E52513C4AB67FF16E06A0D817FC267784F8C61E"
+)
+OFFLINE_EXHAUSTION_PRTS_READING_TABLE_SHA256 = (
+    "7686CE995F0C0DAE8C65ADA53A3E2737CC1CFD238F2E9C781C1A98F2860BDE05"
 )
 OFFLINE_EXHAUSTION_SNS_DIALOG_TABLE_SHA256 = (
     "6DA0BCAB64EB0ECFCFF8D21A446D8AA637669D6DAE3E2A66D43FC2721098A0BF"
@@ -187,9 +1335,33 @@ OFFLINE_EXHAUSTION_TIMELINE_LINE_ORDERS_SHA256 = (
     "C8408C67D8E6AD07CECF2007795C8E388B7F9BCE117B11DAADE8A7EFAD4EAEF2"
 )
 QUEST_ATTACHMENT_DIAGNOSTIC_MAPPING_ID = (
-    "current-build-quest-story-attachment-negative-v2"
+    "current-build-quest-story-attachment-negative-v3"
 )
 QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS = {
+    "missionRuntime:e10m3d5": (
+        "export_full/structured/Persistent/Data/Json/"
+        "MissionRuntimeAsset/e10m3d5.json"
+    ),
+    "missionRuntime:e2m8": (
+        "export_full/structured/Persistent/Data/Json/"
+        "MissionRuntimeAsset/e2m8.json"
+    ),
+    "levelScript:map01_lv006/3500100002": (
+        "export_full/structured/StreamingAssets/Data/Json/"
+        "LevelScriptData/map01_lv006/3500100002.json"
+    ),
+    "levelData:map02_lv002/map02_lv002_lv_data_sub_e10m3": (
+        "export_full/structured/StreamingAssets/Data/Json/"
+        "LevelData/map02_lv002/map02_lv002_lv_data_sub_e10m3.json"
+    ),
+    "gameplayConfig:NpcProxyTable": (
+        "export_full/structured/Persistent/Data/Json/"
+        "GameplayConfig/NpcProxyTable.json"
+    ),
+    "gameplayConfig:WorldEntityRegistry": (
+        "export_full/structured/Persistent/Data/Json/"
+        "GameplayConfig/WorldEntityRegistry.json"
+    ),
     "missionRuntime:e10m4d5": (
         "export_full/structured/Persistent/Data/Json/"
         "MissionRuntimeAsset/e10m4d5.json"
@@ -220,6 +1392,24 @@ QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS = {
     ),
 }
 QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_HASHES = {
+    "missionRuntime:e10m3d5": (
+        "086086FABEBD61CCC458987FC62AC426EBF6752B49621D739E32FA1DF82AB663"
+    ),
+    "missionRuntime:e2m8": (
+        "5A6663F8AE1DFB134DD9DC17191AD6AE0297BAC26399C6BA68748828DCCE4FB0"
+    ),
+    "levelScript:map01_lv006/3500100002": (
+        "218B0CB48328B20DD001F1F27EF904E120312BE827517D8644B0534488C8775D"
+    ),
+    "levelData:map02_lv002/map02_lv002_lv_data_sub_e10m3": (
+        "A5B6FAFC682D7E12941FFA60DFE8A22BB64CADBF17DAFFB5B14A4381FB02D0EB"
+    ),
+    "gameplayConfig:NpcProxyTable": (
+        "E3D14D56E6E1B769BD23560CE039F3455DDF8DEDDD80512A6BE726870CD8A14E"
+    ),
+    "gameplayConfig:WorldEntityRegistry": (
+        "ABA73DDCB14B8DDDB354D5C97F62557581214119EDC95F00750FD30421836ED8"
+    ),
     "missionRuntime:e10m4d5": (
         "D417581D527A42350597FF802A071F2F629C350C3B0942ACDBEB19FD5518FD0B"
     ),
@@ -243,6 +1433,227 @@ QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_HASHES = {
     ),
 }
 QUEST_ATTACHMENT_DIAGNOSTIC_DECLARATIONS = {
+    "e10m3d5_q#7": {
+        "mission": "e10m3",
+        "variantMission": "e10m3d5",
+        "sourceKey": "missionRuntime:e10m3d5",
+        "sourceFile": QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS[
+            "missionRuntime:e10m3d5"
+        ],
+        "prevQuestIds": ("e10m3d5_q#1",),
+        "conditionType": "GameConditionServerPlaceHolder",
+        "comparer": 3,
+        "progressToCompare": 1,
+        "validationKind": "mission_bound_npc_proxy_context",
+        "npcProxyId": "cuidaifu_map02_e10m3d5",
+        "npcProxyMissionId": "e10m3d5",
+        "npcProxyDialogRows": (
+            ("e10m3d5", ""),
+            ("e10m3d5", "dlg_e10m3_2"),
+            ("e10m3d5", ""),
+        ),
+        "npcProxyPosition": {
+            "x": -1179.63171,
+            "y": 297.717682,
+            "z": -171.104172,
+        },
+        "worldEntitySegmentId": "22800780001",
+        "diagnosticStoryKeys": (
+            "dlg_e10m3_2",
+            "radio_e10m3_9",
+        ),
+        "connectionRows": (
+            {
+                "key": "radio_e10m3_9",
+                "kind": "level_data",
+                "relation": "leveldata_quest_reference",
+                "direction": "context",
+                "phase": "context",
+                "confidence": "direct",
+                "source": "LevelData quest/story byte-string context",
+                "levelId": "map02_lv002",
+                "file": QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS[
+                    "levelData:map02_lv002/map02_lv002_lv_data_sub_e10m3"
+                ],
+            },
+            {
+                "key": "dlg_e10m3_2",
+                "kind": "dialog",
+                "relation": "npc_proxy_ex_attachment",
+                "direction": "context",
+                "phase": "context",
+                "confidence": "scoped_unique",
+                "source": (
+                    "NpcProxyExDataTable.data[*] exact missionId + unique "
+                    "quest tracking proxy"
+                ),
+                "npcProxyId": "cuidaifu_map02_e10m3d5",
+                "npcProxyMissionId": "e10m3d5",
+            },
+            {
+                "key": "dlg_e10m3_2",
+                "kind": "dialog",
+                "relation": "variant_runtime_attachment",
+                "direction": "context",
+                "phase": "context",
+                "confidence": "scoped_variant",
+                "source": "variant MissionRuntime quest attachment",
+                "variantMission": "e10m3d5",
+                "attachmentKind": "levelDataQuestRef",
+            },
+            {
+                "key": "radio_e10m3_9",
+                "kind": "radio",
+                "relation": "variant_runtime_attachment",
+                "direction": "context",
+                "phase": "context",
+                "confidence": "scoped_variant",
+                "source": "variant MissionRuntime quest attachment",
+                "variantMission": "e10m3d5",
+                "attachmentKind": "levelDataQuestRef",
+            },
+        ),
+        "levelDataStoryRefs": (
+            {
+                "storyRef": "radio_e10m3_9",
+                "levelId": "map02_lv002",
+                "file": QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS[
+                    "levelData:map02_lv002/map02_lv002_lv_data_sub_e10m3"
+                ],
+                "distance": 140,
+                "source": "LevelData quest/story byte-string context",
+                "fields": ["radio_e10m3_9"],
+            },
+        ),
+        "levelDataSourceKey": (
+            "levelData:map02_lv002/map02_lv002_lv_data_sub_e10m3"
+        ),
+        "levelDataFile": QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS[
+            "levelData:map02_lv002/map02_lv002_lv_data_sub_e10m3"
+        ],
+        "levelDataByteStringCounts": {
+            "e10m3d5_q#7": 1,
+            "radio_e10m3_9": 2,
+            "dlg_e10m3_2": 0,
+            "cuidaifu_map02_e10m3d5": 0,
+        },
+        "relatedSourceFiles": (
+            QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS[
+                "missionRuntime:e10m3d5"
+            ],
+            QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS[
+                "levelData:map02_lv002/map02_lv002_lv_data_sub_e10m3"
+            ],
+            QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS[
+                "gameplayConfig:NpcProxyTable"
+            ],
+            QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS[
+                "gameplayConfig:NpcProxyExDataTable"
+            ],
+            QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS[
+                "gameplayConfig:WorldEntityRegistry"
+            ],
+        ),
+        "recoveryStatus": (
+            "closed_server_placeholder_with_mission_bound_proxy_context"
+        ),
+        "evidenceKind": (
+            "exact server placeholder plus mission-bound tracked NPC proxy "
+            "and non-owning LevelData context"
+        ),
+        "attachmentBoundary": (
+            "the objective tracks the exact doctor proxy and that proxy has "
+            "a mission-bound dlg_e10m3_2 interaction row; the server-owned "
+            "completion condition still exposes no dialog-finish or playback "
+            "field, while radio_e10m3_9 is only LevelData byte proximity"
+        ),
+        "orderBoundary": (
+            "the tracked proxy, mission-bound dialog selection, LevelData "
+            "collection proximity, and predecessor shell do not identify "
+            "the server completion event or relative Story order"
+        ),
+    },
+    "e2m8_q#5": {
+        "mission": "e2m8",
+        "variantMission": "e2m8",
+        "sourceKey": "missionRuntime:e2m8",
+        "sourceFile": QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS[
+            "missionRuntime:e2m8"
+        ],
+        "prevQuestIds": (),
+        "conditionType": "CheckLevelScriptPropertyBool",
+        "scriptId": "3500100002",
+        "levelId": "map01_lv006",
+        "propertyKey": "CarParked",
+        "validationKind": "property_getter_without_story_chain",
+        "levelScriptSourceKey": "levelScript:map01_lv006/3500100002",
+        "levelScriptFile": QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS[
+            "levelScript:map01_lv006/3500100002"
+        ],
+        "diagnosticStoryKeys": (
+            "dlg_e2m8_1",
+            "radio_e2m8_1",
+            "radio_e2m8_1d5",
+        ),
+        "connectionRows": tuple(
+            {
+                "key": story_key,
+                "kind": kind,
+                "relation": "levelscript_condition_scope",
+                "direction": "context",
+                "phase": "context",
+                "confidence": "scoped_script",
+                "source": "LevelScript referenced by this quest condition",
+                "mapId": "map01_lv006",
+                "scriptId": "3500100002",
+                "conditionKey": "CarParked",
+            }
+            for story_key, kind in (
+                ("dlg_e2m8_1", "dialog"),
+                ("radio_e2m8_1", "radio"),
+                ("radio_e2m8_1d5", "radio"),
+            )
+        ),
+        "levelScriptByteStringCounts": {
+            "CarParked": 1,
+            "dlg_e2m8_1": 2,
+            "radio_e2m8_1": 3,
+            "radio_e2m8_1d5": 1,
+        },
+        "getterRecord": {
+            "start": 2113,
+            "localId": 5,
+            "nextId": 4,
+            "code": 2564,
+            "kind": 0,
+            "uid": "112ebae2",
+            "membership": "getterList#2",
+            "texts": ("CarParked",),
+        },
+        "relatedSourceFiles": (
+            QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS[
+                "missionRuntime:e2m8"
+            ],
+            QUEST_ATTACHMENT_DIAGNOSTIC_SOURCE_PATHS[
+                "levelScript:map01_lv006/3500100002"
+            ],
+        ),
+        "recoveryStatus": (
+            "closed_property_getter_without_story_control_chain"
+        ),
+        "evidenceKind": (
+            "exact property checker plus hash-locked getter-list record"
+        ),
+        "attachmentBoundary": (
+            "CarParked resolves to one exact getterList record at 0x841; "
+            "the record carries no Story id and is serialized outside the "
+            "three independent Story action chains in the same script"
+        ),
+        "orderBoundary": (
+            "shared script membership cannot attach dlg_e2m8_1, "
+            "radio_e2m8_1, or radio_e2m8_1d5 to this hidden parallel quest"
+        ),
+    },
     "e10m4d5_q#31": {
         "mission": "e10m4",
         "variantMission": "e10m4d5",
@@ -528,6 +1939,146 @@ OFFLINE_EXHAUSTION_TEXT_ONLY_CUTSCENES = {
     },
 }
 OFFLINE_EXHAUSTION_SNS_DEFINITIONS = {
+    "sns_gm01m3_1": {
+        "missionId": "gm01m3",
+        "chatId": "sns_npc_qinjc",
+        "contentIds": (-1, 1, 2, 3, 4),
+        "optionIdsByContentId": {},
+        "optionNextContentIds": {},
+        "optionDescriptionIds": {},
+        "relatedMissionId": "gm01m3",
+        "contentParamsByContentId": {
+            3: ("sns_image_001_mountaintop",),
+            4: ("gm01m3",),
+        },
+        "linkMissionIdsByContentId": {4: "gm01m3"},
+    },
+    "sns_gm01m7_1": {
+        "missionId": "gm01m7",
+        "chatId": "sns_npc_fiona",
+        "contentIds": (-1, 1, 2, 3),
+        "optionIdsByContentId": {},
+        "optionNextContentIds": {},
+        "optionDescriptionIds": {},
+        "runtimeTracking": {
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m12.json"
+            ),
+            "sourceSha256":
+                "B5022E18326385BCCCC4ACFBC076A5563C5B18066D291D1CA63F2DB11AC12EBB",
+            "runtimeMissionId": "gm01m12",
+            "questId": "gm01m12_q#16",
+            "objectiveIndex": 0,
+            "trackingIndex": 0,
+        },
+    },
+    "sns_gm01m7_2": {
+        "missionId": "gm01m7",
+        "chatId": "sns_npc_fiona",
+        "contentIds": (-1, 1, 2, 3, 4),
+        "optionIdsByContentId": {},
+        "optionNextContentIds": {},
+        "optionDescriptionIds": {},
+    },
+    "sns_gm01m22_2": {
+        "missionId": "gm01m22",
+        "chatId": "sns_chr_jite",
+        "dialogType": 2,
+        "contentIds": (-1, *range(1, 12)),
+        "optionIdsByContentId": {
+            2: ("option_sns_gm01m22_2_1_001",),
+            7: ("option_sns_gm01m22_2_2_001",),
+        },
+        "optionNextContentIds": {
+            "option_sns_gm01m22_2_1_001": 3,
+            "option_sns_gm01m22_2_2_001": 8,
+        },
+        "optionDescriptionIds": {
+            "option_sns_gm01m22_2_1_001": 755145669281044969,
+            "option_sns_gm01m22_2_2_001": -5063182789246158849,
+        },
+        "preContentIds": {
+            1: 0,
+            2: 1,
+            3: 2,
+            4: 3,
+            5: 4,
+            6: 5,
+            7: 6,
+            8: 7,
+            9: 8,
+            10: 9,
+            11: 10,
+            -1: 11,
+        },
+        "nextContentIds": {
+            1: 2,
+            3: 4,
+            4: 5,
+            5: 6,
+            6: 7,
+            8: 9,
+            9: 10,
+            10: 11,
+            11: -1,
+        },
+    },
+    "sns_a1m8d1_1": {
+        "missionId": "a1m8d1",
+        "chatId": "sns_npc_zuoguyan_a1m8d3",
+        "contentIds": (-1, *range(1, 20)),
+        "optionIdsByContentId": {
+            2: ("option_sns_a1m8d1_1_1_001",),
+            8: (
+                "option_sns_a1m8d1_1_2_001",
+                "option_sns_a1m8d1_1_2_002",
+            ),
+            12: (
+                "option_sns_a1m8d1_1_3_001",
+                "option_sns_a1m8d1_1_3_002",
+            ),
+            17: ("option_sns_a1m8d1_1_4_001",),
+        },
+        "optionNextContentIds": {
+            "option_sns_a1m8d1_1_1_001": 3,
+            "option_sns_a1m8d1_1_2_001": 9,
+            "option_sns_a1m8d1_1_2_002": 10,
+            "option_sns_a1m8d1_1_3_001": 13,
+            "option_sns_a1m8d1_1_3_002": 14,
+            "option_sns_a1m8d1_1_4_001": 18,
+        },
+        "optionDescriptionIds": {
+            "option_sns_a1m8d1_1_1_001": -2785675792856990654,
+            "option_sns_a1m8d1_1_2_001": 116550779129542386,
+            "option_sns_a1m8d1_1_2_002": 6872746145578674578,
+            "option_sns_a1m8d1_1_3_001": -3208068959343489344,
+            "option_sns_a1m8d1_1_3_002": -3974861342589115965,
+            "option_sns_a1m8d1_1_4_001": 8144357534706424610,
+        },
+        "preContentIds": {
+            9: 8,
+            10: 8,
+            11: 10,
+            13: 12,
+            14: 12,
+            15: 14,
+        },
+        "nextContentIds": {
+            9: 11,
+            10: 11,
+            13: 15,
+            14: 15,
+        },
+    },
+    "sns_e1m9_1": {
+        "missionId": "e1m9",
+        "chatId": "sns_chr_0006_wolfgd",
+        "contentIds": (-1, 1, 2),
+        "optionIdsByContentId": {},
+        "optionNextContentIds": {},
+        "optionDescriptionIds": {},
+    },
     "sns_e7m4_1": {
         "missionId": "e7m4",
         "chatId": "sns_npc_yanning_e7m4",
@@ -564,6 +2115,11 @@ OFFLINE_EXHAUSTION_SNS_DEFINITIONS = {
     },
 }
 OFFLINE_EXHAUSTION_TEXT_TABLE_ONLY_STORIES = {
+    "black_e7m1_3": {
+        "missionId": "e7m1",
+        "storyKind": "black",
+        "definitionRowKeys": ("black_e7m1_3_001",),
+    },
     "black_e11m8_12": {
         "missionId": "e11m8",
         "storyKind": "black",
@@ -1026,6 +2582,945 @@ OFFLINE_EXHAUSTION_ROOT_PLAYBACK_ALIASES = {
     ),
 }
 OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
+    "dlg_gm01m22_6": {
+        "missionId": "gm01m22",
+        "filename": "dlg_gm01m22_6_p3D89315D99916D18.json",
+        "sha256":
+            "CA2DFFCDFCE34A072E22FCECFBDC2FFCD1C0FB6002A6BD699327F4D242CD3FC2",
+        "extraConfigFilename":
+            "dlg_gm01m22_6_extra_config_pD19B07425E6A1717.json",
+        "extraConfigSha256":
+            "BC55FA8527B7EEE4459EF8246412DDE3914ACCBE1BB5E1DE72B20EDC1C895790",
+        "lineIds": tuple(
+            f"dlg_gm01m22_6_{number:03d}" for number in range(1, 17)
+        ),
+        "optionIds": (
+            "option_dlg_gm01m22_6_1_001",
+            "option_dlg_gm01m22_6_2_001",
+            "option_dlg_gm01m22_6_3_001",
+            "option_dlg_gm01m22_6_3_002",
+            "option_dlg_gm01m22_6_3_003",
+            "option_dlg_gm01m22_6_4_001",
+            "option_dlg_gm01m22_6_5_001",
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m22_6_{number:03d}" for number in range(1, 17)
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 3,
+            "optionIds": (
+                "option_dlg_gm01m22_6_3_001",
+                "option_dlg_gm01m22_6_3_002",
+                "option_dlg_gm01m22_6_3_003",
+            ),
+            "targetLineIds": (
+                "dlg_gm01m22_6_007",
+                "dlg_gm01m22_6_009",
+                "dlg_gm01m22_6_012",
+            ),
+            "routeKind": "authored_split",
+        },),
+        "allowedNonOwningRoute": {
+            "relation":
+                "dialog_tree_prime_reachable_story_playback_dependency",
+            "direction": "context",
+            "phase": "dialog_tree_prime_reachable_story_playback",
+            "confidence":
+                "native_exact_prime_reachable_parent_quest_dependency",
+            "storyOwnerMission": "gm01m22",
+            "parentStoryKey": "dlg_gm01m22_hapo",
+            "dependencyOnly": True,
+            "ownership": False,
+        },
+    },
+    "dlg_gm01m22_7": {
+        "missionId": "gm01m22",
+        "filename": "dlg_gm01m22_7_pFC3004E2C86780B5.json",
+        "sha256":
+            "6252D65C4EB1135192352318C31C2EB50DA3B78CC93FC595F53A904DEB5F156E",
+        "extraConfigFilename":
+            "dlg_gm01m22_7_extra_config_pE73606718DBFDA95.json",
+        "extraConfigSha256":
+            "2DFC46F37FC0699C1AA8BF9AFE6F7A5134789E1B222F662F55881B2662C7A4B4",
+        "lineIds": (
+            "dlg_gm01m22_7_001",
+            "dlg_gm01m22_7_002",
+        ),
+        "optionIds": ("option_dlg_gm01m22_7_1_001",),
+        "missingAudioIds": (
+            "au_dlg_gm01m22_7_001",
+            "au_dlg_gm01m22_7_002",
+        ),
+        "treeBranchGroups": (),
+    },
+    "dlg_gm01m22_8": {
+        "missionId": "gm01m22",
+        "filename": "dlg_gm01m22_8_p0F191D9E6BBFA3DE.json",
+        "sha256":
+            "D7E5981C915EECF39E6C819DD710369D894AE1AC9840C76C03A940F413FE498F",
+        "extraConfigFilename":
+            "dlg_gm01m22_8_extra_config_p65B42F5F951203A0.json",
+        "extraConfigSha256":
+            "B7A7A7319CB6C6D39417A4B138D60CECB1B8E81A3F492A7B8CBA29A2B824D53D",
+        "lineIds": tuple(
+            f"dlg_gm01m22_8_{number:03d}" for number in range(12, 36)
+        ),
+        "optionIds": (
+            "option_dlg_gm01m22_8_10_001",
+            "option_dlg_gm01m22_8_11_001",
+            "option_dlg_gm01m22_8_1_001",
+            "option_dlg_gm01m22_8_2_001",
+            "option_dlg_gm01m22_8_3_001",
+            "option_dlg_gm01m22_8_4_001",
+            "option_dlg_gm01m22_8_5_001",
+            "option_dlg_gm01m22_8_6_001",
+            "option_dlg_gm01m22_8_6_002",
+            "option_dlg_gm01m22_8_7_001",
+            "option_dlg_gm01m22_8_8_001",
+            "option_dlg_gm01m22_8_9_001",
+            "option_dlg_gm01m22_8_9_002",
+            "option_dlg_gm01m22_8_9_003",
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m22_8_{number:03d}" for number in range(12, 36)
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 6,
+            "optionIds": (
+                "option_dlg_gm01m22_8_6_001",
+                "option_dlg_gm01m22_8_6_002",
+            ),
+            "targetLineIds": (
+                "dlg_gm01m22_8_019",
+                "dlg_gm01m22_8_019",
+            ),
+            "routeKind": "authored_convergence",
+        }, {
+            "optionGroup": 9,
+            "optionIds": (
+                "option_dlg_gm01m22_8_9_001",
+                "option_dlg_gm01m22_8_9_002",
+                "option_dlg_gm01m22_8_9_003",
+            ),
+            "targetLineIds": (
+                "dlg_gm01m22_8_026",
+                "dlg_gm01m22_8_028",
+                "dlg_gm01m22_8_031",
+            ),
+            "routeKind": "authored_split",
+        }),
+        "allowedNonOwningRoute": {
+            "relation":
+                "dialog_tree_prime_reachable_story_playback_dependency",
+            "direction": "context",
+            "phase": "dialog_tree_prime_reachable_story_playback",
+            "confidence":
+                "native_exact_prime_reachable_parent_quest_dependency",
+            "storyOwnerMission": "gm01m22",
+            "parentStoryKey": "dlg_gm01m22_hapo",
+            "dependencyOnly": True,
+            "ownership": False,
+        },
+    },
+    "misc_dlg_gm01m22_2d5": {
+        "missionId": "gm01m22",
+        "registryKey": "dlg_gm01m22_2d5",
+        "definitionName": "dlg_gm01m22_2d5",
+        "linePrefix": "dlg_gm01m22_2d5",
+        "filename": "dlg_gm01m22_2d5_p3781B8823A5F4C76.json",
+        "sha256":
+            "CD96D9F7AF1B92B457CA3E0C6B769879999FFE6E52982B27CB3239CD401DDB86",
+        "extraConfigFilename":
+            "dlg_gm01m22_2d5_extra_config_p5A94AF7776AD0C50.json",
+        "extraConfigSha256":
+            "C465A816C3D918B3CD79B2ED776424E9ED3E068B170101563B870790E66C2DE4",
+        "lineIds": (
+            "dlg_gm01m22_2d5_001",
+            "dlg_gm01m22_2d5_002",
+        ),
+        "optionIds": (),
+        "missingAudioIds": (
+            "au_dlg_gm01m22_2d5_001",
+            "au_dlg_gm01m22_2d5_002",
+        ),
+        "treeBranchGroups": (),
+        "npcProxyConsumer": {
+            "proxyId": "jite_map01_006",
+            "entryIndex": 0,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m22_2d5",
+                "missionId": "",
+            },
+        },
+    },
+    "misc_dlg_gm01m22_3d2": {
+        "missionId": "gm01m22",
+        "registryKey": "dlg_gm01m22_3d2",
+        "definitionName": "dlg_gm01m22_3d2",
+        "linePrefix": "dlg_gm01m22_3d2",
+        "filename": "dlg_gm01m22_3d2_pC7E056D5589F1F1A.json",
+        "sha256":
+            "76AEDDD4D838EBB33E692A9230F6EF2860983766D6BEEF1B00BA44C27DFACA55",
+        "extraConfigFilename":
+            "dlg_gm01m22_3d2_extra_config_pEE775857FCE0EB6B.json",
+        "extraConfigSha256":
+            "25FFC45783252E1F5E9491ACD10509E676B2E4BFFFA8025AF3DC682EC1A43A7C",
+        "lineIds": tuple(
+            f"dlg_gm01m22_3d2_{number:03d}" for number in range(1, 5)
+        ),
+        "optionIds": (),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m22_3d2_{number:03d}" for number in range(1, 5)
+        ),
+        "treeBranchGroups": (),
+    },
+    "misc_dlg_gm01m22_3d8": {
+        "missionId": "gm01m22",
+        "registryKey": "dlg_gm01m22_3d8",
+        "definitionName": "dlg_gm01m22_3d8",
+        "linePrefix": "dlg_gm01m22_3d8",
+        "filename": "dlg_gm01m22_3d8_p23E8C43668908CF2.json",
+        "sha256":
+            "C1EC6771847955296FA04978C397C1CD50D62D4C0178A205030A7D7D8E7B2B08",
+        "extraConfigFilename":
+            "dlg_gm01m22_3d8_extra_config_pB63AD6D3EACA7E49.json",
+        "extraConfigSha256":
+            "536D68369BADFEEC9204CF934591494E2DBAADB537AB3617CF88A25AD83703C1",
+        "lineIds": (
+            "dlg_gm01m22_3d8_002",
+            "dlg_gm01m22_3d8_003",
+            "dlg_gm01m22_3d8_004",
+        ),
+        "optionIds": (),
+        "missingAudioIds": (
+            "au_dlg_gm01m22_3d8_002",
+            "au_dlg_gm01m22_3d8_003",
+            "au_dlg_gm01m22_3d8_004",
+        ),
+        "treeBranchGroups": (),
+    },
+    "misc_dlg_gm01m22_4d0": {
+        "missionId": "gm01m22",
+        "registryKey": "dlg_gm01m22_4d0",
+        "definitionName": "dlg_gm01m22_4d0",
+        "linePrefix": "dlg_gm01m22_4d0",
+        "filename": "dlg_gm01m22_4d0_p99B63749393B3E23.json",
+        "sha256":
+            "C2D8E1542AD52D7C342BEEB7A910298DAB9E31EE2B81285275FFEE369998DF77",
+        "extraConfigFilename":
+            "dlg_gm01m22_4d0_extra_config_p6664D02E215DC570.json",
+        "extraConfigSha256":
+            "978E5A1304D040015B201F0E7A0329B33C1FEFC48BBF7984B7BEF0E800D3598E",
+        "lineIds": ("dlg_gm01m22_4d0_002",),
+        "optionIds": (),
+        "missingAudioIds": ("au_dlg_gm01m22_4d0_002",),
+        "treeBranchGroups": (),
+    },
+    "dlg_gm01m4_7": {
+        "missionId": "gm01m4",
+        "filename": "dlg_gm01m4_7_pFD9954043BA92F4B.json",
+        "sha256":
+            "1F5BFA67F3D8F63D9E21729746A16042E918AA6D96C8E90AAF5023CA1BAC6DE8",
+        "extraConfigFilename":
+            "dlg_gm01m4_7_extra_config_p3CB06BFD1EB1528E.json",
+        "extraConfigSha256":
+            "0457E91190591D4BBA58E38AF3386136240AB6F9C7679F3D96BF7BBC83507FC1",
+        "lineIds": ("dlg_gm01m4_7_001", "dlg_gm01m4_7_002"),
+        "optionIds": (),
+        "missingAudioIds": (
+            "au_dlg_gm01m4_7_001",
+            "au_dlg_gm01m4_7_002",
+        ),
+        "treeBranchGroups": (),
+        "npcProxyConsumer": {
+            "proxyId": "luoke_map01_v1d0d0_gm01m4man",
+            "entryIndex": 3,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m4_7",
+                "missionId": "",
+            },
+        },
+        "missionNpcProxyTracking": {
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m4.json"
+            ),
+            "sourceSha256":
+                "43F95A2A63978A06F1CDCC73EC073154A88A7A3E1DB9C6EA2F4195862390868D",
+            "proxyId": "luoke_map01_v1d0d0_gm01m4man",
+            "levelId": "map01_lv001",
+            "rows": ({
+                "questId": "gm01m4_q#2",
+                "objectiveIndex": 0,
+                "trackingIndex": 0,
+            },),
+        },
+    },
+    "misc_dlg_gm01m4_3d5": {
+        "missionId": "gm01m4",
+        "registryKey": "dlg_gm01m4_3d5",
+        "definitionName": "dlg_gm01m4_3d5",
+        "linePrefix": "dlg_gm01m4_3d5",
+        "filename": "dlg_gm01m4_3d5_p005943414CADFF30.json",
+        "sha256":
+            "8F63AF4A69F7ACC4D399A35D4B37C4DCA6DDF9CED735FF610EB61333356D6C3B",
+        "extraConfigFilename":
+            "dlg_gm01m4_3d5_extra_config_p763DAF129AD61F5C.json",
+        "extraConfigSha256":
+            "6178009F0AEE6189EF06A672B92BB6F03F8573FDE3D82183D122CF99DC3FB085",
+        "lineIds": tuple(
+            f"dlg_gm01m4_3d5_{number:03d}" for number in range(1, 7)
+        ),
+        "optionIds": (
+            "option_dlg_gm01m4_3d5_1_001",
+            "option_dlg_gm01m4_3d5_1_002",
+            "option_dlg_gm01m4_3d5_2_001",
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m4_3d5_{number:03d}" for number in range(1, 7)
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 1,
+            "optionIds": (
+                "option_dlg_gm01m4_3d5_1_001",
+                "option_dlg_gm01m4_3d5_1_002",
+            ),
+            "targetLineIds": (
+                "dlg_gm01m4_3d5_002",
+                "dlg_gm01m4_3d5_004",
+            ),
+            "routeKind": "authored_split",
+        },),
+        "npcProxyConsumer": {
+            "proxyId": "luoke_map01_v1d0d0_gm01m4man",
+            "entryIndex": 1,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m4_3d5",
+                "missionId": "",
+            },
+        },
+        "missionNpcProxyTracking": {
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m4.json"
+            ),
+            "sourceSha256":
+                "43F95A2A63978A06F1CDCC73EC073154A88A7A3E1DB9C6EA2F4195862390868D",
+            "proxyId": "luoke_map01_v1d0d0_gm01m4man",
+            "levelId": "map01_lv001",
+            "rows": ({
+                "questId": "gm01m4_q#2",
+                "objectiveIndex": 0,
+                "trackingIndex": 0,
+            },),
+        },
+    },
+    "dlg_gm01m6_6": {
+        "missionId": "gm01m6",
+        "filename": "dlg_gm01m6_6_pEAAF7ACAF314A409.json",
+        "sha256":
+            "97B366CECDC24CCEED4BC3F583A9D3A69775A704EAF35987303FEAC354AB7F3E",
+        "extraConfigFilename":
+            "dlg_gm01m6_6_extra_config_p62FB4BC8D39CC6AF.json",
+        "extraConfigSha256":
+            "805103584399CE5D828BEF1E74550FB367F4E81FCE868112392DF03E21E3F64F",
+        "lineIds": ("dlg_gm01m6_6_001", "dlg_gm01m6_6_002"),
+        "optionIds": (),
+        "missingAudioIds": (
+            "au_dlg_gm01m6_6_001",
+            "au_dlg_gm01m6_6_002",
+        ),
+        "treeBranchGroups": (),
+        "npcProxyConsumer": {
+            "proxyId": "heerman_map01_default",
+            "entryIndex": 1,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m6_6",
+                "missionId": "",
+            },
+        },
+        "missionNpcProxyTracking": {
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m6.json"
+            ),
+            "sourceSha256":
+                "210142C46704FA160B2397BB48A78EC989D6BEF04D029AEB17A6FF745CC8DBF7",
+            "proxyId": "heerman_map01_default",
+            "levelId": "map01_lv006",
+            "rows": ({
+                "questId": "gm01m6_q#12",
+                "objectiveIndex": 0,
+                "trackingIndex": 0,
+            },),
+        },
+    },
+    "dlg_gm01m6_7": {
+        "missionId": "gm01m6",
+        "filename": "dlg_gm01m6_7_p321590FA5ABC5DEE.json",
+        "sha256":
+            "68411E1779C71BB1264EE32B04A57B90641DB1BD02E99C37DCD8ABCBBE3754AD",
+        "extraConfigFilename":
+            "dlg_gm01m6_7_extra_config_p7764E80EA5AC8B0F.json",
+        "extraConfigSha256":
+            "9734F2AD1E39B269A7DDDE806DB070ADBD4482406EFD85DA10245662F5C44346",
+        "lineIds": ("dlg_gm01m6_7_001", "dlg_gm01m6_7_002"),
+        "optionIds": ("option_dlg_gm01m6_7_1_001",),
+        "missingAudioIds": (
+            "au_dlg_gm01m6_7_001",
+            "au_dlg_gm01m6_7_002",
+        ),
+        "treeBranchGroups": (),
+        "npcProxyConsumer": {
+            "proxyId": "sikete_map01_default",
+            "entryIndex": 0,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m6_7",
+                "missionId": "",
+            },
+        },
+    },
+    "misc_dlg_gm01m6_1d5": {
+        "missionId": "gm01m6",
+        "registryKey": "dlg_gm01m6_1d5",
+        "definitionName": "dlg_gm01m6_1d5",
+        "linePrefix": "dlg_gm01m6_1d5",
+        "filename": "dlg_gm01m6_1d5_p0DD18C793D122156.json",
+        "sha256":
+            "C72DE1DC8C052111DF4CEFB908C32E064290D4312AD3E78CAE6A2AE21DC06BFC",
+        "extraConfigFilename":
+            "dlg_gm01m6_1d5_extra_config_p6FEA6F24042A77B9.json",
+        "extraConfigSha256":
+            "7005182628D0AD82094AAF29855DE0CDDC318B7FE3F0A132A424F0C2DB2B4719",
+        "lineIds": ("dlg_gm01m6_1d5_001",),
+        "optionIds": (),
+        "missingAudioIds": ("au_dlg_gm01m6_1d5_001",),
+        "treeBranchGroups": (),
+    },
+    "misc_dlg_gm01m6_3d7": {
+        "missionId": "gm01m6",
+        "registryKey": "dlg_gm01m6_3d7",
+        "definitionName": "dlg_gm01m6_3d7",
+        "linePrefix": "dlg_gm01m6_3d7",
+        "filename": "dlg_gm01m6_3d7_pA32C176F716FBCC1.json",
+        "sha256":
+            "FAFC48AB767F01FB0F3AE0C47468A5F232AE9824714226FF6A32A73F6D37AE76",
+        "extraConfigFilename":
+            "dlg_gm01m6_3d7_extra_config_p51952F8858F44E85.json",
+        "extraConfigSha256":
+            "A0048DEF39A1560B749F5B2E160B23802B4CAE9AF56730B915C34852530E5DE8",
+        "lineIds": (
+            "dlg_gm01m6_3d7_001",
+            "dlg_gm01m6_3d7_002",
+        ),
+        "optionIds": ("option_dlg_gm01m6_3d7_1_001",),
+        "missingAudioIds": (
+            "au_dlg_gm01m6_3d7_001",
+            "au_dlg_gm01m6_3d7_002",
+        ),
+        "treeBranchGroups": (),
+        "npcProxyConsumer": {
+            "proxyId": "heerman_map01_001",
+            "entryIndex": 3,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m6_3d7",
+                "missionId": "",
+            },
+        },
+        "missionNpcProxyTracking": {
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m6.json"
+            ),
+            "sourceSha256":
+                "210142C46704FA160B2397BB48A78EC989D6BEF04D029AEB17A6FF745CC8DBF7",
+            "proxyId": "heerman_map01_001",
+            "levelId": "map01_lv006",
+            "rows": (
+                {
+                    "questId": "gm01m6_q#3",
+                    "objectiveIndex": 0,
+                    "trackingIndex": 0,
+                },
+                {
+                    "questId": "gm01m6_q#10",
+                    "objectiveIndex": 0,
+                    "trackingIndex": 0,
+                },
+            ),
+        },
+    },
+    "misc_dlg_gm01m6_4d5": {
+        "missionId": "gm01m6",
+        "registryKey": "dlg_gm01m6_4d5",
+        "definitionName": "dlg_gm01m6_4d5",
+        "linePrefix": "dlg_gm01m6_4d5",
+        "filename": "dlg_gm01m6_4d5_p85775DE3FF157C61.json",
+        "sha256":
+            "177E8CEFB4414EFB096D4F182C1C30A68C339DBA25E5C8A636F970DAD906BBB8",
+        "extraConfigFilename":
+            "dlg_gm01m6_4d5_extra_config_p9965F84865FB6738.json",
+        "extraConfigSha256":
+            "662331DC8914C802E8710F7D384C013614241A16D9B1A4BB73DD000672906635",
+        "lineIds": ("dlg_gm01m6_4d5_001",),
+        "optionIds": ("option_dlg_gm01m6_4d5_1_001",),
+        "missingAudioIds": ("au_dlg_gm01m6_4d5_001",),
+        "treeBranchGroups": (),
+        "npcProxyConsumer": {
+            "proxyId": "heerman_map01_002",
+            "entryIndex": 0,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m6_4d5",
+                "missionId": "",
+            },
+        },
+    },
+    "misc_dlg_gm01m6_4d7": {
+        "missionId": "gm01m6",
+        "registryKey": "dlg_gm01m6_4d7",
+        "definitionName": "dlg_gm01m6_4d7",
+        "linePrefix": "dlg_gm01m6_4d7",
+        "filename": "dlg_gm01m6_4d7_pA978A915C7F0E3C4.json",
+        "sha256":
+            "F5F6B421362EA8795D6F1721F07833F534CA3A9C1170494CF61FA73E4CE99E4A",
+        "extraConfigFilename":
+            "dlg_gm01m6_4d7_extra_config_p98E21661A5F3E7E5.json",
+        "extraConfigSha256":
+            "780DE6BE430457BE24686F3F81EDC9C049FC7DA4FA0F77ED52315BBC0F779F06",
+        "lineIds": ("dlg_gm01m6_4d7_001",),
+        "optionIds": (),
+        "missingAudioIds": ("au_dlg_gm01m6_4d7_001",),
+        "treeBranchGroups": (),
+        "npcProxyConsumer": {
+            "proxyId": "sikete_map01_002",
+            "entryIndex": 0,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m6_4d7",
+                "missionId": "",
+            },
+        },
+    },
+    "dlg_gm01m7_1": {
+        "missionId": "gm01m7",
+        "filename": "dlg_gm01m7_1_p4C33EC5A99345897.json",
+        "sha256":
+            "998E254B83630E2B8700A75D7A2F5EC33BD3E2866AC2FECB137A8FC24A9750CA",
+        "extraConfigFilename":
+            "dlg_gm01m7_1_extra_config_p6FC81A3430523880.json",
+        "extraConfigSha256":
+            "1A8F0A25C791C565A58E6E128AB4A8CD3FA879411379FF4A32BDEA41BF7356AA",
+        "lineIds": tuple(
+            f"dlg_gm01m7_1_{number:03d}" for number in range(1, 9)
+        ),
+        "optionIds": (
+            "option_dlg_gm01m7_1_1_001",
+            "option_dlg_gm01m7_1_1_002",
+            "option_dlg_gm01m7_1_2_001",
+            "option_dlg_gm01m7_1_2_002",
+            "option_dlg_gm01m7_1_3_001",
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m7_1_{number:03d}" for number in range(1, 9)
+        ),
+        "treeBranchGroups": (
+            {
+                "optionGroup": 1,
+                "optionIds": (
+                    "option_dlg_gm01m7_1_1_001",
+                    "option_dlg_gm01m7_1_1_002",
+                ),
+                "targetLineIds": (
+                    "dlg_gm01m7_1_003",
+                    "dlg_gm01m7_1_004",
+                ),
+                "routeKind": "authored_split",
+            },
+            {
+                "optionGroup": 2,
+                "optionIds": (
+                    "option_dlg_gm01m7_1_2_001",
+                    "option_dlg_gm01m7_1_2_002",
+                ),
+                "targetLineIds": (
+                    "dlg_gm01m7_1_006",
+                    "dlg_gm01m7_1_006",
+                ),
+                "routeKind": "authored_convergence",
+            },
+        ),
+        "npcProxyConsumer": {
+            "proxyId": "sesidun_map01_003",
+            "entryIndex": 0,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m7_1",
+            },
+        },
+        "missionNpcProxyTracking": {
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m12.json"
+            ),
+            "sourceSha256":
+                "B5022E18326385BCCCC4ACFBC076A5563C5B18066D291D1CA63F2DB11AC12EBB",
+            "runtimeMissionId": "gm01m12",
+            "proxyId": "sesidun_map01_003",
+            "levelId": "map01_lv001",
+            "rows": ({
+                "questId": "gm01m12_q#14",
+                "objectiveIndex": 0,
+                "trackingIndex": 0,
+            },),
+        },
+    },
+    "dlg_gm01m7_2": {
+        "missionId": "gm01m7",
+        "filename": "dlg_gm01m7_2_pD803554221ADE07D.json",
+        "sha256":
+            "4E8A6F6B34B407FD79417ACE3E616C923E20AD2C51EA5FC812A9FDA53A4B1FBF",
+        "extraConfigFilename":
+            "dlg_gm01m7_2_extra_config_p7FB3078E3CB4CCE7.json",
+        "extraConfigSha256":
+            "8FE5E44DDA7B7A4FC87CC30339DBB2759F6251B9C9AFAABD63A7ADCD51763307",
+        "lineIds": tuple(
+            f"dlg_gm01m7_2_{number:03d}" for number in range(1, 4)
+        ),
+        "optionIds": (
+            "option_dlg_gm01m7_2_1_001",
+            "option_dlg_gm01m7_2_2_001",
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m7_2_{number:03d}" for number in range(1, 4)
+        ),
+        "treeBranchGroups": (),
+        "npcProxyConsumers": (
+            {
+                "proxyId": "sesidun_map01_002",
+                "entryIndex": 2,
+                "entry": {
+                    "addDialogExOption": False,
+                    "envTalkData": {"envTalkOverrideNpc": True},
+                    "dialogExOptionData": [],
+                    "dialogId": "dlg_gm01m7_2",
+                },
+            },
+            {
+                "proxyId": "wolfgd_map01_gm01m12",
+                "entryIndex": 1,
+                "entry": {
+                    "addDialogExOption": False,
+                    "envTalkData": {"envTalkOverrideNpc": True},
+                    "dialogExOptionData": [],
+                    "dialogId": "dlg_gm01m7_2",
+                },
+            },
+        ),
+        "missionNpcProxyTracking": {
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m12.json"
+            ),
+            "sourceSha256":
+                "B5022E18326385BCCCC4ACFBC076A5563C5B18066D291D1CA63F2DB11AC12EBB",
+            "runtimeMissionId": "gm01m12",
+            "proxyId": "wolfgd_map01_gm01m12",
+            "levelId": "map01_lv005",
+            "rows": tuple({
+                "questId": f"gm01m12_q#{number}",
+                "objectiveIndex": 0,
+                "trackingIndex": 0,
+            } for number in (2, 3, 4, 6, 12)),
+        },
+    },
+    "dlg_gm01m7_3": {
+        "missionId": "gm01m7",
+        "filename": "dlg_gm01m7_3_p7B822F2AE7CE59D1.json",
+        "sha256":
+            "945AA4C8AE7B5E183660F7701D26316F575434C903F9CDEB36F49A4D0ED46BC4",
+        "extraConfigFilename":
+            "dlg_gm01m7_3_extra_config_p09B245131C13EFC6.json",
+        "extraConfigSha256":
+            "2408FD841987D0D2B4AB5D1E023C97B1C86D19EBC4B1B03C167DB97A8C602450",
+        "lineIds": (
+            "dlg_gm01m7_3_001",
+            "dlg_gm01m7_3_003",
+            "dlg_gm01m7_3_004",
+        ),
+        "optionIds": tuple(
+            f"option_dlg_gm01m7_3_1_{number:03d}"
+            for number in range(1, 4)
+        ),
+        "missingAudioIds": (
+            "au_dlg_gm01m7_3_001",
+            "au_dlg_gm01m7_3_003",
+            "au_dlg_gm01m7_3_004",
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 1,
+            "optionIds": tuple(
+                f"option_dlg_gm01m7_3_1_{number:03d}"
+                for number in range(1, 4)
+            ),
+            "targetLineIds": ("dlg_gm01m7_3_003",) * 3,
+            "routeKind": "authored_convergence",
+        },),
+        "npcProxyConsumers": (
+            {
+                "proxyId": "sesidun_map01_002",
+                "entryIndex": 3,
+                "entry": {
+                    "addDialogExOption": False,
+                    "envTalkData": {"envTalkOverrideNpc": True},
+                    "dialogExOptionData": [],
+                    "dialogId": "dlg_gm01m7_3",
+                },
+            },
+            {
+                "proxyId": "wolfgd_map01_gm01m12",
+                "entryIndex": 2,
+                "entry": {
+                    "addDialogExOption": False,
+                    "envTalkData": {"envTalkOverrideNpc": True},
+                    "dialogExOptionData": [],
+                    "dialogId": "dlg_gm01m7_3",
+                },
+            },
+        ),
+        "missionNpcProxyTracking": {
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m12.json"
+            ),
+            "sourceSha256":
+                "B5022E18326385BCCCC4ACFBC076A5563C5B18066D291D1CA63F2DB11AC12EBB",
+            "runtimeMissionId": "gm01m12",
+            "proxyId": "wolfgd_map01_gm01m12",
+            "levelId": "map01_lv005",
+            "rows": tuple({
+                "questId": f"gm01m12_q#{number}",
+                "objectiveIndex": 0,
+                "trackingIndex": 0,
+            } for number in (2, 3, 4, 6, 12)),
+        },
+    },
+    "dlg_gm01m7_5": {
+        "missionId": "gm01m7",
+        "filename": "dlg_gm01m7_5_pAD342EBDE8DCA8CA.json",
+        "sha256":
+            "921AF0A4051FDD9E058CE0B64951AFC1793FBDE4189053576F9E0FF0F2279273",
+        "extraConfigFilename":
+            "dlg_gm01m7_5_extra_config_pA42F6859B58AA126.json",
+        "extraConfigSha256":
+            "FB3A4B5CB7A823C728EEB833569DB733A9C81E6E2ED94CDB247C616132427B16",
+        "lineIds": tuple(
+            f"dlg_gm01m7_5_{number:03d}" for number in range(1, 14)
+        ),
+        "optionIds": (
+            "option_dlg_gm01m7_5_1_001",
+            "option_dlg_gm01m7_5_2_001",
+            "option_dlg_gm01m7_5_3_001",
+            "option_dlg_gm01m7_5_4_001",
+            "option_dlg_gm01m7_5_4_002",
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m7_5_{number:03d}" for number in range(1, 14)
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 4,
+            "optionIds": (
+                "option_dlg_gm01m7_5_4_001",
+                "option_dlg_gm01m7_5_4_002",
+            ),
+            "targetLineIds": ("dlg_gm01m7_5_012",) * 2,
+            "routeKind": "authored_convergence",
+        },),
+        "npcProxyConsumers": (
+            {
+                "proxyId": "sesidun_map01_002",
+                "entryIndex": 1,
+                "entry": {
+                    "addDialogExOption": False,
+                    "envTalkData": {"envTalkOverrideNpc": True},
+                    "dialogExOptionData": [],
+                    "dialogId": "dlg_gm01m7_5",
+                },
+            },
+            {
+                "proxyId": "wolfgd_map01_gm01m12",
+                "entryIndex": 3,
+                "entry": {
+                    "addDialogExOption": False,
+                    "envTalkData": {"envTalkOverrideNpc": True},
+                    "dialogExOptionData": [],
+                    "dialogId": "dlg_gm01m7_5",
+                },
+            },
+        ),
+        "missionNpcProxyTracking": {
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m12.json"
+            ),
+            "sourceSha256":
+                "B5022E18326385BCCCC4ACFBC076A5563C5B18066D291D1CA63F2DB11AC12EBB",
+            "runtimeMissionId": "gm01m12",
+            "proxyId": "wolfgd_map01_gm01m12",
+            "levelId": "map01_lv005",
+            "rows": tuple({
+                "questId": f"gm01m12_q#{number}",
+                "objectiveIndex": 0,
+                "trackingIndex": 0,
+            } for number in (2, 3, 4, 6, 12)),
+        },
+    },
+    "dlg_gm01m7_7": {
+        "missionId": "gm01m7",
+        "filename": "dlg_gm01m7_7_p329466434333CE69.json",
+        "sha256":
+            "DB9A42693B48EE4C8D003CFC54457C97A6945A08F25145A4812D13DB3AB657E0",
+        "extraConfigFilename":
+            "dlg_gm01m7_7_extra_config_p325DF5E5D79CB0E7.json",
+        "extraConfigSha256":
+            "A4F855C5E8181B6DA3ABE10AA5CC65291B1D3556EF1B3FB44D2BAD7D980E47C1",
+        "lineIds": tuple(
+            f"dlg_gm01m7_7_{number:03d}" for number in range(1, 4)
+        ),
+        "optionIds": ("option_dlg_gm01m7_7_1_001",),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m7_7_{number:03d}" for number in range(1, 4)
+        ),
+        "treeBranchGroups": (),
+        "npcProxyConsumer": {
+            "proxyId": "wolfgd_map01_gm01m12",
+            "entryIndex": 4,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m7_7",
+            },
+        },
+        "missionNpcProxyTracking": {
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m12.json"
+            ),
+            "sourceSha256":
+                "B5022E18326385BCCCC4ACFBC076A5563C5B18066D291D1CA63F2DB11AC12EBB",
+            "runtimeMissionId": "gm01m12",
+            "proxyId": "wolfgd_map01_gm01m12",
+            "levelId": "map01_lv005",
+            "rows": tuple({
+                "questId": f"gm01m12_q#{number}",
+                "objectiveIndex": 0,
+                "trackingIndex": 0,
+            } for number in (2, 3, 4, 6, 12)),
+        },
+    },
+    "dlg_a1m2_4": {
+        "missionId": "a1m2",
+        "filename": "dlg_a1m2_4_p23BC729FEA1147B6.json",
+        "sha256":
+            "5F44A1771081047DBA74251FF20833DCAF5791C572449814B02E8F7310EFA364",
+        "extraConfigFilename":
+            "dlg_a1m2_4_extra_config_p204ACA7058EBE31A.json",
+        "extraConfigSha256":
+            "32E0B431B9FAAF96424F5028055EA3E9FBE075201903FE950C7EE29DC73B303E",
+        "lineIds": tuple(
+            f"dlg_a1m2_4_{number:03d}" for number in range(1, 4)
+        ),
+        "optionIds": (
+            "option_dlg_a1m2_4_1_001",
+            "option_dlg_a1m2_4_1_002",
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_a1m2_4_{number:03d}" for number in range(1, 4)
+        ),
+        "npcProxyConsumer": {
+            "proxyId": "kelala_map01_v1d1d0_005",
+            "entryIndex": 0,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {
+                    "envTalkIds": [],
+                    "envTalkOdd": [],
+                    "envTalkOverrideNpc": True,
+                },
+                "dialogExOptionData": [],
+                "dialogId": "dlg_a1m2_4",
+                "missionId": "",
+            },
+        },
+    },
+    "dlg_a1m8d3_2": {
+        "missionId": "a1m8d3",
+        "filename": "dlg_a1m8d3_2_p9BCBAF7FB96B40D2.json",
+        "sha256":
+            "8CBA037D2AFEE68BA6E171EE6BADFE82BCBBC348C70FE3A8C556EECE9AA64136",
+        "extraConfigFilename":
+            "dlg_a1m8d3_2_extra_config_pAF2E11B8A59BE74B.json",
+        "extraConfigSha256":
+            "F27D2AF4365E5769D5B93C1E5DBCFE67FCCFAA0A1141A10271E55769D6823C76",
+        "lineIds": tuple(
+            f"dlg_a1m8d3_2_{number:03d}" for number in range(2, 20)
+        ),
+        "optionIds": (
+            "option_dlg_a1m8d3_2_1_001",
+            "option_dlg_a1m8d3_2_2_001",
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_a1m8d3_2_{number:03d}" for number in range(2, 20)
+        ),
+    },
+    "dlg_e5m0d5_1": {
+        "missionId": "e5m0d5",
+        "filename": "dlg_e5m0d5_1_pAF0BBC8AD9824BE9.json",
+        "sha256":
+            "81353788DEDAEB34DF4DD05C5940ED0831DEE2D57A12A2CC996C559E96885A4B",
+        "extraConfigFilename":
+            "dlg_e5m0d5_1_extra_config_p6D91A9314ED0DB83.json",
+        "extraConfigSha256":
+            "CE90DD0CD2C1DA8EE9478C8D16D01586205AB1F9E4E3F207A5E5252ED95E08F9",
+        "lineIds": tuple(
+            f"dlg_e5m0d5_1_{number:03d}" for number in range(1, 15)
+        ),
+        "optionIds": (),
+        "ownedTimeline": {
+            "timeline": "dlgtl_e5m0d5_1_sub_1",
+            "sourceFile": "CAB-80a46b02bcb42629e533be06211f6e5f",
+            "trackPathId": 3386777180023897082,
+            "fullLineIds": tuple(
+                f"dlg_e5m0d5_1_{number:03d}"
+                for number in range(1, 15)
+            ),
+        },
+    },
     "dlg_e11m8d5_1": {
         "missionId": "e11m8d5",
         "filename": "dlg_e11m8d5_1_pD376152BDDDA1FBD.json",
@@ -2287,13 +4782,1292 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "afterLineId": "dlg_e11m5_9_010",
         },
     },
+    "dlg_gm01m12_1": {
+        "missionId": "gm01m12",
+        "filename": "dlg_gm01m12_1_pF2AF8213565C6977.json",
+        "sha256":
+            "C52741D0325B6CEA1BCF9E5E06C150C2CB3ED391E9C855B73ABF51B8DE84B40F",
+        "extraConfigFilename":
+            "dlg_gm01m12_1_extra_config_p06142BC1CDCE8FC7.json",
+        "extraConfigSha256":
+            "BAEF05D1D1255319B7E4C4466C8EA2E20650A18EBED33DEC50175F8E9603390D",
+        "lineIds": tuple(
+            f"dlg_gm01m12_1_{number:03d}" for number in range(1, 8)
+        ),
+        "optionIds": (
+            "option_dlg_gm01m12_1_1_001",
+            "option_dlg_gm01m12_1_2_001",
+            "option_dlg_gm01m12_1_2_002",
+            "option_dlg_gm01m12_1_3_001",
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m12_1_{number:03d}" for number in range(1, 8)
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 2,
+            "optionIds": (
+                "option_dlg_gm01m12_1_2_001",
+                "option_dlg_gm01m12_1_2_002",
+            ),
+            "targetLineIds": ("dlg_gm01m12_1_005",) * 2,
+            "routeKind": "authored_convergence",
+        },),
+        "npcProxyConsumer": {
+            "proxyId": "sesidun_map01_001",
+            "entryIndex": 0,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m12_1",
+            },
+        },
+    },
+    "dlg_gm01m12_3": {
+        "missionId": "gm01m12",
+        "filename": "dlg_gm01m12_3_p53FF91C6849A030C.json",
+        "sha256":
+            "77729BDC4CADACFF5783AAB9317B0F42F655B9C8CE5D8E8C100F6CAE36410470",
+        "extraConfigFilename":
+            "dlg_gm01m12_3_extra_config_p16586299C6F9FFBA.json",
+        "extraConfigSha256":
+            "839031387E1ABEF0CAD71518C23ED5B8C2E06D75E58BF37E79B52A7BDFF0690F",
+        "lineIds": tuple(
+            f"dlg_gm01m12_3_{number:03d}" for number in range(1, 6)
+        ),
+        "optionIds": (
+            "option_dlg_gm01m12_3_1_001",
+            "option_dlg_gm01m12_3_1_002",
+            "option_dlg_gm01m12_3_2_001",
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m12_3_{number:03d}" for number in range(1, 6)
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 1,
+            "optionIds": (
+                "option_dlg_gm01m12_3_1_001",
+                "option_dlg_gm01m12_3_1_002",
+            ),
+            "targetLineIds": ("dlg_gm01m12_3_002",) * 2,
+            "routeKind": "authored_convergence",
+        },),
+        "npcProxyConsumer": {
+            "proxyId": "sesidun_map01_001",
+            "entryIndex": 2,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m12_3",
+            },
+        },
+    },
+    "dlg_gm01m12_6": {
+        "missionId": "gm01m12",
+        "filename": "dlg_gm01m12_6_p0F7AFEA3958AE324.json",
+        "sha256":
+            "F8A0E8812ABE280036A1521FD0091093CCA38DBC21946077FA2ED957B81983B3",
+        "extraConfigFilename":
+            "dlg_gm01m12_6_extra_config_pF48D871B428F357B.json",
+        "extraConfigSha256":
+            "B9119531E4D96398037D132F36C364CC3E401E7891FEB63E8AE2ABE72A1F5529",
+        "lineIds": ("dlg_gm01m12_6_001", "dlg_gm01m12_6_002"),
+        "optionIds": (),
+        "missingAudioIds": (
+            "au_dlg_gm01m12_6_001",
+            "au_dlg_gm01m12_6_002",
+        ),
+        "treeBranchGroups": (),
+    },
+    "dlg_gm01m20_1": {
+        "missionId": "gm01m20",
+        "filename": "dlg_gm01m20_1_p3E261E43E6E27E12.json",
+        "sha256":
+            "D643490D25B83810DFA5362A8C2BE633FE73ECECC7127CADDFC18D6561C1A5BF",
+        "extraConfigFilename":
+            "dlg_gm01m20_1_extra_config_p8CA71C2BA146C847.json",
+        "extraConfigSha256":
+            "7E918CFE99522C54CB6BB6F84BC383ADCD15678FC1D9ACF282AAF20ABF5F157B",
+        "lineIds": tuple(
+            f"dlg_gm01m20_1_{number:03d}" for number in range(1, 5)
+        ),
+        "optionIds": (),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m20_1_{number:03d}" for number in range(1, 5)
+        ),
+        "treeBranchGroups": (),
+        "npcProxyConsumer": {
+            "proxyId": "kupe_map01_normal",
+            "entryIndex": 6,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m20_1",
+                "missionId": "",
+            },
+        },
+        "missionNpcProxyTracking": {
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m20.json"
+            ),
+            "sourceSha256":
+                "01BC364A3A64CFFE8BE236B017020D76ACDBB42866862031A5DC4405B501E355",
+            "proxyId": "kupe_map01_normal",
+            "levelId": "map01_lv001",
+            "rows": tuple({
+                "questId": f"gm01m20_q#{quest}",
+                "objectiveIndex": 0,
+                "trackingIndex": 0,
+            } for quest in (1, 3, 2, 10)),
+        },
+    },
+    "dlg_gm01m20_5": {
+        "missionId": "gm01m20",
+        "filename": "dlg_gm01m20_5_pA68209E428C780DF.json",
+        "sha256":
+            "91244B53B797F4A82C3CB2234937C57CCF23CAC705C115BA8D99A5BA92D9BC6B",
+        "extraConfigFilename":
+            "dlg_gm01m20_5_extra_config_p597B261A582F262B.json",
+        "extraConfigSha256":
+            "E3F4F5A14BFFE6A0C45673C844C4C4BB5A0E9246ED7FBF0D49FD702CBE168C60",
+        "lineIds": tuple(
+            f"dlg_gm01m20_5_{number:03d}" for number in range(1, 5)
+        ),
+        "optionIds": (),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m20_5_{number:03d}" for number in range(1, 5)
+        ),
+        "treeBranchGroups": (),
+        "npcProxyConsumer": {
+            "proxyId": "bulongze_map01_normal",
+            "entryIndex": 0,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m20_5",
+                "missionId": "",
+            },
+        },
+    },
+    "dlg_gm01m20_6": {
+        "missionId": "gm01m20",
+        "filename": "dlg_gm01m20_6_pD24399E8F7195888.json",
+        "sha256":
+            "9F3041C9F45FD47D49515D6E4BE356E079BE8DFAB76AE1713401EEA125C0BD61",
+        "extraConfigFilename":
+            "dlg_gm01m20_6_extra_config_p8C7D71AAC32E8A1E.json",
+        "extraConfigSha256":
+            "CC1ECBF3C934264D4BECCAE3F59D37D7E3ED941442F4C0A89170D31795867009",
+        "lineIds": ("dlg_gm01m20_6_001", "dlg_gm01m20_6_002"),
+        "optionIds": (),
+        "missingAudioIds": (
+            "au_dlg_gm01m20_6_001",
+            "au_dlg_gm01m20_6_002",
+        ),
+        "treeBranchGroups": (),
+        "npcProxyConsumer": {
+            "proxyId": "bulongze_map01_normal",
+            "entryIndex": 1,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m20_6",
+                "missionId": "",
+            },
+        },
+    },
+    "dlg_gm01m20_7": {
+        "missionId": "gm01m20",
+        "filename": "dlg_gm01m20_7_pFD15B4590CD2E063.json",
+        "sha256":
+            "20FB5080BCBCC43E6A80864644D4AF4C72716521AA284D2E44E2E8FB17905159",
+        "extraConfigFilename":
+            "dlg_gm01m20_7_extra_config_p2E7AD2EF233846E0.json",
+        "extraConfigSha256":
+            "BDA0446EB2158BCE174CA81E9191DA6E2FE44B3988E34FD076F70E992A116779",
+        "lineIds": tuple(
+            f"dlg_gm01m20_7_{number:03d}" for number in range(1, 4)
+        ),
+        "optionIds": (),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m20_7_{number:03d}" for number in range(1, 4)
+        ),
+        "treeBranchGroups": (),
+        "npcProxyConsumer": {
+            "proxyId": "kupe_map01_normal",
+            "entryIndex": 5,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m20_7",
+                "missionId": "",
+            },
+        },
+        "missionNpcProxyTracking": {
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m20.json"
+            ),
+            "sourceSha256":
+                "01BC364A3A64CFFE8BE236B017020D76ACDBB42866862031A5DC4405B501E355",
+            "proxyId": "kupe_map01_normal",
+            "levelId": "map01_lv001",
+            "rows": tuple({
+                "questId": f"gm01m20_q#{quest}",
+                "objectiveIndex": 0,
+                "trackingIndex": 0,
+            } for quest in (1, 3, 2, 10)),
+        },
+    },
 }
+OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS.update({
+    "dlg_gm01m13_2": {
+        "missionId": "gm01m13",
+        "filename": "dlg_gm01m13_2_p6111EDB6915C69D3.json",
+        "sha256":
+            "4E43CCC1AD780AA52165A8CC418E0509BACEBBA9008E62AA574BFEB400DEC038",
+        "extraConfigFilename":
+            "dlg_gm01m13_2_extra_config_pC629794770766448.json",
+        "extraConfigSha256":
+            "2525EF2C9DFCE40DFF3B37A0B49FF7FF13B040F495896A74EE85144041831E04",
+        "lineIds": tuple(
+            f"dlg_gm01m13_2_{number:03d}" for number in range(1, 5)
+        ),
+        "optionIds": (
+            "option_dlg_gm01m13_2_1_001",
+            "option_dlg_gm01m13_2_1_002",
+            "option_dlg_gm01m13_2_2_001",
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m13_2_{number:03d}" for number in range(1, 5)
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 1,
+            "optionIds": (
+                "option_dlg_gm01m13_2_1_001",
+                "option_dlg_gm01m13_2_1_002",
+            ),
+            "targetLineIds": (
+                "dlg_gm01m13_2_002",
+                "dlg_gm01m13_2_002",
+            ),
+            "routeKind": "authored_convergence",
+        },),
+        "npcProxyConsumer": {
+            "proxyId": "sesidun02_map01_001",
+            "entryIndex": 1,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m13_2",
+            },
+        },
+        "missionNpcProxyTracking": {
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m13.json"
+            ),
+            "sourceSha256":
+                "383E76E5CA4C9AA632CAE2132D76182E644F992E092CBF43BB5D5EEE1844ED30",
+            "proxyId": "sesidun02_map01_001",
+            "levelId": "map01_lv003",
+            "rows": tuple(
+                {
+                    "questId": f"gm01m13_q#{number}",
+                    "objectiveIndex": 0,
+                    "trackingIndex": 0,
+                }
+                for number in (1, 2, 3, 4, 7, 8, 9, 11, 12)
+            ),
+        },
+    },
+    "dlg_gm01m13_3": {
+        "missionId": "gm01m13",
+        "filename": "dlg_gm01m13_3_pDE9BBF7424BF26B3.json",
+        "sha256":
+            "62FF437E956572B46C0FFB91EA0769C43A9EF1DE8ABCE2354A80350CA281269F",
+        "extraConfigFilename":
+            "dlg_gm01m13_3_extra_config_pE937F7AF1D4BC1D4.json",
+        "extraConfigSha256":
+            "D0948F6D3B5FE518CDEBD1FF2D93F92ECCA7647C89656BDF3B8519DC9A231F28",
+        "lineIds": tuple(
+            f"dlg_gm01m13_3_{number:03d}" for number in range(1, 7)
+        ),
+        "optionIds": (
+            "option_dlg_gm01m13_3_1_001",
+            "option_dlg_gm01m13_3_1_002",
+            "option_dlg_gm01m13_3_2_001",
+            "option_dlg_gm01m13_3_3_001",
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m13_3_{number:03d}" for number in range(1, 7)
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 1,
+            "optionIds": (
+                "option_dlg_gm01m13_3_1_001",
+                "option_dlg_gm01m13_3_1_002",
+            ),
+            "targetLineIds": (
+                "dlg_gm01m13_3_002",
+                "dlg_gm01m13_3_002",
+            ),
+            "routeKind": "authored_convergence",
+        },),
+        "npcProxyConsumer": {
+            "proxyId": "sesidun02_map01_001",
+            "entryIndex": 2,
+            "entry": {
+                "addDialogExOption": False,
+                "envTalkData": {"envTalkOverrideNpc": True},
+                "dialogExOptionData": [],
+                "dialogId": "dlg_gm01m13_3",
+            },
+        },
+        "missionNpcProxyTracking": {
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/gm01m13.json"
+            ),
+            "sourceSha256":
+                "383E76E5CA4C9AA632CAE2132D76182E644F992E092CBF43BB5D5EEE1844ED30",
+            "proxyId": "sesidun02_map01_001",
+            "levelId": "map01_lv003",
+            "rows": tuple(
+                {
+                    "questId": f"gm01m13_q#{number}",
+                    "objectiveIndex": 0,
+                    "trackingIndex": 0,
+                }
+                for number in (1, 2, 3, 4, 7, 8, 9, 11, 12)
+            ),
+        },
+    },
+    "misc_dlg_gm01m3_1d5": {
+        "missionId": "gm01m3",
+        "registryKey": "dlg_gm01m3_1d5",
+        "definitionName": "dlg_gm01m3_1d5",
+        "linePrefix": "dlg_gm01m3_1d5",
+        "filename": "dlg_gm01m3_1d5_pB106A6457D8BF1BD.json",
+        "sha256":
+            "5ADAEB0133A3198723A5F4C1A502274702EE1B46C4D4A84C67C29A16976220AF",
+        "extraConfigFilename":
+            "dlg_gm01m3_1d5_extra_config_p268BC753F522C8BB.json",
+        "extraConfigSha256":
+            "721600663850AA7D05111E5B01D3E9059C931F9CE3F4DA29FA6A596D6D5B0AC7",
+        "lineIds": (
+            "dlg_gm01m3_1d5_001",
+            "dlg_gm01m3_1d5_002",
+        ),
+        "optionIds": (),
+        "missingAudioIds": (
+            "au_dlg_gm01m3_1d5_001",
+            "au_dlg_gm01m3_1d5_002",
+        ),
+    },
+    "dlg_gm01m2_1": {
+        "missionId": "gm01m2",
+        "filename": "dlg_gm01m2_1_p6DE17CB17A678D5A.json",
+        "sha256":
+            "BD2DBE7E4BAC8987033E2157261C174D7D4379A2E4D5ED646B080FE93555257D",
+        "extraConfigFilename":
+            "dlg_gm01m2_1_extra_config_pED5DC4585FE28B44.json",
+        "extraConfigSha256":
+            "F73D45BACC004E3B72A099E50210CBF20228B30B23B1E8286C496A830D7F413B",
+        "lineIds": tuple(
+            f"dlg_gm01m2_1_{number:03d}"
+            for number in (3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 17)
+        ),
+        "optionIds": tuple(
+            f"option_dlg_gm01m2_1_1_{number:03d}"
+            for number in range(1, 5)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m2_1_{number:03d}"
+            for number in (3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 17)
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 1,
+            "optionIds": tuple(
+                f"option_dlg_gm01m2_1_1_{number:03d}"
+                for number in range(1, 5)
+            ),
+            "targetLineIds": (
+                "dlg_gm01m2_1_003",
+                "dlg_gm01m2_1_004",
+                "dlg_gm01m2_1_005",
+                "dlg_gm01m2_1_009",
+            ),
+            "routeKind": "authored_split",
+        },),
+    },
+    "dlg_gm01m2_2": {
+        "missionId": "gm01m2",
+        "filename": "dlg_gm01m2_2_p71A462BBE8385359.json",
+        "sha256":
+            "A27896657297FD845B3B0990E86D888C4CC75ED8320EC04C696C7116CB4EF0F0",
+        "extraConfigFilename":
+            "dlg_gm01m2_2_extra_config_pD96C8B0A3A7DDFF6.json",
+        "extraConfigSha256":
+            "25530A8723A86A80C14DAA396F2F62017B3BB3615D34FA970EE87968D1F27523",
+        "lineIds": tuple(
+            f"dlg_gm01m2_2_{number:03d}" for number in range(1, 5)
+        ),
+        "optionIds": tuple(
+            f"option_dlg_gm01m2_2_1_{number:03d}" for number in range(1, 3)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m2_2_{number:03d}" for number in range(1, 5)
+        ),
+        "terminalOptionRoutes": ({
+            "optionGroup": 1,
+            "routes": ({
+                "optionId": "option_dlg_gm01m2_2_1_001",
+                "targetKind": "finish",
+                "finishId": 1,
+                "finishIdSerialized": True,
+            }, {
+                "optionId": "option_dlg_gm01m2_2_1_002",
+                "targetKind": "finish",
+                "finishId": None,
+                "finishIdSerialized": False,
+            }),
+        },),
+    },
+    "dlg_gm01m2_3": {
+        "missionId": "gm01m2",
+        "filename": "dlg_gm01m2_3_p37EE6EE6D808E6E1.json",
+        "sha256":
+            "7C4401FB90DC797C0664F86B3B2C9167DB0AC82163E5133BD82C5463AC0DFB8B",
+        "extraConfigFilename":
+            "dlg_gm01m2_3_extra_config_pFC448B2675E98ACB.json",
+        "extraConfigSha256":
+            "F7063C1108A662A67E420E9F5141B3F1C7328FD6924B18DF0A500115529E3BF9",
+        "lineIds": tuple(
+            f"dlg_gm01m2_3_{number:03d}" for number in range(1, 4)
+        ),
+        "optionIds": ("option_dlg_gm01m2_3_1_001",),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m2_3_{number:03d}" for number in range(1, 4)
+        ),
+        "terminalOptionRoutes": ({
+            "optionGroup": 1,
+            "routes": ({
+                "optionId": "option_dlg_gm01m2_3_1_001",
+                "targetKind": "finish",
+                "finishId": 1,
+                "finishIdSerialized": True,
+            }, {
+                "optionId": "option_dlg_gm01m2_2_1_002",
+                "targetKind": "finish",
+                "finishId": None,
+                "finishIdSerialized": False,
+            }),
+        },),
+    },
+    "dlg_gm01m24_1": {
+        "missionId": "gm01m24",
+        "filename": "dlg_gm01m24_1_p79A4F29BA2561B1A.json",
+        "sha256":
+            "4675D4B89F9BD135249BF590A12C335FF8096EA15DC01C0F0C3797C8290AC195",
+        "extraConfigFilename":
+            "dlg_gm01m24_1_extra_config_pE595ACB405045450.json",
+        "extraConfigSha256":
+            "B6DCD1B6DC763EC5144E8899C864C12ACE4FAF7F3363FF9245817F45C789DD6E",
+        "lineIds": tuple(
+            f"dlg_gm01m24_1_{number:03d}"
+            for number in (1, *range(5, 17))
+        ),
+        "optionIds": tuple(
+            f"option_dlg_gm01m24_1_1_{number:03d}" for number in range(1, 4)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m24_1_{number:03d}"
+            for number in (1, *range(5, 17))
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 1,
+            "optionIds": tuple(
+                f"option_dlg_gm01m24_1_1_{number:03d}"
+                for number in range(1, 4)
+            ),
+            "targetLineIds": (
+                "dlg_gm01m24_1_014",
+                "dlg_gm01m24_1_005",
+                "dlg_gm01m24_1_009",
+            ),
+            "routeKind": "authored_split",
+        },),
+    },
+    "dlg_gm01m24_2": {
+        "missionId": "gm01m24",
+        "filename": "dlg_gm01m24_2_p205ABEA30356033D.json",
+        "sha256":
+            "2976C3D43C97C37E715D8E10A2A98D02693D1C34959E1B904F26619D75A13BDD",
+        "extraConfigFilename":
+            "dlg_gm01m24_2_extra_config_p2386CE5133D132E5.json",
+        "extraConfigSha256":
+            "7CDD719BA4116F348758E84CB680B015FBC9F1754137E109832F59172D23D325",
+        "lineIds": tuple(
+            f"dlg_gm01m24_2_{number:03d}" for number in range(1, 4)
+        ),
+        "optionIds": tuple(
+            f"option_dlg_gm01m24_2_1_{number:03d}" for number in range(1, 3)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m24_2_{number:03d}" for number in range(1, 4)
+        ),
+    },
+    "dlg_gm01m24_3": {
+        "missionId": "gm01m24",
+        "filename": "dlg_gm01m24_3_pB62FBC62BE7B1E3B.json",
+        "sha256":
+            "0B0F2BC7E36976FC0D0F990BDE5A54463251DE3F91BEE049DD4776297676ADF9",
+        "extraConfigFilename":
+            "dlg_gm01m24_3_extra_config_p4F40313305D0C643.json",
+        "extraConfigSha256":
+            "C1F8C28F650C84E86A17A36499C870AAFA0F34248EE2C9727E75FFE83EDE5EC8",
+        "lineIds": tuple(
+            f"dlg_gm01m24_3_{number:03d}" for number in range(1, 4)
+        ),
+        "optionIds": tuple(
+            f"option_dlg_gm01m24_3_1_{number:03d}" for number in range(1, 3)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m24_3_{number:03d}" for number in range(1, 4)
+        ),
+    },
+    "dlg_gm01m25_1": {
+        "missionId": "gm01m25",
+        "filename": "dlg_gm01m25_1_pBC02BD93868F7244.json",
+        "sha256":
+            "936F8B0806E8C9665E3E893FCEF907BFF39447C8C4E329272FB646B61A8DA6C5",
+        "extraConfigFilename":
+            "dlg_gm01m25_1_extra_config_p283B84916755BA6E.json",
+        "extraConfigSha256":
+            "77F4F895E5195AEDDA2A26E04D6B12D22501FAE9F32C66A08A492A56E2ED5F65",
+        "lineIds": tuple(
+            f"dlg_gm01m25_1_{number:03d}" for number in range(9, 21)
+        ),
+        "optionIds": tuple(
+            f"option_dlg_gm01m25_1_1_{number:03d}"
+            for number in (1, 3, 4)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m25_1_{number:03d}" for number in range(9, 21)
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 1,
+            "optionIds": (
+                "option_dlg_gm01m25_1_1_003",
+                "option_dlg_gm01m25_1_1_001",
+                "option_dlg_gm01m25_1_1_004",
+            ),
+            "targetLineIds": (
+                "dlg_gm01m25_1_016",
+                "dlg_gm01m25_1_013",
+                "dlg_gm01m25_1_009",
+            ),
+            "routeKind": "authored_split",
+        },),
+    },
+    "dlg_gm01m25_2": {
+        "missionId": "gm01m25",
+        "filename": "dlg_gm01m25_2_p61364FB28BF6E590.json",
+        "sha256":
+            "21E7C047FD7963144B258A6BF48FEE880AC5A2F8CC988E8652C8A8AC890528AF",
+        "extraConfigFilename":
+            "dlg_gm01m25_2_extra_config_p51073A344245C91A.json",
+        "extraConfigSha256":
+            "84F053C0E5C62364BC5A20266CE831C6F2858956768AE98B519FA198F73E936D",
+        "lineIds": tuple(
+            f"dlg_gm01m25_2_{number:03d}" for number in range(1, 5)
+        ),
+        "optionIds": tuple(
+            f"option_dlg_gm01m25_2_1_{number:03d}" for number in range(1, 3)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m25_2_{number:03d}" for number in range(1, 5)
+        ),
+        "terminalOptionRoutes": ({
+            "optionGroup": 1,
+            "routes": ({
+                "optionId": "option_dlg_gm01m25_2_1_001",
+                "targetKind": "finish",
+                "finishId": 1,
+                "finishIdSerialized": True,
+            }, {
+                "optionId": "option_dlg_gm01m25_2_1_002",
+                "targetKind": "finish",
+                "finishId": None,
+                "finishIdSerialized": False,
+            }),
+        },),
+    },
+    "dlg_gm01m25_3": {
+        "missionId": "gm01m25",
+        "filename": "dlg_gm01m25_3_pE99800EF4392A0ED.json",
+        "sha256":
+            "E560FE80168629B52FC91E37200F615830462B388310E2BF6F4CE1825245171E",
+        "extraConfigFilename":
+            "dlg_gm01m25_3_extra_config_pD29AE7415BF90392.json",
+        "extraConfigSha256":
+            "3E7A166BE7721B67B34ACD2A2F3DD54ED77B7A5998E7E01F3BB3F2A21511BAB3",
+        "lineIds": tuple(
+            f"dlg_gm01m25_3_{number:03d}" for number in range(1, 4)
+        ),
+        "optionIds": tuple(
+            f"option_dlg_gm01m25_3_1_{number:03d}" for number in range(1, 3)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m25_3_{number:03d}" for number in range(1, 4)
+        ),
+        "terminalOptionRoutes": ({
+            "optionGroup": 1,
+            "routes": ({
+                "optionId": "option_dlg_gm01m25_3_1_001",
+                "targetKind": "finish",
+                "finishId": 1,
+                "finishIdSerialized": True,
+            }, {
+                "optionId": "option_dlg_gm01m25_3_1_002",
+                "targetKind": "finish",
+                "finishId": None,
+                "finishIdSerialized": False,
+            }),
+        },),
+    },
+    "dlg_gm01m26_1": {
+        "missionId": "gm01m26",
+        "filename": "dlg_gm01m26_1_p84AB417C755724F4.json",
+        "sha256":
+            "CA6AE7B5B260F0109F8F3C6F926C4DE9798409F77405F111A1935F31C2D51903",
+        "extraConfigFilename":
+            "dlg_gm01m26_1_extra_config_pD89622849551AACA.json",
+        "extraConfigSha256":
+            "6C932CE0A3060D33116B68F43BE6B6E967E9844D504403E11ABE3B84618ABD5F",
+        "lineIds": tuple(
+            f"dlg_gm01m26_1_{number:03d}" for number in range(9, 22)
+        ),
+        "optionIds": tuple(
+            f"option_dlg_gm01m26_1_1_{number:03d}"
+            for number in (1, 3, 4)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m26_1_{number:03d}" for number in range(9, 22)
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 1,
+            "optionIds": (
+                "option_dlg_gm01m26_1_1_001",
+                "option_dlg_gm01m26_1_1_003",
+                "option_dlg_gm01m26_1_1_004",
+            ),
+            "targetLineIds": (
+                "dlg_gm01m26_1_014",
+                "dlg_gm01m26_1_017",
+                "dlg_gm01m26_1_009",
+            ),
+            "routeKind": "authored_split",
+        },),
+    },
+    "dlg_gm01m26_2": {
+        "missionId": "gm01m26",
+        "filename": "dlg_gm01m26_2_p679A1BBCA360401E.json",
+        "sha256":
+            "E2A19D27A11E9D065492807192B033124D2DCCFB305C2B3F29BD9A1F4673F086",
+        "extraConfigFilename":
+            "dlg_gm01m26_2_extra_config_pD55EAC322AD2673B.json",
+        "extraConfigSha256":
+            "CC2A6D98C9ED66647498A29C22621CD63DEDF97CAA2D6276D1817A8060BF57D8",
+        "lineIds": tuple(
+            f"dlg_gm01m26_2_{number:03d}" for number in range(1, 4)
+        ),
+        "optionIds": tuple(
+            f"option_dlg_gm01m26_2_1_{number:03d}" for number in range(1, 3)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m26_2_{number:03d}" for number in range(1, 4)
+        ),
+        "terminalOptionRoutes": ({
+            "optionGroup": 1,
+            "routes": ({
+                "optionId": "option_dlg_gm01m26_2_1_001",
+                "targetKind": "finish",
+                "finishId": 1,
+                "finishIdSerialized": True,
+            }, {
+                "optionId": "option_dlg_gm01m26_2_1_002",
+                "targetKind": "finish",
+                "finishId": None,
+                "finishIdSerialized": False,
+            }),
+        },),
+    },
+    "dlg_gm01m26_3": {
+        "missionId": "gm01m26",
+        "filename": "dlg_gm01m26_3_p0B7B834EB62EDD5D.json",
+        "sha256":
+            "216CC8DC7363291868940FAEED5398C5F54F1AEB2AE74A78E978934B06025326",
+        "extraConfigFilename":
+            "dlg_gm01m26_3_extra_config_p3433C90175C7C10D.json",
+        "extraConfigSha256":
+            "B17C9F79C0D8F3BBA3ED807280C571D4100D6214DEDAD649EA0C8CEF7C81E7DE",
+        "lineIds": tuple(
+            f"dlg_gm01m26_3_{number:03d}" for number in range(1, 4)
+        ),
+        "optionIds": tuple(
+            f"option_dlg_gm01m26_3_1_{number:03d}" for number in range(1, 3)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m26_3_{number:03d}" for number in range(1, 4)
+        ),
+        "terminalOptionRoutes": ({
+            "optionGroup": 1,
+            "routes": ({
+                "optionId": "option_dlg_gm01m26_3_1_001",
+                "targetKind": "finish",
+                "finishId": 1,
+                "finishIdSerialized": True,
+            }, {
+                "optionId": "option_dlg_gm01m26_3_1_002",
+                "targetKind": "finish",
+                "finishId": None,
+                "finishIdSerialized": False,
+            }),
+        },),
+    },
+    "dlg_gm01m26_5": {
+        "missionId": "gm01m26",
+        "filename": "dlg_gm01m26_5_p3E79AC01BA5A94CF.json",
+        "sha256":
+            "4F1F0BB5E3D43D7E5AB2D5B2AE8FDF684929D1A35C112EB320B4794A22D2694C",
+        "extraConfigFilename":
+            "dlg_gm01m26_5_extra_config_p30D7F99DBF5386DA.json",
+        "extraConfigSha256":
+            "48320DB9CEA242FBB8E419D6CDEB4EC052DA1BEBC8DD0D8A25E4966FF7F68709",
+        "lineIds": tuple(
+            f"dlg_gm01m26_5_{number:03d}"
+            for number in (1, 2, 6, 7, 8, 14, 15, 16)
+        ),
+        "optionIds": tuple(
+            f"option_dlg_gm01m26_5_1_{number:03d}"
+            for number in (1, 3, 4)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m26_5_{number:03d}"
+            for number in (1, 2, 6, 7, 8, 14, 15, 16)
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 1,
+            "optionIds": (
+                "option_dlg_gm01m26_5_1_001",
+                "option_dlg_gm01m26_5_1_003",
+                "option_dlg_gm01m26_5_1_004",
+            ),
+            "targetLineIds": (
+                "dlg_gm01m26_5_014",
+                "dlg_gm01m26_5_006",
+                "dlg_gm01m26_5_008",
+            ),
+            "routeKind": "authored_split",
+        },),
+    },
+    "dlg_gm02m23_3": {
+        "missionId": "gm02m23",
+        "filename": "dlg_gm02m23_3_p74D15E007EC90CA9.json",
+        "sha256":
+            "F502E97DCE41E066F7613CC8A824F7A20A0E64FFEF1C78C5F284776515A477C5",
+        "extraConfigFilename":
+            "dlg_gm02m23_3_extra_config_pF338636E6A5CD416.json",
+        "extraConfigSha256":
+            "609B3B2E956C093B05455E0ACD96C2A6E314DAF43237F50DBFB8DFB2CE9648B0",
+        "lineIds": tuple(
+            f"dlg_gm02m23_3_{number:03d}"
+            for number in (1, 2, 3, 4, 12, 13, *range(15, 26))
+        ),
+        "optionIds": tuple(
+            f"option_dlg_gm02m23_3_{group}_{option:03d}"
+            for group, option_count in ((1, 1), (2, 1), (3, 1), (4, 2), (5, 2), (6, 2))
+            for option in range(1, option_count + 1)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm02m23_3_{number:03d}"
+            for number in (1, 2, 3, 4, 12, 13, *range(15, 26))
+        ),
+        "treeBranchGroups": ({
+            "optionGroup": 4,
+            "optionIds": (
+                "option_dlg_gm02m23_3_4_001",
+                "option_dlg_gm02m23_3_4_002",
+            ),
+            "targetLineIds": (
+                "dlg_gm02m23_3_023",
+                "dlg_gm02m23_3_023",
+            ),
+            "routeKind": "authored_convergence",
+        }, {
+            "optionGroup": 5,
+            "optionIds": (
+                "option_dlg_gm02m23_3_5_001",
+                "option_dlg_gm02m23_3_5_002",
+            ),
+            "targetLineIds": (
+                "dlg_gm02m23_3_024",
+                "dlg_gm02m23_3_024",
+            ),
+            "routeKind": "authored_convergence",
+        }),
+        "terminalOptionRoutes": ({
+            "optionGroup": 6,
+            "routes": ({
+                "optionId": "option_dlg_gm02m23_3_6_001",
+                "targetKind": "finish",
+                "finishId": None,
+                "finishIdSerialized": False,
+            }, {
+                "optionId": "option_dlg_gm02m23_3_6_002",
+                "targetKind": "finish",
+                "finishId": 1,
+                "finishIdSerialized": True,
+            }),
+        },),
+    },
+    "dlg_gm02m23_10": {
+        "missionId": "gm02m23",
+        "filename": "dlg_gm02m23_10_p99A23FBF0CB0A83A.json",
+        "sha256":
+            "5685E8729B73FDB33D4E10858844C57940506294F9E2B08A169D90A957B56FE5",
+        "extraConfigFilename":
+            "dlg_gm02m23_10_extra_config_pD2C5313C93130F58.json",
+        "extraConfigSha256":
+            "70722DB31C09A31993FCF6D76EDEC10DA6CA39131DD4F9B923E9FF94740AA60A",
+        "lineIds": ("dlg_gm02m23_10_001",),
+        "optionIds": (
+            "option_dlg_gm02m23_10_1_001",
+            "option_dlg_gm02m23_10_1_002",
+        ),
+        "missingAudioIds": ("au_dlg_gm02m23_10_001",),
+        "treeBranchGroups": (),
+        "terminalOptionRoutes": ({
+            "optionGroup": 1,
+            "routes": ({
+                "optionId": "option_dlg_gm02m23_10_1_001",
+                "targetKind": "finish",
+                "finishId": None,
+                "finishIdSerialized": False,
+            }, {
+                "optionId": "option_dlg_gm02m23_10_1_002",
+                "targetKind": "finish",
+                "finishId": 1,
+                "finishIdSerialized": True,
+            }),
+        },),
+    },
+})
 OFFLINE_EXHAUSTION_POSITIVE_DIALOG_KEYS = frozenset({
     "dlg_e10m3_9",
     "dlg_e11m5_9",
     "dlg_e11m8_9",
 })
 OFFLINE_EXHAUSTION_TEXT_ONLY_DIALOGS = {
+    "dlg_gm01m15_7": {
+        "missionId": "gm01m15",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm01m15_7_{number:03d}" for number in range(1, 12)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m15_7_{number:03d}" for number in range(1, 12)
+        ),
+        "optionRows": {
+            "option_dlg_gm01m15_7_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": 7313625240270065029, "text": ""},
+            },
+            "option_dlg_gm01m15_7_2_001": {
+                "iconType": "Default",
+                "optionText": {"id": -699915481480001162, "text": ""},
+            },
+            "option_dlg_gm01m15_7_3_001": {
+                "iconType": "Default",
+                "optionText": {"id": 1876383331345779089, "text": ""},
+            },
+            "option_dlg_gm01m15_7_3_002": {
+                "iconType": "Default",
+                "optionText": {"id": 6833042270075956263, "text": ""},
+            },
+            "option_dlg_gm01m15_7_3_003": {
+                "iconType": "Default",
+                "optionText": {"id": -2379227851902736757, "text": ""},
+            },
+        },
+        "summaryDefinition": {
+            "summaryId": "summary_gm01m15_7_001",
+            "row": {"id": 1386392558646000191, "text": ""},
+        },
+    },
+    "dlg_gm01m2_5": {
+        "missionId": "gm01m2",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm01m2_5_{number:03d}" for number in range(1, 8)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m2_5_{number:03d}" for number in range(1, 8)
+        ),
+        "optionRows": {
+            "option_dlg_gm01m2_5_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": -5068127566167360989, "text": ""},
+            },
+            "option_dlg_gm01m2_5_1_003": {
+                "iconType": "main",
+                "optionText": {"id": -4926826630742191157, "text": ""},
+            },
+            "option_dlg_gm01m2_5_1_004": {
+                "iconType": "Default",
+                "optionText": {"id": -2556373309257697984, "text": ""},
+            },
+        },
+    },
+    "dlg_gm01m12_8": {
+        "missionId": "gm01m12",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm01m12_8_{number:03d}" for number in range(1, 7)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m12_8_{number:03d}" for number in range(1, 7)
+        ),
+        "optionRows": {
+            "option_dlg_gm01m12_8_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": 180588015484261940, "text": ""},
+            },
+            "option_dlg_gm01m12_8_1_002": {
+                "iconType": "Default",
+                "optionText": {"id": -1365299828596346002, "text": ""},
+            },
+            "option_dlg_gm01m12_8_1_003": {
+                "iconType": "Default",
+                "optionText": {"id": -5116520205592897546, "text": ""},
+            },
+            "option_dlg_gm01m12_8_2_001": {
+                "iconType": "Default",
+                "optionText": {"id": 1507979733122474165, "text": ""},
+            },
+            "option_dlg_gm01m12_8_2_002": {
+                "iconType": "Default",
+                "optionText": {"id": 8277868852189869355, "text": ""},
+            },
+        },
+    },
+    "dlg_gm02m2_1": {
+        "missionId": "gm02m2",
+        "dialogIdRegistrationStatus": "present_table_only",
+        "lineIds": tuple(
+            f"dlg_gm02m2_1_{number:03d}" for number in range(1, 8)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm02m2_1_{number:03d}" for number in range(1, 8)
+        ),
+        "optionRows": {
+            "option_dlg_gm02m2_1_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": 1005686289051488859, "text": ""},
+            },
+            "option_dlg_gm02m2_1_2_001": {
+                "iconType": "Default",
+                "optionText": {"id": 451515391251513941, "text": ""},
+            },
+            "option_dlg_gm02m2_1_3_001": {
+                "iconType": "Default",
+                "optionText": {"id": -5322096947619821327, "text": ""},
+            },
+        },
+    },
+    "dlg_gm02m2_2": {
+        "missionId": "gm02m2",
+        "dialogIdRegistrationStatus": "present_table_only",
+        "lineIds": ("dlg_gm02m2_2_001",),
+        "missingAudioIds": ("au_dlg_gm02m2_2_001",),
+        "optionRows": {
+            "option_dlg_gm02m2_2_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": -477720497132806138, "text": ""},
+            },
+            "option_dlg_gm02m2_2_1_002": {
+                "iconType": "Default",
+                "optionText": {"id": -1825776472958836845, "text": ""},
+            },
+        },
+    },
+    "dlg_gm02m2_3": {
+        "missionId": "gm02m2",
+        "dialogIdRegistrationStatus": "present_table_only",
+        "lineIds": tuple(
+            f"dlg_gm02m2_3_{number:03d}" for number in range(1, 6)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm02m2_3_{number:03d}" for number in range(1, 6)
+        ),
+        "optionRows": {
+            "option_dlg_gm02m2_3_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": -5736142493487414003, "text": ""},
+            },
+            "option_dlg_gm02m2_3_2_001": {
+                "iconType": "Default",
+                "optionText": {"id": -3823516309636354685, "text": ""},
+            },
+            "option_dlg_gm02m2_3_2_002": {
+                "iconType": "Default",
+                "optionText": {"id": -2598838857313388174, "text": ""},
+            },
+        },
+    },
+    "dlg_gm02m2_4": {
+        "missionId": "gm02m2",
+        "dialogIdRegistrationStatus": "present_table_only",
+        "lineIds": tuple(
+            f"dlg_gm02m2_4_{number:03d}" for number in range(1, 4)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm02m2_4_{number:03d}" for number in range(1, 4)
+        ),
+        "optionRows": {
+            "option_dlg_gm02m2_4_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": -6194702338391986197, "text": ""},
+            },
+        },
+    },
+    "dlg_gm02m3_1": {
+        "missionId": "gm02m3",
+        "dialogIdRegistrationStatus": "present_table_only",
+        "lineIds": tuple(
+            f"dlg_gm02m3_1_{number:03d}" for number in range(5, 17)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm02m3_1_{number:03d}" for number in range(5, 17)
+        ),
+        "printableOnlyDialogTokens": (
+            "dlg_gm02m3_1X",
+            "dlg_gm02m3_1Y",
+        ),
+        "optionRows": {
+            "option_dlg_gm02m3_1_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": -3828274658471633553, "text": ""},
+            },
+            "option_dlg_gm02m3_1_1_003": {
+                "iconType": "main",
+                "optionText": {"id": 8683254705963111422, "text": ""},
+            },
+            "option_dlg_gm02m3_1_1_004": {
+                "iconType": "Default",
+                "optionText": {"id": 6923242290816326074, "text": ""},
+            },
+        },
+    },
+    "dlg_gm02m3_2": {
+        "missionId": "gm02m3",
+        "dialogIdRegistrationStatus": "present_table_only",
+        "lineIds": tuple(
+            f"dlg_gm02m3_2_{number:03d}" for number in range(1, 5)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm02m3_2_{number:03d}" for number in range(1, 5)
+        ),
+        "printableOnlyDialogTokens": (
+            "dlg_gm02m3_2Y",
+            "dlg_gm02m3_2Z",
+        ),
+        "optionRows": {
+            "option_dlg_gm02m3_2_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": -1637408631732126940, "text": ""},
+            },
+            "option_dlg_gm02m3_2_1_002": {
+                "iconType": "Default",
+                "optionText": {"id": -1214579014914497398, "text": ""},
+            },
+        },
+    },
+    "dlg_gm02m3_3": {
+        "missionId": "gm02m3",
+        "dialogIdRegistrationStatus": "present_table_only",
+        "lineIds": tuple(
+            f"dlg_gm02m3_3_{number:03d}" for number in range(1, 4)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm02m3_3_{number:03d}" for number in range(1, 4)
+        ),
+        "printableOnlyDialogTokens": (
+            "dlg_gm02m3_3Z",
+            "dlg_gm02m3_3d",
+        ),
+        "optionRows": {
+            "option_dlg_gm02m3_3_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": 3658541488536480160, "text": ""},
+            },
+            "option_dlg_gm02m3_3_1_002": {
+                "iconType": "Default",
+                "optionText": {"id": -6519032108786470153, "text": ""},
+            },
+        },
+    },
+    "dlg_gm02m3_4": {
+        "missionId": "gm02m3",
+        "lineIds": tuple(
+            f"dlg_gm02m3_4_{number:03d}" for number in range(1, 5)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm02m3_4_{number:03d}" for number in range(1, 5)
+        ),
+        "optionRows": {},
+    },
+    "dlg_gm02m3_5": {
+        "missionId": "gm02m3",
+        "lineIds": tuple(
+            f"dlg_gm02m3_5_{number:03d}" for number in range(1, 8)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm02m3_5_{number:03d}" for number in range(1, 8)
+        ),
+        "optionRows": {
+            "option_dlg_gm02m3_5_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": -7430164597458610152, "text": ""},
+            },
+            "option_dlg_gm02m3_5_1_003": {
+                "iconType": "main",
+                "optionText": {"id": -5398790576921489908, "text": ""},
+            },
+            "option_dlg_gm02m3_5_1_004": {
+                "iconType": "Default",
+                "optionText": {"id": -2526259664854754454, "text": ""},
+            },
+        },
+    },
+    "dlg_a1m11_3": {
+        "missionId": "a1m11",
+        "lineIds": ("dlg_a1m11_3_001",),
+        "missingAudioIds": ("au_dlg_a1m11_3_001",),
+        "optionRows": {
+            "option_dlg_a1m11_3_1_001": {
+                "iconType": "activity_openui",
+                "optionText": {
+                    "id": 4913019528184533200,
+                    "text": "",
+                },
+            },
+            "option_dlg_a1m11_3_1_002": {
+                "iconType": "exit",
+                "optionText": {
+                    "id": 6553332152207896152,
+                    "text": "",
+                },
+            },
+        },
+    },
+    "dlg_a1m7_2": {
+        "missionId": "a1m7",
+        "lineIds": (
+            "dlg_a1m7_2_001",
+            "dlg_a1m7_2_002",
+        ),
+        "missingAudioIds": (
+            "au_dlg_a1m7_2_001",
+            "au_dlg_a1m7_2_002",
+        ),
+        "optionRows": {
+            "option_dlg_a1m7_2_1_001": {
+                "iconType": "Default",
+                "optionText": {
+                    "id": -7326389481153936424,
+                    "text": "",
+                },
+            },
+            "option_dlg_a1m7_2_2_001": {
+                "iconType": "Default",
+                "optionText": {
+                    "id": 3896246422494591643,
+                    "text": "",
+                },
+            },
+            "option_dlg_a1m7_2_2_002": {
+                "iconType": "Default",
+                "optionText": {
+                    "id": 3120352741321777196,
+                    "text": "",
+                },
+            },
+        },
+    },
+    "dlg_a1m7_12": {
+        "missionId": "a1m7",
+        "lineIds": (
+            "dlg_a1m7_12_001",
+            "dlg_a1m7_12_002",
+            "dlg_a1m7_12_003",
+        ),
+        "missingAudioIds": (
+            "au_dlg_a1m7_12_001",
+            "au_dlg_a1m7_12_002",
+            "au_dlg_a1m7_12_003",
+        ),
+        "optionRows": {},
+    },
+    "dlg_a1m5_5": {
+        "missionId": "a1m5",
+        "lineIds": (
+            "dlg_a1m5_5_001",
+            "dlg_a1m5_5_002",
+        ),
+        "missingAudioIds": (
+            "au_dlg_a1m5_5_001",
+            "au_dlg_a1m5_5_002",
+        ),
+        "allowedNonOwningRoute": {
+            "relation": "dialog_tree_reachable_story_playback",
+            "direction": "context",
+            "phase": "dialog_tree_story_playback",
+            "confidence": "native_exact_cross_story_quest_state_context",
+            "storyOwnerMission": "a1m5",
+            "parentStoryKey": "dlg_a1m5_2",
+            "dependencyOnly": True,
+            "ownership": False,
+        },
+        "nonOwningContext": {
+            "parentStoryKey": "dlg_a1m5_2",
+            "candidateQuestIds": (
+                "a1m5_q#4",
+                "a1m5_q#5",
+                "a1m5_q#8",
+                "a1m5_q#10",
+                "a1m5_q#12",
+                "a1m5_q#14",
+                "a1m5_q#16",
+            ),
+            "targetQuestState": 2,
+            "conditionEvalString": "{0} or {1} or {2} or {3} or {4} or {5} or {6}",
+            "sourceFile": (
+                "export_full/recovered/AnimeStudio-cli/StreamingAssets/"
+                "json_by_type/TextAsset/"
+                "dlg_a1m5_2_p28C9B9297D5DAF06.json"
+            ),
+        },
+    },
     "dlg_e11m8d5_2": {
         "missionId": "e11m8d5",
         "lineIds": (
@@ -2394,6 +6168,352 @@ OFFLINE_EXHAUSTION_TEXT_ONLY_DIALOGS = {
         "missingAudioIds": (),
     },
 }
+OFFLINE_EXHAUSTION_TEXT_ONLY_DIALOGS.update({
+    "dlg_gm02m8_2": {
+        "missionId": "gm02m8",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": ("dlg_gm02m8_2_001", "dlg_gm02m8_2_002"),
+        "missingAudioIds": (
+            "au_dlg_gm02m8_2_001",
+            "au_dlg_gm02m8_2_002",
+        ),
+    },
+    "dlg_gm02m8_3": {
+        "missionId": "gm02m8",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": ("dlg_gm02m8_3_001", "dlg_gm02m8_3_002"),
+        "missingAudioIds": (
+            "au_dlg_gm02m8_3_001",
+            "au_dlg_gm02m8_3_002",
+        ),
+    },
+    "dlg_gm02m8_4": {
+        "missionId": "gm02m8",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": ("dlg_gm02m8_4_001", "dlg_gm02m8_4_002"),
+        "missingAudioIds": (
+            "au_dlg_gm02m8_4_001",
+            "au_dlg_gm02m8_4_002",
+        ),
+    },
+    "dlg_gm01m13_5": {
+        "missionId": "gm01m13",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm01m13_5_{number:03d}" for number in range(1, 16)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m13_5_{number:03d}" for number in range(1, 16)
+        ),
+        "optionRows": {
+            "option_dlg_gm01m13_5_1_001": {
+                "iconType": "Default",
+                "optionText": {
+                    "id": -3178452435804590040,
+                    "text": "",
+                },
+            },
+            "option_dlg_gm01m13_5_1_002": {
+                "iconType": "Default",
+                "optionText": {
+                    "id": -3944096404965079386,
+                    "text": "",
+                },
+            },
+            "option_dlg_gm01m13_5_1_003": {
+                "iconType": "Default",
+                "optionText": {
+                    "id": -2327908650745307579,
+                    "text": "",
+                },
+            },
+            "option_dlg_gm01m13_5_1_004": {
+                "iconType": "Default",
+                "optionText": {
+                    "id": -8130280685462198942,
+                    "text": "",
+                },
+            },
+        },
+    },
+    "dlg_gm01m27_1": {
+        "missionId": "gm01m27",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm01m27_1_{number:03d}" for number in range(1, 7)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m27_1_{number:03d}" for number in range(1, 7)
+        ),
+        "optionRows": {
+            "option_dlg_gm01m27_1_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": -897435998557284210, "text": ""},
+            },
+            "option_dlg_gm01m27_1_2_001": {
+                "iconType": "Default",
+                "optionText": {"id": -8919008434441766997, "text": ""},
+            },
+            "option_dlg_gm01m27_1_5_001": {
+                "iconType": "Default",
+                "optionText": {"id": -4283208703194747952, "text": ""},
+            },
+        },
+    },
+    "dlg_gm01m27_2": {
+        "missionId": "gm01m27",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm01m27_2_{number:03d}" for number in range(2, 5)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m27_2_{number:03d}" for number in range(2, 5)
+        ),
+        "optionRows": {
+            "option_dlg_gm01m27_2_2_001": {
+                "iconType": "Default",
+                "optionText": {"id": -2766844433419409788, "text": ""},
+            },
+            "option_dlg_gm01m27_2_3_001": {
+                "iconType": "Default",
+                "optionText": {"id": -3963554508229574333, "text": ""},
+            },
+        },
+    },
+    "dlg_gm01m27_3": {
+        "missionId": "gm01m27",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm01m27_3_{number:03d}" for number in range(2, 5)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m27_3_{number:03d}" for number in range(2, 5)
+        ),
+        "optionRows": {
+            "option_dlg_gm01m27_3_2_001": {
+                "iconType": "Default",
+                "optionText": {"id": 7795092187764496173, "text": ""},
+            },
+            "option_dlg_gm01m27_3_3_001": {
+                "iconType": "Default",
+                "optionText": {"id": -6802259785297879704, "text": ""},
+            },
+        },
+    },
+    "dlg_gm01m14_7": {
+        "missionId": "gm01m14",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm01m14_7_{number:03d}" for number in range(1, 12)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m14_7_{number:03d}" for number in range(1, 12)
+        ),
+        "optionRows": {
+            "option_dlg_gm01m14_7_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": 3647346594405892853, "text": ""},
+            },
+            "option_dlg_gm01m14_7_2_001": {
+                "iconType": "Default",
+                "optionText": {"id": 7767138832851147519, "text": ""},
+            },
+            "option_dlg_gm01m14_7_2_002": {
+                "iconType": "Default",
+                "optionText": {"id": -1430088916609540453, "text": ""},
+            },
+            "option_dlg_gm01m14_7_3_001": {
+                "iconType": "Default",
+                "optionText": {"id": -6624451327300641428, "text": ""},
+            },
+            "option_dlg_gm01m14_7_3_002": {
+                "iconType": "Default",
+                "optionText": {"id": -1888007264299593017, "text": ""},
+            },
+        },
+    },
+    "dlg_gm01m24_5": {
+        "missionId": "gm01m24",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm01m24_5_{number:03d}" for number in range(1, 9)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m24_5_{number:03d}" for number in range(1, 9)
+        ),
+        "optionRows": {
+            "option_dlg_gm01m24_5_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": 8992213548012664663, "text": ""},
+            },
+            "option_dlg_gm01m24_5_1_003": {
+                "iconType": "main",
+                "optionText": {"id": -8305820588426344756, "text": ""},
+            },
+            "option_dlg_gm01m24_5_1_004": {
+                "iconType": "Default",
+                "optionText": {"id": -4851703353575780175, "text": ""},
+            },
+        },
+    },
+    "dlg_gm01m25_5": {
+        "missionId": "gm01m25",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm01m25_5_{number:03d}"
+            for number in (1, 2, *range(6, 12))
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m25_5_{number:03d}"
+            for number in (1, 2, *range(6, 12))
+        ),
+        "optionRows": {
+            "option_dlg_gm01m25_5_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": -4403692503426426134, "text": ""},
+            },
+            "option_dlg_gm01m25_5_1_003": {
+                "iconType": "main",
+                "optionText": {"id": -2179532275863901932, "text": ""},
+            },
+            "option_dlg_gm01m25_5_1_004": {
+                "iconType": "Default",
+                "optionText": {"id": 5754714993178035148, "text": ""},
+            },
+        },
+    },
+    "dlg_gm01m5_1": {
+        "missionId": "gm01m5",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm01m5_1_{number:03d}"
+            for number in (5, 7, *range(9, 18))
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m5_1_{number:03d}"
+            for number in (5, 7, *range(9, 18))
+        ),
+        "optionRows": {
+            "option_dlg_gm01m5_1_0d5_001": {
+                "iconType": "Default",
+                "optionText": {"id": 7545901413321559642, "text": ""},
+            },
+            "option_dlg_gm01m5_1_0d7_001": {
+                "iconType": "Default",
+                "optionText": {"id": 7393317461208971066, "text": ""},
+            },
+            "option_dlg_gm01m5_1_0d8_001": {
+                "iconType": "Default",
+                "optionText": {"id": -2504463061219860905, "text": ""},
+            },
+            "option_dlg_gm01m5_1_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": 7521016891150217685, "text": ""},
+            },
+        },
+    },
+    "dlg_gm01m5_2": {
+        "missionId": "gm01m5",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm01m5_2_{number:03d}" for number in range(1, 7)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m5_2_{number:03d}" for number in range(1, 7)
+        ),
+        "optionRows": {
+            "option_dlg_gm01m5_2_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": 6525773029524646060, "text": ""},
+            },
+            "option_dlg_gm01m5_2_2_001": {
+                "iconType": "Default",
+                "optionText": {"id": -4462706000586211826, "text": ""},
+            },
+        },
+    },
+    "dlg_gm01m5_3": {
+        "missionId": "gm01m5",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm01m5_3_{number:03d}" for number in range(2, 6)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm01m5_3_{number:03d}" for number in range(2, 6)
+        ),
+        "optionRows": {
+            "option_dlg_gm01m5_3_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": 8151213580389047998, "text": ""},
+            },
+        },
+    },
+    "dlg_gm01m5_4": {
+        "missionId": "gm01m5",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": (
+            "dlg_gm01m5_4_001",
+            "dlg_gm01m5_4_002",
+        ),
+        "missingAudioIds": (
+            "au_dlg_gm01m5_4_001",
+            "au_dlg_gm01m5_4_002",
+        ),
+    },
+    "dlg_gm02m1_1": {
+        "missionId": "gm02m1",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm02m1_1_{number:03d}" for number in range(1, 8)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm02m1_1_{number:03d}" for number in range(1, 8)
+        ),
+        "optionRows": {
+            "option_dlg_gm02m1_1_1_001": {
+                "iconType": "Default",
+                "optionText": {"id": -8588518942092011657, "text": ""},
+            },
+            "option_dlg_gm02m1_1_2_001": {
+                "iconType": "Default",
+                "optionText": {"id": 1502928144381080327, "text": ""},
+            },
+            "option_dlg_gm02m1_1_3_001": {
+                "iconType": "Default",
+                "optionText": {"id": 5996584186730631298, "text": ""},
+            },
+        },
+    },
+    "dlg_gm02m1_2": {
+        "missionId": "gm02m1",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": tuple(
+            f"dlg_gm02m1_2_{number:03d}" for number in range(1, 5)
+        ),
+        "missingAudioIds": tuple(
+            f"au_dlg_gm02m1_2_{number:03d}" for number in range(1, 5)
+        ),
+        "optionRows": {
+            "option_dlg_gm02m1_2_2_001": {
+                "iconType": "Default",
+                "optionText": {"id": -2271504872494968850, "text": ""},
+            },
+        },
+    },
+    "misc_dlg_gm02m1_1d5": {
+        "missionId": "gm02m1",
+        "definitionRootKey": "dlg_gm02m1_1d5",
+        "dialogIdRegistrationStatus": "absent",
+        "lineIds": (
+            "dlg_gm02m1_1d5_001",
+            "dlg_gm02m1_1d5_002",
+        ),
+        "missingAudioIds": (
+            "au_dlg_gm02m1_1d5_001",
+            "au_dlg_gm02m1_1d5_002",
+        ),
+    },
+})
 OFFLINE_EXHAUSTION_DIALOG_ROW_FIELDS = frozenset({
     "actorName",
     "actorNameId",
@@ -2538,6 +6658,8 @@ OFFLINE_EXHAUSTION_E1M4_RADIOS = frozenset({
     "radio_e1m4_1d5",
     "radio_e1m4_2d5",
 })
+OFFLINE_EXHAUSTION_E1M5_RADIOS = frozenset({"radio_e1m5_3d5"})
+OFFLINE_EXHAUSTION_E1M6_RADIOS = frozenset({"radio_e1m6_2"})
 OFFLINE_EXHAUSTION_E1M10_RADIOS = frozenset({
     "radio_e1m10_0d2",
 })
@@ -2620,6 +6742,7 @@ OFFLINE_EXHAUSTION_E2M3_RADIOS = frozenset({
     "radio_e2m3_15",
 })
 OFFLINE_EXHAUSTION_E5M2_RADIOS = frozenset({"radio_e5m2_3"})
+OFFLINE_EXHAUSTION_E5M3_RADIOS = frozenset({"radio_e5m3_14"})
 OFFLINE_EXHAUSTION_E5M4_RADIOS = frozenset({
     "radio_e5m4_1",
     "radio_e5m4_1d5",
@@ -2650,6 +6773,7 @@ OFFLINE_EXHAUSTION_E4M1_RADIOS = frozenset({
     "radio_e4m1_106",
     "radio_e4m1_107",
 })
+OFFLINE_EXHAUSTION_E4M1D5_RADIOS = frozenset({"radio_e4m1d5_3"})
 OFFLINE_EXHAUSTION_E7M4_RADIOS = frozenset({"radio_e7m4_3"})
 OFFLINE_EXHAUSTION_E8M2_RADIOS = frozenset({
     "radio_e8m2_1",
@@ -2665,11 +6789,159 @@ OFFLINE_EXHAUSTION_E10M1_RADIOS = frozenset({
     "radio_e10m1_9",
 })
 OFFLINE_EXHAUSTION_E10M2_RADIOS = frozenset({"radio_e10m2_1"})
+OFFLINE_EXHAUSTION_A1M6D1_RADIOS = frozenset({"radio_a1m6d1_2"})
+OFFLINE_EXHAUSTION_A1M6D2_RADIOS = frozenset({"radio_a1m6d2_1"})
+OFFLINE_EXHAUSTION_A1M6D3_RADIOS = frozenset({"radio_a1m6d3_1"})
+OFFLINE_EXHAUSTION_A1M8D3_RADIOS = frozenset({"radio_a1m8d3_1"})
+OFFLINE_EXHAUSTION_GM02M2_RADIOS = frozenset({
+    "radio_gm02m2_1",
+    "radio_gm02m2_2",
+    "radio_gm02m2_2d5",
+    "radio_gm02m2_3",
+    "radio_gm02m2_4",
+    "radio_gm02m2_5",
+    "radio_gm02m2_6",
+    "radio_gm02m2_7",
+    "radio_gm02m2_10",
+})
+OFFLINE_EXHAUSTION_GM02M3_RADIOS = frozenset({
+    "radio_gm02m3_1",
+    "radio_gm02m3_2",
+    "radio_gm02m3_3",
+    "radio_gm02m3_4",
+    "radio_gm02m3_5",
+})
+OFFLINE_EXHAUSTION_GM02M14_RADIOS = frozenset({
+    "radio_gm02m14_1",
+    "radio_gm02m14_12",
+})
+OFFLINE_EXHAUSTION_GM02M15_RADIOS = frozenset({
+    "radio_gm02m15_9",
+    "radio_gm02m15_12",
+})
+OFFLINE_EXHAUSTION_GM02M21_RADIOS = frozenset({
+    "radio_gm02m21_4",
+    "radio_gm02m21_7",
+})
+OFFLINE_EXHAUSTION_GM02M13_RADIOS = frozenset({
+    "radio_gm02m13_3",
+    "radio_gm02m13_4",
+    "radio_gm02m13_5",
+})
+OFFLINE_EXHAUSTION_GM02M17_RADIOS = frozenset({
+    "radio_gm02m17_2",
+    "radio_gm02m17_4",
+})
+OFFLINE_EXHAUSTION_GM01M4_RADIOS = frozenset({"radio_gm01m4_1"})
+OFFLINE_EXHAUSTION_GM01M6_RADIOS = frozenset({
+    "radio_gm01m6_0d5",
+    "radio_gm01m6_4d5",
+    "radio_gm01m6_6",
+})
+OFFLINE_EXHAUSTION_GM01M7_RADIOS = frozenset({"radio_gm01m7_9"})
+OFFLINE_EXHAUSTION_GM01M16_RADIOS = frozenset({
+    "radio_gm01m16_8",
+    "radio_gm01m16_13",
+    "radio_gm01m16_14",
+})
+OFFLINE_EXHAUSTION_GM01M20_RADIOS = frozenset({
+    "radio_gm01m20_1",
+    "radio_gm01m20_2",
+    "radio_gm01m20_3",
+    "radio_gm01m20_4",
+})
+OFFLINE_EXHAUSTION_GM01M22_RADIOS = frozenset({
+    "radio_gm01m22_1d2",
+    "radio_gm01m22_1d3",
+})
+OFFLINE_EXHAUSTION_GM01M24_RADIOS = frozenset({
+    "radio_gm01m24_1d5",
+    "radio_gm01m24_2",
+    "radio_gm01m24_3",
+    "radio_gm01m24_4",
+})
+OFFLINE_EXHAUSTION_GM01M25_RADIOS = frozenset({
+    "radio_gm01m25_1d5",
+    "radio_gm01m25_2",
+    "radio_gm01m25_3",
+    "radio_gm01m25_4",
+})
+OFFLINE_EXHAUSTION_GM01M26_RADIOS = frozenset({
+    "radio_gm01m26_1d5",
+    "radio_gm01m26_2",
+    "radio_gm01m26_3",
+    "radio_gm01m26_4",
+})
+OFFLINE_EXHAUSTION_GM01M27_RADIOS = frozenset({
+    "radio_gm01m27_1",
+    "radio_gm01m27_2",
+    "radio_gm01m27_3",
+})
+OFFLINE_EXHAUSTION_GM01M17_RADIOS = frozenset({
+    "radio_gm01m17_4",
+    "radio_gm01m17_5",
+    "radio_gm01m17_9",
+})
+OFFLINE_EXHAUSTION_GM01M3_RADIOS = frozenset({
+    "radio_gm01m3_3d8",
+})
+OFFLINE_EXHAUSTION_GM01M5_RADIOS = frozenset({
+    "radio_gm01m5_1",
+    "radio_gm01m5_2",
+    "radio_gm01m5_3",
+    "radio_gm01m5_4",
+})
+OFFLINE_EXHAUSTION_GM02M1_RADIOS = frozenset({
+    "radio_gm02m1_1",
+    "radio_gm02m1_2",
+    "radio_gm02m1_6",
+    "radio_gm02m1_7",
+    "radio_gm02m1_8",
+})
+OFFLINE_EXHAUSTION_GM02M20_RADIOS = frozenset({
+    "radio_gm02m20_7",
+    "radio_gm02m20_8",
+    "radio_gm02m20_10",
+    "radio_gm02m20_11",
+    "radio_gm02m20_13",
+})
+OFFLINE_EXHAUSTION_GM02M23_RADIOS = frozenset({
+    "radio_gm02m23_2",
+})
 OFFLINE_EXHAUSTION_RADIOS_BY_MISSION = {
+    "a1m6d1": OFFLINE_EXHAUSTION_A1M6D1_RADIOS,
+    "a1m6d2": OFFLINE_EXHAUSTION_A1M6D2_RADIOS,
+    "a1m6d3": OFFLINE_EXHAUSTION_A1M6D3_RADIOS,
+    "a1m8d3": OFFLINE_EXHAUSTION_A1M8D3_RADIOS,
+    "gm02m2": OFFLINE_EXHAUSTION_GM02M2_RADIOS,
+    "gm02m3": OFFLINE_EXHAUSTION_GM02M3_RADIOS,
+    "gm02m13": OFFLINE_EXHAUSTION_GM02M13_RADIOS,
+    "gm02m14": OFFLINE_EXHAUSTION_GM02M14_RADIOS,
+    "gm02m15": OFFLINE_EXHAUSTION_GM02M15_RADIOS,
+    "gm02m21": OFFLINE_EXHAUSTION_GM02M21_RADIOS,
+    "gm02m17": OFFLINE_EXHAUSTION_GM02M17_RADIOS,
+    "gm01m4": OFFLINE_EXHAUSTION_GM01M4_RADIOS,
+    "gm01m6": OFFLINE_EXHAUSTION_GM01M6_RADIOS,
+    "gm01m7": OFFLINE_EXHAUSTION_GM01M7_RADIOS,
+    "gm01m16": OFFLINE_EXHAUSTION_GM01M16_RADIOS,
+    "gm01m17": OFFLINE_EXHAUSTION_GM01M17_RADIOS,
+    "gm01m3": OFFLINE_EXHAUSTION_GM01M3_RADIOS,
+    "gm01m20": OFFLINE_EXHAUSTION_GM01M20_RADIOS,
+    "gm01m22": OFFLINE_EXHAUSTION_GM01M22_RADIOS,
+    "gm01m24": OFFLINE_EXHAUSTION_GM01M24_RADIOS,
+    "gm01m25": OFFLINE_EXHAUSTION_GM01M25_RADIOS,
+    "gm01m26": OFFLINE_EXHAUSTION_GM01M26_RADIOS,
+    "gm01m27": OFFLINE_EXHAUSTION_GM01M27_RADIOS,
+    "gm01m5": OFFLINE_EXHAUSTION_GM01M5_RADIOS,
+    "gm02m1": OFFLINE_EXHAUSTION_GM02M1_RADIOS,
+    "gm02m20": OFFLINE_EXHAUSTION_GM02M20_RADIOS,
+    "gm02m23": OFFLINE_EXHAUSTION_GM02M23_RADIOS,
     "e0m0": OFFLINE_EXHAUSTION_E0M0_RADIOS,
     "e1m2": OFFLINE_EXHAUSTION_E1M2_RADIOS,
     "e1m3": OFFLINE_EXHAUSTION_E1M3_RADIOS,
     "e1m4": OFFLINE_EXHAUSTION_E1M4_RADIOS,
+    "e1m5": OFFLINE_EXHAUSTION_E1M5_RADIOS,
+    "e1m6": OFFLINE_EXHAUSTION_E1M6_RADIOS,
     "e1m10": OFFLINE_EXHAUSTION_E1M10_RADIOS,
     "e2m2": OFFLINE_EXHAUSTION_E2M2_RADIOS,
     "e2m3": OFFLINE_EXHAUSTION_E2M3_RADIOS,
@@ -2682,8 +6954,10 @@ OFFLINE_EXHAUSTION_RADIOS_BY_MISSION = {
     "e3m3": OFFLINE_EXHAUSTION_E3M3_RADIOS,
     "e3m4": OFFLINE_EXHAUSTION_E3M4_RADIOS,
     "e4m1": OFFLINE_EXHAUSTION_E4M1_RADIOS,
+    "e4m1d5": OFFLINE_EXHAUSTION_E4M1D5_RADIOS,
     "e5m1": OFFLINE_EXHAUSTION_E5M1_RADIOS,
     "e5m2": OFFLINE_EXHAUSTION_E5M2_RADIOS,
+    "e5m3": OFFLINE_EXHAUSTION_E5M3_RADIOS,
     "e5m4": OFFLINE_EXHAUSTION_E5M4_RADIOS,
     "e5m5": OFFLINE_EXHAUSTION_E5M5_RADIOS,
     "e6m1": OFFLINE_EXHAUSTION_E6M1_RADIOS,
@@ -2711,6 +6985,30 @@ OFFLINE_EXHAUSTION_RADIOS_BY_MISSION = {
     "e11m5": OFFLINE_EXHAUSTION_E11M5_RADIOS,
     "e11m6": OFFLINE_EXHAUSTION_E11M6_RADIOS,
     "e11m8": OFFLINE_EXHAUSTION_E11M8_RADIOS,
+}
+OFFLINE_EXHAUSTION_RADIO_CONTEXTS = {
+    "radio_e1m5_3d5": {
+        "sourceKey": "levelData:map01_lv002/map01_lv002_lv_data",
+        "sourceFile": (
+            "export_full/structured/StreamingAssets/Data/Json/LevelData/"
+            "map01_lv002/map01_lv002_lv_data.json"
+        ),
+        "sha256":
+            "4342010C5E51FCC24738C0E5D4D61D42BCA2CF8B1453D574647F7CA4E1F399E1",
+        "questId": "e1m5_q#8",
+        "distance": 65,
+        "byteStringCounts": {
+            "radio_e1m5_3d5": 5,
+            "e1m5_q#8": 1,
+        },
+        "allowedRoute": {
+            "relation": "leveldata_quest_reference",
+            "direction": "context",
+            "phase": "context",
+            "confidence": "direct",
+            "levelId": "map01_lv002",
+        },
+    },
 }
 OFFLINE_EXHAUSTION_RADIO_AUDIO_VARIANTS = {
     "radio_e0m0_10": {
@@ -2746,6 +7044,132 @@ OFFLINE_EXHAUSTION_RADIO_AUDIO_VARIANTS = {
     },
 }
 OFFLINE_EXHAUSTION_RADIO_MISSING_AUDIO_IDS = {
+    "radio_a1m6d1_2": frozenset({"au_radio_a1m6d1_2_001"}),
+    "radio_a1m6d2_1": frozenset({"au_radio_a1m6d2_1_001"}),
+    "radio_a1m6d3_1": frozenset({"au_radio_a1m6d3_1_001"}),
+    "radio_a1m8d3_1": frozenset({"au_radio_a1m8d3_1_001"}),
+    "radio_gm02m2_1": frozenset(
+        f"au_radio_gm02m2_1_{number:03d}" for number in range(1, 3)
+    ),
+    "radio_gm02m2_2": frozenset(
+        f"au_radio_gm02m2_2_{number:03d}" for number in range(1, 3)
+    ),
+    "radio_gm02m2_2d5": frozenset(
+        f"au_radio_gm02m2_2d5_{number:03d}" for number in range(1, 4)
+    ),
+    "radio_gm02m2_3": frozenset(
+        f"au_radio_gm02m2_3_{number:03d}" for number in range(1, 3)
+    ),
+    "radio_gm02m2_4": frozenset({"au_radio_gm02m2_4_001"}),
+    "radio_gm02m2_5": frozenset({"au_radio_gm02m2_5_001"}),
+    "radio_gm02m2_6": frozenset({"au_radio_gm02m2_6_001"}),
+    "radio_gm02m2_7": frozenset({"au_radio_gm02m2_7_001"}),
+    "radio_gm02m2_10": frozenset(
+        f"au_radio_gm02m2_10_{number:03d}" for number in range(1, 3)
+    ),
+    "radio_gm02m3_1": frozenset({"au_radio_gm02m3_1_001"}),
+    "radio_gm02m3_2": frozenset({"au_radio_gm02m3_2_002"}),
+    "radio_gm02m3_3": frozenset({"au_radio_gm02m3_3_003"}),
+    "radio_gm02m3_4": frozenset({"au_radio_gm02m3_4_004"}),
+    "radio_gm02m3_5": frozenset({"au_radio_gm02m3_5_001"}),
+    "radio_gm02m14_1": frozenset({"au_radio_gm02m14_1_001"}),
+    "radio_gm02m14_12": frozenset({"au_radio_gm02m14_12_001"}),
+    "radio_gm02m15_9": frozenset(
+        f"au_radio_gm02m15_9_{number:03d}" for number in range(1, 5)
+    ),
+    "radio_gm02m15_12": frozenset({
+        "au_radio_gm02m15_12_001",
+        "au_radio_gm02m15_12_002",
+    }),
+    "radio_gm02m21_4": frozenset({
+        "au_radio_gm02m21_4_001",
+        "au_radio_gm02m21_4_002",
+    }),
+    "radio_gm02m21_7": frozenset({"au_radio_gm02m21_7_001"}),
+    "radio_gm02m13_3": frozenset({"au_radio_gm02m13_3_001"}),
+    "radio_gm02m13_4": frozenset({"au_radio_gm02m13_4_001"}),
+    "radio_gm02m13_5": frozenset({"au_radio_gm02m13_5_001"}),
+    "radio_gm02m17_2": frozenset({"au_radio_gm02m17_2_001"}),
+    "radio_gm02m17_4": frozenset({"au_radio_gm02m17_4_001"}),
+    "radio_gm01m4_1": frozenset({"au_radio_gm01m4_1_001"}),
+    "radio_gm01m6_0d5": frozenset({
+        "au_radio_gm01m6_0d5_001",
+        "au_radio_gm01m6_0d5_002",
+    }),
+    "radio_gm01m6_4d5": frozenset({"au_radio_gm01m6_4d5_001"}),
+    "radio_gm01m6_6": frozenset({"au_radio_gm01m6_6_001"}),
+    "radio_gm01m7_9": frozenset({
+        f"au_radio_gm01m7_9_{number:03d}" for number in range(1, 13)
+    }),
+    "radio_gm01m16_8": frozenset({"au_radio_gm01m16_8_001"}),
+    "radio_gm01m16_13": frozenset(
+        f"au_radio_gm01m16_13_{number:03d}" for number in range(1, 4)
+    ),
+    "radio_gm01m16_14": frozenset({"au_radio_gm01m16_14_001"}),
+    "radio_gm01m17_4": frozenset({"au_radio_gm01m17_4_001"}),
+    "radio_gm01m17_5": frozenset({"au_radio_gm01m17_5_001"}),
+    "radio_gm01m17_9": frozenset({"au_radio_gm01m17_9_001"}),
+    "radio_gm01m3_3d8": frozenset({"au_radio_gm01m3_3d8_001"}),
+    "radio_gm01m20_1": frozenset({"au_radio_gm01m20_1_001"}),
+    "radio_gm01m20_2": frozenset({"au_radio_gm01m20_2_001"}),
+    "radio_gm01m20_3": frozenset({"au_radio_gm01m20_3_001"}),
+    "radio_gm01m20_4": frozenset({"au_radio_gm01m20_4_001"}),
+    "radio_gm01m24_1d5": frozenset({"au_radio_gm01m24_1d5_001"}),
+    "radio_gm01m24_2": frozenset({"au_radio_gm01m24_2_002"}),
+    "radio_gm01m24_3": frozenset({"au_radio_gm01m24_3_003"}),
+    "radio_gm01m24_4": frozenset({"au_radio_gm01m24_4_004"}),
+    "radio_gm01m25_1d5": frozenset({"au_radio_gm01m25_1d5_001"}),
+    "radio_gm01m25_2": frozenset({"au_radio_gm01m25_2_002"}),
+    "radio_gm01m25_3": frozenset({"au_radio_gm01m25_3_003"}),
+    "radio_gm01m25_4": frozenset({"au_radio_gm01m25_4_004"}),
+    "radio_gm01m26_1d5": frozenset({"au_radio_gm01m26_1d5_001"}),
+    "radio_gm01m26_2": frozenset({"au_radio_gm01m26_2_002"}),
+    "radio_gm01m26_3": frozenset({"au_radio_gm01m26_3_003"}),
+    "radio_gm01m26_4": frozenset({"au_radio_gm01m26_4_004"}),
+    "radio_gm01m27_1": frozenset({
+        "au_radio_gm01m27_1_001",
+        "au_radio_gm01m27_1_002",
+    }),
+    "radio_gm01m27_2": frozenset({"au_radio_gm01m27_2_001"}),
+    "radio_gm01m27_3": frozenset({"au_radio_gm01m27_3_001"}),
+    "radio_gm01m5_1": frozenset({
+        "au_radio_gm01m5_1_001",
+        "au_radio_gm01m5_1_002",
+    }),
+    "radio_gm01m5_2": frozenset({"au_radio_gm01m5_2_001"}),
+    "radio_gm01m5_3": frozenset({"au_radio_gm01m5_3_001"}),
+    "radio_gm01m5_4": frozenset({"au_radio_gm01m5_4_001"}),
+    "radio_gm02m1_1": frozenset({
+        "au_radio_gm02m1_1_001",
+        "au_radio_gm02m1_1_002",
+    }),
+    "radio_gm02m1_2": frozenset({"au_radio_gm02m1_2_001"}),
+    "radio_gm02m1_6": frozenset({
+        "au_radio_gm02m1_6_001",
+        "au_radio_gm02m1_6_002",
+    }),
+    "radio_gm02m1_7": frozenset({
+        "au_radio_gm02m1_7_001",
+        "au_radio_gm02m1_7_002",
+    }),
+    "radio_gm02m1_8": frozenset({"au_radio_gm02m1_8_001"}),
+    "radio_gm02m20_7": frozenset({"au_radio_gm02m20_7_001"}),
+    "radio_gm02m20_8": frozenset({
+        "au_radio_gm02m20_8_001",
+        "au_radio_gm02m20_8_002",
+    }),
+    "radio_gm02m20_10": frozenset({
+        "au_radio_gm02m20_10_001",
+        "au_radio_gm02m20_10_002",
+    }),
+    "radio_gm02m20_11": frozenset({"au_radio_gm02m20_11_001"}),
+    "radio_gm02m20_13": frozenset({
+        "au_radio_gm02m20_13_001",
+        "au_radio_gm02m20_13_002",
+    }),
+    "radio_gm02m23_2": frozenset({"au_radio_gm02m23_2_001"}),
+    "radio_gm01m22_1d2": frozenset({"au_radio_gm01m22_1d2_001"}),
+    "radio_gm01m22_1d3": frozenset({"au_radio_gm01m22_1d3_001"}),
     "radio_e5m5_1": frozenset({
         "au_radio_e5m5_1_001",
         "au_radio_e5m5_1_002",
@@ -2771,7 +7195,507 @@ OFFLINE_EXHAUSTION_RADIO_ROW_FIELDS = frozenset({
     "radioSingleDataList",
     "radioType",
 })
+
+
+def _offline_radio_definition_validation_failure(
+    story_key: str,
+    row: Any,
+    audio_stems: set[str],
+) -> dict[str, Any] | None:
+    """Return one bounded fail-closed RadioTable/AudioDialog diagnostic."""
+    if (
+        not isinstance(row, dict)
+        or set(row) != OFFLINE_EXHAUSTION_RADIO_ROW_FIELDS
+        or not isinstance(row.get("radioSingleDataList"), list)
+        or not row["radioSingleDataList"]
+    ):
+        return {
+            "validator": "offlineRadioDefinition",
+            "gate": "exactRadioTableShape",
+            "storyKey": story_key,
+            "sourcePaths": ["RadioTable"],
+            "expected": {
+                "fields": sorted(OFFLINE_EXHAUSTION_RADIO_ROW_FIELDS),
+                "nonemptyRadioSingleDataList": True,
+            },
+            "actual": {
+                "type": type(row).__name__,
+                "fields": sorted(row) if isinstance(row, dict) else [],
+                "radioSingleDataCount": (
+                    len(row.get("radioSingleDataList") or [])
+                    if isinstance(row, dict) else 0
+                ),
+            },
+        }
+    row_audio_ids = {
+        safe_key(line.get("audioOverride"))
+        for line in row["radioSingleDataList"]
+        if isinstance(line, dict) and safe_key(line.get("audioOverride"))
+    }
+    if len(row_audio_ids) != len(row["radioSingleDataList"]):
+        return {
+            "validator": "offlineRadioDefinition",
+            "gate": "everyLineHasExactAudioOverride",
+            "storyKey": story_key,
+            "sourcePaths": ["RadioTable"],
+            "expected": {"audioOverrideCount": len(row["radioSingleDataList"])},
+            "actual": {"audioOverrideIds": sorted(row_audio_ids)},
+        }
+    expected_variants = {
+        safe_key(audio_id): tuple(safe_key(value) for value in variants)
+        for audio_id, variants in (
+            OFFLINE_EXHAUSTION_RADIO_AUDIO_VARIANTS.get(story_key, {})
+        ).items()
+    }
+    expected_missing = set(
+        OFFLINE_EXHAUSTION_RADIO_MISSING_AUDIO_IDS.get(story_key, ())
+    )
+    actual_base_absent = row_audio_ids - audio_stems
+    actual_variants = {
+        audio_id: sorted(
+            stem for stem in audio_stems if stem.startswith(f"{audio_id}_")
+        )
+        for audio_id in expected_variants
+    }
+    if (
+        set(expected_variants) & expected_missing
+        or actual_base_absent != set(expected_variants) | expected_missing
+        or any(
+            not variants
+            or any(not value.startswith(f"{audio_id}_") for value in variants)
+            or set(variants) != set(actual_variants[audio_id])
+            for audio_id, variants in expected_variants.items()
+        )
+        or any(
+            any(stem.startswith(f"{audio_id}_") for stem in audio_stems)
+            for audio_id in expected_missing
+        )
+    ):
+        return {
+            "validator": "offlineRadioDefinition",
+            "gate": "exactAudioDialogMembership",
+            "storyKey": story_key,
+            "sourcePaths": ["RadioTable", "AudioDialog"],
+            "expected": {
+                "baseAbsentAudioIds": sorted(
+                    set(expected_variants) | expected_missing
+                ),
+                "missingAudioIds": sorted(expected_missing),
+                "audioVariants": {
+                    key: list(values) for key, values in expected_variants.items()
+                },
+            },
+            "actual": {
+                "rowAudioIds": sorted(row_audio_ids),
+                "baseAbsentAudioIds": sorted(actual_base_absent),
+                "audioVariants": actual_variants,
+            },
+        }
+    return None
 OFFLINE_EXHAUSTION_TEXT_DEFINITIONS = {
+    "text_gm01m15_1": {
+        "missionId": "gm01m15",
+        "readingPopupRowId": "text_gm01m15_1",
+        "bgType": 1,
+        "iconType": 1,
+        "titleId": 5249534470886375510,
+        "contentTextIds": (
+            8242330289792353294,
+            -2455707730206541547,
+            -2339893156956209480,
+            119766408319964938,
+            -8714781499976003721,
+        ),
+        "prtsDefinition": {
+            "rowId": "nar_digital_map01_research1_16_1",
+            "row": {
+                "contentId": "text_gm01m15_1",
+                "desc": {"id": 0, "text": ""},
+                "firstLvId": "digital_map01_research1_16",
+                "id": "nar_digital_map01_research1_16_1",
+                "name": {"id": -3724480734488975224, "text": ""},
+                "order": 1,
+                "overrideRadioId": "",
+                "type": "text",
+            },
+        },
+    },
+    "text_gm01m15_8": {
+        "missionId": "gm01m15",
+        "readingPopupRowId": "text_gm01m15_8",
+        "bgType": 0,
+        "iconType": 1,
+        "titleId": 6250703409374408529,
+        "contentTextIds": (6649389232287698087,),
+    },
+    "text_gm01m13_1": {
+        "missionId": "gm01m13",
+        "readingPopupRowId": "text_gm01m13_1",
+        "bgType": 1,
+        "iconType": 1,
+        "titleId": -7492450601852500945,
+        "contentTextIds": (
+            -2654932629375346098,
+            -1909211100807560957,
+            296752428137017004,
+            -8195488846124280714,
+            -8624547630771488929,
+            2389739675065963780,
+            8112352344191541483,
+            3219624433628234345,
+        ),
+    },
+    "text_gm01m17_1": {
+        "missionId": "gm01m17",
+        "readingPopupRowId": "text_gm01m17_1",
+        "bgType": 2,
+        "iconType": 0,
+        "titleId": -5216252211990160921,
+        "contentTextIds": (
+            2833540280945742009,
+            -8531949106363903611,
+        ),
+    },
+    "text_gm01m14_4": {
+        "missionId": "gm01m14",
+        "readingPopupRowId": "text_gm01m14_4",
+        "bgType": 0,
+        "iconType": 1,
+        "titleId": -1815196899219287791,
+        "contentTextIds": (7825423282124136370,),
+    },
+    "text_gm01m14_5": {
+        "missionId": "gm01m14",
+        "readingPopupRowId": "text_gm01m14_5",
+        "bgType": 1,
+        "iconType": 1,
+        "titleId": -6907858543972655543,
+        "contentTextIds": (
+            -9160925395685764986,
+            3098739108941993286,
+            -752533186137572878,
+            141580649494390203,
+            -8810372145751559528,
+            -5510452575580863,
+            443073140103742447,
+        ),
+    },
+    "text_gm01m12_1": {
+        "missionId": "gm01m12",
+        "readingPopupRowId": "text_gm01m12_1",
+        "bgType": 1,
+        "iconType": 1,
+        "titleId": 2293272716794736060,
+        "contentTextIds": (
+            2793666067577584250,
+            1177065351896539995,
+            3116054607192772258,
+            -2288554824343091267,
+            -1348820074256568586,
+            6247410809703034848,
+        ),
+        "prtsDefinition": {
+            "rowId": "nar_digital_map01_research1_1_1",
+            "row": {
+                "contentId": "text_gm01m12_1",
+                "desc": {"id": 0, "text": ""},
+                "firstLvId": "digital_map01_research1_1",
+                "id": "nar_digital_map01_research1_1_1",
+                "name": {"id": -3440260695365784665, "text": ""},
+                "order": 1,
+                "overrideRadioId": "",
+                "type": "text",
+            },
+        },
+    },
+    "text_gm01m12_3": {
+        "missionId": "gm01m12",
+        "readingPopupRows": {
+            "rp_test_text_1": {
+                "bgType": 0,
+                "contentId": "text_gm01m12_3",
+                "iconType": 1,
+                "id": "rp_test_text_1",
+                "overrideRadioId": "",
+                "title": {"id": 0, "text": ""},
+            },
+            "rp_test_text_3": {
+                "bgType": 2,
+                "contentId": "text_gm01m12_3",
+                "iconType": 0,
+                "id": "rp_test_text_3",
+                "overrideRadioId": "",
+                "title": {"id": 0, "text": ""},
+            },
+        },
+        "titleId": -4684272300736787803,
+        "contentTextIds": (
+            8714151621675154155,
+            -2570004242404188716,
+            7700964276903699737,
+            -3617402496525378850,
+            -8171718110792362214,
+            -8879273103725698056,
+            -5395881018091111953,
+            -7199702518671668833,
+            -7382605069448195347,
+        ),
+        "prtsReadingDefinition": {
+            "rowId": "term_001_gm01m7",
+            "row": {
+                "list": {
+                    "1": {
+                        "contentId": "text_gm01m12_3",
+                        "name": {"id": -4037519105218976214, "text": ""},
+                        "order": 1,
+                        "overrideRadioId": "",
+                        "prtsId": "",
+                        "subtitle": {"id": 0, "text": ""},
+                        "uniqId": "term_001_gm01m7_1",
+                    },
+                    "2": {
+                        "contentId": "text_gm01m12_4",
+                        "name": {"id": 8051702914420708692, "text": ""},
+                        "order": 2,
+                        "overrideRadioId": "",
+                        "prtsId": "",
+                        "subtitle": {"id": 0, "text": ""},
+                        "uniqId": "term_001_gm01m7_2",
+                    },
+                },
+            },
+        },
+    },
+    "text_gm01m12_5": {
+        "missionId": "gm01m12",
+        "readingPopupRowId": "rp_test_text_2",
+        "bgType": 1,
+        "iconType": 2,
+        "richContentStatus": "absent",
+        "contentTextIds": (),
+    },
+    "text_gm01m12_6": {
+        "missionId": "gm01m12",
+        "readingPopupRowId": "text_gm01m12_6",
+        "bgType": 0,
+        "iconType": 1,
+        "titleId": 3976427637254295323,
+        "contentTextIds": (
+            7326707735276244258,
+            1334924606921900205,
+        ),
+    },
+    "text_gm01m12_7": {
+        "missionId": "gm01m12",
+        "readingPopupRowId": "text_gm01m12_7",
+        "bgType": 0,
+        "iconType": 1,
+        "titleId": -7790167985152345202,
+        "contentTextIds": (
+            -2191157560911838532,
+            -656007744742926406,
+        ),
+    },
+    "text_gm01m7_1": {
+        "missionId": "gm01m7",
+        "readingPopupRowId": "text_gm01m7_1",
+        "bgType": 1,
+        "iconType": 1,
+        "titleId": -3330387669642480022,
+        "contentTextIds": (
+            -5915528571394765142,
+            -607617217296507689,
+            8320492395787603997,
+            -5031344750760939710,
+            5136828325909646067,
+            5299782474897035236,
+            3603826759507356629,
+            1049447087589480420,
+            -3489542913473775155,
+            5703443812336597184,
+            6951779877936539235,
+            -2560478141870650391,
+            4693505613823197508,
+        ),
+    },
+    "text_gm01m22_5": {
+        "missionId": "gm01m22",
+        "readingPopupRowId": "text_gm01m22_5",
+        "bgType": 1,
+        "iconType": 2,
+        "titleId": -7956574651987707031,
+        "contentTextIds": (
+            9056785448930934737,
+            -3599045778776472798,
+            -8943409554594408505,
+            -5685369311502986662,
+        ),
+    },
+    "text_a1m6d5_1": {
+        "missionId": "a1m6d5",
+        "readingPopupRowId": "rp_text_a1m6d5_1",
+        "bgType": 0,
+        "iconType": 3,
+        "titleId": 3721744607745831916,
+        "contentTextIds": (
+            -7408517779335732445,
+            6495096817380252349,
+            -8078140136953514928,
+            -8140252314052994329,
+            -6342349983915179518,
+            8831008759808930696,
+            -4685756133895238350,
+            -9219690230359492856,
+            -1181758195704643561,
+            4387948783769873472,
+            -143699607535162167,
+            -6152714073317416528,
+            -85705076186752261,
+            -7240525900018077618,
+        ),
+    },
+    "text_a1m5_1": {
+        "missionId": "a1m5",
+        "readingPopupRowId": "text_a1m5_1",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": -8904306416814611456,
+        "contentTextIds": (
+            7065289209916235881,
+            -3793799197369702242,
+        ),
+    },
+    "text_a1m5_2": {
+        "missionId": "a1m5",
+        "readingPopupRowId": "text_a1m5_2",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": -2647826485076773960,
+        "contentTextIds": (145014796983259450,),
+    },
+    "text_a1m5_3": {
+        "missionId": "a1m5",
+        "readingPopupRowId": "text_a1m5_3",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": -676517154678141545,
+        "contentTextIds": (
+            -4841045965292223135,
+            -89499260089272388,
+        ),
+    },
+    "text_a1m5_4": {
+        "missionId": "a1m5",
+        "readingPopupRowId": "text_a1m5_4",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": 2405623048071579055,
+        "contentTextIds": (-4489297013210307938,),
+    },
+    "text_a1m5_5": {
+        "missionId": "a1m5",
+        "readingPopupRowId": "text_a1m5_5",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": 1365793654747611898,
+        "contentTextIds": (
+            -5413898867121804929,
+            -1357598897532823788,
+        ),
+    },
+    "text_a1m5_6": {
+        "missionId": "a1m5",
+        "readingPopupRowId": "text_a1m5_6",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": 5740509153553995198,
+        "contentTextIds": (1303745015045365078,),
+    },
+    "text_a1m5_7": {
+        "missionId": "a1m5",
+        "readingPopupRowId": "text_a1m5_7",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": 2638866450720374170,
+        "contentTextIds": (-7046570968636013796,),
+    },
+    "text_a1m9_1": {
+        "missionId": "a1m9",
+        "readingPopupRowId": "rp_text_a1m9_1",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": 6133950036636760715,
+        "contentTextIds": (
+            4360361720766943813,
+            -5286642356287476400,
+        ),
+    },
+    "text_a1m9_2": {
+        "missionId": "a1m9",
+        "readingPopupRowId": "rp_text_a1m9_2",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": -9061878788721069148,
+        "contentTextIds": (
+            -8710457857620610713,
+            195657822153420954,
+        ),
+    },
+    "text_a1m9_3": {
+        "missionId": "a1m9",
+        "readingPopupRowId": "rp_text_a1m9_3",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": -4216673929559825878,
+        "contentTextIds": (
+            5233675183060561957,
+            4427207018166369215,
+        ),
+    },
+    "text_a1m9_4": {
+        "missionId": "a1m9",
+        "readingPopupRowId": "rp_text_a1m9_4",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": 1447286566198348849,
+        "contentTextIds": (
+            1656717363105155858,
+            -8370465523951817989,
+        ),
+    },
+    "text_a1m9_5": {
+        "missionId": "a1m9",
+        "readingPopupRowId": "rp_text_a1m9_5",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": -7333612545186178263,
+        "contentTextIds": (
+            -5168759132077193528,
+            7120988803212617269,
+        ),
+    },
+    "text_a1m9_6": {
+        "missionId": "a1m9",
+        "readingPopupRowId": "rp_text_a1m9_6",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": 93296881304760627,
+        "contentTextIds": (
+            -5058010235124771975,
+            -8995527205053721848,
+        ),
+    },
+    "text_a1m9_7": {
+        "missionId": "a1m9",
+        "readingPopupRowId": "rp_text_a1m9_7",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": -8532814195849073983,
+        "contentTextIds": (
+            1466176077223606619,
+            4212985633755235735,
+        ),
+    },
     "text_e0m0_1": {
         "missionId": "e0m0",
         "readingPopupRowId": "text_e0m0_1",
@@ -2867,6 +7791,35 @@ OFFLINE_EXHAUSTION_TEXT_DEFINITIONS = {
             -1462227912355393055,
             3546372858747322539,
         ),
+    },
+    "text_e8m4_1": {
+        "missionId": "e8m4",
+        "readingPopupRowId": "rp_text_e8m4_1",
+        "bgType": 0,
+        "iconType": 0,
+        "titleId": -1501744430170614848,
+        "contentTextIds": (
+            -2333372693013596797,
+            7514769952417356497,
+            -7329223948121738333,
+            -6955748145096260696,
+        ),
+        "prtsDefinition": {
+            "rowId": "nar_collection_map02_12136_1",
+            "row": {
+                "contentId": "text_e8m4_1",
+                "desc": {"id": 0, "text": ""},
+                "firstLvId": "collection_map02_12136",
+                "id": "nar_collection_map02_12136_1",
+                "name": {
+                    "id": -6906129919037809411,
+                    "text": "",
+                },
+                "order": 1,
+                "overrideRadioId": "",
+                "type": "text",
+            },
+        },
     },
     "text_e6m5_1": {
         "missionId": "e6m5",
@@ -3014,6 +7967,12 @@ def build_quest_attachment_diagnostic_index(
     npc_proxy_payload = read_json(
         source_paths["gameplayConfig:NpcProxyExDataTable"]
     )
+    npc_proxy_table_payload = read_json(
+        source_paths["gameplayConfig:NpcProxyTable"]
+    )
+    world_entity_registry_payload = read_json(
+        source_paths["gameplayConfig:WorldEntityRegistry"]
+    )
 
     def exact_rows(actual: Any, expected: Any) -> bool:
         if (
@@ -3034,6 +7993,7 @@ def build_quest_attachment_diagnostic_index(
 
     index: dict[str, dict[str, Any]] = {}
     validation_failures: list[str] = []
+    validation_failure_details: list[dict[str, Any]] = []
     for quest_id, declaration in (
         QUEST_ATTACHMENT_DIAGNOSTIC_DECLARATIONS.items()
     ):
@@ -3149,21 +8109,6 @@ def build_quest_attachment_diagnostic_index(
                 property_values == [declaration["propertyKey"]]
                 and script_values == [declaration["scriptId"]]
             )
-        elif valid and validation_kind == "variant_runtime_shell":
-            comparers = [
-                row.get("value")
-                for row in leaf.get("comparers") or []
-                if isinstance(row, dict)
-            ]
-            progress_values = [
-                row.get("value")
-                for row in leaf.get("compareValues") or []
-                if isinstance(row, dict)
-            ]
-            valid = (
-                comparers == [declaration["comparer"]]
-                and progress_values == [declaration["progressToCompare"]]
-            )
         elif valid:
             comparers = [
                 row.get("value")
@@ -3176,11 +8121,104 @@ def build_quest_attachment_diagnostic_index(
                 if isinstance(row, dict)
             ]
             valid = (
-                comparers == []
+                comparers == (
+                    [declaration["comparer"]]
+                    if "comparer" in declaration
+                    else []
+                )
                 and progress_values == [declaration["progressToCompare"]]
             )
 
-        if valid and validation_kind == "shared_levelscript_condition_scope":
+        if valid and validation_kind == "property_getter_without_story_chain":
+            levelscript_data = source_bytes.get(
+                declaration["levelScriptSourceKey"],
+                b"",
+            )
+            byte_counts = declaration["levelScriptByteStringCounts"]
+            try:
+                decoded_level = _load_levelscript_binding_data(
+                    declaration["levelId"]
+                )
+            except Exception:
+                decoded_level = None
+            expected_suffix = f"/{declaration['scriptId']}.json"
+            file_entries = [
+                row
+                for row in (
+                    decoded_level.get("files") or []
+                    if isinstance(decoded_level, dict)
+                    else []
+                )
+                if str(row.get("file") or "").replace("\\", "/").endswith(
+                    expected_suffix
+                )
+            ]
+            file_entry = file_entries[0] if len(file_entries) == 1 else {}
+            records = file_entry.get("records") or []
+            try:
+                action_map, membership_by_start = (
+                    levelscript_action_map_membership(
+                        levelscript_data,
+                        records,
+                    )
+                )
+            except Exception:
+                action_map, membership_by_start = {}, {}
+
+            def record_texts(record: dict[str, Any]) -> tuple[str, ...]:
+                return tuple(
+                    safe_key(hit.get("text"))
+                    for field in ("strings", "plainStrings")
+                    for hit in record.get(field) or []
+                    if isinstance(hit, dict) and safe_key(hit.get("text"))
+                )
+
+            getter_records = [
+                row
+                for row in records
+                if declaration["propertyKey"] in record_texts(row)
+            ]
+            expected_getter = declaration["getterRecord"]
+            actual_getter = (
+                {
+                    "start": getter_records[0].get("start"),
+                    "localId": getter_records[0].get("localId"),
+                    "nextId": getter_records[0].get("nextId"),
+                    "code": getter_records[0].get("code"),
+                    "kind": getter_records[0].get("kind"),
+                    "uid": safe_key(getter_records[0].get("uid")),
+                    "membership": membership_by_start.get(
+                        getter_records[0].get("start")
+                    ),
+                    "texts": record_texts(getter_records[0]),
+                }
+                if len(getter_records) == 1
+                else {}
+            )
+            story_records_are_separate_actions = all(
+                any(
+                    story_key in record_texts(record)
+                    and safe_key(
+                        membership_by_start.get(record.get("start"))
+                    ).startswith("actionList#")
+                    for record in records
+                )
+                for story_key in declaration["diagnosticStoryKeys"]
+            )
+            valid = (
+                all(
+                    levelscript_data.count(value.encode("utf-8")) == count
+                    for value, count in byte_counts.items()
+                )
+                and actual_getter == expected_getter
+                and action_map.get("listCounts") == {
+                    "actionList": 18,
+                    "getterList": 5,
+                    "headerList": 3,
+                }
+                and story_records_are_separate_actions
+            )
+        elif valid and validation_kind == "shared_levelscript_condition_scope":
             levelscript_data = source_bytes.get(
                 declaration["levelScriptSourceKey"],
                 b"",
@@ -3197,6 +8235,95 @@ def build_quest_attachment_diagnostic_index(
                     for value, count in byte_counts.items()
                 )
                 and exact_property_string not in levelscript_data
+            )
+        elif valid and validation_kind == "mission_bound_npc_proxy_context":
+            tracking = objective.get("tracking")
+            tracking_row = (
+                tracking[0]
+                if isinstance(tracking, list)
+                and len(tracking) == 1
+                and isinstance(tracking[0], dict)
+                else {}
+            )
+            proxy_id = declaration["npcProxyId"]
+            proxy_rows = (
+                (npc_proxy_payload.get("data") or {}).get(proxy_id)
+                if isinstance(npc_proxy_payload, dict)
+                else None
+            )
+            proxy_dialog_rows = (
+                tuple(
+                    (
+                        safe_key(row.get("missionId")),
+                        safe_key(row.get("dialogId")),
+                    )
+                    for row in proxy_rows
+                    if isinstance(row, dict)
+                )
+                if isinstance(proxy_rows, list)
+                else ()
+            )
+            proxy_definition = (
+                (npc_proxy_table_payload.get("dataTable") or {}).get(
+                    proxy_id
+                )
+                if isinstance(npc_proxy_table_payload, dict)
+                else None
+            )
+            world_entity = (
+                (
+                    world_entity_registry_payload.get(
+                        "npcProxyBriefInfos"
+                    )
+                    or {}
+                ).get(declaration["worldEntitySegmentId"])
+                if isinstance(world_entity_registry_payload, dict)
+                else None
+            )
+            leveldata_data = source_bytes.get(
+                declaration["levelDataSourceKey"],
+                b"",
+            )
+            valid = (
+                safe_key(tracking_row.get("type"))
+                == "NpcProxyTrackingInfo"
+                and safe_key(tracking_row.get("npcProxyId")) == proxy_id
+                and safe_key(tracking_row.get("scene")) == "map02_lv002"
+                and exact_rows(
+                    flow_quest.get("levelDataStoryRefs"),
+                    declaration["levelDataStoryRefs"],
+                )
+                and exact_rows(
+                    flow_quest.get("proxyDialogs"),
+                    ({
+                        "dialogId": "dlg_e10m3_2",
+                        "npcProxyId": proxy_id,
+                        "missionId": declaration["npcProxyMissionId"],
+                        "source": (
+                            "NpcProxyExDataTable.data[*].dialogId"
+                        ),
+                    },),
+                )
+                and proxy_dialog_rows
+                == declaration["npcProxyDialogRows"]
+                and isinstance(proxy_definition, dict)
+                and proxy_definition.get("subDataParentId") == 22800780000
+                and safe_key(proxy_definition.get("proxyId")) == proxy_id
+                and safe_key(proxy_definition.get("levelId"))
+                == "map02_lv002"
+                and proxy_definition.get("position")
+                == declaration["npcProxyPosition"]
+                and proxy_definition.get("envTalkIds")
+                == ["envTalk_e10m3_1"]
+                and isinstance(world_entity, dict)
+                and safe_key(world_entity.get("proxyId")) == proxy_id
+                and world_entity.get("position")
+                == declaration["npcProxyPosition"]
+                and all(
+                    leveldata_data.count(value.encode("utf-8")) == count
+                    for value, count
+                    in declaration["levelDataByteStringCounts"].items()
+                )
             )
         elif valid and validation_kind == "weak_leveldata_context":
             tracking = objective.get("tracking")
@@ -3250,6 +8377,44 @@ def build_quest_attachment_diagnostic_index(
             )
         if not valid:
             validation_failures.append(quest_id)
+            validation_failure_details.append({
+                "validator": "questAttachmentDiagnostic",
+                "gate": validation_kind,
+                "questId": quest_id,
+                "missionId": declaration["mission"],
+                "sourcePath": expected_source_file,
+                "sourceSha256": actual_hashes.get(
+                    declaration.get("sourceKey", "missionRuntime:e10m4d5"),
+                    "",
+                ),
+                "expected": {
+                    "conditionType": declaration["conditionType"],
+                    "prevQuestIds": list(declaration["prevQuestIds"]),
+                    "diagnosticStoryKeys": list(
+                        declaration["diagnosticStoryKeys"]
+                    ),
+                    "validationKind": validation_kind,
+                },
+                "actual": {
+                    "conditionType": safe_key(leaf.get("type")),
+                    "prevQuestIds": _string_list(
+                        quest.get("prevQuestIds")
+                        if isinstance(quest, dict)
+                        else []
+                    ),
+                    "connectionStoryKeys": sorted({
+                        safe_key(row.get("key"))
+                        for row in connections or []
+                        if isinstance(row, dict) and safe_key(row.get("key"))
+                    }, key=natural_key),
+                    "connectionRelations": sorted({
+                        safe_key(row.get("relation"))
+                        for row in connections or []
+                        if isinstance(row, dict)
+                        and safe_key(row.get("relation"))
+                    }),
+                },
+            })
             continue
 
         shared_boundary = declaration["conditionType"] == (
@@ -3288,6 +8453,11 @@ def build_quest_attachment_diagnostic_index(
                 ),
             ),
             "levelDataFile": declaration.get("levelDataFile", ""),
+            "relatedSourceFiles": list(
+                declaration.get("relatedSourceFiles") or ()
+            ),
+            "propertyRecord": declaration.get("getterRecord") or {},
+            "npcProxyId": declaration.get("npcProxyId", ""),
             "nativeMappingId": QUEST_ATTACHMENT_DIAGNOSTIC_MAPPING_ID,
             "graphEffect": "none",
             "attachmentBoundary": declaration.get(
@@ -3323,6 +8493,7 @@ def build_quest_attachment_diagnostic_index(
         }
 
     status["validationFailures"] = validation_failures
+    status["validationFailureDetails"] = validation_failure_details
     status["validatedQuestIds"] = sorted(index, key=natural_key)
     status["status"] = (
         "active"
@@ -3350,6 +8521,19 @@ def _configured_game_assembly_path() -> Path | None:
         return None
     root = Path(game_root)
     return root.parent / "GameAssembly.dll" if root.name == "Endfield_Data" else root / "GameAssembly.dll"
+
+
+def _configured_global_metadata_path() -> Path | None:
+    game_assembly_path = _configured_game_assembly_path()
+    if game_assembly_path is None:
+        return None
+    return (
+        game_assembly_path.parent
+        / "Endfield_Data"
+        / "il2cpp_data"
+        / "Metadata"
+        / "global-metadata.dat"
+    )
 
 
 def _core_isolated_target_missions(
@@ -3414,11 +8598,573 @@ def _audit_sources_match_current_indexes(report: dict[str, Any]) -> bool:
     return True
 
 
+def _offline_text_definition_validation_failure(
+    story_key: str,
+    definition: dict[str, Any],
+    popup: Any,
+    rich: Any,
+    prts_all_item_table: dict[str, Any],
+    prts_record_table: dict[str, Any],
+    prts_reading_table: dict[str, Any] | None = None,
+    *,
+    source_paths: dict[str, Path] | None = None,
+    actual_hashes: dict[str, str] | None = None,
+) -> dict[str, Any] | None:
+    expected_popup_rows = definition.get("readingPopupRows")
+    if not isinstance(expected_popup_rows, dict):
+        popup_row_id = definition["readingPopupRowId"]
+        expected_popup_rows = {
+            popup_row_id: {
+                "bgType": definition["bgType"],
+                "contentId": story_key,
+                "iconType": definition["iconType"],
+                "id": popup_row_id,
+                "overrideRadioId": "",
+                "title": {"id": 0, "text": ""},
+            },
+        }
+    actual_popup_rows = (
+        popup if isinstance(popup, dict) and set(popup) == set(expected_popup_rows)
+        else {next(iter(expected_popup_rows)): popup}
+    )
+    expected_content_ids = tuple(definition["contentTextIds"])
+    actual_content_ids = tuple(
+        item.get("content", {}).get("id")
+        for item in (
+            rich.get("contentList") or []
+            if isinstance(rich, dict)
+            else []
+        )
+        if isinstance(item, dict)
+        and isinstance(item.get("content"), dict)
+    )
+    prts_definition = definition.get("prtsDefinition")
+    prts_definition_valid = prts_definition is None
+    if isinstance(prts_definition, dict):
+        prts_row_id = safe_key(prts_definition.get("rowId"))
+        expected_prts_row = prts_definition.get("row")
+        prts_definition_valid = (
+            bool(prts_row_id)
+            and isinstance(expected_prts_row, dict)
+            and prts_all_item_table.get(prts_row_id) == expected_prts_row
+            and prts_record_table.get(prts_row_id) == expected_prts_row
+            and expected_prts_row.get("id") == prts_row_id
+            and expected_prts_row.get("contentId") == story_key
+        )
+    prts_reading_definition = definition.get("prtsReadingDefinition")
+    prts_reading_valid = prts_reading_definition is None
+    if isinstance(prts_reading_definition, dict):
+        prts_reading_row_id = safe_key(prts_reading_definition.get("rowId"))
+        expected_prts_reading_row = prts_reading_definition.get("row")
+        prts_reading_valid = (
+            bool(prts_reading_row_id)
+            and isinstance(expected_prts_reading_row, dict)
+            and isinstance(prts_reading_table, dict)
+            and prts_reading_table.get(prts_reading_row_id)
+            == expected_prts_reading_row
+        )
+    rich_absent = definition.get("richContentStatus") == "absent"
+    valid = (
+        actual_popup_rows == expected_popup_rows
+        and (
+            rich is None
+            if rich_absent
+            else (
+                isinstance(rich, dict)
+                and set(rich) == {"contentList", "title"}
+                and rich.get("title")
+                == {"id": definition["titleId"], "text": ""}
+                and len(rich.get("contentList") or [])
+                == len(expected_content_ids)
+                and actual_content_ids == expected_content_ids
+                and all(
+                    item == {"content": {"id": text_id, "text": ""}}
+                    for item, text_id in zip(
+                        rich.get("contentList") or [],
+                        expected_content_ids,
+                    )
+                )
+            )
+        )
+        and prts_definition_valid
+        and prts_reading_valid
+    )
+    if valid:
+        return None
+    source_paths = source_paths or {}
+    actual_hashes = actual_hashes or {}
+    return {
+        "validator": "offlineTextDefinition",
+        "gate": "exactReadingPopupAndRichContentRows",
+        "storyKey": story_key,
+        "missionId": definition["missionId"],
+        "sourcePaths": [
+            str(source_paths[name])
+            for name in ("readingPopupTable", "richContentTable")
+            if name in source_paths
+        ],
+        "sourceSha256": {
+            name: actual_hashes.get(name, "")
+            for name in ("readingPopupTable", "richContentTable")
+        },
+        "expected": {
+            "popup": next(iter(expected_popup_rows.values())),
+            "popupRows": expected_popup_rows,
+            "richContentStatus": "absent" if rich_absent else "present",
+            "richTitle": (
+                None if rich_absent
+                else {"id": definition["titleId"], "text": ""}
+            ),
+            "contentTextIds": list(expected_content_ids),
+            "prtsDefinitionValid": True,
+            "prtsReadingDefinitionValid": True,
+        },
+        "actual": {
+            "popup": next(iter(actual_popup_rows.values())),
+            "popupRows": actual_popup_rows,
+            "richContentStatus": "absent" if rich is None else "present",
+            "richTitle": rich.get("title") if isinstance(rich, dict) else None,
+            "contentTextIds": list(actual_content_ids),
+            "prtsDefinitionValid": prts_definition_valid,
+            "prtsReadingDefinitionValid": prts_reading_valid,
+        },
+    }
+
+
+def _mission_related_original_data_validation(
+    mission_id: str,
+    declaration: dict[str, Any],
+    prts_reading_table: Any,
+    num_id_str_table: Any,
+    str_id_num_table: Any,
+    text_table: Any,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Validate a related mission-prefix bundle without creating Story edges."""
+    group_id = declaration["groupId"]
+    group = (
+        prts_reading_table.get(group_id)
+        if isinstance(prts_reading_table, dict) else None
+    )
+    rows = group.get("list") if isinstance(group, dict) else None
+    actual_entries: list[dict[str, Any]] = []
+    if isinstance(rows, dict):
+        for key in sorted(rows, key=natural_key):
+            row = rows.get(key)
+            if not isinstance(row, dict):
+                continue
+            actual_entries.append({
+                "order": row.get("order"),
+                "contentId": safe_key(row.get("contentId")),
+                "prtsId": safe_key(row.get("prtsId")),
+                "uniqId": safe_key(row.get("uniqId")),
+                "nameId": (
+                    row.get("name", {}).get("id")
+                    if isinstance(row.get("name"), dict) else None
+                ),
+                "overrideRadioId": safe_key(row.get("overrideRadioId")),
+                "subtitleId": (
+                    row.get("subtitle", {}).get("id")
+                    if isinstance(row.get("subtitle"), dict) else None
+                ),
+            })
+    expected_entries = [
+        {
+            "order": entry["order"],
+            "contentId": entry["contentId"],
+            "prtsId": entry["prtsId"],
+            "uniqId": entry["uniqId"],
+            "nameId": entry["nameId"],
+            "overrideRadioId": "",
+            "subtitleId": 0,
+        }
+        for entry in declaration["entries"]
+    ]
+    num_mapping = (
+        num_id_str_table.get("prts_terminal_content_id", {}).get("dic")
+        if isinstance(num_id_str_table, dict) else None
+    )
+    str_mapping = (
+        str_id_num_table.get("prts_terminal_content_id", {}).get("dic")
+        if isinstance(str_id_num_table, dict) else None
+    )
+    expected_num_mapping = {
+        str(entry["numericId"]): entry["uniqId"]
+        for entry in declaration["entries"]
+    }
+    actual_num_mapping = {
+        numeric_id: num_mapping.get(numeric_id)
+        for numeric_id in expected_num_mapping
+    } if isinstance(num_mapping, dict) else None
+    expected_str_mapping = {
+        entry["uniqId"]: entry["numericId"]
+        for entry in declaration["entries"]
+    }
+    actual_str_mapping = {
+        uniq_id: str_mapping.get(uniq_id)
+        for uniq_id in expected_str_mapping
+    } if isinstance(str_mapping, dict) else None
+    expected_text_rows = declaration["missionTextRows"]
+    actual_text_rows = {
+        key: (
+            text_table.get(key, {}).get("id")
+            if isinstance(text_table, dict)
+            and isinstance(text_table.get(key), dict)
+            else None
+        )
+        for key in expected_text_rows
+    }
+    if not (
+        actual_entries == expected_entries
+        and actual_num_mapping == expected_num_mapping
+        and actual_str_mapping == expected_str_mapping
+        and actual_text_rows == expected_text_rows
+    ):
+        return None, {
+            "validator": "offlineMissionRelatedOriginalData",
+            "gate": "exactPrtsTerminalBundleAndMissionTextRows",
+            "mission": mission_id,
+            "expected": {
+                "entries": expected_entries,
+                "numIdStr": expected_num_mapping,
+                "strIdNum": expected_str_mapping,
+                "missionTextRows": expected_text_rows,
+            },
+            "actual": {
+                "entries": actual_entries,
+                "numIdStr": actual_num_mapping,
+                "strIdNum": actual_str_mapping,
+                "missionTextRows": actual_text_rows,
+            },
+        }
+    return {
+        "relation": declaration["relation"],
+        "groupId": group_id,
+        "levelId": declaration["levelId"],
+        "entries": [
+            {
+                "order": entry["order"],
+                "contentId": entry["contentId"],
+                "prtsId": entry["prtsId"],
+                "uniqId": entry["uniqId"],
+                "numericId": entry["numericId"],
+            }
+            for entry in declaration["entries"]
+        ],
+        "missionTextRowKeys": list(expected_text_rows),
+        "storyRelationStatus": (
+            "same_nominal_mission_only_no_scene_or_quest_join"
+        ),
+        "orderBoundary": (
+            "PrtsReading order proves only the two terminal entries; it "
+            "does not order or activate any dialog or radio Story file"
+        ),
+    }, None
+
+
+def _dialog_tree_branch_groups(
+    tree_asset: Any,
+) -> list[dict[str, Any]] | None:
+    """Decode exact multi-option DialogTree edges from one TextAsset.
+
+    Connection order is paired with ``_normalOptions`` exactly as the shipped
+    DialogTree runtime/parser does.  This helper deliberately accepts only
+    immediate typed trunk targets: a changed or more complex graph reopens the
+    recovery instead of guessing through editor layout or node-array order.
+    """
+    if not isinstance(tree_asset, dict):
+        return None
+    script = tree_asset.get("m_Script")
+    if not isinstance(script, str) or not script:
+        return None
+    try:
+        payload = json.loads(
+            base64.b64decode(script, validate=True).decode("utf-8-sig")
+        )
+    except (
+        ValueError,
+        binascii.Error,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    ):
+        return None
+    if (
+        not isinstance(payload, dict)
+        or payload.get("type") != "Beyond.Gameplay.DialogTree"
+        or not isinstance(payload.get("nodes"), list)
+        or not isinstance(payload.get("connections"), list)
+    ):
+        return None
+    node_by_id: dict[str, dict[str, Any]] = {}
+    for node in payload["nodes"]:
+        if not isinstance(node, dict):
+            return None
+        if node.get("$id") in (None, ""):
+            if safe_key(node.get("$type")) != (
+                "Beyond.Gameplay.DialogTreeExActorNode"
+            ):
+                return None
+            continue
+        node_id = str(node["$id"])
+        if node_id in node_by_id:
+            return None
+        node_by_id[node_id] = node
+    targets_by_source: dict[str, list[str]] = defaultdict(list)
+    for connection in payload["connections"]:
+        if (
+            not isinstance(connection, dict)
+            or connection.get("$type")
+            != "Beyond.Gameplay.DialogTreeConnection"
+        ):
+            return None
+        source = connection.get("_sourceNode")
+        target = connection.get("_targetNode")
+        source_id = (
+            str(source.get("$ref") or "")
+            if isinstance(source, dict) else ""
+        )
+        target_id = (
+            str(target.get("$ref") or "")
+            if isinstance(target, dict) else ""
+        )
+        if source_id not in node_by_id or target_id not in node_by_id:
+            return None
+        targets_by_source[source_id].append(target_id)
+
+    groups: list[dict[str, Any]] = []
+    for node_id, node in node_by_id.items():
+        option_rows = [
+            row
+            for row in node.get("_normalOptions") or []
+            if isinstance(row, dict) and safe_key(row.get("_optionId"))
+        ]
+        if len(option_rows) <= 1:
+            continue
+        option_ids = [safe_key(row["_optionId"]) for row in option_rows]
+        group_matches = [
+            re.search(r"_(\d+)_\d+$", option_id)
+            for option_id in option_ids
+        ]
+        if any(match is None for match in group_matches):
+            return None
+        group_numbers = {int(match.group(1)) for match in group_matches if match}
+        if len(group_numbers) != 1:
+            return None
+        targets = list(targets_by_source.get(node_id) or [])
+        if len(targets) == 1 and len(option_ids) > 1:
+            targets *= len(option_ids)
+        if len(targets) != len(option_ids):
+            return None
+        target_nodes = [node_by_id[target_id] for target_id in targets]
+        if not all(
+            safe_key(target.get("$type")).endswith(".DialogTreeTrunkNode")
+            for target in target_nodes
+        ):
+            # A multi-option terminal group belongs to the companion terminal
+            # decoder. Accept only exact direct/linear-transition FinishNode
+            # routes here; any mixed or branching shape reopens validation.
+            resolved_terminal_flags: list[bool] = []
+            for target_id in targets:
+                seen: set[str] = set()
+                current_id = target_id
+                while current_id not in seen:
+                    seen.add(current_id)
+                    current = node_by_id[current_id]
+                    current_type = safe_key(current.get("$type"))
+                    if current_type.endswith(".DialogTreeFinishNode"):
+                        resolved_terminal_flags.append(True)
+                        break
+                    if not current_type.endswith(".DialogTransitionNode"):
+                        resolved_terminal_flags.append(False)
+                        break
+                    next_ids = targets_by_source.get(current_id) or []
+                    if len(next_ids) != 1:
+                        resolved_terminal_flags.append(False)
+                        break
+                    current_id = next_ids[0]
+                else:
+                    resolved_terminal_flags.append(False)
+            if all(resolved_terminal_flags):
+                continue
+            return None
+        target_line_ids: list[str] = []
+        for target_id in targets:
+            target = node_by_id[target_id]
+            if not safe_key(target.get("$type")).endswith(
+                ".DialogTreeTrunkNode"
+            ):
+                return None
+            actor_data = target.get("_actorNodeData")
+            trunk_data = (
+                actor_data.get("mfTrunkActionData")
+                if isinstance(actor_data, dict) else None
+            )
+            line_id = (
+                safe_key(trunk_data.get("_trunkId"))
+                if isinstance(trunk_data, dict) else ""
+            )
+            if not line_id:
+                return None
+            target_line_ids.append(line_id)
+        groups.append({
+            "optionGroup": next(iter(group_numbers)),
+            "optionIds": option_ids,
+            "targetLineIds": target_line_ids,
+            "routeKind": (
+                "authored_convergence"
+                if len(set(target_line_ids)) == 1
+                else "authored_split"
+            ),
+        })
+    return sorted(groups, key=lambda row: row["optionGroup"])
+
+
+def _dialog_tree_terminal_option_routes(
+    tree_asset: Any,
+) -> list[dict[str, Any]] | None:
+    """Decode exact multi-option routes that terminate at FinishNodes.
+
+    The shipped connection order is paired with ``_normalOptions``.  An
+    omitted ``finishId`` remains explicitly absent here; this recovery does
+    not guess the runtime default value.
+    """
+    if not isinstance(tree_asset, dict):
+        return None
+    script = tree_asset.get("m_Script")
+    if not isinstance(script, str) or not script:
+        return None
+    try:
+        payload = json.loads(
+            base64.b64decode(script, validate=True).decode("utf-8-sig")
+        )
+    except (
+        ValueError,
+        binascii.Error,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    ):
+        return None
+    if (
+        not isinstance(payload, dict)
+        or payload.get("type") != "Beyond.Gameplay.DialogTree"
+        or not isinstance(payload.get("nodes"), list)
+        or not isinstance(payload.get("connections"), list)
+    ):
+        return None
+    node_by_id: dict[str, dict[str, Any]] = {}
+    for node in payload["nodes"]:
+        if not isinstance(node, dict):
+            return None
+        if node.get("$id") in (None, ""):
+            if safe_key(node.get("$type")) != (
+                "Beyond.Gameplay.DialogTreeExActorNode"
+            ):
+                return None
+            continue
+        node_id = str(node["$id"])
+        if node_id in node_by_id:
+            return None
+        node_by_id[node_id] = node
+    targets_by_source: dict[str, list[str]] = defaultdict(list)
+    for connection in payload["connections"]:
+        if (
+            not isinstance(connection, dict)
+            or connection.get("$type")
+            != "Beyond.Gameplay.DialogTreeConnection"
+        ):
+            return None
+        source = connection.get("_sourceNode")
+        target = connection.get("_targetNode")
+        source_id = (
+            str(source.get("$ref") or "")
+            if isinstance(source, dict) else ""
+        )
+        target_id = (
+            str(target.get("$ref") or "")
+            if isinstance(target, dict) else ""
+        )
+        if source_id not in node_by_id or target_id not in node_by_id:
+            return None
+        targets_by_source[source_id].append(target_id)
+
+    groups: list[dict[str, Any]] = []
+    for node_id, node in node_by_id.items():
+        option_rows = [
+            row
+            for row in node.get("_normalOptions") or []
+            if isinstance(row, dict) and safe_key(row.get("_optionId"))
+        ]
+        if len(option_rows) <= 1:
+            continue
+        option_ids = [safe_key(row["_optionId"]) for row in option_rows]
+        group_matches = [
+            re.search(r"_(\d+)_\d+$", option_id)
+            for option_id in option_ids
+        ]
+        if any(match is None for match in group_matches):
+            return None
+        group_numbers = {int(match.group(1)) for match in group_matches if match}
+        if len(group_numbers) != 1:
+            return None
+        targets = list(targets_by_source.get(node_id) or [])
+        if len(targets) != len(option_ids):
+            return None
+        resolved_target_nodes: list[dict[str, Any]] = []
+        for target_id in targets:
+            seen: set[str] = set()
+            current_id = target_id
+            while current_id not in seen:
+                seen.add(current_id)
+                current = node_by_id[current_id]
+                current_type = safe_key(current.get("$type"))
+                if current_type.endswith(".DialogTreeFinishNode"):
+                    resolved_target_nodes.append(current)
+                    break
+                if not current_type.endswith(".DialogTransitionNode"):
+                    resolved_target_nodes.append(current)
+                    break
+                next_ids = targets_by_source.get(current_id) or []
+                if len(next_ids) != 1:
+                    return None
+                current_id = next_ids[0]
+            else:
+                return None
+        terminal_flags = [
+            safe_key(target.get("$type")).endswith(".DialogTreeFinishNode")
+            for target in resolved_target_nodes
+        ]
+        if not any(terminal_flags):
+            continue
+        if not all(terminal_flags):
+            return None
+        routes: list[dict[str, Any]] = []
+        for option_id, target in zip(
+            option_ids,
+            resolved_target_nodes,
+            strict=True,
+        ):
+            finish_id_serialized = "finishId" in target
+            finish_id = target.get("finishId")
+            if finish_id_serialized and not isinstance(finish_id, int):
+                return None
+            routes.append({
+                "optionId": option_id,
+                "targetKind": "finish",
+                "finishId": finish_id,
+                "finishIdSerialized": finish_id_serialized,
+            })
+        groups.append({
+            "optionGroup": next(iter(group_numbers)),
+            "routes": routes,
+        })
+    return sorted(groups, key=lambda row: row["optionGroup"])
+
+
 def build_offline_exhaustion_index(
     partial_report: dict[str, Any],
     table_root: Path,
     *,
     game_assembly_path: Path | None = None,
+    global_metadata_path: Path | None = None,
     carrier_audit_path: Path | None = None,
     gameobject_audit_path: Path | None = None,
     reverse_pptr_audit_path: Path | None = None,
@@ -3451,16 +9197,24 @@ def build_offline_exhaustion_index(
         / "animestudio_story_reverse_pptr_audit.json"
     )
     game_assembly_path = game_assembly_path or _configured_game_assembly_path()
+    global_metadata_path = (
+        global_metadata_path or _configured_global_metadata_path()
+    )
     source_paths = {
         "radioTable": table_root / "RadioTable.json",
         "audioDialog": table_root / "AudioDialog.json",
         "numIdStrTable": table_root / "NumIdStrTable.json",
+        "strIdNumTable": table_root / "StrIdNumTable.json",
         "textTable": table_root / "TextTable.json",
         "dialogTextTable": table_root / "DialogTextTable.json",
+        "dialogOptionTable": table_root / "DialogOptionTable.json",
+        "dialogSummaryMapTable": table_root / "DialogSummaryMapTable.json",
+        "dialogSummaryTable": table_root / "DialogSummaryTable.json",
         "readingPopupTable": table_root / "ReadingPopUpTable.json",
         "richContentTable": table_root / "RichContentTable.json",
         "prtsAllItemTable": table_root / "PrtsAllItem.json",
         "prtsRecordTable": table_root / "PrtsRecord.json",
+        "prtsReadingTable": table_root / "PrtsReading.json",
         "snsDialogTable": table_root / "SNSDialogTable.json",
         "snsOptionTable": table_root / "SNSDialogOptionTable.json",
         "npcProxyExDataTable": (
@@ -3497,10 +9251,13 @@ def build_offline_exhaustion_index(
             / "timeline_line_orders.json"
         ),
         "gameAssembly": game_assembly_path,
+        "globalMetadata": global_metadata_path,
         "carrierAudit": carrier_audit_path,
         "gameObjectAudit": gameobject_audit_path,
         "reversePptrAudit": reverse_pptr_audit_path,
     }
+    for context in OFFLINE_EXHAUSTION_RADIO_CONTEXTS.values():
+        source_paths[context["sourceKey"]] = ROOT / context["sourceFile"]
     cutscene_definition_root = (
         ROOT
         / "export_full"
@@ -3510,6 +9267,7 @@ def build_offline_exhaustion_index(
         / "json_by_type"
         / "TextAsset"
     )
+    source_paths["dialogTextAssetRoot"] = cutscene_definition_root
     for story_key, definition in (
         OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS.items()
     ):
@@ -3523,6 +9281,68 @@ def build_offline_exhaustion_index(
                 cutscene_definition_root
                 / definition["extraConfigFilename"]
             )
+        tracking = definition.get("missionNpcProxyTracking")
+        if isinstance(tracking, dict):
+            source_paths[
+                f"missionNpcProxyTracking:{story_key}"
+            ] = ROOT / tracking["sourceFile"]
+    for mission_id, context in (
+        OFFLINE_EXHAUSTION_MISSION_BRANCH_CONTEXTS.items()
+    ):
+        source_paths[
+            f"missionBranchContext:{mission_id}"
+        ] = ROOT / context["sourceFile"]
+    for mission_id, context in (
+        OFFLINE_EXHAUSTION_MISSION_LINEAR_CONTEXTS.items()
+    ):
+        source_paths[
+            f"missionLinearContext:{mission_id}"
+        ] = ROOT / context["sourceFile"]
+    for mission_id, context in (
+        OFFLINE_EXHAUSTION_MISSION_TOPOLOGY_CONTEXTS.items()
+    ):
+        source_paths[
+            f"missionTopologyContext:{mission_id}"
+        ] = ROOT / context["sourceFile"]
+        for inventory_index, inventory in enumerate(
+            context.get("levelScriptPlaybackInventories", ()),
+            start=1,
+        ):
+            source_paths[
+                f"missionTopologyPlayback:{mission_id}:{inventory_index}"
+            ] = ROOT / inventory["sourceFile"]
+    for mission_id, context in (
+        OFFLINE_EXHAUSTION_LEVELDATA_DIALOG_BRANCH_CONTEXTS.items()
+    ):
+        source_paths[
+            f"levelDataDialogBranch:{mission_id}"
+        ] = ROOT / context["levelDataFile"]
+        source_paths[
+            f"levelScriptDialogBranch:{mission_id}"
+        ] = ROOT / context["levelScriptFile"]
+    for mission_id, context in (
+        OFFLINE_EXHAUSTION_EMPTY_LEVELSCRIPT_CONTEXTS.items()
+    ):
+        source_paths[
+            f"emptyLevelDataContext:{mission_id}"
+        ] = ROOT / context["levelDataFile"]
+        source_paths[
+            f"emptyLevelScriptContext:{mission_id}"
+        ] = ROOT / context["levelScriptFile"]
+    for story_key, consumer in (
+        OFFLINE_EXHAUSTION_LEVELSCRIPT_TASK_CONSUMERS.items()
+    ):
+        source_paths[
+            f"levelScriptTaskConsumer:{story_key}"
+        ] = ROOT / consumer["sourceFile"]
+    for story_key, definition in (
+        OFFLINE_EXHAUSTION_SNS_DEFINITIONS.items()
+    ):
+        tracking = definition.get("runtimeTracking")
+        if isinstance(tracking, dict):
+            source_paths[
+                f"snsRuntimeTracking:{story_key}"
+            ] = ROOT / tracking["sourceFile"]
     for story_key, definition in (
         OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS.items()
     ):
@@ -3537,8 +9357,14 @@ def build_offline_exhaustion_index(
         "radioTable": OFFLINE_EXHAUSTION_RADIO_TABLE_SHA256,
         "audioDialog": OFFLINE_EXHAUSTION_AUDIO_DIALOG_SHA256,
         "numIdStrTable": OFFLINE_EXHAUSTION_NUM_ID_STR_TABLE_SHA256,
+        "strIdNumTable": OFFLINE_EXHAUSTION_STR_ID_NUM_TABLE_SHA256,
         "textTable": OFFLINE_EXHAUSTION_TEXT_TABLE_SHA256,
         "dialogTextTable": OFFLINE_EXHAUSTION_DIALOG_TEXT_TABLE_SHA256,
+        "dialogOptionTable": OFFLINE_EXHAUSTION_DIALOG_OPTION_TABLE_SHA256,
+        "dialogSummaryMapTable":
+            OFFLINE_EXHAUSTION_DIALOG_SUMMARY_MAP_TABLE_SHA256,
+        "dialogSummaryTable":
+            OFFLINE_EXHAUSTION_DIALOG_SUMMARY_TABLE_SHA256,
         "readingPopupTable":
             OFFLINE_EXHAUSTION_READING_POPUP_TABLE_SHA256,
         "richContentTable":
@@ -3547,6 +9373,8 @@ def build_offline_exhaustion_index(
             OFFLINE_EXHAUSTION_PRTS_ALL_ITEM_TABLE_SHA256,
         "prtsRecordTable":
             OFFLINE_EXHAUSTION_PRTS_RECORD_TABLE_SHA256,
+        "prtsReadingTable":
+            OFFLINE_EXHAUSTION_PRTS_READING_TABLE_SHA256,
         "snsDialogTable": OFFLINE_EXHAUSTION_SNS_DIALOG_TABLE_SHA256,
         "snsOptionTable": OFFLINE_EXHAUSTION_SNS_OPTION_TABLE_SHA256,
         "npcProxyExDataTable":
@@ -3556,7 +9384,10 @@ def build_offline_exhaustion_index(
         "timelineLineOrders":
             OFFLINE_EXHAUSTION_TIMELINE_LINE_ORDERS_SHA256,
         "gameAssembly": OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
+        "globalMetadata": OFFLINE_EXHAUSTION_METADATA_SHA256,
     }
+    for context in OFFLINE_EXHAUSTION_RADIO_CONTEXTS.values():
+        expected_hashes[context["sourceKey"]] = context["sha256"]
     for story_key, definition in (
         OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS.items()
     ):
@@ -3567,6 +9398,68 @@ def build_offline_exhaustion_index(
             expected_hashes[
                 f"dialogExtraConfig:{story_key}"
             ] = definition["extraConfigSha256"]
+        tracking = definition.get("missionNpcProxyTracking")
+        if isinstance(tracking, dict):
+            expected_hashes[
+                f"missionNpcProxyTracking:{story_key}"
+            ] = tracking["sourceSha256"]
+    for mission_id, context in (
+        OFFLINE_EXHAUSTION_MISSION_BRANCH_CONTEXTS.items()
+    ):
+        expected_hashes[
+            f"missionBranchContext:{mission_id}"
+        ] = context["sourceSha256"]
+    for mission_id, context in (
+        OFFLINE_EXHAUSTION_MISSION_LINEAR_CONTEXTS.items()
+    ):
+        expected_hashes[
+            f"missionLinearContext:{mission_id}"
+        ] = context["sourceSha256"]
+    for mission_id, context in (
+        OFFLINE_EXHAUSTION_MISSION_TOPOLOGY_CONTEXTS.items()
+    ):
+        expected_hashes[
+            f"missionTopologyContext:{mission_id}"
+        ] = context["sourceSha256"]
+        for inventory_index, inventory in enumerate(
+            context.get("levelScriptPlaybackInventories", ()),
+            start=1,
+        ):
+            expected_hashes[
+                f"missionTopologyPlayback:{mission_id}:{inventory_index}"
+            ] = inventory["sourceSha256"]
+    for mission_id, context in (
+        OFFLINE_EXHAUSTION_LEVELDATA_DIALOG_BRANCH_CONTEXTS.items()
+    ):
+        expected_hashes[
+            f"levelDataDialogBranch:{mission_id}"
+        ] = context["levelDataSha256"]
+        expected_hashes[
+            f"levelScriptDialogBranch:{mission_id}"
+        ] = context["levelScriptSha256"]
+    for mission_id, context in (
+        OFFLINE_EXHAUSTION_EMPTY_LEVELSCRIPT_CONTEXTS.items()
+    ):
+        expected_hashes[
+            f"emptyLevelDataContext:{mission_id}"
+        ] = context["levelDataSha256"]
+        expected_hashes[
+            f"emptyLevelScriptContext:{mission_id}"
+        ] = context["levelScriptSha256"]
+    for story_key, consumer in (
+        OFFLINE_EXHAUSTION_LEVELSCRIPT_TASK_CONSUMERS.items()
+    ):
+        expected_hashes[
+            f"levelScriptTaskConsumer:{story_key}"
+        ] = consumer["sourceSha256"]
+    for story_key, definition in (
+        OFFLINE_EXHAUSTION_SNS_DEFINITIONS.items()
+    ):
+        tracking = definition.get("runtimeTracking")
+        if isinstance(tracking, dict):
+            expected_hashes[
+                f"snsRuntimeTracking:{story_key}"
+            ] = tracking["sourceSha256"]
     for story_key, definition in (
         OFFLINE_EXHAUSTION_CUTSCENE_DEFINITIONS.items()
     ):
@@ -3598,6 +9491,1421 @@ def build_offline_exhaustion_index(
     }
     if mismatches:
         return {}, status
+
+    mission_related_original_data_by_mission: dict[
+        str, dict[str, Any]
+    ] = {}
+    prts_reading_table = read_json(source_paths["prtsReadingTable"], {})
+    num_id_str_table = read_json(source_paths["numIdStrTable"], {})
+    str_id_num_table = read_json(source_paths["strIdNumTable"], {})
+    text_table = read_json(source_paths["textTable"], {})
+    for mission_id, declaration in (
+        OFFLINE_EXHAUSTION_MISSION_RELATED_ORIGINAL_DATA.items()
+    ):
+        related_original_data, failure = (
+            _mission_related_original_data_validation(
+                mission_id,
+                declaration,
+                prts_reading_table,
+                num_id_str_table,
+                str_id_num_table,
+                text_table,
+            )
+        )
+        if failure:
+            failure["sourcePaths"] = [
+                str(source_paths[name])
+                for name in declaration["sourceKeys"]
+            ]
+            failure["sourceSha256"] = {
+                name: actual_hashes.get(name, "")
+                for name in declaration["sourceKeys"]
+            }
+            status.update({
+                "status": (
+                    "inactive_mission_related_original_data_validation_failed"
+                ),
+                "validatorDiagnostics": [failure],
+            })
+            return {}, status
+        related_original_data["sourceFiles"] = [
+            str(source_paths[name].relative_to(ROOT)).replace("\\", "/")
+            for name in declaration["sourceKeys"]
+        ]
+        mission_related_original_data_by_mission[
+            mission_id
+        ] = related_original_data
+
+    try:
+        game_assembly_bytes = source_paths["gameAssembly"].read_bytes()
+    except OSError as exc:
+        status.update({
+            "status": "inactive_game_assembly_token_validation_failed",
+            "validatorDiagnostics": [{
+                "validator": "offlineGameAssemblyTokenAbsence",
+                "gate": "readCurrentGameAssembly",
+                "sourcePaths": [str(source_paths["gameAssembly"])],
+                "sourceSha256": {
+                    "gameAssembly": actual_hashes.get("gameAssembly", ""),
+                },
+                "expected": {"readable": True},
+                "actual": {
+                    "readable": False,
+                    "error": f"{type(exc).__name__}: {exc}",
+                },
+            }],
+        })
+        return {}, status
+    binary_token_counts = {
+        story_key: {
+            "token": token,
+            "utf8": game_assembly_bytes.count(token.encode("utf-8")),
+            "utf16le": game_assembly_bytes.count(token.encode("utf-16le")),
+        }
+        for story_key, token
+        in OFFLINE_EXHAUSTION_ABSENT_BINARY_TOKENS.items()
+    }
+    present_binary_tokens = {
+        story_key: counts
+        for story_key, counts in binary_token_counts.items()
+        if counts["utf8"] or counts["utf16le"]
+    }
+    if present_binary_tokens:
+        status.update({
+            "status": "inactive_game_assembly_token_validation_failed",
+            "validatorDiagnostics": [{
+                "validator": "offlineGameAssemblyTokenAbsence",
+                "gate": "exactRootTokensAbsent",
+                "sourcePaths": [str(source_paths["gameAssembly"])],
+                "sourceSha256": {
+                    "gameAssembly": actual_hashes.get("gameAssembly", ""),
+                },
+                "expected": {
+                    "utf8Count": 0,
+                    "utf16leCount": 0,
+                },
+                "actual": present_binary_tokens,
+            }],
+        })
+        return {}, status
+    status["gameAssemblyAbsentRootTokens"] = binary_token_counts
+
+    try:
+        global_metadata_bytes = source_paths["globalMetadata"].read_bytes()
+    except (AttributeError, OSError) as exc:
+        status.update({
+            "status": "inactive_global_metadata_token_validation_failed",
+            "validatorDiagnostics": [{
+                "validator": "offlineGlobalMetadataTokenAbsence",
+                "gate": "readCurrentGlobalMetadata",
+                "sourcePaths": [str(source_paths["globalMetadata"])],
+                "sourceSha256": {
+                    "globalMetadata": actual_hashes.get(
+                        "globalMetadata", ""
+                    ),
+                },
+                "expected": {"readable": True},
+                "actual": {
+                    "readable": False,
+                    "error": f"{type(exc).__name__}: {exc}",
+                },
+            }],
+        })
+        return {}, status
+    metadata_token_counts = {
+        story_key: {
+            "token": token,
+            "utf8": global_metadata_bytes.count(token.encode("utf-8")),
+            "utf16le": global_metadata_bytes.count(
+                token.encode("utf-16le")
+            ),
+        }
+        for story_key, token
+        in OFFLINE_EXHAUSTION_ABSENT_BINARY_TOKENS.items()
+    }
+    present_metadata_tokens = {
+        story_key: counts
+        for story_key, counts in metadata_token_counts.items()
+        if counts["utf8"] or counts["utf16le"]
+    }
+    if present_metadata_tokens:
+        status.update({
+            "status": "inactive_global_metadata_token_validation_failed",
+            "validatorDiagnostics": [{
+                "validator": "offlineGlobalMetadataTokenAbsence",
+                "gate": "exactRootTokensAbsent",
+                "sourcePaths": [str(source_paths["globalMetadata"])],
+                "sourceSha256": {
+                    "globalMetadata": actual_hashes.get(
+                        "globalMetadata", ""
+                    ),
+                },
+                "expected": {"utf8Count": 0, "utf16leCount": 0},
+                "actual": present_metadata_tokens,
+            }],
+        })
+        return {}, status
+    status["globalMetadataAbsentRootTokens"] = metadata_token_counts
+
+    mission_branch_context_by_mission: dict[str, dict[str, Any]] = {}
+    for mission_id, declaration in (
+        OFFLINE_EXHAUSTION_MISSION_BRANCH_CONTEXTS.items()
+    ):
+        source_name = f"missionBranchContext:{mission_id}"
+        payload = read_json(source_paths[source_name], {})
+        quest_dic = payload.get("questDic") if isinstance(payload, dict) else None
+        fork = declaration["fork"]
+        merge = declaration["merge"]
+        shared_tracking = declaration["sharedTracking"]
+        fork_quest_id = fork["questId"]
+        successor_quest_ids = list(fork["successorQuestIds"])
+        merge_quest_id = merge["questId"]
+        predecessor_quest_ids = list(merge["predecessorQuestIds"])
+        tracking_quest_ids = list(shared_tracking["questIds"])
+        actual: dict[str, Any] = {
+            "forkQuestPrev": None,
+            "successorQuestPrev": {},
+            "mergeQuestPrev": None,
+            "sharedTracking": {},
+        }
+        valid = isinstance(quest_dic, dict)
+        if valid:
+            fork_quest = quest_dic.get(fork_quest_id)
+            actual["forkQuestPrev"] = (
+                fork_quest.get("prevQuestIdList")
+                if isinstance(fork_quest, dict) else None
+            )
+            valid = actual["forkQuestPrev"] == []
+            for quest_id in successor_quest_ids:
+                quest = quest_dic.get(quest_id)
+                prev = (
+                    quest.get("prevQuestIdList")
+                    if isinstance(quest, dict) else None
+                )
+                actual["successorQuestPrev"][quest_id] = prev
+                valid = valid and prev == [fork_quest_id]
+            merge_quest = quest_dic.get(merge_quest_id)
+            actual["mergeQuestPrev"] = (
+                merge_quest.get("prevQuestIdList")
+                if isinstance(merge_quest, dict) else None
+            )
+            valid = valid and actual["mergeQuestPrev"] == predecessor_quest_ids
+            expected_tracking = {
+                "$type": (
+                    "Beyond.Gameplay.NpcProxyTrackingInfo, "
+                    "Gameplay.Beyond"
+                ),
+                "useFilterCondition": False,
+                "sceneId": shared_tracking["levelId"],
+                "guidingArea": 0.0,
+                "npcProxyId": shared_tracking["proxyId"],
+            }
+            for quest_id in tracking_quest_ids:
+                quest = quest_dic.get(quest_id)
+                tracking: Any = None
+                try:
+                    tracking = quest["objectiveList"][0][
+                        "trackingInfoList"
+                    ][0]
+                except (KeyError, IndexError, TypeError):
+                    valid = False
+                actual["sharedTracking"][quest_id] = tracking
+                valid = valid and tracking == expected_tracking
+        if not valid:
+            status.update({
+                "status": "inactive_mission_branch_context_validation_failed",
+                "validatorDiagnostics": [{
+                    "validator": "offlineMissionBranchContext",
+                    "gate": "exactForkMergeAndSharedNpcTracking",
+                    "mission": mission_id,
+                    "sourcePaths": [str(source_paths[source_name])],
+                    "sourceSha256": {
+                        source_name: actual_hashes.get(source_name, ""),
+                    },
+                    "expected": {
+                        "fork": fork,
+                        "merge": merge,
+                        "sharedTracking": shared_tracking,
+                    },
+                    "actual": actual,
+                }],
+            })
+            return {}, status
+        mission_branch_context_by_mission[mission_id] = {
+            "sourceFile": declaration["sourceFile"],
+            "fork": {
+                "questId": fork_quest_id,
+                "successorQuestIds": successor_quest_ids,
+            },
+            "merge": {
+                "predecessorQuestIds": predecessor_quest_ids,
+                "questId": merge_quest_id,
+            },
+            "sharedNpcTracking": {
+                "questIds": tracking_quest_ids,
+                "proxyId": shared_tracking["proxyId"],
+                "levelId": shared_tracking["levelId"],
+                "relation": "mission_quest_npc_proxy_tracking_context",
+                "playback": False,
+            },
+            "storyArmAssignmentStatus": "unresolved",
+            "storyArmAssignments": [],
+            "serverSuccessorSelectionStatus": "not_serialized_in_client_asset",
+            "orderEvidence": False,
+            "graphEffect": "none",
+        }
+
+    mission_linear_context_by_mission: dict[str, dict[str, Any]] = {}
+    for mission_id, declaration in (
+        OFFLINE_EXHAUSTION_MISSION_LINEAR_CONTEXTS.items()
+    ):
+        source_name = f"missionLinearContext:{mission_id}"
+        payload = read_json(source_paths[source_name], {})
+        quest_dic = payload.get("questDic") if isinstance(payload, dict) else None
+        sequence = list(declaration["questSequence"])
+        actual_prev = {
+            quest_id: (
+                quest_dic.get(quest_id, {}).get("prevQuestIdList")
+                if isinstance(quest_dic, dict)
+                and isinstance(quest_dic.get(quest_id), dict)
+                else None
+            )
+            for quest_id in sequence
+        }
+        expected_prev = {
+            quest_id: ([] if index == 0 else [sequence[index - 1]])
+            for index, quest_id in enumerate(sequence)
+        }
+        valid = (
+            isinstance(quest_dic, dict)
+            and set(quest_dic) == set(sequence)
+            and actual_prev == expected_prev
+        )
+        if not valid:
+            status.update({
+                "status": "inactive_mission_linear_context_validation_failed",
+                "validatorDiagnostics": [{
+                    "validator": "offlineMissionLinearContext",
+                    "gate": "exactSinglePredecessorQuestSequence",
+                    "mission": mission_id,
+                    "sourcePaths": [str(source_paths[source_name])],
+                    "sourceSha256": {
+                        source_name: actual_hashes.get(source_name, ""),
+                    },
+                    "expected": {
+                        "questIds": sequence,
+                        "prevQuestIdListByQuest": expected_prev,
+                    },
+                    "actual": {
+                        "questIds": sorted(quest_dic) if isinstance(quest_dic, dict) else None,
+                        "prevQuestIdListByQuest": actual_prev,
+                    },
+                }],
+            })
+            return {}, status
+        mission_linear_context_by_mission[mission_id] = {
+            "sourceFile": declaration["sourceFile"],
+            "questSequence": sequence,
+            "forkQuestIds": [],
+            "mergeQuestIds": [],
+            "relation": "authored_single_predecessor_quest_sequence",
+            "storyPlacementStatus": "unresolved",
+            "storyAssignments": [],
+            "orderEvidence": False,
+            "graphEffect": "none",
+        }
+
+    mission_topology_context_by_mission: dict[str, dict[str, Any]] = {}
+    for mission_id, declaration in (
+        OFFLINE_EXHAUSTION_MISSION_TOPOLOGY_CONTEXTS.items()
+    ):
+        source_name = f"missionTopologyContext:{mission_id}"
+        payload = read_json(source_paths[source_name], {})
+        quest_dic = payload.get("questDic") if isinstance(payload, dict) else None
+        expected_prev = {
+            quest_id: list(predecessors)
+            for quest_id, predecessors
+            in declaration["prevQuestIdsByQuest"].items()
+        }
+        actual_prev = {
+            quest_id: (
+                quest_dic.get(quest_id, {}).get("prevQuestIdList")
+                if isinstance(quest_dic, dict)
+                and isinstance(quest_dic.get(quest_id), dict)
+                else None
+            )
+            for quest_id in expected_prev
+        }
+        expected_main_path = list(declaration["mainPathQuestIds"])
+        actual_main_path = (
+            payload.get("mainPathQuests") if isinstance(payload, dict) else None
+        )
+        expected_failed_conditions = declaration.get(
+            "failedConditionsByQuest"
+        )
+        actual_failed_conditions = (
+            {
+                quest_id: (
+                    quest_dic.get(quest_id, {}).get("failedCondition")
+                    if isinstance(quest_dic.get(quest_id), dict) else None
+                )
+                for quest_id in expected_failed_conditions
+            }
+            if isinstance(expected_failed_conditions, dict)
+            and isinstance(quest_dic, dict)
+            else None
+        )
+        expected_quest_state_dependencies = {
+            quest_id: list(dependencies)
+            for quest_id, dependencies in declaration.get(
+                "questStateDependenciesByQuest", {}
+            ).items()
+        }
+        expected_objective_conjunctions = {
+            quest_id: [
+                {
+                    **conjunction,
+                    "subConditions": list(
+                        conjunction.get("subConditions") or []
+                    ),
+                }
+                for conjunction in conjunctions
+            ]
+            for quest_id, conjunctions in declaration.get(
+                "objectiveConjunctionsByQuest", {}
+            ).items()
+        }
+        expected_levelscript_playback_inventories = [
+            {
+                **inventory,
+                "playbackRecords": list(inventory["playbackRecords"]),
+                "absentStoryKeys": list(inventory["absentStoryKeys"]),
+            }
+            for inventory in declaration.get(
+                "levelScriptPlaybackInventories", ()
+            )
+        ]
+        actual_quest_state_dependencies: dict[
+            str, list[dict[str, Any]] | None
+        ] = {}
+        actual_objective_conjunctions: dict[
+            str, list[dict[str, Any]] | None
+        ] = {}
+        actual_levelscript_playback_inventories: list[dict[str, Any]] = []
+
+        def iter_quest_state_conditions(
+            condition: Any,
+            index_path: tuple[int, ...] = (),
+        ) -> Iterator[tuple[tuple[int, ...], dict[str, Any]]]:
+            if not isinstance(condition, dict):
+                return
+            if (
+                safe_key(condition.get("$type")).split(",", 1)[0]
+                == "Beyond.Gameplay.CheckQuestState"
+            ):
+                yield index_path, condition
+            for sub_index, sub_condition in enumerate(
+                condition.get("subConditions") or []
+            ):
+                yield from iter_quest_state_conditions(
+                    sub_condition,
+                    (*index_path, sub_index),
+                )
+
+        for quest_id in expected_quest_state_dependencies:
+            quest = (
+                quest_dic.get(quest_id)
+                if isinstance(quest_dic, dict) else None
+            )
+            objectives = (
+                quest.get("objectiveList")
+                if isinstance(quest, dict) else None
+            )
+            if not isinstance(objectives, list):
+                actual_quest_state_dependencies[quest_id] = None
+                continue
+            dependencies: list[dict[str, Any]] = []
+            for objective_index, objective in enumerate(objectives, 1):
+                condition = (
+                    objective.get("condition")
+                    if isinstance(objective, dict) else None
+                )
+                for condition_path, dependency in (
+                    iter_quest_state_conditions(condition)
+                ):
+                    dependencies.append({
+                        "objectiveIndex": objective_index,
+                        **(
+                            {"conditionIndexPath": condition_path}
+                            if condition_path else {}
+                        ),
+                        "targetQuestId": safe_key(
+                            (dependency.get("_questId") or {}).get(
+                                "constValue"
+                            )
+                        ),
+                        "comparer": (
+                            dependency.get("_comparer") or {}
+                        ).get("constValue"),
+                        "targetQuestState": (
+                            dependency.get("_targetQuestState") or {}
+                        ).get("constValue"),
+                        "scopeMask": dependency.get("scopeMask"),
+                        "useGraphScope": dependency.get("useGraphScope"),
+                    })
+            actual_quest_state_dependencies[quest_id] = dependencies
+
+        for quest_id, expected_conjunctions in (
+            expected_objective_conjunctions.items()
+        ):
+            quest = (
+                quest_dic.get(quest_id)
+                if isinstance(quest_dic, dict) else None
+            )
+            objectives = (
+                quest.get("objectiveList")
+                if isinstance(quest, dict) else None
+            )
+            if not isinstance(objectives, list):
+                actual_objective_conjunctions[quest_id] = None
+                continue
+            conjunctions: list[dict[str, Any]] = []
+            for expected_conjunction in expected_conjunctions:
+                objective_index = expected_conjunction["objectiveIndex"]
+                objective = (
+                    objectives[objective_index - 1]
+                    if isinstance(objective_index, int)
+                    and 0 < objective_index <= len(objectives)
+                    and isinstance(objectives[objective_index - 1], dict)
+                    else None
+                )
+                condition = (
+                    objective.get("condition")
+                    if isinstance(objective, dict) else None
+                )
+                if not isinstance(condition, dict):
+                    conjunctions.append({
+                        "objectiveIndex": objective_index,
+                        "conditionType": "",
+                        "conditionEvalString": "",
+                        "subConditions": [],
+                    })
+                    continue
+                sub_conditions = []
+                for condition_index, sub_condition in enumerate(
+                    condition.get("subConditions") or []
+                ):
+                    if not isinstance(sub_condition, dict):
+                        continue
+                    condition_type = safe_key(
+                        sub_condition.get("$type")
+                    ).split(",", 1)[0]
+                    level_id_field = (
+                        "levelId"
+                        if condition_type
+                        == "Beyond.Gameplay.CheckLevelScriptStage"
+                        else "_mapId"
+                    )
+                    script_id_field = (
+                        "scriptId"
+                        if condition_type
+                        == "Beyond.Gameplay.CheckLevelScriptStage"
+                        else "_scriptId"
+                    )
+                    map_id = safe_key(
+                        (sub_condition.get(level_id_field) or {}).get(
+                            "constValue"
+                        )
+                    )
+                    raw_script_id = (
+                        sub_condition.get(script_id_field) or {}
+                    ).get("constValue")
+                    script_id = (
+                        raw_script_id.get("scriptId")
+                        if isinstance(raw_script_id, dict)
+                        else raw_script_id
+                    )
+                    sub_condition_row = {
+                        "conditionIndex": condition_index,
+                        "conditionType": condition_type,
+                        "mapId": map_id,
+                        "scriptId": script_id,
+                        "sourceFile": (
+                            "export_full/structured/StreamingAssets/Data/Json/"
+                            f"LevelScriptData/{map_id}/{script_id}.json"
+                        ),
+                    }
+                    if (
+                        condition_type
+                        == "Beyond.Gameplay.CheckLevelScriptStage"
+                    ):
+                        sub_condition_row.update({
+                            "stageValue": (
+                                sub_condition.get("_progressToCompare") or {}
+                            ).get("constValue"),
+                            "compareOperator": (
+                                sub_condition.get("_compareOperator") or {}
+                            ).get("constValue"),
+                        })
+                    else:
+                        sub_condition_row.update({
+                            "key": safe_key(
+                                (sub_condition.get("_key") or {}).get(
+                                    "constValue"
+                                )
+                            ),
+                            "value": (
+                                sub_condition.get("_value") or {}
+                            ).get("constValue"),
+                            "comparer": (
+                                sub_condition.get("_comparer") or {}
+                            ).get("constValue"),
+                        })
+                    sub_conditions.append(sub_condition_row)
+                conjunctions.append({
+                    "objectiveIndex": objective_index,
+                    "conditionType": safe_key(
+                        condition.get("$type")
+                    ).split(",", 1)[0],
+                    "conditionEvalString": safe_key(
+                        condition.get("conditionEvalString")
+                    ),
+                    "subConditions": sub_conditions,
+                })
+            actual_objective_conjunctions[quest_id] = conjunctions
+
+        for inventory_index, expected_inventory in enumerate(
+            expected_levelscript_playback_inventories,
+            start=1,
+        ):
+            playback_source_name = (
+                f"missionTopologyPlayback:{mission_id}:{inventory_index}"
+            )
+            playback_data = source_paths[playback_source_name].read_bytes()
+            playback_records = extract_levelscript_uid_records(
+                playback_data
+            )
+            _action_map, playback_membership = (
+                levelscript_action_map_membership(
+                    playback_data,
+                    playback_records,
+                )
+            )
+            actual_playback_records = []
+            for record_index, record in enumerate(playback_records):
+                action = {
+                    (0x0363, 0x0D): "PlayRadio",
+                    (0x0364, 0x0D): "PlayRadioAndWait",
+                }.get(levelscript_record_semantic_key(record))
+                if not action:
+                    continue
+                role = safe_key(
+                    playback_membership.get(record.get("start"))
+                )
+                decoded_payload = decode_levelscript_record_payload(
+                    playback_data,
+                    record,
+                    next_start=(
+                        playback_records[record_index + 1].get("start")
+                        if record_index + 1 < len(playback_records)
+                        else None
+                    ),
+                    action_map_role=role,
+                )
+                story_values = [
+                    safe_key(field.get("value"))
+                    for field in decoded_payload.get("taggedFields") or []
+                    if (
+                        isinstance(field, dict)
+                        and field.get("type") == "string"
+                        and safe_key(field.get("value"))
+                    )
+                ]
+                actual_playback_records.append({
+                    "action": action,
+                    "storyKey": (
+                        story_values[0] if len(story_values) == 1 else ""
+                    ),
+                    "independentActionRoot": (
+                        role.startswith("actionList#")
+                        and role.endswith(" root")
+                    ),
+                })
+            actual_playback_records.sort(
+                key=lambda row: natural_key(row["storyKey"])
+            )
+            actual_story_keys = {
+                row["storyKey"] for row in actual_playback_records
+            }
+            actual_levelscript_playback_inventories.append({
+                "sourceFile": expected_inventory["sourceFile"],
+                "sourceSha256": expected_inventory["sourceSha256"],
+                "playbackRecords": actual_playback_records,
+                "absentStoryKeys": [
+                    story_key
+                    for story_key in expected_inventory["absentStoryKeys"]
+                    if story_key not in actual_story_keys
+                ],
+            })
+        if (
+            actual_levelscript_playback_inventories
+            != expected_levelscript_playback_inventories
+        ):
+            playback_source_names = [
+                f"missionTopologyPlayback:{mission_id}:{inventory_index}"
+                for inventory_index in range(
+                    1,
+                    len(expected_levelscript_playback_inventories) + 1,
+                )
+            ]
+            status.update({
+                "status": (
+                    "inactive_levelscript_playback_inventory_validation_failed"
+                ),
+                "validatorDiagnostics": [{
+                    "validator": "offlineLevelScriptPlaybackInventory",
+                    "gate": (
+                        "exactTypedPlaybackRecordsIndependentRootsAndAbsentTargets"
+                    ),
+                    "mission": mission_id,
+                    "sourcePaths": [
+                        str(source_paths[name])
+                        for name in playback_source_names
+                    ],
+                    "sourceSha256": {
+                        name: actual_hashes.get(name, "")
+                        for name in playback_source_names
+                    },
+                    "expected": expected_levelscript_playback_inventories,
+                    "actual": actual_levelscript_playback_inventories,
+                }],
+            })
+            return {}, status
+        valid = (
+            isinstance(quest_dic, dict)
+            and set(quest_dic) == set(expected_prev)
+            and actual_prev == expected_prev
+            and actual_main_path == expected_main_path
+            and (
+                expected_failed_conditions is None
+                or actual_failed_conditions == expected_failed_conditions
+            )
+            and actual_quest_state_dependencies
+            == expected_quest_state_dependencies
+            and actual_objective_conjunctions
+            == expected_objective_conjunctions
+        )
+        if not valid:
+            status.update({
+                "status": "inactive_mission_topology_context_validation_failed",
+                "validatorDiagnostics": [{
+                    "validator": "offlineMissionTopologyContext",
+                    "gate": (
+                        "exactQuestPredecessorGraphMainPathStateDependencies"
+                        "AndObjectiveConjunctions"
+                    ),
+                    "mission": mission_id,
+                    "sourcePaths": [str(source_paths[source_name])],
+                    "sourceSha256": {
+                        source_name: actual_hashes.get(source_name, ""),
+                    },
+                    "expected": {
+                        "questIds": sorted(expected_prev, key=natural_key),
+                        "prevQuestIdListByQuest": expected_prev,
+                        "mainPathQuests": expected_main_path,
+                        "failedConditionsByQuest": expected_failed_conditions,
+                        "questStateDependenciesByQuest": (
+                            expected_quest_state_dependencies
+                        ),
+                        "objectiveConjunctionsByQuest": (
+                            expected_objective_conjunctions
+                        ),
+                    },
+                    "actual": {
+                        "questIds": sorted(quest_dic, key=natural_key)
+                        if isinstance(quest_dic, dict) else None,
+                        "prevQuestIdListByQuest": actual_prev,
+                        "mainPathQuests": actual_main_path,
+                        "failedConditionsByQuest": actual_failed_conditions,
+                        "questStateDependenciesByQuest": (
+                            actual_quest_state_dependencies
+                        ),
+                        "objectiveConjunctionsByQuest": (
+                            actual_objective_conjunctions
+                        ),
+                    },
+                }],
+            })
+            return {}, status
+        successors = {quest_id: [] for quest_id in expected_prev}
+        for quest_id, predecessors in expected_prev.items():
+            for predecessor in predecessors:
+                successors[predecessor].append(quest_id)
+        forks = [
+            {"questId": quest_id, "successorQuestIds": quest_successors}
+            for quest_id, quest_successors in successors.items()
+            if len(quest_successors) > 1
+        ]
+        merges = [
+            {"predecessorQuestIds": predecessors, "questId": quest_id}
+            for quest_id, predecessors in expected_prev.items()
+            if len(predecessors) > 1
+        ]
+        parallel_rendezvous = [
+            {
+                "forkQuestId": fork["questId"],
+                "parallelQuestIds": fork["successorQuestIds"],
+                "mergeQuestId": merge["questId"],
+                "joinSemantics": "all_predecessor_quests_required",
+                "playerChoice": False,
+            }
+            for fork in forks
+            for merge in merges
+            if set(fork["successorQuestIds"])
+            == set(merge["predecessorQuestIds"])
+        ]
+        mission_topology_context_by_mission[mission_id] = {
+            "sourceFile": declaration["sourceFile"],
+            "entryQuestIds": [
+                quest_id for quest_id, predecessors in expected_prev.items()
+                if not predecessors
+            ],
+            "mainPathQuestIds": expected_main_path,
+            "forks": forks,
+            "merges": merges,
+            "parallelRendezvous": parallel_rendezvous,
+            "terminalQuestIds": [
+                quest_id for quest_id, quest_successors in successors.items()
+                if not quest_successors
+            ],
+            "failedQuestStateGuards": [
+                {
+                    "questId": quest_id,
+                    "conditionType": "CheckQuestState",
+                    "targetQuestId": safe_key(
+                        (condition.get("_questId") or {}).get("constValue")
+                    ),
+                    "comparer": (condition.get("_comparer") or {}).get(
+                        "constValue"
+                    ),
+                    "targetQuestState": (
+                        condition.get("_targetQuestState") or {}
+                    ).get("constValue"),
+                    "relation": "authored_quest_failure_guard",
+                    "branchExclusivityStatus": (
+                        "not_proven_by_one_way_failure_guard"
+                    ),
+                    "storyOrderEvidence": False,
+                }
+                for quest_id, condition in (
+                    expected_failed_conditions or {}
+                ).items()
+                if (
+                    isinstance(condition, dict)
+                    and safe_key(condition.get("$type")).split(",", 1)[0]
+                    == "Beyond.Gameplay.CheckQuestState"
+                )
+            ],
+            "failedDialogGuards": [
+                {
+                    "questId": quest_id,
+                    "conditionType": "CombineCondition",
+                    "conditionEvalString": condition.get(
+                        "conditionEvalString"
+                    ),
+                    "dialogFinishes": [
+                        {
+                            "dialogId": safe_key(
+                                (leaf.get("_dialogId") or {}).get(
+                                    "constValue"
+                                )
+                            ),
+                            "finishId": (
+                                leaf.get("_finishId") or {}
+                            ).get("constValue"),
+                        }
+                        for leaf in condition.get("subConditions") or []
+                    ],
+                    "relation": "authored_quest_failure_guard",
+                    "branchExclusivityStatus": (
+                        "not_proven_by_failure_guards_alone"
+                    ),
+                    "storyOrderEvidence": False,
+                }
+                for quest_id, condition in (
+                    expected_failed_conditions or {}
+                ).items()
+                if (
+                    isinstance(condition, dict)
+                    and safe_key(condition.get("$type")).split(",", 1)[0]
+                    == "Beyond.Gameplay.CombineCondition"
+                    and condition.get("subConditions")
+                    and all(
+                        isinstance(leaf, dict)
+                        and safe_key(leaf.get("$type")).split(",", 1)[0]
+                        == "Beyond.Gameplay.CheckTalkOptionFinish"
+                        for leaf in condition.get("subConditions") or []
+                    )
+                )
+            ],
+            "questStateDependencies": [
+                {"questId": quest_id, **dependency}
+                for quest_id, dependencies
+                in expected_quest_state_dependencies.items()
+                for dependency in dependencies
+            ],
+            "objectiveConjunctions": [
+                {
+                    "questId": quest_id,
+                    **conjunction,
+                    "completionSemantics": (
+                        "all_serialized_conditions_required"
+                    ),
+                    "executionOrderStatus": "not_serialized",
+                    "storyOrderEvidence": False,
+                    "relatedSourceFiles": sorted({
+                        declaration["sourceFile"],
+                        *(
+                            sub_condition["sourceFile"]
+                            for sub_condition in conjunction[
+                                "subConditions"
+                            ]
+                        ),
+                    }),
+                }
+                for quest_id, conjunctions
+                in expected_objective_conjunctions.items()
+                for conjunction in conjunctions
+            ],
+            "levelScriptPlaybackInventories": [
+                {
+                    **inventory,
+                    "serializedListOrderStatus": "not_execution_order",
+                    "ownershipBoundary": (
+                        "exact playback ownership only for listed Story keys; "
+                        "absent targets remain definition-only"
+                    ),
+                    "storyOrderEvidence": False,
+                }
+                for inventory in expected_levelscript_playback_inventories
+            ],
+            "relation": "authored_mission_quest_predecessor_topology",
+            "storyPlacementStatus": "unresolved",
+            "storyAssignments": [],
+            "flowIndexExclusivityStatus": "not_evidence",
+            "serverSuccessorSelectionStatus": "not_serialized_in_client_asset",
+            "orderEvidence": False,
+            "graphEffect": "none",
+        }
+
+    empty_levelscript_context_by_mission: dict[str, dict[str, Any]] = {}
+    for mission_id, declaration in (
+        OFFLINE_EXHAUSTION_EMPTY_LEVELSCRIPT_CONTEXTS.items()
+    ):
+        leveldata_name = f"emptyLevelDataContext:{mission_id}"
+        levelscript_name = f"emptyLevelScriptContext:{mission_id}"
+        leveldata_path = source_paths[leveldata_name]
+        levelscript_path = source_paths[levelscript_name]
+        script_id = int(declaration["scriptId"])
+        leveldata_bytes = leveldata_path.read_bytes()
+        levelscript_bytes = levelscript_path.read_bytes()
+        brief_dictionary = parse_leveldata_levelscript_brief_dictionary(
+            leveldata_bytes,
+            {script_id},
+        )
+        brief = brief_dictionary.get(script_id) or {}
+        records = extract_levelscript_uid_records(levelscript_bytes)
+        action_map, _membership = levelscript_action_map_membership(
+            levelscript_bytes,
+            records,
+        )
+        task_maps = decode_levelscript_task_conditions(
+            levelscript_bytes,
+            script_id,
+        )
+        actual_brief = {
+            "scriptId": safe_key(brief.get("scriptId")),
+            "dataPathHash": safe_key(brief.get("dataPathHash")),
+            "levelScriptType": brief.get("levelScriptType"),
+            "maxStage": brief.get("maxStage"),
+            "parentLevelScriptId": safe_key(
+                brief.get("parentLevelScriptId")
+            ),
+            "propertyCount": brief.get("propertyCount"),
+            "propertyMapCount": brief.get("propertyMapCount"),
+            "refWorldEntityCount": brief.get("refWorldEntityCount"),
+            "dictionaryEntryCount": brief.get("dictionaryEntryCount"),
+        }
+        expected_brief = {
+            "scriptId": declaration["scriptId"],
+            "dataPathHash": declaration["dataPathHash"],
+            "levelScriptType": declaration["levelScriptType"],
+            "maxStage": declaration["maxStage"],
+            "parentLevelScriptId": "0",
+            "propertyCount": 0,
+            "propertyMapCount": 0,
+            "refWorldEntityCount": 0,
+            "dictionaryEntryCount": 1,
+        }
+        valid = (
+            len(brief_dictionary) == 1
+            and actual_brief == expected_brief
+            and not records
+            and action_map.get("status") == "present"
+            and action_map.get("recordCount") == 0
+            and not task_maps
+        )
+        if not valid:
+            status.update({
+                "status": "inactive_empty_levelscript_context_validation_failed",
+                "validatorDiagnostics": [{
+                    "validator": "offlineEmptyLevelScriptContext",
+                    "gate": "exactSinglePropertylessHostAndNoActionRecords",
+                    "mission": mission_id,
+                    "sourcePaths": [str(leveldata_path), str(levelscript_path)],
+                    "sourceSha256": {
+                        leveldata_name: actual_hashes.get(leveldata_name, ""),
+                        levelscript_name: actual_hashes.get(levelscript_name, ""),
+                    },
+                    "expected": {
+                        "brief": expected_brief,
+                        "uidRecordCount": 0,
+                        "actionMapStatus": "present",
+                        "actionListRecordCount": 0,
+                        "taskMapCount": 0,
+                    },
+                    "actual": {
+                        "brief": actual_brief,
+                        "dictionaryScriptIds": sorted(
+                            (str(value) for value in brief_dictionary),
+                            key=int,
+                        ),
+                        "uidRecordCount": len(records),
+                        "actionMapStatus": action_map.get("status"),
+                        "actionListRecordCount": action_map.get("recordCount"),
+                        "taskMapCount": len(task_maps),
+                    },
+                }],
+            })
+            return {}, status
+        empty_levelscript_context_by_mission[mission_id] = {
+            "missionId": mission_id,
+            "levelId": declaration["levelId"],
+            "scriptId": declaration["scriptId"],
+            "levelDataFile": declaration["levelDataFile"],
+            "levelScriptFile": declaration["levelScriptFile"],
+            "dictionaryScriptIds": [declaration["scriptId"]],
+            "dataPathHash": declaration["dataPathHash"],
+            "propertyCount": 0,
+            "propertyMapCount": 0,
+            "refWorldEntityCount": 0,
+            "uidRecordCount": 0,
+            "actionListRecordCount": 0,
+            "taskMapCount": 0,
+            "storyReferences": [],
+            "playbackActions": [],
+            "orderEvidence": False,
+            "graphEffect": "none",
+            "evidenceBoundary": (
+                "the mission-named LevelData contains one exact LevelScript "
+                "BriefData entry, but that entry has no properties or world-"
+                "entity references and its LevelScript has no decoded UID "
+                "action/header/getter records or task maps; the host therefore "
+                "cannot activate or order the nominal Story definitions"
+            ),
+        }
+
+    leveldata_dialog_branch_by_story: dict[str, dict[str, Any]] = {}
+    for mission_id, declaration in (
+        OFFLINE_EXHAUSTION_LEVELDATA_DIALOG_BRANCH_CONTEXTS.items()
+    ):
+        leveldata_name = f"levelDataDialogBranch:{mission_id}"
+        levelscript_name = f"levelScriptDialogBranch:{mission_id}"
+        leveldata_path = source_paths[leveldata_name]
+        levelscript_path = source_paths[levelscript_name]
+        levelscript_ids = {
+            int(path.stem)
+            for path in levelscript_path.parent.glob("*.json")
+            if path.stem.isdigit()
+        }
+        leveldata_bytes = leveldata_path.read_bytes()
+        levelscript_bytes = levelscript_path.read_bytes()
+        brief_dictionary = parse_leveldata_levelscript_brief_dictionary(
+            leveldata_bytes,
+            levelscript_ids,
+        )
+        brief = brief_dictionary.get(int(declaration["scriptId"])) or {}
+        property_values: dict[str, str] = {}
+        for property_row in brief.get("properties") or []:
+            if not isinstance(property_row, dict):
+                continue
+            name = safe_key(property_row.get("name"))
+            value = property_row.get("value")
+            atoms = value.get("atoms") if isinstance(value, dict) else None
+            if (
+                name in declaration["propertyDialogs"]
+                and value.get("valueType") == 7
+                and value.get("atomCount") == 1
+                and isinstance(atoms, list)
+                and len(atoms) == 1
+                and isinstance(atoms[0], dict)
+            ):
+                property_values[name] = safe_key(atoms[0].get("text"))
+
+        records = extract_levelscript_uid_records(levelscript_bytes)
+        _action_map, membership = levelscript_action_map_membership(
+            levelscript_bytes,
+            records,
+        )
+        ordered_records = sorted(
+            records,
+            key=lambda row: int(row.get("start") or 0),
+        )
+        next_starts = {
+            int(record.get("start") or 0): (
+                int(ordered_records[index + 1].get("start") or len(levelscript_bytes))
+                if index + 1 < len(ordered_records)
+                else len(levelscript_bytes)
+            )
+            for index, record in enumerate(ordered_records)
+        }
+        records_by_local: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for record in records:
+            local_id = record.get("localId")
+            if isinstance(local_id, int):
+                records_by_local[local_id].append(record)
+
+        def unique_record(local_id: int) -> dict[str, Any] | None:
+            rows = records_by_local.get(local_id) or []
+            return rows[0] if len(rows) == 1 else None
+
+        def decoded(local_id: int) -> dict[str, Any]:
+            record = unique_record(local_id)
+            if not record:
+                return {}
+            start = int(record.get("start") or 0)
+            return decode_levelscript_record_payload(
+                levelscript_bytes,
+                record,
+                next_start=next_starts.get(start),
+                action_map_role=safe_key(membership.get(start)),
+            )
+
+        listener = declaration["startDialogListener"]
+        listener_record = unique_record(listener["headerLocalId"])
+        listener_decoded = decoded(listener["headerLocalId"])
+        listener_start = int(listener_record.get("start") or 0) if listener_record else -1
+        listener_end = next_starts.get(listener_start, listener_start)
+        listener_payload = (
+            levelscript_bytes[listener_start:listener_end]
+            if listener_start >= 0 and listener_end > listener_start else b""
+        )
+
+        result_switch = declaration["resultSwitch"]
+        event_decoded = decoded(result_switch["eventHeaderLocalId"])
+        switch_decoded = decoded(result_switch["switchLocalId"])
+        switch_getter = decoded(result_switch["getterLocalId"])
+        branch_outputs: list[dict[str, Any]] = []
+        branch_valid = True
+        for branch in result_switch["cases"]:
+            action_record = unique_record(branch["actionLocalId"])
+            action_decoded = decoded(branch["actionLocalId"])
+            getter_decoded = decoded(branch["getterLocalId"])
+            paths = (
+                _levelscript_native_control_paths_to_record(
+                    levelscript_bytes,
+                    records,
+                    membership,
+                    action_record,
+                )
+                if action_record else []
+            )
+            exact_paths = [
+                row for row in paths
+                if row.get("status") == "exact_serialized_control_path"
+                and row.get("headerLocalId") == result_switch["eventHeaderLocalId"]
+                and row.get("pathLocalIds") == list(branch["pathLocalIds"])
+            ]
+            property_path = (
+                (getter_decoded.get("getterString") or {}).get("path")
+            )
+            target_dialog = declaration["propertyDialogs"].get(property_path, "")
+            current_valid = (
+                len(exact_paths) == 1
+                and (action_decoded.get("startDialogAction") or {}).get(
+                    "dialogGetterLocalId"
+                ) == branch["getterLocalId"]
+                and property_path == branch["propertyPath"]
+                and target_dialog
+            )
+            branch_valid = branch_valid and bool(current_valid)
+            branch_outputs.append({
+                "resultValue": branch["value"],
+                "entryLocalId": branch["entryLocalId"],
+                "actionLocalId": branch["actionLocalId"],
+                "getterLocalId": branch["getterLocalId"],
+                "propertyPath": property_path,
+                "dialogId": target_dialog,
+                "controlPath": exact_paths[0] if len(exact_paths) == 1 else None,
+            })
+
+        expected_script_ids = list(declaration["dictionaryScriptIds"])
+        actual_script_ids = sorted(
+            (str(value) for value in brief_dictionary),
+            key=int,
+        )
+        switch_cases = switch_decoded.get("switchCases") or []
+        event_detail = event_decoded.get("nativeEventDetail") or {}
+        valid = (
+            len(brief_dictionary) == declaration["dictionaryEntryCount"]
+            and actual_script_ids == expected_script_ids
+            and brief.get("propertyCount") == declaration["propertyCount"]
+            and brief.get("propertyMapCount") == declaration["propertyCount"]
+            and property_values == declaration["propertyDialogs"]
+            and listener_decoded.get("label") == listener["eventName"]
+            and (listener_decoded.get("actionHeader") or {}).get("nextId")
+            == listener["nextLocalId"]
+            and listener["propertyPath"].encode("utf-8") in listener_payload
+            and (
+                f"${listener['headerLocalId']}@_dialogId".encode("utf-8")
+                in listener_payload
+            )
+            and event_decoded.get("label") == result_switch["eventName"]
+            and event_detail.get("eventKey") == result_switch["eventKey"]
+            and event_detail.get("serverExchange") is False
+            and event_detail.get("serializedMissionOrQuestId") is False
+            and (event_decoded.get("actionHeader") or {}).get("nextId")
+            == result_switch["switchLocalId"]
+            and switch_decoded.get("switchValueGetterLocalId")
+            == result_switch["getterLocalId"]
+            and (switch_getter.get("getterInt") or {}).get("value") == {
+                "value": 0,
+                "idRef": -1,
+                "paramSource": 300,
+                "path": result_switch["getterPath"],
+            }
+            and switch_cases == [
+                {"value": value, "actionLocalId": action}
+                for value, action in result_switch["switchCases"]
+            ]
+            and branch_valid
+        )
+        if not valid:
+            status.update({
+                "status": "inactive_leveldata_dialog_branch_validation_failed",
+                "validatorDiagnostics": [{
+                    "validator": "offlineLevelDataDialogBranchContext",
+                    "gate": "exactPropertiesSwitchAndStartDialogControlPaths",
+                    "mission": mission_id,
+                    "sourcePaths": [str(leveldata_path), str(levelscript_path)],
+                    "sourceSha256": {
+                        leveldata_name: actual_hashes.get(leveldata_name, ""),
+                        levelscript_name: actual_hashes.get(levelscript_name, ""),
+                    },
+                    "expected": {
+                        "dictionaryScriptIds": expected_script_ids,
+                        "propertyDialogs": declaration["propertyDialogs"],
+                        "listener": listener,
+                        "resultSwitch": result_switch,
+                    },
+                    "actual": {
+                        "dictionaryScriptIds": actual_script_ids,
+                        "propertyCount": brief.get("propertyCount"),
+                        "propertyMapCount": brief.get("propertyMapCount"),
+                        "propertyDialogs": property_values,
+                        "listener": listener_decoded,
+                        "event": event_decoded,
+                        "switch": switch_decoded,
+                        "switchGetter": switch_getter,
+                        "branches": branch_outputs,
+                    },
+                }],
+            })
+            return {}, status
+
+        shared_context = {
+            "missionId": mission_id,
+            "levelId": declaration["levelId"],
+            "scriptId": declaration["scriptId"],
+            "levelDataFile": declaration["levelDataFile"],
+            "levelScriptFile": declaration["levelScriptFile"],
+            "dictionaryScriptIds": actual_script_ids,
+            "propertyDialogs": property_values,
+            "startDialogListener": {
+                **listener,
+                "dialogId": property_values[listener["propertyPath"]],
+                "playback": False,
+                "relation": "exact_dialog_enter_listener_filter",
+            },
+            "resultProperty": result_switch["getterPath"],
+            "resultBranches": branch_outputs,
+            "runtimeMissionAssetStatus": "absent_for_nominal_mission",
+            "serverExchange": False,
+            "orderEvidence": True,
+            "branchExclusivity": "switch_int_case_exclusive",
+            "graphEffect": "none",
+            "evidenceBoundary": (
+                "the LevelData property names and exact LevelScript control paths "
+                "prove start-dialog configuration plus mutually exclusive result "
+                "branches; they do not serialize a MissionRuntime quest owner or "
+                "the producer that raises the local custom event"
+            ),
+        }
+        for property_path, story_key in property_values.items():
+            leveldata_dialog_branch_by_story[story_key] = {
+                **shared_context,
+                "storyPropertyPath": property_path,
+            }
+
+    levelscript_task_consumer_by_story: dict[str, dict[str, Any]] = {}
+    for story_key, declaration in (
+        OFFLINE_EXHAUSTION_LEVELSCRIPT_TASK_CONSUMERS.items()
+    ):
+        source_name = f"levelScriptTaskConsumer:{story_key}"
+        data = source_paths[source_name].read_bytes()
+        decoded = decode_levelscript_task_conditions(
+            data,
+            declaration["scriptId"],
+        )
+        task_map = decoded[0] if len(decoded) == 1 else None
+        task = (
+            (task_map.get("tasks") or [None])[0]
+            if isinstance(task_map, dict)
+            else None
+        )
+        condition_row = (
+            (task.get("conditions") or [None])[0]
+            if isinstance(task, dict)
+            else None
+        )
+        condition = (
+            condition_row.get("condition")
+            if isinstance(condition_row, dict)
+            else None
+        )
+        actual = {
+            "decodedMapCount": len(decoded),
+            "startType": task_map.get("startType") if isinstance(task_map, dict) else None,
+            "taskMapBoundaryStatus": (
+                task_map.get("taskMapBoundaryStatus")
+                if isinstance(task_map, dict) else None
+            ),
+            "taskKey": task.get("taskKey") if isinstance(task, dict) else None,
+            "taskCount": len(task_map.get("tasks") or []) if isinstance(task_map, dict) else 0,
+            "conditionKey": (
+                condition_row.get("conditionKey")
+                if isinstance(condition_row, dict) else None
+            ),
+            "conditionCount": len(task.get("conditions") or []) if isinstance(task, dict) else 0,
+            "condition": condition,
+        }
+        valid = (
+            len(decoded) == 1
+            and actual["startType"] == "Manual"
+            and actual["taskMapBoundaryStatus"] == "exact_trigger_volumes_offset"
+            and actual["taskCount"] == 1
+            and actual["taskKey"] == declaration["taskKey"]
+            and actual["conditionCount"] == 1
+            and actual["conditionKey"] == declaration["conditionKey"]
+            and isinstance(condition, dict)
+            and condition.get("type") == "CheckTalkOptionFinish"
+            and condition.get("conditionUnionTag") == "0x009f"
+            and condition.get("serializedMemberCount") == 6
+            and condition.get("scopeMask") == 1
+            and condition.get("uniqueId") == declaration["conditionKey"]
+            and condition.get("useCurrentScope") is False
+            and condition.get("useGraphScope") is True
+            and condition.get("dialogId") == {
+                "value": story_key,
+                "idRef": -1,
+                "paramSource": 0,
+                "path": None,
+            }
+            and condition.get("finishId") == {
+                "value": -1,
+                "idRef": -1,
+                "paramSource": 0,
+                "path": None,
+            }
+        )
+        post_dialog_action = declaration.get("postDialogAction")
+        post_dialog_output = None
+        if valid and isinstance(post_dialog_action, dict):
+            records = extract_levelscript_uid_records(data)
+            action_record = next(
+                (row for row in records if row.get("localId") == post_dialog_action["actionLocalId"]),
+                None,
+            )
+            header_record = next(
+                (row for row in records if row.get("localId") == post_dialog_action["headerLocalId"]),
+                None,
+            )
+            header_payload = (
+                decode_levelscript_record_payload(data, header_record)
+                if isinstance(header_record, dict) else {}
+            )
+            valid = (
+                isinstance(action_record, dict)
+                and levelscript_record_semantic_key(action_record)
+                == (
+                    int(post_dialog_action["actionUnionTag"], 16),
+                    post_dialog_action["serializedMemberCount"],
+                )
+                and action_record.get("nextId") == -1
+                and isinstance(header_record, dict)
+                and header_payload.get("label") == post_dialog_action["eventName"]
+                and header_payload.get("actionHeader", {}).get("nextId")
+                == post_dialog_action["actionLocalId"]
+                and any(
+                    field.get("type") == "string"
+                    and field.get("value") == story_key
+                    for field in header_payload.get("taggedFields") or []
+                )
+            )
+            actual["postDialogAction"] = {
+                "actionRecord": action_record,
+                "headerRecord": header_record,
+                "headerPayload": header_payload,
+            }
+            post_dialog_output = {
+                **post_dialog_action,
+                "relation": "dialog_exit_event_to_local_presentation_action",
+                "playback": False,
+                "orderEvidence": False,
+            }
+        if not valid:
+            status.update({
+                "status": "inactive_levelscript_task_consumer_validation_failed",
+                "validatorDiagnostics": [{
+                    "validator": "offlineLevelScriptTaskConsumer",
+                    "gate": "exactLevelScriptTalkCompletionConsumer",
+                    "mission": "gm01m12",
+                    "storyKey": story_key,
+                    "sourcePaths": [str(source_paths[source_name])],
+                    "sourceSha256": {
+                        source_name: actual_hashes.get(source_name, ""),
+                    },
+                    "expected": declaration,
+                    "actual": actual,
+                }],
+            })
+            return {}, status
+        levelscript_task_consumer_by_story[story_key] = {
+            "sourceFile": declaration["sourceFile"],
+            "levelId": declaration["levelId"],
+            "scriptId": declaration["scriptId"],
+            "startType": "Manual",
+            "taskKey": declaration["taskKey"],
+            "conditionKey": declaration["conditionKey"],
+            "conditionType": "CheckTalkOptionFinish",
+            "dialogId": story_key,
+            "finishId": -1,
+            "relation": "levelscript_task_depends_on_dialog_completion",
+            "playback": False,
+            "missionOwnership": False,
+            "orderEvidence": False,
+            "postDialogAction": post_dialog_output,
+        }
 
     carrier_audit = read_json(carrier_audit_path, {})
     core_targets = _core_isolated_target_missions(partial_report)
@@ -3707,14 +11015,16 @@ def build_offline_exhaustion_index(
     ] = {}
     missing_audio_ids_by_story: dict[str, set[str]] = {}
     radio_rows_valid = isinstance(radio_table, dict)
+    radio_validation_failures: list[dict[str, Any]] = []
     for story_key in all_radio_keys:
         row = radio_table.get(story_key) if isinstance(radio_table, dict) else None
-        if (
-            not isinstance(row, dict)
-            or set(row) != OFFLINE_EXHAUSTION_RADIO_ROW_FIELDS
-            or not isinstance(row.get("radioSingleDataList"), list)
-            or not row["radioSingleDataList"]
-        ):
+        failure = _offline_radio_definition_validation_failure(
+            story_key,
+            row,
+            audio_stems,
+        )
+        if failure is not None:
+            radio_validation_failures.append(failure)
             radio_rows_valid = False
             break
         row_audio_ids: set[str] = set()
@@ -3811,94 +11121,154 @@ def build_offline_exhaustion_index(
             }
         ) <= audio_stems
     ):
-        status["status"] = "inactive_radio_definition_validation_failed"
+        if not radio_validation_failures:
+            radio_validation_failures.append({
+                "validator": "offlineRadioDefinition",
+                "gate": "declaredAudioExceptionCoverage",
+                "sourcePaths": ["RadioTable", "AudioDialog"],
+                "expected": {
+                    "variantKeysSubsetOfDeclaredRadios": True,
+                    "missingAudioKeysSubsetOfDeclaredRadios": True,
+                    "allUnexceptedAudioIdsPresent": True,
+                },
+                "actual": {
+                    "unknownVariantKeys": sorted(
+                        set(OFFLINE_EXHAUSTION_RADIO_AUDIO_VARIANTS)
+                        - all_radio_keys
+                    ),
+                    "unknownMissingAudioKeys": sorted(
+                        set(OFFLINE_EXHAUSTION_RADIO_MISSING_AUDIO_IDS)
+                        - all_radio_keys
+                    ),
+                },
+            })
+        status.update({
+            "status": "inactive_radio_definition_validation_failed",
+            "validatorDiagnostics": radio_validation_failures,
+        })
+        return {}, status
+
+    radio_contexts_valid = (
+        set(OFFLINE_EXHAUSTION_RADIO_CONTEXTS) <= all_radio_keys
+    )
+    radio_context_validation_failures: list[dict[str, Any]] = []
+    if not radio_contexts_valid:
+        radio_context_validation_failures.append({
+            "validator": "offlineRadioContext",
+            "gate": "declaredContextIsKnownRadio",
+            "expected": sorted(OFFLINE_EXHAUSTION_RADIO_CONTEXTS),
+            "actualMissing": sorted(
+                set(OFFLINE_EXHAUSTION_RADIO_CONTEXTS) - all_radio_keys,
+                key=natural_key,
+            ),
+        })
+    for story_key, context in OFFLINE_EXHAUSTION_RADIO_CONTEXTS.items():
+        source = source_paths.get(context["sourceKey"])
+        source_bytes = source.read_bytes() if isinstance(source, Path) else b""
+        actual_counts = {
+            value: source_bytes.count(value.encode("utf-8"))
+            for value in context["byteStringCounts"]
+        }
+        if not source_bytes or actual_counts != context["byteStringCounts"]:
+            radio_contexts_valid = False
+            radio_context_validation_failures.append({
+                "validator": "offlineRadioContext",
+                "gate": "exactLevelDataByteStringCounts",
+                "storyKey": story_key,
+                "questId": context["questId"],
+                "sourcePath": context["sourceFile"],
+                "sourceSha256": actual_hashes.get(context["sourceKey"], ""),
+                "expected": context["byteStringCounts"],
+                "actual": actual_counts,
+            })
+    if not radio_contexts_valid:
+        status["status"] = "inactive_radio_context_validation_failed"
+        status["validationFailures"] = radio_context_validation_failures
         return {}, status
 
     reading_popup_table = read_json(source_paths["readingPopupTable"], {})
     rich_content_table = read_json(source_paths["richContentTable"], {})
     prts_all_item_table = read_json(source_paths["prtsAllItemTable"], {})
     prts_record_table = read_json(source_paths["prtsRecordTable"], {})
+    prts_reading_table = read_json(source_paths["prtsReadingTable"], {})
     text_definitions_valid = (
         isinstance(reading_popup_table, dict)
         and isinstance(rich_content_table, dict)
         and isinstance(prts_all_item_table, dict)
         and isinstance(prts_record_table, dict)
+        and isinstance(prts_reading_table, dict)
     )
+    text_definition_validation_failures: list[dict[str, Any]] = []
+    if not text_definitions_valid:
+        text_definition_validation_failures.append({
+            "validator": "offlineTextDefinition",
+            "gate": "sourceTablesAreObjects",
+            "sourcePaths": [
+                str(source_paths[name])
+                for name in (
+                    "readingPopupTable",
+                    "richContentTable",
+                    "prtsAllItemTable",
+                    "prtsRecordTable",
+                    "prtsReadingTable",
+                )
+            ],
+            "expected": {
+                name: "object"
+                for name in (
+                    "readingPopupTable",
+                    "richContentTable",
+                    "prtsAllItemTable",
+                    "prtsRecordTable",
+                    "prtsReadingTable",
+                )
+            },
+            "actual": {
+                "readingPopupTable": type(reading_popup_table).__name__,
+                "richContentTable": type(rich_content_table).__name__,
+                "prtsAllItemTable": type(prts_all_item_table).__name__,
+                "prtsRecordTable": type(prts_record_table).__name__,
+                "prtsReadingTable": type(prts_reading_table).__name__,
+            },
+        })
     for story_key, definition in (
         OFFLINE_EXHAUSTION_TEXT_DEFINITIONS.items()
     ):
         if not text_definitions_valid:
             break
-        popup_row_id = definition["readingPopupRowId"]
-        popup = reading_popup_table.get(popup_row_id)
-        rich = rich_content_table.get(story_key)
-        expected_content_ids = tuple(definition["contentTextIds"])
-        actual_content_ids = tuple(
-            item.get("content", {}).get("id")
-            for item in (
-                rich.get("contentList") or []
-                if isinstance(rich, dict)
-                else []
-            )
-            if isinstance(item, dict)
-            and isinstance(item.get("content"), dict)
-        )
-        prts_definition = definition.get("prtsDefinition")
-        prts_definition_valid = prts_definition is None
-        if isinstance(prts_definition, dict):
-            prts_row_id = safe_key(prts_definition.get("rowId"))
-            expected_prts_row = prts_definition.get("row")
-            prts_definition_valid = (
-                bool(prts_row_id)
-                and isinstance(expected_prts_row, dict)
-                and prts_all_item_table.get(prts_row_id)
-                == expected_prts_row
-                and prts_record_table.get(prts_row_id)
-                == expected_prts_row
-                and expected_prts_row.get("id") == prts_row_id
-                and expected_prts_row.get("contentId") == story_key
-            )
-        if (
-            not isinstance(popup, dict)
-            or set(popup) != {
-                "bgType",
-                "contentId",
-                "iconType",
-                "id",
-                "overrideRadioId",
-                "title",
+        popup = (
+            {
+                row_id: reading_popup_table.get(row_id)
+                for row_id in definition["readingPopupRows"]
             }
-            or popup.get("id") != popup_row_id
-            or popup.get("contentId") != story_key
-            or popup.get("bgType") != definition["bgType"]
-            or popup.get("iconType") != definition["iconType"]
-            or popup.get("overrideRadioId") != ""
-            or popup.get("title") != {"id": 0, "text": ""}
-            or not isinstance(rich, dict)
-            or set(rich) != {"contentList", "title"}
-            or rich.get("title")
-            != {"id": definition["titleId"], "text": ""}
-            or len(rich.get("contentList") or [])
-            != len(expected_content_ids)
-            or actual_content_ids != expected_content_ids
-            or any(
-                item != {"content": {"id": text_id, "text": ""}}
-                for item, text_id in zip(
-                    rich.get("contentList") or [],
-                    expected_content_ids,
-                )
-            )
-            or not prts_definition_valid
-        ):
+            if isinstance(definition.get("readingPopupRows"), dict)
+            else reading_popup_table.get(definition["readingPopupRowId"])
+        )
+        rich = rich_content_table.get(story_key)
+        failure = _offline_text_definition_validation_failure(
+            story_key,
+            definition,
+            popup,
+            rich,
+            prts_all_item_table,
+            prts_record_table,
+            prts_reading_table,
+            source_paths=source_paths,
+            actual_hashes=actual_hashes,
+        )
+        if failure is not None:
             text_definitions_valid = False
+            text_definition_validation_failures.append(failure)
             break
     if not text_definitions_valid:
         status["status"] = "inactive_text_definition_validation_failed"
+        status["validationFailures"] = text_definition_validation_failures
         return {}, status
 
     sns_dialog_table = read_json(source_paths["snsDialogTable"], {})
     sns_option_table = read_json(source_paths["snsOptionTable"], {})
     sns_validation_by_key: dict[str, dict[str, Any]] = {}
+    sns_validation_failures: list[dict[str, Any]] = []
     sns_definitions_valid = (
         isinstance(sns_dialog_table, dict)
         and isinstance(sns_option_table, dict)
@@ -3955,6 +11325,14 @@ def build_offline_exhaustion_index(
         content_params_by_content_id = (
             definition.get("contentParamsByContentId") or {}
         )
+        link_mission_ids_by_content_id = (
+            definition.get("linkMissionIdsByContentId") or {}
+        )
+        expected_related_mission_id = safe_key(
+            definition.get("relatedMissionId")
+        )
+        pre_content_ids = definition.get("preContentIds") or {}
+        next_content_ids = definition.get("nextContentIds") or {}
         expected_option_ids = set(definition["optionNextContentIds"])
         terminal_content_id = max(
             (
@@ -3974,9 +11352,11 @@ def build_offline_exhaustion_index(
             or set(dialog) != sns_dialog_fields
             or dialog.get("dialogId") != story_key
             or dialog.get("chatId") != definition["chatId"]
-            or dialog.get("dialogType") != 1
+            or dialog.get("dialogType")
+            != int(definition.get("dialogType", 1))
             or dialog.get("noticeType") != 1
-            or dialog.get("relatedMissionId") != ""
+            or dialog.get("relatedMissionId")
+            != expected_related_mission_id
             or dialog.get("topicId") != ""
             or dialog.get("skipToFirstOption") is not False
             or not isinstance(content, dict)
@@ -3984,6 +11364,48 @@ def build_offline_exhaustion_index(
             or actual_prefixed_option_ids != expected_option_ids
         ):
             sns_definitions_valid = False
+            sns_validation_failures.append({
+                "validator": "offline_sns_definition",
+                "gate": "dialog_shape_and_exact_key_sets",
+                "storyKey": story_key,
+                "sourcePaths": [
+                    str(source_paths["snsDialogTable"]),
+                    str(source_paths["snsOptionTable"]),
+                ],
+                "expected": {
+                    "dialogFields": sorted(sns_dialog_fields),
+                    "contentIds": sorted(expected_content_keys),
+                    "optionIds": sorted(expected_option_ids, key=natural_key),
+                    "chatId": definition["chatId"],
+                    "dialogType": int(definition.get("dialogType", 1)),
+                    "relatedMissionId": expected_related_mission_id,
+                },
+                "actual": {
+                    "dialogType": type(dialog).__name__,
+                    "dialogFields": (
+                        sorted(dialog) if isinstance(dialog, dict) else []
+                    ),
+                    "contentIds": (
+                        sorted(content) if isinstance(content, dict) else []
+                    ),
+                    "optionIds": sorted(
+                        actual_prefixed_option_ids,
+                        key=natural_key,
+                    ),
+                    "chatId": (
+                        safe_key(dialog.get("chatId"))
+                        if isinstance(dialog, dict) else ""
+                    ),
+                    "dialogType": (
+                        dialog.get("dialogType")
+                        if isinstance(dialog, dict) else None
+                    ),
+                    "relatedMissionId": (
+                        dialog.get("relatedMissionId")
+                        if isinstance(dialog, dict) else None
+                    ),
+                },
+            })
             break
         for content_id in expected_content_ids:
             node = content.get(str(content_id))
@@ -3992,12 +11414,14 @@ def build_offline_exhaustion_index(
                 else 0 if content_id == 1
                 else content_id - 1
             )
+            expected_pre = pre_content_ids.get(content_id, expected_pre)
             expected_next = (
                 0 if content_id == -1
                 else -1 if content_id == terminal_content_id
                 else 0 if content_id in option_ids_by_content_id
                 else content_id + 1
             )
+            expected_next = next_content_ids.get(content_id, expected_next)
             if (
                 not isinstance(node, dict)
                 or set(node) != sns_content_fields
@@ -4007,7 +11431,8 @@ def build_offline_exhaustion_index(
                 or node.get("isEnd") is not (content_id == -1)
                 or tuple(node.get("dialogOptionIds") or ())
                 != tuple(option_ids_by_content_id.get(content_id) or ())
-                or node.get("linkMissionId") != ""
+                or node.get("linkMissionId")
+                != link_mission_ids_by_content_id.get(content_id, "")
                 or node.get("linkRewardId") != ""
                 or tuple(node.get("contentParam") or ())
                 != tuple(content_params_by_content_id.get(content_id) or ())
@@ -4024,6 +11449,29 @@ def build_offline_exhaustion_index(
                 or node["content"].get("text") != ""
             ):
                 sns_definitions_valid = False
+                sns_validation_failures.append({
+                    "validator": "offline_sns_definition",
+                    "gate": "content_node_exact",
+                    "storyKey": story_key,
+                    "contentId": content_id,
+                    "sourcePath": str(source_paths["snsDialogTable"]),
+                    "expected": {
+                        "preContentId": expected_pre,
+                        "nextContentId": expected_next,
+                        "dialogOptionIds": list(
+                            option_ids_by_content_id.get(content_id) or ()
+                        ),
+                        "contentParam": list(
+                            content_params_by_content_id.get(content_id) or ()
+                        ),
+                        "linkMissionId":
+                            link_mission_ids_by_content_id.get(
+                                content_id,
+                                "",
+                            ),
+                    },
+                    "actual": node if isinstance(node, dict) else node,
+                })
                 break
         if not sns_definitions_valid:
             break
@@ -4044,9 +11492,81 @@ def build_offline_exhaustion_index(
                 or option.get("optionResPath") != ""
             ):
                 sns_definitions_valid = False
+                sns_validation_failures.append({
+                    "validator": "offline_sns_definition",
+                    "gate": "option_row_exact",
+                    "storyKey": story_key,
+                    "optionId": option_id,
+                    "sourcePath": str(source_paths["snsOptionTable"]),
+                    "expected": {
+                        "optionNextContentId":
+                            definition["optionNextContentIds"][option_id],
+                        "optionDescriptionId":
+                            definition["optionDescriptionIds"][option_id],
+                    },
+                    "actual": option if isinstance(option, dict) else option,
+                })
                 break
         if not sns_definitions_valid:
             break
+        runtime_tracking_context: dict[str, Any] | None = None
+        runtime_tracking = definition.get("runtimeTracking")
+        if isinstance(runtime_tracking, dict):
+            source_name = f"snsRuntimeTracking:{story_key}"
+            runtime_payload = read_json(source_paths[source_name], {})
+            quest_id = runtime_tracking["questId"]
+            objective_index = runtime_tracking["objectiveIndex"]
+            tracking_index = runtime_tracking["trackingIndex"]
+            actual_tracking: Any = None
+            try:
+                actual_tracking = (
+                    runtime_payload["questDic"][quest_id]
+                    ["objectiveList"][objective_index]
+                    ["trackingInfoList"][tracking_index]
+                )
+            except (KeyError, IndexError, TypeError):
+                pass
+            expected_tracking = {
+                "$type": "Beyond.Gameplay.SnsTrackingInfo, Gameplay.Beyond",
+                "useFilterCondition": False,
+                "sceneId": "",
+                "guidingArea": 0.0,
+                "snsDialogId": story_key,
+            }
+            if actual_tracking != expected_tracking:
+                sns_definitions_valid = False
+                sns_validation_failures.append({
+                    "validator": "offline_sns_definition",
+                    "gate": "exactCrossMissionSnsTrackingContext",
+                    "mission": runtime_tracking["runtimeMissionId"],
+                    "storyKey": story_key,
+                    "sourcePaths": [str(source_paths[source_name])],
+                    "sourceSha256": {
+                        source_name: actual_hashes.get(source_name, ""),
+                    },
+                    "expected": {
+                        "questId": quest_id,
+                        "objectiveIndex": objective_index,
+                        "trackingIndex": tracking_index,
+                        "tracking": expected_tracking,
+                    },
+                    "actual": actual_tracking,
+                })
+                break
+            runtime_tracking_context = {
+                "runtimeMissionId": runtime_tracking["runtimeMissionId"],
+                "questId": quest_id,
+                "objectiveIndex": objective_index,
+                "trackingIndex": tracking_index,
+                "sourceFile": runtime_tracking["sourceFile"],
+                "relation": "objective_tracking_story_reference",
+                "trackingType": "SnsTrackingInfo",
+                "playback": False,
+                "nominalMissionOwnership": False,
+                "runtimeMissionContext": True,
+                "orderEvidence": False,
+                "graphEffect": "none",
+            }
         sns_validation_by_key[story_key] = {
             "chatId": definition["chatId"],
             "contentIds": list(expected_content_ids),
@@ -4056,12 +11576,39 @@ def build_offline_exhaustion_index(
                 for content_id, content_params
                 in content_params_by_content_id.items()
             },
+            "relatedMissionId": expected_related_mission_id,
+            "linkMissionIdsByContentId": {
+                str(content_id): mission_id
+                for content_id, mission_id
+                in link_mission_ids_by_content_id.items()
+            },
+            "runtimeTracking": runtime_tracking_context,
         }
     if not sns_definitions_valid:
         status["status"] = "inactive_sns_definition_validation_failed"
+        status["validationFailures"] = sns_validation_failures or [{
+            "validator": "offline_sns_definition",
+            "gate": "source_table_type",
+            "sourcePaths": [
+                str(source_paths["snsDialogTable"]),
+                str(source_paths["snsOptionTable"]),
+            ],
+            "expected": "two JSON objects",
+            "actual": {
+                "snsDialogTable": type(sns_dialog_table).__name__,
+                "snsOptionTable": type(sns_option_table).__name__,
+            },
+        }]
+        status["validatorDiagnostics"] = status["validationFailures"]
         return {}, status
 
     dialog_text_table = read_json(source_paths["dialogTextTable"], {})
+    dialog_option_table = read_json(source_paths["dialogOptionTable"], {})
+    dialog_summary_map_table = read_json(
+        source_paths["dialogSummaryMapTable"],
+        {},
+    )
+    dialog_summary_table = read_json(source_paths["dialogSummaryTable"], {})
     dialog_id_index = read_json(source_paths["dialogIdIndex"], {})
     timeline_line_orders = read_json(source_paths["timelineLineOrders"], {})
     npc_proxy_ex_table = read_json(
@@ -4069,6 +11616,7 @@ def build_offline_exhaustion_index(
         {},
     )
     dialog_validation_by_key: dict[str, dict[str, Any]] = {}
+    dialog_validation_failures: list[dict[str, Any]] = []
     dialog_definitions_valid = (
         isinstance(dialog_text_table, dict)
         and isinstance(dialog_id_index, dict)
@@ -4101,6 +11649,41 @@ def build_offline_exhaustion_index(
             if key.startswith(f"{line_prefix}_")
         ))
         expected_option_ids = tuple(definition["optionIds"])
+        expected_tree_branch_groups = (
+            [
+                {
+                    "optionGroup": int(row["optionGroup"]),
+                    "optionIds": list(row["optionIds"]),
+                    "targetLineIds": list(row["targetLineIds"]),
+                    "routeKind": safe_key(row.get("routeKind")),
+                }
+                for row in definition["treeBranchGroups"]
+            ]
+            if "treeBranchGroups" in definition else None
+        )
+        actual_tree_branch_groups = _dialog_tree_branch_groups(tree)
+        tree_branch_groups_valid = (
+            expected_tree_branch_groups is None
+            or actual_tree_branch_groups == expected_tree_branch_groups
+        )
+        expected_terminal_option_routes = (
+            [
+                {
+                    "optionGroup": int(row["optionGroup"]),
+                    "routes": [dict(route) for route in row["routes"]],
+                }
+                for row in definition["terminalOptionRoutes"]
+            ]
+            if "terminalOptionRoutes" in definition else None
+        )
+        actual_terminal_option_routes = (
+            _dialog_tree_terminal_option_routes(tree)
+        )
+        terminal_option_routes_valid = (
+            expected_terminal_option_routes is None
+            or actual_terminal_option_routes
+            == expected_terminal_option_routes
+        )
         registered_option_ids = tuple(sorted(
             option_id
             for option_ids in (
@@ -4194,6 +11777,99 @@ def build_offline_exhaustion_index(
             if len(npc_proxy_consumer_contexts) == 1
             else None
         )
+        mission_tracking_spec = definition.get("missionNpcProxyTracking")
+        mission_tracking_context: dict[str, Any] | None = None
+        if isinstance(mission_tracking_spec, dict):
+            tracking_source_name = f"missionNpcProxyTracking:{story_key}"
+            tracking_payload = read_json(
+                source_paths[tracking_source_name],
+                {},
+            )
+            expected_tracking_rows = list(
+                mission_tracking_spec.get("rows") or []
+            )
+            proxy_id = safe_key(mission_tracking_spec.get("proxyId"))
+            level_id = safe_key(mission_tracking_spec.get("levelId"))
+            nominal_mission_id = safe_key(definition.get("missionId"))
+            runtime_mission_id = (
+                safe_key(mission_tracking_spec.get("runtimeMissionId"))
+                or nominal_mission_id
+            )
+            actual_tracking_rows: list[dict[str, Any]] = []
+            tracking_rows_valid = bool(
+                proxy_id and level_id and expected_tracking_rows
+            )
+            for expected_row in expected_tracking_rows:
+                quest_id = safe_key(expected_row.get("questId"))
+                objective_index = expected_row.get("objectiveIndex")
+                tracking_index = expected_row.get("trackingIndex")
+                actual_tracking: Any = None
+                try:
+                    actual_tracking = (
+                        tracking_payload["questDic"][quest_id]
+                        ["objectiveList"][objective_index]
+                        ["trackingInfoList"][tracking_index]
+                    )
+                except (KeyError, IndexError, TypeError):
+                    tracking_rows_valid = False
+                expected_tracking = {
+                    "$type": (
+                        "Beyond.Gameplay.NpcProxyTrackingInfo, "
+                        "Gameplay.Beyond"
+                    ),
+                    "useFilterCondition": False,
+                    "sceneId": level_id,
+                    "guidingArea": 0.0,
+                    "npcProxyId": proxy_id,
+                }
+                if actual_tracking != expected_tracking:
+                    tracking_rows_valid = False
+                actual_tracking_rows.append({
+                    "questId": quest_id,
+                    "objectiveIndex": objective_index,
+                    "trackingIndex": tracking_index,
+                    "tracking": actual_tracking,
+                })
+            if not tracking_rows_valid:
+                dialog_definitions_valid = False
+                dialog_validation_failures.append({
+                    "validator": "offlineDialogDefinition",
+                    "gate": "exactMissionNpcProxyTrackingContext",
+                    "mission": runtime_mission_id,
+                    "storyKey": story_key,
+                    "sourcePaths": [
+                        str(source_paths[tracking_source_name]),
+                    ],
+                    "sourceSha256": {
+                        tracking_source_name:
+                            actual_hashes.get(tracking_source_name, ""),
+                    },
+                    "expected": {
+                        "proxyId": proxy_id,
+                        "levelId": level_id,
+                        "rows": expected_tracking_rows,
+                    },
+                    "actual": actual_tracking_rows,
+                })
+                break
+            mission_tracking_context = {
+                "proxyId": proxy_id,
+                "levelId": level_id,
+                "missionId": runtime_mission_id,
+                "nominalMissionId": nominal_mission_id,
+                "crossMission": runtime_mission_id != nominal_mission_id,
+                "questIds": [
+                    safe_key(row.get("questId"))
+                    for row in expected_tracking_rows
+                ],
+                "sourceFile": mission_tracking_spec["sourceFile"],
+                "relation": "mission_quest_npc_proxy_tracking_context",
+                "missionContextOnly": True,
+                "missionOwnership": False,
+                "questPlaybackOwnership": False,
+                "orderEvidence": False,
+                "graphEffect": "none",
+            }
         timeline_context: dict[str, Any] | None = None
         if isinstance(shared_timeline, dict):
             owner_dialog_key = safe_key(
@@ -4373,6 +12049,8 @@ def build_offline_exhaustion_index(
             or not registry_timeline_valid
             or actual_line_ids != expected_line_ids
             or registered_option_ids != expected_option_ids
+            or not tree_branch_groups_valid
+            or not terminal_option_routes_valid
             or len(line_audio_ids) != len(expected_line_ids)
             or not all(line_audio_ids)
             or actual_missing_audio_ids != expected_missing_audio_ids
@@ -4387,6 +12065,61 @@ def build_offline_exhaustion_index(
             or not timeline_context_valid
             or not npc_proxy_consumer_valid
         ):
+            dialog_validation_failures.append({
+                "validator": "offlineDialogDefinition",
+                "gate": "exactRegisteredDialogDefinition",
+                "mission": safe_key(definition.get("missionId")),
+                "storyKey": story_key,
+                "sourcePaths": [
+                    str(source_paths[f"dialogDefinition:{story_key}"]),
+                    str(source_paths["dialogTextTable"]),
+                    str(source_paths["dialogIdIndex"]),
+                    str(source_paths["audioDialog"]),
+                ],
+                "expected": {
+                    "definitionName": definition_name,
+                    "lineIds": list(expected_line_ids),
+                    "optionIds": list(expected_option_ids),
+                    "treeBranchGroups": expected_tree_branch_groups,
+                    "terminalOptionRoutes": expected_terminal_option_routes,
+                    "missingAudioIds": sorted(expected_missing_audio_ids),
+                    "registered": True,
+                    "registrationEvidence": [
+                        "memorypack_record_key",
+                        "printable_root_token",
+                    ],
+                    "timelineContextValid": True,
+                    "npcProxyConsumerValid": True,
+                },
+                "actual": {
+                    "treeMName": safe_key(tree.get("m_Name"))
+                        if isinstance(tree, dict) else "",
+                    "treeName": safe_key(tree.get("Name"))
+                        if isinstance(tree, dict) else "",
+                    "scriptLength": len(tree.get("m_Script") or "")
+                        if isinstance(tree, dict) else 0,
+                    "lineIds": list(actual_line_ids),
+                    "optionIds": list(registered_option_ids),
+                    "treeBranchGroups": actual_tree_branch_groups,
+                    "terminalOptionRoutes": actual_terminal_option_routes,
+                    "missingAudioIds": sorted(actual_missing_audio_ids),
+                    "registry": {
+                        key: registry.get(key)
+                        for key in (
+                            "registered",
+                            "memoryPackRecordKey",
+                            "hasRootKey",
+                            "registrationEvidence",
+                            "trunkCount",
+                            "lineCount",
+                            "usedDialogTimelineCount",
+                            "usedDialogTimelineIds",
+                        )
+                    } if isinstance(registry, dict) else None,
+                    "timelineContextValid": timeline_context_valid,
+                    "npcProxyConsumerValid": npc_proxy_consumer_valid,
+                },
+            })
             dialog_definitions_valid = False
             break
         dialog_validation_by_key[story_key] = {
@@ -4399,24 +12132,55 @@ def build_offline_exhaustion_index(
                 key=natural_key,
             ),
             "optionIds": list(expected_option_ids),
+            "treeBranchGroups": actual_tree_branch_groups or [],
+            "terminalOptionRoutes": actual_terminal_option_routes or [],
             "timelineContext": timeline_context,
             "npcProxyConsumer": npc_proxy_consumer_context,
             "npcProxyConsumers": npc_proxy_consumer_contexts,
+            "missionNpcProxyTracking": mission_tracking_context,
+            "levelScriptTaskConsumer":
+                levelscript_task_consumer_by_story.get(story_key),
+            "levelDataDialogBranchContext":
+                leveldata_dialog_branch_by_story.get(story_key),
         }
     if not dialog_definitions_valid:
-        status["status"] = "inactive_dialog_definition_validation_failed"
+        status.update({
+            "status": "inactive_dialog_definition_validation_failed",
+            "validatorDiagnostics": dialog_validation_failures or [{
+                "validator": "offlineDialogDefinition",
+                "gate": "requiredSourcePayloadTypes",
+                "sourcePaths": [
+                    str(source_paths["dialogTextTable"]),
+                    str(source_paths["dialogIdIndex"]),
+                    str(source_paths["timelineLineOrders"]),
+                    str(source_paths["npcProxyExDataTable"]),
+                ],
+                "expected": {"allPayloadsAreObjects": True},
+                "actual": {
+                    "types": {
+                        "dialogTextTable": type(dialog_text_table).__name__,
+                        "dialogIdIndex": type(dialog_id_index).__name__,
+                        "timelineLineOrders": type(timeline_line_orders).__name__,
+                        "npcProxyExDataTable": type(npc_proxy_ex_table).__name__,
+                    },
+                },
+            }],
+        })
         return {}, status
 
     text_only_dialog_validation_by_key: dict[str, dict[str, Any]] = {}
-    text_only_dialog_definitions_valid = True
+    text_only_dialog_validation_failures: list[dict[str, Any]] = []
     for story_key, definition in (
         OFFLINE_EXHAUSTION_TEXT_ONLY_DIALOGS.items()
     ):
+        definition_root_key = (
+            safe_key(definition.get("definitionRootKey")) or story_key
+        )
         expected_line_ids = tuple(definition["lineIds"])
         actual_line_ids = tuple(sorted(
             key
             for key in dialog_text_table
-            if key.startswith(f"{story_key}_")
+            if key.startswith(f"{definition_root_key}_")
         ))
         line_audio_ids = tuple(
             safe_key(dialog_text_table[line_id].get("audioOverride"))
@@ -4451,41 +12215,275 @@ def build_offline_exhaustion_index(
                 )
             )
         }
+        expected_option_rows = definition.get("optionRows")
+        actual_option_ids = tuple(sorted(
+            key for key in dialog_option_table
+            if key.startswith(f"option_{definition_root_key}_")
+        )) if isinstance(dialog_option_table, dict) else ()
+        expected_option_ids = tuple(sorted(
+            expected_option_rows or {}
+        ))
+        cutscene_matches = sorted(
+            str(path.relative_to(ROOT)).replace("\\", "/")
+            for path in cutscene_definition_root.glob(
+                f"{definition_root_key}_p*.json"
+            )
+        )
+        failures_before = len(text_only_dialog_validation_failures)
+
+        def add_text_only_failure(
+            gate: str,
+            source_names: tuple[str, ...],
+            expected: Any,
+            actual: Any,
+        ) -> None:
+            text_only_dialog_validation_failures.append({
+                "validator": "offlineTextOnlyDialogDefinition",
+                "gate": gate,
+                "storyKey": story_key,
+                "missionId": safe_key(definition.get("missionId")),
+                "sourcePaths": [
+                    str(source_paths[name]) for name in source_names
+                ],
+                "sourceSha256": {
+                    name: actual_hashes.get(name, "")
+                    for name in source_names
+                },
+                "expected": expected,
+                "actual": actual,
+            })
+
+        if actual_line_ids != expected_line_ids:
+            add_text_only_failure(
+                "exactDialogTextLineSet",
+                ("dialogTextTable",),
+                list(expected_line_ids),
+                list(actual_line_ids),
+            )
         if (
-            actual_line_ids != expected_line_ids
-            or len(line_audio_ids) != len(expected_line_ids)
+            len(line_audio_ids) != len(expected_line_ids)
             or not all(line_audio_ids)
             or line_audio_ids != expected_audio_ids
-            or not set(expected_audio_variants) <= set(line_audio_ids)
-            or any(
-                not variants
-                or any(
-                    not variant.startswith(f"{audio_id}_")
+        ):
+            add_text_only_failure(
+                "exactDialogTextAudioOverrides",
+                ("dialogTextTable",),
+                list(expected_audio_ids),
+                list(line_audio_ids),
+            )
+        row_fields = {
+            line_id: sorted(dialog_text_table.get(line_id, {}))
+            if isinstance(dialog_text_table.get(line_id), dict) else []
+            for line_id in expected_line_ids
+        }
+        if any(
+            set(row_fields[line_id])
+            != OFFLINE_EXHAUSTION_DIALOG_ROW_FIELDS
+            for line_id in expected_line_ids
+        ):
+            add_text_only_failure(
+                "exactDialogTextRowFields",
+                ("dialogTextTable",),
+                sorted(OFFLINE_EXHAUSTION_DIALOG_ROW_FIELDS),
+                row_fields,
+            )
+        variant_shape_valid = (
+            set(expected_audio_variants) <= set(line_audio_ids)
+            and all(
+                variants
+                and all(
+                    variant.startswith(f"{audio_id}_")
                     for variant in variants
                 )
                 for audio_id, variants in expected_audio_variants.items()
             )
+        )
+        present_base_audio_ids = (
+            set(line_audio_ids) - expected_missing_audio_ids
+        )
+        if (
+            not variant_shape_valid
             or actual_missing_audio_ids != expected_missing_audio_ids
-            or not (
-                set(line_audio_ids) - expected_missing_audio_ids
-            ) <= (
-                audio_stems
-                | set(expected_audio_variants)
+            or not present_base_audio_ids <= (
+                audio_stems | set(expected_audio_variants)
             )
-            or any(
-                set(dialog_text_table[line_id])
-                != OFFLINE_EXHAUSTION_DIALOG_ROW_FIELDS
-                for line_id in expected_line_ids
-            )
-            or story_key in dialog_id_index
-            or story_key in timeline_line_orders
-            or any(cutscene_definition_root.glob(
-                f"{story_key}_p*.json"
-            ))
         ):
-            text_only_dialog_definitions_valid = False
-            break
+            add_text_only_failure(
+                "exactAudioDialogMembership",
+                ("dialogTextTable", "audioDialog"),
+                {
+                    "missingAudioIds": sorted(expected_missing_audio_ids),
+                    "audioVariants": {
+                        key: list(values)
+                        for key, values in expected_audio_variants.items()
+                    },
+                },
+                {
+                    "missingAudioIds": sorted(actual_missing_audio_ids),
+                    "lineAudioIds": list(line_audio_ids),
+                    "variantShapeValid": variant_shape_valid,
+                },
+            )
+        expected_registration_status = safe_key(
+            definition.get("dialogIdRegistrationStatus")
+        ) or "absent"
+        registry = dialog_id_index.get(definition_root_key)
+        printable_only_tokens = tuple(
+            definition.get("printableOnlyDialogTokens") or ()
+        )
+        if expected_registration_status == "present_table_only":
+            expected_options_by_group: dict[str, list[str]] = defaultdict(list)
+            option_prefix = f"option_{definition_root_key}_"
+            for option_id in expected_option_ids:
+                suffix = option_id.removeprefix(option_prefix)
+                group = suffix.split("_", 1)[0]
+                expected_options_by_group[group].append(option_id)
+            expected_registry = {
+                "registered": True,
+                "memoryPackRecordKey": True,
+                "registrationEvidence": [
+                    "memorypack_record_key",
+                    "printable_root_token",
+                ],
+                "hasRootKey": True,
+                "trunkCount": 0,
+                "trunkIndices": [],
+                "lineCount": 0,
+                "linesByTrunk": {},
+                "optionGroupCount": len(expected_options_by_group),
+                "optionCount": len(expected_option_ids),
+                "optionsByGroup": dict(expected_options_by_group),
+                "usedDialogTimelineCount": 0,
+                "usedDialogTimelineIds": [],
+            }
+            if registry != expected_registry:
+                add_text_only_failure(
+                    "exactTableOnlyDialogIdRegistration",
+                    ("dialogIdSource", "dialogIdIndex"),
+                    expected_registry,
+                    registry,
+                )
+            expected_printable_only_registry = {
+                "registered": True,
+                "memoryPackRecordKey": False,
+                "registrationEvidence": ["printable_root_token"],
+                "hasRootKey": True,
+                "trunkCount": 0,
+                "trunkIndices": [],
+                "lineCount": 0,
+                "linesByTrunk": {},
+                "optionGroupCount": 0,
+                "optionCount": 0,
+                "optionsByGroup": {},
+                "usedDialogTimelineCount": 0,
+                "usedDialogTimelineIds": [],
+            }
+            actual_printable_only_registries = {
+                token: dialog_id_index.get(token)
+                for token in printable_only_tokens
+            }
+            if any(
+                row != expected_printable_only_registry
+                for row in actual_printable_only_registries.values()
+            ):
+                add_text_only_failure(
+                    "exactPrintableOnlyDialogTokens",
+                    ("dialogIdSource", "dialogIdIndex"),
+                    {
+                        token: expected_printable_only_registry
+                        for token in printable_only_tokens
+                    },
+                    actual_printable_only_registries,
+                )
+        elif expected_registration_status == "absent":
+            if registry is not None:
+                add_text_only_failure(
+                    "dialogIdRegistrationAbsent",
+                    ("dialogIdIndex",),
+                    {"present": False},
+                    {"present": True, "row": registry},
+                )
+        else:
+            add_text_only_failure(
+                "supportedDialogIdRegistrationStatus",
+                ("dialogIdIndex",),
+                ["absent", "present_table_only"],
+                expected_registration_status,
+            )
+        timeline_registration_keys = {
+            key for key in (story_key, definition_root_key) if key
+        }
+        registered_timeline_rows = {
+            key: timeline_line_orders[key]
+            for key in timeline_registration_keys
+            if key in timeline_line_orders
+        }
+        if registered_timeline_rows:
+            add_text_only_failure(
+                "timelineRegistrationAbsent",
+                ("timelineLineOrders",),
+                {"present": False},
+                {"present": True, "rows": registered_timeline_rows},
+            )
+        if cutscene_matches:
+            add_text_only_failure(
+                "dialogTreeTextAssetAbsent",
+                ("dialogTextAssetRoot",),
+                [],
+                cutscene_matches,
+            )
+        if expected_option_rows is not None and (
+            not isinstance(dialog_option_table, dict)
+            or actual_option_ids != expected_option_ids
+            or any(
+                dialog_option_table.get(option_id) != expected_row
+                for option_id, expected_row in expected_option_rows.items()
+            )
+        ):
+            add_text_only_failure(
+                "exactDialogOptionDefinitions",
+                ("dialogOptionTable",),
+                expected_option_rows,
+                {
+                    option_id: dialog_option_table.get(option_id)
+                    for option_id in actual_option_ids
+                } if isinstance(dialog_option_table, dict) else {
+                    "payloadType": type(dialog_option_table).__name__,
+                },
+            )
+        summary_definition = definition.get("summaryDefinition")
+        if summary_definition is not None:
+            expected_summary_id = summary_definition["summaryId"]
+            actual_summary_id = (
+                dialog_summary_map_table.get(definition_root_key)
+                if isinstance(dialog_summary_map_table, dict)
+                else None
+            )
+            actual_summary_row = (
+                dialog_summary_table.get(expected_summary_id)
+                if isinstance(dialog_summary_table, dict)
+                else None
+            )
+            if (
+                actual_summary_id != expected_summary_id
+                or actual_summary_row != summary_definition["row"]
+            ):
+                add_text_only_failure(
+                    "exactDialogSummaryDefinition",
+                    ("dialogSummaryMapTable", "dialogSummaryTable"),
+                    {
+                        "summaryId": expected_summary_id,
+                        "row": summary_definition["row"],
+                    },
+                    {
+                        "summaryId": actual_summary_id,
+                        "row": actual_summary_row,
+                    },
+                )
+        if len(text_only_dialog_validation_failures) != failures_before:
+            continue
         text_only_dialog_validation_by_key[story_key] = {
+            "definitionRootKey": definition_root_key,
             "lineIds": list(expected_line_ids),
             "audioIds": list(line_audio_ids),
             "missingAudioIds": sorted(
@@ -4497,11 +12495,31 @@ def build_offline_exhaustion_index(
                 for audio_id, variants
                 in expected_audio_variants.items()
             },
+            "optionIds": list(expected_option_ids),
+            "optionRows": expected_option_rows,
+            "summaryDefinition": (
+                {
+                    "summaryId": summary_definition["summaryId"],
+                    "textId": str(summary_definition["row"]["id"]),
+                    "relation": "dialog_summary_map_targets_dialog",
+                    "missionOwnership": False,
+                    "orderEvidence": False,
+                }
+                if summary_definition else None
+            ),
+            "dialogIdRegistrationStatus": expected_registration_status,
+            "printableOnlyDialogTokens": list(printable_only_tokens),
+            "printableOnlyTokenStatus": (
+                "string_table_only_not_memorypack_records"
+                if printable_only_tokens else "none"
+            ),
         }
-    if not text_only_dialog_definitions_valid:
+    if text_only_dialog_validation_failures:
         status["status"] = (
             "inactive_text_only_dialog_definition_validation_failed"
         )
+        status["validationFailures"] = text_only_dialog_validation_failures
+        status["validatorDiagnostics"] = text_only_dialog_validation_failures
         return {}, status
 
     num_id_table = read_json(source_paths["numIdStrTable"], {})
@@ -4749,13 +12767,30 @@ def build_offline_exhaustion_index(
         all_radio_keys,
         key=natural_key,
     ):
+        context = OFFLINE_EXHAUSTION_RADIO_CONTEXTS.get(story_key)
+        mission_id = radio_mission_by_key[story_key]
+        empty_levelscript_context = (
+            empty_levelscript_context_by_mission.get(mission_id)
+        )
         index[story_key] = {
             "sceneKey": story_key,
-            "missionId": radio_mission_by_key[story_key],
+            "missionId": mission_id,
             "recoveryStatus":
                 "deferred_current_build_offline_surface_exhausted",
-            "evidenceKind": "radio_definition_without_recovered_consumer",
+            "evidenceKind": (
+                "leveldata_context_without_typed_story_activator"
+                if context
+                else (
+                    "radio_definition_with_empty_levelscript_host"
+                    if empty_levelscript_context
+                    else "radio_definition_without_recovered_consumer"
+                )
+            ),
             "definitionTable": "RadioTable",
+            "definitionSourceFiles": [
+                str(source_paths[name].relative_to(ROOT)).replace("\\", "/")
+                for name in ("radioTable", "audioDialog")
+            ],
             "audioMembershipTable": "AudioDialog",
             "audioMembershipStatus": (
                 (
@@ -4786,25 +12821,83 @@ def build_offline_exhaustion_index(
                 missing_audio_ids_by_story.get(story_key) or set(),
                 key=natural_key,
             ),
+            "nonOwningContext": (
+                {
+                    "questId": context["questId"],
+                    "sourceFile": context["sourceFile"],
+                    "distance": context["distance"],
+                    "relation": context["allowedRoute"]["relation"],
+                    "missionOwnership": False,
+                    "orderEvidence": False,
+                }
+                if context else None
+            ),
+            "allowedNonOwningRoute": (
+                {
+                    **context["allowedRoute"],
+                    "file": context["sourceFile"],
+                }
+                if context else None
+            ),
+            "emptyLevelScriptContext": empty_levelscript_context,
             "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
             "gameAssemblySha256":
                 OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
             "consumerBoundary": (
-                "exact ids occur only in current RadioTable definitions and "
-                "AudioDialog membership, including exact authored variants "
-                "where present, across the audited "
-                "MissionRuntime, LevelScript, "
-                "GameplayConfig, Table, Lua, object-index, and direct native "
-                "playback-caller surfaces"
+                (
+                    "the exact LevelData file contains this radio id near "
+                    f"{context['questId']}, but the collection proximity "
+                    "has no typed playback action, activation carrier, or "
+                    "mission-order semantics; the RadioTable and "
+                    "AudioDialog rows establish only the playable definition"
+                    if context else (
+                    "the exact RadioTable rows define the radio, while the "
+                    "mission-named LevelData contains one exact propertyless "
+                    "LevelScript whose serialized action-list count and "
+                    "decoded UID-record count are both zero; neither that "
+                    "empty host nor the audited MissionRuntime, GameplayConfig, "
+                    "object-index, and native playback surfaces expose a consumer"
+                    if empty_levelscript_context else (
+                    "the exact ids occur only in current RadioTable definitions; "
+                    "every authored audio id is absent from AudioDialog, and the "
+                    "audited MissionRuntime, LevelScript, GameplayConfig, "
+                    "object-index, and direct native playback-caller surfaces "
+                    "expose no consumer"
+                    if set(missing_audio_ids_by_story.get(story_key, ()))
+                    == radio_audio_ids_by_story[story_key] else
+                    "exact ids occur only in current RadioTable definitions "
+                    "and AudioDialog membership, including exact authored "
+                    "variants where present, across the audited MissionRuntime, "
+                    "LevelScript, GameplayConfig, Table, object-index, and "
+                    "direct native playback-caller surfaces"
+                    )
+                    )
+                )
+            ),
+            "orderBoundary": (
+                "LevelData byte proximity, collection order, quest "
+                "predecessors, and filename suffixes do not establish "
+                "playback or relative Story order"
+                if context else (
+                    "the empty mission-named LevelScript, RadioTable order, "
+                    "and filename suffixes do not establish playback or "
+                    "relative Story order"
+                    if empty_levelscript_context else
+                    "RadioTable row order, filename suffixes, and any manual "
+                    "display order do not establish playback or relative "
+                    "Story chronology"
+                )
             ),
             "reopenWhen": (
-                "installed binary, exported tables, object index, Lua corpus, "
+                "installed binary, exported tables, object index, "
                 "or another typed producer/consumer registry changes"
             ),
             "graphEffect": "none",
         }
     for story_key in sorted(all_dialog_keys, key=natural_key):
+        definition = OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[story_key]
         validation = dialog_validation_by_key[story_key]
+        allowed_non_owning_route = definition.get("allowedNonOwningRoute")
         index[story_key] = {
             "sceneKey": story_key,
             "missionId": dialog_mission_by_key[story_key],
@@ -4812,10 +12905,24 @@ def build_offline_exhaustion_index(
                 "deferred_current_build_offline_surface_exhausted",
             "evidenceKind":
                 (
-                    "npc_proxy_dialog_consumer_without_mission_owner"
-                    if validation["npcProxyConsumers"]
-                    else
-                    "registered_dialog_definition_without_recovered_activator"
+                    "leveldata_property_resolved_levelscript_result_branch"
+                    if validation["levelDataDialogBranchContext"]
+                    else (
+                    "levelscript_talk_completion_dependency_without_playback_owner"
+                    if validation["levelScriptTaskConsumer"]
+                    else (
+                        "mission_tracked_npc_proxy_dialog_context_without_playback_owner"
+                        if validation["missionNpcProxyTracking"]
+                        else (
+                            "npc_proxy_dialog_consumer_without_mission_owner"
+                            if validation["npcProxyConsumers"]
+                            else (
+                                "registered_dialog_definition_with_nonowning_parent_carrier"
+                                if allowed_non_owning_route else
+                                "registered_dialog_definition_without_recovered_activator"
+                            )
+                        )
+                    ))
                 ),
             "definitionAsset":
                 OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[story_key]["filename"],
@@ -4832,6 +12939,17 @@ def build_offline_exhaustion_index(
                 if filename
             ],
             "definitionTable": "DialogTextTable",
+            "definitionRootKey": validation["registryKey"],
+            "definitionSourceFiles": [
+                str(source_paths[name].relative_to(ROOT)).replace("\\", "/")
+                for name in (
+                    "dialogTextTable",
+                    *(("dialogOptionTable",) if validation["optionIds"] else ()),
+                    "audioDialog",
+                    "dialogIdIndex",
+                    "timelineLineOrders",
+                )
+            ],
             "runtimeRegistry": "Beyond.Gameplay.DialogIdTable",
             "runtimeRegistryKey": validation["registryKey"],
             "definitionName": validation["definitionName"],
@@ -4853,37 +12971,95 @@ def build_offline_exhaustion_index(
                 )
             ),
             "optionIds": validation["optionIds"],
+            "dialogTreeAssetStatus": "present_exact_definition",
+            "dialogTreeBranchGroups": validation["treeBranchGroups"],
+            "dialogTreeTerminalOptionRoutes":
+                validation["terminalOptionRoutes"],
+            "dialogTreeRouteStatus": (
+                (
+                    "authored_terminal_option_routes_recovered"
+                    if validation["terminalOptionRoutes"]
+                    else (
+                        "authored_internal_branch_routes_recovered"
+                        if validation["treeBranchGroups"]
+                        else "authored_linear_or_single_option_routes_recovered"
+                    )
+                )
+                if (
+                    "treeBranchGroups" in definition
+                    or "terminalOptionRoutes" in definition
+                )
+                else "not_explicitly_audited"
+            ),
             "sharedTimelineContext": validation["timelineContext"],
             "npcProxyConsumer": validation["npcProxyConsumer"],
             "npcProxyConsumers": validation["npcProxyConsumers"],
+            "missionNpcProxyTracking":
+                validation["missionNpcProxyTracking"],
+            "levelScriptTaskConsumer":
+                validation["levelScriptTaskConsumer"],
+            "levelDataDialogBranchContext":
+                validation["levelDataDialogBranchContext"],
+            "allowedNonOwningRoute": allowed_non_owning_route,
             "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
             "gameAssemblySha256":
                 OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
             "consumerBoundary": (
                 (
+                    "the hash-locked LevelData properties resolve this dialog "
+                    "through an exact LevelScript listener or StartDialogAction "
+                    "control path; the local script has no serialized nominal "
+                    "MissionRuntime quest owner or server-event producer"
+                    if validation["levelDataDialogBranchContext"]
+                    else (
                     "the exact NpcProxyEx entry selects this registered "
-                    "DialogTree as an NPC interaction dialog, but its authored "
-                    "missionId is empty; no exact mission/quest owner or "
-                    "activation timing is serialized"
-                    if validation["npcProxyConsumers"]
-                    else
-                    "the exact DialogTree, MemoryPack DialogId registration, "
-                    "DialogTextTable rows, and AudioDialog membership where "
-                    "present establish a current runtime-loadable definition; "
-                    "no exact MissionRuntime, LevelScript, NpcProxyEx, Lua, "
-                    "object-index, or direct native playback caller exposes "
-                    "its activator"
-                )
+                    "DialogTree, and exact MissionRuntime quest tracking points "
+                    "to the same NPC proxy for HUD/navigation context; the "
+                    "NpcProxyEx missionId is empty and no serialized selection "
+                    "condition proves dialog playback, a unique quest owner, "
+                    "or activation timing"
+                    if validation["missionNpcProxyTracking"]
+                    else (
+                        "the exact NpcProxyEx entry selects this registered "
+                        "DialogTree as an NPC interaction dialog, but its "
+                        "authored missionId is empty; no exact mission/quest "
+                        "owner or activation timing is serialized"
+                        if validation["npcProxyConsumers"]
+                        else (
+                            "the registered parent DialogTree has an exact typed "
+                            "prime-reachable carrier for this dialog; the owning "
+                            "mission observes completion of the parent, but no "
+                            "original-data source identifies what activates the "
+                            "parent dialog"
+                            if allowed_non_owning_route else
+                            "the exact DialogTree, MemoryPack DialogId registration, "
+                            "DialogTextTable rows, and AudioDialog membership where "
+                            "present establish a current runtime-loadable definition; "
+                            "no exact MissionRuntime, LevelScript, NpcProxyEx, "
+                            "object-index, or direct native playback caller exposes "
+                            "its activator"
+                        )
+                    )
+                ))
             ),
             "orderBoundary": (
-                "DialogId registration, DialogTree node order, line ids, "
-                "shared Timeline context, and filename suffixes do not order "
-                "the Story file relative to mission playback"
+                (
+                    "result case 8 selects succeed_dialog and case 9 selects "
+                    "failed_dialog in the same configured start_dialog context; "
+                    "the two outcome dialogs are exclusive alternatives, not a "
+                    "sequence"
+                    if validation["levelDataDialogBranchContext"]
+                    else
+                    "DialogId registration, DialogTree node order, line ids, "
+                    "shared Timeline context, and filename suffixes do not order "
+                    "the Story file relative to mission playback"
+                )
             ),
             "reopenWhen": (
                 "installed binary, DialogId source/index, DialogTree, "
                 "DialogTextTable, AudioDialog, NpcProxyExDataTable, object "
-                "index, shared Timeline, or another typed producer/consumer "
+                "index, MissionRuntime tracking, shared Timeline, or another "
+                "typed producer/consumer "
                 "registry changes"
             ),
             "graphEffect": "none",
@@ -4892,19 +13068,76 @@ def build_offline_exhaustion_index(
         all_text_only_dialog_keys,
         key=natural_key,
     ):
+        definition = OFFLINE_EXHAUSTION_TEXT_ONLY_DIALOGS[story_key]
         validation = text_only_dialog_validation_by_key[story_key]
+        branch_context = definition.get("nonOwningContext")
+        mission_id = text_only_dialog_mission_by_key[story_key]
+        empty_levelscript_context = (
+            empty_levelscript_context_by_mission.get(mission_id)
+        )
+        table_only_registration = (
+            validation["dialogIdRegistrationStatus"]
+            == "present_table_only"
+        )
         index[story_key] = {
             "sceneKey": story_key,
-            "missionId": text_only_dialog_mission_by_key[story_key],
+            "missionId": mission_id,
             "recoveryStatus":
                 "deferred_current_build_offline_surface_exhausted",
-            "evidenceKind":
-                "dialog_text_table_only_without_registry_asset_or_consumer",
+            "evidenceKind": (
+                "dialog_text_table_branch_payload_with_parent_dialog_tree_context"
+                if branch_context
+                else (
+                    "registered_dialog_table_rows_without_tree_asset_or_consumer"
+                    if table_only_registration
+                    else (
+                        "dialog_text_table_only_with_empty_levelscript_host"
+                        if empty_levelscript_context
+                        else "dialog_text_table_only_without_registry_asset_or_consumer"
+                    )
+                )
+            ),
             "definitionTable": "DialogTextTable",
+            "definitionRootKey": validation["definitionRootKey"],
+            "definitionSourceFiles": [
+                str(source_paths[name].relative_to(ROOT)).replace("\\", "/")
+                for name in (
+                    "dialogTextTable",
+                    *(("dialogOptionTable",) if validation["optionIds"] else ()),
+                    *(
+                        ("dialogSummaryMapTable", "dialogSummaryTable")
+                        if validation["summaryDefinition"] else ()
+                    ),
+                    "audioDialog",
+                    "dialogIdIndex",
+                    "timelineLineOrders",
+                )
+            ],
+            "definitionTables": (
+                [
+                    "DialogTextTable",
+                    *(
+                        ["DialogOptionTable"]
+                        if validation["optionIds"] else []
+                    ),
+                    *(
+                        ["DialogSummaryMapTable", "DialogSummaryTable"]
+                        if validation["summaryDefinition"] else []
+                    ),
+                ]
+            ),
             "lineIds": validation["lineIds"],
             "audioIds": validation["audioIds"],
             "audioVariants": validation["audioVariants"],
             "missingAudioIds": validation["missingAudioIds"],
+            "optionIds": validation["optionIds"],
+            "optionRows": validation["optionRows"],
+            "summaryDefinition": validation["summaryDefinition"],
+            "optionRouteStatus": (
+                "definitions_present_route_unresolved"
+                if validation["optionIds"]
+                else "no_current_option_definitions"
+            ),
             "audioMembershipStatus": (
                 "all_current_audio_dialog_ids_missing"
                 if len(validation["missingAudioIds"])
@@ -4915,26 +13148,85 @@ def build_offline_exhaustion_index(
                     else "present_current_audio_dialog"
                 )
             ),
-            "dialogIdRegistrationStatus": "absent",
+            "dialogIdRegistrationStatus": (
+                "present_table_only"
+                if table_only_registration else "absent"
+            ),
+            "printableOnlyDialogTokens":
+                validation["printableOnlyDialogTokens"],
+            "printableOnlyTokenStatus":
+                validation["printableOnlyTokenStatus"],
             "dialogTreeAssetStatus": "absent",
             "timelineStatus": "absent",
+            "nonOwningContext": definition.get("nonOwningContext"),
+            "allowedNonOwningRoute": definition.get(
+                "allowedNonOwningRoute"
+            ),
+            "emptyLevelScriptContext": empty_levelscript_context,
             "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
             "gameAssemblySha256":
                 OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
             "consumerBoundary": (
-                "the exact DialogTextTable line/audio group has no current "
-                "DialogId registration, DialogTree asset, Timeline, "
-                "AudioDialog membership, typed MissionRuntime or LevelScript "
-                "consumer, Lua reference, or object-index carrier"
+                "the exact DialogTextTable line/audio group is consumed "
+                "as authored trunks inside the registered parent "
+                f"DialogTree {branch_context['parentStoryKey']} behind "
+                "a no-bypass multi-quest completion branch; this proves "
+                "reachable branch context but not one unique quest trigger"
+                if branch_context
+                else (
+                    "the exact DialogId registration and DialogTextTable/"
+                    "DialogOptionTable rows establish a loadable table-only "
+                    "dialog root, but no DialogTree TextAsset, Timeline, "
+                    "AudioDialog membership, typed MissionRuntime or "
+                    "LevelScript consumer, Lua reference, or object-index "
+                    "carrier exposes its activator; option definitions prove "
+                    "authored choices but not their route graph; printable-only "
+                    "DialogId tokens are not MemoryPack records or route targets"
+                    if table_only_registration
+                    else (
+                    "the exact DialogTextTable line/audio group and exact "
+                    "DialogOptionTable definitions have no DialogId registration, "
+                    "DialogTree, Timeline, or AudioDialog membership; the exact "
+                    "mission-named LevelData carries one propertyless LevelScript "
+                    "whose serialized action-list and decoded UID-record counts "
+                    "are zero, so it supplies no activator or option-route graph"
+                    if empty_levelscript_context else
+                    "the exact DialogTextTable line/audio group and any exact "
+                    "DialogOptionTable option definitions plus any exact "
+                    "DialogSummaryMapTable artifact have no current "
+                    "DialogId registration, DialogTree asset, Timeline, "
+                    "AudioDialog membership, typed MissionRuntime or "
+                    "LevelScript consumer, Lua reference, or object-index "
+                    "carrier; option definitions prove authored choices but "
+                    "not their route graph"
+                    )
+                )
             ),
             "orderBoundary": (
-                "line ids and fallback/manual display positions do not "
-                "establish playback, option routing, or mission chronology"
+                (
+                    "the parent DialogTree branch identifies authored "
+                    "reachability after any of seven completed quest states, "
+                    "but does not select one triggering quest or place this "
+                    "payload in a unique mission chronology"
+                    if branch_context
+                    else
+                    (
+                        "the empty mission-named LevelScript, line ids, option "
+                        "suffixes, and fallback/manual display positions do not "
+                        "establish playback, option routing, or mission chronology"
+                        if empty_levelscript_context else
+                        "line ids, printable-only token suffixes, and fallback/"
+                        "manual display positions do not establish playback, "
+                        "option routing, or mission chronology"
+                    )
+                )
             ),
             "reopenWhen": (
-                "installed binary, DialogTextTable, AudioDialog, DialogId "
-                "index, TextAsset inventory, Timeline index, object index, "
-                "Lua corpus, or another typed producer/consumer changes"
+                "installed binary, DialogTextTable, DialogOptionTable, "
+                "DialogSummaryMapTable, DialogSummaryTable, AudioDialog, "
+                "DialogId index, TextAsset inventory, Timeline "
+                "index, object index, Lua corpus, or another typed "
+                "producer/consumer changes"
             ),
             "graphEffect": "none",
         }
@@ -4946,7 +13238,11 @@ def build_offline_exhaustion_index(
             "recoveryStatus":
                 "deferred_current_build_offline_surface_exhausted",
             "evidenceKind":
-                "sns_dialog_definition_without_recovered_activator",
+                (
+                    "cross_mission_sns_tracking_context_without_playback"
+                    if validation["runtimeTracking"]
+                    else "sns_dialog_definition_without_recovered_activator"
+                ),
             "definitionTables": [
                 "SNSDialogTable",
                 "SNSDialogOptionTable",
@@ -4956,16 +13252,29 @@ def build_offline_exhaustion_index(
             "optionIds": validation["optionIds"],
             "contentParamsByContentId":
                 validation["contentParamsByContentId"],
-            "relatedMissionId": "",
+            "relatedMissionId": validation["relatedMissionId"],
+            "linkMissionIdsByContentId":
+                validation["linkMissionIdsByContentId"],
+            "runtimeTrackingContext": validation["runtimeTracking"],
             "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
             "gameAssemblySha256":
                 OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
             "consumerBoundary": (
-                "the exact SNSDialogTable content graph and "
-                "SNSDialogOptionTable routes define this current Story file; "
-                "relatedMissionId is empty, and no exact MissionRuntime, "
-                "LevelScript/LevelData, Lua, object-index, or accepted native "
-                "playback dispatch exposes its activator"
+                (
+                    "the exact SNSDialogTable content graph defines this "
+                    "Story file, and an exact SnsTrackingInfo in the named "
+                    "runtime mission points to it for HUD/navigation; "
+                    "SnsTrackingInfo does not play SNS content, and no "
+                    "original-data source assigns it to the "
+                    "nominal mission or a branch arm"
+                    if validation["runtimeTracking"]
+                    else
+                    "the exact SNSDialogTable content graph and "
+                    "SNSDialogOptionTable routes define this current Story "
+                    "file; no exact "
+                    "MissionRuntime, LevelScript/LevelData, Lua, object-index, "
+                    "or accepted native playback dispatch exposes its activator"
+                )
             ),
             "orderBoundary": (
                 "the internal SNS content graph orders messages only; table "
@@ -4973,8 +13282,8 @@ def build_offline_exhaustion_index(
                 "place the Story file in mission chronology"
             ),
             "reopenWhen": (
-                "installed binary, SNSDialogTable, SNSDialogOptionTable, "
-                "object index, Lua corpus, or another typed "
+                "installed binary, MissionRuntime, SNSDialogTable, "
+                "SNSDialogOptionTable, object index, Lua corpus, or another typed "
                 "producer/consumer registry changes"
             ),
             "graphEffect": "none",
@@ -4990,14 +13299,29 @@ def build_offline_exhaustion_index(
                 "reading_popup_definition_without_recovered_activator",
             "definitionTables": [
                 "ReadingPopUpTable",
-                "RichContentTable",
+                *(
+                    []
+                    if definition.get("richContentStatus") == "absent"
+                    else ["RichContentTable"]
+                ),
                 *(
                     ["PrtsAllItem", "PrtsRecord"]
                     if definition.get("prtsDefinition")
                     else []
                 ),
+                *(
+                    ["PrtsReading"]
+                    if definition.get("prtsReadingDefinition")
+                    else []
+                ),
             ],
-            "readingPopupRowId": definition["readingPopupRowId"],
+            "readingPopupRowId": definition.get("readingPopupRowId"),
+            "readingPopupRowIds": list(
+                definition.get("readingPopupRows")
+                or [definition.get("readingPopupRowId")]
+            ),
+            "richContentStatus":
+                definition.get("richContentStatus", "present"),
             "contentTextIds": list(definition["contentTextIds"]),
             "prtsDefinition": (
                 {
@@ -5013,6 +13337,20 @@ def build_offline_exhaustion_index(
                 if definition.get("prtsDefinition")
                 else None
             ),
+            "prtsReadingDefinition": (
+                {
+                    "rowId": definition["prtsReadingDefinition"]["rowId"],
+                    "contentIds": [
+                        row["contentId"]
+                        for row in definition["prtsReadingDefinition"]["row"]["list"].values()
+                    ],
+                    "relation": "prts_reading_catalog_targets_story",
+                    "missionOwnership": False,
+                    "orderEvidence": False,
+                }
+                if definition.get("prtsReadingDefinition")
+                else None
+            ),
             "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
             "gameAssemblySha256":
                 OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
@@ -5026,7 +13364,7 @@ def build_offline_exhaustion_index(
                     else ""
                 )
                 + "; no exact "
-                "MissionRuntime, LevelScript/LevelData interactive, Lua, "
+                "MissionRuntime, LevelScript/LevelData interactive, "
                 "object-index, or direct native caller exposes its activator"
             ),
             "orderBoundary": (
@@ -5036,8 +13374,9 @@ def build_offline_exhaustion_index(
             ),
             "reopenWhen": (
                 "installed binary, ReadingPopUpTable, RichContentTable, "
-                "PrtsAllItem, PrtsRecord, object index, Lua corpus, or "
-                "another typed producer/consumer registry changes"
+                "PrtsAllItem, PrtsRecord, object index, or another typed "
+                "producer/consumer registry changes, or an original Lua "
+                "corpus becomes available"
             ),
             "graphEffect": "none",
         }
@@ -5165,20 +13504,39 @@ def build_offline_exhaustion_index(
             "consumerBoundary": (
                 "the exact TextTable group has no Timeline registration, "
                 "DialogTree/TextAsset carrier, object-index relation, "
-                "structured action, Lua consumer, or direct native caller "
+                "structured action or direct native caller "
                 "in the audited build"
             ),
             "reopenWhen": (
                 "installed binary, TextTable, Timeline or DialogId registry, "
-                "TextAsset/object index, Lua corpus, or another typed "
+                "TextAsset/object index or another typed "
                 "producer/consumer registry changes"
             ),
             "graphEffect": "none",
         }
+    for row in index.values():
+        mission_id = safe_key(row.get("missionId"))
+        branch_context = mission_branch_context_by_mission.get(mission_id)
+        if branch_context:
+            row["missionQuestBranchContext"] = branch_context
+        linear_context = mission_linear_context_by_mission.get(mission_id)
+        if linear_context:
+            row["missionQuestSequenceContext"] = linear_context
+        topology_context = mission_topology_context_by_mission.get(mission_id)
+        if topology_context:
+            row["missionQuestTopologyContext"] = topology_context
+        related_original_data = (
+            mission_related_original_data_by_mission.get(mission_id)
+        )
+        if related_original_data:
+            row["missionRelatedOriginalData"] = related_original_data
     status.update({
         "status": "active",
         "coreTargetSetSha256": core_target_digest,
         "deferredStoryKeys": len(index),
+        "missionRelatedOriginalData": (
+            mission_related_original_data_by_mission
+        ),
         "deferredMissions": sorted({
             row["missionId"]
             for row in index.values()
@@ -5992,16 +14350,261 @@ def _closed_exact_native_context_isolated_scenes(
     closed: list[dict[str, Any]] = []
     for connection in _flow_story_connections(flow):
         scene_key = safe_key(connection.get("key"))
+        relation = safe_key(connection.get("relation"))
         if (
             scene_key not in isolated_scene_keys
             or safe_key(connection.get("storyOwnerMission")) != owner_mission
-            or connection.get("storyBinding") is not True
-            or connection.get("ownership") is not False
             or safe_key(connection.get("direction")) != "context"
         ):
             continue
-        relation = safe_key(connection.get("relation"))
+        if relation == "authoritative_scope_leveldata_mission_context":
+            context_mission = safe_key(
+                connection.get("levelDataHostMissionId")
+            )
+            occurrences = [
+                row for row in connection.get("levelScriptOccurrences") or []
+                if isinstance(row, dict)
+            ]
+            exact_paths = []
+            occurrence_hosts_valid = bool(occurrences)
+            for occurrence in occurrences:
+                owners = [
+                    row for row in occurrence.get("nativeEventOwners") or []
+                    if isinstance(row, dict)
+                ]
+                hosts = [
+                    row for row in occurrence.get(
+                        "authoritativeScopeLevelDataHosts"
+                    ) or []
+                    if isinstance(row, dict)
+                ]
+                exact_paths.extend(owners)
+                if (
+                    safe_key(occurrence.get("actionName")) != "PlayRadio"
+                    or safe_key(occurrence.get("recordClass")) != "play_radio"
+                    or scene_key not in _string_list(
+                        occurrence.get("allStoryKeysInRecord")
+                    )
+                    or not owners
+                    or any(
+                        safe_key(owner.get("status"))
+                        != "exact_serialized_control_path"
+                        or safe_key(owner.get("headerName"))
+                        != "EntityEvent_OnInteractiveStateChanged"
+                        or not isinstance(owner.get("eventDetail"), dict)
+                        or owner.get("eventDetail", {}).get(
+                            "serializedMissionOrQuestId"
+                        ) is not False
+                        or owner.get("eventDetail", {}).get(
+                            "serverExchange"
+                        ) is not False
+                        or not any(
+                            isinstance(step, dict)
+                            and safe_key(step.get("actionName")) == "PlayRadio"
+                            and scene_key in _string_list(step.get("texts"))
+                            for step in owner.get("path") or []
+                        )
+                        for owner in owners
+                    )
+                    or len(hosts) != 1
+                    or hosts[0].get("status") != "unique"
+                    or _string_list(hosts[0].get("hostMissionIds"))
+                    != [context_mission]
+                    or safe_key(hosts[0].get("levelDataFile"))
+                    not in _string_list(connection.get("levelDataFiles"))
+                    or hosts[0].get("dictionaryEntryCount")
+                    not in (connection.get(
+                        "levelDataDictionaryEntryCounts"
+                    ) or [])
+                    or safe_key(hosts[0].get(
+                        "nativeSchema"
+                    )) != (
+                        "LevelData/43.member22:Dictionary<u64,"
+                        "LevelScriptBriefData/8>"
+                    )
+                ):
+                    occurrence_hosts_valid = False
+                    break
+            scope_references = [
+                row for row in connection.get(
+                    "authoritativeScopeReferences"
+                ) or []
+                if isinstance(row, dict)
+            ]
+            recognized_scope_kinds = {
+                "typed_mission_runtime_script_condition",
+                "typed_entity_tracking_registry_script",
+            }
+            if (
+                safe_key(connection.get("phase")) != "runtime_playback"
+                or safe_key(connection.get("confidence"))
+                != "native_exact_validated_leveldata_shell"
+                or safe_key(connection.get("evidenceTier"))
+                != "derived_exact_shell"
+                or not context_mission
+                or context_mission == owner_mission
+                or safe_key(connection.get("questTriggerStatus"))
+                != "sibling_script_shell_context_not_playback"
+                or safe_key(connection.get("executionSide")) != "client"
+                or safe_key(connection.get("networkRole"))
+                != "local_asset_shell_context"
+                or connection.get("serverExchange") is not False
+                or connection.get("occurrenceCount") != len(occurrences)
+                or connection.get("allOccurrenceCount") != len(occurrences)
+                or connection.get(
+                    "hasUnscopedOrOtherMissionOccurrences"
+                ) is not False
+                or _string_list(connection.get("nativeActions"))
+                != ["PlayRadio"]
+                or not occurrence_hosts_valid
+                or not exact_paths
+                or not _string_list(connection.get("levelIds"))
+                or not _string_list(connection.get("scriptIds"))
+                or not _string_list(connection.get("sourceFiles"))
+                or not _string_list(connection.get("levelDataFiles"))
+                or not _string_list(connection.get("anchorQuestIds"))
+                or any(
+                    not quest_id.startswith(f"{context_mission}_q#")
+                    for quest_id in _string_list(
+                        connection.get("anchorQuestIds")
+                    )
+                )
+                or not scope_references
+                or set(_string_list(
+                    connection.get("authoritativeScopeKinds")
+                )) != recognized_scope_kinds
+                or any(
+                    safe_key(reference.get("missionId"))
+                    != context_mission
+                    or safe_key(reference.get("scopeKind"))
+                    not in recognized_scope_kinds
+                    or not safe_key(reference.get("sourceFile"))
+                    for reference in scope_references
+                )
+            ):
+                continue
+            closed.append({
+                "sceneKey": scene_key,
+                "recoveryStatus":
+                    "closed_exact_cross_mission_leveldata_shell_playback_context_no_relative_order",
+                "relation": relation,
+                "nominalStoryMissionId": owner_mission,
+                "contextMissionId": context_mission,
+                "contextMissionMismatch": True,
+                "anchorQuestIds": _string_list(
+                    connection.get("anchorQuestIds")
+                ),
+                "levelIds": _string_list(connection.get("levelIds")),
+                "scriptIds": _string_list(connection.get("scriptIds")),
+                "sourceFiles": sorted(set(
+                    _string_list(connection.get("sourceFiles"))
+                    + _string_list(connection.get("levelDataFiles"))
+                ), key=natural_key),
+                "nativeEventPaths": exact_paths,
+                "activationBoundary": (
+                    "the exact local entity-property event plays this radio, "
+                    "while the validated LevelData dictionary scopes its "
+                    f"script as a sibling in the {context_mission} runtime shell"
+                ),
+                "orderBoundary": (
+                    "sibling containment and the shell's typed quest anchors "
+                    "do not transfer Story ownership, identify a quest "
+                    "trigger, or place this radio relative to other mission files"
+                ),
+            })
+            continue
+        if relation == "npc_proxy_segment_levelscript_mission_context":
+            context_mission = (
+                safe_key(connection.get("contextMissionBundle"))
+                or owner_mission
+            )
+            native_owners = [
+                row for row in connection.get("nativeEventOwners") or []
+                if isinstance(row, dict)
+            ]
+            exact_paths = [
+                row for row in native_owners
+                if safe_key(row.get("status"))
+                == "exact_serialized_control_path"
+                and safe_key(row.get("headerName"))
+                == "ScriptEvent_OnLeaderEnterTriggerVolume"
+                and any(
+                    isinstance(step, dict)
+                    and safe_key(step.get("recordClass")).startswith("play_")
+                    and scene_key in (
+                        {
+                            safe_key(text_id).rsplit("_", 1)[0]
+                            for text_id in step.get("texts") or []
+                            if safe_key(text_id)
+                        }
+                        if safe_key(step.get("recordClass")) == "play_black"
+                        else set(_string_list(step.get("texts")))
+                    )
+                    for step in row.get("path") or []
+                )
+            ]
+            if (
+                safe_key(connection.get("confidence"))
+                != "native_exact_npc_proxy_segment_shell"
+                or safe_key(connection.get("evidenceTier"))
+                != "derived_exact_shell"
+                or safe_key(connection.get("questTriggerStatus"))
+                != "same_authored_npc_proxy_segment_not_quest_playback"
+                or safe_key(connection.get("executionSide")) != "client"
+                or connection.get("serverExchange") is not False
+                or not _string_list(connection.get("npcProxyIds"))
+                or not _string_list(connection.get("segmentIdsGlobal"))
+                or not _string_list(connection.get("candidateQuestIds"))
+                or any(
+                    not quest_id.startswith(f"{context_mission}_q#")
+                    for quest_id in _string_list(
+                        connection.get("candidateQuestIds")
+                    )
+                )
+                or len(exact_paths) != len(native_owners)
+                or not exact_paths
+                or not _string_list(connection.get("sourceFiles"))
+            ):
+                continue
+            closed.append({
+                "sceneKey": scene_key,
+                "recoveryStatus":
+                    "closed_exact_npc_proxy_segment_playback_context_no_relative_order",
+                "relation": relation,
+                "nominalStoryMissionId": owner_mission,
+                "contextMissionId": context_mission,
+                "contextMissionMismatch": context_mission != owner_mission,
+                "npcProxyIds": _string_list(connection.get("npcProxyIds")),
+                "segmentIdsGlobal": _string_list(
+                    connection.get("segmentIdsGlobal")
+                ),
+                "candidateQuestIds": _string_list(
+                    connection.get("candidateQuestIds")
+                ),
+                "nativeEventPaths": exact_paths,
+                "sourceFiles": _string_list(connection.get("sourceFiles")),
+                "orderBoundary": (
+                    "the exact tracked NpcProxy segment and serialized native "
+                    "event path establish mission-shell playback context; they "
+                    "do not identify one quest trigger or relative Story order"
+                ),
+            })
+            continue
+        if (
+            connection.get("storyBinding") is not True
+            or connection.get("ownership") is not False
+        ):
+            continue
         if relation == "radio_trigger_zone_mission_state_playback_context":
+            gate_roles = set(_string_list(
+                connection.get("missionStateGateRoles")
+            ))
+            roles_by_id = connection.get("missionStateRolesById")
+            recognized_roles = {
+                "hideAfterMissionId",
+                "hideBeforeMissionId",
+                "hideCompleteMissionId",
+            }
             if (
                 safe_key(connection.get("phase"))
                 != "mission_state_trigger_zone"
@@ -6010,10 +14613,19 @@ def _closed_exact_native_context_isolated_scenes(
                 or safe_key(connection.get("evidenceTier")) != "direct"
                 or safe_key(connection.get("missionStateId"))
                 != owner_mission
-                or set(_string_list(
-                    connection.get("missionStateGateRoles")
-                ))
-                != {"hideBeforeMissionId", "hideCompleteMissionId"}
+                or not gate_roles
+                or not gate_roles.issubset(recognized_roles)
+                or not isinstance(roles_by_id, dict)
+                or set(_string_list(roles_by_id.get(owner_mission)))
+                != gate_roles
+                or any(
+                    not safe_key(mission_id)
+                    or not set(_string_list(roles)).issubset(
+                        recognized_roles
+                    )
+                    or not _string_list(roles)
+                    for mission_id, roles in roles_by_id.items()
+                )
                 or not safe_key(connection.get("nativeMappingId"))
                 or "PlayRadio" not in safe_key(
                     connection.get("nativeConsumer")
@@ -6046,6 +14658,69 @@ def _closed_exact_native_context_isolated_scenes(
                     "the exact radio trigger-zone row and mission-state "
                     "gates establish playback context, but entering the "
                     "world trigger supplies no relative Story order"
+                ),
+            })
+            continue
+        if relation == "npc_patrol_action_radio_playback_context":
+            patrol_offset = connection.get("patrolRecordOffset")
+            action_offset = connection.get("radioActionRecordOffset")
+            action_end = connection.get("radioActionRecordEndOffset")
+            next_patrol_offset = connection.get("nextPatrolRecordOffset")
+            if (
+                safe_key(connection.get("phase")) != "npc_patrol_action"
+                or safe_key(connection.get("confidence"))
+                != "native_exact_serialized_patrol_action"
+                or safe_key(connection.get("evidenceTier")) != "direct"
+                or connection.get("questActivation") is not False
+                or connection.get("questPlayback") is not False
+                or connection.get("questCompletion") is not False
+                or safe_key(connection.get("patrolEnvelopeStatus")) not in {
+                    "exact_full_patrol_record_consume",
+                    "exact_typed_neighbor_boundaries_partial_point_decode",
+                }
+                or not isinstance(connection.get("patrolId"), int)
+                or connection.get("patrolId") <= 0
+                or connection.get("patrolActionType") != 9
+                or connection.get("serializedMemberCount") != 26
+                or safe_key(connection.get("patrolSubActionDataStatus"))
+                != "null"
+                or not safe_key(connection.get("nativeMappingId"))
+                or "PlayRadio" not in safe_key(
+                    connection.get("nativeConsumer")
+                )
+                or not _string_list(connection.get("levelIds"))
+                or not _string_list(connection.get("sourceFiles"))
+                or not all(isinstance(value, int) for value in (
+                    patrol_offset,
+                    action_offset,
+                    action_end,
+                    next_patrol_offset,
+                ))
+                or not (
+                    patrol_offset < action_offset < action_end
+                    <= next_patrol_offset
+                )
+            ):
+                continue
+            closed.append({
+                "sceneKey": scene_key,
+                "recoveryStatus":
+                    "closed_exact_native_patrol_playback_context_no_relative_order",
+                "relation": relation,
+                "patrolId": connection.get("patrolId"),
+                "patrolPointIndex": connection.get("patrolPointIndex"),
+                "patrolEnvelopeStatus": safe_key(
+                    connection.get("patrolEnvelopeStatus")
+                ),
+                "levelIds": _string_list(connection.get("levelIds")),
+                "sourceFiles": _string_list(connection.get("sourceFiles")),
+                "nativeMappingId": safe_key(
+                    connection.get("nativeMappingId")
+                ),
+                "orderBoundary": (
+                    "the exact typed patrol action establishes native radio "
+                    "playback context; the patrol payload serializes no "
+                    "mission/quest identity or relative Story order"
                 ),
             })
             continue
@@ -6216,18 +14891,102 @@ def _deferred_offline_exhausted_isolated_scenes(
     offline_exhaustion_index: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Defer exact-build exhausted rows without asserting a graph fact."""
-    routed_keys = {
-        safe_key(row.get("key"))
-        for row in _flow_story_connections(flow)
-        if isinstance(row, dict) and safe_key(row.get("key"))
-    }
+    routed_rows_by_key: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in _flow_story_connections(flow):
+        if isinstance(row, dict) and safe_key(row.get("key")):
+            routed_rows_by_key[safe_key(row.get("key"))].append(row)
     deferred: list[dict[str, Any]] = []
     for scene_key in sorted(isolated_scene_keys, key=natural_key):
         evidence = offline_exhaustion_index.get(scene_key)
+        routed_rows = routed_rows_by_key.get(scene_key, [])
+        allowed_route = (
+            evidence.get("allowedNonOwningRoute")
+            if isinstance(evidence, dict)
+            else None
+        )
+        routed_rows_valid = not routed_rows
+        if routed_rows and isinstance(allowed_route, dict):
+            routed_rows_valid = all(
+                all(row.get(field) == value for field, value in allowed_route.items())
+                for row in routed_rows
+            )
+            context = evidence.get("nonOwningContext") or {}
+            quest_id = safe_key(context.get("questId"))
+            if quest_id:
+                expected_distance = context.get("distance")
+                quest_rows = [
+                    quest
+                    for quest in flow.get("quests") or []
+                    if isinstance(quest, dict)
+                    if safe_key(quest.get("id")) == quest_id
+                ]
+                level_data_refs = [
+                    ref
+                    for quest in quest_rows
+                    for ref in quest.get("levelDataStoryRefs") or []
+                    if isinstance(ref, dict)
+                    and safe_key(ref.get("storyRef")) == scene_key
+                ]
+                routed_rows_valid = (
+                    routed_rows_valid
+                    and len(quest_rows) == 1
+                    and len(level_data_refs) == 1
+                    and level_data_refs[0].get("distance")
+                    == expected_distance
+                    and safe_key(level_data_refs[0].get("file"))
+                    == safe_key(allowed_route.get("file"))
+                )
+            elif context.get("candidateQuestIds"):
+                expected_quests = sorted(
+                    [
+                        safe_key(value)
+                        for value in context.get("candidateQuestIds") or []
+                        if safe_key(value)
+                    ],
+                    key=natural_key,
+                )
+                route = routed_rows[0] if len(routed_rows) == 1 else {}
+                carrier_context = (
+                    route.get("carrierQuestStateContext") or {}
+                    if isinstance(route, dict)
+                    else {}
+                )
+                branch_contexts = carrier_context.get(
+                    "questStateBranchContexts"
+                ) or []
+                routed_rows_valid = (
+                    routed_rows_valid
+                    and len(routed_rows) == 1
+                    and sorted(
+                        _string_list(carrier_context.get("candidateQuestIds")),
+                        key=natural_key,
+                    ) == expected_quests
+                    and safe_key(context.get("parentStoryKey"))
+                    == safe_key(route.get("parentStoryKey"))
+                    and safe_key(context.get("sourceFile"))
+                    in _string_list(route.get("sourceFiles"))
+                    and bool(branch_contexts)
+                    and all(
+                        sorted(
+                            _string_list(branch.get("questIds")),
+                            key=natural_key,
+                        ) == expected_quests
+                        and safe_key(branch.get("conditionEvalString"))
+                        == safe_key(context.get("conditionEvalString"))
+                        and branch.get("noBypass") is True
+                        and {
+                            condition.get("targetQuestState")
+                            for condition in branch.get("conditions") or []
+                            if isinstance(condition, dict)
+                        } == {context.get("targetQuestState")}
+                        for branch in branch_contexts
+                        if isinstance(branch, dict)
+                    )
+                )
         if (
             not isinstance(evidence, dict)
             or safe_key(evidence.get("missionId")) != owner_mission
-            or scene_key in routed_keys
+            or not routed_rows_valid
             or evidence.get("graphEffect") != "none"
             or evidence.get("recoveryStatus")
             != "deferred_current_build_offline_surface_exhausted"
@@ -7107,10 +15866,210 @@ def _closed_exact_lua_controller_playback_isolated_scenes(
     return closed
 
 
+def _closed_exact_composed_root_playback_isolated_scenes(
+    story_trigger_manifest: dict[str, Any],
+    isolated_scene_keys: set[str],
+    owner_mission: str,
+) -> list[dict[str, Any]]:
+    """Close exact owned CutsceneRoot aliases without inventing chronology.
+
+    A standalone ``CutsceneRoot._director`` PPtr proves playback only.  It is
+    admitted here only when the current trigger manifest has already composed
+    that serialized alias with an independently connected native route ending
+    at the root Story key.  The route shape and evidence files are revalidated
+    so a stale or partially populated manifest fails closed.
+    """
+    closed: list[dict[str, Any]] = []
+    for scene_key in sorted(isolated_scene_keys, key=natural_key):
+        manifest_row = story_trigger_manifest.get(scene_key)
+        if (
+            not isinstance(manifest_row, dict)
+            or safe_key(manifest_row.get("key")) != scene_key
+            or safe_key(manifest_row.get("nominalMissionId")) != owner_mission
+            or safe_key(manifest_row.get("attachmentStatus")) != "connected"
+        ):
+            continue
+        composed_routes = [
+            route
+            for route in manifest_row.get("routes") or []
+            if isinstance(route, dict)
+            and safe_key(route.get("relation"))
+            == "cutscene_root_playback_alias_composed"
+        ]
+        alias_routes = [
+            route
+            for route in manifest_row.get("routes") or []
+            if isinstance(route, dict)
+            and safe_key(route.get("relation"))
+            == "cutscene_root_playback_alias"
+        ]
+        if not composed_routes or not alias_routes:
+            continue
+        validated: list[dict[str, Any]] = []
+        for route in composed_routes:
+            root_key = safe_key(route.get("rootStoryKey"))
+            steps = route.get("steps")
+            source_files = _string_list(route.get("sourceFiles"))
+            audit_report = safe_key(route.get("auditReport"))
+            native_paths = [
+                row
+                for row in route.get("nativePaths") or []
+                if isinstance(row, dict)
+            ]
+            quest_id = safe_key(route.get("questId"))
+            matching_aliases = []
+            for alias_route in alias_routes:
+                alias_sources = _string_list(alias_route.get("sourceFiles"))
+                if (
+                    safe_key(alias_route.get("storyKey")) == scene_key
+                    and safe_key(alias_route.get("rootStoryKey")) == root_key
+                    and safe_key(alias_route.get("direction")) == "playback"
+                    and safe_key(alias_route.get("causality"))
+                    == "playback_alias_owner_unresolved"
+                    and safe_key(alias_route.get("confidence"))
+                    == "exact_serialized_root_director_plus_native_playback"
+                    and safe_key(alias_route.get("evidenceTier")) == "direct"
+                    and safe_key(alias_route.get("ownerStatus")) == "unresolved"
+                    and alias_route.get("missionId") is None
+                    and alias_route.get("questId") is None
+                    and safe_key(alias_route.get("questTriggerStatus"))
+                    == "no_mission_or_quest_selector_recovered"
+                    and safe_key(alias_route.get("scope")) == "cutscene_root"
+                    and alias_route.get("serverExchange") is False
+                    and safe_key(alias_route.get("nativeMappingId"))
+                    == safe_key(route.get("nativeMappingId"))
+                    and safe_key(alias_route.get("auditReport")) == audit_report
+                    and alias_sources
+                    and audit_report in alias_sources
+                    and set(alias_sources).issubset(source_files)
+                    and alias_route.get("steps") == [
+                        {"id": root_key, "kind": "story_root"},
+                        {
+                            "id": (
+                                "CutsceneRoot._director -> "
+                                "TimelineHandle.Play"
+                            ),
+                            "kind": "native_action",
+                        },
+                        {"id": scene_key, "kind": "story"},
+                    ]
+                ):
+                    matching_aliases.append(alias_route)
+            if (
+                safe_key(route.get("storyKey")) != scene_key
+                or safe_key(route.get("missionId")) != owner_mission
+                or safe_key(route.get("direction")) != "context"
+                or safe_key(route.get("causality"))
+                != "playback_alias_owner_connected"
+                or safe_key(route.get("confidence"))
+                != (
+                    "exact_connected_root_playback_plus_"
+                    "serialized_director_alias"
+                )
+                or safe_key(route.get("evidenceTier"))
+                != "native_serialized_composed_exact"
+                or safe_key(route.get("ownerStatus")) != "connected"
+                or safe_key(route.get("scope")) != "mission"
+                or safe_key(route.get("questTriggerStatus"))
+                != (
+                    "connected_root_native_playback_composed_"
+                    "with_exact_alias"
+                )
+                or route.get("serverExchange") is not False
+                or not root_key
+                or root_key == scene_key
+                or not safe_key(route.get("rootBaseRelation"))
+                or not safe_key(route.get("rootBaseCausality"))
+                or safe_key(route.get("aliasRelation"))
+                != "cutscene_root_director_playable_asset"
+                or not safe_key(route.get("nativeMappingId"))
+                or not audit_report
+                or audit_report not in source_files
+                or not native_paths
+                or len(matching_aliases) != 1
+                or any(
+                    not safe_key(path.get("sourceFile"))
+                    or safe_key(path.get("sourceFile")) not in source_files
+                    or not any(
+                        isinstance(step, dict)
+                        and safe_key(step.get("actionName")).startswith("Play")
+                        for step in path.get("steps") or []
+                    )
+                    for path in native_paths
+                )
+                or (quest_id and not quest_id.startswith(f"{owner_mission}_q#"))
+                or not isinstance(steps, list)
+                or len(steps) < 5
+                or not isinstance(steps[0], dict)
+                or safe_key(steps[0].get("kind")) != "mission"
+                or safe_key(steps[0].get("id")) != owner_mission
+                or not any(
+                    isinstance(step, dict)
+                    and safe_key(step.get("kind")) == "native_action"
+                    for step in steps[:-3]
+                )
+                or steps[-3] != {"id": root_key, "kind": "story_root"}
+                or steps[-2] != {
+                    "id": "CutsceneRoot._director -> TimelineHandle.Play",
+                    "kind": "native_action",
+                }
+                or steps[-1] != {"id": scene_key, "kind": "story"}
+            ):
+                validated = []
+                break
+            validated.append(route)
+        if not validated:
+            continue
+        closed.append({
+            "sceneKey": scene_key,
+            "recoveryStatus": (
+                "closed_exact_composed_root_playback_context_"
+                "no_relative_order"
+            ),
+            "relation": "cutscene_root_playback_alias_composed",
+            "missionId": owner_mission,
+            "rootStoryKeys": sorted({
+                safe_key(route.get("rootStoryKey"))
+                for route in validated
+            }, key=natural_key),
+            "rootBaseRelations": sorted({
+                safe_key(route.get("rootBaseRelation"))
+                for route in validated
+            }, key=natural_key),
+            "nativeMappingIds": sorted({
+                safe_key(route.get("nativeMappingId"))
+                for route in validated
+            }, key=natural_key),
+            "sourceFiles": sorted({
+                source_file
+                for route in validated
+                for source_file in _string_list(route.get("sourceFiles"))
+            }, key=natural_key),
+            "nativePaths": [
+                path
+                for route in validated
+                for path in route.get("nativePaths") or []
+                if isinstance(path, dict)
+            ],
+            "playbackBoundary": (
+                "the independently connected native route reaches the exact "
+                "CutsceneRoot, whose serialized _director PPtr identifies the "
+                "TimelineAsset executed by TimelineHandle.Play"
+            ),
+            "orderBoundary": (
+                "the composed playback alias transfers mission context only; "
+                "it supplies no relative Story-file edge"
+            ),
+            "graphEffect": "none",
+        })
+    return closed
+
+
 def _closed_exact_runtime_config_isolated_scenes(
     flow: dict[str, Any],
     isolated_scene_keys: set[str],
     owner_mission: str,
+    offline_exhaustion_index: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Close exact executable Story configs that encode no chronology.
 
@@ -7133,6 +16092,305 @@ def _closed_exact_runtime_config_isolated_scenes(
     establishes activation timing or relative Story order.
     """
     closed: list[dict[str, Any]] = []
+    offline_exhaustion_index = offline_exhaustion_index or {}
+    for row in _flow_story_connections(flow):
+        scene_key = safe_key(row.get("key"))
+        definition = offline_exhaustion_index.get(scene_key)
+        content_ids = _string_list(row.get("snsContentIds"))
+        if (
+            scene_key not in isolated_scene_keys
+            or safe_key(row.get("relation")) != "sns_authored_mission_link"
+            or safe_key(row.get("direction")) != "context"
+            or safe_key(row.get("phase")) != "mission_link"
+            or safe_key(row.get("confidence")) != "authored_direct"
+            or safe_key(row.get("storyOwnerMission")) != owner_mission
+            or safe_key(row.get("snsDialogId")) != scene_key
+            or safe_key(row.get("snsMissionId")) != owner_mission
+            or row.get("snsContentType") != 12
+            or not content_ids
+            or not isinstance(definition, dict)
+            or safe_key(definition.get("missionId")) != owner_mission
+            or safe_key(definition.get("relatedMissionId")) != owner_mission
+            or definition.get("definitionTables") != [
+                "SNSDialogTable",
+                "SNSDialogOptionTable",
+            ]
+            or any(
+                safe_key(
+                    (definition.get("linkMissionIdsByContentId") or {}).get(
+                        content_id
+                    )
+                ) != owner_mission
+                or owner_mission not in (
+                    definition.get("contentParamsByContentId") or {}
+                ).get(content_id, [])
+                for content_id in content_ids
+            )
+        ):
+            continue
+        closed.append({
+            "sceneKey": scene_key,
+            "recoveryStatus":
+                "closed_exact_authored_sns_mission_link_no_relative_order",
+            "relation": "sns_authored_mission_link",
+            "missionId": owner_mission,
+            "snsContentIds": content_ids,
+            "snsContentType": 12,
+            "sourceFiles": [
+                "export_full/structured/StreamingAssets/Table/"
+                "SNSDialogTable.json",
+            ],
+            "activationBoundary": (
+                "the exact SNSDialogTable relatedMissionId and terminal "
+                "mission-link content node attach this SNS file to the mission"
+            ),
+            "orderBoundary": (
+                "the authored mission link is context, not a playback "
+                "activator; the internal SNS message chain orders only this "
+                "file's messages and does not place it among mission scenes"
+            ),
+        })
+    for quest in flow.get("quests") or []:
+        if not isinstance(quest, dict):
+            continue
+        quest_id = safe_key(quest.get("id"))
+        for row in quest.get("storyConnections") or []:
+            if not isinstance(row, dict):
+                continue
+            scene_key = safe_key(row.get("key"))
+            objective_index = row.get("objectiveIndex")
+            tracking_index = row.get("trackingIndex")
+            if (
+                scene_key not in isolated_scene_keys
+                or not quest_id.startswith(f"{owner_mission}_q#")
+                or safe_key(row.get("kind")) != "sns"
+                or safe_key(row.get("relation"))
+                != "objective_tracking_story_reference"
+                or safe_key(row.get("direction")) != "context"
+                or safe_key(row.get("phase")) != "tracking"
+                or safe_key(row.get("confidence"))
+                != "native_typed_context"
+                or safe_key(row.get("trackingType")) != "SnsTrackingInfo"
+                or row.get("playback") is not False
+                or safe_key(row.get("attachmentBoundary"))
+                != (
+                    "authored objective tracking attachment only; "
+                    "SnsTrackingInfo.Execute is not SNS playback"
+                )
+                or safe_key(row.get("orderBoundary"))
+                != (
+                    "tracking configuration establishes no activation time "
+                    "or relative Story order"
+                )
+                or not re.fullmatch(
+                    r"MissionRuntimeAsset\.questDic\[\*\]\.objectiveList"
+                    r"\[\d+\]\.trackingInfoList\[\d+\]\.snsDialogId",
+                    safe_key(row.get("source")),
+                )
+                or not isinstance(objective_index, int)
+                or isinstance(objective_index, bool)
+                or objective_index <= 0
+                or not isinstance(tracking_index, int)
+                or isinstance(tracking_index, bool)
+                or tracking_index < 0
+            ):
+                continue
+            closed.append({
+                "sceneKey": scene_key,
+                "recoveryStatus":
+                    "closed_exact_mission_tracking_context_no_relative_order",
+                "relation": "objective_tracking_story_reference",
+                "missionId": owner_mission,
+                "questId": quest_id,
+                "objectiveIndex": objective_index,
+                "trackingIndex": tracking_index,
+                "trackingType": "SnsTrackingInfo",
+                "activationBoundary": (
+                    "the exact MissionRuntime objective config attaches this "
+                    "SNS conversation to client tracking; the native tracking "
+                    "type does not start SNS playback"
+                ),
+                "orderBoundary": (
+                    "quest attachment establishes mission context but no "
+                    "activation time or relative Story order"
+                ),
+                "sourceFile": (
+                    "export_full/structured/Persistent/Data/Json/"
+                    f"MissionRuntimeAsset/{owner_mission}.json"
+                ),
+            })
+
+    for row in flow.get("missionStoryConnections") or []:
+        if not isinstance(row, dict):
+            continue
+        scene_key = safe_key(row.get("key"))
+        accept_mode = row.get("acceptMode")
+        finish_id = row.get("finishId")
+        if (
+            scene_key not in isolated_scene_keys
+            or safe_key(row.get("kind")) != "dialog"
+            or safe_key(row.get("relation")) != "mission_accept_dialog"
+            or safe_key(row.get("direction")) != "story_to_mission"
+            or safe_key(row.get("phase")) != "accept"
+            or safe_key(row.get("confidence")) != "native_typed_direct"
+            or safe_key(row.get("source"))
+            != (
+                f"MissionRuntimeAsset/{owner_mission}_meta.json."
+                "acceptMode.modeInfo.dialogId"
+            )
+            or not isinstance(accept_mode, int)
+            or isinstance(accept_mode, bool)
+            or accept_mode < 0
+            or safe_key(row.get("acceptModeType"))
+            != "MissionAcceptMode+NPCInfo"
+            or not safe_key(row.get("npcProxyId"))
+            or not safe_key(row.get("levelId"))
+            or not isinstance(finish_id, int)
+            or isinstance(finish_id, bool)
+        ):
+            continue
+        closed.append({
+            "sceneKey": scene_key,
+            "recoveryStatus":
+                "closed_exact_mission_accept_dialog_no_relative_order",
+            "relation": "mission_accept_dialog",
+            "missionId": owner_mission,
+            "phase": "accept",
+            "acceptMode": accept_mode,
+            "acceptModeType": "MissionAcceptMode+NPCInfo",
+            "npcProxyId": safe_key(row.get("npcProxyId")),
+            "levelId": safe_key(row.get("levelId")),
+            "finishId": finish_id,
+            "attachmentSemantics": (
+                "the exact typed MissionRuntime meta asset selects this "
+                "dialog for the mission-accept interaction"
+            ),
+            "orderBoundary": (
+                "the accept phase proves mission ownership and lifecycle "
+                "placement, but does not create a relative edge to another "
+                "Story file"
+            ),
+            "sourceFile": (
+                "export_full/structured/Persistent/Data/Json/"
+                f"MissionRuntimeAsset/{owner_mission}_meta.json"
+            ),
+        })
+
+    already_closed = {row["sceneKey"] for row in closed}
+    for quest in flow.get("quests") or []:
+        if not isinstance(quest, dict):
+            continue
+        quest_id = safe_key(quest.get("id"))
+        for row in quest.get("storyConnections") or []:
+            if not isinstance(row, dict):
+                continue
+            scene_key = safe_key(row.get("key"))
+            carriers = [
+                carrier
+                for carrier in (
+                    row.get("dialogTreePrimeStoryPlaybackCarriers") or []
+                )
+                if isinstance(carrier, dict)
+            ]
+            source_files = _string_list(row.get("sourceFiles"))
+            dependency = EXACT_PARENT_DIALOG_DEPENDENCIES.get(scene_key)
+            if not isinstance(dependency, dict):
+                continue
+            expected_source = dependency["sourceFile"]
+            source_path = ROOT / expected_source
+            expected_carrier_values = list(
+                dependency.get("trunkIds")
+                or dependency.get("dialogIds")
+                or ()
+            )
+            if (
+                scene_key in already_closed
+                or scene_key not in isolated_scene_keys
+                or owner_mission != dependency["missionId"]
+                or quest_id != dependency["questId"]
+                or safe_key(row.get("relation"))
+                != "dialog_tree_prime_reachable_story_playback_dependency"
+                or safe_key(row.get("direction")) != "context"
+                or safe_key(row.get("phase"))
+                != "dialog_tree_prime_reachable_story_playback"
+                or safe_key(row.get("confidence"))
+                != "native_exact_prime_reachable_parent_quest_dependency"
+                or safe_key(row.get("evidenceTier"))
+                != "native_exact_context"
+                or safe_key(row.get("parentStoryKey"))
+                != dependency["parentStoryKey"]
+                or safe_key(row.get("storyOwnerMission")) != owner_mission
+                or row.get("storyBinding") is not True
+                or row.get("ownership") is not False
+                or row.get("dependencyOnly") is not True
+                or row.get("questActivation") is not False
+                or row.get("questPlayback") is not False
+                or row.get("questCompletion") is not False
+                or safe_key(row.get("questTriggerStatus"))
+                != "exact_parent_dialog_completion_context_not_quest_playback_trigger"
+                or safe_key(row.get("nativeMappingId"))
+                != "dialog-tree-prime-reachable-completion-dependency-native-v1"
+                or source_files != [expected_source]
+                or not source_path.is_file()
+                or _sha256_file(source_path)
+                != dependency["sourceSha256"]
+                or _string_list(row.get("sourcePathIds"))
+                != [dependency["sourcePathId"]]
+                or _string_list(row.get("trunkIds"))
+                != list(dependency.get("trunkIds") or ())
+                or _string_list(row.get("dialogIds"))
+                != list(dependency.get("dialogIds") or ())
+                or len(carriers) != dependency["carrierCount"]
+                or [safe_key(carrier.get("carrierValue")) for carrier in carriers]
+                != expected_carrier_values
+                or any(
+                    safe_key(carrier.get("dialogKey"))
+                    != dependency["parentStoryKey"]
+                    or safe_key(carrier.get("storyKey")) != scene_key
+                    or safe_key(carrier.get("carrierKind"))
+                    != dependency["carrierKind"]
+                    or safe_key(carrier.get("reachDirection"))
+                    != "prime_to_carrier"
+                    or carrier.get("reachableFromPrimeNode") is not True
+                    or safe_key(carrier.get("entryProof"))
+                    != "exact_registered_dialog_tree_prime_node_reachability"
+                    or carrier.get("registeredDialogRoot") is not True
+                    or safe_key(carrier.get("sourceFile")) != expected_source
+                    or safe_key(carrier.get("sourcePathId"))
+                    != dependency["sourcePathId"]
+                    or not _string_list(carrier.get("nodePath"))
+                    or not carrier.get("connectionPath")
+                    for carrier in carriers
+                )
+            ):
+                continue
+            closed.append({
+                "sceneKey": scene_key,
+                "recoveryStatus":
+                    "closed_exact_parent_dialog_dependency_no_relative_order",
+                "relation":
+                    "dialog_tree_prime_reachable_story_playback_dependency",
+                "missionId": owner_mission,
+                "questId": quest_id,
+                "parentStoryKey": dependency["parentStoryKey"],
+                "trunkIds": list(dependency.get("trunkIds") or ()),
+                "dialogIds": list(dependency.get("dialogIds") or ()),
+                "sourceFiles": source_files,
+                "sourceSha256": _sha256_file(source_path),
+                "playbackSemantics": (
+                    "the registered parent DialogTree's exact prime-node "
+                    "path reaches the typed Story carrier for this file"
+                ),
+                "activationBoundary": (
+                    "MissionRuntime observes completion of the parent dialog; "
+                    "it does not identify the activator of either dialog"
+                ),
+                "orderBoundary": (
+                    "prime-node reachability orders nodes inside the parent "
+                    "DialogTree only; it creates no inter-file chronology"
+                ),
+            })
+
     for row in _flow_story_connections(flow):
         scene_key = safe_key(row.get("key"))
         if (
@@ -7251,6 +16509,92 @@ def _closed_exact_runtime_config_isolated_scenes(
             "orderBoundary": (
                 "wall state, row order, and a later local pushback event do "
                 "not establish relative Story chronology"
+            ),
+        })
+    for row in _flow_story_connections(flow):
+        scene_key = safe_key(row.get("key"))
+        candidate_quest_ids = _string_list(row.get("candidateQuestIds"))
+        if (
+            scene_key not in isolated_scene_keys
+            or safe_key(row.get("relation"))
+            != "entity_tracking_interactive_story_target"
+            or safe_key(row.get("direction")) != "context"
+            or safe_key(row.get("phase")) != "tracking"
+            or safe_key(row.get("confidence"))
+            != "native_exact_tracked_interactive_property"
+            or safe_key(row.get("evidenceTier")) != "native_exact_context"
+            or safe_key(row.get("storyOwnerMission")) != owner_mission
+            or safe_key(row.get("trackingMissionId")) != owner_mission
+            or safe_key(row.get("questTriggerStatus"))
+            != "navigation_target_configured_story_not_playback"
+            or safe_key(row.get("executionSide")) != "client"
+            or safe_key(row.get("networkRole"))
+            != "local_navigation_context"
+            or row.get("clientNavigationOnly") is not True
+            or row.get("serverExchange") is not False
+            or not candidate_quest_ids
+            or any(
+                not quest_id.startswith(f"{owner_mission}_q#")
+                for quest_id in candidate_quest_ids
+            )
+            or not _string_list(row.get("levelIds"))
+            or not _string_list(row.get("scriptIds"))
+            or not _string_list(row.get("localScriptIds"))
+            or not _string_list(row.get("entitySlotIds"))
+            or not _string_list(row.get("entityDetailIds"))
+            or not _string_list(row.get("entityTemplateIds"))
+            or not _string_list(row.get("entityTemplatePaths"))
+            or not _string_list(row.get("registrySourceFiles"))
+            or not _string_list(row.get("interactiveTableSourceFiles"))
+            or not _string_list(row.get("sourceFiles"))
+            or safe_key(row.get("interactivePropertyKey")) != "type_id"
+            or not isinstance(row.get("trackingObjectiveIndex"), int)
+            or isinstance(row.get("trackingObjectiveIndex"), bool)
+            or not isinstance(row.get("trackingIndex"), int)
+            or isinstance(row.get("trackingIndex"), bool)
+            or not isinstance(row.get("interactiveEntryOffset"), int)
+            or isinstance(row.get("interactiveEntryOffset"), bool)
+            or not isinstance(row.get("interactivePropertyOffset"), int)
+            or isinstance(row.get("interactivePropertyOffset"), bool)
+            or not isinstance(row.get("interactiveStoryOffset"), int)
+            or isinstance(row.get("interactiveStoryOffset"), bool)
+            or not (
+                row["interactiveEntryOffset"]
+                < row["interactivePropertyOffset"]
+                < row["interactiveStoryOffset"]
+            )
+        ):
+            continue
+        closed.append({
+            "sceneKey": scene_key,
+            "recoveryStatus":
+                "closed_exact_tracked_interactive_context_no_relative_order",
+            "relation": "entity_tracking_interactive_story_target",
+            "missionId": owner_mission,
+            "candidateQuestIds": candidate_quest_ids,
+            "trackingObjectiveIndex": row["trackingObjectiveIndex"],
+            "trackingIndex": row["trackingIndex"],
+            "levelIds": _string_list(row.get("levelIds")),
+            "scriptIds": _string_list(row.get("scriptIds")),
+            "localScriptIds": _string_list(row.get("localScriptIds")),
+            "entitySlotIds": _string_list(row.get("entitySlotIds")),
+            "entityDetailIds": _string_list(row.get("entityDetailIds")),
+            "entityTemplateIds": _string_list(row.get("entityTemplateIds")),
+            "interactivePropertyKey": "type_id",
+            "interactiveEntryOffset": row["interactiveEntryOffset"],
+            "interactivePropertyOffset": row["interactivePropertyOffset"],
+            "interactiveStoryOffset": row["interactiveStoryOffset"],
+            "sourceFiles": _string_list(row.get("sourceFiles")),
+            "activationBoundary": (
+                "the exact MissionRuntime EntityTrackingInfo target resolves "
+                "through the registry to an interactive whose serialized "
+                "type_id is this Story key; this is client navigation "
+                "configuration, not playback or quest completion"
+            ),
+            "orderBoundary": (
+                "tracking index, entity slot, serialized offsets, and world "
+                "placement do not establish activation time or relative "
+                "Story chronology"
             ),
         })
     completion_grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -7455,6 +16799,140 @@ def _closed_exact_runtime_config_isolated_scenes(
                 )
                 for row in rows
             }),
+        })
+
+    already_closed = {row["sceneKey"] for row in closed}
+    tracked_proxy_grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    tracked_proxy_declaration = UNIQUE_MISSION_TRACKED_PROXY_CONTEXTS.get(
+        owner_mission
+    )
+    if isinstance(tracked_proxy_declaration, dict):
+        expected_dialog_ids = list(tracked_proxy_declaration["dialogIds"])
+        expected_ex_dialog_ids = list(
+            tracked_proxy_declaration["exDialogIds"]
+        )
+        expected_active_row_indices = list(
+            tracked_proxy_declaration["activeRowIndices"]
+        )
+        expected_quest_ids = list(tracked_proxy_declaration["questIds"])
+        expected_source_hashes = tracked_proxy_declaration["sourceHashes"]
+        sources_valid = all(
+            _sha256_file(ROOT / relative_path) == expected_sha256
+            for relative_path, expected_sha256
+            in expected_source_hashes.items()
+        )
+        for row in _flow_story_connections(flow):
+            scene_key = safe_key(row.get("key"))
+            active_row_index = row.get("activeRowIndex")
+            proxy_table_row = row.get("npcProxyTableRow")
+            ex_rows = row.get("npcProxyExRows")
+            source_files = _string_list(row.get("sourceFiles"))
+            if (
+                not sources_valid
+                or scene_key in already_closed
+                or scene_key not in isolated_scene_keys
+                or safe_key(row.get("relation"))
+                != "unique_mission_tracked_npc_proxy_dialog_context"
+                or safe_key(row.get("direction")) != "context"
+                or safe_key(row.get("phase"))
+                != "server_selected_proxy_state"
+                or safe_key(row.get("confidence"))
+                != "native_exact_mission_context"
+                or safe_key(row.get("evidenceTier"))
+                != "derived_exact_mission"
+                or safe_key(row.get("storyOwnerMission")) != owner_mission
+                or safe_key(row.get("npcProxyId"))
+                != tracked_proxy_declaration["npcProxyId"]
+                or _string_list(row.get("levelIds"))
+                != [tracked_proxy_declaration["levelId"]]
+                or _string_list(row.get("candidateQuestIds"))
+                != expected_quest_ids
+                or _string_list(row.get("configuredDialogIds"))
+                != expected_dialog_ids
+                or not isinstance(active_row_index, int)
+                or isinstance(active_row_index, bool)
+                or active_row_index not in expected_active_row_indices
+                or expected_ex_dialog_ids[active_row_index - 1] != scene_key
+                or row.get("storyBinding") is not True
+                or row.get("ownership") is not False
+                or row.get("questActivation") is not False
+                or row.get("questPlayback") is not False
+                or row.get("questCompletion") is not False
+                or safe_key(row.get("questTriggerStatus"))
+                != (
+                    "shared_tracked_proxy_state_context_not_quest_selection_"
+                    "or_playback"
+                )
+                or safe_key(row.get("selectionOrderStatus"))
+                != (
+                    "one_based_active_row_selection_only_no_cross_row_"
+                    "chronology"
+                )
+                or row.get("serverExchange") is not True
+                or row.get("clientRequest") is not False
+                or row.get("expectedClientReply") is not False
+                or safe_key(row.get("nativeMappingId"))
+                != NPC_PROXY_DIALOG_SELECTION_MAPPING_ID
+                or safe_key(row.get("gameAssemblySha256"))
+                != NPC_PROXY_DIALOG_SELECTION_GAMEASSEMBLY_SHA256
+                or set(source_files) != set(expected_source_hashes)
+                or not isinstance(proxy_table_row, dict)
+                or safe_key(proxy_table_row.get("proxyId"))
+                != tracked_proxy_declaration["npcProxyId"]
+                or safe_key(proxy_table_row.get("levelId"))
+                != tracked_proxy_declaration["levelId"]
+                or proxy_table_row.get("subDataParentId")
+                != tracked_proxy_declaration["subDataParentId"]
+                or not isinstance(ex_rows, list)
+                or len(ex_rows) != len(expected_ex_dialog_ids)
+                or not all(isinstance(ex_row, dict) for ex_row in ex_rows)
+                or [safe_key(ex_row.get("dialogId")) for ex_row in ex_rows]
+                != expected_ex_dialog_ids
+                or any(
+                    safe_key(ex_row.get("missionId"))
+                    for ex_row in ex_rows
+                )
+            ):
+                continue
+            tracked_proxy_grouped[scene_key].append(row)
+
+    for scene_key, rows in tracked_proxy_grouped.items():
+        if len(rows) != 1:
+            continue
+        row = rows[0]
+        closed.append({
+            "sceneKey": scene_key,
+            "recoveryStatus":
+                "closed_exact_runtime_config_no_relative_order",
+            "relation":
+                "unique_mission_tracked_npc_proxy_dialog_context",
+            "missionId": owner_mission,
+            "npcProxyId": safe_key(row.get("npcProxyId")),
+            "candidateQuestIds": _string_list(
+                row.get("candidateQuestIds")
+            ),
+            "configuredDialogIds": _string_list(
+                row.get("configuredDialogIds")
+            ),
+            "activeRowIndex": row["activeRowIndex"],
+            "selectionSemantics":
+                "exDatas[activeCondIndex - 1].dialogId",
+            "contextBoundary": (
+                "all exact typed tracking consumers for this same-level NPC "
+                "proxy agree on one mission; the tracking quests observe the "
+                "shared proxy but do not select or play this dialog"
+            ),
+            "orderBoundary": (
+                "activeCondIndex selects one proxy row; row index, table "
+                "order, dialog suffix, and quest topology do not order the "
+                "configured dialogs"
+            ),
+            "sourceFiles": _string_list(row.get("sourceFiles")),
+            "sourceSha256": {
+                relative_path: expected_sha256
+                for relative_path, expected_sha256
+                in tracked_proxy_declaration["sourceHashes"].items()
+            },
         })
 
     already_closed = {row["sceneKey"] for row in closed}
@@ -8310,11 +17788,21 @@ def build_gap_row(
         set(isolated_scene_keys),
         safe_key(partial_row.get("mission")),
     ):
+        if (
+            row.get("contextMissionMismatch") is True
+            or row["sceneKey"] not in closed_exact_native_isolated_by_key
+        ):
+            closed_exact_native_isolated_by_key[row["sceneKey"]] = row
+    for row in _closed_exact_lua_controller_playback_isolated_scenes(
+        story_trigger_manifest,
+        set(isolated_scene_keys),
+        safe_key(partial_row.get("mission")),
+    ):
         closed_exact_native_isolated_by_key.setdefault(
             row["sceneKey"],
             row,
         )
-    for row in _closed_exact_lua_controller_playback_isolated_scenes(
+    for row in _closed_exact_composed_root_playback_isolated_scenes(
         story_trigger_manifest,
         set(isolated_scene_keys),
         safe_key(partial_row.get("mission")),
@@ -8336,6 +17824,7 @@ def build_gap_row(
             cross_owner_flow,
             set(isolated_scene_keys),
             safe_key(partial_row.get("mission")),
+            offline_exhaustion_index,
         )
     )
     closed_exact_runtime_config_isolated_keys = {
@@ -8374,6 +17863,52 @@ def build_gap_row(
         row["sceneKey"]
         for row in deferred_offline_exhausted_isolated
     }
+    deferred_offline_option_route_groups: list[dict[str, Any]] = []
+    for group_row in (
+        ((partial_row.get("branches") or {}).get(
+            "branchingNoExplicitRouteGroups"
+        ) or [])
+    ):
+        if not isinstance(group_row, dict):
+            continue
+        story_key = safe_key(group_row.get("storyKey"))
+        recovery = offline_exhaustion_index.get(story_key)
+        if (
+            story_key not in deferred_offline_exhausted_isolated_keys
+            or not isinstance(recovery, dict)
+            or recovery.get("optionRouteStatus")
+            != "definitions_present_route_unresolved"
+        ):
+            continue
+        group = int(group_row.get("group") or 0)
+        option_ids = tuple(sorted(
+            safe_key(option.get("optionId"))
+            for option in group_row.get("options") or []
+            if isinstance(option, dict) and safe_key(option.get("optionId"))
+        ))
+        expected_option_ids = tuple(sorted(
+            option_id
+            for option_id in _string_list(recovery.get("optionIds"))
+            if option_id.startswith(f"option_{story_key}_{group}_")
+        ))
+        if not option_ids or option_ids != expected_option_ids:
+            continue
+        deferred_offline_option_route_groups.append({
+            "storyKey": story_key,
+            "group": group,
+            "optionIds": list(option_ids),
+            "recoveryStatus":
+                "deferred_current_build_offline_route_surface_exhausted",
+            "evidenceKind": recovery.get("evidenceKind"),
+            "consumerBoundary": recovery.get("consumerBoundary"),
+            "routeBoundary": (
+                "the exact option definitions survive, but the current "
+                "registered table-only dialog has no DialogTree, Timeline, "
+                "typed runtime consumer, native token, or object-index "
+                "carrier from which an option destination could be recovered"
+            ),
+            "graphEffect": "none",
+        })
     actionable_core_isolated_scene_keys = [
         key
         for key in core_isolated_scene_keys
@@ -8506,12 +18041,18 @@ def build_gap_row(
         "noExplicitOptionRouteGroups": int(
             summary.get("noExplicitRouteGroupCount") or 0
         ),
-        "actionableNoExplicitOptionRouteGroups": int(
-            summary.get(
-                "branchingNoExplicitRouteGroupCount",
-                summary.get("noExplicitRouteGroupCount"),
-            )
-            or 0
+        "actionableNoExplicitOptionRouteGroups": max(
+            0,
+            int(
+                summary.get(
+                    "branchingNoExplicitRouteGroupCount",
+                    summary.get("noExplicitRouteGroupCount"),
+                )
+                or 0
+            ) - len(deferred_offline_option_route_groups),
+        ),
+        "deferredOfflineExhaustedOptionRouteGroups": len(
+            deferred_offline_option_route_groups
         ),
         "singleOptionNoExplicitRouteGroups": int(
             summary.get("singleOptionNoExplicitRouteGroupCount") or 0
@@ -8573,6 +18114,8 @@ def build_gap_row(
             closed_non_mission_content_isolated,
         "deferredOfflineExhaustedIsolatedScenes":
             deferred_offline_exhausted_isolated,
+        "deferredOfflineExhaustedOptionRouteGroups":
+            deferred_offline_option_route_groups,
         "actionableWeakOnlySceneKeys": actionable_weak_only_scene_keys,
         "closedExactNativeWeakOnlyScenes": closed_exact_native_weak_only,
         "nonActionableWeakOnlySceneKeys":
@@ -8822,6 +18365,105 @@ def _exact_cross_owner_mission_condition_story_context(
     return has_playback
 
 
+def _exact_cross_owner_npc_proxy_segment_story_context(
+    connection: dict[str, Any],
+    owner_mission: str,
+    context_mission: str,
+) -> bool:
+    """Validate a foreign Story playback path in one exact NpcProxy shell."""
+    story_key = safe_key(connection.get("key"))
+    proxy_ids = set(_string_list(connection.get("npcProxyIds")))
+    segment_ids = set(_string_list(connection.get("segmentIdsGlobal")))
+    candidate_quests = set(_string_list(connection.get("candidateQuestIds")))
+    native_owners = connection.get("nativeEventOwners") or []
+    tracking_rows = connection.get("npcProxyTrackingRows") or []
+    registry_rows = connection.get("npcProxyRegistryRows") or []
+    proxy_ex_rows = connection.get("npcProxyExRows") or []
+    if (
+        not story_key
+        or safe_key(connection.get("relation"))
+        != "npc_proxy_segment_levelscript_mission_context"
+        or safe_key(connection.get("direction")) != "context"
+        or safe_key(connection.get("phase")) != "runtime_playback"
+        or safe_key(connection.get("confidence"))
+        != "native_exact_npc_proxy_segment_shell"
+        or safe_key(connection.get("evidenceTier")) != "derived_exact_shell"
+        or safe_key(connection.get("storyOwnerMission")) != owner_mission
+        or owner_mission == context_mission
+        or safe_key(connection.get("questTriggerStatus"))
+        != "same_authored_npc_proxy_segment_not_quest_playback"
+        or safe_key(connection.get("executionSide")) != "client"
+        or connection.get("serverExchange") is not False
+        or not proxy_ids
+        or not segment_ids
+        or not candidate_quests
+        or any(
+            not quest_id.startswith(f"{context_mission}_q#")
+            for quest_id in candidate_quests
+        )
+        or set(_string_list(connection.get("scriptIds"))) != segment_ids
+        or not native_owners
+        or not tracking_rows
+        or not registry_rows
+        or not proxy_ex_rows
+        or not _string_list(connection.get("sourceFiles"))
+    ):
+        return False
+    if any(
+        not isinstance(row, dict)
+        or safe_key(row.get("missionId")) != context_mission
+        or safe_key(row.get("questId")) not in candidate_quests
+        or not safe_key(row.get("sourceFile"))
+        for row in tracking_rows
+    ):
+        return False
+    if any(
+        not isinstance(row, dict)
+        or safe_key(row.get("proxyId")) not in proxy_ids
+        or safe_key(row.get("dictionaryKey")) not in segment_ids
+        or safe_key(row.get("segmentIdGlobal")) not in segment_ids
+        or not safe_key(row.get("sourceFile"))
+        for row in registry_rows
+    ):
+        return False
+    if any(
+        not isinstance(row, dict)
+        or safe_key(row.get("proxyId")) not in proxy_ids
+        or safe_key(row.get("missionId")) != context_mission
+        or not isinstance(row.get("rowIndex"), int)
+        or isinstance(row.get("rowIndex"), bool)
+        or not safe_key(row.get("sourceFile"))
+        for row in proxy_ex_rows
+    ):
+        return False
+    for owner in native_owners:
+        if (
+            not isinstance(owner, dict)
+            or safe_key(owner.get("status"))
+            != "exact_serialized_control_path"
+            or safe_key(owner.get("headerName"))
+            != "ScriptEvent_OnLeaderEnterTriggerVolume"
+        ):
+            return False
+        playback_found = False
+        for step in owner.get("path") or []:
+            if not isinstance(step, dict):
+                continue
+            record_class = safe_key(step.get("recordClass"))
+            texts = _string_list(step.get("texts"))
+            step_story_keys = (
+                {text.rsplit("_", 1)[0] for text in texts}
+                if record_class == "play_black"
+                else set(texts)
+            )
+            if record_class.startswith("play_") and story_key in step_story_keys:
+                playback_found = True
+                break
+        if not playback_found:
+            return False
+    return True
+
+
 def build_gap_report(
     partial_report: dict[str, Any],
     mission_payloads: dict[str, dict[str, Any]],
@@ -8872,6 +18514,13 @@ def build_gap_report(
             if relation == "npc_proxy_ex_mission_context":
                 if proxy_mission != context_mission:
                     continue
+            elif relation == "npc_proxy_segment_levelscript_mission_context":
+                if not _exact_cross_owner_npc_proxy_segment_story_context(
+                    connection,
+                    owner_mission,
+                    context_mission,
+                ):
+                    continue
             elif relation == "leveldata_levelscript_mission_context":
                 if not _exact_cross_owner_leveldata_story_context(
                     connection,
@@ -8884,6 +18533,17 @@ def build_gap_report(
                     connection,
                     owner_mission,
                     context_mission,
+                ):
+                    continue
+            elif relation == "authoritative_scope_leveldata_mission_context":
+                if (
+                    safe_key(connection.get("levelDataHostMissionId"))
+                    != context_mission
+                    or safe_key(connection.get("direction")) != "context"
+                    or safe_key(connection.get("confidence"))
+                    != "native_exact_validated_leveldata_shell"
+                    or safe_key(connection.get("evidenceTier"))
+                    != "derived_exact_shell"
                 ):
                     continue
             elif relation not in {
@@ -9070,11 +18730,56 @@ def render_markdown(report: dict[str, Any]) -> str:
             "no quest-to-Story or order edge."
         ),
         "",
+    ]
+    offline_failures = (
+        report.get("offlineExhaustionEvidence") or {}
+    ).get("validationFailures") or []
+    if offline_failures:
+        lines.extend([
+            "## Offline-Exhaustion Validator Failures",
+            "",
+            "| Story | gate | source | expected | actual |",
+            "| --- | --- | --- | --- | --- |",
+        ])
+        for failure in offline_failures:
+            expected = failure.get("expected") or {}
+            actual = failure.get("actual") or {}
+            source_paths = failure.get("sourcePaths") or []
+            lines.append(
+                f"| `{md_escape(safe_key(failure.get('storyKey')) or '-')}` | "
+                f"`{md_escape(safe_key(failure.get('gate')))}` | "
+                f"`{md_escape('; '.join(map(str, source_paths)))}` | "
+                f"`{md_escape(json.dumps(expected, ensure_ascii=False, sort_keys=True)[:500])}` | "
+                f"`{md_escape(json.dumps(actual, ensure_ascii=False, sort_keys=True)[:500])}` |"
+            )
+        lines.append("")
+    diagnostic_failures = (
+        report.get("questAttachmentDiagnosticEvidence") or {}
+    ).get("validationFailureDetails") or []
+    if diagnostic_failures:
+        lines.extend([
+            "## Quest-Attachment Validator Failures",
+            "",
+            "| quest | gate | source | expected condition | actual condition |",
+            "| --- | --- | --- | --- | --- |",
+        ])
+        for failure in diagnostic_failures:
+            expected = failure.get("expected") or {}
+            actual = failure.get("actual") or {}
+            lines.append(
+                f"| `{md_escape(safe_key(failure.get('questId')))}` | "
+                f"`{md_escape(safe_key(failure.get('gate')))}` | "
+                f"`{md_escape(safe_key(failure.get('sourcePath')))}` | "
+                f"`{md_escape(safe_key(expected.get('conditionType')))}` | "
+                f"`{md_escape(safe_key(actual.get('conditionType')))}` |"
+            )
+        lines.append("")
+    lines.extend([
         "## Bucket Summary",
         "",
         "| bucket | missions | score | scenes | isolated (core: actionable / native-closed / runtime-config-closed / definition-closed / non-mission-closed / offline-exhausted) | weak-only (actionable / exact-closed) | cycles | actionable LS gaps | closed LS negatives | quest gaps (actionable / diagnostic-closed) | option gaps |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-    ]
+    ])
     for row in report["summary"]["buckets"]:
         option_gaps = int(
             row.get("actionableNoExplicitOptionRouteGroups") or 0
@@ -9166,7 +18871,9 @@ def render_markdown(report: dict[str, Any]) -> str:
             f"`{metrics['closedNonPlaybackLevelscriptContexts']}`; "
             f"actionable option gap groups: "
             f"`{metrics['actionableNoExplicitOptionRouteGroups'] + metrics['actionableExcludedOptionEvidenceGroups']}` "
-            f"(`{metrics['singleOptionNoExplicitRouteGroups']}` single-option "
+            f"(`{metrics['deferredOfflineExhaustedOptionRouteGroups']}` "
+            f"current-build offline-exhausted; "
+            f"`{metrics['singleOptionNoExplicitRouteGroups']}` single-option "
             f"acknowledgements and `{metrics['closedExcludedOptionEvidenceGroups']}` "
             "shared/cosmetic exclusions are retained but not scored).",
             "",
@@ -9312,6 +19019,38 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"Top main-story mission: {main_rows[0]['mission']} "
             f"score={main_rows[0]['score']} frontier={main_rows[0]['primaryFrontier']}"
+        )
+    offline_status = report.get("offlineExhaustionEvidence") or {}
+    offline_failures = offline_status.get("validationFailures") or []
+    if offline_failures:
+        first = offline_failures[0]
+        print(
+            "Offline-exhaustion validator failure: "
+            f"story={safe_key(first.get('storyKey')) or '-'} "
+            f"gate={safe_key(first.get('gate'))} "
+            f"source={safe_key((first.get('sourcePaths') or [''])[0])}"
+        )
+    elif offline_status.get("sourceHashMismatches"):
+        print(
+            "Offline-exhaustion source hash mismatch: "
+            + ", ".join(offline_status["sourceHashMismatches"])
+        )
+    diagnostic_status = report.get("questAttachmentDiagnosticEvidence") or {}
+    diagnostic_failures = diagnostic_status.get(
+        "validationFailureDetails"
+    ) or []
+    if diagnostic_failures:
+        first = diagnostic_failures[0]
+        print(
+            "Quest-attachment validator failure: "
+            f"quest={safe_key(first.get('questId'))} "
+            f"gate={safe_key(first.get('gate'))} "
+            f"source={safe_key(first.get('sourcePath'))}"
+        )
+    elif diagnostic_status.get("sourceHashMismatches"):
+        print(
+            "Quest-attachment source hash mismatch: "
+            + ", ".join(diagnostic_status["sourceHashMismatches"])
         )
     return 0
 
