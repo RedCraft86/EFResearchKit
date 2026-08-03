@@ -17,6 +17,7 @@ itself identify a mission, quest, playback order, or server-state producer.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -60,7 +61,45 @@ from story_builder.mission_recovery import (  # noqa: E402
 )
 
 
-SCHEMA = "nativeReceiverActivationFrontier.v8"
+SCHEMA = "nativeReceiverActivationFrontier.v10"
+
+# The installed 2026-08-02 binary identifies this serialized property family
+# as the reusable Encounter controller contract.  The names below are suffixes
+# because LevelData namespaces every property with its owning LsmPtr module id.
+# GameAssembly's LevelScriptModule.GetSaveKeyPrefixed reads the module id at
+# this+0x18 before formatting the supplied save key; it is not necessarily the
+# hosting LevelScript id.  This
+# is deliberately a structural classifier: host filenames and Story-key names
+# never participate.
+ENCOUNTER_CONTROLLER_MAPPING_ID = (
+    "gameassembly-2026-08-02-levelscriptmodule-save-prefix-encounter-contract"
+)
+ENCOUNTER_REQUIRED_BOOL_SUFFIXES = (
+    "is_enabled",
+    "is_completed",
+    "is_activated",
+    "is_failed",
+    "battle_completed",
+    "pass_first_intro",
+)
+ENCOUNTER_REQUIRED_DATA_SUFFIXES = (
+    "enemy_list",
+    "spawner_id",
+)
+# The installed ParamRealType enum and current LevelData payloads expose two
+# valid enemy-list encodings: an empty entity-reference value and a populated
+# ScriptEntityPtrList.  Keep this shape rule independent of any level, script,
+# module, or enemy id.
+ENCOUNTER_EMPTY_ENEMY_VALUE_TYPE = 14
+ENCOUNTER_POPULATED_ENEMY_LIST_VALUE_TYPE = 61
+ENCOUNTER_RUNTIME_TYPE = "Beyond.Gameplay.Core.EncounterBase<T>"
+ENCOUNTER_DATA_TYPE = "Beyond.Gameplay.EncounterData"
+ENCOUNTER_GAMEASSEMBLY_SHA256 = (
+    "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE"
+)
+ENCOUNTER_METADATA_SHA256 = (
+    "90C58E26E87C7227A85DDA3FEDF6CE5ED0B06DC1F76E0ABBE75AB20750ADF97E"
+)
 DEFAULT_PIPELINE_INDEX = ROOT / "webui" / "data" / "mission_pipeline" / "index.json"
 DEFAULT_PIPELINE_MISSION_ROOT = (
     ROOT / "webui" / "data" / "mission_pipeline" / "missions"
@@ -1001,6 +1040,195 @@ def exact_memorypack_string_tokens(
     return hits
 
 
+def compact_leveldata_property(property_row: dict[str, Any]) -> dict[str, Any]:
+    """Preserve the typed value needed by structural contract classifiers."""
+    value = property_row.get("value")
+    if not isinstance(value, dict):
+        return {
+            "name": safe_text(property_row.get("name")),
+            "valueType": None,
+            "atomCount": 0,
+            "atoms": [],
+        }
+    return {
+        "name": safe_text(property_row.get("name")),
+        "valueType": value.get("valueType"),
+        "atomCount": value.get("atomCount"),
+        "atoms": [
+            {
+                "valueBit64": atom.get("valueBit64"),
+                "text": safe_text(atom.get("text")),
+            }
+            for atom in value.get("atoms") or []
+            if isinstance(atom, dict)
+        ],
+    }
+
+
+def single_native_atom_value(
+    property_row: dict[str, Any],
+    *,
+    value_type: int,
+) -> Any | None:
+    """Return one strictly shaped ParamValue atom, otherwise fail closed."""
+    atoms = property_row.get("atoms") or []
+    if (
+        property_row.get("valueType") != value_type
+        or property_row.get("atomCount") != 1
+        or len(atoms) != 1
+        or not isinstance(atoms[0], dict)
+    ):
+        return None
+    return atoms[0].get("valueBit64")
+
+
+def encounter_controller_contexts(
+    level_id: str,
+    receiver_script_id: str,
+    hosts: list[dict[str, Any]],
+    *,
+    spawner_root: Path,
+) -> list[dict[str, Any]]:
+    """Recognize the binary-proven Encounter contract without name guesses.
+
+    EncounterBase<T> owns the six lifecycle properties and EncounterData owns
+    the enemy/spawner inputs. All eight exact module-prefixed properties must
+    have their current native value shapes. The native prefix is the LsmPtr
+    module id, which can differ from the hosting LevelScript id. This proves
+    controller type and related source files only; it cannot identify a
+    MissionRuntime owner.
+    """
+    contexts: list[dict[str, Any]] = []
+    for host in hosts:
+        brief = host.get("briefData") or {}
+        properties = {
+            safe_text(row.get("name")): row
+            for row in brief.get("properties") or []
+            if isinstance(row, dict) and safe_text(row.get("name"))
+        }
+        module_ids = sorted({
+            match.group(1)
+            for name in properties
+            for match in [re.fullmatch(r"@(\d+)_.+", name)]
+            if match
+        }, key=int)
+        for module_id in module_ids:
+            prefix = f"@{module_id}_"
+            required_names = [
+                prefix + suffix
+                for suffix in (
+                    *ENCOUNTER_REQUIRED_BOOL_SUFFIXES,
+                    *ENCOUNTER_REQUIRED_DATA_SUFFIXES,
+                )
+            ]
+            if any(name not in properties for name in required_names):
+                continue
+            bool_rows = [
+                properties[prefix + suffix]
+                for suffix in ENCOUNTER_REQUIRED_BOOL_SUFFIXES
+            ]
+            if any(
+                single_native_atom_value(row, value_type=1) not in (0, 1)
+                for row in bool_rows
+            ):
+                continue
+            enemy_row = properties[prefix + "enemy_list"]
+            spawner_row = properties[prefix + "spawner_id"]
+            enemy_atoms = enemy_row.get("atoms") or []
+            enemy_atom_count = enemy_row.get("atomCount")
+            empty_enemy_list = (
+                enemy_row.get("valueType")
+                == ENCOUNTER_EMPTY_ENEMY_VALUE_TYPE
+                and enemy_atom_count == 0
+                and not enemy_atoms
+            )
+            populated_enemy_list = (
+                enemy_row.get("valueType")
+                == ENCOUNTER_POPULATED_ENEMY_LIST_VALUE_TYPE
+                and isinstance(enemy_atom_count, int)
+                and not isinstance(enemy_atom_count, bool)
+                and enemy_atom_count > 0
+                and len(enemy_atoms) == enemy_atom_count
+                and all(
+                    isinstance(atom.get("valueBit64"), int)
+                    and not isinstance(atom.get("valueBit64"), bool)
+                    and atom["valueBit64"] > 0
+                    for atom in enemy_atoms
+                    if isinstance(atom, dict)
+                )
+                and all(isinstance(atom, dict) for atom in enemy_atoms)
+            )
+            spawner_value = single_native_atom_value(
+                spawner_row,
+                value_type=50,
+            )
+            if not (empty_enemy_list or populated_enemy_list):
+                continue
+            if (
+                not isinstance(spawner_value, int)
+                or isinstance(spawner_value, bool)
+                or spawner_value < 0
+            ):
+                continue
+            spawner_id = str(spawner_value)
+            spawner_path = (
+                spawner_root / level_id / f"sc_{level_id}_{spawner_id}.json"
+            )
+            related_files = [
+                {
+                    "kind": "leveldata_encounter_host",
+                    "sourceFile": safe_text(host.get("sourceFile")),
+                    "relationship": "serialized_controller_contract",
+                }
+            ]
+            if int(spawner_id) > 0 and spawner_path.is_file():
+                related_files.append({
+                    "kind": "encounter_spawner_config",
+                    "sourceFile": rel_path(spawner_path),
+                    "relationship": "typed_spawner_id_property",
+                })
+            contexts.append({
+                "classification": "encounter_controller_property_contract",
+                "mappingId": ENCOUNTER_CONTROLLER_MAPPING_ID,
+                "runtimeType": ENCOUNTER_RUNTIME_TYPE,
+                "dataType": ENCOUNTER_DATA_TYPE,
+                "moduleId": module_id,
+                "receiverScriptId": receiver_script_id,
+                "moduleIdMatchesReceiverScript": (
+                    module_id == receiver_script_id
+                ),
+                "spawnerId": spawner_id,
+                "matchedPropertyNames": required_names,
+                "relatedFiles": related_files,
+                "binaryEvidence": {
+                    "gameAssemblySha256": ENCOUNTER_GAMEASSEMBLY_SHA256,
+                    "globalMetadataSha256": ENCOUNTER_METADATA_SHA256,
+                    "modulePrefixMethod": (
+                        "LevelScriptModule.GetSaveKeyPrefixed"
+                    ),
+                    "modulePrefixMethodVa": "0x183be6a50",
+                    "moduleIdFieldOffset": "this+0x18",
+                    "lifecycleMethods": [
+                        "ManuallyActivate",
+                        "_TriggerActivate",
+                        "OnBattleCompleted",
+                        "OnCompleted",
+                    ],
+                },
+                "missionOwnerStatus": "unresolved",
+                "storyBinding": False,
+                "orderEvidence": False,
+                "evidenceBoundary": (
+                    "The exact original-data property family identifies a "
+                    "native Encounter module namespace and its typed spawner "
+                    "dependency. The LsmPtr module id is not necessarily the "
+                    "hosting LevelScript id and identifies no MissionRuntime "
+                    "owner, Story activation edge, branch, or playback order."
+                ),
+            })
+    return contexts
+
+
 def validated_leveldata_hosts(
     level_id: str,
     target_script_id: str,
@@ -1060,6 +1288,11 @@ def validated_leveldata_hosts(
                         safe_text(item.get("name"))
                         for item in brief.get("properties") or []
                         if isinstance(item, dict) and safe_text(item.get("name"))
+                    ],
+                    "properties": [
+                        compact_leveldata_property(item)
+                        for item in brief.get("properties") or []
+                        if isinstance(item, dict)
                     ],
                     "refWorldEntityCount": brief.get("refWorldEntityCount"),
                     "refWorldEntityIds": brief.get("refWorldEntityIds") or [],
@@ -1299,6 +1532,12 @@ def build_report(
             leveldata_root=leveldata_root,
             levelscript_root=levelscript_root,
         )
+        encounter_contexts = encounter_controller_contexts(
+            level_id,
+            script_id,
+            hosts,
+            spawner_root=spawner_root,
+        )
         story_candidates = nominal_story_mission_candidates(
             index_payload,
             receiver["storyKeys"],
@@ -1430,6 +1669,7 @@ def build_report(
                     or [],
                 },
                 "levelDataHosts": hosts,
+                "encounterControllerContexts": encounter_contexts,
                 "nominalMissionHostComparison": nominal_host_comparison,
                 "incomingLiteralManualControls": incoming,
                 "subGameBindings": subgames,
@@ -1466,6 +1706,19 @@ def build_report(
                 game_mechanic_condition_table_path
             ),
             "dungeonTable": rel_path(dungeon_table_path),
+            "encounterRuntimeEvidence": {
+                "runtimeType": ENCOUNTER_RUNTIME_TYPE,
+                "dataType": ENCOUNTER_DATA_TYPE,
+                "mappingId": ENCOUNTER_CONTROLLER_MAPPING_ID,
+                "modulePrefixMethod": (
+                    "Beyond.Gameplay.Core.LevelScriptModule."
+                    "GetSaveKeyPrefixed"
+                ),
+                "modulePrefixMethodVa": "0x183be6a50",
+                "moduleIdFieldOffset": "this+0x18",
+                "gameAssemblySha256": ENCOUNTER_GAMEASSEMBLY_SHA256,
+                "globalMetadataSha256": ENCOUNTER_METADATA_SHA256,
+            },
         },
         "evidencePolicy": {
             "purpose": (
@@ -1485,6 +1738,14 @@ def build_report(
                 "A validated LevelData member-22 host proves loading/registration "
                 "scope only. Even a mission-named host is context, not playback "
                 "ownership."
+            ),
+            "encounterBoundary": (
+                "The exact LevelScriptModule LsmPtr-prefixed "
+                "EncounterBase<T>/EncounterData property contract and typed "
+                "spawner id identify a reusable native encounter module and "
+                "related original-data files. The module id can differ from "
+                "the hosting LevelScript id; neither identity supplies a "
+                "MissionRuntime owner, Story branch, or order edge."
             ),
             "subGameBoundary": (
                 "SubGame bindScriptId proves the runtime system that activates "
@@ -1556,6 +1817,31 @@ def build_report(
                 any(host.get("missionNamedHost") for host in row["levelDataHosts"])
                 for row in rows
             ),
+            "scriptsWithEncounterControllerContract": sum(
+                bool(row.get("encounterControllerContexts")) for row in rows
+            ),
+            "encounterControllerContracts": sum(
+                len(row.get("encounterControllerContexts") or [])
+                for row in rows
+            ),
+            "encounterControllerContractsWithForeignModuleId": sum(
+                not context.get("moduleIdMatchesReceiverScript")
+                for row in rows
+                for context in row.get("encounterControllerContexts") or []
+            ),
+            "storyKeysWithEncounterControllerContract": len({
+                story_key
+                for row in rows
+                if row.get("encounterControllerContexts")
+                for story_key in row.get("storyKeys") or []
+            }),
+            "encounterControllerRelatedFiles": len({
+                safe_text(related.get("sourceFile"))
+                for row in rows
+                for context in row.get("encounterControllerContexts") or []
+                for related in context.get("relatedFiles") or []
+                if safe_text(related.get("sourceFile"))
+            }),
             "scriptsWithValidatedNominalMissionHostExclusion": sum(
                 (
                     row.get("nominalMissionHostComparison") or {}
@@ -1804,6 +2090,46 @@ def publish_to_pipeline_index(
                 for host in row.get("levelDataHosts") or []
                 if isinstance(host, dict)
             ],
+            "encounterControllerContexts": [
+                {
+                    "classification": safe_text(
+                        context.get("classification")
+                    ),
+                    "mappingId": safe_text(context.get("mappingId")),
+                    "runtimeType": safe_text(context.get("runtimeType")),
+                    "dataType": safe_text(context.get("dataType")),
+                    "moduleId": safe_text(context.get("moduleId")),
+                    "receiverScriptId": safe_text(
+                        context.get("receiverScriptId")
+                    ),
+                    "moduleIdMatchesReceiverScript": bool(
+                        context.get("moduleIdMatchesReceiverScript")
+                    ),
+                    "spawnerId": safe_text(context.get("spawnerId")),
+                    "relatedFiles": [
+                        {
+                            "kind": safe_text(related.get("kind")),
+                            "sourceFile": safe_text(
+                                related.get("sourceFile")
+                            ),
+                            "relationship": safe_text(
+                                related.get("relationship")
+                            ),
+                        }
+                        for related in context.get("relatedFiles") or []
+                        if isinstance(related, dict)
+                        and safe_text(related.get("sourceFile"))
+                    ],
+                    "missionOwnerStatus": "unresolved",
+                    "storyBinding": False,
+                    "orderEvidence": False,
+                    "evidenceBoundary": safe_text(
+                        context.get("evidenceBoundary")
+                    ),
+                }
+                for context in row.get("encounterControllerContexts") or []
+                if isinstance(context, dict)
+            ],
             "nominalMissionHostComparison": {
                 "classification": safe_text(
                     (
@@ -1982,6 +2308,21 @@ def markdown_report(payload: dict[str, Any]) -> str:
         (
             "- Scripts in a validated mission-named LevelData host: "
             f"`{counts.get('scriptsWithMissionNamedHost')}`"
+        ),
+        (
+            "- Receiver scripts / Encounter modules / Story keys with the "
+            "binary-proven controller contract: "
+            f"`{counts.get('scriptsWithEncounterControllerContract')}` / "
+            f"`{counts.get('encounterControllerContracts')}` / "
+            f"`{counts.get('storyKeysWithEncounterControllerContract')}`"
+        ),
+        (
+            "- Encounter module ids differing from the receiver script id: "
+            f"`{counts.get('encounterControllerContractsWithForeignModuleId')}`"
+        ),
+        (
+            "- Distinct related Encounter source files: "
+            f"`{counts.get('encounterControllerRelatedFiles')}`"
         ),
         (
             "- Scripts excluded by validated same-level nominal-mission hosts: "

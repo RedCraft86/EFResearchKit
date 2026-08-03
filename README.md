@@ -111,12 +111,23 @@ or local source edits.
 
 ### Story
 
-- 5,282 unique Story files across 490 pipeline missions.
-- 4,174 files have an accepted mission/context connection (**79%**).
-- 4,395 have a normalized trigger/context route (**83%**).
-- 1,108 remain unlinked; 155 already have exact native playback but lack a
+- 5,562 unique Story files across 591 pipeline missions.
+- 4,239 files have an accepted mission/context connection (**76.2%**).
+- 4,462 have a normalized trigger/context route (**80.2%**).
+- 1,323 remain unlinked; 156 already have exact native playback but lack a
   mission/quest activation bridge.
-- The source-only graph is cycle-free, but proves order for only **1.51%** of
+- A general original-binary Encounter contract now adds exact controller and
+  related LevelData/SpawnerConfig context for 27 of those Story keys. Its
+  LsmPtr module namespace is shown separately from the receiver LevelScript,
+  without inventing mission ownership or order.
+- A general recursive ActionHeader validator now exposes all 30 exact receiver
+  playback gates, including AND/OR/NOT/ALL trees, comparisons, property/stage,
+  LSM-completion, and interactive-state leaves, without treating those local
+  predicates as mission ownership or cross-Story order.
+- All 258 named native branch predicates are operand-decoded where their
+  current binary layout is supported; the pipeline reports 263 semantic
+  predicates including inline forms, with 0 class-only and 0 unresolved.
+- The source-only graph is cycle-free, but proves order for only **1.52%** of
   possible within-mission scene pairs. It is a partial order, not a canonical
   full playthrough.
 

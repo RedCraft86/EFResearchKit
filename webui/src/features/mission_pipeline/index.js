@@ -46,12 +46,16 @@
       connectedStory: "Story connected",
       unlinkedStory: "Story unassigned",
       nativePlaybackGaps: "exact-native gaps",
+      luaPlaybackAccepted: "Lua playback admitted",
+      luaTablePlaybackAccepted: "Lua table-owned playback",
+      luaPlaybackRejected: "Lua case rejected",
+      luaPlaybackAudit: "Shipped-Lua census",
       rootPlaybackAliases: "root playback aliases",
       exactDialogRootAlias: "exact DialogTree root alias",
       exactDialogRootAliasBoundary: "byte-identical payload; no activation or server branch-selection claim",
       definitionOnlyStory: "definition-only black text",
       nonMissionContentStory: "non-mission content",
-      nonMissionContentStoryHint: "Story ids proven to be authored non-mission content: speaker radio continuation, character SNS topics, or exact factory tutorial guide actions. The evidence serializes no mission or quest owner. Authored fields and typed consumers admit a key; filenames never do.",
+      nonMissionContentStoryHint: "Story ids proven to be authored non-mission content: speaker radio continuation, character SNS topics, factory tutorial actions, operator profile voices, or typed spacecraft DialogTrees. The evidence serializes no mission or quest owner. Authored fields and typed consumers admit a key; filenames never do.",
       missionGraph: "Cross-mission relations",
       missionGraphUpstream: "upstream",
       missionGraphDownstream: "downstream",
@@ -81,6 +85,9 @@
       exactPlayback: "exact native playback",
       exactReceiverNodes: "Exact serialized runtime receivers",
       exactReceiverNodesHint: "Each node is an original LevelScript event selector with an exact control path to Story playback. It organizes more recovered files without claiming a mission or quest owner.",
+      playbackGate: "exact receiver playback gate",
+      playbackGateTrue: "playback allowed when true",
+      playbackGateBoundary: "This original-binary predicate controls only this receiver playback. It does not prove mission ownership, order between Story files, or a later server-side state write.",
       activationFrontier: "offline activation frontier",
       nominalMissionHostCheck: "nominal-mission LevelData check",
       nominalMissionHostExcludes: "validated host excludes receiver script",
@@ -89,6 +96,14 @@
       activationClass: "static activation class",
       startPolicy: "LevelScript start policy",
       levelDataContainer: "validated LevelData container",
+      encounterController: "binary-proven Encounter controller",
+      encounterModuleNamespace: "Encounter LsmPtr module namespace",
+      moduleMatchesReceiver: "module id matches receiver id",
+      relatedModuleNamespace: "related module id",
+      encounterSpawner: "typed Encounter spawner",
+      noConfiguredSpawner: "no configured spawner",
+      relatedOriginalFile: "related original-data file",
+      encounterControllerBoundary: "Encounter type and related files are exact; mission ownership, Story activation, branching, and order remain unresolved.",
       dungeonSceneContext: "exact Dungeon/SubGame scene context",
       boundReceiverScript: "receiver is bound script",
       siblingReceiverScript: "receiver is a sibling script",
@@ -323,12 +338,17 @@
       nativeIfElseBranch: "native If/Else branch",
       nativeSwitchBranch: "native Switch branch",
       nativeControlMerge: "native branch convergence",
+      nativeOrderedSequence: "native ordered action sequence",
+      nativeRelatedActionGraphs: "Related original LevelScript graphs",
+      nativeRelatedActionGraphsHint: "Each file is attached only because an exact serialized event-to-Story path reaches a Story file already in this mission. Its remaining actions are file-local context, not extra mission order.",
       nativeControlReachability: "exact typed downstream reachability",
       nativeControlPath: "control path",
       nativeEventSelector: "event selector",
       nativePredicate: "predicate",
       nativePredicateOpaque: "inline predicate not semantically decoded",
       optionBranches: "dialog option branches",
+      typedStorySelectors: "typed system selectors",
+      typedStorySelectorHint: "Original typed tables group these Story files as alternatives for one runtime selector. This creates no order edge between alternatives or selector groups.",
       optionDirectContinuation: "direct shared continuation",
       isolatedScenes: "isolated Story files",
       weakOnlyScenes: "weak-context-only files",
@@ -398,6 +418,7 @@
       relationClientFailed: "quest failure launches Story action",
       relationLevelData: "LevelData explicitly places Story on this quest",
       relationLevelScript: "quest condition scopes this LevelScript Story call",
+      relationLevelScriptPropertyConsumer: "quest and Story playback share one exact LevelScript property-change trigger",
       relationQuestObjectiveLevelScriptScope: "the quest objective reads the unique LevelScript that hosts this Story occurrence (shared scope only; not playback ownership or order)",
       relationLevelScriptMission: "LevelScript action and separate script evidence scope this Story file to the mission",
       relationLevelDataScriptHost: "mission-named LevelData contains this validated typed-playback script brief (asset context)",
@@ -467,12 +488,14 @@
       triggerPlayback: "playback",
       triggerCondition: "condition",
       triggerContext: "context only",
+      triggerContextOwnerUnresolved: "exact carrier context · owner unresolved",
       triggerDependency: "dependency only",
       triggerUnresolved: "trigger known · owner unresolved",
       triggerPlaybackAlias: "root playback alias · owner unresolved",
       triggerPlaybackAliasConnected: "root playback alias · owner connected",
       triggerDefinition: "definition only · no consumer",
       offlineRecoveryBoundary: "Offline recovery boundary",
+      partialRecoveryBoundary: "Partial registered carrier",
       runtimeContextRecoveryBoundary: "Exact runtime context boundary",
       offlineRecoveryNoGraphEdge: "no ownership or order edge",
       offlineRecoveryConsumer: "Consumer boundary",
@@ -483,9 +506,17 @@
       offlineRecoverySources: "Original-data files",
       runtimeRecoveryNominalMission: "Nominal Story mission",
       runtimeRecoveryContextMission: "Validated runtime shell",
+      runtimeRecoveryContextMissions: "Validated runtime contexts",
+      runtimeRecoveryContextBoundary: "Context boundary",
+      runtimeRecoveryParentDialogDependency: "Exact parent DialogTree carrier dependency - activation/order unknown",
+      runtimeRecoveryNpcDialogContext: "Exact NPC dialog context - no playback owner or order edge",
+      runtimeRecoveryNpcSelectionContext: "Exact NPC runtime selection context - no relative order",
+      runtimeRecoveryNpcCrossMissionContext: "Exact cross-mission NPC runtime context - no ownership or order edge",
+      runtimeRecoveryNpcMultiMissionContext: "Exact multi-mission NPC runtime contexts - alternatives, not chronology",
       runtimeRecoveryQuestAnchors: "Shell quest anchors",
       runtimeRecoveryNativePaths: "Exact native path",
       runtimeRecoveryPlaybackRoots: "Exact playback root",
+      runtimeRecoveryCarrierParents: "Exact carrier parents",
       runtimeRecoverySnsLink: "Authored SNS mission link",
       offlineRecoveryRelatedOriginalData: "Related original-data bundle",
       offlineRecoveryPrtsOrder: "terminal order",
@@ -504,6 +535,60 @@
       offlineRecoveryDialogTreeAbsent: "DialogTree asset absent",
       offlineRecoveryDialogTreeExact: "exact DialogTree asset",
       offlineRecoveryDialogTreeBranches: "Internal DialogTree branches",
+      offlineRecoveryParentDialogTrees: "Registered parent DialogTrees",
+      offlineRecoveryParentTreeBranches: "internal branch groups",
+      offlineRecoveryInternalLineConnections: "Exact internal line connections",
+      offlineRecoveryParentLevelContexts: "Exact parent level/dungeon asset shells",
+      offlineRecoveryParentLevelBoundary: "Related original files only; this does not prove activation, ownership, branching, or order.",
+      offlineRecoveryDungeonCatalogMetadata: "Dungeon catalog metadata (not chronology)",
+      offlineRecoveryRelatedLevelFiles: "Related level files",
+      offlineRecoverySubGameRuntime: "Exact BlackBox SubGame runtime shell",
+      offlineRecoverySubGameBindScript: "bound LevelScript",
+      offlineRecoverySubGameTaskLanes: "Authored task lanes (not Story order)",
+      offlineRecoverySubGameMainTasks: "main",
+      offlineRecoverySubGameExtraTasks: "extra",
+      offlineRecoverySubGameFailTasks: "fail",
+      offlineRecoverySubGameParentPlayback: "Exact parent playback",
+      offlineRecoverySubGameDefinitionOnlyParents: "Definition-only in bound script",
+      offlineRecoverySubGamePlaybackCoverage: "parent playback coverage",
+      offlineRecoverySubGameTaskTopology: "Exact task completion topology",
+      offlineRecoverySubGameTaskTopologyNull: "No authored task map",
+      offlineRecoverySubGameTasks: "tasks",
+      offlineRecoverySubGameConditions: "conditions",
+      offlineRecoverySubGameTracked: "tracked",
+      offlineRecoverySubGameInternal: "internal",
+      offlineRecoverySubGameConditionTypes: "condition families",
+      offlineRecoverySubGameCombineExpressions: "serialized formulas",
+      offlineRecoverySubGameTaskDescriptions: "display objectives",
+      offlineRecoverySubGameTopologyBoundary: "Task conditions and main/extra/fail lanes are exact original-data structure. They serialize no task-successor or Story-file order edge.",
+      offlineRecoverySubGameActionTopology: "Exact runtime control graph",
+      offlineRecoverySubGameActionTopologyEmpty: "Empty authored action map",
+      offlineRecoverySubGameActionEvents: "event roots",
+      offlineRecoverySubGameActionPhysicalEvents: "physical event rows",
+      offlineRecoverySubGameActionEventSlot: "active indexed listener",
+      offlineRecoverySubGameActionEventPriority: "listener priority",
+      offlineRecoverySubGameActionEventTriggerActive: "active-during mode",
+      offlineRecoverySubGameActionEventFilter: "filter",
+      offlineRecoverySubGameActionNodes: "actions",
+      offlineRecoverySubGameActionEdges: "edges",
+      offlineRecoverySubGameActionFanouts: "typed fan-outs",
+      offlineRecoverySubGameActionSequences: "ordered sequences",
+      offlineRecoverySubGameActionChoices: "conditional choices",
+      offlineRecoverySubGameActionLoops: "loops",
+      offlineRecoverySubGameActionConvergence: "convergences",
+      offlineRecoverySubGameActionCycles: "cycles",
+      offlineRecoverySubGameActionShadowed: "runtime-shadowed records",
+      offlineRecoverySubGameActionTerminals: "missing-slot terminals",
+      offlineRecoverySubGameActionActiveSlot: "active runtime slot",
+      offlineRecoverySubGameActionEventTypes: "event families",
+      offlineRecoverySubGameActionTypes: "action families",
+      offlineRecoverySubGameActionStoryTargets: "typed Story targets",
+      offlineRecoverySubGameActionTopologyBoundary: "Edges are exact within one LevelScript. Header, action, and getter IDs all use the last serialized indexed slot, and absent positive action slots end normally. Event roots are independently invoked listeners: physical list order and listener priority are not Story chronology. Control flow orders Story files only when a typed action explicitly targets one.",
+      offlineRecoveryEvidenceParentTreePartition: "Exact registered parent-tree line partition",
+      partialRecoveryEvidenceParentTreePartition: "Partial registered parent-tree line partition",
+      partialRecoveryCoverage: "Registered coverage",
+      partialRecoveryUnmatchedRows: "Unmatched authored rows",
+      partialRecoveryRowIdPositions: "Table row-id positions (cross-reference only, not order)",
       offlineRecoveryAuthoredSplit: "authored split",
       offlineRecoveryAuthoredConvergence: "authored convergence",
       offlineRecoveryTerminalOptions: "Terminal option routes",
@@ -517,7 +602,22 @@
       offlineRecoveryEvidenceDefinitionOnly: "Definition only — activator unknown",
       offlineRecoveryEvidenceUnregistered: "Unregistered definition — no runtime consumer",
       offlineRecoveryEvidenceRadioOnly: "Radio definition only — consumer unknown",
+      offlineRecoveryEvidenceBinaryRadio: "Definition only — no consumer on current original-data surfaces",
+      offlineRecoveryEvidenceNpcProxyConsumer: "Native NPC-proxy consumer - mission activation unknown",
+      offlineRecoveryEvidenceBinarySns: "SNS definition only - no consumer on current original-data surfaces",
+      offlineRecoveryEvidenceBinaryReadingPopup: "Readable definition only - no activator on current original-data surfaces",
+      offlineRecoveryEvidenceBinaryUnregisteredDialog: "Unregistered dialog definition - no consumer on current original-data surfaces",
+      offlineRecoveryEvidenceBinaryRegisteredDialogTree: "Registered DialogTree definition - no activator on current original-data surfaces",
+      offlineRecoveryEvidenceMissionlessNativePlayback: "Exact local playback - mission bridge and order unknown",
+      runtimeRecoveryEvidenceSameMissionLevelDataPlayback: "Exact native playback in this mission shell - quest trigger and order unknown",
+      runtimeRecoveryEvidenceCrossMissionLevelDataPlayback: "Exact native playback in a related mission shell - ownership and order unknown",
+      offlineRecoveryEvidenceCutsceneRoot: "Cutscene root resolved - mission activator unknown",
+      offlineRecoveryNativeConsumer: "Original-binary consumer",
+      offlineRecoverySnsDefinition: "SNS internal definition",
       offlineRecoveryMissingAudio: "audio ids absent",
+      offlineRecoveryAudioMembership: "audio membership",
+      offlineRecoveryCarrierAudit: "typed carrier audit",
+      offlineRecoveryBinaryRootToken: "original-binary root token",
       offlineRecoveryMissionTracking: "Mission NPC tracking context (navigation only)",
       offlineRecoveryNpcProxyConsumer: "Exact missionless NpcProxyEx row (index is not chronology)",
       offlineRecoveryTrackedQuests: "tracked quests",
@@ -577,6 +677,9 @@
       triggerDialogTimeline: "dialog Timeline",
       triggerStoryRoot: "CutsceneRoot Story key",
       triggerStory: "Story file",
+      triggerLuaController: "Lua controller",
+      triggerNativePlayback: "native playback",
+      triggerOriginalTableRow: "original table row",
       triggerExactPaths: "exact native paths",
       triggerEvents: "Triggering events",
       triggerEventsHint: "Each row is one exact serialized event-to-action path. Multiple rows are alternatives or distinct occurrences; they are not a guessed sequence.",
@@ -641,9 +744,13 @@
       connectedStory: "已连接剧情",
       unlinkedStory: "未分配剧情",
       nativePlaybackGaps: "原生路径缺口",
+      luaPlaybackAccepted: "已采纳 Lua 播放",
+      luaTablePlaybackAccepted: "Lua 表归属播放",
+      luaPlaybackRejected: "Lua 大小写拒绝",
+      luaPlaybackAudit: "随游戏发布的 Lua 普查",
       definitionOnlyStory: "仅有定义的黑屏文本",
       nonMissionContentStory: "非使命内容",
-      nonMissionContentStoryHint: "这些剧情 ID 已由原生数据证明属于非使命内容：按说话人分的电台续播语音、角色 SNS 话题，或工厂教程资产中的精确动作。证据没有序列化使命或任务归属。仅依据原生字段和强类型消费者判定，绝不依据文件名。",
+      nonMissionContentStoryHint: "这些剧情 ID 已由原生数据证明属于非使命内容：按说话人分的电台续播语音、角色 SNS 话题、工厂教程动作、干员档案语音，或舰船系统强类型对话树。证据没有序列化使命或任务归属。仅依据原生字段和强类型消费者判定，绝不依据文件名。",
       missionGraph: "跨使命关系",
       missionGraphUpstream: "上游",
       missionGraphDownstream: "下游",
@@ -672,6 +779,9 @@
       noMissionOwner: "无使命所有者",
       exactPlayback: "精确原生播放",
       exactReceiverNodes: "精确序列化运行时接收器",
+      playbackGate: "精确接收器播放条件",
+      playbackGateTrue: "条件为真时允许播放",
+      playbackGateBoundary: "该原始二进制条件只控制此接收器的播放；它不能证明任务归属、Story 文件之间的顺序或后续服务器状态写入。",
       exactReceiverNodesHint: "每个节点都来自原始 LevelScript 事件选择器，并有到剧情播放的精确控制路径；它能组织更多恢复文件，但不声明使命或任务所有者。",
       activationFrontier: "离线激活边界",
       nominalMissionHostCheck: "名义使命 LevelData 检查",
@@ -681,6 +791,14 @@
       activationClass: "静态激活分类",
       startPolicy: "LevelScript 启动策略",
       levelDataContainer: "已验证的 LevelData 容器",
+      encounterController: "二进制已证实的遭遇战控制器",
+      encounterModuleNamespace: "遭遇战 LsmPtr 模块命名空间",
+      moduleMatchesReceiver: "模块 ID 与接收脚本 ID 相同",
+      relatedModuleNamespace: "相关模块 ID",
+      encounterSpawner: "强类型遭遇战生成器",
+      noConfiguredSpawner: "未配置生成器",
+      relatedOriginalFile: "相关原始数据文件",
+      encounterControllerBoundary: "遭遇战类型及相关文件已有精确证据；使命归属、剧情激活、分支和顺序仍未解决。",
       dungeonSceneContext: "精确 Dungeon/SubGame 场景上下文",
       boundReceiverScript: "接收器就是绑定脚本",
       siblingReceiverScript: "接收器是同场景兄弟脚本",
@@ -923,6 +1041,7 @@
       relationClientFailed: "任务失败后触发剧情动作",
       relationLevelData: "LevelData 明确把剧情放到此任务节点",
       relationLevelScript: "任务条件限定了这条 LevelScript 剧情调用",
+      relationLevelScriptPropertyConsumer: "任务与剧情播放共享同一个精确的 LevelScript 属性变化触发器",
       relationLevelScriptMission: "LevelScript 动作与独立脚本证据共同将剧情限定到该使命",
       relationLevelDataScriptHost: "使命命名的 LevelData 包含经过结构验证的剧情脚本简表（资源上下文）",
       relationWorldEntityQuestPlayback: "任务条件与该剧情播放脚本引用同一组唯一解析的世界实体（精确外键上下文，不证明任务或服务器触发）",
@@ -982,12 +1101,14 @@
       triggerPlayback: "\u64ad\u653e\u89e6\u53d1",
       triggerCondition: "\u5b8c\u6210\u6761\u4ef6",
       triggerContext: "\u4ec5\u4e0a\u4e0b\u6587",
+      triggerContextOwnerUnresolved: "\u7cbe\u786e\u8f7d\u4f53\u4e0a\u4e0b\u6587 \u00b7 \u5f52\u5c5e\u672a\u89e3\u6790",
       triggerDependency: "\u4ec5\u4f9d\u8d56",
       triggerUnresolved: "\u89e6\u53d1\u5df2\u77e5 \u00b7 \u5f52\u5c5e\u672a\u89e3\u6790",
       triggerPlaybackAlias: "\u6839\u64ad\u653e\u522b\u540d \u00b7 \u5f52\u5c5e\u672a\u89e3\u6790",
       triggerPlaybackAliasConnected: "\u6839\u64ad\u653e\u522b\u540d \u00b7 \u5f52\u5c5e\u5df2\u8fde\u63a5",
       triggerDefinition: "\u4ec5\u5b9a\u4e49 \u00b7 \u65e0\u6d88\u8d39\u8005",
       offlineRecoveryBoundary: "\u79bb\u7ebf\u6062\u590d\u8fb9\u754c",
+      partialRecoveryBoundary: "\u90e8\u5206\u5df2\u6ce8\u518c\u8f7d\u4f53",
       runtimeContextRecoveryBoundary: "\u7cbe\u786e\u8fd0\u884c\u65f6\u4e0a\u4e0b\u6587\u8fb9\u754c",
       offlineRecoveryNoGraphEdge: "\u4e0d\u751f\u6210\u5f52\u5c5e\u6216\u987a\u5e8f\u8fb9",
       offlineRecoveryConsumer: "\u6d88\u8d39\u8005\u8fb9\u754c",
@@ -998,9 +1119,17 @@
       offlineRecoverySources: "\u539f\u59cb\u6570\u636e\u6587\u4ef6",
       runtimeRecoveryNominalMission: "\u5267\u60c5\u6587\u4ef6\u540d\u4e49\u4efb\u52a1",
       runtimeRecoveryContextMission: "\u5df2\u9a8c\u8bc1\u8fd0\u884c\u65f6\u5916\u58f3",
+      runtimeRecoveryContextMissions: "\u5df2\u9a8c\u8bc1\u8fd0\u884c\u65f6\u4e0a\u4e0b\u6587",
+      runtimeRecoveryContextBoundary: "\u4e0a\u4e0b\u6587\u8fb9\u754c",
+      runtimeRecoveryParentDialogDependency: "\u7cbe\u786e\u7236 DialogTree \u8f7d\u4f53\u4f9d\u8d56\uff0c\u6fc0\u6d3b\u4e0e\u76f8\u5bf9\u987a\u5e8f\u672a\u77e5",
+      runtimeRecoveryNpcDialogContext: "\u7cbe\u786e NPC \u5bf9\u8bdd\u4e0a\u4e0b\u6587\uff0c\u4e0d\u8bc1\u660e\u64ad\u653e\u5f52\u5c5e\u6216\u987a\u5e8f\u8fb9",
+      runtimeRecoveryNpcSelectionContext: "\u7cbe\u786e NPC \u8fd0\u884c\u65f6\u9009\u62e9\u4e0a\u4e0b\u6587\uff0c\u4e0d\u8bc1\u660e\u76f8\u5bf9\u987a\u5e8f",
+      runtimeRecoveryNpcCrossMissionContext: "\u7cbe\u786e\u8de8\u4efb\u52a1 NPC \u8fd0\u884c\u65f6\u4e0a\u4e0b\u6587\uff0c\u4e0d\u8bc1\u660e\u5f52\u5c5e\u6216\u987a\u5e8f\u8fb9",
+      runtimeRecoveryNpcMultiMissionContext: "\u7cbe\u786e\u591a\u4efb\u52a1 NPC \u8fd0\u884c\u65f6\u4e0a\u4e0b\u6587\uff0c\u8868\u793a\u5019\u9009\u800c\u975e\u65f6\u5e8f",
       runtimeRecoveryQuestAnchors: "\u5916\u58f3\u4efb\u52a1\u8282\u70b9",
       runtimeRecoveryNativePaths: "\u7cbe\u786e\u539f\u751f\u8def\u5f84",
       runtimeRecoveryPlaybackRoots: "\u7cbe\u786e\u64ad\u653e\u6839\u8282\u70b9",
+      runtimeRecoveryCarrierParents: "\u7cbe\u786e\u8f7d\u4f53\u7236\u8282\u70b9",
       runtimeRecoverySnsLink: "\u539f\u59cb SNS \u4efb\u52a1\u94fe\u63a5",
       offlineRecoveryRelatedOriginalData: "\u76f8\u5173\u539f\u59cb\u6570\u636e\u675f",
       offlineRecoveryPrtsOrder: "\u7ec8\u7aef\u987a\u5e8f",
@@ -1019,6 +1148,60 @@
       offlineRecoveryDialogTreeAbsent: "\u7f3a\u5c11 DialogTree \u8d44\u4ea7",
       offlineRecoveryDialogTreeExact: "\u7cbe\u786e DialogTree \u8d44\u4ea7",
       offlineRecoveryDialogTreeBranches: "DialogTree \u5185\u90e8\u5206\u652f",
+      offlineRecoveryParentDialogTrees: "\u5df2\u6ce8\u518c\u7684\u7236 DialogTree",
+      offlineRecoveryParentTreeBranches: "\u5185\u90e8\u5206\u652f\u7ec4",
+      offlineRecoveryInternalLineConnections: "\u7cbe\u786e\u5185\u90e8\u53f0\u8bcd\u8fde\u63a5",
+      offlineRecoveryParentLevelContexts: "\u7cbe\u786e\u7684\u7236\u5bf9\u8bdd\u5173\u8054\u5173\u5361/\u5730\u7262\u8d44\u4ea7\u5916\u58f3",
+      offlineRecoveryParentLevelBoundary: "\u4ec5\u8868\u793a\u76f8\u5173\u539f\u59cb\u6587\u4ef6\uff1b\u4e0d\u8bc1\u660e\u6fc0\u6d3b\u3001\u5f52\u5c5e\u3001\u5206\u652f\u6216\u987a\u5e8f\u3002",
+      offlineRecoveryDungeonCatalogMetadata: "\u5730\u7262\u76ee\u5f55\u5143\u6570\u636e\uff08\u975e\u65f6\u5e8f\uff09",
+      offlineRecoveryRelatedLevelFiles: "\u76f8\u5173\u5173\u5361\u6587\u4ef6",
+      offlineRecoverySubGameRuntime: "\u7cbe\u786e\u9ed1\u76d2 SubGame \u8fd0\u884c\u5916\u58f3",
+      offlineRecoverySubGameBindScript: "\u7ed1\u5b9a LevelScript",
+      offlineRecoverySubGameTaskLanes: "\u539f\u59cb\u4efb\u52a1\u901a\u9053\uff08\u4e0d\u662f\u5267\u60c5\u987a\u5e8f\uff09",
+      offlineRecoverySubGameMainTasks: "\u4e3b\u4efb\u52a1",
+      offlineRecoverySubGameExtraTasks: "\u989d\u5916\u4efb\u52a1",
+      offlineRecoverySubGameFailTasks: "\u5931\u8d25\u4efb\u52a1",
+      offlineRecoverySubGameParentPlayback: "\u7cbe\u786e\u7236\u5bf9\u8bdd\u64ad\u653e",
+      offlineRecoverySubGameDefinitionOnlyParents: "\u5728\u7ed1\u5b9a\u811a\u672c\u4e2d\u4ec5\u5b9a\u4e49",
+      offlineRecoverySubGamePlaybackCoverage: "\u7236\u5bf9\u8bdd\u64ad\u653e\u8986\u76d6",
+      offlineRecoverySubGameTaskTopology: "\u7cbe\u786e\u4efb\u52a1\u5b8c\u6210\u62d3\u6251",
+      offlineRecoverySubGameTaskTopologyNull: "\u6ca1\u6709\u539f\u751f\u4efb\u52a1\u6620\u5c04",
+      offlineRecoverySubGameTasks: "\u4efb\u52a1",
+      offlineRecoverySubGameConditions: "\u6761\u4ef6",
+      offlineRecoverySubGameTracked: "\u53ef\u8ffd\u8e2a",
+      offlineRecoverySubGameInternal: "\u5185\u90e8",
+      offlineRecoverySubGameConditionTypes: "\u6761\u4ef6\u7c7b\u578b",
+      offlineRecoverySubGameCombineExpressions: "\u5e8f\u5217\u5316\u516c\u5f0f",
+      offlineRecoverySubGameTaskDescriptions: "\u663e\u793a\u76ee\u6807",
+      offlineRecoverySubGameTopologyBoundary: "\u4efb\u52a1\u6761\u4ef6\u4e0e\u4e3b/\u989d\u5916/\u5931\u8d25\u901a\u9053\u5747\u662f\u7cbe\u786e\u539f\u59cb\u6570\u636e\u7ed3\u6784\uff0c\u4f46\u5b83\u4eec\u6ca1\u6709\u5e8f\u5217\u5316\u4efb\u52a1\u540e\u7ee7\u8fb9\u6216\u5267\u60c5\u6587\u4ef6\u987a\u5e8f\u8fb9\u3002",
+      offlineRecoverySubGameActionTopology: "\u7cbe\u786e\u8fd0\u884c\u65f6\u63a7\u5236\u56fe",
+      offlineRecoverySubGameActionTopologyEmpty: "\u539f\u751f\u52a8\u4f5c\u6620\u5c04\u4e3a\u7a7a",
+      offlineRecoverySubGameActionEvents: "\u4e8b\u4ef6\u6839",
+      offlineRecoverySubGameActionPhysicalEvents: "\u7269\u7406\u4e8b\u4ef6\u884c",
+      offlineRecoverySubGameActionEventSlot: "\u6d3b\u52a8\u7d22\u5f15\u76d1\u542c\u5668",
+      offlineRecoverySubGameActionEventPriority: "\u76d1\u542c\u5668\u4f18\u5148\u7ea7",
+      offlineRecoverySubGameActionEventTriggerActive: "\u6d3b\u52a8\u671f\u95f4\u6a21\u5f0f",
+      offlineRecoverySubGameActionEventFilter: "\u8fc7\u6ee4\u5668",
+      offlineRecoverySubGameActionNodes: "\u52a8\u4f5c",
+      offlineRecoverySubGameActionEdges: "\u8fb9",
+      offlineRecoverySubGameActionFanouts: "\u7c7b\u578b\u5316\u5206\u53d1",
+      offlineRecoverySubGameActionSequences: "\u6709\u5e8f\u5e8f\u5217",
+      offlineRecoverySubGameActionChoices: "\u6761\u4ef6\u9009\u62e9",
+      offlineRecoverySubGameActionLoops: "\u5faa\u73af",
+      offlineRecoverySubGameActionConvergence: "\u6c47\u5408",
+      offlineRecoverySubGameActionCycles: "\u73af",
+      offlineRecoverySubGameActionShadowed: "\u8fd0\u884c\u65f6\u8986\u76d6\u8bb0\u5f55",
+      offlineRecoverySubGameActionTerminals: "\u7f3a\u5931\u69fd\u7ec8\u70b9",
+      offlineRecoverySubGameActionActiveSlot: "\u6d3b\u52a8\u8fd0\u884c\u65f6\u69fd",
+      offlineRecoverySubGameActionEventTypes: "\u4e8b\u4ef6\u7c7b\u578b",
+      offlineRecoverySubGameActionTypes: "\u52a8\u4f5c\u7c7b\u578b",
+      offlineRecoverySubGameActionStoryTargets: "\u7c7b\u578b\u5316\u5267\u60c5\u76ee\u6807",
+      offlineRecoverySubGameActionTopologyBoundary: "\u8fb9\u4ec5\u5728\u540c\u4e00 LevelScript \u5185\u662f\u7cbe\u786e\u7684\u3002\u4e8b\u4ef6\u5934\u3001\u52a8\u4f5c\u548c getter ID \u90fd\u4f7f\u7528\u6700\u540e\u4e00\u6761\u5e8f\u5217\u5316\u7d22\u5f15\u69fd\uff0c\u7f3a\u5931\u7684\u6b63\u6570\u52a8\u4f5c\u69fd\u4f1a\u6b63\u5e38\u7ed3\u675f\u3002\u4e8b\u4ef6\u6839\u662f\u72ec\u7acb\u8c03\u7528\u7684\u76d1\u542c\u5668\uff1a\u7269\u7406\u5217\u8868\u987a\u5e8f\u548c\u76d1\u542c\u5668\u4f18\u5148\u7ea7\u90fd\u4e0d\u662f\u5267\u60c5\u65f6\u5e8f\u3002\u53ea\u6709\u7c7b\u5316\u52a8\u4f5c\u660e\u786e\u6307\u5411\u5267\u60c5\u6587\u4ef6\u65f6\uff0c\u63a7\u5236\u6d41\u624d\u5bf9\u5176\u6392\u5e8f\u3002",
+      offlineRecoveryEvidenceParentTreePartition: "\u7cbe\u786e\u7684\u5df2\u6ce8\u518c\u7236\u6811\u53f0\u8bcd\u5206\u533a",
+      partialRecoveryEvidenceParentTreePartition: "\u90e8\u5206\u5df2\u6ce8\u518c\u7236\u6811\u53f0\u8bcd\u5206\u533a",
+      partialRecoveryCoverage: "\u5df2\u6ce8\u518c\u8986\u76d6",
+      partialRecoveryUnmatchedRows: "\u672a\u5339\u914d\u7684\u539f\u59cb\u53f0\u8bcd\u884c",
+      partialRecoveryRowIdPositions: "\u8868\u884c ID \u4f4d\u7f6e\uff08\u4ec5\u4ea4\u53c9\u53c2\u8003\uff0c\u975e\u987a\u5e8f\u8bc1\u636e\uff09",
       offlineRecoveryAuthoredSplit: "\u539f\u751f\u5206\u6d41",
       offlineRecoveryAuthoredConvergence: "\u539f\u751f\u5408\u6d41",
       offlineRecoveryTerminalOptions: "\u7ec8\u6b62\u9009\u9879\u8def\u7531",
@@ -1032,7 +1215,22 @@
       offlineRecoveryEvidenceDefinitionOnly: "\u4ec5\u5b9a\u4e49\uff0c\u6fc0\u6d3b\u5668\u672a\u77e5",
       offlineRecoveryEvidenceUnregistered: "\u672a\u6ce8\u518c\u5b9a\u4e49 \u2014 \u65e0\u8fd0\u884c\u65f6\u6d88\u8d39\u8005",
       offlineRecoveryEvidenceRadioOnly: "\u4ec5\u65e0\u7ebf\u7535\u5b9a\u4e49\uff0c\u6d88\u8d39\u8005\u672a\u77e5",
+      offlineRecoveryEvidenceBinaryRadio: "\u4ec5\u5b9a\u4e49 \u2014 \u5f53\u524d\u539f\u59cb\u6570\u636e\u8868\u9762\u672a\u627e\u5230\u6d88\u8d39\u8005",
+      offlineRecoveryEvidenceNpcProxyConsumer: "\u539f\u59cb\u4e8c\u8fdb\u5236 NPC \u4ee3\u7406\u6d88\u8d39\u8005\uff0c\u4efb\u52a1\u6fc0\u6d3b\u65f6\u673a\u672a\u77e5",
+      offlineRecoveryEvidenceBinarySns: "\u4ec5 SNS \u5b9a\u4e49 \u2014 \u5f53\u524d\u539f\u59cb\u6570\u636e\u8868\u9762\u672a\u627e\u5230\u6d88\u8d39\u8005",
+      offlineRecoveryEvidenceBinaryReadingPopup: "\u4ec5\u53ef\u8bfb\u5185\u5bb9\u5b9a\u4e49 \u2014 \u5f53\u524d\u539f\u59cb\u6570\u636e\u8868\u9762\u672a\u627e\u5230\u6fc0\u6d3b\u5668",
+      offlineRecoveryEvidenceBinaryUnregisteredDialog: "\u672a\u6ce8\u518c\u5bf9\u8bdd\u5b9a\u4e49 \u2014 \u5f53\u524d\u539f\u59cb\u6570\u636e\u8868\u9762\u672a\u627e\u5230\u6d88\u8d39\u8005",
+      offlineRecoveryEvidenceBinaryRegisteredDialogTree: "\u5df2\u6ce8\u518c DialogTree \u5b9a\u4e49 \u2014 \u5f53\u524d\u539f\u59cb\u6570\u636e\u8868\u9762\u672a\u627e\u5230\u6fc0\u6d3b\u5668",
+      offlineRecoveryEvidenceMissionlessNativePlayback: "\u5df2\u7cbe\u786e\u6062\u590d\u672c\u5730\u64ad\u653e\uff0c\u4efb\u52a1\u6865\u63a5\u4e0e\u987a\u5e8f\u672a\u77e5",
+      runtimeRecoveryEvidenceSameMissionLevelDataPlayback: "\u5df2\u7cbe\u786e\u6062\u590d\u672c\u4efb\u52a1\u5916\u58f3\u5185\u7684\u539f\u751f\u64ad\u653e\uff0c\u4efb\u52a1\u8282\u70b9\u4e0e\u987a\u5e8f\u672a\u77e5",
+      runtimeRecoveryEvidenceCrossMissionLevelDataPlayback: "\u5df2\u7cbe\u786e\u6062\u590d\u76f8\u5173\u4efb\u52a1\u5916\u58f3\u5185\u7684\u539f\u751f\u64ad\u653e\uff0c\u5f52\u5c5e\u4e0e\u987a\u5e8f\u672a\u77e5",
+      offlineRecoveryEvidenceCutsceneRoot: "\u5df2\u89e3\u6790\u8fc7\u573a\u6839\u8282\u70b9 \u2014 \u4efb\u52a1\u6fc0\u6d3b\u5668\u672a\u77e5",
+      offlineRecoveryNativeConsumer: "\u539f\u59cb\u4e8c\u8fdb\u5236\u6d88\u8d39\u8005",
+      offlineRecoverySnsDefinition: "SNS \u5185\u90e8\u5b9a\u4e49",
       offlineRecoveryMissingAudio: "\u4e2a\u97f3\u9891 ID \u7f3a\u5931",
+      offlineRecoveryAudioMembership: "\u97f3\u9891\u6210\u5458\u72b6\u6001",
+      offlineRecoveryCarrierAudit: "\u7c7b\u578b\u5316\u8f7d\u4f53\u5ba1\u8ba1",
+      offlineRecoveryBinaryRootToken: "\u539f\u59cb\u4e8c\u8fdb\u5236\u6839\u6807\u8bb0",
       offlineRecoveryMissionTracking: "\u4efb\u52a1 NPC \u8ffd\u8e2a\u4e0a\u4e0b\u6587\uff08\u4ec5\u5bfc\u822a\uff09",
       offlineRecoveryNpcProxyConsumer: "\u7cbe\u786e\u65e0\u4efb\u52a1 NpcProxyEx \u884c\uff08\u7d22\u5f15\u4e0d\u662f\u5267\u60c5\u987a\u5e8f\uff09",
       offlineRecoveryTrackedQuests: "\u8ffd\u8e2a\u4efb\u52a1\u8282\u70b9",
@@ -1092,6 +1290,9 @@
       triggerDialogTimeline: "\u5bf9\u8bdd Timeline",
       triggerStoryRoot: "CutsceneRoot \u5267\u60c5\u952e",
       triggerStory: "\u5267\u60c5\u6587\u4ef6",
+      triggerLuaController: "Lua \u63a7\u5236\u5668",
+      triggerNativePlayback: "\u539f\u751f\u64ad\u653e",
+      triggerOriginalTableRow: "\u539f\u59cb\u8868\u884c",
       triggerExactPaths: "\u7cbe\u786e\u539f\u751f\u8def\u5f84",
       triggerEvents: "\u89e6\u53d1\u4e8b\u4ef6",
       triggerEventsHint: "\u6bcf\u884c\u90fd\u662f\u4e00\u6761\u7cbe\u786e\u7684\u5e8f\u5217\u5316\u4e8b\u4ef6\u5230\u52a8\u4f5c\u8def\u5f84\u3002\u591a\u884c\u8868\u793a\u5907\u9009\u8def\u5f84\u6216\u4e0d\u540c\u53d1\u751f\u4f4d\u7f6e\uff0c\u4e0d\u4ee3\u8868\u731c\u6d4b\u7684\u987a\u5e8f\u3002",
@@ -1125,12 +1326,17 @@
       nativeIfElseBranch: "\u539f\u751f If/Else \u5206\u652f",
       nativeSwitchBranch: "\u539f\u751f Switch \u5206\u652f",
       nativeControlMerge: "\u539f\u751f\u5206\u652f\u6c47\u5408",
+      nativeOrderedSequence: "\u539f\u751f\u6709\u5e8f\u52a8\u4f5c\u5e8f\u5217",
+      nativeRelatedActionGraphs: "\u76f8\u5173\u539f\u59cb LevelScript \u56fe",
+      nativeRelatedActionGraphsHint: "\u4ec5\u5f53\u7cbe\u786e\u5e8f\u5217\u5316\u4e8b\u4ef6\u5230\u5267\u60c5\u8def\u5f84\u5230\u8fbe\u672c\u4efb\u52a1\u7684\u5267\u60c5\u6587\u4ef6\u65f6\u624d\u9644\u52a0\u6b64\u6587\u4ef6\uff1b\u5176\u4f59\u52a8\u4f5c\u53ea\u662f\u6587\u4ef6\u5185\u4e0a\u4e0b\u6587\uff0c\u4e0d\u662f\u989d\u5916\u4efb\u52a1\u987a\u5e8f\u3002",
       nativeControlReachability: "\u7cbe\u786e\u7c7b\u578b\u5316\u4e0b\u6e38\u53ef\u8fbe\u6027",
       nativeControlPath: "\u63a7\u5236\u8def\u5f84",
       nativeEventSelector: "\u4e8b\u4ef6\u9009\u62e9\u5668",
       nativePredicate: "\u5206\u652f\u6761\u4ef6",
       nativePredicateOpaque: "\u5185\u8054\u6761\u4ef6\u5c1a\u672a\u8bed\u4e49\u89e3\u7801",
       optionBranches: "\u5bf9\u8bdd\u9009\u9879\u5206\u652f",
+      typedStorySelectors: "\u7c7b\u578b\u5316\u7cfb\u7edf\u9009\u62e9\u5668",
+      typedStorySelectorHint: "\u539f\u59cb\u7c7b\u578b\u5316\u8868\u628a\u8fd9\u4e9b\u5267\u60c5\u6587\u4ef6\u7ed1\u5b9a\u4e3a\u540c\u4e00\u8fd0\u884c\u65f6\u9009\u62e9\u5668\u7684\u5019\u9009\u9879\uff0c\u4e0d\u4f1a\u5728\u5019\u9009\u9879\u6216\u9009\u62e9\u5668\u7ec4\u4e4b\u95f4\u521b\u5efa\u987a\u5e8f\u8fb9\u3002",
       optionDirectContinuation: "\u76f4\u63a5\u8fdb\u5165\u5171\u4eab\u540e\u7eed",
       isolatedScenes: "\u5b64\u7acb\u5267\u60c5\u6587\u4ef6",
       weakOnlyScenes: "\u4ec5\u5f31\u4e0a\u4e0b\u6587\u6587\u4ef6",
@@ -1313,6 +1519,7 @@
         </header>
         <div id="mp-warning" class="mp-boundary-warning" role="note"></div>
         <div id="mp-source-provenance" class="mp-source-provenance" role="note" hidden></div>
+        <div id="mp-non-mission-overview" class="mp-non-mission-overview"></div>
         <div class="mp-layout">
           <aside class="mp-browser" aria-label="Mission browser">
             <div class="mp-browser-controls">
@@ -1425,6 +1632,7 @@
       // the data language, so a UI-locale switch used to leave its stat labels
       // in the previous language.
       updateCorpus();
+      renderNonMissionOverview();
       renderMissionList();
       if (state.mission) renderMission();
     });
@@ -1492,6 +1700,7 @@
       state.missionCache.clear();
       state.localizedCache.clear();
       updateCorpus();
+      renderNonMissionOverview();
       applyMissionFilters();
       const preferred = index.missions?.some((row) => row.id === state.missionId) ? state.missionId : (index.missions?.[0]?.id || "");
       if (preferred) await selectMission(preferred, { force });
@@ -1537,6 +1746,9 @@
       [storyCounts.connectedUniqueStoryFiles, t("connectedStory")],
       [storyCounts.unlinkedUniqueStoryFiles, t("unlinkedStory")],
       [storyCounts.unlinkedNativePlaybackFiles, t("nativePlaybackGaps")],
+      [storyCounts.acceptedLuaExactPlaybackCalls, t("luaPlaybackAccepted")],
+      [storyCounts.acceptedLuaTableCarrierCalls, t("luaTablePlaybackAccepted")],
+      [storyCounts.rejectedLuaCaseMismatchCalls, t("luaPlaybackRejected")],
       [storyCounts.rootPlaybackAliasRows, t("rootPlaybackAliases")],
       [storyCounts.missionlessSubGameStoryFiles, t("missionlessSubGameStory")],
       [storyCounts.missionlessNativeRuntimeStoryFiles, t("missionlessRuntimeStory")],
@@ -1575,6 +1787,7 @@
       <span>${esc(t("sourceChangedFiles"))}: ${Number(source.persistentChangedBaseFileCount || changedFiles.length).toLocaleString()} / ${Number(source.streamingFileCount || 0).toLocaleString()}</span>
       ${changedFiles.length ? `<code>${esc(changedFiles.join(", "))}</code>` : ""}
       <span>${esc(t("sourceMissingFiles"))}: ${Number(missingFiles.length).toLocaleString()}</span>
+      ${state.index?.storyCoverage?.luaStoryPlaybackEvidence?.status ? `<span>${esc(t("luaPlaybackAudit"))}: <strong>${esc(state.index.storyCoverage.luaStoryPlaybackEvidence.status)}</strong> · ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.scannedPlaybackCalls || 0).toLocaleString()} calls · ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.acceptedTableCarrierCalls || 0).toLocaleString()} table-owned · <code>${esc(state.index.storyCoverage.luaStoryPlaybackEvidence.auditSha256 || "")}</code></span>` : ""}
     `;
   }
 
@@ -1796,11 +2009,19 @@
   function storyConnectionCounts(node, localizedMap = localizedQuestMap()) {
     const counts = { incoming: 0, outgoing: 0, context: 0 };
     for (const row of questStoryConnections(node, localizedMap)) {
-      if (row.direction === "story_to_quest") counts.incoming += 1;
-      else if (row.direction === "quest_to_story") counts.outgoing += 1;
+      const direction = storyConnectionDirectionGroup(row);
+      if (direction === "story_to_quest") counts.incoming += 1;
+      else if (direction === "quest_to_story") counts.outgoing += 1;
       else counts.context += 1;
     }
     return counts;
+  }
+
+  function storyConnectionDirectionGroup(row) {
+    const direction = row?.direction || "context";
+    return direction === "story_to_quest" || direction === "quest_to_story"
+      ? direction
+      : "context";
   }
 
   function storyRelationLabel(relation) {
@@ -1813,6 +2034,7 @@
       client_action_failed: "relationClientFailed",
       leveldata_quest_reference: "relationLevelData",
       levelscript_condition_scope: "relationLevelScript",
+      levelscript_property_story_consumer: "relationLevelScriptPropertyConsumer",
       quest_objective_levelscript_scope_context: "relationQuestObjectiveLevelScriptScope",
       levelscript_mission_context: "relationLevelScriptMission",
       leveldata_levelscript_mission_context: "relationLevelDataScriptHost",
@@ -1921,6 +2143,7 @@
       row.actionType ? `${row.actionType} / slot ${row.actionSlot ?? "?"}` : "",
       row.actionName ? row.actionName : "",
       row.nativeAction ? `native action ${row.nativeAction}` : "",
+      row.nativeEventName ? `native event ${row.nativeEventName}` : "",
       (row.nativeActions || []).length ? `native action ${(row.nativeActions || []).join(", ")}` : "",
       (row.opcodes || []).length ? `opcode ${(row.opcodes || []).join(", ")}` : "",
       (row.nativeActionTags || []).length ? `MemoryPack action tag ${(row.nativeActionTags || []).join(", ")}` : "",
@@ -1947,6 +2170,7 @@
       (row.raisedEventKeys || []).length ? `raised events ${(row.raisedEventKeys || []).join(", ")}` : "",
       (row.producerReceiverModes || []).length ? `event receivers ${(row.producerReceiverModes || []).join(", ")}` : "",
       row.conditionKey ? `condition ${row.conditionKey}` : "",
+      row.conditionValue !== undefined ? `condition value ${row.conditionValue}` : "",
       row.taskKey ? `task ${row.taskKey}` : "",
       row.taskEntryOffsetHex ? `task offset ${row.taskEntryOffsetHex}` : "",
       row.conditionOffsetHex ? `condition offset ${row.conditionOffsetHex}` : "",
@@ -2107,6 +2331,7 @@
       row.levelDataHostStatus ? `LevelData host ${row.levelDataHostStatus}` : "",
       (row.scopeEvidenceKinds || []).length ? `scope ${(row.scopeEvidenceKinds || []).join(", ")}` : "",
       row.questTriggerStatus ? `quest trigger ${row.questTriggerStatus}` : "",
+      row.orderStatus ? `order boundary ${row.orderStatus}` : "",
       row.nativeMappingId ? `mapping ${row.nativeMappingId}` : "",
       row.acceptModeType ? row.acceptModeType : "",
       (row.anchors || []).length ? `anchor ${(row.anchors || []).join(", ")}` : "",
@@ -2158,6 +2383,40 @@
       .filter((candidate) => candidate && candidate.storyKey === row?.key);
   }
 
+  const exactBlackCarrierRelations = new Set([
+    "timeline_dialog_contains_black",
+    "dialog_tree_narrative_action",
+  ]);
+  const exactSameMissionRuntimeRelations = new Set([
+    "airwall_mission_state_radio_playback_context",
+    "leveldata_levelscript_mission_context",
+  ]);
+  const exactNpcProxyRuntimeRelations = new Set([
+    "npc_proxy_ex_mission_context",
+    "npc_proxy_tracking_dialog_navigation_context",
+    "npc_proxy_lazy_destroy_dialog_context",
+  ]);
+
+  function runtimeRecoveryEvidenceLabel(row) {
+    const status = row?.evidenceKind || row?.recoveryStatus || "";
+    return ({
+      closed_exact_same_mission_leveldata_playback_context_no_relative_order:
+        t("runtimeRecoveryEvidenceSameMissionLevelDataPlayback"),
+      closed_exact_cross_mission_leveldata_playback_context_no_relative_order:
+        t("runtimeRecoveryEvidenceCrossMissionLevelDataPlayback"),
+      closed_exact_parent_dialog_dependency_no_relative_order:
+        t("runtimeRecoveryParentDialogDependency"),
+      closed_exact_non_owning_dialog_context_no_relative_order:
+        t("runtimeRecoveryNpcDialogContext"),
+      closed_exact_runtime_config_no_relative_order:
+        t("runtimeRecoveryNpcSelectionContext"),
+      closed_exact_cross_mission_runtime_config_no_relative_order:
+        t("runtimeRecoveryNpcCrossMissionContext"),
+      closed_exact_multi_mission_runtime_config_no_relative_order:
+        t("runtimeRecoveryNpcMultiMissionContext"),
+    })[status] || status;
+  }
+
   function offlineRecoveryHtml(row) {
     const coverage = state.index?.storyCoverage || {};
     const manifest = coverage.storyTriggerManifest || {};
@@ -2166,12 +2425,17 @@
       manifest[row?.key]?.offlineRecovery
       || overlay[row?.key]?.offlineRecovery
     );
+    const partialRecovery = (
+      manifest[row?.key]?.partialRecovery
+      || overlay[row?.key]?.partialRecovery
+    );
     const runtimeRecovery = manifest[row?.key]?.runtimeContextRecovery;
-    const recovery = offlineRecovery || runtimeRecovery;
+    const recovery = offlineRecovery || partialRecovery || runtimeRecovery;
     if (!recovery || recovery.graphEffect !== "none") return "";
     const sourceFiles = [...new Set([
       ...(recovery.definitionSourceFiles || []),
       ...(recovery.sourceFiles || []),
+      ...(recovery.originalBinaryFiles || []),
     ].filter(Boolean))];
     const related = recovery.missionRelatedOriginalData;
     const relatedEntries = (related?.entries || []).map((entry) => (
@@ -2192,6 +2456,9 @@
         : "",
       recovery.contextMissionId
         ? `<small><strong>${esc(t("runtimeRecoveryContextMission"))}:</strong> <code>${esc(recovery.contextMissionId)}</code></small>`
+        : "",
+      (recovery.contextMissionIds || []).length
+        ? `<small><strong>${esc(t("runtimeRecoveryContextMissions"))}:</strong> ${(recovery.contextMissionIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</small>`
         : "",
       (recovery.anchorQuestIds || []).length
         ? `<small><strong>${esc(t("runtimeRecoveryQuestAnchors"))}:</strong> ${(recovery.anchorQuestIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</small>`
@@ -2217,11 +2484,20 @@
       recovery.consumerBoundary
         ? `<small><strong>${esc(t("offlineRecoveryConsumer"))}:</strong> ${esc(recovery.consumerBoundary)}</small>`
         : "",
+      recovery.contextBoundary
+        ? `<small><strong>${esc(t("runtimeRecoveryContextBoundary"))}:</strong> ${esc(recovery.contextBoundary)}</small>`
+        : "",
       recovery.orderBoundary
         ? `<small><strong>${esc(t("offlineRecoveryOrder"))}:</strong> ${esc(recovery.orderBoundary)}</small>`
         : "",
       recovery.reopenWhen
         ? `<small><strong>${esc(t("offlineRecoveryReopen"))}:</strong> ${esc(recovery.reopenWhen)}</small>`
+        : "",
+      partialRecovery
+        ? `<small><strong>${esc(t("partialRecoveryCoverage"))}:</strong> ${Number(recovery.coveredLineCount || 0).toLocaleString()} / ${Number(recovery.lineCount || 0).toLocaleString()} ${esc(t("offlineRecoveryLines"))}</small>`
+        : "",
+      partialRecovery && (recovery.missingLineIds || []).length
+        ? `<small><strong>${esc(t("partialRecoveryUnmatchedRows"))}:</strong> ${(recovery.missingLineIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</small>`
         : "",
       sourceFiles.length
         ? `<small><strong>${esc(t("offlineRecoverySources"))}:</strong><br>${sourceFiles.map((path) => `<code>${esc(path)}</code>`).join("<br>")}</small>`
@@ -2231,8 +2507,8 @@
         : "",
     ].filter(Boolean).join("");
     return `<div class="mp-playback-rejection mp-offline-recovery">
-      <header><strong>${esc(t(runtimeRecovery ? "runtimeContextRecoveryBoundary" : "offlineRecoveryBoundary"))}</strong><span>${esc(t("offlineRecoveryNoGraphEdge"))}</span></header>
-      <b>${esc(recovery.evidenceKind || recovery.recoveryStatus || "")}</b>
+      <header><strong>${esc(t(runtimeRecovery ? "runtimeContextRecoveryBoundary" : partialRecovery ? "partialRecoveryBoundary" : "offlineRecoveryBoundary"))}</strong><span>${esc(t("offlineRecoveryNoGraphEdge"))}</span></header>
+      <b>${esc(partialRecovery ? t("partialRecoveryEvidenceParentTreePartition") : runtimeRecoveryEvidenceLabel(recovery))}</b>
       ${boundaries}
       ${recovery.nativeMappingId ? `<em><code>${esc(recovery.nativeMappingId)}</code></em>` : ""}
     </div>`;
@@ -2246,6 +2522,7 @@
     const rows = new Map();
     [...Object.values(manifest), ...Object.values(overlay)].forEach((entry) => {
       const offlineRecovery = entry?.offlineRecovery;
+      const partialRecovery = entry?.partialRecovery;
       const runtimeRecovery = entry?.runtimeContextRecovery;
       const crossMissionRuntimeRecovery = runtimeRecovery
         && String(runtimeRecovery.nominalStoryMissionId || "") === missionId
@@ -2256,17 +2533,31 @@
       const composedRootPlaybackRecovery = runtimeRecovery
         && runtimeRecovery.relation === "cutscene_root_playback_alias_composed"
         && String(runtimeRecovery.missionId || "") === missionId;
+      const exactBlackCarrierRecovery = runtimeRecovery
+        && exactBlackCarrierRelations.has(runtimeRecovery.relation)
+        && String(runtimeRecovery.nominalStoryMissionId || "") === missionId;
+      const exactSameMissionRuntimeRecovery = runtimeRecovery
+        && exactSameMissionRuntimeRelations.has(runtimeRecovery.relation)
+        && String(runtimeRecovery.missionId || entry.nominalMissionId || "") === missionId;
+      const exactNpcProxyRuntimeRecovery = runtimeRecovery
+        && exactNpcProxyRuntimeRelations.has(runtimeRecovery.relation)
+        && String(runtimeRecovery.missionId || runtimeRecovery.nominalStoryMissionId || entry.nominalMissionId || "") === missionId;
       const displayRuntimeRecovery = crossMissionRuntimeRecovery
         || authoredSnsMissionRecovery
-        || composedRootPlaybackRecovery;
-      const recovery = offlineRecovery || (displayRuntimeRecovery ? runtimeRecovery : null);
+        || composedRootPlaybackRecovery
+        || exactBlackCarrierRecovery
+        || exactSameMissionRuntimeRecovery
+        || exactNpcProxyRuntimeRecovery;
+      const recovery = offlineRecovery || partialRecovery || (displayRuntimeRecovery ? runtimeRecovery : null);
       if (!entry?.key || !recovery || recovery.graphEffect !== "none") return;
       const owner = String(recovery.missionId || recovery.nominalStoryMissionId || entry.nominalMissionId || "");
       if (owner !== missionId) return;
       rows.set(entry.key, {
         key: entry.key,
+        nominalMissionId: entry.nominalMissionId,
         ...recovery,
         runtimeContextRecovery: Boolean(displayRuntimeRecovery),
+        partialRecovery: Boolean(partialRecovery),
       });
     });
     return [...rows.values()].sort((a, b) => String(a.key).localeCompare(
@@ -2341,6 +2632,7 @@
       playback: "triggerPlayback",
       condition: "triggerCondition",
       context: "triggerContext",
+      context_owner_unresolved: "triggerContextOwnerUnresolved",
       dependency: "triggerDependency",
       playback_owner_unresolved: "triggerUnresolved",
       playback_alias_owner_unresolved: "triggerPlaybackAlias",
@@ -2366,6 +2658,9 @@
       dialog_timeline: "triggerDialogTimeline",
       story_root: "triggerStoryRoot",
       story: "triggerStory",
+      luaController: "triggerLuaController",
+      nativePlayback: "triggerNativePlayback",
+      originalTableRow: "triggerOriginalTableRow",
     })[kind] || "triggerContext");
   }
 
@@ -2471,7 +2766,7 @@
     </a>`;
   }
 
-  function composedRootPlaybackAliasRowsForMission() {
+  function manifestOwnedStoryRowsForMission() {
     const missionId = String(
       state.missionId || state.mission?.mission?.id || "",
     );
@@ -2480,8 +2775,7 @@
     Object.values(manifest).forEach((entry) => {
       (entry?.routes || []).forEach((route) => {
         if (
-          route?.causality !== "playback_alias_owner_connected"
-          || route.ownerStatus !== "connected"
+          route?.ownerStatus !== "connected"
           || route.missionId !== missionId
         ) return;
         rows.push({
@@ -2500,18 +2794,18 @@
   }
 
   function missionUnassignedStoryKeys() {
-    const connectedAliasKeys = new Set(
-      composedRootPlaybackAliasRowsForMission().map((row) => row.key),
+    const connectedManifestKeys = new Set(
+      manifestOwnedStoryRowsForMission().map((row) => row.key),
     );
     return (state.localized?.flow?.unlinked || [])
-      .filter((key) => key && !connectedAliasKeys.has(key));
+      .filter((key) => key && !connectedManifestKeys.has(key));
   }
 
   function missionStoryConnectionsHtml() {
     const unique = new Map();
     [
       ...(state.localized?.flow?.missionStoryConnections || []),
-      ...composedRootPlaybackAliasRowsForMission(),
+      ...manifestOwnedStoryRowsForMission(),
     ].filter((row) => row && row.key).forEach((row) => {
       const signature = `${row.key}\u0000${row.relation || ""}`;
       if (!unique.has(signature)) unique.set(signature, row);
@@ -2689,16 +2983,31 @@
       <div class="mp-story-files"><section class="mp-story-group is-context">
         ${rows.map((row) => {
           const guideRuntime = row.evidenceKind === "guide_runtime_asset";
+          const spaceshipRuntime = [
+            "spaceship_dialog_tree",
+            "character_profile_voice",
+          ].includes(row.evidenceKind);
+          const spaceshipConsumers = [
+            ...(row.consumerClasses || []),
+            ...(row.characterIds || []),
+            ...(row.dialogTreeRoots || []),
+          ];
           return storyConnectionLink({
             key: row.key,
             relation: "non_mission_content",
             direction: "context",
-            confidence: guideRuntime
-              ? "exact_typed_guide_runtime_non_mission_content"
-              : "table_backed_non_mission_content",
+            confidence: spaceshipRuntime
+              ? "exact_typed_spaceship_non_mission_content"
+              : guideRuntime
+                ? "exact_typed_guide_runtime_non_mission_content"
+                : "table_backed_non_mission_content",
             source: guideRuntime
               ? `${row.consumerClass} · ${row.actionCount || 0} actions / ${row.assetCount || 0} guide assets`
-              : `${row.table}.${row.field} (keyed by ${row.keyedBy})`,
+              : spaceshipRuntime
+                ? `${spaceshipConsumers.join(", ")} · ${(row.sourceFiles || []).join("; ")}`
+                : `${row.table}.${row.field} (keyed by ${row.keyedBy})`,
+            sourceFiles: row.sourceFiles || [],
+            nativeMappingId: row.nativeMappingId,
           }, "context");
         }).join("")}
       </section></div>
@@ -2783,12 +3092,15 @@
     }).join("");
     const frontiers = (order.topologicalLayers || []).map((layer, index) => `<div class="mp-order-frontier"><b>${esc(t("partialFrontier"))} ${index + 1}</b><span>${(layer || []).map(componentHtml).join("")}</span></div>`).join("");
     const branches = order.branches || {};
+    const typedSelectors = (branches.typedStorySelectorGroups || []).map((row) => `<details><summary><b>${esc(t("typedStorySelectors"))}</b> <code>${esc(row.selectorGroupId || "?")}</code></summary><p>${esc(t("typedStorySelectorHint"))}</p>${(row.alternatives || []).map((alternative) => `<div><code>${esc(alternative.role || "?")}</code><i>&rarr;</i><a href="${esc(storyHref(alternative.key))}"><code>${esc(alternative.key || "?")}</code></a></div>`).join("")}${(row.sourceFiles || []).length ? `<small>${row.sourceFiles.map((source) => `<code>${esc(source)}</code>`).join(" ")}</small>` : ""}</details>`).join("");
     const questForks = (branches.questForks || []).map((row) => `<div><b>${esc(t("questFork"))}</b><code>${esc(row.questId || "?")}</code><i>&rarr;</i><span>${(row.successorQuestIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span></div>`).join("");
     const questMerges = (branches.questMerges || []).map((row) => `<div><b>${esc(t("questMerge"))}</b><span>${(row.predecessorQuestIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span><i>&rarr;</i><code>${esc(row.questId || "?")}</code></div>`).join("");
     const nativeBranchLabel = (kind) => t(kind === "splitFanout" ? "nativeSplitFanout" : kind === "ifElse" ? "nativeIfElseBranch" : "nativeSwitchBranch");
     const nativeParamText = (label, param) => {
       if (!param || typeof param !== "object") return "";
-      const source = param.path || (param.paramSource != null ? `source ${param.paramSource}` : "");
+      const source = param.getterLocalId != null
+        ? `getter #${param.getterLocalId}`
+        : (param.path || (param.paramSource != null ? `source ${param.paramSource}` : ""));
       const value = param.value != null ? String(param.value) : "";
       return [label, source, value].filter(Boolean).join(":");
     };
@@ -2810,7 +3122,9 @@
       const compare = predicate.compareMissionState || {};
       const missionState = predicate.sourceGetter?.getMissionState || {};
       const detail = predicate.detail || {};
+      const gameCondition = detail.condition || {};
       const sourceDetail = predicate.sourceGetter?.getterInt || {};
+      const sourceSemanticDetail = predicate.sourceGetter?.detail || {};
       const details = [
         predicate.getterName || "",
         predicate.getterLocalId != null ? `#${predicate.getterLocalId}` : "",
@@ -2820,8 +3134,19 @@
         compare.comparerName || "",
         compare.valueBStateName || "",
         detail.comparerName || detail.operation || "",
+        detail.targetKind || "",
+        detail.missionOrQuestId || "",
+        detail.completedStateName || "",
         detail.genderName || "",
         detail.propertyKey || "",
+        gameCondition.type || "",
+        gameCondition.fmvId?.value || "",
+        gameCondition.key?.value != null ? String(gameCondition.key.value) : "",
+        gameCondition.comparerName || "",
+        gameCondition.targetValue?.value != null ? String(gameCondition.targetValue.value) : "",
+        gameCondition.scriptId?.mode || "",
+        gameCondition.scriptId?.scriptId || "",
+        gameCondition.value?.value != null ? String(gameCondition.value.value) : "",
         detail.scriptPtr?.mode || detail.targetScript?.mode || "",
         detail.scriptPtr?.scriptId || detail.targetScript?.scriptId || "",
         nativeParamText("A", detail.valueA),
@@ -2829,9 +3154,13 @@
         nativeParamText("min", detail.minimum),
         nativeParamText("max", detail.maximum),
         nativeParamText("value", detail.value),
+        detail.expectedStage?.value != null ? `stage ${detail.expectedStage.value}` : "",
         nativeParamText("gender", detail.gender),
         predicate.sourceGetter?.getterName || "",
+        predicate.sourceGetter?.detailKind || "",
         nativeParamText("source", sourceDetail.value),
+        nativeParamText("source min", sourceSemanticDetail.minimum),
+        nativeParamText("source max", sourceSemanticDetail.maximum),
         nativeParamText("value", predicate.param),
         ...(predicate.getterTexts || predicate.texts || []),
         ...(predicate.sourceGetter?.getterTexts || []),
@@ -2843,6 +3172,26 @@
       : "";
     const nativeBranches = (branches.nativeControlBranches || []).map((row) => `<details><summary><b>${esc(nativeBranchLabel(row.kind))}</b> <code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}#${esc(row.branchLocalId ?? "?")}</code></summary><small>${esc(row.eventName || "")}</small>${nativeEventDetailHtml(row.eventDetail)}${nativePredicateHtml(row.predicate)}${(row.arms || []).map((arm) => `<div><code>${esc(arm.edge || "?")} &rarr; #${esc(arm.entryLocalId ?? "?")}</code><span>${(arm.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ")}</span></div>`).join("")}${nativeSourcesHtml(row)}</details>`).join("");
     const nativeMerges = (branches.nativeControlMerges || []).map((row) => `<details><summary><b>${esc(t("nativeControlMerge"))}</b><code>#${esc(row.branchLocalId ?? "?")}</code><i>&rarr;</i><code>#${esc(row.mergeLocalId ?? "?")}</code></summary><small>${esc(row.convergenceStatus === "exact_serialized_downstream_control_convergence" ? t("nativeControlReachability") : row.convergenceStatus || "")}</small><span>${(row.downstreamStoryKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ")}</span>${(row.mergePaths || []).map((path) => `<div><b>${esc(t("nativeControlPath"))}</b>${path.map((localId) => `<code>#${esc(localId)}</code>`).join(" &rarr; ")}</div>`).join("")}${nativeSourcesHtml(row)}</details>`).join("");
+    const nativeSequences = (branches.nativeOrderedSequences || []).map((row) => `<details open><summary><b>${esc(t("nativeOrderedSequence"))}</b> <code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}#${esc(row.branchLocalId ?? "?")}</code></summary><small>${esc(row.eventName || "")}</small>${(row.arms || []).map((arm, index) => `<div><code>${index + 1}. ${esc(arm.edge || "?")}</code><span>${(arm.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ")}</span></div>`).join("")}${(row.nativeConsumers || []).map((consumer) => `<small><code>${esc(consumer.method || "?")} @ ${esc(consumer.address || "?")}</code> ${esc(consumer.contract || "")}</small>`).join("")}${nativeSourcesHtml(row)}</details>`).join("");
+    const relatedActionTopologies = (branches.nativeRelatedActionTopologies || []).map((row) => {
+      const selectedEvents = (row.selectedEventRoots || []).map((event) => {
+        const metadata = [
+          event.priority != null ? `${t("offlineRecoverySubGameActionEventPriority")}: ${event.priority}` : "",
+          event.triggerActiveDuring != null ? `${t("offlineRecoverySubGameActionEventTriggerActive")}: ${String(event.triggerActiveDuring)}` : "",
+          event.filterMode != null ? `${t("offlineRecoverySubGameActionEventFilter")}: ${event.filterMode}` : "",
+        ].filter(Boolean).map((value) => `<small>${esc(value)}</small>`).join("");
+        return `<div><code>#${esc(event.localId ?? "?")}</code><b>${esc(event.headerName || event.eventName || "?")}</b><span>&rarr; #${esc(event.nextActionLocalId ?? "?")}</span>${metadata}</div>`;
+      }).join("");
+      const controls = (row.controlActions || []).map((action) => {
+        const shadowed = (action.runtimeShadowedRecordOffsets || []).length
+          ? `<small>${(action.runtimeShadowedRecordOffsets || []).length} ${esc(t("offlineRecoverySubGameActionShadowed"))}; ${esc(t("offlineRecoverySubGameActionActiveSlot"))}</small>`
+          : "";
+        return `<div><code>#${esc(action.localId ?? "?")}</code><b>${esc(action.actionName || "?")}</b><span>${esc(action.controlKind || "")}</span>${shadowed}</div>`;
+      }).join("");
+      const terminals = (row.runtimeTerminalTargets || []).map((target) => `<div><code>#${esc(target.sourceLocalId ?? "?")}</code><span>${esc(target.relation || "edge")} &rarr; #${esc(target.targetActionLocalId ?? "?")}</span><small>${esc(t("offlineRecoverySubGameActionTerminals"))}</small></div>`).join("");
+      const stories = (row.relatedStoryKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
+      return `<details><summary><code>${esc(row.sourceFile || "?")}</code><span>${Number(row.eventRootCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionEvents"))}</span>${Number(row.physicalHeaderRecordCount || 0) !== Number(row.eventRootCount || 0) ? `<span>${Number(row.physicalHeaderRecordCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionPhysicalEvents"))}</span>` : ""}<span>${Number(row.actionNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionNodes"))}</span>${Number(row.runtimeShadowedIndexedRecordCount || 0) ? `<span>${Number(row.runtimeShadowedIndexedRecordCount).toLocaleString()} ${esc(t("offlineRecoverySubGameActionShadowed"))}</span>` : ""}${Number(row.runtimeTerminalTargetCount || 0) ? `<span>${Number(row.runtimeTerminalTargetCount).toLocaleString()} ${esc(t("offlineRecoverySubGameActionTerminals"))}</span>` : ""}</summary><p>${stories}</p><p><span>${Number(row.orderedSequenceNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionSequences"))}</span> <span>${Number(row.parallelFanoutNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionFanouts"))}</span> <span>${Number(row.conditionalBranchNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionChoices"))}</span> <span>${Number(row.loopNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionLoops"))}</span></p>${selectedEvents}${controls}${terminals}<small>${esc(row.relationshipBoundary || "")}</small></details>`;
+    }).join("");
     const sceneOptions = (branches.sceneGraphOptions || []).map((row) => `<div><b>${esc(t("optionBranches"))}</b><a href="${esc(storyHref(row.from))}"><code>${esc(row.from || "?")}</code></a><i>&rarr;</i><span>${(row.arms || []).flatMap((arm) => arm.targets || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ")}</span></div>`).join("");
     const dialogConditionalBranches = directEdges.filter((row) => row.kind === "dialogTreeCrossStoryConditionalBranch").map((row) => {
       const condition = row.condition || {};
@@ -2869,6 +3218,7 @@
       const sources = [
         ...(row.sourceFiles || []),
         ...(row.definitionSourceFiles || []),
+        ...(row.originalBinaryFiles || []),
         ...(row.definitionAssets || []),
         ...(row.definitionTables || []),
         row.definitionTable,
@@ -2934,7 +3284,21 @@
         ? row.npcProxyConsumers
         : [];
       const npcProxyConsumerContext = npcProxyConsumers.length
-        ? `<p><strong>${esc(t("offlineRecoveryNpcProxyConsumer"))}</strong>${npcProxyConsumers.map((consumer) => `<code>${esc(consumer.proxyId || "?")} [index=${esc(consumer.entryIndex ?? "?")}]</code><i>&rarr;</i><code>${esc(consumer.dialogId || "?")}</code>`).join(" ")}</p>`
+        ? `<p><strong>${esc(t("offlineRecoveryNpcProxyConsumer"))}</strong>${npcProxyConsumers.map((consumer) => {
+          const proxyId = consumer.proxyId || consumer.npcProxyId || "?";
+          const rowIndex = consumer.entryIndex ?? consumer.activeRowIndex ?? "?";
+          const identity = [consumer.npcNameId, consumer.npcId, consumer.levelId].filter(Boolean);
+          return `<code>${esc(proxyId)} [index=${esc(rowIndex)}]</code><i>&rarr;</i><code>${esc(consumer.dialogId || row.key || "?")}</code>${identity.length ? `<span>${identity.map((value) => `<code>${esc(value)}</code>`).join(" ")}</span>` : ""}`;
+        }).join(" ")}</p>`
+        : "";
+      const nativeConsumerMethods = Array.isArray(row.nativeConsumerMethods)
+        ? row.nativeConsumerMethods
+        : [];
+      const nativeConsumerContext = nativeConsumerMethods.length
+        ? `<p><strong>${esc(t("offlineRecoveryNativeConsumer"))}</strong>${nativeConsumerMethods.map((method) => `<code>${esc(method.method || "?")} ${esc(method.token || "")} @ ${esc(method.address || "?")}</code>${method.selectionField ? `<span>${esc(method.selectionField)}</span>` : ""}`).join(" ")}</p>`
+        : "";
+      const snsDefinitionContext = row.chatId
+        ? `<p><strong>${esc(t("offlineRecoverySnsDefinition"))}</strong><code>${esc(row.chatId)}</code><span>${Number(row.contentCount || 0).toLocaleString()} content</span>${(row.contentParams || []).map((value) => `<code>${esc(value)}</code>`).join(" ")}</p>`
         : "";
       const missionBranch = row.missionQuestBranchContext;
       const missionBranchContext = missionBranch
@@ -2990,6 +3354,9 @@
         row.dialogIdRegistrationStatus === "present_table_only"
           ? t("offlineRecoveryTableOnlyRegistration")
           : "",
+        row.dialogIdRegistrationStatus === "memorypack_root_registered"
+          ? "MemoryPack DialogId root registered"
+          : "",
         row.dialogTreeAssetStatus === "absent"
           ? t("offlineRecoveryDialogTreeAbsent")
           : "",
@@ -3005,9 +3372,187 @@
         Array.isArray(row.missingAudioIds) && row.missingAudioIds.length
           ? `${row.missingAudioIds.length.toLocaleString()} ${t("offlineRecoveryMissingAudio")}`
           : "",
+        row.audioMembershipStatus
+          ? `${t("offlineRecoveryAudioMembership")}: ${row.audioMembershipStatus}`
+          : "",
+        row.carrierAuditStatus
+          ? `${t("offlineRecoveryCarrierAudit")}: ${row.carrierAuditStatus}`
+          : "",
+        row.binaryRootTokenStatus
+          ? `${t("offlineRecoveryBinaryRootToken")}: ${row.binaryRootTokenStatus}`
+          : "",
+        row.partialRecovery
+          ? `${t("partialRecoveryCoverage")}: ${Number(row.coveredLineCount || 0).toLocaleString()} / ${Number(row.lineCount || 0).toLocaleString()} ${t("offlineRecoveryLines")}`
+          : "",
       ].filter(Boolean);
       const facts = definitionFacts.length
         ? `<p>${definitionFacts.map((fact) => `<span>${esc(fact)}</span>`).join("")}</p>`
+        : "";
+      const parentDialogTrees = Array.isArray(row.parentDialogTrees)
+        ? row.parentDialogTrees
+        : [];
+      const parentDialogTreeContext = parentDialogTrees.length
+        ? `<details${row.emittedGroupKind === "direct_numbered_dialog_scene" || row.partialRecovery ? " open" : ""}><summary><strong>${esc(t("offlineRecoveryParentDialogTrees"))}</strong> ${parentDialogTrees.length.toLocaleString()} · ${Number(row.branchingParentDialogTreeCount || 0).toLocaleString()} ${esc(t("offlineRecoveryParentTreeBranches"))}</summary>${parentDialogTrees.map((tree) => {
+          const connections = (tree.lineConnections || []).map((edge) => (
+            `<code>${esc(edge.fromLineId || "?")} &rarr; ${esc(edge.toLineId || "?")}</code>`
+          )).join(" ");
+          return `<p><code>${esc(tree.sceneKey || tree.assetName || "?")}</code><span>${Number((tree.lineIds || []).length).toLocaleString()} ${esc(t("offlineRecoveryLines"))}</span><span>${Number(tree.branchingOptionGroupCount || 0).toLocaleString()} ${esc(t("offlineRecoveryParentTreeBranches"))}</span></p>${connections ? `<small><strong>${esc(t("offlineRecoveryInternalLineConnections"))}:</strong> ${connections}</small>` : ""}`;
+        }).join("")}${row.partialRecovery && (row.missingLineIds || []).length ? `<small><strong>${esc(t("partialRecoveryUnmatchedRows"))}:</strong> ${(row.missingLineIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</small>` : ""}</details>`
+        : "";
+      const parentLevelContexts = Array.isArray(row.parentLevelContexts)
+        ? row.parentLevelContexts
+        : [];
+      const parentLevelContext = parentLevelContexts.length
+        ? `<details${row.partialRecovery ? " open" : ""}><summary><strong>${esc(t("offlineRecoveryParentLevelContexts"))}</strong> ${parentLevelContexts.length.toLocaleString()}</summary><p>${esc(t("offlineRecoveryParentLevelBoundary"))}</p>${parentLevelContexts.map((context) => {
+          const parents = (context.parentDialogTreeIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ");
+          const files = (context.sourceFiles || []).map((source) => `<code>${esc(source)}</code>`).join(" ");
+          const mapAssets = (context.mapTextAssets || []).map((asset) => `<code>${esc(asset.sourceFile || "?")}</code>${asset.sourcePathId ? `<span>PathID ${esc(asset.sourcePathId)}</span>` : ""}`).join(" ");
+          const runtime = context.subGameRuntime && typeof context.subGameRuntime === "object"
+            ? context.subGameRuntime
+            : null;
+          const runtimeContext = runtime ? (() => {
+            const lane = (label, tasks) => (Array.isArray(tasks) && tasks.length
+              ? `<span><strong>${esc(label)}:</strong> ${tasks.map((task) => `<code>${esc(task.taskId || "?")}</code>${task.levelScriptId == null ? "" : `<code>${esc(task.levelScriptId)}</code>`}`).join(" ")}</span>`
+              : "");
+            const taskLanes = [
+              lane(t("offlineRecoverySubGameMainTasks"), runtime.mainTasks),
+              lane(t("offlineRecoverySubGameExtraTasks"), runtime.extraTasks),
+              lane(t("offlineRecoverySubGameFailTasks"), runtime.failTasks),
+            ].filter(Boolean).join(" ");
+            const topology = runtime.taskTopology && typeof runtime.taskTopology === "object"
+              ? runtime.taskTopology
+              : null;
+            const topologyContext = topology ? (() => {
+              if (topology.status === "exact_null_task_map") {
+                return `<details class="mp-subgame-task-topology"><summary><strong>${esc(t("offlineRecoverySubGameTaskTopology"))}</strong><span>${esc(t("offlineRecoverySubGameTaskTopologyNull"))}</span></summary><small>${esc(t("offlineRecoverySubGameTopologyBoundary"))}</small></details>`;
+              }
+              if (topology.status !== "exact_complete_task_map") {
+                const diagnostic = (topology.decoderDiagnostics || [])[0] || {};
+                return `<details class="mp-subgame-task-topology is-unavailable"><summary><strong>${esc(t("offlineRecoverySubGameTaskTopology"))}</strong><span>${esc(topology.status || "unavailable")}</span></summary>${diagnostic.gate ? `<small><code>${esc(diagnostic.gate)}</code> <code>${esc(diagnostic.conditionUnionTag || "?")}</code></small>` : ""}</details>`;
+              }
+              const laneLabel = (value) => ({
+                main: t("offlineRecoverySubGameMainTasks"),
+                extra: t("offlineRecoverySubGameExtraTasks"),
+                fail: t("offlineRecoverySubGameFailTasks"),
+                internal: t("offlineRecoverySubGameInternal"),
+              }[value] || value || t("offlineRecoverySubGameInternal"));
+              const conditionValue = (value) => {
+                if (value == null) return "∅";
+                if (["string", "number", "boolean"].includes(typeof value)) return String(value);
+                if (Object.prototype.hasOwnProperty.call(value, "value")) return value.value == null ? "∅" : String(value.value);
+                if (value.taskKey != null) return String(value.taskKey);
+                if (value.scriptId != null) return String(value.scriptId || value.mode || "current");
+                if (Array.isArray(value.values)) return `${value.values.length} values`;
+                return "";
+              };
+              const ignoredConditionFields = new Set([
+                "type", "conditionUnionTag", "conditionUnionTagEncoding", "serializedMemberCount",
+                "conditionOffset", "conditionOffsetHex", "conditionEndOffset", "conditionEndOffsetHex",
+                "scopeMask", "uniqueId", "useCurrentScope", "useGraphScope", "nativeMappingId",
+              ]);
+              const taskRows = (topology.tasks || []).map((task) => {
+                const descriptions = Object.values(task.displayInfo?.trackingInfoDict || {})
+                  .map((row) => row?.description?.key)
+                  .filter(Boolean);
+                const conditions = (task.conditions || []).map((row) => {
+                  const condition = row.condition || {};
+                  const fields = Object.entries(condition)
+                    .filter(([key]) => !ignoredConditionFields.has(key) && !key.endsWith("Name") && key !== "conditionEvalString" && key !== "subConditionCount")
+                    .map(([key, value]) => [key, conditionValue(value)])
+                    .filter(([, value]) => value !== "")
+                    .slice(0, 5)
+                    .map(([key, value]) => `<span><b>${esc(key)}</b>=<code>${esc(value)}</code></span>`)
+                    .join(" ");
+                  const expression = condition.conditionEvalString
+                    ? `<em>${esc(condition.conditionEvalString)}</em>`
+                    : "";
+                  return `<li><code>${esc(condition.type || "?")}</code><small>${esc(row.conditionKey || "?")}</small>${expression}${fields ? `<p>${fields}</p>` : ""}</li>`;
+                }).join("");
+                return `<details${task.registeredInSubGame ? " open" : ""}><summary><code>${esc(task.taskId || "?")}</code><b>${esc(laneLabel(task.lane))}</b>${task.canBeTracked ? `<span>${esc(t("offlineRecoverySubGameTracked"))}</span>` : ""}<small>${Number(task.conditionCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameConditions"))}</small></summary>${descriptions.length ? `<p><strong>${esc(t("offlineRecoverySubGameTaskDescriptions"))}:</strong> ${descriptions.map((key) => `<code>${esc(key)}</code>`).join(" ")}</p>` : ""}${conditions ? `<ol>${conditions}</ol>` : ""}</details>`;
+              }).join("");
+              const typeCounts = Object.entries(topology.conditionTypeCounts || {})
+                .map(([type, count]) => `<span><code>${esc(type)}</code> ${Number(count || 0).toLocaleString()}</span>`)
+                .join(" ");
+              const formulas = (topology.combineExpressions || [])
+                .map((row) => `<span><code>${esc(row.taskId || "?")}</code> <em>${esc(row.expression || "?")}</em></span>`)
+                .join(" ");
+              return `<details class="mp-subgame-task-topology" open><summary><strong>${esc(t("offlineRecoverySubGameTaskTopology"))}</strong><span>${Number(topology.decodedTaskCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameTasks"))}</span><span>${Number(topology.conditionCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameConditions"))}</span></summary>${typeCounts ? `<p><strong>${esc(t("offlineRecoverySubGameConditionTypes"))}:</strong> ${typeCounts}</p>` : ""}${formulas ? `<p><strong>${esc(t("offlineRecoverySubGameCombineExpressions"))}:</strong> ${formulas}</p>` : ""}<div>${taskRows}</div><small>${esc(t("offlineRecoverySubGameTopologyBoundary"))}</small></details>`;
+            })() : "";
+            const actionTopology = runtime.actionTopology && typeof runtime.actionTopology === "object"
+              ? runtime.actionTopology
+              : null;
+            const actionTopologyContext = actionTopology ? (() => {
+              if (["exact_empty_action_map", "exact_no_action_map"].includes(actionTopology.status)) {
+                return `<details class="mp-subgame-task-topology mp-subgame-action-topology"><summary><strong>${esc(t("offlineRecoverySubGameActionTopology"))}</strong><span>${esc(t("offlineRecoverySubGameActionTopologyEmpty"))}</span></summary><small>${esc(t("offlineRecoverySubGameActionTopologyBoundary"))}</small></details>`;
+              }
+              if (!["exact_complete_action_map", "exact_complete_action_map_with_runtime_shadowing"].includes(actionTopology.status)) {
+                const diagnostic = actionTopology.validatorDiagnostic || {};
+                return `<details class="mp-subgame-task-topology mp-subgame-action-topology is-unavailable"><summary><strong>${esc(t("offlineRecoverySubGameActionTopology"))}</strong><span>${esc(actionTopology.status || "unavailable")}</span></summary>${diagnostic.gate ? `<small><code>${esc(diagnostic.gate)}</code></small>` : ""}</details>`;
+              }
+              const countTags = (counts) => Object.entries(counts || {})
+                .map(([name, count]) => `<span><code>${esc(name)}</code> ${Number(count || 0).toLocaleString()}</span>`)
+                .join(" ");
+              const eventTypes = countTags(actionTopology.eventTypeCounts);
+              const actionTypes = countTags(actionTopology.actionTypeCounts);
+              const outgoing = new Map();
+              for (const edge of actionTopology.edges || []) {
+                const key = `${edge.sourceKind || "?"}:${edge.sourceLocalId}`;
+                if (!outgoing.has(key)) outgoing.set(key, []);
+                outgoing.get(key).push(edge);
+              }
+              const terminals = new Map();
+              for (const target of actionTopology.runtimeTerminalTargets || []) {
+                const key = `${target.sourceKind || "?"}:${target.sourceLocalId}`;
+                if (!terminals.has(key)) terminals.set(key, []);
+                terminals.get(key).push(target);
+              }
+              const eventRows = (actionTopology.eventRoots || []).map((event) => {
+                const detail = event.eventDetail || {};
+                const detailText = detail.summary || detail.eventKey || detail.guideIdFilter || (detail.triggerSlotIdFilter == null ? "" : `slot ${detail.triggerSlotIdFilter}`);
+                const texts = (event.texts || []).map((value) => `<code>${esc(value)}</code>`).join(" ");
+                const listenerFields = [
+                  event.priority == null ? "" : `<span><b>${esc(t("offlineRecoverySubGameActionEventPriority"))}</b>=<code>${esc(event.priority)}</code></span>`,
+                  event.triggerActiveDuring == null ? "" : `<span><b>${esc(t("offlineRecoverySubGameActionEventTriggerActive"))}</b>=<code>${esc(event.triggerActiveDuring)}</code></span>`,
+                  event.filterMode == null ? "" : `<span><b>${esc(t("offlineRecoverySubGameActionEventFilter"))}</b>=<code>${esc(event.filterMode)}${event.filterMask == null ? "" : `/${esc(event.filterMask)}`}${event.filterLevel == null ? "" : `/${esc(event.filterLevel)}`}</code></span>`,
+                ].filter(Boolean).join(" ");
+                const shadowed = event.runtimeShadowedRecordOffsets || [];
+                const slotText = shadowed.length ? `<p><strong>${esc(t("offlineRecoverySubGameActionEventSlot"))}:</strong> <code>${esc(event.recordOffsetHex || event.recordOffset || "?")}</code> <span>${shadowed.length} ${esc(t("offlineRecoverySubGameActionShadowed"))}</span> ${shadowed.map((offset) => `<code>0x${Number(offset).toString(16)}</code>`).join(" ")}</p>` : "";
+                return `<li><code>#${esc(event.localId)}</code><b>${esc(event.headerName || event.unionTag || "?")}</b><span>&rarr; <code>#${esc(event.nextActionLocalId)}</code></span>${detailText ? `<small>${esc(detailText)}</small>` : ""}${listenerFields ? `<p>${listenerFields}</p>` : ""}${slotText}${texts ? `<p>${texts}</p>` : ""}</li>`;
+              }).join("");
+              const actionRows = (actionTopology.actions || []).map((action) => {
+                const edges = outgoing.get(`action:${action.localId}`) || [];
+                const terminalEdges = terminals.get(`action:${action.localId}`) || [];
+                const edgeText = edges.map((edge) => `<span><code>${esc(edge.relation || "edge")}</code> &rarr; <code>#${esc(edge.targetActionLocalId)}</code></span>`).join(" ");
+                const terminalText = terminalEdges.map((edge) => `<span><code>${esc(edge.relation || "edge")}</code> &rarr; <code>#${esc(edge.targetActionLocalId)}</code> <small>${esc(t("offlineRecoverySubGameActionTerminals"))}</small></span>`).join(" ");
+                const storyTargets = (action.storyTargets || []).map((target) => `<code>${esc(target.storyKey || "?")}</code>`).join(" ");
+                const texts = (action.texts || []).map((value) => `<code>${esc(value)}</code>`).join(" ");
+                const shadowed = action.runtimeShadowedRecordOffsets || [];
+                const shadowText = shadowed.length ? `<p><strong>${esc(t("offlineRecoverySubGameActionActiveSlot"))}:</strong> <code>${esc(action.recordOffsetHex || action.recordOffset || "?")}</code> <span>${shadowed.length} ${esc(t("offlineRecoverySubGameActionShadowed"))}</span> ${shadowed.map((offset) => `<code>0x${Number(offset).toString(16)}</code>`).join(" ")}</p>` : "";
+                const isFanout = action.controlKind === "parallel_fanout" || action.controlKind === "conditional_choice";
+                const isControl = Boolean(action.controlKind);
+                return `<details class="${isFanout ? "is-fanout" : ""}"${isControl || storyTargets || shadowed.length || terminalEdges.length ? " open" : ""}><summary><code>#${esc(action.localId)}</code><b>${esc(action.actionName || action.unionTag || "?")}</b>${action.controlKind ? `<small><code>${esc(action.controlKind)}</code></small>` : ""}${edges.length ? `<small>${edges.length} ${esc(t("offlineRecoverySubGameActionEdges"))}</small>` : ""}${shadowed.length ? `<small>${shadowed.length} ${esc(t("offlineRecoverySubGameActionShadowed"))}</small>` : ""}</summary>${storyTargets ? `<p><strong>${esc(t("offlineRecoverySubGameActionStoryTargets"))}:</strong> ${storyTargets}</p>` : ""}${edgeText ? `<p>${edgeText}</p>` : ""}${terminalText ? `<p>${terminalText}</p>` : ""}${shadowText}${texts ? `<p>${texts}</p>` : ""}</details>`;
+              }).join("");
+              const open = Number(actionTopology.typedBranchNodeCount || 0) + Number(actionTopology.orderedSequenceNodeCount || 0) + Number(actionTopology.loopNodeCount || 0) > 0 ? " open" : "";
+              return `<details class="mp-subgame-task-topology mp-subgame-action-topology"${open}><summary><strong>${esc(t("offlineRecoverySubGameActionTopology"))}</strong><span>${Number(actionTopology.eventRootCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionEvents"))}</span>${Number(actionTopology.physicalHeaderRecordCount || 0) !== Number(actionTopology.eventRootCount || 0) ? `<span>${Number(actionTopology.physicalHeaderRecordCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionPhysicalEvents"))}</span>` : ""}<span>${Number(actionTopology.actionNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionNodes"))}</span><span>${Number(actionTopology.edgeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionEdges"))}</span>${Number(actionTopology.runtimeShadowedIndexedRecordCount || 0) ? `<span>${Number(actionTopology.runtimeShadowedIndexedRecordCount).toLocaleString()} ${esc(t("offlineRecoverySubGameActionShadowed"))}</span>` : ""}${Number(actionTopology.runtimeTerminalTargetCount || 0) ? `<span>${Number(actionTopology.runtimeTerminalTargetCount).toLocaleString()} ${esc(t("offlineRecoverySubGameActionTerminals"))}</span>` : ""}<span>${Number(actionTopology.orderedSequenceNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionSequences"))}</span><span>${Number(actionTopology.parallelFanoutNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionFanouts"))}</span><span>${Number(actionTopology.conditionalBranchNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionChoices"))}</span><span>${Number(actionTopology.loopNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionLoops"))}</span><span>${Number(actionTopology.eventEntryConvergenceCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionConvergence"))}</span><span>${Number(actionTopology.cycleCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionCycles"))}</span></summary>${eventTypes ? `<p><strong>${esc(t("offlineRecoverySubGameActionEventTypes"))}:</strong> ${eventTypes}</p>` : ""}${actionTypes ? `<p><strong>${esc(t("offlineRecoverySubGameActionTypes"))}:</strong> ${actionTypes}</p>` : ""}${eventRows ? `<ol class="mp-subgame-action-events">${eventRows}</ol>` : ""}<div>${actionRows}</div><small>${esc(t("offlineRecoverySubGameActionTopologyBoundary"))}</small></details>`;
+            })() : "";
+            const playback = (runtime.parentDialogPlayback || []).map((item) => {
+              const owners = (item.nativeEventOwners || []).map((owner) => `<code>${esc(owner.headerName || "?")}</code>`).join(" ");
+              return `<span><code>${esc(item.parentDialogTreeId || "?")}</code> &larr; <code>${esc(item.actionName || "StartDialogAction")}</code>${owners ? ` ${owners}` : ""}</span>`;
+            }).join(" ");
+            const definitionOnly = (runtime.definitionOnlyParentDialogTreeIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ");
+            return `<section><p><strong>${esc(t("offlineRecoverySubGameRuntime"))}</strong><code>${esc(runtime.subGameId || context.dungeonId || "?")}</code><span>${esc(t("offlineRecoverySubGameBindScript"))}: <code>${esc(runtime.bindScriptId == null ? "?" : runtime.bindScriptId)}</code></span><span>${esc(t("offlineRecoverySubGamePlaybackCoverage"))}: ${esc(runtime.parentPlaybackCoverage || "none")}</span></p>${taskLanes ? `<small><strong>${esc(t("offlineRecoverySubGameTaskLanes"))}:</strong> ${taskLanes}</small>` : ""}${topologyContext}${actionTopologyContext}${playback ? `<small><strong>${esc(t("offlineRecoverySubGameParentPlayback"))}:</strong> ${playback}</small>` : ""}${definitionOnly ? `<small><strong>${esc(t("offlineRecoverySubGameDefinitionOnlyParents"))}:</strong> ${definitionOnly}</small>` : ""}${runtime.taskLaneBoundary ? `<small>${esc(runtime.taskLaneBoundary)}</small>` : ""}${runtime.parentPlaybackBoundary ? `<small>${esc(runtime.parentPlaybackBoundary)}</small>` : ""}</section>`;
+          })() : "";
+          return `<div><p><code>${esc(context.levelId || "?")}</code><span>${esc(t("offlineRecoveryDungeonCatalogMetadata"))}: <code>${esc(context.dungeonId || "?")}</code>${context.dungeonSortId == null ? "" : ` / sortId ${esc(context.dungeonSortId)}`}</span></p>${parents ? `<small>${parents}</small>` : ""}${runtimeContext}${files || mapAssets ? `<small><strong>${esc(t("offlineRecoveryRelatedLevelFiles"))}:</strong> ${files} ${mapAssets}</small>` : ""}</div>`;
+        }).join("")}</details>`
+        : "";
+      const missingLineFragments = Array.isArray(row.missingLineFragments)
+        ? row.missingLineFragments
+        : [];
+      const missingLineFragmentContext = missingLineFragments.length
+        ? `<small><strong>${esc(t("partialRecoveryRowIdPositions"))}:</strong> ${missingLineFragments.map((fragment) => {
+          const neighbors = [fragment.nearestLowerCoveredLineId, fragment.nearestUpperCoveredLineId].filter(Boolean).map((id) => `<code>${esc(id)}</code>`).join(" / ");
+          return `<span><code>${esc(fragment.lineId || "?")}</code> ${esc(fragment.numericPosition || "?")}${neighbors ? ` (${neighbors})` : ""}</span>`;
+        }).join(" ")}</small>`
         : "";
       const evidenceBoundary = [
         row.activationBoundary
@@ -3034,23 +3579,46 @@
         const actions = (path?.path || path?.steps || []).map((step) => step?.actionName || step?.recordClass).filter(Boolean);
         return `<code>${esc([header, ...actions].join(" → "))}</code>`;
       }).join(" ");
+      const nativePathEvidence = nativePaths
+        ? `<small><strong>${esc(t("runtimeRecoveryNativePaths"))}:</strong> ${nativePaths}</small>`
+        : "";
+      const runtimeContextMissionIds = (row.contextMissionIds || []).length
+        ? row.contextMissionIds
+        : [row.contextMissionId || row.missionStateId || row.missionId].filter(Boolean);
+      const runtimeContextQuestIds = (row.anchorQuestIds || []).length
+        ? row.anchorQuestIds
+        : ((row.questIds || []).length ? row.questIds : [row.questId].filter(Boolean));
       const runtimeContext = row.runtimeContextRecovery
         ? row.relation === "sns_authored_mission_link"
           ? `<p><strong>${esc(t("runtimeContextRecoveryBoundary"))}</strong><span>${esc(t("runtimeRecoverySnsLink"))}: <code>${esc(row.missionId || "?")}</code></span>${(row.snsContentIds || []).length ? `<span>content ${(row.snsContentIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span>` : ""}</p>`
           : row.relation === "cutscene_root_playback_alias_composed"
             ? `<p><strong>${esc(t("runtimeContextRecoveryBoundary"))}</strong><span>${esc(t("runtimeRecoveryNominalMission"))}: <code>${esc(row.missionId || "?")}</code></span>${(row.rootStoryKeys || []).length ? `<span>${esc(t("runtimeRecoveryPlaybackRoots"))}: ${(row.rootStoryKeys || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span>` : ""}${nativePaths ? `<span>${esc(t("runtimeRecoveryNativePaths"))}: ${nativePaths}</span>` : ""}</p>`
-            : `<p><strong>${esc(t("runtimeContextRecoveryBoundary"))}</strong><span>${esc(t("runtimeRecoveryNominalMission"))}: <code>${esc(row.nominalStoryMissionId || "?")}</code></span><span>${esc(t("runtimeRecoveryContextMission"))}: <code>${esc(row.contextMissionId || "?")}</code></span>${(row.anchorQuestIds || []).length ? `<span>${esc(t("runtimeRecoveryQuestAnchors"))}: ${(row.anchorQuestIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span>` : ""}${nativePaths ? `<span>${esc(t("runtimeRecoveryNativePaths"))}: ${nativePaths}</span>` : ""}</p>`
+            : exactBlackCarrierRelations.has(row.relation)
+              ? `<p><strong>${esc(t("runtimeContextRecoveryBoundary"))}</strong><span>${esc(t("runtimeRecoveryNominalMission"))}: <code>${esc(row.nominalStoryMissionId || "?")}</code></span>${(row.parentStoryKeys || []).length ? `<span>${esc(t("runtimeRecoveryCarrierParents"))}: ${(row.parentStoryKeys || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span>` : ""}${(row.timelineIds || []).length ? `<span>${esc(t("offlineRecoveryInternalTimeline"))}: ${(row.timelineIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span>` : ""}</p>`
+              : exactSameMissionRuntimeRelations.has(row.relation)
+                ? `<p><strong>${esc(t("runtimeContextRecoveryBoundary"))}</strong><span>${esc(t("runtimeRecoveryNominalMission"))}: <code>${esc(row.nominalStoryMissionId || row.missionId || row.nominalMissionId || "?")}</code></span><span>${esc(t("runtimeRecoveryContextMission"))}: <code>${esc(row.contextMissionId || row.missionStateId || "?")}</code></span></p>`
+                : `<p><strong>${esc(t("runtimeContextRecoveryBoundary"))}</strong><span>${esc(t("runtimeRecoveryNominalMission"))}: <code>${esc(row.nominalStoryMissionId || row.missionId || row.nominalMissionId || "?")}</code></span><span>${esc(t(runtimeContextMissionIds.length > 1 ? "runtimeRecoveryContextMissions" : "runtimeRecoveryContextMission"))}: ${runtimeContextMissionIds.length ? runtimeContextMissionIds.map((id) => `<code>${esc(id)}</code>`).join(" ") : `<code>?</code>`}</span>${runtimeContextQuestIds.length ? `<span>${esc(t("runtimeRecoveryQuestAnchors"))}: ${runtimeContextQuestIds.map((id) => `<code>${esc(id)}</code>`).join(" ")}</span>` : ""}${nativePaths ? `<span>${esc(t("runtimeRecoveryNativePaths"))}: ${nativePaths}</span>` : ""}</p>`
         : "";
       const evidenceLabel = ({
         leveldata_property_resolved_levelscript_result_branch: t("offlineRecoveryEvidenceResultBranch"),
         mission_tracked_npc_proxy_dialog_context_without_playback_owner: t("offlineRecoveryEvidenceTrackedNpc"),
         registered_dialog_definition_without_recovered_activator: t("offlineRecoveryEvidenceDefinitionOnly"),
         radio_definition_without_recovered_consumer: t("offlineRecoveryEvidenceRadioOnly"),
+        radio_definition_binary_consumer_surface_exhausted: t("offlineRecoveryEvidenceBinaryRadio"),
+        missionless_npc_proxy_dialog_native_consumer: t("offlineRecoveryEvidenceNpcProxyConsumer"),
+        sns_definition_binary_consumer_surface_exhausted: t("offlineRecoveryEvidenceBinarySns"),
+        reading_popup_definition_binary_consumer_surface_exhausted: t("offlineRecoveryEvidenceBinaryReadingPopup"),
+        unregistered_dialog_definition_binary_consumer_surface_exhausted: t("offlineRecoveryEvidenceBinaryUnregisteredDialog"),
+        registered_dialog_tree_definition_binary_consumer_surface_exhausted: t("offlineRecoveryEvidenceBinaryRegisteredDialogTree"),
+        exact_missionless_native_event_playback_path: t("offlineRecoveryEvidenceMissionlessNativePlayback"),
+        cutscene_root_without_recovered_activator: t("offlineRecoveryEvidenceCutsceneRoot"),
         dialog_text_table_only_with_empty_levelscript_host: t("offlineRecoveryEvidenceEmptyHost"),
         radio_definition_with_empty_levelscript_host: t("offlineRecoveryEvidenceEmptyHost"),
         dialog_text_table_only_without_registry_asset_or_consumer: t("offlineRecoveryEvidenceUnregistered"),
-      })[row.evidenceKind] || row.evidenceKind || row.recoveryStatus || "";
-      return `<article><header><a href="${esc(storyHref(row.key))}"><code>${esc(row.key)}</code></a><b>${esc(evidenceLabel)}</b></header>${runtimeContext}${timeline ? `<p><strong>${esc(t("offlineRecoveryInternalTimeline"))}</strong><code>${esc(timeline)}</code>${lineCount ? `<span>${lineCount.toLocaleString()} ${esc(t("offlineRecoveryLines"))}</span>` : ""}</p>` : ""}${facts}${prtsCarrierContext}${dialogSummaryContext}${missionTrackingContext}${npcProxyConsumerContext}${missionBranchContext}${missionSequenceContext}${missionTopologyContext}${taskConsumerContext}${dialogResultBranchContext}${emptyHostContext}${runtimeTrackingContext}${relatedOriginalDataContext}${options}${printableTokenBoundary}${internalBranches}${terminalOptions}${popup}${evidenceBoundary}${sources.length ? `<small>${[...new Set(sources)].map((source) => `<code>${esc(source)}</code>`).join(" ")}</small>` : ""}</article>`;
+        registered_dialog_tree_trunk_group_exact_line_partition: t("offlineRecoveryEvidenceParentTreePartition"),
+        partial_registered_dialog_tree_trunk_group_line_partition: t("partialRecoveryEvidenceParentTreePartition"),
+      })[row.evidenceKind] || runtimeRecoveryEvidenceLabel(row);
+      return `<article><header><a href="${esc(storyHref(row.key))}"><code>${esc(row.key)}</code></a><b>${esc(evidenceLabel)}</b></header>${runtimeContext}${timeline ? `<p><strong>${esc(t("offlineRecoveryInternalTimeline"))}</strong><code>${esc(timeline)}</code>${lineCount ? `<span>${lineCount.toLocaleString()} ${esc(t("offlineRecoveryLines"))}</span>` : ""}</p>` : ""}${facts}${parentDialogTreeContext}${parentLevelContext}${missingLineFragmentContext}${prtsCarrierContext}${dialogSummaryContext}${missionTrackingContext}${npcProxyConsumerContext}${nativeConsumerContext}${snsDefinitionContext}${missionBranchContext}${missionSequenceContext}${missionTopologyContext}${taskConsumerContext}${dialogResultBranchContext}${emptyHostContext}${runtimeTrackingContext}${relatedOriginalDataContext}${options}${printableTokenBoundary}${internalBranches}${terminalOptions}${popup}${nativePathEvidence}${evidenceBoundary}${sources.length ? `<small>${[...new Set(sources)].map((source) => `<code>${esc(source)}</code>`).join(" ")}</small>` : ""}</article>`;
     }).join("");
     const containments = (order.containments || []).map((row) => {
       const after = (row.embeddedAfterLineIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ");
@@ -3080,7 +3648,8 @@
       ${containments ? `<section><h4>${esc(t("embeddedStory"))}</h4><p>${esc(t("embeddedStoryHint"))}</p><div class="mp-order-edges">${containments}</div></section>` : ""}
       ${frontiers ? `<details class="mp-order-frontiers"><summary>${esc(t("partialFrontier"))}</summary>${frontiers}</details>` : ""}
       ${cycles ? `<section class="mp-order-cycles"><h4>${esc(t("orderCycles"))}</h4><p>${esc(t("orderCycleHint"))}</p>${cycles}</section>` : ""}
-      ${questForks || questMerges || nativeBranches || nativeMerges || sceneOptions || dialogConditionalBranches ? `<section><h4>${esc(t("forkMerge"))}</h4><div class="mp-order-branches">${questForks}${questMerges}${nativeBranches}${nativeMerges}${sceneOptions}${dialogConditionalBranches}</div></section>` : ""}
+      ${questForks || questMerges || nativeBranches || nativeMerges || nativeSequences || sceneOptions || dialogConditionalBranches || typedSelectors ? `<section><h4>${esc(t("forkMerge"))}</h4><div class="mp-order-branches">${questForks}${questMerges}${nativeBranches}${nativeMerges}${nativeSequences}${sceneOptions}${dialogConditionalBranches}${typedSelectors}</div></section>` : ""}
+      ${relatedActionTopologies ? `<section><h4>${esc(t("nativeRelatedActionGraphs"))}</h4><p>${esc(t("nativeRelatedActionGraphsHint"))}</p><div class="mp-order-branches">${relatedActionTopologies}</div></section>` : ""}
       ${dialogOptions ? `<section><h4>${esc(t("optionBranches"))}</h4><div class="mp-order-dialog-branches">${dialogOptions}</div></section>` : ""}
       ${offlineGaps ? `<details class="mp-order-recovery-gaps" open><summary>${esc(t("offlineRecoveryGaps"))} <span>${offlineRows.length.toLocaleString()}</span></summary><p>${esc(t("offlineRecoveryGapsHint"))}</p><div>${offlineGaps}</div></details>` : ""}
       <small>${esc(t("isolatedScenes"))}: ${Number(summary.isolatedSceneCount || 0).toLocaleString()} 路 ${esc(t("weakOnlyScenes"))}: ${Number(summary.weakOnlySceneCount || 0).toLocaleString()}</small>
@@ -3128,6 +3697,14 @@
       ${contextOnly.length ? `<section><h4>${esc(t("runtimeObserved"))} 路 ${esc(t("notQuestAttached"))}</h4><div class="mp-runtime-observation-list">${contextOnly.map(runtimeObservationHtml).join("")}</div></section>` : ""}
       <small>${esc(t("noAuthoredPromotion"))}</small>
     </details>`;
+  }
+
+  function renderNonMissionOverview() {
+    const target = byId("mp-non-mission-overview");
+    if (!target) return;
+    target.innerHTML = nonMissionContentHtml(
+      Array.from(nonMissionContentByKey().values()),
+    );
   }
 
   function missionPropertiesHtml() {
@@ -3388,6 +3965,8 @@
           const activation = row.activationFrontier || {};
           const activationHosts = (activation.levelDataHosts || [])
             .filter((host) => host && host.fileName);
+          const encounterContexts = (activation.encounterControllerContexts || [])
+            .filter((context) => context && context.classification);
           const nominalHostComparison = activation.nominalMissionHostComparison || {};
           const nominalStoryCandidates = (nominalHostComparison.storyCandidates || [])
             .filter((candidate) => candidate && candidate.nominalMissionId);
@@ -3460,6 +4039,7 @@
           const enemySlots = [...new Set((target?.enemyPointers || []).map((pointer) => pointer?.slotId).filter(Boolean))];
           const stories = (row.storyFiles || []).filter((story) => story && story.key);
           const producers = (row.localProducerRoutes || []).filter((producer) => producer && producer.producerAssetId);
+          const playbackGates = (row.playbackGates || []).filter((gate) => gate && gate.summary);
           const selectorRows = Object.entries(selector).filter(([, value]) => value !== "" && value !== null && value !== undefined);
           const selectorValue = (value) => typeof value === "object" ? JSON.stringify(value) : String(value);
           return `<article>
@@ -3494,6 +4074,13 @@
               ${activationTasks.length ? `<small>${esc(t("taskConditionBoundary"))}</small>` : ""}
               <div><span>${esc(t("activationClass"))}</span><i aria-hidden="true">→</i><code>${esc(String(activation.activationClass).replaceAll("_", " "))}</code><b>${esc(t("noMissionOwner"))}</b></div>
               <div><span>${esc(t("startPolicy"))}</span><i aria-hidden="true">→</i><code>${esc(`${activation.startTypeName || "unresolved"} · shapes ${activation.startShapeListStatus || "unresolved"}/${activation.startShapeListCount ?? 0} · taskMap ${activation.taskMapStatus || "unresolved"}/${activation.taskMapCount ?? 0}`)}</code></div>
+              ${encounterContexts.flatMap((context) => [
+                `<div><span>${esc(t("encounterController"))}</span><i aria-hidden="true">→</i><code>${esc(context.runtimeType || "EncounterBase<T>")}</code><b>${esc(t("noMissionOwner"))}</b><small>${esc(`${context.dataType || "EncounterData"} · ${context.mappingId || ""}`)}</small></div>`,
+                `<div><span>${esc(t("encounterModuleNamespace"))}</span><i aria-hidden="true">→</i><code>${esc(context.moduleId || "—")}</code><b>${esc(context.moduleIdMatchesReceiverScript ? t("moduleMatchesReceiver") : t("relatedModuleNamespace"))}</b><small>${esc(`receiver LevelScript ${context.receiverScriptId || selector.listenerScriptId || "—"}`)}</small></div>`,
+                ...(context.spawnerId ? [`<div><span>${esc(t("encounterSpawner"))}</span><i aria-hidden="true">→</i><code>${esc(context.spawnerId)}</code><b>${esc(String(context.spawnerId) === "0" ? t("noConfiguredSpawner") : t("nonOwningCrossReference"))}</b></div>`] : []),
+                ...(context.relatedFiles || []).filter((related) => related && related.sourceFile).map((related) => `<div><span>${esc(t("relatedOriginalFile"))}</span><i aria-hidden="true">→</i><code>${esc(related.sourceFile)}</code><b>${esc(String(related.kind || "source").replaceAll("_", " "))}</b><small>${esc(String(related.relationship || "").replaceAll("_", " "))}</small></div>`),
+              ]).join("")}
+              ${encounterContexts.length ? `<small>${esc(t("encounterControllerBoundary"))}</small>` : ""}
               ${activationHosts.map((host) => `<div><span>${esc(t("levelDataContainer"))}</span><i aria-hidden="true">→</i><code>${esc(host.fileName)}</code><b>${esc(host.hostMissionId || "generic")}</b><small>${esc(`${host.dictionaryEntryCount ?? "?"} LevelScripts`)}</small></div>`).join("")}
               ${nominalStoryCandidates.map((candidate) => {
                 const matchingHosts = nominalMissionHosts.filter((host) => host.missionId === candidate.nominalMissionId);
@@ -3523,6 +4110,7 @@
               }).join("")}
               <small>${esc(`${t("missionRuntimeConsumers")}: ${activation.missionRuntimeObjectiveConsumerCount ?? 0} · ${t("literalCrossScriptControls")}: ${activation.incomingLiteralCrossControlCount ?? 0} · ${t("exactStartShapeAreaMatches")}: ${activation.exactStartShapeMissionAreaMatchCount ?? 0}`)}</small>
             </div>` : ""}
+            ${playbackGates.length ? `<div class="mp-runtime-associations mp-playback-gates"><strong>${esc(t("playbackGate"))}</strong>${playbackGates.map((gate) => `<div><span>${esc(t("playbackGateTrue"))}</span><i aria-hidden="true">?</i><code>${esc(gate.summary)}</code><b>${esc(String(gate.predicateType || "predicate").replaceAll(/([a-z])([A-Z])/g, "$1 $2"))}</b><small>${esc(`${gate.sourceFile || ""} · header #${gate.headerLocalId ?? "?"} → getter #${gate.getterLocalId ?? "constant"} → action #${gate.headerNextLocalId ?? "?"} · ${gate.predicateNodeCount ?? 1} getter node${gate.predicateNodeCount === 1 ? "" : "s"} · depth ${gate.predicateDepth ?? 1}`)}</small></div>`).join("")}<small>${esc(t("playbackGateBoundary"))}</small></div>` : ""}
             ${target ? `<div class="mp-runtime-associations mp-runtime-target"><strong>${esc(t("exactRuntimeTarget"))}</strong><div><span>${esc(t("modulePointer"))}</span><i aria-hidden="true">→</i><code>${esc(target.levelScriptVariablePtr)}</code><b>${esc(target.moduleType || t("encounterModule"))}</b><small>${esc(`${target.sourceFile || ""} @ ${target.dictionaryOffsetHex || "—"} · union ${target.moduleUnionTag || "—"}/${target.serializedMemberCount || "—"}`)}</small></div><div><span>${esc(t("activationSlot"))}</span><i aria-hidden="true">→</i><code>${esc(target.activateTriggerSlotId ?? "—")}</code><b>LOCAL</b><small>${esc(`${t("battleExitSlot")}: ${battlePart.exitTriggerSlotId ?? "—"}${enemySlots.length ? ` · ${t("localEntitySlots")}: ${enemySlots.join(", ")}` : ""}`)}</small></div><div class="is-boundary"><span>${esc(t("missingOwnershipBridge"))}</span><i aria-hidden="true">⇥</i><code>missionId / questId / MissionArea</code><b>${esc(t("noMissionOwner"))}</b><small>${esc(row.ownershipBoundary || target.ownershipBoundary || "")}</small></div><small>${esc(t("noServerRequestOrReturn"))}</small></div>` : ""}
             ${producers.length ? `<div class="mp-runtime-associations"><strong>${esc(t("localProducerChain"))}</strong>${producers.map((producer) => `<div><span>${esc(`${t("abilityProducer")} · ${producer.producerDomain || "AbilityActionData"}`)}</span><i aria-hidden="true">→</i><code>${esc(producer.producerAssetId)}</code><b>LOCAL · ${esc(t("noServerRequestOrReturn"))}</b><small>${esc(`${t("literalSignal")}: ${producer.receiverSignalId || "—"} / ${producer.doubleValue?.value ?? "—"} · ${producer.actionUnionTag || ""}/${producer.serializedMemberCount || ""} · ${producer.producerSourceFile || ""} @ ${producer.actionOffset || "—"}`)}</small></div>`).join("")}<small>${esc(t("producerBoundaryHint"))}</small></div>` : ""}
             <div class="mp-missionless-story-links">${stories.map((story) => `<a href="${esc(storyHref(story.key))}"><span>${esc(story.kind || "story")}</span><code>${esc(story.key)}</code><b aria-hidden="true">→</b><small>${esc((story.nativeActions || []).join(" · "))}</small></a>`).join("")}</div>
@@ -3958,7 +4546,7 @@
       ["context", t("storyContext"), "context"],
     ];
     const body = connections.length ? `<div class="mp-story-files">${groups.map(([direction, label, className]) => {
-      const rows = connections.filter((row) => (row.direction || "context") === direction);
+      const rows = connections.filter((row) => storyConnectionDirectionGroup(row) === direction);
       if (!rows.length) return "";
       return `<section class="mp-story-group is-${className}"><h4>${esc(label)} <span>${rows.length}</span></h4>${rows.map((row) => storyConnectionLink(row, className, node.id)).join("")}</section>`;
     }).join("")}</div>` : `<p>${esc(t("noStoryFiles"))}</p>`;

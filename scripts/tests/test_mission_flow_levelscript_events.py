@@ -2108,6 +2108,7 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
             + struct.pack("<f", 0.01)
             + tail
         )
+
         hp = decode_levelscript_record_payload(
             bytes(hp_payload),
             {
@@ -2226,6 +2227,45 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
         self.assertNotIn("waveKeyFilter", lifecycle)
         self.assertEqual("$35@_entityOutput", lifecycle["entityOutputParam"]["path"])
         self.assertFalse(lifecycle["serverExchange"])
+
+    def test_action_header_decodes_exact_local_validation_getter(self):
+        payload = bytearray(31)
+        payload[5:9] = (102).to_bytes(4, "little", signed=True)
+        payload[17] = 4
+        payload[18] = 1
+        payload[19:23] = (100).to_bytes(4, "little", signed=True)
+        payload[23:27] = (-1).to_bytes(4, "little", signed=True)
+        payload[27:31] = (-1).to_bytes(4, "little", signed=True)
+        record = {
+            "code": 0x104C,
+            "kind": 0,
+            "unionTag": 0x4C,
+            "serializedMemberCount": 16,
+            "payloadStart": 0,
+            "nextId": -1,
+        }
+        decoded = decode_levelscript_record_payload(
+            bytes(payload),
+            record,
+            next_start=len(payload),
+            action_map_role="headerList#1",
+        )
+        header = decoded["actionHeader"]
+        self.assertEqual(102, header["nextId"])
+        self.assertEqual(100, header["validateGetterLocalId"])
+        self.assertEqual(
+            "action-header-validate-local-getter",
+            header["validateParam"]["payloadShape"],
+        )
+
+        payload[23:27] = (7).to_bytes(4, "little", signed=True)
+        rejected = decode_levelscript_record_payload(
+            bytes(payload),
+            record,
+            next_start=len(payload),
+            action_map_role="headerList#1",
+        )
+        self.assertNotIn("validateParam", rejected["actionHeader"])
 
     def test_npc_patrol_checkpoint_decodes_exact_dynamic_selector(self):
         tail = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
@@ -2602,7 +2642,7 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
             paths[0]["path"][0]["branchPredicate"]["getterName"],
         )
 
-    def test_control_path_accepts_only_semantically_equivalent_duplicate_ids(self):
+    def test_control_path_uses_final_runtime_slot_for_duplicate_ids(self):
         header = {
             "code": 0x1052,
             "kind": 0x00,
@@ -2655,7 +2695,7 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
             )
         self.assertEqual(1, len(paths))
         self.assertEqual(
-            "exact_serialized_control_path_equivalent_duplicates",
+            "exact_serialized_control_path_runtime_shadowing",
             paths[0]["status"],
         )
         self.assertEqual(
@@ -2668,12 +2708,18 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
             "scripts.story_builder.level_bindings.decode_levelscript_record_payload",
             side_effect=decode,
         ):
-            self.assertEqual(
-                [],
-                _levelscript_native_control_paths_to_record(
-                    bytes(400), records, membership, target
-                ),
+            paths = _levelscript_native_control_paths_to_record(
+                bytes(400), records, membership, target
             )
+        self.assertEqual(1, len(paths))
+        self.assertEqual(
+            [100],
+            paths[0]["path"][0]["runtimeShadowedRecordOffsets"],
+        )
+        self.assertEqual(
+            "different_payload",
+            paths[0]["path"][0]["runtimeDuplicateSignatureStatus"],
+        )
 
     def test_if_else_and_entity_compare_decode_exact_tracked_slot_bridge(self):
         if_else_payload = (
@@ -2848,6 +2894,91 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
         self.assertEqual(7, int_equal_detail["valueA"]["value"])
         self.assertEqual(3, int_equal_detail["valueB"]["value"])
 
+        int_equal_ref_blob = getter_record(
+            0x01AC,
+            9,
+            225,
+            b"f722f08a",
+            getter_ref + constant_i32(0),
+        )
+        int_equal_ref_record = extract_levelscript_uid_records(
+            int_equal_ref_blob
+        )[0]
+        int_equal_ref_detail = decode_levelscript_record_payload(
+            int_equal_ref_blob,
+            int_equal_ref_record,
+            next_start=len(int_equal_ref_blob),
+            action_map_role="getterList#5",
+        )["intEqual"]
+        self.assertEqual(221, int_equal_ref_detail["valueAGetterLocalId"])
+        self.assertEqual(
+            "localGetterRef",
+            int_equal_ref_detail["valueA"]["operandKind"],
+        )
+        self.assertEqual(0, int_equal_ref_detail["valueB"]["value"])
+
+        compact_string = lambda value: (
+            len(value).to_bytes(4, "little") + value
+        )
+        fmv_condition = (
+            b"\x39\x05"
+            + (1).to_bytes(4, "little", signed=True)
+            + compact_string(b"12345678")
+            + b"\x00\x01"
+            + b"\x04"
+            + compact_string(b"cs_video_fixture")
+            + default_tail
+        )
+        condition_blob = getter_record(
+            0x004E,
+            8,
+            226,
+            b"a722f08a",
+            fmv_condition,
+        )
+        condition_record = extract_levelscript_uid_records(condition_blob)[0]
+        condition_detail = decode_levelscript_record_payload(
+            condition_blob,
+            condition_record,
+            next_start=len(condition_blob),
+            action_map_role="getterList#6",
+        )["getConditionResult"]
+        self.assertEqual("CheckFMVFinish", condition_detail["condition"]["type"])
+        self.assertEqual(
+            "cs_video_fixture",
+            condition_detail["condition"]["fmvId"]["value"],
+        )
+
+        malformed_condition_blob = bytearray(condition_blob)
+        condition_offset = malformed_condition_blob.index(b"\x39\x05")
+        malformed_condition_blob[condition_offset + 1] = 6
+        malformed_condition_record = extract_levelscript_uid_records(
+            bytes(malformed_condition_blob)
+        )[0]
+        self.assertNotIn(
+            "getConditionResult",
+            decode_levelscript_record_payload(
+                bytes(malformed_condition_blob),
+                malformed_condition_record,
+                next_start=len(malformed_condition_blob),
+                action_map_role="getterList#6",
+            ),
+        )
+
+        malformed_ref_blob = int_equal_ref_blob[:-1]
+        malformed_ref_record = extract_levelscript_uid_records(
+            malformed_ref_blob
+        )[0]
+        self.assertNotIn(
+            "intEqual",
+            decode_levelscript_record_payload(
+                malformed_ref_blob,
+                malformed_ref_record,
+                next_start=len(malformed_ref_blob),
+                action_map_role="getterList#5",
+            ),
+        )
+
         random_blob = getter_record(
             0x01BA,
             9,
@@ -2968,6 +3099,59 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
         )["getLevelScriptPropertyGenericBool"]
         self.assertEqual("isTalkFinished", property_detail["propertyKey"])
         self.assertEqual("22800700001", property_detail["targetScript"]["scriptId"])
+
+        stage_check_blob = getter_record(
+            0x0013,
+            10,
+            231,
+            b"0ce4d2aa",
+            constant_i32(0) + current_script_ptr + constant_i32(4),
+        )
+        stage_check_record = extract_levelscript_uid_records(stage_check_blob)[0]
+        stage_check = decode_levelscript_record_payload(
+            stage_check_blob,
+            stage_check_record,
+            next_start=len(stage_check_blob),
+            action_map_role="getterList#11",
+        )["checkLevelScriptStage"]
+        self.assertEqual("Equal", stage_check["comparerName"])
+        self.assertEqual("current_script", stage_check["scriptPtr"]["mode"])
+        self.assertEqual(4, stage_check["expectedStage"]["value"])
+
+        quest_id = b"sm1l1m2_q#7"
+        completion_blob = getter_record(
+            0x0016,
+            9,
+            232,
+            b"4ec92d36",
+            constant_bool(True)
+            + b"\x04"
+            + len(quest_id).to_bytes(4, "little")
+            + quest_id
+            + default_tail,
+        )
+        completion_record = extract_levelscript_uid_records(completion_blob)[0]
+        completion = decode_levelscript_record_payload(
+            completion_blob,
+            completion_record,
+            next_start=len(completion_blob),
+            action_map_role="getterList#12",
+        )["checkMissionOrQuestIsComplete"]
+        self.assertTrue(completion["isQuest"]["value"])
+        self.assertEqual("quest", completion["targetKind"])
+        self.assertEqual("sm1l1m2_q#7", completion["missionOrQuestId"])
+        self.assertEqual("Completed", completion["completedStateName"])
+
+        malformed_completion = decode_levelscript_record_payload(
+            completion_blob[:-1],
+            completion_record,
+            next_start=len(completion_blob) - 1,
+            action_map_role="getterList#12",
+        )
+        self.assertNotIn(
+            "checkMissionOrQuestIsComplete",
+            malformed_completion,
+        )
 
     def records(self):
         return [

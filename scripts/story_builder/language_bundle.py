@@ -179,6 +179,7 @@ def filter_native_story_playback_index(
     native_story_playback_index: dict[str, list[dict]],
     emitted_story_keys: set[str],
     suppressed_fmv_pairs: set[tuple[str, str]] | None = None,
+    story_key_resolver=None,
 ) -> dict[str, list[dict]]:
     """Keep native playback identities that have an emitted Story page.
 
@@ -188,22 +189,37 @@ def filter_native_story_playback_index(
     ghost runtime node or an implicit override relation.
     """
     suppressed = suppressed_fmv_pairs or set()
-    out: dict[str, list[dict]] = {}
-    for story_key, rows in native_story_playback_index.items():
-        if story_key not in emitted_story_keys:
+    out: dict[str, list[dict]] = defaultdict(list)
+    seen: dict[str, set[tuple]] = defaultdict(set)
+    for authored_story_key, rows in native_story_playback_index.items():
+        story_key = (
+            story_key_resolver(authored_story_key, emitted_story_keys)
+            if story_key_resolver is not None
+            else authored_story_key
+        )
+        if not story_key or story_key not in emitted_story_keys:
             continue
-        retained = [
-            row
-            for row in rows
+        for row in rows:
             if (
                 story_key,
                 str((row.get("fmvAction") or {}).get("fmvId") or "").lower(),
+            ) in suppressed:
+                continue
+            normalized = dict(row)
+            if authored_story_key != story_key:
+                normalized["authoredStoryKey"] = authored_story_key
+            signature = (
+                str(normalized.get("levelId") or ""),
+                str(normalized.get("scriptId") or ""),
+                str(normalized.get("sourceFile") or ""),
+                normalized.get("recordOffset"),
+                str(normalized.get("actionName") or ""),
             )
-            not in suppressed
-        ]
-        if retained:
-            out[story_key] = retained
-    return out
+            if signature in seen[story_key]:
+                continue
+            seen[story_key].add(signature)
+            out[story_key].append(normalized)
+    return dict(out)
 
 
 def filter_non_fmv_story_playback_index(
@@ -920,6 +936,11 @@ def build_domain_depot_story_connections(
         target_matches = targets_by_id.get(npc_proxy_id) or []
         if not target_matches:
             continue
+        selector_alternatives = [
+            {"role": dialog_field, "key": story_key}
+            for dialog_field in ("initialDialogId", "repeatDialogId")
+            if (story_key := str(raw_row.get(dialog_field) or "").strip())
+        ]
         for dialog_field, dialog_phase in (
             ("initialDialogId", "initial_delivery_dialog"),
             ("repeatDialogId", "repeat_delivery_dialog"),
@@ -936,6 +957,11 @@ def build_domain_depot_story_connections(
                 "dialogTableKey": str(row_key),
                 "dialogField": dialog_field,
                 "dialogPhase": dialog_phase,
+                "selectorKind": "typed_table_story_selector",
+                "selectorGroupId": npc_proxy_id,
+                "selectorRole": dialog_field,
+                "selectorAlternatives": selector_alternatives,
+                "graphEffect": "none",
                 "deliverTargets": target_matches,
                 "sourceTables": [
                     "DomainDepotConst.json",
@@ -1414,6 +1440,99 @@ def load_reused_reference_stats(reference_dir: Path, language_code: str) -> dict
         "texts": text_count,
         "bytes": byte_count,
     }
+
+
+def select_levelscript_property_story_consumers(
+    script_condition_bindings: dict[tuple[str, str], list[dict]],
+    native_story_playback_index: dict[str, list[dict]],
+) -> list[dict]:
+    """Join typed quest property checks to exact native Story consumers.
+
+    This deliberately matches a serialized pattern rather than named missions,
+    quests, scripts, or Story files.  A bool quest condition must observe the
+    same level/script/property/value as an exact OnPropertyChanged control path
+    whose typed downstream path reaches the indexed Story playback action.
+    Shared script membership or a property string elsewhere in the file is not
+    sufficient.
+    """
+    matches: list[dict] = []
+    for story_key, occurrences in sorted(native_story_playback_index.items()):
+        for occurrence in occurrences:
+            level_id = str(occurrence.get("levelId") or "")
+            script_id = str(occurrence.get("scriptId") or "")
+            source_file = str(occurrence.get("sourceFile") or "")
+            local_id = occurrence.get("localId")
+            if not level_id or not script_id or not source_file:
+                continue
+            conditions = script_condition_bindings.get((level_id, script_id)) or []
+            if not conditions:
+                continue
+            for owner in occurrence.get("nativeEventOwners") or []:
+                detail = owner.get("eventDetail") if isinstance(owner, dict) else None
+                path = owner.get("path") if isinstance(owner, dict) else None
+                if (
+                    owner.get("status") != "exact_serialized_control_path"
+                    or owner.get("headerName") != "ScriptEvent_OnPropertyChanged"
+                    or owner.get("downstreamControlStatus")
+                    != "exact_serialized_typed_reachability"
+                    or not isinstance(detail, dict)
+                    or detail.get("payloadSchemaStatus")
+                    != "exact_current_build_memorypack_fields"
+                    or detail.get("transport") != "local-level-script-variable-event"
+                    or not isinstance(path, list)
+                    or not path
+                ):
+                    continue
+                property_key = str(detail.get("propertyKeyFilter") or "")
+                validate_value = (detail.get("validateParam") or {}).get("constValue")
+                playback_steps = [
+                    step
+                    for step in path
+                    if isinstance(step, dict)
+                    and step.get("localId") == local_id
+                    and str(step.get("recordClass") or "").startswith("play_")
+                ]
+                if (
+                    not property_key
+                    or not isinstance(validate_value, bool)
+                    or len(playback_steps) != 1
+                ):
+                    continue
+                for condition in conditions:
+                    if (
+                        str(condition.get("conditionType") or "")
+                        != "CheckLevelScriptPropertyBool"
+                        or str(condition.get("conditionKey") or "") != property_key
+                        or condition.get("conditionValue") is not validate_value
+                        or not str(condition.get("missionId") or "")
+                        or not str(condition.get("questId") or "")
+                        or not str(condition.get("sourceFile") or "")
+                    ):
+                        continue
+                    matches.append({
+                        "storyKey": story_key,
+                        "missionId": str(condition["missionId"]),
+                        "questId": str(condition["questId"]),
+                        "conditionType": "CheckLevelScriptPropertyBool",
+                        "conditionKey": property_key,
+                        "conditionValue": validate_value,
+                        "levelId": level_id,
+                        "scriptId": script_id,
+                        "sourceFiles": sorted({
+                            source_file,
+                            str(condition["sourceFile"]),
+                        }),
+                        "occurrence": occurrence,
+                        "nativeEventOwner": owner,
+                    })
+    matches.sort(key=lambda row: (
+        natural_key(row["missionId"]),
+        natural_key(row["questId"]),
+        natural_key(row["storyKey"]),
+        natural_key(row["levelId"]),
+        natural_key(row["scriptId"]),
+    ))
+    return matches
 
 
 def build_language_bundle(
@@ -14365,6 +14484,10 @@ def build_language_bundle(
     # mission scope is added later only when original LevelData uniquely hosts
     # the typed LevelScript action that starts the parent dialog.
     unresolved_black_timeline_attachments: dict[str, list[dict]] = defaultdict(list)
+    unresolved_black_timeline_parent_groups: dict[
+        str,
+        list[dict],
+    ] = defaultdict(list)
     black_timeline_groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for attachment in recover_black_timeline_attachments():
         if not isinstance(attachment, dict):
@@ -14526,6 +14649,7 @@ def build_language_bundle(
         build_levelscript_native_story_playback_index(),
         all_story_entry_keys,
         suppressed_native_fmv_pairs,
+        resolve_scene_ref_out_key,
     )
     native_non_fmv_story_playback_index = filter_non_fmv_story_playback_index(
         native_story_playback_index
@@ -15242,6 +15366,11 @@ def build_language_bundle(
                 },
             ],
             "nativeMappingId": "domain-depot-delivery-dialog-tables-native-v1",
+            "orderBoundary": (
+                "the typed row proves target-specific initial/repeat selector "
+                "roles, but the current native evidence does not prove a file "
+                "order between the alternatives or between delivery targets"
+            ),
         }
         pending_original_system_story_connections.append((
             target_mission,
@@ -15500,6 +15629,79 @@ def build_language_bundle(
             })
 
     action_story_occurrences = build_levelscript_action_story_occurrences()
+
+    # A quest can observe the same typed local property event that drives a
+    # native Story playback path.  Recover that exact shared trigger before the
+    # broader script-scope pass: otherwise an already-known variant/context row
+    # can suppress the stronger property-specific connection.  This does not
+    # claim that the quest starts playback or that either side precedes the
+    # other; it binds both to the same serialized event/value path.
+    for match in select_levelscript_property_story_consumers(
+        script_condition_bindings,
+        native_story_playback_index,
+    ):
+        target = quest_targets.get(match["questId"])
+        if not target or target[0] != match["missionId"]:
+            continue
+        target_mission, quest = target
+        occurrence = match["occurrence"]
+        owner = match["nativeEventOwner"]
+        connection = {
+            "key": match["storyKey"],
+            "kind": story_kind_by_key.get(match["storyKey"], "story"),
+            "relation": "levelscript_property_story_consumer",
+            "direction": "shared_trigger",
+            "phase": "progress_and_runtime_playback",
+            "confidence": "native_typed_direct",
+            "evidenceTier": "native_direct",
+            "source": (
+                "typed MissionRuntime bool-property condition joined by exact "
+                "level/script/property/value to an original LevelScript "
+                "OnPropertyChanged -> typed downstream Story playback path"
+            ),
+            "conditionType": match["conditionType"],
+            "conditionKey": match["conditionKey"],
+            "conditionValue": match["conditionValue"],
+            "mapId": match["levelId"],
+            "scriptId": match["scriptId"],
+            "nativeAction": str(occurrence.get("actionName") or ""),
+            "opcode": (
+                f"{occurrence.get('actionCode')}/{occurrence.get('actionKind')}"
+            ),
+            "nativeEventName": str(owner.get("headerName") or ""),
+            "nativeEventOwner": owner,
+            "levelScriptOccurrence": occurrence,
+            "sourceFiles": match["sourceFiles"],
+            "questTriggerStatus": (
+                "exact_shared_property_event_not_quest_initiated_playback"
+            ),
+            "orderStatus": (
+                "shared property trigger establishes attachment but no order "
+                "between quest completion and Story playback"
+            ),
+            "executionSide": "client",
+            "networkRole": "local_presentation_and_local_property_observer",
+            "serverExchange": False,
+        }
+        connections = quest.setdefault("storyConnections", [])
+        signature = (
+            connection["key"],
+            connection["relation"],
+            connection["mapId"],
+            connection["scriptId"],
+            connection["conditionKey"],
+        )
+        if not any((
+            str(existing.get("key") or ""),
+            str(existing.get("relation") or ""),
+            str(existing.get("mapId") or ""),
+            str(existing.get("scriptId") or ""),
+            str(existing.get("conditionKey") or ""),
+        ) == signature for existing in connections if isinstance(existing, dict)):
+            connections.append(connection)
+        preexisting_attached_story_keys_by_mission[target_mission].add(
+            match["storyKey"]
+        )
 
     # LevelScriptData can author narrative interactives directly rather than
     # through an ActionBase playback row. Recover the counted
@@ -20078,6 +20280,7 @@ def build_language_bundle(
     # Timeline containment receives mission scope through the parent dialog's
     # typed native playback and exact LevelData host.  This also supports
     # runtime-registered parent dialogs with no emitted ordinary text lines.
+    scoped_black_timeline_pairs: set[tuple[str, str]] = set()
     for (black_key, dialog_key), attachment_rows in sorted(black_timeline_groups.items()):
         parent_occurrences = list(native_story_playback_index.get(dialog_key) or [])
         scoped_by_mission, shared_hosts = leveldata_scoped_occurrences(parent_occurrences)
@@ -20154,8 +20357,10 @@ def build_language_bundle(
                 str(existing.get("relation") or ""),
                 str(existing.get("parentStoryKey") or ""),
             ) == signature for existing in connections if isinstance(existing, dict)):
+                scoped_black_timeline_pairs.add((black_key, dialog_key))
                 continue
             connections.append(connection)
+            scoped_black_timeline_pairs.add((black_key, dialog_key))
             preexisting_attached_story_keys_by_mission[target_mission].add(black_key)
 
     # Complete foreign-dialog line blocks use the same exact parent-playback
@@ -21429,6 +21634,24 @@ def build_language_bundle(
             for row in context_rows
             if row.get("relation")
         })
+        connection["contextMissionId"] = target_mission
+        connection["parentScopeContexts"] = context_rows
+        connection["sourceFiles"] = sorted({
+            str(source_file)
+            for source_file in (
+                *(connection.get("sourceFiles") or []),
+                *(
+                    source_file
+                    for row in context_rows
+                    for source_file in (
+                        *(row.get("sourceFiles") or []),
+                        *(row.get("levelDataFiles") or []),
+                    )
+                ),
+            )
+            if source_file
+        })
+        connection["graphEffect"] = "none"
         candidate_quest_ids = sorted({
             str(quest_id)
             for row in context_rows
@@ -21516,7 +21739,22 @@ def build_language_bundle(
             "missionStoryConnections",
             [],
         ).append(connection)
+        scoped_black_timeline_pairs.add((black_key, dialog_key))
         preexisting_attached_story_keys_by_mission[target_mission].add(black_key)
+
+    # Preserve exact Timeline/DialogIdTable containment even when the parent
+    # dialog has no independently recovered mission playback or direct mission
+    # context.  This is an exact related-file/consumer link, but deliberately
+    # remains unscoped and must not make the Story file mission-attached.
+    for (black_key, dialog_key), attachment_rows in sorted(
+        black_timeline_groups.items()
+    ):
+        if (black_key, dialog_key) in scoped_black_timeline_pairs:
+            continue
+        unresolved_black_timeline_parent_groups[black_key].append({
+            "parentStoryKey": dialog_key,
+            "attachments": attachment_rows,
+        })
 
     for (
         story_key,
@@ -22249,6 +22487,13 @@ def build_language_bundle(
                 if occurrence.get("sourcePathId")
             }),
         }
+        native_mapping_ids = sorted({
+            str(occurrence.get("nativeMappingId") or "")
+            for occurrence in occurrence_rows
+            if occurrence.get("nativeMappingId")
+        })
+        if len(native_mapping_ids) == 1:
+            row["nativeMappingId"] = native_mapping_ids[0]
         if left_subtitle_only:
             row["textFields"] = sorted({
                 str(occurrence.get("textField") or "")
@@ -22493,39 +22738,106 @@ def build_language_bundle(
         unresolved_timeline_rows: list[dict] = []
         for story_key in unlinked:
             attachments = unresolved_black_timeline_attachments.get(story_key) or []
-            if not attachments:
-                continue
-            unresolved_timeline_rows.append({
-                "key": story_key,
-                "kind": story_kind_by_key.get(story_key, "black"),
-                "relation": "timeline_black_root_unresolved",
-                "direction": "context",
-                "phase": "timeline_contained",
-                "confidence": "authored_root_unscoped",
-                "source": (
-                    "serialized black-screen text playable and owning Timeline Actor root; "
-                    "no exact recovered root-to-dialog mapping"
-                ),
-                "storyOwnerMission": owner_mission,
-                "questTriggerStatus": "unresolved",
-                "occurrenceCount": len(attachments),
-                "textIds": sorted({
-                    str(row.get("textId") or "")
-                    for row in attachments
-                    if row.get("textId")
-                }),
-                "timelines": sorted({
-                    str(row.get("timeline") or "")
-                    for row in attachments
-                    if row.get("timeline")
-                }),
-                "sourceFiles": sorted({
-                    str(row.get("sourceFile") or "")
-                    for row in attachments
-                    if row.get("sourceFile")
-                }),
-                "attachments": attachments,
-            })
+            if attachments:
+                unresolved_timeline_rows.append({
+                    "key": story_key,
+                    "kind": story_kind_by_key.get(story_key, "black"),
+                    "relation": "timeline_black_root_unresolved",
+                    "direction": "context",
+                    "phase": "timeline_contained",
+                    "confidence": "authored_root_unscoped",
+                    "source": (
+                        "serialized black-screen text playable and owning Timeline Actor root; "
+                        "no exact recovered root-to-dialog mapping"
+                    ),
+                    "storyOwnerMission": owner_mission,
+                    "questTriggerStatus": "unresolved",
+                    "occurrenceCount": len(attachments),
+                    "textIds": sorted({
+                        str(row.get("textId") or "")
+                        for row in attachments
+                        if row.get("textId")
+                    }),
+                    "timelines": sorted({
+                        str(row.get("timeline") or "")
+                        for row in attachments
+                        if row.get("timeline")
+                    }),
+                    "sourceFiles": sorted({
+                        str(row.get("sourceFile") or "")
+                        for row in attachments
+                        if row.get("sourceFile")
+                    }),
+                    "attachments": attachments,
+                })
+            for parent_group in (
+                unresolved_black_timeline_parent_groups.get(story_key) or []
+            ):
+                parent_attachments = [
+                    row
+                    for row in parent_group.get("attachments") or []
+                    if isinstance(row, dict)
+                ]
+                if not parent_attachments:
+                    continue
+                unresolved_timeline_rows.append({
+                    "key": story_key,
+                    "kind": story_kind_by_key.get(story_key, "black"),
+                    "relation": "timeline_dialog_contains_black",
+                    "direction": "context",
+                    "phase": "timeline_contained",
+                    "confidence": "native_exact_parent_unscoped",
+                    "source": (
+                        "serialized black playable/track/Actor containment + "
+                        "exact DialogIdTable timeline owner; parent mission and "
+                        "quest playback remain unresolved"
+                    ),
+                    "storyOwnerMission": owner_mission,
+                    "parentStoryKey": str(
+                        parent_group.get("parentStoryKey") or ""
+                    ),
+                    "questTriggerStatus": "unresolved_parent_scope",
+                    "occurrenceCount": len(parent_attachments),
+                    "textIds": sorted({
+                        str(row.get("textId") or "")
+                        for row in parent_attachments
+                        if row.get("textId")
+                    }),
+                    "timelines": sorted({
+                        str(row.get("timeline") or "")
+                        for row in parent_attachments
+                        if row.get("timeline")
+                    }),
+                    "sourceFiles": sorted({
+                        str(row.get("sourceFile") or "")
+                        for row in parent_attachments
+                        if row.get("sourceFile")
+                    }),
+                    "assetPaths": sorted({
+                        str(row.get("assetPath") or "")
+                        for row in parent_attachments
+                        if row.get("assetPath")
+                    }),
+                    "trackPaths": sorted({
+                        str(row.get("trackPath") or "")
+                        for row in parent_attachments
+                        if row.get("trackPath")
+                    }),
+                    "rootPaths": sorted({
+                        str(row.get("rootPath") or "")
+                        for row in parent_attachments
+                        if row.get("rootPath")
+                    }),
+                    "timelineAttachments": parent_attachments,
+                    "scopeBoundary": (
+                        "exact Timeline carrier and registered parent dialog; "
+                        "no mission or quest owner inferred"
+                    ),
+                    "orderBoundary": (
+                        "Timeline containment alone does not place the Story "
+                        "file relative to mission files"
+                    ),
+                })
         if unresolved_timeline_rows:
             flow_payload["unlinkedTimelineContainment"] = unresolved_timeline_rows
         else:

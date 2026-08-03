@@ -72,6 +72,37 @@ Rebuild Story data after editing overrides.
 - Disabling debug from a hidden page returns to a visible page and URL.
 - Mission Pipeline distinguishes ownership, context, definition-only rows, and
   unresolved native playback.
+- BlackBox recovery shells show the exact SubGame row, bound LevelScript,
+  separate main/extra/fail task lanes, complete decoded task conditions,
+  condition formulas, objective display keys, typed parent playback, and the
+  complete serialized event/action graph. Ordered Branch sequences, Split
+  fan-outs, conditional choices, loops, convergences, Story targets,
+  runtime-shadowed duplicate-id records, and missing-slot normal terminals
+  remain distinct from separate event roots and from parents
+  that are definition-only. Task topology is never presented as a successor
+  graph or Story order, and action edges never order separate event roots.
+- Story-order panels attach compact original LevelScript graphs only through an
+  exact native event-to-Story path. They show the related file and semantic
+  control actions, active last-serialized runtime slots, and shadowed physical
+  records without treating the rest of the file as mission chronology.
+- Native branch cards show typed predicate operands when the current binary
+  union, formatter field order, payload shape, and runtime consumer all agree;
+  embedded root `GameCondition` unions and local getter references retain
+  their nested type/operand details, while opaque or changed shapes remain
+  visibly unresolved.
+- Exact native receiver cards recognize the reusable `EncounterBase<T>` /
+  `EncounterData` property contract structurally and show its validated
+  LevelData host, LsmPtr module namespace, receiver LevelScript, and typed
+  SpawnerConfig dependency. Module and receiver ids are kept distinct, zero
+  spawners are labeled explicitly, and these remain non-owning with no branch
+  or order edge.
+- Exact native receiver cards also show generally decoded
+  `ActionHeader._validate` playback gates. Predicate type, operands, local
+  header/getter/action ids, recursive getter-node count/depth, and the original
+  LevelScript file stay visible. AND/OR/NOT/ALL trees are rendered from typed
+  child references while missing, cyclic, or unknown children fail closed;
+  the UI labels them as receiver-local branches, never mission ownership,
+  cross-Story order, or proof of a later server write.
 - Mission Pipeline opens source-bounded activation gaps in the order panel and
   shows exact ReadingPopUp/RichContent row identities for definition-only text
   files and

@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -116,6 +117,39 @@ def mission_payload(
 
 
 class SourceStoryPartialOrderTests(unittest.TestCase):
+    def test_typed_selector_alternatives_are_visible_without_order_edges(self) -> None:
+        alternatives = [
+            {"role": "first", "key": "dlg_a"},
+            {"role": "repeat", "key": "dlg_b"},
+        ]
+        payload = mission_payload()
+        payload["flow"]["missionStoryConnections"] = [
+            {
+                "missionId": "m1",
+                "key": key,
+                "selectorKind": "typed_table_story_selector",
+                "selectorGroupId": "target_opaque",
+                "selectorRole": role,
+                "selectorAlternatives": alternatives,
+                "graphEffect": "none",
+                "sourceFiles": ["TypedTable.json"],
+                "nativeMappingId": "mapping-v1",
+                "orderBoundary": "no relative order",
+            }
+            for role, key in (("first", "dlg_a"), ("repeat", "dlg_b"))
+        ]
+
+        result = partial_order.build_mission_partial_order(
+            "m1", {"dlg_a": "dlg", "dlg_b": "dlg"}, payload
+        )
+
+        self.assertEqual(result["directEdges"], [])
+        self.assertEqual(result["summary"]["typedStorySelectorGroupCount"], 1)
+        self.assertEqual(
+            result["branches"]["typedStorySelectorGroups"][0]["alternatives"],
+            alternatives,
+        )
+
     @staticmethod
     def narrative_containment_flow(*, placement_status: str) -> dict:
         return {
@@ -1198,7 +1232,165 @@ class SourceStoryPartialOrderTests(unittest.TestCase):
         self.assertEqual(result["summary"]["nativeSemanticPredicateCount"], 1)
         self.assertEqual(result["summary"]["nativeClassOnlyPredicateCount"], 0)
 
-    def test_equivalent_duplicate_native_paths_preserve_exact_split(self) -> None:
+    def test_native_branch_sequence_creates_exact_story_order(self) -> None:
+        candidates = {
+            "radio_m1_first": "radio",
+            "cutscene_m1_second": "cutscene",
+            "radio_m1_after": "radio",
+        }
+        payload = mission_payload([])
+
+        def connection(key: str, edge: str, entry_id: int) -> dict:
+            return {
+                "key": key,
+                "levelScriptOccurrences": [{
+                    "levelId": "map_test",
+                    "scriptId": "70000000001",
+                    "sourceFile": "LevelScriptData/map_test/70000000001.json",
+                    "nativeEventOwners": [{
+                        "status": "exact_serialized_control_path",
+                        "headerName": "ScriptEvent_OnCustomEvent",
+                        "headerLocalId": 4,
+                        "path": [
+                            {
+                                "localId": 5,
+                                "edge": "ActionHeader.nextId",
+                                "actionName": "Branch",
+                            },
+                            {"localId": entry_id, "edge": edge},
+                        ],
+                    }],
+                }],
+            }
+
+        payload["flow"]["missionStoryConnections"] = [
+            connection("radio_m1_first", "Branch.sequence[0]", 10),
+            connection("cutscene_m1_second", "Branch.sequence[1]", 20),
+            connection("radio_m1_after", "ActionBase.nextId", 30),
+        ]
+
+        result = partial_order.build_mission_partial_order("m1", candidates, payload)
+
+        self.assertEqual(result["summary"]["nativeOrderedSequenceCount"], 1)
+        self.assertEqual(result["summary"]["nativeOrderedSequenceEdgeCount"], 3)
+        self.assertEqual(
+            {
+                (edge["from"], edge["to"])
+                for edge in result["directEdges"]
+                if edge["kind"] == "levelscriptNativeOrderedSequence"
+            },
+            {
+                ("radio_m1_first", "cutscene_m1_second"),
+                ("radio_m1_first", "radio_m1_after"),
+                ("cutscene_m1_second", "radio_m1_after"),
+            },
+        )
+        sequence = result["branches"]["nativeOrderedSequences"][0]
+        self.assertEqual(sequence["branchLocalId"], 5)
+        self.assertEqual(
+            [arm["edge"] for arm in sequence["arms"]],
+            [
+                "Branch.sequence[0]",
+                "Branch.sequence[1]",
+                "ActionBase.nextId (after sequence)",
+            ],
+        )
+        self.assertEqual(
+            sequence["runtimeMappingId"],
+            "gameassembly-2026-08-02-branch-execute-0x18764d990",
+        )
+
+    def test_related_action_topology_requires_exact_story_path_file(self) -> None:
+        payload = mission_payload([])
+        payload["flow"]["missionStoryConnections"] = [{
+            "key": "radio_m1_1",
+            "levelScriptOccurrences": [{
+                "levelId": "map_test",
+                "scriptId": "70000000001",
+                "sourceFile": "LevelScriptData/map_test/70000000001.json",
+                "nativeEventOwners": [{
+                    "status": "exact_serialized_control_path",
+                    "headerName": "ScriptEvent_OnCustomEvent",
+                    "headerLocalId": 4,
+                    "path": [{
+                        "localId": 5,
+                        "edge": "ActionHeader.nextId",
+                    }],
+                }],
+            }],
+        }]
+        topology = {
+            "schema": "levelScriptNativeActionTopology.v4",
+            "status": "exact_complete_action_map",
+            "actionNodeCount": 3,
+            "eventRootCount": 1,
+            "physicalHeaderRecordCount": 2,
+            "runtimeShadowedHeaderRecordCount": 1,
+            "runtimeShadowedHeaderLocalIdCount": 1,
+            "runtimeShadowedGetterRecordCount": 2,
+            "runtimeShadowedGetterLocalIdCount": 1,
+            "edgeCount": 3,
+            "orderedSequenceNodeCount": 1,
+            "eventRootRuntimeMode": "independently_invoked_indexed_event_slots",
+            "runtimeHeaderSlotMappingId": "indexed-slots",
+            "runtimeGetterSlotMappingId": "indexed-slots",
+            "eventRoots": [{
+                "localId": 4,
+                "headerName": "ScriptEvent_OnCustomEvent",
+                "nextActionLocalId": 5,
+                "priority": -1000,
+                "triggerActiveDuring": True,
+                "filterMode": 2,
+                "runtimeHeaderSlotMappingId": "indexed-slots",
+            }],
+            "actions": [{
+                "localId": 5,
+                "actionName": "Branch",
+                "controlKind": "ordered_sequence",
+                "controlRuntimeMappingId": (
+                    "gameassembly-2026-08-02-branch-execute-0x18764d990"
+                ),
+            }],
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = (
+                Path(temp_dir) / "LevelScriptData" / "map_test"
+                / "70000000001.json"
+            )
+            source_path.parent.mkdir(parents=True)
+            source_path.write_bytes(b"fixture")
+            partial_order._NATIVE_ACTION_TOPOLOGY_CACHE.clear()
+            with patch.object(partial_order, "ROOT", Path(temp_dir)), patch.object(
+                partial_order,
+                "decode_levelscript_native_action_topology",
+                return_value=(topology, None),
+            ):
+                result = partial_order.build_mission_partial_order(
+                    "m1", {"radio_m1_1": "radio"}, payload
+                )
+
+        self.assertEqual(result["summary"]["nativeRelatedActionTopologyCount"], 1)
+        related = result["branches"]["nativeRelatedActionTopologies"][0]
+        self.assertEqual(related["relatedStoryKeys"], ["radio_m1_1"])
+        self.assertEqual(related["orderedSequenceNodeCount"], 1)
+        self.assertEqual(related["controlActions"][0]["actionName"], "Branch")
+        self.assertEqual(related["physicalHeaderRecordCount"], 2)
+        self.assertEqual(related["runtimeShadowedHeaderRecordCount"], 1)
+        self.assertEqual(related["runtimeShadowedGetterRecordCount"], 2)
+        self.assertEqual(related["runtimeHeaderSlotMappingId"], "indexed-slots")
+        self.assertEqual(related["runtimeGetterSlotMappingId"], "indexed-slots")
+        self.assertEqual(
+            related["eventRootRuntimeMode"],
+            "independently_invoked_indexed_event_slots",
+        )
+        self.assertEqual(related["selectedEventRoots"][0]["localId"], 4)
+        self.assertEqual(
+            related["selectedEventRoots"][0]["headerName"],
+            "ScriptEvent_OnCustomEvent",
+        )
+        self.assertEqual(related["selectedEventRoots"][0]["priority"], -1000)
+
+    def test_runtime_shadowed_native_paths_preserve_exact_split(self) -> None:
         candidates = {"radio_m1_1": "radio", "cutscene_m1_1": "cutscene"}
         payload = mission_payload([])
 
@@ -1217,16 +1409,16 @@ class SourceStoryPartialOrderTests(unittest.TestCase):
                     "LevelScriptData/map_test/70000000001.json",
                 ],
                 "nativeEventOwners": [{
-                        "status": (
-                            "exact_serialized_control_path_equivalent_duplicates"
-                        ),
+                        "status": "exact_serialized_control_path_runtime_shadowing",
                         "headerName": "MissionEvent_OnClientGlobalVarChanged",
                         "headerLocalId": 28,
                         "path": [
                             {
                                 "localId": 7,
                                 "edge": "ActionHeader.nextId",
-                                "equivalentRecordOffsets": [7, 1676],
+                                "runtimeShadowedRecordOffsets": [7],
+                                "runtimeDuplicateSignatureStatus":
+                                    "different_payload",
                             },
                             {"localId": entry_id, "edge": arm_edge},
                         ],

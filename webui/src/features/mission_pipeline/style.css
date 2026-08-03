@@ -157,6 +157,21 @@
 .mp-source-provenance[hidden],
 body:not(.show-debug) .mp-source-provenance { display: none; }
 
+.mp-non-mission-overview {
+  margin: 10px clamp(22px, 4vw, 56px) 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.mp-non-mission-overview:empty { display: none; }
+
+.mp-non-mission-overview .mp-mission-story {
+  padding-right: 14px;
+  padding-left: 14px;
+  border-top: 0;
+}
+
 .mp-layout {
   display: grid;
   grid-template-columns: minmax(260px, 310px) minmax(0, 1fr);
@@ -665,7 +680,7 @@ body:not(.show-debug) .mp-source-provenance { display: none; }
   overflow: auto;
 }
 
-/* Table-proven non-mission content is a closed class, not an open gap. */
+/* Source-proven non-mission content is a closed class, not an open gap. */
 .mp-non-mission-content > summary {
   color: var(--muted);
 }
@@ -1211,6 +1226,14 @@ body:not(.show-debug) .mp-source-provenance { display: none; }
 
 .mp-runtime-target > .is-boundary > i,
 .mp-runtime-target > .is-boundary > b { color: var(--mp-server); }
+
+.mp-playback-gates {
+  border-color: color-mix(in srgb, var(--mp-client) 45%, var(--mp-line));
+}
+
+.mp-playback-gates > strong,
+.mp-playback-gates > div > i,
+.mp-playback-gates > div > b { color: var(--mp-client); }
 
 .mp-contract-boundary {
   margin: 0;
@@ -1827,6 +1850,113 @@ body:not(.show-debug) .mp-playback-rejection {
 
 .mp-playback-rejection > em code {
   overflow-wrap: anywhere;
+}
+
+.mp-subgame-task-topology {
+  margin: 6px 0;
+  border: 1px solid rgba(54, 127, 132, 0.25);
+  border-radius: 6px;
+  background: rgba(54, 127, 132, 0.045);
+}
+
+.mp-subgame-task-topology > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 9px;
+  padding: 6px 7px;
+  cursor: pointer;
+  font-size: 8px;
+}
+
+.mp-subgame-task-topology > summary strong { color: var(--mp-client); }
+.mp-subgame-task-topology > summary span,
+.mp-subgame-task-topology > p span { color: var(--muted); font-size: 7.5px; }
+.mp-subgame-task-topology > p,
+.mp-subgame-task-topology > small { display: block; margin: 0; padding: 5px 7px; font-size: 7.5px; }
+.mp-subgame-task-topology > small { color: var(--muted); }
+
+.mp-subgame-task-topology > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 5px;
+  padding: 0 7px 7px;
+}
+
+.mp-subgame-task-topology > div > details {
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+}
+
+.mp-subgame-task-topology > div > details > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 7px;
+  cursor: pointer;
+  font-size: 7.5px;
+}
+
+.mp-subgame-task-topology > div > details > summary b { color: var(--mp-client); }
+.mp-subgame-task-topology > div > details > summary span { color: #925231; }
+.mp-subgame-task-topology > div > details > summary small { margin-left: auto; color: var(--muted); }
+.mp-subgame-task-topology > div > details > p { margin: 5px 0; font-size: 7.5px; }
+.mp-subgame-task-topology ol { display: grid; gap: 4px; margin: 5px 0 0; padding-left: 18px; }
+.mp-subgame-task-topology li { min-width: 0; font-size: 7.5px; }
+.mp-subgame-task-topology li > small,
+.mp-subgame-task-topology li > em { margin-left: 5px; color: var(--muted); }
+.mp-subgame-task-topology li > p { display: flex; flex-wrap: wrap; gap: 3px 7px; margin: 3px 0 0; }
+.mp-subgame-task-topology li > p b { font-weight: 600; }
+.mp-subgame-task-topology code { overflow-wrap: anywhere; }
+.mp-subgame-task-topology.is-unavailable { border-color: rgba(176, 73, 62, 0.35); }
+
+.mp-subgame-action-topology {
+  border-color: rgba(101, 84, 163, 0.3);
+  background: rgba(101, 84, 163, 0.045);
+}
+
+.mp-subgame-action-topology > summary strong { color: #6554a3; }
+
+.mp-subgame-action-events {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0 7px 7px;
+  list-style: none;
+}
+
+.mp-subgame-action-events > li {
+  min-width: 0;
+  padding: 5px;
+  border: 1px dashed rgba(101, 84, 163, 0.3);
+  border-radius: 5px;
+  font-size: 7.5px;
+}
+
+.mp-subgame-action-events > li > b,
+.mp-subgame-action-events > li > span,
+.mp-subgame-action-events > li > small {
+  margin-left: 6px;
+}
+
+.mp-subgame-action-events > li > small { color: var(--muted); }
+.mp-subgame-action-events > li > p { margin: 4px 0 0; }
+
+.mp-subgame-action-topology > div > details.is-fanout {
+  border-color: rgba(185, 117, 39, 0.5);
+  background: rgba(185, 117, 39, 0.055);
+}
+
+.mp-subgame-action-topology > div > details > p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 7px;
+  margin: 5px 0 0;
+  font-size: 7.5px;
 }
 
 .mp-story-order > p {

@@ -42,7 +42,11 @@ class DialogTreeNarrativeActionTests(unittest.TestCase):
                     "$id": "1",
                     "$type": "Beyond.Gameplay.DialogTreeOptionNode",
                     "_normalOptions": [
-                        {"_optionId": "option_dlg_fixture_1_1_001"},
+                        {
+                            "_optionId": "option_dlg_fixture_1_1_001",
+                            "$type":
+                                "Beyond.Gameplay.SpaceshipOptionGiftData",
+                        },
                         {"_optionId": "option_dlg_fixture_1_1_002"},
                     ],
                 },
@@ -64,6 +68,10 @@ class DialogTreeNarrativeActionTests(unittest.TestCase):
         self.assertEqual(2, evidence["nodeCount"])
         self.assertEqual(1, evidence["connectionCount"])
         self.assertEqual(1, evidence["branchingOptionGroupCount"])
+        self.assertEqual(
+            ["Beyond.Gameplay.SpaceshipOptionGiftData"],
+            evidence["runtimeOptionTypes"],
+        )
 
     def test_rejects_dialog_tree_definition_name_or_type_mismatch(self) -> None:
         payload = {
@@ -75,6 +83,52 @@ class DialogTreeNarrativeActionTests(unittest.TestCase):
         self.assertIsNone(
             extract_dialog_tree_definition_evidence(payload, "dlg_fixture_1")
         )
+
+    def test_extracts_exact_directed_trunk_line_graph(self) -> None:
+        payload = {
+            "_assetName": "opaque_parent",
+            "type": "Beyond.Gameplay.DialogTree",
+            "nodes": [{
+                "$id": "a",
+                "$type": "Beyond.Gameplay.DialogTreeTrunkNode",
+                "_actorNodeData": {
+                    "mfTrunkActionData": {"_trunkId": "opaque_line_a"},
+                },
+            }, {
+                "$id": "b",
+                "$type": "Beyond.Gameplay.DialogTreeTrunkNode",
+                "_actorNodeData": {
+                    "mfTrunkActionData": {"_trunkId": "opaque_line_b"},
+                },
+            }, {
+                "$id": "finish",
+                "$type": "Beyond.Gameplay.DialogTreeFinishNode",
+            }],
+            "connections": [{
+                "$type": "Beyond.Gameplay.DialogTreeConnection",
+                "_sourceNode": {"$ref": "a"},
+                "_targetNode": {"$ref": "b"},
+            }, {
+                "$type": "Beyond.Gameplay.DialogTreeConnection",
+                "_sourceNode": {"$ref": "b"},
+                "_targetNode": {"$ref": "finish"},
+            }],
+        }
+
+        evidence = extract_dialog_tree_definition_evidence(
+            payload,
+            "opaque_parent",
+        )
+
+        self.assertEqual(evidence["entryLineIds"], ["opaque_line_a"])
+        self.assertEqual(evidence["terminalLineIds"], ["opaque_line_b"])
+        self.assertEqual(evidence["lineConnections"], [{
+            "fromLineId": "opaque_line_a",
+            "toLineId": "opaque_line_b",
+            "sourceNodeId": "a",
+            "targetNodeId": "b",
+        }])
+        self.assertEqual(evidence["nonLineConnectionCount"], 1)
         payload["_assetName"] = "dlg_fixture_1"
         payload["type"] = "Beyond.Gameplay.OtherAsset"
         self.assertIsNone(

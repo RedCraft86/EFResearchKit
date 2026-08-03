@@ -31,6 +31,21 @@ override those defaults for one run.
 - Use `--full-source-graph` only for exhaustive Unity-object/PathID work.
 - Use `--mission-pipeline-data-only` only when generated Story evidence is
   already current.
+- Canonical `export.bat` runs refresh and validate the source Story gap queue
+  after current partial-order and coverage reports are published, before
+  Mission Pipeline recovery cards are projected. Data-only runs reuse it.
+- Mission Pipeline resolves exact native receiver playback gates generically
+  through serialized `ActionHeader._validate` getter references. The resolver
+  walks reusable AND/OR/NOT/ALL and comparison trees to exact leaves; unknown,
+  missing, cyclic, and malformed children fail closed instead of receiving
+  object-specific rules.
+- Shipped-Lua Story playback is likewise corpus-driven: the Lua consumer audit
+  enumerates typed `GameAction` calls, exact literals, and simple
+  `Tables.<name>` row-field flows. A table field resolves only when the current
+  original table has one possible non-empty value; mission/quest ownership is
+  admitted only from the same resolved row. Mission Pipeline validates Lua and
+  table hashes and admits no case-folded match without a matching
+  installed-binary case-resolution audit.
 - Reuse Timeline/reference outputs only when their original inputs did not
   change.
 - The direct Story builder can take several minutes; allow 10–15 minutes for
@@ -68,6 +83,9 @@ Important Story components:
 - `timeline_action_evidence.py`: typed action/control evidence.
 - `mission_recovery.py`: mission and quest relationships.
 - `build_source_story_gap_queue.py`: actionable source-only recovery queue.
+- `build_spaceship_story_content_audit.py`: exact typed spacecraft DialogTree
+  and character profile-voice non-mission classification, refreshed by
+  `refresh_evidence.py`.
 
 ## Updates
 

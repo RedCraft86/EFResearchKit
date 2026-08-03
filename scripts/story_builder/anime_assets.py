@@ -258,13 +258,19 @@ def extract_dialog_tree_definition_evidence(
 
     node_type_counts: dict[str, int] = {}
     line_ids: list[str] = []
+    line_id_by_node_id: dict[str, str] = {}
+    node_type_by_id: dict[str, str] = {}
     option_ids: list[str] = []
+    runtime_option_types: list[str] = []
     option_group_count = 0
     branching_option_group_count = 0
     for node in nodes:
         if not isinstance(node, dict):
             continue
         node_type = str(node.get("$type") or "").strip()
+        node_id = str(node.get("$id") or "").strip()
+        if node_id and node_type:
+            node_type_by_id[node_id] = node_type
         if node_type:
             short_type = node_type.rsplit(".", 1)[-1]
             node_type_counts[short_type] = node_type_counts.get(short_type, 0) + 1
@@ -282,7 +288,15 @@ def extract_dialog_tree_definition_evidence(
             ).strip()
             if line_id and line_id not in line_ids:
                 line_ids.append(line_id)
+            if node_id and line_id:
+                line_id_by_node_id[node_id] = line_id
         if node_type == "Beyond.Gameplay.DialogTreeOptionNode":
+            for option in node.get("_normalOptions") or []:
+                if not isinstance(option, dict):
+                    continue
+                option_type = str(option.get("$type") or "").strip()
+                if option_type and option_type not in runtime_option_types:
+                    runtime_option_types.append(option_type)
             authored_options = [
                 str(row.get("_optionId") or "").strip()
                 for row in (node.get("_normalOptions") or [])
@@ -296,25 +310,63 @@ def extract_dialog_tree_definition_evidence(
                 if option_id not in option_ids:
                     option_ids.append(option_id)
 
-    typed_connection_count = sum(
-        1
-        for row in connections
-        if isinstance(row, dict)
-        and row.get("$type") == _DIALOG_TREE_CONNECTION_TYPE
-        and isinstance(row.get("_sourceNode"), dict)
-        and isinstance(row.get("_targetNode"), dict)
-        and row["_sourceNode"].get("$ref") is not None
-        and row["_targetNode"].get("$ref") is not None
-    )
+    typed_connections: list[tuple[str, str]] = []
+    for row in connections:
+        if (
+            not isinstance(row, dict)
+            or row.get("$type") != _DIALOG_TREE_CONNECTION_TYPE
+            or not isinstance(row.get("_sourceNode"), dict)
+            or not isinstance(row.get("_targetNode"), dict)
+            or row["_sourceNode"].get("$ref") is None
+            or row["_targetNode"].get("$ref") is None
+        ):
+            continue
+        typed_connections.append((
+            str(row["_sourceNode"]["$ref"]),
+            str(row["_targetNode"]["$ref"]),
+        ))
+    incoming_node_ids = {target for _source, target in typed_connections}
+    line_connections = [
+        {
+            "fromLineId": line_id_by_node_id[source],
+            "toLineId": line_id_by_node_id[target],
+            "sourceNodeId": source,
+            "targetNodeId": target,
+        }
+        for source, target in typed_connections
+        if source in line_id_by_node_id and target in line_id_by_node_id
+    ]
+    entry_line_ids = [
+        line_id_by_node_id[node_id]
+        for node_id in line_id_by_node_id
+        if node_id not in incoming_node_ids
+    ]
+    terminal_line_ids = [
+        line_id_by_node_id[source]
+        for source, target in typed_connections
+        if (
+            source in line_id_by_node_id
+            and node_type_by_id.get(target, "").endswith(
+                ".DialogTreeFinishNode"
+            )
+        )
+    ]
     return {
         "sceneKey": dialog_key,
         "assetName": dialog_key,
         "assetType": _DIALOG_TREE_TYPE,
         "lineIds": line_ids,
         "optionIds": option_ids,
+        "runtimeOptionTypes": runtime_option_types,
         "nodeCount": sum(node_type_counts.values()),
         "nodeTypeCounts": dict(sorted(node_type_counts.items())),
-        "connectionCount": typed_connection_count,
+        "connectionCount": len(typed_connections),
+        "lineConnections": line_connections,
+        "entryLineIds": entry_line_ids,
+        "terminalLineIds": terminal_line_ids,
+        "nonLineConnectionCount": (
+            len(typed_connections) - len(line_connections)
+        ),
         "optionGroupCount": option_group_count,
         "branchingOptionGroupCount": branching_option_group_count,
         "evidenceKind": "exact_dialog_tree_definition",
@@ -2010,38 +2062,92 @@ def recover_dialog_tree_prime_reachable_story_playback_carriers(
         dialog_key = _anime_tree_logical_stem(path)
         if eligible is not None and dialog_key not in eligible:
             continue
-        registry_row = dialog_id_registry.get(dialog_key)
-        if (
-            not dialog_key.startswith("dlg_")
-            or not isinstance(registry_row, dict)
-            or registry_row.get("registered") is not True
-            or registry_row.get("memoryPackRecordKey") is not True
-            or "memorypack_record_key"
-            not in (registry_row.get("registrationEvidence") or [])
-        ):
-            continue
-        payload = _load_anime_resource_payload(path)
-        if not isinstance(payload, dict):
-            continue
-        asset_name = str(payload.get("_assetName") or "").strip()
-        if asset_name != dialog_key:
-            continue
-        for record in _extract_dialog_tree_prime_reachable_story_playback_carriers(
+        out.extend(
+            _recover_dialog_tree_prime_reachable_carriers_from_path(
+                path,
+                dialog_key,
+                dialog_id_registry,
+                story_keys,
+                authored_text_ids,
+            )
+        )
+    out.sort(key=lambda row: (
+        str(row.get("storyKey") or ""),
+        str(row.get("dialogKey") or ""),
+        int(row.get("nodeIndex") or 0),
+        str(row.get("sourceFile") or ""),
+    ))
+    return out
+
+
+def _recover_dialog_tree_prime_reachable_carriers_from_path(
+    path: Path,
+    dialog_key: str,
+    dialog_id_registry: dict[str, dict],
+    story_keys: set[str],
+    authored_text_ids: set[str],
+) -> list[dict]:
+    """Parse one registered parent asset into exact prime-reachable carriers."""
+    registry_row = dialog_id_registry.get(dialog_key)
+    if (
+        not dialog_key.startswith("dlg_")
+        or not isinstance(registry_row, dict)
+        or registry_row.get("registered") is not True
+        or registry_row.get("memoryPackRecordKey") is not True
+        or "memorypack_record_key"
+        not in (registry_row.get("registrationEvidence") or [])
+        or _anime_tree_logical_stem(path) != dialog_key
+    ):
+        return []
+    payload = _load_anime_resource_payload(path)
+    if not isinstance(payload, dict):
+        return []
+    asset_name = str(payload.get("_assetName") or "").strip()
+    if asset_name != dialog_key:
+        return []
+    return [{
+        **record,
+        "assetName": asset_name,
+        "registeredDialogRoot": True,
+        "registrationEvidence": ["memorypack_record_key"],
+        "sourceFile": repo_rel(path),
+        "sourcePathId": path_id_export_path_id(path.stem),
+        "sourceType": "AnimeStudio TextAsset/DialogTree",
+    } for record in (
+        _extract_dialog_tree_prime_reachable_story_playback_carriers(
             payload,
             dialog_key,
             story_keys,
             authored_text_ids,
             set(dialog_id_registry),
-        ):
-            out.append({
-                **record,
-                "assetName": asset_name,
-                "registeredDialogRoot": True,
-                "registrationEvidence": ["memorypack_record_key"],
-                "sourceFile": repo_rel(path),
-                "sourcePathId": path_id_export_path_id(path.stem),
-                "sourceType": "AnimeStudio TextAsset/DialogTree",
-            })
+        )
+    )]
+
+
+def recover_dialog_tree_prime_reachable_carriers_for_parent(
+    dialog_id_registry: dict[str, dict],
+    parent_dialog_key: str,
+    story_keys: set[str],
+    authored_text_ids: set[str],
+) -> list[dict]:
+    """Re-derive exact carrier paths from one current registered parent.
+
+    This focused form is intended for fail-closed validators. It avoids a
+    corpus scan and never accepts a caller-provided source path as proof.
+    """
+    dialog_key = str(parent_dialog_key or "").strip()
+    if not dialog_key:
+        return []
+    path = _find_anime_tree_path(dialog_key)
+    if not path.is_file():
+        return []
+    out = _recover_dialog_tree_prime_reachable_carriers_from_path(
+        path,
+        dialog_key,
+        dialog_id_registry,
+        story_keys,
+        authored_text_ids,
+    )
     out.sort(key=lambda row: (
         str(row.get("storyKey") or ""),
         str(row.get("dialogKey") or ""),

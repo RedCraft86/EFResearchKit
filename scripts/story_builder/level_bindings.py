@@ -263,26 +263,101 @@ def _load_mission_levelscript_dialogs(mission_id: str, level_ids: list[str]) -> 
 LEVELSCRIPT_NATIVE_ACTION_MAPPING_ID = (
     "gameassembly-2026-07-11-cr-0x18b9217d0-actionbase-0x0000-0x0520"
 )
+# Current original GameAssembly.dll (SHA-256
+# 0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE)
+# proves that ActionMapRuntime stores actions in actionArray[action.id]. In
+# New at 0x183176bc0, the List<ActionBase> enumerator's MoveNext at +0xc3f is
+# followed by the action-id read at +0xc61 and indexed slot write at +0xce5;
+# iteration then resumes. TryGetActionNode at 0x1831705e0 performs the same
+# direct indexed lookup, while Append at 0x1875f4544 grows and writes the same
+# slot for dynamic additions. Repeated ids therefore shadow earlier physical
+# records rather than creating independently-addressable nodes.
+LEVELSCRIPT_NATIVE_INDEXED_SLOT_MAPPING_ID = (
+    "gameassembly-2026-08-02-actionmapruntime-indexed-last-serialized-slots"
+)
+# ActionMapRuntime.New applies the same indexed overwrite loop to
+# dataMap.headerList, actionList, and getterList. Keep the role-specific names
+# as stable output fields while sharing one binary-backed rule.
+LEVELSCRIPT_NATIVE_ACTION_SLOT_MAPPING_ID = (
+    LEVELSCRIPT_NATIVE_INDEXED_SLOT_MAPPING_ID
+)
+LEVELSCRIPT_NATIVE_HEADER_SLOT_MAPPING_ID = (
+    LEVELSCRIPT_NATIVE_INDEXED_SLOT_MAPPING_ID
+)
+LEVELSCRIPT_NATIVE_GETTER_SLOT_MAPPING_ID = (
+    LEVELSCRIPT_NATIVE_INDEXED_SLOT_MAPPING_ID
+)
+# In ActionExecutor._DoLogicTick (0x18316eab0), the failed branch after
+# TryGetActionNode at +0x864 reaches +0xfcb: it tries
+# _TryToRemoveInvalidStackLayer and otherwise calls _NormalReachEnd. A positive
+# continuation id with no active action-array slot is consequently an exact
+# runtime terminal, not evidence for an unparsed or adjacent physical record.
+LEVELSCRIPT_NATIVE_MISSING_ACTION_TERMINAL_MAPPING_ID = (
+    "gameassembly-2026-08-02-actionexecutor-missing-slot-normal-reach-end"
+)
+LEVELSCRIPT_NATIVE_EXACT_CONTROL_PATH_STATUSES = frozenset({
+    "exact_serialized_control_path",
+    "exact_serialized_control_path_equivalent_duplicates",
+    "exact_serialized_control_path_runtime_shadowing",
+})
+LEVELSCRIPT_NATIVE_CONTROL_RUNTIME_MAPPINGS = {
+    (0x002D, 0x09): {
+        "kind": "ordered_sequence",
+        "mappingId": "gameassembly-2026-08-02-branch-execute-0x18764d990",
+    },
+    (0x0495, 0x09): {
+        "kind": "parallel_fanout",
+        "mappingId": "gameassembly-2026-08-02-split-execute-0x18464b110",
+    },
+    (0x00FF, 0x0B): {
+        "kind": "conditional_choice",
+        "mappingId": "gameassembly-2026-08-02-ifelse-execute-0x183d3ad50",
+    },
+    (0x04BD, 0x0C): {
+        "kind": "conditional_choice",
+        "mappingId": "gameassembly-2026-08-02-switchint-execute-0x1849dcca0",
+    },
+    (0x04BF, 0x0C): {
+        "kind": "conditional_choice",
+        "mappingId": "gameassembly-2026-08-02-switchstring-execute-0x18765ba00",
+    },
+    (0x0501, 0x0A): {
+        "kind": "conditional_loop",
+        "mappingId": "gameassembly-2026-08-02-while-execute-0x18765e758",
+    },
+}
 LEVELSCRIPT_NATIVE_ACTION_NAMES: dict[tuple[int, int], str] = {
     (0x0001, 0x00): "ActionForSubGame_ConfirmLeaveSubGame",
+    (0x0010, 0x0A): "AddSystemUnlockOverride",
+    (0x0011, 0x10): "AddTrackingPoint",
+    (0x0014, 0x0A): "AirWallEnable",
+    (0x001E, 0x11): "BlackScreenFadeIn",
     (0x001F, 0x13): "BlackScreenFadeInAndOut",
     (0x0007, 0x0D): "AddBuffsToTargetsFromGodEntity",
     (0x0009, 0x0D): "AddBuffToTargetFromGodEntity",
     (0x000B, 0x0F): "AddCameraControlState",
     (0x000D, 0x0C): "AddGlobalBuffFromGodEntity",
     (0x002D, 0x09): "Branch",
+    (0x0030, 0x09): "BuildingPosHintHide",
+    (0x0031, 0x0C): "BuildingPosHintShow",
     (0x0041, 0x18): "CharacterPlayMontage",
     (0x004B, 0x0E): "CharSetSpMoveLoop",
     (0x006B, 0x0F): "CreateEffectAtPosition",
     (0x0089, 0x0B): "EnterCustomMusicMode",
     (0x008A, 0x25): "EnterDollyTrackCamera",
     (0x00B5, 0x0D): "ExitCamera",
+    (0x00C5, 0x0A): "FacGuideHintEnable",
+    (0x00C6, 0x0A): "FacHighlightBuilding",
+    (0x00CC, 0x0B): "FacOverrideCullingSetting",
+    (0x00D5, 0x0B): "FacSetInteractLockedState",
+    (0x00FD, 0x09): "HelloWorld_DevOnly",
     (0x00FF, 0x0B): "IfElseAction",
     (0x0410, 0x0A): "SetInt",
     (0x0310, 0x14): "NarrativeBlackScreenAction",
     (0x031E, 0x0C): "NpcPatrolStart",
     (0x0303, 0x09): "ManuallyAcceptClientGuideGroup",
     (0x0304, 0x09): "ManuallyStartGuideGroup",
+    (0x0305, 0x09): "ManuallyStopGuideGroup",
     (0x034A, 0x14): "Play3DRadio",
     (0x034B, 0x14): "Play3DRadioAndWait",
     (0x034C, 0x0C): "PlayAudiAtPosition",
@@ -297,6 +372,7 @@ LEVELSCRIPT_NATIVE_ACTION_NAMES: dict[tuple[int, int], str] = {
     (0x0378, 0x0A): "PreloadLevelSeqAction",
     (0x037E, 0x0A): "RaiseCustomLevelEvent",
     (0x0380, 0x0B): "RaiseCustomScriptEvent",
+    (0x038D, 0x09): "RemoveSystemUnlockOverride",
     (0x038E, 0x09): "RemoveTrackingPoint",
     (0x0392, 0x0B): "RequireSettlementShow",
     (0x035A, 0x0F): "PlayDialogAndHideSceneObjectAction",
@@ -322,6 +398,7 @@ LEVELSCRIPT_NATIVE_ACTION_NAMES: dict[tuple[int, int], str] = {
     (0x0480, 0x0F): "ShowLimitedGuide",
     (0x048C, 0x09): "ShowUIReadingPopPanel",
     (0x04F6, 0x08): "WaitForOneFrame",
+    (0x04F7, 0x09): "WaitForSeconds",
     (0x04F5, 0x09): "WaitForNpcProxyReady",
     (0x04F9, 0x0E): "WaitForSecondsInTriggerVolume",
     (0x04F0, 0x09): "WaitForCondition",
@@ -336,6 +413,12 @@ LEVELSCRIPT_NATIVE_ACTION_NAMES: dict[tuple[int, int], str] = {
     (0x04D2, 0x0A): "ToggleMainHudActionPlayIgnoreMainHud",
     (0x04DA, 0x09): "TravelPoleHandoverToCutscene",
     (0x0456, 0x0A): "SetOverrideSceneState",
+    (0x03FE, 0x09): "SetFacMode",
+    (0x03FF, 0x09): "SetFacTopView",
+    (0x0400, 0x0A): "SetFacTopViewCustomRange",
+    (0x0465, 0x0A): "SetString",
+    (0x0485, 0x0A): "ShowSceneDecorationNew",
+    (0x048D, 0x0A): "ShowUIToast",
 }
 LEVELSCRIPT_NATIVE_GETTER_MAPPING_ID = (
     "gameassembly-2026-07-11-cr-0x18413bed0-puregetter-0x0000-0x044e"
@@ -345,6 +428,8 @@ LEVELSCRIPT_NATIVE_GETTER_MAPPING_ID = (
 # confusing overlapping union-tag spaces or a future changed payload shape.
 LEVELSCRIPT_NATIVE_GETTER_NAMES: dict[tuple[int, int], str] = {
     (0x0004, 0x0A): "BooleanCompare",
+    (0x0013, 0x0A): "CheckLevelScriptStage",
+    (0x0016, 0x09): "CheckMissionOrQuestIsComplete",
     (0x001F, 0x0A): "CompareMissionState",
     (0x0049, 0x0A): "FloatNewCompare",
     (0x004E, 0x08): "GetConditionResult",
@@ -947,6 +1032,7 @@ def _prepare_levelscript_native_control_context(
     }
     action_buckets: dict[int, list[dict]] = defaultdict(list)
     getter_buckets: dict[int, list[dict]] = defaultdict(list)
+    header_buckets: dict[int, list[dict]] = defaultdict(list)
     for record in ordered:
         local_id = record.get("localId")
         role = str(membership.get(int(record.get("start") or 0)) or "")
@@ -954,6 +1040,8 @@ def _prepare_levelscript_native_control_context(
             action_buckets[local_id].append(record)
         elif isinstance(local_id, int) and role.startswith("getterList#"):
             getter_buckets[local_id].append(record)
+        elif isinstance(local_id, int) and role.startswith("headerList#"):
+            header_buckets[local_id].append(record)
     decoded_cache: dict[int, dict] = {}
 
     def decoded(record: dict) -> dict:
@@ -990,36 +1078,147 @@ def _prepare_levelscript_native_control_context(
             (detail.get("waitScriptPtr") or {}).get("mode"),
         )
 
-    # Authored files can repeat one local-id record byte-for-byte in separate
-    # serialized list fragments. Accept the id only when every record has the
-    # same typed tag/member count, texts, nextId, and decoded branch targets.
-    # Retain every offset so the graph can distinguish this from a physically
-    # unique record. Conflicting duplicates still fail closed.
-    action_by_local: dict[int, dict] = {}
-    equivalent_record_offsets: dict[int, list[int]] = {}
-    for local_id, bucket in action_buckets.items():
-        signatures = {control_signature(record) for record in bucket}
-        if len(signatures) != 1:
-            continue
-        action_by_local[local_id] = bucket[0]
-        if len(bucket) > 1:
-            equivalent_record_offsets[local_id] = sorted(
-                int(record.get("start") or 0) for record in bucket
+    def generic_signature(record: dict) -> tuple:
+        detail = decoded(record)
+        return (
+            levelscript_record_semantic_key(record),
+            record.get("nextId"),
+            tuple(_levelscript_record_texts(record)),
+            repr(sorted(detail.items())),
+        )
+
+    def indexed_runtime_slots(
+        buckets: dict[int, list[dict]],
+        signature,
+    ) -> tuple[dict[int, dict], dict[int, list[int]], dict[int, str], dict[int, list[int]]]:
+        """Apply ActionMapRuntime.New's shared indexed-array overwrite rule."""
+        active: dict[int, dict] = {}
+        shadowed: dict[int, list[int]] = {}
+        duplicate_status: dict[int, str] = {}
+        equivalent: dict[int, list[int]] = {}
+        for local_id, bucket in buckets.items():
+            active[local_id] = bucket[-1]
+            if len(bucket) <= 1:
+                continue
+            offsets = [int(record.get("start") or 0) for record in bucket]
+            signatures = {signature(record) for record in bucket}
+            shadowed[local_id] = offsets[:-1]
+            duplicate_status[local_id] = (
+                "equivalent" if len(signatures) == 1 else "different_payload"
             )
-    getter_by_local = {
-        local_id: bucket[0]
-        for local_id, bucket in getter_buckets.items()
-        if len(bucket) == 1
-    }
+            if len(signatures) == 1:
+                equivalent[local_id] = offsets
+        return active, shadowed, duplicate_status, equivalent
+
+    # GameAssembly enumerates all three serialized lists in order and writes
+    # nodeArray plus the role-specific array at node.id. This is one runtime
+    # container rule, not a special case for a known action or mission.
+    (
+        action_by_local,
+        runtime_shadowed_record_offsets,
+        runtime_duplicate_signature_status,
+        equivalent_record_offsets,
+    ) = indexed_runtime_slots(action_buckets, control_signature)
+    (
+        getter_by_local,
+        runtime_shadowed_getter_offsets,
+        runtime_getter_duplicate_status,
+        _equivalent_getter_offsets,
+    ) = indexed_runtime_slots(getter_buckets, generic_signature)
+    (
+        header_by_local,
+        runtime_shadowed_header_offsets,
+        runtime_header_duplicate_status,
+        _equivalent_header_offsets,
+    ) = indexed_runtime_slots(header_buckets, generic_signature)
     return {
         "ordered": ordered,
         "actionBuckets": dict(action_buckets),
         "actionByLocal": action_by_local,
         "getterByLocal": getter_by_local,
+        "headerBuckets": dict(header_buckets),
+        "headerByLocal": header_by_local,
         "equivalentRecordOffsets": equivalent_record_offsets,
+        "runtimeShadowedRecordOffsets": runtime_shadowed_record_offsets,
+        "runtimeDuplicateSignatureStatus": runtime_duplicate_signature_status,
+        "runtimeShadowedGetterRecordOffsets": runtime_shadowed_getter_offsets,
+        "runtimeGetterDuplicateSignatureStatus": runtime_getter_duplicate_status,
+        "runtimeShadowedHeaderRecordOffsets": runtime_shadowed_header_offsets,
+        "runtimeHeaderDuplicateSignatureStatus": runtime_header_duplicate_status,
+        "runtimeActionSlotMappingId": LEVELSCRIPT_NATIVE_ACTION_SLOT_MAPPING_ID,
+        "runtimeGetterSlotMappingId": LEVELSCRIPT_NATIVE_GETTER_SLOT_MAPPING_ID,
+        "runtimeHeaderSlotMappingId": LEVELSCRIPT_NATIVE_HEADER_SLOT_MAPPING_ID,
         "decodedByStart": decoded_cache,
         "nextStarts": next_starts,
     }
+
+
+def _levelscript_native_action_successors(
+    record: dict,
+    detail: dict,
+) -> list[tuple[str, int]]:
+    """Return only serialized, typed outgoing action edges for one record."""
+    edges: list[tuple[str, int]] = []
+    next_id = record.get("nextId")
+    if isinstance(next_id, int) and next_id > 0:
+        edges.append(("ActionBase.nextId", next_id))
+    pair = levelscript_record_semantic_key(record)
+    if pair == (0x002D, 0x09):
+        for index, local_id in enumerate(
+            detail.get("branchSequenceActionLocalIds") or []
+        ):
+            if isinstance(local_id, int) and local_id > 0:
+                edges.append((f"Branch.sequence[{index}]", local_id))
+    elif pair == (0x0495, 0x09):
+        for index, local_id in enumerate(detail.get("splitActionLocalIds") or []):
+            if isinstance(local_id, int) and local_id > 0:
+                edges.append((f"Split.actions[{index}]", local_id))
+    elif pair == (0x00FF, 0x0B):
+        for field_name, label in (
+            ("trueActionLocalId", "IfElseAction.trueAction"),
+            ("falseActionLocalId", "IfElseAction.falseAction"),
+        ):
+            local_id = detail.get(field_name)
+            if isinstance(local_id, int) and local_id > 0:
+                edges.append((label, local_id))
+    elif pair == (0x0501, 0x0A):
+        local_id = detail.get("whileDoActionLocalId")
+        if isinstance(local_id, int) and local_id > 0:
+            edges.append(("WhileAction.doAction", local_id))
+    elif pair == (0x04BD, 0x0C):
+        case_ids = detail.get("switchCaseActionLocalIds") or []
+        case_values = detail.get("switchCaseValues") or []
+        for index, (case_value, local_id) in enumerate(zip(case_values, case_ids)):
+            if isinstance(local_id, int) and local_id > 0:
+                edges.append((f"SwitchInt.case[{index}]={case_value}", local_id))
+        default_id = detail.get("switchDefaultActionLocalId")
+        if isinstance(default_id, int) and default_id > 0:
+            edges.append(("SwitchInt.default", default_id))
+    elif pair == (0x04BF, 0x0C):
+        case_ids = detail.get("switchStringCaseActionLocalIds") or []
+        case_values = detail.get("switchStringCaseValues") or []
+        for index, (case_value, local_id) in enumerate(zip(case_values, case_ids)):
+            if isinstance(local_id, int) and local_id > 0:
+                edges.append((f"SwitchString.case[{index}]={case_value}", local_id))
+        default_id = detail.get("switchStringDefaultActionLocalId")
+        if isinstance(default_id, int) and default_id > 0:
+            edges.append(("SwitchString.default", default_id))
+    elif pair == (0x04F9, 0x0E):
+        if (detail.get("waitScriptPtr") or {}).get("mode") == "current_script":
+            for field_name, label in (
+                (
+                    "waitSuccessActionLocalId",
+                    "WaitForSecondsInTriggerVolume.successAction",
+                ),
+                (
+                    "waitFailActionLocalId",
+                    "WaitForSecondsInTriggerVolume.failAction",
+                ),
+            ):
+                local_id = detail.get(field_name)
+                if isinstance(local_id, int) and local_id > 0:
+                    edges.append((label, local_id))
+    return list(dict.fromkeys(edges))
 
 
 def _levelscript_native_control_paths_to_record(
@@ -1032,7 +1231,9 @@ def _levelscript_native_control_paths_to_record(
 ) -> list[dict]:
     """Return exact ActionHeader/typed-branch paths to one action record.
 
-    Every traversed local id must resolve to exactly one actionList row.  The
+    Every traversed local id resolves to the active runtime action-array slot.
+    Repeated serialized ids resolve to their final list record, exactly as the
+    current original binary does; earlier records remain audit-only. The
     graph uses only authored ``ActionHeader.nextId``, ``ActionBase.nextId``,
     the current-build ordered ``Branch._idList``, ``Split.actions`` list,
     current-build ``IfElseAction`` true/false fields, and current-build
@@ -1053,7 +1254,15 @@ def _levelscript_native_control_paths_to_record(
     action_by_local = context.get("actionByLocal") or {}
     getter_by_local = context.get("getterByLocal") or {}
     equivalent_record_offsets = context.get("equivalentRecordOffsets") or {}
-    decoded_cache = context.get("decodedByStart") or {}
+    runtime_shadowed_record_offsets = (
+        context.get("runtimeShadowedRecordOffsets") or {}
+    )
+    runtime_duplicate_signature_status = (
+        context.get("runtimeDuplicateSignatureStatus") or {}
+    )
+    decoded_cache = context.get("decodedByStart")
+    if not isinstance(decoded_cache, dict):
+        decoded_cache = {}
     next_starts = context.get("nextStarts") or {}
     downstream_cache = context.setdefault("downstreamControlPaths", {})
     target_local_id = target_record.get("localId")
@@ -1077,62 +1286,31 @@ def _levelscript_native_control_paths_to_record(
         return decoded_cache[start]
 
     def successors(record: dict) -> list[tuple[str, int]]:
-        edges: list[tuple[str, int]] = []
-        next_id = record.get("nextId")
-        if isinstance(next_id, int) and next_id >= 0:
-            edges.append(("ActionBase.nextId", next_id))
-        pair = levelscript_record_semantic_key(record)
-        detail = decoded(record)
-        if pair == (0x002D, 0x09):
-            for index, local_id in enumerate(
-                detail.get("branchSequenceActionLocalIds") or []
-            ):
-                if isinstance(local_id, int):
-                    edges.append((f"Branch.sequence[{index}]", local_id))
-        elif pair == (0x0495, 0x09):
-            for index, local_id in enumerate(detail.get("splitActionLocalIds") or []):
-                if isinstance(local_id, int):
-                    edges.append((f"Split.actions[{index}]", local_id))
-        elif pair == (0x00FF, 0x0B):
-            for field_name, label in (
-                ("trueActionLocalId", "IfElseAction.trueAction"),
-                ("falseActionLocalId", "IfElseAction.falseAction"),
-            ):
-                local_id = detail.get(field_name)
-                if isinstance(local_id, int):
-                    edges.append((label, local_id))
-        elif pair == (0x0501, 0x0A):
-            local_id = detail.get("whileDoActionLocalId")
-            if isinstance(local_id, int):
-                edges.append(("WhileAction.doAction", local_id))
-        elif pair == (0x04BD, 0x0C):
-            case_ids = detail.get("switchCaseActionLocalIds") or []
-            case_values = detail.get("switchCaseValues") or []
-            for index, (case_value, local_id) in enumerate(zip(case_values, case_ids)):
-                if isinstance(local_id, int) and local_id > 0:
-                    edges.append((f"SwitchInt.case[{index}]={case_value}", local_id))
-            default_id = detail.get("switchDefaultActionLocalId")
-            if isinstance(default_id, int) and default_id > 0:
-                edges.append(("SwitchInt.default", default_id))
-        elif pair == (0x04BF, 0x0C):
-            case_ids = detail.get("switchStringCaseActionLocalIds") or []
-            case_values = detail.get("switchStringCaseValues") or []
-            for index, (case_value, local_id) in enumerate(zip(case_values, case_ids)):
-                if isinstance(local_id, int) and local_id > 0:
-                    edges.append((f"SwitchString.case[{index}]={case_value}", local_id))
-            default_id = detail.get("switchStringDefaultActionLocalId")
-            if isinstance(default_id, int) and default_id > 0:
-                edges.append(("SwitchString.default", default_id))
-        elif pair == (0x04F9, 0x0E):
-            if (detail.get("waitScriptPtr") or {}).get("mode") == "current_script":
-                for field_name, label in (
-                    ("waitSuccessActionLocalId", "WaitForSecondsInTriggerVolume.successAction"),
-                    ("waitFailActionLocalId", "WaitForSecondsInTriggerVolume.failAction"),
-                ):
-                    local_id = detail.get(field_name)
-                    if isinstance(local_id, int) and local_id > 0:
-                        edges.append((label, local_id))
-        return list(dict.fromkeys(edges))
+        return _levelscript_native_action_successors(record, decoded(record))
+
+    getter_detail_kinds = (
+        "booleanCompare",
+        "checkLevelScriptStage",
+        "checkMissionOrQuestIsComplete",
+        "floatNewCompare",
+        "getConditionResult",
+        "intCompare",
+        "intEqual",
+        "intRandom",
+        "getterInt",
+        "getLevelScriptStage",
+        "getLevelScriptPropertyGenericBool",
+        "isEndminGender",
+    )
+
+    def semantic_getter_detail(
+        getter_detail: dict,
+    ) -> tuple[str, dict]:
+        for detail_kind in getter_detail_kinds:
+            detail = getter_detail.get(detail_kind)
+            if isinstance(detail, dict) and detail:
+                return detail_kind, detail
+        return "", {}
 
     def compact_step(record: dict, edge: str) -> dict:
         code = int(record.get("code") or 0)
@@ -1167,46 +1345,42 @@ def _levelscript_native_control_paths_to_record(
                     "getterTexts": _levelscript_record_texts(getter)[:8],
                     "nativeMappingId": LEVELSCRIPT_NATIVE_GETTER_MAPPING_ID,
                 })
-                for detail_kind in (
-                    "booleanCompare",
-                    "floatNewCompare",
-                    "intCompare",
-                    "intEqual",
-                    "intRandom",
-                    "getterInt",
-                    "getLevelScriptStage",
-                    "getLevelScriptPropertyGenericBool",
-                    "isEndminGender",
-                ):
-                    predicate_detail = getter_detail.get(detail_kind)
-                    if predicate_detail:
-                        predicate["detailKind"] = detail_kind
-                        predicate["detail"] = predicate_detail
-                        source_getter_id = predicate_detail.get(
-                            "valueAGetterLocalId"
+                detail_kind, predicate_detail = semantic_getter_detail(
+                    getter_detail
+                )
+                if predicate_detail:
+                    predicate["detailKind"] = detail_kind
+                    predicate["detail"] = predicate_detail
+                    source_getter_id = predicate_detail.get(
+                        "valueAGetterLocalId"
+                    )
+                    source_getter = getter_by_local.get(source_getter_id)
+                    if source_getter:
+                        source_pair = levelscript_record_semantic_key(source_getter)
+                        source_decoded = decoded(source_getter)
+                        source_detail_kind, source_detail = semantic_getter_detail(
+                            source_decoded
                         )
-                        source_getter = getter_by_local.get(source_getter_id)
-                        if source_getter:
-                            source_pair = levelscript_record_semantic_key(source_getter)
-                            predicate["sourceGetter"] = {
-                                key: value
-                                for key, value in {
-                                    "getterLocalId": source_getter_id,
-                                    "getterName": LEVELSCRIPT_NATIVE_GETTER_NAMES.get(
-                                        source_pair, ""
-                                    ),
-                                    "getterUnionTag": f"0x{source_pair[0]:04x}",
-                                    "getterSerializedMemberCount": source_pair[1],
-                                    "getterTexts": _levelscript_record_texts(
-                                        source_getter
-                                    )[:8],
-                                    "getterInt": decoded(source_getter).get(
-                                        "getterInt"
-                                    ) or {},
-                                }.items()
-                                if value not in ("", None, [], {})
-                            }
-                        break
+                        predicate["sourceGetter"] = {
+                            key: value
+                            for key, value in {
+                                "getterLocalId": source_getter_id,
+                                "getterName": LEVELSCRIPT_NATIVE_GETTER_NAMES.get(
+                                    source_pair, ""
+                                ),
+                                "getterUnionTag": f"0x{source_pair[0]:04x}",
+                                "getterSerializedMemberCount": source_pair[1],
+                                "getterTexts": _levelscript_record_texts(
+                                    source_getter
+                                )[:8],
+                                "detailKind": source_detail_kind,
+                                "detail": source_detail,
+                                # Retained for existing consumers while the
+                                # generic detail pair covers every getter.
+                                "getterInt": source_decoded.get("getterInt") or {},
+                            }.items()
+                            if value not in ("", None, [], {})
+                        }
                 compare = getter_detail.get("compareMissionState") or {}
                 if compare:
                     predicate["compareMissionState"] = compare
@@ -1269,6 +1443,27 @@ def _levelscript_native_control_paths_to_record(
                 "equivalentRecordOffsets": equivalent_record_offsets.get(
                     int(record.get("localId"))
                 ) if isinstance(record.get("localId"), int) else None,
+                "runtimeShadowedRecordOffsets": (
+                    runtime_shadowed_record_offsets.get(
+                        int(record.get("localId"))
+                    )
+                    if isinstance(record.get("localId"), int)
+                    else None
+                ),
+                "runtimeDuplicateSignatureStatus": (
+                    runtime_duplicate_signature_status.get(
+                        int(record.get("localId"))
+                    )
+                    if isinstance(record.get("localId"), int)
+                    else None
+                ),
+                "runtimeActionSlotMappingId": (
+                    LEVELSCRIPT_NATIVE_ACTION_SLOT_MAPPING_ID
+                    if isinstance(record.get("localId"), int)
+                    and int(record.get("localId"))
+                    in runtime_shadowed_record_offsets
+                    else None
+                ),
             }.items()
             if value not in ("", None, [], {})
         }
@@ -1276,12 +1471,12 @@ def _levelscript_native_control_paths_to_record(
     def downstream_control_paths(record: dict) -> list[list[dict]]:
         """Return bounded exact paths from one action to every reachable action.
 
-        These paths use the same typed successor decoder and duplicate-local-id
-        gate as event-to-action traversal.  Publishing every reachable prefix,
+        These paths use the same typed successor decoder and runtime indexed-
+        slot selection as event-to-action traversal. Publishing every reachable prefix,
         rather than only leaf paths, lets downstream consumers prove branch
         convergence without treating serialized record adjacency as control
-        flow.  Cycles are bounded per path and conflicting duplicate targets
-        remain absent from ``action_by_local``.
+        flow. Cycles are bounded per path and shadowed physical records never
+        become independently addressable nodes.
         """
         start_local_id = record.get("localId")
         if isinstance(start_local_id, int) and start_local_id in downstream_cache:
@@ -1364,9 +1559,15 @@ def _levelscript_native_control_paths_to_record(
                     len(step.get("equivalentRecordOffsets") or []) > 1
                     for step in path
                 )
+                has_runtime_shadowing = any(
+                    step.get("runtimeShadowedRecordOffsets")
+                    for step in path
+                )
                 paths.append({
                     "status": (
-                        "exact_serialized_control_path_equivalent_duplicates"
+                        "exact_serialized_control_path_runtime_shadowing"
+                        if has_runtime_shadowing
+                        else "exact_serialized_control_path_equivalent_duplicates"
                         if has_equivalent_duplicates
                         else "exact_serialized_control_path"
                     ),
@@ -1412,6 +1613,581 @@ def _levelscript_native_control_paths_to_record(
                     visited | {next_local_id},
                 ))
     return paths
+
+
+def decode_levelscript_native_action_topology(
+    data: bytes,
+) -> tuple[dict, dict | None]:
+    """Decode one complete serialized LevelScript action/event graph.
+
+    The graph uses only ActionSerializedMap membership, ActionHeader.nextId,
+    ActionBase.nextId, and the typed control fields shared with native Story
+    control-path recovery. Record adjacency and text naming never create an
+    edge. Repeated action ids follow the current original runtime's indexed-slot
+    contract: the final serialized actionList record is active and earlier
+    physical records are retained as shadowed audit evidence.
+    """
+    if not data:
+        diagnostic = {
+            "validator": "levelScriptNativeActionTopology",
+            "gate": "nonemptyLevelScriptPayload",
+            "expected": {"payloadBytesGreaterThan": 0},
+            "actual": {"payloadBytes": 0},
+        }
+        return {
+            "schema": "levelScriptNativeActionTopology.v4",
+            "status": "unavailable_fail_closed",
+            "validatorDiagnostic": diagnostic,
+            "actionControlFlowEvidence": False,
+            "storyOrderEvidence": False,
+        }, diagnostic
+
+    tagged_strings = _extract_levelscript_tagged_ascii_strings(data)
+    plain_strings = _extract_levelscript_plain_ascii_strings(
+        data,
+        tagged_offsets={int(row.get("offset") or 0) for row in tagged_strings},
+    )
+    records = extract_levelscript_uid_records(
+        data,
+        tagged_strings,
+        plain_strings,
+    )
+    action_map, membership = levelscript_action_map_membership(data, records)
+    action_records = [
+        record
+        for record in records
+        if str(membership.get(int(record.get("start") or 0)) or "").startswith(
+            "actionList#"
+        )
+    ]
+    header_records = [
+        record
+        for record in records
+        if str(membership.get(int(record.get("start") or 0)) or "").startswith(
+            "headerList#"
+        )
+    ]
+    list_counts = action_map.get("listCounts") or {}
+    empty_present_map = (
+        action_map.get("status") == "present"
+        and list_counts.get("actionList") == 0
+    )
+    absent_map = action_map.get("status") != "present"
+    if (empty_present_map or absent_map) and not action_records and not header_records:
+        empty_status = (
+            "exact_empty_action_map" if empty_present_map else "exact_no_action_map"
+        )
+        return {
+            "schema": "levelScriptNativeActionTopology.v4",
+            "status": empty_status,
+            "physicalActionRecordCount": 0,
+            "actionNodeCount": 0,
+            "eventRootCount": 0,
+            "physicalHeaderRecordCount": 0,
+            "runtimeShadowedHeaderRecordCount": 0,
+            "runtimeShadowedGetterRecordCount": 0,
+            "runtimeShadowedIndexedRecordCount": 0,
+            "runtimeShadowedIndexedLocalIdCount": 0,
+            "edgeCount": 0,
+            "typedBranchNodeCount": 0,
+            "orderedSequenceNodeCount": 0,
+            "parallelFanoutNodeCount": 0,
+            "conditionalBranchNodeCount": 0,
+            "loopNodeCount": 0,
+            "actionMergeNodeCount": 0,
+            "eventEntryConvergenceCount": 0,
+            "orphanRootActionCount": 0,
+            "cycleCount": 0,
+            "actionTypeCounts": {},
+            "eventTypeCounts": {},
+            "unmappedActionTypeCounts": {},
+            "eventRoots": [],
+            "actions": [],
+            "edges": [],
+            "cycleComponents": [],
+            "actionControlFlowEvidence": True,
+            "storyOrderEvidence": False,
+            "eventRootRuntimeMode": "no_serialized_event_roots",
+            "controlBoundary": (
+                "the original file has no serialized action/event graph; trigger-volume "
+                "geometry does not supply an action or Story edge"
+            ),
+        }, None
+
+    context = _prepare_levelscript_native_control_context(
+        data,
+        records,
+        membership,
+    )
+    action_buckets = context.get("actionBuckets") or {}
+    action_by_local = context.get("actionByLocal") or {}
+    header_by_local = context.get("headerByLocal") or {}
+    equivalent_offsets = context.get("equivalentRecordOffsets") or {}
+    shadowed_offsets = context.get("runtimeShadowedRecordOffsets") or {}
+    shadowed_header_offsets = (
+        context.get("runtimeShadowedHeaderRecordOffsets") or {}
+    )
+    shadowed_getter_offsets = (
+        context.get("runtimeShadowedGetterRecordOffsets") or {}
+    )
+    duplicate_signature_status = (
+        context.get("runtimeDuplicateSignatureStatus") or {}
+    )
+    next_starts = context.get("nextStarts") or {}
+    decoded_cache = context.get("decodedByStart")
+    if not isinstance(decoded_cache, dict):
+        decoded_cache = {}
+    def decoded(record: dict) -> dict:
+        start = int(record.get("start") or 0)
+        if start not in decoded_cache:
+            decoded_cache[start] = decode_levelscript_record_payload(
+                data,
+                record,
+                next_start=next_starts.get(start),
+                action_map_role=str(membership.get(start) or ""),
+            )
+        return decoded_cache[start]
+
+    failures: list[dict] = []
+    if action_map.get("status") != "present":
+        failures.append({
+            "check": "actionMapStatus",
+            "expected": "present",
+            "actual": action_map.get("status"),
+        })
+    if (
+        isinstance(list_counts.get("actionList"), int)
+        and list_counts.get("actionList") != len(action_records)
+    ):
+        failures.append({
+            "check": "physicalActionRecordCount",
+            "expected": list_counts.get("actionList"),
+            "actual": len(action_records),
+        })
+    if (
+        isinstance(list_counts.get("headerList"), int)
+        and list_counts.get("headerList") != len(header_records)
+    ):
+        failures.append({
+            "check": "physicalHeaderRecordCount",
+            "expected": list_counts.get("headerList"),
+            "actual": len(header_records),
+        })
+    edges: list[dict] = []
+    invalid_targets: list[dict] = []
+    runtime_terminal_targets: list[dict] = []
+    event_rows: list[dict] = []
+    event_type_counts: Counter[str] = Counter()
+    event_priority_counts: Counter[int] = Counter()
+    event_trigger_active_during_counts: Counter[int] = Counter()
+    event_filter_mode_counts: Counter[int] = Counter()
+    for header in sorted(
+        header_by_local.values(),
+        key=lambda row: int(row.get("start") or 0),
+    ):
+        detail = decoded(header)
+        action_header = detail.get("actionHeader") or {}
+        target_id = action_header.get("nextId")
+        header_name = levelscript_native_header_name(
+            header,
+            allow_union_tag_fallback=True,
+        )
+        if not header_name:
+            failures.append({
+                "check": "mappedNativeHeaderType",
+                "recordOffset": int(header.get("start") or 0),
+                "unionTag": header.get("unionTag"),
+                "serializedMemberCount": header.get("serializedMemberCount"),
+            })
+        if not isinstance(target_id, int):
+            invalid_targets.append({
+                "sourceKind": "event",
+                "sourceLocalId": header.get("localId"),
+                "relation": "ActionHeader.nextId",
+                "targetActionLocalId": target_id,
+            })
+        elif target_id > 0 and target_id not in action_by_local:
+            runtime_terminal_targets.append({
+                "sourceKind": "event",
+                "sourceLocalId": header.get("localId"),
+                "relation": "ActionHeader.nextId",
+                "targetActionLocalId": target_id,
+                "terminalKind": "missing_runtime_action_slot",
+                "nativeMappingId": (
+                    LEVELSCRIPT_NATIVE_MISSING_ACTION_TERMINAL_MAPPING_ID
+                ),
+            })
+        elif target_id > 0:
+            edges.append({
+                "sourceKind": "event",
+                "sourceLocalId": header.get("localId"),
+                "targetActionLocalId": target_id,
+                "relation": "ActionHeader.nextId",
+            })
+        if header_name:
+            event_type_counts[header_name] += 1
+        for value, counts in (
+            (action_header.get("priority"), event_priority_counts),
+            (
+                action_header.get("triggerActiveDuring"),
+                event_trigger_active_during_counts,
+            ),
+            (action_header.get("filterMode"), event_filter_mode_counts),
+        ):
+            if isinstance(value, int):
+                counts[value] += 1
+        pair = levelscript_record_semantic_key(header)
+        local_id = header.get("localId")
+        event_rows.append({
+            key: value
+            for key, value in {
+                "localId": header.get("localId"),
+                "recordOffset": int(header.get("start") or 0),
+                "recordOffsetHex": f"0x{int(header.get('start') or 0):x}",
+                "headerName": header_name,
+                "unionTag": f"0x{pair[0]:04x}",
+                "serializedMemberCount": pair[1],
+                "texts": _levelscript_record_texts(header)[:8],
+                "nextActionLocalId": target_id,
+                "priority": action_header.get("priority"),
+                "triggerActiveDuring": action_header.get(
+                    "triggerActiveDuring"
+                ),
+                "filterMode": action_header.get("filterMode"),
+                "filterMask": action_header.get("filterMask"),
+                "filterLevel": action_header.get("filterLevel"),
+                "eventDetail": detail.get("nativeEventDetail") or {},
+                "runtimeShadowedRecordOffsets": (
+                    shadowed_header_offsets.get(local_id)
+                ),
+                "runtimeHeaderSlotMappingId": (
+                    LEVELSCRIPT_NATIVE_HEADER_SLOT_MAPPING_ID
+                    if local_id in shadowed_header_offsets
+                    else None
+                ),
+            }.items()
+            if value not in (None, "", [], {})
+        })
+
+    action_rows: list[dict] = []
+    action_type_counts: Counter[str] = Counter()
+    unmapped_action_counts: Counter[str] = Counter()
+    control_kind_counts: Counter[str] = Counter()
+    outgoing_by_action: dict[int, set[int]] = defaultdict(set)
+    incoming_action: Counter[int] = Counter()
+    incoming_total: Counter[int] = Counter(
+        edge["targetActionLocalId"] for edge in edges
+    )
+    selected_detail_fields = (
+        "branchSequenceActionLocalIds",
+        "splitActionLocalIds",
+        "conditionGetterLocalId",
+        "conditionParam",
+        "trueActionLocalId",
+        "falseActionLocalId",
+        "whileDoActionLocalId",
+        "switchValueGetterLocalId",
+        "switchValueParam",
+        "switchCaseValues",
+        "switchCaseActionLocalIds",
+        "switchDefaultActionLocalId",
+        "switchStringValueGetterLocalId",
+        "switchStringValueParam",
+        "switchStringCaseValues",
+        "switchStringCaseActionLocalIds",
+        "switchStringDefaultActionLocalId",
+        "waitSuccessActionLocalId",
+        "waitFailActionLocalId",
+        "guideId",
+        "propertyKeys",
+        "startDialogAction",
+        "play3DRadio",
+        "callServer",
+        "raiseCustomScriptEvent",
+        "manualControl",
+    )
+    for local_id, record in sorted(
+        action_by_local.items(),
+        key=lambda item: int(item[1].get("start") or 0),
+    ):
+        detail = decoded(record)
+        pair = levelscript_record_semantic_key(record)
+        action_name = LEVELSCRIPT_NATIVE_ACTION_NAMES.get(pair, "")
+        control_runtime = LEVELSCRIPT_NATIVE_CONTROL_RUNTIME_MAPPINGS.get(pair) or {}
+        control_kind = str(control_runtime.get("kind") or "")
+        if control_kind:
+            control_kind_counts[control_kind] += 1
+        type_label = action_name or f"0x{pair[0]:04x}/0x{pair[1]:02x}"
+        action_type_counts[type_label] += 1
+        if not action_name:
+            unmapped_action_counts[type_label] += 1
+        successors = _levelscript_native_action_successors(record, detail)
+        for relation, target_id in successors:
+            if target_id not in action_by_local:
+                runtime_terminal_targets.append({
+                    "sourceKind": "action",
+                    "sourceLocalId": local_id,
+                    "relation": relation,
+                    "targetActionLocalId": target_id,
+                    "terminalKind": "missing_runtime_action_slot",
+                    "nativeMappingId": (
+                        LEVELSCRIPT_NATIVE_MISSING_ACTION_TERMINAL_MAPPING_ID
+                    ),
+                })
+                continue
+            edges.append({
+                "sourceKind": "action",
+                "sourceLocalId": local_id,
+                "targetActionLocalId": target_id,
+                "relation": relation,
+            })
+            outgoing_by_action[local_id].add(target_id)
+            incoming_action[target_id] += 1
+            incoming_total[target_id] += 1
+        control_detail = {
+            field: detail[field]
+            for field in selected_detail_fields
+            if detail.get(field) not in (None, "", [], {})
+        }
+        action_rows.append({
+            key: value
+            for key, value in {
+                "localId": local_id,
+                "recordOffset": int(record.get("start") or 0),
+                "recordOffsetHex": f"0x{int(record.get('start') or 0):x}",
+                "actionMapRole": membership.get(int(record.get("start") or 0)),
+                "actionName": action_name,
+                "recordClass": LEVELSCRIPT_OPCODE_TABLE.get(pair, ""),
+                "controlKind": control_kind,
+                "controlRuntimeMappingId": control_runtime.get("mappingId"),
+                "unionTag": f"0x{pair[0]:04x}",
+                "serializedMemberCount": pair[1],
+                "texts": _levelscript_record_texts(record)[:8],
+                "nextActionLocalId": (
+                    record.get("nextId")
+                    if isinstance(record.get("nextId"), int)
+                    and record.get("nextId") >= 0
+                    else None
+                ),
+                "controlDetail": control_detail,
+                "equivalentRecordOffsets": equivalent_offsets.get(local_id),
+                "runtimeShadowedRecordOffsets": shadowed_offsets.get(local_id),
+                "runtimeDuplicateSignatureStatus": (
+                    duplicate_signature_status.get(local_id)
+                ),
+                "runtimeActionSlotMappingId": (
+                    LEVELSCRIPT_NATIVE_ACTION_SLOT_MAPPING_ID
+                    if local_id in shadowed_offsets
+                    else None
+                ),
+            }.items()
+            if value not in (None, "", [], {})
+        })
+
+    if invalid_targets:
+        failures.append({
+            "check": "allSerializedControlTargetsDecodeAsIntegers",
+            "expected": [],
+            "actual": invalid_targets[:16],
+            "failureCount": len(invalid_targets),
+        })
+    if failures:
+        diagnostic = {
+            "validator": "levelScriptNativeActionTopology",
+            "gate": "completeSerializedActionEventGraph",
+            "expected": {
+                "actionMapStatus": "present",
+                "physicalCountsMatchSerializedLists": True,
+                "repeatedActionLocalIdsUseRuntimeLastSerializedSlot": True,
+                "repeatedHeaderLocalIdsUseRuntimeLastSerializedSlot": True,
+                "allHeaderTypesMapped": True,
+                "allControlTargetsDecodeAsIntegers": True,
+            },
+            "actual": {
+                "actionMapStatus": action_map.get("status"),
+                "serializedListCounts": list_counts,
+                "physicalActionRecordCount": len(action_records),
+                "physicalHeaderRecordCount": len(header_records),
+                "failures": failures[:16],
+            },
+        }
+        return {
+            "schema": "levelScriptNativeActionTopology.v4",
+            "status": "unavailable_fail_closed",
+            "physicalActionRecordCount": len(action_records),
+            "actionNodeCount": len(action_by_local),
+            "eventRootCount": len(header_records),
+            "validatorDiagnostic": diagnostic,
+            "actionControlFlowEvidence": False,
+            "storyOrderEvidence": False,
+        }, diagnostic
+
+    edges = [
+        dict(signature)
+        for signature in sorted({
+            tuple(sorted(edge.items())) for edge in edges
+        })
+    ]
+    adjacency = {
+        local_id: sorted(outgoing_by_action.get(local_id) or [])
+        for local_id in action_by_local
+    }
+    tarjan_index = 0
+    stack: list[int] = []
+    on_stack: set[int] = set()
+    indices: dict[int, int] = {}
+    lowlinks: dict[int, int] = {}
+    components: list[list[int]] = []
+
+    def visit(local_id: int) -> None:
+        nonlocal tarjan_index
+        indices[local_id] = tarjan_index
+        lowlinks[local_id] = tarjan_index
+        tarjan_index += 1
+        stack.append(local_id)
+        on_stack.add(local_id)
+        for target_id in adjacency.get(local_id) or []:
+            if target_id not in indices:
+                visit(target_id)
+                lowlinks[local_id] = min(lowlinks[local_id], lowlinks[target_id])
+            elif target_id in on_stack:
+                lowlinks[local_id] = min(lowlinks[local_id], indices[target_id])
+        if lowlinks[local_id] != indices[local_id]:
+            return
+        component: list[int] = []
+        while stack:
+            member = stack.pop()
+            on_stack.remove(member)
+            component.append(member)
+            if member == local_id:
+                break
+        components.append(sorted(component))
+
+    for local_id in sorted(action_by_local):
+        if local_id not in indices:
+            visit(local_id)
+    cycle_components = [
+        component
+        for component in components
+        if len(component) > 1
+        or (
+            len(component) == 1
+            and component[0] in outgoing_by_action.get(component[0], set())
+        )
+    ]
+    orphan_ids = sorted(
+        local_id for local_id in action_by_local if incoming_total[local_id] == 0
+    )
+    runtime_shadowed_indexed_record_count = sum(
+        len(offsets)
+        for role_offsets in (
+            shadowed_offsets,
+            shadowed_header_offsets,
+            shadowed_getter_offsets,
+        )
+        for offsets in role_offsets.values()
+    )
+    runtime_shadowed_indexed_local_id_count = sum(
+        len(role_offsets)
+        for role_offsets in (
+            shadowed_offsets,
+            shadowed_header_offsets,
+            shadowed_getter_offsets,
+        )
+    )
+    return {
+        "schema": "levelScriptNativeActionTopology.v4",
+        "status": (
+            "exact_complete_action_map_with_runtime_shadowing"
+            if runtime_shadowed_indexed_record_count
+            else "exact_complete_action_map"
+        ),
+        "physicalActionRecordCount": len(action_records),
+        "actionNodeCount": len(action_by_local),
+        "runtimeShadowedActionRecordCount": sum(
+            len(offsets) for offsets in shadowed_offsets.values()
+        ),
+        "runtimeShadowedActionLocalIdCount": len(shadowed_offsets),
+        "runtimeDifferentPayloadShadowLocalIdCount": sum(
+            1
+            for status in duplicate_signature_status.values()
+            if status == "different_payload"
+        ),
+        "physicalHeaderRecordCount": len(header_records),
+        "eventRootCount": len(event_rows),
+        "runtimeShadowedHeaderRecordCount": sum(
+            len(offsets) for offsets in shadowed_header_offsets.values()
+        ),
+        "runtimeShadowedHeaderLocalIdCount": len(shadowed_header_offsets),
+        "runtimeShadowedGetterRecordCount": sum(
+            len(offsets) for offsets in shadowed_getter_offsets.values()
+        ),
+        "runtimeShadowedGetterLocalIdCount": len(shadowed_getter_offsets),
+        "runtimeShadowedIndexedRecordCount": (
+            runtime_shadowed_indexed_record_count
+        ),
+        "runtimeShadowedIndexedLocalIdCount": (
+            runtime_shadowed_indexed_local_id_count
+        ),
+        "edgeCount": len(edges),
+        "runtimeTerminalTargetCount": len(runtime_terminal_targets),
+        "runtimeTerminalTargets": runtime_terminal_targets,
+        "typedBranchNodeCount": sum(
+            control_kind_counts[kind]
+            for kind in ("parallel_fanout", "conditional_choice")
+        ),
+        "orderedSequenceNodeCount": control_kind_counts["ordered_sequence"],
+        "parallelFanoutNodeCount": control_kind_counts["parallel_fanout"],
+        "conditionalBranchNodeCount": control_kind_counts["conditional_choice"],
+        "loopNodeCount": control_kind_counts["conditional_loop"],
+        "actionMergeNodeCount": sum(
+            1 for count in incoming_action.values() if count > 1
+        ),
+        "eventEntryConvergenceCount": sum(
+            1 for count in incoming_total.values() if count > 1
+        ),
+        "orphanRootActionCount": len(orphan_ids),
+        "orphanRootActionLocalIds": orphan_ids,
+        "cycleCount": len(cycle_components),
+        "cycleComponents": cycle_components,
+        "actionTypeCounts": dict(sorted(action_type_counts.items())),
+        "eventTypeCounts": dict(sorted(event_type_counts.items())),
+        "eventPriorityCounts": {
+            str(key): value for key, value in sorted(event_priority_counts.items())
+        },
+        "eventTriggerActiveDuringCounts": {
+            str(key): value
+            for key, value in sorted(event_trigger_active_during_counts.items())
+        },
+        "eventFilterModeCounts": {
+            str(key): value
+            for key, value in sorted(event_filter_mode_counts.items())
+        },
+        "unmappedActionTypeCounts": dict(sorted(unmapped_action_counts.items())),
+        "eventRoots": event_rows,
+        "actions": action_rows,
+        "edges": edges,
+        "nativeActionMappingId": LEVELSCRIPT_NATIVE_ACTION_MAPPING_ID,
+        "runtimeActionSlotMappingId": LEVELSCRIPT_NATIVE_ACTION_SLOT_MAPPING_ID,
+        "runtimeHeaderSlotMappingId": LEVELSCRIPT_NATIVE_HEADER_SLOT_MAPPING_ID,
+        "runtimeGetterSlotMappingId": LEVELSCRIPT_NATIVE_GETTER_SLOT_MAPPING_ID,
+        "runtimeMissingActionTerminalMappingId": (
+            LEVELSCRIPT_NATIVE_MISSING_ACTION_TERMINAL_MAPPING_ID
+        ),
+        "nativeHeaderMappingId": LEVELSCRIPT_NATIVE_HEADER_MAPPING_ID,
+        "actionControlFlowEvidence": True,
+        "storyOrderEvidence": False,
+        "eventRootRuntimeMode": "independently_invoked_indexed_event_slots",
+        "controlBoundary": (
+            "edges are exact within one LevelScript action map; header, action, "
+            "and getter IDs use their final serialized indexed slots; separate "
+            "event roots are independently invoked and have no serialized "
+            "relative order, orphan roots have no "
+            "decoded event owner, absent positive action-array targets are "
+            "exact runtime terminals, and control flow does not order Story "
+            "files unless a typed action explicitly targets one"
+        ),
+    }, None
 
 
 def build_levelscript_native_black_action_index(

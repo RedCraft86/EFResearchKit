@@ -13,6 +13,8 @@ import argparse
 import hashlib
 import json
 import re
+import subprocess
+import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -28,7 +30,10 @@ try:
         write_report_json,
         write_text_if_changed,
     )
-    from story_builder.levelscript_binary import decode_levelscript_encounter_module_target
+    from story_builder.levelscript_binary import (
+        decode_levelscript_action_header_validation,
+        decode_levelscript_encounter_module_target,
+    )
     from story_builder.mission_assets import (
         mission_runtime_source_summary,
         select_complete_mission_runtime_root,
@@ -66,6 +71,7 @@ except ModuleNotFoundError:  # imported as ``scripts.build_mission_pipeline_data
         write_text_if_changed,
     )
     from scripts.story_builder.levelscript_binary import (
+        decode_levelscript_action_header_validation,
         decode_levelscript_encounter_module_target,
     )
     from scripts.story_builder.mission_assets import (
@@ -123,63 +129,19 @@ DEFAULT_GAMEPLAY_CONFIG_ROOT = (
     ROOT / "export_full" / "structured" / "StreamingAssets" / "Data" / "Json" / "GameplayConfig"
 )
 
-# Shipped-Lua Story playback call sites with a literal Story id.
-#
-# Story playback owners are not confined to LevelScript and MissionRuntime: Lua
-# phase/UI controllers call the native GameAction entry points through the XLua
-# wrappers. The Lua VFS corpus is not on the export path, so these recovered
-# call sites are pinned here with exact provenance, the same way recovered
-# native tags and RVAs are.
-#
-# Admission rule: the Lua literal must match the Story key EXACTLY, including
-# case. `Phase/GenderSelect/PhaseGenderSelect.lua` holds
-# `EnterCutsceneId = "Cutscene_e0m0_1"` with a capital C; that spelling occurs
-# zero times anywhere in export_full while `cutscene_e0m0_1` occurs once.
-# `reports/story/recovery/cutscene_case_resolution_audit.json` proves that the
-# current native chain preserves the spelling into case-sensitive
-# StringPathHash resource lookup. It is deliberately excluded as a rejected
-# playback edge, not merely held pending.
-LUA_STORY_PLAYBACK_CALL_SITES = (
-    {
-        "storyKey": "cutscene_e1m10_1",
-        "luaFile": "Lua/Data/LuaScripts/Phase/GenderChange/PhaseGenderChange.lua",
-        "luaSymbol": "CUT_SCENE_ID",
-        "luaCall": "GameAction.PlayCutscene",
-        "nativeEntry": "Beyond.Gameplay.Actions.GameAction::PlayCutscene",
-        "phase": "gender_change",
-        "note": (
-            "Exact-case literal in a shipped Lua phase controller; the phase "
-            "owns playback and no mission or quest identity is serialized."
-        ),
-    },
+# Shipped Lua is scanned as a corpus. No Story key, module, symbol, or phase is
+# admitted here by hand: the current audit enumerates bounded GameAction calls,
+# resolves only direct/module-constant first arguments, and fingerprints the
+# exact original Lua bytes. The installed-binary audit supplies the native
+# spelling boundary used for case-mismatch rejection.
+DEFAULT_LUA_CONSUMER_REFERENCE_AUDIT = (
+    ROOT / "reports" / "mission_order" / "lua_consumer_reference_audit.json"
 )
-
-# Shipped-Lua literals which look like Story playback ids but fail the exact
-# current-build admission rule above. Keep these visible as recovery boundaries
-# without creating routes or changing attachment status. Each rejection must be
-# backed by a build-fingerprint-pinned audit.
-LUA_STORY_PLAYBACK_REJECTIONS = (
-    {
-        "storyKey": "cutscene_e0m0_1",
-        "luaLiteral": "Cutscene_e0m0_1",
-        "luaFile": "Lua/Data/LuaScripts/Phase/GenderSelect/PhaseGenderSelect.lua",
-        "luaSymbol": "EnterCutsceneId",
-        "luaCall": "GameAction.PlayCutsceneAndGetHandle",
-        "nativeEntry": (
-            "Beyond.Gameplay.Actions.GameAction::PlayCutsceneAndGetHandle"
-        ),
-        "reason": "case_sensitive_native_resource_lookup",
-        "confidence": "binary_proven_rejection",
-        "auditReport": (
-            "reports/story/recovery/cutscene_case_resolution_audit.json"
-        ),
-        "note": (
-            "The current native resolver preserves the capitalized Lua literal "
-            "through StringPathHash resource lookup. It therefore does not "
-            "resolve the lowercase exported Story key."
-        ),
-    },
+DEFAULT_CUTSCENE_CASE_RESOLUTION_AUDIT = (
+    ROOT / "reports" / "story" / "recovery" / "cutscene_case_resolution_audit.json"
 )
+LUA_CONSUMER_REFERENCE_SCHEMA = "luaConsumerReferenceAudit.v3"
+NATIVE_GAME_ACTION_TYPE = "Beyond.Gameplay.Actions.GameAction"
 DEFAULT_ACTIVITY_STAGE_TABLE = DEFAULT_TABLE_ROOT / "ActivityConditionalMultiStageTable.json"
 DEFAULT_ACTIVITY_DUNGEON_FIGHTING_STAGE_TABLE = (
     DEFAULT_TABLE_ROOT / "ActivityDungeonFightingStageTable.json"
@@ -199,7 +161,7 @@ DEFAULT_MISSION_GRAPH_REPORT_ROOT = ROOT / "reports" / "mission_graph"
 DEFAULT_SOURCE_STORY_GAP_QUEUE = (
     DEFAULT_ORDER_REPORT_ROOT / "source_story_gap_queue_CN.json"
 )
-SOURCE_STORY_GAP_QUEUE_SCHEMA = "sourceStoryGapQueue.v107"
+SOURCE_STORY_GAP_QUEUE_SCHEMA = "sourceStoryGapQueue.v124"
 DEFAULT_DYNAMIC_SCENE_MISSION_CONTROL_AUDIT = (
     ROOT
     / "reports"
@@ -256,6 +218,11 @@ MISSION_RUNTIME_TRACE_SCHEMA = "missionRuntimeTrace.v1"
 # objective, repeatable-talk, and failed-dialog MissionRuntime observers.
 SCHEMA_VERSION = 26
 PIPELINE_STORY_KINDS = {"dlg", "sns", "cutscene", "black", "remotecomm", "radio"}
+PIPELINE_VISIBLE_NON_MISSION_EVIDENCE_KINDS = {
+    "guide_runtime_asset",
+    "spaceship_dialog_tree",
+    "character_profile_voice",
+}
 BATTLE_SIGNAL_PRODUCER_MAPPING_ID = (
     "gameassembly-2026-07-22-ability-actiondata-0x0134"
 )
@@ -2973,6 +2940,21 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dungeon-table", type=Path, default=DEFAULT_DUNGEON_TABLE)
     parser.add_argument("--text-vo-id-table", type=Path, default=DEFAULT_TEXT_VO_ID_TABLE)
+    parser.add_argument(
+        "--lua-consumer-audit",
+        type=Path,
+        default=DEFAULT_LUA_CONSUMER_REFERENCE_AUDIT,
+        help="complete shipped-Lua GameAction census used for exact Story playback",
+    )
+    parser.add_argument(
+        "--cutscene-case-audit",
+        type=Path,
+        action="append",
+        help=(
+            "installed-binary spelling audit used to reject a matching Lua "
+            "case mismatch; repeatable"
+        ),
+    )
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--story-data-root", type=Path, default=DEFAULT_STORY_DATA_ROOT)
     parser.add_argument("--story-language", default="CN")
@@ -2984,6 +2966,15 @@ def parse_args() -> argparse.Namespace:
         help=(
             "fresh source-story gap queue whose exact offline-exhaustion "
             "boundaries are projected into Story trigger metadata"
+        ),
+    )
+    parser.add_argument(
+        "--refresh-source-story-gap-queue",
+        action="store_true",
+        help=(
+            "rebuild and validate the source-story gap queue after current "
+            "partial-order and Story coverage reports are published, before "
+            "projecting recovery evidence into Mission Pipeline"
         ),
     )
     parser.add_argument(
@@ -3008,9 +2999,403 @@ def write_json(path: Path, value: Any) -> None:
     path.write_text(encoded + "\n", encoding="utf-8", newline="\n")
 
 
+def refresh_source_story_gap_queue(
+    language: str,
+    queue_path: Path,
+) -> dict[str, Any]:
+    """Refresh the canonical queue only after all of its generated inputs exist."""
+    queue_path = queue_path.resolve()
+    expected_path = (
+        queue_path.parent / f"source_story_gap_queue_{language}.json"
+    ).resolve()
+    if queue_path != expected_path:
+        raise ValueError(
+            "source Story gap refresh requires the canonical language filename: "
+            f"expected={expected_path} actual={queue_path}"
+        )
+    command = [
+        sys.executable,
+        str(
+            ROOT
+            / "scripts"
+            / "story_recovery"
+            / "build_source_story_gap_queue.py"
+        ),
+        "--language",
+        language,
+        "--reports-dir",
+        str(queue_path.parent),
+    ]
+    result = subprocess.run(command, cwd=ROOT, check=False)
+    if result.returncode:
+        raise RuntimeError(
+            "source Story gap refresh failed: "
+            f"returncode={result.returncode} queue={repo_path(queue_path)}"
+        )
+    if not queue_path.is_file():
+        raise RuntimeError(
+            "source Story gap refresh produced no queue: "
+            f"queue={repo_path(queue_path)}"
+        )
+    report = read_json(queue_path)
+    failures: list[dict[str, Any]] = []
+    if report.get("_schema") != SOURCE_STORY_GAP_QUEUE_SCHEMA:
+        failures.append({
+            "gate": "schema",
+            "expected": SOURCE_STORY_GAP_QUEUE_SCHEMA,
+            "actual": report.get("_schema"),
+        })
+    if str(report.get("language") or "").upper() != language.upper():
+        failures.append({
+            "gate": "language",
+            "expected": language.upper(),
+            "actual": report.get("language"),
+        })
+    validator_statuses: list[tuple[str, dict[str, Any]]] = []
+    pending_statuses: list[tuple[str, Any]] = [("report", report)]
+    while pending_statuses:
+        validator, status = pending_statuses.pop()
+        if not isinstance(status, dict):
+            continue
+        if any(
+            key in status
+            for key in (
+                "status",
+                "validationFailures",
+                "validationFailureDetails",
+                "sourceHashMismatches",
+            )
+        ):
+            validator_statuses.append((validator, status))
+        pending_statuses.extend(
+            (f"{validator}.{key}", value)
+            for key, value in status.items()
+            if isinstance(value, dict)
+        )
+    for validator, status in validator_statuses:
+        validation_failures = [
+            *(
+                status.get("validationFailures")
+                if isinstance(status.get("validationFailures"), list)
+                else []
+            ),
+            *(
+                status.get("validationFailureDetails")
+                if isinstance(status.get("validationFailureDetails"), list)
+                else []
+            ),
+        ]
+        hash_mismatches = (
+            status.get("sourceHashMismatches")
+            if isinstance(status.get("sourceHashMismatches"), list)
+            else []
+        )
+        state = str(status.get("status") or "")
+        if (
+            validation_failures
+            or hash_mismatches
+            or "fail" in state
+            or "mismatch" in state
+        ):
+            failures.append({
+                "gate": "validator",
+                "validator": validator,
+                "status": state,
+                "validationFailureCount": len(validation_failures),
+                "sourceHashMismatchCount": len(hash_mismatches),
+                "firstFailure": (
+                    validation_failures[0]
+                    if validation_failures
+                    else None
+                ),
+                "firstSourceHashMismatch": (
+                    hash_mismatches[0] if hash_mismatches else None
+                ),
+            })
+    if failures:
+        first = failures[0]
+        raise RuntimeError(
+            "source Story gap validation failed: "
+            f"gate={first.get('gate')} "
+            f"validator={first.get('validator') or '-'} "
+            f"expected={first.get('expected')} "
+            f"actual={first.get('actual')} "
+            f"queue={repo_path(queue_path)}"
+        )
+    print(
+        "Source Story gap queue refreshed and validated: "
+        f"{repo_path(queue_path)}"
+    )
+    return report
+
+
 def repo_path(path: Path) -> str:
     path = path.resolve()
     return path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.as_posix()
+
+
+def sha256_path(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _lua_phase(module: str) -> str:
+    parts = Path(module).as_posix().split("/")
+    if len(parts) >= 2 and parts[0].casefold() == "phase":
+        return re.sub(r"(?<!^)(?=[A-Z])", "_", parts[1]).lower()
+    scope = parts[-2] if len(parts) >= 2 else Path(module).stem
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", scope).lower()
+
+
+def load_lua_story_playback_evidence(
+    lua_audit_path: Path = DEFAULT_LUA_CONSUMER_REFERENCE_AUDIT,
+    case_audit_paths: Iterable[Path] = (DEFAULT_CUTSCENE_CASE_RESOLUTION_AUDIT,),
+) -> dict[str, Any]:
+    """Validate and normalize corpus-scanned shipped-Lua Story playback.
+
+    This is deliberately data-driven: every accepted/rejected row comes from
+    the complete Lua audit. Exact spelling is admitted; a spelling mismatch is
+    rejected only when a current installed-binary audit matches that exact call.
+    """
+    validator = "lua_story_playback_evidence"
+    lua_audit_path = lua_audit_path.resolve()
+    if not lua_audit_path.is_file():
+        raise RuntimeError(
+            f"validator={validator} failed: gate=audit_exists expected=file "
+            f"actual=missing source={repo_path(lua_audit_path)}"
+        )
+    audit_sha = sha256_path(lua_audit_path)
+    audit = read_json(lua_audit_path)
+    schema = str(audit.get("schemaVersion") or "")
+    if schema != LUA_CONSUMER_REFERENCE_SCHEMA:
+        raise RuntimeError(
+            f"validator={validator} failed: gate=schema expected={LUA_CONSUMER_REFERENCE_SCHEMA} "
+            f"actual={schema or '<missing>'} source={repo_path(lua_audit_path)}"
+        )
+    summary = audit.get("summary") or {}
+    if int(summary.get("readErrorCount") or 0):
+        raise RuntimeError(
+            f"validator={validator} failed: gate=complete_scan expected=readErrorCount:0 "
+            f"actual={summary.get('readErrorCount')} source={repo_path(lua_audit_path)}"
+        )
+
+    calls = list((audit.get("gameActionAudit") or {}).get("storyPlaybackCalls") or [])
+    malformed: list[str] = []
+    for index, row in enumerate(calls):
+        required = {
+            "module": row.get("module"),
+            "sourcePath": row.get("sourcePath"),
+            "sourceSha256": row.get("sourceSha256"),
+            "line": row.get("line"),
+            "method": row.get("method"),
+            "argumentSemantics": row.get("argumentSemantics"),
+            "registryStatus": row.get("registryStatus"),
+        }
+        missing = [key for key, value in required.items() if value in (None, "")]
+        source_sha = str(row.get("sourceSha256") or "")
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", source_sha):
+            missing.append("sourceSha256:sha256")
+        if missing:
+            malformed.append(f"row={index} missing={','.join(missing)}")
+            continue
+        source_path = ROOT / str(row["sourcePath"])
+        if source_path.is_file():
+            actual_sha = sha256_path(source_path)
+            if actual_sha.casefold() != source_sha.casefold():
+                malformed.append(
+                    f"row={index} sourceHash expected={source_sha} actual={actual_sha} "
+                    f"source={repo_path(source_path)}"
+                )
+        table_resolution = row.get("tableFieldResolution")
+        if isinstance(table_resolution, dict):
+            table_required = {
+                "table": table_resolution.get("table"),
+                "tableSourcePath": table_resolution.get("tableSourcePath"),
+                "tableSourceSha256": table_resolution.get("tableSourceSha256"),
+                "field": table_resolution.get("field"),
+            }
+            table_missing = [
+                key for key, value in table_required.items()
+                if value in (None, "")
+            ]
+            table_sha = str(table_resolution.get("tableSourceSha256") or "")
+            if not re.fullmatch(r"[0-9a-fA-F]{64}", table_sha):
+                table_missing.append("tableSourceSha256:sha256")
+            candidates = table_resolution.get("candidateRows") or []
+            if row.get("literalResolution") == "table_field_singleton":
+                if len(candidates) != 1 or not table_resolution.get("exactSingleton"):
+                    table_missing.append("candidateRows:exact_singleton")
+            if table_missing:
+                malformed.append(
+                    f"row={index} tableResolution={','.join(table_missing)}"
+                )
+                continue
+            table_source = ROOT / str(table_resolution["tableSourcePath"])
+            if table_source.is_file():
+                actual_table_sha = sha256_path(table_source)
+                if actual_table_sha.casefold() != table_sha.casefold():
+                    malformed.append(
+                        f"row={index} tableSourceHash expected={table_sha} "
+                        f"actual={actual_table_sha} source={repo_path(table_source)}"
+                    )
+    if malformed:
+        raise RuntimeError(
+            f"validator={validator} failed: gate=row_provenance expected=complete_exact_rows "
+            f"actual={malformed[0]} source={repo_path(lua_audit_path)}"
+        )
+
+    case_audits: list[tuple[Path, dict[str, Any]]] = []
+    for path in case_audit_paths:
+        resolved = path.resolve()
+        if not resolved.is_file():
+            continue
+        case = read_json(resolved)
+        source = case.get("source") or {}
+        conclusion = case.get("conclusion") or {}
+        if (
+            int(case.get("schemaVersion") or 0) != 1
+            or str(source.get("luaAuditSha256") or "").casefold() != audit_sha.casefold()
+            or conclusion.get("caseResolution") != "case_sensitive"
+            or conclusion.get("literalResolvesToCanonicalKey") is not False
+            or not re.fullmatch(r"[0-9a-fA-F]{64}", str(source.get("gameAssemblySha256") or ""))
+            or not re.fullmatch(r"[0-9a-fA-F]{64}", str(source.get("metadataSha256") or ""))
+        ):
+            raise RuntimeError(
+                f"validator={validator} failed: gate=binary_case_audit expected=current_lua_hash+case_sensitive "
+                f"actual=invalid source={repo_path(resolved)}"
+            )
+        case_audits.append((resolved, case))
+
+    accepted: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    for row in calls:
+        status = str(row.get("registryStatus") or "")
+        method = str(row.get("method") or "")
+        native_entry = f"{NATIVE_GAME_ACTION_TYPE}::{method}"
+        if status == "exact_registry_match":
+            story_key = str(row.get("canonicalStoryKey") or "")
+            if (
+                not story_key
+                or row.get("argumentSemantics") != "story_id"
+                or row.get("resolvedLiteral") != story_key
+            ):
+                continue
+            module = str(row["module"])
+            virtual_lua_file = f"Lua/Data/LuaScripts/{module}"
+            table_resolution = row.get("tableFieldResolution") or {}
+            table_candidates = table_resolution.get("candidateRows") or []
+            table_candidate = (
+                table_candidates[0]
+                if len(table_candidates) == 1
+                and row.get("literalResolution") == "table_field_singleton"
+                else {}
+            )
+            row_fields = table_candidate.get("rowFields") or {}
+            mission_id = str(row_fields.get("missionId") or "") or None
+            quest_id = str(row_fields.get("questId") or "") or None
+            table_source_path = str(
+                table_resolution.get("tableSourcePath") or ""
+            )
+            is_table_carrier = bool(table_candidate)
+            accepted.append({
+                "storyKey": story_key,
+                "luaFile": virtual_lua_file,
+                "luaSourcePath": str(row["sourcePath"]),
+                "luaSourceSha256": str(row["sourceSha256"]).lower(),
+                "luaLine": int(row["line"]),
+                "luaSymbol": str(row.get("firstArgument") or ""),
+                "luaCall": f"GameAction.{method}",
+                "nativeEntry": native_entry,
+                "phase": _lua_phase(module),
+                "playbackKind": row.get("playbackKind"),
+                "literalResolution": str(row.get("literalResolution") or ""),
+                "missionId": mission_id,
+                "questId": quest_id,
+                "table": str(table_resolution.get("table") or ""),
+                "tableKey": str(table_candidate.get("tableKey") or ""),
+                "tableField": str(table_resolution.get("field") or ""),
+                "tableLookupKeyExpression": str(
+                    table_resolution.get("lookupKeyExpression") or ""
+                ),
+                "tableSourcePath": table_source_path,
+                "tableSourceSha256": str(
+                    table_resolution.get("tableSourceSha256") or ""
+                ).lower(),
+                "auditReport": repo_path(lua_audit_path),
+                "auditSha256": audit_sha,
+                "note": (
+                    (
+                        "The complete shipped-Lua census traced this typed GameAction "
+                        "call through one exact current-table row. That same row "
+                        "co-carries the published mission/quest identity."
+                    )
+                    if is_table_carrier and (mission_id or quest_id)
+                    else (
+                        "The complete shipped-Lua census found an exact-case literal at "
+                        "this typed GameAction playback call. The Lua controller owns "
+                        "playback; no mission or quest identity is serialized."
+                    )
+                ),
+            })
+            continue
+        if status != "case_mismatch_registry_match":
+            continue
+        for case_path, case in case_audits:
+            proof_row = case.get("luaPlayback") or {}
+            comparable = ("module", "line", "method", "resolvedLiteral", "canonicalStoryKey")
+            if not all(proof_row.get(key) == row.get(key) for key in comparable):
+                continue
+            source = case.get("source") or {}
+            rejected.append({
+                "storyKey": str(row.get("canonicalStoryKey") or ""),
+                "luaLiteral": str(row.get("resolvedLiteral") or ""),
+                "luaFile": f"Lua/Data/LuaScripts/{row['module']}",
+                "luaSourcePath": str(row["sourcePath"]),
+                "luaSourceSha256": str(row["sourceSha256"]).lower(),
+                "luaLine": int(row["line"]),
+                "luaSymbol": str(row.get("firstArgument") or ""),
+                "luaCall": f"GameAction.{method}",
+                "nativeEntry": native_entry,
+                "reason": "case_sensitive_native_resource_lookup",
+                "confidence": "binary_proven_rejection",
+                "auditReport": repo_path(case_path),
+                "gameAssemblySha256": str(source["gameAssemblySha256"]).lower(),
+                "metadataSha256": str(source["metadataSha256"]).lower(),
+                "note": (
+                    "The installed binary preserves this mismatched literal through "
+                    "StringPathHash lookup, so it cannot prove playback of the "
+                    "differently-cased Story registry key."
+                ),
+            })
+            break
+
+    accepted.sort(key=lambda row: (natural_quest_key(row["storyKey"]), row["luaFile"], row["luaLine"]))
+    rejected.sort(key=lambda row: (natural_quest_key(row["storyKey"]), row["luaFile"], row["luaLine"]))
+    return {
+        "validator": validator,
+        "status": "validated",
+        "schemaVersion": LUA_CONSUMER_REFERENCE_SCHEMA,
+        "auditReport": repo_path(lua_audit_path),
+        "auditSha256": audit_sha,
+        "scannedPlaybackCalls": len(calls),
+        "acceptedExactPlaybackCalls": accepted,
+        "rejectedCaseMismatchCalls": rejected,
+        "unresolvedPlaybackCalls": len(calls) - len(accepted) - len(rejected),
+        "acceptedTableCarrierCalls": sum(
+            1 for row in accepted if row.get("literalResolution") == "table_field_singleton"
+        ),
+        "binaryCaseAuditCount": len(case_audits),
+        "evidenceBoundary": (
+            "Exact shipped-Lua bytes and typed GameAction calls prove controller "
+            "playback. A mission/quest attachment is admitted only when the same "
+            "resolved original table row co-carries that identity; otherwise Lua "
+            "does not supply mission ownership or Story order. "
+            "Case-folded matches create no route without matching installed-binary proof."
+        ),
+    }
 
 
 def offline_story_kind(story_key: str) -> str:
@@ -3077,6 +3462,7 @@ def publish_offline_story_recovery(
 
     published = 0
     published_keys: set[str] = set()
+    published_partial_keys: set[str] = set()
     published_runtime_context_keys: set[str] = set()
     manifest_overlay: dict[str, dict[str, Any]] = {}
     diagnostic_status = payload.get("questAttachmentDiagnosticEvidence")
@@ -3132,6 +3518,37 @@ def publish_offline_story_recovery(
                     "offlineRecovery": recovery,
                 }
 
+        for row in mission.get("partialRegisteredDialogTreeCarriers") or []:
+            if (
+                not isinstance(row, dict)
+                or row.get("graphEffect") != "none"
+                or row.get("recoveryStatus")
+                != "actionable_partial_registered_dialog_tree_partition"
+            ):
+                continue
+            story_key = str(row.get("sceneKey") or "")
+            if not story_key:
+                continue
+            recovery = {
+                key: value
+                for key, value in row.items()
+                if key not in {"sceneKey", "gameAssemblySha256"}
+            }
+            manifest_row = story_trigger_manifest.get(story_key)
+            if isinstance(manifest_row, dict):
+                manifest_row["partialRecovery"] = recovery
+            else:
+                overlay = manifest_overlay.setdefault(story_key, {
+                    "key": story_key,
+                    "kind": offline_story_kind(story_key),
+                    "nominalMissionId": str(row.get("missionId") or ""),
+                    "attachmentStatus":
+                        "partial_carrier_outside_pipeline_coverage_denominator",
+                    "routes": [],
+                })
+                overlay["partialRecovery"] = recovery
+            published_partial_keys.add(story_key)
+
         approved_runtime_contexts = {
             (
                 "objective_tracking_story_reference",
@@ -3148,6 +3565,30 @@ def publish_offline_story_recovery(
             (
                 "sns_authored_mission_link",
                 "closed_exact_authored_sns_mission_link_no_relative_order",
+            ),
+            (
+                "airwall_mission_state_radio_playback_context",
+                "closed_exact_native_playback_context_no_relative_order",
+            ),
+            (
+                "npc_proxy_tracking_dialog_navigation_context",
+                "closed_exact_non_owning_dialog_context_no_relative_order",
+            ),
+            (
+                "npc_proxy_lazy_destroy_dialog_context",
+                "closed_exact_non_owning_dialog_context_no_relative_order",
+            ),
+            (
+                "npc_proxy_ex_mission_context",
+                "closed_exact_runtime_config_no_relative_order",
+            ),
+            (
+                "npc_proxy_ex_mission_context",
+                "closed_exact_cross_mission_runtime_config_no_relative_order",
+            ),
+            (
+                "npc_proxy_ex_mission_context",
+                "closed_exact_multi_mission_runtime_config_no_relative_order",
             ),
         }
         for row in mission.get(
@@ -3173,6 +3614,21 @@ def publish_offline_story_recovery(
             if isinstance(manifest_row, dict):
                 manifest_row["runtimeContextRecovery"] = recovery
                 published_runtime_context_keys.add(story_key)
+            else:
+                overlay = manifest_overlay.setdefault(story_key, {
+                    "key": story_key,
+                    "kind": offline_story_kind(story_key),
+                    "nominalMissionId": str(
+                        row.get("missionId")
+                        or mission.get("mission")
+                        or ""
+                    ),
+                    "attachmentStatus":
+                        "runtime_context_outside_pipeline_coverage_denominator",
+                    "routes": [],
+                })
+                overlay["runtimeContextRecovery"] = recovery
+                published_runtime_context_keys.add(story_key)
 
         approved_native_contexts = {
             (
@@ -3182,6 +3638,26 @@ def publish_offline_story_recovery(
             (
                 "cutscene_root_playback_alias_composed",
                 "closed_exact_composed_root_playback_context_no_relative_order",
+            ),
+            (
+                "timeline_dialog_contains_black",
+                "closed_exact_timeline_black_carrier_context_owner_or_order_unresolved",
+            ),
+            (
+                "dialog_tree_narrative_action",
+                "closed_exact_dialog_tree_black_carrier_context_no_file_order",
+            ),
+            (
+                "leveldata_levelscript_mission_context",
+                "closed_exact_cross_mission_leveldata_playback_context_no_relative_order",
+            ),
+            (
+                "leveldata_levelscript_mission_context",
+                "closed_exact_same_mission_leveldata_playback_context_no_relative_order",
+            ),
+            (
+                "cross_owner_levelscript_quest_playback_context",
+                "closed_exact_cross_mission_quest_playback_context_no_relative_order",
             ),
         }
         for row in mission.get("closedExactNativeIsolatedScenes") or []:
@@ -3205,6 +3681,24 @@ def publish_offline_story_recovery(
             if isinstance(manifest_row, dict):
                 manifest_row["runtimeContextRecovery"] = recovery
                 published_runtime_context_keys.add(story_key)
+            else:
+                overlay = manifest_overlay.setdefault(story_key, {
+                    "key": story_key,
+                    "kind": offline_story_kind(story_key),
+                    "nominalMissionId": str(
+                        row.get("nominalStoryMissionId")
+                        or mission.get("mission")
+                        or ""
+                    ),
+                    "attachmentStatus":
+                        "runtime_context_outside_pipeline_coverage_denominator",
+                    "routes": [],
+                })
+                overlay["runtimeContextRecovery"] = recovery
+                published_runtime_context_keys.add(story_key)
+
+    for story_key, entry in manifest_overlay.items():
+        story_trigger_manifest.setdefault(story_key, entry)
 
     return {
         "status": "active",
@@ -3213,6 +3707,7 @@ def publish_offline_story_recovery(
         "graphEffect": "none",
         "publishedStoryKeys": len(published_keys),
         "publishedRows": published,
+        "publishedPartialStoryKeys": len(published_partial_keys),
         "publishedRuntimeContextStoryKeys": len(
             published_runtime_context_keys
         ),
@@ -3322,6 +3817,8 @@ def publish_offline_recovery_mission_shells(
                 "sceneGraphOptions": [],
                 "nativeControlBranches": [],
                 "nativeControlMerges": [],
+                "nativeOrderedSequences": [],
+                "nativeRelatedActionTopologies": [],
                 "dialogLineOptions": [],
                 "questForks": [],
                 "questMerges": [],
@@ -3843,10 +4340,16 @@ def build_story_trigger_route(
         return None
     relation = str(row.get("relation") or "unknown")
     direction = str(row.get("direction") or "context")
+    owner_unresolved = owner_status in {
+        "unresolved",
+        "unresolved_playback",
+    }
     if relation == "original_text_definition_without_consumer":
         causality = "definition_only"
-    elif owner_status == "unresolved":
+    elif owner_status == "unresolved_playback":
         causality = "playback_owner_unresolved"
+    elif owner_unresolved:
+        causality = "context_owner_unresolved"
     elif direction == "quest_to_story":
         causality = "playback"
     elif direction == "story_to_quest":
@@ -3886,6 +4389,9 @@ def build_story_trigger_route(
     )
     source_files = _unique_route_strings(
         row.get("sourceFiles"),
+        row.get("assetPaths"),
+        row.get("trackPaths"),
+        row.get("rootPaths"),
         [path.get("sourceFile") for path in native_paths],
     )
     timeline_dialog_containments = [
@@ -3927,7 +4433,7 @@ def build_story_trigger_route(
     ])
 
     owner_step = {
-        "kind": "ownership_gap" if owner_status == "unresolved" else scope,
+        "kind": "ownership_gap" if owner_unresolved else scope,
         "id": quest_id if scope == "quest" and quest_id else mission_id,
         "phase": str(row.get("phase") or ""),
     }
@@ -4054,7 +4560,7 @@ def build_story_trigger_route(
         "missionId": mission_id,
         "questId": quest_id or None,
         "scope": scope,
-        "ownerStatus": owner_status,
+        "ownerStatus": "unresolved" if owner_unresolved else owner_status,
         "relation": relation,
         "direction": direction,
         "phase": str(row.get("phase") or ""),
@@ -4160,6 +4666,26 @@ def build_story_trigger_route(
         "questTriggerStatus": str(row.get("questTriggerStatus") or ""),
         "steps": steps,
     }
+
+
+def story_trigger_route_sort_key(route: dict[str, Any]) -> tuple:
+    """Keep direct playback/condition routes ahead of context diagnostics."""
+    causality = str(route.get("causality") or "")
+    causality_rank = {
+        "playback": 0,
+        "condition": 1,
+        "dependency": 2,
+        "context": 3,
+        "playback_owner_unresolved": 4,
+        "context_owner_unresolved": 5,
+        "definition_only": 6,
+    }.get(causality, 7)
+    return (
+        causality_rank,
+        natural_quest_key(str(route.get("missionId") or "")),
+        natural_quest_key(str(route.get("questId") or "")),
+        str(route.get("relation") or ""),
+    )
 
 
 def build_composed_root_playback_alias_route(
@@ -5017,6 +5543,173 @@ def load_dynamic_scene_identity_cross_references(
     }
 
 
+def _playback_gate_operand_label(operand: Any) -> str:
+    if not isinstance(operand, dict):
+        return ""
+    if operand.get("path"):
+        return str(operand["path"])
+    if isinstance(operand.get("getterLocalId"), int):
+        return f"getter #{operand['getterLocalId']}"
+    if "value" in operand:
+        return json.dumps(operand.get("value"), ensure_ascii=False)
+    return ""
+
+
+def _playback_gate_child_summary(tree: dict[str, Any], path: str) -> str:
+    for child in tree.get("children") or []:
+        if str(child.get("path") or "") == path:
+            return _playback_gate_tree_summary(child.get("predicate") or {})
+    return ""
+
+
+def _playback_gate_tree_summary(tree: dict[str, Any]) -> str:
+    """Render an identity-agnostic exact predicate tree for the WebUI."""
+    if not isinstance(tree, dict):
+        return ""
+    predicate_type = str(tree.get("predicateType") or "")
+    predicate = tree.get("predicate") or {}
+
+    def operand(field: str) -> str:
+        nested = _playback_gate_child_summary(
+            tree,
+            f"{field}.getterLocalId",
+        )
+        return nested or _playback_gate_operand_label(predicate.get(field))
+
+    if predicate_type in {"boolGetterAnd", "boolGetterOr"}:
+        left = operand("valueA")
+        right = operand("valueB")
+        operator = "AND" if predicate_type == "boolGetterAnd" else "OR"
+        return f"({left} {operator} {right})" if left and right else ""
+    if predicate_type == "boolGetterInvert":
+        value = operand("value")
+        return f"NOT ({value})" if value else ""
+    if predicate_type == "boolGetterMultiAnd":
+        values = [
+            _playback_gate_child_summary(
+                tree,
+                f"values[{index}].getterLocalId",
+            )
+            for index, _value in enumerate(predicate.get("values") or [])
+        ]
+        return (
+            f"ALL ({' AND '.join(values)})"
+            if values and all(values)
+            else ""
+        )
+    if predicate_type == "booleanCompare":
+        left = operand("valueA")
+        right = operand("valueB")
+        operator = {"Equal": "==", "NotEqual": "!="}.get(
+            str(predicate.get("comparerName") or ""),
+            "",
+        )
+        return f"{left} {operator} {right}" if left and operator and right else ""
+    if predicate_type == "intEqual":
+        left = operand("valueA")
+        right = operand("valueB")
+        return f"{left} == {right}" if left and right else ""
+    if predicate_type in {"intCompare", "floatNewCompare"}:
+        left = _playback_gate_child_summary(tree, "valueAGetterLocalId")
+        right = _playback_gate_operand_label(predicate.get("valueB"))
+        operator = {
+            "Equal": "==",
+            "NotEqual": "!=",
+            "GreaterThan": ">",
+            "GreaterEqual": ">=",
+            "LessThan": "<",
+            "LessEqual": "<=",
+        }.get(str(predicate.get("comparerName") or ""), "")
+        return f"{left} {operator} {right}" if left and operator and right else ""
+    if predicate_type in {"getterBool", "getterInt"}:
+        return _playback_gate_operand_label(predicate.get("value"))
+    if predicate_type == "getLevelScriptStage":
+        script_ptr = predicate.get("scriptPtr") or {}
+        script_id = str(script_ptr.get("scriptId") or "current script")
+        return f"{script_id}.stage"
+    if predicate_type == "getLsmIsCompleted":
+        lsm_ptr = predicate.get("lsmPtr") or {}
+        identity = str(lsm_ptr.get("rawValueHex") or "LSM")
+        return f"LSM[{identity}].completed"
+    if predicate_type == "interactiveCheckState":
+        target = predicate.get("target") or {}
+        identity = (
+            f"slot {target.get('slotId')}"
+            if target.get("useSlotId")
+            else f"entity {target.get('logicId')}"
+        )
+        operator = {
+            "Equal": "==",
+            "NotEqual": "!=",
+            "GreaterThan": ">",
+            "GreaterEqual": ">=",
+            "LessThan": "<",
+            "LessEqual": "<=",
+        }.get(str(predicate.get("comparerName") or ""), "")
+        value = _playback_gate_operand_label(predicate.get("value"))
+        return f"{identity}.interactiveState {operator} {value}" if operator and value else ""
+    return ""
+
+
+def _playback_gate_tree_metrics(tree: dict[str, Any]) -> tuple[int, int]:
+    if not isinstance(tree, dict) or not tree:
+        return 0, 0
+    child_metrics = [
+        _playback_gate_tree_metrics(child.get("predicate") or {})
+        for child in tree.get("children") or []
+    ]
+    return (
+        1 + sum(count for count, _depth in child_metrics),
+        1 + max((depth for _count, depth in child_metrics), default=0),
+    )
+
+
+def exact_native_receiver_playback_gate(
+    data: bytes,
+    header_local_id: int,
+    *,
+    source_file: str,
+) -> dict[str, Any]:
+    """Build a UI-safe exact gate without specializing Story ids or objects."""
+    validation = decode_levelscript_action_header_validation(
+        data,
+        header_local_id,
+    )
+    predicate_type = str(validation.get("predicateType") or "")
+    predicate = validation.get("predicate")
+    if not validation or not isinstance(predicate, dict):
+        return {}
+    predicate_tree = validation.get("predicateTree") or {
+        "predicateType": predicate_type,
+        "predicate": predicate,
+        "children": [],
+    }
+    summary = _playback_gate_tree_summary(predicate_tree)
+    if not summary:
+        return {}
+    predicate_node_count, predicate_depth = _playback_gate_tree_metrics(
+        predicate_tree
+    )
+    return {
+        **validation,
+        "summary": summary,
+        "predicateNodeCount": predicate_node_count,
+        "predicateDepth": predicate_depth,
+        "effect": "receiver_playback_allowed_when_true",
+        "branchScope": "this_receiver_header_only",
+        "sourceFile": source_file,
+        "branchEvidence": True,
+        "missionOwnershipEvidence": False,
+        "crossStoryOrderEvidence": False,
+        "serverWriteEvidence": False,
+        "evidenceBoundary": (
+            "The installed client evaluates this ActionHeader validation before "
+            "the receiver proceeds. It does not identify a mission owner, order "
+            "different Story files, or prove any later server-side state write."
+        ),
+    }
+
+
 def build_story_binding_coverage(
     pipeline_index: dict[str, Any],
     pipeline_index_path: Path,
@@ -5028,6 +5721,10 @@ def build_story_binding_coverage(
     game_mechanic_condition_table_path: Path | None = None,
     dungeon_table_path: Path | None = None,
     text_vo_id_table_path: Path | None = DEFAULT_TEXT_VO_ID_TABLE,
+    lua_consumer_audit_path: Path = DEFAULT_LUA_CONSUMER_REFERENCE_AUDIT,
+    cutscene_case_audit_paths: Iterable[Path] = (
+        DEFAULT_CUTSCENE_CASE_RESOLUTION_AUDIT,
+    ),
 ) -> dict[str, Any] | None:
     """Write a unique-file Story-to-pipeline coverage audit.
 
@@ -5073,15 +5770,16 @@ def build_story_binding_coverage(
 
     # Exact authored non-mission content. Table-only continuation/topic rows
     # remain outside the pipeline denominator as before. A freshness-checked
-    # guide-runtime consumer is admitted explicitly so its Story trigger card
-    # can be classified even though its nominal blackbox bucket is not a
-    # MissionRuntime mission.
+    # exact runtime consumers are admitted explicitly so their Story trigger
+    # cards can be classified even though their nominal buckets are not
+    # MissionRuntime missions.
     non_mission_content = combined_non_mission_content_keys(
         DEFAULT_TABLE_ROOT
     )
     for key, evidence in non_mission_content.items():
         if (
-            evidence.get("evidenceKind") == "guide_runtime_asset"
+            evidence.get("evidenceKind")
+            in PIPELINE_VISIBLE_NON_MISSION_EVIDENCE_KINDS
             and key in all_story_rows
             and key not in story_rows
         ):
@@ -5126,10 +5824,15 @@ def build_story_binding_coverage(
     )
     missionless_subgame_nodes: dict[str, dict[str, Any]] = {}
     missionless_native_runtime_nodes: dict[str, dict[str, Any]] = {}
+    native_receiver_gate_cache: dict[tuple[str, int], dict[str, Any]] = {}
     story_trigger_routes: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
     context_only_trigger_route_keys: set[str] = set()
     definition_only_interactive_config_keys: set[str] = set()
     sidecars_read = 0
+    lua_playback_evidence = load_lua_story_playback_evidence(
+        lua_consumer_audit_path,
+        cutscene_case_audit_paths,
+    )
 
     def add_trigger_route(route: dict[str, Any] | None) -> None:
         if not route:
@@ -5145,38 +5848,89 @@ def build_story_binding_coverage(
         )
         story_trigger_routes[key][signature] = route
 
-    for call_site in LUA_STORY_PLAYBACK_CALL_SITES:
+    for call_site in lua_playback_evidence["acceptedExactPlaybackCalls"]:
+        mission_id = call_site.get("missionId")
+        quest_id = call_site.get("questId")
+        table_source = str(call_site.get("tableSourcePath") or "")
+        has_table_owner = bool(table_source and (mission_id or quest_id))
+        lua_steps: list[dict[str, Any]] = []
+        if has_table_owner:
+            lua_steps.extend([
+                {
+                    "kind": "quest" if quest_id else "mission",
+                    "id": quest_id or mission_id,
+                },
+                {
+                    "kind": "originalTableRow",
+                    "id": f"{call_site['table']}:{call_site['tableKey']}",
+                    "summaries": [
+                        f"{call_site['tableField']} = {call_site['storyKey']}",
+                        f"SHA-256 {call_site['tableSourceSha256']}",
+                    ],
+                },
+            ])
+        lua_steps.extend([
+            {
+                "kind": "luaController",
+                "id": call_site["luaFile"],
+                "phase": call_site["phase"],
+                "summaries": [
+                    f"line {call_site['luaLine']}",
+                    f"SHA-256 {call_site['luaSourceSha256']}",
+                ],
+            },
+            {
+                "kind": "nativePlayback",
+                "id": call_site["nativeEntry"],
+            },
+        ])
         add_trigger_route({
             "storyKey": call_site["storyKey"],
-            "relation": "lua_controller_playback",
-            "causality": "playback_owner_unresolved",
+            "relation": (
+                "lua_table_controller_playback"
+                if has_table_owner
+                else "lua_controller_playback"
+            ),
+            "causality": "context" if has_table_owner else "playback_owner_unresolved",
             "direction": "playback",
-            "scope": "phase",
+            "scope": "quest" if quest_id else ("mission" if mission_id else "phase"),
             "phase": call_site["phase"],
             "evidenceTier": "direct",
-            "confidence": "shipped_lua_literal_plus_native_entry",
-            "ownerStatus": "unresolved",
-            "questTriggerStatus": "no_mission_or_quest_identity_serialized",
-            "missionId": None,
-            "questId": None,
+            "confidence": (
+                "corpus_scanned_shipped_lua_table_row_plus_native_entry"
+                if has_table_owner
+                else "corpus_scanned_shipped_lua_literal_plus_native_entry"
+            ),
+            "ownerStatus": "connected" if has_table_owner else "unresolved",
+            "questTriggerStatus": (
+                "exact_same_table_row_identity"
+                if has_table_owner
+                else "no_mission_or_quest_identity_serialized"
+            ),
+            "missionId": mission_id,
+            "questId": quest_id,
             "serverExchange": False,
             "luaFile": call_site["luaFile"],
+            "luaSourcePath": call_site["luaSourcePath"],
+            "luaSourceSha256": call_site["luaSourceSha256"],
+            "luaLine": call_site["luaLine"],
             "luaSymbol": call_site["luaSymbol"],
             "luaCall": call_site["luaCall"],
             "nativeEntry": call_site["nativeEntry"],
-            "sourceFiles": [call_site["luaFile"]],
-            "note": call_site["note"],
-            "steps": [
-                {
-                    "kind": "luaController",
-                    "id": call_site["luaFile"],
-                    "phase": call_site["phase"],
-                },
-                {
-                    "kind": "nativePlayback",
-                    "id": call_site["nativeEntry"],
-                },
+            "auditReport": call_site["auditReport"],
+            "auditSha256": call_site["auditSha256"],
+            "table": call_site.get("table"),
+            "tableKey": call_site.get("tableKey"),
+            "tableField": call_site.get("tableField"),
+            "tableLookupKeyExpression": call_site.get("tableLookupKeyExpression"),
+            "tableSourceSha256": call_site.get("tableSourceSha256"),
+            "sourceFiles": [
+                call_site["luaFile"],
+                *([table_source] if table_source else []),
+                call_site["auditReport"],
             ],
+            "note": call_site["note"],
+            "steps": lua_steps,
         })
 
     root_playback_alias_rows = [
@@ -5316,7 +6070,7 @@ def build_story_binding_coverage(
                     row,
                     mission_id=mission_id,
                     scope="mission",
-                    owner_status="unresolved",
+                    owner_status="unresolved_playback",
                 ))
                 event_names = {
                     str(value).strip()
@@ -5383,6 +6137,8 @@ def build_story_binding_coverage(
                         )
                         if not selector:
                             continue
+                        source_file = str(occurrence.get("sourceFile") or "")
+                        source_path = ROOT / source_file
                         runtime_target = (
                             owner.get("runtimeTarget")
                             if isinstance(owner.get("runtimeTarget"), dict)
@@ -5397,8 +6153,6 @@ def build_story_binding_coverage(
                                 int,
                             )
                         ):
-                            source_file = str(occurrence.get("sourceFile") or "")
-                            source_path = ROOT / source_file
                             try:
                                 runtime_target = (
                                     decode_levelscript_encounter_module_target(
@@ -5438,10 +6192,36 @@ def build_story_binding_coverage(
                                 "ownershipBoundary": str(
                                     runtime_target.get("ownershipBoundary") or ""
                                 ),
+                                "_playbackGates": {},
                                 "_localProducerRoutes": {},
                                 "storyFiles": {},
                             },
                         )
+                        header_local_id = selector.get("listenerHeaderLocalId")
+                        if source_file and isinstance(header_local_id, int):
+                            gate_cache_key = (source_file, header_local_id)
+                            if gate_cache_key not in native_receiver_gate_cache:
+                                try:
+                                    native_receiver_gate_cache[gate_cache_key] = (
+                                        exact_native_receiver_playback_gate(
+                                            read_bytes_cached(source_path),
+                                            header_local_id,
+                                            source_file=source_file,
+                                        )
+                                    )
+                                except OSError:
+                                    native_receiver_gate_cache[gate_cache_key] = {}
+                            playback_gate = native_receiver_gate_cache[gate_cache_key]
+                            if playback_gate:
+                                gate_signature = json.dumps(
+                                    playback_gate,
+                                    ensure_ascii=False,
+                                    sort_keys=True,
+                                    separators=(",", ":"),
+                                )
+                                runtime_node["_playbackGates"][gate_signature] = (
+                                    playback_gate
+                                )
                         if runtime_target and not runtime_node.get("runtimeTarget"):
                             runtime_node["runtimeTarget"] = runtime_target
                             runtime_node["ownershipBoundary"] = str(
@@ -5530,6 +6310,12 @@ def build_story_binding_coverage(
         for row in flow.get("unlinkedTimelineContainment") or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 unresolved_timeline_containment.add(str(row["key"]))
+                add_trigger_route(build_story_trigger_route(
+                    row,
+                    mission_id=mission_id,
+                    scope="mission",
+                    owner_status="unresolved",
+                ))
         unresolved_dialog_rows = (
             flow.get("unresolvedDialogTreeNarrativeActions")
             if "unresolvedDialogTreeNarrativeActions" in flow
@@ -5538,6 +6324,12 @@ def build_story_binding_coverage(
         for row in unresolved_dialog_rows or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 unresolved_dialog_tree_containment.add(str(row["key"]))
+                add_trigger_route(build_story_trigger_route(
+                    row,
+                    mission_id=mission_id,
+                    scope="mission",
+                    owner_status="unresolved",
+                ))
         for row in flow.get("unlinkedDialogTreeNarrativeActions") or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 unlinked_dialog_tree_containment.add(str(row["key"]))
@@ -5549,12 +6341,24 @@ def build_story_binding_coverage(
         for row in unresolved_left_subtitle_rows or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 unresolved_dialog_tree_left_subtitle.add(str(row["key"]))
+                add_trigger_route(build_story_trigger_route(
+                    row,
+                    mission_id=mission_id,
+                    scope="mission",
+                    owner_status="unresolved",
+                ))
         for row in flow.get("unlinkedDialogTreeLeftSubtitleActions") or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 unlinked_dialog_tree_left_subtitle.add(str(row["key"]))
         for row in flow.get("unresolvedDialogTreeStoryPlaybackCarriers") or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 unresolved_dialog_tree_story_playback.add(str(row["key"]))
+                add_trigger_route(build_story_trigger_route(
+                    row,
+                    mission_id=mission_id,
+                    scope="mission",
+                    owner_status="unresolved",
+                ))
         for row in flow.get("unlinkedDefinitionOnly") or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 key = str(row["key"])
@@ -5629,7 +6433,7 @@ def build_story_binding_coverage(
     }
     story_trigger_manifest: dict[str, dict[str, Any]] = {}
     rejected_playback_by_key: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for candidate in LUA_STORY_PLAYBACK_REJECTIONS:
+    for candidate in lua_playback_evidence["rejectedCaseMismatchCalls"]:
         rejected_playback_by_key[str(candidate["storyKey"])].append(
             dict(candidate)
         )
@@ -5640,12 +6444,7 @@ def build_story_binding_coverage(
     context_only_trigger_route_count = 0
     for key, story in sorted(story_rows.items(), key=lambda item: natural_quest_key(item[0])):
         routes = list(story_trigger_routes.get(key, {}).values())
-        routes.sort(key=lambda route: (
-            natural_quest_key(str(route.get("missionId") or "")),
-            natural_quest_key(str(route.get("questId") or "")),
-            str(route.get("causality") or ""),
-            str(route.get("relation") or ""),
-        ))
+        routes.sort(key=story_trigger_route_sort_key)
         if key in connected_keys:
             attachment_status = "connected"
         elif key in native_playback_unscoped:
@@ -5704,12 +6503,7 @@ def build_story_binding_coverage(
         if not story:
             continue
         routes = list(story_trigger_routes[key].values())
-        routes.sort(key=lambda route: (
-            natural_quest_key(str(route.get("missionId") or "")),
-            natural_quest_key(str(route.get("questId") or "")),
-            str(route.get("causality") or ""),
-            str(route.get("relation") or ""),
-        ))
+        routes.sort(key=story_trigger_route_sort_key)
         if not routes:
             continue
         context_only_trigger_route_files += 1
@@ -5758,6 +6552,15 @@ def build_story_binding_coverage(
     missionless_runtime_story_keys: set[str] = set()
     missionless_runtime_story_placements = 0
     for node in missionless_native_runtime_nodes.values():
+        playback_gates = sorted(
+            node.pop("_playbackGates", {}).values(),
+            key=lambda row: (
+                str(row.get("sourceFile") or ""),
+                int(row.get("headerLocalId") or -1),
+            ),
+        )
+        if playback_gates:
+            node["playbackGates"] = playback_gates
         local_producer_routes = sorted(
             node.pop("_localProducerRoutes", {}).values(),
             key=lambda row: (
@@ -5794,7 +6597,7 @@ def build_story_binding_coverage(
 
     dynamic_scene_identity = load_dynamic_scene_identity_cross_references()
     report = {
-        "schemaVersion": 10,
+        "schemaVersion": 12,
         "generated": int(time.time()),
         "language": language,
         "policy": (
@@ -5808,6 +6611,8 @@ def build_story_binding_coverage(
             "storyIndex": repo_path(story_index_path),
             "missionSidecars": repo_path(mission_sidecar_root),
             "definitionOnlyAudioMetadata": definition_only_classification["source"],
+            "luaPlaybackAudit": lua_playback_evidence["auditReport"],
+            "luaPlaybackAuditSha256": lua_playback_evidence["auditSha256"],
         },
         "counts": {
             "pipelineMissions": len(mission_ids),
@@ -5849,6 +6654,16 @@ def build_story_binding_coverage(
                 len(rows)
                 for key, rows in rejected_playback_by_key.items()
                 if key in story_rows
+            ),
+            "scannedLuaStoryPlaybackCalls":
+                lua_playback_evidence["scannedPlaybackCalls"],
+            "acceptedLuaExactPlaybackCalls": len(
+                lua_playback_evidence["acceptedExactPlaybackCalls"]
+            ),
+            "acceptedLuaTableCarrierCalls":
+                lua_playback_evidence["acceptedTableCarrierCalls"],
+            "rejectedLuaCaseMismatchCalls": len(
+                lua_playback_evidence["rejectedCaseMismatchCalls"]
             ),
             "missionStateDependencyStoryFiles": len(
                 mission_state_dependency_keys
@@ -5897,6 +6712,16 @@ def build_story_binding_coverage(
                 len(node.get("localProducerRoutes") or [])
                 for node in missionless_runtime_nodes
             ),
+            "missionlessNativeRuntimePlaybackGates": sum(
+                len(node.get("playbackGates") or [])
+                for node in missionless_runtime_nodes
+            ),
+            "missionlessNativeRuntimePlaybackGateStoryFiles": len({
+                story["key"]
+                for node in missionless_runtime_nodes
+                if node.get("playbackGates")
+                for story in node.get("storyFiles") or []
+            }),
             "partiallyConnectedDialogTreeNarrativeFiles": len(
                 unresolved_dialog_tree_containment & connected_keys
             ),
@@ -5916,6 +6741,7 @@ def build_story_binding_coverage(
             ),
         ),
         "storyTriggerManifest": story_trigger_manifest,
+        "luaStoryPlaybackEvidence": lua_playback_evidence,
         "rootPlaybackAliases": root_playback_alias_rows,
         "composedRootPlaybackAliases":
             composed_root_playback_alias_rows,
@@ -6000,6 +6826,9 @@ def build_story_binding_coverage(
         f"- Normalized Story trigger/context routes: `{counts['storyTriggerRoutes']}`",
         f"- Story files with at least one normalized route: `{counts['storyFilesWithTriggerRoutes']}`",
         f"- Unlinked Story files with a known trigger/context route: `{counts['unlinkedStoryFilesWithTriggerRoutes']}`",
+        f"- Shipped-Lua Story playback calls scanned: `{counts['scannedLuaStoryPlaybackCalls']}`",
+        f"- Exact-case Lua playback calls admitted: `{counts['acceptedLuaExactPlaybackCalls']}`",
+        f"- Case-mismatched Lua calls rejected by installed-binary proof: `{counts['rejectedLuaCaseMismatchCalls']}`",
         f"- Exact root playback alias rows: `{counts['rootPlaybackAliasRows']}`",
         f"- TimelineAsset Story files reached by those aliases: `{counts['rootPlaybackAliasFiles']}`",
         f"- Alias rows composed with an independently connected root playback route: `{counts['composedRootPlaybackAliasRows']}`",
@@ -6026,6 +6855,8 @@ def build_story_binding_coverage(
         f"- Exact missionless native runtime receiver nodes: `{counts['missionlessNativeRuntimeRows']}`",
         f"- Unique Story files attached to exact runtime receivers: `{counts['missionlessNativeRuntimeStoryFiles']}`",
         f"- Exact runtime-receiver-to-Story placements: `{counts['missionlessNativeRuntimeStoryPlacements']}`",
+        f"- Exact receiver playback gates: `{counts['missionlessNativeRuntimePlaybackGates']}`",
+        f"- Story files controlled by those exact gates: `{counts['missionlessNativeRuntimePlaybackGateStoryFiles']}`",
         f"- Connected files with another unresolved DialogTree parent use: `{counts['partiallyConnectedDialogTreeNarrativeFiles']}`",
         "",
         "## By kind",
@@ -6035,6 +6866,28 @@ def build_story_binding_coverage(
     ]
     for kind, values in kind_counts.items():
         lines.append(f"| `{kind}` | {values['total']} | {values['connected']} | {values['unlinked']} |")
+    lines.extend([
+        "",
+        "## Shipped-Lua playback census",
+        "",
+        f"Validator: `{lua_playback_evidence['validator']}` / "
+        f"`{lua_playback_evidence['status']}`.",
+        "",
+        lua_playback_evidence["evidenceBoundary"],
+        "",
+        f"Audit: `{lua_playback_evidence['auditReport']}` "
+        f"SHA-256 `{lua_playback_evidence['auditSha256']}`.",
+    ])
+    for row in lua_playback_evidence["acceptedExactPlaybackCalls"]:
+        lines.append(
+            f"- admitted `{row['storyKey']}` from `{row['luaFile']}:{row['luaLine']}` "
+            f"(source SHA-256 `{row['luaSourceSha256']}`)"
+        )
+    for row in lua_playback_evidence["rejectedCaseMismatchCalls"]:
+        lines.append(
+            f"- rejected literal `{row['luaLiteral']}` for `{row['storyKey']}` "
+            f"via `{row['auditReport']}`"
+        )
     if root_playback_alias_rows:
         lines.extend([
             "",
@@ -7229,6 +8082,12 @@ def publish_source_story_partial_order(
         summary["storyOrderNativeMergeCount"] = int(
             order_summary.get("nativeControlMergeCount") or 0
         )
+        summary["storyOrderNativeOrderedSequenceCount"] = int(
+            order_summary.get("nativeOrderedSequenceCount") or 0
+        )
+        summary["storyOrderNativeRelatedActionTopologyCount"] = int(
+            order_summary.get("nativeRelatedActionTopologyCount") or 0
+        )
         summary["storyOrderNativeNamedPredicateCount"] = int(
             order_summary.get("nativeNamedPredicateCount") or 0
         )
@@ -7863,27 +8722,41 @@ def main() -> int:
         args.game_mechanic_condition_table.resolve(),
         args.dungeon_table.resolve(),
         getattr(args, "text_vo_id_table", DEFAULT_TEXT_VO_ID_TABLE).resolve(),
+        getattr(
+            args,
+            "lua_consumer_audit",
+            DEFAULT_LUA_CONSUMER_REFERENCE_AUDIT,
+        ).resolve(),
+        tuple(
+            path.resolve()
+            for path in (
+                getattr(args, "cutscene_case_audit", None)
+                or [DEFAULT_CUTSCENE_CASE_RESOLUTION_AUDIT]
+            )
+        ),
     )
     node_attachment = None
     if coverage:
+        source_story_gap_queue = getattr(
+            args,
+            "source_story_gap_queue",
+            DEFAULT_SOURCE_STORY_GAP_QUEUE,
+        ).resolve()
+        if getattr(args, "refresh_source_story_gap_queue", False):
+            refresh_source_story_gap_queue(
+                args.story_language,
+                source_story_gap_queue,
+            )
         offline_recovery = publish_offline_story_recovery(
             coverage["storyTriggerManifest"],
-            getattr(
-                args,
-                "source_story_gap_queue",
-                DEFAULT_SOURCE_STORY_GAP_QUEUE,
-            ).resolve(),
+            source_story_gap_queue,
         )
         offline_recovery["missionShells"] = (
             publish_offline_recovery_mission_shells(
                 index,
                 output_root,
                 offline_recovery,
-                getattr(
-                    args,
-                    "source_story_gap_queue",
-                    DEFAULT_SOURCE_STORY_GAP_QUEUE,
-                ).resolve(),
+                source_story_gap_queue,
             ) if output_root == DEFAULT_OUTPUT_ROOT.resolve() else []
         )
         report_stem = f"mission_pipeline_story_binding_coverage_{coverage['language']}"
@@ -7894,6 +8767,8 @@ def main() -> int:
             "counts": coverage["counts"],
             "nativePlaybackEventFamilies": coverage["nativePlaybackEventFamilies"],
             "storyTriggerManifest": coverage["storyTriggerManifest"],
+            "luaStoryPlaybackEvidence":
+                coverage.get("luaStoryPlaybackEvidence") or {},
             "offlineRecoveryEvidence": offline_recovery,
             "rootPlaybackAliases":
                 coverage.get("rootPlaybackAliases") or [],
@@ -7983,6 +8858,8 @@ def main() -> int:
             f"{summary.get('questMerges', 0)} quest merges, "
             f"{summary.get('nativeControlBranches', 0)} native branch groups, "
             f"{summary.get('nativeControlMerges', 0)} native convergences, "
+            f"{summary.get('nativeOrderedSequences', 0)} native ordered sequences, "
+            f"{summary.get('nativeRelatedActionTopologies', 0)} related action graphs, "
             f"{summary.get('nativeNamedPredicates', 0)} named predicates, "
             f"{summary.get('nativeInlinePredicates', 0)} inline predicates, "
             f"{summary.get('nativeSemanticPredicates', 0)} semantic predicates, "

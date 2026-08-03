@@ -2612,6 +2612,44 @@ def _decode_local_getter_ref(payload: bytes, cursor: int) -> tuple[int, int] | N
     return local_id, cursor + 17
 
 
+def _decode_pure_bool_getter_ref(
+    payload: bytes,
+    cursor: int,
+) -> tuple[dict[str, Any], int] | None:
+    """Decode one exact ``PureGetter<bool>`` local-reference envelope.
+
+    Boolean getter combinators serialize their child nodes directly rather
+    than through the 17-byte ``Param<T>`` reference used by integer operands.
+    The installed formatter writes tag 04/00, the local getter id, and two
+    null i32 sentinels.  Constants remain distinguishable because their
+    ``idRef`` is -1.
+    """
+    if (
+        cursor + 14 > len(payload)
+        or payload[cursor : cursor + 2] != b"\x04\x00"
+        or payload[cursor + 6 : cursor + 14] != b"\xff" * 8
+    ):
+        return None
+    local_id = struct.unpack_from("<i", payload, cursor + 2)[0]
+    if local_id < 0 or local_id > 0x10000:
+        return None
+    return {
+        "operandKind": "localGetterRef",
+        "getterLocalId": local_id,
+    }, cursor + 14
+
+
+def _decode_bool_operand(
+    payload: bytes,
+    cursor: int,
+) -> tuple[dict[str, Any], int] | None:
+    """Decode a polymorphic boolean constant/path or local getter operand."""
+    getter_ref = _decode_pure_bool_getter_ref(payload, cursor)
+    if getter_ref is not None:
+        return getter_ref
+    return _decode_bool_param(payload, cursor)
+
+
 def _finish_getter_fields(
     payload: bytes,
     end: int,
@@ -2665,14 +2703,41 @@ def _decode_levelscript_ptr_param(
     }, end
 
 
+def _decode_levelscript_task_ptr_param(
+    payload: bytes,
+    cursor: int,
+) -> tuple[dict[str, Any], int] | None:
+    """Decode the current ``Param<LevelScriptTaskPtr>`` key shape."""
+    if cursor + 2 > len(payload) or payload[cursor] != 0x04:
+        return None
+    pointer_mode = payload[cursor + 1]
+    if pointer_mode not in (0, 1):
+        return None
+    decoded_key = _decode_nullable_string_value(payload, cursor + 2)
+    if decoded_key is None:
+        return None
+    task_key = decoded_key[0]["value"]
+    if task_key is not None and not re.fullmatch(r"[0-9a-f]{8}", task_key):
+        return None
+    tail = _decode_param_tail(payload, decoded_key[1])
+    if tail is None:
+        return None
+    detail, end = tail
+    return {
+        "pointerMode": pointer_mode,
+        "taskKey": task_key,
+        **detail,
+    }, end
+
+
 def _decode_boolean_compare_getter(payload: bytes) -> dict[str, Any]:
     comparer = _decode_i32_param(payload, 0)
     if comparer is None:
         return {}
-    value_a = _decode_bool_param(payload, comparer[1])
+    value_a = _decode_bool_operand(payload, comparer[1])
     if value_a is None:
         return {}
-    value_b = _decode_bool_param(payload, value_a[1])
+    value_b = _decode_bool_operand(payload, value_a[1])
     if value_b is None:
         return {}
     comparer_raw = comparer[0]["value"]
@@ -2681,22 +2746,190 @@ def _decode_boolean_compare_getter(payload: bytes) -> dict[str, Any]:
         "comparerName": {0: "Equal", 1: "NotEqual"}.get(comparer_raw, ""),
         "valueA": value_a[0],
         "valueB": value_b[0],
-        "payloadShape": "bool-comparer-two-bool-params-exact-eof",
+        "payloadShape": "bool-comparer-two-polymorphic-bool-operands-exact-fields",
+    })
+
+
+def _decode_bool_binary_getter(
+    payload: bytes,
+    *,
+    operation: str,
+) -> dict[str, Any]:
+    value_a = _decode_pure_bool_getter_ref(payload, 0)
+    if value_a is None:
+        return {}
+    value_b = _decode_pure_bool_getter_ref(payload, value_a[1])
+    if value_b is None:
+        return {}
+    return _finish_getter_fields(payload, value_b[1], {
+        "operation": operation,
+        "valueA": value_a[0],
+        "valueB": value_b[0],
+        "payloadShape": "two-pure-bool-getter-refs-exact-fields",
+    })
+
+
+def _decode_bool_invert_getter(payload: bytes) -> dict[str, Any]:
+    value = _decode_pure_bool_getter_ref(payload, 0)
+    if value is None:
+        return {}
+    return _finish_getter_fields(payload, value[1], {
+        "operation": "Not",
+        "value": value[0],
+        "payloadShape": "one-pure-bool-getter-ref-exact-fields",
+    })
+
+
+def _decode_bool_multi_and_getter(payload: bytes) -> dict[str, Any]:
+    if len(payload) < 4:
+        return {}
+    count = struct.unpack_from("<I", payload, 0)[0]
+    if count == 0 or count > 256:
+        return {}
+    cursor = 4
+    values: list[dict[str, Any]] = []
+    for _index in range(count):
+        value = _decode_pure_bool_getter_ref(payload, cursor)
+        if value is None:
+            return {}
+        values.append(value[0])
+        cursor = value[1]
+    return _finish_getter_fields(payload, cursor, {
+        "operation": "All",
+        "values": values,
+        "payloadShape": "counted-pure-bool-getter-refs-exact-fields",
+    })
+
+
+def _decode_getter_bool(payload: bytes) -> dict[str, Any]:
+    value = _decode_bool_param(payload, 0)
+    if value is None:
+        return {}
+    return _finish_getter_fields(payload, value[1], {
+        "value": value[0],
+        "payloadShape": "one-bool-param-exact-fields",
+    })
+
+
+def _decode_interactive_check_state_getter(payload: bytes) -> dict[str, Any]:
+    """Decode comparer, ScriptEntityPtr target, and expected state exactly."""
+    comparer = _decode_i32_param(payload, 0)
+    if comparer is None:
+        return {}
+    target = _decode_constant_entity_ptr_param(payload, comparer[1])
+    if target is None:
+        return {}
+    value = _decode_i32_param(payload, target[1])
+    if value is None:
+        return {}
+    comparer_raw = comparer[0]["value"]
+    return _finish_getter_fields(payload, value[1], {
+        "type": "InteractiveCheckState",
+        "comparer": comparer[0],
+        "comparerName": {
+            0: "Equal",
+            1: "NotEqual",
+            2: "GreaterThan",
+            3: "GreaterEqual",
+            4: "LessThan",
+            5: "LessEqual",
+        }.get(comparer_raw, ""),
+        "target": target[0],
+        "value": value[0],
+        "payloadShape": "comparer-entity-ptr-state-exact-fields",
+        "nativeMappingId": "gameassembly-2026-08-02-interactive-check-state",
+    })
+
+
+def _decode_get_lsm_is_completed_getter(payload: bytes) -> dict[str, Any]:
+    """Decode the two formatter fields used by ``GetLsmIsCompleted``.
+
+    The first field is the current fixed-width ``Param<LsmPtr>`` value.  Its
+    inner eight-byte value is retained losslessly because the pointer's bit
+    allocation is not needed to establish the predicate.  The second field is
+    the already-proven ``Param<LevelScriptPtr>`` representation.
+    """
+    if len(payload) < 21 or payload[:2] != b"\x04\x03":
+        return {}
+    lsm_tail = _decode_param_tail(payload, 9)
+    if lsm_tail is None or lsm_tail[1] != 21:
+        return {}
+    script_ptr = _decode_levelscript_ptr_param(payload, 21)
+    if script_ptr is None:
+        return {}
+    return _finish_getter_fields(payload, script_ptr[1], {
+        "type": "GetLsmIsCompleted",
+        "lsmPtr": {
+            "rawValueHex": payload[1:9].hex(),
+            **lsm_tail[0],
+        },
+        "scriptPtr": script_ptr[0],
+        "resultField": "LevelScriptModule.isCompleted",
+        "payloadShape": "lsm-ptr-and-level-script-ptr-exact-fields",
+        "nativeMappingId": "gameassembly-2026-08-02-get-lsm-is-completed",
     })
 
 
 def _decode_int_equal_getter(payload: bytes) -> dict[str, Any]:
-    value_a = _decode_i32_param(payload, 0)
+    value_a = _decode_i32_operand(payload, 0)
     if value_a is None:
         return {}
-    value_b = _decode_i32_param(payload, value_a[1])
+    value_b = _decode_i32_operand(payload, value_a[1])
     if value_b is None:
         return {}
-    return _finish_getter_fields(payload, value_b[1], {
+    has_getter_ref = any(
+        operand.get("operandKind") == "localGetterRef"
+        for operand in (value_a[0], value_b[0])
+    )
+    detail = {
         "operation": "Equal",
         "valueA": value_a[0],
         "valueB": value_b[0],
-        "payloadShape": "two-int-params-exact-eof",
+        "payloadShape": (
+            "two-int-operands-exact-eof"
+            if has_getter_ref
+            else "two-int-params-exact-eof"
+        ),
+    }
+    for label, operand in (("valueA", value_a[0]), ("valueB", value_b[0])):
+        getter_local_id = operand.get("getterLocalId")
+        if isinstance(getter_local_id, int):
+            detail[f"{label}GetterLocalId"] = getter_local_id
+    return _finish_getter_fields(payload, value_b[1], detail)
+
+
+def _decode_i32_operand(
+    payload: bytes,
+    cursor: int,
+) -> tuple[dict[str, Any], int] | None:
+    """Decode one polymorphic ``Param<int>`` operand exactly.
+
+    The installed serializer uses the same field for authored constants and
+    local getter references.  A getter reference has a distinct 17-byte
+    envelope, so keep its identity instead of interpreting its local id as a
+    constant value.
+    """
+    getter_ref = _decode_local_getter_ref(payload, cursor)
+    if getter_ref is not None:
+        return {
+            "operandKind": "localGetterRef",
+            "getterLocalId": getter_ref[0],
+        }, getter_ref[1]
+    value = _decode_i32_param(payload, cursor)
+    if value is None:
+        return None
+    return value
+
+
+def _decode_get_condition_result_getter(payload: bytes) -> dict[str, Any]:
+    """Decode the embedded root ``GameCondition`` union used by this getter."""
+    decoded = _decode_levelscript_task_condition(payload, 0, len(payload))
+    if decoded is None:
+        return {}
+    condition, end = decoded
+    return _finish_getter_fields(payload, end, {
+        "condition": condition,
+        "payloadShape": "root-game-condition-union-exact-fields",
     })
 
 
@@ -2951,6 +3184,83 @@ def _decode_compare_mission_state_getter(payload: bytes) -> dict[str, Any]:
             "gameassembly-2026-07-11-puregetter-mission-state"
         ),
     }
+
+
+def _decode_check_levelscript_stage_getter(payload: bytes) -> dict[str, Any]:
+    """Decode the current generic LevelScript-stage comparison getter.
+
+    Current metadata names the runtime fields ``_scriptPtr``, ``_comparer``,
+    and ``_value``.  The generated MemoryPack setter order is comparer,
+    scriptPtr, value; the native ``GetResult`` body resolves the script, reads
+    its stage, and passes the operands to ``ComparerExtensions.DoCompare``.
+    """
+    comparer = _decode_i32_param(payload, 0)
+    if comparer is None:
+        return {}
+    script_ptr = _decode_levelscript_ptr_param(payload, comparer[1])
+    if script_ptr is None:
+        return {}
+    expected_stage = _decode_i32_param(payload, script_ptr[1])
+    if expected_stage is None:
+        return {}
+    comparer_raw = comparer[0]["value"]
+    return _finish_getter_fields(payload, expected_stage[1], {
+        "type": "CheckLevelScriptStage",
+        "scriptPtr": script_ptr[0],
+        "comparer": comparer[0],
+        "comparerName": {
+            0: "Equal",
+            1: "NotEqual",
+            2: "GreaterThan",
+            3: "GreaterEqual",
+            4: "LessThan",
+            5: "LessEqual",
+        }.get(comparer_raw, ""),
+        "expectedStage": expected_stage[0],
+        "payloadShape": "comparer-level-script-ptr-stage-exact-fields",
+        "serializedMemberCount": 10,
+        "pureGetterUnionTag": "0x0013",
+        "nativeMappingId": "gameassembly-2026-08-02-check-levelscript-stage",
+        "executionSide": "client",
+        "serverExchange": False,
+    })
+
+
+def _decode_check_mission_or_quest_complete_getter(
+    payload: bytes,
+) -> dict[str, Any]:
+    """Decode the current mission/quest completion predicate.
+
+    The generated formatter writes ``_isQuest`` followed by ``_missionId``.
+    The native ``GetResult`` body selects MissionSystem.GetQuestState when the
+    flag is true and GetMissionData otherwise, and accepts state value 3 in
+    both paths.
+    """
+    is_quest = _decode_bool_param(payload, 0)
+    if is_quest is None:
+        return {}
+    identity = _decode_constant_string_param(payload, is_quest[1])
+    if identity is None:
+        return {}
+    mission_or_quest_id = identity[0]
+    if not re.fullmatch(r"[A-Za-z0-9_#-]+", mission_or_quest_id):
+        return {}
+    target_kind = "quest" if is_quest[0]["value"] else "mission"
+    return _finish_getter_fields(payload, identity[1], {
+        "type": "CheckMissionOrQuestIsComplete",
+        "isQuest": is_quest[0],
+        "targetKind": target_kind,
+        "missionOrQuestId": mission_or_quest_id,
+        "completedStateRaw": 3,
+        "completedStateName": "Completed",
+        "payloadShape": "is-quest-and-identity-exact-fields",
+        "serializedMemberCount": 9,
+        "pureGetterUnionTag": "0x0016",
+        "nativeMappingId": "gameassembly-2026-08-02-check-mission-or-quest-complete",
+        "executionSide": "client",
+        "networkRole": "reads_synchronized_local_mission_or_quest_state",
+        "serverExchange": False,
+    })
 
 
 def _getter_subtype_payload(
@@ -5106,8 +5416,28 @@ def _decode_action_header_prefix(payload: bytes) -> dict[str, Any]:
         return {}
     if not (-1000 <= trigger_active_during <= 100000):
         return {}
-    return _drop_empty(
-        {
+    validate_param: dict[str, Any] = {}
+    if len(payload) >= 31 and payload[17] == 0x04 and payload[18] in (0, 1):
+        id_ref = struct.unpack_from("<i", payload, 19)[0]
+        param_source = struct.unpack_from("<i", payload, 23)[0]
+        path_size = struct.unpack_from("<i", payload, 27)[0]
+        if path_size == -1 and (
+            (id_ref == -1 and param_source == 0)
+            or (0 < id_ref <= 0x10000 and param_source == -1)
+        ):
+            validate_param = {
+                "value": bool(payload[18]),
+                "idRef": id_ref,
+                "paramSource": param_source,
+                "path": None,
+                "payloadOffset": "0x11",
+                "payloadShape": (
+                    "action-header-validate-constant"
+                    if id_ref == -1
+                    else "action-header-validate-local-getter"
+                ),
+            }
+    detail = {
             "payloadShape": "action-header-prefix",
             "filterMask": filter_mask,
             "filterMode": filter_mode,
@@ -5115,8 +5445,226 @@ def _decode_action_header_prefix(payload: bytes) -> dict[str, Any]:
             "priority": priority,
             "triggerActiveDuring": trigger_active_during,
             "nextIdOffset": "0x5",
-        }
+    }
+    if validate_param:
+        detail["validateParam"] = validate_param
+        if validate_param["payloadShape"] == "action-header-validate-local-getter":
+            detail["validateGetterLocalId"] = validate_param["idRef"]
+    return _drop_empty(detail)
+
+
+LEVELSCRIPT_EXACT_GETTER_FIELDS = (
+    "booleanCompare",
+    "boolGetterAnd",
+    "boolGetterInvert",
+    "boolGetterMultiAnd",
+    "boolGetterOr",
+    "checkLevelScriptStage",
+    "checkMissionOrQuestIsComplete",
+    "compareMissionState",
+    "getConditionResult",
+    "floatNewCompare",
+    "getLevelScriptPropertyGenericBool",
+    "getLevelScriptStage",
+    "getMissionState",
+    "getLsmIsCompleted",
+    "getterBool",
+    "getterInt",
+    "getterString",
+    "intCompare",
+    "intEqual",
+    "intRandom",
+    "interactiveCheckState",
+    "isEndminGender",
+)
+
+
+def _predicate_local_getter_refs(
+    value: Any,
+    path: str = "",
+) -> list[dict[str, Any]]:
+    """Collect explicitly typed local-getter references from exact fields."""
+    refs: list[dict[str, Any]] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}" if path else key
+            if (
+                isinstance(child, int)
+                and (
+                    key == "getterLocalId"
+                    or key.endswith("GetterLocalId")
+                )
+            ):
+                shorthand_base = key[: -len("GetterLocalId")]
+                canonical_operand = value.get(shorthand_base)
+                if (
+                    shorthand_base
+                    and isinstance(canonical_operand, dict)
+                    and canonical_operand.get("getterLocalId") == child
+                ):
+                    continue
+                refs.append({"path": child_path, "getterLocalId": child})
+            else:
+                refs.extend(_predicate_local_getter_refs(child, child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            child_path = f"{path}[{index}]"
+            refs.extend(_predicate_local_getter_refs(child, child_path))
+    return refs
+
+
+def decode_levelscript_action_header_validation(
+    data: bytes,
+    header_local_id: int,
+) -> dict[str, Any]:
+    """Resolve one ActionHeader's exact serialized playback predicate.
+
+    The resolver is deliberately identity-agnostic: it follows the header's
+    ``_validate`` local getter reference through the decoded ActionMap and
+    returns only an already exact getter family. Repeated local ids follow the
+    installed ActionMapRuntime rule (the final serialized row owns the indexed
+    runtime slot); unknown getter unions still fail closed.
+    """
+    if not data or not isinstance(header_local_id, int):
+        return {}
+    tagged_strings = _extract_levelscript_tagged_ascii_strings(data)
+    plain_strings = _extract_levelscript_plain_ascii_strings(
+        data,
+        tagged_offsets={int(hit.get("offset") or 0) for hit in tagged_strings},
     )
+    records = extract_levelscript_uid_records(data, tagged_strings, plain_strings)
+    _action_map, memberships = levelscript_action_map_membership(data, records)
+    matching_headers = [
+        (index, record)
+        for index, record in enumerate(records)
+        if record.get("localId") == header_local_id
+        and str(memberships.get(_record_start(record)) or "").startswith("headerList")
+    ]
+    if not matching_headers:
+        return {}
+    header_index, header_record = matching_headers[-1]
+    header_next_start = (
+        _record_start(records[header_index + 1])
+        if header_index + 1 < len(records)
+        else len(data)
+    )
+    header_detail = decode_levelscript_record_payload(
+        data,
+        header_record,
+        next_start=header_next_start,
+        action_map_role=memberships.get(_record_start(header_record)),
+    )
+    action_header = header_detail.get("actionHeader")
+    if not isinstance(action_header, dict):
+        return {}
+    validate_param = action_header.get("validateParam")
+    if not isinstance(validate_param, dict):
+        return {}
+    getter_local_id = action_header.get("validateGetterLocalId")
+    if not isinstance(getter_local_id, int):
+        if validate_param.get("payloadShape") != "action-header-validate-constant":
+            return {}
+        return {
+            "status": "exact_current_build_memorypack_fields",
+            "headerLocalId": header_local_id,
+            "headerNextLocalId": action_header.get("nextId"),
+            "validateParam": validate_param,
+            "predicateType": "constant",
+            "predicate": {"value": bool(validate_param.get("value"))},
+        }
+    getter_rows_by_id: dict[int, list[tuple[int, dict[str, Any]]]] = {}
+    for index, record in enumerate(records):
+        local_id = record.get("localId")
+        if not isinstance(local_id, int):
+            continue
+        if not str(memberships.get(_record_start(record)) or "").startswith(
+            "getterList"
+        ):
+            continue
+        getter_rows_by_id.setdefault(local_id, []).append((index, record))
+
+    def resolve_getter(
+        local_id: int,
+        stack: tuple[int, ...] = (),
+    ) -> dict[str, Any]:
+        if local_id in stack or len(stack) >= 64:
+            return {}
+        matching_getters = getter_rows_by_id.get(local_id) or []
+        if not matching_getters:
+            return {}
+        getter_index, getter_record = matching_getters[-1]
+        getter_next_start = (
+            _record_start(records[getter_index + 1])
+            if getter_index + 1 < len(records)
+            else len(data)
+        )
+        getter_detail = decode_levelscript_record_payload(
+            data,
+            getter_record,
+            next_start=getter_next_start,
+            action_map_role=memberships.get(_record_start(getter_record)),
+        )
+        decoded_fields = [
+            field
+            for field in LEVELSCRIPT_EXACT_GETTER_FIELDS
+            if isinstance(getter_detail.get(field), dict)
+        ]
+        if len(decoded_fields) != 1:
+            return {}
+        predicate_type = decoded_fields[0]
+        predicate = getter_detail[predicate_type]
+        children: list[dict[str, Any]] = []
+        seen_refs: set[tuple[str, int]] = set()
+        for ref in _predicate_local_getter_refs(predicate):
+            ref_path = str(ref.get("path") or "")
+            child_id = ref.get("getterLocalId")
+            identity = (ref_path, child_id)
+            if not isinstance(child_id, int) or identity in seen_refs:
+                continue
+            seen_refs.add(identity)
+            child = resolve_getter(child_id, (*stack, local_id))
+            if not child:
+                return {}
+            children.append({
+                "path": ref_path,
+                "getterLocalId": child_id,
+                "predicate": child,
+            })
+        return {
+            "predicateType": predicate_type,
+            "predicate": predicate,
+            "getterLocalId": local_id,
+            "getterUnionTag": getter_detail.get("memoryPackUnionTag"),
+            "getterSerializedMemberCount": getter_detail.get(
+                "serializedMemberCount"
+            ),
+            "runtimeSlotStatus": "active-final-serialized-slot",
+            "shadowedGetterRecordCount": len(matching_getters) - 1,
+            "children": children,
+        }
+
+    predicate_tree = resolve_getter(getter_local_id)
+    if not predicate_tree:
+        return {}
+    return {
+        "status": "exact_current_build_memorypack_fields",
+        "headerLocalId": header_local_id,
+        "headerNextLocalId": action_header.get("nextId"),
+        "validateParam": validate_param,
+        "getterLocalId": getter_local_id,
+        "getterUnionTag": predicate_tree.get("getterUnionTag"),
+        "getterSerializedMemberCount": predicate_tree.get(
+            "getterSerializedMemberCount"
+        ),
+        "runtimeSlotStatus": "active-final-serialized-slot",
+        "shadowedHeaderRecordCount": len(matching_headers) - 1,
+        "shadowedGetterRecordCount": predicate_tree.get(
+            "shadowedGetterRecordCount", 0
+        ),
+        "predicateType": predicate_tree["predicateType"],
+        "predicate": predicate_tree["predicate"],
+        "predicateTree": predicate_tree,
+    }
 
 
 def _decode_entity_hp_changed_event(payload: bytes) -> dict[str, Any]:
@@ -5720,15 +6268,25 @@ def decode_levelscript_record_payload(
             out["entityCompare"] = entity_compare
     if getter_role and semantic_key in {
         (0x0004, 0x0A),
+        (0x0006, 0x09),
+        (0x000A, 0x08),
+        (0x000B, 0x08),
+        (0x000D, 0x09),
+        (0x0013, 0x0A),
+        (0x0016, 0x09),
         (0x001F, 0x0A),
+        (0x004E, 0x08),
         (0x0049, 0x0A),
         (0x0100, 0x09),
         (0x012F, 0x08),
+        (0x0133, 0x09),
         (0x013A, 0x08),
+        (0x017C, 0x08),
         (0x0184, 0x08),
         (0x01A5, 0x08),
         (0x01AA, 0x0A),
         (0x01AC, 0x09),
+        (0x01AD, 0x0A),
         (0x01BA, 0x09),
         (0x01C2, 0x08),
     }:
@@ -5737,6 +6295,16 @@ def decode_levelscript_record_payload(
             mission_state_getter = _decode_get_mission_state_getter(getter_payload)
             if mission_state_getter:
                 out["getMissionState"] = mission_state_getter
+        elif semantic_key == (0x0013, 0x0A):
+            stage_check = _decode_check_levelscript_stage_getter(getter_payload)
+            if stage_check:
+                out["checkLevelScriptStage"] = stage_check
+        elif semantic_key == (0x0016, 0x09):
+            completion_check = _decode_check_mission_or_quest_complete_getter(
+                getter_payload
+            )
+            if completion_check:
+                out["checkMissionOrQuestIsComplete"] = completion_check
         elif semantic_key == (0x001F, 0x0A):
             mission_state_compare = _decode_compare_mission_state_getter(
                 getter_payload
@@ -5747,6 +6315,34 @@ def decode_levelscript_record_payload(
             boolean_compare = _decode_boolean_compare_getter(getter_payload)
             if boolean_compare:
                 out["booleanCompare"] = boolean_compare
+        elif semantic_key == (0x0006, 0x09):
+            boolean_and = _decode_bool_binary_getter(
+                getter_payload,
+                operation="And",
+            )
+            if boolean_and:
+                out["boolGetterAnd"] = boolean_and
+        elif semantic_key == (0x000A, 0x08):
+            boolean_invert = _decode_bool_invert_getter(getter_payload)
+            if boolean_invert:
+                out["boolGetterInvert"] = boolean_invert
+        elif semantic_key == (0x000B, 0x08):
+            boolean_all = _decode_bool_multi_and_getter(getter_payload)
+            if boolean_all:
+                out["boolGetterMultiAnd"] = boolean_all
+        elif semantic_key == (0x000D, 0x09):
+            boolean_or = _decode_bool_binary_getter(
+                getter_payload,
+                operation="Or",
+            )
+            if boolean_or:
+                out["boolGetterOr"] = boolean_or
+        elif semantic_key == (0x004E, 0x08):
+            condition_result = _decode_get_condition_result_getter(
+                getter_payload
+            )
+            if condition_result:
+                out["getConditionResult"] = condition_result
         elif semantic_key == (0x0049, 0x0A):
             float_compare = _decode_number_compare_getter(
                 getter_payload,
@@ -5766,6 +6362,14 @@ def decode_levelscript_record_payload(
             )
             if levelscript_stage:
                 out["getLevelScriptStage"] = levelscript_stage
+        elif semantic_key == (0x0133, 0x09):
+            lsm_completed = _decode_get_lsm_is_completed_getter(getter_payload)
+            if lsm_completed:
+                out["getLsmIsCompleted"] = lsm_completed
+        elif semantic_key == (0x017C, 0x08):
+            getter_bool = _decode_getter_bool(getter_payload)
+            if getter_bool:
+                out["getterBool"] = getter_bool
         elif semantic_key == (0x0184, 0x08):
             getter_int = _decode_getter_int(getter_payload)
             if getter_int:
@@ -5785,6 +6389,12 @@ def decode_levelscript_record_payload(
             int_equal = _decode_int_equal_getter(getter_payload)
             if int_equal:
                 out["intEqual"] = int_equal
+        elif semantic_key == (0x01AD, 0x0A):
+            interactive_state = _decode_interactive_check_state_getter(
+                getter_payload
+            )
+            if interactive_state:
+                out["interactiveCheckState"] = interactive_state
         elif semantic_key == (0x01BA, 0x09):
             int_random = _decode_int_random_getter(getter_payload)
             if int_random:
@@ -5934,9 +6544,18 @@ LEVELSCRIPT_TASK_MISSION_STATE_MAPPING_ID = (
     "gameassembly-2026-07-22-levelscript-task-check-mission-state-0x67"
 )
 LEVELSCRIPT_TASK_CONDITION_MAPPING_ID = (
-    "gameassembly-2026-07-25-levelscript-task-root-gamecondition-tags"
+    "gameassembly-2026-08-02-levelscript-task-root-gamecondition-tags"
 )
 LEVELSCRIPT_TASK_CONDITION_TAGS = {
+    0x0017: ("CheckBuildingConnected", 8),
+    0x0018: ("CheckBuildingConnectedAsMA2SB", 8),
+    0x0019: ("CheckBuildingConnectedExist", 8),
+    0x001A: ("CheckBuildingConnectedSpecify", 9),
+    0x001B: ("CheckBuildingStateInArea", 9),
+    0x0023: ("CheckClientGlobalVar", 7),
+    0x0035: ("CheckFacBuildingState", 8),
+    0x0038: ("CheckFluidVolume", 9),
+    0x0039: ("CheckFMVFinish", 5),
     0x0045: ("CheckInteractiveDestroyed", 6),
     0x0050: ("CheckLevelScriptPropertyBool", 9),
     0x0051: ("CheckLevelScriptPropertyInt", 9),
@@ -5944,10 +6563,26 @@ LEVELSCRIPT_TASK_CONDITION_TAGS = {
     0x0067: ("CheckMissionState", 7),
     0x006A: ("CheckMonsterKilled", 9),
     0x006B: ("CheckMonsterSpawnerComplete", 6),
+    0x0084: ("CheckRepairBuilding", 6),
+    0x008D: ("CheckScriptTaskStateEqual", 9),
+    0x008F: ("CheckServerGlobalVar", 7),
     0x009F: ("CheckTalkOptionFinish", 6),
     0x00B2: ("CombineCondition", 6),
+    0x00D0: ("OnBuildingPanelOpen", 6),
+    0x0108: ("DepotHasItem", 7),
+    0x010B: ("FacBattleBuildingCurEnergy", 8),
+    0x010D: ("FacBuildingCountInScene", 8),
+    0x010E: ("FacBuildingFluidContainerHasItem", 9),
+    0x010F: ("FacBuildingProducingCountInScene", 8),
+    0x0112: ("FacProducePowerReach", 6),
+    0x0113: ("FacProducingFormulaCountInScene", 8),
+    0x0114: ("FacStatisticItemGen", 8),
+    0x0115: ("FacStatisticItemGenRate", 8),
+    0x0127: ("HasItemCount", 7),
     0x0129: ("InteractiveCheckBool", 8),
     0x012A: ("InteractiveCheckInt", 9),
+    0x012D: ("PlayerHasItem", 8),
+    0x012E: ("PlayerHasItemInItemBag", 8),
     0x0132: ("TaskReachDestination", 6),
 }
 _MISSION_STATE_NAMES = {
@@ -5996,6 +6631,26 @@ def _decode_string_param(
         return None
     detail, end = tail
     return {"value": value, **detail}, end
+
+
+def _decode_nullable_string_value(
+    payload: bytes,
+    cursor: int,
+) -> tuple[dict[str, Any], int] | None:
+    """Decode a raw MemoryPack nullable string without a ``Param`` tail."""
+    if cursor + 4 > len(payload):
+        return None
+    size = struct.unpack_from("<i", payload, cursor)[0]
+    cursor += 4
+    if size == -1:
+        return {"value": None}, cursor
+    if size < 0 or size > 1024 or cursor + size > len(payload):
+        return None
+    try:
+        value = payload[cursor : cursor + size].decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    return {"value": value}, cursor + size
 
 
 def _decode_u64_param(
@@ -6153,6 +6808,200 @@ def _decode_levelscript_task_condition(
             return None
         fields["comparerName"] = _MISSION_STATE_COMPARER_NAMES[comparer_raw]
         fields["targetMissionStateName"] = _MISSION_STATE_NAMES[target_raw]
+    elif condition_type == "CheckFMVFinish":
+        if not read_param("fmvId", _decode_string_param):
+            return None
+    elif condition_type in ("CheckClientGlobalVar", "CheckServerGlobalVar"):
+        key_decoder = (
+            _decode_string_param
+            if condition_type == "CheckClientGlobalVar"
+            else _decode_i32_param
+        )
+        if not (
+            read_param("comparer", _decode_i32_param)
+            and read_param("key", key_decoder)
+            and read_param("targetValue", _decode_u64_param)
+        ):
+            return None
+        fields["comparerName"] = _NUMBER_COMPARER_NAMES.get(
+            fields["comparer"]["value"],
+            "",
+        )
+    elif condition_type in (
+        "CheckBuildingConnected",
+        "CheckBuildingConnectedAsMA2SB",
+    ):
+        if not (
+            read_param("facBuildingIdA", _decode_string_param)
+            and read_param("facBuildingIdB", _decode_string_param)
+            and read_param("targetCount", _decode_i32_param)
+            and read_param("levelId", _decode_string_param)
+        ):
+            return None
+    elif condition_type == "CheckBuildingConnectedExist":
+        if not (
+            read_param("buildingIdEnd", _decode_string_param)
+            and read_param("buildingIdStart", _decode_string_param)
+            and read_param("exist", _decode_bool_param)
+            and read_param("levelId", _decode_string_param)
+        ):
+            return None
+    elif condition_type == "CheckBuildingConnectedSpecify":
+        if not (
+            read_param("connected", _decode_bool_param)
+            and read_param("conveyorType", _decode_i32_param)
+            and read_param("instKeyA", _decode_string_param)
+            and read_param("instKeyB", _decode_string_param)
+            and read_param("levelId", _decode_string_param)
+        ):
+            return None
+    elif condition_type == "CheckBuildingStateInArea":
+        if not (
+            read_param("facBuildingId", _decode_string_param)
+            and read_param("facStateType", _decode_i32_param)
+            and read_param("targetAreaId", _decode_string_param)
+            and read_param("targetCount", _decode_i32_param)
+            and read_param("targetMapId", _decode_string_param)
+        ):
+            return None
+    elif condition_type == "CheckFluidVolume":
+        if not (
+            read_param("comparer", _decode_i32_param)
+            and read_param("targetVolume", _decode_i32_param)
+            and read_param("levelId", _decode_string_param)
+            and read_param("volumeId", _decode_u64_param)
+            and read_param("waterType", _decode_string_param)
+        ):
+            return None
+        fields["comparerName"] = _NUMBER_COMPARER_NAMES.get(
+            fields["comparer"]["value"],
+            "",
+        )
+    elif condition_type == "CheckFacBuildingState":
+        if not (
+            read_param("facStateId", _decode_i32_param)
+            and read_param("instKey", _decode_string_param)
+            and read_param("isInState", _decode_bool_param)
+            and read_param("sceneName", _decode_string_param)
+        ):
+            return None
+    elif condition_type == "CheckRepairBuilding":
+        if not (
+            read_param("repairId", _decode_string_param)
+            and read_param("levelId", _decode_string_param)
+        ):
+            return None
+    elif condition_type == "CheckScriptTaskStateEqual":
+        if not (
+            read_param("comparer", _decode_i32_param)
+            and read_param("levelId", _decode_string_param)
+            and read_param("scriptId", _decode_levelscript_ptr_param)
+            and read_param("targetValue", _decode_i32_param)
+            and read_param("taskKey", _decode_levelscript_task_ptr_param)
+        ):
+            return None
+        fields["comparerName"] = _NUMBER_COMPARER_NAMES.get(
+            fields["comparer"]["value"],
+            "",
+        )
+    elif condition_type == "OnBuildingPanelOpen":
+        if not (
+            read_param("buildingId", _decode_string_param)
+            and read_param("needWaitAnimation", _decode_bool_param)
+        ):
+            return None
+    elif condition_type == "FacProducePowerReach":
+        if not (
+            read_param("power", _decode_i32_param)
+            and read_param("levelId", _decode_string_param)
+        ):
+            return None
+    elif condition_type == "FacProducingFormulaCountInScene":
+        if not (
+            read_param("compareOperator", _decode_i32_param)
+            and read_param("progressToCompare", _decode_i32_param)
+            and read_param("facFormulaId", _decode_string_param)
+            and read_param("levelId", _decode_string_param)
+        ):
+            return None
+        fields["compareOperatorName"] = _NUMBER_COMPARER_NAMES.get(
+            fields["compareOperator"]["value"],
+            "",
+        )
+    elif condition_type == "DepotHasItem":
+        if not (
+            read_param("compareOperator", _decode_i32_param)
+            and read_param("itemId", _decode_string_param)
+            and read_param("targetItemCount", _decode_i32_param)
+        ):
+            return None
+        fields["compareOperatorName"] = _NUMBER_COMPARER_NAMES.get(
+            fields["compareOperator"]["value"],
+            "",
+        )
+    elif condition_type in (
+        "FacBattleBuildingCurEnergy",
+        "FacBuildingCountInScene",
+        "FacBuildingFluidContainerHasItem",
+        "FacBuildingProducingCountInScene",
+        "FacStatisticItemGen",
+        "FacStatisticItemGenRate",
+        "HasItemCount",
+    ):
+        if not (
+            read_param("compareOperator", _decode_i32_param)
+            and read_param("progressToCompare", _decode_i32_param)
+        ):
+            return None
+        if condition_type == "FacBattleBuildingCurEnergy":
+            if not (
+                read_param("instKey", _decode_string_param)
+                and read_param("levelId", _decode_string_param)
+            ):
+                return None
+        elif condition_type in (
+            "FacBuildingCountInScene",
+            "FacBuildingProducingCountInScene",
+        ):
+            if not (
+                read_param("facBuildingId", _decode_string_param)
+                and read_param("levelId", _decode_string_param)
+            ):
+                return None
+        elif condition_type in (
+            "FacStatisticItemGen",
+            "FacStatisticItemGenRate",
+        ):
+            if not (
+                read_param("itemId", _decode_string_param)
+                and read_param("levelId", _decode_string_param)
+            ):
+                return None
+        elif condition_type == "FacBuildingFluidContainerHasItem":
+            if not (
+                read_param("instKey", _decode_string_param)
+                and read_param("itemId", _decode_string_param)
+                and read_param("levelId", _decode_string_param)
+            ):
+                return None
+        elif not read_param("itemId", _decode_string_param):
+            return None
+        fields["compareOperatorName"] = _NUMBER_COMPARER_NAMES.get(
+            fields["compareOperator"]["value"],
+            "",
+        )
+    elif condition_type in ("PlayerHasItem", "PlayerHasItemInItemBag"):
+        if not (
+            read_param("displayInfoBox", _decode_nullable_string_value)
+            and read_param("compareOperator", _decode_i32_param)
+            and read_param("itemId", _decode_string_param)
+            and read_param("targetItemCount", _decode_i32_param)
+        ):
+            return None
+        fields["compareOperatorName"] = _NUMBER_COMPARER_NAMES.get(
+            fields["compareOperator"]["value"],
+            "",
+        )
     elif condition_type == "CheckInteractiveDestroyed":
         if not (
             read_param("entity", _decode_constant_entity_ptr_param)
@@ -6460,6 +7309,7 @@ def _decode_levelscript_task_entry(
     data: bytes,
     offset: int,
     limit: int,
+    diagnostics: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], int] | None:
     """Decode one complete current-build ``LevelScriptTaskData`` envelope."""
     start = offset
@@ -6472,6 +7322,14 @@ def _decode_levelscript_task_entry(
         or data[cursor] != 4
         or data[cursor + 1] not in (0, 1)
     ):
+        if diagnostics is not None and not diagnostics:
+            diagnostics.append({
+                "gate": "taskEntryEnvelope",
+                "taskEntryOffset": offset,
+                "taskEntryOffsetHex": _offset_hex(offset),
+                "limitOffset": limit,
+                "limitOffsetHex": _offset_hex(limit),
+            })
         return None
     task_data_member_count = data[cursor]
     can_be_tracked = bool(data[cursor + 1])
@@ -6491,18 +7349,82 @@ def _decode_levelscript_task_entry(
             or not re.fullmatch(r"[0-9a-f]{8}", condition_key)
             or data[next_cursor] != 3
         ):
+            if diagnostics is not None and not diagnostics:
+                diagnostics.append({
+                    "gate": "taskConditionEnvelope",
+                    "taskKey": task_key,
+                    "conditionIndex": len(conditions),
+                    "conditionEntryOffset": condition_entry_start,
+                    "conditionEntryOffsetHex": _offset_hex(
+                        condition_entry_start
+                    ),
+                })
             return None
         cursor = next_cursor + 1
-        condition_decoded = _decode_levelscript_task_condition(
-            data,
-            cursor,
-            limit,
-        )
+        if cursor < limit and data[cursor] == 0xFF:
+            condition_decoded = ({
+                "type": "NullGameCondition",
+                "conditionUnionTag": None,
+                "conditionUnionTagEncoding": "memorypack-null",
+                "serializedMemberCount": None,
+                "conditionOffset": cursor,
+                "conditionOffsetHex": _offset_hex(cursor),
+                "conditionEndOffset": cursor + 1,
+                "conditionEndOffsetHex": _offset_hex(cursor + 1),
+                "nativeMappingId": LEVELSCRIPT_TASK_CONDITION_MAPPING_ID,
+            }, cursor + 1)
+        else:
+            condition_decoded = _decode_levelscript_task_condition(
+                data,
+                cursor,
+                limit,
+            )
         if condition_decoded is None:
+            if diagnostics is not None and not diagnostics:
+                header = _decode_task_condition_union_header(
+                    data,
+                    cursor,
+                    limit,
+                )
+                union_tag = header[0] if header is not None else None
+                member_count = header[1] if header is not None else None
+                expected = (
+                    LEVELSCRIPT_TASK_CONDITION_TAGS.get(union_tag)
+                    if isinstance(union_tag, int)
+                    else None
+                )
+                diagnostics.append({
+                    "gate": (
+                        "supportedConditionPayloadLayout"
+                        if expected is not None
+                        else "supportedConditionUnionTag"
+                    ),
+                    "taskKey": task_key,
+                    "conditionKey": condition_key,
+                    "conditionIndex": len(conditions),
+                    "conditionOffset": cursor,
+                    "conditionOffsetHex": _offset_hex(cursor),
+                    "conditionUnionTag": (
+                        f"0x{union_tag:04x}"
+                        if isinstance(union_tag, int) else None
+                    ),
+                    "serializedMemberCount": member_count,
+                    "expectedConditionType": (
+                        expected[0] if expected is not None else None
+                    ),
+                    "expectedSerializedMemberCount": (
+                        expected[1] if expected is not None else None
+                    ),
+                    "payloadHexPrefix": data[cursor : cursor + 48].hex(" "),
+                    "nativeMappingId": LEVELSCRIPT_TASK_CONDITION_MAPPING_ID,
+                })
             return None
         condition, cursor = condition_decoded
         if (
-            condition["uniqueId"] != condition_key
+            (
+                condition.get("type") != "NullGameCondition"
+                and condition.get("uniqueId") != condition_key
+            )
             or cursor + 5 > limit
             or data[cursor] not in (0, 1)
         ):
@@ -6547,6 +7469,8 @@ def _decode_levelscript_task_entry(
 def decode_levelscript_task_conditions(
     data: bytes,
     script_id: int | str,
+    *,
+    diagnostics: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Recover only completely bounded LevelScript task-condition maps.
 
@@ -6589,7 +7513,12 @@ def decode_levelscript_task_conditions(
         tasks: list[dict[str, Any]] = []
         valid = True
         for _ in range(task_count):
-            decoded = _decode_levelscript_task_entry(data, cursor, limit)
+            decoded = _decode_levelscript_task_entry(
+                data,
+                cursor,
+                limit,
+                diagnostics,
+            )
             if decoded is None:
                 valid = False
                 break

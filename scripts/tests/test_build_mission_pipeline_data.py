@@ -1,5 +1,6 @@
 import hashlib
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,8 +19,74 @@ class MissionPipelineBuilderTests(unittest.TestCase):
     def test_offline_story_recovery_schema_tracks_source_queue(self):
         self.assertEqual(
             pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA,
-            "sourceStoryGapQueue.v107",
+            "sourceStoryGapQueue.v124",
         )
+
+    def test_gap_queue_refresh_validates_current_generated_contract(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            queue_path = Path(temporary) / "source_story_gap_queue_CN.json"
+            queue_path.write_text(
+                json.dumps({
+                    "_schema": pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA,
+                    "language": "CN",
+                    "offlineExhaustionEvidence": {
+                        "status": "active",
+                        "validationFailures": [],
+                        "sourceHashMismatches": [],
+                    },
+                    "crossOwnerValidation": {
+                        "status": "validated",
+                        "validationFailures": [],
+                    },
+                }),
+                encoding="utf-8",
+            )
+            with patch.object(
+                pipeline.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess([], 0),
+            ) as run:
+                report = pipeline.refresh_source_story_gap_queue(
+                    "CN",
+                    queue_path,
+                )
+
+        self.assertEqual(
+            report["_schema"],
+            pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA,
+        )
+        self.assertIn("--language", run.call_args.args[0])
+
+    def test_gap_queue_refresh_fails_with_bounded_validator_diagnostic(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            queue_path = Path(temporary) / "source_story_gap_queue_CN.json"
+            queue_path.write_text(
+                json.dumps({
+                    "_schema": pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA,
+                    "language": "CN",
+                    "crossOwnerValidation": {
+                        "status": "validation_failed",
+                        "validationFailures": [{
+                            "gate": "fixtureGate",
+                            "storyKey": "opaque_story",
+                        }],
+                    },
+                }),
+                encoding="utf-8",
+            )
+            with patch.object(
+                pipeline.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess([], 0),
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "validator=report.crossOwnerValidation",
+                ):
+                    pipeline.refresh_source_story_gap_queue(
+                        "CN",
+                        queue_path,
+                    )
 
     def test_offline_story_recovery_annotates_without_creating_graph_evidence(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -61,8 +128,61 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                                 "closed_exact_authored_sns_mission_link_no_relative_order",
                             "activationBoundary": "authored mission link",
                             "orderBoundary": "link does not order files",
+                        }, {
+                            "sceneKey": "radio_testm1_airwall",
+                            "missionId": "testm1",
+                            "relation":
+                                "airwall_mission_state_radio_playback_context",
+                            "recoveryStatus":
+                                "closed_exact_native_playback_context_no_relative_order",
+                            "sourceFiles": ["LevelData/testm1.json"],
+                            "activationBoundary": "exact wall-state playback context",
+                            "orderBoundary": "wall state does not order files",
+                        }, {
+                            "sceneKey": "dlg_testm1_tracking",
+                            "missionId": "testm1",
+                            "questIds": ["testm1_q#2"],
+                            "relation":
+                                "npc_proxy_tracking_dialog_navigation_context",
+                            "recoveryStatus":
+                                "closed_exact_non_owning_dialog_context_no_relative_order",
+                            "sourceFiles": ["NpcProxyTable.json"],
+                            "activationBoundary": "navigation is not playback",
+                            "orderBoundary": "tracking does not order files",
+                        }, {
+                            "sceneKey": "dlg_testm1_lazy",
+                            "missionId": "testm1",
+                            "relation": "npc_proxy_lazy_destroy_dialog_context",
+                            "recoveryStatus":
+                                "closed_exact_non_owning_dialog_context_no_relative_order",
+                            "sourceFiles": ["GameAssembly.dll"],
+                            "activationBoundary": "deactivation context only",
+                            "orderBoundary": "deactivation does not order files",
+                        }, {
+                            "sceneKey": "dlg_testm1_multi",
+                            "missionId": "testm1",
+                            "contextMissionIds": ["testm1", "testm2"],
+                            "relation": "npc_proxy_ex_mission_context",
+                            "recoveryStatus":
+                                "closed_exact_multi_mission_runtime_config_no_relative_order",
+                            "sourceFiles": ["NpcProxyExDataTable.json"],
+                            "contextBoundary": "authored alternatives, not chronology",
+                            "orderBoundary": "selection does not order files",
                         }],
                         "closedExactNativeIsolatedScenes": [{
+                            "sceneKey": "misc_dlg_testm1_local_shell",
+                            "nominalStoryMissionId": "testm1",
+                            "contextMissionId": "testm1",
+                            "relation": "leveldata_levelscript_mission_context",
+                            "recoveryStatus":
+                                "closed_exact_same_mission_leveldata_playback_context_no_relative_order",
+                            "sourceFiles": [
+                                "LevelScriptData/local.json",
+                                "LevelData/testm1.json",
+                            ],
+                            "activationBoundary": "exact local shell playback",
+                            "orderBoundary": "local playback does not order files",
+                        }, {
                             "sceneKey": "radio_testm1_shell",
                             "nominalStoryMissionId": "testm1",
                             "contextMissionId": "testm2",
@@ -82,6 +202,51 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                                 "closed_exact_composed_root_playback_context_no_relative_order",
                             "playbackBoundary": "exact composed playback",
                             "orderBoundary": "alias does not order files",
+                        }, {
+                            "sceneKey": "black_testm1_timeline",
+                            "nominalStoryMissionId": "testm1",
+                            "relation": "timeline_dialog_contains_black",
+                            "recoveryStatus":
+                                "closed_exact_timeline_black_carrier_context_owner_or_order_unresolved",
+                            "sourceFiles": ["CAB-fixture", "track.json"],
+                            "activationBoundary": "exact carrier only",
+                            "orderBoundary": "carrier does not order files",
+                        }, {
+                            "sceneKey": "black_testm1_tree",
+                            "nominalStoryMissionId": "testm1",
+                            "relation": "dialog_tree_narrative_action",
+                            "recoveryStatus":
+                                "closed_exact_dialog_tree_black_carrier_context_no_file_order",
+                            "sourceFiles": ["dialog-tree.json"],
+                            "activationBoundary": "exact parent only",
+                            "orderBoundary": "tree adjacency does not order files",
+                        }, {
+                            "sceneKey": "dlg_testm1_foreign_shell",
+                            "nominalStoryMissionId": "testm1",
+                            "contextMissionId": "testm2",
+                            "relation": "leveldata_levelscript_mission_context",
+                            "recoveryStatus":
+                                "closed_exact_cross_mission_leveldata_playback_context_no_relative_order",
+                            "sourceFiles": [
+                                "LevelScriptData/test.json",
+                                "LevelData/testm2.json",
+                            ],
+                            "activationBoundary": "exact foreign shell playback",
+                            "orderBoundary": "shell does not transfer ownership",
+                        }, {
+                            "sceneKey": "radio_testm1_quest_shell",
+                            "nominalStoryMissionId": "testm1",
+                            "contextMissionId": "testm2",
+                            "contextQuestId": "testm2_q#1",
+                            "relation":
+                                "cross_owner_levelscript_quest_playback_context",
+                            "recoveryStatus":
+                                "closed_exact_cross_mission_quest_playback_context_no_relative_order",
+                            "sourceFiles": [
+                                "LevelScriptData/test.json",
+                                "MissionRuntimeAsset/testm2.json",
+                            ],
+                            "orderBoundary": "quest playback does not transfer ownership",
                         }],
                         "deferredOfflineExhaustedIsolatedScenes": [{
                             "sceneKey": "dlg_testm1_1",
@@ -120,6 +285,26 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                         "graphEffect": "none",
                         "gameAssemblySha256": "fixture",
                         }],
+                        "partialRegisteredDialogTreeCarriers": [{
+                            "sceneKey": "dlg_testm1_partial",
+                            "missionId": "testm1",
+                            "recoveryStatus":
+                                "actionable_partial_registered_dialog_tree_partition",
+                            "evidenceKind":
+                                "partial_registered_dialog_tree_trunk_group_line_partition",
+                            "coveredLineIds": ["dlg_testm1_partial_01"],
+                            "coveredLineCount": 1,
+                            "missingLineIds": ["dlg_testm1_partial_02"],
+                            "missingLineCount": 1,
+                            "parentDialogTrees": [{
+                                "sceneKey": "dlg_testm1_partial_1",
+                                "sourceFile": "TextAsset/partial.json",
+                            }],
+                            "consumerBoundary": "one authored row unmatched",
+                            "orderBoundary": "partial carrier is not chronology",
+                            "graphEffect": "none",
+                            "gameAssemblySha256": "fixture",
+                        }],
                     }],
                 }),
                 encoding="utf-8",
@@ -127,6 +312,10 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             manifest = {
                 "dlg_testm1_1": {
                     "attachmentStatus": "definition_only_no_consumer",
+                    "routes": [],
+                },
+                "dlg_testm1_partial": {
+                    "attachmentStatus": "unlinked_no_trigger_route",
                     "routes": [],
                 },
                 "sns_testm1_1": {
@@ -148,11 +337,57 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                             "authoritative_scope_leveldata_mission_context",
                     }],
                 },
+                "misc_dlg_testm1_local_shell": {
+                    "attachmentStatus": "connected",
+                    "routes": [{
+                        "relation": "leveldata_levelscript_mission_context",
+                    }],
+                },
                 "cutscene_testm1_alias": {
                     "attachmentStatus": "connected",
                     "routes": [{
                         "relation":
                             "cutscene_root_playback_alias_composed",
+                    }],
+                },
+                "black_testm1_timeline": {
+                    "attachmentStatus": "unlinked_no_trigger_route",
+                    "routes": [],
+                },
+                "black_testm1_tree": {
+                    "attachmentStatus": "connected",
+                    "routes": [{"causality": "context_owner_unresolved"}],
+                },
+                "dlg_testm1_foreign_shell": {
+                    "attachmentStatus": "connected",
+                    "routes": [{
+                        "relation": "leveldata_levelscript_mission_context",
+                    }],
+                },
+                "radio_testm1_quest_shell": {
+                    "attachmentStatus": "connected",
+                    "routes": [{
+                        "relation":
+                            "cross_owner_levelscript_quest_playback_context",
+                    }],
+                },
+                "dlg_testm1_tracking": {
+                    "attachmentStatus": "connected",
+                    "routes": [{
+                        "relation":
+                            "npc_proxy_tracking_dialog_navigation_context",
+                    }],
+                },
+                "dlg_testm1_lazy": {
+                    "attachmentStatus": "connected",
+                    "routes": [{
+                        "relation": "npc_proxy_lazy_destroy_dialog_context",
+                    }],
+                },
+                "dlg_testm1_multi": {
+                    "attachmentStatus": "connected",
+                    "routes": [{
+                        "relation": "npc_proxy_ex_mission_context",
                     }],
                 },
             }
@@ -164,8 +399,9 @@ class MissionPipelineBuilderTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "active")
         self.assertEqual(result["publishedStoryKeys"], 1)
-        self.assertEqual(result["publishedRuntimeContextStoryKeys"], 5)
-        self.assertEqual(result["outsidePipelineCoverageStoryKeys"], 2)
+        self.assertEqual(result["publishedPartialStoryKeys"], 1)
+        self.assertEqual(result["publishedRuntimeContextStoryKeys"], 14)
+        self.assertEqual(result["outsidePipelineCoverageStoryKeys"], 3)
         self.assertEqual(
             manifest["dlg_testm1_1"]["attachmentStatus"],
             "definition_only_no_consumer",
@@ -174,6 +410,12 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         recovery = manifest["dlg_testm1_1"]["offlineRecovery"]
         self.assertEqual(recovery["graphEffect"], "none")
         self.assertNotIn("gameAssemblySha256", recovery)
+        partial = manifest["dlg_testm1_partial"]["partialRecovery"]
+        self.assertEqual(partial["missingLineIds"], [
+            "dlg_testm1_partial_02",
+        ])
+        self.assertNotIn("gameAssemblySha256", partial)
+        self.assertNotIn("offlineRecovery", manifest["dlg_testm1_partial"])
         runtime_recovery = manifest["sns_testm1_1"][
             "runtimeContextRecovery"
         ]
@@ -195,6 +437,26 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             "closed_exact_authored_sns_mission_link_no_relative_order",
         )
         self.assertEqual(
+            result["storyTriggerManifestOverlay"]["radio_testm1_airwall"][
+                "runtimeContextRecovery"
+            ][
+                "sourceFiles"
+            ],
+            ["LevelData/testm1.json"],
+        )
+        self.assertEqual(
+            manifest["radio_testm1_airwall"]["runtimeContextRecovery"][
+                "relation"
+            ],
+            "airwall_mission_state_radio_playback_context",
+        )
+        self.assertEqual(
+            manifest["misc_dlg_testm1_local_shell"][
+                "runtimeContextRecovery"
+            ]["contextMissionId"],
+            "testm1",
+        )
+        self.assertEqual(
             manifest["radio_testm1_shell"]["runtimeContextRecovery"][
                 "contextMissionId"
             ],
@@ -205,6 +467,48 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "rootStoryKeys"
             ],
             ["cutscene_testm1_root"],
+        )
+        self.assertEqual(
+            manifest["black_testm1_timeline"]["runtimeContextRecovery"][
+                "sourceFiles"
+            ],
+            ["CAB-fixture", "track.json"],
+        )
+        self.assertEqual(
+            manifest["black_testm1_tree"]["runtimeContextRecovery"][
+                "relation"
+            ],
+            "dialog_tree_narrative_action",
+        )
+        self.assertEqual(
+            manifest["dlg_testm1_foreign_shell"]["runtimeContextRecovery"][
+                "contextMissionId"
+            ],
+            "testm2",
+        )
+        self.assertEqual(
+            manifest["radio_testm1_quest_shell"]["runtimeContextRecovery"][
+                "contextQuestId"
+            ],
+            "testm2_q#1",
+        )
+        self.assertEqual(
+            manifest["dlg_testm1_tracking"]["runtimeContextRecovery"][
+                "questIds"
+            ],
+            ["testm1_q#2"],
+        )
+        self.assertEqual(
+            manifest["dlg_testm1_lazy"]["runtimeContextRecovery"][
+                "relation"
+            ],
+            "npc_proxy_lazy_destroy_dialog_context",
+        )
+        self.assertEqual(
+            manifest["dlg_testm1_multi"]["runtimeContextRecovery"][
+                "contextMissionIds"
+            ],
+            ["testm1", "testm2"],
         )
         overlay = result["storyTriggerManifestOverlay"]["text_testm1_1"]
         self.assertEqual(overlay["routes"], [])
@@ -669,6 +973,41 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertEqual(route["scriptIds"], ["70000000001"])
         self.assertEqual(route["controlPathCount"], 1)
         self.assertEqual(route["nativePaths"][0]["headerLocalId"], 4)
+
+    def test_unresolved_timeline_route_stays_context_and_attaches_files(self):
+        row = {
+            "key": "black_testm1_1",
+            "relation": "timeline_dialog_contains_black",
+            "direction": "context",
+            "phase": "timeline_contained",
+            "parentStoryKey": "dlg_parent",
+            "sourceFiles": ["CAB-story"],
+            "assetPaths": ["TextPlayable.json"],
+            "trackPaths": ["Track.json"],
+            "rootPaths": ["TimelineRoot.json"],
+        }
+
+        route = pipeline.build_story_trigger_route(
+            row,
+            mission_id="testm1",
+            owner_status="unresolved",
+        )
+
+        self.assertEqual(route["causality"], "context_owner_unresolved")
+        self.assertEqual(
+            route["sourceFiles"],
+            [
+                "CAB-story",
+                "TextPlayable.json",
+                "Track.json",
+                "TimelineRoot.json",
+            ],
+        )
+        direct = {"causality": "playback", "questId": "testm1_q#1"}
+        self.assertLess(
+            pipeline.story_trigger_route_sort_key(direct),
+            pipeline.story_trigger_route_sort_key(route),
+        )
 
     def test_trigger_route_reads_world_entity_listener_evidence(self):
         row = {
@@ -1284,6 +1623,119 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             "listenerScriptId": "70000000001",
             "listenerHeaderLocalId": 36,
         })
+
+    def test_native_receiver_gate_formats_exact_generic_predicate(self):
+        validation = {
+            "status": "exact_current_build_memorypack_fields",
+            "headerLocalId": 101,
+            "headerNextLocalId": 102,
+            "getterLocalId": 100,
+            "predicateType": "booleanCompare",
+            "predicate": {
+                "comparerName": "Equal",
+                "valueA": {
+                    "value": False,
+                    "idRef": -1,
+                    "paramSource": 300,
+                    "path": "radio_fixturePlayed",
+                },
+                "valueB": {
+                    "value": False,
+                    "idRef": -1,
+                    "paramSource": 0,
+                    "path": None,
+                },
+            },
+        }
+        with patch.object(
+            pipeline,
+            "decode_levelscript_action_header_validation",
+            return_value=validation,
+        ):
+            gate = pipeline.exact_native_receiver_playback_gate(
+                b"fixture",
+                101,
+                source_file="fixture/levelscript.json",
+            )
+        self.assertEqual("radio_fixturePlayed == false", gate["summary"])
+        self.assertEqual(
+            "receiver_playback_allowed_when_true",
+            gate["effect"],
+        )
+        self.assertTrue(gate["branchEvidence"])
+        self.assertFalse(gate["crossStoryOrderEvidence"])
+        self.assertFalse(gate["serverWriteEvidence"])
+
+    def test_native_receiver_gate_rejects_unproven_getter_family(self):
+        with patch.object(
+            pipeline,
+            "decode_levelscript_action_header_validation",
+            return_value={},
+        ):
+            self.assertEqual(
+                {},
+                pipeline.exact_native_receiver_playback_gate(
+                    b"fixture",
+                    9,
+                    source_file="fixture/levelscript.json",
+                ),
+            )
+
+    def test_native_receiver_gate_formats_recursive_boolean_tree(self):
+        leaf = {
+            "predicateType": "getterBool",
+            "predicate": {
+                "value": {
+                    "value": False,
+                    "idRef": -1,
+                    "paramSource": 300,
+                    "path": "isFinished",
+                },
+            },
+            "children": [],
+        }
+        validation = {
+            "status": "exact_current_build_memorypack_fields",
+            "headerLocalId": 2,
+            "headerNextLocalId": 3,
+            "getterLocalId": 1,
+            "predicateType": "boolGetterInvert",
+            "predicate": {
+                "operation": "Not",
+                "value": {
+                    "operandKind": "localGetterRef",
+                    "getterLocalId": 0,
+                },
+            },
+            "predicateTree": {
+                "predicateType": "boolGetterInvert",
+                "predicate": {
+                    "operation": "Not",
+                    "value": {
+                        "operandKind": "localGetterRef",
+                        "getterLocalId": 0,
+                    },
+                },
+                "children": [{
+                    "path": "value.getterLocalId",
+                    "getterLocalId": 0,
+                    "predicate": leaf,
+                }],
+            },
+        }
+        with patch.object(
+            pipeline,
+            "decode_levelscript_action_header_validation",
+            return_value=validation,
+        ):
+            gate = pipeline.exact_native_receiver_playback_gate(
+                b"fixture",
+                2,
+                source_file="fixture/levelscript.json",
+            )
+        self.assertEqual("NOT (isFinished)", gate["summary"])
+        self.assertEqual(2, gate["predicateNodeCount"])
+        self.assertEqual(2, gate["predicateDepth"])
 
     def test_battle_signal_producer_route_revalidates_every_binary_identity(self):
         route = {
@@ -3120,13 +3572,17 @@ class MissionPipelineBuilderTests(unittest.TestCase):
 
 
 class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
-    """The shipped-Lua playback lane is pinned evidence, so guard its rules."""
+    """The shipped-Lua playback lane is corpus-derived, so guard its gates."""
 
-    def test_every_pinned_call_site_has_full_provenance(self) -> None:
-        for row in pipeline.LUA_STORY_PLAYBACK_CALL_SITES:
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.evidence = pipeline.load_lua_story_playback_evidence()
+
+    def test_every_admitted_call_site_has_full_provenance(self) -> None:
+        for row in self.evidence["acceptedExactPlaybackCalls"]:
             for field in (
                 "storyKey", "luaFile", "luaSymbol", "luaCall", "nativeEntry",
-                "phase", "note",
+                "phase", "note", "luaSourceSha256", "luaLine", "auditReport",
             ):
                 self.assertTrue(
                     str(row.get(field) or "").strip(),
@@ -3134,19 +3590,23 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
                 )
             self.assertTrue(row["luaFile"].endswith(".lua"))
 
-    def test_case_sensitive_gender_select_cutscene_is_not_pinned(self) -> None:
+    def test_case_sensitive_gender_select_cutscene_is_not_admitted(self) -> None:
         # The current native resolver preserves "Cutscene_e0m0_1" into
         # case-sensitive StringPathHash resource lookup, so it cannot prove
         # playback of lowercase "cutscene_e0m0_1".
-        keys = {row["storyKey"] for row in pipeline.LUA_STORY_PLAYBACK_CALL_SITES}
+        keys = {
+            row["storyKey"]
+            for row in self.evidence["acceptedExactPlaybackCalls"]
+        }
         self.assertNotIn("cutscene_e0m0_1", keys)
         self.assertNotIn("Cutscene_e0m0_1", keys)
 
     def test_every_rejected_candidate_has_auditable_provenance(self) -> None:
         admitted = {
-            row["storyKey"] for row in pipeline.LUA_STORY_PLAYBACK_CALL_SITES
+            row["storyKey"]
+            for row in self.evidence["acceptedExactPlaybackCalls"]
         }
-        for row in pipeline.LUA_STORY_PLAYBACK_REJECTIONS:
+        for row in self.evidence["rejectedCaseMismatchCalls"]:
             for field in (
                 "storyKey", "luaLiteral", "luaFile", "luaSymbol", "luaCall",
                 "nativeEntry", "reason", "confidence", "auditReport", "note",
@@ -3162,6 +3622,115 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
                 "case_sensitive_native_resource_lookup",
             )
             self.assertTrue(row["auditReport"].endswith(".json"))
+
+    def test_corpus_rule_admits_an_arbitrary_exact_story_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            audit_path = Path(temporary) / "lua_audit.json"
+            audit_path.write_text(json.dumps({
+                "schemaVersion": pipeline.LUA_CONSUMER_REFERENCE_SCHEMA,
+                "summary": {"readErrorCount": 0},
+                "gameActionAudit": {"storyPlaybackCalls": [{
+                    "module": "Phase/Fixture/Fixture.lua",
+                    "sourcePath": "not-present/original-fixture.lua",
+                    "sourceSha256": "a" * 64,
+                    "line": 7,
+                    "method": "PlayCutscene",
+                    "playbackKind": "cutscene",
+                    "argumentSemantics": "story_id",
+                    "firstArgument": "STORY_ID",
+                    "resolvedLiteral": "cutscene_fixture_general_9",
+                    "registryStatus": "exact_registry_match",
+                    "canonicalStoryKey": "cutscene_fixture_general_9",
+                }]},
+            }), encoding="utf-8")
+
+            evidence = pipeline.load_lua_story_playback_evidence(
+                audit_path,
+                (),
+            )
+
+        self.assertEqual(
+            [row["storyKey"] for row in evidence["acceptedExactPlaybackCalls"]],
+            ["cutscene_fixture_general_9"],
+        )
+        self.assertEqual(
+            evidence["acceptedExactPlaybackCalls"][0]["phase"],
+            "fixture",
+        )
+
+    def test_corpus_rule_admits_a_general_same_row_mission_carrier(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            audit_path = Path(temporary) / "lua_audit.json"
+            audit_path.write_text(json.dumps({
+                "schemaVersion": pipeline.LUA_CONSUMER_REFERENCE_SCHEMA,
+                "summary": {"readErrorCount": 0},
+                "gameActionAudit": {"storyPlaybackCalls": [{
+                    "module": "UI/Panels/Fixture/FixtureCtrl.lua",
+                    "sourcePath": "not-present/original-fixture.lua",
+                    "sourceSha256": "a" * 64,
+                    "line": 17,
+                    "method": "StartDialog",
+                    "playbackKind": "dialog",
+                    "argumentSemantics": "story_id",
+                    "firstArgument": "storyId",
+                    "literalResolution": "table_field_singleton",
+                    "resolvedLiteral": "dlg_fixture_general_9",
+                    "registryStatus": "exact_registry_match",
+                    "canonicalStoryKey": "dlg_fixture_general_9",
+                    "tableFieldResolution": {
+                        "table": "FixtureCarrierTable",
+                        "tableSourcePath": "not-present/FixtureCarrierTable.json",
+                        "tableSourceSha256": "b" * 64,
+                        "field": "storyId",
+                        "lookupKeyExpression": "configId",
+                        "exactSingleton": True,
+                        "candidateRows": [{
+                            "tableKey": "fixture_carrier",
+                            "rawValue": "dlg_fixture_general_9",
+                            "canonicalStoryKey": "dlg_fixture_general_9",
+                            "registryStatus": "exact_registry_match",
+                            "rowFields": {
+                                "storyId": "dlg_fixture_general_9",
+                                "missionId": "fixture_mission",
+                            },
+                        }],
+                    },
+                }]},
+            }), encoding="utf-8")
+
+            evidence = pipeline.load_lua_story_playback_evidence(
+                audit_path,
+                (),
+            )
+
+        row = evidence["acceptedExactPlaybackCalls"][0]
+        self.assertEqual("dlg_fixture_general_9", row["storyKey"])
+        self.assertEqual("fixture_mission", row["missionId"])
+        self.assertEqual("FixtureCarrierTable", row["table"])
+        self.assertEqual(1, evidence["acceptedTableCarrierCalls"])
+
+    def test_corpus_rule_fails_closed_with_bounded_hash_diagnostic(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            audit_path = Path(temporary) / "lua_audit.json"
+            audit_path.write_text(json.dumps({
+                "schemaVersion": pipeline.LUA_CONSUMER_REFERENCE_SCHEMA,
+                "summary": {"readErrorCount": 0},
+                "gameActionAudit": {"storyPlaybackCalls": [{
+                    "module": "fixture.lua",
+                    "sourcePath": "not-present/fixture.lua",
+                    "sourceSha256": "bad",
+                    "line": 1,
+                    "method": "PlayCutscene",
+                    "argumentSemantics": "story_id",
+                    "registryStatus": "exact_registry_match",
+                }]},
+            }), encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"validator.*gate=row_provenance.*sourceSha256:sha256",
+            ):
+                pipeline.load_lua_story_playback_evidence(audit_path, ())
 
     def test_rejected_candidate_is_published_without_a_trigger_route(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -3206,7 +3775,7 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
         self.assertEqual(row["routes"], [])
         self.assertEqual(
             row["rejectedPlaybackCandidates"],
-            list(pipeline.LUA_STORY_PLAYBACK_REJECTIONS),
+            self.evidence["rejectedCaseMismatchCalls"],
         )
         self.assertEqual(
             report["counts"]["rejectedStoryPlaybackCandidates"],
@@ -3427,12 +3996,22 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
             "fixture",
         )
 
-    def test_pinned_story_keys_are_lowercase_exact(self) -> None:
-        for row in pipeline.LUA_STORY_PLAYBACK_CALL_SITES:
+    def test_admitted_story_keys_are_lowercase_exact(self) -> None:
+        for row in self.evidence["acceptedExactPlaybackCalls"]:
             self.assertEqual(row["storyKey"], row["storyKey"].lower())
 
 
 class NonMissionContentTableTests(unittest.TestCase):
+    def test_exact_runtime_non_mission_families_are_pipeline_visible(self) -> None:
+        self.assertEqual(
+            pipeline.PIPELINE_VISIBLE_NON_MISSION_EVIDENCE_KINDS,
+            {
+                "guide_runtime_asset",
+                "spaceship_dialog_tree",
+                "character_profile_voice",
+            },
+        )
+
     def test_tables_are_keyed_outside_the_mission_lane(self) -> None:
         from scripts.common import NON_MISSION_CONTENT_TABLES
 

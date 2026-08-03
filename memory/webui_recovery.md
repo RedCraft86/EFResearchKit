@@ -62,6 +62,21 @@ their inputs.
 - Reset returns to Story sort while preserving expanded mission groups.
 - Disabling debug while a hidden page is active returns to a visible page.
 - Mission Pipeline links show evidence-typed trigger chains.
+- BlackBox recovery cards expose exact SubGame/bound-LevelScript context,
+  separate authored task lanes, complete decoded task/condition topology,
+  condition formulas, objective display keys, exact parent playback, and the
+  serialized event/action graph. Ordered sequences, parallel fan-outs,
+  conditional choices, loops, Story targets, runtime-shadowed duplicate-id
+  records, and missing-slot normal terminals are visible,
+  while definition-only parents and unordered event roots remain explicit;
+  neither task definitions nor separate action roots invent Story chronology.
+- Mission Story-order panels list compact original LevelScript graphs only when
+  an exact native event-to-Story path relates the file to that mission. Their
+  remaining actions are visibly file-local and do not imply extra order;
+  active last-serialized header/action/getter slots stay distinct from
+  shadowed physical records. The selected event listener exposes priority,
+  active-during, and filter metadata, while the UI states that listener
+  priority and physical list order are not Story chronology.
 - Native playback without mission ownership stays explicitly unassigned.
 - Definition-only rows remain distinct from playback.
 - Mission or scene order is never inferred from registration or file order.

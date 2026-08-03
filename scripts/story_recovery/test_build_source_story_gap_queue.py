@@ -4,6 +4,7 @@ import base64
 import copy
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -14,6 +15,13 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import build_source_story_gap_queue as gap_queue  # noqa: E402
+from story_builder.level_bindings import (  # noqa: E402
+    build_levelscript_action_story_occurrences,
+    build_levelscript_native_story_playback_index,
+)
+from story_builder.anime_assets import (  # noqa: E402
+    recover_dialog_tree_definition_evidence,
+)
 
 
 def partial_mission(
@@ -87,6 +95,766 @@ def mission_payload(
 
 
 class SourceStoryGapQueueTests(unittest.TestCase):
+    @staticmethod
+    def typed_selector_connection(story_key: str) -> dict:
+        alternatives = [
+            {"role": "first", "key": "dlg_a"},
+            {"role": "repeat", "key": "dlg_b"},
+        ]
+        return {
+            "missionId": "m1",
+            "key": story_key,
+            "relation": "opaque_system_selector",
+            "selectorKind": "typed_table_story_selector",
+            "selectorGroupId": "target_opaque",
+            "selectorRole": next(
+                item["role"] for item in alternatives if item["key"] == story_key
+            ),
+            "selectorAlternatives": alternatives,
+            "graphEffect": "none",
+            "sourceFiles": ["TypedTable.json"],
+            "nativeMappingId": "mapping-v1",
+            "nativeConsumers": [{"method": "Select"}],
+            "orderBoundary": "no relative order",
+        }
+
+    def test_exact_typed_selector_closes_isolated_alternatives(self) -> None:
+        partial = partial_mission(
+            "m1", scenes=["dlg_a", "dlg_b"], isolated=["dlg_a", "dlg_b"]
+        )
+        row = gap_queue.build_gap_row(
+            partial,
+            mission_payload(connections=[
+                self.typed_selector_connection("dlg_a"),
+                self.typed_selector_connection("dlg_b"),
+            ]),
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        self.assertEqual(
+            row["metrics"]["closedExactSystemSelectorIsolatedScenes"], 2
+        )
+        self.assertEqual(row["exactSystemSelectorValidationFailures"], [])
+
+    def test_partial_typed_selector_fails_closed_with_diagnostics(self) -> None:
+        connection = self.typed_selector_connection("dlg_a")
+        connection["selectorAlternatives"] = [
+            {"role": "first", "key": "dlg_a"}
+        ]
+        row = gap_queue.build_gap_row(
+            partial_mission("m1", scenes=["dlg_a"], isolated=["dlg_a"]),
+            mission_payload(connections=[connection]),
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 1)
+        failure = row["exactSystemSelectorValidationFailures"][0]
+        self.assertEqual(failure["validator"], "exact_typed_story_selector")
+        self.assertIn("distinctKeys", failure["failedChecks"])
+        self.assertEqual(failure["expected"]["minimumDistinctAlternatives"], 2)
+
+    def test_present_literal_keys_preserves_overlapping_prefixes(self) -> None:
+        payload = b"before radio_fixture_10 after"
+        present = gap_queue._present_literal_keys(
+            payload,
+            {
+                "short": "radio_fixture_1",
+                "long": "radio_fixture_10",
+                "absent": "radio_fixture_11",
+            },
+            "utf-8",
+        )
+
+        self.assertEqual(present, {"short", "long"})
+
+    def test_generic_radio_definition_validator_recovers_shape(self) -> None:
+        story_key = "radio_fixture"
+        line = {
+            field: ""
+            for field in gap_queue.OFFLINE_EXHAUSTION_RADIO_LINE_FIELDS
+        }
+        line.update({
+            "id": f"{story_key}_1",
+            "index": 1,
+            "audioOverride": "au_radio_fixture_001",
+        })
+        row = {
+            "continueAfterDialog": False,
+            "continueAfterRadio": False,
+            "priority": 3,
+            "radioSingleDataList": [line],
+            "radioType": 0,
+        }
+
+        facts, failure = gap_queue._generic_radio_definition_facts(
+            story_key,
+            row,
+            {"au_radio_fixture_001_variant"},
+        )
+
+        self.assertIsNone(failure)
+        self.assertEqual(facts["lineIds"], ["radio_fixture_1"])
+        self.assertEqual(facts["lineIndices"], [1])
+        self.assertEqual(
+            facts["audioMembershipStatus"],
+            "all_current_audio_dialog_ids_present",
+        )
+
+    def test_generic_radio_definition_validator_reports_line_shape(self) -> None:
+        story_key = "radio_fixture"
+        line = {
+            field: ""
+            for field in gap_queue.OFFLINE_EXHAUSTION_RADIO_LINE_FIELDS
+        }
+        line.update({
+            "id": "wrong_owner_1",
+            "index": 0,
+            "audioOverride": "",
+        })
+        row = {
+            "continueAfterDialog": False,
+            "continueAfterRadio": False,
+            "priority": 3,
+            "radioSingleDataList": [line],
+            "radioType": 0,
+        }
+
+        facts, failure = gap_queue._generic_radio_definition_facts(
+            story_key,
+            row,
+            set(),
+        )
+
+        self.assertIsNone(facts)
+        self.assertEqual(failure["validator"], "genericRadioNegativeConsumer")
+        self.assertEqual(failure["gate"], "exactRadioLineShape")
+        self.assertEqual(failure["storyKey"], story_key)
+        self.assertEqual(failure["actual"]["lineId"], "wrong_owner_1")
+
+    def test_generic_reading_popup_validator_recovers_definition(self) -> None:
+        story_key = "text_fixture_1"
+        facts, failure = gap_queue._generic_reading_popup_definition_facts(
+            story_key,
+            {
+                "rp_text_fixture_1": {
+                    "bgType": 2,
+                    "contentId": story_key,
+                    "iconType": 0,
+                    "id": "rp_text_fixture_1",
+                    "overrideRadioId": "",
+                    "title": {"id": 0, "text": ""},
+                },
+            },
+            {
+                "contentList": [
+                    {"content": {"id": 42, "text": ""}},
+                    {"content": {"id": -7, "text": ""}},
+                ],
+                "title": {"id": 11, "text": ""},
+            },
+        )
+
+        self.assertIsNone(failure)
+        self.assertEqual(facts["readingPopupRowIds"], ["rp_text_fixture_1"])
+        self.assertEqual(facts["richContentTitleId"], 11)
+        self.assertEqual(facts["contentTextIds"], [42, -7])
+
+    def test_generic_reading_popup_validator_reports_rich_shape(self) -> None:
+        story_key = "text_fixture_1"
+        facts, failure = gap_queue._generic_reading_popup_definition_facts(
+            story_key,
+            {
+                story_key: {
+                    "bgType": 0,
+                    "contentId": story_key,
+                    "iconType": 0,
+                    "id": story_key,
+                    "overrideRadioId": "",
+                    "title": {"id": 0, "text": ""},
+                },
+            },
+            {
+                "contentList": [{"content": {"id": True, "text": ""}}],
+                "title": {"id": 11, "text": ""},
+            },
+        )
+
+        self.assertIsNone(facts)
+        self.assertEqual(
+            failure["validator"],
+            "genericReadingPopupNegativeConsumer",
+        )
+        self.assertEqual(failure["gate"], "exactRichContentDefinitionShape")
+        self.assertEqual(failure["storyKey"], story_key)
+
+    def test_generic_unregistered_dialog_uses_exact_root_boundary(self) -> None:
+        story_key = "dlg_fixture_1"
+        line = {
+            field: ""
+            for field in gap_queue.OFFLINE_EXHAUSTION_DIALOG_ROW_FIELDS
+        }
+        line["audioOverride"] = "au_dlg_fixture_1_001"
+        other_line = dict(line, audioOverride="au_dlg_fixture_10_001")
+        facts, failure = (
+            gap_queue._generic_unregistered_dialog_definition_facts(
+                story_key,
+                {
+                    "dlg_fixture_1_001": line,
+                    "dlg_fixture_10_001": other_line,
+                },
+                {
+                    "option_dlg_fixture_1_2_001": {
+                        "iconType": "Default",
+                        "optionText": {"id": 42, "text": ""},
+                    },
+                    "option_dlg_fixture_10_1_001": {
+                        "iconType": "Default",
+                        "optionText": {"id": 99, "text": ""},
+                    },
+                },
+                {"au_dlg_fixture_1_001"},
+            )
+        )
+
+        self.assertIsNone(failure)
+        self.assertEqual(facts["lineIds"], ["dlg_fixture_1_001"])
+        self.assertEqual(
+            facts["optionIds"],
+            ["option_dlg_fixture_1_2_001"],
+        )
+        self.assertEqual(facts["optionsByGroup"], {"2": [
+            "option_dlg_fixture_1_2_001",
+        ]})
+
+    def test_generic_registered_table_dialog_resolves_mechanical_alias(self) -> None:
+        story_key = "misc_dlg_fixture_1d5"
+        definition_root = "dlg_fixture_1d5"
+        line = {
+            field: ""
+            for field in gap_queue.OFFLINE_EXHAUSTION_DIALOG_ROW_FIELDS
+        }
+        line["audioOverride"] = "au_dlg_fixture_1d5_001"
+        facts, failure = (
+            gap_queue._generic_registered_table_dialog_definition_facts(
+                story_key,
+                definition_root,
+                {
+                    "registered": True,
+                    "memoryPackRecordKey": True,
+                    "hasRootKey": True,
+                },
+                {"dlg_fixture_1d5_001": line},
+                {},
+                {"au_dlg_fixture_1d5_001"},
+            )
+        )
+
+        self.assertIsNone(failure)
+        self.assertEqual(facts["emittedStoryKey"], story_key)
+        self.assertEqual(facts["definitionRootKey"], definition_root)
+        self.assertEqual(facts["lineIds"], ["dlg_fixture_1d5_001"])
+
+    def test_generic_registered_table_dialog_fails_closed_on_alias_drift(self) -> None:
+        facts, failure = (
+            gap_queue._generic_registered_table_dialog_definition_facts(
+                "misc_dlg_fixture_1d5",
+                "dlg_wrong_root",
+                {},
+                {},
+                {},
+                set(),
+            )
+        )
+
+        self.assertIsNone(facts)
+        self.assertEqual(
+            failure["validator"],
+            "genericRegisteredTableDialogNegativeConsumer",
+        )
+        self.assertEqual(
+            failure["gate"],
+            "mechanicalEmittedToAuthoredDialogAlias",
+        )
+
+    def test_generic_text_table_only_cutscene_validates_exact_root(self) -> None:
+        story_key = "cutscene_fixture_1"
+        facts, failure = (
+            gap_queue._generic_text_table_only_cutscene_definition_facts(
+                story_key,
+                {
+                    "cutscene_fixture_1_02": {"id": 12, "text": "two"},
+                    "cutscene_fixture_1_03": {"id": 13, "text": "three"},
+                    "cutscene_fixture_10_01": {"id": 99, "text": "other"},
+                },
+            )
+        )
+
+        self.assertIsNone(failure)
+        self.assertEqual(
+            facts["definitionRowKeys"],
+            ["cutscene_fixture_1_02", "cutscene_fixture_1_03"],
+        )
+        self.assertEqual(facts["localizedTextIds"], [12, 13])
+
+    def test_generic_text_table_only_cutscene_reports_invalid_row(self) -> None:
+        facts, failure = (
+            gap_queue._generic_text_table_only_cutscene_definition_facts(
+                "cutscene_fixture_1",
+                {"cutscene_fixture_1_01": {"id": True, "text": "bad"}},
+            )
+        )
+
+        self.assertIsNone(facts)
+        self.assertEqual(
+            failure["validator"],
+            "genericTextTableOnlyCutsceneNegativeConsumer",
+        )
+        self.assertEqual(failure["gate"], "exactLocalizedTextRowShape")
+
+    def test_generic_missionless_native_playback_validates_exact_path(
+        self,
+    ) -> None:
+        story_key = "radio_fixture_1"
+        with tempfile.TemporaryDirectory() as directory:
+            source_root = Path(directory)
+            source_file = source_root / "LevelScriptData/lv1/1001.json"
+            source_file.parent.mkdir(parents=True)
+            source_file.write_text("{}", encoding="utf-8")
+            occurrences = [{
+                "levelId": "lv1",
+                "scriptId": "1001",
+                "sourceFile": "LevelScriptData/lv1/1001.json",
+                "actionMapRole": "actionList#1 linked",
+                "allStoryKeysInRecord": [story_key],
+                "localId": 6,
+                "actionName": "PlayRadio",
+                "recordClass": "play_radio",
+                "nativeMappingId": "gameassembly-fixture-actionbase-v1",
+                "nativeEventOwners": [{
+                    "status": "exact_serialized_control_path",
+                    "headerName": "ScriptEvent_OnLeaderEnterTriggerVolume",
+                    "headerLocalId": 4,
+                    "eventDetail": {
+                        "type": "ScriptEvent_OnLeaderEnterTriggerVolume",
+                        "serializedMissionOrQuestId": False,
+                        "serverExchange": False,
+                        "summary": "leader enters trigger slot 80001",
+                    },
+                    "path": [{
+                        "localId": 6,
+                        "actionName": "PlayRadio",
+                        "recordClass": "play_radio",
+                    }],
+                }],
+            }]
+
+            facts, failure, exclusion = (
+                gap_queue._generic_missionless_native_playback_facts(
+                    story_key,
+                    occurrences,
+                    source_root=source_root,
+                )
+            )
+
+        self.assertIsNone(failure)
+        self.assertIsNone(exclusion)
+        self.assertEqual(facts["nativeEventPaths"][0]["actionLocalId"], 6)
+        self.assertTrue(facts["sourceSha256"][occurrences[0]["sourceFile"]])
+
+    def test_generic_missionless_native_playback_fails_closed_on_terminal(
+        self,
+    ) -> None:
+        story_key = "dlg_fixture_1"
+        with tempfile.TemporaryDirectory() as directory:
+            source_root = Path(directory)
+            source_file = source_root / "LevelScriptData/lv1/1001.json"
+            source_file.parent.mkdir(parents=True)
+            source_file.write_text("{}", encoding="utf-8")
+            facts, failure, exclusion = (
+                gap_queue._generic_missionless_native_playback_facts(
+                    story_key,
+                    [{
+                        "sourceFile": "LevelScriptData/lv1/1001.json",
+                        "actionMapRole": "actionList#2 root",
+                        "allStoryKeysInRecord": [story_key],
+                        "localId": 2,
+                        "actionName": "StartDialogAction",
+                        "recordClass": "play_dialog",
+                        "nativeMappingId": "gameassembly-fixture-actionbase-v1",
+                        "nativeEventOwners": [{
+                            "status": "exact_serialized_control_path",
+                            "headerName": "ScriptEvent_OnLeaderEnterTriggerVolume",
+                            "headerLocalId": 0,
+                            "eventDetail": {
+                                "serializedMissionOrQuestId": False,
+                                "serverExchange": False,
+                            },
+                            "path": [{
+                                "localId": 3,
+                                "actionName": "StartDialogAction",
+                                "recordClass": "play_dialog",
+                            }],
+                        }],
+                    }],
+                    source_root=source_root,
+                )
+            )
+
+        self.assertIsNone(facts)
+        self.assertIsNone(exclusion)
+        self.assertEqual(
+            failure["validator"],
+            "genericMissionlessNativePlayback",
+        )
+        self.assertEqual(
+            failure["gate"],
+            "exactMissionlessNativeControlPath",
+        )
+        self.assertEqual(failure["expected"]["terminalLocalId"], 2)
+        self.assertEqual(failure["actual"]["terminal"]["localId"], 3)
+
+    def test_generic_unregistered_dialog_reports_option_shape(self) -> None:
+        story_key = "dlg_fixture_1"
+        line = {
+            field: ""
+            for field in gap_queue.OFFLINE_EXHAUSTION_DIALOG_ROW_FIELDS
+        }
+        line["audioOverride"] = "au_dlg_fixture_1_001"
+        facts, failure = (
+            gap_queue._generic_unregistered_dialog_definition_facts(
+                story_key,
+                {"dlg_fixture_1_001": line},
+                {
+                    "option_dlg_fixture_1_1_001": {
+                        "iconType": "",
+                        "optionText": {"id": True, "text": ""},
+                    },
+                },
+                set(),
+            )
+        )
+
+        self.assertIsNone(facts)
+        self.assertEqual(
+            failure["validator"],
+            "genericUnregisteredDialogNegativeConsumer",
+        )
+        self.assertEqual(failure["gate"], "exactDialogOptionShape")
+        self.assertEqual(failure["storyKey"], story_key)
+
+    def test_generic_registered_dialog_tree_validates_exact_definition(self) -> None:
+        story_key = "dlg_c27m4_15"
+        definition = recover_dialog_tree_definition_evidence(story_key)
+        facts, failure = (
+            gap_queue._generic_registered_dialog_tree_definition_facts(
+                story_key,
+                {
+                    "registered": True,
+                    "memoryPackRecordKey": True,
+                    "hasRootKey": True,
+                },
+                definition,
+            )
+        )
+
+        self.assertIsNone(failure)
+        self.assertEqual(facts["sceneKey"], story_key)
+        self.assertEqual(facts["assetType"], "Beyond.Gameplay.DialogTree")
+        self.assertEqual(facts["nodeCount"], 2)
+        self.assertTrue(facts["sourceSha256"])
+
+    def test_generic_registered_dialog_tree_reports_source_hash_failure(self) -> None:
+        story_key = "dlg_c27m4_15"
+        definition = recover_dialog_tree_definition_evidence(story_key)
+        invalid = {**definition, "sourceSha256": "0" * 64}
+        facts, failure = (
+            gap_queue._generic_registered_dialog_tree_definition_facts(
+                story_key,
+                {
+                    "registered": True,
+                    "memoryPackRecordKey": True,
+                    "hasRootKey": True,
+                },
+                invalid,
+            )
+        )
+
+        self.assertIsNone(facts)
+        self.assertEqual(
+            failure["validator"],
+            "genericRegisteredDialogTreeNegativeConsumer",
+        )
+        self.assertEqual(failure["gate"], "exactCurrentDialogTreeDefinition")
+        self.assertFalse(failure["actual"]["sourceHashMatches"])
+
+    def test_generic_dialog_timeline_is_internal_definition_only(self) -> None:
+        timeline_rows = gap_queue.read_json(
+            gap_queue.ROOT
+            / "export_full/recovered/AnimeStudio-cli/timeline_line_orders.json",
+            {},
+        )
+        facts, failure = gap_queue._generic_dialog_timeline_definition_facts(
+            "dlg_c6m1_27",
+            timeline_rows["dlg_c6m1_27"],
+        )
+
+        self.assertIsNone(failure)
+        self.assertEqual(facts["timeline"], "dlgtl_c6m1_27_sub_1")
+        self.assertFalse(facts["activationEvidence"])
+        self.assertFalse(facts["crossFileOrderEvidence"])
+        self.assertTrue(facts["sourceRoots"])
+
+    def test_generic_dialog_timeline_reports_missing_source_root(self) -> None:
+        timeline_rows = gap_queue.read_json(
+            gap_queue.ROOT
+            / "export_full/recovered/AnimeStudio-cli/timeline_line_orders.json",
+            {},
+        )
+        invalid = {
+            **timeline_rows["dlg_c6m1_27"],
+            "sourceRoots": ["export_full/recovered/missing-dialog-timeline.json"],
+        }
+        facts, failure = gap_queue._generic_dialog_timeline_definition_facts(
+            "dlg_c6m1_27",
+            invalid,
+        )
+
+        self.assertIsNone(facts)
+        self.assertEqual(failure["gate"], "exactInternalDialogTimelineDefinition")
+        self.assertEqual(failure["actual"]["existingSourceRoots"], 0)
+
+    def test_generic_missionless_npc_proxy_consumer_recovers_identity(self) -> None:
+        story_key = "dlg_fixture_1"
+        row = {
+            "addDialogExOption": False,
+            "dialogExOptionData": [],
+            "dialogId": story_key,
+            "envTalkData": {"envTalkOverrideNpc": True},
+            "missionId": "",
+        }
+        facts, failure = (
+            gap_queue._generic_missionless_npc_proxy_dialog_facts(
+                story_key,
+                {
+                    "data": {"proxy_fixture": [row]},
+                    "proxyInfoData": {"proxy_fixture": {
+                        "npcProxyType": 0,
+                        "npcId": "npc_fixture",
+                        "npcNameId": "npc_name_fixture",
+                        "mapId": "map_fixture",
+                    }},
+                },
+                {"dataTable": {"proxy_fixture": {
+                    "proxyId": "proxy_fixture",
+                    "levelId": "level_fixture",
+                    "subDataParentId": 42,
+                }}},
+                {story_key: {
+                    "registered": True,
+                    "memoryPackRecordKey": True,
+                    "hasRootKey": True,
+                }},
+            )
+        )
+
+        self.assertIsNone(failure)
+        self.assertEqual(facts["consumerCount"], 1)
+        self.assertEqual(
+            facts["npcProxyConsumers"][0]["npcProxyId"],
+            "proxy_fixture",
+        )
+        self.assertEqual(
+            facts["dialogIdRegistrationStatus"],
+            "memorypack_root_registered",
+        )
+
+    def test_generic_missionless_npc_proxy_consumer_reports_row_shape(self) -> None:
+        story_key = "dlg_fixture_1"
+        facts, failure = (
+            gap_queue._generic_missionless_npc_proxy_dialog_facts(
+                story_key,
+                {
+                    "data": {"proxy_fixture": [{
+                        "dialogId": story_key,
+                        "missionId": "",
+                    }]},
+                    "proxyInfoData": {"proxy_fixture": {
+                        "npcProxyType": 0,
+                        "npcId": "npc_fixture",
+                        "npcNameId": "npc_name_fixture",
+                        "mapId": "map_fixture",
+                    }},
+                },
+                {"dataTable": {"proxy_fixture": {
+                    "proxyId": "proxy_fixture",
+                    "levelId": "level_fixture",
+                }}},
+                {story_key: {
+                    "registered": True,
+                    "memoryPackRecordKey": True,
+                    "hasRootKey": True,
+                }},
+            )
+        )
+
+        self.assertIsNone(facts)
+        self.assertEqual(
+            failure["validator"],
+            "genericMissionlessNpcProxyDialogConsumer",
+        )
+        self.assertEqual(failure["gate"], "exactNpcProxyExConsumerRow")
+        self.assertEqual(failure["npcProxyId"], "proxy_fixture")
+
+    def test_generic_unlinked_sns_definition_recovers_internal_graph(self) -> None:
+        story_key = "sns_fixture_1"
+        content_fields = {
+            "content": {"id": 1, "text": ""},
+            "contentParam": [],
+            "contentParams": "",
+            "contentType": 1,
+            "dialogOptionIds": [],
+            "isEnd": False,
+            "linkMissionId": "",
+            "linkRewardId": "",
+            "optionType": 0,
+            "speaker": "speaker_fixture",
+        }
+        row = {
+            "chatId": "chat_fixture",
+            "dialogContentData": {
+                "1": {
+                    **content_fields,
+                    "contentId": 1,
+                    "preContentId": 0,
+                    "nextContentId": -1,
+                },
+                "-1": {
+                    **content_fields,
+                    "content": {"id": 0, "text": ""},
+                    "contentId": -1,
+                    "preContentId": 1,
+                    "nextContentId": 0,
+                    "isEnd": True,
+                },
+            },
+            "dialogId": story_key,
+            "dialogType": 2,
+            "noticeType": 0,
+            "relatedMissionId": "",
+            "skipToFirstOption": False,
+            "topicId": "",
+        }
+        chat = {
+            field: 0
+            for field in gap_queue.SNS_CHAT_ROW_FIELDS
+        }
+        chat.update({
+            "chatId": "chat_fixture",
+            "name": {"id": 1, "text": ""},
+        })
+
+        facts, failure, exclusion = (
+            gap_queue._generic_unlinked_sns_definition_facts(
+                story_key,
+                row,
+                {},
+                {"chat_fixture": chat},
+            )
+        )
+
+        self.assertIsNone(failure)
+        self.assertIsNone(exclusion)
+        self.assertEqual(facts["contentIds"], [-1, 1])
+        self.assertEqual(facts["authoredMissionLinkStatus"], "absent")
+
+        linked = copy.deepcopy(row)
+        linked["relatedMissionId"] = "mission_fixture"
+        linked["dialogContentData"]["1"].update({
+            "contentParam": ["mission_fixture"],
+            "contentType": 12,
+            "linkMissionId": "mission_fixture",
+        })
+        facts, failure, exclusion = (
+            gap_queue._generic_unlinked_sns_definition_facts(
+                story_key,
+                linked,
+                {},
+                {"chat_fixture": chat},
+            )
+        )
+        self.assertIsNone(failure)
+        self.assertEqual(exclusion, "authoredMissionLink")
+        self.assertEqual(facts["relatedMissionId"], "mission_fixture")
+        self.assertEqual(facts["snsContentIds"], ["1"])
+        self.assertEqual(
+            facts["linkMissionIdsByContentId"],
+            {"1": "mission_fixture"},
+        )
+
+        inconsistent = copy.deepcopy(row)
+        inconsistent["relatedMissionId"] = "mission_fixture"
+        facts, failure, exclusion = (
+            gap_queue._generic_unlinked_sns_definition_facts(
+                story_key,
+                inconsistent,
+                {},
+                {"chat_fixture": chat},
+            )
+        )
+        self.assertIsNone(facts)
+        self.assertIsNone(exclusion)
+        self.assertEqual(failure["gate"], "coherentAuthoredMissionLink")
+
+    def test_generic_unlinked_sns_definition_reports_dangling_content(self) -> None:
+        story_key = "sns_fixture_1"
+        row = {
+            field: ""
+            for field in gap_queue.SNS_DIALOG_ROW_FIELDS
+        }
+        row.update({
+            "chatId": "chat_fixture",
+            "dialogId": story_key,
+            "dialogType": 2,
+            "noticeType": 0,
+            "skipToFirstOption": False,
+            "dialogContentData": {"-1": {
+                "content": {"id": 0, "text": ""},
+                "contentId": -1,
+                "contentParam": [],
+                "contentParams": "",
+                "contentType": 1,
+                "dialogOptionIds": [],
+                "isEnd": True,
+                "linkMissionId": "",
+                "linkRewardId": "",
+                "nextContentId": 0,
+                "optionType": 0,
+                "preContentId": 99,
+                "speaker": "",
+            }},
+        })
+        chat = {field: 0 for field in gap_queue.SNS_CHAT_ROW_FIELDS}
+        chat.update({
+            "chatId": "chat_fixture",
+            "name": {"id": 1, "text": ""},
+        })
+
+        facts, failure, exclusion = (
+            gap_queue._generic_unlinked_sns_definition_facts(
+                story_key,
+                row,
+                {},
+                {"chat_fixture": chat},
+            )
+        )
+
+        self.assertIsNone(facts)
+        self.assertIsNone(exclusion)
+        self.assertEqual(failure["validator"], "genericSnsNegativeConsumer")
+        self.assertEqual(failure["gate"], "closedContentGraphAndOptions")
+        self.assertEqual(failure["actual"]["invalidContentReferences"], [99])
+
     def test_radio_definition_validator_reports_exact_audio_failure(self) -> None:
         row = {
             "continueAfterDialog": False,
@@ -286,7 +1054,7 @@ class SourceStoryGapQueueTests(unittest.TestCase):
             "closed_exact_native_event_path_no_relative_order",
         )
 
-    def test_equivalent_duplicate_native_path_is_closed_not_actionable(self) -> None:
+    def test_runtime_shadowed_native_path_is_closed_not_actionable(self) -> None:
         partial = partial_mission(
             "e1m1",
             scenes=["radio_a"],
@@ -304,8 +1072,7 @@ class SourceStoryGapQueueTests(unittest.TestCase):
                 "localId": 8,
                 "allStoryKeysInRecord": ["radio_a"],
                 "nativeEventOwners": [{
-                    "status":
-                        "exact_serialized_control_path_equivalent_duplicates",
+                    "status": "exact_serialized_control_path_runtime_shadowing",
                     "headerName": "ScriptEvent_OnScriptStageChanged",
                     "headerLocalId": 4,
                     "eventDetail": {
@@ -314,7 +1081,7 @@ class SourceStoryGapQueueTests(unittest.TestCase):
                     "path": [
                         {
                             "localId": 7,
-                            "equivalentRecordOffsets": [100, 200],
+                            "runtimeShadowedRecordOffsets": [100],
                         },
                         {"localId": 8},
                     ],
@@ -337,7 +1104,7 @@ class SourceStoryGapQueueTests(unittest.TestCase):
             row["closedExactNativeWeakOnlyScenes"][0]["nativeEventPaths"][0][
                 "controlPathStatus"
             ],
-            "exact_serialized_control_path_equivalent_duplicates",
+            "exact_serialized_control_path_runtime_shadowing",
         )
 
     def test_incomplete_native_weak_only_scene_remains_actionable(self) -> None:
@@ -1003,6 +1770,121 @@ class SourceStoryGapQueueTests(unittest.TestCase):
         self.assertEqual(
             invalid["questIdsWithoutStrictStoryAttachment"],
             ["e7m4_q#2"],
+        )
+
+    def test_repeatable_dialog_finish_is_a_typed_strict_attachment(self) -> None:
+        partial = partial_mission("c1m1", scenes=["dlg_c1m1_1"])
+        payload = mission_payload(quest_ids=["c1m1_q#1"])
+        payload["flow"]["quests"] = [{
+            "id": "c1m1_q#1",
+            "storyConnections": [{
+                "key": "dlg_c1m1_1",
+                "relation": "objective_condition",
+                "direction": "story_to_quest",
+                "phase": "progress",
+                "confidence": "direct",
+                "source": (
+                    "MissionRuntimeAsset.questDic[*].objectiveList[0]"
+                    ".condition._dialogId"
+                ),
+                "objectiveIndex": 1,
+                "conditionType": "CheckRepeatableTalkFinish",
+            }],
+        }]
+        payload["timelineRecovery"]["scenePlacement"] = {
+            "dlg_c1m1_1": {
+                "sceneKey": "dlg_c1m1_1",
+                "questIds": ["c1m1_q#1"],
+                "questAttachSources": [{"source": "missionStoryRef"}],
+            },
+        }
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["strictQuestIdsWithStoryAttachment"], 1)
+        self.assertEqual(row["questIdsWithoutStrictStoryAttachment"], [])
+
+    def test_exact_property_story_consumer_is_a_strict_attachment(self) -> None:
+        story_key = "radio_c1m1_1"
+        quest_id = "c1m1_q#1"
+        partial = partial_mission("c1m1", scenes=[story_key])
+        payload = mission_payload(quest_ids=[quest_id])
+        owner = {
+            "status": "exact_serialized_control_path",
+            "headerName": "ScriptEvent_OnPropertyChanged",
+            "downstreamControlStatus": "exact_serialized_typed_reachability",
+            "eventDetail": {
+                "propertyKeyFilter": "allTalkFinished",
+                "payloadSchemaStatus": "exact_current_build_memorypack_fields",
+                "transport": "local-level-script-variable-event",
+                "validateParam": {"constValue": True},
+            },
+            "path": [{"localId": 9, "recordClass": "play_radio"}],
+        }
+        connection = {
+            "key": story_key,
+            "relation": "levelscript_property_story_consumer",
+            "direction": "shared_trigger",
+            "phase": "progress_and_runtime_playback",
+            "confidence": "native_typed_direct",
+            "evidenceTier": "native_direct",
+            "conditionType": "CheckLevelScriptPropertyBool",
+            "conditionKey": "allTalkFinished",
+            "conditionValue": True,
+            "mapId": "level_a",
+            "scriptId": "1001",
+            "nativeEventOwner": owner,
+            "levelScriptOccurrence": {
+                "levelId": "level_a",
+                "scriptId": "1001",
+                "sourceFile": (
+                    "export_full/structured/StreamingAssets/Data/Json/"
+                    "LevelScriptData/level_a/1001.json"
+                ),
+                "recordClass": "play_radio",
+                "localId": 9,
+            },
+            "sourceFiles": [
+                "export_full/structured/Persistent/Data/Json/"
+                "MissionRuntimeAsset/c1m1.json",
+                "export_full/structured/StreamingAssets/Data/Json/"
+                "LevelScriptData/level_a/1001.json",
+            ],
+        }
+        payload["flow"]["quests"] = [{
+            "id": quest_id,
+            "storyConnections": [connection],
+        }]
+        payload["timelineRecovery"]["scenePlacement"] = {
+            story_key: {
+                "sceneKey": story_key,
+                "questIds": [quest_id],
+                "questAttachSources": [{"source": "scriptCondition"}],
+            },
+        }
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+        self.assertEqual(row["questIdsWithoutStrictStoryAttachment"], [])
+
+        connection["nativeEventOwner"]["eventDetail"][
+            "propertyKeyFilter"
+        ] = "different"
+        invalid = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+        self.assertEqual(
+            invalid["questIdsWithoutStrictStoryAttachment"],
+            [quest_id],
         )
 
     def test_exact_sns_tracking_reference_is_strict_attachment_only(
@@ -2063,6 +2945,105 @@ class SourceStoryGapQueueTests(unittest.TestCase):
         self.assertEqual(row["metrics"]["closedExactNativeIsolatedScenes"], 0)
         self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 1)
 
+    def test_partial_dialog_tree_scope_closes_when_all_exact_carriers_exist(
+        self,
+    ) -> None:
+        partial = partial_mission(
+            "e1m1",
+            scenes=["black_a"],
+            isolated=["black_a"],
+        )
+
+        def occurrence(parent: str, source_path_id: str) -> dict:
+            return {
+                "textId": "black_a_001",
+                "actionType":
+                    "Beyond.Gameplay.DialogNarrativeMaskActionData",
+                "actionKind": "narrative",
+                "actionPath": "nodes[3]._transitionData.actions[0]",
+                "nodeId": "3",
+                "dialogKey": parent,
+                "sourceFile": f"TextAsset/{parent}.json",
+                "sourcePathId": source_path_id,
+                "dialogTreeConnectionPlacementStatus":
+                    "no_exact_unique_adjacent_parent_trunks",
+                "reachableFromPrimeNode": False,
+                "primeToActionNodePath": [],
+                "incomingNodeIds": ["2"],
+                "outgoingNodeIds": ["4"],
+                "nativeMappingId":
+                    gap_queue.DIALOG_TREE_NARRATIVE_CONNECTION_MAPPING_ID,
+            }
+
+        scoped = {
+            "key": "black_a",
+            "relation": "dialog_tree_narrative_action",
+            "parentStoryKey": "dlg_parent_a",
+            "storyOwnerMission": "e1m1",
+            "confidence": "native_derived_exact_parent_shell",
+            "evidenceTier": "derived_exact_shell",
+            "scopeCompleteness": "partial",
+            "allParentStoryKeys": ["dlg_parent_a", "dlg_parent_b"],
+            "unscopedParentStoryKeys": ["dlg_parent_b"],
+            "nativeMappingId":
+                gap_queue.DIALOG_TREE_NARRATIVE_CONNECTION_MAPPING_ID,
+            "occurrenceCount": 1,
+            "dialogTreeNarrativeActions": [
+                occurrence("dlg_parent_a", "AAA")
+            ],
+        }
+        unresolved = {
+            "key": "black_a",
+            "relation": "dialog_tree_narrative_action_unscoped",
+            "parentStoryKey": "dlg_parent_b",
+            "storyOwnerMission": "e1m1",
+            "confidence": "native_exact_containment_unscoped",
+            "allParentStoryKeys": ["dlg_parent_a", "dlg_parent_b"],
+            "nativeMappingId":
+                gap_queue.DIALOG_TREE_NARRATIVE_CONNECTION_MAPPING_ID,
+            "occurrenceCount": 1,
+            "dialogTreeNarrativeActions": [
+                occurrence("dlg_parent_b", "BBB")
+            ],
+        }
+        payload = mission_payload(connections=[scoped])
+        payload["flow"]["unresolvedDialogTreeNarrativeActions"] = [
+            unresolved
+        ]
+
+        row = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        closure = row["closedExactNativeIsolatedScenes"][0]
+        self.assertEqual(
+            closure["recoveryStatus"],
+            "closed_exact_dialog_tree_black_carrier_context_no_file_order",
+        )
+        self.assertEqual(
+            closure["parentStoryKeys"],
+            ["dlg_parent_a", "dlg_parent_b"],
+        )
+        self.assertEqual(row["exactBlackCarrierValidationFailures"], [])
+
+        payload["flow"].pop("unresolvedDialogTreeNarrativeActions")
+        failed = gap_queue.build_gap_row(
+            partial,
+            payload,
+            mission_bundle_exists=True,
+        )
+        self.assertEqual(
+            failed["actionableCoreIsolatedSceneKeys"],
+            ["black_a"],
+        )
+        self.assertEqual(
+            failed["exactBlackCarrierValidationFailures"][0]["gate"],
+            "dialog_tree_exact_carrier_coverage",
+        )
+
     def test_exact_embedded_playback_context_closes_with_line_position_unknown(
         self,
     ) -> None:
@@ -2373,14 +3354,24 @@ class SourceStoryGapQueueTests(unittest.TestCase):
                 "airWallGroupId": "25600010001",
                 "airWallSlotId": 0,
                 "airWallDefaultOn": False,
-                "targetMissionStateChecks": [{
-                    "transition": "rise",
-                    "id": "e6m1d5",
-                    "isQuest": False,
-                    "targetMissionId": "e6m1d5",
-                    "detailState": 2,
-                    "comparison": "equal",
-                }],
+                "targetMissionStateChecks": [
+                    {
+                        "transition": "rise",
+                        "id": "e6m1d5",
+                        "isQuest": False,
+                        "targetMissionId": "e6m1d5",
+                        "detailState": 2,
+                        "comparison": "equal",
+                    },
+                    {
+                        "transition": "down",
+                        "id": "e6m1d5",
+                        "isQuest": False,
+                        "targetMissionId": "e6m1d5",
+                        "detailState": 2,
+                        "comparison": "not_equal",
+                    },
+                ],
             },
             {
                 "key": "radio_e6m1_21",
@@ -2421,6 +3412,41 @@ class SourceStoryGapQueueTests(unittest.TestCase):
                 "airwall_mission_state_radio_playback_context",
                 "focus_mode_interact_locked_radio",
             },
+        )
+        self.assertEqual(
+            report["exactRuntimeConfigValidation"]["status"],
+            "validated",
+        )
+
+    def test_airwall_predicate_validator_reports_unknown_comparison(self) -> None:
+        facts, failure = gap_queue._exact_typed_mission_state_transition_checks(
+            "radio_fixture_1",
+            "fixture_m1",
+            [
+                {
+                    "transition": "rise",
+                    "id": "fixture_m1",
+                    "isQuest": False,
+                    "targetMissionId": "fixture_m1",
+                    "detailState": 2,
+                    "comparison": "greater",
+                },
+                {
+                    "transition": "down",
+                    "id": "fixture_m1",
+                    "isQuest": False,
+                    "targetMissionId": "fixture_m1",
+                    "detailState": 2,
+                    "comparison": "equal",
+                },
+            ],
+        )
+
+        self.assertIsNone(facts)
+        self.assertEqual(failure["validator"], "exactAirWallMissionStateRadioContext")
+        self.assertEqual(
+            failure["gate"],
+            "typedMissionStateTransitionPredicates",
         )
 
     def test_exact_cross_mission_leveldata_playback_closes_story_gap(
@@ -2520,21 +3546,131 @@ class SourceStoryGapQueueTests(unittest.TestCase):
         self.assertEqual(closure["sceneKey"], story_key)
         self.assertEqual(
             closure["recoveryStatus"],
-            "closed_exact_native_event_path_no_relative_order",
+            (
+                "closed_exact_cross_mission_leveldata_playback_context_"
+                "no_relative_order"
+            ),
         )
         self.assertEqual(
-            closure["nativeEventPaths"][0]["headerName"],
+            closure["levelScriptOccurrences"][0]["nativeEventOwners"][0][
+                "headerName"
+            ],
             "LevelEvent_OnBattleSignal",
         )
+        self.assertEqual(closure["contextMissionId"], "e9m3")
+        self.assertIn("LevelData/dung02_dg003/e9m3.json", closure["sourceFiles"])
 
         invalid = dict(connection)
         invalid["confidence"] = "derived"
         self.assertFalse(
-            gap_queue._exact_cross_owner_leveldata_story_context(
+            gap_queue._exact_leveldata_story_context(
                 invalid,
                 "e2m7",
                 "e9m3",
             )
+        )
+
+    def test_exact_same_mission_leveldata_alias_playback_closes_gap(
+        self,
+    ) -> None:
+        story_key = "misc_dlg_testm1_1d5"
+        authored_key = "dlg_testm1_1d5"
+        source_file = "LevelScriptData/level_a/1001.json"
+        level_data_file = "LevelData/level_a/testm1.json"
+        occurrence = {
+            "levelId": "level_a",
+            "scriptId": "1001",
+            "sourceFile": source_file,
+            "actionMapRole": "actionList#1 root",
+            "actionCode": "0x049e",
+            "actionKind": "0x0f",
+            "localId": 5,
+            "actionName": "StartDialogAction",
+            "recordClass": "play_dialog",
+            "nativeMappingId": "gameassembly-test-actionbase",
+            "allStoryKeysInRecord": [authored_key],
+            "authoredStoryKey": authored_key,
+            "nativeEventOwnerStatus": "exact_serialized_control_path",
+            "nativeEventOwners": [{
+                "status": "exact_serialized_control_path",
+                "headerName": "ScriptEvent_OnLeaderEnterTriggerVolume",
+                "headerLocalId": 4,
+                "eventDetail": {
+                    "summary": "leader enters trigger slot 80001",
+                },
+                "path": [{
+                    "localId": 5,
+                    "actionName": "StartDialogAction",
+                    "recordClass": "play_dialog",
+                    "texts": [authored_key],
+                }],
+            }],
+            "levelDataHosts": [{
+                "missionId": "testm1",
+                "levelId": "level_a",
+                "scriptId": "1001",
+                "levelDataFile": level_data_file,
+                "encoding": "leveldata_member22_levelscriptbriefdata",
+                "nativeSchema": (
+                    "LevelData/43.member22:"
+                    "Dictionary<u64,LevelScriptBriefData/8>"
+                ),
+                "briefData": [{"scriptId": "1001"}],
+            }],
+            "scopeEvidenceKinds": [
+                "mission_leveldata_member22_contains_validated_"
+                "levelscript_brief",
+            ],
+        }
+        connection = {
+            "key": story_key,
+            "relation": "leveldata_levelscript_mission_context",
+            "direction": "context",
+            "phase": "context",
+            "confidence": "native_exact_host",
+            "storyOwnerMission": "testm1",
+            "levelDataHostMissionId": "testm1",
+            "questTriggerStatus": "unresolved",
+            "occurrenceCount": 1,
+            "allOccurrenceCount": 1,
+            "hasUnscopedOrOtherMissionOccurrences": False,
+            "nativeActions": ["StartDialogAction"],
+            "opcodes": ["0x049e/0x0f"],
+            "levelIds": ["level_a"],
+            "scriptIds": ["1001"],
+            "sourceFiles": [source_file],
+            "levelDataFiles": [level_data_file],
+            "levelScriptOccurrences": [occurrence],
+        }
+
+        closures = gap_queue._closed_exact_native_context_isolated_scenes(
+            {"missionStoryConnections": [connection]},
+            {story_key},
+            "testm1",
+        )
+
+        self.assertEqual(len(closures), 1)
+        self.assertEqual(
+            closures[0]["recoveryStatus"],
+            (
+                "closed_exact_same_mission_leveldata_playback_context_"
+                "no_relative_order"
+            ),
+        )
+        self.assertIs(closures[0]["contextMissionMismatch"], False)
+        self.assertEqual(
+            closures[0]["sourceFiles"],
+            [level_data_file, source_file],
+        )
+
+        occurrence["authoredStoryKey"] = "dlg_different_1"
+        self.assertEqual(
+            gap_queue._closed_exact_native_context_isolated_scenes(
+                {"missionStoryConnections": [connection]},
+                {story_key},
+                "testm1",
+            ),
+            [],
         )
 
     def test_exact_cross_mission_condition_playback_closes_story_gap(
@@ -2990,12 +4126,6 @@ class SourceStoryGapQueueTests(unittest.TestCase):
             {"radio_e5m3_14"},
         )
         self.assertEqual(
-            gap_queue.OFFLINE_EXHAUSTION_TEXT_TABLE_ONLY_STORIES[
-                "black_e7m1_3"
-            ]["definitionRowKeys"],
-            ("black_e7m1_3_001",),
-        )
-        self.assertEqual(
             gap_queue.OFFLINE_EXHAUSTION_SNS_DEFINITIONS[
                 "sns_e1m9_1"
             ],
@@ -3148,6 +4278,75 @@ class SourceStoryGapQueueTests(unittest.TestCase):
             ),
             [],
         )
+
+    def test_generic_family_recoveries_fail_closed_on_stronger_routes(self) -> None:
+        for evidence_kind in (
+            "radio_definition_binary_consumer_surface_exhausted",
+            "missionless_npc_proxy_dialog_native_consumer",
+            "sns_definition_binary_consumer_surface_exhausted",
+        ):
+            with self.subTest(evidence_kind=evidence_kind):
+                story_key = f"fixture_{evidence_kind}"
+                evidence = {
+                    "sceneKey": story_key,
+                    "missionId": "fixture_mission",
+                    "recoveryStatus":
+                        "deferred_current_build_offline_surface_exhausted",
+                    "evidenceKind": evidence_kind,
+                    "graphEffect": "none",
+                }
+                args = (
+                    {"missionStoryConnections": [], "quests": []},
+                    {story_key},
+                    "fixture_mission",
+                    {story_key: evidence},
+                )
+
+                rows = gap_queue._deferred_offline_exhausted_isolated_scenes(
+                    *args
+                )
+                self.assertEqual(
+                    [row["sceneKey"] for row in rows],
+                    [story_key],
+                )
+                self.assertEqual(
+                    gap_queue._deferred_offline_exhausted_isolated_scenes(
+                        *args,
+                        native_playback_index={
+                            story_key: [{"method": "Play"}]
+                        },
+                    ),
+                    [],
+                )
+                self.assertEqual(
+                    gap_queue._deferred_offline_exhausted_isolated_scenes(
+                        *args,
+                        cross_owner_story_connections=[{"key": story_key}],
+                    ),
+                    [],
+                )
+
+    def test_declared_offline_case_keeps_its_specific_route_contract(self) -> None:
+        story_key = "radio_fixture"
+        evidence = {
+            "sceneKey": story_key,
+            "missionId": "fixture_mission",
+            "recoveryStatus":
+                "deferred_current_build_offline_surface_exhausted",
+            "evidenceKind": "radio_definition_without_recovered_consumer",
+            "graphEffect": "none",
+        }
+
+        rows = gap_queue._deferred_offline_exhausted_isolated_scenes(
+            {"missionStoryConnections": [], "quests": []},
+            {story_key},
+            "fixture_mission",
+            {story_key: evidence},
+            native_playback_index={story_key: [{"method": "fixture"}]},
+            cross_owner_story_connections=[{"key": story_key}],
+        )
+
+        self.assertEqual([row["sceneKey"] for row in rows], [story_key])
 
     def test_declared_e2m2_offline_frontier_is_exact(self) -> None:
         self.assertEqual(
@@ -6684,8 +7883,71 @@ class SourceStoryGapQueueTests(unittest.TestCase):
         offline_index, status = gap_queue.build_offline_exhaustion_index(
             partial,
             table_root,
+            native_playback_index=(
+                build_levelscript_native_story_playback_index()
+            ),
+            action_story_occurrences=(
+                build_levelscript_action_story_occurrences()
+            ),
         )
         self.assertEqual("active", status["status"])
+        generic_cutscene = offline_index["cutscene_gm02m10_1"]
+        self.assertEqual(
+            generic_cutscene["evidenceKind"],
+            "cutscene_root_without_recovered_activator",
+        )
+        self.assertEqual(generic_cutscene["timelineRegistryId"], 402)
+        self.assertEqual(generic_cutscene["graphEffect"], "none")
+        cutscene_status = status["genericCutsceneDefinitionEvidence"]
+        self.assertEqual(cutscene_status["validationFailures"], [])
+        self.assertEqual(cutscene_status["qualifiedStoryKeys"], 30)
+        registered_tree_status = status[
+            "genericRegisteredDialogTreeNegativeConsumerEvidence"
+        ]
+        self.assertEqual(registered_tree_status["validationFailures"], [])
+        self.assertGreaterEqual(registered_tree_status["qualifiedStoryKeys"], 375)
+        self.assertEqual(
+            offline_index["dlg_c27m4_15"]["evidenceKind"],
+            "registered_dialog_tree_definition_binary_consumer_surface_exhausted",
+        )
+        self.assertEqual(offline_index["dlg_c27m4_15"]["graphEffect"], "none")
+        missionless_native_status = status[
+            "genericMissionlessNativePlaybackEvidence"
+        ]
+        self.assertEqual(missionless_native_status["validationFailures"], [])
+        self.assertEqual(missionless_native_status["qualifiedStoryKeys"], 338)
+        missionless_dialog = offline_index["dlg_c13m2_9"]
+        self.assertEqual(
+            missionless_dialog["evidenceKind"],
+            "exact_missionless_native_event_playback_path",
+        )
+        self.assertEqual(
+            missionless_dialog["recoveryStatus"],
+            "deferred_exact_native_playback_without_mission_bridge",
+        )
+        self.assertFalse(missionless_dialog["missionOwnership"])
+        self.assertTrue(missionless_dialog["nativeEventPaths"])
+        c6_text_only = offline_index["cutscene_c6m1_1"]
+        self.assertEqual(
+            c6_text_only["evidenceKind"],
+            "text_table_only_cutscene_without_recovered_original_story_consumer",
+        )
+        self.assertEqual(
+            c6_text_only["definitionRowKeys"],
+            ["cutscene_c6m1_1_02", "cutscene_c6m1_1_03"],
+        )
+        registered_table_status = status[
+            "genericRegisteredTableDialogNegativeConsumerEvidence"
+        ]
+        self.assertEqual(registered_table_status["validationFailures"], [])
+        self.assertEqual(
+            offline_index["misc_dlg_c6m1_1d5"]["definitionRootKey"],
+            "dlg_c6m1_1d5",
+        )
+        self.assertEqual(
+            offline_index["misc_dlg_c6m1_1d5"]["evidenceKind"],
+            "registered_dialog_tree_definition_binary_consumer_surface_exhausted",
+        )
         self.assertEqual(
             offline_index["sns_gm01m3_1"]["relatedMissionId"],
             "gm01m3",
@@ -6719,6 +7981,30 @@ class SourceStoryGapQueueTests(unittest.TestCase):
                 {},
             ),
             [],
+        )
+
+        gm02m11 = gap_queue.read_json(
+            gap_queue.ROOT / "webui/data/lang/CN/mission/gm02m11.json",
+            {},
+        )
+        authored_sns_rows = (
+            gap_queue._closed_exact_runtime_config_isolated_scenes(
+                gm02m11["flow"],
+                {"sns_gm02m11_1"},
+                "gm02m11",
+                offline_index,
+            )
+        )
+        self.assertEqual(
+            authored_sns_rows[0]["sourceFiles"],
+            [
+                "export_full/structured/StreamingAssets/Table/"
+                "SNSDialogTable.json",
+                "export_full/structured/StreamingAssets/Table/"
+                "SNSDialogOptionTable.json",
+                "export_full/structured/StreamingAssets/Table/"
+                "SNSChatTable.json",
+            ],
         )
 
         gm01m4 = gap_queue.read_json(
@@ -8109,6 +9395,129 @@ class SourceStoryGapQueueTests(unittest.TestCase):
             ["radio_e5m2_7d5", "radio_e5m2_18"],
         )
 
+    def test_generic_server_placeholder_boundary_uses_typed_shape(self) -> None:
+        mission_dir = (
+            gap_queue.ROOT / "webui" / "data" / "lang" / "CN" / "mission"
+        )
+        payload = gap_queue.load_mission_payload_with_variants(
+            mission_dir,
+            "c16m4",
+        )
+
+        row, failure = gap_queue._classify_server_placeholder_story_boundary(
+            "c16m4",
+            "c16m4d5_q#11",
+            payload,
+        )
+
+        self.assertIsNone(failure)
+        self.assertEqual(
+            row["recoveryStatus"],
+            "closed_server_placeholder_context_without_typed_story_consumer",
+        )
+        self.assertEqual(
+            row["diagnosticRelations"],
+            ["leveldata_quest_reference", "variant_runtime_attachment"],
+        )
+        self.assertIn(
+            "export_full/structured/Persistent/Data/Json/"
+            "MissionRuntimeAsset/c16m4d5.json",
+            row["sourceHashes"],
+        )
+
+    def test_generic_server_placeholder_boundary_fails_closed(self) -> None:
+        mission_dir = (
+            gap_queue.ROOT / "webui" / "data" / "lang" / "CN" / "mission"
+        )
+        payload = gap_queue.load_mission_payload_with_variants(
+            mission_dir,
+            "c16m4",
+        )
+        quest = next(
+            row
+            for row in gap_queue._flow(payload)["quests"]
+            if row["id"] == "c16m4d5_q#11"
+        )
+        quest["storyConnections"][0]["relation"] = "untyped_guess"
+
+        row, failure = gap_queue._classify_server_placeholder_story_boundary(
+            "c16m4",
+            "c16m4d5_q#11",
+            payload,
+        )
+
+        self.assertIsNone(row)
+        self.assertEqual(
+            failure["validator"],
+            "genericServerPlaceholderStoryBoundary",
+        )
+        self.assertEqual(failure["gate"], "context_only_story_relation")
+        self.assertEqual(failure["questId"], "c16m4d5_q#11")
+        self.assertEqual(
+            failure["actual"]["relation"],
+            "untyped_guess",
+        )
+
+    def test_generic_levelscript_condition_boundary_uses_typed_shape(self) -> None:
+        mission_dir = (
+            gap_queue.ROOT / "webui" / "data" / "lang" / "CN" / "mission"
+        )
+        payload = gap_queue.load_mission_payload_with_variants(
+            mission_dir,
+            "sm1l1m6",
+        )
+
+        row, failure = (
+            gap_queue._classify_levelscript_condition_story_boundary(
+                "sm1l1m6",
+                "sm1l1m6_q#19",
+                payload,
+                {},
+            )
+        )
+
+        self.assertIsNone(failure)
+        self.assertEqual(
+            row["recoveryStatus"],
+            "closed_levelscript_condition_scope_without_typed_story_consumer",
+        )
+        self.assertEqual(row["conditionKey"], "blackscreen_end")
+        self.assertEqual(row["diagnosticStoryKeys"], ["dlg_sm1l1m6_5"])
+
+    def test_generic_levelscript_condition_boundary_fails_closed(self) -> None:
+        mission_dir = (
+            gap_queue.ROOT / "webui" / "data" / "lang" / "CN" / "mission"
+        )
+        payload = gap_queue.load_mission_payload_with_variants(
+            mission_dir,
+            "sm1l1m6",
+        )
+        quest = next(
+            row
+            for row in gap_queue._flow(payload)["quests"]
+            if row["id"] == "sm1l1m6_q#19"
+        )
+        quest["storyConnections"][0]["scriptId"] = "different"
+
+        row, failure = (
+            gap_queue._classify_levelscript_condition_story_boundary(
+                "sm1l1m6",
+                "sm1l1m6_q#19",
+                payload,
+                {},
+            )
+        )
+
+        self.assertIsNone(row)
+        self.assertEqual(
+            failure["validator"],
+            "genericLevelScriptConditionStoryBoundary",
+        )
+        self.assertEqual(
+            failure["gate"],
+            "condition_connection_script_agreement",
+        )
+
     def test_quest_attachment_diagnostics_fail_closed_on_shape_change(
         self,
     ) -> None:
@@ -8382,15 +9791,6 @@ class SourceStoryGapQueueTests(unittest.TestCase):
             ]["missingAudioIds"],
             (),
         )
-        self.assertEqual(
-            set(gap_queue.OFFLINE_EXHAUSTION_TEXT_TABLE_ONLY_STORIES),
-            {
-                "black_e7m1_3",
-                "black_e11m8_12",
-                "black_e11m8_39",
-            },
-        )
-
     def test_npc_proxy_segment_native_path_closes_context_without_order(self) -> None:
         connection = {
             "key": "black_a1m8d3_2",
@@ -8681,6 +10081,7 @@ class SourceStoryGapQueueTests(unittest.TestCase):
         broken["quests"][0]["storyConnections"][1][
             "questPlayback"
         ] = True
+        failures = []
         self.assertNotIn(
             "dlg_a1m4_2",
             {
@@ -8689,8 +10090,148 @@ class SourceStoryGapQueueTests(unittest.TestCase):
                     broken,
                     {"dlg_a1m4_2"},
                     "a1m4",
+                    validation_failures=failures,
                 )
             },
+        )
+        self.assertEqual(
+            failures[0]["validator"],
+            "genericPrimeReachableDialogDependency",
+        )
+        self.assertEqual(
+            failures[0]["gate"],
+            "exactNonOwningQuestDependencyEnvelope",
+        )
+        self.assertEqual(failures[0]["storyKey"], "dlg_a1m4_2")
+
+    def test_uncataloged_prime_reachable_dialog_dependency_is_general(self) -> None:
+        payload = gap_queue.read_json(
+            gap_queue.ROOT / "webui/data/lang/CN/mission/f1m28.json",
+            {},
+        )
+        failures = []
+        rows = gap_queue._closed_exact_runtime_config_isolated_scenes(
+            payload["flow"],
+            {"dlg_f1m28_5"},
+            "f1m28",
+            validation_failures=failures,
+        )
+        closure = next(
+            row for row in rows if row["sceneKey"] == "dlg_f1m28_5"
+        )
+        self.assertEqual(failures, [])
+        self.assertEqual(closure["parentStoryKey"], "dlg_f1m28_1")
+        self.assertEqual(closure["carrierKinds"], ["dialog"])
+        self.assertEqual(closure["dialogIds"], ["dlg_f1m28_5"])
+        self.assertEqual(closure["trunkIds"], [])
+        self.assertEqual(len(closure["dialogTreePrimeStoryPlaybackCarriers"]), 1)
+        self.assertIn(closure["sourceFiles"][0], closure["sourceSha256"])
+
+    def test_registered_dialog_non_owning_contexts_are_general(self) -> None:
+        cases = (
+            ("sm2l2m1", "dlg_sm2l2m1_13"),
+            ("sm2l7m1", "dlg_sm2l7m1_18"),
+        )
+        for mission_id, story_key in cases:
+            with self.subTest(mission_id=mission_id, story_key=story_key):
+                payload = gap_queue.read_json(
+                    gap_queue.ROOT
+                    / f"webui/data/lang/CN/mission/{mission_id}.json",
+                    {},
+                )
+                failures = []
+                rows = gap_queue._closed_exact_runtime_config_isolated_scenes(
+                    payload["flow"],
+                    {story_key},
+                    mission_id,
+                    validation_failures=failures,
+                )
+                closure = next(
+                    row for row in rows if row["sceneKey"] == story_key
+                )
+                self.assertEqual(failures, [])
+                self.assertEqual(
+                    closure["recoveryStatus"],
+                    "closed_exact_non_owning_dialog_context_no_relative_order",
+                )
+                self.assertEqual(closure["graphEffect"], "none")
+                self.assertTrue(closure["dialogTreeDefinition"]["lineIds"])
+                self.assertEqual(
+                    set(closure["sourceFiles"]),
+                    set(closure["sourceSha256"]),
+                )
+
+    def test_registered_dialog_context_payload_fails_closed(self) -> None:
+        payload = gap_queue.read_json(
+            gap_queue.ROOT / "webui/data/lang/CN/mission/sm2l7m1.json",
+            {},
+        )
+        broken = copy.deepcopy(payload["flow"])
+        connection = next(
+            row
+            for row in gap_queue._flow_story_connections(broken)
+            if row.get("key") == "dlg_sm2l7m1_18"
+            and row.get("relation")
+            == "npc_proxy_lazy_destroy_dialog_context"
+        )
+        connection["npcProxyTableRow"]["lazyDestroy"] = False
+        failures = []
+        rows = gap_queue._closed_exact_runtime_config_isolated_scenes(
+            broken,
+            {"dlg_sm2l7m1_18"},
+            "sm2l7m1",
+            validation_failures=failures,
+        )
+        self.assertNotIn("dlg_sm2l7m1_18", {row["sceneKey"] for row in rows})
+        self.assertEqual(
+            failures[0]["validator"],
+            "genericRegisteredDialogNonOwningContext",
+        )
+        self.assertEqual(failures[0]["gate"], "exactTypedRelationPayload")
+        self.assertEqual(failures[0]["storyKey"], "dlg_sm2l7m1_18")
+
+    def test_npc_proxy_multi_mission_context_preserves_alternatives(self) -> None:
+        nominal = gap_queue.read_json(
+            gap_queue.ROOT / "webui/data/lang/CN/mission/sm2l3m2.json",
+            {},
+        )
+        adjacent = gap_queue.read_json(
+            gap_queue.ROOT / "webui/data/lang/CN/mission/sm2l3m3.json",
+            {},
+        )
+        nominal_row = next(
+            row
+            for row in gap_queue._flow_story_connections(nominal["flow"])
+            if row.get("key") == "dlg_sm2l3m2_7"
+            and row.get("relation") == "npc_proxy_ex_mission_context"
+        )
+        adjacent_row = copy.deepcopy(next(
+            row
+            for row in gap_queue._flow_story_connections(adjacent["flow"])
+            if row.get("key") == "dlg_sm2l3m2_7"
+            and row.get("relation") == "npc_proxy_ex_mission_context"
+        ))
+        adjacent_row["contextMissionBundle"] = "sm2l3m3"
+        rows = gap_queue._closed_exact_runtime_config_isolated_scenes(
+            {"missionStoryConnections": [nominal_row, adjacent_row]},
+            {"dlg_sm2l3m2_7"},
+            "sm2l3m2",
+        )
+        closure = next(
+            row for row in rows if row["sceneKey"] == "dlg_sm2l3m2_7"
+        )
+        self.assertEqual(
+            closure["recoveryStatus"],
+            "closed_exact_multi_mission_runtime_config_no_relative_order",
+        )
+        self.assertEqual(
+            closure["contextMissionIds"],
+            ["sm2l3m2", "sm2l3m3"],
+        )
+        self.assertIn("does not choose", closure["contextBoundary"])
+        self.assertEqual(
+            set(closure["sourceFiles"]),
+            set(closure["sourceSha256"]),
         )
 
     def test_gm01m22_nested_dialog_dependencies_are_hash_locked(self) -> None:
@@ -9122,6 +10663,51 @@ class NonMissionContentClosureTests(unittest.TestCase):
         )
         self.assertEqual(closed["actionCount"], 13)
 
+    def test_exact_spaceship_runtime_content_is_closed_without_order(self) -> None:
+        story_key = "misc_sim_work_aglina"
+        partial = partial_mission(
+            "work",
+            scenes=[story_key],
+            isolated=[story_key],
+        )
+        row = gap_queue.build_gap_row(
+            partial,
+            mission_payload(),
+            mission_bundle_exists=True,
+            non_mission_content={
+                story_key: {
+                    "evidenceKind": "spaceship_dialog_tree",
+                    "content": "operator_spaceship_dialog_tree",
+                    "lineIds": ["sim_work_aglina_01"],
+                    "dialogTreeRoots": [
+                        "dlg_npc_0013_aglina_spaceshippresent",
+                    ],
+                    "consumerClasses": [
+                        "Beyond.Gameplay.SpaceshipOptionWorkData",
+                    ],
+                    "sourceFiles": ["tree.json", "DialogTextTable.json"],
+                    "nativeMappingId": "spaceship-mapping-v1",
+                    "orderBoundary": "no mission or Story order edge",
+                    "evidenceReport": "report.json",
+                },
+            },
+        )
+
+        self.assertEqual(row["metrics"]["actionableCoreIsolatedScenes"], 0)
+        closed = row["closedNonMissionContentIsolatedScenes"][0]
+        self.assertEqual(
+            closed["recoveryStatus"],
+            "closed_exact_spaceship_runtime_non_mission_content",
+        )
+        self.assertEqual(
+            closed["dialogTreeRoots"],
+            ["dlg_npc_0013_aglina_spaceshippresent"],
+        )
+        self.assertEqual(closed["sourceFiles"], [
+            "tree.json",
+            "DialogTextTable.json",
+        ])
+
     def test_lookalike_key_not_in_any_table_stays_actionable(self) -> None:
         # Same filename shape, absent from the tables: must NOT be closed.
         root = self._table_root(AudioRadioContinueTable={})
@@ -9147,6 +10733,625 @@ class NonMissionContentClosureTests(unittest.TestCase):
     def test_missing_table_directory_yields_no_keys(self) -> None:
         keys = gap_queue.non_mission_content_keys(Path("does/not/exist"))
         self.assertEqual(keys, {})
+
+    def test_cross_owner_levelscript_quest_playback_is_identity_agnostic(
+        self,
+    ) -> None:
+        connection = {
+            "key": "opaque_story_key",
+            "relation": "levelscript_quest_completed_action",
+            "direction": "quest_to_story",
+            "phase": "succeed",
+            "confidence": "native_typed_direct",
+            "event": "LevelEvent_OnQuestStateChanged",
+            "questState": 3,
+            "questStateName": "Completed",
+            "levelId": "opaque_level",
+            "scriptId": "42",
+            "sourceFile": (
+                "export_full/structured/StreamingAssets/Data/Json/"
+                "LevelScriptData/opaque_level/42.json"
+            ),
+            "headerLocalId": 7,
+            "actionLocalId": 11,
+            "actionPathLocalIds": [8, 11, 12],
+            "actionName": "OpaqueTypedPlaybackAction",
+            "nativeMappingId": "gameassembly-current-actionbase",
+        }
+        with patch.object(Path, "is_file", return_value=True):
+            valid, failure = (
+                gap_queue._exact_cross_owner_levelscript_quest_playback(
+                    connection,
+                    "owner_alpha",
+                    "runtime_beta",
+                    "runtime_beta_q#opaque",
+                )
+            )
+        self.assertTrue(valid)
+        self.assertIsNone(failure)
+
+        broken = {**connection, "questState": 2}
+        with patch.object(Path, "is_file", return_value=False):
+            valid, failure = (
+                gap_queue._exact_cross_owner_levelscript_quest_playback(
+                    broken,
+                    "owner_alpha",
+                    "runtime_beta",
+                    "runtime_beta_q#opaque",
+                )
+            )
+        self.assertFalse(valid)
+        self.assertEqual(failure["validator"], (
+            "crossOwnerLevelScriptQuestPlayback"
+        ))
+        self.assertEqual(failure["gate"], "exactTypedQuestStatePlaybackPath")
+        self.assertEqual(failure["actual"]["questState"], 2)
+
+    def test_registered_dialog_tree_trunk_group_is_identity_agnostic(
+        self,
+    ) -> None:
+        story_key = "misc_opaque_group"
+        table = {
+            "opaque_group_001": {},
+            "opaque_group_002": {},
+            "opaque_group_003": {},
+        }
+        definitions = {
+            "parent_alpha": {
+                "sceneKey": "parent_alpha",
+                "lineIds": ["opaque_group_001", "opaque_group_002"],
+                "lineConnections": [{
+                    "fromLineId": "opaque_group_001",
+                    "toLineId": "opaque_group_002",
+                }],
+                "sourceFile": "alpha.json",
+                "sourceSha256": "A",
+                "branchingOptionGroupCount": 0,
+            },
+            "parent_beta": {
+                "sceneKey": "parent_beta",
+                "lineIds": ["opaque_group_003"],
+                "lineConnections": [],
+                "sourceFile": "beta.json",
+                "sourceSha256": "B",
+                "branchingOptionGroupCount": 1,
+            },
+        }
+        registry = {
+            "parent_alpha": {"registered": True},
+            "parent_beta": {"registered": True},
+        }
+
+        def validate(parent_key, _registry_row, definition):
+            return {**definition, "sceneKey": parent_key}, None
+
+        with patch.object(
+            gap_queue,
+            "_generic_registered_dialog_tree_definition_facts",
+            side_effect=validate,
+        ):
+            facts, failure, exclusion = (
+                gap_queue._generic_registered_dialog_tree_trunk_group_facts(
+                    story_key,
+                    table,
+                    registry,
+                    definitions,
+                )
+            )
+
+        self.assertIsNone(failure)
+        self.assertIsNone(exclusion)
+        self.assertEqual(facts["parentDialogTreeCount"], 2)
+        self.assertEqual(facts["branchingParentDialogTreeCount"], 1)
+        self.assertEqual(facts["exactLinePartition"], {
+            "opaque_group_001": "parent_alpha",
+            "opaque_group_002": "parent_alpha",
+            "opaque_group_003": "parent_beta",
+        })
+
+        malformed = {**table, "opaque_group_004": []}
+        facts, failure, exclusion = (
+            gap_queue._generic_registered_dialog_tree_trunk_group_facts(
+                story_key,
+                malformed,
+                registry,
+                definitions,
+            )
+        )
+        self.assertIsNone(facts)
+        self.assertIsNone(exclusion)
+        self.assertEqual(
+            failure["validator"],
+            "genericRegisteredDialogTreeTrunkGroup",
+        )
+        self.assertEqual(failure["gate"], "exactDialogTextRows")
+
+    def test_registered_dialog_tree_trunk_group_uses_namespace_tiebreak(
+        self,
+    ) -> None:
+        story_key = "misc_timeline_opaque_group"
+        table = {
+            "timeline_opaque_group_001": {},
+            "timeline_opaque_group_002": {},
+        }
+        definitions = {
+            "dlg_opaque_group_1": {
+                "lineIds": list(table),
+                "sourceFile": "owner.json",
+                "sourceSha256": "A",
+            },
+            "dlg_quest_reuse_1": {
+                "lineIds": list(table),
+                "sourceFile": "reuse.json",
+                "sourceSha256": "B",
+            },
+        }
+        registry = {key: {"registered": True} for key in definitions}
+
+        def validate(parent_key, _registry_row, definition):
+            return {**definition, "sceneKey": parent_key}, None
+
+        with patch.object(
+            gap_queue,
+            "_generic_registered_dialog_tree_definition_facts",
+            side_effect=validate,
+        ):
+            facts, failure, exclusion = (
+                gap_queue._generic_registered_dialog_tree_trunk_group_facts(
+                    story_key,
+                    table,
+                    registry,
+                    definitions,
+                )
+            )
+
+        self.assertIsNone(failure)
+        self.assertIsNone(exclusion)
+        self.assertEqual(facts["parentDialogTreeCount"], 1)
+        self.assertEqual(
+            facts["parentSelectionMethod"],
+            "exact_registered_line_partition_namespace_tiebreak",
+        )
+        self.assertEqual(set(facts["exactLinePartition"].values()), {
+            "dlg_opaque_group_1"
+        })
+
+    def test_registered_dialog_tree_trunk_group_direct_scene_is_exact_numbered(
+        self,
+    ) -> None:
+        story_key = "dlg_opaque_pipe_1"
+        table = {
+            "dlg_opaque_pipe_1_01": {},
+            "dlg_opaque_pipe_1_02": {},
+            "dlg_opaque_pipe_1_2_01": {},
+            "dlg_opaque_pipe_1_suffix": {},
+        }
+        definitions = {
+            "dlg_gpl_opaque_pipe_1_1": {
+                "lineIds": [
+                    "dlg_opaque_pipe_1_01",
+                    "dlg_opaque_pipe_1_02",
+                ],
+                "sourceFile": "direct.json",
+                "sourceSha256": "A",
+            },
+            "dlg_gpl_opaque_pipe_1_2": {
+                "lineIds": ["dlg_opaque_pipe_1_2_01"],
+                "sourceFile": "nested.json",
+                "sourceSha256": "B",
+            },
+        }
+        registry = {key: {"registered": True} for key in definitions}
+
+        def validate(parent_key, _registry_row, definition):
+            return {**definition, "sceneKey": parent_key}, None
+
+        with patch.object(
+            gap_queue,
+            "_generic_registered_dialog_tree_definition_facts",
+            side_effect=validate,
+        ):
+            facts, failure, exclusion = (
+                gap_queue._generic_registered_dialog_tree_trunk_group_facts(
+                    story_key,
+                    table,
+                    registry,
+                    definitions,
+                )
+            )
+
+        self.assertIsNone(failure)
+        self.assertIsNone(exclusion)
+        self.assertEqual(facts["emittedGroupKind"], (
+            "direct_numbered_dialog_scene"
+        ))
+        self.assertEqual(facts["lineSelectionMethod"], (
+            "exact_numbered_scene_rows"
+        ))
+        self.assertEqual(facts["lineIds"], [
+            "dlg_opaque_pipe_1_01",
+            "dlg_opaque_pipe_1_02",
+        ])
+        self.assertEqual(facts["parentDialogTreeCount"], 1)
+        self.assertEqual(set(facts["exactLinePartition"].values()), {
+            "dlg_gpl_opaque_pipe_1_1"
+        })
+
+    def test_registered_dialog_tree_trunk_group_direct_scene_retains_partial_partition(
+        self,
+    ) -> None:
+        story_key = "dlg_opaque_mix_3"
+        table = {
+            "dlg_opaque_mix_3_01": {},
+            "dlg_opaque_mix_3_02": {},
+            "dlg_opaque_mix_3_03": {},
+        }
+        definitions = {
+            "dlg_opaque_mix_3_1": {
+                "lineIds": [
+                    "dlg_opaque_mix_3_01",
+                    "dlg_opaque_mix_3_02",
+                ],
+                "sourceFile": "incomplete.json",
+                "sourceSha256": "A",
+            },
+        }
+        registry = {"dlg_opaque_mix_3_1": {"registered": True}}
+
+        def validate(parent_key, _registry_row, definition):
+            return {**definition, "sceneKey": parent_key}, None
+
+        with patch.object(
+            gap_queue,
+            "_generic_registered_dialog_tree_definition_facts",
+            side_effect=validate,
+        ):
+            facts, failure, exclusion = (
+                gap_queue._generic_registered_dialog_tree_trunk_group_facts(
+                    story_key,
+                    table,
+                    registry,
+                    definitions,
+                )
+            )
+
+        self.assertIsNone(failure)
+        self.assertEqual(facts["partitionStatus"], "partial")
+        self.assertEqual(facts["coveredLineIds"], [
+            "dlg_opaque_mix_3_01",
+            "dlg_opaque_mix_3_02",
+        ])
+        self.assertEqual(facts["missingLineIds"], [
+            "dlg_opaque_mix_3_03",
+        ])
+        self.assertEqual(facts["coveredLineCount"], 2)
+        self.assertEqual(facts["missingLineCount"], 1)
+        self.assertEqual(
+            exclusion,
+            "incompleteParentTreePartition",
+        )
+
+    def test_parent_dialog_level_context_is_generic_and_binary_validated(
+        self,
+    ) -> None:
+        level_id = "opaque_factory_7"
+        encoded_level_id = level_id.encode("utf-8")
+        framed_level_id = (
+            len(encoded_level_id).to_bytes(4, "little", signed=True)
+            + encoded_level_id
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_root = root / "LevelConfig"
+            level_data_root = root / "LevelData"
+            text_asset_root = root / "TextAsset"
+            config_root.mkdir()
+            (level_data_root / level_id).mkdir(parents=True)
+            text_asset_root.mkdir()
+            (config_root / f"{level_id}.json").write_bytes(
+                b"config" + framed_level_id
+            )
+            (level_data_root / level_id / f"{level_id}_lv_data.json").write_bytes(
+                b"\x2bdata" + framed_level_id
+            )
+            map_payload = {
+                "mapIdStr": level_id,
+                "levelStrIds": [level_id],
+                "artScenePaths": [f"Assets/Scenes/{level_id}.unity"],
+            }
+            (text_asset_root / f"{level_id}_pABC.json").write_text(
+                json.dumps({
+                    "m_Name": level_id,
+                    "Name": level_id,
+                    "m_Script": base64.b64encode(
+                        json.dumps(map_payload).encode("utf-8")
+                    ).decode("ascii"),
+                }),
+                encoding="utf-8",
+            )
+            contexts, failure = (
+                gap_queue._generic_parent_dialog_level_context_facts(
+                    [{"sceneKey": f"dlg_gpl_{level_id}_intro"}],
+                    {level_id: {
+                        "id": level_id,
+                        "configPath": f"Data/Json/LevelConfig/{level_id}.json",
+                        "domainName": "opaque_domain",
+                    }},
+                    {f"dung_{level_id}": {
+                        "sceneId": level_id,
+                        "domainId": "opaque_domain",
+                        "sortId": 17,
+                    }},
+                    level_config_root=config_root,
+                    level_data_root=level_data_root,
+                    text_asset_root=text_asset_root,
+                )
+            )
+
+            self.assertIsNone(failure)
+            self.assertEqual(len(contexts), 1)
+            self.assertEqual(contexts[0]["levelId"], level_id)
+            self.assertEqual(contexts[0]["dungeonId"], f"dung_{level_id}")
+            self.assertEqual(
+                contexts[0]["relation"],
+                "exact_parent_dialog_level_asset_shell",
+            )
+            self.assertFalse(contexts[0]["orderEvidence"])
+            self.assertEqual(
+                contexts[0]["mapTextAssets"][0]["sourcePathId"],
+                "ABC",
+            )
+
+            (level_data_root / level_id / f"{level_id}_lv_data.json").write_bytes(
+                b"\x2a" + framed_level_id
+            )
+            contexts, failure = (
+                gap_queue._generic_parent_dialog_level_context_facts(
+                    [{"sceneKey": f"dlg_{level_id}_intro"}],
+                    {level_id: {
+                        "id": level_id,
+                        "configPath": f"Data/Json/LevelConfig/{level_id}.json",
+                    }},
+                    {f"dung_{level_id}": {"sceneId": level_id}},
+                    level_config_root=config_root,
+                    level_data_root=level_data_root,
+                    text_asset_root=text_asset_root,
+                )
+            )
+
+            self.assertEqual(contexts, [])
+            self.assertEqual(failure["gate"], "exactParentDialogLevelContext")
+            self.assertEqual(failure["actual"]["levelDataMemberCount"], 42)
+            self.assertEqual(failure["expected"]["levelDataMemberCount"], 43)
+
+    def test_dialog_text_partition_fragments_are_cross_reference_only(
+        self,
+    ) -> None:
+        facts = gap_queue._dialog_text_partition_fragment_facts(
+            [
+                "opaque_01",
+                "opaque_02",
+                "opaque_03",
+                "opaque_04",
+                "opaque_05",
+            ],
+            ["opaque_02", "opaque_04"],
+            ["opaque_01", "opaque_03", "opaque_05"],
+        )
+
+        self.assertEqual(
+            [row["numericPosition"] for row in facts],
+            [
+                "before_covered_numeric_range",
+                "inside_covered_numeric_range",
+                "after_covered_numeric_range",
+            ],
+        )
+        self.assertTrue(all(row["graphEffect"] == "none" for row in facts))
+        self.assertTrue(all(row["orderEvidence"] is False for row in facts))
+        self.assertEqual(facts[1]["nearestLowerCoveredLineId"], "opaque_02")
+        self.assertEqual(facts[1]["nearestUpperCoveredLineId"], "opaque_04")
+
+    def test_parent_level_context_resolves_generic_blackbox_subgame_runtime(
+        self,
+    ) -> None:
+        level_id = "opaque_factory_8"
+        dungeon_id = f"dung_{level_id}"
+        parent_key = f"dlg_{level_id}_intro"
+        bind_script_id = 81000000001
+        framed_level_id = (
+            len(level_id.encode("utf-8")).to_bytes(4, "little", signed=True)
+            + level_id.encode("utf-8")
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_root = root / "LevelConfig"
+            level_data_root = root / "LevelData"
+            text_asset_root = root / "TextAsset"
+            level_script_root = root / "LevelScriptData"
+            config_root.mkdir()
+            (level_data_root / level_id).mkdir(parents=True)
+            text_asset_root.mkdir()
+            (level_script_root / level_id).mkdir(parents=True)
+            (config_root / f"{level_id}.json").write_bytes(
+                b"config" + framed_level_id
+            )
+            (level_data_root / level_id / f"{level_id}_lv_data.json").write_bytes(
+                b"\x2bdata" + framed_level_id
+            )
+            script_path = (
+                level_script_root / level_id / f"{bind_script_id}.json"
+            )
+            script_path.write_bytes(b"exact current LevelScript payload")
+            subgame_path = root / "SubGameInstanceDataTable.json"
+            subgame_row = {
+                "$type": (
+                    "Beyond.Gameplay.Core.BlackBoxSubGameData, Gameplay.Beyond"
+                ),
+                "id": dungeon_id,
+                "modeId": "blackbox",
+                "subDataParentId": bind_script_id - 1,
+                "bindScriptId": bind_script_id,
+                "mainTasks": [{"taskId": "main_a"}],
+                "extraTasks": [{"taskId": "extra_b"}],
+                "failTasks": [{"taskId": "fail_c", "failInfo": "failed"}],
+            }
+            subgame_path.write_text(
+                json.dumps({"dataTable": {dungeon_id: subgame_row}}),
+                encoding="utf-8",
+            )
+            native_index = {parent_key: [{
+                "levelId": level_id,
+                "scriptId": bind_script_id,
+                "actionName": "StartDialogAction",
+                "localId": 7,
+                "recordOffset": 123,
+                "sourceFile": gap_queue._repo_source_path(script_path),
+                "nativeMappingId": "gameassembly-current-test-mapping",
+                "nativeEventOwnerStatus": "exact_serialized_control_path",
+                "nativeEventOwners": [{
+                    "headerName": "ScriptEvent_OnCustomEvent",
+                    "status": "exact_serialized_control_path",
+                }],
+            }]}
+            common = {
+                "level_config_root": config_root,
+                "level_data_root": level_data_root,
+                "text_asset_root": text_asset_root,
+                "subgame_table": {"dataTable": {dungeon_id: subgame_row}},
+                "subgame_table_path": subgame_path,
+                "level_script_root": level_script_root,
+                "native_playback_index": native_index,
+            }
+            contexts, failure = gap_queue._generic_parent_dialog_level_context_facts(
+                [{"sceneKey": parent_key}],
+                {level_id: {
+                    "id": level_id,
+                    "configPath": f"Data/Json/LevelConfig/{level_id}.json",
+                }},
+                {dungeon_id: {"sceneId": level_id}},
+                **common,
+            )
+
+            self.assertIsNone(failure)
+            runtime = contexts[0]["subGameRuntime"]
+            self.assertEqual(runtime["bindScriptId"], bind_script_id)
+            self.assertEqual(runtime["mainTasks"], [{"taskId": "main_a"}])
+            self.assertEqual(runtime["extraTasks"], [{"taskId": "extra_b"}])
+            self.assertEqual(runtime["failTasks"][0]["taskId"], "fail_c")
+            self.assertEqual(
+                runtime["parentDialogPlayback"][0]["parentDialogTreeId"],
+                parent_key,
+            )
+            self.assertFalse(runtime["orderEvidence"])
+
+            drifted_index = {parent_key: [dict(
+                native_index[parent_key][0],
+                scriptId=bind_script_id + 1,
+            )]}
+            contexts, failure = gap_queue._generic_parent_dialog_level_context_facts(
+                [{"sceneKey": parent_key}],
+                {level_id: {
+                    "id": level_id,
+                    "configPath": f"Data/Json/LevelConfig/{level_id}.json",
+                }},
+                {dungeon_id: {"sceneId": level_id}},
+                **dict(common, native_playback_index=drifted_index),
+            )
+            self.assertEqual(contexts, [])
+            self.assertEqual(
+                failure["gate"],
+                "exactBlackBoxSubGameParentPlayback",
+            )
+            self.assertEqual(
+                failure["actual"]["mismatchedParentOccurrences"]
+                [parent_key][0]["scriptId"],
+                bind_script_id + 1,
+            )
+
+    def test_cross_owner_dialog_tree_narrative_retains_exact_parent_scope(
+        self,
+    ) -> None:
+        story_key = "opaque_nested_story"
+        parent_key = "opaque_parent_dialog"
+        parent_context = {
+            "key": parent_key,
+            "relation": "leveldata_levelscript_mission_context",
+            "storyOwnerMission": "parent_owner",
+        }
+        connection = {
+            "key": story_key,
+            "storyOwnerMission": "owner_alpha",
+            "parentStoryKey": parent_key,
+            "relation": "dialog_tree_narrative_action",
+            "direction": "context",
+            "confidence": "native_derived_exact_parent_shell",
+            "evidenceTier": "derived_exact_shell",
+            "contextMissionId": "runtime_beta",
+            "nativeMappingId": (
+                gap_queue.DIALOG_TREE_NARRATIVE_CONNECTION_MAPPING_ID
+            ),
+            "graphEffect": "none",
+            "occurrenceCount": 1,
+            "parentScopeRelations": [
+                "leveldata_levelscript_mission_context"
+            ],
+            "parentScopeContexts": [parent_context],
+            "dialogTreeNarrativeActions": [{
+                "dialogKey": parent_key,
+                "textId": f"{story_key}_001",
+                "actionType": (
+                    "Beyond.Gameplay.DialogNarrativeMaskActionData"
+                ),
+                "nativeMappingId": (
+                    gap_queue.DIALOG_TREE_NARRATIVE_CONNECTION_MAPPING_ID
+                ),
+                "sourceFile": "opaque_tree.json",
+                "sourcePathId": "opaque_path_id",
+            }],
+        }
+        with patch.object(
+            gap_queue,
+            "_exact_leveldata_story_context",
+            return_value=True,
+        ) as parent_validator:
+            valid, failure = (
+                gap_queue._exact_cross_owner_dialog_tree_narrative_context(
+                    connection,
+                    "owner_alpha",
+                    "runtime_beta",
+                )
+            )
+            self.assertTrue(valid)
+            self.assertIsNone(failure)
+        parent_validator.assert_called_once_with(
+            parent_context,
+            "parent_owner",
+            "runtime_beta",
+        )
+        broken = {**connection, "graphEffect": "strong"}
+        with patch.object(
+            gap_queue,
+            "_exact_leveldata_story_context",
+            return_value=True,
+        ):
+            valid, failure = (
+                gap_queue._exact_cross_owner_dialog_tree_narrative_context(
+                    broken,
+                    "owner_alpha",
+                    "runtime_beta",
+                )
+            )
+        self.assertFalse(valid)
+        self.assertEqual(
+            failure["validator"],
+            "crossOwnerDialogTreeNarrativeContext",
+        )
+        self.assertEqual(
+            failure["gate"],
+            "typedNarrativeActionWithExactParentPlaybackShell",
+        )
+        self.assertEqual(failure["actual"]["graphEffect"], "strong")
 
 
 if __name__ == "__main__":
