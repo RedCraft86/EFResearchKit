@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -15,6 +16,81 @@ import build_native_receiver_activation_frontier as frontier  # noqa: E402
 
 
 class NativeReceiverActivationFrontierTests(unittest.TestCase):
+    def test_structured_identity_census_accepts_only_reviewed_direct_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "rows.json").write_text(json.dumps({
+                "rows": [
+                    {
+                        "bindScriptId": "known_subgame_script",
+                        "dungeonMissionId": "mission_fixture",
+                    },
+                    {"scriptId": "receiver_fixture"},
+                    {"missionId": "mission_elsewhere"},
+                ]
+            }), encoding="utf-8")
+            census = frontier.structured_identity_cocarrier_census(
+                [{"scriptId": "receiver_fixture"}],
+                structured_json_root=root,
+            )
+
+        self.assertEqual("validated", census["validation"]["status"])
+        self.assertEqual(1, census["directCarrierCount"])
+        self.assertEqual(0, census["receiverMatchCount"])
+        self.assertEqual(
+            {"bindScriptId+dungeonMissionId": 1},
+            census["keyPairCounts"],
+        )
+
+    def test_structured_identity_census_fails_on_new_direct_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "new_carrier.json"
+            source.write_text(json.dumps({
+                "scriptId": "receiver_fixture",
+                "missionId": "mission_fixture",
+            }), encoding="utf-8")
+            census = frontier.structured_identity_cocarrier_census(
+                [{"scriptId": "receiver_fixture"}],
+                structured_json_root=root,
+            )
+
+        failure = census["validation"]["failures"][0]
+        self.assertEqual("validation_failed", census["validation"]["status"])
+        self.assertEqual("allDirectCarrierShapesReviewed", failure["gate"])
+        self.assertEqual(frontier.rel_path(source), failure["sourceFile"])
+        self.assertEqual(1, census["receiverMatchCount"])
+        self.assertEqual(
+            "unreviewed_direct_identity_carrier",
+            failure["actual"][0]["classification"],
+        )
+
+    def test_authored_property_contract_separates_namespaces_and_observers(self) -> None:
+        contract = frontier.authored_property_contract(
+            [
+                {
+                    "briefData": {
+                        "propertyNames": [
+                            "lt:p:task:objective",
+                            "@2002_isFinished",
+                            "isFinished",
+                            "state",
+                        ]
+                    }
+                }
+            ],
+            [{"propertyKeys": ["isFinished", "missing"]}],
+        )
+
+        self.assertEqual(["isFinished", "state"], contract["authoredNames"])
+        self.assertEqual(["isFinished"], contract["missionObservedNames"])
+        self.assertEqual(
+            "authored_property_with_exact_mission_observer",
+            contract["classification"],
+        )
+        self.assertFalse(contract["ownership"])
+        self.assertFalse(contract["orderEvidence"])
+
     @staticmethod
     def encounter_host(script_id: str) -> dict:
         prefix = f"@{script_id}_"
@@ -186,6 +262,78 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
             source,
         )
 
+    def test_mission_runtime_consumer_retains_original_and_pipeline_sources(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as tmp:
+            tmp_root = Path(tmp)
+            original = tmp_root / "original.json"
+            original.write_text("{}", encoding="utf-8")
+            mission_root = tmp_root / "pipeline"
+            mission_root.mkdir()
+            pipeline_path = mission_root / "mission_fixture.json"
+            pipeline_path.write_text(
+                __import__("json").dumps({
+                    "mission": {
+                        "id": "mission_fixture",
+                        "source": frontier.rel_path(original),
+                    },
+                    "nodes": [{
+                        "id": "mission_fixture_q#1",
+                        "objectives": [{
+                            "index": 1,
+                            "levelScriptIds": ["1001"],
+                            "conditionTypes": ["CheckLevelScriptPropertyBool"],
+                            "condition": {
+                                "type": "CombineCondition",
+                                "children": [{
+                                    "type": "CheckLevelScriptPropertyBool",
+                                    "facts": {
+                                        "mapId": "map_fixture",
+                                        "scriptId": {"scriptId": 1001},
+                                        "key": "isFinished",
+                                    },
+                                }],
+                            },
+                        }],
+                    }],
+                }),
+                encoding="utf-8",
+            )
+            rows = frontier.mission_runtime_script_consumers(mission_root)
+        consumer = rows[("map_fixture", "1001")][0]
+        self.assertEqual(frontier.rel_path(original), consumer["sourceFile"])
+        self.assertEqual(
+            frontier.rel_path(pipeline_path),
+            consumer["pipelineSourceFile"],
+        )
+        self.assertEqual(["isFinished"], consumer["propertyKeys"])
+        self.assertNotIn(("different_map", "1001"), rows)
+
+    def test_mission_runtime_consumer_rejects_flat_script_id_without_level(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as tmp:
+            mission_root = Path(tmp)
+            (mission_root / "mission_fixture.json").write_text(
+                __import__("json").dumps({
+                    "mission": {"id": "mission_fixture"},
+                    "nodes": [{
+                        "id": "mission_fixture_q#1",
+                        "objectives": [{
+                            "index": 1,
+                            "levelScriptIds": ["1001"],
+                            "conditionTypes": [
+                                "CheckLevelScriptPropertyBool"
+                            ],
+                        }],
+                    }],
+                }),
+                encoding="utf-8",
+            )
+            rows = frontier.mission_runtime_script_consumers(mission_root)
+        self.assertEqual({}, dict(rows))
+
     def test_receiver_nodes_collapse_by_exact_levelscript(self) -> None:
         payload = {
             "storyCoverage": {
@@ -195,6 +343,7 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
                         "selector": {
                             "levelId": "map_fixture",
                             "listenerScriptId": "1001",
+                            "listenerHeaderLocalId": 11,
                         },
                         "storyFiles": [
                             {
@@ -209,6 +358,7 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
                         "selector": {
                             "levelId": "map_fixture",
                             "listenerScriptId": "1001",
+                            "listenerHeaderLocalId": 15,
                         },
                         "storyFiles": [
                             {
@@ -229,6 +379,168 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
             ["black_fixture_1", "radio_fixture_1"],
             rows[0]["storyKeys"],
         )
+        self.assertEqual([11, 15], rows[0]["listenerHeaderLocalIds"])
+
+    def test_exact_active_phase_receiver_contract_is_corpus_driven(self) -> None:
+        original = frontier.decode_levelscript_native_action_topology
+        frontier.decode_levelscript_native_action_topology = lambda _data: ({
+            "schema": "levelScriptNativeActionTopology.v4",
+            "status": "exact_complete_action_map_with_runtime_shadowing",
+            "eventRoots": [
+                {
+                    "localId": 11,
+                    "headerName": "LevelEvent_OnCustomEvent",
+                    "recordOffset": 100,
+                    "triggerActiveDuring": 0,
+                    "nextActionLocalId": 12,
+                },
+                {
+                    "localId": 15,
+                    "headerName": "ScriptEvent_OnCustomEvent",
+                    "recordOffset": 200,
+                    "triggerActiveDuring": 0,
+                    "nextActionLocalId": 16,
+                },
+            ],
+        }, None)
+        try:
+            contract = frontier.exact_active_phase_receiver_contract(
+                b"original-levelscript",
+                {"listenerHeaderLocalIds": [15, 11]},
+                {
+                    "validation": {"status": "validated"},
+                    "activeReceiverFlow": {
+                        "triggerActiveDuringValues": {"Active": 0, "Start": 1},
+                        "setupRegisterTriggerCallCount": 1,
+                        "activePhaseEnableBetweenStateSetters": True,
+                    },
+                },
+            )
+        finally:
+            frontier.decode_levelscript_native_action_topology = original
+
+        self.assertEqual("validated", contract["status"])
+        self.assertEqual(
+            "exact_complete_action_map_with_runtime_shadowing",
+            contract["topologyStatus"],
+        )
+        self.assertEqual(2, contract["resolvedHeaderCount"])
+        self.assertTrue(contract["allReceiversActivePhase"])
+        self.assertEqual(
+            [11, 15],
+            [row["listenerHeaderLocalId"] for row in contract["receiverHeaders"]],
+        )
+
+    def test_exact_active_phase_receiver_contract_fails_closed_on_start_header(
+        self,
+    ) -> None:
+        original = frontier.decode_levelscript_native_action_topology
+        frontier.decode_levelscript_native_action_topology = lambda _data: ({
+            "schema": "levelScriptNativeActionTopology.v4",
+            "status": "exact_complete_action_map",
+            "eventRoots": [{
+                "localId": 11,
+                "headerName": "LevelEvent_OnCustomEvent",
+                "recordOffset": 100,
+                "triggerActiveDuring": 1,
+                "nextActionLocalId": 12,
+            }],
+        }, None)
+        try:
+            contract = frontier.exact_active_phase_receiver_contract(
+                b"original-levelscript",
+                {"listenerHeaderLocalIds": [11]},
+                {
+                    "validation": {"status": "validated"},
+                    "activeReceiverFlow": {
+                        "triggerActiveDuringValues": {"Active": 0, "Start": 1},
+                        "setupRegisterTriggerCallCount": 1,
+                        "activePhaseEnableBetweenStateSetters": True,
+                    },
+                },
+            )
+        finally:
+            frontier.decode_levelscript_native_action_topology = original
+
+        self.assertEqual("unresolved", contract["status"])
+        self.assertFalse(contract["allReceiversActivePhase"])
+
+    @staticmethod
+    def activation_selector_fixture() -> dict:
+        return {
+            "schema": "levelScriptActivationControl.v6",
+            "validation": {"status": "validated"},
+            "activationSelectorFlow": {
+                "levelScriptTypeValues": {
+                    "World": 0,
+                    "Mission": 1,
+                    "SubLevelScript": 4,
+                },
+                "nonSubLevelRequiresEnabledAndActiveArea": True,
+                "subLevelRequiresPublicActive": True,
+                "nonSubLevelSendsActiveTrueAfterPreActive": True,
+                "subLevelSkipsActiveTrueRequest": True,
+            },
+            "activeAreaFlow": {
+                "emptyActiveListSetsWithinTrue": True,
+                "activeShapeHitSetsWithinTrue": True,
+                "missingOutsideListPreservesPriorWithin": True,
+                "outsideShapeMissPreservesPriorWithin": True,
+                "outsideShapeHitClearsWithin": True,
+            },
+        }
+
+    @staticmethod
+    def levelscript_active_shape_fixture() -> dict:
+        return {
+            "activeShapeList": {
+                "schema": "levelScriptActiveShapeList.v1",
+                "status": "decoded_unique",
+                "candidateCount": 1,
+                "count": 1,
+                "shapes": [{
+                    "type": "SPHERE",
+                    "position": {"x": 1.0, "y": 2.0, "z": 3.0},
+                    "radius": 4.0,
+                }],
+            },
+        }
+
+    def test_client_active_request_contract_uses_only_exact_host_type(self) -> None:
+        contract = frontier.exact_client_active_request_contract(
+            [{"briefData": {"levelScriptType": 1}}],
+            self.activation_selector_fixture(),
+            self.levelscript_active_shape_fixture(),
+        )
+
+        self.assertEqual("validated", contract["status"])
+        self.assertEqual("Mission", contract["levelScriptTypeName"])
+        self.assertTrue(contract["clientProducesActiveRequest"])
+        self.assertEqual("Enabled", contract["entryPublicState"])
+        self.assertIn("SendLevelScriptSetActive(true)", contract["runtimePath"])
+        self.assertEqual(
+            "validated_runtime_position_dependent",
+            contract["spatialGateStatus"],
+        )
+        self.assertEqual(
+            "SPHERE", contract["activeShapeList"]["shapes"][0]["type"]
+        )
+
+    def test_client_active_request_contract_fails_closed_on_ambiguous_hosts(
+        self,
+    ) -> None:
+        contract = frontier.exact_client_active_request_contract(
+            [
+                {"briefData": {"levelScriptType": 0}},
+                {"briefData": {"levelScriptType": 1}},
+            ],
+            self.activation_selector_fixture(),
+            self.levelscript_active_shape_fixture(),
+        )
+
+        self.assertEqual("unresolved", contract["status"])
+        self.assertFalse(contract["clientProducesActiveRequest"])
+        self.assertEqual([], contract["runtimePath"])
 
     def test_manual_control_index_preserves_self_boundary(self) -> None:
         indexed = frontier.manual_control_targets(
@@ -251,6 +563,81 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
         self.assertTrue(indexed[("map_fixture", "1001")][0]["selfTarget"])
         self.assertFalse(indexed[("map_fixture", "1002")][0]["selfTarget"])
 
+    def test_manual_control_index_resolves_validated_current_context_self(self) -> None:
+        indexed = frontier.manual_control_targets(
+            {
+                "rows": [
+                    {
+                        "levelId": "map_fixture",
+                        "scriptId": "1001",
+                        "localId": 8,
+                        "action": "ManualStartLevelScript",
+                        "activationPair": True,
+                        "linkedEvent": {
+                            "localId": 7,
+                            "opcode": "0x12be/0x00",
+                        },
+                        "file": "source.json",
+                        "manualControl": {
+                            "parameterSources": {
+                                "levelId": 1000,
+                                "scriptId": 1002,
+                            },
+                        },
+                    }
+                ]
+            },
+            {
+                "classification": (
+                    "current_context_manual_start_self_target"
+                ),
+                "discoveryPattern": {"serializedObjectInputs": []},
+                "serializedOperandContract": {
+                    "levelIdParamSource": 1000,
+                    "scriptIdParamSource": 1002,
+                },
+                "validation": {"status": "validated"},
+            },
+        )
+
+        control = indexed[("map_fixture", "1001")][0]
+        self.assertTrue(control["selfTarget"])
+        self.assertEqual(control["targetResolution"], "current_context_self")
+        self.assertEqual(control["headerLinkedEvent"]["localId"], 7)
+
+    def test_manual_control_index_rejects_unvalidated_current_context_self(self) -> None:
+        indexed = frontier.manual_control_targets(
+            {
+                "rows": [
+                    {
+                        "levelId": "map_fixture",
+                        "scriptId": "1001",
+                        "action": "ManualStartLevelScript",
+                        "activationPair": True,
+                        "manualControl": {
+                            "parameterSources": {
+                                "levelId": 1000,
+                                "scriptId": 1002,
+                            },
+                        },
+                    }
+                ]
+            },
+            {
+                "classification": (
+                    "current_context_manual_start_self_target"
+                ),
+                "discoveryPattern": {"serializedObjectInputs": []},
+                "serializedOperandContract": {
+                    "levelIdParamSource": 1000,
+                    "scriptIdParamSource": 1002,
+                },
+                "validation": {"status": "validation_failed"},
+            },
+        )
+
+        self.assertEqual(indexed, {})
+
     def test_manual_null_shapes_task_and_parent_is_static_frontier(self) -> None:
         levelscript = {
             "startTypeName": "Manual",
@@ -261,8 +648,23 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
         }
         hosts = [{"briefData": {"parentLevelScriptId": "0"}}]
         self.assertEqual(
-            "manual_start_no_static_activation_carrier",
-            frontier.activation_class(levelscript, hosts, []),
+            "manual_start_runtime_request_no_static_carrier",
+            frontier.activation_class(
+                levelscript,
+                hosts,
+                [],
+                activation_control_validated=True,
+            ),
+        )
+        self.assertEqual(
+            "manual_start_active_phase_receiver",
+            frontier.activation_class(
+                levelscript,
+                hosts,
+                [],
+                activation_control_validated=True,
+                active_phase_receiver_validated=True,
+            ),
         )
 
     def test_missing_leveldata_host_fails_closed(self) -> None:
@@ -289,6 +691,23 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
             ),
         )
 
+    def test_header_linked_current_context_self_start_is_static_carrier(self) -> None:
+        self.assertEqual(
+            "header_linked_current_context_self_manual_start",
+            frontier.activation_class(
+                {"startTypeName": "Manual"},
+                [],
+                [
+                    {
+                        "action": "ManualStartLevelScript",
+                        "selfTarget": True,
+                        "targetResolution": "current_context_self",
+                        "headerLinkedEvent": {"localId": 7},
+                    }
+                ],
+            ),
+        )
+
     def test_subgame_binding_is_an_exact_activation_scope(self) -> None:
         self.assertEqual(
             "subgame_bind_script_activation_scope",
@@ -297,6 +716,36 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
                 [],
                 [],
                 [{"subGameId": "fixture_game"}],
+            ),
+        )
+        self.assertEqual(
+            "subgame_interaction_manual_start",
+            frontier.activation_class(
+                {"startTypeName": "Manual"},
+                [],
+                [],
+                [{"subGameId": "fixture_game"}],
+                activation_control_validated=True,
+            ),
+        )
+
+    def test_same_with_active_uses_generic_validated_binary_policy(self) -> None:
+        self.assertEqual(
+            "same_with_active_binary_active_gate",
+            frontier.activation_class(
+                {"startTypeName": "SameWithActive"},
+                [],
+                [],
+                start_policy_validated=True,
+            ),
+        )
+        self.assertEqual(
+            "nonmanual_start_static_carrier_unresolved",
+            frontier.activation_class(
+                {"startTypeName": "SameWithActive"},
+                [],
+                [],
+                start_policy_validated=False,
             ),
         )
 
@@ -430,6 +879,42 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
             ),
         )
 
+    def test_related_original_files_are_recursive_exact_and_deduplicated(
+        self,
+    ) -> None:
+        rows = frontier.collect_related_original_files(
+            {
+                "sourceFile": (
+                    "export_full/structured/LevelScriptData/map_fixture/1001.bin"
+                ),
+                "nested": [{
+                    "sourceFiles": [
+                        "export_full/structured/LevelData/map_fixture/data.bin",
+                        "export_full/structured/LevelData/map_fixture/data.bin",
+                    ],
+                    "pipelineSourceFile": "webui/data/mission_pipeline/index.json",
+                }],
+            },
+            {
+                "registrySourceFile": (
+                    "export_full/structured/SpawnerConfigData/fixture.bin"
+                )
+            },
+        )
+
+        self.assertEqual(3, len(rows))
+        self.assertEqual(
+            ["leveldata", "levelscript", "spawner_config"],
+            sorted(row["kind"] for row in rows),
+        )
+        self.assertTrue(all(
+            row["relationship"] == "exact_typed_activation_frontier_context"
+            for row in rows
+        ))
+        self.assertFalse(any(
+            "webui/" in row["sourceFile"] for row in rows
+        ))
+
     def test_pipeline_publication_is_compact_and_non_owning(self) -> None:
         index = {
             "storyCoverage": {
@@ -452,7 +937,7 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
                 {
                     "levelId": "map_fixture",
                     "scriptId": "1001",
-                    "activationClass": "manual_start_no_static_activation_carrier",
+                    "activationClass": "manual_start_runtime_request_no_static_carrier",
                     "levelScript": {
                         "startTypeName": "Manual",
                         "startShapeListStatus": "null",
@@ -529,9 +1014,20 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
                             "conditionTypes": [
                                 "CheckLevelScriptPropertyBool"
                             ],
+                            "propertyKeys": ["isFinished"],
                             "sourceFile": "fixture_mission.json",
                         }
                     ],
+                    "authoredPropertyContract": {
+                        "authoredNames": ["isFinished"],
+                        "missionObservedNames": ["isFinished"],
+                        "classification": (
+                            "authored_property_with_exact_mission_observer"
+                        ),
+                        "ownership": False,
+                        "orderEvidence": False,
+                        "evidenceBoundary": "observer only",
+                    },
                     "decodedTaskMap": {
                         "taskCount": 1,
                         "tasks": [
@@ -552,6 +1048,48 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
                             }
                         ],
                     },
+                    "taskRuntimeAuthority": {
+                        "schema": "levelScriptTaskAuthority.v1",
+                        "classification": (
+                            "server_selected_scene_script_task_identity"
+                        ),
+                        "identityFields": ["sceneNumId", "scriptId", "taskId"],
+                        "missionQuestIdentityFields": [],
+                        "validation": {"status": "validated"},
+                    },
+                    "startRuntimePolicy": {
+                        "schema": "levelScriptStartPolicy.v1",
+                        "classification": (
+                            "same_with_active_enters_prestart_when_active"
+                        ),
+                        "finding": "Active unfinished script enters PreStart",
+                        "evidenceBoundary": "no mission owner",
+                        "validation": {"status": "validated"},
+                    },
+                    "activePhaseReceiverControl": {
+                        "schema": "exactActivePhaseReceiver.v1",
+                        "status": "validated",
+                        "classification": (
+                            "registered_active_phase_story_receivers"
+                        ),
+                        "receiverHeaders": [{
+                            "listenerHeaderLocalId": 11,
+                            "triggerActiveDuring": 0,
+                        }],
+                    },
+                    "relatedOriginalFiles": [
+                        {
+                            "kind": "leveldata",
+                            "sourceFile": (
+                                "export_full/structured/LevelData/"
+                                "map_fixture/data.bin"
+                            ),
+                            "relationship": (
+                                "exact_typed_activation_frontier_context"
+                            ),
+                            "sha256": "a" * 64,
+                        }
+                    ],
                 }
             ],
         }
@@ -563,6 +1101,10 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
             "activationFrontier"
         ]
         self.assertEqual("Manual", annotation["startTypeName"])
+        self.assertEqual(
+            "validated",
+            annotation["activePhaseReceiverControl"]["status"],
+        )
         self.assertNotIn("missionOwnerStatus", annotation)
         encounter = annotation["encounterControllerContexts"][0]
         self.assertEqual("1002", encounter["spawnerId"])
@@ -607,6 +1149,10 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
             1,
             annotation["missionRuntimeObjectiveConsumerCount"],
         )
+        self.assertEqual(
+            "same_with_active_enters_prestart_when_active",
+            annotation["startRuntimePolicy"]["classification"],
+        )
         consumer = annotation["missionRuntimeScriptConsumers"][0]
         self.assertEqual(
             "mission_runtime_objective_references_level_script",
@@ -618,14 +1164,101 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
             ["CheckLevelScriptPropertyBool"],
             consumer["conditionTypes"],
         )
+        self.assertEqual(["isFinished"], consumer["propertyKeys"])
+        self.assertEqual(
+            ["isFinished"],
+            annotation["authoredPropertyContract"]["missionObservedNames"],
+        )
         self.assertFalse(consumer["ownership"])
         self.assertFalse(consumer["activation"])
         self.assertFalse(consumer["storyPlayback"])
-        self.assertNotIn("sourceFile", consumer)
+        self.assertEqual("fixture_mission.json", consumer["sourceFile"])
+        self.assertEqual("", consumer["pipelineSourceFile"])
+        self.assertEqual(
+            "export_full/structured/LevelData/map_fixture/data.bin",
+            annotation["relatedOriginalFiles"][0]["sourceFile"],
+        )
+        self.assertEqual(
+            "a" * 64,
+            annotation["relatedOriginalFiles"][0]["sha256"],
+        )
+        self.assertEqual(
+            "server_selected_scene_script_task_identity",
+            annotation["taskRuntimeAuthority"]["classification"],
+        )
         self.assertEqual(
             1,
             index["storyCoverage"]["nativeReceiverActivationFrontier"][
                 "annotatedReceiverNodes"
+            ],
+        )
+
+    def test_publish_attaches_exact_mission_levelscript_context_without_edge(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as tmp:
+            mission_root = Path(tmp)
+            mission_path = mission_root / "fixture_mission.json"
+            mission_path.write_text(
+                __import__("json").dumps({
+                    "mission": {"id": "fixture_mission"},
+                    "storyOrder": {
+                        "directEdges": [],
+                        "summary": {"strongEdgeCount": 0},
+                    },
+                }),
+                encoding="utf-8",
+            )
+            index = {
+                "missions": [{"id": "fixture_mission"}],
+                "storyCoverage": {"missionlessNativeRuntimeNodes": []},
+            }
+            report = {
+                "schemaVersion": frontier.SCHEMA,
+                "counts": {},
+                "rows": [{
+                    "levelId": "map_fixture",
+                    "scriptId": "1001",
+                    "storyKeys": ["cutscene_fixture_1"],
+                    "eventNames": ["ScriptEvent_OnCustomEvent"],
+                    "listenerHeaderLocalIds": [11],
+                    "relatedOriginalFiles": [{
+                        "kind": "levelscript",
+                        "sourceFile": "source/1001.json",
+                        "relationship": "exact context",
+                    }],
+                    "missionRuntimeScriptConsumers": [{
+                        "missionId": "fixture_mission",
+                        "questId": "fixture_mission_q#1",
+                        "objectiveIndex": 1,
+                        "conditionTypes": [
+                            "CheckLevelScriptPropertyBool"
+                        ],
+                        "propertyKeys": ["isFinished"],
+                    }],
+                }],
+            }
+            frontier.publish_to_pipeline_index(
+                index,
+                report,
+                mission_root=mission_root,
+            )
+            mission = __import__("json").loads(
+                mission_path.read_text(encoding="utf-8")
+            )
+        contexts = mission["storyOrder"][
+            "missionObservedLevelScriptContexts"
+        ]
+        self.assertEqual(1, len(contexts))
+        self.assertEqual("map_fixture", contexts[0]["levelId"])
+        self.assertEqual(["cutscene_fixture_1"], contexts[0]["storyKeys"])
+        self.assertFalse(contexts[0]["ownership"])
+        self.assertFalse(contexts[0]["orderEvidence"])
+        self.assertEqual([], mission["storyOrder"]["directEdges"])
+        self.assertEqual(
+            1,
+            index["missions"][0][
+                "storyOrderMissionObservedLevelScriptContextCount"
             ],
         )
 
@@ -684,6 +1317,57 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
             task["subGameMainTaskBindings"][0]["subGameId"],
         )
         self.assertNotIn("taskExtraInfo", task_map["tasks"][1])
+
+    def test_task_progress_properties_require_complete_exact_pairs(self) -> None:
+        task_map = {
+            "tasks": [{
+                "taskKey": "fixture_task",
+                "conditions": [
+                    {"conditionKey": "condition_a"},
+                    {"conditionKey": "condition_b"},
+                ],
+            }]
+        }
+        hosts = [{
+            "sourceFile": "fixture_leveldata.json",
+            "briefData": {
+                "properties": [
+                    {
+                        "name": f"lt:{prefix}:fixture_task:{condition}",
+                        "valueType": 3,
+                        "atomCount": 1,
+                        "atoms": [{"valueBit64": int(prefix == "mp")}],
+                    }
+                    for condition in ("condition_a", "condition_b")
+                    for prefix in ("p", "mp")
+                ]
+            },
+        }]
+        frontier.annotate_task_progress_property_contract(task_map, hosts)
+        contract = task_map["tasks"][0]["progressPropertyContract"]
+        self.assertEqual(contract["status"], "validated")
+        self.assertEqual(contract["expectedPropertyCount"], 4)
+        self.assertEqual(contract["matchedPropertyCount"], 4)
+        self.assertEqual(contract["missingProperties"], [])
+
+        hosts[0]["briefData"]["properties"].pop()
+        frontier.annotate_task_progress_property_contract(task_map, hosts)
+        contract = task_map["tasks"][0]["progressPropertyContract"]
+        self.assertEqual(contract["status"], "incomplete")
+        self.assertEqual(
+            contract["missingProperties"],
+            ["lt:mp:fixture_task:condition_b"],
+        )
+
+    def test_mission_runtime_ids_exclude_story_only_shells(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "authored_mission.json").write_text("{}", encoding="utf-8")
+            (root / "story_shell.txt").write_text("", encoding="utf-8")
+            self.assertEqual(
+                frontier.mission_runtime_ids(root),
+                {"authored_mission"},
+            )
 
     def test_mission_runtime_operand_consumers_require_exact_typed_operands(
         self,

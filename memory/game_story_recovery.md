@@ -9,25 +9,52 @@ Latest CN reports:
 
 | Metric | Current |
 | --- | ---: |
-| Pipeline missions | 591 (490 MissionRuntime + 101 Story-only recovery shells) |
-| Unique Story files | 5,562 |
+| Pipeline missions | 606 (490 MissionRuntime + 115 Story-only recovery shells + 1 declared Story-variant aggregate) |
+| Unique Story files | 5,564 |
 | Connected files | 4,239 (76.2%) |
 | Files with a normalized trigger/context route | 4,462 (80.2%) |
-| Unlinked files | 1,323 |
+| Unlinked files | 1,325 |
 | Unlinked files with exact native playback | 156 |
 | Encounter-controller contexts | 5 receiver scripts / 7 modules / 27 Story keys / 9 related source files |
-| Exact non-mission content | 279 (278 spacecraft/profile + 1 guide runtime) |
-| Actionable core-isolated files | 32, all in the other bucket |
+| Authored receiver-property contracts | 63 scripts; 16 carry `isFinished`; 1 exact `(level, script)` MissionRuntime observer is attached as non-ordering mission context |
+| Exact non-mission content | 281 (280 spacecraft/profile + 1 guide runtime) |
+| Actionable core-isolated files | 0 |
 | Partial-order mission rows | 487 |
 | Candidate scene placements | 8,877 |
-| Strong / supported / weak edges | 1,502 / 834 / 2,635 |
-| Source-comparable scene pairs | 3,791 / 249,695 (1.52%) |
+| Strong / supported / weak edges | 1,524 / 834 / 2,635 |
+| Binary-proven quest-success Story order | 22 edges / 21 quests / 18 missions |
+| Binary quest-action dispatch | Fail=4 and Succeed=2 validated through the only 2 SafeRun callers; RunQuestAction has only SafeRun + pending replay callers; 0 current AOT Start=1 dispatchers |
+| Authored start-action boundary | 60 root definitions / 57 typed Story references / 53 candidate-scene definition cards across 41 missions; never order edges |
+| Exact native Story transitions | 380; 85 branch-bearing across 40 missions (77 Split, 7 conditional, 1 ordered-sequence) |
+| Binary parallel-fan-out authority | 1 structural scheduler carrier / 2 admitted writer methods / 3 decoded direct calls / 44 Split branch groups / 77 transitions / 104 evidence rows |
+| Source-comparable scene pairs | 3,845 / 249,695 (1.54%) |
 | Cyclic components | 0 |
 | Exact nested DialogTree containments | 49 across 44 child files |
 | Exact quest-observed DialogTree definitions | 434 definitions / 461 placements across 422 quests |
 | LevelScript action topology | 4,512 / 4,512 classified; 0 fail-closed |
-| Native branch predicates | 258 named; 263 semantic including 5 inline; 0 class-only; 0 unresolved |
+| Native branch predicates | 259 named; 264 semantic including 5 inline; 0 class-only; 0 unresolved |
+| Complete native branch-arm topology | 312 / 312 recovered placements published in Mission Pipeline, 880 serialized slots, 43 active non-Story arms, 155 inactive slots, 0 runtime terminals, 0 recovery or publication validator failures |
+| Complete cross-boundary native branches | 5 groups / 5 exact external Story references (4 Split fan-outs, 1 SwitchInt choice); no ownership or order promotion |
+| Exact mission-state Story alternatives | 3 branch groups / 2 cross-mission Story references; selection only, never chronology or ownership |
 | Exact receiver playback gates | 30 Story files (15 Boolean comparisons, 6 NOT, 4 integer equalities, 2 AND, 1 OR, 1 ALL, 1 Boolean leaf) |
+| Exact post-playback control | 128 graphs / 105 Story files / 348 actions and edges / 18 branch points / 76 exact serialized handoff contracts with unresolved server handlers |
+| Binary ActionBase naming | 1,313 validated formatter tags / 348 of 348 post-playback actions / 2,564 of 2,564 native-transition endpoints named |
+| Binary CallServer callback topology | 4,746 / 4,746 decoded / 132 output UIDs / 127 exact callback headers / 10 Story-bearing headers (11 targets) / 5 dangling UIDs |
+| Exact post-playback LevelSequence files | 15 typed action placements / 7 serialized ids / 6 exact original TextAssets / 1 unresolved root handle |
+| Post-playback variable bridge | 66 typed setters (43 SetBool, 23 SetInt) / 50 exact listeners / 0 same-level, same-script, same-key joins |
+| Binary-proven cinematic producers | 10 native producers / 16 typed action routes / 1,682 route attachments across 1,332 Story files |
+| Binary state-update authority | 4 / 4 identity+state/control paths validated; 0 client successor selectors |
+| Binary quest-state fork application | Generic field-constrained CFG recovery: `Processing` (2) -> `StartQuest`, `Completed` (3) -> `SucceedQuest`; published on all 307 forks / 740 arms with binary+metadata hashes; server selection policy remains unknown |
+| Binary quest-enable fork application | Generic live-field CFG recovery: enable + unpaused -> `StartQuest`, enable + paused -> `PauseQuest`, disable + either pause value -> `DisableQuest`; `prevQuestState` is unread; published on all 307 forks / 740 arms with binary+metadata hashes |
+| Binary quest-start authority | `objectiveList` reads 3; `prevQuestIdList` / `flowIndex` reads 0 / 0; topology traversal calls 0 |
+| Whole-client topology consumers | 42 / 43 direct `GetQuestInfo` call candidates verified; active predecessor consumers 0; non-sort flow consumers 0; topology lifecycle calls 0 |
+| Binary quest semantic fields | `questType`: 7 consumers / 6 Block comparisons / 1 Optional comparison; 2 post-lifecycle Block notifications; `showMode`: 5 consumers / 0 lifecycle; 676 Normal and 64 Optional fork arms, 0 Block |
+| Authored quest-fork semantics | 307 forks: 226 main-path + auxiliary, 78 all-auxiliary, 3 with multiple main-path arms; 97 guarded; 45 reconverging |
+| Quest-fork arm evidence | 740 sibling arms; 349 carry 2,053 exact typed Story placements covering 741 Story keys and 318 arm-related original files; 307 placements use binary-named action types |
+| Binary LevelScript receiver activation | 95 scripts / 161 exact headers / 156 Story keys validated as Active-phase; all 95 exact LevelData types select the non-SubLevel client `active=true` request branch; all 95 original scripts have one uniquely decoded active volume (86 sphere / 9 box); 54 manual scripts / 95 headers / 99 Story keys no longer require a Start carrier for receiver availability |
+| Authored mission-to-LevelScript task dependencies | 2 exact `(level, script, task)` tuples across 2 missions; 0 unresolved; each joined to MissionRuntime, LevelScriptData, and ScriptTaskExtraInfoTable |
+| Binary public-state entry closure | 2 server-derived handlers: full-scene `SC_SELF_SCENE_INFO` snapshots and incremental `SC_SCENE_LEVEL_SCRIPT_STATE_NOTIFY`; 4 direct public-state setter callers split into 2 zero initializers and 2 server-parameter writers |
+| Native cross-system consumer census | 500,976 mapped methods / 7,214 unambiguous family targets / 17 reviewed callers; the 4 mission-state→DynamicScene seeds close over 23 methods / 30 direct edges / depth 2, with 1 reviewed IL2CPP class-init indirect site, 0 LevelScript, 0 Story, and 0 unreviewed; the 174-type managed mission/quest census finds 2 reviewed cross-system callers and 0 mission+LevelScript signatures; its general callable-carrier pass resolves 13 fields, 5 typed entry methods, and 5 family-local native bindings with 0 mission+LevelScript bindings |
 
 Persistent `MissionRuntimeAsset` is the effective authored corpus only when it
 contains the complete StreamingAssets filename set; otherwise builders use the
@@ -37,14 +64,107 @@ in five payloads.
 ## What is recovered
 
 - Mission and quest graphs, predecessor relations, forks, and merges.
+- All 307 authored quest forks are classified from normalized MissionRuntime
+  nodes, including arm roles, objective/failure guards, terminals, and exact
+  first common descendants. Each immediate successor now expands to the quests
+  reachable from that successor but not its siblings; exact typed Story
+  relations and hash-checked original files on that corridor are shown without
+  claiming server selection or exclusivity. Every fork retains its
+  hash-validated original MissionRuntime file. The action-name surface is gated
+  by the complete 1,313-tag installed-binary formatter audit; OCR and manual
+  order are not inputs.
+- A general enum-field CFG validator now discovers the unique quest
+  identity+state server packet, its metadata enum, exact field comparisons, and
+  state-gated lifecycle calls without message IDs, addresses, enum constants,
+  or quest IDs in code. `SC_QUEST_STATE_UPDATE` applies `Processing` through
+  `StartQuest` and `Completed` through `SucceedQuest` to the same packet
+  `questId`; it carries no successor field. Mission Pipeline attaches this
+  hash-locked binary/metadata contract to every fork and exact arm identity.
+  This proves client application after server selection, not the server's
+  choice policy, sibling exclusivity, or Story-file order.
+- The shared constrained-CFG solver now also accepts corpus-discovered Boolean
+  field predicates. For the unique quest identity+enable update it follows the
+  live packet enable register and the exact metadata-resolved
+  `QuestData.isPaused@0x28` read, then validates all four combinations without
+  message IDs, addresses, quest IDs, or object allowlists. Enable routes to
+  `StartQuest` or `PauseQuest` according to current pause state; disable routes
+  to `DisableQuest` for either pause value, always with the same packet
+  `questId`. The packet's `prevQuestState` field is not read by this handler.
+  This is client application after server selection, not arm eligibility,
+  successor selection, sibling exclusivity, or Story-file order.
 - Story cards for dialog, radio, SNS, cutscenes, black screens, and remote
   communication.
 - Typed LevelScript, DialogTree, Timeline, FMV, quest-state, interactive, and
   selected runtime receiver evidence.
+- A general, id-free direct-call census now maps the complete hash-pinned
+  `GameAssembly.dll`/metadata method corpus and classifies every caller crossing
+  MissionSystem, DynamicScene, LevelScript, or Story API families. Four
+  `DynamicSceneMissionControlSystem` paths prove that exact mission/quest state
+  controls cared component availability. Their general direct-call closure has
+  23 methods and 30 edges; the only decoded indirect call is the reviewed
+  IL2CPP class-initializer guard. MetadataRegistration and native field access
+  then prove the deferred continuation: enqueue cared component ids into
+  `m_pendingRefreshCompSet` (token `0x0400e5f9`, offset `0x48`), consume it in
+  `BeforeTick`, re-evaluate the condition, and call `RefreshEntityStatus`. No
+  reachable LevelScript or Story method exists, so this is availability refresh
+  rather than activation, ownership, playback, or order. OCR/manual overrides
+  are not inputs. The complementary type-shape census broadens "mission" beyond
+  the singleton to all 174 managed mission/quest-named or identity-bearing
+  `Beyond.Gameplay` types. Across 4,322 unambiguous family pointers it finds
+  only two cross-system callers and no cross-family method signature. One is
+  the already-audited MissionOption alternate action; the other is
+  `LevelScriptTaskTracking._AddTrackPoint`. MetadataRegistration places
+  `CommonTrackingPointInfoBase.missionId@0x20` and `sceneId@0x30`; its native
+  constructor caller has three branch-local `sceneId` writes and zero
+  `missionId` writes. This closes the broader managed runtime surface as
+  tracking UI context, not a receiver owner.
+- The same corpus-driven pass now resolves callable field types from the
+  installed MetadataRegistration table instead of searching callback names.
+  Across every mission/quest identity type and every LevelScript type it finds
+  13 delegate/`Action`/`Func` fields, five callable-parameter entry methods,
+  and five direct native binding calls. `MissionSystem.AvailableMission` binds
+  only `MissionAcceptMode.Activate`; four LevelScriptRuntime methods bind or
+  unbind only their local task-condition notifications. No callable field or
+  binding crosses mission/quest and LevelScript identities, so this closes the
+  current typed managed delegate route without adding ownership or order.
+  Runtime mutation of public delegate fields, reflection/XLua/IFix, native-only
+  registries, and server selection remain outside the bound.
 - Exact native control paths for Split, If/Else, Switch, ordered Branch, playback, and
   many event families.
-- 307 native branch groups and 19 native convergences, kept as a partial
+- 312 native branch groups and 20 native convergences, kept as a partial
   graph instead of flattened into a guessed file list.
+- Every Story-anchored native branch is now expanded from the original
+  LevelScript's runtime-active action map rather than a per-object list. A
+  table-driven Split/IfElse/Switch projector retains active non-Story arms,
+  non-positive inactive slots, arm-exclusive action topology, and shared
+  downstream nodes. It requires the decoded control action to match the
+  installed-binary runtime mapping and fails closed with source hashes and
+  expected/actual diagnostics. These sibling actions describe file-local
+  topology only; they do not add Story ownership, order, or mission membership.
+- Mission Pipeline publication now performs a second corpus-wide attachment
+  pass after graph-neutral recovery shells exist and fails closed unless every
+  recovered native branch reaches a payload. This restored 217 previously
+  generated-but-unpublished branch placements: four under `gm01m2`, one under
+  `map02_lv002`, and 212 under the declared `db01m2` Story namespace. The
+  latter is created generically because its generated Story bundle explicitly
+  declares four validated variant mission bundles; the aggregate exposes their
+  four hash-checked original MissionRuntime files as context and explicitly
+  does not claim mission/quest ownership, server branch choice, or additional
+  chronology. No object/mission allowlist, OCR order, or manual override is
+  used.
+- Native branch grouping now uses mission Story files only as anchors, then
+  retains every exact Story-bearing arm under the same serialized event and
+  branch. This generically restores five cross-boundary references across four
+  missions: four binary-validated `Split` fan-outs and one binary-mapped
+  `SwitchInt` choice. They attach hashed LevelScript, MissionRuntime, binary,
+  and metadata files while remaining non-owning and non-ordering.
+- The same generic control-path projection now retains complete
+  `CompareMissionState(GetMissionState(constant id), constant state)` arms even
+  when an alternative Story file is nominally grouped under another mission.
+  Three current branch groups expose two such cross-mission references. Each
+  attaches the exact LevelScript, MissionRuntime, installed binary, and metadata
+  hashes; it proves client-side alternative selection, not Story ownership,
+  server transition timing, or order among the alternatives.
 - All 3 previously opaque native branch predicates are now typed from the
   current binary: one general LevelScript-stage comparison and two instances
   of the general mission-or-quest completion getter.
@@ -55,20 +175,44 @@ in five payloads.
 - 368 strict option-route groups covering 767 option arms and 1,597 branch
   lines.
 - Source-only graph generation with zero cycles and explicit unknown pairs.
+- The general quest-lifecycle join adds 22 exact objective-Story to succeed-
+  action Story edges. It requires same-quest typed relations, the original
+  MissionRuntime hash, and the installed-binary proof that `SucceedQuest`
+  dispatches `OnSucceedClientAction`; no mission, Story, condition, or action
+  allowlist participates. It does not prove success occurrence, successor-arm
+  selection, or order within one action graph.
+- The same corpus-wide audit now closes the fallback quest-action dispatcher
+  surface. `FailQuest` and `SucceedQuest` are the only direct
+  `SafeRunQuestAction` callers and pass enum values 4 and 2;
+  `ProcessPendingQuestAction` only replays the shared
+  `m_pendingQuestActionList` into `RunQuestAction`. The complete current AOT
+  direct-caller census finds no value-1 producer. All 60 authored start roots,
+  including 57 typed Story references, therefore remain visible definition
+  evidence. The 53 references that also pass candidate-scene membership become
+  order-panel definition cards across 41 missions with their original
+  MissionRuntime/binary/metadata hashes, but add no order edge. Indirect
+  invocation, runtime mutation, future IFix, server
+  behavior, and future builds remain outside this static proof.
 - 180 of 188 narrative-video references attached across 53 Story keys.
 
-The registered DialogTree trunk-group recovery handles both complete and
-partial emitted shapes with one fail-closed partition rule. Mechanical
+The registered DialogTree trunk-group recovery handles complete, partial, and
+row-reuse emitted shapes with fail-closed content-identity rules. Mechanical
 `misc_*` aggregates select their authored prefix namespace; direct unregistered
 `dlg_*` scenes select only exact `<scene>_<digits>` rows, preventing a shorter
 key from absorbing nested scenes such as `_1_2`. Each covered row must belong
 to exactly one current registered, hash-validated serialized DialogTree;
 duplicate carriers resolve only through the existing namespace tie-break, and
-naming never fills a missing row. Complete partitions close six direct
-black-box scenes covering 23 lines. The same general classifier now exposes
-five partial scenes through ten parents: 30 of 38 authored rows are covered,
-eight are explicitly unmatched, and the parents contain zero option-branch
-groups. A general parent-namespace resolver now attaches an exact authored
+naming never fills a missing row. Complete partitions include the speed-limit
+scene through its exact registered `_1` parent. Five partial scenes span ten
+parents: 30 of 38 authored rows are covered and eight are explicitly
+unmatched. A complete literal census checks every unmatched row against all
+decoded registered DialogTrees, all 4,512 exported LevelScripts,
+`GameAssembly.dll`, and `global-metadata.dat`. The rows occur in none of those
+consumer surfaces, so they remain current table definitions without consumers
+and are never appended to a neighboring parent. The separate two-digit
+`dlg_blackbox_shaper_2_2` group is an exact table-only definition; suffix width
+is authored data rather than a classifier constant. A general parent-namespace
+resolver now attaches an exact authored
 level/dungeon asset shell only when `LevelBasicInfoTable`, the unique
 `DungeonTable.sceneId`, LevelConfig, the 43-member LevelData MemoryPack, and any
 matching decoded map TextAsset all independently name the same level. It
@@ -87,8 +231,7 @@ failures. Exact nested `ScriptTaskExtraInfoTable` rows attach objective display
 keys; `CombineCondition` formulas retain their authored operands. The task
 dictionaries contain no task-successor or Story-file-order field, so the
 topology remains objective structure rather than chronology. All eight partial
-level contexts have an exact parent playback, but none of their loose row ids
-occurs in the decoded task maps. Pipe 1 plays `_1` from its bound script while
+level contexts have an exact parent playback. Pipe 1 plays `_1` from its bound script while
 `_2` and `_3` remain explicitly definition-only there; this partial coverage
 is preserved instead of forcing one uniform producer rule. Numbered
 missing-row positions remain table-row cross-reference diagnostics only. These
@@ -99,7 +242,18 @@ from the current GameAssembly formatter and Execute bodies. Current
 `Branch.Execute` at `0x18764d990` reserves itself and advances `_idList` one
 item at a time, so `Branch.sequence[*]` is ordered iteration, not fan-out;
 `Split` is parallel fan-out, If/Else and Switch select one arm, and While is a
-loop. Zero action ids are exact terminal pointers. The current binary also
+loop. The Split classification is no longer a class-name rule: the protocol
+audit structurally discovers the inherited `m_extraThreadIDList` carrier and
+its scheduler, performs a complete direct-call census, and scans every direct
+ActionBase child `Execute` body. It admits two current writer shapes: typed
+child fields passed to the scheduler and typed collection members appended
+inline. This yields two writer methods and three decoded direct calls with no
+rejected call sites; one cleanup-only list consumer stays separate. The 44
+serialized Split branch groups produce 77 distinct cross-Story transitions
+and 104 evidence rows. Every row is marked as binary-proven extra-thread
+launch with `siblingOrderEvidence=false` and carries the exact binary/metadata
+hashes. IFix substitution remains explicitly outside the static proof.
+Zero action ids are exact terminal pointers. The current binary also
 proves one reusable construction rule for all three `ActionMapRuntime`
 collections: serialized header, action, and getter records are assigned into
 their respective runtime arrays by local id, so the final serialized record
@@ -136,6 +290,17 @@ missions have WebUI shells. Each attachment retains its selected active event
 listener, listener metadata, physical/active counts, shadowed slot counts, and
 the shared original-binary runtime mapping; the rest of each graph stays
 file-local context.
+The same general path-prefix recovery now preserves the complete typed action
+suffix for all 380 exact native Story-to-Story transitions rather than reducing
+the proof to local-id lists. Eighty-five transitions in 40 missions traverse a
+typed non-linear edge: 77 cross `Split.actions[*]`, seven cross an If/Else or
+Switch arm, and one enters `Branch.sequence[1]`; every transition also retains
+its linear steps. Mission Pipeline renders the source and target Story files,
+each exact successor field, decoded branch predicate when available, and all
+related original LevelScript/MissionRuntime files. This does not add or promote
+an edge—the same 380 path-prefix relations were already strong—but makes their
+branch semantics and provenance directly auditable without consulting OCR,
+manual order, record adjacency, or filename numbering.
 The current PureGetter and root `GameCondition` union registrations, generated
 MemoryPack setter order, and native `GetResult` bodies close all ten formerly
 opaque or class-only branch predicates without mission-specific rules.
@@ -188,11 +353,152 @@ completion inversion, and one six-child interactive-state conjunction. These
 are receiver-local allow/block branches only: they do not
 prove a post-play server write, mission ownership, or order between Story
 files.
-No current mission has Story
-targets on two different Branch sequence slots, so this adds zero Branch-derived
-Story-order edges rather than guessing them.
-The other-bucket queue remains 32 and the current contract is
-`sourceStoryGapQueue.v124`; OCR and manual order remain comparison-only.
+The identity-agnostic control decoder now also publishes typed successors after
+any exact receiver Story action instead of truncating the visible path at
+playback. The current unresolved receiver surface contains 128 exact
+post-playback graphs across 105 Story files, with 348 unique local actions and
+edges, 18 typed branch points, and 76 `CallServer` handoffs. Mission Pipeline
+renders maximal reachable paths, branch points, callback correlation labels,
+and the original LevelScript file. Callback labels identify neither a server
+handler nor a mission/quest or state write. For `cutscene_e3m5_4`, the exact
+client path is now visible as `isFinished == false` -> FMV -> fade-in ->
+`CallServer #27b725be`; the separate `e3m5_q#1` objective observes the same
+LevelScript property, and its original Persistent
+`MissionRuntimeAsset/e3m5.json` is attached as a related file. This still does
+not prove that the quest starts playback or that the handoff writes
+`isFinished`, so the Story remains unowned.
+Action naming now follows the complete installed-binary formatter rather than
+an expanding hand-maintained action subset. The general audit disassembles the
+`ActionBaseForMemoryPackFormatter` cctor and validates the current
+`GameAssembly.dll` and `global-metadata.dat` hashes, code-registration address,
+formatter type/method tokens and address, all 1,313 contiguous tags
+`0x0000..0x0520`, and zero missing, duplicate, or unknown-instruction rows.
+Runtime lookup uses each record's compact `unionTag` plus
+`serializedMemberCount`; the legacy combined raw opcode is preserved only as
+provenance. This distinction explains apparent high codes such as
+`0x0e34/0x00` as union tag `0x0034` / 14 members (`CallServer`) without a
+per-object rule. All 348 actions on the unresolved post-playback surface and
+both endpoints of all 1,282 exact native transition steps (2,564/2,564) now
+have formatter-backed class names. The existing 380 transition edges and 85
+branch-bearing edges are unchanged. The WebUI exposes formatter source/hash,
+coverage, and any unresolved shapes; the current count is zero. Names explain
+local control flow but do not choose a branch, identify a mission owner, or
+create chronology, and OCR/manual order are not inputs.
+The general `CallServer` decoder and audit now retain all six serialized fields
+for every action, including rows with a null callback list; the former report
+only published callback-bearing rows. It consumes the nullable MemoryPack
+`List<string>` before the remaining generated fields instead of assuming the
+common null prefix. A hash-pinned installed-binary contract proves
+`CallServer.Execute` passes that exact list to
+`ActionBase.SetResultWaitForPossibleSubExecutor`, whose values are possible
+callback header UIDs. The complete 4,512-file census decodes all 4,746 actions:
+122 have non-empty output lists containing 132 UIDs; 127 resolve through an
+exact same-file UID, `ScriptEvent_OnCustomEvent` key, and typed header
+successor. Ten headers reach 11 Story targets, while five missing UIDs all
+remain explicit dangling references in `dung01_cdg005/7700000010.json`.
+Recursive callback traversal and the Mission Pipeline attachment use exact
+source-file/local-action identities, with no file, object, mission, or Story
+allowlist. All 76 post-playback handoffs match their complete-corpus audit row
+and attach the authoritative `LevelScriptData` file. All have the literal
+`event_args` parameter name, null parameter path, and null callback list; 75
+use the action's own UID as a correlation event, while
+`map01_lv005/3400010000` action 9 uses the custom event `tos2`. Thus no handoff
+co-carries a mission/quest foreign key, so this recovery adds exact local
+contract and related-file context but no Story-order or ownership edge. The
+strong/native order counts therefore correctly remain 1,502 / 380 (85
+branch-bearing).
+Mission Pipeline exposes the callback routes, original LevelScript files,
+binary address/contract, five dangling UIDs, and the zero-hit unresolved
+surface. OCR and manual overrides are not inputs.
+The same general action-family projection resolves original LevelSequence files
+without a sequence-id allowlist. Action class names come from the installed
+`ActionBaseForMemoryPack` formatter table; this additionally identifies union
+tag `0x02fa` / 9 members as `LoadLevelSequenceAction`. A candidate action text
+joins only when the exported TextAsset's `m_Name` and `Name` and its decoded
+`m_Script.cutsceneName` are all exactly equal. On the current receiver surface,
+15 typed action placements carry seven serialized ids; six ids resolve to six
+original TextAssets across ten placements. The remaining
+`levelseq_e11m1_dg011` is retained as an unresolved root/control handle rather
+than expanded by name. The complete 400-file source census admits 399 exact
+identities and fails closed on
+`levelseq_map01_lv007_CM_pC5E4AF1F6301DEFF.json`, whose internal
+`cutsceneName` is `cutscene_c33m1_1`. Mission Pipeline shows each matched file,
+PathID, action type, unresolved id, and the bounded validator diagnostic. These
+links are local cinematic context only and add no mission owner or Story-order
+edge; OCR and manual order are not consulted.
+The complete current-build native playback index now also feeds one general
+post-playback variable-bridge audit. It discovers setter and listener classes
+from their exact serialized contracts, extracts keys without Story/object-name
+rules, and joins only `(levelId, scriptId, key)`. Across 3,188 native Story keys
+and 3,816 playback occurrences, 66 typed post-playback setters (43 `SetBool`
+and 23 `SetInt`) and
+50 exact listener rows (38 property, 12 blackboard; 33 unique selectors) have
+zero joins. The installed formatter and metadata prove the key/value and
+listener payload shapes; the generic `Set<T>.Execute` body is unavailable in
+the current native body table, but the zero overlap closes this route without
+assuming which notification family it emits. It therefore creates no
+ownership, branch, or order edge and uses neither OCR nor manual order.
+No current mission has Story targets on two different Branch sequence slots,
+so there are still zero Story-to-Story edges derived from relative sequence-slot
+indices. One existing path-prefix edge enters `Branch.sequence[1]` after its
+source Story and now exposes that typed suffix without claiming a second Story
+sequence arm.
+The actionable core-isolated queue is empty and the current contract is
+`sourceStoryGapQueue.v130`; OCR and manual order remain comparison-only. The
+queue now loads the current Story trigger manifest through an exact schema,
+language, source-hash, and object-shape gate instead of silently discarding a
+newer coverage schema. General closure contracts revalidate shipped-Lua
+`GameAction.<method>` calls against their matching native entry and exact
+Lua/audit hashes, and revalidate composed CutsceneRoot playback aliases against
+their independently connected native route. This closes the former top
+false-positive gaps `cutscene_e1m10_1` and `cutscene_gm02m4_1` without adding
+ownership or chronology edges. Validator drift now reports the mission, Story
+key, failed gate, bounded expected/actual values, source paths, and hashes.
+The same trigger-manifest layer now preserves `sourceFile`, native event,
+mapping, carrier, PathID, and typed quest-gate fields generically. Separate
+fail-closed relation contracts close `dlg_sm1l1m1_16` only from its exact
+quest-owned reachable DialogTree carrier and `radio_f1m5_2` only from its
+serialized leader-volume -> `CheckQuestState(Equal, Processing)` ->
+`PlayRadio` chain. Arbitrary Story ids using either shape are supported; the
+multi-quest DialogTree branch subtype remains separate. Both closures retain
+source hashes and quest context but add no relative Story-file edge.
+
+The latest batch removes two object-shaped blind spots with reusable negative
+consumer rules. Mechanical `misc_dlg_*` aliases now enter the same exact
+DialogText/DialogOption/audio, registry, Timeline, typed action/playback,
+object-carrier, GameAssembly, and metadata exhaustion gate as `dlg_*` roots;
+option-group tokens may be alphanumeric. This defers surviving table-only rows
+generically, including both `sm1l5m3` `0d5`/`4d5` definitions, without turning
+options into routes. Typed spaceship trees now establish actor/family contexts
+from carried line ids; a complete sibling DialogText bucket is deferred only
+when no related typed tree carries any target line. That rule finds exactly the
+two gift `recvbye` buckets, attaches their four related original DialogTrees
+plus `DialogTextTable`, and leaves playback, ownership, and chronology unknown.
+Together these rules reduce other-bucket actionable core rows from 30 to 13;
+main, event, major, and character remain zero. The partial-order graph is
+unchanged.
+
+The latest cutscene batch removes the remaining root/director shape blind spots
+with two reusable identity rules. A typed `CutsceneRootComponent` normally
+identifies its Story root through `_timelineName`; when that field is a runtime
+`levelseq_*` token, the reverse-PPtr audit accepts the exact root GameObject
+name only if the component is on the hierarchy root, the name is a current
+Story key, and no scalar Story key resolved. Five current director hosts use
+this fallback. This closes `cutscene_map02_lv001_TSZ_01_3_copy` through its
+exact `_director -> PlayableDirector -> m_PlayableAsset` chain. A separate
+general pair classifier recognizes an exact cross-key root/playable alias only
+when both registered TextAssets round-trip through the Timeline dictionaries,
+the root object graph and played asset graph are complete, the current binary
+tokens/typed playback/carrier surfaces remain absent, and the unique pointer,
+containment, and mission sets agree. It closes `cutscene_f1m9d3_1` as the root
+definition and `cutscene_f1m9d4_1` as the played TimelineAsset. Both Mission
+Pipeline cards attach the exact TextAsset, registry tables, object audits,
+installed binary/metadata, and the two original VFS chunks. The alias proves
+playback composition only; it does not order `f1m9d3` against `f1m9d4` or
+identify either mission activator. The actionable queue falls from 13 to 10;
+main, event, major, and character remain zero, and the graph remains 1,502
+strong edges, 265 forks, 55 merges, 307 native branch groups, and 19
+convergences.
 
 The original metadata `BlackboxGuideHintController`, `FacGuideHintEnable`, and
 `LevelDataGuideHintConfig` surface is spatial factory guide-hint configuration,
@@ -229,7 +535,7 @@ tie-breaker; it cannot fill missing rows. `misc_timeline_blackbox_miner` and
 `_pipe` remain open because authored rows lack serialized registered owners.
 Mission Pipeline exposes the parent files, hashes, and directed edges.
 Canonical mission-pipeline builds refresh and validate
-`sourceStoryGapQueue.v123` after current Story coverage
+`sourceStoryGapQueue.v129` after current Story coverage
 and partial order are published; data-only builds deliberately reuse it. OCR
 and manual order remain comparison-only.
 
@@ -274,13 +580,13 @@ when an exact typed `DialogTree` consumes every line through
 `SpaceshipOptionGiftData` or `SpaceshipOptionWorkData`, or when a mechanical
 `CharacterTable.profileVoice` mirror has an exact duplicated `AudioDialog`
 metadata pair. Current GameAssembly and metadata hashes pin the reviewed gift,
-work-state, dialog-selection, and NPC reaction consumers. This classifies 278
+work-state, dialog-selection, and NPC reaction consumers. This classifies 280
 non-mission Story keys: 194 typed DialogTree buckets (138 gift, 28 rest, 28
-work) and 84 profile-talk buckets. Mission Pipeline exposes all 279 exact
+work), 84 profile-talk buckets, and two current-build unconsumed gift
+definitions. Mission Pipeline exposes the exact
 non-mission records in one collapsible browser with their original DialogTree
-and table files. The other actionable queue falls from 381 to 103;
-`misc_sim_gift_ikut_recvbye` and `misc_sim_gift_wolfgd_recvbye` remain open
-because the current original corpus has no typed trunk consumer for either.
+and table files. The two `recvbye` rows remain explicitly absent-carrier
+definitions rather than being promoted to playback.
 These classifications prove content and internal branch membership, not mission
 ownership or cross-file chronology; OCR/manual order remains comparison-only.
 
@@ -1073,12 +1379,51 @@ traces `SkipChapterTable[skip_chapter_1].bindDlgId` through the shipped
 row co-carries `missionId=e5m1`, so `dlg_e5m0d5_1` gains a mission-level Lua
 playback attachment and both the Lua and original table files appear in Mission
 Pipeline. One case-mismatched literal remains rejected only after the installed
-GameAssembly/metadata audit proves case-sensitive `StringPathHash` resolution;
-seven handle expressions remain unresolved. Multi-row table fields stay
-candidates unless their lookup key is proven. Every row carries source hashes,
-line, typed native entry, audit hash, and a fail-closed validator result. Lua
-without a same-row mission/quest foreign key still proves controller playback
+GameAssembly/metadata audit proves case-sensitive `StringPathHash` resolution.
+The other seven calls are not unresolved authored references: one structural
+native audit proves they are branches of the same polymorphic cinematic queue.
+`CinematicQueueItemDataBase` carries `cinematicId`, the handle carries `id` plus
+`data`, and seven typed payload classes expose their identity through getters
+selected by `queueItemType`. Current GameAssembly bodies map all seven
+dispatchers. The audit now discovers the enqueue sink by its queue-base
+parameter, walks callers transitively, and scans the complete action-framework
+virtual surface plus same-type helper closure. It finds ten native producers
+(eight direct entry points plus two wrappers) and 16 typed serialized action
+routes without payload, action, or Story-id allowlists. Mission Pipeline joins
+those types only onto already exact LevelScript playback routes, attaching the
+original LevelScript and binary-audit files to 1,682 routes across 1,332 Story
+files. This annotation adds no ownership or ordering edge: mission/quest scope
+still comes only from the serialized action row and its authored event/control
+path. Multi-row table fields stay candidates unless their lookup key is proven.
+Lua without a same-row mission/quest foreign key proves controller playback
 only, never Story order; OCR and manual order do not participate.
+
+Mission objective task dependencies are now recovered by serialized field
+shape, not mission or object ids. Every condition carrying a complete
+`(scene/level, script, task)` tuple is fail-closed against the original nested
+`ScriptTaskExtraInfoTable` corpus and its exact `LevelScriptData` file. The
+current corpus has two validated rows: `c17m2_q#9d5` and `sm1l3m3_q#0d1`.
+Mission Pipeline retains each tuple, task display metadata, three hashed
+original files, and the installed-binary task-authority reference. This proves
+that the authored objective waits for the task; it does not prove script
+activation, Story ownership, branch selection, or scene-file order.
+
+Empty `ActionSerializedMap` recovery is now corpus-shaped and fail-closed. All
+526 original LevelScripts whose first serialized action-list count is zero have
+the same exact three-word `(actionList, getterList, headerList) = (0, 0, 0)`
+header. The decoder consumes that boundary directly, leaving 309 UID-shaped
+tail records in 188 files outside executable evidence; 42 Story-like strings
+in 40 such files remain serialized context only. Mission Pipeline attaches 341
+exact condition-to-LevelScript source rows and visibly marks 51 empty maps
+across 39 objectives in 32 missions, including `c13m3_q#4` with its original
+file hash and two non-executable tail rows. Quest-scope recovery now admits
+only strong authored/decoded scene edges that resolve to one LevelScript;
+weak file, offset, list, and cross-file order can no longer turn tail literals
+or neighboring endpoints into a Story attachment. OCR, overrides, filenames,
+and numeric file order remain comparison-only. This correction removes 62
+unsupported quest-scope contexts and 370 duplicated/unsupported fork-arm Story
+placements while leaving all 1,524 strong order edges and 312 native branch
+groups unchanged; connected/unlinked Story counts are now 4,237 / 1,327.
 
 ## Remaining gaps
 
@@ -1086,15 +1431,21 @@ only, never Story order; OCR and manual order do not participate.
    mission/quest activation bridge. The unresolved surface is organized under
    161 runtime receiver nodes and 186 receiver-to-Story placements. Twenty-seven
    of those Story keys now have exact Encounter-controller and related-file
-   context, but remain unowned. `cutscene_e1m10_1` likewise has an exact
-   shipped-Lua phase owner but no serialized mission/quest identity.
+   context, but remain unowned. The general activation-frontier publisher now
+   attaches 237 placements of 141 distinct authoritative LevelScript,
+   LevelData, MissionRuntime, SpawnerConfig, gameplay-config, and table files
+   found recursively in the typed evidence; these are related context, not
+   inferred owners. `cutscene_e1m10_1` likewise has an exact
+   shipped-Lua phase owner but no serialized mission/quest identity. One of
+   the 156 keys, `cutscene_e3m5_4`, now also carries exact `e3m5_q#1`
+   same-LevelScript context; it remains in this ownership gap and unordered.
 2. **Black screens:** 65 remain unassigned. Most are definition-only or lack a
    current-build playback consumer; five have playback but no static owner.
 3. **Story recovery queues:** all quest-attachment gaps are now either strict
    typed attachments or bounded graph-neutral diagnostics. Main, event, major,
-   and character missions have no actionable core-isolated files. Other
-   missions retain 32 actionable files and 17 missing mission bundles. Broad co-memberships
-   remain non-owning diagnostics.
+   character, and other missions have no actionable core-isolated files. The
+   remaining 17 missing MissionRuntime bundles stay explicit Story-only shells;
+   broad co-memberships remain non-owning diagnostics.
 4. **Option routes:** no multi-choice group remains broadly actionable after
    exact current-build carrier exhaustion; unresolved groups remain visible and
    reopen only when a typed DialogTree/Timeline/runtime consumer appears.
@@ -1103,29 +1454,196 @@ only, never Story order; OCR and manual order do not participate.
 6. **Total ordering:** most scene pairs are unknowable from current static
    evidence. A display order must remain separate from source proof.
 
-The highest-value missing source is a serialized server/runtime registry that
-contains both LevelScript and mission/quest identity. Next inspect other
-repeated typed LevelData property contracts and their native controller
-consumers, but publish them first as related system/file context. Repeating
+Quest-fork presentation no longer hides arm-local content behind the immediate
+successor. Across 307 forks, the general predecessor-reachability rule expands
+740 sibling arms and attaches 2,053 exact Story relations to 349 arms, with 318
+distinct arm-related original files re-hashed at publication. The other 391
+arms remain explicitly empty. These corridors are sibling-relative authored
+topology: nested forks may legitimately repeat downstream evidence, and no row
+proves which arm the server selected or whether siblings are exclusive.
+
+The highest-value missing source is now an opaque native/server registry that
+contains both LevelScript and mission/quest identity. The complete managed
+mission/quest type surface, its cross-family method signatures, authored JSON,
+protobuf carriers, and typed callable-field/binding surface are closed for this
+build. Next inspect a new typed selector operand, native-only registry or
+runtime public-field mutation, or server successor policy that could expose
+such a foreign key; repeated LevelData property and CallServer payload patterns
+are bounded and visible as related context. Repeating
 existing LevelScript, DialogTree, Timeline, teleport, proxy, Encounter, or
 local carrier scans is unlikely to close ownership without a new foreign key
 or changed inputs.
 
-Next work should trace the eight explicitly unmatched black-box rows through a
-new binary or serialized producer/consumer surface, without deriving placement
-from numeric suffixes, dungeon sort ids, guide-hint names, task ids, or asset
-paths. Their exact level/dungeon and BlackBox SubGame runtime shells are now
-attached, including bound LevelScripts and typed parent playback, but no
-audited typed surface consumes the loose rows. Main/extra/fail task lanes are
-objective structure, not Story order. The partial set is
-`misc_timeline_blackbox_miner`, `dlg_blackbox_mix_3`,
-`dlg_blackbox_gaspump_1`, `misc_timeline_blackbox_pipe`, and
-`dlg_blackbox_xiraniteoven_3`. `dlg_blackbox_shaper_2_2` remains a distinct
-namespace mismatch rather than a partial partition, and the missionless
-speed-limit definition still needs a separately proven mission attachment.
-Extend the pattern-based classifier to branch-bearing consumers only when the
-typed schema and complete current consumer surface can be bounded without
-weakening the fail-closed rules.
+The nested managed-carrier census no longer stops at an arbitrary depth. A
+cycle-safe shortest-path traversal of all 49,789 installed custom managed types
+reaches a fixed point with 112 identity candidates (101 nested-dependent), a
+maximum shortest path of ten, and zero unreviewed candidates. The 87 candidates
+newly exposed beyond the former depth-three bound collapse by path semantics,
+not root ids: 86 reach their missing identity only through the mutable
+`Beyond.Gameplay.Core.Entity`/component graph, and one crosses that graph plus
+the already-audited `MissionRuntimeAsset` property/action aggregate. Complete
+original-object indexes cover 1,335,450 StreamingAssets/Persistent objects and
+expose zero exact `Entity`, `InteractiveRootComponent`, or
+`NpcInteractComponent` script/scalar type labels; 1,384 rows with truncated
+scalar projections remain an explicit boundary. Metadata therefore proves
+runtime type reachability but not populated same-record ownership; this batch adds zero
+Story bindings and zero order edges. Mission Pipeline exposes the fixed-point
+counts, both generic closures, binary/metadata hashes, and both object-index
+sources. OCR and overrides are not inputs.
+
+The general generic-method audit now resolves shipped IL2CPP `MethodSpec`
+class/method arguments through `MetadataRegistration` and decodes every
+distinct candidate body without choosing by address. On the current binary,
+concrete `Set<bool>.Execute` and `Set<int>.Execute` both read `_key`/`_value`,
+call `ParamExtensions.GetValue<T>`, and tail-call the matching
+`ParamExtensions.SetValue<T>`; the latter dispatches through the contextual
+`Param<T>.SetterSetValue`. This proves a polymorphic parameter-write contract,
+not a LevelScript-property writer. Among the 161 unresolved receiver nodes,
+63 scripts have ordinary authored LevelData property names and `isFinished`
+recurs in 16 scripts, but only `map01_lv007/2800010051` has an exact typed
+MissionRuntime observer (`e3m5/e3m5_q#1`). The general join now requires the
+full typed `(mapId, scriptId)` condition operand, rejects flat script-id
+summaries, and attaches the observer, Story key, LevelScript/LevelData,
+MissionRuntime, binary, and metadata files directly to the `e3m5` mission
+order panel as read-only context. The FMV path ends in a `CallServer` request
+with `waitForCallback=true`, but the serialized contract contains no client
+callback output UID; it therefore does not identify the `isFinished` writer.
+Raw property-literal adjacency is explicitly non-ordering and cannot identify
+the writer, playback owner, or chronology.
+
+The repeated module-property census is now bounded: seven full Encounter
+families use the existing typed controller contract, while eight
+`map02_lv006` families expose only base `LevelScriptModule.is_enabled` and
+`is_completed` state. The installed `LevelScriptModule` layout/consumers show
+that the two-field shape is generic lifecycle plumbing and carries no
+mission/quest identity, so it must not be promoted to an owner type. The next
+ownership pass should require a new co-carried foreign key in another typed
+controller payload or native registry, not a module id, LevelSequence name,
+file address, or registration order.
+
+The general state-update audit now discovers enum-backed `Proto.SC_*` messages
+by shape: exactly one `missionId` or `questId` plus either the matching state
+field or the `isEnable`/previous-state control pair.
+It locates each handler by protobuf parameter type, reads field offsets from
+the installed `MetadataRegistration`, and traces the packet identity through
+typed lifecycle calls. All four current paths validate: message 111 forwards its
+single `questId@0x18` to `SucceedQuest` and `StartQuest`; message 112 forwards
+its single `missionId@0x18` to `CompleteMission`, `StartMission`, and
+`AvailableMission`. The enable lanes likewise forward only their packet
+identity: mission enable dispatches by its consumed `prevMissionState` to
+`DisableMission`, `StartMission`, or `AvailableMission`, while quest enable
+dispatches by `isEnable` to `StartQuest`, `PauseQuest`, or `DisableQuest`.
+None of the four schemas has a second identity or successor field.
+The same audit now follows the typed return value of the structurally discovered
+`MissionSystem.GetQuestInfo` call inside the lifecycle-discovered `StartQuest`
+body. Metadata fixes `QuestInfo.objectiveList`, `prevQuestIdList`, and
+`flowIndex` at `0x60`, `0x78`, and `0x80`. The current native body reads the
+objective list three times while initializing one selected quest, reads neither
+topology field, and calls no predecessor/successor traversal method. This is a
+general return-origin/field-offset analysis, not a quest-id or address allowlist;
+the exact token and address are validated outputs for the current build.
+The client therefore applies one server-selected identity/state update at a
+time and initializes only that selected quest; it does not choose the next quest
+in these paths. The validator records
+bounded schema, handler, field-layout, argument-flow, and source-hash failures,
+and Mission Pipeline re-hashes `GameAssembly.dll` and `global-metadata.dat`
+before publishing the contract and both related files beside every displayed
+quest fork. This closes the
+client-side successor-selector hypothesis without pretending to recover
+server-only policy. Authored predecessor forks and merges remain prerequisite
+topology, not proof of exclusive branch choice. OCR and manual overrides are
+not inputs.
+
+The same hash-locked audit now recovers the `QuestAction` enum and validates
+the complete bounded `SafeRunQuestAction` caller set. Current
+`SucceedQuest` passes value 2 (`OnSucceedClientAction`) through the safe runner
+to the MissionRuntime action map. Joining this binary lifecycle contract to
+same-quest `objective_condition` progress rows and native-typed
+`client_action_succeed` rows yields 22 exact Story edges across 21 quests in
+18 missions, with zero reverse strong conflicts and zero cycles. `StartQuest`
+does not expose the same dispatch in the current fallback, so no start-phase
+order is inferred.
+
+The hash-locked topology audit now also recovers `Beyond.GEnums.QuestType`
+(`Normal=0`, `Block=1`, `Optional=2`) and `QuestShowMode` (`AlwaysShow=1`,
+`AlwaysHide=1000`) from installed metadata, then re-decodes every verified
+direct `GetQuestInfo` caller. Seven methods consume `questType`: six compare
+`Block=1`, while the sole `Optional=2` comparison branches to `mov al, 1` and
+writes the exact MetadataRegistration-backed
+`ObjectiveShowData.optional@0x50` presentation field. The two network handlers
+perform all five typed quest lifecycle calls first, then their Block-equal
+corridors make `EventManager.SendGlobal` the sole resolved gameplay call, with
+no bounded native back-edge. Five methods consume `showMode` through seven reads
+and none calls a quest lifecycle transition. Across the 740 authored fork arms
+this names 676 Normal and 64 Optional arms; no Block arm occurs. Mission Pipeline
+shows the exact comparisons, field write, consumer methods, binary/metadata
+hashes, and boundary. These fields explain presentation and post-application
+notification only: they do not prove eligibility, parallelism, exclusivity, or
+server successor choice.
+
+Quest-fork presentation is now generated from the normalized graph rather than
+mission names or per-object rules. The current corpus contains 226
+main-path-plus-auxiliary forks, 78 all-auxiliary forks, two forks with multiple
+main-path successors, and one with multiple main-path plus auxiliary arms;
+45 reconverge at an exact first common descendant. All 265 forks projected into
+Story partial-order views resolve through global quest identity, including 15
+forks whose Story shell belongs to a parent mission while the authored topology
+comes from a variant MissionRuntime file. This topology does not prove arm
+exclusivity or client-side selection; every fork retains the
+`server_selected_unresolved` boundary.
+
+For `e3m5_q#1`, the exact MissionRuntime observer of
+`map01_lv007/2800010051.isFinished` now combines with the receiver's typed
+`OnLeaderEnterTriggerVolume` gate (`isFinished == false`), FMV playback, and
+post-playback server handoff. This establishes mission completion context, not
+activation ownership: no client-visible writer for the property has been
+recovered.
+
+Action-class naming is no longer a recovery gap on the current native Story
+transition/post-playback surfaces. Further branch work should target a new
+typed selector operand or mission-to-receiver foreign key; repeating opcode
+catalogs or the now-closed state-update application paths cannot add an edge.
+Server-only successor policy, quest forks selected only by that server, and
+unrelated Story pairs remain unknowable from the installed client's static
+data unless a new client-visible carrier appears.
+
+The current-binary topology-consumer census closes the remaining obvious
+`QuestInfo`/`MissionRuntimeAsset` field paths without object-specific address
+rules. All direct `GetQuestInfo` call candidates are re-decoded inside bounded
+metadata methods (42 valid calls, one rejected byte-pattern false positive).
+The sole `prevQuestIdList` read is a deprecated description fallback; both
+`flowIndex` reads form a two-value display-sort comparator. Structurally
+discovered `mainPathQuests` consumers only build its membership cache or choose
+level/description context. None of these consumers reaches a quest lifecycle
+transition. The decoder now follows entry-relative Windows x64 stack slots
+through control flow, including adjusted stack spills/reloads, so this result
+is a reusable typed field-consumer analysis rather than a per-method override.
+
+The client-side `CallServer.callClientOutputUIDs` callback-header route is also
+closed generically for this build. Reopen its five dangling UIDs only if a
+changed LevelScript corpus supplies the missing headers; closing mission
+ownership still requires a server/runtime registry that co-carries receiver
+and mission/quest identity, not callback labels or registration order.
+
+The eight unmatched BlackBox rows are now source-bounded current-build
+definitions, not open placement candidates. Reopen them only if a changed
+binary or serialized producer/consumer surface contains an exact row identity;
+numeric suffixes, dungeon sort ids, guide-hint names, task ids, asset paths,
+OCR, and manual order remain non-evidence. Highest-value next work is the 156
+exact native playback files that still lack a mission/quest activation bridge,
+especially repeated typed LevelData receiver contracts that may expose a new
+foreign key. The former final three isolated keys are now closed by general
+provenance rules: every exact `SNSDialogTable` identity, regardless of filename
+prefix, passes the same authored graph, route, typed playback, complete
+AnimeStudio carrier, and installed-binary token gates; this admits
+`test_sns_emojicomment` and `test_sns_sticker` as shipped definitions with no
+current consumer while retaining their internal SNS branches/options. Generated
+Story entries may be excluded only when index and conversation payloads carry
+matching `project_authored` provenance and the declared repository producer
+exists; this excludes `black_webui_secret_notice` without treating it as game
+evidence. Mission Pipeline publishes all three as graph-neutral Story-only
+shells with related table/carrier/binary or project-source files. Schema v130
+has zero validator failures and zero actionable core-isolated scenes.
 Within `gm02m23`, the
 remaining source-bounded activation gaps are `dlg_gm02m23_3`, `_10`, and
 `radio_gm02m23_2`; the former Timeline records `_1`, `_7`, and `_8` are closed
@@ -1137,6 +1655,120 @@ tracking join co-carries patrol `160002` or `20001`; do not infer that join from
 the mission-like filename or patrol registration order. Reopen a
 deferred row only when a new typed producer/consumer or changed source hash
 supplies an ownership or order edge.
+
+LevelScript task authority is now recovered as one general current-binary
+contract rather than scene-specific mappings. All 25 receiver scripts with a
+decoded task map validate against the protocol identity
+`(sceneNumId, scriptId, taskId)`; all 32 decoded tasks have complete typed
+progress persistence, totaling 110 exact `lt:p`/`lt:mp` LevelData placements.
+The 14 manual/static activation gaps therefore have a proven server-backed
+task lifecycle and 27 Story placements, but the four validated packet schemas
+and seven native paths co-carry no mission, quest, or Story identity. A prior
+token census incorrectly included Story-only mission shells; restricting it to
+actual original MissionRuntime filenames leaves one legitimate token-bearing
+LevelScript, already bound through SubGame, and zero non-SubGame candidates.
+Mission Pipeline displays these contracts, source hashes, and boundaries.
+
+`SameWithActive` is now recovered through one general current-binary contract,
+not three receiver-specific rules. Metadata discovers the exact
+`LevelScriptRuntime` methods and enum constants; decoded control flow proves
+that public state `Active` (3), when the script is not done, evaluates the
+start policy, and `SameWithActive` (2) branches directly to the same internal
+`PreStart` (22) transition reached after a successful start-area check. All
+10 matching receiver scripts and six Story keys carry the hash-validated
+contract. The three formerly static-unresolved taskless scripts are now
+classified as `same_with_active_binary_active_gate`: `17500000001`,
+`13000000035`, and `8700000004`. This closes how those scripts start once
+active, but not which mission or server transition made them active, and it
+adds no cross-Story order.
+
+Manual self-start is also recovered as one general current-binary contract.
+Metadata resolves `ManualStartLevelScript.levelId` and `.scriptId` as
+`Param<string>` and `Param<LevelScriptPtr>`, defines `CURRENT_LEVEL_ID=1000`
+and `CURRENT_SCRIPT_ID=1002`, and the decoded native path validates
+`Execute -> TryGetLevelScript -> ManualStart -> PreStart`. Applying that
+contract to every matching serialized row closes
+`map01_lv002/200000062` (`radio_e1m5_6d2`): its original leader-enter header
+links local 16 to ManualStart local 17 with both current-context operands.
+This proves local self-start but not the filename-derived `e1m5` mission owner
+or any cross-Story order; the same-level mission-named LevelData explicitly
+does not contain this receiver. Task authority, OCR, manual order, source-graph
+mission grouping, and native registration remain non-ownership evidence.
+
+The remaining activation surface now has a second corpus-wide binary contract.
+The complete direct current-AOT caller census for `LevelScriptRuntime.ManualStart`
+contains only `ManualStartLevelScript.Execute` and
+`InteractiveLogicChallengeStartPoint._OnInteract`. The latter reads its
+metadata-defined `m_subGameId`, resolves the typed `SubGameInstanceData` row,
+reads `bindScriptId`, converts it to a LevelScript pointer, performs the runtime
+lookup, and calls `ManualStart`; this upgrades all 10 exact SubGame bindings to
+interaction-start carriers without object-specific rules. Separately, the
+server state notification flows through manager/container dispatch into
+`LevelScriptRuntime.UpdateState`, setting state before runtime evaluation. Its
+payload contains only `sceneNumId`, `scriptId`, `state`, and `isComplete`, so it
+still exposes no mission/quest owner or server-side branch choice. Mission
+Pipeline attaches the exact current `GameAssembly.dll`, metadata, and typed
+SubGame source to these panels.
+
+The same corpus-wide contract now recovers the client request lifecycle without
+object-specific rules. Metadata fixes CS active/start to IDs 94/101 and their
+exact scene/script/boolean/leader-position fields. Decoded bodies prove one
+`BaseNetworkSystem.SendMsg` call in each public and runtime active/start sender;
+the only direct callers of both runtime senders are two true/false sites in
+`LevelScriptRuntime.UpdateRuntimeState`. `ManualStart` writes
+`m_manualStartTriggered` at `0xf8`, enters `PreStart` (22), emits start=true,
+then enters `PreStartActionRunning` (23). Both public network sender methods
+have zero direct current-AOT callers, so indirect/IFix and server-side selection
+remain outside the evidence.
+
+The receiver timing question is now closed by one corpus-wide rule rather than
+per-script exceptions. The original serialized `ActionHeader` enum defines
+`TriggerActiveDuring.Active=0` and `Start=1`; all 161 exact receiver header ids
+across all 95 scripts resolve uniquely to Active (0), including runtime-
+shadowed action maps under the decoder's validated last-write view. Current
+binary control flow proves `LevelScriptRuntime.Setup` registers the trigger
+graph once, then `UpdateRuntimeState` enables the Active group between
+`ActiveBegin` (14) and `WaitForSubEntityInitNewly` (15). Thus the 54 manual
+scripts, 95 receiver headers, and 99 Story keys are classified
+`manual_start_active_phase_receiver`: their Story receivers do not wait for or
+require a ManualStart carrier.
+
+The upstream Active-request producer is also now recovered generically. The
+installed state machine compares `LevelScriptType.SubLevelScript=4`; every
+other type requires public `Enabled=2` plus `UpdateWithinActiveArea`, enters
+`PreActive=7`, finishes pre-active actions at state 9, emits active=true, and
+waits in state 10. `SubLevelScript` instead requires public `Active=3` and skips
+that request. Each of the 95 receiver scripts has exactly one validated
+original LevelData host: 39 World, 52 Mission, 1 Master, and 3 ControlledGame,
+so all 95 select the client request-producing branch without an object-specific
+rule. A bounded MemoryPack scan between the final action-map record and the
+unique top-level script-id tail also decodes one structurally valid authored
+active volume in every receiver script: 86 spheres and 9 boxes. The current
+binary proves empty active lists and active-shape hits set `withinActiveArea`,
+missing outside lists and outside misses preserve its prior value, and outside
+hits clear it. Mission Pipeline shows that geometry, state chain, method
+offsets, original LevelScript/LevelData files, and binary/metadata hashes.
+The direct current-AOT caller census now closes the upstream client surface:
+`SC_SELF_SCENE_INFO` message 25 supplies repeated `LEVEL_SCRIPT_INFO` snapshot
+rows to `Runtime.ServerSync`, while message 37 supplies incremental state to
+`Runtime.UpdateState`. The four direct `set_state` callers are exactly those
+two server-parameter writers plus zero-valued `LoadFromLevelData` and `Init`
+writes. Thus public Enabled is server-supplied, but neither carrier contains a
+mission, quest, Story id, or branch reason. The remaining gap is the server-side
+selection rule, player position and resulting gate value, server acceptance of
+Active, event firing, and cross-file order. OCR, overrides, source-graph
+grouping, registration order, and code-address order remain cross-reference
+only.
+
+The maintained receiver frontier now applies the same general rule across the
+complete selected original structured JSON corpus. It parsed 197 candidate
+files and visited 109,066 records. The only 20 direct records co-carrying an
+exact LevelScript identity with a mission/quest identity use the already
+reviewed `bindScriptId + dungeonMissionId` SubGame shape, and none names any of
+the 95 unresolved receiver scripts. New key-pair shapes, parse loss, or a
+missing source root fail closed. Ancestor containers, filenames, neighboring
+records, OCR, and overrides remain cross-reference only and create no owner or
+order edge.
 
 ## Evidence rules
 
@@ -1168,6 +1800,7 @@ reports/story/build/mission_pipeline_story_binding_coverage_CN.md
 reports/mission_order/source_story_partial_order_CN.md
 reports/mission_order/source_story_gap_queue_CN.md
 reports/story/recovery/native_receiver_activation_frontier.md
+reports/story/recovery/protocol_registry_audit.md
 reports/story/build/narrative_videos_CN.md
 ```
 

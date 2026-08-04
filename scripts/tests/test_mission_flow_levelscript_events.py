@@ -22,6 +22,7 @@ from scripts.story_builder.level_bindings import (
 from scripts.story_builder.levelscript_binary import (
     LEVELSCRIPT_NATIVE_HEADER_UNION_TAG_NAMES,
     LEVELSCRIPT_NATIVE_HEADER_NAMES,
+    compact_callserver_serialized_contract,
     decode_levelscript_record_payload,
     extract_levelscript_uid_records,
     levelscript_native_header_name,
@@ -33,6 +34,9 @@ from scripts.story_builder.mission_recovery import (
     typed_cutscene_single_char_parameter_action,
     source_backed_call_server_callbacks_from_scene_graph,
     source_backed_hash_terminals_from_scene_graph,
+)
+from scripts.story_recovery.build_callserver_callback_audit import (
+    validate_callserver_serialized_contract,
 )
 
 
@@ -1306,6 +1310,92 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
         self.assertFalse(callbacks[0]["storyNode"])
         self.assertFalse(callbacks[0]["missionOwnershipEvidence"])
         self.assertFalse(callbacks[0]["orderEvidence"])
+
+    def test_call_server_decodes_non_null_callback_uid_list_generically(self):
+        payload = bytes.fromhex(
+            "02 00 00 00 "
+            "08 00 00 00 33 30 33 65 34 35 32 62 "
+            "08 00 00 00 62 38 37 34 37 63 30 30 "
+            "04 01 0a 00 00 00 65 76 65 6e 74 5f 61 72 67 73 "
+            "ff ff ff ff 00 00 00 00 ff ff ff ff "
+            "04 09 00 00 00 23 65 65 63 39 35 63 35 37 "
+            "ff ff ff ff 00 00 00 00 ff ff ff ff 00 01 00"
+        )
+        record = {
+            "code": 0x0E34,
+            "kind": 0,
+            "unionTag": 0x0034,
+            "serializedMemberCount": 14,
+            "payloadStart": 0,
+            "uid": "eec95c57",
+        }
+
+        detail = decode_levelscript_record_payload(
+            payload,
+            record,
+            next_start=len(payload),
+            action_map_role="actionList#49 linked",
+        )["callServer"]
+
+        self.assertEqual(["303e452b", "b8747c00"], detail["callClientOutputUIDs"])
+        self.assertEqual("#eec95c57", detail["eventName"])
+        self.assertTrue(detail["waitForCallback"])
+        self.assertEqual(len(payload), detail["consumedBytes"])
+        self.assertEqual(0, detail["trailingBytes"])
+
+    def test_call_server_complete_contract_validator_is_value_agnostic(self):
+        contract = {
+            "callClientOutputUIDs": None,
+            "eventArgsPtr": {
+                "pathValue": "arbitrary_param_name",
+                "paramSource": 100,
+                "path": "$9@_value",
+            },
+            "eventName": "arbitrary_runtime_event",
+            "useCustomEvent": True,
+            "waitForCallback": False,
+            "withEventArgs": True,
+            "consumedBytes": 72,
+            "trailingBytes": 4,
+        }
+        self.assertEqual(
+            [],
+            validate_callserver_serialized_contract(
+                contract,
+                source_file="fixture.json",
+                local_id=9,
+                uid="01020304",
+            ),
+        )
+
+    def test_call_server_complete_contract_validator_reports_missing_fields(self):
+        failures = validate_callserver_serialized_contract(
+            {"eventName": "event"},
+            source_file="fixture.json",
+            local_id=9,
+            uid="01020304",
+        )
+        self.assertEqual(
+            "callserver_serialized_fields_present",
+            failures[0]["gate"],
+        )
+        self.assertIn("eventArgsPtr", failures[0]["actualMissing"])
+
+    def test_call_server_contract_projection_excludes_graph_annotations(self):
+        projected = compact_callserver_serialized_contract({
+            "eventName": "#01020304",
+            "eventArgsPtr": {"pathValue": "event_args"},
+            "missionOwnershipEvidence": False,
+            "orderEvidence": False,
+            "storyGraphRole": "diagnostic-only",
+        })
+        self.assertEqual(
+            {
+                "eventName": "#01020304",
+                "eventArgsPtr": {"pathValue": "event_args"},
+            },
+            projected,
+        )
 
     def test_play_dialog_hide_punctuation_payload_is_not_a_graph_node(self):
         step = {
@@ -3380,6 +3470,10 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
         self.assertEqual(rows[0]["relation"], "levelscript_quest_state_gate")
         self.assertEqual(rows[0]["direction"], "context")
         self.assertEqual(rows[0]["conditionQuestState"], 2)
+        self.assertEqual(
+            rows[0]["sourceFile"],
+            "LevelScriptData/map01_lv002/200190001.json",
+        )
 
 
 if __name__ == "__main__":

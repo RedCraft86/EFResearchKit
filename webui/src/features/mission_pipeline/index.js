@@ -49,13 +49,15 @@
       luaPlaybackAccepted: "Lua playback admitted",
       luaTablePlaybackAccepted: "Lua table-owned playback",
       luaPlaybackRejected: "Lua case rejected",
+      luaHandleDispatchers: "Lua runtime dispatch branches",
       luaPlaybackAudit: "Shipped-Lua census",
+      cinematicProducer: "Original-binary producer",
       rootPlaybackAliases: "root playback aliases",
       exactDialogRootAlias: "exact DialogTree root alias",
       exactDialogRootAliasBoundary: "byte-identical payload; no activation or server branch-selection claim",
       definitionOnlyStory: "definition-only black text",
       nonMissionContentStory: "non-mission content",
-      nonMissionContentStoryHint: "Story ids proven to be authored non-mission content: speaker radio continuation, character SNS topics, factory tutorial actions, operator profile voices, or typed spacecraft DialogTrees. The evidence serializes no mission or quest owner. Authored fields and typed consumers admit a key; filenames never do.",
+      nonMissionContentStoryHint: "Story ids proven to be authored non-mission content: speaker radio continuation, character SNS topics, factory tutorial actions, operator profile voices, typed spacecraft DialogTrees, or complete actor/family definitions absent from every related typed tree. Definition gaps prove neither playback nor order. Authored fields and typed consumers admit a key; filenames never do.",
       missionGraph: "Cross-mission relations",
       missionGraphUpstream: "upstream",
       missionGraphDownstream: "downstream",
@@ -88,6 +90,40 @@
       playbackGate: "exact receiver playback gate",
       playbackGateTrue: "playback allowed when true",
       playbackGateBoundary: "This original-binary predicate controls only this receiver playback. It does not prove mission ownership, order between Story files, or a later server-side state write.",
+      postPlaybackControl: "exact post-playback control flow",
+      postPlaybackBranch: "typed local branch points",
+      postPlaybackServerHandoff: "server handoff (handler unresolved)",
+      postPlaybackBoundary: "Typed successor fields prove the local action graph after playback. Callback labels do not identify a server handler, mission/quest owner, state write, or cross-Story chronology.",
+      postPlaybackActionNameAudit: "Complete binary ActionBase naming",
+      postPlaybackFormatterTags: "validated formatter union tags",
+      postPlaybackFormatterNamed: "formatter-named action placements",
+      nativeTransitionNamedEndpoints: "named native transition endpoints",
+      postPlaybackOutsideActionBase: "unresolved action shapes",
+      postPlaybackActionNameBoundary: "Action names come from all 1,313 contiguous union tags recovered from the installed MemoryPack formatter. The compact unionTag plus serialized member count is authoritative; legacy combined raw opcodes remain provenance only. Class names do not select branches, establish mission ownership, or order Story files.",
+      callServerCallbackAudit: "Binary-validated CallServer callback branches",
+      callServerActionsDecoded: "CallServer actions decoded",
+      callServerCallbackHeaders: "exact callback headers",
+      callServerStoryCallbacks: "Story-bearing callback headers",
+      callServerDanglingCallbacks: "dangling callback UIDs",
+      callServerUnownedSurface: "callback UIDs on unresolved post-playback handoffs",
+      callServerPostPlaybackContracts: "exact post-playback handoff contracts",
+      callServerSelfUidContracts: "self-UID correlation labels",
+      callServerArgumentPaths: "mission/quest argument paths",
+      callServerSerializedContract: "serialized handoff contract",
+      callServerCallbackBoundary: "The installed binary proves the complete six-field CallServer shape and that each non-empty output string is a possible subexecutor header UID. Exact source/local-action joins recover every post-playback handoff contract; event names and argument parameters do not become mission ownership or Story order without an independent original-data foreign key.",
+      postPlaybackLevelSequenceAudit: "Exact post-playback LevelSequence files",
+      postPlaybackLevelSequenceActions: "typed sequence action placements",
+      postPlaybackLevelSequenceAssets: "exact original TextAssets",
+      postPlaybackLevelSequenceUnresolved: "unresolved serialized sequence IDs",
+      postPlaybackLevelSequenceFile: "related original LevelSequence file",
+      postPlaybackLevelSequenceValidationFailure: "excluded source identity mismatch",
+      postPlaybackLevelSequenceBoundary: "The action class comes from the installed binary formatter and the file joins only when the serialized ID equals the exported m_Name, Name, and decoded cutsceneName. It does not prove mission ownership or order separate Story files.",
+      postPlaybackVariableBridge: "Post-playback variable bridge audit",
+      postPlaybackVariableSetterStat: "typed post-playback variable setters",
+      postPlaybackVariableListeners: "exact variable-listener rows",
+      postPlaybackVariableMatches: "exact same-script/key matches",
+      postPlaybackVariableClosed: "route closed",
+      postPlaybackVariableBoundary: "Setter and listener keys come from exact current-build serialization. A join still cannot become Story order until Set<T>.Execute proves its notification family; this build has no exact same-level, same-script, same-key join at all.",
       activationFrontier: "offline activation frontier",
       nominalMissionHostCheck: "nominal-mission LevelData check",
       nominalMissionHostExcludes: "validated host excludes receiver script",
@@ -95,6 +131,22 @@
       nominalMissionCandidateBoundary: "filename/index candidate only; no mission owner or graph edge",
       activationClass: "static activation class",
       startPolicy: "LevelScript start policy",
+      binaryStartPolicy: "binary-validated start transition",
+      binaryStartPolicyBoundary: "The current binary proves that an Active, unfinished SameWithActive script enters PreStart without the area/manual gate. It does not identify the mission or server transition that activated the script, and it does not order Story files.",
+      binaryManualSelfControl: "binary-validated self-start carrier",
+      binaryManualSelfControlBoundary: "The current binary and metadata prove the CURRENT_LEVEL_ID/CURRENT_SCRIPT_ID target generally. This row also has an original serialized event-header link into ManualStart. It proves local self-start, not a mission owner, selected branch, or cross-Story order.",
+      binaryPublicStateControl: "binary-validated public state carriers",
+      binaryPublicStateControlBoundary: "The current client has exactly two direct server-derived public-state inputs: the full-scene LevelScript snapshot and the incremental state notification. They prove that Enabled is server-supplied, but neither carries mission, quest, Story, or branch-reason identity, and neither orders Story files.",
+      binaryClientActiveRequest: "binary-validated client Active request selector",
+      binaryClientActiveRequestBoundary: "The original LevelData type selects this generic runtime branch. The server supplies Enabled through the validated snapshot/notification carriers, but the server-side selection rule remains unavailable; this also does not prove a particular spatial result, server acceptance of Active, mission ownership, event firing, or Story order.",
+      binaryActiveVolume: "original authored activation volume",
+      binaryActiveVolumeBoundary: "This geometry is decoded directly from the original LevelScriptData and the gate behavior from the current game binary. It does not prove player position, the runtime gate result, mission ownership, event firing, or Story order.",
+      binaryClientStartRequest: "binary-validated client start request lifecycle",
+      binaryClientStartRequestBoundary: "The current client proves ManualStart flag → PreStart → typed CS start request → PreStartActionRunning. The public network sender APIs have zero direct current-AOT callers; this row still has no authored static carrier or resolved mission/server selector.",
+      binaryActivePhaseReceiver: "binary-validated Active-phase receiver",
+      binaryActivePhaseReceiverBoundary: "The exact original header is serialized for Active, not Start. The current binary registers the trigger graph during Setup and enables Active receivers in ActiveBegin. This proves availability without ManualStart, not who selected public Active, whether the event fired, mission ownership, branching, or Story order.",
+      binarySubGameManualStart: "binary-validated SubGame start carrier",
+      binarySubGameManualStartBoundary: "The current binary and typed original row prove SubGame id → bindScriptId → LevelScript lookup → ManualStart. This is an interaction start carrier, not mission ownership, selected branching, or cross-Story order.",
       levelDataContainer: "validated LevelData container",
       encounterController: "binary-proven Encounter controller",
       encounterModuleNamespace: "Encounter LsmPtr module namespace",
@@ -115,9 +167,17 @@
       questObserverBoundary: "MissionRuntime reads this LevelScript as an objective operand. This does not prove that the quest starts or owns the Story, or that the playback handoff sets the observed property.",
       literalCrossScriptControls: "literal cross-script manual controls",
       exactStartShapeAreaMatches: "exact complete start-shape / MissionArea matches",
-      serializedMissionIdTokens: "serialized MissionRuntime ID tokens",
+      serializedMissionIdTokens: "serialized mission-like string tokens",
+      authoredPropertyContract: "authored LevelData property contract",
+      missionObservedProperty: "exact MissionRuntime property observer",
+      unobservedProperty: "no exact mission-side observer",
+      propertyContractBoundary: "Property names and exact mission reads are visible context only. They do not identify the writer, Story owner, or scene-file order.",
       taskConditionEvidence: "fully decoded task conditions",
       taskConditionBoundary: "task evaluation dependency, not mission ownership or execution order",
+      taskRuntimeAuthority: "binary-validated task lifecycle authority",
+      taskRuntimeAuthorityBoundary: "Server and client task traffic identifies only scene, LevelScript, task, and condition/progress state. It carries no mission, quest, or Story identity and therefore supplies no ownership or file-order edge.",
+      taskProgressProperties: "exact LevelData task progress properties",
+      taskProgressPropertiesBoundary: "The lt:p/lt:mp pair persists this task condition's progress. It repeats task identity but does not identify the mission owner or playback order.",
       taskOperandSources: "exact authored operand sources",
       taskMissionConsumers: "typed MissionRuntime operand consumers",
       exactRuntimeTarget: "exact original-data runtime target",
@@ -144,6 +204,32 @@
       noServerExchange: "no server exchange",
       carrierAudit: "Closed managed-carrier candidates",
       noGraphEdges: "zero mission graph edges",
+      nativeCrossSystemConsumers: "Native cross-system consumer census",
+      crossSystemCallers: "cross-system callers",
+      missionDynamicConsumers: "mission-state → DynamicScene consumers",
+      missionLevelScriptConsumers: "MissionSystem → LevelScript consumers",
+      tripleSystemConsumers: "three-system consumers",
+      unreviewedConsumers: "unreviewed consumers",
+      closureReachableMethods: "reachable consumer methods",
+      closureDirectEdges: "direct closure edges",
+      deferredAvailabilityRefresh: "Deferred DynamicScene availability refresh",
+      pendingRefreshField: "pending refresh field",
+      availabilityOnlyNoOrder: "availability refresh only; no Story binding, mission ownership, or order",
+      fullMissionRuntimeSurface: "Full mission/quest runtime surface",
+      missionIdentityTypes: "mission/quest identity types",
+      crossFamilySignatures: "mission + LevelScript method signatures",
+      trackingMissionWrites: "tracking missionId writes",
+      trackingSceneWrites: "tracking sceneId writes",
+      trackingContextOnly: "tracking UI context only; no receiver activation or order",
+      managedCallableSurface: "Managed delegate/callback carrier surface",
+      callableFields: "callable fields",
+      missionCallableFields: "mission-runtime callable fields",
+      levelScriptCallableFields: "LevelScript callable fields",
+      callableEntryMethods: "typed binding entry methods",
+      directBindingCalls: "direct native binding calls",
+      crossFamilyBindings: "mission + LevelScript bindings",
+      callableNoActivation: "typed callbacks remain family-local; no receiver activation or order",
+      visualContextConsumers: "Story ↔ DynamicScene visual-context consumers",
       dynamicSceneCrossReferences: "DynamicScene identity cross-references",
       dynamicSceneCrossReferencesHint: "A DynamicScene object co-carries mission/quest state conditions, and its exact numeric logic id equals an exported LevelScript script id containing Story playback. One current row also has a typed LevelScript target and shared local Story path; the mission-condition-to-trigger activation edge is still missing, so no row gains mission ownership, playback causality, or order.",
       dynamicSceneLogicId: "DynamicScene logic id",
@@ -168,7 +254,13 @@
       directManagedCandidates: "direct managed candidates",
       nestedManagedCandidates: "typed managed candidates",
       nestedDependentCandidates: "nested-dependent candidates",
-      maxTypedDepth: "maximum custom-type depth",
+      maxTypedDepth: "maximum shortest type path",
+      fixedPointTraversal: "cycle-safe fixed point",
+      runtimeEntityHubCandidates: "runtime Entity-hub candidates",
+      sharedAggregateCandidates: "mixed runtime-aggregate candidates",
+      exactSerializedInstances: "exact indexed type labels",
+      indexedOriginalObjects: "indexed original objects",
+      truncatedScalarObjects: "truncated scalar projections",
       shippedLuaProducer: "shipped XLua producer",
       authoredSubmitItemActions: "typed SubmitItem actions",
       concreteQuestIds: "concrete authored quest ids",
@@ -181,6 +273,13 @@
       submissionDialogCoGateHint: "Authored co-gate only; it does not prove this dialog opens the submission UI.",
       submissionLevelScriptCoGate: "same AND objective with LevelScript stage max",
       submissionLevelScriptCoGateHint: "Exact authored co-gate only. The LevelScript can provide dialog playback context, but this does not prove it opens or owns the submission UI.",
+      levelScriptTaskDependency: "exact LevelScript task dependency",
+      levelScriptTaskDependencyHint: "The authored mission objective waits for this exact task tuple. It does not prove that the mission activates the script, owns its Story playback, or selects a Story branch.",
+      levelScriptSource: "original LevelScript condition source",
+      levelScriptExactEmptyMap: "exact empty executable map",
+      levelScriptExecutableMap: "serialized executable map",
+      levelScriptTailRecords: "non-executable tail records",
+      taskMetadata: "task metadata",
       or: "or",
       nativeDirectCallers: "native direct callers",
       runtimeObjectCandidates: "runtime/object candidates",
@@ -315,6 +414,10 @@
       branches: "fan-outs",
       storyOrder: "Source-proven Story order",
       storyOrderHint: "This is a partial causal graph. It preserves branches, joins, cycles, and unknown pairs; it is not a guessed total file sequence.",
+      missionObservedScriptContexts: "Mission-observed LevelScript contexts",
+      missionObservedScriptContextsHint: "An original typed mission objective reads the same level and LevelScript that contains native Story playback. This is related-file context, not ownership, activation, or order evidence.",
+      observedProperties: "Observed properties",
+      propertyWriterUnresolved: "Property writer unresolved",
       embeddedStory: "Nested Story playback",
       embeddedStoryHint: "Original DialogTree connections place this child content at an exact line, entry, or finish boundary in the parent. This is containment, not a complete file-order edge or proof of the parent mission trigger.",
       embeddedBetween: "between parent lines",
@@ -322,6 +425,16 @@
       embeddedAtFinish: "at parent finish",
       readingPopup: "Reading popup",
       strongEdges: "strong order edges",
+      questSucceedLifecycle: "Binary-proven quest-success order",
+      questSucceedLifecycleHint: "An exact objective Story completion precedes the same quest's authored succeed client action. The installed binary proves the success dispatch; it does not prove that the quest succeeds or which successor branch the server selects.",
+      questSucceedLifecyclePath: "objective Story completed → server success state → succeed client action",
+      questSucceedLifecycleEdges: "quest-success edges",
+      questStartDefinitions: "quest-start definitions",
+      questStartDefinitionsTitle: "Authored quest-start Story actions",
+      questStartDefinitionsHint: "These rows exist in the original MissionRuntime data, but the complete current AOT census finds no slot-1 dispatcher. They are attached evidence, not scene-order edges.",
+      questActionStartNoDispatch: "authored definition · no current AOT dispatch",
+      questActionBinaryDispatch: "binary-proven lifecycle dispatch",
+      questSucceedLifecycleOriginals: "original lifecycle evidence files",
       weakEdges: "context-only edges",
       orderCycles: "source cycles",
       unknownPairs: "unordered pairs",
@@ -333,12 +446,97 @@
       dialogConditionalFalseArm: "condition false",
       dialogConditionalNativeProof: "Native branch selection",
       questFork: "quest fork",
+      questForkStructure: "Authored quest-fork structure",
+      questForkStructureHint: "Arm roles, guards, terminal shape, and reconvergence come from the original MissionRuntime file. Server activation and exclusivity remain unresolved.",
+      questForkMainPathArm: "main-path arm",
+      questForkAuxiliaryArm: "auxiliary arm",
+      questForkGuardedArm: "typed failure guard",
+      questForkObjectiveConditions: "completion conditions",
+      questForkReconverges: "first common descendant",
+      questForkTerminal: "terminal",
+      questForkContinues: "continues",
+      questForkFlowSort: "display flow",
+      questForkQuestType: "binary quest type",
+      questForkShowMode: "binary visibility mode",
+      questSemanticFields: "Quest type and visibility semantics",
+      questSemanticFieldsHint: "These installed-binary enum names describe client presentation and post-state behavior. They do not select a successor arm.",
+      questEnumComparisons: "exact enum comparisons",
+      questBlockNotification: "post-lifecycle Block notification",
+      questOptionalObjectiveFlag: "Optional objective presentation flag",
+      structuredIdentityCensus: "Original structured identity census",
+      structuredIdentityCensusCounts: "candidate files / records / direct carriers",
+      structuredIdentityReceiverMatches: "receiver matches / unreviewed shapes",
+      questForkArmCorridor: "sibling-exclusive quest corridor",
+      questForkArmStoryEvidence: "exact related Story evidence",
+      questForkArmOriginalFiles: "arm-related original files",
+      questForkArmEvidenceBoundary: "These files and Story relations occur on quests reachable only from this sibling arm. They do not prove that the server selected the arm or that sibling arms are mutually exclusive.",
+      questForkServerPolicy: "server activation unresolved",
+      questForkServerApplication: "Server-applied arm identity",
+      questForkServerApplicationHint: "The original binary applies the server-supplied quest identity and state; it does not choose a successor arm.",
+      questForkServerApplicationBoundary: "This proves client-side application after server selection, not the server-only selection policy, sibling exclusivity, or Story-file order.",
+      questForkEnableApplication: "Validated enable / pause routes",
+      questForkEnableApplicationHint: "The original handler combines the packet enable flag with the current runtime pause flag. The serialized previous-state field is not read.",
+      questForkEnableRoute: "packet enable / current pause",
+      questForkUnreadControls: "serialized but unread",
+      questForkStateTransitions: "Validated state routes",
+      questForkPacketShape: "Server packet",
+      questForkMainPathAuxiliary: "main path + auxiliary",
+      questForkAllAuxiliary: "all auxiliary",
+      questForkMultipleMainPath: "multiple main-path arms",
+      questForkOpenDivergence: "open divergence",
+      questForkDivergentTerminals: "divergent terminals",
+      questForkMixedTerminal: "terminal + continuing",
+      questForkReconverging: "reconverging",
+      questForkAuthority: "Quest fork authority",
+      serverSelectedStart: "server-selected start; prerequisite topology only",
+      questStartReadEvidence: "StartQuest field reads",
+      questForkAuthorityHint: "The client initializes the one quest identity selected by the server. This fan-out does not prove that every arm starts or that exactly one arm is exclusive.",
+      wholeClientTopologyConsumers: "Whole-client topology consumers",
+      verifiedQuestInfoCalls: "verified GetQuestInfo calls",
+      activePredecessorConsumers: "active predecessor consumers",
+      nonSortFlowConsumers: "non-sort flowIndex consumers",
+      topologyLifecycleCalls: "topology-driven lifecycle calls",
+      topologyConsumerMethods: "Native field-consumer methods",
+      displaySortOnly: "two-row display sort",
+      deprecatedDescriptionOnly: "deprecated description fallback",
+      mainPathContextOnly: "level/description context selection",
+      mainPathCacheOnly: "derived main-path membership cache",
+      questVisibilityPresentation: "visibility/tracker presentation",
+      questTypePresentation: "quest-type query/presentation",
+      questTypePostLifecycle: "quest type read after lifecycle application",
+      questTypeBlockNotification: "Block notification after lifecycle application",
       questMerge: "quest join",
       nativeSplitFanout: "native Split fan-out",
       nativeIfElseBranch: "native If/Else branch",
       nativeSwitchBranch: "native Switch branch",
       nativeControlMerge: "native branch convergence",
+      nativeMissionStateBranches: "Mission-state Story alternatives",
+      nativeMissionStateBranchesHint: "The original LevelScript and installed native getter/comparer mapping prove which Story files occupy each state-controlled arm, including files nominally grouped under another mission. These are alternatives, not Story order or ownership.",
+      nativeMissionStateExternal: "cross-mission alternative",
+      nativeCrossBoundaryBranch: "complete cross-boundary branch",
+      nativeCrossBoundaryStories: "cross-boundary branches",
+      nativeCrossBoundaryExternal: "outside nominal mission",
+      nativeCrossBoundaryParallelHint: "The original LevelScript paths and installed Split scheduler prove Story-bearing sibling fan-out from one event. Nominal mission grouping does not prove ownership, and sibling slots are not chronological order.",
+      nativeCrossBoundaryConditionalHint: "The original LevelScript cases and installed native control mapping prove Story-bearing alternatives from one event. Nominal mission grouping does not prove ownership or order among alternatives.",
+      nativeFullArmCoverage: "complete serialized arms",
+      nativeSerializedArms: "serialized arms",
+      nativeNonStoryArm: "non-Story action arm",
+      nativeInactiveArm: "inactive serialized target",
+      nativeRuntimeTerminalArm: "runtime terminal",
+      nativeArmEntryAction: "entry action",
+      nativeArmExclusiveActions: "arm-exclusive actions",
+      nativeSharedDownstream: "shared downstream actions",
+      nativeFullArmHint: "Every slot is decoded from the runtime-active action map in the original LevelScript and checked against the installed binary mapping. Non-Story sibling actions do not establish Story ownership, chronology, or mission membership.",
       nativeOrderedSequence: "native ordered action sequence",
+      nativeStoryTransitions: "Exact native Story transitions",
+      nativeStoryTransitionsHint: "Each edge is an original LevelScript path-prefix relation. The typed suffix shows whether playback continues linearly or crosses a parallel, conditional, outcome, or ordered branch.",
+      nativeStoryTransitionLinear: "linear",
+      nativeStoryTransitionParallel: "parallel fan-out",
+      nativeStoryTransitionConditional: "conditional branch",
+      nativeStoryTransitionOutcome: "success/failure branch",
+      nativeStoryTransitionOrdered: "ordered sequence",
+      nativeStoryTransitionOrderedExit: "after ordered sequence",
+      nativeStoryTransitionBranching: "branch-bearing transitions",
       nativeRelatedActionGraphs: "Related original LevelScript graphs",
       nativeRelatedActionGraphsHint: "Each file is attached only because an exact serialized event-to-Story path reaches a Story file already in this mission. Its remaining actions are file-local context, not extra mission order.",
       nativeControlReachability: "exact typed downstream reachability",
@@ -358,6 +556,15 @@
       serverPlaceholders: "server gates",
       graph: "Quest graph",
       nativeBoundary: "Native boundary",
+      stateApplicationContract: "Who selects the next quest?",
+      serverSelectedIdentity: "server-selected identity/state control",
+      stateApplicationValidated: "typed paths validated",
+      noClientSuccessorSelector: "no client successor selector",
+      lifecycleIdentityFlow: "same packet identity",
+      extraThreadScheduler: "Parallel branch runtime authority",
+      extraThreadSchedulerValidated: "binary writer shapes validated",
+      extraThreadSiblingBoundary: "sibling slots are not chronological order",
+      extraThreadDirectCalls: "direct scheduler calls",
       exchanges: "exchanges",
       asynchronousExchange: "asynchronous",
       boundaryOnly: "native boundary only",
@@ -389,7 +596,7 @@
       missionStateDependenciesHint: "These exact local mission-state gates are shown independently from quest ownership. Reading synchronized state sends nothing; any separate interaction request is stated on its own evidence row.",
       missionStateDependencyBoundary: "Dependency evidence is counted separately from coverage bindings",
       subGameBindings: "Original-data SubGame runtime shell",
-      subGameBindingsHint: "The shipped typed row carries mission id and bound LevelScript id together. Native code proves WorldChallenge quit can use bindScriptId to end that script, but the audited start paths do not read it. No quest, scene, or Story identity is added from co-membership; OCR, manual, and gameplay cross-references cannot create this edge.",
+      subGameBindingsHint: "The shipped typed row carries mission id and bound LevelScript id together. The current binary proves that InteractiveLogicChallengeStartPoint resolves this row by SubGame id, reads bindScriptId, looks up the LevelScript, and calls ManualStart. That exact start carrier still does not establish mission or Story ownership; OCR, manual, and gameplay cross-references cannot create that edge.",
       subGameScript: "bound LevelScript",
       subGameMode: "runtime mode",
       subGameNetworkKey: "network-authored key",
@@ -495,6 +702,8 @@
       triggerPlaybackAliasConnected: "root playback alias · owner connected",
       triggerDefinition: "definition only · no consumer",
       offlineRecoveryBoundary: "Offline recovery boundary",
+      projectAuthoredBoundary: "Project-authored WebUI content",
+      projectAuthoredEvidence: "Excluded from original-game recovery",
       partialRecoveryBoundary: "Partial registered carrier",
       runtimeContextRecoveryBoundary: "Exact runtime context boundary",
       offlineRecoveryNoGraphEdge: "no ownership or order edge",
@@ -504,6 +713,7 @@
       offlineRecoveryOrder: "Order boundary",
       offlineRecoveryReopen: "Reopen when",
       offlineRecoverySources: "Original-data files",
+      projectAuthoredSources: "Project source files",
       runtimeRecoveryNominalMission: "Nominal Story mission",
       runtimeRecoveryContextMission: "Validated runtime shell",
       runtimeRecoveryContextMissions: "Validated runtime contexts",
@@ -514,6 +724,7 @@
       runtimeRecoveryNpcCrossMissionContext: "Exact cross-mission NPC runtime context - no ownership or order edge",
       runtimeRecoveryNpcMultiMissionContext: "Exact multi-mission NPC runtime contexts - alternatives, not chronology",
       runtimeRecoveryQuestAnchors: "Shell quest anchors",
+      runtimeRecoveryGate: "Decoded gate",
       runtimeRecoveryNativePaths: "Exact native path",
       runtimeRecoveryPlaybackRoots: "Exact playback root",
       runtimeRecoveryCarrierParents: "Exact carrier parents",
@@ -525,7 +736,7 @@
       offlineRecoveryStoryRelation: "Story relation",
       offlineRecoveryMissionTextRows: "mission/objective text rows",
       offlineRecoveryGaps: "source-bounded activation gaps",
-      offlineRecoveryGapsHint: "These exact definitions or runtime contexts are recovered from the current game build, but no original-data mission activator and relative mission-order edge are both known. OCR and manual order are not used here.",
+      offlineRecoveryGapsHint: "These rows are source-bounded and add no mission-order edge. Original-game rows expose exact definitions or runtime contexts without a recovered mission activator; project-authored rows are explicitly not game data. OCR and manual order are not used here.",
       offlineRecoveryInternalTimeline: "internal Timeline",
       offlineRecoveryLines: "lines",
       offlineRecoveryDefinedOptions: "Defined options (route unresolved)",
@@ -610,8 +821,17 @@
       offlineRecoveryEvidenceBinaryRegisteredDialogTree: "Registered DialogTree definition - no activator on current original-data surfaces",
       offlineRecoveryEvidenceMissionlessNativePlayback: "Exact local playback - mission bridge and order unknown",
       runtimeRecoveryEvidenceSameMissionLevelDataPlayback: "Exact native playback in this mission shell - quest trigger and order unknown",
+      runtimeRecoveryEvidenceLuaControllerPlayback: "Exact shipped-Lua playback - mission owner and order unknown",
+      runtimeRecoveryEvidenceDialogTreePlaybackContext: "Exact DialogTree playback in quest context - relative order unknown",
+      runtimeRecoveryEvidenceQuestStateGate: "Exact quest-state-gated playback - relative order unknown",
+      runtimeRecoveryLuaController: "Shipped Lua controller",
+      runtimeRecoveryLuaCall: "Typed Lua playback call",
       runtimeRecoveryEvidenceCrossMissionLevelDataPlayback: "Exact native playback in a related mission shell - ownership and order unknown",
       offlineRecoveryEvidenceCutsceneRoot: "Cutscene root resolved - mission activator unknown",
+      offlineRecoveryEvidenceCutsceneAlias: "Exact cutscene root/playable alias - mission activator unknown",
+      offlineRecoveryCutsceneAlias: "Exact root/playable identity",
+      offlineRecoveryCutsceneAliasRootRole: "root definition",
+      offlineRecoveryCutsceneAliasPlayableRole: "played timeline asset",
       offlineRecoveryNativeConsumer: "Original-binary consumer",
       offlineRecoverySnsDefinition: "SNS internal definition",
       offlineRecoveryMissingAudio: "audio ids absent",
@@ -651,6 +871,10 @@
       offlineRecoveryCrossMissionTracking: "Cross-mission SNS tracking (navigation only)",
       offlineMissionShell: "Story-only recovery shell",
       offlineMissionShellHint: "No MissionRuntimeAsset exists in the current export. This page exposes exact table definitions and current-build negative carrier evidence only; it has no quest, ownership, playback, handshake, or order edge.",
+      storyAggregateShell: "Declared Story variant aggregate",
+      storyAggregateShellHint: "This Story namespace combines exact serialized evidence from its declared mission variants. It is not a MissionRuntime mission and does not establish mission ownership, quest ownership, branch selection, or extra chronology.",
+      storyAggregateVariants: "Declared mission variants",
+      storyAggregateOriginals: "Variant MissionRuntime source files",
       questAttachmentDiagnostic: "Story ownership unresolved",
       questAttachmentDiagnosticHint: "Exact offline evidence closes this broad Story co-membership as non-owning. It does not create a quest-to-Story or order edge.",
       questAttachmentDiagnosticStories: "Diagnostic Story context",
@@ -716,7 +940,7 @@
       relationMissionTrackedWorldEntityLevelScriptStage: "服务器先同步该 LevelScript 阶段，再进入精确的本地 StageChanged 播放路径；类型化世界实体跟踪只确定唯一任务上下文，不证明任何候选任务节点写入了该阶段",
       relationQuestProgressLockedInteractive: "每个播放实例都由精确的交互实体事件路径触发；该实体的强类型进度锁等待此任务达到已完成状态（仅为本地上下文，不证明剧情归属，也不证明任务激活、播放或完成因果）",
       subGameBindings: "原始数据 SubGame 运行时外壳",
-      subGameBindingsHint: "游戏内置的类型化记录同时包含使命 ID 与绑定的 LevelScript ID。原生代码证明 WorldChallenge 退出时可用 bindScriptId 结束该脚本，但已审计的启动路径并不读取它。共同出现不会补出任务、场景或剧情身份；OCR、人工记录和实机交叉参考都不能创建这条边。",
+      subGameBindingsHint: "游戏内置的类型化记录同时包含使命 ID 与绑定的 LevelScript ID。当前二进制证明 InteractiveLogicChallengeStartPoint 会按 SubGame ID 解析该记录、读取 bindScriptId、查找 LevelScript 并调用 ManualStart。这个精确启动载体仍不证明使命或剧情所有权；OCR、人工记录和实机交叉参考都不能创建这条边。",
       subGameScript: "绑定的 LevelScript",
       subGameMode: "运行模式",
       subGameNetworkKey: "网络原始键",
@@ -747,10 +971,12 @@
       luaPlaybackAccepted: "已采纳 Lua 播放",
       luaTablePlaybackAccepted: "Lua 表归属播放",
       luaPlaybackRejected: "Lua 大小写拒绝",
+      luaHandleDispatchers: "Lua 运行时分派分支",
       luaPlaybackAudit: "随游戏发布的 Lua 普查",
+      cinematicProducer: "原始二进制播放生产者",
       definitionOnlyStory: "仅有定义的黑屏文本",
       nonMissionContentStory: "非使命内容",
-      nonMissionContentStoryHint: "这些剧情 ID 已由原生数据证明属于非使命内容：按说话人分的电台续播语音、角色 SNS 话题、工厂教程动作、干员档案语音，或舰船系统强类型对话树。证据没有序列化使命或任务归属。仅依据原生字段和强类型消费者判定，绝不依据文件名。",
+      nonMissionContentStoryHint: "这些剧情 ID 已由原生数据证明属于非使命内容：按说话人分的电台续播语音、角色 SNS 话题、工厂教程动作、干员档案语音、舰船系统强类型对话树，或在所有相关强类型树中均无载体的完整角色/类别定义。定义缺口不证明播放或顺序；仅依据原生字段和强类型消费者判定，绝不依据文件名。",
       missionGraph: "跨使命关系",
       missionGraphUpstream: "上游",
       missionGraphDownstream: "下游",
@@ -782,6 +1008,16 @@
       playbackGate: "精确接收器播放条件",
       playbackGateTrue: "条件为真时允许播放",
       playbackGateBoundary: "该原始二进制条件只控制此接收器的播放；它不能证明任务归属、Story 文件之间的顺序或后续服务器状态写入。",
+      postPlaybackControl: "精确的播放后控制流",
+      postPlaybackBranch: "类型化本地分支点",
+      postPlaybackServerHandoff: "服务器交接（处理器未解析）",
+      postPlaybackBoundary: "类型化后继字段只证明播放后的本地动作图。回调标签不能识别服务器处理器、使命/任务归属、状态写入或跨 Story 时序。",
+      postPlaybackVariableBridge: "播放后变量桥接审计",
+      postPlaybackVariableSetterStat: "类型化播放后变量写入",
+      postPlaybackVariableListeners: "精确变量监听器行",
+      postPlaybackVariableMatches: "同脚本/键精确匹配",
+      postPlaybackVariableClosed: "路径已关闭",
+      postPlaybackVariableBoundary: "写入器和监听器键来自当前版本的精确序列化。在 Set<T>.Execute 的通知类型得到证明前，连接仍不能成为 Story 顺序证据；当前版本完全没有同关卡、同脚本、同键的精确连接。",
       exactReceiverNodesHint: "每个节点都来自原始 LevelScript 事件选择器，并有到剧情播放的精确控制路径；它能组织更多恢复文件，但不声明使命或任务所有者。",
       activationFrontier: "离线激活边界",
       nominalMissionHostCheck: "名义使命 LevelData 检查",
@@ -790,6 +1026,22 @@
       nominalMissionCandidateBoundary: "仅文件名/索引候选；不表示使命所有者或图边",
       activationClass: "静态激活分类",
       startPolicy: "LevelScript 启动策略",
+      binaryStartPolicy: "二进制已验证的启动转换",
+      binaryStartPolicyBoundary: "当前二进制证明：处于 Active 且尚未结束的 SameWithActive 脚本会绕过区域/手动门进入 PreStart。它不识别激活该脚本的使命或服务器转换，也不排列 Story 文件。",
+      binaryManualSelfControl: "二进制已验证的自启动载体",
+      binaryManualSelfControlBoundary: "当前二进制与元数据通用地证明 CURRENT_LEVEL_ID/CURRENT_SCRIPT_ID 目标；本行另有原始序列化事件头指向 ManualStart。它只证明本地自启动，不证明使命所有者、所选分支或跨 Story 顺序。",
+      binaryPublicStateControl: "二进制已验证的公共状态载体",
+      binaryPublicStateControlBoundary: "当前客户端只有两条直接来自服务器的公共状态输入：完整场景 LevelScript 快照与增量状态通知。它们证明 Enabled 由服务器提供，但都不携带使命、任务、Story 或分支原因，也不排列 Story 文件。",
+      binaryClientActiveRequest: "二进制已验证的客户端 Active 请求选择器",
+      binaryClientActiveRequestBoundary: "原始 LevelData 类型选择这条通用运行时分支。已验证的快照/通知载体证明 Enabled 由服务器提供，但服务器端选择规则仍不可见；它也不证明某次空间结果、服务端是否接受 Active、任务归属、事件是否发生或 Story 顺序。",
+      binaryActiveVolume: "原始创作激活范围",
+      binaryActiveVolumeBoundary: "该几何直接解码自原始 LevelScriptData，门控行为来自当前游戏二进制。它不证明玩家位置、运行时门控结果、使命归属、事件是否发生或 Story 顺序。",
+      binaryClientStartRequest: "二进制已验证的客户端启动请求生命周期",
+      binaryClientStartRequestBoundary: "当前客户端证明 ManualStart 标记 → PreStart → 类型化 CS 启动请求 → PreStartActionRunning。公共网络发送 API 在当前 AOT 中没有直接调用者；此行仍无已创作的静态载体，也未解析使命/服务器选择器。",
+      binaryActivePhaseReceiver: "二进制已验证的 Active 阶段接收器",
+      binaryActivePhaseReceiverBoundary: "该精确原始事件头序列化为 Active，而非 Start。当前二进制证明触发图在 Setup 期间注册，并在 ActiveBegin 中启用 Active 接收器。这只证明无需 ManualStart 即可用，不证明谁选择了公共 Active、事件是否发生、使命归属、分支或 Story 顺序。",
+      binarySubGameManualStart: "二进制已验证的 SubGame 启动载体",
+      binarySubGameManualStartBoundary: "当前二进制与类型化原始记录证明 SubGame ID → bindScriptId → LevelScript 查找 → ManualStart。它是交互启动载体，不证明使命所有权、所选分支或跨 Story 顺序。",
       levelDataContainer: "已验证的 LevelData 容器",
       encounterController: "二进制已证实的遭遇战控制器",
       encounterModuleNamespace: "遭遇战 LsmPtr 模块命名空间",
@@ -828,6 +1080,32 @@
       noServerExchange: "不与服务器交换",
       carrierAudit: "已关闭的托管载体候选",
       noGraphEdges: "使命图边为零",
+      nativeCrossSystemConsumers: "原生跨系统消费者普查",
+      crossSystemCallers: "跨系统调用者",
+      missionDynamicConsumers: "任务状态 → DynamicScene 消费者",
+      missionLevelScriptConsumers: "MissionSystem → LevelScript 消费者",
+      tripleSystemConsumers: "三系统消费者",
+      unreviewedConsumers: "未审查消费者",
+      closureReachableMethods: "可达消费者方法",
+      closureDirectEdges: "直接调用闭包边",
+      deferredAvailabilityRefresh: "延迟 DynamicScene 可用性刷新",
+      pendingRefreshField: "待刷新字段",
+      availabilityOnlyNoOrder: "仅证明可用性刷新；不证明剧情绑定、任务归属或顺序",
+      fullMissionRuntimeSurface: "完整任务/任务节点运行时表面",
+      missionIdentityTypes: "任务身份类型",
+      crossFamilySignatures: "任务 + LevelScript 方法签名",
+      trackingMissionWrites: "追踪对象 missionId 写入",
+      trackingSceneWrites: "追踪对象 sceneId 写入",
+      trackingContextOnly: "仅为追踪界面上下文；不证明接收器激活或顺序",
+      managedCallableSurface: "托管委托/回调载体表面",
+      callableFields: "可调用字段",
+      missionCallableFields: "任务运行时可调用字段",
+      levelScriptCallableFields: "LevelScript 可调用字段",
+      callableEntryMethods: "类型化绑定入口方法",
+      directBindingCalls: "原生直接绑定调用",
+      crossFamilyBindings: "任务 + LevelScript 绑定",
+      callableNoActivation: "类型化回调仅在各自系统内绑定；不证明接收器激活或顺序",
+      visualContextConsumers: "剧情 ↔ DynamicScene 视觉上下文消费者",
       dynamicSceneCrossReferences: "DynamicScene 身份交叉引用",
       dynamicSceneCrossReferencesHint: "DynamicScene 对象携带任务状态条件，其精确数字逻辑 ID 与包含剧情播放的 LevelScript 脚本 ID 相同。当前一行还具有类型化 LevelScript 目标和共享的本地剧情路径；任务条件到触发器激活的链路仍缺失，因此所有行都不表示任务所有权、播放因果或顺序。",
       dynamicSceneLogicId: "DynamicScene 逻辑 ID",
@@ -852,7 +1130,13 @@
       directManagedCandidates: "直接托管候选",
       nestedManagedCandidates: "托管类型路径候选",
       nestedDependentCandidates: "依赖嵌套路径的候选",
-      maxTypedDepth: "最大自定义类型深度",
+      maxTypedDepth: "最短类型路径最大深度",
+      fixedPointTraversal: "循环安全不动点",
+      runtimeEntityHubCandidates: "运行时实体枢纽候选",
+      sharedAggregateCandidates: "混合运行时聚合候选",
+      exactSerializedInstances: "精确索引类型标签",
+      indexedOriginalObjects: "已索引原始对象",
+      truncatedScalarObjects: "标量投影截断对象",
       shippedLuaProducer: "已发布 XLua 生产者",
       authoredSubmitItemActions: "类型化提交物品动作",
       concreteQuestIds: "具体原始 questId",
@@ -865,6 +1149,13 @@
       submissionDialogCoGateHint: "仅表示原始条件共同成立；不证明该对话会打开提交界面。",
       submissionLevelScriptCoGate: "与关卡脚本阶段完成同属 AND 目标",
       submissionLevelScriptCoGateHint: "仅表示精确的原始条件共门。关卡脚本可提供对话播放上下文，但不证明它会打开或拥有提交界面。",
+      levelScriptTaskDependency: "精确的关卡脚本任务依赖",
+      levelScriptTaskDependencyHint: "原始使命目标等待这个精确任务元组。它不证明使命会激活该脚本、拥有其剧情播放或选择剧情分支。",
+      levelScriptSource: "原始关卡脚本条件来源",
+      levelScriptExactEmptyMap: "精确的空可执行映射",
+      levelScriptExecutableMap: "序列化可执行映射",
+      levelScriptTailRecords: "不可执行尾部记录",
+      taskMetadata: "任务元数据",
       or: "或",
       nativeDirectCallers: "原生直接调用者",
       runtimeObjectCandidates: "运行时/对象候选",
@@ -995,6 +1286,15 @@
       serverPlaceholders: "服务端条件",
       graph: "任务节点图",
       nativeBoundary: "原生实现边界",
+      stateApplicationContract: "下一任务由谁选择？",
+      serverSelectedIdentity: "服务端选择的标识与状态控制",
+      stateApplicationValidated: "已验证类型路径",
+      noClientSuccessorSelector: "客户端无后继选择器",
+      lifecycleIdentityFlow: "同一数据包标识",
+      extraThreadScheduler: "并行分支运行时权威",
+      extraThreadSchedulerValidated: "已验证原生写入形状",
+      extraThreadSiblingBoundary: "同级槽位不是时间顺序",
+      extraThreadDirectCalls: "直接调度器调用",
       exchanges: "项消息",
       asynchronousExchange: "异步",
       boundaryOnly: "仅原生边界",
@@ -1108,6 +1408,8 @@
       triggerPlaybackAliasConnected: "\u6839\u64ad\u653e\u522b\u540d \u00b7 \u5f52\u5c5e\u5df2\u8fde\u63a5",
       triggerDefinition: "\u4ec5\u5b9a\u4e49 \u00b7 \u65e0\u6d88\u8d39\u8005",
       offlineRecoveryBoundary: "\u79bb\u7ebf\u6062\u590d\u8fb9\u754c",
+      projectAuthoredBoundary: "WebUI \u9879\u76ee\u81ea\u5efa\u5185\u5bb9",
+      projectAuthoredEvidence: "\u5df2\u4ece\u539f\u59cb\u6e38\u620f\u6062\u590d\u4e2d\u6392\u9664",
       partialRecoveryBoundary: "\u90e8\u5206\u5df2\u6ce8\u518c\u8f7d\u4f53",
       runtimeContextRecoveryBoundary: "\u7cbe\u786e\u8fd0\u884c\u65f6\u4e0a\u4e0b\u6587\u8fb9\u754c",
       offlineRecoveryNoGraphEdge: "\u4e0d\u751f\u6210\u5f52\u5c5e\u6216\u987a\u5e8f\u8fb9",
@@ -1117,6 +1419,7 @@
       offlineRecoveryOrder: "\u987a\u5e8f\u8fb9\u754c",
       offlineRecoveryReopen: "\u91cd\u65b0\u8c03\u67e5\u6761\u4ef6",
       offlineRecoverySources: "\u539f\u59cb\u6570\u636e\u6587\u4ef6",
+      projectAuthoredSources: "\u9879\u76ee\u6e90\u6587\u4ef6",
       runtimeRecoveryNominalMission: "\u5267\u60c5\u6587\u4ef6\u540d\u4e49\u4efb\u52a1",
       runtimeRecoveryContextMission: "\u5df2\u9a8c\u8bc1\u8fd0\u884c\u65f6\u5916\u58f3",
       runtimeRecoveryContextMissions: "\u5df2\u9a8c\u8bc1\u8fd0\u884c\u65f6\u4e0a\u4e0b\u6587",
@@ -1127,6 +1430,7 @@
       runtimeRecoveryNpcCrossMissionContext: "\u7cbe\u786e\u8de8\u4efb\u52a1 NPC \u8fd0\u884c\u65f6\u4e0a\u4e0b\u6587\uff0c\u4e0d\u8bc1\u660e\u5f52\u5c5e\u6216\u987a\u5e8f\u8fb9",
       runtimeRecoveryNpcMultiMissionContext: "\u7cbe\u786e\u591a\u4efb\u52a1 NPC \u8fd0\u884c\u65f6\u4e0a\u4e0b\u6587\uff0c\u8868\u793a\u5019\u9009\u800c\u975e\u65f6\u5e8f",
       runtimeRecoveryQuestAnchors: "\u5916\u58f3\u4efb\u52a1\u8282\u70b9",
+      runtimeRecoveryGate: "\u5df2\u89e3\u7801\u95e8\u63a7",
       runtimeRecoveryNativePaths: "\u7cbe\u786e\u539f\u751f\u8def\u5f84",
       runtimeRecoveryPlaybackRoots: "\u7cbe\u786e\u64ad\u653e\u6839\u8282\u70b9",
       runtimeRecoveryCarrierParents: "\u7cbe\u786e\u8f7d\u4f53\u7236\u8282\u70b9",
@@ -1138,7 +1442,7 @@
       offlineRecoveryStoryRelation: "\u5267\u60c5\u5173\u7cfb",
       offlineRecoveryMissionTextRows: "\u4f7f\u547d/\u76ee\u6807\u6587\u672c\u884c",
       offlineRecoveryGaps: "\u539f\u59cb\u6570\u636e\u9650\u5b9a\u7684\u6fc0\u6d3b\u7f3a\u53e3",
-      offlineRecoveryGapsHint: "\u8fd9\u4e9b\u7cbe\u786e\u5b9a\u4e49\u6216\u8fd0\u884c\u65f6\u4e0a\u4e0b\u6587\u5df2\u4ece\u5f53\u524d\u6e38\u620f\u7248\u672c\u6062\u590d\uff0c\u4f46\u5c1a\u672a\u540c\u65f6\u627e\u5230\u539f\u59cb\u6570\u636e\u4e2d\u7684\u4efb\u52a1\u6fc0\u6d3b\u5668\u4e0e\u4efb\u52a1\u5185\u76f8\u5bf9\u987a\u5e8f\u8fb9\u3002\u6b64\u5904\u4e0d\u4f7f\u7528 OCR \u6216\u624b\u52a8\u987a\u5e8f\u4f5c\u4e3a\u8bc1\u636e\u3002",
+      offlineRecoveryGapsHint: "\u8fd9\u4e9b\u8bb0\u5f55\u90fd\u6709\u660e\u786e\u7684\u6765\u6e90\u8fb9\u754c\uff0c\u4e14\u4e0d\u65b0\u589e\u4efb\u52a1\u987a\u5e8f\u8fb9\u3002\u539f\u59cb\u6e38\u620f\u8bb0\u5f55\u4ec5\u4fdd\u7559\u5df2\u9a8c\u8bc1\u7684\u5b9a\u4e49\u6216\u8fd0\u884c\u65f6\u4e0a\u4e0b\u6587\uff0c\u9879\u76ee\u81ea\u5efa\u8bb0\u5f55\u5219\u660e\u786e\u4e0d\u5c5e\u4e8e\u6e38\u620f\u6570\u636e\u3002\u6b64\u5904\u4e0d\u4f7f\u7528 OCR \u6216\u624b\u52a8\u987a\u5e8f\u4f5c\u4e3a\u8bc1\u636e\u3002",
       offlineRecoveryInternalTimeline: "\u5185\u90e8 Timeline",
       offlineRecoveryLines: "\u884c",
       offlineRecoveryDefinedOptions: "\u5df2\u5b9a\u4e49\u9009\u9879\uff08\u8def\u7531\u672a\u89e3\u6790\uff09",
@@ -1223,8 +1527,17 @@
       offlineRecoveryEvidenceBinaryRegisteredDialogTree: "\u5df2\u6ce8\u518c DialogTree \u5b9a\u4e49 \u2014 \u5f53\u524d\u539f\u59cb\u6570\u636e\u8868\u9762\u672a\u627e\u5230\u6fc0\u6d3b\u5668",
       offlineRecoveryEvidenceMissionlessNativePlayback: "\u5df2\u7cbe\u786e\u6062\u590d\u672c\u5730\u64ad\u653e\uff0c\u4efb\u52a1\u6865\u63a5\u4e0e\u987a\u5e8f\u672a\u77e5",
       runtimeRecoveryEvidenceSameMissionLevelDataPlayback: "\u5df2\u7cbe\u786e\u6062\u590d\u672c\u4efb\u52a1\u5916\u58f3\u5185\u7684\u539f\u751f\u64ad\u653e\uff0c\u4efb\u52a1\u8282\u70b9\u4e0e\u987a\u5e8f\u672a\u77e5",
+      runtimeRecoveryEvidenceLuaControllerPlayback: "\u5df2\u7cbe\u786e\u6062\u590d\u968f\u6e38\u620f\u53d1\u5e03\u7684 Lua \u64ad\u653e\uff0c\u4efb\u52a1\u5f52\u5c5e\u4e0e\u987a\u5e8f\u672a\u77e5",
+      runtimeRecoveryEvidenceDialogTreePlaybackContext: "\u5df2\u7cbe\u786e\u6062\u590d\u4efb\u52a1\u4e0a\u4e0b\u6587\u4e2d\u7684 DialogTree \u64ad\u653e\uff0c\u76f8\u5bf9\u987a\u5e8f\u672a\u77e5",
+      runtimeRecoveryEvidenceQuestStateGate: "\u5df2\u7cbe\u786e\u6062\u590d\u4efb\u52a1\u72b6\u6001\u95e8\u63a7\u64ad\u653e\uff0c\u76f8\u5bf9\u987a\u5e8f\u672a\u77e5",
+      runtimeRecoveryLuaController: "\u968f\u6e38\u620f\u53d1\u5e03\u7684 Lua \u63a7\u5236\u5668",
+      runtimeRecoveryLuaCall: "\u7c7b\u578b\u5316 Lua \u64ad\u653e\u8c03\u7528",
       runtimeRecoveryEvidenceCrossMissionLevelDataPlayback: "\u5df2\u7cbe\u786e\u6062\u590d\u76f8\u5173\u4efb\u52a1\u5916\u58f3\u5185\u7684\u539f\u751f\u64ad\u653e\uff0c\u5f52\u5c5e\u4e0e\u987a\u5e8f\u672a\u77e5",
       offlineRecoveryEvidenceCutsceneRoot: "\u5df2\u89e3\u6790\u8fc7\u573a\u6839\u8282\u70b9 \u2014 \u4efb\u52a1\u6fc0\u6d3b\u5668\u672a\u77e5",
+      offlineRecoveryEvidenceCutsceneAlias: "\u5df2\u786e\u8ba4\u8fc7\u573a\u6839\u8282\u70b9/\u64ad\u653e\u8d44\u4ea7\u522b\u540d \u2014 \u4efb\u52a1\u6fc0\u6d3b\u5668\u672a\u77e5",
+      offlineRecoveryCutsceneAlias: "\u7cbe\u786e\u6839\u8282\u70b9/\u64ad\u653e\u8d44\u4ea7\u8eab\u4efd",
+      offlineRecoveryCutsceneAliasRootRole: "\u6839\u5b9a\u4e49",
+      offlineRecoveryCutsceneAliasPlayableRole: "\u88ab\u64ad\u653e\u7684\u65f6\u95f4\u7ebf\u8d44\u4ea7",
       offlineRecoveryNativeConsumer: "\u539f\u59cb\u4e8c\u8fdb\u5236\u6d88\u8d39\u8005",
       offlineRecoverySnsDefinition: "SNS \u5185\u90e8\u5b9a\u4e49",
       offlineRecoveryMissingAudio: "\u4e2a\u97f3\u9891 ID \u7f3a\u5931",
@@ -1264,6 +1577,10 @@
       offlineRecoveryCrossMissionTracking: "\u8de8\u4efb\u52a1 SNS \u8ffd\u8e2a\uff08\u4ec5\u5bfc\u822a\uff09",
       offlineMissionShell: "\u4ec5\u5267\u60c5\u6062\u590d\u7684\u4efb\u52a1\u5916\u58f3",
       offlineMissionShellHint: "\u5f53\u524d\u5bfc\u51fa\u4e2d\u6ca1\u6709 MissionRuntimeAsset\u3002\u672c\u9875\u4ec5\u5c55\u793a\u7cbe\u786e\u8868\u5b9a\u4e49\u548c\u5f53\u524d\u7248\u672c\u7684\u8f7d\u4f53\u8d1f\u8bc1\u636e\uff1b\u4e0d\u4ea7\u751f\u4efb\u52a1\u8282\u70b9\u3001\u5f52\u5c5e\u3001\u64ad\u653e\u3001\u63e1\u624b\u6216\u987a\u5e8f\u8fb9\u3002",
+      storyAggregateShell: "\u58f0\u660e\u7684 Story \u53d8\u4f53\u805a\u5408",
+      storyAggregateShellHint: "\u8be5 Story \u547d\u540d\u7a7a\u95f4\u6c47\u603b\u4e86\u5176\u58f0\u660e\u7684\u4efb\u52a1\u53d8\u4f53\u4e2d\u7684\u7cbe\u786e\u5e8f\u5217\u5316\u8bc1\u636e\u3002\u5b83\u672c\u8eab\u4e0d\u662f MissionRuntime \u4efb\u52a1\uff0c\u4e5f\u4e0d\u8bc1\u660e\u4efb\u52a1\u5f52\u5c5e\u3001\u8282\u70b9\u5f52\u5c5e\u3001\u5206\u652f\u9009\u62e9\u6216\u989d\u5916\u65f6\u5e8f\u3002",
+      storyAggregateVariants: "\u5df2\u58f0\u660e\u7684\u4efb\u52a1\u53d8\u4f53",
+      storyAggregateOriginals: "\u53d8\u4f53 MissionRuntime \u539f\u59cb\u6587\u4ef6",
       questAttachmentDiagnostic: "\u5267\u60c5\u5f52\u5c5e\u672a\u89e3\u6790",
       questAttachmentDiagnosticHint: "\u7cbe\u786e\u79bb\u7ebf\u8bc1\u636e\u5c06\u8fd9\u4e2a\u5bbd\u6cdb\u5267\u60c5\u5171\u73b0\u5173\u7cfb\u95ed\u5408\u4e3a\u975e\u5f52\u5c5e\u8bca\u65ad\uff1b\u4e0d\u751f\u6210\u4efb\u52a1\u5230\u5267\u60c5\u6216\u987a\u5e8f\u8fb9\u3002",
       questAttachmentDiagnosticStories: "\u8bca\u65ad\u5267\u60c5\u4e0a\u4e0b\u6587",
@@ -1303,6 +1620,10 @@
       triggerUnknownTransport: "\u4f20\u8f93\u8fb9\u754c\u672a\u89e3\u6790",
       storyOrder: "\u6e90\u6570\u636e\u8bc1\u660e\u7684\u5267\u60c5\u987a\u5e8f",
       storyOrderHint: "\u8fd9\u662f\u90e8\u5206\u56e0\u679c\u56fe\uff1a\u4fdd\u7559\u5206\u652f\u3001\u6c47\u5408\u3001\u5faa\u73af\u548c\u672a\u77e5\u987a\u5e8f\uff0c\u4e0d\u731c\u6d4b\u552f\u4e00\u6587\u4ef6\u5e8f\u5217\u3002",
+      missionObservedScriptContexts: "\u4efb\u52a1\u89c2\u6d4b\u5230\u7684 LevelScript \u4e0a\u4e0b\u6587",
+      missionObservedScriptContextsHint: "\u539f\u59cb\u7c7b\u578b\u5316\u4efb\u52a1\u76ee\u6807\u8bfb\u53d6\u4e86\u540c\u4e00\u5173\u5361\u548c LevelScript\uff0c\u800c\u8be5\u811a\u672c\u5305\u542b\u539f\u751f\u5267\u60c5\u64ad\u653e\u3002\u8fd9\u53ea\u662f\u5173\u8054\u6587\u4ef6\u4e0a\u4e0b\u6587\uff0c\u4e0d\u662f\u5f52\u5c5e\u3001\u6fc0\u6d3b\u6216\u987a\u5e8f\u8bc1\u636e\u3002",
+      observedProperties: "\u88ab\u89c2\u6d4b\u5c5e\u6027",
+      propertyWriterUnresolved: "\u5c5e\u6027\u5199\u5165\u65b9\u672a\u89e3\u6790",
       embeddedStory: "\u5d4c\u5957\u5267\u60c5\u64ad\u653e",
       embeddedStoryHint: "\u539f\u59cb DialogTree \u8fde\u63a5\u5c06\u5b50\u5185\u5bb9\u7cbe\u786e\u653e\u5728\u7236\u5bf9\u8bdd\u7684\u884c\u3001\u5165\u53e3\u6216\u7ed3\u675f\u8fb9\u754c\u3002\u8fd9\u662f\u5305\u542b\u5173\u7cfb\uff0c\u4e0d\u662f\u5b8c\u6574\u6587\u4ef6\u987a\u5e8f\u8fb9\uff0c\u4e5f\u4e0d\u8bc1\u660e\u7236\u5bf9\u8bdd\u7684\u4efb\u52a1\u89e6\u53d1\u3002",
       embeddedBetween: "\u7236\u5bf9\u8bdd\u884c\u4e4b\u95f4",
@@ -1310,6 +1631,16 @@
       embeddedAtFinish: "\u7236\u5bf9\u8bdd\u7ed3\u675f\u5904",
       readingPopup: "\u9605\u8bfb\u5f39\u7a97",
       strongEdges: "\u5f3a\u987a\u5e8f\u8fb9",
+      questSucceedLifecycle: "\u4e8c\u8fdb\u5236\u5df2\u8bc1\u7684\u4efb\u52a1\u6210\u529f\u987a\u5e8f",
+      questSucceedLifecycleHint: "\u7cbe\u786e\u7684\u76ee\u6807 Story \u5b8c\u6210\u5148\u4e8e\u540c\u4e00\u4efb\u52a1\u4e2d\u4f5c\u8005\u5b9a\u4e49\u7684\u6210\u529f\u5ba2\u6237\u7aef\u52a8\u4f5c\u3002\u5b89\u88c5\u7684\u4e8c\u8fdb\u5236\u8bc1\u660e\u4e86\u6210\u529f\u6d3e\u53d1\uff1b\u4e0d\u8bc1\u660e\u8be5\u4efb\u52a1\u5fc5\u7136\u6210\u529f\uff0c\u4e5f\u4e0d\u8bc1\u660e\u670d\u52a1\u7aef\u9009\u62e9\u4e86\u54ea\u4e2a\u540e\u7ee7\u5206\u652f\u3002",
+      questSucceedLifecyclePath: "\u76ee\u6807 Story \u5b8c\u6210 \u2192 \u670d\u52a1\u5668\u6210\u529f\u72b6\u6001 \u2192 \u6210\u529f\u5ba2\u6237\u7aef\u52a8\u4f5c",
+      questSucceedLifecycleEdges: "\u4efb\u52a1\u6210\u529f\u987a\u5e8f\u8fb9",
+      questStartDefinitions: "\u4efb\u52a1\u5f00\u59cb\u5b9a\u4e49",
+      questStartDefinitionsTitle: "\u5df2\u7f16\u5199\u7684\u4efb\u52a1\u5f00\u59cb Story \u52a8\u4f5c",
+      questStartDefinitionsHint: "\u8fd9\u4e9b\u884c\u5b58\u5728\u4e8e\u539f\u59cb MissionRuntime \u6570\u636e\u4e2d\uff0c\u4f46\u5f53\u524d AOT \u5b8c\u6574\u679a\u4e3e\u672a\u627e\u5230 slot-1 \u8c03\u5ea6\u5668\u3002\u5b83\u4eec\u662f\u9644\u52a0\u8bc1\u636e\uff0c\u4e0d\u662f\u573a\u666f\u987a\u5e8f\u8fb9\u3002",
+      questActionStartNoDispatch: "\u5df2\u7f16\u5199\u5b9a\u4e49 \u00b7 \u5f53\u524d\u65e0 AOT \u8c03\u5ea6",
+      questActionBinaryDispatch: "\u4e8c\u8fdb\u5236\u5df2\u8bc1\u5b9e\u7684\u751f\u547d\u5468\u671f\u8c03\u5ea6",
+      questSucceedLifecycleOriginals: "\u539f\u59cb\u751f\u547d\u5468\u671f\u8bc1\u636e\u6587\u4ef6",
       weakEdges: "\u4ec5\u4e0a\u4e0b\u6587\u8fb9",
       orderCycles: "\u6e90\u8bc1\u636e\u5faa\u73af",
       unknownPairs: "\u987a\u5e8f\u672a\u77e5\u5bf9",
@@ -1321,12 +1652,97 @@
       dialogConditionalFalseArm: "\u6761\u4ef6\u4e3a\u5047",
       dialogConditionalNativeProof: "\u539f\u751f\u5206\u652f\u9009\u62e9",
       questFork: "\u4efb\u52a1\u5206\u652f",
+      questForkStructure: "\u539f\u59cb\u4efb\u52a1\u5206\u652f\u7ed3\u6784",
+      questForkStructureHint: "\u5206\u652f\u89d2\u8272\u3001\u5b88\u536b\u6761\u4ef6\u3001\u7ec8\u70b9\u5f62\u72b6\u548c\u518d\u6c47\u5408\u5747\u6765\u81ea\u539f\u59cb MissionRuntime \u6587\u4ef6\uff1b\u670d\u52a1\u7aef\u542f\u52a8\u4e0e\u4e92\u65a5\u7b56\u7565\u4ecd\u672a\u77e5\u3002",
+      questForkMainPathArm: "\u4e3b\u8def\u5f84\u5206\u652f",
+      questForkAuxiliaryArm: "\u8f85\u52a9\u5206\u652f",
+      questForkGuardedArm: "\u7c7b\u578b\u5316\u5931\u8d25\u5b88\u536b",
+      questForkObjectiveConditions: "\u5b8c\u6210\u6761\u4ef6",
+      questForkReconverges: "\u9996\u4e2a\u516c\u5171\u540e\u7ee7",
+      questForkTerminal: "\u7ec8\u70b9",
+      questForkContinues: "\u7ee7\u7eed",
+      questForkFlowSort: "\u663e\u793a\u987a\u5e8f",
+      questForkQuestType: "\u539f\u751f\u4efb\u52a1\u7c7b\u578b",
+      questForkShowMode: "\u539f\u751f\u53ef\u89c1\u6a21\u5f0f",
+      questSemanticFields: "\u4efb\u52a1\u7c7b\u578b\u4e0e\u53ef\u89c1\u6027\u8bed\u4e49",
+      questSemanticFieldsHint: "\u8fd9\u4e9b\u539f\u59cb\u5ba2\u6237\u7aef\u679a\u4e3e\u540d\u79f0\u4ec5\u63cf\u8ff0\u663e\u793a\u4e0e\u72b6\u6001\u5e94\u7528\u540e\u884c\u4e3a\uff0c\u4e0d\u9009\u62e9\u540e\u7ee7\u5206\u652f\u3002",
+      questEnumComparisons: "\u7cbe\u786e\u679a\u4e3e\u6bd4\u8f83",
+      questBlockNotification: "\u751f\u547d\u5468\u671f\u5e94\u7528\u540e\u7684 Block \u901a\u77e5",
+      questOptionalObjectiveFlag: "Optional \u76ee\u6807\u663e\u793a\u6807\u5fd7",
+      structuredIdentityCensus: "\u539f\u59cb\u7ed3\u6784\u5316\u8eab\u4efd\u5168\u91cf\u5ba1\u8ba1",
+      structuredIdentityCensusCounts: "\u5019\u9009\u6587\u4ef6 / \u8bb0\u5f55 / \u76f4\u63a5\u8f7d\u4f53",
+      structuredIdentityReceiverMatches: "\u63a5\u6536\u811a\u672c\u5339\u914d / \u672a\u5ba1\u6838\u5f62\u72b6",
+      questForkArmCorridor: "\u540c\u7ea7\u5206\u652f\u72ec\u6709\u4efb\u52a1\u8d70\u5eca",
+      questForkArmStoryEvidence: "\u7cbe\u786e\u76f8\u5173 Story \u8bc1\u636e",
+      questForkArmOriginalFiles: "\u5206\u652f\u76f8\u5173\u539f\u59cb\u6587\u4ef6",
+      questForkArmEvidenceBoundary: "\u8fd9\u4e9b\u6587\u4ef6\u4e0e Story \u5173\u7cfb\u4f4d\u4e8e\u4ec5\u80fd\u4ece\u8be5\u540c\u7ea7\u5206\u652f\u5230\u8fbe\u7684\u4efb\u52a1\u4e0a\uff1b\u5b83\u4eec\u4e0d\u8bc1\u660e\u670d\u52a1\u7aef\u9009\u4e2d\u4e86\u8be5\u5206\u652f\uff0c\u4e5f\u4e0d\u8bc1\u660e\u540c\u7ea7\u5206\u652f\u4e92\u65a5\u3002",
+      questForkServerPolicy: "\u670d\u52a1\u7aef\u542f\u52a8\u7b56\u7565\u672a\u89e3",
+      questForkServerApplication: "\u670d\u52a1\u7aef\u4e0b\u53d1\u7684\u5206\u652f\u4efb\u52a1\u8eab\u4efd",
+      questForkServerApplicationHint: "\u539f\u59cb\u4e8c\u8fdb\u5236\u53ea\u5e94\u7528\u670d\u52a1\u7aef\u4e0b\u53d1\u7684\u4efb\u52a1\u8eab\u4efd\u4e0e\u72b6\u6001\uff0c\u4e0d\u5728\u5ba2\u6237\u7aef\u9009\u62e9\u540e\u7ee7\u5206\u652f\u3002",
+      questForkServerApplicationBoundary: "\u8fd9\u53ea\u8bc1\u660e\u5ba2\u6237\u7aef\u5728\u670d\u52a1\u7aef\u9009\u62e9\u540e\u5e94\u7528\u72b6\u6001\uff1b\u4e0d\u8bc1\u660e\u670d\u52a1\u7aef\u9009\u62e9\u7b56\u7565\u3001\u540c\u7ea7\u5206\u652f\u4e92\u65a5\u6027\u6216 Story \u6587\u4ef6\u987a\u5e8f\u3002",
+      questForkEnableApplication: "\u5df2\u9a8c\u8bc1\u7684\u542f\u7528 / \u6682\u505c\u8def\u7531",
+      questForkEnableApplicationHint: "\u539f\u59cb\u5904\u7406\u51fd\u6570\u5c06\u6570\u636e\u5305\u542f\u7528\u6807\u5fd7\u4e0e\u5f53\u524d\u8fd0\u884c\u65f6\u6682\u505c\u6807\u5fd7\u7ec4\u5408\u3002\u5e8f\u5217\u5316\u7684\u524d\u4e00\u72b6\u6001\u5b57\u6bb5\u672a\u88ab\u8bfb\u53d6\u3002",
+      questForkEnableRoute: "\u6570\u636e\u5305\u542f\u7528 / \u5f53\u524d\u6682\u505c",
+      questForkUnreadControls: "\u5df2\u5e8f\u5217\u5316\u4f46\u672a\u8bfb\u53d6",
+      questForkStateTransitions: "\u5df2\u9a8c\u8bc1\u72b6\u6001\u8def\u7531",
+      questForkPacketShape: "\u670d\u52a1\u7aef\u6570\u636e\u5305",
+      questForkMainPathAuxiliary: "\u4e3b\u8def\u5f84 + \u8f85\u52a9\u5206\u652f",
+      questForkAllAuxiliary: "\u5168\u90e8\u4e3a\u8f85\u52a9\u5206\u652f",
+      questForkMultipleMainPath: "\u591a\u4e2a\u4e3b\u8def\u5f84\u5206\u652f",
+      questForkOpenDivergence: "\u5f00\u653e\u5206\u6d41",
+      questForkDivergentTerminals: "\u5206\u6d41\u7ec8\u70b9",
+      questForkMixedTerminal: "\u7ec8\u70b9 + \u7ee7\u7eed",
+      questForkReconverging: "\u518d\u6c47\u5408",
+      questForkAuthority: "\u4efb\u52a1\u5206\u652f\u6743\u5a01\u8fb9\u754c",
+      serverSelectedStart: "\u670d\u52a1\u7aef\u9009\u62e9\u542f\u52a8\uff1b\u4ec5\u8868\u793a\u524d\u7f6e\u62d3\u6251",
+      questStartReadEvidence: "StartQuest \u5b57\u6bb5\u8bfb\u53d6",
+      questForkAuthorityHint: "\u5ba2\u6237\u7aef\u53ea\u521d\u59cb\u5316\u670d\u52a1\u7aef\u5df2\u9009\u4e2d\u7684\u5355\u4e2a\u4efb\u52a1\u6807\u8bc6\u3002\u8be5\u5206\u6d41\u4e0d\u80fd\u8bc1\u660e\u6240\u6709\u5206\u652f\u90fd\u4f1a\u542f\u52a8\uff0c\u4e5f\u4e0d\u80fd\u8bc1\u660e\u5fc5\u7136\u53ea\u9009\u4e00\u6761\u3002",
+      wholeClientTopologyConsumers: "\u5168\u5ba2\u6237\u7aef\u62d3\u6251\u5b57\u6bb5\u6d88\u8d39\u8005",
+      verifiedQuestInfoCalls: "\u5df2\u9a8c\u8bc1 GetQuestInfo \u8c03\u7528",
+      activePredecessorConsumers: "\u6d3b\u52a8\u524d\u7f6e\u6d88\u8d39\u8005",
+      nonSortFlowConsumers: "\u975e\u6392\u5e8f flowIndex \u6d88\u8d39\u8005",
+      topologyLifecycleCalls: "\u62d3\u6251\u9a71\u52a8\u7684\u4efb\u52a1\u751f\u547d\u5468\u671f\u8c03\u7528",
+      topologyConsumerMethods: "\u539f\u751f\u5b57\u6bb5\u6d88\u8d39\u65b9\u6cd5",
+      displaySortOnly: "\u4e24\u884c\u663e\u793a\u6392\u5e8f",
+      deprecatedDescriptionOnly: "\u5df2\u5e9f\u5f03\u7684\u63cf\u8ff0\u56de\u9000",
+      mainPathContextOnly: "\u5173\u5361/\u63cf\u8ff0\u4e0a\u4e0b\u6587\u9009\u62e9",
+      mainPathCacheOnly: "\u6d3e\u751f\u4e3b\u8def\u5f84\u6210\u5458\u7f13\u5b58",
+      questVisibilityPresentation: "\u53ef\u89c1\u6027/\u8ddf\u8e2a\u663e\u793a",
+      questTypePresentation: "\u4efb\u52a1\u7c7b\u578b\u67e5\u8be2/\u663e\u793a",
+      questTypePostLifecycle: "\u751f\u547d\u5468\u671f\u72b6\u6001\u5e94\u7528\u540e\u8bfb\u53d6\u4efb\u52a1\u7c7b\u578b",
+      questTypeBlockNotification: "\u751f\u547d\u5468\u671f\u72b6\u6001\u5e94\u7528\u540e\u53d1\u9001 Block \u901a\u77e5",
       questMerge: "\u4efb\u52a1\u6c47\u5408",
       nativeSplitFanout: "\u539f\u751f Split \u5206\u6d41",
       nativeIfElseBranch: "\u539f\u751f If/Else \u5206\u652f",
       nativeSwitchBranch: "\u539f\u751f Switch \u5206\u652f",
       nativeControlMerge: "\u539f\u751f\u5206\u652f\u6c47\u5408",
+      nativeMissionStateBranches: "\u4efb\u52a1\u72b6\u6001 Story \u5019\u9009\u5206\u652f",
+      nativeMissionStateBranchesHint: "\u539f\u59cb LevelScript \u4e0e\u5df2\u5b89\u88c5\u5ba2\u6237\u7aef\u7684 getter/comparer \u6620\u5c04\u7cbe\u786e\u8bc1\u660e\u6bcf\u4e2a\u72b6\u6001\u5206\u652f\u4e0a\u7684 Story \u6587\u4ef6\uff0c\u5305\u62ec\u540d\u4e49\u4e0a\u5f52\u5165\u5176\u4ed6\u4efb\u52a1\u7684\u6587\u4ef6\u3002\u5b83\u4eec\u662f\u4e92\u65a5\u5019\u9009\uff0c\u4e0d\u662f Story \u987a\u5e8f\u6216\u5f52\u5c5e\u3002",
+      nativeMissionStateExternal: "\u8de8\u4efb\u52a1\u5019\u9009",
+      nativeCrossBoundaryBranch: "\u5b8c\u6574\u8de8\u4efb\u52a1\u5206\u652f",
+      nativeCrossBoundaryStories: "\u8de8\u4efb\u52a1\u5206\u652f",
+      nativeCrossBoundaryExternal: "\u540d\u4e49\u4efb\u52a1\u5916",
+      nativeCrossBoundaryParallelHint: "\u539f\u59cb LevelScript \u8def\u5f84\u4e0e\u5df2\u5b89\u88c5\u5ba2\u6237\u7aef\u7684 Split \u8c03\u5ea6\u5668\u8bc1\u660e\u540c\u4e00\u4e8b\u4ef6\u542f\u52a8\u542b Story \u7684\u540c\u7ea7\u5206\u6d41\u3002\u540d\u4e49\u4efb\u52a1\u5206\u7ec4\u4e0d\u8bc1\u660e\u5f52\u5c5e\uff0c\u540c\u7ea7\u69fd\u4f4d\u4e5f\u4e0d\u662f\u65f6\u95f4\u987a\u5e8f\u3002",
+      nativeCrossBoundaryConditionalHint: "\u539f\u59cb LevelScript \u5206\u652f\u503c\u4e0e\u5df2\u5b89\u88c5\u5ba2\u6237\u7aef\u7684\u539f\u751f\u63a7\u5236\u6620\u5c04\u8bc1\u660e\u540c\u4e00\u4e8b\u4ef6\u7684 Story \u5019\u9009\u5206\u652f\u3002\u540d\u4e49\u4efb\u52a1\u5206\u7ec4\u4e0d\u8bc1\u660e\u5f52\u5c5e\u6216\u5019\u9009\u987a\u5e8f\u3002",
+      nativeFullArmCoverage: "\u5b8c\u6574\u5e8f\u5217\u5316\u5206\u652f",
+      nativeSerializedArms: "\u5e8f\u5217\u5316\u5206\u652f",
+      nativeNonStoryArm: "\u975e Story \u52a8\u4f5c\u5206\u652f",
+      nativeInactiveArm: "\u672a\u542f\u7528\u7684\u5e8f\u5217\u5316\u76ee\u6807",
+      nativeRuntimeTerminalArm: "\u8fd0\u884c\u65f6\u7ec8\u70b9",
+      nativeArmEntryAction: "\u5165\u53e3\u52a8\u4f5c",
+      nativeArmExclusiveActions: "\u5206\u652f\u72ec\u6709\u52a8\u4f5c",
+      nativeSharedDownstream: "\u5171\u4eab\u4e0b\u6e38\u52a8\u4f5c",
+      nativeFullArmHint: "\u6bcf\u4e2a\u69fd\u4f4d\u90fd\u6765\u81ea\u539f\u59cb LevelScript \u7684\u8fd0\u884c\u65f6\u6709\u6548\u52a8\u4f5c\u8868\uff0c\u5e76\u4e0e\u5df2\u5b89\u88c5\u5ba2\u6237\u7aef\u7684\u4e8c\u8fdb\u5236\u6620\u5c04\u6821\u9a8c\u3002\u975e Story \u540c\u7ea7\u52a8\u4f5c\u4e0d\u8bc1\u660e Story \u5f52\u5c5e\u3001\u65f6\u5e8f\u6216\u4efb\u52a1\u6210\u5458\u5173\u7cfb\u3002",
       nativeOrderedSequence: "\u539f\u751f\u6709\u5e8f\u52a8\u4f5c\u5e8f\u5217",
+      nativeStoryTransitions: "\u7cbe\u786e\u539f\u751f Story \u8f6c\u79fb",
+      nativeStoryTransitionsHint: "\u6bcf\u6761\u8fb9\u90fd\u662f\u539f\u59cb LevelScript \u8def\u5f84\u524d\u7f00\u5173\u7cfb\u3002\u7c7b\u578b\u5316\u540e\u7f00\u4f1a\u663e\u793a\u64ad\u653e\u662f\u7ebf\u6027\u7ee7\u7eed\uff0c\u8fd8\u662f\u7ecf\u8fc7\u5e76\u884c\u3001\u6761\u4ef6\u3001\u6210\u529f/\u5931\u8d25\u6216\u6709\u5e8f\u5206\u652f\u3002",
+      nativeStoryTransitionLinear: "\u7ebf\u6027",
+      nativeStoryTransitionParallel: "\u5e76\u884c\u5206\u6d41",
+      nativeStoryTransitionConditional: "\u6761\u4ef6\u5206\u652f",
+      nativeStoryTransitionOutcome: "\u6210\u529f/\u5931\u8d25\u5206\u652f",
+      nativeStoryTransitionOrdered: "\u6709\u5e8f\u5e8f\u5217",
+      nativeStoryTransitionOrderedExit: "\u6709\u5e8f\u5e8f\u5217\u4e4b\u540e",
+      nativeStoryTransitionBranching: "\u542b\u5206\u652f\u7684\u8f6c\u79fb",
       nativeRelatedActionGraphs: "\u76f8\u5173\u539f\u59cb LevelScript \u56fe",
       nativeRelatedActionGraphsHint: "\u4ec5\u5f53\u7cbe\u786e\u5e8f\u5217\u5316\u4e8b\u4ef6\u5230\u5267\u60c5\u8def\u5f84\u5230\u8fbe\u672c\u4efb\u52a1\u7684\u5267\u60c5\u6587\u4ef6\u65f6\u624d\u9644\u52a0\u6b64\u6587\u4ef6\uff1b\u5176\u4f59\u52a8\u4f5c\u53ea\u662f\u6587\u4ef6\u5185\u4e0a\u4e0b\u6587\uff0c\u4e0d\u662f\u989d\u5916\u4efb\u52a1\u987a\u5e8f\u3002",
       nativeControlReachability: "\u7cbe\u786e\u7c7b\u578b\u5316\u4e0b\u6e38\u53ef\u8fbe\u6027",
@@ -1749,9 +2165,13 @@
       [storyCounts.acceptedLuaExactPlaybackCalls, t("luaPlaybackAccepted")],
       [storyCounts.acceptedLuaTableCarrierCalls, t("luaTablePlaybackAccepted")],
       [storyCounts.rejectedLuaCaseMismatchCalls, t("luaPlaybackRejected")],
+      [storyCounts.runtimeLuaHandleDispatcherCalls, t("luaHandleDispatchers")],
       [storyCounts.rootPlaybackAliasRows, t("rootPlaybackAliases")],
       [storyCounts.missionlessSubGameStoryFiles, t("missionlessSubGameStory")],
       [storyCounts.missionlessNativeRuntimeStoryFiles, t("missionlessRuntimeStory")],
+      [storyCounts.postPlaybackFormatterNamedActions, t("postPlaybackFormatterNamed")],
+      [storyCounts.postPlaybackLevelSequenceExactAssets, t("postPlaybackLevelSequenceAssets")],
+      [storyCounts.postPlaybackVariableSetters, t("postPlaybackVariableSetterStat")],
       [storyCounts.unlinkedDefinitionOnlyFiles, t("definitionOnlyStory")],
       [storyCounts.nonMissionContentFiles, t("nonMissionContentStory")],
       [counts.missionGraphPrecedenceEdges, t("missionGraphEdgesStat")],
@@ -1787,7 +2207,7 @@
       <span>${esc(t("sourceChangedFiles"))}: ${Number(source.persistentChangedBaseFileCount || changedFiles.length).toLocaleString()} / ${Number(source.streamingFileCount || 0).toLocaleString()}</span>
       ${changedFiles.length ? `<code>${esc(changedFiles.join(", "))}</code>` : ""}
       <span>${esc(t("sourceMissingFiles"))}: ${Number(missingFiles.length).toLocaleString()}</span>
-      ${state.index?.storyCoverage?.luaStoryPlaybackEvidence?.status ? `<span>${esc(t("luaPlaybackAudit"))}: <strong>${esc(state.index.storyCoverage.luaStoryPlaybackEvidence.status)}</strong> · ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.scannedPlaybackCalls || 0).toLocaleString()} calls · ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.acceptedTableCarrierCalls || 0).toLocaleString()} table-owned · <code>${esc(state.index.storyCoverage.luaStoryPlaybackEvidence.auditSha256 || "")}</code></span>` : ""}
+      ${state.index?.storyCoverage?.luaStoryPlaybackEvidence?.status ? `<span>${esc(t("luaPlaybackAudit"))}: <strong>${esc(state.index.storyCoverage.luaStoryPlaybackEvidence.status)}</strong> · ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.scannedPlaybackCalls || 0).toLocaleString()} calls · ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.acceptedTableCarrierCalls || 0).toLocaleString()} table-owned · ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.runtimeHandleDispatcherCallCount || 0).toLocaleString()} runtime branches / ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.runtimeHandleDispatcherFamilyCount || 0).toLocaleString()} queue family · ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.runtimeHandleContract?.nativeProducerCount || 0).toLocaleString()} native producers / ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.runtimeHandleContract?.typedActionProducerTypeCount || 0).toLocaleString()} typed actions · ${Number(state.index.storyCoverage.counts?.nativeCinematicProducerRouteAttachments || 0).toLocaleString()} mission-route attachments · ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.unresolvedPlaybackCalls || 0).toLocaleString()} authored unresolved · <code>${esc(state.index.storyCoverage.luaStoryPlaybackEvidence.auditSha256 || "")}</code></span>` : ""}
     `;
   }
 
@@ -1851,6 +2271,7 @@
   function missionBadges(row) {
     const badges = [];
     if (row.offlineRecoveryShell) badges.push(`<span class="mp-list-badge is-evidence">${esc(t("offlineMissionShell"))}</span>`);
+    if (row.storyAggregateShell) badges.push(`<span class="mp-list-badge is-evidence">${esc(t("storyAggregateShell"))}</span>`);
     if (row.caseStudy) badges.push(`<span class="mp-list-badge is-evidence">${esc(t("evidence"))}</span>`);
     if (row.fanoutCount) badges.push(`<span class="mp-list-badge">${row.fanoutCount} ${esc(t("branches"))}</span>`);
     if (row.multiPrevJoinCount || row.activeJoinCount) badges.push(`<span class="mp-list-badge">${row.multiPrevJoinCount + row.activeJoinCount} ${esc(t("join"))}</span>`);
@@ -2396,6 +2817,10 @@
     "npc_proxy_tracking_dialog_navigation_context",
     "npc_proxy_lazy_destroy_dialog_context",
   ]);
+  const exactConnectedContextRelations = new Set([
+    "dialog_tree_reachable_story_playback",
+    "levelscript_quest_state_gate",
+  ]);
 
   function runtimeRecoveryEvidenceLabel(row) {
     const status = row?.evidenceKind || row?.recoveryStatus || "";
@@ -2414,6 +2839,16 @@
         t("runtimeRecoveryNpcCrossMissionContext"),
       closed_exact_multi_mission_runtime_config_no_relative_order:
         t("runtimeRecoveryNpcMultiMissionContext"),
+      closed_exact_lua_controller_playback_no_mission_owner_or_relative_order:
+        t("runtimeRecoveryEvidenceLuaControllerPlayback"),
+      closed_exact_composed_root_playback_context_no_relative_order:
+        t("relationRootPlaybackAliasComposed"),
+      closed_exact_connected_dialog_tree_playback_context_no_relative_order:
+        t("runtimeRecoveryEvidenceDialogTreePlaybackContext"),
+      closed_exact_quest_state_gated_playback_context_no_relative_order:
+        t("runtimeRecoveryEvidenceQuestStateGate"),
+      cutscene_root_playable_alias_without_recovered_activator:
+        t("offlineRecoveryEvidenceCutsceneAlias"),
     })[status] || status;
   }
 
@@ -2430,12 +2865,17 @@
       || overlay[row?.key]?.partialRecovery
     );
     const runtimeRecovery = manifest[row?.key]?.runtimeContextRecovery;
-    const recovery = offlineRecovery || partialRecovery || runtimeRecovery;
+    const contentProvenance = (
+      manifest[row?.key]?.contentProvenance
+      || overlay[row?.key]?.contentProvenance
+    );
+    const recovery = offlineRecovery || partialRecovery || runtimeRecovery || contentProvenance;
     if (!recovery || recovery.graphEffect !== "none") return "";
     const sourceFiles = [...new Set([
       ...(recovery.definitionSourceFiles || []),
       ...(recovery.sourceFiles || []),
       ...(recovery.originalBinaryFiles || []),
+      ...(recovery.originalGameFiles || []),
     ].filter(Boolean))];
     const related = recovery.missionRelatedOriginalData;
     const relatedEntries = (related?.entries || []).map((entry) => (
@@ -2451,6 +2891,9 @@
       return `<code>${esc([header, ...actions].join(" → "))}</code>`;
     }).join("<br>");
     const runtimeDetails = runtimeRecovery ? [
+      recovery.relation === "lua_controller_playback"
+        ? `<small><strong>${esc(t("runtimeRecoveryLuaController"))}:</strong> <code>${esc(recovery.luaFile || "?")}</code>${recovery.luaLine ? `:${Number(recovery.luaLine)}` : ""}</small><small><strong>${esc(t("runtimeRecoveryLuaCall"))}:</strong> <code>${esc(recovery.luaCall || "?")}</code></small>`
+        : "",
       recovery.nominalStoryMissionId
         ? `<small><strong>${esc(t("runtimeRecoveryNominalMission"))}:</strong> <code>${esc(recovery.nominalStoryMissionId)}</code></small>`
         : "",
@@ -2462,6 +2905,15 @@
         : "",
       (recovery.anchorQuestIds || []).length
         ? `<small><strong>${esc(t("runtimeRecoveryQuestAnchors"))}:</strong> ${(recovery.anchorQuestIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</small>`
+        : "",
+      recovery.questId
+        ? `<small><strong>${esc(t("runtimeRecoveryQuestAnchors"))}:</strong> <code>${esc(recovery.questId)}</code></small>`
+        : "",
+      recovery.parentStoryKey
+        ? `<small><strong>${esc(t("runtimeRecoveryCarrierParents"))}:</strong> <code>${esc(recovery.parentStoryKey)}</code></small>`
+        : "",
+      recovery.relation === "levelscript_quest_state_gate"
+        ? `<small><strong>Gate:</strong> <code>${esc(recovery.conditionType || "?")}(${esc(recovery.conditionComparer || "?")}, ${Number(recovery.conditionQuestState) === 2 ? "Processing" : esc(recovery.conditionQuestState ?? "?")})</code> ${(recovery.eventNames || []).map((id) => `<code>${esc(id)}</code>`).join(" ")} ${(recovery.actionNames || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</small>`
         : "",
       (recovery.rootStoryKeys || []).length
         ? `<small><strong>${esc(t("runtimeRecoveryPlaybackRoots"))}:</strong> ${(recovery.rootStoryKeys || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</small>`
@@ -2475,6 +2927,9 @@
     ].filter(Boolean).join("") : "";
     const boundaries = [
       runtimeDetails,
+      recovery.rootPlaybackAlias
+        ? `<small><strong>${esc(t("offlineRecoveryCutsceneAlias"))}:</strong> <code>${esc(recovery.rootPlaybackAlias.rootStoryKey || "?")}</code> &rarr; <code>${esc(recovery.rootPlaybackAlias.playableAssetStoryKey || "?")}</code> · ${esc(t(recovery.cutsceneAliasRole === "cutscene_root" ? "offlineRecoveryCutsceneAliasRootRole" : "offlineRecoveryCutsceneAliasPlayableRole"))}</small>`
+        : "",
       recovery.activationBoundary
         ? `<small><strong>${esc(t("runtimeRecoveryActivation"))}:</strong> ${esc(recovery.activationBoundary)}</small>`
         : "",
@@ -2500,15 +2955,15 @@
         ? `<small><strong>${esc(t("partialRecoveryUnmatchedRows"))}:</strong> ${(recovery.missingLineIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</small>`
         : "",
       sourceFiles.length
-        ? `<small><strong>${esc(t("offlineRecoverySources"))}:</strong><br>${sourceFiles.map((path) => `<code>${esc(path)}</code>`).join("<br>")}</small>`
+        ? `<small><strong>${esc(t(contentProvenance ? "projectAuthoredSources" : "offlineRecoverySources"))}:</strong><br>${sourceFiles.map((path) => `<code>${esc(path)}</code>`).join("<br>")}</small>`
         : "",
       related
         ? `<small><strong>${esc(t("offlineRecoveryRelatedOriginalData"))}:</strong> <code>${esc(related.groupId || "?")}</code>${related.levelId ? ` · <code>${esc(related.levelId)}</code>` : ""}<br><strong>${esc(t("offlineRecoveryPrtsOrder"))}:</strong> ${relatedEntries}<br><strong>${esc(t("offlineRecoveryStoryRelation"))}:</strong> ${esc(related.storyRelationStatus || "")}<br>${esc(related.orderBoundary || "")}${relatedSources ? `<br>${relatedSources}` : ""}</small>`
         : "",
     ].filter(Boolean).join("");
     return `<div class="mp-playback-rejection mp-offline-recovery">
-      <header><strong>${esc(t(runtimeRecovery ? "runtimeContextRecoveryBoundary" : partialRecovery ? "partialRecoveryBoundary" : "offlineRecoveryBoundary"))}</strong><span>${esc(t("offlineRecoveryNoGraphEdge"))}</span></header>
-      <b>${esc(partialRecovery ? t("partialRecoveryEvidenceParentTreePartition") : runtimeRecoveryEvidenceLabel(recovery))}</b>
+      <header><strong>${esc(t(contentProvenance ? "projectAuthoredBoundary" : runtimeRecovery ? "runtimeContextRecoveryBoundary" : partialRecovery ? "partialRecoveryBoundary" : "offlineRecoveryBoundary"))}</strong><span>${esc(t("offlineRecoveryNoGraphEdge"))}</span></header>
+      <b>${esc(contentProvenance ? t("projectAuthoredEvidence") : partialRecovery ? t("partialRecoveryEvidenceParentTreePartition") : runtimeRecoveryEvidenceLabel(recovery))}</b>
       ${boundaries}
       ${recovery.nativeMappingId ? `<em><code>${esc(recovery.nativeMappingId)}</code></em>` : ""}
     </div>`;
@@ -2524,6 +2979,7 @@
       const offlineRecovery = entry?.offlineRecovery;
       const partialRecovery = entry?.partialRecovery;
       const runtimeRecovery = entry?.runtimeContextRecovery;
+      const contentProvenance = entry?.contentProvenance;
       const crossMissionRuntimeRecovery = runtimeRecovery
         && String(runtimeRecovery.nominalStoryMissionId || "") === missionId
         && String(runtimeRecovery.contextMissionId || "") !== missionId;
@@ -2533,6 +2989,9 @@
       const composedRootPlaybackRecovery = runtimeRecovery
         && runtimeRecovery.relation === "cutscene_root_playback_alias_composed"
         && String(runtimeRecovery.missionId || "") === missionId;
+      const luaControllerPlaybackRecovery = runtimeRecovery
+        && runtimeRecovery.relation === "lua_controller_playback"
+        && String(entry.nominalMissionId || "") === missionId;
       const exactBlackCarrierRecovery = runtimeRecovery
         && exactBlackCarrierRelations.has(runtimeRecovery.relation)
         && String(runtimeRecovery.nominalStoryMissionId || "") === missionId;
@@ -2542,13 +3001,18 @@
       const exactNpcProxyRuntimeRecovery = runtimeRecovery
         && exactNpcProxyRuntimeRelations.has(runtimeRecovery.relation)
         && String(runtimeRecovery.missionId || runtimeRecovery.nominalStoryMissionId || entry.nominalMissionId || "") === missionId;
+      const exactConnectedContextRecovery = runtimeRecovery
+        && exactConnectedContextRelations.has(runtimeRecovery.relation)
+        && String(runtimeRecovery.missionId || entry.nominalMissionId || "") === missionId;
       const displayRuntimeRecovery = crossMissionRuntimeRecovery
         || authoredSnsMissionRecovery
         || composedRootPlaybackRecovery
+        || luaControllerPlaybackRecovery
         || exactBlackCarrierRecovery
         || exactSameMissionRuntimeRecovery
-        || exactNpcProxyRuntimeRecovery;
-      const recovery = offlineRecovery || partialRecovery || (displayRuntimeRecovery ? runtimeRecovery : null);
+        || exactNpcProxyRuntimeRecovery
+        || exactConnectedContextRecovery;
+      const recovery = offlineRecovery || partialRecovery || contentProvenance || (displayRuntimeRecovery ? runtimeRecovery : null);
       if (!entry?.key || !recovery || recovery.graphEffect !== "none") return;
       const owner = String(recovery.missionId || recovery.nominalStoryMissionId || entry.nominalMissionId || "");
       if (owner !== missionId) return;
@@ -2558,6 +3022,7 @@
         ...recovery,
         runtimeContextRecovery: Boolean(displayRuntimeRecovery),
         partialRecovery: Boolean(partialRecovery),
+        contentProvenance: Boolean(contentProvenance),
       });
     });
     return [...rows.values()].sort((a, b) => String(a.key).localeCompare(
@@ -2743,11 +3208,15 @@
   function triggerRouteHtml(route) {
     const steps = (route.steps || []).filter((step) => step && step.kind);
     const paths = (route.nativePaths || []).filter(Boolean);
+    const producers = (route.nativeCinematicProducerRoutes || []).filter(Boolean);
+    const sources = (route.sourceFiles || []).filter(Boolean);
     if (!steps.length) return "";
     return `<div class="mp-trigger-route is-${esc(route.causality || "context")}">
       <header><strong>${esc(t("triggerRoute"))}</strong><span>${esc(triggerCausalityLabel(route.causality))}</span>${route.controlPathCount ? `<b>${esc(route.controlPathCount)} ${esc(t("triggerExactPaths"))}</b>` : ""}</header>
       <div class="mp-trigger-chain">${steps.map((step, index) => `${index ? '<i aria-hidden="true">&rarr;</i>' : ""}${triggerStepHtml(step)}`).join("")}</div>
       ${paths.length ? `<section class="mp-trigger-events"><header><strong>${esc(t("triggerEvents"))}</strong><small>${esc(t("triggerEventsHint"))}</small></header><div>${paths.map(nativePathHtml).join("")}</div></section>` : ""}
+      ${producers.length ? `<small><strong>${esc(t("cinematicProducer"))}:</strong> ${producers.map((row) => `<code>${esc(`${row.actionType || "action"}::${row.actionMethod || "?"} -> ${row.producerType || "producer"}::${row.producerMethod || "?"}`)}</code>`).join(" ")}</small>` : ""}
+      ${sources.length ? `<small><strong>${esc(t("source"))}:</strong> ${sources.map((source) => `<code>${esc(source)}</code>`).join(" ")}</small>` : ""}
     </div>`;
   }
 
@@ -2986,7 +3455,10 @@
           const spaceshipRuntime = [
             "spaceship_dialog_tree",
             "character_profile_voice",
+            "spaceship_dialog_definition_without_tree_carrier",
           ].includes(row.evidenceKind);
+          const spaceshipDefinitionGap = row.evidenceKind
+            === "spaceship_dialog_definition_without_tree_carrier";
           const spaceshipConsumers = [
             ...(row.consumerClasses || []),
             ...(row.characterIds || []),
@@ -2996,8 +3468,10 @@
             key: row.key,
             relation: "non_mission_content",
             direction: "context",
-            confidence: spaceshipRuntime
-              ? "exact_typed_spaceship_non_mission_content"
+            confidence: spaceshipDefinitionGap
+              ? "exact_typed_spaceship_definition_gap"
+              : spaceshipRuntime
+                ? "exact_typed_spaceship_non_mission_content"
               : guideRuntime
                 ? "exact_typed_guide_runtime_non_mission_content"
                 : "table_backed_non_mission_content",
@@ -3074,12 +3548,106 @@
     </details>${nonMissionContentHtml(nonMissionRows)}`;
   }
 
+  function questTopologyHtml() {
+    const topology = state.mission?.questTopology;
+    const forks = topology?.forks || [];
+    if (!forks.length) return "";
+    const semanticFields = state.index?.runtimeContract?.stateUpdateApplicationAudit
+      ?.questTopologyFieldConsumers?.questSemanticFields || {};
+    const questTypeNames = new Map(
+      (semanticFields.questType?.values || []).map((row) => [Number(row.id), row.name]),
+    );
+    const showModeNames = new Map(
+      (semanticFields.showMode?.values || []).map((row) => [Number(row.id), row.name]),
+    );
+    const structureLabel = (value) => t(({
+      main_path_plus_auxiliary: "questForkMainPathAuxiliary",
+      all_auxiliary: "questForkAllAuxiliary",
+      multiple_main_path_successors: "questForkMultipleMainPath",
+      multiple_main_path_plus_auxiliary: "questForkMultipleMainPath",
+    })[value] || "questForkStructure");
+    const outcomeLabel = (value) => t(({
+      reconverging: "questForkReconverging",
+      divergent_terminals: "questForkDivergentTerminals",
+      mixed_terminal_and_continuing: "questForkMixedTerminal",
+      open_divergence: "questForkOpenDivergence",
+    })[value] || "questForkOpenDivergence");
+    const armHtml = (arm) => {
+      const conditions = arm.objectiveConditionTypes || [];
+      const guard = arm.failedCondition || null;
+      const corridor = arm.siblingExclusiveQuestIds || [];
+      const storyEvidence = arm.storyEvidence || [];
+      const relatedOriginalFiles = arm.relatedOriginalFiles || [];
+      const questTypeName = questTypeNames.get(Number(arm.questType));
+      const showModeName = showModeNames.get(Number(arm.showMode));
+      return `<section class="mp-quest-fork-arm ${arm.role === "main_path" ? "is-main-path" : "is-auxiliary"}">
+        <header><code>${esc(arm.questId || "?")}</code><b>${esc(t(arm.role === "main_path" ? "questForkMainPathArm" : "questForkAuxiliaryArm"))}</b><span>${esc(t(arm.terminal ? "questForkTerminal" : "questForkContinues"))}</span></header>
+        <p><code>${esc(t("questForkFlowSort"))}=${Number(arm.flowIndex || 0)}</code>${questTypeName ? `<code>${esc(t("questForkQuestType"))}: ${esc(questTypeName)} (${Number(arm.questType)})</code>` : ""}${showModeName ? `<code>${esc(t("questForkShowMode"))}: ${esc(showModeName)} (${Number(arm.showMode)})</code>` : ""}${arm.mainPathOrder != null ? `<code>mainPath #${Number(arm.mainPathOrder) + 1}</code>` : ""}${(arm.successorQuestIds || []).map((id) => `<code>&rarr; ${esc(id)}</code>`).join(" ")}</p>
+        ${corridor.length ? `<div class="mp-quest-fork-corridor"><strong>${esc(t("questForkArmCorridor"))}:</strong>${corridor.map((id) => `<code>${esc(id)}</code>`).join(" ")}</div>` : ""}
+        ${conditions.length ? `<p><strong>${esc(t("questForkObjectiveConditions"))}:</strong>${conditions.map((name) => `<code>${esc(name)}</code>`).join(" ")}</p>` : ""}
+        ${guard ? `<div class="mp-quest-fork-guard"><strong>${esc(t("questForkGuardedArm"))}:</strong>${renderConditionTree(guard)}</div>` : ""}
+        ${storyEvidence.length ? `<details class="mp-quest-fork-story"><summary>${esc(t("questForkArmStoryEvidence"))} <span>${storyEvidence.length}</span></summary>${storyEvidence.map((row) => `<div><a href="${esc(storyHref(row.key || ""))}"><code>${esc(row.key || "?")}</code></a><code>${esc(row.questId || "?")}</code><b>${esc(row.relation || row.confidence || "typed relation")}</b><small>${esc([row.confidence, row.actionType, row.conditionType, row.direction].filter(Boolean).join(" · "))}</small></div>`).join("")}</details>` : ""}
+        ${relatedOriginalFiles.length ? `<details class="mp-quest-fork-files"><summary>${esc(t("questForkArmOriginalFiles"))} <span>${relatedOriginalFiles.length}</span></summary>${relatedOriginalFiles.map((related) => `<small><code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("")}</details>` : ""}
+        ${(corridor.length || storyEvidence.length) ? `<small class="mp-quest-fork-arm-boundary">${esc(arm.storyEvidenceBoundary || arm.corridorEvidenceBoundary || t("questForkArmEvidenceBoundary"))}</small>` : ""}
+      </section>`;
+    };
+    const serverApplicationHtml = (fork) => {
+      const stateContract = fork.serverQuestStateApplication || null;
+      const enableContract = fork.serverQuestEnableApplication || null;
+      if (!stateContract && !enableContract) return "";
+      const message = stateContract?.message || enableContract?.message || {};
+      const transitions = stateContract?.transitions || [];
+      const enableMessage = enableContract?.message || {};
+      const enableRoutes = enableContract?.routes || [];
+      const enableField = enableMessage.consumedControlFields?.[0] || "isEnable";
+      const pauseField = enableContract?.runtimeControl?.field || "isPaused";
+      const identities = (fork.arms || [])
+        .map((arm) => arm.serverApplicationIdentity)
+        .filter(Boolean);
+      const files = stateContract?.relatedOriginalFiles || enableContract?.relatedOriginalFiles || [];
+      return `<article class="mp-order-branch is-boundary mp-quest-server-application">
+        <header><strong>${esc(t("questForkServerApplication"))}</strong><code>${esc(message.type || "?")} #${Number(message.messageId || 0)}</code></header>
+        <p><strong>${esc(t("questForkPacketShape"))}:</strong> <code>${esc(message.identityField || "questId")}</code> <code>${esc(message.stateField || "questState")}</code>${(message.successorLikeFields || []).map((field) => `<code>${esc(field)}</code>`).join(" ")}</p>
+        <p>${identities.map((identity) => `<code>${esc(identity.field || "questId")}=${esc(identity.value || "?")}</code>`).join(" ")}</p>
+        <p><strong>${esc(t("questForkStateTransitions"))}:</strong> ${transitions.map((route) => `<code>${esc(route.stateName || "?")} (${Number(route.state)}) &rarr; ${(route.reachableLifecycleCalls || []).map((call) => esc(call.method || "?")).join(" + ")}</code>`).join(" ")}</p>
+        <code>${esc(message.handler?.symbol || "")}${message.handler?.va ? ` @ ${esc(message.handler.va)}` : ""}</code>
+        <p>${esc(t("questForkServerApplicationHint"))}</p>
+        ${enableContract ? `<section class="mp-quest-enable-routes"><strong>${esc(t("questForkEnableApplication"))}</strong><p>${enableRoutes.map((route) => {
+          const values = route.values || {};
+          const calls = (route.reachableLifecycleCalls || []).map((call) => call.method || "?").join(" + ");
+          return `<code>${esc(`${enableField}=${String(values[enableField])} / ${pauseField}=${String(values[pauseField])} → ${calls}`)}</code>`;
+        }).join(" ")}</p><code>${esc(enableMessage.handler?.symbol || "")}${enableMessage.handler?.va ? ` @ ${esc(enableMessage.handler.va)}` : ""}</code>${(enableMessage.unreadControlFields || []).length ? `<p><strong>${esc(t("questForkUnreadControls"))}:</strong> ${(enableMessage.unreadControlFields || []).map((field) => `<code>${esc(field)}</code>`).join(" ")}</p>` : ""}<p>${esc(t("questForkEnableApplicationHint"))}</p></section>` : ""}
+        ${files.length ? `<details class="mp-quest-fork-files"><summary>${esc(t("relatedOriginalFile"))} <span>${files.length}</span></summary>${files.map((related) => `<small><code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("")}</details>` : ""}
+        <small>${esc(t("questForkServerApplicationBoundary"))}</small>
+      </article>`;
+    };
+    return `<details class="mp-mission-story mp-quest-topology" data-weight="strong" open>
+      <summary>${esc(t("questForkStructure"))} <span>${forks.length}</span></summary>
+      <p>${esc(t("questForkStructureHint"))}</p>
+      <div class="mp-quest-fork-list">${forks.map((fork) => `<details class="mp-quest-fork-detail"><summary><code>${esc(fork.questId || "?")}</code><i>&rarr;</i>${(fork.successorQuestIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}<b>${esc(structureLabel(fork.structure))}</b><b>${esc(outcomeLabel(fork.outcome))}</b></summary>
+        ${serverApplicationHtml(fork)}
+        <div class="mp-quest-fork-arms">${(fork.arms || []).map(armHtml).join("")}</div>
+        ${fork.firstCommonDescendant ? `<p><strong>${esc(t("questForkReconverges"))}:</strong><code>${esc(fork.firstCommonDescendant.questId || "?")}</code>${Object.entries(fork.firstCommonDescendant.distanceByArm || {}).map(([id, distance]) => `<code>${esc(id)} +${Number(distance)}</code>`).join(" ")}</p>` : ""}
+        <small>${esc(t("questForkServerPolicy"))}</small>
+        ${(fork.relatedOriginalFiles || []).map((related) => `<small><strong>${esc(t("relatedOriginalFile"))}:</strong> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("")}
+        <small>${esc(fork.evidenceBoundary || topology.evidenceBoundary || "")}</small>
+      </details>`).join("")}</div>
+    </details>`;
+  }
+
   function storyOrderHtml() {
     const order = state.mission?.storyOrder;
     if (!order?.summary) return "";
     const summary = order.summary;
     const components = new Map((order.components || []).map((row) => [row.id, row]));
     const directEdges = order.directEdges || [];
+    const missionObservedContexts = (order.missionObservedLevelScriptContexts || []).map((row) => {
+      const stories = (row.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
+      const conditions = (row.conditionTypes || []).map((name) => `<code>${esc(name)}</code>`).join(" ");
+      const properties = (row.propertyKeys || []).map((name) => `<code>${esc(name)}</code>`).join(" ");
+      const files = (row.relatedOriginalFiles || []).map((related) => `<small><code>${esc(related.kind || "file")}</code> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("");
+      return `<article class="mp-order-branch is-boundary"><header><code>${esc(row.questId || "?")}</code><i>&rarr;</i><code>${esc(row.levelId || "?")} / ${esc(row.scriptId || "?")}</code><i>&harr;</i>${stories}</header><p>${conditions}${properties ? ` <strong>${esc(t("observedProperties"))}:</strong> ${properties}` : ""}</p><small><strong>${esc(t("propertyWriterUnresolved"))}</strong> ${esc(row.evidenceBoundary || "")}</small>${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}</article>`;
+    }).join("");
     const componentHtml = (componentId) => {
       const component = components.get(componentId) || {id: componentId, sceneKeys: []};
       const files = (component.sceneKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join("");
@@ -3092,8 +3660,48 @@
     }).join("");
     const frontiers = (order.topologicalLayers || []).map((layer, index) => `<div class="mp-order-frontier"><b>${esc(t("partialFrontier"))} ${index + 1}</b><span>${(layer || []).map(componentHtml).join("")}</span></div>`).join("");
     const branches = order.branches || {};
+    const questForkAuthority = branches.questForkAuthority || null;
+    const questStartReads = questForkAuthority?.fieldReadCounts || {};
+    const topologyConsumers = questForkAuthority?.topologyFieldConsumers || null;
+    const semanticFields = topologyConsumers?.questSemanticFields || null;
+    const questConsumerCensus = topologyConsumers?.questInfoConsumers || {};
+    const topologyConsumerRows = [
+      ...(questConsumerCensus.rows || []),
+      ...(topologyConsumers?.missionRuntimeConsumers || []),
+    ];
+    const topologyClassificationLabel = (classification) => ({
+      two_value_display_sort_comparator: t("displaySortOnly"),
+      deprecated_description_fallback: t("deprecatedDescriptionOnly"),
+      level_or_description_context_selection: t("mainPathContextOnly"),
+      derived_main_path_membership_cache: t("mainPathCacheOnly"),
+      quest_visibility_or_tracker_presentation: t("questVisibilityPresentation"),
+      quest_type_query_or_presentation: t("questTypePresentation"),
+      post_lifecycle_quest_type_behavior: t("questTypePostLifecycle"),
+      post_lifecycle_block_notification: t("questTypeBlockNotification"),
+    })[classification] || String(classification || "typed field consumer").replaceAll("_", " ");
+    const topologyConsumerFields = (row) => {
+      const questReads = Object.entries(row.fieldReads || {}).map(([name, reads]) => `${name}:${(reads || []).length}`);
+      const missionAccesses = Object.entries(row.fieldAccesses || {}).map(([name, kinds]) => `${name}:${Object.entries(kinds || {}).map(([kind, accesses]) => `${kind}=${(accesses || []).length}`).join("/")}`);
+      return [...questReads, ...missionAccesses];
+    };
+    const optionalFlag = semanticFields?.optionalObjectiveFlag || null;
+    const optionalObservation = optionalFlag?.observation || {};
+    const semanticFieldsHtml = semanticFields ? `<section class="mp-quest-semantic-fields"><p><strong>${esc(t("questSemanticFields"))}:</strong> ${(semanticFields.questType?.values || []).map((row) => `<code>${esc(row.name || "?")}=${Number(row.id)}</code>`).join(" ")} ${(semanticFields.showMode?.values || []).map((row) => `<code>${esc(row.name || "?")}=${Number(row.id)}</code>`).join(" ")}</p><p><code>questType consumers=${Number(semanticFields.questType?.consumerCount || 0)}</code> <code>post-lifecycle=${Number(semanticFields.questType?.postLifecycleConsumerCount || 0)}</code> <code>${esc(t("questBlockNotification"))}=${Number(semanticFields.questType?.blockNotificationConsumerCount || 0)}</code> <code>showMode consumers=${Number(semanticFields.showMode?.consumerCount || 0)}</code> <code>lifecycle=${Number(semanticFields.showMode?.lifecycleConsumerCount || 0)}</code></p><p><strong>${esc(t("questEnumComparisons"))}:</strong> ${Object.entries(semanticFields.questType?.comparisonCounts || {}).map(([name, count]) => `<code>${esc(name)}=${Number(count)}</code>`).join(" ")} ${Object.entries(semanticFields.showMode?.comparisonCounts || {}).map(([name, count]) => `<code>${esc(name)}=${Number(count)}</code>`).join(" ")}</p>${optionalFlag ? `<div class="mp-quest-optional-flag"><strong>${esc(t("questOptionalObjectiveFlag"))}</strong><code>${esc(optionalFlag.validation?.status || "unvalidated")}</code>${optionalObservation.objectiveShowDataType ? `<code>${esc(optionalObservation.objectiveShowDataType)}.optional @ ${esc(optionalObservation.optionalFieldOffset || "?")}</code>` : ""}${optionalObservation.caller?.token ? `<code>${esc(optionalObservation.caller.token)} @ ${esc(optionalObservation.caller.va || "?")}</code>` : ""}${optionalObservation.comparison?.readText ? `<code>${esc(optionalObservation.comparison.readText)}</code>` : ""}${optionalObservation.optionalFieldWrite?.text ? `<code>${esc(optionalObservation.optionalFieldWrite.text)}</code>` : ""}<small>${esc(optionalFlag.finding || "")}</small><small>${esc(optionalFlag.boundary || "")}</small></div>` : ""}<small>${esc(semanticFields.finding || t("questSemanticFieldsHint"))}</small><small>${esc(semanticFields.boundary || "")}</small></section>` : "";
+    const topologyConsumersHtml = topologyConsumers ? `<section class="mp-topology-consumer-audit">
+      <p><strong>${esc(t("wholeClientTopologyConsumers"))}:</strong> <code>${Number(questConsumerCensus.verifiedDirectCallCount || 0)} / ${Number(questConsumerCensus.rawE8CandidateCount || 0)}</code> ${esc(t("verifiedQuestInfoCalls"))} <code>${esc(t("activePredecessorConsumers"))}=${Number(topologyConsumers.activePredecessorConsumerCount || 0)}</code> <code>${esc(t("nonSortFlowConsumers"))}=${Number(topologyConsumers.flowIndexNonSortConsumerCount || 0)}</code> <code>${esc(t("topologyLifecycleCalls"))}=${(topologyConsumers.topologyLifecycleCalls || []).length}</code></p>
+      ${topologyConsumerRows.length ? `<details><summary><strong>${esc(t("topologyConsumerMethods"))}</strong> <span>${topologyConsumerRows.length}</span></summary>${topologyConsumerRows.map((row) => `<p><code>${esc(row.caller?.type || "")}.${esc(row.caller?.method || "")}</code> <code>${esc(row.caller?.token || "")}</code> <b>${esc(topologyClassificationLabel(row.classification))}</b>${topologyConsumerFields(row).map((field) => `<code>${esc(field)}</code>`).join(" ")}</p>`).join("")}</details>` : ""}
+      ${semanticFieldsHtml}<small>${esc(topologyConsumers.finding || "")}</small><small>${esc(topologyConsumers.boundary || "")}</small>
+    </section>` : "";
+    const questForkAuthorityHtml = questForkAuthority ? `<details open class="mp-quest-fork-authority"><summary><b>${esc(t("questForkAuthority"))}</b><span>${esc(t("serverSelectedStart"))}</span></summary>
+      <p>${esc(questForkAuthority.finding || t("questForkAuthorityHint"))}</p>
+      <p><strong>${esc(t("questStartReadEvidence"))}:</strong> <code>objectiveList=${Number(questStartReads.objectiveList || 0)}</code> <code>questType=${Number(questStartReads.questType || 0)}</code> <code>showMode=${Number(questStartReads.showMode || 0)}</code> <code>prevQuestIdList=${Number(questStartReads.prevQuestIdList || 0)}</code> <code>flowIndex=${Number(questStartReads.flowIndex || 0)}</code> <code>topology calls=${(questForkAuthority.topologyTraversalCalls || []).length}</code></p>
+      ${questForkAuthority.startQuest?.symbol ? `<p><code>${esc(questForkAuthority.startQuest.symbol)}</code> <code>${esc(questForkAuthority.startQuest.token || "")}</code> <code>${esc(questForkAuthority.startQuest.va || "")}</code></p>` : ""}
+      <small>${esc(questForkAuthority.boundary || t("questForkAuthorityHint"))}</small>
+      ${topologyConsumersHtml}
+      ${(questForkAuthority.relatedOriginalFiles || []).map((related) => `<small><strong>${esc(t("relatedOriginalFile"))}:</strong> <code>${esc(related.sourceFile || "")}</code> / SHA-256 <code>${esc(related.sha256 || "")}</code></small>`).join("")}
+    </details>` : "";
     const typedSelectors = (branches.typedStorySelectorGroups || []).map((row) => `<details><summary><b>${esc(t("typedStorySelectors"))}</b> <code>${esc(row.selectorGroupId || "?")}</code></summary><p>${esc(t("typedStorySelectorHint"))}</p>${(row.alternatives || []).map((alternative) => `<div><code>${esc(alternative.role || "?")}</code><i>&rarr;</i><a href="${esc(storyHref(alternative.key))}"><code>${esc(alternative.key || "?")}</code></a></div>`).join("")}${(row.sourceFiles || []).length ? `<small>${row.sourceFiles.map((source) => `<code>${esc(source)}</code>`).join(" ")}</small>` : ""}</details>`).join("");
-    const questForks = (branches.questForks || []).map((row) => `<div><b>${esc(t("questFork"))}</b><code>${esc(row.questId || "?")}</code><i>&rarr;</i><span>${(row.successorQuestIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span></div>`).join("");
+    const questForks = (branches.questForks || []).map((row) => `<div><b>${esc(t("questFork"))}</b><code>${esc(row.questId || "?")}</code><i>&rarr;</i><span>${(row.successorQuestIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span>${questForkAuthority ? `<small>${esc(t("serverSelectedStart"))}</small>` : ""}</div>`).join("");
     const questMerges = (branches.questMerges || []).map((row) => `<div><b>${esc(t("questMerge"))}</b><span>${(row.predecessorQuestIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span><i>&rarr;</i><code>${esc(row.questId || "?")}</code></div>`).join("");
     const nativeBranchLabel = (kind) => t(kind === "splitFanout" ? "nativeSplitFanout" : kind === "ifElse" ? "nativeIfElseBranch" : "nativeSwitchBranch");
     const nativeParamText = (label, param) => {
@@ -3170,7 +3778,91 @@
     const nativeSourcesHtml = (row) => (row.sourceFiles || []).length
       ? `<small><strong>${esc(t("source"))}:</strong> ${(row.sourceFiles || []).map((source) => `<code>${esc(source)}</code>`).join(" ")}</small>`
       : "";
-    const nativeBranches = (branches.nativeControlBranches || []).map((row) => `<details><summary><b>${esc(nativeBranchLabel(row.kind))}</b> <code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}#${esc(row.branchLocalId ?? "?")}</code></summary><small>${esc(row.eventName || "")}</small>${nativeEventDetailHtml(row.eventDetail)}${nativePredicateHtml(row.predicate)}${(row.arms || []).map((arm) => `<div><code>${esc(arm.edge || "?")} &rarr; #${esc(arm.entryLocalId ?? "?")}</code><span>${(arm.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ")}</span></div>`).join("")}${nativeSourcesHtml(row)}</details>`).join("");
+    const relatedOriginalFilesHtml = (row) => (row.relatedOriginalFiles || []).length
+      ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${row.relatedOriginalFiles.length}</span></summary>${row.relatedOriginalFiles.map((related) => `<small><code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("")}</details>`
+      : "";
+    const nativeTransitionKindLabel = (kind) => t(({
+      linear: "nativeStoryTransitionLinear",
+      parallelFanout: "nativeStoryTransitionParallel",
+      conditionalBranch: "nativeStoryTransitionConditional",
+      outcomeBranch: "nativeStoryTransitionOutcome",
+      orderedSequence: "nativeStoryTransitionOrdered",
+      orderedSequenceExit: "nativeStoryTransitionOrderedExit",
+    })[kind] || "nativeStoryTransitionLinear");
+    const nativeTransitions = directEdges
+      .filter((row) => row.kind === "levelscriptNativeControlPath")
+      .map((row) => {
+        const kinds = row.transitionKinds || [];
+        const evidence = (row.events || []).map((event) => {
+          const steps = (event.transitionSteps || []).map((step) => {
+            const source = `${step.sourceActionName || step.sourceActionClass || "action"} #${step.sourceLocalId ?? "?"}`;
+            const target = `${step.targetActionName || step.targetActionClass || "action"} #${step.targetLocalId ?? "?"}`;
+            return `<div><code>${esc(source)}</code><i>&rarr;</i><code>${esc(step.edge || "?")}</code><i>&rarr;</i><code>${esc(target)}</code><b>${esc(nativeTransitionKindLabel(step.transitionKind))}</b>${step.runtimeSemantics === "binary_proven_extra_thread_launch" && step.siblingOrderEvidence === false ? `<b title="${esc(step.runtimeAuthoritySource || "")}">${esc(t("extraThreadSchedulerValidated"))}</b><small>${esc(t("extraThreadSiblingBoundary"))}</small>` : ""}${nativePredicateHtml(step.predicate)}</div>`;
+          }).join("");
+          return `<section><small><code>${esc(event.levelId || "?")}/${esc(event.scriptId || "?")}#${esc(event.headerLocalId ?? "?")}</code> ${esc(event.eventName || "")}</small>${nativeEventDetailHtml((event.eventDetails || [])[0])}${steps}</section>`;
+        }).join("");
+        return `<details${row.branchingTransition ? " open" : ""}><summary><a href="${esc(storyHref(row.from))}"><code>${esc(row.from || "?")}</code></a><i>&rarr;</i><a href="${esc(storyHref(row.to))}"><code>${esc(row.to || "?")}</code></a>${kinds.map((kind) => `<b>${esc(nativeTransitionKindLabel(kind))}</b>`).join("")}</summary>${evidence}${nativeSourcesHtml(row)}</details>`;
+      }).join("");
+    const questSucceedLifecycleEdges = directEdges
+      .filter((row) => row.kind === "questSucceedLifecycle")
+      .map((row) => {
+        const objective = row.objectiveStoryRelation || {};
+        const succeed = row.succeedStoryRelation || {};
+        const contract = row.nativeLifecycleContract || {};
+        const action = (contract.succeedActionCalls || [])[0] || {};
+        const questIds = (row.questIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ");
+        const relationDetail = [
+          objective.conditionType,
+          objective.objectiveIndex != null ? `objective ${objective.objectiveIndex}` : "",
+          succeed.actionType,
+          succeed.actionId != null ? `action #${succeed.actionId}` : "",
+        ].filter(Boolean).map((value) => `<code>${esc(value)}</code>`).join(" ");
+        const originals = (row.relatedOriginalFiles || []).map((related) => `<small><code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("");
+        return `<details open class="mp-quest-succeed-lifecycle"><summary><a href="${esc(storyHref(row.from))}"><code>${esc(row.from || "?")}</code></a><i>&rarr;</i><a href="${esc(storyHref(row.to))}"><code>${esc(row.to || "?")}</code></a></summary><p><b>${esc(t("questSucceedLifecyclePath"))}</b> ${questIds}</p><p>${relationDetail}</p><small><code>${esc(contract.succeedQuest?.symbol || "SucceedQuest")}</code> <code>${esc(contract.succeedQuest?.token || "")}</code> <code>${esc(action.questActionName || "OnSucceedClientAction")}</code></small><small>${esc(contract.boundary || t("questSucceedLifecycleHint"))}</small>${originals ? `<details class="mp-quest-lifecycle-files"><summary>${esc(t("questSucceedLifecycleOriginals"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${originals}</details>` : ""}</details>`;
+      }).join("");
+    const questLifecycleDefinitions = (order.questLifecycleDefinitions || []).map((row) => {
+      const originals = (row.relatedOriginalFiles || []).map((related) => `<small><code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("");
+      return `<details open class="mp-quest-succeed-lifecycle"><summary><code>${esc(row.questId || "?")}</code><i>&rarr;</i><a href="${esc(storyHref(row.storyKey))}"><code>${esc(row.storyKey || "?")}</code></a><b>${esc(t("questActionStartNoDispatch"))}</b></summary><p><code>${esc(row.actionSlot || "OnStartClientAction")}</code> <code>${esc(row.actionType || "?")} #${esc(row.actionId ?? "?")}</code></p><small>${esc(row.boundary || t("questStartDefinitionsHint"))}</small>${originals ? `<details class="mp-quest-lifecycle-files"><summary>${esc(t("questSucceedLifecycleOriginals"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${originals}</details>` : ""}</details>`;
+    }).join("");
+    const nativeBranches = (branches.nativeControlBranches || []).map((row) => {
+      const external = new Set(row.externalStoryKeys || []);
+      const boundary = row.crossBoundary
+        ? t(row.branchSemantics === "binary_validated_parallel_story_fanout" ? "nativeCrossBoundaryParallelHint" : "nativeCrossBoundaryConditionalHint")
+        : "";
+      const displayArms = row.fullArms || row.arms || [];
+      const armRows = displayArms.map((arm) => {
+        const storyLinks = (arm.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>${external.has(key) ? `<b>${esc(t("nativeCrossBoundaryExternal"))}</b>` : ""}`).join(" ");
+        const entry = arm.entryAction
+          ? `<span><b>${esc(t("nativeArmEntryAction"))}</b> <code>#${esc(arm.entryAction.localId ?? "?")} ${esc(arm.entryAction.actionName || arm.entryAction.recordClass || "?")}</code></span>`
+          : "";
+        const status = !storyLinks && arm.targetStatus === "exact_active_action"
+          ? `<b>${esc(t("nativeNonStoryArm"))}</b>`
+          : arm.targetStatus === "inactive_serialized_target"
+            ? `<b>${esc(t("nativeInactiveArm"))}</b>`
+            : arm.targetStatus === "missing_runtime_action_slot"
+              ? `<b>${esc(t("nativeRuntimeTerminalArm"))}</b>`
+              : "";
+        const exclusive = (arm.exclusiveActions || []).length
+          ? `<details><summary>${esc(t("nativeArmExclusiveActions"))}: ${Number(arm.exclusiveActionCount || 0).toLocaleString()}</summary>${(arm.exclusiveActions || []).map((action) => `<code>#${esc(action.localId ?? "?")} ${esc(action.actionName || action.recordClass || "?")}</code>`).join(" ")}</details>`
+          : "";
+        return `<div><code>${esc(arm.edge || "?")} &rarr; #${esc(arm.entryLocalId ?? "inactive")}</code><span>${storyLinks}${status}</span>${entry}${exclusive}</div>`;
+      }).join("");
+      const coverage = row.fullArmCoverageStatus === "exact_complete_active_action_map"
+        ? `<p><b>${esc(t("nativeFullArmCoverage"))}</b><span>${Number(row.serializedArmCount || 0).toLocaleString()} ${esc(t("nativeSerializedArms"))}</span>${row.nonStoryArmCount ? `<span>${Number(row.nonStoryArmCount).toLocaleString()} ${esc(t("nativeNonStoryArm"))}</span>` : ""}${row.inactiveTargetArmCount ? `<span>${Number(row.inactiveTargetArmCount).toLocaleString()} ${esc(t("nativeInactiveArm"))}</span>` : ""}${row.runtimeTerminalArmCount ? `<span>${Number(row.runtimeTerminalArmCount).toLocaleString()} ${esc(t("nativeRuntimeTerminalArm"))}</span>` : ""}</p>`
+        : "";
+      const shared = (row.sharedDownstreamActionLocalIds || []).length
+        ? `<small><b>${esc(t("nativeSharedDownstream"))}</b> ${(row.sharedDownstreamActionLocalIds || []).map((localId) => `<code>#${esc(localId)}</code>`).join(" ")}</small>`
+        : "";
+      const fullBoundary = row.fullArmCoverageStatus === "exact_complete_active_action_map"
+        ? `<small>${esc(t("nativeFullArmHint"))}</small>`
+        : "";
+      return `<details${row.crossBoundary ? " open" : ""}><summary><b>${esc(nativeBranchLabel(row.kind))}</b> <code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}#${esc(row.branchLocalId ?? "?")}</code>${row.crossBoundary ? `<b>${esc(t("nativeCrossBoundaryBranch"))}</b>` : ""}</summary><small>${esc(row.eventName || "")}</small>${nativeEventDetailHtml(row.eventDetail)}${nativePredicateHtml(row.predicate)}${row.nativeMappingId ? `<small><code>${esc(row.nativeMappingId)}</code></small>` : ""}${coverage}${armRows}${shared}${fullBoundary}${boundary ? `<small>${esc(boundary)}</small>` : ""}${nativeSourcesHtml(row)}${relatedOriginalFilesHtml(row)}</details>`;
+    }).join("");
+    const nativeMissionStateBranches = (branches.nativeMissionStateBranches || []).map((row) => {
+      const external = new Set(row.externalStoryKeys || []);
+      const arms = (row.arms || []).map((arm) => `<div><code>${esc(arm.edge || "?")} &rarr; #${esc(arm.entryLocalId ?? "?")}</code><span>${(arm.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>${external.has(key) ? `<b>${esc(t("nativeMissionStateExternal"))}</b>` : ""}`).join(" ")}</span></div>`).join("");
+      return `<details open data-mission-state-branch="${esc(row.missionStateId || "")}"><summary><b>${esc(t("nativeMissionStateBranches"))}</b> <code>${esc(row.missionStateId || "?")}</code> <code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}#${esc(row.branchLocalId ?? "?")}</code></summary><small>${esc(row.eventName || "")}</small>${nativeEventDetailHtml(row.eventDetail)}${nativePredicateHtml(row.predicate)}${arms}<small>${esc(t("nativeMissionStateBranchesHint"))}</small>${nativeSourcesHtml(row)}${relatedOriginalFilesHtml(row)}</details>`;
+    }).join("");
     const nativeMerges = (branches.nativeControlMerges || []).map((row) => `<details><summary><b>${esc(t("nativeControlMerge"))}</b><code>#${esc(row.branchLocalId ?? "?")}</code><i>&rarr;</i><code>#${esc(row.mergeLocalId ?? "?")}</code></summary><small>${esc(row.convergenceStatus === "exact_serialized_downstream_control_convergence" ? t("nativeControlReachability") : row.convergenceStatus || "")}</small><span>${(row.downstreamStoryKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ")}</span>${(row.mergePaths || []).map((path) => `<div><b>${esc(t("nativeControlPath"))}</b>${path.map((localId) => `<code>#${esc(localId)}</code>`).join(" &rarr; ")}</div>`).join("")}${nativeSourcesHtml(row)}</details>`).join("");
     const nativeSequences = (branches.nativeOrderedSequences || []).map((row) => `<details open><summary><b>${esc(t("nativeOrderedSequence"))}</b> <code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}#${esc(row.branchLocalId ?? "?")}</code></summary><small>${esc(row.eventName || "")}</small>${(row.arms || []).map((arm, index) => `<div><code>${index + 1}. ${esc(arm.edge || "?")}</code><span>${(arm.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ")}</span></div>`).join("")}${(row.nativeConsumers || []).map((consumer) => `<small><code>${esc(consumer.method || "?")} @ ${esc(consumer.address || "?")}</code> ${esc(consumer.contract || "")}</small>`).join("")}${nativeSourcesHtml(row)}</details>`).join("");
     const relatedActionTopologies = (branches.nativeRelatedActionTopologies || []).map((row) => {
@@ -3219,6 +3911,7 @@
         ...(row.sourceFiles || []),
         ...(row.definitionSourceFiles || []),
         ...(row.originalBinaryFiles || []),
+        ...(row.originalGameFiles || []),
         ...(row.definitionAssets || []),
         ...(row.definitionTables || []),
         row.definitionTable,
@@ -3593,6 +4286,12 @@
           ? `<p><strong>${esc(t("runtimeContextRecoveryBoundary"))}</strong><span>${esc(t("runtimeRecoverySnsLink"))}: <code>${esc(row.missionId || "?")}</code></span>${(row.snsContentIds || []).length ? `<span>content ${(row.snsContentIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span>` : ""}</p>`
           : row.relation === "cutscene_root_playback_alias_composed"
             ? `<p><strong>${esc(t("runtimeContextRecoveryBoundary"))}</strong><span>${esc(t("runtimeRecoveryNominalMission"))}: <code>${esc(row.missionId || "?")}</code></span>${(row.rootStoryKeys || []).length ? `<span>${esc(t("runtimeRecoveryPlaybackRoots"))}: ${(row.rootStoryKeys || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span>` : ""}${nativePaths ? `<span>${esc(t("runtimeRecoveryNativePaths"))}: ${nativePaths}</span>` : ""}</p>`
+            : row.relation === "lua_controller_playback"
+              ? `<p><strong>${esc(t("runtimeContextRecoveryBoundary"))}</strong><span>${esc(t("runtimeRecoveryLuaController"))}: <code>${esc(row.luaFile || "?")}</code>${row.luaLine ? `:${Number(row.luaLine)}` : ""}</span><span>${esc(t("runtimeRecoveryLuaCall"))}: <code>${esc(row.luaCall || "?")}</code></span></p>`
+            : row.relation === "dialog_tree_reachable_story_playback"
+              ? `<p><strong>${esc(t("runtimeContextRecoveryBoundary"))}</strong><span>${esc(t("runtimeRecoveryNominalMission"))}: <code>${esc(row.missionId || row.nominalMissionId || "?")}</code></span><span>${esc(t("runtimeRecoveryQuestAnchors"))}: <code>${esc(row.questId || "?")}</code></span><span>${esc(t("runtimeRecoveryCarrierParents"))}: <code>${esc(row.parentStoryKey || "?")}</code></span></p>`
+            : row.relation === "levelscript_quest_state_gate"
+              ? `<p><strong>${esc(t("runtimeContextRecoveryBoundary"))}</strong><span>${esc(t("runtimeRecoveryNominalMission"))}: <code>${esc(row.missionId || row.nominalMissionId || "?")}</code></span><span>${esc(t("runtimeRecoveryQuestAnchors"))}: <code>${esc(row.questId || "?")}</code></span><span>${esc(t("runtimeRecoveryGate"))}: <code>${esc(row.conditionType || "?")}(${esc(row.conditionComparer || "?")}, ${Number(row.conditionQuestState) === 2 ? "Processing" : esc(row.conditionQuestState ?? "?")})</code> ${(row.eventNames || []).map((id) => `<code>${esc(id)}</code>`).join(" ")} ${(row.actionNames || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span></p>`
             : exactBlackCarrierRelations.has(row.relation)
               ? `<p><strong>${esc(t("runtimeContextRecoveryBoundary"))}</strong><span>${esc(t("runtimeRecoveryNominalMission"))}: <code>${esc(row.nominalStoryMissionId || "?")}</code></span>${(row.parentStoryKeys || []).length ? `<span>${esc(t("runtimeRecoveryCarrierParents"))}: ${(row.parentStoryKeys || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span>` : ""}${(row.timelineIds || []).length ? `<span>${esc(t("offlineRecoveryInternalTimeline"))}: ${(row.timelineIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span>` : ""}</p>`
               : exactSameMissionRuntimeRelations.has(row.relation)
@@ -3612,13 +4311,18 @@
         registered_dialog_tree_definition_binary_consumer_surface_exhausted: t("offlineRecoveryEvidenceBinaryRegisteredDialogTree"),
         exact_missionless_native_event_playback_path: t("offlineRecoveryEvidenceMissionlessNativePlayback"),
         cutscene_root_without_recovered_activator: t("offlineRecoveryEvidenceCutsceneRoot"),
+        cutscene_root_playable_alias_without_recovered_activator: t("offlineRecoveryEvidenceCutsceneAlias"),
         dialog_text_table_only_with_empty_levelscript_host: t("offlineRecoveryEvidenceEmptyHost"),
         radio_definition_with_empty_levelscript_host: t("offlineRecoveryEvidenceEmptyHost"),
         dialog_text_table_only_without_registry_asset_or_consumer: t("offlineRecoveryEvidenceUnregistered"),
         registered_dialog_tree_trunk_group_exact_line_partition: t("offlineRecoveryEvidenceParentTreePartition"),
         partial_registered_dialog_tree_trunk_group_line_partition: t("partialRecoveryEvidenceParentTreePartition"),
+        project_authored_story_content: t("projectAuthoredEvidence"),
       })[row.evidenceKind] || runtimeRecoveryEvidenceLabel(row);
-      return `<article><header><a href="${esc(storyHref(row.key))}"><code>${esc(row.key)}</code></a><b>${esc(evidenceLabel)}</b></header>${runtimeContext}${timeline ? `<p><strong>${esc(t("offlineRecoveryInternalTimeline"))}</strong><code>${esc(timeline)}</code>${lineCount ? `<span>${lineCount.toLocaleString()} ${esc(t("offlineRecoveryLines"))}</span>` : ""}</p>` : ""}${facts}${parentDialogTreeContext}${parentLevelContext}${missingLineFragmentContext}${prtsCarrierContext}${dialogSummaryContext}${missionTrackingContext}${npcProxyConsumerContext}${nativeConsumerContext}${snsDefinitionContext}${missionBranchContext}${missionSequenceContext}${missionTopologyContext}${taskConsumerContext}${dialogResultBranchContext}${emptyHostContext}${runtimeTrackingContext}${relatedOriginalDataContext}${options}${printableTokenBoundary}${internalBranches}${terminalOptions}${popup}${nativePathEvidence}${evidenceBoundary}${sources.length ? `<small>${[...new Set(sources)].map((source) => `<code>${esc(source)}</code>`).join(" ")}</small>` : ""}</article>`;
+      const cutsceneAliasContext = row.rootPlaybackAlias
+        ? `<p><strong>${esc(t("offlineRecoveryCutsceneAlias"))}</strong><span><code>${esc(row.rootPlaybackAlias.rootStoryKey || "?")}</code> &rarr; <code>${esc(row.rootPlaybackAlias.playableAssetStoryKey || "?")}</code> · ${esc(t(row.cutsceneAliasRole === "cutscene_root" ? "offlineRecoveryCutsceneAliasRootRole" : "offlineRecoveryCutsceneAliasPlayableRole"))}</span></p>`
+        : "";
+      return `<article><header><a href="${esc(storyHref(row.key))}"><code>${esc(row.key)}</code></a><b>${esc(evidenceLabel)}</b></header>${runtimeContext}${cutsceneAliasContext}${timeline ? `<p><strong>${esc(t("offlineRecoveryInternalTimeline"))}</strong><code>${esc(timeline)}</code>${lineCount ? `<span>${lineCount.toLocaleString()} ${esc(t("offlineRecoveryLines"))}</span>` : ""}</p>` : ""}${facts}${parentDialogTreeContext}${parentLevelContext}${missingLineFragmentContext}${prtsCarrierContext}${dialogSummaryContext}${missionTrackingContext}${npcProxyConsumerContext}${nativeConsumerContext}${snsDefinitionContext}${missionBranchContext}${missionSequenceContext}${missionTopologyContext}${taskConsumerContext}${dialogResultBranchContext}${emptyHostContext}${runtimeTrackingContext}${relatedOriginalDataContext}${options}${printableTokenBoundary}${internalBranches}${terminalOptions}${popup}${nativePathEvidence}${evidenceBoundary}${sources.length ? `<small>${[...new Set(sources)].map((source) => `<code>${esc(source)}</code>`).join(" ")}</small>` : ""}</article>`;
     }).join("");
     const containments = (order.containments || []).map((row) => {
       const after = (row.embeddedAfterLineIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ");
@@ -3643,12 +4347,17 @@
     return `<details class="mp-mission-story mp-story-order" data-weight="${Number(summary.strongEdgeCount) ? "strong" : "context"}"${Number(summary.strongEdgeCount) || offlineRows.length ? " open" : ""}>
       <summary>${esc(t("storyOrder"))} <span>${Number(summary.sceneCount || 0).toLocaleString()}</span></summary>
       <p>${esc(t("storyOrderHint"))}</p>
-      <div class="mp-order-metrics"><span><b>${Number(summary.strongEdgeCount || 0).toLocaleString()}</b>${esc(t("strongEdges"))}</span><span><b>${Number(summary.weakEdgeCount || 0).toLocaleString()}</b>${esc(t("weakEdges"))}</span><span><b>${Number(summary.cycleCount || 0).toLocaleString()}</b>${esc(t("orderCycles"))}</span><span><b>${Number(summary.unorderedScenePairs || 0).toLocaleString()}</b>${esc(t("unknownPairs"))}</span><span><b>${offlineRows.length.toLocaleString()}</b>${esc(t("offlineRecoveryGaps"))}</span></div>
+      <div class="mp-order-metrics"><span><b>${Number(summary.strongEdgeCount || 0).toLocaleString()}</b>${esc(t("strongEdges"))}</span><span><b>${Number(summary.questSucceedLifecycleEdgeCount || 0).toLocaleString()}</b>${esc(t("questSucceedLifecycleEdges"))}</span><span><b>${Number(summary.questStartActionDefinitionCount || 0).toLocaleString()}</b>${esc(t("questStartDefinitions"))}</span><span><b>${Number(summary.nativeControlPathTransitionEdgeCount || 0).toLocaleString()}</b>${esc(t("nativeStoryTransitions"))}</span><span><b>${Number(summary.nativeControlPathBranchingTransitionEdgeCount || 0).toLocaleString()}</b>${esc(t("nativeStoryTransitionBranching"))}</span>${summary.nativeControlNonStoryArmCount ? `<span><b>${Number(summary.nativeControlNonStoryArmCount).toLocaleString()}</b>${esc(t("nativeNonStoryArm"))}</span>` : ""}${summary.nativeControlCrossBoundaryBranchCount ? `<span><b>${Number(summary.nativeControlCrossBoundaryBranchCount).toLocaleString()}</b>${esc(t("nativeCrossBoundaryStories"))}</span>` : ""}<span><b>${Number(summary.weakEdgeCount || 0).toLocaleString()}</b>${esc(t("weakEdges"))}</span><span><b>${Number(summary.cycleCount || 0).toLocaleString()}</b>${esc(t("orderCycles"))}</span><span><b>${Number(summary.unorderedScenePairs || 0).toLocaleString()}</b>${esc(t("unknownPairs"))}</span><span><b>${offlineRows.length.toLocaleString()}</b>${esc(t("offlineRecoveryGaps"))}</span></div>
+      ${missionObservedContexts ? `<section><h4>${esc(t("missionObservedScriptContexts"))}</h4><p>${esc(t("missionObservedScriptContextsHint"))}</p><div class="mp-order-branches">${missionObservedContexts}</div></section>` : ""}
       ${causalEdges ? `<section><h4>${esc(t("causalEdges"))}</h4><div class="mp-order-edges">${causalEdges}</div></section>` : ""}
+      ${nativeTransitions ? `<section><h4>${esc(t("nativeStoryTransitions"))}</h4><p>${esc(t("nativeStoryTransitionsHint"))}</p><div class="mp-order-branches">${nativeTransitions}</div></section>` : ""}
+      ${nativeMissionStateBranches ? `<section><h4>${esc(t("nativeMissionStateBranches"))}</h4><p>${esc(t("nativeMissionStateBranchesHint"))}</p><div class="mp-order-branches">${nativeMissionStateBranches}</div></section>` : ""}
+      ${questSucceedLifecycleEdges ? `<section><h4>${esc(t("questSucceedLifecycle"))}</h4><p>${esc(t("questSucceedLifecycleHint"))}</p><div class="mp-order-branches mp-quest-succeed-lifecycles">${questSucceedLifecycleEdges}</div></section>` : ""}
+      ${questLifecycleDefinitions ? `<section><h4>${esc(t("questStartDefinitionsTitle"))}</h4><p>${esc(t("questStartDefinitionsHint"))}</p><div class="mp-order-branches mp-quest-succeed-lifecycles">${questLifecycleDefinitions}</div></section>` : ""}
       ${containments ? `<section><h4>${esc(t("embeddedStory"))}</h4><p>${esc(t("embeddedStoryHint"))}</p><div class="mp-order-edges">${containments}</div></section>` : ""}
       ${frontiers ? `<details class="mp-order-frontiers"><summary>${esc(t("partialFrontier"))}</summary>${frontiers}</details>` : ""}
       ${cycles ? `<section class="mp-order-cycles"><h4>${esc(t("orderCycles"))}</h4><p>${esc(t("orderCycleHint"))}</p>${cycles}</section>` : ""}
-      ${questForks || questMerges || nativeBranches || nativeMerges || nativeSequences || sceneOptions || dialogConditionalBranches || typedSelectors ? `<section><h4>${esc(t("forkMerge"))}</h4><div class="mp-order-branches">${questForks}${questMerges}${nativeBranches}${nativeMerges}${nativeSequences}${sceneOptions}${dialogConditionalBranches}${typedSelectors}</div></section>` : ""}
+      ${questForks || questMerges || nativeBranches || nativeMerges || nativeSequences || sceneOptions || dialogConditionalBranches || typedSelectors ? `<section><h4>${esc(t("forkMerge"))}</h4>${questForkAuthorityHtml}<div class="mp-order-branches">${questForks}${questMerges}${nativeBranches}${nativeMerges}${nativeSequences}${sceneOptions}${dialogConditionalBranches}${typedSelectors}</div></section>` : ""}
       ${relatedActionTopologies ? `<section><h4>${esc(t("nativeRelatedActionGraphs"))}</h4><p>${esc(t("nativeRelatedActionGraphsHint"))}</p><div class="mp-order-branches">${relatedActionTopologies}</div></section>` : ""}
       ${dialogOptions ? `<section><h4>${esc(t("optionBranches"))}</h4><div class="mp-order-dialog-branches">${dialogOptions}</div></section>` : ""}
       ${offlineGaps ? `<details class="mp-order-recovery-gaps" open><summary>${esc(t("offlineRecoveryGaps"))} <span>${offlineRows.length.toLocaleString()}</span></summary><p>${esc(t("offlineRecoveryGapsHint"))}</p><div>${offlineGaps}</div></details>` : ""}
@@ -3729,6 +4438,11 @@
     const row = state.index?.missions?.find((item) => item.id === mission.id) || {};
     const caseStudy = state.mission.caseStudy;
     const offlineShell = mission.offlineRecoveryShell === true;
+    const aggregateShell = mission.storyAggregateShell === true;
+    const shellLabel = aggregateShell ? t("storyAggregateShell") : t("offlineMissionShell");
+    const shellHint = aggregateShell ? t("storyAggregateShellHint") : t("offlineMissionShellHint");
+    const aggregateVariants = (mission.variantMissionIds || []).map((id) => `<button class="mp-graph-link" type="button" data-mission="${esc(id)}"><code>${esc(id)}</code></button>`).join("");
+    const aggregateOriginals = (mission.relatedOriginalFiles || []).map((related) => `<small><code>${esc(related.variantMissionId || related.kind || "file")}</code> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("");
     const metrics = [
       [row.questCount || state.mission.nodes?.length || 0, t("quests")],
       [row.entryCount || 0, t("roots")],
@@ -3745,11 +4459,11 @@
         <div><p class="mp-summary-kicker">${esc(mission.levelId || "—")}</p><h2>${esc(missionName(mission.id))}</h2><code>${esc(mission.id)}</code></div>
         <div class="mp-summary-metrics">${metrics.map(([value, label]) => `<span><strong>${value}</strong>${esc(label)}</span>`).join("")}</div>
       </div>
-      <div class="mp-case${caseStudy || offlineShell ? " has-case" : ""}">
+      <div class="mp-case${caseStudy || offlineShell || aggregateShell ? " has-case" : ""}">
         <span class="mp-case-icon" aria-hidden="true">${caseStudy ? "◎" : "○"}</span>
-        <div><strong>${esc(offlineShell ? t("offlineMissionShell") : (caseStudy?.title || t("evidence")))}</strong><p>${esc(offlineShell ? t("offlineMissionShellHint") : (caseStudy?.summary || t("noCase")))}</p>${caseStudy ? `<span class="mp-confidence">${esc(t("confidence"))}: ${esc(caseStudy.confidence)}</span>` : ""}</div>
+        <div><strong>${esc(offlineShell || aggregateShell ? shellLabel : (caseStudy?.title || t("evidence")))}</strong><p>${esc(offlineShell || aggregateShell ? shellHint : (caseStudy?.summary || t("noCase")))}</p>${aggregateVariants ? `<div><b>${esc(t("storyAggregateVariants"))}:</b> ${aggregateVariants}</div>` : ""}${aggregateOriginals ? `<details><summary>${esc(t("storyAggregateOriginals"))} <span>${mission.relatedOriginalFiles.length}</span></summary>${aggregateOriginals}</details>` : ""}${caseStudy ? `<span class="mp-confidence">${esc(t("confidence"))}: ${esc(caseStudy.confidence)}</span>` : ""}</div>
       </div>
-      ${offlineShell ? "" : `<div class="mp-mission-handshake">
+      ${offlineShell || aggregateShell ? "" : `<div class="mp-mission-handshake">
         <strong>${esc(t("missionHandshake"))}</strong>
         <span class="is-outbound">${esc(t("acceptRequest"))}</span>
         <i aria-hidden="true">⇄</i>
@@ -3765,7 +4479,7 @@
   // keeps its own summary, hints and boundary notes verbatim, and the order
   // inside each band is the order it had in the flat stack.
   const SUMMARY_SECTIONS = [
-    ["structure", "summarySectionStructure", () => [missionGraphHtml(), storyOrderHtml(), missionPropertiesHtml()]],
+    ["structure", "summarySectionStructure", () => [missionGraphHtml(), questTopologyHtml(), storyOrderHtml(), missionPropertiesHtml()]],
     ["runtime", "summarySectionRuntime", () => [nativeRuntimeBindingsHtml(), runtimeTraceHtml()]],
     ["story", "summarySectionStory", () => [
       missionStoryConnectionsHtml(),
@@ -3813,6 +4527,8 @@
 
   function runtimeContractHtml() {
     const contract = state.index?.runtimeContract || {};
+    const stateApplication = contract.stateUpdateApplicationAudit || null;
+    const extraThreadScheduler = contract.actionExtraThreadSchedulerAudit || null;
     const coveragePolicy = state.index?.storyCoverage?.policy || "";
     const dynamicSceneAudit = state.index?.storyCoverage?.dynamicSceneIdentityCrossReferences || {};
     const currentMissionId = String(state.missionId || state.mission?.mission?.id || "");
@@ -3830,8 +4546,23 @@
     const missionlessNodes = (state.index?.storyCoverage?.missionlessSubGamePlaybackNodes || [])
       .filter((row) => row && row.subGameId && row.bindScriptId);
     const missionlessAudit = contract.subGameMissionRegistry?.missionlessPlaybackAudit || {};
+    const receiverFrontier = state.index?.storyCoverage?.nativeReceiverActivationFrontier || {};
+    const structuredIdentityCensus = receiverFrontier.structuredIdentityCarrierCensus || {};
     const receiverNodes = (state.index?.storyCoverage?.missionlessNativeRuntimeNodes || [])
       .filter((row) => row && row.eventName && row.selector && (row.storyFiles || []).length);
+    const variableBridgeAudit = state.index?.storyCoverage?.postPlaybackVariableBridgeAudit || {};
+    const variableBridgeSummary = variableBridgeAudit.summary || {};
+    const actionNameAudit = state.index?.storyCoverage?.postPlaybackActionNameAudit || {};
+    const actionNameSummary = actionNameAudit.summary || {};
+    const callServerCallbackAudit = state.index?.storyCoverage?.callServerCallbackAudit || {};
+    const callServerCallbackSummary = callServerCallbackAudit.summary || {};
+    const callServerCallbackRoutes = callServerCallbackAudit.storyCallbackRoutes || [];
+    const postPlaybackCallServerAudit = callServerCallbackAudit.postPlaybackContractAudit || {};
+    const postPlaybackCallServerSummary = postPlaybackCallServerAudit.summary || {};
+    const storyCoverageCounts = state.index?.storyCoverage?.counts || {};
+    const storyOrderSummary = state.index?.storyOrder?.summary || {};
+    const levelSequenceAudit = state.index?.storyCoverage?.postPlaybackLevelSequenceAssetAudit || {};
+    const levelSequenceSummary = levelSequenceAudit.summary || {};
     const rows = [...(contract.outbound || []), ...(contract.inbound || [])];
     const localRows = (contract.localOnly || []).filter((row) => row && row.event);
     const protocolOnlyRows = (contract.protocolOnly || []).filter((row) => row && row.message);
@@ -3841,6 +4572,7 @@
     const paramSourceAudit = contract.paramSourceMissionContextAudit || null;
     const managedCarrierCensus = contract.managedIdentityCarrierCensus || null;
     const nestedCarrierCensus = contract.nestedManagedIdentityCarrierCensus || null;
+    const crossSystemCensus = contract.nativeCrossSystemConsumerCensus || null;
     const eventFamilies = Object.entries(state.index?.storyCoverage?.nativePlaybackEventFamilies || {})
       .filter(([, count]) => Number(count) > 0)
       .sort((a, b) => Number(b[1]) - Number(a[1]) || a[0].localeCompare(b[0]));
@@ -3872,6 +4604,59 @@
         <code>${esc(row.handler)}${row.address ? ` @ ${esc(row.address)}` : ""}</code>
         <p>${esc(row.effect)}</p>
       </article>`; }).join("")}</div>
+      ${stateApplication ? `<section class="mp-local-only mp-state-application-contract">
+        <header><strong>${esc(t("stateApplicationContract"))}</strong><span>${Number(stateApplication.validatedCandidateCount || 0).toLocaleString()} / ${Number(stateApplication.candidateCount || 0).toLocaleString()} ${esc(t("stateApplicationValidated"))}</span></header>
+        <div>${(stateApplication.rows || []).map((row) => {
+          const identityOffset = row.fieldOffsets?.[row.identityField] || "?";
+          const stateOffset = row.fieldOffsets?.[row.stateField] || "?";
+          const lifecycle = (row.lifecycleCalls || []).map((call) => `${call.method}(${call.identityArgumentOrigin || "?"})`).join(" / ");
+          return `<article class="mp-contract-card is-server_to_client">
+            <span>${esc(t("serverSelectedIdentity"))} / ${esc(row.handler?.token || "")}</span>
+            <strong>${esc(`${row.type || ""} (${row.messageId ?? "?"})`)}</strong>
+            <div class="mp-contract-tags"><b>${esc(`${row.identityField}@${identityOffset}`)}</b><b>${esc(`${row.stateField}@${stateOffset}`)}</b>${row.clientSuccessorSelectorPresent ? "" : `<b>${esc(t("noClientSuccessorSelector"))}</b>`}</div>
+            <code>${esc(`${row.handler?.symbol || ""} @ ${row.handler?.va || ""}`)}</code>
+            <p><b>${esc(t("lifecycleIdentityFlow"))}:</b> ${esc(lifecycle)}</p>
+          </article>`;
+        }).join("")}</div>
+        ${stateApplication.questStateLifecycleApplication ? `<article class="mp-contract-card is-server_to_client">
+          <span>${esc(stateApplication.questStateLifecycleApplication.classification || "")}</span>
+          <strong>${esc(t("questForkServerApplication"))}</strong>
+          <div class="mp-contract-tags">${(stateApplication.questStateLifecycleApplication.transitions || []).map((route) => `<b>${esc(route.stateName || "?")} (${Number(route.state)}) &rarr; ${(route.reachableLifecycleCalls || []).map((call) => call.method || "?").join(" + ")}</b>`).join("")}</div>
+          <code>${esc(stateApplication.questStateLifecycleApplication.message?.handler?.symbol || "")}${stateApplication.questStateLifecycleApplication.message?.handler?.va ? ` @ ${esc(stateApplication.questStateLifecycleApplication.message.handler.va)}` : ""}</code>
+          <p>${esc(stateApplication.questStateLifecycleApplication.finding || "")}</p>
+          <small>${esc(stateApplication.questStateLifecycleApplication.boundary || "")}</small>
+        </article>` : ""}
+        ${stateApplication.questEnableLifecycleApplication ? `<article class="mp-contract-card is-server_to_client">
+          <span>${esc(stateApplication.questEnableLifecycleApplication.classification || "")}</span>
+          <strong>${esc(t("questForkEnableApplication"))}</strong>
+          <div class="mp-contract-tags">${(stateApplication.questEnableLifecycleApplication.routes || []).map((route) => {
+            const packetField = stateApplication.questEnableLifecycleApplication.message?.consumedControlFields?.[0] || "isEnable";
+            const runtimeField = stateApplication.questEnableLifecycleApplication.runtimeControl?.field || "isPaused";
+            const calls = (route.reachableLifecycleCalls || []).map((call) => call.method || "?").join(" + ");
+            return `<b>${esc(`${packetField}=${String(route.values?.[packetField])} / ${runtimeField}=${String(route.values?.[runtimeField])} → ${calls}`)}</b>`;
+          }).join("")}</div>
+          <code>${esc(stateApplication.questEnableLifecycleApplication.message?.handler?.symbol || "")}${stateApplication.questEnableLifecycleApplication.message?.handler?.va ? ` @ ${esc(stateApplication.questEnableLifecycleApplication.message.handler.va)}` : ""}</code>
+          ${(stateApplication.questEnableLifecycleApplication.message?.unreadControlFields || []).length ? `<p><strong>${esc(t("questForkUnreadControls"))}:</strong> ${(stateApplication.questEnableLifecycleApplication.message.unreadControlFields || []).map((field) => `<code>${esc(field)}</code>`).join(" ")}</p>` : ""}
+          <p>${esc(stateApplication.questEnableLifecycleApplication.finding || "")}</p>
+          <small>${esc(stateApplication.questEnableLifecycleApplication.boundary || "")}</small>
+        </article>` : ""}
+        <p class="mp-gap-policy">${esc(stateApplication.finding || "")}</p>
+        ${(stateApplication.relatedOriginalFiles || []).map((related) => `<p class="mp-gap-policy"><b>${esc(t("relatedOriginalFile"))}:</b> <code>${esc(related.sourceFile || "")}</code> / SHA-256 <code>${esc(related.sha256 || "")}</code></p>`).join("")}
+        <p class="mp-contract-boundary">${esc(stateApplication.boundary || "")}</p>
+      </section>` : ""}
+      ${extraThreadScheduler ? `<section class="mp-local-only mp-extra-thread-scheduler">
+        <header><strong>${esc(t("extraThreadScheduler"))}</strong><span>${Number(extraThreadScheduler.extraThreadExecuteMethods?.length || 0).toLocaleString()} ${esc(t("extraThreadSchedulerValidated"))}</span></header>
+        <div>${(extraThreadScheduler.extraThreadExecuteMethods || []).map((row) => `<article class="mp-contract-card is-local-only">
+          <span>${esc(row.writerShape || "")}</span>
+          <strong>${esc(row.symbol || "")}</strong>
+          <div class="mp-contract-tags"><b>${esc(t("extraThreadSiblingBoundary"))}</b><b>${Number(row.directSchedulerCalls?.length || 0).toLocaleString()} ${esc(t("extraThreadDirectCalls"))}</b></div>
+          <code>${esc(row.token || "")} @ ${esc(row.va || "?")}</code>
+          <small>${(row.typedChildFields || []).map((field) => `<code>${esc(`${field.field}@${field.offset}`)}</code>`).join(" ")}</small>
+        </article>`).join("")}</div>
+        <p class="mp-gap-policy">${esc(extraThreadScheduler.finding || "")}</p>
+        ${(extraThreadScheduler.relatedOriginalFiles || []).map((related) => `<p class="mp-gap-policy"><b>${esc(t("relatedOriginalFile"))}:</b> <code>${esc(related.sourceFile || "")}</code> / SHA-256 <code>${esc(related.sha256 || "")}</code></p>`).join("")}
+        <p class="mp-contract-boundary">${esc(extraThreadScheduler.boundary || "")}</p>
+      </section>` : ""}
       ${localRows.length ? `<section class="mp-local-only"><header><strong>${esc(t("localOnlyPaths"))}</strong><span>${esc(t("noServerExchange"))}</span></header><div>${localRows.map((row) => `<article class="mp-contract-card is-local-only"><span>LOCAL · ${esc(row.confidence || "native_proven")}</span><strong>${esc(row.event)}</strong><div class="mp-contract-tags"><b>${esc(t("noServerExchange"))}</b></div>${(row.fields || []).length ? `<small><b>${esc(t("protocolFields"))}:</b> ${(row.fields || []).map((field) => `<code>${esc(field)}</code>`).join(" ")}</small>` : ""}<code>${esc(row.handler || "")}${row.address ? ` @ ${esc(row.address)}` : ""}</code><p>${esc(row.effect || "")}</p></article>`).join("")}</div></section>` : ""}
       ${protocolOnlyRows.length ? `<section class="mp-local-only mp-protocol-capabilities"><header><strong>${esc(protocolLabel("capability"))}</strong><span>${esc(protocolLabel("schemaOnly"))}</span></header><div>${protocolOnlyRows.map((row) => `<article class="mp-contract-card"><span>${esc(protocolLabel(row.boundary === "runtime_unconfirmed" ? "runtimeUnconfirmed" : "senderUnconfirmed"))}</span><strong>${esc(row.message)}</strong><div class="mp-contract-tags"><b>${esc(row.confidence || "protocol_schema_only")}</b></div>${(row.fields || []).length ? `<small><b>${esc(t("protocolFields"))}:</b> ${(row.fields || []).map((field) => `<code>${esc(field)}</code>`).join(" ")}</small>` : ""}${row.possibleServerPush ? `<small><b>${esc(protocolLabel("possible"))}:</b> <code>${esc(row.possibleServerPush)}</code></small>` : ""}<p>${esc(row.effect || "")}</p></article>`).join("")}</div></section>` : ""}
       ${missionOptionAudit?.finding || missionPropertyAudit?.finding || paramSourceAudit?.finding || managedCarrierCensus?.finding || nestedCarrierCensus?.finding ? `<section class="mp-local-only mp-carrier-audits"><header><strong>${esc(t("carrierAudit"))}</strong><span>${esc(t("noGraphEdges"))}</span></header><div>
@@ -3884,8 +4669,14 @@
           <strong>${esc(t("nestedManagedCandidates"))}: ${Number(nestedCarrierCensus.metadata?.candidateTypes || 0).toLocaleString()}</strong>
           <div class="mp-contract-tags">
             <b>${esc(t("nestedDependentCandidates"))}: ${Number(nestedCarrierCensus.metadata?.nestedDependentCandidateTypes || 0).toLocaleString()}</b>
-            <b>${esc(t("maxTypedDepth"))}: ${Number(nestedCarrierCensus.metadata?.maxCustomTypeDepth || 0).toLocaleString()}</b>
+            <b>${esc(t("maxTypedDepth"))}: ${Number(nestedCarrierCensus.metadata?.maximumShortestPathDepth || 0).toLocaleString()}</b>
+            <b>${esc(t("fixedPointTraversal"))}</b>
             <b>${esc(t("unreviewedCandidates"))}: ${Number(nestedCarrierCensus.metadata?.unreviewedCandidateTypes || 0).toLocaleString()}</b>
+            <b>${esc(t("runtimeEntityHubCandidates"))}: ${Number(nestedCarrierCensus.runtimeEntityHubClosure?.candidateTypes || 0).toLocaleString()}</b>
+            <b>${esc(t("sharedAggregateCandidates"))}: ${Number(nestedCarrierCensus.sharedRuntimeAggregateClosure?.candidateTypes || 0).toLocaleString()}</b>
+            <b>${esc(t("exactSerializedInstances"))}: ${Number(nestedCarrierCensus.runtimeEntityHubClosure?.exactIndexedTypeLabels || 0).toLocaleString()}</b>
+            <b>${esc(t("indexedOriginalObjects"))}: ${Number(nestedCarrierCensus.runtimeEntityHubClosure?.indexedOriginalObjects || 0).toLocaleString()}</b>
+            <b>${esc(t("truncatedScalarObjects"))}: ${Number(nestedCarrierCensus.runtimeEntityHubClosure?.objectsWithTruncatedScalars || 0).toLocaleString()}</b>
             <b>${esc(t("shippedLuaProducer"))}: ${Number(nestedCarrierCensus.pendingItemSubmitterClosure?.shippedLuaProducer?.constructorAndRegistrationCalls || 0).toLocaleString()}</b>
             <b>${esc(t("authoredSubmitItemActions"))}: ${Number(nestedCarrierCensus.pendingItemSubmitterClosure?.authoredOpenUiActions?.submitItemActions || 0).toLocaleString()}</b>
             <b>${esc(t("concreteQuestIds"))}: ${Number(nestedCarrierCensus.pendingItemSubmitterClosure?.authoredOpenUiActions?.concreteQuestIdActions || 0).toLocaleString()}</b>
@@ -3899,10 +4690,68 @@
           <small><code>${esc(nestedCarrierCensus.pendingItemSubmitterClosure?.shippedLuaProducer?.logicalPath || "")}</code></small>
           <small><code>${esc(nestedCarrierCensus.pendingItemSubmitterClosure?.fallbackParamFlow?.shippedLuaConsumer?.logicalPath || "")}</code> · ${esc(nestedCarrierCensus.pendingItemSubmitterClosure?.fallbackParamFlow?.finding || "")}</small>
           <p>${esc(nestedCarrierCensus.finding)}</p>
+          <small>${esc(nestedCarrierCensus.runtimeEntityHubClosure?.finding || "")}</small>
+          <small>${esc(nestedCarrierCensus.sharedRuntimeAggregateClosure?.finding || "")}</small>
           <small>${esc(nestedCarrierCensus.pendingItemSubmitterClosure?.finding || "")}</small>
+          ${(nestedCarrierCensus.relatedOriginalFiles || []).map((related) => `<small><b>${esc(t("relatedOriginalFile"))}:</b> <code>${esc(related.sourceFile || "")}</code> / SHA-256 <code>${esc(related.sha256 || "")}</code> / ${esc(related.role || "")}</small>`).join("")}
           <small>${esc(nestedCarrierCensus.boundary || "")}</small>
         </article>` : ""}
       </div></section>` : ""}
+      ${crossSystemCensus?.finding ? `<section class="mp-local-only mp-cross-system-census">
+        <header><strong>${esc(t("nativeCrossSystemConsumers"))}</strong><span>${esc(t("noGraphEdges"))}</span></header>
+        <div><article class="mp-contract-card is-boundary-only">
+          <span>${esc(crossSystemCensus.classification || "binary_cross_system_consumers_reviewed")}</span>
+          <strong>${Number(crossSystemCensus.counts?.crossSystemCallers || 0).toLocaleString()} ${esc(t("crossSystemCallers"))}</strong>
+          <div class="mp-contract-tags">
+            <b>${esc(t("missionDynamicConsumers"))}: ${Number(crossSystemCensus.counts?.missionStateDynamicSceneCallers || 0).toLocaleString()}</b>
+            <b>${esc(t("missionLevelScriptConsumers"))}: ${Number(crossSystemCensus.counts?.missionLevelScriptCallers || 0).toLocaleString()}</b>
+            <b>${esc(t("tripleSystemConsumers"))}: ${Number(crossSystemCensus.counts?.tripleOrGreaterFamilyCallers || 0).toLocaleString()}</b>
+            <b>${esc(t("visualContextConsumers"))}: ${Number(crossSystemCensus.counts?.dynamicSceneStoryCallers || 0).toLocaleString()}</b>
+            <b>${esc(t("unreviewedConsumers"))}: ${Number(crossSystemCensus.counts?.unreviewedCallers || 0).toLocaleString()}</b>
+            <b>${esc(t("closureReachableMethods"))}: ${Number(crossSystemCensus.counts?.closureReachableMethods || 0).toLocaleString()}</b>
+            <b>${esc(t("closureDirectEdges"))}: ${Number(crossSystemCensus.counts?.closureDirectEdges || 0).toLocaleString()}</b>
+          </div>
+          ${crossSystemCensus.deferredRefreshClosure?.chain?.length ? `<div class="mp-runtime-associations">
+            <strong>${esc(t("deferredAvailabilityRefresh"))}</strong>
+            <div>${crossSystemCensus.deferredRefreshClosure.chain.map((step) => `<code>${esc(step)}</code>`).join('<i aria-hidden="true">→</i>')}</div>
+            <small><b>${esc(t("pendingRefreshField"))}:</b> <code>${esc(`${crossSystemCensus.deferredRefreshClosure.pendingField?.name || "?"}@${crossSystemCensus.deferredRefreshClosure.pendingField?.offset || "?"}`)}</code> <code>${esc(crossSystemCensus.deferredRefreshClosure.pendingField?.token || "")}</code></small>
+            <small>${esc(t("availabilityOnlyNoOrder"))}</small>
+          </div>` : ""}
+          ${crossSystemCensus.missionRuntimeSurface?.finding ? `<div class="mp-runtime-associations">
+            <strong>${esc(t("fullMissionRuntimeSurface"))}</strong>
+            <div class="mp-contract-tags">
+              <b>${esc(t("missionIdentityTypes"))}: ${Number(crossSystemCensus.missionRuntimeSurface.counts?.missionIdentityTypes || 0).toLocaleString()}</b>
+              <b>${esc(t("crossSystemCallers"))}: ${Number(crossSystemCensus.missionRuntimeSurface.counts?.crossSystemCallers || 0).toLocaleString()}</b>
+              <b>${esc(t("crossFamilySignatures"))}: ${Number(crossSystemCensus.missionRuntimeSurface.counts?.crossFamilyMethodSignatures || 0).toLocaleString()}</b>
+              <b>${esc(t("trackingMissionWrites"))}: ${Number(crossSystemCensus.missionRuntimeSurface.counts?.trackingMissionFieldWrites || 0).toLocaleString()}</b>
+              <b>${esc(t("trackingSceneWrites"))}: ${Number(crossSystemCensus.missionRuntimeSurface.counts?.trackingSceneFieldWrites || 0).toLocaleString()}</b>
+            </div>
+            <small><code>${esc(`missionId@${crossSystemCensus.missionRuntimeSurface.trackingFieldFlow?.fieldLayout?.missionId?.offset || "?"}`)}</code> <code>${esc(`sceneId@${crossSystemCensus.missionRuntimeSurface.trackingFieldFlow?.fieldLayout?.sceneId?.offset || "?"}`)}</code></small>
+            <p>${esc(crossSystemCensus.missionRuntimeSurface.finding)}</p>
+            <small>${esc(t("trackingContextOnly"))}</small>
+            <small>${esc(crossSystemCensus.missionRuntimeSurface.boundary || "")}</small>
+          </div>` : ""}
+          ${crossSystemCensus.managedCallableSurface?.finding ? `<div class="mp-runtime-associations">
+            <strong>${esc(t("managedCallableSurface"))}</strong>
+            <div class="mp-contract-tags">
+              <b>${esc(t("callableFields"))}: ${Number(crossSystemCensus.managedCallableSurface.counts?.callableFields || 0).toLocaleString()}</b>
+              <b>${esc(t("missionCallableFields"))}: ${Number(crossSystemCensus.managedCallableSurface.counts?.missionRuntimeCallableFields || 0).toLocaleString()}</b>
+              <b>${esc(t("levelScriptCallableFields"))}: ${Number(crossSystemCensus.managedCallableSurface.counts?.levelScriptCallableFields || 0).toLocaleString()}</b>
+              <b>${esc(t("callableEntryMethods"))}: ${Number(crossSystemCensus.managedCallableSurface.counts?.callableEntryMethods || 0).toLocaleString()}</b>
+              <b>${esc(t("directBindingCalls"))}: ${Number(crossSystemCensus.managedCallableSurface.counts?.directBindingCalls || 0).toLocaleString()}</b>
+              <b>${esc(t("crossFamilyBindings"))}: ${Number(crossSystemCensus.managedCallableSurface.counts?.missionLevelScriptBindings || 0).toLocaleString()}</b>
+            </div>
+            ${(crossSystemCensus.managedCallableSurface.bindings || []).map((binding) => `<div><code>${esc((binding.callers || []).join(" / "))}</code><i aria-hidden="true">→</i><code>${esc((binding.entries || []).map((entry) => `${entry.owner}.${entry.method}`).join(" / "))}</code></div>`).join("")}
+            <p>${esc(crossSystemCensus.managedCallableSurface.finding)}</p>
+            <small>${esc(t("callableNoActivation"))}</small>
+            <small>${esc(crossSystemCensus.managedCallableSurface.boundary || "")}</small>
+          </div>` : ""}
+          <p>${esc(crossSystemCensus.finding)}</p>
+          <small>${esc(crossSystemCensus.method || "")}</small>
+          ${(crossSystemCensus.relatedOriginalFiles || []).map((related) => `<small><b>${esc(t("relatedOriginalFile"))}:</b> <code>${esc(related.sourceFile || "")}</code> / SHA-256 <code>${esc(related.sha256 || "")}</code> / ${esc(related.role || "")}</small>`).join("")}
+          <small>${esc(crossSystemCensus.boundary || "")}</small>
+        </article></div>
+      </section>` : ""}
       ${dynamicSceneRows.length ? `<section class="mp-missionless-runtime mp-dynamic-scene-crossrefs">
         <header><strong>${esc(t("dynamicSceneCrossReferences"))} <span>${dynamicSceneRows.length}</span></strong><p>${esc(t("dynamicSceneCrossReferencesHint"))}</p></header>
         <div class="mp-missionless-runtime-grid">${dynamicSceneRows.map((row) => {
@@ -3933,6 +4782,51 @@
         ${coveragePolicy ? `<p class="mp-gap-policy"><b>${esc(t("evidencePolicy"))}:</b> ${esc(coveragePolicy)}</p>` : ""}
         <div class="mp-gap-family-list">${eventFamilies.map(([eventName, count]) => `<div class="mp-gap-family-row"><code>${esc(eventName)}</code><span><i style="width:${Math.max(4, Math.round((Number(count) / maxEventFamilyCount) * 100))}%"></i></span><b>${Number(count).toLocaleString()}</b></div>`).join("")}</div>
       </section>` : ""}
+      ${actionNameAudit.schema ? `<section class="mp-gap-queue mp-action-name-audit">
+        <header><strong>${esc(t("postPlaybackActionNameAudit"))}</strong><p>${esc(t("postPlaybackActionNameBoundary"))}</p></header>
+        <div class="mp-gap-family-list">
+          <div class="mp-gap-family-row"><code>${esc(t("postPlaybackFormatterTags"))}</code><span></span><b>${Number(actionNameAudit.formatterTable?.summary?.recoveredTags || 0).toLocaleString()}</b></div>
+          <div class="mp-gap-family-row"><code>${esc(t("postPlaybackFormatterNamed"))}</code><span></span><b>${Number(actionNameSummary.formatterNamedActionPlacements || 0).toLocaleString()} / ${Number(actionNameSummary.actionPlacements || 0).toLocaleString()}</b></div>
+          <div class="mp-gap-family-row"><code>${esc(t("nativeTransitionNamedEndpoints"))}</code><span></span><b>${Number(storyOrderSummary.nativeControlPathNamedActionEndpoints || 0).toLocaleString()} / ${Number(storyOrderSummary.nativeControlPathTransitionActionEndpoints || 0).toLocaleString()}</b></div>
+          <div class="mp-gap-family-row"><code>${esc(t("postPlaybackOutsideActionBase"))}</code><span></span><b>${Number(actionNameSummary.unresolvedOutsideActionBaseShapes || 0).toLocaleString()}</b></div>
+        </div>
+        ${(actionNameAudit.unresolvedActionShapes || []).length ? `<p class="mp-gap-policy">${actionNameAudit.unresolvedActionShapes.map((row) => `<code>${esc(`${row.opcode} ×${row.count}`)}</code>`).join(" ")}</p>` : ""}
+        <p class="mp-gap-policy"><code>${esc(actionNameAudit.formatterTable?.sourceFile || "")}</code> · SHA-256 <code>${esc(actionNameAudit.formatterTable?.sourceSha256 || "")}</code></p>
+      </section>` : ""}
+      ${callServerCallbackAudit.schema ? `<section class="mp-gap-queue mp-callserver-callback-audit">
+        <header><strong>${esc(t("callServerCallbackAudit"))}</strong><p>${esc(t("callServerCallbackBoundary"))}</p></header>
+        <div class="mp-gap-family-list">
+          <div class="mp-gap-family-row"><code>${esc(t("callServerActionsDecoded"))}</code><span></span><b>${Number(callServerCallbackSummary.decodedCallServerActions || 0).toLocaleString()} / ${Number(callServerCallbackSummary.callServerActions || 0).toLocaleString()}</b></div>
+          <div class="mp-gap-family-row"><code>${esc(t("callServerCallbackHeaders"))}</code><span></span><b>${Number(callServerCallbackSummary.exactCallbackHeaders || 0).toLocaleString()} / ${Number(callServerCallbackSummary.callbackOutputUids || 0).toLocaleString()}</b></div>
+          <div class="mp-gap-family-row"><code>${esc(t("callServerStoryCallbacks"))}</code><span></span><b>${Number(callServerCallbackSummary.callbackHeadersReachingStory || 0).toLocaleString()} / ${Number(callServerCallbackSummary.callbackStoryTargets || 0).toLocaleString()} Story targets</b></div>
+          <div class="mp-gap-family-row"><code>${esc(t("callServerDanglingCallbacks"))}</code><span></span><b>${Number(callServerCallbackSummary.unresolvedCallbackOutputs || 0).toLocaleString()}</b></div>
+          <div class="mp-gap-family-row"><code>${esc(t("callServerUnownedSurface"))}</code><span></span><b>${Number(storyCoverageCounts.missionlessNativeRuntimePostPlaybackCallbackHeaderUids || 0).toLocaleString()} / ${Number(storyCoverageCounts.missionlessNativeRuntimePostPlaybackServerHandoffs || 0).toLocaleString()}</b></div>
+          <div class="mp-gap-family-row"><code>${esc(t("callServerPostPlaybackContracts"))}</code><span></span><b>${Number(postPlaybackCallServerSummary.exactContracts || 0).toLocaleString()} / ${Number(postPlaybackCallServerSummary.handoffs || 0).toLocaleString()}</b></div>
+          <div class="mp-gap-family-row"><code>${esc(t("callServerSelfUidContracts"))}</code><span></span><b>${Number(postPlaybackCallServerSummary.eventNameIdentityDistribution?.["record-uid-prefixed"] || 0).toLocaleString()}</b></div>
+          <div class="mp-gap-family-row"><code>${esc(t("callServerArgumentPaths"))}</code><span></span><b>${Number(Object.entries(postPlaybackCallServerSummary.eventArgsParamPathDistribution || {}).filter(([path]) => path !== "<null>").reduce((total, [, count]) => total + Number(count || 0), 0)).toLocaleString()}</b></div>
+        </div>
+        ${callServerCallbackRoutes.length ? `<div class="mp-missionless-story-links">${callServerCallbackRoutes.map((route) => `<a href="${esc(storyHref((route.storyKeys || [])[0] || ""))}"><span><code>${esc(`${route.levelId || ""}/${route.scriptId || ""}`)}</code> / <code>#${esc(route.callbackHeaderUid || "")}</code></span><small>${esc(route.sourceFile || "")}</small><b aria-hidden="true">-&gt;</b><strong>${esc((route.storyKeys || []).join(", "))}</strong></a>`).join("")}</div>` : ""}
+        <p class="mp-gap-policy"><code>${esc(callServerCallbackAudit.nativeContract?.callServer?.executeMethodVa || "")}</code> / <code>${esc(callServerCallbackAudit.source || "")}</code></p>
+      </section>` : ""}
+      ${levelSequenceAudit.schema ? `<section class="mp-gap-queue mp-level-sequence-audit">
+        <header><strong>${esc(t("postPlaybackLevelSequenceAudit"))}</strong><p>${esc(t("postPlaybackLevelSequenceBoundary"))}</p></header>
+        <div class="mp-gap-family-list">
+          <div class="mp-gap-family-row"><code>${esc(t("postPlaybackLevelSequenceActions"))}</code><span></span><b>${Number(levelSequenceSummary.typedActionPlacements || 0).toLocaleString()}</b></div>
+          <div class="mp-gap-family-row"><code>${esc(t("postPlaybackLevelSequenceAssets"))}</code><span></span><b>${Number(levelSequenceSummary.exactResolvedLevelSequenceIds || 0).toLocaleString()}</b></div>
+          <div class="mp-gap-family-row"><code>${esc(t("postPlaybackLevelSequenceUnresolved"))}</code><span></span><b>${Number(levelSequenceSummary.unresolvedLevelSequenceIds || 0).toLocaleString()}</b></div>
+        </div>
+        ${(levelSequenceAudit.unresolvedLevelSequenceIds || []).length ? `<p class="mp-gap-policy"><code>${esc(levelSequenceAudit.unresolvedLevelSequenceIds.join(", "))}</code></p>` : ""}
+        ${(levelSequenceAudit.sourceIndex?.validationFailures || []).map((failure) => `<p class="mp-gap-policy"><b>${esc(t("postPlaybackLevelSequenceValidationFailure"))}:</b> <code>${esc(failure.sourceFile || "")}</code> · ${esc(failure.actual || failure.gate || "")}</p>`).join("")}
+      </section>` : ""}
+      ${variableBridgeAudit.schema ? `<section class="mp-gap-queue mp-variable-bridge-audit">
+        <header><strong>${esc(t("postPlaybackVariableBridge"))}</strong><p>${esc(t("postPlaybackVariableBoundary"))}</p></header>
+        <div class="mp-gap-family-list">
+          <div class="mp-gap-family-row"><code>${esc(t("postPlaybackVariableSetterStat"))}</code><span></span><b>${Number(variableBridgeSummary.postPlaybackVariableSetters || 0).toLocaleString()}</b></div>
+          <div class="mp-gap-family-row"><code>${esc(t("postPlaybackVariableListeners"))}</code><span></span><b>${Number(variableBridgeSummary.exactVariableListenerRows || 0).toLocaleString()}</b></div>
+          <div class="mp-gap-family-row"><code>${esc(t("postPlaybackVariableMatches"))}</code><span></span><b>${Number(variableBridgeSummary.exactSetterListenerMatches || 0).toLocaleString()}</b></div>
+        </div>
+        <p class="mp-gap-policy"><b>${esc(t("postPlaybackVariableClosed"))}:</b> <code>${esc(variableBridgeAudit.status || "")}</code></p>
+      </section>` : ""}
       ${missionlessNodes.length ? `<section class="mp-missionless-runtime">
         <header><strong>${esc(t("missionlessSubGameNodes"))} <span>${missionlessNodes.length}</span></strong><p>${esc(t("missionlessSubGameNodesHint"))}${missionlessAudit.finding ? ` ${esc(missionlessAudit.finding)}` : ""}</p></header>
         <div class="mp-missionless-runtime-grid">${missionlessNodes.map((row) => {
@@ -3960,9 +4854,20 @@
       </section>` : ""}
       ${receiverNodes.length ? `<section class="mp-missionless-runtime mp-native-receiver-runtime">
         <header><strong>${esc(t("exactReceiverNodes"))} <span>${receiverNodes.length}</span></strong><p>${esc(t("exactReceiverNodesHint"))}</p></header>
+        ${structuredIdentityCensus.schema ? `<aside class="mp-structured-identity-census">
+          <strong>${esc(t("structuredIdentityCensus"))}</strong><code>${esc(structuredIdentityCensus.validation?.status || "unvalidated")}</code>
+          <span>${esc(t("structuredIdentityCensusCounts"))}: <b>${Number(structuredIdentityCensus.candidateFileCount || 0).toLocaleString()} / ${Number(structuredIdentityCensus.visitedRecordCount || 0).toLocaleString()} / ${Number(structuredIdentityCensus.directCarrierCount || 0).toLocaleString()}</b></span>
+          <span>${esc(t("structuredIdentityReceiverMatches"))}: <b>${Number(structuredIdentityCensus.receiverMatchCount || 0).toLocaleString()} / ${Number(receiverFrontier.counts?.structuredUnreviewedIdentityCarriers || 0).toLocaleString()}</b></span>
+          <small>${esc(structuredIdentityCensus.finding || "")}</small><small>${esc(structuredIdentityCensus.boundary || "")}</small>
+        </aside>` : ""}
         <div class="mp-missionless-runtime-grid">${receiverNodes.map((row) => {
           const selector = row.selector || {};
           const activation = row.activationFrontier || {};
+          const activationRelatedFiles = [...new Map(
+            (activation.relatedOriginalFiles || [])
+              .filter((related) => related && related.sourceFile)
+              .map((related) => [related.sourceFile, related]),
+          ).values()];
           const activationHosts = (activation.levelDataHosts || [])
             .filter((host) => host && host.fileName);
           const encounterContexts = (activation.encounterControllerContexts || [])
@@ -3981,8 +4886,37 @@
           })[relation] || t("nonOwningCrossReference");
           const activationTasks = (activation.decodedTaskMap?.tasks || [])
             .filter((task) => task && task.taskKey);
+          const taskRuntimeAuthority = activation.taskRuntimeAuthority || {};
+          const startRuntimePolicy = activation.startRuntimePolicy || {};
+          const manualSelfControl = activation.manualSelfControl || {};
+          const publicStateControl = activation.publicStateControl || {};
+          const publicStateSources = publicStateControl.publicStateSourceFlow || {};
+          const clientActiveRequestControl = activation.clientActiveRequestControl || {};
+          const activeAreaFlow = clientActiveRequestControl.activeAreaFlow || {};
+          const activeShapes = clientActiveRequestControl.activeShapeList?.shapes || [];
+          const activeShapeSummary = activeShapes.map((shape) => {
+            const center = shape.position || {};
+            const centerText = `center ${center.x ?? "?"}/${center.y ?? "?"}/${center.z ?? "?"}`;
+            if (shape.type === "SPHERE") return `SPHERE · ${centerText} · radius ${shape.radius ?? "?"}`;
+            const size = shape.size || {};
+            const rotation = shape.eulerAngles || {};
+            return `${shape.type || "?"} · ${centerText} · size ${size.x ?? "?"}/${size.y ?? "?"}/${size.z ?? "?"} · rotation ${rotation.x ?? "?"}/${rotation.y ?? "?"}/${rotation.z ?? "?"}`;
+          });
+          const clientStartRequestControl = activation.clientStartRequestControl || {};
+          const activePhaseReceiverControl = activation.activePhaseReceiverControl || {};
+          const activePhaseReceiverHeader = (activePhaseReceiverControl.receiverHeaders || [])
+            .find((header) => header?.listenerHeaderLocalId === selector.listenerHeaderLocalId);
+          const subGameStartControl = activation.subGameStartControl || {};
+          const manualSelfControls = (activation.incomingManualControls || [])
+            .filter((control) => control && control.targetResolution === "current_context_self");
           const activationConsumers = (activation.missionRuntimeScriptConsumers || [])
             .filter((consumer) => consumer && (consumer.missionId || consumer.questId));
+          const propertyContract = activation.authoredPropertyContract || {};
+          const binaryOffset = (value) => Number.isInteger(value)
+            ? `0x${value.toString(16)}`
+            : (value || "?");
+          const authoredPropertyNames = (propertyContract.authoredNames || []).filter(Boolean);
+          const missionObservedPropertyNames = (propertyContract.missionObservedNames || []).filter(Boolean);
           const paramValue = (param) => {
             if (!param || typeof param !== "object") return "";
             if (param.value !== null && param.value !== undefined && param.value !== "") return String(param.value);
@@ -4040,6 +4974,8 @@
           const stories = (row.storyFiles || []).filter((story) => story && story.key);
           const producers = (row.localProducerRoutes || []).filter((producer) => producer && producer.producerAssetId);
           const playbackGates = (row.playbackGates || []).filter((gate) => gate && gate.summary);
+          const postPlaybackControls = (row.postPlaybackControls || [])
+            .filter((control) => control && control.storyKey && (control.maximalReachablePaths || []).length);
           const selectorRows = Object.entries(selector).filter(([, value]) => value !== "" && value !== null && value !== undefined);
           const selectorValue = (value) => typeof value === "object" ? JSON.stringify(value) : String(value);
           return `<article>
@@ -4052,6 +4988,7 @@
               <strong>${esc(t("activationFrontier"))}</strong>
               ${activationTasks.flatMap((task) => (task.conditions || []).map((conditionRow) => {
                 const condition = conditionRow.condition || {};
+                const progressContract = task.progressPropertyContract || {};
                 const operandSources = (conditionRow.operandSources || [])
                   .map((source) => operandSourceDetail(source))
                   .filter(Boolean);
@@ -4067,13 +5004,26 @@
                   task.taskExtraInfo?.taskTitleKey || "",
                   ...(task.subGameMainTaskBindings || []).map((binding) => `SubGame ${binding.subGameId || "?"}`),
                   ...(task.missionRuntimeTaskConsumers || []).map((consumer) => `${t("taskMissionConsumers")} ${consumer.missionId || "?"}/${consumer.questId || "?"}`),
+                  progressContract.status === "validated"
+                    ? `${t("taskProgressProperties")} ${progressContract.matchedPropertyCount || 0}/${progressContract.expectedPropertyCount || 0}`
+                    : "",
                 ].filter(Boolean);
                 const taskLabel = `${t("taskConditionEvidence")} · ${task.taskKey} / objective ${conditionRow.objectiveEnum ?? "?"}${taskSources.length ? ` · ${taskSources.join(" · ")}` : ""}`;
                 return `<div><span>${esc(taskLabel)}</span><i aria-hidden="true">→</i><code>${esc(condition.type || "unresolved")}</code><b>${esc(condition.conditionUnionTag || "")}</b>${detail ? `<small>${esc(detail)}</small>` : ""}</div>`;
               })).join("")}
               ${activationTasks.length ? `<small>${esc(t("taskConditionBoundary"))}</small>` : ""}
+              ${taskRuntimeAuthority.validation?.status === "validated" ? `<div class="is-boundary"><span>${esc(t("taskRuntimeAuthority"))}</span><i aria-hidden="true">↔</i><code>${esc((taskRuntimeAuthority.identityFields || []).join(" + "))}</code><b>${esc((taskRuntimeAuthority.messages || []).map((message) => message.messageId).join(" / "))}</b><small>${esc(taskRuntimeAuthority.finding || t("taskRuntimeAuthorityBoundary"))}</small></div><small>${esc(taskRuntimeAuthority.evidenceBoundary || t("taskRuntimeAuthorityBoundary"))}</small>` : ""}
               <div><span>${esc(t("activationClass"))}</span><i aria-hidden="true">→</i><code>${esc(String(activation.activationClass).replaceAll("_", " "))}</code><b>${esc(t("noMissionOwner"))}</b></div>
               <div><span>${esc(t("startPolicy"))}</span><i aria-hidden="true">→</i><code>${esc(`${activation.startTypeName || "unresolved"} · shapes ${activation.startShapeListStatus || "unresolved"}/${activation.startShapeListCount ?? 0} · taskMap ${activation.taskMapStatus || "unresolved"}/${activation.taskMapCount ?? 0}`)}</code></div>
+              ${startRuntimePolicy.validation?.status === "validated" ? `<div><span>${esc(t("binaryStartPolicy"))}</span><i aria-hidden="true">→</i><code>Active + unfinished + SameWithActive</code><b>PreStart</b><small>${esc([startRuntimePolicy.finding || "", `UpdateRuntimeState ${startRuntimePolicy.methods?.UpdateRuntimeState?.methodPointerVa || ""}`, `startType=${startRuntimePolicy.startTypeGates?.SameWithActive?.comparedValue ?? "?"}`, `state=${startRuntimePolicy.activeStateGate?.comparedValue ?? "?"}`, `PreStart=${startRuntimePolicy.preStartTransition?.runtimeStateValue ?? "?"}`].filter(Boolean).join(" · "))}</small></div><small>${esc(startRuntimePolicy.evidenceBoundary || t("binaryStartPolicyBoundary"))}</small>` : ""}
+              ${manualSelfControl.validation?.status === "validated" && manualSelfControls.length ? manualSelfControls.map((control) => `<div><span>${esc(t("binaryManualSelfControl"))}</span><i aria-hidden="true">→</i><code>CURRENT_LEVEL_ID + CURRENT_SCRIPT_ID</code><b>ManualStart → PreStart</b><small>${esc([manualSelfControl.finding || "", `event local ${control.headerLinkedEvent?.localId ?? "?"} → action local ${control.localId ?? "?"}`, `sources=${control.parameterSources?.levelId ?? "?"}/${control.parameterSources?.scriptId ?? "?"}`, `Execute ${manualSelfControl.methods?.Execute?.methodPointerVa || ""}`, `ManualStart ${manualSelfControl.methods?.ManualStart?.methodPointerVa || ""}`].filter(Boolean).join(" · "))}</small></div>`).join("") + `<small>${esc(manualSelfControl.evidenceBoundary || t("binaryManualSelfControlBoundary"))}</small>` : ""}
+              ${publicStateControl.validation?.status === "validated" ? `<div class="is-boundary"><span>${esc(t("binaryPublicStateControl"))}</span><i aria-hidden="true">→</i><code>SC ${esc(publicStateControl.selfSceneInfoMessageId ?? "?")} levelScripts[] → ServerSync | SC ${esc(publicStateControl.stateNotifyMessageId ?? "?")} state notify → UpdateState</code><b>server → public state</b><small>${esc([`snapshot ${publicStateControl.selfSceneInfoHandlerMethod?.methodPointerVa || "?"}`, `incremental ${publicStateControl.handlerMethod?.methodPointerVa || "?"}`, `entry callers ${(publicStateSources.managerStateShortDirectCallers || []).length}`, `state writers ${(publicStateSources.publicStateSetterDirectCallers || []).length}`, publicStateControl.publicStateFlow?.setterBeforeRuntimeEvaluation ? "state setter → runtime evaluation" : "unresolved state application"].join(" · "))}</small></div><small>${esc(publicStateControl.evidenceBoundary || t("binaryPublicStateControlBoundary"))}</small>` : ""}
+              ${clientActiveRequestControl.status === "validated" ? `<div class="is-boundary"><span>${esc(t("binaryClientActiveRequest"))}</span><i aria-hidden="true">→</i><code>${esc((clientActiveRequestControl.runtimePath || []).join(" → "))}</code><b>${esc(clientActiveRequestControl.levelScriptTypeName || "?")}</b><small>${esc([`type=${clientActiveRequestControl.levelScriptType ?? "?"}`, `type gate +${clientActiveRequestControl.selectorFlow?.inactiveLevelScriptTypeCallOffset ?? "?"}`, `area gate +${clientActiveRequestControl.selectorFlow?.activeAreaGateCallOffset ?? "?"}`, `active=true +${clientActiveRequestControl.selectorFlow?.activeTrueRequestCallOffset ?? "?"}`].join(" · "))}</small></div><small>${esc(clientActiveRequestControl.evidenceBoundary || t("binaryClientActiveRequestBoundary"))}</small>` : ""}
+              ${clientActiveRequestControl.spatialGateStatus === "validated_runtime_position_dependent" && activeShapeSummary.length ? `<div class="is-boundary"><span>${esc(t("binaryActiveVolume"))}</span><i aria-hidden="true">→</i><code>${esc(activeShapeSummary.join(" | "))}</code><b>${esc(clientActiveRequestControl.activeShapeList?.status || "?")}</b><small>${esc([`active test +${activeAreaFlow.activeShapeTestCallOffset ?? "?"}`, `outside test +${activeAreaFlow.outsideShapeTestCallOffset ?? "?"}`, `clear +${activeAreaFlow.outsideShapeHitClearOffset ?? "?"}`, `set true +${activeAreaFlow.withinTrueSetterOffset ?? "?"}`].join(" · "))}</small></div><small>${esc(t("binaryActiveVolumeBoundary"))}</small>` : ""}
+              ${clientStartRequestControl.validation?.status === "validated" ? `<div class="is-boundary"><span>${esc(t("binaryClientStartRequest"))}</span><i aria-hidden="true">→</i><code>ManualStart flag → PreStart → CS ${esc(clientStartRequestControl.startRequestMessageId ?? "?")}</code><b>PreStartActionRunning</b><small>${esc([`ManualStart ${clientStartRequestControl.manualStartMethod?.methodPointerVa || "?"}`, `runtime sender ${clientStartRequestControl.runtimeSendStartMethod?.methodPointerVa || "?"}`, `network sender ${clientStartRequestControl.networkSetStartMethod?.methodPointerVa || "?"}`, `direct network callers ${clientStartRequestControl.clientRequestFlow?.networkStartDirectCallerCount ?? "?"}`, `runtime request args ${(clientStartRequestControl.clientRequestFlow?.runtimeStartArguments || []).join("/")}`].join(" · "))}</small></div><small>${esc(t("binaryClientStartRequestBoundary"))}</small>` : ""}
+              ${activePhaseReceiverControl.status === "validated" && activePhaseReceiverHeader ? `<div class="is-boundary"><span>${esc(t("binaryActivePhaseReceiver"))}</span><i aria-hidden="true">→</i><code>Setup → ActiveBegin → Active(${esc(activePhaseReceiverHeader.triggerActiveDuring ?? "?")})</code><b>header #${esc(activePhaseReceiverHeader.listenerHeaderLocalId)}</b><small>${esc([activePhaseReceiverHeader.headerName || "receiver", `action #${activePhaseReceiverHeader.nextActionLocalId ?? "?"}`, `register +${activePhaseReceiverControl.runtimeFlow?.setupRegisterTriggerCallOffsets?.[0] ?? "?"}`, `enable +${activePhaseReceiverControl.runtimeFlow?.activePhaseEnableCallOffsets?.[0] ?? "?"}`, `Setup ${activePhaseReceiverControl.methods?.Setup?.methodPointerVa || "?"}`].join(" · "))}</small></div><small>${esc(activePhaseReceiverControl.evidenceBoundary || t("binaryActivePhaseReceiverBoundary"))}</small>` : ""}
+              ${subGameStartControl.validation?.status === "validated" ? `<div><span>${esc(t("binarySubGameManualStart"))}</span><i aria-hidden="true">→</i><code>SubGame id → bindScriptId → LevelScript</code><b>ManualStart</b><small>${esc([`interaction ${subGameStartControl.challengeMethod?.methodPointerVa || "?"}`, `ManualStart ${subGameStartControl.manualStartMethod?.methodPointerVa || "?"}`, `fields ${binaryOffset(subGameStartControl.fieldOffsets?.["challengeStartPoint.m_subGameId"])}/${binaryOffset(subGameStartControl.fieldOffsets?.["subGameInstanceData.bindScriptId"])}`, subGameStartControl.subGameInteractionFlow?.callsInCarrierOrder ? "lookup calls ordered" : "lookup order unresolved"].join(" · "))}</small></div><small>${esc(subGameStartControl.evidenceBoundary || t("binarySubGameManualStartBoundary"))}</small>` : ""}
+              ${activationRelatedFiles.map((related) => `<div><span>${esc(t("relatedOriginalFile"))}</span><i aria-hidden="true">→</i><code>${esc(related.sourceFile)}</code><b>${esc(String(related.kind || "source").replaceAll("_", " "))}</b><small>${esc([String(related.relationship || "").replaceAll("_", " "), related.sha256 ? `SHA-256 ${related.sha256}` : ""].filter(Boolean).join(" · "))}</small></div>`).join("")}
               ${encounterContexts.flatMap((context) => [
                 `<div><span>${esc(t("encounterController"))}</span><i aria-hidden="true">→</i><code>${esc(context.runtimeType || "EncounterBase<T>")}</code><b>${esc(t("noMissionOwner"))}</b><small>${esc(`${context.dataType || "EncounterData"} · ${context.mappingId || ""}`)}</small></div>`,
                 `<div><span>${esc(t("encounterModuleNamespace"))}</span><i aria-hidden="true">→</i><code>${esc(context.moduleId || "—")}</code><b>${esc(context.moduleIdMatchesReceiverScript ? t("moduleMatchesReceiver") : t("relatedModuleNamespace"))}</b><small>${esc(`receiver LevelScript ${context.receiverScriptId || selector.listenerScriptId || "—"}`)}</small></div>`,
@@ -4099,6 +5049,7 @@
                 ...(context.associations || []).filter((association) => association && association.targetId).map((association) => `<div class="is-boundary"><span>${esc(activationAssociationLabel(association.relation))}</span><i aria-hidden="true">⇢</i><code>${esc(association.targetId)}</code><b>${esc(t("noMissionOwner"))}</b><small>${esc(association.finding || "")}</small></div>`),
               ]).join("")}
               ${activationDungeonContexts.length ? `<small>${esc(t("dungeonSceneBoundary"))}</small>` : ""}
+              ${authoredPropertyNames.length ? `<div class="is-boundary"><span>${esc(t("authoredPropertyContract"))}</span><i aria-hidden="true">⇢</i><code>${esc(authoredPropertyNames.join(", "))}</code><b>${esc(missionObservedPropertyNames.length ? t("missionObservedProperty") : t("unobservedProperty"))}</b>${missionObservedPropertyNames.length ? `<small>${esc(missionObservedPropertyNames.join(", "))}</small>` : ""}</div><small>${esc(propertyContract.evidenceBoundary || t("propertyContractBoundary"))}</small>` : ""}
               ${(activation.serializedMissionRuntimeIdTokens || []).length ? `<div><span>${esc(t("serializedMissionIdTokens"))}</span><i aria-hidden="true">→</i><code>${esc(activation.serializedMissionRuntimeIdTokens.join(", "))}</code><b>${esc(t("nonOwningCrossReference"))}</b></div>` : ""}
               ${activationConsumers.map((consumer) => {
                 const identity = [consumer.missionId, consumer.questId].filter(Boolean).join("/");
@@ -4106,11 +5057,33 @@
                   ? ` · objective ${consumer.objectiveIndex}`
                   : "";
                 const conditions = (consumer.conditionTypes || []).filter(Boolean).join(", ");
-                return `<div class="is-boundary"><span>${esc(t("questObserver"))}</span><i aria-hidden="true">⇢</i><code>${esc(`${identity}${objective}`)}</code><b>${esc(t("observationOnly"))}</b><small>${esc([conditions, consumer.evidenceBoundary || t("questObserverBoundary")].filter(Boolean).join(" · "))}</small></div>`;
+                const propertyKeys = (consumer.propertyKeys || []).filter(Boolean);
+                return `<div class="is-boundary"><span>${esc(t("questObserver"))}</span><i aria-hidden="true">⇢</i><code>${esc(`${identity}${objective}`)}</code><b>${esc(t("observationOnly"))}</b><small>${esc([conditions, propertyKeys.length ? `properties=${propertyKeys.join(", ")}` : "", consumer.evidenceBoundary || t("questObserverBoundary")].filter(Boolean).join(" · "))}</small></div>${consumer.sourceFile ? `<div><span>${esc(t("relatedOriginalFile"))}</span><i aria-hidden="true">→</i><code>${esc(consumer.sourceFile)}</code><b>MissionRuntimeAsset</b><small>${esc(consumer.pipelineSourceFile || "")}</small></div>` : ""}`;
               }).join("")}
               <small>${esc(`${t("missionRuntimeConsumers")}: ${activation.missionRuntimeObjectiveConsumerCount ?? 0} · ${t("literalCrossScriptControls")}: ${activation.incomingLiteralCrossControlCount ?? 0} · ${t("exactStartShapeAreaMatches")}: ${activation.exactStartShapeMissionAreaMatchCount ?? 0}`)}</small>
             </div>` : ""}
             ${playbackGates.length ? `<div class="mp-runtime-associations mp-playback-gates"><strong>${esc(t("playbackGate"))}</strong>${playbackGates.map((gate) => `<div><span>${esc(t("playbackGateTrue"))}</span><i aria-hidden="true">?</i><code>${esc(gate.summary)}</code><b>${esc(String(gate.predicateType || "predicate").replaceAll(/([a-z])([A-Z])/g, "$1 $2"))}</b><small>${esc(`${gate.sourceFile || ""} · header #${gate.headerLocalId ?? "?"} → getter #${gate.getterLocalId ?? "constant"} → action #${gate.headerNextLocalId ?? "?"} · ${gate.predicateNodeCount ?? 1} getter node${gate.predicateNodeCount === 1 ? "" : "s"} · depth ${gate.predicateDepth ?? 1}`)}</small></div>`).join("")}<small>${esc(t("playbackGateBoundary"))}</small></div>` : ""}
+            ${postPlaybackControls.length ? `<div class="mp-runtime-associations mp-post-playback"><strong>${esc(t("postPlaybackControl"))}</strong>${postPlaybackControls.map((control) => {
+              const pathRows = (control.maximalReachablePaths || []).map((path) => {
+                const chain = (path || []).map((step) => `${step.actionName || step.recordClass || step.opcode || "action"} #${step.localId ?? "?"}`).join(" → ");
+                return `<div><span><a href="${esc(storyHref(control.storyKey))}"><code>${esc(control.storyKey)}</code></a> #${esc(control.playbackLocalId ?? "?")}</span><i aria-hidden="true">→</i><code>${esc(chain)}</code></div>`;
+              }).join("");
+              const branches = (control.branchPointLocalIds || []).length ? `<div><span>${esc(t("postPlaybackBranch"))}</span><i aria-hidden="true">→</i><code>${esc(control.branchPointLocalIds.map((id) => `#${id}`).join(", "))}</code></div>` : "";
+              const handoffs = (control.serverHandoffs || []).map((handoff) => {
+                const handoffContract = handoff.serializedContract || {};
+                const eventArgs = handoffContract.eventArgsPtr || {};
+                const contractDetail = handoffContract.eventName
+                  ? `${handoffContract.eventName} · args=${eventArgs.pathValue || "none"}/${eventArgs.path || "no foreign path"} · custom=${Number(Boolean(handoffContract.useCustomEvent))} wait=${Number(Boolean(handoffContract.waitForCallback))} payload=${Number(Boolean(handoffContract.withEventArgs))}`
+                  : (handoff.callbackCorrelationLabels || []).join(", ") || `#${handoff.localId ?? "?"}`;
+                const sources = (handoff.relatedOriginalFiles || []).filter((related) => related?.sourceFile);
+                return `<div class="is-boundary"><span>${esc(t("postPlaybackServerHandoff"))}</span><i aria-hidden="true">→</i><code>${esc(contractDetail)}</code><b>${esc(t("noMissionOwner"))}</b><small>${esc(`${t("callServerSerializedContract")} · ${handoff.contractStatus || "unresolved"}`)}</small></div>${sources.map((related) => `<div><span>${esc(t("relatedOriginalFile"))}</span><i aria-hidden="true">→</i><code>${esc(related.sourceFile)}</code><b>CallServer #${esc(handoff.localId ?? "?")}</b><small>${esc(String(related.relationship || "").replaceAll("_", " "))}</small></div>`).join("")}`;
+              }).join("");
+              const sequenceFiles = (control.actions || []).flatMap((action) => (action.levelSequenceReferences || []).map((reference) => ({action, reference})));
+              const sequenceRows = sequenceFiles.map(({action, reference}) => reference.sourceFile
+                ? `<div><span>${esc(t("postPlaybackLevelSequenceFile"))}</span><i aria-hidden="true">→</i><code>${esc(reference.levelSequenceId || "")}</code><b>${esc(action.actionName || "LevelSequence")}</b><small>${esc(`${reference.sourceFile}${reference.pathId ? ` · ${reference.pathId}` : ""}`)}</small></div>`
+                : `<div class="is-boundary"><span>${esc(t("postPlaybackLevelSequenceUnresolved"))}</span><i aria-hidden="true">⇥</i><code>${esc(reference.levelSequenceId || "")}</code><b>${esc(action.actionName || "LevelSequence")}</b></div>`).join("");
+              return `${pathRows}${branches}${handoffs}${sequenceRows}<small>${esc(control.sourceFile || "")}</small>`;
+            }).join("")}<small>${esc(t("postPlaybackBoundary"))}</small></div>` : ""}
             ${target ? `<div class="mp-runtime-associations mp-runtime-target"><strong>${esc(t("exactRuntimeTarget"))}</strong><div><span>${esc(t("modulePointer"))}</span><i aria-hidden="true">→</i><code>${esc(target.levelScriptVariablePtr)}</code><b>${esc(target.moduleType || t("encounterModule"))}</b><small>${esc(`${target.sourceFile || ""} @ ${target.dictionaryOffsetHex || "—"} · union ${target.moduleUnionTag || "—"}/${target.serializedMemberCount || "—"}`)}</small></div><div><span>${esc(t("activationSlot"))}</span><i aria-hidden="true">→</i><code>${esc(target.activateTriggerSlotId ?? "—")}</code><b>LOCAL</b><small>${esc(`${t("battleExitSlot")}: ${battlePart.exitTriggerSlotId ?? "—"}${enemySlots.length ? ` · ${t("localEntitySlots")}: ${enemySlots.join(", ")}` : ""}`)}</small></div><div class="is-boundary"><span>${esc(t("missingOwnershipBridge"))}</span><i aria-hidden="true">⇥</i><code>missionId / questId / MissionArea</code><b>${esc(t("noMissionOwner"))}</b><small>${esc(row.ownershipBoundary || target.ownershipBoundary || "")}</small></div><small>${esc(t("noServerRequestOrReturn"))}</small></div>` : ""}
             ${producers.length ? `<div class="mp-runtime-associations"><strong>${esc(t("localProducerChain"))}</strong>${producers.map((producer) => `<div><span>${esc(`${t("abilityProducer")} · ${producer.producerDomain || "AbilityActionData"}`)}</span><i aria-hidden="true">→</i><code>${esc(producer.producerAssetId)}</code><b>LOCAL · ${esc(t("noServerRequestOrReturn"))}</b><small>${esc(`${t("literalSignal")}: ${producer.receiverSignalId || "—"} / ${producer.doubleValue?.value ?? "—"} · ${producer.actionUnionTag || ""}/${producer.serializedMemberCount || ""} · ${producer.producerSourceFile || ""} @ ${producer.actionOffset || "—"}`)}</small></div>`).join("")}<small>${esc(t("producerBoundaryHint"))}</small></div>` : ""}
             <div class="mp-missionless-story-links">${stories.map((story) => `<a href="${esc(storyHref(story.key))}"><span>${esc(story.kind || "story")}</span><code>${esc(story.key)}</code><b aria-hidden="true">→</b><small>${esc((story.nativeActions || []).join(" · "))}</small></a>`).join("")}</div>
@@ -4454,9 +5427,22 @@
     }).join("");
     const submissionCoGates = (objective.submissionDialogCoGates || []).map((row) => `<span class="mp-state-chip" title="${esc(t("submissionDialogCoGateHint"))}"><b>${esc(t("submissionDialogCoGate"))}</b> · <code>${esc(row.submissionId || "")}</code> + <code>${esc(row.dialogId || "")}</code> · ${row.finishId < 0 ? esc(t("anyFinish")) : `${esc(t("finish"))} ${esc(row.finishId)}`}</span>`).join("");
     const submissionLevelScriptCoGates = (objective.submissionLevelScriptCoGates || []).map((row) => `<span class="mp-state-chip" title="${esc(t("submissionLevelScriptCoGateHint"))}"><b>${esc(t("submissionLevelScriptCoGate"))}</b> · <code>${esc(row.submissionId || "")}</code> + <code>${esc(row.levelId || "")}/${esc(row.scriptId || "")}</code></span>`).join("");
+    const taskDependencies = (objective.levelScriptTaskDependencies || []).map((row) => {
+      const metadata = row.taskMetadata || {};
+      const files = (row.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.kind || "file")}</code> <code>${esc(file.sourceFile || "")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`).join("");
+      const metadataText = [metadata.titleKey, metadata.descriptionKey, metadata.objectiveCount != null ? `${metadata.objectiveCount} ${t("objectives")}` : ""].filter(Boolean).join(" · ");
+      return `<details open class="mp-quest-task-dependency"><summary><b>${esc(t("levelScriptTaskDependency"))}</b> <code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}/${esc(row.taskId || "?")}</code></summary>${metadataText ? `<p><strong>${esc(t("taskMetadata"))}:</strong> ${esc(metadataText)}</p>` : ""}<small>${esc(t("levelScriptTaskDependencyHint"))}</small>${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}</details>`;
+    }).join("");
+    const levelScriptSources = (objective.levelScriptSources || []).map((row) => {
+      const counts = row.actionMapListCounts || {};
+      const countText = ["actionList", "getterList", "headerList"].map((name) => `${name}=${counts[name] ?? "?"}`).join(" / ");
+      const files = (row.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.sourceFile || "")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`).join("");
+      const statusLabel = row.actionMapStatus === "exact_empty_action_map" ? t("levelScriptExactEmptyMap") : t("levelScriptExecutableMap");
+      return `<details${row.actionMapStatus === "exact_empty_action_map" ? " open" : ""} class="mp-quest-task-dependency"><summary><b>${esc(t("levelScriptSource"))}</b> <code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}</code> <span>${esc(statusLabel)}</span></summary><p><code>${esc(countText)}</code>${row.serializedTailRecordCount ? ` 路 ${esc(t("levelScriptTailRecords"))}: ${Number(row.serializedTailRecordCount).toLocaleString()}` : ""}</p><small>${esc(row.evidenceBoundary || "")}</small>${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}</details>`;
+    }).join("");
     return `<article class="mp-objective"><header><strong>${esc(t("objectives"))} ${objective.index}</strong><span class="mp-authority is-${esc(objective.authority)}">${esc(objective.authority)}</span></header>
       <p>${esc(objective.descriptionKey || t("noObjective"))}</p>
-      <div class="mp-objective-special">${finishRows}${stateRows}${placeholderRows}${submissionRows}${submissionCoGates}${submissionLevelScriptCoGates}</div>
+      <div class="mp-objective-special">${finishRows}${stateRows}${placeholderRows}${submissionRows}${submissionCoGates}${submissionLevelScriptCoGates}</div>${levelScriptSources}${taskDependencies}
       ${objectiveTrackingHtml(objective.tracking)}
       ${renderConditionTree(objective.condition)}
     </article>`;
@@ -4558,7 +5544,14 @@
     if (!target || !state.mission) return;
     const node = state.mission.nodes.find((row) => row.id === state.selectedQuestId);
     if (!node) { target.innerHTML = `<div class="mp-empty-inspector">${esc(t("selectMission"))}</div>`; return; }
-    const actionHtml = (node.clientActions || []).map((action) => `<div class="mp-action"><code>${esc(action.type)}</code><span>ID ${esc(action.id ?? "?")} · ${esc(action.triggerName || `trigger ${action.trigger ?? "?"}`)} · ${esc(t("actionChainStep"))} ${esc(Number(action.chainIndex || 0) + 1)}</span></div>`).join("");
+    const actionHtml = (node.clientActions || []).map((action) => {
+      const dispatchLabel = action.runtimeDispatchStatus === "authored_definition_no_current_aot_dispatch"
+        ? t("questActionStartNoDispatch")
+        : String(action.runtimeDispatchStatus || "").startsWith("binary_proven_")
+          ? t("questActionBinaryDispatch")
+          : "";
+      return `<div class="mp-action"><code>${esc(action.type)}</code><span>ID ${esc(action.id ?? "?")} · ${esc(action.triggerName || `trigger ${action.trigger ?? "?"}`)} · ${esc(t("actionChainStep"))} ${esc(Number(action.chainIndex || 0) + 1)}</span>${dispatchLabel ? `<b title="${esc(action.runtimeDispatchBoundary || "")}">${esc(dispatchLabel)}</b>` : ""}</div>`;
+    }).join("");
     const activityHostHtml = (node.activityStageHosts || []).map((row) => `<div class="mp-action"><code>${esc(row.levelId)}</code><span>${esc(row.table)} · ${esc(row.stageId)} · ${esc(t("nonOwningCrossReference"))}</span></div>`).join("");
     const runtimeActionHtml = questRuntimeActions(node).map((row) => `<div class="mp-action"><code>${esc(row.paramData?.activityId || row.dialogKey || t("openUiAction"))}</code><span>${esc(t("openUiAction"))} · panel ${esc(row.panelType ?? "?")} · ${esc(row.questStateName || row.phase || "")} · ${esc(t("notStoryFile"))}</span><small><code>${esc(row.dialogTreeSource || "")}</code></small></div>`).join("");
     const runtimeObservedHtml = (node.runtimeStoryObservations || []).map(runtimeObservationHtml).join("");

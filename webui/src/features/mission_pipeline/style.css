@@ -1988,6 +1988,179 @@ body:not(.show-debug) .mp-playback-rejection {
 .mp-story-order section { margin: .85rem 0; }
 .mp-story-order h4 { margin: 0 0 .45rem; }
 
+.mp-quest-fork-authority {
+  margin: .55rem 0;
+  padding: .65rem .75rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-left: 4px solid var(--accent);
+  border-radius: .6rem;
+  background: color-mix(in srgb, var(--panel) 88%, var(--accent) 12%);
+}
+
+.mp-quest-fork-authority > summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: .45rem;
+  cursor: pointer;
+}
+
+.mp-quest-fork-authority > p { margin: .55rem 0; }
+.mp-quest-fork-authority > small { display: block; margin: .45rem 0; color: var(--muted); }
+
+.mp-topology-consumer-audit {
+  margin: .65rem 0;
+  padding: .55rem .65rem;
+  border-radius: .5rem;
+  background: color-mix(in srgb, var(--panel) 88%, var(--accent) 12%);
+}
+
+.mp-topology-consumer-audit p { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.mp-topology-consumer-audit details > summary { cursor: pointer; }
+.mp-topology-consumer-audit small { display: block; margin-top: .35rem; color: var(--muted); }
+.mp-quest-semantic-fields {
+  margin: .55rem 0;
+  padding: .45rem .55rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: .45rem;
+  background: color-mix(in srgb, var(--panel) 94%, var(--accent) 6%);
+}
+.mp-quest-semantic-fields p { margin: .3rem 0; }
+.mp-quest-optional-flag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .38rem;
+  margin: .45rem 0;
+  padding: .55rem .65rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: .55rem;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.mp-structured-identity-census {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.8rem 0;
+  padding: 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+}
+
+.mp-structured-identity-census code {
+  width: fit-content;
+}
+.mp-quest-optional-flag small { flex-basis: 100%; }
+
+.mp-quest-topology > p { color: var(--muted); }
+.mp-quest-fork-list { display: grid; gap: .6rem; }
+.mp-quest-fork-detail {
+  border: 1px solid var(--border);
+  border-radius: .55rem;
+  background: color-mix(in srgb, var(--panel) 94%, var(--accent) 6%);
+}
+.mp-quest-fork-detail > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem;
+  padding: .55rem .65rem;
+  cursor: pointer;
+}
+.mp-quest-fork-detail > p,
+.mp-quest-fork-detail > small { margin: .5rem .65rem; }
+.mp-quest-fork-detail > small { display: block; color: var(--muted); }
+.mp-quest-server-application {
+  margin: .15rem .65rem .55rem;
+  padding: .55rem .65rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-radius: .45rem;
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+}
+.mp-quest-server-application > header,
+.mp-quest-server-application > p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  align-items: center;
+}
+.mp-quest-server-application > p { margin: .4rem 0; }
+.mp-quest-server-application > small {
+  display: block;
+  margin-top: .4rem;
+  color: var(--muted);
+}
+.mp-quest-enable-routes {
+  margin-top: .55rem;
+  padding-top: .5rem;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+}
+.mp-quest-enable-routes > p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin: .4rem 0;
+}
+.mp-quest-fork-arms {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: .5rem;
+  margin: .25rem .65rem .65rem;
+}
+.mp-quest-fork-arm {
+  padding: .5rem .6rem;
+  border-left: 3px solid var(--border);
+  border-radius: .35rem;
+  background: var(--panel);
+}
+.mp-quest-fork-arm.is-main-path { border-left-color: var(--accent); }
+.mp-quest-fork-arm > header,
+.mp-quest-fork-arm > p { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.mp-quest-fork-arm > p { margin: .35rem 0 0; }
+.mp-quest-fork-guard { margin-top: .45rem; }
+.mp-quest-fork-corridor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem;
+  align-items: center;
+  margin-top: .45rem;
+  padding: .4rem .45rem;
+  border-radius: .35rem;
+  background: color-mix(in srgb, var(--panel) 88%, var(--accent) 12%);
+}
+.mp-quest-fork-story,
+.mp-quest-fork-files { margin-top: .5rem; }
+.mp-quest-fork-story > summary,
+.mp-quest-fork-files > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: .4rem;
+  cursor: pointer;
+  font-weight: 650;
+}
+.mp-quest-fork-story > div {
+  display: grid;
+  grid-template-columns: minmax(8rem, auto) minmax(8rem, auto) 1fr;
+  gap: .25rem .4rem;
+  align-items: center;
+  margin-top: .35rem;
+  padding: .35rem .4rem;
+  border: 1px solid var(--border);
+  border-radius: .35rem;
+}
+.mp-quest-fork-story > div small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+.mp-quest-fork-files > small,
+.mp-quest-fork-arm-boundary {
+  display: block;
+  margin-top: .35rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 /* These lists used to be one full-width row per entry, which wasted most of
    the pane on wide viewports. auto-fit keeps a single entry full width but
    packs many short entries into columns. */
@@ -2022,6 +2195,17 @@ body:not(.show-debug) .mp-playback-rejection {
 .mp-order-branches > details > summary { cursor: pointer; }
 .mp-order-branches > details > small { display: block; margin: .35rem 0; color: var(--muted); }
 .mp-order-branches > details > div { margin-top: .35rem; }
+.mp-quest-succeed-lifecycle {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 78%, var(--border)) !important;
+}
+.mp-quest-succeed-lifecycle > p { margin: .4rem 0; }
+.mp-quest-lifecycle-files { flex-basis: 100%; margin-top: .35rem; }
+.mp-quest-lifecycle-files > summary { cursor: pointer; color: var(--muted); }
+.mp-quest-lifecycle-files > small {
+  display: block;
+  margin-top: .3rem;
+  overflow-wrap: anywhere;
+}
 .mp-native-predicate { display: flex; flex-wrap: wrap; gap: .3rem; margin: .35rem 0; color: var(--muted); }
 
 .mp-order-edge > small { flex-basis: 100%; color: var(--muted); }

@@ -1088,6 +1088,53 @@ def decode_levelscript_action_map_lists(
         source="actionMapHeader",
     )
 
+    # An empty ActionSerializedMap is encoded as three consecutive zero list
+    # counts immediately after the top-level ``02 03`` object marker.  This is
+    # an exact corpus-wide shape in the current original export: every blob
+    # whose actionList count is zero has zero getterList/headerList words at
+    # offsets 7 and 11 as well.  Decode those words directly.  Looking for the
+    # next UID boundary in this case can cross the action-map boundary and
+    # misclassify unrelated LevelScript tail objects as executable records.
+    if (
+        first_count == 0
+        and len(data) >= 15
+        and _u32(data, 7) == 0
+        and _u32(data, 11) == 0
+    ):
+        index = append_list(
+            "getterList",
+            count=0,
+            marker_offset=7,
+            marker_value=0,
+            start_index=index,
+            source="consecutiveEmptyListCount",
+        )
+        index = append_list(
+            "headerList",
+            count=0,
+            marker_offset=11,
+            marker_value=0,
+            start_index=index,
+            source="consecutiveEmptyListCount",
+        )
+        out["exactEmptyActionMap"] = True
+        out["emptyMapBoundaryEndOffset"] = _offset_hex(15)
+        if record_count:
+            lists.append({
+                "name": "outsideSerializedActionMap",
+                "status": "residual-uid-records-after-exact-empty-map",
+                "count": record_count,
+                "recordIndexStart": 0,
+                "recordIndexEnd": record_count,
+            })
+        out["serializedLists"] = lists
+        out["listCounts"] = {
+            str(row.get("name")): row.get("count")
+            for row in lists
+            if row.get("name") in ACTION_SERIALIZED_MAP_LIST_ORDER
+        }
+        return _drop_empty(out)
+
     for name in ACTION_SERIALIZED_MAP_LIST_ORDER[1:]:
         if not sorted_records:
             lists.append({
@@ -1327,6 +1374,179 @@ def _decode_levelscript_shape_list(
     out["shapes"] = shapes
     out["endOffset"] = _offset_hex(cursor)
     return _drop_empty(out), cursor
+
+
+def _valid_levelscript_active_shape(shape: dict[str, Any]) -> bool:
+    """Validate one current MemoryPack ``LevelScriptShape`` structurally."""
+    if (
+        shape.get("memberCount") != 5
+        or shape.get("typeRaw") not in LEVELSCRIPT_SHAPE_TYPE_NAMES
+        or shape.get("typeRaw") == 0
+    ):
+        return False
+    values: list[Any] = [shape.get("radius")]
+    for field_name in ("position", "eulerAngles", "size"):
+        field = shape.get(field_name)
+        if not isinstance(field, dict) or set(field) != {"x", "y", "z"}:
+            return False
+        values.extend(field.values())
+    return all(
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and abs(value) < 10_000_000
+        for value in values
+    )
+
+
+def find_levelscript_active_shape_candidates(
+    data: bytes,
+    search_start: int,
+    search_end: int,
+) -> list[dict[str, Any]]:
+    """Find exact active-shape members by their generated neighbor fields.
+
+    Current metadata fixes the top-level MemoryPack order as ``actionMap``,
+    ``activeShapeList``, three booleans, then ``endType``.  The scan remains
+    fail-closed: a candidate must decode every shape with the exact five-member
+    schema and must be followed by all four typed scalar neighbors.
+    """
+    lower = max(0, int(search_start))
+    upper = min(len(data), max(lower, int(search_end)))
+    candidates: list[dict[str, Any]] = []
+    for offset in range(lower, upper):
+        shape_list, cursor = _decode_levelscript_shape_list(data, offset)
+        if (
+            cursor is None
+            or shape_list.get("status") != "present"
+            or not isinstance(shape_list.get("count"), int)
+            or int(shape_list["count"]) <= 0
+            or shape_list.get("parseStatus") != "decoded"
+            or not all(
+                isinstance(shape, dict) and _valid_levelscript_active_shape(shape)
+                for shape in shape_list.get("shapes") or []
+            )
+            or len(shape_list.get("shapes") or []) != int(shape_list["count"])
+            or cursor + 7 > upper
+        ):
+            continue
+        scalar_flags = list(data[cursor : cursor + 3])
+        end_type_raw = _u32(data, cursor + 3)
+        if (
+            any(value not in (0, 1) for value in scalar_flags)
+            or end_type_raw not in LEVELSCRIPT_END_TYPE_NAMES
+        ):
+            continue
+        candidates.append({
+            "offset": offset,
+            "offsetHex": _offset_hex(offset),
+            "endOffset": cursor,
+            "endOffsetHex": _offset_hex(cursor),
+            "shapeList": shape_list,
+            "followingFields": {
+                "allowStartOnTravelPole": bool(scalar_flags[0]),
+                "allowTick": bool(scalar_flags[1]),
+                "enablePreload": bool(scalar_flags[2]),
+                "endTypeRaw": end_type_raw,
+                "endTypeName": LEVELSCRIPT_END_TYPE_NAMES[end_type_raw],
+            },
+        })
+    return candidates
+
+
+def decode_levelscript_active_shape_list(
+    data: bytes,
+    script_id: int,
+) -> dict[str, Any]:
+    """Recover the authored active volume without an object-specific offset."""
+    out: dict[str, Any] = {
+        "schema": "levelScriptActiveShapeList.v1",
+        "status": "unresolved",
+        "candidateCount": 0,
+    }
+    if not data or data[0] != 27 or script_id <= 0:
+        out["diagnostic"] = "topLevelMemberCountOrScriptId"
+        return out
+
+    records = extract_levelscript_uid_records(data)
+    action_map = decode_levelscript_action_map_lists(data, records)
+    sorted_records = sorted(records, key=_record_start)
+    serialized_lists = [
+        row
+        for row in action_map.get("serializedLists") or []
+        if row.get("name") in ACTION_SERIALIZED_MAP_LIST_ORDER
+        and row.get("status") == "present"
+        and isinstance(row.get("recordIndexEnd"), int)
+    ]
+    final_record_index = max(
+        (int(row["recordIndexEnd"]) for row in serialized_lists),
+        default=0,
+    )
+    if final_record_index <= 0 or final_record_index > len(sorted_records):
+        out["diagnostic"] = "completeActionMapBoundaryMissing"
+        return out
+
+    tail_rows = [_tail_candidate(data, offset) for offset in _u64_offsets(data, script_id)]
+    if not tail_rows:
+        out["diagnostic"] = "verifiedTopLevelScriptIdMissing"
+        return out
+    best_score = max(int(row.get("score") or 0) for row in tail_rows)
+    best_tails = [row for row in tail_rows if int(row.get("score") or 0) == best_score]
+    if len(best_tails) != 1:
+        out.update({
+            "diagnostic": "topLevelScriptIdBoundaryAmbiguous",
+            "tailCandidateCount": len(best_tails),
+        })
+        return out
+
+    final_record = sorted_records[final_record_index - 1]
+    search_start = int(final_record.get("payloadStart") or final_record.get("start") or 0)
+    search_end = int(best_tails[0].get("scriptIdOffset") or 0)
+    candidates = find_levelscript_active_shape_candidates(
+        data,
+        search_start,
+        search_end,
+    )
+    out.update({
+        "candidateCount": len(candidates),
+        "candidateOffsets": [row["offsetHex"] for row in candidates[:8]],
+        "searchStartOffsetHex": _offset_hex(search_start),
+        "searchEndOffsetHex": _offset_hex(search_end),
+        "actionMapFinalList": str(serialized_lists[-1].get("name") or ""),
+        "serializedMemberOrder": [
+            "actionMap",
+            "activeShapeList",
+            "allowStartOnTravelPole",
+            "allowTick",
+            "enablePreload",
+            "endType",
+        ],
+    })
+    if len(candidates) != 1:
+        out["diagnostic"] = (
+            "activeShapeCandidateMissing"
+            if not candidates
+            else "activeShapeCandidateAmbiguous"
+        )
+        return out
+
+    candidate = candidates[0]
+    shape_list = candidate["shapeList"]
+    out.update({
+        "status": "decoded_unique",
+        "offsetHex": candidate["offsetHex"],
+        "endOffsetHex": candidate["endOffsetHex"],
+        "count": shape_list.get("count"),
+        "shapes": shape_list.get("shapes") or [],
+        "followingFields": candidate["followingFields"],
+        "evidenceBoundary": (
+            "This recovers the authored activation geometry and exact adjacent "
+            "MemoryPack fields. It does not prove the player position, runtime "
+            "inside/outside classification, activation outcome, mission owner, "
+            "event firing, or Story order."
+        ),
+    })
+    return out
 
 
 def _decode_vector2_list(
@@ -5164,10 +5384,38 @@ def _decode_main_char_move_to_action(payload: bytes) -> dict[str, Any]:
 
 def _decode_call_server_action(payload: bytes) -> dict[str, Any]:
     """Decode the six generated fields in the current ``CallServer`` prefix."""
-    if len(payload) < 61 or payload[:6] != b"\xff\xff\xff\xff\x04\x01":
+    if len(payload) < 4:
         return {}
-    event_args_size = struct.unpack_from("<i", payload, 6)[0]
-    cursor = 10
+
+    # MemoryPack writes ``_callClientOutputUIDs`` first.  Most current rows
+    # serialize a null list (-1), which made the former fixed-prefix decoder
+    # look complete.  Non-null lists are the server-callback header UIDs and
+    # must be consumed before the remaining five fields.
+    output_count = struct.unpack_from("<i", payload, 0)[0]
+    if output_count < -1 or output_count > 4096:
+        return {}
+    cursor = 4
+    call_client_output_uids: list[str] | None = None
+    if output_count >= 0:
+        call_client_output_uids = []
+        for _index in range(output_count):
+            if cursor + 4 > len(payload):
+                return {}
+            value_size = struct.unpack_from("<i", payload, cursor)[0]
+            cursor += 4
+            if value_size < 0 or cursor + value_size > len(payload):
+                return {}
+            try:
+                value = payload[cursor : cursor + value_size].decode("utf-8")
+            except UnicodeDecodeError:
+                return {}
+            cursor += value_size
+            call_client_output_uids.append(value)
+
+    if cursor + 6 > len(payload) or payload[cursor : cursor + 2] != b"\x04\x01":
+        return {}
+    event_args_size = struct.unpack_from("<i", payload, cursor + 2)[0]
+    cursor += 6
     if event_args_size <= 0 or cursor + event_args_size > len(payload):
         return {}
     try:
@@ -5193,7 +5441,7 @@ def _decode_call_server_action(payload: bytes) -> dict[str, Any]:
     cursor += 3
     return {
         "payloadShape": "six-call-server-fields-exact-prefix",
-        "callClientOutputUIDs": None,
+        "callClientOutputUIDs": call_client_output_uids,
         "eventArgsPtr": {
             "pathValue": event_args_path,
             **event_args_detail,
@@ -5204,6 +5452,34 @@ def _decode_call_server_action(payload: bytes) -> dict[str, Any]:
         "withEventArgs": with_event_args,
         "consumedBytes": cursor,
         "trailingBytes": len(payload) - cursor,
+    }
+
+
+CALLSERVER_SERIALIZED_CONTRACT_FIELDS = (
+    "payloadShape",
+    "callClientOutputUIDs",
+    "eventArgsPtr",
+    "eventName",
+    "eventNameIdentity",
+    "callbackCorrelationLabel",
+    "useCustomEvent",
+    "waitForCallback",
+    "withEventArgs",
+    "consumedBytes",
+    "trailingBytes",
+)
+
+
+def compact_callserver_serialized_contract(
+    call_server: dict[str, Any],
+) -> dict[str, Any]:
+    """Project decoded bytes without derived graph/evidence annotations."""
+    if not isinstance(call_server, dict):
+        return {}
+    return {
+        key: call_server[key]
+        for key in CALLSERVER_SERIALIZED_CONTRACT_FIELDS
+        if key in call_server
     }
 
 
@@ -5379,6 +5655,16 @@ def _decode_manual_levelscript_control(payload: bytes, role: str) -> dict[str, A
         "scriptIdCandidate": str(script_id_candidate) if script_id_candidate is not None else "",
         "constantTargetStatus": "script-id-only" if script_id_candidate is not None else "absent",
     }
+    if canonical_prefix:
+        # Both operands are serialized Param<T> values.  Current MemoryPack
+        # metadata and generated Deserialize bodies establish the member order
+        # as constValue, idRef, paramSource, path.  Keep the numeric sources
+        # here; their build-specific enum names are supplied by the validated
+        # original-binary contract rather than hardcoded into this parser.
+        out["parameterSources"] = {
+            "levelId": struct.unpack_from("<i", payload, 9)[0],
+            "scriptId": struct.unpack_from("<i", payload, 38)[0],
+        }
     if script_id_candidate is not None:
         out["payloadShape"] = "manual-levelscript-script-id-operand"
     if len(payload) > 46 and canonical_prefix:
@@ -7687,6 +7973,7 @@ def decode_levelscript_binary_summary(data: bytes, script_id: int) -> dict[str, 
     offsets = _u64_offsets(data, script_id)
     candidates = [_tail_candidate(data, offset) for offset in offsets]
     best = max(candidates, key=lambda item: int(item.get("score") or 0), default={})
+    active_shapes = decode_levelscript_active_shape_list(data, script_id)
     return {
         "serializedMemberCount": data[0],
         "expectedMemberCount": 27,
@@ -7700,6 +7987,10 @@ def decode_levelscript_binary_summary(data: bytes, script_id: int) -> dict[str, 
         "scriptIdVerified": bool(offsets),
         "probableScriptIdOffset": best.get("scriptIdOffset"),
         "probableScriptIdOffsetHex": best.get("scriptIdOffsetHex") or "",
+        "activeShapeList": active_shapes,
+        "activeShapeListStatus": active_shapes.get("status") or "",
+        "activeShapeListCount": active_shapes.get("count"),
+        "activeShapeListShapes": active_shapes.get("shapes") or [],
         "startShapeListStatus": best.get("startShapeListStatus") or "",
         "startShapeListCount": best.get("startShapeListCount"),
         "startShapeListDetails": best.get("startShapeList") or {},
@@ -7718,7 +8009,7 @@ def decode_levelscript_binary_summary(data: bytes, script_id: int) -> dict[str, 
         "triggerVolumeSlotIds": (best.get("triggerVolumes") or {}).get("slotIds") or [],
         "note": (
             "current 27-member top-level MemoryPack plus actionMap header and "
-            "scriptId/startType/shape-list trigger fields decoded; "
+            "unique active shape, scriptId/startType/shape-list trigger fields decoded; "
             "final current-build Leader trigger-volume maps include exact slot and geometry; "
             "action start/end opcodes are still not decoded"
         ),

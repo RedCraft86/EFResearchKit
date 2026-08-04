@@ -114,7 +114,7 @@ or local source edits.
 - 5,562 unique Story files across 591 pipeline missions.
 - 4,239 files have an accepted mission/context connection (**76.2%**).
 - 4,462 have a normalized trigger/context route (**80.2%**).
-- 1,323 remain unlinked; 156 already have exact native playback but lack a
+- 1,325 remain unlinked; 156 already have exact native playback but lack a
   mission/quest activation bridge.
 - A general original-binary Encounter contract now adds exact controller and
   related LevelData/SpawnerConfig context for 27 of those Story keys. Its
@@ -127,7 +127,27 @@ or local source edits.
 - All 258 named native branch predicates are operand-decoded where their
   current binary layout is supported; the pipeline reports 263 semantic
   predicates including inline forms, with 0 class-only and 0 unresolved.
-- The source-only graph is cycle-free, but proves order for only **1.52%** of
+- Parallel Split semantics now come from a general original-binary scheduler
+  census rather than an action-name rule: two writer methods and all three
+  direct scheduler calls validate, covering 44 branch groups and 77 exact
+  Story transitions while keeping sibling slots unordered.
+- A general installed-binary quest-lifecycle rule adds 22 exact same-quest
+  objective-to-succeed-action Story edges across 18 missions; each carries its
+  original MissionRuntime and binary hashes without inferring server branch choice.
+- The same general dispatcher census proves Fail=4 and Succeed=2 across every
+  current AOT fallback path, while finding no Start=1 producer. The WebUI keeps
+  60 authored start roots visible in quest inspectors; 57 have typed Story
+  references, and the 53 candidate-scene matches appear as attached definition
+  cards without turning them into scene order.
+- Installed metadata now names every authored fork arm's numeric `questType`
+  (`Normal`, `Block`, or `Optional`) and `showMode` (`AlwaysShow` or
+  `AlwaysHide`). The complete direct-consumer audit finds seven quest-type
+  methods: the sole `Optional` comparison sets the exact objective-display
+  `optional` flag, while two `Block` comparisons emit a global notification
+  only after lifecycle application. Five visibility methods make zero
+  lifecycle calls. These labels explain client presentation and notification,
+  but do not select or exclude a successor.
+- The source-only graph is cycle-free, but proves order for only **1.54%** of
   possible within-mission scene pairs. It is a partial order, not a canonical
   full playthrough.
 

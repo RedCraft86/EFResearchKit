@@ -10,13 +10,15 @@ Run from the repository root:
 from __future__ import annotations
 
 import argparse
+import base64
+import copy
 import hashlib
 import json
 import re
 import subprocess
 import sys
 import time
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -31,8 +33,16 @@ try:
         write_text_if_changed,
     )
     from story_builder.levelscript_binary import (
+        compact_callserver_serialized_contract,
+        decode_levelscript_action_map_lists,
         decode_levelscript_action_header_validation,
         decode_levelscript_encounter_module_target,
+        extract_levelscript_uid_records,
+    )
+    from story_builder.level_bindings import (
+        ACTIONBASE_FORMATTER_ACTION_NAMES,
+        ACTIONBASE_FORMATTER_NAME_AUDIT,
+        build_levelscript_native_story_playback_index,
     )
     from story_builder.mission_assets import (
         mission_runtime_source_summary,
@@ -40,6 +50,12 @@ try:
     )
     from story_recovery.build_envtalk_attachment import (
         build_report as build_envtalk_attachment_report,
+    )
+    from story_recovery.build_callserver_callback_audit import (
+        DEFAULT_JSON as CALLSERVER_CALLBACK_AUDIT_JSON,
+        DEFAULT_MARKDOWN as CALLSERVER_CALLBACK_AUDIT_MARKDOWN,
+        build_report as build_callserver_callback_audit_report,
+        markdown_report as render_callserver_callback_audit_markdown,
     )
     from story_recovery.build_mission_dependency_graph import (
         build_report as build_mission_dependency_graph_report,
@@ -71,8 +87,16 @@ except ModuleNotFoundError:  # imported as ``scripts.build_mission_pipeline_data
         write_text_if_changed,
     )
     from scripts.story_builder.levelscript_binary import (
+        compact_callserver_serialized_contract,
+        decode_levelscript_action_map_lists,
         decode_levelscript_action_header_validation,
         decode_levelscript_encounter_module_target,
+        extract_levelscript_uid_records,
+    )
+    from scripts.story_builder.level_bindings import (
+        ACTIONBASE_FORMATTER_ACTION_NAMES,
+        ACTIONBASE_FORMATTER_NAME_AUDIT,
+        build_levelscript_native_story_playback_index,
     )
     from scripts.story_builder.mission_assets import (
         mission_runtime_source_summary,
@@ -80,6 +104,12 @@ except ModuleNotFoundError:  # imported as ``scripts.build_mission_pipeline_data
     )
     from scripts.story_recovery.build_envtalk_attachment import (
         build_report as build_envtalk_attachment_report,
+    )
+    from scripts.story_recovery.build_callserver_callback_audit import (
+        DEFAULT_JSON as CALLSERVER_CALLBACK_AUDIT_JSON,
+        DEFAULT_MARKDOWN as CALLSERVER_CALLBACK_AUDIT_MARKDOWN,
+        build_report as build_callserver_callback_audit_report,
+        markdown_report as render_callserver_callback_audit_markdown,
     )
     from scripts.story_recovery.build_mission_dependency_graph import (
         build_report as build_mission_dependency_graph_report,
@@ -137,10 +167,24 @@ DEFAULT_GAMEPLAY_CONFIG_ROOT = (
 DEFAULT_LUA_CONSUMER_REFERENCE_AUDIT = (
     ROOT / "reports" / "mission_order" / "lua_consumer_reference_audit.json"
 )
+DEFAULT_SCRIPT_TASK_EXTRA_INFO_TABLE = (
+    DEFAULT_GAMEPLAY_CONFIG_ROOT / "ScriptTaskExtraInfoTable.json"
+)
+DEFAULT_LEVEL_SCRIPT_DATA_ROOT = (
+    ROOT / "export_full" / "structured" / "StreamingAssets" / "Data" / "Json"
+    / "LevelScriptData"
+)
+DEFAULT_PROTOCOL_REGISTRY_AUDIT = (
+    ROOT / "reports" / "story" / "recovery" / "protocol_registry_audit.json"
+)
+DEFAULT_NATIVE_CROSS_SYSTEM_CONSUMER_CENSUS = (
+    ROOT / "reports" / "story" / "recovery"
+    / "native_cross_system_consumer_census.json"
+)
 DEFAULT_CUTSCENE_CASE_RESOLUTION_AUDIT = (
     ROOT / "reports" / "story" / "recovery" / "cutscene_case_resolution_audit.json"
 )
-LUA_CONSUMER_REFERENCE_SCHEMA = "luaConsumerReferenceAudit.v3"
+LUA_CONSUMER_REFERENCE_SCHEMA = "luaConsumerReferenceAudit.v4"
 NATIVE_GAME_ACTION_TYPE = "Beyond.Gameplay.Actions.GameAction"
 DEFAULT_ACTIVITY_STAGE_TABLE = DEFAULT_TABLE_ROOT / "ActivityConditionalMultiStageTable.json"
 DEFAULT_ACTIVITY_DUNGEON_FIGHTING_STAGE_TABLE = (
@@ -154,6 +198,15 @@ DEFAULT_DUNGEON_TABLE = DEFAULT_TABLE_ROOT / "DungeonTable.json"
 DEFAULT_TEXT_VO_ID_TABLE = DEFAULT_TABLE_ROOT / "TextVoIdTable.json"
 DEFAULT_SUBMIT_ITEM_TABLE = DEFAULT_TABLE_ROOT / "SubmitItem.json"
 DEFAULT_OUTPUT_ROOT = ROOT / "webui" / "data" / "mission_pipeline"
+DEFAULT_LEVEL_SEQUENCE_TEXTASSET_ROOT = (
+    ROOT
+    / "export_full"
+    / "recovered"
+    / "AnimeStudio-cli"
+    / "StreamingAssets"
+    / "json_by_type"
+    / "TextAsset"
+)
 DEFAULT_STORY_DATA_ROOT = ROOT / "webui" / "data" / "lang"
 DEFAULT_REPORT_ROOT = ROOT / "reports" / "story" / "build"
 DEFAULT_ORDER_REPORT_ROOT = ROOT / "reports" / "mission_order"
@@ -161,7 +214,7 @@ DEFAULT_MISSION_GRAPH_REPORT_ROOT = ROOT / "reports" / "mission_graph"
 DEFAULT_SOURCE_STORY_GAP_QUEUE = (
     DEFAULT_ORDER_REPORT_ROOT / "source_story_gap_queue_CN.json"
 )
-SOURCE_STORY_GAP_QUEUE_SCHEMA = "sourceStoryGapQueue.v124"
+SOURCE_STORY_GAP_QUEUE_SCHEMA = "sourceStoryGapQueue.v130"
 DEFAULT_DYNAMIC_SCENE_MISSION_CONTROL_AUDIT = (
     ROOT
     / "reports"
@@ -184,7 +237,7 @@ MISSION_RUNTIME_TRACE_SCHEMA = "missionRuntimeTrace.v1"
 # LevelData AirWall mission/quest-state-gated radio playback contexts. v7
 # records the bounded MissionOptionData alternate-action carrier result. v8
 # closes the Mission property -> ParamVariable.m_scriptPtr nested-type
-# candidate as runtime LevelScript subscription context. v9 closes the
+# candidate as runtime LevelScript subscription context. v10 closes the
 # implicit ParamSource.CURRENT_MISSION_ID candidate across the complete
 # authored MissionRuntime and LevelScript action surfaces. v10 closes the
 # complete direct managed mission/quest identity co-carrier census and proves
@@ -215,13 +268,36 @@ MISSION_RUNTIME_TRACE_SCHEMA = "missionRuntimeTrace.v1"
 # v25 admits an exact authored ``int_horn.properties.dialog_id`` consumer with
 # current-template/native provenance while preserving the ownership/order gap.
 # v26 attaches hash-verified current-game DialogTree definitions to their exact
-# objective, repeatable-talk, and failed-dialog MissionRuntime observers.
-SCHEMA_VERSION = 26
+# objective, repeatable-talk, and failed-dialog MissionRuntime observers. v27
+# exposes exact typed spaceship contexts whose complete table definition has
+# no carrier in any related typed DialogTree, without inventing playback. v28
+# exposes typed receiver-local control after playback. v29 publishes exact
+# typed source-to-target Story transition suffixes and their branch classes.
+# v30 closes the post-playback variable-setter route against every exact
+# property/blackboard Story receiver and publishes the bounded result. v31
+# resolves typed post-playback LevelSequence action ids to internally validated
+# original TextAssets without using their names as mission/order evidence. v32
+# names the complete ActionBase surface through one hash-validated formatter
+# table recovered from the installed binary. v40 joins exact receiver headers
+# to their serialized Active/Start phase and the binary-validated registration
+# lifecycle while preserving the unresolved public-Active producer boundary.
+# v41 joins the exact LevelData LevelScriptType to the binary activation
+# selector and exposes the client-produced active=true branch without treating
+# the server-side rule choosing public Enabled, its spatial outcome, or server
+# acceptance as mission evidence.
+# v42 decodes the authored active volume generically and joins it to the binary
+# inside/outside gate while keeping the runtime player-position result unknown.
+# v43 distinguishes the full-scene LevelScript snapshot from incremental public
+# state notifications and publishes their closed current-AOT application paths.
+# v45 retains every complete authored scene/script/task condition tuple and
+# fail-closed joins it to the original task table and LevelScript source.
+SCHEMA_VERSION = 45
 PIPELINE_STORY_KINDS = {"dlg", "sns", "cutscene", "black", "remotecomm", "radio"}
 PIPELINE_VISIBLE_NON_MISSION_EVIDENCE_KINDS = {
     "guide_runtime_asset",
     "spaceship_dialog_tree",
     "character_profile_voice",
+    "spaceship_dialog_definition_without_tree_carrier",
 }
 BATTLE_SIGNAL_PRODUCER_MAPPING_ID = (
     "gameassembly-2026-07-22-ability-actiondata-0x0134"
@@ -869,13 +945,88 @@ RUNTIME_CONTRACT = {
         "metadata": {
             "managedTypeRecords": 63987,
             "runtimeTypeEntries": 272743,
-            "maxCustomTypeDepth": 3,
-            "candidateTypes": 25,
+            "traversalMode": "cycle_safe_shortest_path_fixed_point",
+            "maximumShortestPathDepth": 10,
+            "maximumTraversedDepth": 10,
+            "candidateTypes": 112,
             "directExactCandidateTypes": 11,
-            "nestedDependentCandidateTypes": 14,
-            "reviewedCandidateTypes": 25,
+            "nestedDependentCandidateTypes": 101,
+            "reviewedCandidateTypes": 112,
             "unreviewedCandidateTypes": 0,
         },
+        "runtimeEntityHubClosure": {
+            "classification": (
+                "closed_runtime_entity_graph_reachability_without_serialized_instance_join"
+            ),
+            "hubType": "Beyond.Gameplay.Core.Entity",
+            "candidateTypes": 86,
+            "targetTypes": [
+                "Beyond.Gameplay.Core.Entity",
+                "Beyond.Gameplay.Core.InteractiveRootComponent",
+                "Beyond.Gameplay.Core.NpcInteractComponent",
+            ],
+            "exactIndexedTypeLabels": 0,
+            "indexedOriginalObjects": 1335450,
+            "objectsWithTruncatedScalars": 1384,
+            "finding": (
+                "Eighty-six newly visible candidates reach their missing identity "
+                "only through the mutable Entity/component graph. Installed metadata "
+                "proves the type paths, while the complete original-object indexes "
+                "expose no exact Entity/component script or scalar type label that "
+                "can populate a mission/Story ownership join. The 1,384 rows with "
+                "truncated scalar projections remain an explicit boundary."
+            ),
+        },
+        "sharedRuntimeAggregateClosure": {
+            "classification": (
+                "closed_shared_runtime_aggregate_reachability_without_same_record_join"
+            ),
+            "candidateTypes": 1,
+            "hubFamilies": [
+                "runtime_entity_component_graph",
+                "mission_runtime_property_or_action_graph",
+            ],
+            "finding": (
+                "One mixed candidate reaches different identities through the "
+                "Entity and MissionRuntime aggregate graphs; graph reachability "
+                "does not make the independent manager records one authored row."
+            ),
+        },
+        "relatedOriginalFiles": [{
+            "sourceFile": (
+                r"D:\Program Files\Endfield Game\GameAssembly.dll"
+            ),
+            "sha256": (
+                "0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce"
+            ),
+            "role": "native managed-field consumers",
+        }, {
+            "sourceFile": (
+                r"D:\Program Files\Endfield Game\Endfield_Data\il2cpp_data\Metadata\global-metadata.dat"
+            ),
+            "sha256": (
+                "90c58e26e87c7227a85dda3fedf6ce5ed0b06dc1f76e0abbe75ab20750adf97e"
+            ),
+            "role": "installed managed type graph",
+        }, {
+            "sourceFile": (
+                "export_full/recovered/AnimeStudio-cli/StreamingAssets/"
+                "object_index/objects.jsonl.gz"
+            ),
+            "sha256": (
+                "6f59db82177cd1abd027bfed385145337403a5b0791bcb628287b53e1ad341cd"
+            ),
+            "role": "original StreamingAssets serialized-object census",
+        }, {
+            "sourceFile": (
+                "export_full/recovered/AnimeStudio-cli/Persistent/"
+                "object_index/objects.jsonl.gz"
+            ),
+            "sha256": (
+                "65cd90a9f99d0da09ebcbd9de01e0b69960d513a857c5438de4272f5de1dd3bd"
+            ),
+            "role": "original Persistent serialized-object census",
+        }],
         "pendingItemSubmitterClosure": {
             "classification": (
                 "active_shipped_xlua_producer_with_exact_submission_context_without_ui_join"
@@ -1010,25 +1161,192 @@ RUNTIME_CONTRACT = {
             ),
         },
         "finding": (
-            "All 25 current managed identity candidates reachable through generic "
-            "or custom typed fields to depth three are reviewed. Productive contexts "
-            "were already recovered; remaining joins are global aggregate managers, "
-            "previously closed paths, static registries, or the active XLua pending-"
-            "submission bridge with exact quest-to-submission context but no "
-            "quest-to-OpenUI join."
+            "All 112 managed identity candidates reachable at the cycle-safe type-"
+            "graph fixed point are reviewed. Productive contexts were already "
+            "recovered; remaining joins are shared runtime aggregates, previously "
+            "closed paths, static registries, or the active XLua pending-submission "
+            "bridge with exact quest-to-submission context but no quest-to-OpenUI join."
         ),
         "boundary": (
             "The exact shipped SubmitItem XLua producer, fallback OpenUI parameter "
             "pass-through, and authored submission objectives are included. "
             "Dynamic mutation or reflection outside this path, native-only opaque "
-            "objects, server-only state, paths deeper than three custom-type hops, "
-            "unexported asset kinds, future IFix, and future builds remain outside "
-            "the bound."
+            "objects, server-only state, unexported asset kinds, future IFix, and "
+            "future builds remain outside the bound."
         ),
         "classification": "all_nested_managed_identity_carriers_reviewed",
         "storyBindingsAdded": 0,
         "missionOrderEdgesAdded": 0,
         "confidence": "metadata_registration_and_native_consumers_bounded",
+    },
+    "nativeCrossSystemConsumerCensus": {
+        "source": (
+            "reports/story/recovery/native_cross_system_consumer_census.json"
+        ),
+        "method": (
+            "Complete current-build E8 rel32 census across GameAssembly .text and "
+            "il2cpp sections, mapped through current IL2CPP method and generic-method "
+            "pointers. Shared pointers with more than eight aliases or mixed API-family "
+            "aliases are rejected. No mission, quest, Story, scene, or object id is seeded."
+        ),
+        "counts": {
+            "mappedMethodPointers": 500976,
+            "familyTargetPointers": 7214,
+            "crossSystemCallers": 17,
+            "missionStateDynamicSceneCallers": 4,
+            "dynamicSceneLevelScriptCallers": 4,
+            "dynamicSceneStoryCallers": 8,
+            "missionStoryCallers": 1,
+            "missionLevelScriptCallers": 0,
+            "tripleOrGreaterFamilyCallers": 0,
+            "unreviewedCallers": 0,
+            "closureReachableMethods": 23,
+            "closureDirectEdges": 30,
+            "closureLevelScriptMethods": 0,
+            "closureStoryMethods": 0,
+            "unreviewedIndirectSites": 0,
+        },
+        "classifications": {
+            "missionStateControlsDynamicComponentAvailability": 4,
+            "sharedTriggerGeometryAdapters": 3,
+            "globalLevelLoadSynchronization": 1,
+            "storyDynamicSceneVisualContext": 8,
+            "missionOrDialogAlternateActionConsumer": 1,
+        },
+        "deferredRefreshClosure": {
+            "pendingField": {
+                "name": "m_pendingRefreshCompSet",
+                "token": "0x0400e5f9",
+                "offset": "0x48",
+            },
+            "chain": [
+                "MissionSystem mission/quest state",
+                "DynamicScene cared component enqueue",
+                "m_pendingRefreshCompSet@0x48",
+                "DynamicSceneMissionControlSystem.BeforeTick",
+                "DynamicSceneMissionControlSystem._UpdateConditionValue",
+                "DynamicSceneEntitySystem.RefreshEntityStatus",
+            ],
+            "classification": (
+                "mission_state_drives_deferred_dynamic_scene_availability_refresh"
+            ),
+        },
+        "missionRuntimeSurface": {
+            "counts": {
+                "missionIdentityTypes": 174,
+                "familyTargetPointers": 4322,
+                "crossSystemCallers": 2,
+                "missionRuntimeLevelScriptCallers": 1,
+                "missionRuntimeStoryCallers": 1,
+                "crossFamilyMethodSignatures": 0,
+                "trackingMissionFieldWrites": 0,
+                "trackingSceneFieldWrites": 3,
+                "unreviewedCallers": 0,
+            },
+            "trackingFieldFlow": {
+                "fieldLayout": {
+                    "missionId": {
+                        "name": "missionId",
+                        "token": "0x04003f3b",
+                        "offset": "0x20",
+                    },
+                    "sceneId": {
+                        "name": "sceneId",
+                        "token": "0x04003f3d",
+                        "offset": "0x30",
+                    },
+                },
+                "writes": {
+                    "missionId": [],
+                    "sceneId": [
+                        {"va": "0x186fb6567"},
+                        {"va": "0x186fb6675"},
+                        {"va": "0x186fb66e4"},
+                    ],
+                },
+            },
+            "finding": (
+                "The broadened 174-type mission/quest runtime surface adds no "
+                "activation bridge. Its sole LevelScript caller constructs a "
+                "tracking point and writes sceneId, but never writes missionId; "
+                "the other caller is the audited MissionOption alternate action. "
+                "No managed method signature co-carries both runtime families."
+            ),
+            "boundary": (
+                "Tracking UI context creates no receiver activation, Story "
+                "ownership, branch, or order edge."
+            ),
+            "classification": (
+                "full_mission_runtime_surface_reviewed_no_activation_bridge"
+            ),
+        },
+        "managedCallableSurface": {
+            "counts": {
+                "callableFields": 13,
+                "missionRuntimeCallableFields": 9,
+                "levelScriptCallableFields": 4,
+                "crossIdentityCallableFields": 0,
+                "callableEntryMethods": 5,
+                "callableEntryTargetPointers": 5,
+                "directBindingCalls": 5,
+                "missionLevelScriptBindings": 0,
+                "unreviewedBindingCallers": 0,
+            },
+            "finding": (
+                "The complete managed callable surface contains 13 fields and five "
+                "callable-parameter binding entry points. MissionSystem binds only "
+                "MissionAcceptMode, while LevelScriptRuntime binds only its local task "
+                "condition notifications; no binding joins the two families."
+            ),
+            "boundary": (
+                "Typed managed fields and direct native calls to their binding entry "
+                "points are closed for this build. Runtime field mutation, reflection, "
+                "XLua, IFix, native-only registries, and server selection remain outside "
+                "the bound."
+            ),
+            "classification": (
+                "managed_callable_carriers_reviewed_no_activation_bridge"
+            ),
+        },
+        "finding": (
+            "Four native DynamicSceneMissionControlSystem paths read exact mission or "
+            "quest state and update cared DynamicScene components. Their fixed-point "
+            "direct-call closure reaches 23 gameplay methods across 30 edges, with no "
+            "LevelScript or Story method. Metadata and native field access prove that "
+            "the pending set is consumed by BeforeTick to re-evaluate conditions and "
+            "RefreshEntityStatus. The remaining cross-system routes "
+            "are shared trigger geometry, global level-load synchronization, Story visual "
+            "override/actor context, or the separately audited MissionOption alternate "
+            "mission/dialog actions."
+        ),
+        "boundary": (
+            "The closure reviews its sole decoded indirect site as an IL2CPP class-"
+            "initializer guard, but the partial decoder is not a general x64 proof. "
+            "Reflection, XLua, server-only logic, opaque dynamic dispatch, and future "
+            "builds remain outside the census. Mission-controlled "
+            "DynamicScene rows are availability context, not LevelScript activation, Story "
+            "ownership, playback causality, or mission order."
+        ),
+        "relatedOriginalFiles": [{
+            "sourceFile": "D:/Program Files/Endfield Game/GameAssembly.dll",
+            "sha256": (
+                "0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce"
+            ),
+            "role": "complete native direct-call consumer corpus",
+        }, {
+            "sourceFile": (
+                "D:/Program Files/Endfield Game/Endfield_Data/il2cpp_data/Metadata/"
+                "global-metadata.dat"
+            ),
+            "sha256": (
+                "90c58e26e87c7227a85dda3fedf6ce5ed0b06dc1f76e0abbe75ab20750adf97e"
+            ),
+            "role": "managed method, type, and generic-instantiation mapping",
+        }],
+        "classification": "mission_state_drives_deferred_dynamic_scene_availability_refresh",
+        "storyBindingsAdded": 0,
+        "missionOrderEdgesAdded": 0,
+        "confidence": "hash_locked_direct_and_deferred_native_closure",
     },
     "airWallMissionRadioContext": {
         "managedCarrier": {
@@ -3097,20 +3415,36 @@ def refresh_source_story_gap_queue(
             or "fail" in state
             or "mismatch" in state
         ):
+            first_validation_failure = (
+                validation_failures[0] if validation_failures else None
+            )
+            first_hash_mismatch = (
+                hash_mismatches[0] if hash_mismatches else None
+            )
+            diagnostic = (
+                first_validation_failure
+                if isinstance(first_validation_failure, dict)
+                else first_hash_mismatch
+                if isinstance(first_hash_mismatch, dict)
+                else {}
+            )
             failures.append({
                 "gate": "validator",
                 "validator": validator,
                 "status": state,
                 "validationFailureCount": len(validation_failures),
                 "sourceHashMismatchCount": len(hash_mismatches),
-                "firstFailure": (
-                    validation_failures[0]
-                    if validation_failures
-                    else None
+                "expected": diagnostic.get("expected"),
+                "actual": diagnostic.get("actual"),
+                "missionId": diagnostic.get("missionId"),
+                "storyKey": diagnostic.get("storyKey"),
+                "sourceFile": (
+                    diagnostic.get("sourceFile")
+                    or diagnostic.get("source")
+                    or status.get("source")
                 ),
-                "firstSourceHashMismatch": (
-                    hash_mismatches[0] if hash_mismatches else None
-                ),
+                "firstFailure": first_validation_failure,
+                "firstSourceHashMismatch": first_hash_mismatch,
             })
     if failures:
         first = failures[0]
@@ -3118,8 +3452,11 @@ def refresh_source_story_gap_queue(
             "source Story gap validation failed: "
             f"gate={first.get('gate')} "
             f"validator={first.get('validator') or '-'} "
+            f"mission={first.get('missionId') or '-'} "
+            f"story={first.get('storyKey') or '-'} "
             f"expected={first.get('expected')} "
             f"actual={first.get('actual')} "
+            f"source={first.get('sourceFile') or '-'} "
             f"queue={repo_path(queue_path)}"
         )
     print(
@@ -3374,6 +3711,36 @@ def load_lua_story_playback_evidence(
 
     accepted.sort(key=lambda row: (natural_quest_key(row["storyKey"]), row["luaFile"], row["luaLine"]))
     rejected.sort(key=lambda row: (natural_quest_key(row["storyKey"]), row["luaFile"], row["luaLine"]))
+    runtime_dispatchers = [
+        row for row in calls
+        if row.get("playbackRole") == "runtime_queue_dispatcher"
+    ]
+    runtime_contract = (audit.get("gameActionAudit") or {}).get(
+        "runtimeHandleContract"
+    ) or {}
+    action_producer_routes = runtime_contract.get("actionProducerRoutes") or []
+    if runtime_dispatchers and (
+        not runtime_contract.get("report")
+        or not re.fullmatch(
+            r"[0-9a-fA-F]{64}",
+            str(runtime_contract.get("sha256") or ""),
+        )
+        or not {
+            str(row.get("method") or "") for row in runtime_dispatchers
+        }.issubset(set(runtime_contract.get("dispatcherMethods") or []))
+        or not action_producer_routes
+        or any(
+            not row.get("actionType")
+            or not row.get("producerMethod")
+            or not row.get("actionToken")
+            for row in action_producer_routes
+        )
+    ):
+        raise RuntimeError(
+            f"validator={validator} failed: gate=runtime_handle_contract "
+            f"expected=complete_binary_dispatch_family actual=invalid "
+            f"source={repo_path(lua_audit_path)}"
+        )
     return {
         "validator": validator,
         "status": "validated",
@@ -3383,7 +3750,13 @@ def load_lua_story_playback_evidence(
         "scannedPlaybackCalls": len(calls),
         "acceptedExactPlaybackCalls": accepted,
         "rejectedCaseMismatchCalls": rejected,
-        "unresolvedPlaybackCalls": len(calls) - len(accepted) - len(rejected),
+        "runtimeHandleDispatcherCalls": runtime_dispatchers,
+        "runtimeHandleDispatcherCallCount": len(runtime_dispatchers),
+        "runtimeHandleDispatcherFamilyCount": 1 if runtime_dispatchers else 0,
+        "runtimeHandleContract": runtime_contract,
+        "unresolvedPlaybackCalls": (
+            len(calls) - len(accepted) - len(rejected) - len(runtime_dispatchers)
+        ),
         "acceptedTableCarrierCalls": sum(
             1 for row in accepted if row.get("literalResolution") == "table_field_singleton"
         ),
@@ -3393,6 +3766,11 @@ def load_lua_story_playback_evidence(
             "playback. A mission/quest attachment is admitted only when the same "
             "resolved original table row co-carries that identity; otherwise Lua "
             "does not supply mission ownership or Story order. "
+            "Binary-proven cinematic-handle calls are one polymorphic runtime "
+            "dispatcher family and are not counted as unresolved authored references. "
+            "A binary-discovered typed action-to-producer route can annotate an exact "
+            "LevelScript playback route and attach its audit file, but cannot supply "
+            "mission ownership or order by itself. "
             "Case-folded matches create no route without matching installed-binary proof."
         ),
     }
@@ -3433,6 +3811,7 @@ def publish_offline_story_recovery(
         "graphEffect": "none",
         "publishedStoryKeys": 0,
         "publishedRuntimeContextStoryKeys": 0,
+        "publishedProjectAuthoredStoryKeys": 0,
         "outsidePipelineCoverageStoryKeys": 0,
         "storyTriggerManifestOverlay": {},
         "questAttachmentDiagnosticStatus": "unavailable",
@@ -3464,6 +3843,7 @@ def publish_offline_story_recovery(
     published_keys: set[str] = set()
     published_partial_keys: set[str] = set()
     published_runtime_context_keys: set[str] = set()
+    published_project_authored_keys: set[str] = set()
     manifest_overlay: dict[str, dict[str, Any]] = {}
     diagnostic_status = payload.get("questAttachmentDiagnosticEvidence")
     diagnostic_active = (
@@ -3474,6 +3854,13 @@ def publish_offline_story_recovery(
         and not diagnostic_status.get("validationFailures")
     )
     quest_attachment_diagnostics: dict[str, dict[str, Any]] = {}
+    project_status = payload.get("projectAuthoredStoryEvidence")
+    project_active = (
+        isinstance(project_status, dict)
+        and project_status.get("status") == "validated"
+        and project_status.get("graphEffect") == "none"
+        and not project_status.get("validationFailures")
+    )
     for mission in payload.get("missions") or []:
         if not isinstance(mission, dict):
             continue
@@ -3510,7 +3897,8 @@ def publish_offline_story_recovery(
             else:
                 manifest_overlay[story_key] = {
                     "key": story_key,
-                    "kind": offline_story_kind(story_key),
+                    "kind": str(row.get("storyKind") or "")
+                        or offline_story_kind(story_key),
                     "nominalMissionId": str(row.get("missionId") or ""),
                     "attachmentStatus":
                         "offline_exhausted_outside_pipeline_coverage_denominator",
@@ -3548,6 +3936,44 @@ def publish_offline_story_recovery(
                 })
                 overlay["partialRecovery"] = recovery
             published_partial_keys.add(story_key)
+
+        if project_active:
+            for row in mission.get(
+                "closedNonMissionContentIsolatedScenes"
+            ) or []:
+                if (
+                    not isinstance(row, dict)
+                    or row.get("evidenceKind")
+                    != "project_authored_story_content"
+                    or row.get("recoveryStatus")
+                    != "excluded_project_authored_story_content"
+                    or row.get("graphEffect") != "none"
+                    or row.get("gameDataEvidence") is not False
+                ):
+                    continue
+                story_key = str(row.get("sceneKey") or "")
+                if not story_key:
+                    continue
+                recovery = {
+                    key: value
+                    for key, value in row.items()
+                    if key != "sceneKey"
+                }
+                manifest_row = story_trigger_manifest.get(story_key)
+                if isinstance(manifest_row, dict):
+                    manifest_row["contentProvenance"] = recovery
+                else:
+                    overlay = manifest_overlay.setdefault(story_key, {
+                        "key": story_key,
+                        "kind": str(row.get("storyKind") or "")
+                            or offline_story_kind(story_key),
+                        "nominalMissionId": str(mission.get("mission") or ""),
+                        "attachmentStatus":
+                            "project_authored_outside_game_coverage_denominator",
+                        "routes": [],
+                    })
+                    overlay["contentProvenance"] = recovery
+                published_project_authored_keys.add(story_key)
 
         approved_runtime_contexts = {
             (
@@ -3640,6 +4066,10 @@ def publish_offline_story_recovery(
                 "closed_exact_composed_root_playback_context_no_relative_order",
             ),
             (
+                "lua_controller_playback",
+                "closed_exact_lua_controller_playback_no_mission_owner_or_relative_order",
+            ),
+            (
                 "timeline_dialog_contains_black",
                 "closed_exact_timeline_black_carrier_context_owner_or_order_unresolved",
             ),
@@ -3658,6 +4088,14 @@ def publish_offline_story_recovery(
             (
                 "cross_owner_levelscript_quest_playback_context",
                 "closed_exact_cross_mission_quest_playback_context_no_relative_order",
+            ),
+            (
+                "dialog_tree_reachable_story_playback",
+                "closed_exact_connected_dialog_tree_playback_context_no_relative_order",
+            ),
+            (
+                "levelscript_quest_state_gate",
+                "closed_exact_quest_state_gated_playback_context_no_relative_order",
             ),
         }
         for row in mission.get("closedExactNativeIsolatedScenes") or []:
@@ -3711,6 +4149,9 @@ def publish_offline_story_recovery(
         "publishedRuntimeContextStoryKeys": len(
             published_runtime_context_keys
         ),
+        "publishedProjectAuthoredStoryKeys": len(
+            published_project_authored_keys
+        ),
         "outsidePipelineCoverageStoryKeys": len(manifest_overlay),
         "storyTriggerManifestOverlay": manifest_overlay,
         "questAttachmentDiagnosticStatus": (
@@ -3755,8 +4196,11 @@ def publish_offline_recovery_mission_shells(
     }
     overlay = offline_recovery.get("storyTriggerManifestOverlay") or {}
     keys_by_mission: dict[str, list[str]] = defaultdict(list)
+    kind_by_key: dict[str, str] = {}
     for story_key, entry in overlay.items():
-        recovery = entry.get("offlineRecovery") if isinstance(entry, dict) else None
+        recovery = (
+            entry.get("offlineRecovery") or entry.get("contentProvenance")
+        ) if isinstance(entry, dict) else None
         mission_id = str(
             (recovery or {}).get("missionId")
             or (entry or {}).get("nominalMissionId")
@@ -3764,6 +4208,7 @@ def publish_offline_recovery_mission_shells(
         )
         if mission_id and mission_id not in existing:
             keys_by_mission[mission_id].append(str(story_key))
+            kind_by_key[str(story_key)] = str(entry.get("kind") or "")
 
     published: list[str] = []
     mission_output = output_root / "missions"
@@ -3799,7 +4244,8 @@ def publish_offline_recovery_mission_shells(
             "nodes": [
                 {
                     "key": story_key,
-                    "kind": offline_story_kind(story_key),
+                    "kind": kind_by_key.get(story_key)
+                        or offline_story_kind(story_key),
                     "membership": "index",
                     "component": component["id"],
                     "relationStatus": "isolated",
@@ -4362,6 +4808,7 @@ def build_story_trigger_route(
     native_paths = _compact_native_trigger_paths(row)
     native_occurrences = _native_occurrence_rows(row)
     event_names = _unique_route_strings(
+        row.get("event"),
         row.get("nativeEventNames"),
         [path.get("eventName") for path in native_paths],
     )
@@ -4388,6 +4835,7 @@ def build_story_trigger_route(
         [path.get("scriptId") for path in native_paths],
     )
     source_files = _unique_route_strings(
+        row.get("sourceFile"),
         row.get("sourceFiles"),
         row.get("assetPaths"),
         row.get("trackPaths"),
@@ -4567,10 +5015,28 @@ def build_story_trigger_route(
         "causality": causality,
         "confidence": str(row.get("confidence") or ""),
         "evidenceTier": str(row.get("evidenceTier") or ""),
+        "nativeMappingId": str(row.get("nativeMappingId") or ""),
+        "certainty": str(row.get("certainty") or ""),
         "eventNames": event_names,
         "eventSummaries": event_summaries,
         "actionNames": action_names,
         "scriptIds": script_ids,
+        "levelId": str(row.get("levelId") or ""),
+        "sourcePathIds": _unique_route_strings(row.get("sourcePathIds")),
+        "parentScopeRelations": _unique_route_strings(
+            row.get("parentScopeRelations")
+        ),
+        "carrierKinds": _unique_route_strings(row.get("carrierKinds")),
+        "occurrenceCount": row.get("occurrenceCount"),
+        "runtimeReplacementPossible": row.get("runtimeReplacementPossible"),
+        "headerLocalId": row.get("headerLocalId"),
+        "gateActionLocalId": row.get("gateActionLocalId"),
+        "conditionType": str(row.get("conditionType") or ""),
+        "conditionComparer": str(row.get("conditionComparer") or ""),
+        "conditionQuestState": row.get("conditionQuestState"),
+        "actionLocalId": row.get("actionLocalId"),
+        "actionCode": str(row.get("actionCode") or ""),
+        "actionKind": str(row.get("actionKind") or ""),
         "levelDataAssets":
             _unique_route_strings(row.get("levelDataAssets")),
         "localInteractiveId": row.get("localInteractiveId"),
@@ -5710,6 +6176,1709 @@ def exact_native_receiver_playback_gate(
     }
 
 
+def exact_native_receiver_post_playback_control(
+    owner: dict[str, Any],
+    *,
+    story_key: str,
+    playback_local_id: int,
+    source_file: str,
+) -> dict[str, Any]:
+    """Compact exact typed successors after any native Story action.
+
+    ``_levelscript_native_control_paths_to_record`` already walks the current
+    runtime action slots and every typed successor field.  This projection is
+    deliberately identity-agnostic: it accepts any Story/action/header and
+    preserves only serialized control-flow.  It never interprets a callback
+    label as a server handler, mission id, or quest id.
+    """
+    if (
+        not isinstance(owner, dict)
+        or owner.get("status") not in {
+            "exact_serialized_control_path",
+            "exact_serialized_control_path_equivalent_duplicates",
+            "exact_serialized_control_path_runtime_shadowing",
+        }
+        or owner.get("downstreamControlStatus")
+        != "exact_serialized_typed_reachability"
+        or not story_key
+        or not isinstance(playback_local_id, int)
+        or not source_file
+    ):
+        return {}
+    paths: list[list[dict[str, Any]]] = []
+    seen_paths: set[tuple[tuple[str, int], ...]] = set()
+    for raw_path in owner.get("downstreamControlPaths") or []:
+        if not isinstance(raw_path, list) or not raw_path:
+            continue
+        path: list[dict[str, Any]] = []
+        signature: list[tuple[str, int]] = []
+        for raw_step in raw_path:
+            if not isinstance(raw_step, dict):
+                path = []
+                break
+            edge = str(raw_step.get("edge") or "")
+            local_id = raw_step.get("localId")
+            if not edge or not isinstance(local_id, int):
+                path = []
+                break
+            step = compact_dict({
+                "edge": edge,
+                "localId": local_id,
+                "opcode": str(raw_step.get("opcode") or ""),
+                "unionTag": str(raw_step.get("unionTag") or ""),
+                "serializedMemberCount": raw_step.get(
+                    "serializedMemberCount"
+                ),
+                "actionName": str(raw_step.get("actionName") or ""),
+                "recordClass": str(raw_step.get("recordClass") or ""),
+                "texts": [
+                    str(value)
+                    for value in raw_step.get("texts") or []
+                    if str(value)
+                ][:8],
+                "callServerContract": raw_step.get("callServerContract") or None,
+                "branchPredicate": raw_step.get("branchPredicate") or None,
+            })
+            path.append(step)
+            signature.append((edge, local_id))
+        path_signature = tuple(signature)
+        if path and path_signature not in seen_paths:
+            seen_paths.add(path_signature)
+            paths.append(path)
+    if not paths:
+        return {}
+
+    # The producer publishes every reachable prefix. Keep only maximal paths
+    # for display while deriving a de-duplicated edge/node graph from all of
+    # them. This is structural and works for linear, split, conditional,
+    # switch, loop, and wait-success/failure successor families.
+    signatures = [
+        tuple((str(step["edge"]), int(step["localId"])) for step in path)
+        for path in paths
+    ]
+    maximal_paths = [
+        path
+        for index, path in enumerate(paths)
+        if not any(
+            len(other) > len(signatures[index])
+            and other[: len(signatures[index])] == signatures[index]
+            for other in signatures
+        )
+    ]
+    action_nodes: dict[int, dict[str, Any]] = {}
+    edges: dict[tuple[int, int, str], dict[str, Any]] = {}
+    outgoing: dict[int, set[tuple[int, str]]] = defaultdict(set)
+    for path in paths:
+        source_local_id = playback_local_id
+        for step in path:
+            local_id = int(step["localId"])
+            action_nodes.setdefault(local_id, {
+                key: value for key, value in step.items() if key != "edge"
+            })
+            edge = str(step["edge"])
+            edge_key = (source_local_id, local_id, edge)
+            edges[edge_key] = {
+                "sourceLocalId": source_local_id,
+                "targetLocalId": local_id,
+                "edge": edge,
+            }
+            outgoing[source_local_id].add((local_id, edge))
+            source_local_id = local_id
+    branch_points = sorted(
+        source for source, targets in outgoing.items() if len(targets) > 1
+    )
+    server_handoffs = []
+    for node in action_nodes.values():
+        if node.get("recordClass") != "server_handoff":
+            continue
+        labels = [
+            value
+            for value in node.get("texts") or []
+            if isinstance(value, str) and value.startswith("#")
+        ]
+        callback_header_uids = node.get("callServerCallbackOutputUIDs")
+        serialized_contract = node.get("callServerContract") or {}
+        if not callback_header_uids and isinstance(
+            serialized_contract.get("callClientOutputUIDs"), list
+        ):
+            callback_header_uids = serialized_contract["callClientOutputUIDs"]
+        server_handoffs.append({
+            key: value
+            for key, value in {
+                "localId": node.get("localId"),
+                "actionName": node.get("actionName") or "CallServer",
+                "callbackCorrelationLabels": labels,
+                "possibleCallbackHeaderUIDs": (
+                    callback_header_uids
+                    if isinstance(callback_header_uids, list)
+                    else None
+                ),
+                "callbackHeaderMappingId": node.get(
+                    "callServerCallbackMappingId"
+                ),
+                "serializedContract": serialized_contract or None,
+                "relatedOriginalFiles": [{
+                    "kind": "LevelScriptData",
+                    "sourceFile": source_file,
+                    "relationship": "serialized_callserver_action",
+                }],
+                "serverHandlerIdentity": False,
+            }.items()
+            if value is not None
+        })
+    return {
+        "schema": "exactNativePostPlaybackControl.v1",
+        "status": "exact_serialized_typed_reachability",
+        "storyKey": story_key,
+        "playbackLocalId": playback_local_id,
+        "sourceFile": source_file,
+        "actions": sorted(action_nodes.values(), key=lambda row: row["localId"]),
+        "edges": sorted(
+            edges.values(),
+            key=lambda row: (
+                row["sourceLocalId"],
+                row["targetLocalId"],
+                row["edge"],
+            ),
+        ),
+        "maximalReachablePaths": maximal_paths,
+        "branchPointLocalIds": branch_points,
+        "serverHandoffs": server_handoffs,
+        "intraScriptControlFlowEvidence": True,
+        "missionOwnershipEvidence": False,
+        "crossStoryOrderEvidence": False,
+        "serverHandlerIdentityEvidence": False,
+        "evidenceBoundary": (
+            "Typed successor fields prove only the exact local action graph "
+            "after this Story action. The installed binary additionally proves "
+            "that non-empty CallServer output lists name possible callback "
+            "headers; those conditional paths are admitted only through exact "
+            "same-file UID/event/header matches. Callback labels do not identify "
+            "a server handler, mission/quest owner, or state write."
+        ),
+    }
+
+
+def attach_post_playback_callserver_contracts(
+    runtime_nodes: list[dict[str, Any]],
+    callback_audit: dict[str, Any],
+) -> dict[str, Any]:
+    """Attach complete-corpus CallServer rows by exact source/local identity.
+
+    The join is intentionally generic across all missions, maps, and Story
+    actions. It fails closed on duplicate or disagreeing rows and never treats
+    an event name or argument path as a mission/quest foreign key.
+    """
+    audit_rows: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
+    for row in callback_audit.get("rows") or []:
+        source_file = str(row.get("sourceFile") or "").replace("\\", "/")
+        local_id = row.get("callServerLocalId")
+        if source_file and isinstance(local_id, int):
+            audit_rows[(source_file, local_id)].append(row)
+
+    counts: Counter[str] = Counter()
+    event_identities: Counter[str] = Counter()
+    argument_paths: Counter[str] = Counter()
+    flag_combinations: Counter[str] = Counter()
+    failures: list[dict[str, Any]] = []
+    for node in runtime_nodes:
+        for control in node.get("postPlaybackControls") or []:
+            source_file = str(control.get("sourceFile") or "").replace("\\", "/")
+            for handoff in control.get("serverHandoffs") or []:
+                counts["handoffs"] += 1
+                local_id = handoff.get("localId")
+                candidates = audit_rows.get((source_file, local_id), [])
+                if len(candidates) != 1:
+                    counts["unresolvedContracts"] += 1
+                    failures.append({
+                        "gate": "post_playback_callserver_exact_identity",
+                        "source": source_file,
+                        "localId": local_id,
+                        "expectedCandidateCount": 1,
+                        "actualCandidateCount": len(candidates),
+                    })
+                    continue
+                audit_contract = compact_callserver_serialized_contract(
+                    candidates[0].get("serializedContract") or {}
+                )
+                path_contract = compact_callserver_serialized_contract(
+                    handoff.get("serializedContract") or {}
+                )
+                if path_contract and path_contract != audit_contract:
+                    counts["contractMismatches"] += 1
+                    failures.append({
+                        "gate": "post_playback_callserver_contract_match",
+                        "source": source_file,
+                        "localId": local_id,
+                        "expected": audit_contract,
+                        "actual": path_contract,
+                    })
+                    continue
+                handoff["serializedContract"] = audit_contract
+                handoff["contractStatus"] = "exact_source_local_id_match"
+                handoff["missionOwnershipEvidence"] = False
+                counts["exactContracts"] += 1
+                event_identities[
+                    str(audit_contract.get("eventNameIdentity") or "other")
+                ] += 1
+                event_args = audit_contract.get("eventArgsPtr") or {}
+                argument_paths[
+                    str(event_args.get("path") or "<null>")
+                ] += 1
+                flag_combinations[
+                    "custom={custom},wait={wait},args={args}".format(
+                        custom=int(bool(audit_contract.get("useCustomEvent"))),
+                        wait=int(bool(audit_contract.get("waitForCallback"))),
+                        args=int(bool(audit_contract.get("withEventArgs"))),
+                    )
+                ] += 1
+    return {
+        "status": "validated" if not failures else "validation_failed",
+        "summary": {
+            **dict(sorted(counts.items())),
+            "eventNameIdentityDistribution": dict(sorted(event_identities.items())),
+            "eventArgsParamPathDistribution": dict(sorted(argument_paths.items())),
+            "flagDistribution": dict(sorted(flag_combinations.items())),
+        },
+        "validationFailures": failures,
+        "missionOwnershipEvidence": False,
+        "evidenceBoundary": (
+            "Every post-playback CallServer is joined to the complete original-data "
+            "action audit by exact source file and local action id. Serialized event "
+            "names, argument parameters, flags, and callback UIDs describe the client "
+            "handoff contract; absent an independent original-data foreign key, they "
+            "do not identify a mission/quest owner or order another Story file."
+        ),
+    }
+
+
+def build_level_sequence_textasset_index(
+    root: Path = DEFAULT_LEVEL_SEQUENCE_TEXTASSET_ROOT,
+) -> dict[str, Any]:
+    """Index original LevelSequence TextAssets by three-way exact identity.
+
+    A filename is only an enumeration aid. A row is eligible for a join when
+    the exported Unity ``m_Name`` and ``Name`` fields and the decoded payload's
+    ``cutsceneName`` all agree. This keeps the resolver reusable across maps,
+    missions, and sequence ids while failing closed on malformed or ambiguous
+    exports.
+    """
+    assets_by_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    failures: list[dict[str, Any]] = []
+    source_files = sorted(root.glob("levelseq_*.json")) if root.is_dir() else []
+    for source_path in source_files:
+        try:
+            raw = source_path.read_bytes()
+            outer = json.loads(raw.decode("utf-8-sig"))
+            if not isinstance(outer, dict):
+                raise ValueError("outer JSON is not an object")
+            unity_name = str(outer.get("m_Name") or "")
+            exported_name = str(outer.get("Name") or "")
+            encoded_payload = outer.get("m_Script")
+            if not unity_name or unity_name != exported_name:
+                raise ValueError(
+                    f"outer identity mismatch m_Name={unity_name!r} Name={exported_name!r}"
+                )
+            if not isinstance(encoded_payload, str) or not encoded_payload:
+                raise ValueError("m_Script is not a non-empty base64 string")
+            decoded = base64.b64decode(encoded_payload, validate=True)
+            payload = json.loads(decoded.decode("utf-8-sig"))
+            if not isinstance(payload, dict):
+                raise ValueError("decoded m_Script JSON is not an object")
+            payload_name = str(payload.get("cutsceneName") or "")
+            if payload_name != unity_name:
+                raise ValueError(
+                    f"payload identity mismatch cutsceneName={payload_name!r} m_Name={unity_name!r}"
+                )
+            path_id_match = re.search(r"_p([0-9A-Fa-f]+)\.json$", source_path.name)
+            assets_by_id[unity_name].append(compact_dict({
+                "levelSequenceId": unity_name,
+                "sourceFile": repo_path(source_path),
+                "pathId": (
+                    f"0x{path_id_match.group(1).upper()}"
+                    if path_id_match
+                    else ""
+                ),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "payloadPath": str(payload.get("path") or ""),
+                "payloadVersion": payload.get("version"),
+                "targetFrameRate": payload.get("targetFrameRate"),
+                "identityStatus": "exact_m_name_name_cutscene_name_match",
+            }))
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
+            failures.append({
+                "validator": "levelSequenceTextAssetIdentity",
+                "gate": "m_Name_equals_Name_equals_decoded_cutsceneName",
+                "sourceFile": repo_path(source_path),
+                "actual": str(error)[:400],
+            })
+
+    ambiguous_ids = sorted(
+        sequence_id
+        for sequence_id, rows in assets_by_id.items()
+        if len(rows) != 1
+    )
+    exact_assets = {
+        sequence_id: rows[0]
+        for sequence_id, rows in sorted(assets_by_id.items())
+        if len(rows) == 1
+    }
+    return {
+        "schema": "exactLevelSequenceTextAssetIndex.v1",
+        "root": repo_path(root),
+        "status": (
+            "exact_complete"
+            if source_files and not failures and not ambiguous_ids
+            else "degraded_fail_closed"
+        ),
+        "assetsById": exact_assets,
+        "summary": {
+            "sourceFilesScanned": len(source_files),
+            "exactUniqueIdentities": len(exact_assets),
+            "validationFailures": len(failures),
+            "ambiguousIdentities": len(ambiguous_ids),
+        },
+        "validationFailures": failures,
+        "ambiguousLevelSequenceIds": ambiguous_ids,
+    }
+
+
+def attach_exact_level_sequence_assets(
+    runtime_nodes: list[dict[str, Any]],
+    asset_index: dict[str, Any],
+) -> dict[str, Any]:
+    """Attach exact original files to typed LevelSequence control actions.
+
+    Action classes come from the installed ActionBase formatter table. The
+    family test is intentionally type-based (``LevelSeq`` in that recovered
+    class name); no mission, map, object, or sequence identifier is hardcoded.
+    """
+    assets_by_id = asset_index.get("assetsById") or {}
+    action_placements = 0
+    exact_placements = 0
+    serialized_ids: set[str] = set()
+    exact_ids: set[str] = set()
+    unresolved_ids: set[str] = set()
+    related_files: set[str] = set()
+    for node in runtime_nodes:
+        for control in node.get("postPlaybackControls") or []:
+            for action in control.get("actions") or []:
+                action_name = str(action.get("actionName") or "")
+                if "LevelSeq" not in action_name:
+                    continue
+                sequence_ids = sorted({
+                    str(value)
+                    for value in action.get("texts") or []
+                    if str(value).startswith("levelseq_")
+                })
+                if not sequence_ids:
+                    continue
+                action_placements += 1
+                references = []
+                for sequence_id in sequence_ids:
+                    serialized_ids.add(sequence_id)
+                    asset = assets_by_id.get(sequence_id)
+                    if isinstance(asset, dict):
+                        exact_placements += 1
+                        exact_ids.add(sequence_id)
+                        related_files.add(str(asset.get("sourceFile") or ""))
+                        references.append({
+                            **asset,
+                            "relation": "exact_serialized_action_id_to_textasset_identity",
+                            "missionOwnershipEvidence": False,
+                            "crossStoryOrderEvidence": False,
+                        })
+                    else:
+                        unresolved_ids.add(sequence_id)
+                        references.append({
+                            "levelSequenceId": sequence_id,
+                            "identityStatus": "no_exact_validated_textasset",
+                            "missionOwnershipEvidence": False,
+                            "crossStoryOrderEvidence": False,
+                        })
+                action["levelSequenceReferences"] = references
+
+    return {
+        "schema": "postPlaybackLevelSequenceAssetAudit.v1",
+        "status": (
+            "exact_matches_with_unresolved_ids"
+            if unresolved_ids
+            else "all_serialized_ids_resolved"
+        ),
+        "sourceIndex": {
+            key: asset_index.get(key)
+            for key in (
+                "schema", "root", "status", "summary",
+                "validationFailures", "ambiguousLevelSequenceIds",
+            )
+        },
+        "summary": {
+            "typedActionPlacements": action_placements,
+            "serializedLevelSequenceIds": len(serialized_ids),
+            "exactAssetPlacements": exact_placements,
+            "exactResolvedLevelSequenceIds": len(exact_ids),
+            "unresolvedLevelSequenceIds": len(unresolved_ids),
+            "relatedOriginalFiles": len({value for value in related_files if value}),
+        },
+        "unresolvedLevelSequenceIds": sorted(unresolved_ids),
+        "usesOcrOrManualOrder": False,
+        "missionOwnershipEvidence": False,
+        "crossStoryOrderEvidence": False,
+        "evidenceBoundary": (
+            "The installed formatter type and serialized action id identify a local "
+            "LevelSequence reference; the original TextAsset is attached only after "
+            "m_Name, Name, and decoded cutsceneName agree. This does not identify a "
+            "mission owner or order separate Story files."
+        ),
+    }
+
+
+def build_post_playback_action_name_audit(
+    runtime_nodes: list[dict[str, Any]],
+    *,
+    formatter_names: dict[int, str] | None = None,
+    formatter_audit: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Measure binary formatter naming across the complete control surface."""
+    formatter_names = (
+        ACTIONBASE_FORMATTER_ACTION_NAMES
+        if formatter_names is None
+        else formatter_names
+    )
+    formatter_audit = (
+        ACTIONBASE_FORMATTER_NAME_AUDIT
+        if formatter_audit is None
+        else formatter_audit
+    )
+    shape_counts: Counter[tuple[str, str]] = Counter()
+    formatter_named_actions = 0
+    fallback_named_actions = 0
+    unresolved_actions = 0
+    mismatches: list[dict[str, Any]] = []
+    opcode_pattern = re.compile(r"^0x([0-9a-f]+)/0x([0-9a-f]+)$", re.IGNORECASE)
+    for node in runtime_nodes:
+        for control in node.get("postPlaybackControls") or []:
+            for action in control.get("actions") or []:
+                opcode = str(action.get("opcode") or "")
+                action_name = str(action.get("actionName") or "")
+                shape_counts[(opcode, action_name)] += 1
+                match = opcode_pattern.match(opcode)
+                union_tag_text = str(action.get("unionTag") or "")
+                try:
+                    union_tag = int(union_tag_text, 16)
+                except ValueError:
+                    union_tag = int(match.group(1), 16) if match else -1
+                serialized_member_count = action.get("serializedMemberCount")
+                if not isinstance(serialized_member_count, int):
+                    serialized_member_count = (
+                        int(match.group(2), 16) if match else 0
+                    )
+                if union_tag < 0:
+                    unresolved_actions += 1
+                    continue
+                formatter_name = (
+                    str(formatter_names.get(union_tag) or "")
+                    if serialized_member_count > 0
+                    else ""
+                )
+                if formatter_name:
+                    if action_name == formatter_name:
+                        formatter_named_actions += 1
+                    else:
+                        mismatches.append({
+                            "validator": "postPlaybackActionFormatterName",
+                            "gate": "action_name_equals_formatter_tag",
+                            "sourceFile": str(control.get("sourceFile") or ""),
+                            "storyKey": str(control.get("storyKey") or ""),
+                            "actionLocalId": action.get("localId"),
+                            "expected": {
+                                "opcode": opcode,
+                                "unionTag": f"0x{union_tag:04x}",
+                                "serializedMemberCount": serialized_member_count,
+                                "actionName": formatter_name,
+                            },
+                            "actual": {"actionName": action_name},
+                        })
+                elif action_name:
+                    fallback_named_actions += 1
+                else:
+                    unresolved_actions += 1
+    total_actions = sum(shape_counts.values())
+    unresolved_shapes = [
+        {"opcode": opcode, "count": count}
+        for (opcode, action_name), count in sorted(shape_counts.items())
+        if not action_name
+    ]
+    source_failures = list(formatter_audit.get("validationFailures") or [])
+    failures = source_failures + mismatches
+    return {
+        "schema": "postPlaybackActionNameAudit.v1",
+        "status": (
+            "validated_complete_actionbase_surface"
+            if not failures and not unresolved_actions
+            else "validated_actionbase_complete_outside_families_retained"
+            if not failures
+            else "validation_failed"
+        ),
+        "formatterTable": formatter_audit,
+        "summary": {
+            "actionPlacements": total_actions,
+            "formatterNamedActionPlacements": formatter_named_actions,
+            "fallbackNamedActionPlacements": fallback_named_actions,
+            "unresolvedOutsideActionBasePlacements": unresolved_actions,
+            "distinctActionShapes": len(shape_counts),
+            "unresolvedOutsideActionBaseShapes": len(unresolved_shapes),
+            "validationFailures": len(failures),
+        },
+        "unresolvedActionShapes": unresolved_shapes,
+        "validationFailures": failures,
+        "usesOcrOrManualOrder": False,
+        "missionOwnershipEvidence": False,
+        "crossStoryOrderEvidence": False,
+        "evidenceBoundary": (
+            "The installed ActionBase MemoryPack formatter names action classes "
+            "from the compact unionTag plus serializedMemberCount. Legacy combined "
+            "raw opcodes remain display provenance and are never used as the tag. "
+            "A class name does not identify a mission owner, select a branch, or "
+            "order separate Story files."
+        ),
+    }
+
+
+POST_PLAYBACK_VARIABLE_SETTER_ACTIONS = {
+    "SetBool",
+    "SetInt",
+    "SetIntIncrease",
+}
+
+
+def load_native_cross_system_consumer_contract(
+    audit_path: Path = DEFAULT_NATIVE_CROSS_SYSTEM_CONSUMER_CENSUS,
+) -> dict[str, Any]:
+    """Publish the generic hash-locked closure audit when locally available."""
+    fallback = copy.deepcopy(RUNTIME_CONTRACT["nativeCrossSystemConsumerCensus"])
+    if not audit_path.is_file():
+        return fallback
+    audit = read_json(audit_path)
+    if audit.get("schemaVersion") != "nativeCrossSystemConsumerCensus.v4":
+        raise RuntimeError(
+            "validator=nativeCrossSystemConsumerCensus gate=auditSchema "
+            "expected='nativeCrossSystemConsumerCensus.v4' "
+            f"actual={audit.get('schemaVersion')!r} source={audit_path}"
+        )
+    validation = audit.get("validation") or {}
+    if validation.get("status") != "passed":
+        failure = (validation.get("failures") or [{}])[0]
+        raise RuntimeError(
+            "validator=nativeCrossSystemConsumerCensus "
+            f"gate={failure.get('gate') or 'upstreamValidation'} "
+            f"expected={failure.get('expected')!r} actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or audit_path}"
+        )
+    summary = audit.get("summary") or {}
+    closure = audit.get("directConsumerClosure") or {}
+    closure_counts = closure.get("counts") or {}
+    deferred = audit.get("deferredRefreshClosure") or {}
+    mission_runtime_surface = audit.get("missionRuntimeSurface") or {}
+    managed_callable_surface = audit.get("managedCallableSurface") or {}
+    source = audit.get("source") or {}
+    classifications = summary.get("classificationCounts") or {}
+    return {
+        "source": repo_path(audit_path),
+        "method": " ".join(filter(None, [
+            str((audit.get("method") or {}).get("selection") or ""),
+            str(closure.get("method") or ""),
+        ])),
+        "counts": {
+            "mappedMethodPointers": (audit.get("method") or {}).get("mappedMethodPointers", 0),
+            "familyTargetPointers": (audit.get("method") or {}).get("familyTargetPointers", 0),
+            "crossSystemCallers": summary.get("crossSystemCallers", 0),
+            "missionStateDynamicSceneCallers": classifications.get(
+                "mission_state_controls_dynamic_component_availability", 0
+            ),
+            "missionLevelScriptCallers": summary.get("missionLevelScriptCallers", 0),
+            "tripleOrGreaterFamilyCallers": summary.get("tripleOrGreaterFamilyCallers", 0),
+            "dynamicSceneStoryCallers": classifications.get(
+                "story_dynamic_scene_visual_context", 0
+            ),
+            "unreviewedCallers": summary.get("unreviewedCallers", 0),
+            "closureReachableMethods": closure_counts.get("reachableMethods", 0),
+            "closureDirectEdges": closure_counts.get("directEdges", 0),
+            "closureLevelScriptMethods": closure_counts.get("levelScriptMethods", 0),
+            "closureStoryMethods": closure_counts.get("storyMethods", 0),
+            "unreviewedIndirectSites": closure_counts.get("unreviewedIndirectSites", 0),
+        },
+        "deferredRefreshClosure": deferred,
+        "missionRuntimeSurface": mission_runtime_surface,
+        "managedCallableSurface": managed_callable_surface,
+        "finding": audit.get("finding"),
+        "boundary": audit.get("boundary"),
+        "relatedOriginalFiles": [{
+            "sourceFile": source.get("gameAssembly"),
+            "sha256": source.get("gameAssemblySha256"),
+            "role": "native consumer and deferred refresh implementation",
+        }, {
+            "sourceFile": source.get("globalMetadata"),
+            "sha256": source.get("globalMetadataSha256"),
+            "role": "managed identities and runtime field layout",
+        }],
+        "classification": deferred.get(
+            "classification", "binary_cross_system_consumers_reviewed"
+        ),
+        "storyBindingsAdded": 0,
+        "missionOrderEdgesAdded": 0,
+        "confidence": "hash_locked_direct_and_deferred_native_closure",
+    }
+
+
+def load_state_update_application_contract(
+    audit_path: Path = DEFAULT_PROTOCOL_REGISTRY_AUDIT,
+) -> dict[str, Any]:
+    """Load and revalidate the binary-derived branch-authority contract."""
+    if not audit_path.is_file():
+        raise RuntimeError(
+            "validator=state_update_application_contract gate=auditExists "
+            f"expected=file actual=missing source={audit_path}"
+        )
+    audit = read_json(audit_path)
+    if audit.get("_schema") != "endfieldProtocolRegistryAudit.v20":
+        raise RuntimeError(
+            "validator=state_update_application_contract gate=auditSchema "
+            "expected='endfieldProtocolRegistryAudit.v20' "
+            f"actual={audit.get('_schema')!r} source={audit_path}"
+        )
+    census = audit.get("stateUpdateApplicationCensus") or {}
+    validation = census.get("validation") or {}
+    if validation.get("status") != "validated":
+        failure = (validation.get("failures") or [{}])[0]
+        raise RuntimeError(
+            "validator=state_update_application_contract "
+            f"gate={failure.get('gate') or 'upstreamValidation'} "
+            f"message={failure.get('message')} expected={failure.get('expected')!r} "
+            f"actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or audit_path}"
+        )
+    quest_state_lifecycle = census.get("questStateLifecycleApplication") or {}
+    quest_state_validation = quest_state_lifecycle.get("validation") or {}
+    if quest_state_validation.get("status") != "validated":
+        failure = (quest_state_validation.get("failures") or [{}])[0]
+        raise RuntimeError(
+            "validator=state_update_application_contract "
+            f"gate={failure.get('gate') or 'questStateLifecycleApplication'} "
+            f"message={failure.get('message')} expected={failure.get('expected')!r} "
+            f"actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or audit_path}"
+        )
+    if quest_state_lifecycle.get("schema") != "questStateLifecycleApplication.v1":
+        raise RuntimeError(
+            "validator=state_update_application_contract "
+            "gate=questStateLifecycleSchema "
+            "expected='questStateLifecycleApplication.v1' "
+            f"actual={quest_state_lifecycle.get('schema')!r} source={audit_path}"
+        )
+    transitions = quest_state_lifecycle.get("transitions") or []
+    transition_shapes = {
+        tuple(call.get("method") for call in row.get("reachableLifecycleCalls") or [])
+        for row in transitions
+    }
+    successor_fields = (
+        (quest_state_lifecycle.get("message") or {}).get("successorLikeFields")
+        or []
+    )
+    if len(transitions) < 2 or len(transition_shapes) < 2 or successor_fields:
+        raise RuntimeError(
+            "validator=state_update_application_contract "
+            "gate=questStateLifecycleShape "
+            "expected='>=2 distinct state routes and no successor field' "
+            f"actual={{'transitions': {transitions!r}, "
+            f"'successorLikeFields': {successor_fields!r}}} source={audit_path}"
+        )
+    quest_enable_lifecycle = census.get("questEnableLifecycleApplication") or {}
+    quest_enable_validation = quest_enable_lifecycle.get("validation") or {}
+    if quest_enable_validation.get("status") != "validated":
+        failure = (quest_enable_validation.get("failures") or [{}])[0]
+        raise RuntimeError(
+            "validator=state_update_application_contract "
+            f"gate={failure.get('gate') or 'questEnableLifecycleApplication'} "
+            f"message={failure.get('message')} expected={failure.get('expected')!r} "
+            f"actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or audit_path}"
+        )
+    enable_message = quest_enable_lifecycle.get("message") or {}
+    enable_routes = quest_enable_lifecycle.get("routes") or []
+    packet_fields = enable_message.get("consumedControlFields") or []
+    runtime_field = str(
+        (quest_enable_lifecycle.get("runtimeControl") or {}).get("field") or ""
+    )
+    route_values = sorted({
+        (
+            (route.get("values") or {}).get(packet_fields[0]),
+            (route.get("values") or {}).get(runtime_field),
+        )
+        for route in enable_routes
+    }) if len(packet_fields) == 1 and runtime_field else []
+    route_calls = [
+        route.get("reachableLifecycleCalls") or [] for route in enable_routes
+    ]
+    enable_shape = {
+        "schema": quest_enable_lifecycle.get("schema"),
+        "identityField": enable_message.get("identityField"),
+        "packetControlFieldCount": len(packet_fields),
+        "runtimeControlField": runtime_field,
+        "routeValues": route_values,
+        "oneCallPerRoute": bool(route_calls)
+        and all(len(calls) == 1 for calls in route_calls),
+        "distinctLifecycleMethods": len({
+            calls[0].get("method")
+            for calls in route_calls
+            if len(calls) == 1
+        }),
+        "samePacketIdentity": bool(route_calls)
+        and all(
+            calls[0].get("samePacketIdentity") is True
+            for calls in route_calls
+            if len(calls) == 1
+        ),
+        "unreadControlFieldCount": len(
+            enable_message.get("unreadControlFields") or []
+        ),
+        "successorLikeFields": enable_message.get("successorLikeFields") or [],
+    }
+    expected_route_values = [
+        (False, False), (False, True), (True, False), (True, True)
+    ]
+    if (
+        enable_shape["schema"] != "questEnableLifecycleApplication.v1"
+        or not enable_shape["identityField"]
+        or enable_shape["packetControlFieldCount"] != 1
+        or not enable_shape["runtimeControlField"]
+        or enable_shape["routeValues"] != expected_route_values
+        or not enable_shape["oneCallPerRoute"]
+        or enable_shape["distinctLifecycleMethods"] < 3
+        or not enable_shape["samePacketIdentity"]
+        or enable_shape["unreadControlFieldCount"] < 1
+        or enable_shape["successorLikeFields"]
+    ):
+        raise RuntimeError(
+            "validator=state_update_application_contract "
+            "gate=questEnableLifecycleShape "
+            "expected='generic complete two-boolean matrix, one identity-preserving "
+            "lifecycle call per route, >=3 methods, unread context, no successor field' "
+            f"actual={enable_shape!r} source={audit_path}"
+        )
+    quest_start = census.get("questStartApplication") or {}
+    quest_start_validation = quest_start.get("validation") or {}
+    if quest_start_validation.get("status") != "validated":
+        failure = (quest_start_validation.get("failures") or [{}])[0]
+        raise RuntimeError(
+            "validator=state_update_application_contract "
+            f"gate={failure.get('gate') or 'questStartApplication'} "
+            f"message={failure.get('message')} expected={failure.get('expected')!r} "
+            f"actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or audit_path}"
+        )
+    quest_succeed = census.get("questSucceedActionApplication") or {}
+    quest_succeed_validation = quest_succeed.get("validation") or {}
+    if quest_succeed_validation.get("status") != "validated":
+        failure = (quest_succeed_validation.get("failures") or [{}])[0]
+        raise RuntimeError(
+            "validator=state_update_application_contract "
+            f"gate={failure.get('gate') or 'questSucceedActionApplication'} "
+            f"message={failure.get('message')} expected={failure.get('expected')!r} "
+            f"actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or audit_path}"
+        )
+    quest_dispatch_shape = {
+        "schema": quest_succeed.get("schema"),
+        "classification": quest_succeed.get("classification"),
+        "startActionDispatchers": quest_succeed.get("startActionDispatchers") or [],
+        "sharedPendingCarrier": (
+            (quest_succeed.get("runQuestActionFlow") or {}).get(
+                "sharedPendingCarrier"
+            )
+        ),
+    }
+    expected_dispatch_shape = {
+        "schema": "questLifecycleClientAction.v2",
+        "classification": "bounded_current_aot_quest_action_dispatch",
+        "startActionDispatchers": [],
+        "sharedPendingCarrier": True,
+    }
+    if quest_dispatch_shape != expected_dispatch_shape:
+        raise RuntimeError(
+            "validator=state_update_application_contract "
+            "gate=questActionDispatchShape "
+            f"expected={expected_dispatch_shape!r} "
+            f"actual={quest_dispatch_shape!r} source={audit_path}"
+        )
+    topology_consumers = census.get("questTopologyFieldConsumers") or {}
+    topology_validation = topology_consumers.get("validation") or {}
+    if topology_validation.get("status") != "validated":
+        failure = (topology_validation.get("failures") or [{}])[0]
+        raise RuntimeError(
+            "validator=state_update_application_contract "
+            f"gate={failure.get('gate') or 'questTopologyFieldConsumers'} "
+            f"message={failure.get('message')} expected={failure.get('expected')!r} "
+            f"actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or audit_path}"
+        )
+    semantic_fields = topology_consumers.get("questSemanticFields") or {}
+    if semantic_fields.get("schema") != "questSemanticFieldConsumers.v2":
+        raise RuntimeError(
+            "validator=state_update_application_contract "
+            "gate=questSemanticFieldsSchema "
+            "expected='questSemanticFieldConsumers.v2' "
+            f"actual={semantic_fields.get('schema')!r} source={audit_path}"
+        )
+    semantic_validation = semantic_fields.get("validation") or {}
+    if semantic_validation.get("status") != "validated":
+        failure = (semantic_validation.get("failures") or [{}])[0]
+        raise RuntimeError(
+            "validator=state_update_application_contract "
+            f"gate={failure.get('gate') or 'questSemanticFields'} "
+            f"message={failure.get('message')} expected={failure.get('expected')!r} "
+            f"actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or audit_path}"
+        )
+    optional_validation = (
+        (semantic_fields.get("optionalObjectiveFlag") or {}).get("validation")
+        or {}
+    )
+    if optional_validation.get("status") != "validated":
+        failure = (optional_validation.get("failures") or [{}])[0]
+        raise RuntimeError(
+            "validator=state_update_application_contract "
+            f"gate={failure.get('gate') or 'optionalObjectiveFlag'} "
+            f"message={failure.get('message')} expected={failure.get('expected')!r} "
+            f"actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or audit_path}"
+        )
+    source = audit.get("source") or {}
+    source_checks = [
+        ("gameAssembly", "gameAssemblySha256"),
+        ("metadata", "metadataSha256"),
+    ]
+    related_files: list[dict[str, Any]] = []
+    for path_key, hash_key in source_checks:
+        source_text = str(source.get(path_key) or "")
+        expected_hash = str(source.get(hash_key) or "").lower()
+        source_path = Path(source_text)
+        if not source_text or not source_path.is_file():
+            raise RuntimeError(
+                "validator=state_update_application_contract gate=sourceExists "
+                f"expected=file actual=missing source={source_text or path_key}"
+            )
+        actual_hash = sha256_path(source_path)
+        if actual_hash != expected_hash:
+            raise RuntimeError(
+                "validator=state_update_application_contract gate=sourceHash "
+                f"expected={expected_hash!r} actual={actual_hash!r} source={source_path}"
+            )
+        related_files.append(
+            {
+                "kind": (
+                    "original_game_binary"
+                    if path_key == "gameAssembly"
+                    else "original_game_metadata"
+                ),
+                "sourceFile": str(source_path.resolve()),
+                "sha256": actual_hash,
+                "relationship": "native_mission_branch_authority_contract",
+            }
+        )
+    return {
+        "source": audit_path.relative_to(ROOT).as_posix()
+        if audit_path.is_relative_to(ROOT)
+        else audit_path.as_posix(),
+        "classification": census.get("classification"),
+        "discoveryPattern": census.get("discoveryPattern") or {},
+        "candidateCount": census.get("candidateCount", 0),
+        "validatedCandidateCount": census.get("validatedCandidateCount", 0),
+        "clientSuccessorSelectors": census.get("clientSuccessorSelectors", 0),
+        "questStateLifecycleApplication": {
+            **quest_state_lifecycle,
+            "source": (
+                audit_path.relative_to(ROOT).as_posix()
+                if audit_path.is_relative_to(ROOT)
+                else audit_path.as_posix()
+            ),
+            "relatedOriginalFiles": related_files,
+        },
+        "questEnableLifecycleApplication": {
+            **quest_enable_lifecycle,
+            "source": (
+                audit_path.relative_to(ROOT).as_posix()
+                if audit_path.is_relative_to(ROOT)
+                else audit_path.as_posix()
+            ),
+            "relatedOriginalFiles": related_files,
+        },
+        "questStartApplication": quest_start,
+        "questSucceedActionApplication": {
+            **quest_succeed,
+            "source": (
+                audit_path.relative_to(ROOT).as_posix()
+                if audit_path.is_relative_to(ROOT)
+                else audit_path.as_posix()
+            ),
+            "relatedOriginalFiles": related_files,
+        },
+        "questTopologyFieldConsumers": topology_consumers,
+        "allLifecycleCallsUsePacketIdentity": census.get(
+            "allLifecycleCallsUsePacketIdentity", False
+        ),
+        "finding": census.get("finding") or "",
+        "boundary": census.get("boundary") or "",
+        "rows": census.get("rows") or [],
+        "relatedOriginalFiles": related_files,
+        "validation": validation,
+    }
+
+
+def load_action_extra_thread_scheduler_contract(
+    audit_path: Path = DEFAULT_PROTOCOL_REGISTRY_AUDIT,
+) -> dict[str, Any]:
+    """Revalidate binary-derived parallel child-launch semantics."""
+    validator = "action_extra_thread_scheduler_contract"
+    if not audit_path.is_file():
+        raise RuntimeError(
+            f"validator={validator} gate=auditExists expected=file "
+            f"actual=missing source={audit_path}"
+        )
+    audit = read_json(audit_path)
+    if audit.get("_schema") != "endfieldProtocolRegistryAudit.v20":
+        raise RuntimeError(
+            f"validator={validator} gate=auditSchema "
+            "expected='endfieldProtocolRegistryAudit.v20' "
+            f"actual={audit.get('_schema')!r} source={audit_path}"
+        )
+    contract = audit.get("actionExtraThreadSchedulerCensus") or {}
+    validation = contract.get("validation") or {}
+    if validation.get("status") != "validated":
+        failure = (validation.get("failures") or [{}])[0]
+        raise RuntimeError(
+            f"validator={validator} "
+            f"gate={failure.get('gate') or 'upstreamValidation'} "
+            f"message={failure.get('message')} expected={failure.get('expected')!r} "
+            f"actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or audit_path}"
+        )
+    discovery = contract.get("discoveryPattern") or {}
+    actual_shape = {
+        "schema": contract.get("schema"),
+        "classification": contract.get("classification"),
+        "objectIdentityInputs": discovery.get("objectIdentityInputs"),
+    }
+    expected_shape = {
+        "schema": "actionExtraThreadSchedulerCensus.v1",
+        "classification": "typed_children_launch_as_parallel_extra_threads",
+        "objectIdentityInputs": [],
+    }
+    if actual_shape != expected_shape:
+        raise RuntimeError(
+            f"validator={validator} gate=genericContractShape "
+            f"expected={expected_shape!r} actual={actual_shape!r} "
+            f"source={audit_path}"
+        )
+    writers = contract.get("extraThreadExecuteMethods") or []
+    if not writers:
+        raise RuntimeError(
+            f"validator={validator} gate=writerMethods expected=>=1 actual=0 "
+            f"source={audit_path}"
+        )
+    source = audit.get("source") or {}
+    related_files: list[dict[str, Any]] = []
+    for path_key, hash_key, kind in (
+        ("gameAssembly", "gameAssemblySha256", "original_game_binary"),
+        ("metadata", "metadataSha256", "original_game_metadata"),
+    ):
+        source_text = str(source.get(path_key) or "")
+        expected_hash = str(source.get(hash_key) or "").lower()
+        source_path = Path(source_text)
+        if not source_text or not source_path.is_file():
+            raise RuntimeError(
+                f"validator={validator} gate=sourceExists expected=file "
+                f"actual=missing source={source_text or path_key}"
+            )
+        actual_hash = sha256_path(source_path)
+        if actual_hash != expected_hash:
+            raise RuntimeError(
+                f"validator={validator} gate=sourceHash expected={expected_hash!r} "
+                f"actual={actual_hash!r} source={source_path}"
+            )
+        related_files.append({
+            "kind": kind,
+            "sourceFile": str(source_path.resolve()),
+            "sha256": actual_hash,
+            "relationship": "native_action_extra_thread_scheduler_authority",
+        })
+    return {
+        **contract,
+        "source": repo_path(audit_path),
+        "relatedOriginalFiles": related_files,
+    }
+
+
+def load_levelscript_task_authority_contract(
+    audit_path: Path = DEFAULT_PROTOCOL_REGISTRY_AUDIT,
+) -> dict[str, Any]:
+    """Validate the generic binary/protobuf identity boundary for script tasks."""
+    validator = "levelscript_task_authority_contract"
+    if not audit_path.is_file():
+        raise RuntimeError(
+            f"validator={validator} gate=auditExists expected=file "
+            f"actual=missing source={audit_path}"
+        )
+    audit = read_json(audit_path)
+    if audit.get("_schema") != "endfieldProtocolRegistryAudit.v20":
+        raise RuntimeError(
+            f"validator={validator} gate=auditSchema "
+            "expected='endfieldProtocolRegistryAudit.v20' "
+            f"actual={audit.get('_schema')!r} source={audit_path}"
+        )
+
+    expected_schemas = {
+        "Proto.CS_SCENE_UPDATE_SCRIPT_TASK_PROGRESS": (
+            105,
+            "client_to_server",
+            ["sceneNumId", "scriptId", "taskId", "objectiveValueOps"],
+        ),
+        "Proto.SC_SCENE_LEVEL_SCRIPT_TASK_STATE_UPDATE": (
+            813,
+            "server_to_client",
+            ["sceneNumId", "scriptId", "taskId", "taskState"],
+        ),
+        "Proto.SC_SCENE_LEVEL_SCRIPT_TASK_PROGRESS_UPDATE": (
+            815,
+            "server_to_client",
+            ["sceneNumId", "scriptId", "taskId", "conditionCompletedMap"],
+        ),
+        "Proto.SC_SCENE_LEVEL_SCRIPT_TASK_START_FINISH": (
+            816,
+            "server_to_client",
+            ["sceneNumId", "scriptId", "taskId"],
+        ),
+    }
+    schemas = {
+        str(row.get("type") or ""): row
+        for row in audit.get("selectedSchemas") or []
+        if isinstance(row, dict) and row.get("type")
+    }
+    messages: list[dict[str, Any]] = []
+    for schema_name, (message_id, direction, field_names) in expected_schemas.items():
+        row = schemas.get(schema_name)
+        actual = {
+            "messageId": row.get("messageId") if row else None,
+            "direction": row.get("direction") if row else None,
+            "fields": [
+                str(field.get("name") or "")
+                for field in (row or {}).get("fields") or []
+                if isinstance(field, dict)
+            ],
+            "idMatches": row.get("idMatches") if row else None,
+        }
+        expected = {
+            "messageId": message_id,
+            "direction": direction,
+            "fields": field_names,
+            "idMatches": True,
+        }
+        if actual != expected:
+            raise RuntimeError(
+                f"validator={validator} gate=taskPacketSchema "
+                f"message={schema_name} expected={expected!r} actual={actual!r} "
+                f"source={audit_path}"
+            )
+        if {"missionId", "questId", "storyId"} & set(actual["fields"]):
+            raise RuntimeError(
+                f"validator={validator} gate=noMissionQuestStoryIdentity "
+                f"message={schema_name} expected=[] actual={actual['fields']!r} "
+                f"source={audit_path}"
+            )
+        messages.append({
+            "type": schema_name,
+            "messageId": message_id,
+            "direction": direction,
+            "fields": field_names,
+        })
+
+    native_paths = audit.get("nativeTaskPaths") or {}
+    expected_native_paths = {
+        "conditionResultChanged": None,
+        "sendProgress": 105,
+        "stateUpdate": 813,
+        "progressUpdate": 815,
+        "conditionCompletionChanged": 815,
+        "startFinish": 816,
+        "scriptSetDone": 823,
+    }
+    for path_name, message_id in expected_native_paths.items():
+        row = native_paths.get(path_name)
+        actual_id = row.get("messageId") if isinstance(row, dict) else None
+        if not isinstance(row, dict) or not row.get("symbol") or (
+            message_id is not None and actual_id != message_id
+        ):
+            raise RuntimeError(
+                f"validator={validator} gate=nativeTaskPath path={path_name} "
+                f"expected={{'symbol': 'nonempty', 'messageId': {message_id!r}}} "
+                f"actual={{'symbol': {(row or {}).get('symbol')!r}, "
+                f"'messageId': {actual_id!r}}} source={audit_path}"
+            )
+
+    source = audit.get("source") or {}
+    related_files: list[dict[str, Any]] = []
+    for path_key, hash_key, kind in (
+        ("gameAssembly", "gameAssemblySha256", "original_game_binary"),
+        ("metadata", "metadataSha256", "original_game_metadata"),
+    ):
+        source_text = str(source.get(path_key) or "")
+        expected_hash = str(source.get(hash_key) or "").lower()
+        source_path = Path(source_text)
+        if not source_text or not source_path.is_file():
+            raise RuntimeError(
+                f"validator={validator} gate=sourceExists expected=file "
+                f"actual=missing source={source_text or path_key}"
+            )
+        actual_hash = sha256_path(source_path)
+        if actual_hash != expected_hash:
+            raise RuntimeError(
+                f"validator={validator} gate=sourceHash "
+                f"expected={expected_hash!r} actual={actual_hash!r} "
+                f"source={source_path}"
+            )
+        related_files.append({
+            "kind": kind,
+            "sourceFile": str(source_path.resolve()),
+            "sha256": actual_hash,
+            "relationship": "native_levelscript_task_authority_contract",
+        })
+
+    return {
+        "schema": "levelScriptTaskAuthority.v1",
+        "source": repo_path(audit_path),
+        "classification": "server_selected_scene_script_task_identity",
+        "identityFields": ["sceneNumId", "scriptId", "taskId"],
+        "messages": messages,
+        "nativePaths": {
+            name: native_paths[name] for name in expected_native_paths
+        },
+        "missionQuestIdentityFields": [],
+        "relatedOriginalFiles": related_files,
+        "validation": {
+            "status": "validated",
+            "validator": validator,
+            "packetSchemas": len(messages),
+            "nativePaths": len(expected_native_paths),
+        },
+        "finding": (
+            "The current client and protobuf schemas identify LevelScript task "
+            "traffic only by scene, script, task, and condition/progress data. "
+            "No validated packet co-carries missionId, questId, or Story identity."
+        ),
+        "evidenceBoundary": (
+            "This proves a server-authored LevelScript task lifecycle and exact "
+            "task identity. It does not identify a MissionRuntime owner, select a "
+            "Story branch, or order playback files."
+        ),
+    }
+
+
+def load_levelscript_start_policy_contract(
+    audit_path: Path = DEFAULT_PROTOCOL_REGISTRY_AUDIT,
+) -> dict[str, Any]:
+    """Revalidate the original binary behind generic SameWithActive semantics."""
+    validator = "levelscript_start_policy_contract"
+    if not audit_path.is_file():
+        raise RuntimeError(
+            f"validator={validator} gate=auditExists expected=file "
+            f"actual=missing source={audit_path}"
+        )
+    audit = read_json(audit_path)
+    if audit.get("_schema") != "endfieldProtocolRegistryAudit.v20":
+        raise RuntimeError(
+            f"validator={validator} gate=auditSchema "
+            "expected='endfieldProtocolRegistryAudit.v20' "
+            f"actual={audit.get('_schema')!r} source={audit_path}"
+        )
+    contract = audit.get("levelScriptStartPolicy") or {}
+    validation = contract.get("validation") or {}
+    if validation.get("status") != "validated":
+        failure = (validation.get("failures") or [{}])[0]
+        raise RuntimeError(
+            f"validator={validator} "
+            f"gate={failure.get('gate') or 'upstreamValidation'} "
+            f"message={failure.get('message')} "
+            f"expected={failure.get('expected')!r} "
+            f"actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or audit_path}"
+        )
+    discovery = contract.get("discoveryPattern") or {}
+    actual_shape = {
+        "schema": contract.get("schema"),
+        "classification": contract.get("classification"),
+        "objectIdentityInputs": discovery.get("objectIdentityInputs"),
+    }
+    expected_shape = {
+        "schema": "levelScriptStartPolicy.v1",
+        "classification": "same_with_active_enters_prestart_when_active",
+        "objectIdentityInputs": [],
+    }
+    if actual_shape != expected_shape:
+        raise RuntimeError(
+            f"validator={validator} gate=genericContractShape "
+            f"expected={expected_shape!r} actual={actual_shape!r} "
+            f"source={audit_path}"
+        )
+
+    source = audit.get("source") or {}
+    related_files: list[dict[str, Any]] = []
+    for path_key, hash_key, kind in (
+        ("gameAssembly", "gameAssemblySha256", "original_game_binary"),
+        ("metadata", "metadataSha256", "original_game_metadata"),
+    ):
+        source_text = str(source.get(path_key) or "")
+        expected_hash = str(source.get(hash_key) or "").lower()
+        source_path = Path(source_text)
+        if not source_text or not source_path.is_file():
+            raise RuntimeError(
+                f"validator={validator} gate=sourceExists expected=file "
+                f"actual=missing source={source_text or path_key}"
+            )
+        actual_hash = sha256_path(source_path)
+        if actual_hash != expected_hash:
+            raise RuntimeError(
+                f"validator={validator} gate=sourceHash "
+                f"expected={expected_hash!r} actual={actual_hash!r} "
+                f"source={source_path}"
+            )
+        related_files.append({
+            "kind": kind,
+            "sourceFile": str(source_path.resolve()),
+            "sha256": actual_hash,
+            "relationship": "native_levelscript_start_policy_contract",
+        })
+
+    return {
+        "schema": contract.get("schema"),
+        "source": repo_path(audit_path),
+        "classification": contract.get("classification"),
+        "discoveryPattern": discovery,
+        "enumValues": contract.get("enumValues") or {},
+        "methods": contract.get("methods") or {},
+        "activeStateGate": contract.get("activeStateGate") or {},
+        "doneGate": contract.get("doneGate") or {},
+        "startTypeGates": contract.get("startTypeGates") or {},
+        "startAreaGate": contract.get("startAreaGate") or {},
+        "preStartTransition": contract.get("preStartTransition") or {},
+        "finding": contract.get("finding") or "",
+        "evidenceBoundary": contract.get("boundary") or "",
+        "relatedOriginalFiles": related_files,
+        "validation": validation,
+    }
+
+
+def load_levelscript_manual_self_control_contract(
+    audit_path: Path = DEFAULT_PROTOCOL_REGISTRY_AUDIT,
+) -> dict[str, Any]:
+    """Revalidate the binary-derived current-context ManualStart contract."""
+    validator = "levelscript_manual_self_control_contract"
+    if not audit_path.is_file():
+        raise RuntimeError(
+            f"validator={validator} gate=auditExists expected=file "
+            f"actual=missing source={audit_path}"
+        )
+    audit = read_json(audit_path)
+    if audit.get("_schema") != "endfieldProtocolRegistryAudit.v20":
+        raise RuntimeError(
+            f"validator={validator} gate=auditSchema "
+            "expected='endfieldProtocolRegistryAudit.v20' "
+            f"actual={audit.get('_schema')!r} source={audit_path}"
+        )
+    contract = audit.get("levelScriptManualSelfControl") or {}
+    validation = contract.get("validation") or {}
+    if validation.get("status") != "validated":
+        failure = (validation.get("failures") or [{}])[0]
+        raise RuntimeError(
+            f"validator={validator} "
+            f"gate={failure.get('gate') or 'upstreamValidation'} "
+            f"message={failure.get('message')} "
+            f"expected={failure.get('expected')!r} "
+            f"actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or audit_path}"
+        )
+    discovery = contract.get("discoveryPattern") or {}
+    actual_shape = {
+        "schema": contract.get("schema"),
+        "classification": contract.get("classification"),
+        "serializedObjectInputs": discovery.get("serializedObjectInputs"),
+    }
+    expected_shape = {
+        "schema": "levelScriptManualSelfControl.v1",
+        "classification": "current_context_manual_start_self_target",
+        "serializedObjectInputs": [],
+    }
+    if actual_shape != expected_shape:
+        raise RuntimeError(
+            f"validator={validator} gate=genericContractShape "
+            f"expected={expected_shape!r} actual={actual_shape!r} "
+            f"source={audit_path}"
+        )
+
+    source = audit.get("source") or {}
+    related_files: list[dict[str, Any]] = []
+    for path_key, hash_key, kind in (
+        ("gameAssembly", "gameAssemblySha256", "original_game_binary"),
+        ("metadata", "metadataSha256", "original_game_metadata"),
+    ):
+        source_text = str(source.get(path_key) or "")
+        expected_hash = str(source.get(hash_key) or "").lower()
+        source_path = Path(source_text)
+        if not source_text or not source_path.is_file():
+            raise RuntimeError(
+                f"validator={validator} gate=sourceExists expected=file "
+                f"actual=missing source={source_text or path_key}"
+            )
+        actual_hash = sha256_path(source_path)
+        if actual_hash != expected_hash:
+            raise RuntimeError(
+                f"validator={validator} gate=sourceHash "
+                f"expected={expected_hash!r} actual={actual_hash!r} "
+                f"source={source_path}"
+            )
+        related_files.append({
+            "kind": kind,
+            "sourceFile": str(source_path.resolve()),
+            "sha256": actual_hash,
+            "relationship": "native_levelscript_manual_self_control_contract",
+        })
+
+    return {
+        "schema": contract.get("schema"),
+        "source": repo_path(audit_path),
+        "classification": contract.get("classification"),
+        "discoveryPattern": discovery,
+        "serializedOperandContract": (
+            contract.get("serializedOperandContract") or {}
+        ),
+        "paramSourceValues": contract.get("paramSourceValues") or {},
+        "runtimeStateValues": contract.get("runtimeStateValues") or {},
+        "actionFields": contract.get("actionFields") or {},
+        "methods": contract.get("methods") or {},
+        "executeFlow": contract.get("executeFlow") or {},
+        "manualStartFlow": contract.get("manualStartFlow") or {},
+        "finding": contract.get("finding") or "",
+        "evidenceBoundary": contract.get("boundary") or "",
+        "relatedOriginalFiles": related_files,
+        "validation": validation,
+    }
+
+
+def load_levelscript_activation_control_contract(
+    audit_path: Path = DEFAULT_PROTOCOL_REGISTRY_AUDIT,
+) -> dict[str, Any]:
+    """Revalidate server-state and SubGame ManualStart binary paths."""
+    validator = "levelscript_activation_control_contract"
+    if not audit_path.is_file():
+        raise RuntimeError(
+            f"validator={validator} gate=auditExists expected=file "
+            f"actual=missing source={audit_path}"
+        )
+    audit = read_json(audit_path)
+    if audit.get("_schema") != "endfieldProtocolRegistryAudit.v20":
+        raise RuntimeError(
+            f"validator={validator} gate=auditSchema "
+            "expected='endfieldProtocolRegistryAudit.v20' "
+            f"actual={audit.get('_schema')!r} source={audit_path}"
+        )
+    contract = audit.get("levelScriptActivationControl") or {}
+    validation = contract.get("validation") or {}
+    if validation.get("status") != "validated":
+        failure = (validation.get("failures") or [{}])[0]
+        raise RuntimeError(
+            f"validator={validator} "
+            f"gate={failure.get('gate') or 'upstreamValidation'} "
+            f"message={failure.get('message')} "
+            f"expected={failure.get('expected')!r} "
+            f"actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or audit_path}"
+        )
+    discovery = contract.get("discoveryPattern") or {}
+    expected_inputs = [
+        "SubGameInstanceData.id",
+        "SubGameInstanceData.bindScriptId",
+    ]
+    actual_shape = {
+        "schema": contract.get("schema"),
+        "classification": contract.get("classification"),
+        "serializedObjectInputs": discovery.get("serializedObjectInputs"),
+    }
+    expected_shape = {
+        "schema": "levelScriptActivationControl.v6",
+        "classification": "server_state_subgame_and_runtime_request_paths",
+        "serializedObjectInputs": expected_inputs,
+    }
+    if actual_shape != expected_shape:
+        raise RuntimeError(
+            f"validator={validator} gate=genericContractShape "
+            f"expected={expected_shape!r} actual={actual_shape!r} "
+            f"source={audit_path}"
+        )
+
+    source = audit.get("source") or {}
+    related_files: list[dict[str, Any]] = []
+    for path_key, hash_key, kind in (
+        ("gameAssembly", "gameAssemblySha256", "original_game_binary"),
+        ("metadata", "metadataSha256", "original_game_metadata"),
+    ):
+        source_text = str(source.get(path_key) or "")
+        expected_hash = str(source.get(hash_key) or "").lower()
+        source_path = Path(source_text)
+        if not source_text or not source_path.is_file():
+            raise RuntimeError(
+                f"validator={validator} gate=sourceExists expected=file "
+                f"actual=missing source={source_text or path_key}"
+            )
+        actual_hash = sha256_path(source_path)
+        if actual_hash != expected_hash:
+            raise RuntimeError(
+                f"validator={validator} gate=sourceHash "
+                f"expected={expected_hash!r} actual={actual_hash!r} "
+                f"source={source_path}"
+            )
+        related_files.append({
+            "kind": kind,
+            "sourceFile": str(source_path.resolve()),
+            "sha256": actual_hash,
+            "relationship": "native_levelscript_activation_control_contract",
+        })
+
+    return {
+        "schema": contract.get("schema"),
+        "source": repo_path(audit_path),
+        "classification": contract.get("classification"),
+        "discoveryPattern": discovery,
+        "messageIds": contract.get("messageIds") or {},
+        "messageSchemas": contract.get("messageSchemas") or {},
+        "fieldOffsets": contract.get("fieldOffsets") or {},
+        "methods": contract.get("methods") or {},
+        "publicStateFlow": contract.get("publicStateFlow") or {},
+        "publicStateSourceFlow": (
+            contract.get("publicStateSourceFlow") or {}
+        ),
+        "subGameInteractionFlow": (
+            contract.get("subGameInteractionFlow") or {}
+        ),
+        "manualStartDirectCallers": (
+            contract.get("manualStartDirectCallers") or []
+        ),
+        "directCallers": contract.get("directCallers") or {},
+        "clientRequestFlow": contract.get("clientRequestFlow") or {},
+        "activeReceiverFlow": contract.get("activeReceiverFlow") or {},
+        "activationSelectorFlow": (
+            contract.get("activationSelectorFlow") or {}
+        ),
+        "activeAreaFlow": contract.get("activeAreaFlow") or {},
+        "finding": contract.get("finding") or "",
+        "evidenceBoundary": contract.get("boundary") or "",
+        "relatedOriginalFiles": related_files,
+        "validation": validation,
+    }
+
+
+POST_PLAYBACK_VARIABLE_LISTENER_FIELDS = {
+    "blackboardKeyFilter": "blackboard",
+    "propertyKeyFilter": "property",
+}
+
+
+def build_post_playback_variable_bridge_audit(
+    native_story_playback_index: dict[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
+    """Census exact Story setter-to-listener candidates without promoting them.
+
+    The installed ActionBase formatter identifies the three setter classes and
+    their MemoryPack runtime shape carries a key/value pair. Exact native event
+    payloads independently identify property and blackboard listener keys. A
+    candidate requires the same level, same LevelScript, and exact key; class
+    names, file order, Story names, and numeric ids never participate.
+
+    Even a candidate remains context-only until the installed generic
+    ``Set<T>.Execute`` body proves which notification family it emits. The
+    current build has no candidate, which closes this route more strongly: no
+    execution-semantics assumption could create a Story-to-Story edge.
+    """
+    listeners: dict[tuple[str, str, str], dict[tuple[Any, ...], dict[str, Any]]] = (
+        defaultdict(dict)
+    )
+    setters: dict[tuple[Any, ...], dict[str, Any]] = {}
+    occurrence_count = 0
+    for story_key, occurrences in sorted(native_story_playback_index.items()):
+        for occurrence in occurrences:
+            occurrence_count += 1
+            level_id = str(occurrence.get("levelId") or "")
+            script_id = str(occurrence.get("scriptId") or "")
+            source_file = str(occurrence.get("sourceFile") or "")
+            playback_local_id = occurrence.get("localId")
+            if not level_id or not script_id or not source_file:
+                continue
+            for owner in occurrence.get("nativeEventOwners") or []:
+                if not isinstance(owner, dict):
+                    continue
+                detail = owner.get("eventDetail") or {}
+                if (
+                    owner.get("status") not in {
+                        "exact_serialized_control_path",
+                        "exact_serialized_control_path_equivalent_duplicates",
+                        "exact_serialized_control_path_runtime_shadowing",
+                    }
+                    or detail.get("payloadSchemaStatus")
+                    != "exact_current_build_memorypack_fields"
+                ):
+                    continue
+                for field, listener_kind in (
+                    POST_PLAYBACK_VARIABLE_LISTENER_FIELDS.items()
+                ):
+                    variable_key = str(detail.get(field) or "")
+                    if not variable_key:
+                        continue
+                    listener = compact_dict({
+                        "storyKey": story_key,
+                        "listenerKind": listener_kind,
+                        "eventName": str(owner.get("headerName") or ""),
+                        "headerLocalId": owner.get("headerLocalId"),
+                        "levelId": level_id,
+                        "scriptId": script_id,
+                        "variableKey": variable_key,
+                        "sourceFile": source_file,
+                    })
+                    signature = (
+                        story_key,
+                        listener_kind,
+                        listener.get("eventName"),
+                        listener.get("headerLocalId"),
+                        source_file,
+                    )
+                    listeners[(level_id, script_id, variable_key)][signature] = (
+                        listener
+                    )
+                if not isinstance(playback_local_id, int):
+                    continue
+                control = exact_native_receiver_post_playback_control(
+                    owner,
+                    story_key=story_key,
+                    playback_local_id=playback_local_id,
+                    source_file=source_file,
+                )
+                for action in control.get("actions") or []:
+                    action_name = str(action.get("actionName") or "")
+                    if action_name not in POST_PLAYBACK_VARIABLE_SETTER_ACTIONS:
+                        continue
+                    keys = sorted({
+                        str(value)
+                        for value in action.get("texts") or []
+                        if str(value) and not str(value).startswith(("$", "#"))
+                    })
+                    if len(keys) != 1:
+                        continue
+                    variable_key = keys[0]
+                    setter = {
+                        "storyKey": story_key,
+                        "levelId": level_id,
+                        "scriptId": script_id,
+                        "playbackLocalId": playback_local_id,
+                        "setterLocalId": action.get("localId"),
+                        "setterAction": action_name,
+                        "variableKey": variable_key,
+                        "sourceFile": source_file,
+                    }
+                    signature = (
+                        story_key,
+                        level_id,
+                        script_id,
+                        playback_local_id,
+                        action.get("localId"),
+                        action_name,
+                        variable_key,
+                        source_file,
+                    )
+                    setters[signature] = setter
+
+    setter_rows: list[dict[str, Any]] = []
+    exact_match_count = 0
+    cross_story_match_count = 0
+    for setter in setters.values():
+        matches = sorted(
+            listeners.get((
+                setter["levelId"],
+                setter["scriptId"],
+                setter["variableKey"],
+            ), {}).values(),
+            key=lambda row: (
+                str(row.get("storyKey") or ""),
+                str(row.get("listenerKind") or ""),
+                int(row.get("headerLocalId") or -1),
+            ),
+        )
+        exact_match_count += len(matches)
+        cross_story_matches = [
+            match
+            for match in matches
+            if match.get("storyKey") != setter.get("storyKey")
+        ]
+        cross_story_match_count += len(cross_story_matches)
+        setter_rows.append({
+            **setter,
+            "exactListenerMatches": matches,
+            "crossStoryListenerMatchCount": len(cross_story_matches),
+            "orderEvidence": False,
+            "missionOwnershipEvidence": False,
+        })
+    setter_rows.sort(key=lambda row: (
+        str(row.get("levelId") or ""),
+        str(row.get("scriptId") or ""),
+        int(row.get("setterLocalId") or -1),
+        str(row.get("storyKey") or ""),
+    ))
+    listener_rows = [
+        row
+        for bucket in listeners.values()
+        for row in bucket.values()
+    ]
+    return {
+        "schema": "postPlaybackVariableBridgeAudit.v1",
+        "summary": {
+            "nativeStoryKeys": len(native_story_playback_index),
+            "nativePlaybackOccurrences": occurrence_count,
+            "exactVariableListenerSelectors": len(listeners),
+            "exactVariableListenerRows": len(listener_rows),
+            "postPlaybackVariableSetters": len(setter_rows),
+            "exactSetterListenerMatches": exact_match_count,
+            "crossStorySetterListenerMatches": cross_story_match_count,
+            "setterActions": dict(sorted(Counter(
+                row["setterAction"] for row in setter_rows
+            ).items())),
+            "listenerKinds": dict(sorted(Counter(
+                row["listenerKind"] for row in listener_rows
+            ).items())),
+        },
+        "status": (
+            "closed_no_exact_same_script_key_match"
+            if exact_match_count == 0
+            else "context_only_execute_notification_family_unproven"
+        ),
+        "setters": setter_rows,
+        "evidenceBoundary": (
+            "The installed formatter and exact MemoryPack payloads prove the "
+            "setter classes, serialized keys, listener classes, and listener "
+            "keys. They do not prove that generic Set<T>.Execute emits the "
+            "property or blackboard notification family. No current setter "
+            "matches any exact same-level, same-script, same-key Story listener, "
+            "so this route creates no ownership, branch, or order edge."
+        ),
+        "usesOcrOrManualOrder": False,
+    }
+
+
 def build_story_binding_coverage(
     pipeline_index: dict[str, Any],
     pipeline_index_path: Path,
@@ -5725,6 +7894,9 @@ def build_story_binding_coverage(
     cutscene_case_audit_paths: Iterable[Path] = (
         DEFAULT_CUTSCENE_CASE_RESOLUTION_AUDIT,
     ),
+    *,
+    native_story_playback_index: dict[str, list[dict[str, Any]]] | None = None,
+    callserver_callback_audit: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Write a unique-file Story-to-pipeline coverage audit.
 
@@ -5833,6 +8005,13 @@ def build_story_binding_coverage(
         lua_consumer_audit_path,
         cutscene_case_audit_paths,
     )
+    cinematic_contract = lua_playback_evidence.get("runtimeHandleContract") or {}
+    cinematic_report = str(cinematic_contract.get("report") or "")
+    cinematic_producers_by_action: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for producer_route in cinematic_contract.get("actionProducerRoutes") or []:
+        action_type = str(producer_route.get("actionType") or "")
+        if action_type:
+            cinematic_producers_by_action[action_type].append(producer_route)
 
     def add_trigger_route(route: dict[str, Any] | None) -> None:
         if not route:
@@ -5840,6 +8019,35 @@ def build_story_binding_coverage(
         key = str(route.get("storyKey") or "")
         if not key:
             return
+        matched_producers: list[dict[str, Any]] = []
+        for action_name in route.get("actionNames") or []:
+            for producer in cinematic_producers_by_action.get(
+                str(action_name),
+                [],
+            ):
+                compact = {
+                    field: producer.get(field)
+                    for field in (
+                        "actionType",
+                        "actionFullType",
+                        "actionMethod",
+                        "actionToken",
+                        "actionVa",
+                        "producerType",
+                        "producerMethod",
+                        "producerToken",
+                        "producerVa",
+                    )
+                    if producer.get(field) not in (None, "")
+                }
+                if compact not in matched_producers:
+                    matched_producers.append(compact)
+        if matched_producers:
+            route["nativeCinematicProducerRoutes"] = matched_producers
+            route["sourceFiles"] = _unique_route_strings(
+                route.get("sourceFiles"),
+                cinematic_report,
+            )
         signature = json.dumps(
             route,
             ensure_ascii=False,
@@ -6193,6 +8401,7 @@ def build_story_binding_coverage(
                                     runtime_target.get("ownershipBoundary") or ""
                                 ),
                                 "_playbackGates": {},
+                                "_postPlaybackControls": {},
                                 "_localProducerRoutes": {},
                                 "storyFiles": {},
                             },
@@ -6222,6 +8431,31 @@ def build_story_binding_coverage(
                                 runtime_node["_playbackGates"][gate_signature] = (
                                     playback_gate
                                 )
+                        playback_local_id = occurrence.get("localId")
+                        if isinstance(playback_local_id, int):
+                            post_playback = (
+                                exact_native_receiver_post_playback_control(
+                                    owner,
+                                    story_key=key,
+                                    playback_local_id=playback_local_id,
+                                    source_file=source_file,
+                                )
+                            )
+                            if post_playback:
+                                post_signature = json.dumps(
+                                    [
+                                        source_file,
+                                        key,
+                                        playback_local_id,
+                                        post_playback.get("edges") or [],
+                                    ],
+                                    ensure_ascii=False,
+                                    sort_keys=True,
+                                    separators=(",", ":"),
+                                )
+                                runtime_node["_postPlaybackControls"][
+                                    post_signature
+                                ] = post_playback
                         if runtime_target and not runtime_node.get("runtimeTarget"):
                             runtime_node["runtimeTarget"] = runtime_target
                             runtime_node["ownershipBoundary"] = str(
@@ -6561,6 +8795,16 @@ def build_story_binding_coverage(
         )
         if playback_gates:
             node["playbackGates"] = playback_gates
+        post_playback_controls = sorted(
+            node.pop("_postPlaybackControls", {}).values(),
+            key=lambda row: (
+                str(row.get("sourceFile") or ""),
+                str(row.get("storyKey") or ""),
+                int(row.get("playbackLocalId") or -1),
+            ),
+        )
+        if post_playback_controls:
+            node["postPlaybackControls"] = post_playback_controls
         local_producer_routes = sorted(
             node.pop("_localProducerRoutes", {}).values(),
             key=lambda row: (
@@ -6595,9 +8839,100 @@ def build_story_binding_coverage(
         )
     )
 
+    level_sequence_textasset_index = build_level_sequence_textasset_index()
+    post_playback_action_name_audit = build_post_playback_action_name_audit(
+        missionless_runtime_nodes
+    )
+    action_name_summary = post_playback_action_name_audit.get("summary") or {}
+    callback_audit = (
+        callserver_callback_audit
+        if isinstance(callserver_callback_audit, dict)
+        else {}
+    )
+    callback_audit_summary = callback_audit.get("summary") or {}
+    post_playback_callserver_contract_audit = (
+        attach_post_playback_callserver_contracts(
+            missionless_runtime_nodes,
+            callback_audit,
+        )
+    )
+    post_playback_callserver_summary = (
+        post_playback_callserver_contract_audit.get("summary") or {}
+    )
+    if (
+        callback_audit.get("status") == "validated_complete_corpus"
+        and post_playback_callserver_contract_audit.get("status")
+        != "validated"
+    ):
+        failures = (
+            post_playback_callserver_contract_audit.get("validationFailures")
+            or []
+        )
+        raise ValueError(json.dumps({
+            "validator": "post_playback_callserver_contract_audit",
+            "gate": "exact_source_local_id_contract_join",
+            "summary": post_playback_callserver_summary,
+            "firstFailure": failures[0] if failures else None,
+            "validationFailures": failures[:100],
+        }, ensure_ascii=False, indent=2))
+    callback_story_routes = []
+    for callback_row in callback_audit.get("rows") or []:
+        if not isinstance(callback_row, dict):
+            continue
+        for callback in callback_row.get("callbackOutputs") or []:
+            graph = callback.get("controlGraph") or {}
+            if not graph.get("storyKeys"):
+                continue
+            callback_story_routes.append({
+                "levelId": callback_row.get("levelId"),
+                "scriptId": callback_row.get("scriptId"),
+                "sourceFile": callback_row.get("sourceFile"),
+                "callServerLocalId": callback_row.get("callServerLocalId"),
+                "callServerUid": callback_row.get("callServerUid"),
+                "callbackHeaderUid": callback.get("headerUid"),
+                "callbackHeaderLocalId": callback.get("headerLocalId"),
+                "storyKeys": graph.get("storyKeys") or [],
+                "actionCount": graph.get("actionCount", 0),
+                "branchPointCount": graph.get("branchPointCount", 0),
+            })
+    compact_callback_audit = {
+        "schema": callback_audit.get("schema"),
+        "status": callback_audit.get("status"),
+        "source": repo_path(CALLSERVER_CALLBACK_AUDIT_JSON),
+        "summary": callback_audit_summary,
+        "storyCallbackRoutes": callback_story_routes,
+        "postPlaybackContractAudit": post_playback_callserver_contract_audit,
+        "unresolvedCallbackOutputs": (
+            callback_audit.get("unresolvedCallbackOutputs") or []
+        ),
+        "validationFailures": callback_audit.get("validationFailures") or [],
+        "nativeContract": (
+            (callback_audit.get("sources") or {}).get("nativeContract") or {}
+        ),
+        "evidenceBoundary": callback_audit.get("evidenceBoundary") or "",
+        "missionOwnershipEvidence": False,
+        "usesOcrOrManualOrder": False,
+    }
+    post_playback_level_sequence_asset_audit = attach_exact_level_sequence_assets(
+        missionless_runtime_nodes,
+        level_sequence_textasset_index,
+    )
+    level_sequence_asset_summary = (
+        post_playback_level_sequence_asset_audit.get("summary") or {}
+    )
+    post_playback_variable_bridge_audit = (
+        build_post_playback_variable_bridge_audit(
+            native_story_playback_index
+            if native_story_playback_index is not None
+            else build_levelscript_native_story_playback_index()
+        )
+    )
+    variable_bridge_summary = (
+        post_playback_variable_bridge_audit.get("summary") or {}
+    )
     dynamic_scene_identity = load_dynamic_scene_identity_cross_references()
     report = {
-        "schemaVersion": 12,
+        "schemaVersion": 17,
         "generated": int(time.time()),
         "language": language,
         "policy": (
@@ -6613,6 +8948,16 @@ def build_story_binding_coverage(
             "definitionOnlyAudioMetadata": definition_only_classification["source"],
             "luaPlaybackAudit": lua_playback_evidence["auditReport"],
             "luaPlaybackAuditSha256": lua_playback_evidence["auditSha256"],
+            "cinematicQueueRuntimeAudit": cinematic_report,
+            "levelSequenceTextAssets": repo_path(
+                DEFAULT_LEVEL_SEQUENCE_TEXTASSET_ROOT
+            ),
+            "actionBaseFormatterTable": str(
+                ACTIONBASE_FORMATTER_NAME_AUDIT.get("sourceFile") or ""
+            ),
+            "callServerCallbackAudit": repo_path(
+                CALLSERVER_CALLBACK_AUDIT_JSON
+            ),
         },
         "counts": {
             "pipelineMissions": len(mission_ids),
@@ -6625,6 +8970,15 @@ def build_story_binding_coverage(
             "connectionEvidenceRows": evidence_row_count,
             "storyTriggerRoutes": trigger_route_count,
             "storyFilesWithTriggerRoutes": story_files_with_trigger_routes,
+            "nativeCinematicProducerStoryFiles": sum(
+                any(route.get("nativeCinematicProducerRoutes") for route in row.get("routes") or [])
+                for row in story_trigger_manifest.values()
+            ),
+            "nativeCinematicProducerRouteAttachments": sum(
+                len(route.get("nativeCinematicProducerRoutes") or [])
+                for row in story_trigger_manifest.values()
+                for route in row.get("routes") or []
+            ),
             "contextOnlyTriggerRouteFiles":
                 context_only_trigger_route_files,
             "contextOnlyTriggerRoutes": context_only_trigger_route_count,
@@ -6665,6 +9019,12 @@ def build_story_binding_coverage(
             "rejectedLuaCaseMismatchCalls": len(
                 lua_playback_evidence["rejectedCaseMismatchCalls"]
             ),
+            "runtimeLuaHandleDispatcherCalls":
+                lua_playback_evidence["runtimeHandleDispatcherCallCount"],
+            "runtimeLuaHandleDispatcherFamilies":
+                lua_playback_evidence["runtimeHandleDispatcherFamilyCount"],
+            "unresolvedLuaAuthoredPlaybackCalls":
+                lua_playback_evidence["unresolvedPlaybackCalls"],
             "missionStateDependencyStoryFiles": len(
                 mission_state_dependency_keys
             ),
@@ -6722,6 +9082,85 @@ def build_story_binding_coverage(
                 if node.get("playbackGates")
                 for story in node.get("storyFiles") or []
             }),
+            "missionlessNativeRuntimePostPlaybackControls": sum(
+                len(node.get("postPlaybackControls") or [])
+                for node in missionless_runtime_nodes
+            ),
+            "missionlessNativeRuntimePostPlaybackBranchPoints": sum(
+                len(control.get("branchPointLocalIds") or [])
+                for node in missionless_runtime_nodes
+                for control in node.get("postPlaybackControls") or []
+            ),
+            "missionlessNativeRuntimePostPlaybackServerHandoffs": sum(
+                len(control.get("serverHandoffs") or [])
+                for node in missionless_runtime_nodes
+                for control in node.get("postPlaybackControls") or []
+            ),
+            "missionlessNativeRuntimePostPlaybackCallbackHeaderUids": sum(
+                len(handoff.get("possibleCallbackHeaderUIDs") or [])
+                for node in missionless_runtime_nodes
+                for control in node.get("postPlaybackControls") or []
+                for handoff in control.get("serverHandoffs") or []
+            ),
+            "callServerActions": callback_audit_summary.get(
+                "callServerActions", 0
+            ),
+            "callServerCallbackOutputUids": callback_audit_summary.get(
+                "callbackOutputUids", 0
+            ),
+            "callServerExactCallbackHeaders": callback_audit_summary.get(
+                "exactCallbackHeaders", 0
+            ),
+            "callServerCallbackHeadersReachingStory": callback_audit_summary.get(
+                "callbackHeadersReachingStory", 0
+            ),
+            "callServerUnresolvedCallbackOutputs": callback_audit_summary.get(
+                "unresolvedCallbackOutputs", 0
+            ),
+            "postPlaybackCallServerExactContracts": (
+                post_playback_callserver_summary.get("exactContracts", 0)
+            ),
+            "postPlaybackCallServerUnresolvedContracts": (
+                post_playback_callserver_summary.get("unresolvedContracts", 0)
+            ),
+            "postPlaybackLevelSequenceActions": level_sequence_asset_summary.get(
+                "typedActionPlacements", 0
+            ),
+            "postPlaybackLevelSequenceIds": level_sequence_asset_summary.get(
+                "serializedLevelSequenceIds", 0
+            ),
+            "postPlaybackLevelSequenceExactAssets": level_sequence_asset_summary.get(
+                "exactResolvedLevelSequenceIds", 0
+            ),
+            "postPlaybackLevelSequenceUnresolvedIds": level_sequence_asset_summary.get(
+                "unresolvedLevelSequenceIds", 0
+            ),
+            "postPlaybackLevelSequenceRelatedOriginalFiles": (
+                level_sequence_asset_summary.get("relatedOriginalFiles", 0)
+            ),
+            "postPlaybackActionPlacements": action_name_summary.get(
+                "actionPlacements", 0
+            ),
+            "postPlaybackFormatterNamedActions": action_name_summary.get(
+                "formatterNamedActionPlacements", 0
+            ),
+            "postPlaybackFallbackNamedActions": action_name_summary.get(
+                "fallbackNamedActionPlacements", 0
+            ),
+            "postPlaybackUnresolvedActionShapes": action_name_summary.get(
+                "unresolvedOutsideActionBaseShapes", 0
+            ),
+            "postPlaybackVariableSetters": variable_bridge_summary.get(
+                "postPlaybackVariableSetters", 0
+            ),
+            "postPlaybackVariableExactListenerMatches": (
+                variable_bridge_summary.get("exactSetterListenerMatches", 0)
+            ),
+            "postPlaybackVariableCrossStoryListenerMatches": (
+                variable_bridge_summary.get(
+                    "crossStorySetterListenerMatches", 0
+                )
+            ),
             "partiallyConnectedDialogTreeNarrativeFiles": len(
                 unresolved_dialog_tree_containment & connected_keys
             ),
@@ -6741,6 +9180,11 @@ def build_story_binding_coverage(
             ),
         ),
         "storyTriggerManifest": story_trigger_manifest,
+        "postPlaybackActionNameAudit": post_playback_action_name_audit,
+        "callServerCallbackAudit": compact_callback_audit,
+        "postPlaybackLevelSequenceAssetAudit": (
+            post_playback_level_sequence_asset_audit
+        ),
         "luaStoryPlaybackEvidence": lua_playback_evidence,
         "rootPlaybackAliases": root_playback_alias_rows,
         "composedRootPlaybackAliases":
@@ -6799,6 +9243,9 @@ def build_story_binding_coverage(
         ],
         "missionlessSubGamePlaybackNodes": missionless_nodes,
         "missionlessNativeRuntimeNodes": missionless_runtime_nodes,
+        "postPlaybackVariableBridgeAudit": (
+            post_playback_variable_bridge_audit
+        ),
         "dynamicSceneIdentityCrossReferences": dynamic_scene_identity,
         "partiallyConnectedDialogTreeNarrativeKeys": sorted(
             unresolved_dialog_tree_containment & connected_keys,
@@ -6829,6 +9276,8 @@ def build_story_binding_coverage(
         f"- Shipped-Lua Story playback calls scanned: `{counts['scannedLuaStoryPlaybackCalls']}`",
         f"- Exact-case Lua playback calls admitted: `{counts['acceptedLuaExactPlaybackCalls']}`",
         f"- Case-mismatched Lua calls rejected by installed-binary proof: `{counts['rejectedLuaCaseMismatchCalls']}`",
+        f"- Runtime Lua handle dispatcher branches: `{counts['runtimeLuaHandleDispatcherCalls']}` in `{counts['runtimeLuaHandleDispatcherFamilies']}` polymorphic queue family",
+        f"- Unresolved authored Lua playback references: `{counts['unresolvedLuaAuthoredPlaybackCalls']}`",
         f"- Exact root playback alias rows: `{counts['rootPlaybackAliasRows']}`",
         f"- TimelineAsset Story files reached by those aliases: `{counts['rootPlaybackAliasFiles']}`",
         f"- Alias rows composed with an independently connected root playback route: `{counts['composedRootPlaybackAliasRows']}`",
@@ -6857,6 +9306,18 @@ def build_story_binding_coverage(
         f"- Exact runtime-receiver-to-Story placements: `{counts['missionlessNativeRuntimeStoryPlacements']}`",
         f"- Exact receiver playback gates: `{counts['missionlessNativeRuntimePlaybackGates']}`",
         f"- Story files controlled by those exact gates: `{counts['missionlessNativeRuntimePlaybackGateStoryFiles']}`",
+        f"- Exact post-playback control graphs: `{counts['missionlessNativeRuntimePostPlaybackControls']}`",
+        f"- Typed branch points in those graphs: `{counts['missionlessNativeRuntimePostPlaybackBranchPoints']}`",
+        f"- Server handoffs with unresolved handler identity: `{counts['missionlessNativeRuntimePostPlaybackServerHandoffs']}`",
+        f"- Post-playback ActionBase placements named by the complete binary formatter: `{counts['postPlaybackFormatterNamedActions']}` / `{counts['postPlaybackActionPlacements']}`",
+        f"- Remaining action shapes outside ActionBase: `{counts['postPlaybackUnresolvedActionShapes']}`",
+        f"- Typed post-playback LevelSequence action placements: `{counts['postPlaybackLevelSequenceActions']}`",
+        f"- Unique serialized LevelSequence ids: `{counts['postPlaybackLevelSequenceIds']}`",
+        f"- Exact internally validated original LevelSequence TextAssets: `{counts['postPlaybackLevelSequenceExactAssets']}`",
+        f"- Unresolved serialized LevelSequence ids: `{counts['postPlaybackLevelSequenceUnresolvedIds']}`",
+        f"- Typed variable setters after any native Story playback: `{counts['postPlaybackVariableSetters']}`",
+        f"- Exact same-level/script/key Story listener matches: `{counts['postPlaybackVariableExactListenerMatches']}`",
+        f"- Cross-Story matches eligible for a future execution-semantics bridge: `{counts['postPlaybackVariableCrossStoryListenerMatches']}`",
         f"- Connected files with another unresolved DialogTree parent use: `{counts['partiallyConnectedDialogTreeNarrativeFiles']}`",
         "",
         "## By kind",
@@ -7044,6 +9505,8 @@ FACT_KEYS = (
     "entityId",
     "_scriptId",
     "scriptId",
+    "_taskId",
+    "taskId",
     "missionId",
     "missionVarName",
     "compareOperator",
@@ -7350,7 +9813,191 @@ def get_const(row: dict[str, Any], *keys: str) -> Any:
     return None
 
 
-def objective_row(objective: dict[str, Any], index: int) -> dict[str, Any]:
+def level_script_task_dependencies(condition: Any) -> list[dict[str, Any]]:
+    """Recover every exact scene/script/task tuple by authored field shape.
+
+    This deliberately does not enumerate missions, scripts, tasks, or condition
+    classes. A condition joins the task corpus only when all three serialized
+    identity fields are present and scalar after const-wrapper decoding.
+    """
+    dependencies: list[dict[str, Any]] = []
+    for row in condition_objects(condition):
+        level_id = get_const(row, "_sceneId", "sceneId", "_levelId", "levelId")
+        script_id = get_const(row, "_scriptId", "scriptId")
+        task_id = get_const(row, "_taskId", "taskId")
+        if isinstance(script_id, dict):
+            script_id = script_id.get("scriptId")
+        if not all(isinstance(value, (str, int)) and str(value) for value in (
+            level_id, script_id, task_id
+        )):
+            continue
+        dependencies.append({
+            "conditionType": type_name(row.get("$type")) or "UnknownCondition",
+            "conditionId": str(row.get("uniqueId") or ""),
+            "levelId": str(level_id),
+            "scriptId": str(script_id),
+            "taskId": str(task_id),
+            "relation": "mission_objective_waits_for_levelscript_task",
+            "runtimeAuthorityReference": "runtimeContract.levelScriptTaskAuthorityAudit",
+            "evidenceBoundary": (
+                "The authored mission objective waits for this exact LevelScript "
+                "task. This does not prove that the mission activates the script, "
+                "owns its Story playback, or selects a Story branch."
+            ),
+        })
+    return dependencies
+
+
+def level_script_source_evidence(
+    condition: Any,
+    *,
+    level_script_root: Path = DEFAULT_LEVEL_SCRIPT_DATA_ROOT,
+) -> list[dict[str, Any]]:
+    """Attach exact authored LevelScript files and executable-map boundaries.
+
+    The join is field-shaped across the entire condition corpus: any condition
+    carrying both a level/map identity and a LevelScript identity is eligible.
+    Story-like literals outside the three decoded ActionSerializedMap lists are
+    retained only as serialized context and never promoted to playback/order.
+    """
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for row in condition_objects(condition):
+        level_id = get_const(row, "_sceneId", "sceneId", "_levelId", "levelId", "_mapId", "mapId")
+        script_id = get_const(row, "_scriptId", "scriptId")
+        if isinstance(script_id, dict):
+            script_id = script_id.get("scriptId")
+        if not all(isinstance(value, (str, int)) and str(value) for value in (level_id, script_id)):
+            continue
+        identity = (str(level_id), str(script_id))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        source_path = level_script_root / identity[0] / f"{identity[1]}.json"
+        if not source_path.is_file():
+            raise RuntimeError(
+                "validator=level_script_source_evidence gate=levelScriptExists "
+                f"condition={row.get('uniqueId') or '-'} identity={identity[0]}/{identity[1]} "
+                f"expected=file actual=missing source={source_path}"
+            )
+        data = read_bytes_cached(source_path)
+        records = extract_levelscript_uid_records(data)
+        action_map = decode_levelscript_action_map_lists(data, records)
+        exact_empty = bool(action_map.get("exactEmptyActionMap"))
+        out.append({
+            "levelId": identity[0],
+            "scriptId": identity[1],
+            "conditionType": type_name(row.get("$type")) or "UnknownCondition",
+            "actionMapStatus": (
+                "exact_empty_action_map"
+                if exact_empty
+                else str(action_map.get("status") or "absent")
+            ),
+            "actionMapListCounts": action_map.get("listCounts") or {},
+            "serializedTailRecordCount": sum(
+                int(item.get("count") or 0)
+                for item in action_map.get("serializedLists") or []
+                if item.get("name") == "outsideSerializedActionMap"
+            ),
+            "relatedOriginalFiles": [{
+                "kind": "level_script",
+                "sourceFile": repo_path(source_path),
+                "relationship": "authored_condition_operand",
+                "sha256": sha256_path(source_path),
+            }],
+            "evidenceBoundary": (
+                "The three original serialized action-list counts are exactly zero. "
+                "Later UID-shaped objects and Story-like strings are outside the "
+                "executable action map and provide no playback, ownership, branch, or order evidence."
+                if exact_empty
+                else "Only records inside the decoded ActionSerializedMap lists are executable evidence; the condition observes this script but does not prove playback ownership, branch selection, or Story order."
+            ),
+        })
+    return out
+
+
+def validate_level_script_task_dependency(
+    dependency: dict[str, Any],
+    *,
+    mission_id: str,
+    quest_id: str,
+    mission_source: Path,
+    task_table_path: Path = DEFAULT_SCRIPT_TASK_EXTRA_INFO_TABLE,
+    level_script_root: Path = DEFAULT_LEVEL_SCRIPT_DATA_ROOT,
+) -> dict[str, Any]:
+    """Fail closed while joining an authored tuple to original serialized files."""
+    validator = "level_script_task_dependency"
+    level_id = str(dependency.get("levelId") or "")
+    script_id = str(dependency.get("scriptId") or "")
+    task_id = str(dependency.get("taskId") or "")
+    identity = f"{level_id}/{script_id}/{task_id}"
+    if not task_table_path.is_file():
+        raise RuntimeError(
+            f"validator={validator} gate=taskTableExists mission={mission_id} "
+            f"quest={quest_id} identity={identity} expected=file actual=missing "
+            f"source={task_table_path}"
+        )
+    table_payload = read_json(task_table_path)
+    table = table_payload.get("dataTable") if isinstance(table_payload, dict) else None
+    task_row = (
+        (((table or {}).get(level_id) or {}).get(script_id) or {}).get(task_id)
+        if isinstance(table, dict) else None
+    )
+    if not isinstance(task_row, dict):
+        raise RuntimeError(
+            f"validator={validator} gate=taskTuple mission={mission_id} "
+            f"quest={quest_id} identity={identity} expected=authored_task_row "
+            f"actual=missing source={task_table_path} "
+            f"sourceHashes={{'taskTable':'{sha256_path(task_table_path)}'}}"
+        )
+    level_script_path = level_script_root / level_id / f"{script_id}.json"
+    if not level_script_path.is_file():
+        raise RuntimeError(
+            f"validator={validator} gate=levelScriptExists mission={mission_id} "
+            f"quest={quest_id} identity={identity} expected=file actual=missing "
+            f"source={level_script_path} "
+            f"sourceHashes={{'taskTable':'{sha256_path(task_table_path)}'}}"
+        )
+
+    related: list[dict[str, Any]] = []
+    for kind, path, relationship in (
+        ("mission_runtime", mission_source, "authored_objective_condition"),
+        ("level_script", level_script_path, "exact_task_host"),
+        ("script_task_extra_info_table", task_table_path, "exact_task_metadata"),
+    ):
+        if not path.is_file():
+            raise RuntimeError(
+                f"validator={validator} gate=relatedOriginalFile mission={mission_id} "
+                f"quest={quest_id} identity={identity} expected=file actual=missing "
+                f"source={path}"
+            )
+        related.append({
+            "kind": kind,
+            "sourceFile": repo_path(path),
+            "relationship": relationship,
+            "sha256": sha256_path(path),
+        })
+    result = dict(dependency)
+    result.update({
+        "taskMetadata": {
+            "titleKey": ((task_row.get("taskTitle") or {}).get("key") or ""),
+            "descriptionKey": (
+                (task_row.get("singleDescription") or {}).get("key") or ""
+            ),
+            "objectiveCount": task_row.get("objectiveCount"),
+        },
+        "relatedOriginalFiles": related,
+        "validation": {"status": "validated", "validator": validator},
+    })
+    return result
+
+
+def objective_row(
+    objective: dict[str, Any],
+    index: int,
+    *,
+    include_level_script_source_evidence: bool = True,
+) -> dict[str, Any]:
     condition = objective.get("condition")
     objects = condition_objects(condition)
     types = sorted({type_name(row.get("$type")) for row in objects if type_name(row.get("$type"))})
@@ -7417,6 +10064,12 @@ def objective_row(objective: dict[str, Any], index: int) -> dict[str, Any]:
         ),
         "questStateRefs": quest_state_refs,
         "levelScriptIds": sorted(level_scripts),
+        "levelScriptSources": (
+            level_script_source_evidence(condition)
+            if include_level_script_source_evidence
+            else []
+        ),
+        "levelScriptTaskDependencies": level_script_task_dependencies(condition),
         "propertyKeys": sorted(properties),
         "tracking": tracking,
     }
@@ -7470,6 +10123,437 @@ def action_rows(mission: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     return dict(output)
 
 
+def annotate_quest_action_dispatch(
+    payload: dict[str, Any],
+    contract: dict[str, Any],
+) -> Counter[str]:
+    """Apply the corpus-wide binary dispatcher census to authored action rows."""
+    dispatched = {
+        int(row["questActionValue"]): row
+        for row in contract.get("safeRunDirectCallers") or []
+        if isinstance(row, dict) and isinstance(row.get("questActionValue"), int)
+    }
+    start_value = int(
+        (contract.get("questActionEnum") or {}).get("OnStartClientAction", 1)
+    )
+    start_dispatchers = contract.get("startActionDispatchers") or []
+    counts: Counter[str] = Counter()
+    for node in payload.get("nodes") or []:
+        if not isinstance(node, dict):
+            continue
+        for action in node.get("clientActions") or []:
+            if not isinstance(action, dict):
+                continue
+            value = action.get("trigger")
+            if value in dispatched:
+                caller = dispatched[value]
+                status = (
+                    "binary_proven_server_success_dispatch"
+                    if value == 2
+                    else "binary_proven_server_failure_dispatch"
+                )
+                action["runtimeDispatchHandler"] = caller.get("symbol") or ""
+            elif value == start_value and not start_dispatchers:
+                status = "authored_definition_no_current_aot_dispatch"
+            else:
+                status = "runtime_dispatch_unresolved"
+            action["runtimeDispatchStatus"] = status
+            action["runtimeDispatchSource"] = contract.get("source") or ""
+            action["runtimeDispatchBoundary"] = contract.get("boundary") or ""
+            counts[f"rows:{status}"] += 1
+            if action.get("chainIndex") == 0:
+                counts[f"roots:{status}"] += 1
+    return counts
+
+
+def annotate_quest_fork_state_application(
+    payload: dict[str, Any],
+    contract: dict[str, Any],
+) -> Counter[str]:
+    """Attach one binary-discovered state application shape to every fork arm."""
+    validator = "quest_fork_state_application"
+    if contract.get("schema") != "questStateLifecycleApplication.v1":
+        raise RuntimeError(
+            f"validator={validator} gate=contractSchema "
+            "expected='questStateLifecycleApplication.v1' "
+            f"actual={contract.get('schema')!r}"
+        )
+    if (contract.get("validation") or {}).get("status") != "validated":
+        failure = ((contract.get("validation") or {}).get("failures") or [{}])[0]
+        raise RuntimeError(
+            f"validator={validator} gate={failure.get('gate') or 'contractValidation'} "
+            f"expected={failure.get('expected')!r} actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or contract.get('source') or ''}"
+        )
+    message = contract.get("message") or {}
+    identity_field = str(message.get("identityField") or "")
+    transitions = contract.get("transitions") or []
+    if not identity_field or not transitions or message.get("successorLikeFields"):
+        raise RuntimeError(
+            f"validator={validator} gate=applicationShape "
+            "expected='identity field, state routes, no successor fields' "
+            f"actual={{'identityField': {identity_field!r}, "
+            f"'transitionCount': {len(transitions)}, "
+            f"'successorLikeFields': {message.get('successorLikeFields') or []!r}}}"
+        )
+    compact_contract = {
+        "schema": contract.get("schema"),
+        "classification": contract.get("classification"),
+        "message": {
+            "type": message.get("type"),
+            "messageId": message.get("messageId"),
+            "identityField": identity_field,
+            "stateField": message.get("stateField"),
+            "successorLikeFields": [],
+            "handler": message.get("handler") or {},
+        },
+        "stateEnum": contract.get("stateEnum") or {},
+        "transitions": transitions,
+        "source": contract.get("source") or "",
+        "relatedOriginalFiles": contract.get("relatedOriginalFiles") or [],
+        "finding": contract.get("finding") or "",
+        "boundary": contract.get("boundary") or "",
+    }
+    counts: Counter[str] = Counter()
+    forks = ((payload.get("questTopology") or {}).get("forks") or [])
+    for fork in forks:
+        if not isinstance(fork, dict):
+            continue
+        fork["serverQuestStateApplication"] = compact_contract
+        counts["forks"] += 1
+        for arm in fork.get("arms") or []:
+            if not isinstance(arm, dict) or not arm.get("questId"):
+                raise RuntimeError(
+                    f"validator={validator} gate=armQuestIdentity "
+                    f"expected=non-empty actual={arm!r}"
+                )
+            arm["serverApplicationIdentity"] = {
+                "field": identity_field,
+                "value": str(arm["questId"]),
+                "contractReference": (
+                    "runtimeContract.stateUpdateApplicationAudit."
+                    "questStateLifecycleApplication"
+                ),
+            }
+            counts["arms"] += 1
+    return counts
+
+
+def annotate_quest_fork_enable_application(
+    payload: dict[str, Any],
+    contract: dict[str, Any],
+) -> Counter[str]:
+    """Attach a corpus-derived boolean lifecycle matrix to every quest fork."""
+    validator = "quest_fork_enable_application"
+    if contract.get("schema") != "questEnableLifecycleApplication.v1":
+        raise RuntimeError(
+            f"validator={validator} gate=contractSchema "
+            "expected='questEnableLifecycleApplication.v1' "
+            f"actual={contract.get('schema')!r}"
+        )
+    if (contract.get("validation") or {}).get("status") != "validated":
+        failure = ((contract.get("validation") or {}).get("failures") or [{}])[0]
+        raise RuntimeError(
+            f"validator={validator} gate={failure.get('gate') or 'contractValidation'} "
+            f"expected={failure.get('expected')!r} actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or contract.get('source') or ''}"
+        )
+    message = contract.get("message") or {}
+    runtime_control = contract.get("runtimeControl") or {}
+    identity_field = str(message.get("identityField") or "")
+    packet_fields = message.get("consumedControlFields") or []
+    runtime_field = str(runtime_control.get("field") or "")
+    routes = contract.get("routes") or []
+    matrix = sorted({
+        (
+            (route.get("values") or {}).get(packet_fields[0]),
+            (route.get("values") or {}).get(runtime_field),
+        )
+        for route in routes
+    }) if len(packet_fields) == 1 and runtime_field else []
+    expected_matrix = [
+        (False, False), (False, True), (True, False), (True, True)
+    ]
+    route_calls = [
+        route.get("reachableLifecycleCalls") or [] for route in routes
+    ]
+    if (
+        not identity_field
+        or matrix != expected_matrix
+        or not route_calls
+        or not all(len(calls) == 1 for calls in route_calls)
+        or len({calls[0].get("method") for calls in route_calls}) < 3
+        or not all(calls[0].get("samePacketIdentity") is True for calls in route_calls)
+        or message.get("successorLikeFields")
+    ):
+        raise RuntimeError(
+            f"validator={validator} gate=applicationShape "
+            "expected='complete generic two-boolean identity-preserving matrix, "
+            "one call per route, >=3 methods, no successor fields' "
+            f"actual={{'identityField': {identity_field!r}, 'matrix': {matrix!r}, "
+            f"'routeCalls': {route_calls!r}, "
+            f"'successorLikeFields': {message.get('successorLikeFields') or []!r}}}"
+        )
+    compact_contract = {
+        "schema": contract.get("schema"),
+        "classification": contract.get("classification"),
+        "message": {
+            "type": message.get("type"),
+            "messageId": message.get("messageId"),
+            "identityField": identity_field,
+            "consumedControlFields": packet_fields,
+            "unreadControlFields": message.get("unreadControlFields") or [],
+            "successorLikeFields": [],
+            "handler": message.get("handler") or {},
+        },
+        "runtimeControl": runtime_control,
+        "routes": routes,
+        "source": contract.get("source") or "",
+        "relatedOriginalFiles": contract.get("relatedOriginalFiles") or [],
+        "finding": contract.get("finding") or "",
+        "boundary": contract.get("boundary") or "",
+    }
+    counts: Counter[str] = Counter()
+    for fork in ((payload.get("questTopology") or {}).get("forks") or []):
+        if not isinstance(fork, dict):
+            continue
+        fork["serverQuestEnableApplication"] = compact_contract
+        counts["forks"] += 1
+        for arm in fork.get("arms") or []:
+            if not isinstance(arm, dict) or not arm.get("questId"):
+                raise RuntimeError(
+                    f"validator={validator} gate=armQuestIdentity "
+                    f"expected=non-empty actual={arm!r}"
+                )
+            arm["serverEnableApplicationIdentity"] = {
+                "field": identity_field,
+                "value": str(arm["questId"]),
+                "contractReference": (
+                    "runtimeContract.stateUpdateApplicationAudit."
+                    "questEnableLifecycleApplication"
+                ),
+            }
+            counts["arms"] += 1
+    return counts
+
+
+def _quest_reachability_distances(
+    start: str,
+    successors: dict[str, list[str]],
+) -> dict[str, int]:
+    """Return shortest authored-predecessor distances from one quest arm."""
+    distances = {start: 0}
+    pending = deque([start])
+    while pending:
+        current = pending.popleft()
+        for target in successors.get(current, []):
+            if target in distances:
+                continue
+            distances[target] = distances[current] + 1
+            pending.append(target)
+    return distances
+
+
+def build_quest_fork_semantics(
+    nodes: list[dict[str, Any]],
+    source_path: Path,
+) -> dict[str, Any]:
+    """Describe every authored quest fan-out without guessing activation policy.
+
+    This is intentionally data-driven. It derives arm roles, typed completion
+    conditions, terminal status, and first common descendants from normalized
+    MissionRuntime nodes. The original MissionRuntime file is attached to each
+    fork. Main-path membership and flowIndex are descriptive fields only; the
+    installed binary audit remains the authority that neither selects arms.
+    """
+    nodes_by_id = {
+        str(node.get("id") or ""): node
+        for node in nodes
+        if isinstance(node, dict) and node.get("id")
+    }
+    successors = {
+        quest_id: [
+            str(target)
+            for target in node.get("successors") or []
+            if str(target)
+        ]
+        for quest_id, node in nodes_by_id.items()
+    }
+    source_file = repo_path(source_path)
+    source_hash = sha256_path(source_path) if source_path.is_file() else ""
+    related_files = [{
+        "kind": "mission_runtime",
+        "sourceFile": source_file,
+        "relationship": "authored_quest_fork_topology",
+        "sha256": source_hash,
+    }]
+    failures: list[dict[str, Any]] = []
+
+    def fail(
+        gate: str,
+        quest_id: str,
+        expected: Any,
+        actual: Any,
+    ) -> None:
+        failures.append({
+            "validator": "quest_fork_semantics",
+            "gate": gate,
+            "mission": source_path.stem,
+            "questId": quest_id,
+            "expected": expected,
+            "actual": actual,
+            "sourceFile": source_file,
+            "sourceHashes": {"missionRuntimeSha256": source_hash},
+        })
+
+    forks: list[dict[str, Any]] = []
+    for quest_id in sorted(nodes_by_id, key=natural_quest_key):
+        arm_ids = successors.get(quest_id, [])
+        if len(arm_ids) < 2:
+            continue
+        missing = [arm_id for arm_id in arm_ids if arm_id not in nodes_by_id]
+        if missing:
+            fail("allForkArmsResolve", quest_id, [], missing)
+            continue
+        arm_distances = [
+            _quest_reachability_distances(arm_id, successors)
+            for arm_id in arm_ids
+        ]
+        common_descendants = (
+            set.intersection(*(set(row) for row in arm_distances))
+            if arm_distances else set()
+        )
+        first_common = None
+        if common_descendants:
+            common_id = min(
+                common_descendants,
+                key=lambda candidate: (
+                    max(row[candidate] for row in arm_distances),
+                    sum(row[candidate] for row in arm_distances),
+                    natural_quest_key(candidate),
+                ),
+            )
+            first_common = {
+                "questId": common_id,
+                "distanceByArm": {
+                    arm_id: arm_distances[index][common_id]
+                    for index, arm_id in enumerate(arm_ids)
+                },
+                "predecessorQuestIds": list(
+                    nodes_by_id[common_id].get("prev") or []
+                ),
+            }
+
+        arms: list[dict[str, Any]] = []
+        for arm_index, arm_id in enumerate(arm_ids):
+            node = nodes_by_id[arm_id]
+            failed_condition = node.get("failedCondition") or None
+            sibling_reachable = set().union(*(
+                set(row)
+                for index, row in enumerate(arm_distances)
+                if index != arm_index
+            ))
+            sibling_exclusive = sorted(
+                set(arm_distances[arm_index]) - sibling_reachable,
+                key=lambda candidate: (
+                    arm_distances[arm_index][candidate],
+                    natural_quest_key(candidate),
+                ),
+            )
+            objective_condition_types = sorted({
+                str(condition_type)
+                for objective in node.get("objectives") or []
+                if isinstance(objective, dict)
+                for condition_type in objective.get("conditionTypes") or []
+                if str(condition_type)
+            })
+            arms.append({
+                "questId": arm_id,
+                "role": "main_path" if node.get("mainPath") else "auxiliary",
+                "mainPathOrder": node.get("mainPathOrder"),
+                "flowIndex": node.get("flowIndex", 0),
+                "flowIndexRole": "display_sort_only",
+                "questType": node.get("questType"),
+                "showMode": node.get("showMode"),
+                "objectiveConditionTypes": objective_condition_types,
+                "failedCondition": failed_condition,
+                "terminal": not bool(successors.get(arm_id)),
+                "successorQuestIds": successors.get(arm_id, []),
+                "siblingExclusiveQuestIds": sibling_exclusive,
+                "corridorEvidenceBoundary": (
+                    "These quests are reachable from this immediate successor and "
+                    "not from another immediate successor of the same authored fork. "
+                    "This is sibling-relative topology, not proof that the server "
+                    "selected or exclusively executed this arm."
+                ),
+            })
+
+        main_path_count = sum(arm["role"] == "main_path" for arm in arms)
+        if main_path_count == 1:
+            structure = "main_path_plus_auxiliary"
+        elif main_path_count == 0:
+            structure = "all_auxiliary"
+        elif main_path_count == len(arms):
+            structure = "multiple_main_path_successors"
+        else:
+            structure = "multiple_main_path_plus_auxiliary"
+        terminal_count = sum(bool(arm["terminal"]) for arm in arms)
+        if first_common:
+            outcome = "reconverging"
+        elif terminal_count == len(arms):
+            outcome = "divergent_terminals"
+        elif terminal_count:
+            outcome = "mixed_terminal_and_continuing"
+        else:
+            outcome = "open_divergence"
+        forks.append({
+            "questId": quest_id,
+            "successorQuestIds": arm_ids,
+            "source": "MissionRuntimeAsset.questDic[*].prevQuestIdList",
+            "structure": structure,
+            "outcome": outcome,
+            "arms": arms,
+            "guardedArmCount": sum(bool(arm["failedCondition"]) for arm in arms),
+            "firstCommonDescendant": first_common,
+            "activationPolicy": "server_selected_unresolved",
+            "relatedOriginalFiles": related_files,
+            "evidenceBoundary": (
+                "Main-path membership, predecessor topology, typed completion "
+                "conditions, and reconvergence are authored facts. They do not "
+                "prove that arms start in parallel or are mutually exclusive; "
+                "flowIndex is display sorting in the current binary."
+            ),
+        })
+
+    expected_forks = sum(
+        len(node.get("successors") or []) > 1 for node in nodes_by_id.values()
+    )
+    if len(forks) != expected_forks:
+        fail("allForksClassified", "", expected_forks, len(forks))
+    validation = {
+        "status": "validation_failed" if failures else "validated",
+        "failures": failures,
+    }
+    counts = Counter(fork["structure"] for fork in forks)
+    outcomes = Counter(fork["outcome"] for fork in forks)
+    return {
+        "schema": "missionQuestForkSemantics.v2",
+        "forks": forks,
+        "counts": {
+            "forks": len(forks),
+            "guardedForks": sum(bool(fork["guardedArmCount"]) for fork in forks),
+            "structures": dict(sorted(counts.items())),
+            "outcomes": dict(sorted(outcomes.items())),
+        },
+        "validation": validation,
+        "evidenceBoundary": (
+            "This graph describes original MissionRuntime structure and exact "
+            "arm-local conditions. Server-only activation and exclusivity remain "
+            "unknown unless an explicit typed selector is present."
+        ),
+    }
+
+
 def build_mission(
     mission: dict[str, Any],
     source_path: Path,
@@ -7505,6 +10589,7 @@ def build_mission(
     submit_item_quest_count = 0
     submit_item_dialog_co_gate_count = 0
     submit_item_level_script_co_gate_count = 0
+    level_script_task_dependency_count = 0
     annotations = (CASE_STUDIES.get(mission_id) or {}).get("nodes") or {}
 
     ordered_quests = sorted(
@@ -7530,6 +10615,24 @@ def build_mission(
             for objective in objectives
             for item in objective["submissionChecks"]
         ]
+        for objective in objectives:
+            objective["levelScriptTaskDependencies"] = [
+                validate_level_script_task_dependency(
+                    dependency,
+                    mission_id=mission_id,
+                    quest_id=quest_id,
+                    mission_source=source_path,
+                )
+                for dependency in objective.get("levelScriptTaskDependencies") or []
+            ]
+        level_script_task_dependencies_for_quest = [
+            dependency
+            for objective in objectives
+            for dependency in objective.get("levelScriptTaskDependencies") or []
+        ]
+        level_script_task_dependency_count += len(
+            level_script_task_dependencies_for_quest
+        )
         submission_dialog_co_gates = [
             item
             for objective in objectives
@@ -7577,6 +10680,7 @@ def build_mission(
             "submissionChecks": submission_checks,
             "submissionDialogCoGates": submission_dialog_co_gates,
             "submissionLevelScriptCoGates": submission_level_script_co_gates,
+            "levelScriptTaskDependencies": level_script_task_dependencies_for_quest,
             "serverPlaceholderKeys": [
                 {"questId": quest_id, "conditionId": condition_id}
                 for condition_id in placeholder_condition_ids
@@ -7625,11 +10729,28 @@ def build_mission(
                     edge["externalSource"] = True
                 edges.append(edge)
 
+    quest_topology = build_quest_fork_semantics(nodes, source_path)
+    if quest_topology["validation"]["status"] != "validated":
+        first = quest_topology["validation"]["failures"][0]
+        raise RuntimeError(
+            "validator=quest_fork_semantics "
+            f"gate={first['gate']} mission={first['mission']} "
+            f"quest={first.get('questId') or '-'} "
+            f"expected={first['expected']!r} actual={first['actual']!r} "
+            f"source={first['sourceFile']} "
+            f"sourceHashes={first['sourceHashes']!r}"
+        )
     roots = [node["id"] for node in nodes if not node["prev"]]
     fanouts = [node["id"] for node in nodes if len(node["successors"]) > 1]
     multi_prev = [node["id"] for node in nodes if len(node["prev"]) > 1]
     mission_name = mission.get("missionName") or {}
     mission_desc = mission.get("missionDescription") or {}
+    mission_task_dependencies = [
+        {**dependency, "questId": node["id"], "objectiveIndex": objective["index"]}
+        for node in nodes
+        for objective in node.get("objectives") or []
+        for dependency in objective.get("levelScriptTaskDependencies") or []
+    ]
     payload = {
         "schemaVersion": SCHEMA_VERSION,
         "mission": {
@@ -7645,6 +10766,7 @@ def build_mission(
             "onMissionCompletedId": mission.get("onMissionCompletedId"),
             "onMissionFailedId": mission.get("onMissionFailedId"),
             "nativeRuntimeBindings": list(native_runtime_bindings or []),
+            "levelScriptTaskDependencies": mission_task_dependencies,
             "source": source_path.relative_to(ROOT).as_posix() if source_path.is_relative_to(ROOT) else source_path.as_posix(),
         },
         "nodes": nodes,
@@ -7655,6 +10777,7 @@ def build_mission(
         # relations are co-active or mutually exclusive and must not be read as
         # ordering. See build_mission_dependency_graph.py.
         "missionGraph": mission_graph_entry or {"upstream": {}, "downstream": {}},
+        "questTopology": quest_topology,
         # Ambient envTalk lines configured on an NPC proxy that a quest of this
         # mission tracks. Navigation/configuration context only -- never
         # playback ownership. See build_envtalk_attachment.py.
@@ -7680,6 +10803,10 @@ def build_mission(
         "serverPlaceholderCount": server_placeholder_count,
         "serverPlaceholderQuestCount": server_placeholder_quest_count,
         "failureConditionCount": failure_count,
+        "questForkSemanticCount": quest_topology["counts"]["forks"],
+        "questForkGuardedCount": quest_topology["counts"]["guardedForks"],
+        "questForkStructureCounts": quest_topology["counts"]["structures"],
+        "questForkOutcomeCounts": quest_topology["counts"]["outcomes"],
         "externalDependencyCount": external_dependency_count,
         "submitItemConditionCount": submit_item_count,
         "submitItemQuestCount": submit_item_quest_count,
@@ -7687,6 +10814,7 @@ def build_mission(
         "submitItemLevelScriptCoGateCount": (
             submit_item_level_script_co_gate_count
         ),
+        "levelScriptTaskDependencyCount": level_script_task_dependency_count,
         "nativeRuntimeBindingCount": len(native_runtime_bindings or []),
         "activityStageHostCount": sum(
             len(node.get("activityStageHosts") or []) for node in nodes
@@ -7931,6 +11059,63 @@ def build_all(
             "selectedRoot": repo_path(mission_root),
             "selection": "explicit_mission_root",
         }
+    state_update_contract = load_state_update_application_contract()
+    extra_thread_scheduler_contract = (
+        load_action_extra_thread_scheduler_contract()
+    )
+    task_authority_contract = load_levelscript_task_authority_contract()
+    start_policy_contract = load_levelscript_start_policy_contract()
+    manual_self_control_contract = (
+        load_levelscript_manual_self_control_contract()
+    )
+    activation_control_contract = (
+        load_levelscript_activation_control_contract()
+    )
+    runtime_contract = {
+        **RUNTIME_CONTRACT,
+        "nativeCrossSystemConsumerCensus": (
+            load_native_cross_system_consumer_contract()
+        ),
+        "stateUpdateApplicationAudit": state_update_contract,
+        "actionExtraThreadSchedulerAudit": extra_thread_scheduler_contract,
+        "levelScriptTaskAuthorityAudit": task_authority_contract,
+        "levelScriptStartPolicyAudit": start_policy_contract,
+        "levelScriptManualSelfControlAudit": manual_self_control_contract,
+        "levelScriptActivationControlAudit": activation_control_contract,
+    }
+    quest_action_dispatch = (
+        state_update_contract.get("questSucceedActionApplication") or {}
+    )
+    quest_state_application = (
+        state_update_contract.get("questStateLifecycleApplication") or {}
+    )
+    quest_enable_application = (
+        state_update_contract.get("questEnableLifecycleApplication") or {}
+    )
+    quest_action_dispatch_counts: Counter[str] = Counter()
+    quest_state_application_counts: Counter[str] = Counter()
+    quest_enable_application_counts: Counter[str] = Counter()
+    for summary in summaries:
+        mission_path = mission_output / f"{summary['id']}.json"
+        payload = read_json(mission_path)
+        if not isinstance(payload, dict):
+            continue
+        quest_action_dispatch_counts.update(
+            annotate_quest_action_dispatch(payload, quest_action_dispatch)
+        )
+        quest_state_application_counts.update(
+            annotate_quest_fork_state_application(
+                payload,
+                quest_state_application,
+            )
+        )
+        quest_enable_application_counts.update(
+            annotate_quest_fork_enable_application(
+                payload,
+                quest_enable_application,
+            )
+        )
+        write_json(mission_path, payload)
     index = {
         "schemaVersion": SCHEMA_VERSION,
         "generated": int(time.time()),
@@ -7979,6 +11164,12 @@ def build_all(
             "submitItemLevelScriptCoGates": sum(
                 row["submitItemLevelScriptCoGateCount"] for row in summaries
             ),
+            "levelScriptTaskDependencies": sum(
+                row["levelScriptTaskDependencyCount"] for row in summaries
+            ),
+            "missionsWithLevelScriptTaskDependencies": sum(
+                1 for row in summaries if row["levelScriptTaskDependencyCount"]
+            ),
             "nativeRuntimeBindings": subgame_registry["missionBindingCount"],
             "nativeRuntimeBoundMissions": subgame_registry["boundMissionCount"],
             "nativeRuntimeDistinctScriptIds": subgame_registry["distinctScriptCount"],
@@ -7999,9 +11190,143 @@ def build_all(
             "missionsWithProperties": sum(
                 1 for row in summaries if row["missionPropertyCount"]
             ),
+            "questForkSemantics": sum(
+                row["questForkSemanticCount"] for row in summaries
+            ),
+            "questForkGuarded": sum(
+                row["questForkGuardedCount"] for row in summaries
+            ),
+            "questForkMainPathPlusAuxiliary": sum(
+                row["questForkStructureCounts"].get(
+                    "main_path_plus_auxiliary", 0
+                )
+                for row in summaries
+            ),
+            "questForkAllAuxiliary": sum(
+                row["questForkStructureCounts"].get("all_auxiliary", 0)
+                for row in summaries
+            ),
+            "questForkMultipleMainPath": sum(
+                row["questForkStructureCounts"].get(
+                    "multiple_main_path_successors", 0
+                )
+                + row["questForkStructureCounts"].get(
+                    "multiple_main_path_plus_auxiliary", 0
+                )
+                for row in summaries
+            ),
+            "questForkReconverging": sum(
+                row["questForkOutcomeCounts"].get("reconverging", 0)
+                for row in summaries
+            ),
+            "questForkServerStateApplications": quest_state_application_counts[
+                "forks"
+            ],
+            "questForkServerStateApplicationArms": quest_state_application_counts[
+                "arms"
+            ],
+            "questForkServerEnableApplications": quest_enable_application_counts[
+                "forks"
+            ],
+            "questForkServerEnableApplicationArms": quest_enable_application_counts[
+                "arms"
+            ],
+            "stateUpdateApplicationCandidates": state_update_contract[
+                "candidateCount"
+            ],
+            "stateUpdateApplicationCandidatesValidated": state_update_contract[
+                "validatedCandidateCount"
+            ],
+            "stateUpdateClientSuccessorSelectors": state_update_contract[
+                "clientSuccessorSelectors"
+            ],
+            "questStartPredecessorReads": state_update_contract[
+                "questStartApplication"
+            ].get("fieldReadCounts", {}).get("prevQuestIdList", 0),
+            "questStartFlowIndexReads": state_update_contract[
+                "questStartApplication"
+            ].get("fieldReadCounts", {}).get("flowIndex", 0),
+            "questStartTopologyTraversalCalls": len(
+                state_update_contract["questStartApplication"].get(
+                    "topologyTraversalCalls", []
+                )
+            ),
+            "questTopologyActivePredecessorConsumers": state_update_contract[
+                "questTopologyFieldConsumers"
+            ].get("activePredecessorConsumerCount", 0),
+            "questTopologyFlowIndexNonSortConsumers": state_update_contract[
+                "questTopologyFieldConsumers"
+            ].get("flowIndexNonSortConsumerCount", 0),
+            "questTopologyLifecycleCalls": len(
+                state_update_contract["questTopologyFieldConsumers"].get(
+                    "topologyLifecycleCalls", []
+                )
+            ),
+            "questTypeConsumers": (
+                state_update_contract["questTopologyFieldConsumers"]
+                .get("questSemanticFields", {})
+                .get("questType", {})
+                .get("consumerCount", 0)
+            ),
+            "questTypePostLifecycleConsumers": (
+                state_update_contract["questTopologyFieldConsumers"]
+                .get("questSemanticFields", {})
+                .get("questType", {})
+                .get("postLifecycleConsumerCount", 0)
+            ),
+            "questTypeBlockNotificationConsumers": (
+                state_update_contract["questTopologyFieldConsumers"]
+                .get("questSemanticFields", {})
+                .get("questType", {})
+                .get("blockNotificationConsumerCount", 0)
+            ),
+            "questOptionalObjectiveFlagValidated": (
+                state_update_contract["questTopologyFieldConsumers"]
+                .get("questSemanticFields", {})
+                .get("optionalObjectiveFlag", {})
+                .get("validation", {})
+                .get("status")
+                == "validated"
+            ),
+            "questShowModeConsumers": (
+                state_update_contract["questTopologyFieldConsumers"]
+                .get("questSemanticFields", {})
+                .get("showMode", {})
+                .get("consumerCount", 0)
+            ),
+            "questShowModeLifecycleConsumers": (
+                state_update_contract["questTopologyFieldConsumers"]
+                .get("questSemanticFields", {})
+                .get("showMode", {})
+                .get("lifecycleConsumerCount", 0)
+            ),
+            "actionExtraThreadWriterMethods": len(
+                extra_thread_scheduler_contract.get(
+                    "extraThreadExecuteMethods", []
+                )
+            ),
+            "actionExtraThreadDirectCalls": len(
+                extra_thread_scheduler_contract.get("directCalls", [])
+            ),
+            "questActionStartDefinitionRoots": quest_action_dispatch_counts[
+                "roots:authored_definition_no_current_aot_dispatch"
+            ],
+            "questActionStartDefinitionRows": quest_action_dispatch_counts[
+                "rows:authored_definition_no_current_aot_dispatch"
+            ],
+            "questActionBinaryDispatchedRoots": sum(
+                count
+                for key, count in quest_action_dispatch_counts.items()
+                if key.startswith("roots:binary_proven_")
+            ),
+            "questActionBinaryDispatchedRows": sum(
+                count
+                for key, count in quest_action_dispatch_counts.items()
+                if key.startswith("rows:binary_proven_")
+            ),
         },
         "conditionTypeMissionCounts": dict(sorted(condition_counts.items())),
-        "runtimeContract": RUNTIME_CONTRACT,
+        "runtimeContract": runtime_contract,
         "nativeRuntimeRegistry": subgame_registry,
         "activityQuestLevelRegistry": activity_host_registry,
         "missionGraph": {
@@ -8041,10 +11366,93 @@ def publish_source_story_partial_order(
     story_index = story_data_root / language / "index.json"
     if not story_index.is_file():
         return None
+    state_contract = (
+        (index.get("runtimeContract") or {}).get("stateUpdateApplicationAudit")
+        or {}
+    )
+    quest_succeed_contract = dict(
+        state_contract.get("questSucceedActionApplication") or {}
+    )
+    quest_succeed_contract["relatedOriginalFiles"] = (
+        state_contract.get("relatedOriginalFiles") or []
+    )
+    extra_thread_contract = (
+        (index.get("runtimeContract") or {}).get(
+            "actionExtraThreadSchedulerAudit"
+        )
+        or {}
+    )
     report = build_source_story_partial_order_report(
         language,
         story_data_root=story_data_root,
+        quest_succeed_lifecycle_contract=quest_succeed_contract,
+        extra_thread_scheduler_contract=extra_thread_contract,
     )
+    quest_start = state_contract.get("questStartApplication") or {}
+    topology_consumers = state_contract.get("questTopologyFieldConsumers") or {}
+    quest_fork_authority = {
+        "classification": "server_selected_start_topology_only",
+        "questInfoType": quest_start.get("questInfoType"),
+        "questInfoFieldOffsets": quest_start.get("questInfoFieldOffsets") or {},
+        "fieldReadCounts": quest_start.get("fieldReadCounts") or {},
+        "topologyTraversalCalls": quest_start.get("topologyTraversalCalls") or [],
+        "startQuest": quest_start.get("startQuest") or {},
+        "sourceMessages": quest_start.get("sourceMessages") or [],
+        "topologyFieldConsumers": topology_consumers,
+        "finding": quest_start.get("finding") or "",
+        "boundary": quest_start.get("boundary") or "",
+        "relatedOriginalFiles": state_contract.get("relatedOriginalFiles") or [],
+        "validation": quest_start.get("validation") or {},
+    }
+    semantic_forks_by_id: dict[str, dict[str, Any]] = {}
+    for mission_summary in index.get("missions") or []:
+        if not isinstance(mission_summary, dict):
+            continue
+        semantic_path = output_root / str(mission_summary.get("file") or "")
+        semantic_payload = (
+            read_json(semantic_path) if semantic_path.is_file() else {}
+        )
+        for fork in (
+            (semantic_payload.get("questTopology") or {}).get("forks") or []
+        ):
+            if not isinstance(fork, dict) or not fork.get("questId"):
+                continue
+            quest_id = str(fork["questId"])
+            existing = semantic_forks_by_id.get(quest_id)
+            if existing and existing != fork:
+                raise RuntimeError(
+                    "validator=quest_fork_semantics_publication "
+                    "gate=globallyUniqueQuestForkId "
+                    f"quest={quest_id} expected=unique actual=duplicate "
+                    f"source={semantic_path}"
+                )
+            semantic_forks_by_id[quest_id] = fork
+    for row in report.get("missions") or []:
+        if not isinstance(row, dict):
+            continue
+        branches = row.get("branches") or {}
+        if branches.get("questForks"):
+            branches["questForkAuthority"] = quest_fork_authority
+            missing_semantics = [
+                str(fork.get("questId") or "")
+                for fork in branches["questForks"]
+                if isinstance(fork, dict)
+                and str(fork.get("questId") or "") not in semantic_forks_by_id
+            ]
+            if missing_semantics:
+                raise RuntimeError(
+                    "validator=quest_fork_semantics_publication "
+                    "gate=allStoryOrderForksHaveSemantics "
+                    f"mission={row.get('mission') or '-'} "
+                    "expected=[] "
+                    f"actual={missing_semantics!r} "
+                    f"source={output_root / 'missions'}"
+                )
+            branches["questForks"] = [
+                semantic_forks_by_id[str(fork.get("questId") or "")]
+                for fork in branches["questForks"]
+                if isinstance(fork, dict)
+            ]
     report_root.mkdir(parents=True, exist_ok=True)
     report_json = report_root / f"source_story_partial_order_{language}.json"
     report_markdown = report_root / f"source_story_partial_order_{language}.md"
@@ -8054,11 +11462,238 @@ def publish_source_story_partial_order(
         render_source_story_partial_order_markdown(report),
     )
 
+    publication = attach_source_story_partial_order(
+        index,
+        output_root,
+        report,
+        create_variant_aggregate_shells=False,
+        require_complete_branch_publication=False,
+    )
+
+    order_summary = report.get("summary") or {}
+    index["storyOrder"] = {
+        "schema": report.get("_schema"),
+        "language": language,
+        "summary": order_summary,
+        "evidencePolicy": report.get("evidencePolicy") or {},
+        "reportJson": repo_path(report_json),
+        "reportMarkdown": repo_path(report_markdown),
+        "publication": publication,
+    }
+    write_json(output_root / "index.json", index)
+    return report
+
+
+def _update_story_order_summary(
+    summary: dict[str, Any],
+    order_row: dict[str, Any],
+) -> None:
+    order_summary = order_row.get("summary") or {}
+    mappings = {
+        "storyOrderSceneCount": "sceneCount",
+        "storyOrderStrongEdgeCount": "strongEdgeCount",
+        "storyOrderCycleCount": "cycleCount",
+        "storyOrderNativeBranchCount": "nativeControlBranchCount",
+        "storyOrderNativeMergeCount": "nativeControlMergeCount",
+        "storyOrderNativeTransitionCount": "nativeControlPathTransitionEdgeCount",
+        "storyOrderQuestSucceedLifecycleCount": "questSucceedLifecycleEdgeCount",
+        "storyOrderNativeTransitionStepCount": "nativeControlPathTransitionStepCount",
+        "storyOrderNativeNamedActionEndpointCount": "nativeControlPathNamedActionEndpointCount",
+        "storyOrderNativeUnresolvedActionEndpointCount": "nativeControlPathUnresolvedActionEndpointCount",
+        "storyOrderNativeBranchingTransitionCount": "nativeControlPathBranchingTransitionEdgeCount",
+        "storyOrderNativeOrderedSequenceCount": "nativeOrderedSequenceCount",
+        "storyOrderNativeRelatedActionTopologyCount": "nativeRelatedActionTopologyCount",
+        "storyOrderNativeNamedPredicateCount": "nativeNamedPredicateCount",
+        "storyOrderNativeInlinePredicateCount": "nativeInlinePredicateCount",
+        "storyOrderNativeSemanticPredicateCount": "nativeSemanticPredicateCount",
+        "storyOrderNativeClassOnlyPredicateCount": "nativeClassOnlyPredicateCount",
+        "storyOrderNativeUnresolvedPredicateCount": "nativeUnresolvedPredicateCount",
+        "storyOrderQuestForkCount": "questForkCount",
+        "storyOrderQuestMergeCount": "questMergeCount",
+    }
+    for target, source in mappings.items():
+        summary[target] = int(order_summary.get(source) or 0)
+
+
+def _resolve_report_source_path(source: str) -> Path:
+    path = Path(source)
+    return path if path.is_absolute() else ROOT / path
+
+
+def _create_story_variant_aggregate_shell(
+    index: dict[str, Any],
+    output_root: Path,
+    order_row: dict[str, Any],
+) -> dict[str, Any]:
+    """Create a non-owning shell from declared, validated Story variants.
+
+    The rule is corpus-driven: a missing Story namespace is eligible only when
+    its generated mission bundle declares variant mission bundles, every bundle
+    identifies itself exactly, and every variant already has a Mission Pipeline
+    payload backed by an original MissionRuntimeAsset.
+    """
+    mission_id = str(order_row.get("mission") or "")
+    variant_sources = [
+        str(value) for value in order_row.get("missionDataVariants") or [] if value
+    ]
+    validator = "source_story_order_publication"
+    if not mission_id or not variant_sources:
+        raise RuntimeError(
+            f"validator={validator} gate=aggregateHasDeclaredVariants "
+            f"mission={mission_id or '-'} expected=nonempty actual={variant_sources!r} "
+            f"source={order_row.get('missionData') or '-'}"
+        )
+    summaries = {
+        str(row.get("id") or ""): row
+        for row in index.get("missions") or []
+        if isinstance(row, dict) and row.get("id")
+    }
+    variant_ids: list[str] = []
+    related_files: list[dict[str, Any]] = []
+    level_ids: set[str] = set()
+    for variant_source in variant_sources:
+        generated_path = _resolve_report_source_path(variant_source)
+        generated = read_json(generated_path) if generated_path.is_file() else None
+        variant_id = str((generated or {}).get("mission") or "")
+        if not variant_id:
+            raise RuntimeError(
+                f"validator={validator} gate=variantBundleIdentifiesMission "
+                f"mission={mission_id} expected=mission-id actual={variant_id or '-'} "
+                f"source={generated_path}"
+            )
+        variant_summary = summaries.get(variant_id)
+        if not variant_summary:
+            raise RuntimeError(
+                f"validator={validator} gate=declaredVariantHasPipelineMission "
+                f"mission={mission_id} expected={variant_id!r} actual=missing "
+                f"source={generated_path}"
+            )
+        pipeline_path = output_root / str(variant_summary.get("file") or "")
+        pipeline_payload = read_json(pipeline_path) if pipeline_path.is_file() else None
+        original_source = str(((pipeline_payload or {}).get("mission") or {}).get("source") or "")
+        original_path = _resolve_report_source_path(original_source) if original_source else Path()
+        if not original_source or not original_path.is_file():
+            raise RuntimeError(
+                f"validator={validator} gate=variantHasOriginalMissionRuntime "
+                f"mission={mission_id} variant={variant_id} expected=file actual={original_source or '-'} "
+                f"source={pipeline_path}"
+            )
+        related_files.append({
+            "kind": "original_mission_runtime",
+            "sourceFile": repo_path(original_path),
+            "sha256": sha256_path(original_path),
+            "relationship": "declared_story_graph_variant_context",
+            "variantMissionId": variant_id,
+        })
+        variant_ids.append(variant_id)
+        if variant_summary.get("levelId"):
+            level_ids.add(str(variant_summary["levelId"]))
+
+    variant_ids = sorted(set(variant_ids), key=natural_quest_key)
+    related_files.sort(key=lambda row: (natural_quest_key(row["variantMissionId"]), row["sourceFile"]))
+    mission_output = output_root / "missions"
+    mission_output.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schemaVersion": SCHEMA_VERSION,
+        "mission": {
+            "id": mission_id,
+            "nameKey": "",
+            "descriptionKey": "",
+            "levelId": next(iter(level_ids)) if len(level_ids) == 1 else "",
+            "missionType": None,
+            "rewardId": "",
+            "mainPath": [],
+            "entryQuestIds": [],
+            "nativeRuntimeBindings": [],
+            "source": str(order_row.get("missionData") or ""),
+            "storyAggregateShell": True,
+            "variantMissionIds": variant_ids,
+            "relatedOriginalFiles": related_files,
+            "sourceBoundary": (
+                "This Story namespace aggregates exact serialized Story and LevelScript "
+                "evidence across its declared mission variants. It is not itself a "
+                "MissionRuntimeAsset and does not prove mission ownership, quest ownership, "
+                "branch selection, or chronology beyond the attached typed evidence."
+            ),
+        },
+        "nodes": [],
+        "edges": [],
+        "caseStudy": None,
+        "missionGraph": {"upstream": {}, "downstream": {}},
+        "envTalkContext": [],
+        "storyOrder": copy.deepcopy(order_row),
+    }
+    write_json(mission_output / f"{mission_id}.json", payload)
+    summary = {
+        "id": mission_id,
+        "nameKey": "",
+        "levelId": payload["mission"]["levelId"],
+        "questCount": 0,
+        "mainPathCount": 0,
+        "entryCount": 0,
+        "fanoutCount": 0,
+        "multiPrevJoinCount": 0,
+        "activeJoinCount": 0,
+        "exactFinishCount": 0,
+        "serverPlaceholderCount": 0,
+        "serverPlaceholderQuestCount": 0,
+        "failureConditionCount": 0,
+        "externalDependencyCount": 0,
+        "submitItemConditionCount": 0,
+        "submitItemQuestCount": 0,
+        "submitItemDialogCoGateCount": 0,
+        "submitItemLevelScriptCoGateCount": 0,
+        "nativeRuntimeBindingCount": 0,
+        "activityStageHostCount": 0,
+        "activityStageHostedQuestCount": 0,
+        "trackingInfoCount": 0,
+        "trackingObjectiveCount": 0,
+        "missionPropertyCount": 0,
+        "conditionTypes": [],
+        "caseStudy": False,
+        "file": f"missions/{mission_id}.json",
+        "storyAggregateShell": True,
+        "storyAggregateVariantCount": len(variant_ids),
+    }
+    _update_story_order_summary(summary, order_row)
+    index.setdefault("missions", []).append(summary)
+    return summary
+
+
+def attach_source_story_partial_order(
+    index: dict[str, Any],
+    output_root: Path,
+    report: dict[str, Any],
+    *,
+    create_variant_aggregate_shells: bool,
+    require_complete_branch_publication: bool,
+) -> dict[str, Any]:
+    """Attach every recovered row that has a validated pipeline destination."""
     rows_by_mission = {
         str(row.get("mission") or ""): row
         for row in report.get("missions") or []
         if isinstance(row, dict) and row.get("mission")
     }
+    existing_ids = {
+        str(row.get("id") or "")
+        for row in index.get("missions") or []
+        if isinstance(row, dict)
+    }
+    aggregate_shells: list[str] = []
+    if create_variant_aggregate_shells:
+        for mission_id, order_row in sorted(rows_by_mission.items()):
+            branch_count = len(
+                ((order_row.get("branches") or {}).get("nativeControlBranches") or [])
+            )
+            if mission_id in existing_ids or not branch_count:
+                continue
+            if order_row.get("missionDataVariants"):
+                _create_story_variant_aggregate_shell(index, output_root, order_row)
+                existing_ids.add(mission_id)
+                aggregate_shells.append(mission_id)
+
+    published_missions: list[str] = []
+    published_branches = 0
     for summary in index.get("missions") or []:
         if not isinstance(summary, dict):
             continue
@@ -8070,53 +11705,58 @@ def publish_source_story_partial_order(
         payload = read_json(mission_path)
         if not isinstance(payload, dict):
             continue
-        payload["storyOrder"] = order_row
+        published_order = copy.deepcopy(order_row)
+        previous_order = payload.get("storyOrder") or {}
+        if previous_order.get("sourceGapQueue"):
+            published_order["sourceGapQueue"] = previous_order["sourceGapQueue"]
+        payload["storyOrder"] = published_order
         write_json(mission_path, payload)
-        order_summary = order_row.get("summary") or {}
-        summary["storyOrderSceneCount"] = int(order_summary.get("sceneCount") or 0)
-        summary["storyOrderStrongEdgeCount"] = int(order_summary.get("strongEdgeCount") or 0)
-        summary["storyOrderCycleCount"] = int(order_summary.get("cycleCount") or 0)
-        summary["storyOrderNativeBranchCount"] = int(
-            order_summary.get("nativeControlBranchCount") or 0
+        _update_story_order_summary(summary, order_row)
+        published_missions.append(mission_id)
+        published_branches += len(
+            ((order_row.get("branches") or {}).get("nativeControlBranches") or [])
         )
-        summary["storyOrderNativeMergeCount"] = int(
-            order_summary.get("nativeControlMergeCount") or 0
-        )
-        summary["storyOrderNativeOrderedSequenceCount"] = int(
-            order_summary.get("nativeOrderedSequenceCount") or 0
-        )
-        summary["storyOrderNativeRelatedActionTopologyCount"] = int(
-            order_summary.get("nativeRelatedActionTopologyCount") or 0
-        )
-        summary["storyOrderNativeNamedPredicateCount"] = int(
-            order_summary.get("nativeNamedPredicateCount") or 0
-        )
-        summary["storyOrderNativeInlinePredicateCount"] = int(
-            order_summary.get("nativeInlinePredicateCount") or 0
-        )
-        summary["storyOrderNativeSemanticPredicateCount"] = int(
-            order_summary.get("nativeSemanticPredicateCount") or 0
-        )
-        summary["storyOrderNativeClassOnlyPredicateCount"] = int(
-            order_summary.get("nativeClassOnlyPredicateCount") or 0
-        )
-        summary["storyOrderNativeUnresolvedPredicateCount"] = int(
-            order_summary.get("nativeUnresolvedPredicateCount") or 0
-        )
-        summary["storyOrderQuestForkCount"] = int(order_summary.get("questForkCount") or 0)
-        summary["storyOrderQuestMergeCount"] = int(order_summary.get("questMergeCount") or 0)
 
-    order_summary = report.get("summary") or {}
-    index["storyOrder"] = {
-        "schema": report.get("_schema"),
-        "language": language,
-        "summary": order_summary,
-        "evidencePolicy": report.get("evidencePolicy") or {},
-        "reportJson": repo_path(report_json),
-        "reportMarkdown": repo_path(report_markdown),
+    expected_branches = sum(
+        len(((row.get("branches") or {}).get("nativeControlBranches") or []))
+        for row in rows_by_mission.values()
+    )
+    missing_branch_missions = [
+        mission_id
+        for mission_id, row in sorted(rows_by_mission.items())
+        if ((row.get("branches") or {}).get("nativeControlBranches") or [])
+        and mission_id not in published_missions
+    ]
+    publication = {
+        "validator": "source_story_order_publication",
+        "status": "validated" if not missing_branch_missions else "incomplete",
+        "expectedNativeBranchPlacements": expected_branches,
+        "publishedNativeBranchPlacements": published_branches,
+        "unpublishedNativeBranchPlacements": expected_branches - published_branches,
+        "publishedMissionRows": len(published_missions),
+        "variantAggregateShells": aggregate_shells,
+        "missingBranchMissions": missing_branch_missions,
     }
+    index.setdefault("storyOrder", {})["publication"] = publication
+    index.setdefault("counts", {})["storyVariantAggregateShells"] = len(
+        [row for row in index.get("missions") or [] if row.get("storyAggregateShell")]
+    )
+    index["counts"]["missions"] = len(index.get("missions") or [])
+    index["missions"].sort(key=lambda row: natural_quest_key(str(row.get("id") or "")))
+    if require_complete_branch_publication and missing_branch_missions:
+        first = missing_branch_missions[0]
+        row = rows_by_mission[first]
+        actual = len(
+            ((row.get("branches") or {}).get("nativeControlBranches") or [])
+        )
+        raise RuntimeError(
+            "validator=source_story_order_publication "
+            "gate=allRecoveredNativeBranchesPublished "
+            f"mission={first} expected={actual} actual=0 "
+            f"source={row.get('missionData') or '-'}"
+        )
     write_json(output_root / "index.json", index)
-    return report
+    return publication
 
 
 def publish_quest_objective_story_scope(
@@ -8508,6 +12148,325 @@ def publish_quest_dialog_tree_definitions(
     return result
 
 
+def publish_quest_fork_arm_evidence(
+    index: dict[str, Any],
+    output_root: Path,
+    story_data_root: Path,
+    language: str,
+) -> dict[str, Any]:
+    """Attach exact Story evidence to sibling-exclusive authored fork arms.
+
+    The corridor membership comes only from MissionRuntime predecessor topology.
+    Story rows come from the generated typed mission sidecar, whose action names
+    are backed by the complete installed-binary ActionBase formatter audit. Any
+    original file named by a row is resolved, bounded to the repository, and
+    hashed before publication. OCR and manual order are deliberately absent.
+    """
+    validator = "quest_fork_arm_evidence"
+    audit = ACTIONBASE_FORMATTER_NAME_AUDIT
+    audit_source = str(audit.get("sourceFile") or "")
+    if audit.get("status") != "validated" or not audit_source:
+        raise RuntimeError(
+            f"validator={validator} gate=binaryActionNameAudit "
+            "expected={'status':'validated','sourceFile':'nonempty'} "
+            f"actual={{'status':{audit.get('status')!r},'sourceFile':{audit_source!r}}} "
+            "source=scripts/story_builder/level_bindings.py"
+        )
+    audit_path = (ROOT / audit_source).resolve()
+    expected_audit_hash = str(audit.get("sourceSha256") or "").upper()
+    if not audit_path.is_relative_to(ROOT) or not audit_path.is_file():
+        raise RuntimeError(
+            f"validator={validator} gate=binaryActionNameAuditSource "
+            f"expected=fileWithinRepo actual={audit_path} source={audit_source}"
+        )
+    actual_audit_hash = sha256_path(audit_path).upper()
+    if actual_audit_hash != expected_audit_hash:
+        raise RuntimeError(
+            f"validator={validator} gate=binaryActionNameAuditHash "
+            f"expected={expected_audit_hash!r} actual={actual_audit_hash!r} "
+            f"source={audit_source}"
+        )
+    audit_payload = read_json(audit_path)
+    audit_metadata = (
+        audit_payload.get("metadata")
+        if isinstance(audit_payload, dict)
+        and isinstance(audit_payload.get("metadata"), dict)
+        else {}
+    )
+
+    sidecar_root = story_data_root / language.upper() / "mission"
+    file_cache: dict[str, dict[str, Any]] = {}
+
+    def related_original_file(
+        source_file: str,
+        relationship: str,
+        expected_hash: str = "",
+    ) -> dict[str, Any]:
+        normalized = str(source_file or "").replace("\\", "/")
+        cache_key = f"{normalized}\0{relationship}"
+        cached = file_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        source_path = Path(normalized)
+        if not source_path.is_absolute():
+            source_path = ROOT / source_path
+        source_path = source_path.resolve()
+        if not source_path.is_relative_to(ROOT) or not source_path.is_file():
+            raise RuntimeError(
+                f"validator={validator} gate=relatedOriginalFile "
+                f"expected=fileWithinRepo actual={source_path} "
+                f"source={normalized}"
+            )
+        actual_hash = sha256_path(source_path)
+        if expected_hash and actual_hash.upper() != expected_hash.upper():
+            raise RuntimeError(
+                f"validator={validator} gate=relatedOriginalFileHash "
+                f"expected={expected_hash.upper()!r} "
+                f"actual={actual_hash.upper()!r} source={normalized}"
+            )
+        row = {
+            "kind": "original_authored_source",
+            "sourceFile": repo_path(source_path),
+            "relationship": relationship,
+            "sha256": actual_hash,
+        }
+        file_cache[cache_key] = row
+        return row
+
+    missions = 0
+    forks = 0
+    arms = 0
+    arms_with_story = 0
+    story_placements = 0
+    binary_named_action_placements = 0
+    story_keys: set[str] = set()
+    distinct_original_files: set[str] = set()
+    for summary in index.get("missions") or []:
+        if not isinstance(summary, dict):
+            continue
+        mission_id = str(summary.get("id") or "")
+        mission_path = output_root / str(summary.get("file") or "")
+        if not mission_path.is_file():
+            continue
+        payload = read_json(mission_path)
+        topology = payload.get("questTopology") if isinstance(payload, dict) else None
+        mission_forks = topology.get("forks") if isinstance(topology, dict) else None
+        if not mission_forks:
+            continue
+        sidecar_path = sidecar_root / f"{mission_id}.json"
+        if not sidecar_path.is_file():
+            raise RuntimeError(
+                f"validator={validator} gate=missionSidecar "
+                f"mission={mission_id} expected=file actual=missing "
+                f"source={sidecar_path}"
+            )
+        sidecar = read_json(sidecar_path)
+        flow = sidecar.get("flow") if isinstance(sidecar, dict) else None
+        quest_rows = flow.get("quests") if isinstance(flow, dict) else None
+        if isinstance(quest_rows, dict):
+            quest_rows = list(quest_rows.values())
+        if not isinstance(quest_rows, list):
+            raise RuntimeError(
+                f"validator={validator} gate=missionSidecarQuests "
+                f"mission={mission_id} expected=list actual={type(quest_rows).__name__} "
+                f"source={sidecar_path}"
+            )
+        sidecar_quests = {
+            str(row.get("id") or row.get("questId") or ""): row
+            for row in quest_rows
+            if isinstance(row, dict) and (row.get("id") or row.get("questId"))
+        }
+        nodes = {
+            str(row.get("id") or ""): row
+            for row in payload.get("nodes") or []
+            if isinstance(row, dict) and row.get("id")
+        }
+        mission_story_placements = 0
+        for fork in mission_forks:
+            if not isinstance(fork, dict):
+                continue
+            forks += 1
+            for arm in fork.get("arms") or []:
+                if not isinstance(arm, dict):
+                    continue
+                arms += 1
+                corridor = arm.get("siblingExclusiveQuestIds")
+                if not isinstance(corridor, list):
+                    raise RuntimeError(
+                        f"validator={validator} gate=siblingExclusiveCorridor "
+                        f"mission={mission_id} quest={fork.get('questId') or '-'} "
+                        "expected=list actual=missing "
+                        f"source={mission_path}"
+                    )
+                missing_quests = [
+                    quest_id for quest_id in corridor
+                    if quest_id not in sidecar_quests or quest_id not in nodes
+                ]
+                if missing_quests:
+                    raise RuntimeError(
+                        f"validator={validator} gate=corridorQuestsResolve "
+                        f"mission={mission_id} quest={fork.get('questId') or '-'} "
+                        f"expected=[] actual={missing_quests[:16]!r} "
+                        f"source={sidecar_path}"
+                    )
+                evidence_by_signature: dict[tuple[str, ...], dict[str, Any]] = {}
+                related_by_file: dict[str, dict[str, Any]] = {}
+                for quest_id in corridor:
+                    sidecar_quest = sidecar_quests[quest_id]
+                    node = nodes[quest_id]
+                    raw_rows = [
+                        row for row in sidecar_quest.get("storyConnections") or []
+                        if isinstance(row, dict) and row.get("key")
+                    ]
+                    raw_rows.extend(
+                        row for row in node.get("storyScopeContexts") or []
+                        if isinstance(row, dict) and row.get("key")
+                    )
+                    for raw in raw_rows:
+                        raw_source_files = raw.get("sourceFiles")
+                        if not isinstance(raw_source_files, list):
+                            raw_source_files = []
+                        source_files = sorted({
+                            str(value).replace("\\", "/")
+                            for value in [
+                                raw.get("file"),
+                                raw.get("sourceFile"),
+                                *raw_source_files,
+                            ]
+                            if isinstance(value, str) and value
+                        })
+                        evidence = compact_dict({
+                            "questId": quest_id,
+                            "key": str(raw.get("key") or ""),
+                            "kind": raw.get("kind") or "",
+                            "relation": raw.get("relation") or "",
+                            "direction": raw.get("direction") or "",
+                            "phase": raw.get("phase") or "",
+                            "confidence": raw.get("confidence") or "",
+                            "actionType": raw.get("actionType") or raw.get("actionName") or "",
+                            "conditionType": raw.get("conditionType") or "",
+                            "finishId": raw.get("finishId"),
+                            "evidenceTier": raw.get("evidenceTier") or "",
+                            "ownership": raw.get("ownership") or raw.get("ownershipStatus") or "",
+                            "questTriggerStatus": raw.get("questTriggerStatus") or "",
+                            "nativeMappingId": raw.get("nativeMappingId") or "",
+                            "source": raw.get("source") or "",
+                            "sourceFiles": source_files,
+                        })
+                        signature = tuple(str(evidence.get(key) or "") for key in (
+                            "questId", "key", "relation", "direction", "phase",
+                            "confidence", "source",
+                        ))
+                        evidence_by_signature[signature] = evidence
+                        for source_file in source_files:
+                            related = related_original_file(
+                                source_file,
+                                "fork_arm_typed_story_relation",
+                            )
+                            related_by_file[related["sourceFile"]] = related
+                    evidence_keys = {
+                        str(row.get("key") or "")
+                        for row in raw_rows
+                    }
+                    for definition in node.get("dialogTreeDefinitions") or []:
+                        if not isinstance(definition, dict):
+                            continue
+                        scene_key = str(definition.get("sceneKey") or "")
+                        if scene_key not in evidence_keys:
+                            continue
+                        source_file = str(definition.get("sourceFile") or "")
+                        if not source_file:
+                            continue
+                        related = related_original_file(
+                            source_file,
+                            "fork_arm_observed_dialog_tree_definition",
+                            str(definition.get("sourceSha256") or ""),
+                        )
+                        related_by_file[related["sourceFile"]] = related
+                evidence_rows = sorted(
+                    evidence_by_signature.values(),
+                    key=lambda row: (
+                        natural_quest_key(str(row.get("questId") or "")),
+                        str(row.get("key") or ""),
+                        str(row.get("relation") or ""),
+                        str(row.get("source") or ""),
+                    ),
+                )
+                arm["storyEvidence"] = evidence_rows
+                arm["relatedOriginalFiles"] = sorted(
+                    related_by_file.values(),
+                    key=lambda row: (row["sourceFile"], row["relationship"]),
+                )
+                arm["storyEvidenceBoundary"] = (
+                    "Rows are exact typed relations on quests in this sibling-relative "
+                    "corridor. Context rows remain non-owning; even direct playback or "
+                    "completion rows do not prove server arm selection or exclusivity."
+                )
+                story_placements += len(evidence_rows)
+                binary_named_action_placements += sum(
+                    bool(row.get("actionType")) for row in evidence_rows
+                )
+                mission_story_placements += len(evidence_rows)
+                if evidence_rows:
+                    arms_with_story += 1
+                    story_keys.update(str(row.get("key") or "") for row in evidence_rows)
+                distinct_original_files.update(related_by_file)
+        order_branches = (
+            (payload.get("storyOrder") or {}).get("branches")
+            if isinstance(payload.get("storyOrder"), dict)
+            else None
+        )
+        if isinstance(order_branches, dict) and order_branches.get("questForks"):
+            forks_by_id = {
+                str(row.get("questId") or ""): row
+                for row in mission_forks
+                if isinstance(row, dict) and row.get("questId")
+            }
+            order_branches["questForks"] = [
+                forks_by_id[str(row.get("questId") or "")]
+                for row in order_branches["questForks"]
+                if isinstance(row, dict)
+                and str(row.get("questId") or "") in forks_by_id
+            ]
+        summary["questForkArmStoryEvidenceCount"] = mission_story_placements
+        write_json(mission_path, payload)
+        missions += 1
+
+    result = {
+        "schema": "missionQuestForkArmEvidence.v1",
+        "language": language.upper(),
+        "binaryActionTypeAuthority": {
+            **audit,
+            "gameAssemblySha256": audit_metadata.get("gameAssemblySha256"),
+            "metadataSha256": audit_metadata.get("metadataSha256"),
+        },
+        "counts": {
+            "missions": missions,
+            "forks": forks,
+            "arms": arms,
+            "armsWithStoryEvidence": arms_with_story,
+            "storyEvidencePlacements": story_placements,
+            "uniqueStoryKeys": len(story_keys),
+            "binaryNamedActionPlacements": binary_named_action_placements,
+            "distinctRelatedOriginalFiles": len(distinct_original_files),
+        },
+        "evidencePolicy": {
+            "classification": "typed_sibling_relative_fork_arm_context",
+            "ownershipPromotion": False,
+            "orderPromotion": False,
+            "usesOcrOrManualOrder": False,
+            "boundary": (
+                "MissionRuntime predecessor reachability defines each corridor. "
+                "Typed quest Story relations and their original files are attached "
+                "without claiming server selection, exclusivity, or a total order."
+            ),
+        },
+    }
+    index["questForkArmEvidence"] = result
+    write_json(output_root / "index.json", index)
+    return result
+
+
 def _compact_runtime_observation(row: dict[str, Any]) -> dict[str, Any]:
     keys = (
         "sessionId",
@@ -8711,6 +12670,21 @@ def main() -> int:
         args.story_data_root.resolve(),
         args.story_language,
     )
+    # The complete-corpus callback audit is generated once for the canonical
+    # pipeline. Reduced fixture outputs never overwrite or silently consume it.
+    callserver_callback_audit: dict[str, Any] = {}
+    if output_root == DEFAULT_OUTPUT_ROOT.resolve():
+        callserver_callback_audit = build_callserver_callback_audit_report()
+        write_report_json(
+            CALLSERVER_CALLBACK_AUDIT_JSON,
+            callserver_callback_audit,
+        )
+        write_text_if_changed(
+            CALLSERVER_CALLBACK_AUDIT_MARKDOWN,
+            render_callserver_callback_audit_markdown(
+                callserver_callback_audit
+            ),
+        )
     coverage = build_story_binding_coverage(
         index,
         output_root / "index.json",
@@ -8734,8 +12708,10 @@ def main() -> int:
                 or [DEFAULT_CUTSCENE_CASE_RESOLUTION_AUDIT]
             )
         ),
+        callserver_callback_audit=callserver_callback_audit,
     )
     node_attachment = None
+    fork_arm_evidence = None
     if coverage:
         source_story_gap_queue = getattr(
             args,
@@ -8759,6 +12735,14 @@ def main() -> int:
                 source_story_gap_queue,
             ) if output_root == DEFAULT_OUTPUT_ROOT.resolve() else []
         )
+        if order_report:
+            attach_source_story_partial_order(
+                index,
+                output_root,
+                order_report,
+                create_variant_aggregate_shells=True,
+                require_complete_branch_publication=True,
+            )
         report_stem = f"mission_pipeline_story_binding_coverage_{coverage['language']}"
         coverage_report = args.report_root.resolve() / f"{report_stem}.json"
         index["storyCoverage"] = {
@@ -8777,6 +12761,18 @@ def main() -> int:
             "nonMissionContentKeys": coverage.get("nonMissionContentKeys") or [],
             "missionlessSubGamePlaybackNodes": coverage["missionlessSubGamePlaybackNodes"],
             "missionlessNativeRuntimeNodes": coverage["missionlessNativeRuntimeNodes"],
+            "postPlaybackActionNameAudit": (
+                coverage.get("postPlaybackActionNameAudit") or {}
+            ),
+            "callServerCallbackAudit": (
+                coverage.get("callServerCallbackAudit") or {}
+            ),
+            "postPlaybackLevelSequenceAssetAudit": (
+                coverage.get("postPlaybackLevelSequenceAssetAudit") or {}
+            ),
+            "postPlaybackVariableBridgeAudit": (
+                coverage.get("postPlaybackVariableBridgeAudit") or {}
+            ),
             "dynamicSceneIdentityCrossReferences":
                 coverage.get("dynamicSceneIdentityCrossReferences"),
             "reportJson": repo_path(coverage_report),
@@ -8792,6 +12788,19 @@ def main() -> int:
             ),
             dungeon_table_path=args.dungeon_table.resolve(),
         )
+        identity_validation = (
+            activation_frontier.get("structuredIdentityCarrierCensus") or {}
+        ).get("validation") or {}
+        if identity_validation.get("status") != "validated":
+            failure = (identity_validation.get("failures") or [{}])[0]
+            raise RuntimeError(
+                "structured identity census failed: "
+                f"validator={failure.get('validator')}; "
+                f"gate={failure.get('gate')}; "
+                f"source={failure.get('sourceFile')}; "
+                f"expected={failure.get('expected')!r}; "
+                f"actual={failure.get('actual')!r}"
+            )
         # Fixture/test builds use temporary output roots and must not overwrite
         # the canonical recovery report with their reduced corpus.
         if output_root == DEFAULT_OUTPUT_ROOT.resolve():
@@ -8808,6 +12817,7 @@ def main() -> int:
         publish_native_receiver_activation_frontier(
             index,
             activation_frontier,
+            mission_root=output_root / "missions",
         )
         node_attachment = publish_quest_objective_story_scope(
             index,
@@ -8815,6 +12825,12 @@ def main() -> int:
             args.story_data_root.resolve(),
             coverage["language"],
             coverage_report,
+        )
+        fork_arm_evidence = publish_quest_fork_arm_evidence(
+            index,
+            output_root,
+            args.story_data_root.resolve(),
+            coverage["language"],
         )
         write_json(output_root / "index.json", index)
     runtime_trace = None
@@ -8829,6 +12845,18 @@ def main() -> int:
         f"Mission pipeline: {index['counts']['missions']} missions, "
         f"{index['counts']['quests']} quests -> {args.output_root}"
     )
+    print(
+        "Quest semantic fields: "
+        f"{index['counts'].get('questTypeConsumers', 0)} questType consumers "
+        f"({index['counts'].get('questTypePostLifecycleConsumers', 0)} "
+        "post-lifecycle / "
+        f"{index['counts'].get('questTypeBlockNotificationConsumers', 0)} "
+        "Block notifications), "
+        f"{index['counts'].get('questShowModeConsumers', 0)} showMode consumers "
+        f"({index['counts'].get('questShowModeLifecycleConsumers', 0)} lifecycle), "
+        "Optional objective flag="
+        f"{index['counts'].get('questOptionalObjectiveFlagValidated', False)}"
+    )
     if coverage:
         counts = coverage["counts"]
         print(
@@ -8842,6 +12870,14 @@ def main() -> int:
                 f"{published['rows']} context rows across "
                 f"{published['quests']} quest nodes"
             )
+        if fork_arm_evidence:
+            published = fork_arm_evidence["counts"]
+            print(
+                "Quest fork arm evidence: "
+                f"{published['storyEvidencePlacements']} Story placements across "
+                f"{published['armsWithStoryEvidence']}/{published['arms']} arms; "
+                f"{published['distinctRelatedOriginalFiles']} original files"
+            )
     else:
         print(f"Story binding coverage skipped: no {args.story_language.upper()} Story bundle")
     published_dialog_trees = dialog_tree_definitions.get("published") or {}
@@ -8852,12 +12888,28 @@ def main() -> int:
     )
     if order_report:
         summary = order_report.get("summary") or {}
+        publication = (index.get("storyOrder") or {}).get("publication") or {}
         print(
             f"Story partial order: {summary.get('strongEdges', 0)} strong edges, "
+            f"{summary.get('questSucceedLifecycleEdges', 0)} binary-proven quest-success edges, "
             f"{summary.get('questForks', 0)} quest forks, "
             f"{summary.get('questMerges', 0)} quest merges, "
             f"{summary.get('nativeControlBranches', 0)} native branch groups, "
+            f"{summary.get('nativeControlFullArmBranches', 0)} full-arm placements / "
+            f"{summary.get('nativeControlSerializedArms', 0)} serialized slots "
+            f"({summary.get('nativeControlNonStoryArms', 0)} active non-Story, "
+            f"{summary.get('nativeControlInactiveTargetArms', 0)} inactive, "
+            f"{summary.get('nativeControlRuntimeTerminalArms', 0)} runtime terminal, "
+            f"{summary.get('nativeControlFullArmValidationFailures', 0)} validation failures), "
             f"{summary.get('nativeControlMerges', 0)} native convergences, "
+            f"{summary.get('nativeControlCrossBoundaryBranches', 0)} complete cross-boundary groups "
+            f"({summary.get('nativeControlCrossBoundaryExternalStories', 0)} external Story references), "
+            f"{summary.get('nativeMissionStateBranches', 0)} mission-state alternative groups "
+            f"({summary.get('nativeMissionStateBranchExternalStories', 0)} cross-mission references), "
+            f"{summary.get('nativeControlPathTransitionEdges', 0)} exact native Story transitions "
+            f"({summary.get('nativeControlPathBranchingTransitionEdges', 0)} branch-bearing), "
+            f"{summary.get('nativeControlPathNamedActionEndpoints', 0)}/"
+            f"{summary.get('nativeControlPathTransitionActionEndpoints', 0)} named transition endpoints, "
             f"{summary.get('nativeOrderedSequences', 0)} native ordered sequences, "
             f"{summary.get('nativeRelatedActionTopologies', 0)} related action graphs, "
             f"{summary.get('nativeNamedPredicates', 0)} named predicates, "
@@ -8865,6 +12917,14 @@ def main() -> int:
             f"{summary.get('nativeSemanticPredicates', 0)} semantic predicates, "
             f"{summary.get('nativeClassOnlyPredicates', 0)} class-only predicates, "
             f"{summary.get('nativeUnresolvedPredicates', 0)} unresolved predicates"
+        )
+        print(
+            "Story-order publication: "
+            f"{publication.get('publishedNativeBranchPlacements', 0)}/"
+            f"{publication.get('expectedNativeBranchPlacements', 0)} recovered native "
+            "branch placements attached; "
+            f"{len(publication.get('variantAggregateShells') or [])} validated "
+            "variant aggregate shells"
         )
     if runtime_trace:
         summary = runtime_trace.get("summary") or {}

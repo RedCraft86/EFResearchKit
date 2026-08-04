@@ -10,13 +10,15 @@ next narrower question for each hosting LevelScript:
 * whether that container names a MissionRuntime id;
 * whether any decoded ManualStartLevelScript row literally targets it.
 
-The result is a triage surface, not an attachment source.  A generic LevelData
-container, Manual start type, or incoming manual-control edge does not by
-itself identify a mission, quest, playback order, or server-state producer.
+The result is a typed Mission Pipeline context surface.  A generic LevelData
+container, activation request, Manual start type, or incoming manual-control
+edge does not by itself identify a mission, quest, playback order, or
+server-side state selector.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from collections import Counter, defaultdict
@@ -36,6 +38,7 @@ from common import (  # noqa: E402
     read_bytes_cached,
     read_json,
     rel_path,
+    write_json,
     write_report_json,
     write_text_if_changed,
 )
@@ -49,6 +52,7 @@ from story_builder.context import (  # noqa: E402
 from story_builder.level_bindings import (  # noqa: E402
     _native_vector_close,
     _parse_leveldata_mission_host_name,
+    decode_levelscript_native_action_topology,
     parse_leveldata_levelscript_brief_dictionary,
 )
 from story_builder.levelscript_binary import (  # noqa: E402
@@ -61,7 +65,7 @@ from story_builder.mission_recovery import (  # noqa: E402
 )
 
 
-SCHEMA = "nativeReceiverActivationFrontier.v10"
+SCHEMA = "nativeReceiverActivationFrontier.v24"
 
 # The installed 2026-08-02 binary identifies this serialized property family
 # as the reusable Encounter controller contract.  The names below are suffixes
@@ -132,10 +136,280 @@ DEFAULT_DUNGEON_TABLE = (
     / "Table"
     / "DungeonTable.json"
 )
+DEFAULT_STRUCTURED_JSON_ROOT = MRA_DIR.parent
+STRUCTURED_SCRIPT_IDENTITY_KEYS = frozenset({
+    "scriptId",
+    "scriptIdGlobal",
+    "bindScriptId",
+    "_scriptId",
+    "levelScriptId",
+    "targetScriptId",
+})
+STRUCTURED_MISSION_IDENTITY_KEYS = frozenset({
+    "missionId",
+    "questId",
+    "_missionId",
+    "_questId",
+    "dungeonMissionId",
+})
 
 
 def safe_text(value: Any) -> str:
     return str(value if value is not None else "").strip()
+
+
+def _original_file_kind(source_file: str) -> str:
+    normalized = source_file.replace("\\", "/")
+    for marker, kind in (
+        ("/LevelScriptData/", "levelscript"),
+        ("/LevelData/", "leveldata"),
+        ("/MissionRuntimeAsset/", "mission_runtime"),
+        ("/SpawnerConfigData/", "spawner_config"),
+        ("/SpawnerConfig/", "spawner_config"),
+        ("/GameplayConfig/", "gameplay_config"),
+        ("/Table/", "table"),
+    ):
+        if marker in normalized:
+            return kind
+    return "original_game_data"
+
+
+def collect_related_original_files(*values: Any) -> list[dict[str, str]]:
+    """Collect exact original-data sources from nested evidence structures."""
+    paths: set[str] = set()
+
+    def walk(value: Any, field: str = "") -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                walk(item, safe_text(key))
+            return
+        if isinstance(value, (list, tuple, set)):
+            for item in value:
+                walk(item, field)
+            return
+        if not isinstance(value, str):
+            return
+        path = safe_text(value).replace("\\", "/")
+        if (
+            path.startswith("export_full/")
+            and field.lower() in {
+                "source",
+                "sourcefile",
+                "sourcefiles",
+                "registrysourcefile",
+            }
+        ):
+            paths.add(path)
+
+    for value in values:
+        walk(value)
+    return [
+        {
+            "kind": _original_file_kind(path),
+            "sourceFile": path,
+            "relationship": "exact_typed_activation_frontier_context",
+        }
+        for path in sorted(paths)
+    ]
+
+
+def structured_identity_cocarrier_census(
+    receiver_rows: list[dict[str, Any]],
+    *,
+    structured_json_root: Path = DEFAULT_STRUCTURED_JSON_ROOT,
+) -> dict[str, Any]:
+    """Census direct authored LevelScript + mission/quest identity records.
+
+    The scan is schema-key driven and covers every JSON file under the selected
+    original structured-data root.  It admits no filename-derived identities
+    and fails closed when a new direct key-pair shape appears.
+    """
+    receiver_ids = {
+        safe_text(row.get("scriptId"))
+        for row in receiver_rows
+        if safe_text(row.get("scriptId"))
+    }
+    candidate_files = 0
+    parsed_files = 0
+    visited_records = 0
+    parse_failures: list[dict[str, str]] = []
+    rows: list[dict[str, Any]] = []
+    key_pairs: Counter[str] = Counter()
+    key_tokens = [
+        f'"{key}"'.encode("utf-8")
+        for key in sorted(STRUCTURED_SCRIPT_IDENTITY_KEYS)
+    ]
+
+    def scalar_values(value: Any) -> list[str]:
+        if isinstance(value, bool):
+            return []
+        if isinstance(value, (str, int)):
+            return [safe_text(value)] if safe_text(value) else []
+        if isinstance(value, list):
+            return sorted({
+                safe_text(item)
+                for item in value
+                if not isinstance(item, bool)
+                and isinstance(item, (str, int))
+                and safe_text(item)
+            })
+        return []
+
+    def walk(value: Any, path: str, source_file: str) -> None:
+        nonlocal visited_records
+        if isinstance(value, dict):
+            visited_records += 1
+            script_fields = {
+                key: scalar_values(item)
+                for key, item in value.items()
+                if key in STRUCTURED_SCRIPT_IDENTITY_KEYS
+                and scalar_values(item)
+            }
+            mission_fields = {
+                key: scalar_values(item)
+                for key, item in value.items()
+                if key in STRUCTURED_MISSION_IDENTITY_KEYS
+                and scalar_values(item)
+            }
+            if script_fields and mission_fields:
+                for script_key in script_fields:
+                    for mission_key in mission_fields:
+                        key_pairs[f"{script_key}+{mission_key}"] += 1
+                matched_receivers = sorted({
+                    script_id
+                    for values in script_fields.values()
+                    for script_id in values
+                    if script_id in receiver_ids
+                })
+                key_pair_set = {
+                    (script_key, mission_key)
+                    for script_key in script_fields
+                    for mission_key in mission_fields
+                }
+                classification = (
+                    "subgame_dungeon_mission_binding"
+                    if key_pair_set == {("bindScriptId", "dungeonMissionId")}
+                    else "unreviewed_direct_identity_carrier"
+                )
+                rows.append({
+                    "sourceFile": source_file,
+                    "recordPath": path,
+                    "scriptFields": script_fields,
+                    "missionFields": mission_fields,
+                    "receiverScriptIds": matched_receivers,
+                    "classification": classification,
+                    "ownershipAction": (
+                        "existing_subgame_binding_contract"
+                        if classification == "subgame_dungeon_mission_binding"
+                        else "review_required"
+                    ),
+                })
+            for key, item in value.items():
+                walk(item, f"{path}.{key}" if path else safe_text(key), source_file)
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                walk(item, f"{path}[{index}]", source_file)
+
+    if structured_json_root.is_dir():
+        for path in sorted(structured_json_root.rglob("*.json")):
+            try:
+                data = read_bytes_cached(path)
+            except OSError as exc:
+                parse_failures.append({
+                    "sourceFile": rel_path(path),
+                    "error": f"read failed: {exc}",
+                })
+                continue
+            if not any(token in data for token in key_tokens):
+                continue
+            candidate_files += 1
+            try:
+                payload = json.loads(data.decode("utf-8-sig"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                parse_failures.append({
+                    "sourceFile": rel_path(path),
+                    "error": f"JSON parse failed: {exc}",
+                })
+                continue
+            parsed_files += 1
+            walk(payload, "", rel_path(path))
+
+    unreviewed = [
+        row for row in rows
+        if row["classification"] == "unreviewed_direct_identity_carrier"
+    ]
+    receiver_matches = [row for row in rows if row["receiverScriptIds"]]
+    failures: list[dict[str, Any]] = []
+    if not structured_json_root.is_dir():
+        failures.append({
+            "validator": "structured_identity_cocarrier_census",
+            "gate": "structuredJsonRoot",
+            "expected": "directory",
+            "actual": "missing",
+            "sourceFile": rel_path(structured_json_root),
+        })
+    if candidate_files == 0 or parsed_files == 0:
+        failures.append({
+            "validator": "structured_identity_cocarrier_census",
+            "gate": "candidateDiscovery",
+            "expected": ">=1 parsed script-identity JSON file",
+            "actual": {
+                "candidateFiles": candidate_files,
+                "parsedFiles": parsed_files,
+            },
+            "sourceFile": rel_path(structured_json_root),
+        })
+    if parse_failures:
+        failures.append({
+            "validator": "structured_identity_cocarrier_census",
+            "gate": "completeJsonParse",
+            "expected": [],
+            "actual": parse_failures,
+            "sourceFile": rel_path(structured_json_root),
+        })
+    if unreviewed:
+        failures.append({
+            "validator": "structured_identity_cocarrier_census",
+            "gate": "allDirectCarrierShapesReviewed",
+            "expected": [],
+            "actual": unreviewed,
+            "sourceFile": unreviewed[0]["sourceFile"],
+        })
+    validation = {
+        "status": "validation_failed" if failures else "validated",
+        "failures": failures,
+    }
+    return {
+        "schema": "structuredLevelScriptMissionIdentityCensus.v1",
+        "sourceRoot": rel_path(structured_json_root),
+        "scriptIdentityKeys": sorted(STRUCTURED_SCRIPT_IDENTITY_KEYS),
+        "missionIdentityKeys": sorted(STRUCTURED_MISSION_IDENTITY_KEYS),
+        "candidateFileCount": candidate_files,
+        "parsedFileCount": parsed_files,
+        "visitedRecordCount": visited_records,
+        "directCarrierCount": len(rows),
+        "keyPairCounts": dict(sorted(key_pairs.items())),
+        "receiverMatchCount": len(receiver_matches),
+        "receiverScriptIds": sorted({
+            script_id
+            for row in receiver_matches
+            for script_id in row["receiverScriptIds"]
+        }),
+        "rows": rows,
+        "finding": (
+            "The complete selected structured-data corpus exposes direct "
+            "LevelScript plus mission/quest identities only through reviewed "
+            "SubGame bindScriptId+dungeonMissionId records; none currently names "
+            "an unresolved native Story receiver script."
+        ),
+        "boundary": (
+            "This covers exact keys co-carried in one authored JSON record. "
+            "Ancestor-container proximity, filenames, numeric adjacency, OCR, and "
+            "manual overrides are not identity evidence. A future new key-pair "
+            "shape fails validation instead of being promoted automatically."
+        ),
+        "validation": validation,
+    }
 
 
 def receiver_script_rows(index_payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -167,12 +441,16 @@ def receiver_script_rows(index_payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "storyKeys": set(),
                 "storyKinds": set(),
                 "sourceFiles": set(),
+                "listenerHeaderLocalIds": set(),
             },
         )
         slot["receiverNodeCount"] += 1
         event_name = safe_text(node.get("eventName"))
         if event_name:
             slot["eventNames"].add(event_name)
+        header_local_id = selector.get("listenerHeaderLocalId")
+        if isinstance(header_local_id, int):
+            slot["listenerHeaderLocalIds"].add(header_local_id)
         for story_file in node.get("storyFiles") or []:
             if not isinstance(story_file, dict):
                 continue
@@ -196,6 +474,9 @@ def receiver_script_rows(index_payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "storyKeys": sorted(slot["storyKeys"]),
                 "storyKinds": sorted(slot["storyKinds"]),
                 "sourceFiles": sorted(slot["sourceFiles"]),
+                "listenerHeaderLocalIds": sorted(
+                    slot["listenerHeaderLocalIds"]
+                ),
             }
         )
     rows.sort(key=lambda row: (row["levelId"], int(row["scriptId"])))
@@ -204,14 +485,53 @@ def receiver_script_rows(index_payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 def manual_control_targets(
     payload: dict[str, Any],
+    self_control_contract: dict[str, Any] | None = None,
 ) -> dict[tuple[str, str], list[dict[str, Any]]]:
-    """Index literal manual-control targets without treating defaults as edges."""
+    """Index literal and binary-validated current-context manual targets."""
     targets: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    contract = self_control_contract or {}
+    operand_contract = contract.get("serializedOperandContract") or {}
+    self_contract_validated = (
+        (contract.get("validation") or {}).get("status") == "validated"
+        and safe_text(contract.get("classification"))
+        == "current_context_manual_start_self_target"
+        and (contract.get("discoveryPattern") or {}).get(
+            "serializedObjectInputs"
+        )
+        == []
+        and operand_contract.get("levelIdParamSource") is not None
+        and operand_contract.get("scriptIdParamSource") is not None
+    )
     for row in payload.get("rows") or []:
         if not isinstance(row, dict):
             continue
         source_level = safe_text(row.get("levelId"))
         source_script = safe_text(row.get("scriptId"))
+        manual_control = row.get("manualControl") or {}
+        parameter_sources = manual_control.get("parameterSources") or {}
+        if (
+            self_contract_validated
+            and safe_text(row.get("action")) == "ManualStartLevelScript"
+            and bool(row.get("activationPair"))
+            and parameter_sources
+            == {
+                "levelId": operand_contract.get("levelIdParamSource"),
+                "scriptId": operand_contract.get("scriptIdParamSource"),
+            }
+            and source_level
+            and source_script
+        ):
+            targets[(source_level, source_script)].append({
+                "sourceLevelId": source_level,
+                "sourceScriptId": source_script,
+                "localId": row.get("localId"),
+                "action": "ManualStartLevelScript",
+                "selfTarget": True,
+                "targetResolution": "current_context_self",
+                "parameterSources": parameter_sources,
+                "headerLinkedEvent": row.get("linkedEvent") or {},
+                "sourceFile": safe_text(row.get("file")),
+            })
         for target in row.get("literalTargets") or []:
             if not isinstance(target, dict):
                 continue
@@ -228,6 +548,7 @@ def manual_control_targets(
                     "selfTarget": (
                         source_level == level_id and source_script == script_id
                     ),
+                    "targetResolution": "literal_serialized_identity",
                     "sourceFile": safe_text(row.get("file")),
                 }
             )
@@ -898,17 +1219,57 @@ def annotate_task_condition_operands(
                 )
 
 
+def _typed_levelscript_condition_operands(
+    value: Any,
+) -> list[dict[str, str]]:
+    """Recover exact ``(levelId, scriptId)`` operands from condition trees.
+
+    Mission objective summaries also expose a flat ``levelScriptIds`` list,
+    but script ids are not globally unique.  Only the original typed condition
+    operand carries the level needed for a fail-closed corpus join.
+    """
+    operands: list[dict[str, str]] = []
+    if isinstance(value, list):
+        for item in value:
+            operands.extend(_typed_levelscript_condition_operands(item))
+        return operands
+    if not isinstance(value, dict):
+        return operands
+    facts = value.get("facts")
+    if isinstance(facts, dict):
+        level_id = safe_text(facts.get("mapId") or facts.get("levelId"))
+        script_value = facts.get("scriptId")
+        if isinstance(script_value, dict):
+            script_value = script_value.get("scriptId")
+        script_id = safe_text(script_value)
+        condition_type = safe_text(value.get("type"))
+        if level_id and script_id and condition_type:
+            operands.append({
+                "levelId": level_id,
+                "scriptId": script_id,
+                "conditionType": condition_type,
+                "propertyKey": safe_text(facts.get("key")),
+            })
+    for nested in value.values():
+        if isinstance(nested, (dict, list)):
+            operands.extend(_typed_levelscript_condition_operands(nested))
+    return operands
+
+
 def mission_runtime_script_consumers(
     mission_root: Path,
-) -> dict[str, list[dict[str, Any]]]:
-    """Index typed objective operands that name a LevelScript id."""
-    consumers: dict[str, list[dict[str, Any]]] = defaultdict(list)
+) -> dict[tuple[str, str], list[dict[str, Any]]]:
+    """Index exact typed objective operands by level and LevelScript id."""
+    consumers: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     if not mission_root.is_dir():
         return consumers
     for path in sorted(mission_root.glob("*.json")):
         payload = read_json(path) or {}
         mission = payload.get("mission") or {}
         mission_id = safe_text(mission.get("id")) or path.stem
+        original_source = safe_text(mission.get("source"))
+        if not original_source or not (ROOT / original_source).is_file():
+            original_source = ""
         for node in payload.get("nodes") or []:
             if not isinstance(node, dict):
                 continue
@@ -916,20 +1277,89 @@ def mission_runtime_script_consumers(
             for objective in node.get("objectives") or []:
                 if not isinstance(objective, dict):
                     continue
-                for script_id_raw in objective.get("levelScriptIds") or []:
-                    script_id = safe_text(script_id_raw)
-                    if not script_id:
-                        continue
-                    consumers[script_id].append(
-                        {
-                            "missionId": mission_id,
-                            "questId": quest_id,
-                            "objectiveIndex": objective.get("index"),
-                            "conditionTypes": objective.get("conditionTypes") or [],
-                            "sourceFile": rel_path(path),
-                        }
+                operands = _typed_levelscript_condition_operands(
+                    objective.get("condition")
+                )
+                grouped: dict[tuple[str, str], list[dict[str, str]]] = (
+                    defaultdict(list)
+                )
+                for operand in operands:
+                    grouped[(operand["levelId"], operand["scriptId"])].append(
+                        operand
                     )
+                for (level_id, script_id), exact_operands in grouped.items():
+                    condition_types = sorted({
+                        operand["conditionType"] for operand in exact_operands
+                    })
+                    property_keys = sorted({
+                        operand["propertyKey"] for operand in exact_operands
+                        if operand["propertyKey"]
+                    })
+                    consumers[(level_id, script_id)].append({
+                        "missionId": mission_id,
+                        "questId": quest_id,
+                        "objectiveIndex": objective.get("index"),
+                        "levelId": level_id,
+                        "scriptId": script_id,
+                        "conditionTypes": condition_types,
+                        "propertyKeys": property_keys,
+                        "sourceFile": original_source,
+                        "pipelineSourceFile": rel_path(path),
+                    })
     return consumers
+
+
+def authored_property_contract(
+    hosts: list[dict[str, Any]],
+    consumers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Classify LevelData properties without treating names as ownership.
+
+    ``lt:`` keys are generated task/lifecycle slots and ``@<id>_`` keys are
+    typed module namespaces. Remaining names are authored contracts, but only
+    an exact MissionRuntime property operand is an observed mission-side read.
+    Neither category proves who writes the property or orders Story playback.
+    """
+    names = sorted({
+        safe_text(name)
+        for host in hosts
+        for name in (host.get("briefData") or {}).get("propertyNames") or []
+        if safe_text(name)
+    })
+    generated_names = [name for name in names if name.startswith("lt:")]
+    module_names = [name for name in names if re.fullmatch(r"@\d+_.+", name)]
+    authored_names = [
+        name for name in names
+        if name not in generated_names and name not in module_names
+    ]
+    observed_names = sorted({
+        safe_text(key)
+        for consumer in consumers
+        for key in consumer.get("propertyKeys") or []
+        if safe_text(key) in authored_names
+    })
+    return {
+        "authoredNames": authored_names,
+        "generatedLifecycleNames": generated_names,
+        "typedModuleNames": module_names,
+        "missionObservedNames": observed_names,
+        "classification": (
+            "authored_property_with_exact_mission_observer"
+            if observed_names
+            else "authored_property_unobserved_by_mission"
+            if authored_names
+            else "generated_or_typed_module_properties_only"
+            if names
+            else "no_leveldata_properties"
+        ),
+        "ownership": False,
+        "orderEvidence": False,
+        "evidenceBoundary": (
+            "An authored LevelData property name is a script-local contract. "
+            "An exact MissionRuntime property operand proves a mission-side "
+            "read only; neither identifies the writer, playback owner, or order."
+        ),
+    }
 
 
 def mission_areas_by_level(
@@ -1038,6 +1468,79 @@ def exact_memorypack_string_tokens(
         if token in data:
             hits.append(value)
     return hits
+
+
+def mission_runtime_ids(root: Path) -> set[str]:
+    """Return only ids backed by original MissionRuntimeAsset files."""
+    return {
+        path.stem
+        for path in root.glob("*.json")
+        if path.is_file() and path.stem
+    }
+
+
+def annotate_task_progress_property_contract(
+    decoded_task_map: dict[str, Any] | None,
+    hosts: list[dict[str, Any]],
+) -> None:
+    """Match task/condition ids to their exact LevelData progress properties.
+
+    The current LevelData payload persists one ``lt:p`` and one ``lt:mp`` key
+    for every serialized task condition. This is a structural task-runtime
+    identity contract; it is not a mission owner or activation selector.
+    """
+    if not decoded_task_map:
+        return
+    properties: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for host in hosts:
+        source_file = safe_text(host.get("sourceFile"))
+        for row in (host.get("briefData") or {}).get("properties") or []:
+            if not isinstance(row, dict):
+                continue
+            name = safe_text(row.get("name"))
+            if name:
+                properties[name].append({
+                    "sourceFile": source_file,
+                    "valueType": row.get("valueType"),
+                    "atomCount": row.get("atomCount"),
+                    "atoms": row.get("atoms") or [],
+                })
+    for task in decoded_task_map.get("tasks") or []:
+        task_key = safe_text(task.get("taskKey"))
+        condition_keys = [
+            safe_text(row.get("conditionKey"))
+            for row in task.get("conditions") or []
+            if isinstance(row, dict) and safe_text(row.get("conditionKey"))
+        ]
+        expected = sorted({
+            f"lt:{prefix}:{task_key}:{condition_key}"
+            for condition_key in condition_keys
+            for prefix in ("p", "mp")
+        }) if task_key else []
+        matched = [
+            {
+                "name": name,
+                "placements": properties.get(name) or [],
+            }
+            for name in expected
+            if properties.get(name)
+        ]
+        missing = [name for name in expected if not properties.get(name)]
+        task["progressPropertyContract"] = {
+            "schema": "levelScriptTaskProgressProperties.v1",
+            "status": "validated" if expected and not missing else "incomplete",
+            "expectedPropertyCount": len(expected),
+            "matchedPropertyCount": len(matched),
+            "conditionCount": len(condition_keys),
+            "properties": matched,
+            "missingProperties": missing,
+            "missionOwnerStatus": "unresolved",
+            "evidenceBoundary": (
+                "The exact lt:p/lt:mp property pair persists progress for this "
+                "serialized task condition inside its LevelData host. It carries "
+                "no missionId, questId, Story identity, or playback order."
+            ),
+        }
 
 
 def compact_leveldata_property(property_row: dict[str, Any]) -> dict[str, Any]:
@@ -1423,9 +1926,15 @@ def activation_class(
     hosts: list[dict[str, Any]],
     incoming_manual_controls: list[dict[str, Any]],
     subgame_bindings: list[dict[str, Any]] | None = None,
+    *,
+    start_policy_validated: bool = False,
+    activation_control_validated: bool = False,
+    active_phase_receiver_validated: bool = False,
 ) -> str:
     """Classify only the static carriers that the audit actually decodes."""
     if subgame_bindings:
+        if activation_control_validated:
+            return "subgame_interaction_manual_start"
         return "subgame_bind_script_activation_scope"
     if not levelscript:
         return "levelscript_missing_or_undecoded"
@@ -1437,6 +1946,19 @@ def activation_class(
     ]
     if cross_targets:
         return "literal_cross_script_manual_control"
+    current_context_self_starts = [
+        row
+        for row in incoming_manual_controls
+        if row.get("selfTarget")
+        and safe_text(row.get("action")) == "ManualStartLevelScript"
+        and safe_text(row.get("targetResolution"))
+        == "current_context_self"
+        and bool(row.get("headerLinkedEvent"))
+    ]
+    if current_context_self_starts:
+        return "header_linked_current_context_self_manual_start"
+    if start_type == "SameWithActive" and start_policy_validated:
+        return "same_with_active_binary_active_gate"
     if start_type != "Manual":
         if (levelscript.get("startShapeListCount") or 0) > 0:
             return "nonmanual_start_with_shapes"
@@ -1457,8 +1979,257 @@ def activation_class(
         and (levelscript.get("taskMapCount") or 0) == 0
     )
     if no_parent and no_shapes and no_task_map:
+        if active_phase_receiver_validated:
+            return "manual_start_active_phase_receiver"
+        if activation_control_validated:
+            return "manual_start_runtime_request_no_static_carrier"
         return "manual_start_no_static_activation_carrier"
     return "manual_start_static_carrier_unresolved"
+
+
+def exact_active_phase_receiver_contract(
+    script_data: bytes,
+    receiver: dict[str, Any],
+    activation_control: dict[str, Any],
+) -> dict[str, Any]:
+    """Join exact receiver header ids to their original serialized phase."""
+    header_ids = sorted({
+        value
+        for value in receiver.get("listenerHeaderLocalIds") or []
+        if isinstance(value, int)
+    })
+    topology, diagnostic = decode_levelscript_native_action_topology(script_data)
+    roots_by_id: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    if isinstance(topology, dict):
+        for root in topology.get("eventRoots") or []:
+            if isinstance(root, dict) and isinstance(root.get("localId"), int):
+                roots_by_id[root["localId"]].append(root)
+    rows: list[dict[str, Any]] = []
+    missing: list[int] = []
+    ambiguous: list[int] = []
+    for header_id in header_ids:
+        candidates = roots_by_id.get(header_id) or []
+        if not candidates:
+            missing.append(header_id)
+            continue
+        if len(candidates) != 1:
+            ambiguous.append(header_id)
+            continue
+        root = candidates[0]
+        rows.append({
+            "listenerHeaderLocalId": header_id,
+            "headerName": safe_text(root.get("headerName")),
+            "recordOffset": root.get("recordOffset"),
+            "triggerActiveDuring": root.get("triggerActiveDuring"),
+            "nextActionLocalId": root.get("nextActionLocalId"),
+        })
+    flow = activation_control.get("activeReceiverFlow") or {}
+    active_value = (flow.get("triggerActiveDuringValues") or {}).get("Active")
+    binary_validated = (
+        (activation_control.get("validation") or {}).get("status") == "validated"
+        and flow.get("setupRegisterTriggerCallCount") == 1
+        and flow.get("activePhaseEnableBetweenStateSetters") is True
+        and isinstance(active_value, int)
+    )
+    all_active = (
+        bool(rows)
+        and len(rows) == len(header_ids)
+        and all(row.get("triggerActiveDuring") == active_value for row in rows)
+    )
+    validated = (
+        bool(header_ids)
+        and isinstance(topology, dict)
+        and safe_text(topology.get("status")).startswith(
+            "exact_complete_action_map"
+        )
+        and not missing
+        and not ambiguous
+        and all_active
+        and binary_validated
+    )
+    return {
+        "schema": "exactActivePhaseReceiver.v1",
+        "status": "validated" if validated else "unresolved",
+        "classification": (
+            "registered_active_phase_story_receivers"
+            if validated
+            else "receiver_phase_unresolved"
+        ),
+        "listenerHeaderCount": len(header_ids),
+        "resolvedHeaderCount": len(rows),
+        "missingHeaderLocalIds": missing,
+        "ambiguousHeaderLocalIds": ambiguous,
+        "allReceiversActivePhase": all_active,
+        "triggerActiveDuringValues": flow.get("triggerActiveDuringValues") or {},
+        "receiverHeaders": rows,
+        "topologySchema": (
+            topology.get("schema") if isinstance(topology, dict) else None
+        ),
+        "topologyStatus": (
+            topology.get("status") if isinstance(topology, dict) else None
+        ),
+        "topologyDiagnostic": diagnostic,
+        "runtimeFlow": {
+            key: flow.get(key)
+            for key in (
+                "setupRegisterTriggerCallCount",
+                "setupRegisterTriggerCallOffsets",
+                "activePhaseEnableArguments",
+                "activePhaseEnableCallOffsets",
+                "activeBeginStateValue",
+                "waitForSubEntityInitNewlyStateValue",
+                "activeBeginSetterOffsets",
+                "waitForSubEntityInitNewlySetterOffsets",
+                "activePhaseEnableBetweenStateSetters",
+            )
+        },
+        "methods": {
+            key: (activation_control.get("methods") or {}).get(key) or {}
+            for key in (
+                "Setup",
+                "RegisterTriggerFromLevelScript",
+                "SetAllTriggerActiveByPhase",
+                "UpdateRuntimeState",
+            )
+        },
+        "finding": (
+            "Every exact Story receiver header in this LevelScript is serialized "
+            "for TriggerActiveDuring.Active. The current binary registers the "
+            "LevelScript trigger graph during Setup and enables the Active phase "
+            "while advancing through ActiveBegin."
+            if validated
+            else "The exact serialized receiver phase could not be validated."
+        ),
+        "evidenceBoundary": (
+            "This proves receiver availability in the LevelScript Active phase. "
+            "It does not prove who selected public Active state, that an event "
+            "fired, mission ownership, branch choice, or cross-Story order. A "
+            "Manual start policy governs the later Start phase and is not itself "
+            "a missing carrier for these Active-phase receiver headers."
+        ),
+    }
+
+
+def exact_client_active_request_contract(
+    hosts: list[dict[str, Any]],
+    activation_control: dict[str, Any],
+    levelscript: dict[str, Any],
+) -> dict[str, Any]:
+    """Join one validated LevelData type to the generic binary selector.
+
+    This is intentionally type-driven.  Script ids, filenames, Story keys, and
+    mission candidates never select a branch.
+    """
+    selector = activation_control.get("activationSelectorFlow") or {}
+    active_area_flow = activation_control.get("activeAreaFlow") or {}
+    active_shapes = levelscript.get("activeShapeList") or {}
+    type_values = selector.get("levelScriptTypeValues") or {}
+    validation = activation_control.get("validation") or {}
+    host_types = [
+        (host.get("briefData") or {}).get("levelScriptType")
+        for host in hosts
+        if isinstance((host.get("briefData") or {}).get("levelScriptType"), int)
+    ]
+    binary_validated = (
+        activation_control.get("schema") == "levelScriptActivationControl.v6"
+        and validation.get("status") == "validated"
+        and selector.get("nonSubLevelRequiresEnabledAndActiveArea") is True
+        and selector.get("subLevelRequiresPublicActive") is True
+        and selector.get("nonSubLevelSendsActiveTrueAfterPreActive") is True
+        and selector.get("subLevelSkipsActiveTrueRequest") is True
+        and type_values.get("SubLevelScript") == 4
+    )
+    exact_host = len(hosts) == 1 and len(host_types) == 1
+    level_script_type = host_types[0] if exact_host else None
+    type_name = next(
+        (
+            name for name, value in type_values.items()
+            if value == level_script_type
+        ),
+        "",
+    )
+    validated = binary_validated and exact_host and bool(type_name)
+    is_sublevel = validated and level_script_type == type_values.get(
+        "SubLevelScript"
+    )
+    classification = "activation_selector_unresolved"
+    if validated:
+        classification = (
+            "sublevel_waits_for_public_active"
+            if is_sublevel
+            else "client_runtime_active_request_after_enabled_area_gate"
+        )
+    spatial_gate_validated = (
+        validated
+        and not is_sublevel
+        and active_shapes.get("status") == "decoded_unique"
+        and active_shapes.get("candidateCount") == 1
+        and isinstance(active_shapes.get("count"), int)
+        and int(active_shapes["count"]) > 0
+        and len(active_shapes.get("shapes") or []) == int(active_shapes["count"])
+        and active_area_flow.get("emptyActiveListSetsWithinTrue") is True
+        and active_area_flow.get("activeShapeHitSetsWithinTrue") is True
+        and active_area_flow.get("missingOutsideListPreservesPriorWithin") is True
+        and active_area_flow.get("outsideShapeMissPreservesPriorWithin") is True
+        and active_area_flow.get("outsideShapeHitClearsWithin") is True
+    )
+    return {
+        "schema": "exactClientActiveRequest.v1",
+        "status": "validated" if validated else "unresolved",
+        "classification": classification,
+        "validatedLevelDataHostCount": len(hosts),
+        "levelScriptType": level_script_type,
+        "levelScriptTypeName": type_name,
+        "clientProducesActiveRequest": validated and not is_sublevel,
+        "entryPublicState": (
+            "Active" if is_sublevel else "Enabled" if validated else ""
+        ),
+        "requiresActiveAreaGate": validated and not is_sublevel,
+        "runtimePath": (
+            [
+                "Enabled(2)",
+                "UpdateWithinActiveArea",
+                "PreActive(7)",
+                "PreActiveEndSendActiveState(9)",
+                "SendLevelScriptSetActive(true)",
+                "WaitForStateActive(10)",
+            ]
+            if validated and not is_sublevel
+            else ["Active(3)", "PreActive(7)", "WaitForStateActive(10)"]
+            if is_sublevel
+            else []
+        ),
+        "selectorFlow": selector if validated else {},
+        "spatialGateStatus": (
+            "validated_runtime_position_dependent"
+            if spatial_gate_validated
+            else "not_applicable"
+            if is_sublevel
+            else "unresolved"
+        ),
+        "activeShapeList": active_shapes if spatial_gate_validated else {},
+        "activeAreaFlow": active_area_flow if spatial_gate_validated else {},
+        "finding": (
+            "The exact LevelData type selects the generic non-SubLevelScript "
+            "branch: after public Enabled and a successful active-area check, "
+            "the client runtime enters PreActive and emits active=true."
+            if validated and not is_sublevel
+            else "The exact LevelData type selects the SubLevelScript branch, "
+            "which waits for public Active and does not emit active=true."
+            if is_sublevel
+            else "The original LevelData type could not be joined uniquely to "
+            "the validated binary activation selector."
+        ),
+        "evidenceBoundary": (
+            "This proves the generic request-producing branch selected by the "
+            "original LevelData type and, where decoded, its authored activation "
+            "volume. The validated snapshot/notification carriers prove public "
+            "Enabled is server-supplied, but not the server-side selection rule, player "
+            "position, whether the spatial gate passed in a particular playthrough, "
+            "which server branch accepted Active, mission ownership, event firing, "
+            "or Story order."
+        ),
+    }
 
 
 def build_report(
@@ -1477,13 +2248,74 @@ def build_report(
         DEFAULT_GAME_MECHANIC_CONDITION_TABLE
     ),
     dungeon_table_path: Path = DEFAULT_DUNGEON_TABLE,
+    structured_json_root: Path = DEFAULT_STRUCTURED_JSON_ROOT,
 ) -> dict[str, Any]:
-    mission_ids = {
+    known_mission_ids = {
         safe_text(row.get("id"))
         for row in index_payload.get("missions") or []
         if isinstance(row, dict) and safe_text(row.get("id"))
     }
-    incoming_by_target = manual_control_targets(manual_control_payload)
+    authored_mission_ids = mission_runtime_ids(mission_runtime_root)
+    task_authority = (
+        (index_payload.get("runtimeContract") or {}).get(
+            "levelScriptTaskAuthorityAudit"
+        )
+        or {}
+    )
+    start_policy = (
+        (index_payload.get("runtimeContract") or {}).get(
+            "levelScriptStartPolicyAudit"
+        )
+        or {}
+    )
+    start_policy_validated = (
+        (start_policy.get("validation") or {}).get("status") == "validated"
+        and safe_text(start_policy.get("classification"))
+        == "same_with_active_enters_prestart_when_active"
+        and (start_policy.get("discoveryPattern") or {}).get(
+            "objectIdentityInputs"
+        )
+        == []
+    )
+    manual_self_control = (
+        (index_payload.get("runtimeContract") or {}).get(
+            "levelScriptManualSelfControlAudit"
+        )
+        or {}
+    )
+    manual_self_control_validated = (
+        (manual_self_control.get("validation") or {}).get("status")
+        == "validated"
+        and safe_text(manual_self_control.get("classification"))
+        == "current_context_manual_start_self_target"
+        and (manual_self_control.get("discoveryPattern") or {}).get(
+            "serializedObjectInputs"
+        )
+        == []
+    )
+    activation_control = (
+        (index_payload.get("runtimeContract") or {}).get(
+            "levelScriptActivationControlAudit"
+        )
+        or {}
+    )
+    activation_control_validated = (
+        (activation_control.get("validation") or {}).get("status")
+        == "validated"
+        and safe_text(activation_control.get("classification"))
+        == "server_state_subgame_and_runtime_request_paths"
+        and (activation_control.get("discoveryPattern") or {}).get(
+            "serializedObjectInputs"
+        )
+        == [
+            "SubGameInstanceData.id",
+            "SubGameInstanceData.bindScriptId",
+        ]
+    )
+    incoming_by_target = manual_control_targets(
+        manual_control_payload,
+        manual_self_control,
+    )
     subgames_by_script = subgame_script_bindings(index_payload)
     consumers_by_script = mission_runtime_script_consumers(mission_root)
     task_extra_info = script_task_extra_info_rows(
@@ -1505,6 +2337,11 @@ def build_report(
         dungeon_source=rel_path(dungeon_table_path),
         condition_source=rel_path(game_mechanic_condition_table_path),
     )
+    receiver_sources = receiver_script_rows(index_payload)
+    structured_identity_census = structured_identity_cocarrier_census(
+        receiver_sources,
+        structured_json_root=structured_json_root,
+    )
     rows: list[dict[str, Any]] = []
     classes: Counter[str] = Counter()
     start_types: Counter[str] = Counter()
@@ -1512,11 +2349,12 @@ def build_report(
     task_condition_types: Counter[str] = Counter()
     task_operand_source_types: Counter[str] = Counter()
     task_mission_consumer_types: Counter[str] = Counter()
+    authored_property_scripts: Counter[str] = Counter()
     task_conditions_with_operand_sources = 0
     task_conditions_with_mission_consumers = 0
     tasks_with_mission_consumers = 0
 
-    for receiver in receiver_script_rows(index_payload):
+    for receiver in receiver_sources:
         level_id = receiver["levelId"]
         script_id = receiver["scriptId"]
         script_path = levelscript_root / level_id / f"{script_id}.json"
@@ -1528,7 +2366,7 @@ def build_report(
         hosts = validated_leveldata_hosts(
             level_id,
             script_id,
-            mission_ids,
+            known_mission_ids,
             leveldata_root=leveldata_root,
             levelscript_root=levelscript_root,
         )
@@ -1560,14 +2398,18 @@ def build_report(
             }
             for context in dungeon_contexts_by_scene.get(level_id, [])
         ]
-        consumers = consumers_by_script.get(script_id, [])
+        consumers = consumers_by_script.get((level_id, script_id), [])
+        property_contract = authored_property_contract(hosts, consumers)
+        authored_property_scripts.update(
+            set(property_contract["authoredNames"])
+        )
         start_shape_area_matches = exact_start_shape_mission_area_matches(
             levelscript.get("startShapeListShapes") or [],
             mission_areas.get(level_id, []),
         )
         serialized_mission_ids = exact_memorypack_string_tokens(
             script_data,
-            mission_ids,
+            authored_mission_ids,
         )
         decoded_task_maps = decode_levelscript_task_conditions(
             script_data,
@@ -1583,6 +2425,7 @@ def build_report(
             subgames=subgames,
             extra_info=task_extra_info,
         )
+        annotate_task_progress_property_contract(decoded_task_map, hosts)
         annotate_task_condition_operands(
             decoded_task_map,
             level_id=level_id,
@@ -1620,11 +2463,29 @@ def build_report(
                     consumer_type = safe_text(consumer.get("conditionType"))
                     if consumer_type:
                         task_mission_consumer_types[consumer_type] += 1
+        active_phase_receiver = exact_active_phase_receiver_contract(
+            script_data,
+            receiver,
+            activation_control,
+        )
+        active_phase_receiver_validated = (
+            active_phase_receiver.get("status") == "validated"
+        )
+        client_active_request = exact_client_active_request_contract(
+            hosts,
+            activation_control,
+            levelscript,
+        )
         classification = activation_class(
             levelscript,
             hosts,
             incoming,
             subgames,
+            start_policy_validated=start_policy_validated,
+            activation_control_validated=activation_control_validated,
+            active_phase_receiver_validated=(
+                active_phase_receiver_validated
+            ),
         )
         classes[classification] += 1
         start_types[safe_text(levelscript.get("startTypeName")) or "[unresolved]"] += 1
@@ -1634,6 +2495,163 @@ def build_report(
             host_shapes["singleton_only"] += 1
         else:
             host_shapes["includes_multi_script_host"] += 1
+
+        related_original_files = collect_related_original_files(
+            {"sourceFile": rel_path(script_path)},
+            receiver,
+            hosts,
+            encounter_contexts,
+            subgames,
+            dungeon_contexts,
+            consumers,
+            decoded_task_map,
+        )
+        row_task_authority = task_authority if decoded_task_map else {}
+        row_start_policy = (
+            start_policy
+            if start_policy_validated
+            and safe_text(levelscript.get("startTypeName")) == "SameWithActive"
+            else {}
+        )
+        row_manual_self_control = (
+            manual_self_control
+            if manual_self_control_validated
+            and any(
+                safe_text(control.get("targetResolution"))
+                == "current_context_self"
+                for control in incoming
+            )
+            else {}
+        )
+        activation_methods = activation_control.get("methods") or {}
+        row_activation_control = (
+            {
+                "schema": safe_text(activation_control.get("schema")),
+                "source": safe_text(activation_control.get("source")),
+                "classification": safe_text(
+                    activation_control.get("classification")
+                ),
+                "stateNotifyMessageId": (
+                    activation_control.get("messageIds") or {}
+                ).get("ScSceneLevelScriptStateNotify"),
+                "selfSceneInfoMessageId": (
+                    activation_control.get("messageIds") or {}
+                ).get("ScSelfSceneInfo"),
+                "selfSceneInfoHandlerMethod": activation_methods.get(
+                    "SelfSceneInfoHandler"
+                )
+                or {},
+                "handlerMethod": activation_methods.get(
+                    "StateNotifyHandler"
+                )
+                or {},
+                "updateStateMethod": activation_methods.get("UpdateState")
+                or {},
+                "publicStateFlow": activation_control.get("publicStateFlow")
+                or {},
+                "publicStateSourceFlow": activation_control.get(
+                    "publicStateSourceFlow"
+                )
+                or {},
+                "finding": safe_text(activation_control.get("finding")),
+                "evidenceBoundary": safe_text(
+                    activation_control.get("evidenceBoundary")
+                ),
+                "relatedOriginalFiles": (
+                    activation_control.get("relatedOriginalFiles") or []
+                ),
+                "validation": activation_control.get("validation") or {},
+            }
+            if activation_control_validated
+            else {}
+        )
+        row_client_start_request_control = (
+            {
+                **row_activation_control,
+                "activeRequestMessageId": (
+                    activation_control.get("messageIds") or {}
+                ).get("CsSceneSetLevelScriptActive"),
+                "startRequestMessageId": (
+                    activation_control.get("messageIds") or {}
+                ).get("CsSceneSetLevelScriptStart"),
+                "fieldOffsets": activation_control.get("fieldOffsets") or {},
+                "networkSetStartMethod": activation_methods.get(
+                    "NetworkSetStart"
+                )
+                or {},
+                "manualStartMethod": activation_methods.get("ManualStart") or {},
+                "runtimeSendStartMethod": activation_methods.get(
+                    "RuntimeSendStart"
+                )
+                or {},
+                "updateRuntimeStateMethod": activation_methods.get(
+                    "UpdateRuntimeState"
+                )
+                or {},
+                "clientRequestFlow": (
+                    activation_control.get("clientRequestFlow") or {}
+                ),
+                "directCallers": activation_control.get("directCallers") or {},
+            }
+            if activation_control_validated
+            else {}
+        )
+        row_subgame_start_control = (
+            {
+                **row_activation_control,
+                "challengeMethod": activation_methods.get(
+                    "ChallengeOnInteract"
+                )
+                or {},
+                "manualStartMethod": activation_methods.get("ManualStart")
+                or {},
+                "fieldOffsets": activation_control.get("fieldOffsets") or {},
+                "subGameInteractionFlow": (
+                    activation_control.get("subGameInteractionFlow") or {}
+                ),
+                "manualStartDirectCallers": (
+                    activation_control.get("manualStartDirectCallers") or []
+                ),
+            }
+            if activation_control_validated and subgames
+            else {}
+        )
+        related_paths = {
+            safe_text(related.get("sourceFile"))
+            for related in related_original_files
+        }
+        for related in row_task_authority.get("relatedOriginalFiles") or []:
+            if (
+                isinstance(related, dict)
+                and safe_text(related.get("sourceFile"))
+                and safe_text(related.get("sourceFile")) not in related_paths
+            ):
+                related_original_files.append(dict(related))
+                related_paths.add(safe_text(related.get("sourceFile")))
+        for related in row_start_policy.get("relatedOriginalFiles") or []:
+            if (
+                isinstance(related, dict)
+                and safe_text(related.get("sourceFile"))
+                and safe_text(related.get("sourceFile")) not in related_paths
+            ):
+                related_original_files.append(dict(related))
+                related_paths.add(safe_text(related.get("sourceFile")))
+        for related in row_manual_self_control.get("relatedOriginalFiles") or []:
+            if (
+                isinstance(related, dict)
+                and safe_text(related.get("sourceFile"))
+                and safe_text(related.get("sourceFile")) not in related_paths
+            ):
+                related_original_files.append(dict(related))
+                related_paths.add(safe_text(related.get("sourceFile")))
+        for related in row_activation_control.get("relatedOriginalFiles") or []:
+            if (
+                isinstance(related, dict)
+                and safe_text(related.get("sourceFile"))
+                and safe_text(related.get("sourceFile")) not in related_paths
+            ):
+                related_original_files.append(dict(related))
+                related_paths.add(safe_text(related.get("sourceFile")))
 
         rows.append(
             {
@@ -1647,6 +2665,17 @@ def build_report(
                     "actionMapRecordCount": levelscript.get(
                         "actionMapRecordCount"
                     ),
+                    "activeShapeList": levelscript.get("activeShapeList") or {},
+                    "activeShapeListStatus": safe_text(
+                        levelscript.get("activeShapeListStatus")
+                    ),
+                    "activeShapeListCount": levelscript.get(
+                        "activeShapeListCount"
+                    ),
+                    "activeShapeListShapes": levelscript.get(
+                        "activeShapeListShapes"
+                    )
+                    or [],
                     "startTypeRaw": levelscript.get("startTypeRaw"),
                     "startTypeName": safe_text(levelscript.get("startTypeName")),
                     "startShapeListStatus": safe_text(
@@ -1672,18 +2701,30 @@ def build_report(
                 "encounterControllerContexts": encounter_contexts,
                 "nominalMissionHostComparison": nominal_host_comparison,
                 "incomingLiteralManualControls": incoming,
+                "manualSelfControl": row_manual_self_control,
+                "publicStateControl": row_activation_control,
+                "clientStartRequestControl": row_client_start_request_control,
+                "activePhaseReceiverControl": active_phase_receiver,
+                "clientActiveRequestControl": client_active_request,
+                "subGameStartControl": row_subgame_start_control,
                 "subGameBindings": subgames,
                 "dungeonSceneContexts": dungeon_contexts,
                 "missionRuntimeScriptConsumers": consumers,
+                "authoredPropertyContract": property_contract,
                 "startShapeMissionAreaMatches": start_shape_area_matches,
                 "serializedMissionRuntimeIdTokens": serialized_mission_ids,
                 "decodedTaskMap": decoded_task_map,
+                "taskRuntimeAuthority": row_task_authority,
+                "startRuntimePolicy": row_start_policy,
+                "relatedOriginalFiles": related_original_files,
                 "activationClass": classification,
                 "missionOwnerStatus": "unresolved",
                 "evidenceBoundary": (
-                    "Static start/container/control fields narrow the missing "
-                    "activation carrier but do not identify a mission, quest, "
-                    "server-state producer, playback owner, or order."
+                    "The exact LevelData type now selects the generic client/public "
+                    "activation branch. The server supplies Enabled through the exact "
+                    "snapshot/notification carriers, but its selection rule, "
+                    "a mission or quest owner, event firing, playback ownership, or "
+                    "Story order."
                 ),
             }
         )
@@ -1698,6 +2739,48 @@ def build_report(
             "levelScriptRoot": rel_path(levelscript_root),
             "missionPipelineMissionRoot": rel_path(mission_root),
             "missionRuntimeRoot": rel_path(mission_runtime_root),
+            "missionRuntimeIdCount": len(authored_mission_ids),
+            "taskRuntimeAuthority": {
+                "schema": safe_text(task_authority.get("schema")),
+                "source": safe_text(task_authority.get("source")),
+                "classification": safe_text(
+                    task_authority.get("classification")
+                ),
+                "validation": task_authority.get("validation") or {},
+            },
+            "startRuntimePolicy": {
+                "schema": safe_text(start_policy.get("schema")),
+                "source": safe_text(start_policy.get("source")),
+                "classification": safe_text(
+                    start_policy.get("classification")
+                ),
+                "validation": start_policy.get("validation") or {},
+                "objectIdentityInputs": (
+                    start_policy.get("discoveryPattern") or {}
+                ).get("objectIdentityInputs"),
+            },
+            "manualSelfControl": {
+                "schema": safe_text(manual_self_control.get("schema")),
+                "source": safe_text(manual_self_control.get("source")),
+                "classification": safe_text(
+                    manual_self_control.get("classification")
+                ),
+                "validation": manual_self_control.get("validation") or {},
+                "serializedObjectInputs": (
+                    manual_self_control.get("discoveryPattern") or {}
+                ).get("serializedObjectInputs"),
+            },
+            "activationControl": {
+                "schema": safe_text(activation_control.get("schema")),
+                "source": safe_text(activation_control.get("source")),
+                "classification": safe_text(
+                    activation_control.get("classification")
+                ),
+                "validation": activation_control.get("validation") or {},
+                "serializedObjectInputs": (
+                    activation_control.get("discoveryPattern") or {}
+                ).get("serializedObjectInputs"),
+            },
             "spawnerRoot": rel_path(spawner_root),
             "scriptTaskExtraInfo": rel_path(script_task_extra_info_path),
             "worldEntityRegistry": rel_path(world_entity_registry_path),
@@ -1706,6 +2789,7 @@ def build_report(
                 game_mechanic_condition_table_path
             ),
             "dungeonTable": rel_path(dungeon_table_path),
+            "structuredJsonRoot": rel_path(structured_json_root),
             "encounterRuntimeEvidence": {
                 "runtimeType": ENCOUNTER_RUNTIME_TYPE,
                 "dataType": ENCOUNTER_DATA_TYPE,
@@ -1748,9 +2832,25 @@ def build_report(
                 "MissionRuntime owner, Story branch, or order edge."
             ),
             "subGameBoundary": (
-                "SubGame bindScriptId proves the runtime system that activates "
-                "the script shell, but a SubGame row without dungeonMissionId "
-                "does not identify a mission or quest owner."
+                "The hash-validated current binary proves that challenge-start "
+                "interaction resolves the typed SubGame row, reads bindScriptId, "
+                "looks up that LevelScript, and calls ManualStart. A SubGame row "
+                "without dungeonMissionId still does not identify a mission or "
+                "quest owner."
+            ),
+            "publicStateBoundary": (
+                "SC_SCENE_LEVEL_SCRIPT_STATE_NOTIFY applies its exact scene, "
+                "script, state, and completion tuple through the manager/container "
+                "chain into LevelScriptRuntime.UpdateState. The packet carries no "
+                "mission or quest identity and does not reveal the server-side "
+                "branch that selected the state."
+            ),
+            "clientStartRequestBoundary": (
+                "The hash-validated current client records ManualStart, enters "
+                "PreStart, emits the typed CS start request, and enters "
+                "PreStartActionRunning. The public network sender methods have "
+                "zero direct current-AOT callers, and rows without an authored "
+                "static carrier remain unresolved for mission/server selection."
             ),
             "dungeonSceneBoundary": (
                 "An exact Dungeon.sceneId -> SubGame row proves that the "
@@ -1769,9 +2869,50 @@ def build_report(
             ),
             "literalMissionIdBoundary": (
                 "An exact MemoryPack string token proves only that the literal "
-                "mission id exists somewhere in the LevelScript blob. Absence "
+                "id of an original MissionRuntimeAsset exists somewhere in the "
+                "LevelScript blob. Story-only shell ids are excluded. Absence "
                 "closes literal-constant carriers, not dynamic, indirect, or "
                 "server-authored activation."
+            ),
+            "structuredIdentityBoundary": (
+                "Only exact LevelScript-identity and mission/quest-identity "
+                "fields carried by the same authored JSON record are counted. "
+                "Filename, ancestor, neighboring-record, OCR, and manual-name "
+                "proximity create no identity or ownership edge."
+            ),
+            "taskRuntimeAuthorityBoundary": (
+                "The hash-validated current binary and protobuf schemas prove "
+                "that LevelScript task traffic is keyed by sceneNumId, scriptId, "
+                "taskId, and condition/progress data. No packet co-carries a "
+                "mission, quest, or Story identity, so server task lifecycle "
+                "does not supply the missing ownership edge."
+            ),
+            "taskProgressPropertyBoundary": (
+                "Exact lt:p/lt:mp LevelData property pairs persist per-condition "
+                "task progress. They repeat task/condition identity only and do "
+                "not identify a mission owner or playback order."
+            ),
+            "sameWithActiveBoundary": (
+                "The hash-validated current binary proves generically that an "
+                "Active, unfinished LevelScript with startType SameWithActive "
+                "enters the internal PreStart state without a start-area or "
+                "manual-start gate. It does not identify what mission/server "
+                "transition made the script Active, or order its Story actions."
+            ),
+            "manualSelfControlBoundary": (
+                "The hash-validated binary and metadata prove the generic "
+                "CURRENT_LEVEL_ID/CURRENT_SCRIPT_ID ManualStart target. It is "
+                "promoted only when the original serialized row carries both "
+                "operands and an authored event-header link; this proves local "
+                "self-start, not mission ownership or cross-Story order."
+            ),
+            "activePhaseReceiverBoundary": (
+                "An exact receiver-header id is joined only to the matching "
+                "header in that original LevelScript. The current binary proves "
+                "Setup registration and Active-phase enabling as a general "
+                "runtime rule. This establishes availability, not the public-"
+                "Active producer, event occurrence, mission owner, branch, or "
+                "cross-Story chronology."
             ),
             "taskConditionBoundary": (
                 "A completely decoded task map proves authored task evaluation "
@@ -1802,6 +2943,23 @@ def build_report(
             ),
         },
         "counts": {
+            "structuredIdentityCandidateFiles": (
+                structured_identity_census["candidateFileCount"]
+            ),
+            "structuredIdentityVisitedRecords": (
+                structured_identity_census["visitedRecordCount"]
+            ),
+            "structuredDirectIdentityCarriers": (
+                structured_identity_census["directCarrierCount"]
+            ),
+            "structuredReceiverIdentityMatches": (
+                structured_identity_census["receiverMatchCount"]
+            ),
+            "structuredUnreviewedIdentityCarriers": sum(
+                row.get("classification")
+                == "unreviewed_direct_identity_carrier"
+                for row in structured_identity_census.get("rows") or []
+            ),
             "receiverNodes": sum(row["receiverNodeCount"] for row in rows),
             "receiverScripts": len(rows),
             "receiverToStoryPlacements": sum(
@@ -1811,7 +2969,131 @@ def build_report(
                 {story_key for row in rows for story_key in row["storyKeys"]}
             ),
             "activationClasses": dict(sorted(classes.items())),
+            "authoredPropertyContracts": {
+                "scriptsWithAuthoredProperties": sum(
+                    bool(row["authoredPropertyContract"]["authoredNames"])
+                    for row in rows
+                ),
+                "scriptsWithExactMissionObservedProperties": sum(
+                    bool(row["authoredPropertyContract"]["missionObservedNames"])
+                    for row in rows
+                ),
+                "recurringNames": [
+                    {"name": name, "scriptCount": count}
+                    for name, count in sorted(
+                        authored_property_scripts.items(),
+                        key=lambda item: (-item[1], item[0]),
+                    )
+                    if count > 1
+                ],
+            },
             "startTypes": dict(sorted(start_types.items())),
+            "scriptsWithValidatedSameWithActivePolicy": sum(
+                bool(row.get("startRuntimePolicy")) for row in rows
+            ),
+            "storyKeysWithValidatedSameWithActivePolicy": len({
+                story_key
+                for row in rows
+                if row.get("startRuntimePolicy")
+                for story_key in row.get("storyKeys") or []
+            }),
+            "scriptsWithValidatedManualSelfControl": sum(
+                bool(row.get("manualSelfControl")) for row in rows
+            ),
+            "storyKeysWithValidatedManualSelfControl": len({
+                story_key
+                for row in rows
+                if row.get("manualSelfControl")
+                for story_key in row.get("storyKeys") or []
+            }),
+            "scriptsWithValidatedPublicStateControlContract": sum(
+                bool(row.get("publicStateControl")) for row in rows
+            ),
+            "scriptsWithValidatedClientStartRequestLifecycle": sum(
+                bool(row.get("clientStartRequestControl")) for row in rows
+            ),
+            "scriptsWithValidatedActivePhaseReceivers": sum(
+                (row.get("activePhaseReceiverControl") or {}).get("status")
+                == "validated"
+                for row in rows
+            ),
+            "scriptsWithValidatedClientActiveRequestSelector": sum(
+                (row.get("clientActiveRequestControl") or {}).get("status")
+                == "validated"
+                for row in rows
+            ),
+            "scriptsWithClientProducedActiveRequest": sum(
+                (row.get("clientActiveRequestControl") or {}).get(
+                    "clientProducesActiveRequest"
+                )
+                is True
+                for row in rows
+            ),
+            "scriptsWithValidatedActiveShapeGate": sum(
+                (row.get("clientActiveRequestControl") or {}).get(
+                    "spatialGateStatus"
+                )
+                == "validated_runtime_position_dependent"
+                for row in rows
+            ),
+            "authoredActiveShapeCount": sum(
+                int(
+                    ((row.get("clientActiveRequestControl") or {}).get(
+                        "activeShapeList"
+                    ) or {}).get("count")
+                    or 0
+                )
+                for row in rows
+            ),
+            "authoredActiveShapeTypes": dict(sorted(Counter(
+                safe_text(shape.get("type"))
+                for row in rows
+                for shape in (
+                    ((row.get("clientActiveRequestControl") or {}).get(
+                        "activeShapeList"
+                    ) or {}).get("shapes")
+                    or []
+                )
+                if isinstance(shape, dict) and safe_text(shape.get("type"))
+            ).items())),
+            "clientActiveRequestLevelScriptTypes": dict(sorted(Counter(
+                safe_text((row.get("clientActiveRequestControl") or {}).get(
+                    "levelScriptTypeName"
+                ))
+                for row in rows
+                if safe_text((row.get("clientActiveRequestControl") or {}).get(
+                    "levelScriptTypeName"
+                ))
+            ).items())),
+            "activePhaseReceiverHeaders": sum(
+                (row.get("activePhaseReceiverControl") or {}).get(
+                    "resolvedHeaderCount", 0
+                )
+                for row in rows
+                if (row.get("activePhaseReceiverControl") or {}).get("status")
+                == "validated"
+            ),
+            "storyKeysWithValidatedActivePhaseReceivers": len({
+                story_key
+                for row in rows
+                if (row.get("activePhaseReceiverControl") or {}).get("status")
+                == "validated"
+                for story_key in row.get("storyKeys") or []
+            }),
+            "scriptsWithRuntimeRequestButNoStaticCarrier": sum(
+                row.get("activationClass")
+                == "manual_start_runtime_request_no_static_carrier"
+                for row in rows
+            ),
+            "scriptsWithValidatedSubGameInteractionStart": sum(
+                bool(row.get("subGameStartControl")) for row in rows
+            ),
+            "storyKeysWithValidatedSubGameInteractionStart": len({
+                story_key
+                for row in rows
+                if row.get("subGameStartControl")
+                for story_key in row.get("storyKeys") or []
+            }),
             "levelDataHostShapes": dict(sorted(host_shapes.items())),
             "scriptsWithMissionNamedHost": sum(
                 any(host.get("missionNamedHost") for host in row["levelDataHosts"])
@@ -1974,6 +3256,32 @@ def build_report(
             "scriptsWithMissionRuntimeObjectiveConsumer": sum(
                 bool(row["missionRuntimeScriptConsumers"]) for row in rows
             ),
+            "missionObservedLevelScriptContextMissions": len({
+                safe_text(consumer.get("missionId"))
+                for row in rows
+                for consumer in row["missionRuntimeScriptConsumers"]
+                if safe_text(consumer.get("missionId"))
+            }),
+            "missionObservedLevelScriptContextStoryKeys": len({
+                story_key
+                for row in rows
+                if row["missionRuntimeScriptConsumers"]
+                for story_key in row["storyKeys"]
+            }),
+            "missionObservedLevelScriptContextPlacements": sum(
+                len(row["storyKeys"])
+                * len(row["missionRuntimeScriptConsumers"])
+                for row in rows
+            ),
+            "relatedOriginalFilePlacements": sum(
+                len(row.get("relatedOriginalFiles") or []) for row in rows
+            ),
+            "distinctRelatedOriginalFiles": len({
+                related.get("sourceFile")
+                for row in rows
+                for related in row.get("relatedOriginalFiles") or []
+                if related.get("sourceFile")
+            }),
             "scriptsWithStartShapes": sum(
                 bool((row.get("levelScript") or {}).get("startShapeListShapes"))
                 for row in rows
@@ -1989,9 +3297,34 @@ def build_report(
             "scriptsWithFullyDecodedTaskMap": sum(
                 bool(row.get("decodedTaskMap")) for row in rows
             ),
+            "scriptsWithValidatedTaskRuntimeAuthority": sum(
+                bool(row.get("decodedTaskMap"))
+                and (
+                    (row.get("taskRuntimeAuthority") or {}).get(
+                        "validation", {}
+                    ).get("status")
+                    == "validated"
+                )
+                for row in rows
+            ),
             "decodedTaskCount": sum(
                 len((row.get("decodedTaskMap") or {}).get("tasks") or [])
                 for row in rows
+            ),
+            "decodedTasksWithCompleteProgressPropertyContract": sum(
+                (
+                    task.get("progressPropertyContract") or {}
+                ).get("status")
+                == "validated"
+                for row in rows
+                for task in (row.get("decodedTaskMap") or {}).get("tasks") or []
+            ),
+            "decodedTaskProgressPropertyPlacements": sum(
+                (
+                    task.get("progressPropertyContract") or {}
+                ).get("matchedPropertyCount", 0)
+                for row in rows
+                for task in (row.get("decodedTaskMap") or {}).get("tasks") or []
             ),
             "decodedTaskConditionCount": sum(task_condition_types.values()),
             "decodedTaskConditionTypes": dict(
@@ -2040,6 +3373,7 @@ def build_report(
                 for row in rows
             ),
         },
+        "structuredIdentityCarrierCensus": structured_identity_census,
         "manualControlAuditSummary": manual_control_payload.get("summary") or {},
         "rows": rows,
     }
@@ -2048,8 +3382,16 @@ def build_report(
 def publish_to_pipeline_index(
     index_payload: dict[str, Any],
     report: dict[str, Any],
+    *,
+    mission_root: Path | None = None,
 ) -> int:
-    """Publish compact debug annotations without adding graph edges."""
+    """Publish compact debug annotations without adding graph edges.
+
+    Exact typed MissionRuntime operands are also copied onto their mission's
+    Story-order payload as non-owning context.  This makes the source files
+    inspectable beside the affected Story keys while preserving the unknown
+    activation, property-writer, and ordering boundaries.
+    """
     coverage = index_payload.get("storyCoverage")
     if not isinstance(coverage, dict):
         return 0
@@ -2079,6 +3421,11 @@ def publish_to_pipeline_index(
                 levelscript.get("startShapeListStatus")
             ),
             "startShapeListCount": levelscript.get("startShapeListCount"),
+            "activeShapeList": levelscript.get("activeShapeList") or {},
+            "activeShapeListStatus": safe_text(
+                levelscript.get("activeShapeListStatus")
+            ),
+            "activeShapeListCount": levelscript.get("activeShapeListCount"),
             "taskMapStatus": safe_text(levelscript.get("taskMapStatus")),
             "taskMapCount": levelscript.get("taskMapCount"),
             "levelDataHosts": [
@@ -2235,9 +3582,31 @@ def publish_to_pipeline_index(
                 for control in row.get("incomingLiteralManualControls") or []
                 if isinstance(control, dict)
             ),
+            "incomingManualControls": [
+                {
+                    "sourceLevelId": safe_text(
+                        control.get("sourceLevelId")
+                    ),
+                    "sourceScriptId": safe_text(
+                        control.get("sourceScriptId")
+                    ),
+                    "localId": control.get("localId"),
+                    "action": safe_text(control.get("action")),
+                    "selfTarget": bool(control.get("selfTarget")),
+                    "targetResolution": safe_text(
+                        control.get("targetResolution")
+                    ),
+                    "parameterSources": control.get("parameterSources") or {},
+                    "headerLinkedEvent": control.get("headerLinkedEvent") or {},
+                    "sourceFile": safe_text(control.get("sourceFile")),
+                }
+                for control in row.get("incomingLiteralManualControls") or []
+                if isinstance(control, dict)
+            ],
             "missionRuntimeObjectiveConsumerCount": len(
                 row.get("missionRuntimeScriptConsumers") or []
             ),
+            "authoredPropertyContract": row.get("authoredPropertyContract") or {},
             "missionRuntimeScriptConsumers": [
                 {
                     "relation": (
@@ -2251,6 +3620,15 @@ def publish_to_pipeline_index(
                         for condition_type in consumer.get("conditionTypes") or []
                         if safe_text(condition_type)
                     ],
+                    "propertyKeys": [
+                        safe_text(key)
+                        for key in consumer.get("propertyKeys") or []
+                        if safe_text(key)
+                    ],
+                    "sourceFile": safe_text(consumer.get("sourceFile")),
+                    "pipelineSourceFile": safe_text(
+                        consumer.get("pipelineSourceFile")
+                    ),
                     "ownership": False,
                     "activation": False,
                     "storyPlayback": False,
@@ -2271,23 +3649,151 @@ def publish_to_pipeline_index(
                 row.get("serializedMissionRuntimeIdTokens") or []
             ),
             "decodedTaskMap": row.get("decodedTaskMap"),
+            "taskRuntimeAuthority": row.get("taskRuntimeAuthority") or {},
+            "startRuntimePolicy": row.get("startRuntimePolicy") or {},
+            "manualSelfControl": row.get("manualSelfControl") or {},
+            "publicStateControl": row.get("publicStateControl") or {},
+            "clientStartRequestControl": (
+                row.get("clientStartRequestControl") or {}
+            ),
+            "activePhaseReceiverControl": (
+                row.get("activePhaseReceiverControl") or {}
+            ),
+            "clientActiveRequestControl": (
+                row.get("clientActiveRequestControl") or {}
+            ),
+            "subGameStartControl": row.get("subGameStartControl") or {},
+            "relatedOriginalFiles": [
+                {
+                    "kind": safe_text(related.get("kind")),
+                    "sourceFile": safe_text(related.get("sourceFile")),
+                    "relationship": safe_text(
+                        related.get("relationship")
+                    ),
+                    "sha256": safe_text(related.get("sha256")),
+                }
+                for related in row.get("relatedOriginalFiles") or []
+                if isinstance(related, dict)
+                and safe_text(related.get("sourceFile"))
+            ],
         }
         annotated += 1
+
+    contexts_by_mission: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in report.get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        level_id = safe_text(row.get("levelId"))
+        script_id = safe_text(row.get("scriptId"))
+        story_keys = sorted({
+            safe_text(key) for key in row.get("storyKeys") or [] if safe_text(key)
+        })
+        if not level_id or not script_id or not story_keys:
+            continue
+        related_files = [
+            {
+                "kind": safe_text(related.get("kind")),
+                "sourceFile": safe_text(related.get("sourceFile")),
+                "relationship": safe_text(related.get("relationship")),
+                "sha256": safe_text(related.get("sha256")),
+            }
+            for related in row.get("relatedOriginalFiles") or []
+            if isinstance(related, dict) and safe_text(related.get("sourceFile"))
+        ]
+        for consumer in row.get("missionRuntimeScriptConsumers") or []:
+            if not isinstance(consumer, dict):
+                continue
+            mission_id = safe_text(consumer.get("missionId"))
+            if not mission_id:
+                continue
+            contexts_by_mission[mission_id].append({
+                "relation": "mission_objective_observes_story_receiver_levelscript",
+                "missionId": mission_id,
+                "questId": safe_text(consumer.get("questId")),
+                "objectiveIndex": consumer.get("objectiveIndex"),
+                "levelId": level_id,
+                "scriptId": script_id,
+                "storyKeys": story_keys,
+                "eventNames": row.get("eventNames") or [],
+                "listenerHeaderLocalIds": row.get("listenerHeaderLocalIds") or [],
+                "conditionTypes": consumer.get("conditionTypes") or [],
+                "propertyKeys": consumer.get("propertyKeys") or [],
+                "propertyWriterStatus": "unresolved",
+                "ownership": False,
+                "activation": False,
+                "storyPlayback": False,
+                "orderEvidence": False,
+                "relatedOriginalFiles": related_files,
+                "evidenceBoundary": (
+                    "The original typed MissionRuntime objective reads the same "
+                    "(level, LevelScript) that contains exact native Story playback. "
+                    "This attaches mission context and original files only: it does "
+                    "not prove that the quest starts or owns playback, that playback "
+                    "writes the observed property, or any Story order."
+                ),
+            })
+
+    published_contexts = 0
+    if mission_root is not None:
+        mission_summaries = {
+            safe_text(row.get("id")): row
+            for row in index_payload.get("missions") or []
+            if isinstance(row, dict) and safe_text(row.get("id"))
+        }
+        for mission_id, contexts in sorted(contexts_by_mission.items()):
+            path = mission_root / f"{mission_id}.json"
+            payload = read_json(path)
+            if not isinstance(payload, dict):
+                continue
+            unique = {
+                (
+                    safe_text(context.get("questId")),
+                    context.get("objectiveIndex"),
+                    safe_text(context.get("levelId")),
+                    safe_text(context.get("scriptId")),
+                    tuple(context.get("storyKeys") or []),
+                ): context
+                for context in contexts
+            }
+            ordered = [unique[key] for key in sorted(unique, key=str)]
+            story_order = payload.setdefault("storyOrder", {})
+            story_order["missionObservedLevelScriptContexts"] = ordered
+            summary = story_order.setdefault("summary", {})
+            summary["missionObservedLevelScriptContextCount"] = len(ordered)
+            summary["missionObservedLevelScriptContextStoryCount"] = len({
+                key for context in ordered for key in context["storyKeys"]
+            })
+            write_json(path, payload)
+            published_contexts += len(ordered)
+            mission_summary = mission_summaries.get(mission_id)
+            if mission_summary is not None:
+                mission_summary["storyOrderMissionObservedLevelScriptContextCount"] = (
+                    len(ordered)
+                )
 
     coverage["nativeReceiverActivationFrontier"] = {
         "schemaVersion": report.get("schemaVersion"),
         "generated": report.get("generated"),
         "counts": report.get("counts") or {},
         "evidencePolicy": report.get("evidencePolicy") or {},
+        "structuredIdentityCarrierCensus": {
+            key: value
+            for key, value in (
+                report.get("structuredIdentityCarrierCensus") or {}
+            ).items()
+            if key != "rows"
+        },
         "reportJson": rel_path(DEFAULT_JSON),
         "reportMarkdown": rel_path(DEFAULT_MARKDOWN),
         "annotatedReceiverNodes": annotated,
+        "publishedMissionObservedLevelScriptContexts": published_contexts,
     }
     return annotated
 
 
 def markdown_report(payload: dict[str, Any]) -> str:
     counts = payload.get("counts") or {}
+    identity_census = payload.get("structuredIdentityCarrierCensus") or {}
     lines = [
         "# Native Receiver Activation Frontier",
         "",
@@ -2303,6 +3809,59 @@ def markdown_report(payload: dict[str, Any]) -> str:
         ),
         f"- Unique Story keys: `{counts.get('storyKeys')}`",
         f"- Start types: `{counts.get('startTypes')}`",
+        (
+            "- Structured JSON candidate files / records / direct carriers: "
+            f"`{identity_census.get('candidateFileCount')}` / "
+            f"`{identity_census.get('visitedRecordCount')}` / "
+            f"`{identity_census.get('directCarrierCount')}`"
+        ),
+        (
+            "- Direct structured carriers matching unresolved receiver scripts "
+            f"/ unreviewed carrier shapes: "
+            f"`{identity_census.get('receiverMatchCount')}` / "
+            f"`{sum(1 for row in identity_census.get('rows') or [] if row.get('classification') == 'unreviewed_direct_identity_carrier')}`"
+        ),
+        (
+            "- Scripts / Story keys with binary-validated SameWithActive "
+            f"policy: `{counts.get('scriptsWithValidatedSameWithActivePolicy')}` / "
+            f"`{counts.get('storyKeysWithValidatedSameWithActivePolicy')}`"
+        ),
+        (
+            "- Scripts / Story keys with binary-validated current-context "
+            "ManualStart self control: "
+            f"`{counts.get('scriptsWithValidatedManualSelfControl')}` / "
+            f"`{counts.get('storyKeysWithValidatedManualSelfControl')}`"
+        ),
+        (
+            "- Scripts with binary-validated public-state sync: "
+            f"`{counts.get('scriptsWithValidatedPublicStateControlContract')}`"
+        ),
+        (
+            "- Scripts with exact activation selector / client-produced "
+            "active=true: "
+            f"`{counts.get('scriptsWithValidatedClientActiveRequestSelector')}` / "
+            f"`{counts.get('scriptsWithClientProducedActiveRequest')}` "
+            f"(`{counts.get('clientActiveRequestLevelScriptTypes')}`)"
+        ),
+        (
+            "- Scripts with exact authored active-volume gate / shapes / types: "
+            f"`{counts.get('scriptsWithValidatedActiveShapeGate')}` / "
+            f"`{counts.get('authoredActiveShapeCount')}` / "
+            f"`{counts.get('authoredActiveShapeTypes')}`"
+        ),
+        (
+            "- Scripts / exact headers / Story keys with binary-validated "
+            "Active-phase receivers: "
+            f"`{counts.get('scriptsWithValidatedActivePhaseReceivers')}` / "
+            f"`{counts.get('activePhaseReceiverHeaders')}` / "
+            f"`{counts.get('storyKeysWithValidatedActivePhaseReceivers')}`"
+        ),
+        (
+            "- Scripts / Story keys with binary-validated SubGame interaction "
+            "ManualStart: "
+            f"`{counts.get('scriptsWithValidatedSubGameInteractionStart')}` / "
+            f"`{counts.get('storyKeysWithValidatedSubGameInteractionStart')}`"
+        ),
         f"- Activation classes: `{counts.get('activationClasses')}`",
         f"- LevelData host shapes: `{counts.get('levelDataHostShapes')}`",
         (
@@ -2377,6 +3936,12 @@ def markdown_report(payload: dict[str, Any]) -> str:
             f"`{counts.get('scriptsWithMissionRuntimeObjectiveConsumer')}`"
         ),
         (
+            "- Related original-file placements / distinct files attached to "
+            "receiver nodes: "
+            f"`{counts.get('relatedOriginalFilePlacements')}` / "
+            f"`{counts.get('distinctRelatedOriginalFiles')}`"
+        ),
+        (
             "- Scripts with authored start shapes / exact complete MissionArea "
             f"shape matches: `{counts.get('scriptsWithStartShapes')}` / "
             f"`{counts.get('scriptsWithExactStartShapeMissionAreaMatch')}`"
@@ -2391,6 +3956,16 @@ def markdown_report(payload: dict[str, Any]) -> str:
             f"`{counts.get('scriptsWithFullyDecodedTaskMap')}` / "
             f"`{counts.get('decodedTaskCount')}` / "
             f"`{counts.get('decodedTaskConditionCount')}`"
+        ),
+        (
+            "- Task-map scripts with hash-validated binary task authority: "
+            f"`{counts.get('scriptsWithValidatedTaskRuntimeAuthority')}`"
+        ),
+        (
+            "- Tasks with complete LevelData `lt:p`/`lt:mp` progress pairs / "
+            "property placements: "
+            f"`{counts.get('decodedTasksWithCompleteProgressPropertyContract')}` / "
+            f"`{counts.get('decodedTaskProgressPropertyPlacements')}`"
         ),
         (
             "- Decoded task condition types: "
@@ -2563,6 +4138,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--json", type=Path, default=DEFAULT_JSON)
     parser.add_argument("--markdown", type=Path, default=DEFAULT_MARKDOWN)
+    parser.add_argument(
+        "--structured-json-root",
+        type=Path,
+        default=DEFAULT_STRUCTURED_JSON_ROOT,
+    )
     return parser.parse_args()
 
 
@@ -2572,10 +4152,14 @@ def main() -> None:
         read_json(args.pipeline_index) or {},
         read_json(args.manual_control_audit) or {},
         mission_root=args.mission_root,
+        structured_json_root=args.structured_json_root,
     )
     payload["sources"]["missionPipelineIndex"] = rel_path(args.pipeline_index)
     payload["sources"]["manualControlAudit"] = rel_path(args.manual_control_audit)
     payload["sources"]["missionPipelineMissionRoot"] = rel_path(args.mission_root)
+    payload["sources"]["structuredJsonRoot"] = rel_path(
+        args.structured_json_root
+    )
     write_report_json(args.json, payload)
     write_text_if_changed(args.markdown, markdown_report(payload))
     counts = payload["counts"]
@@ -2584,6 +4168,19 @@ def main() -> None:
         f"(scripts={counts['receiverScripts']}, "
         f"classes={counts['activationClasses']})"
     )
+    validation = (
+        payload.get("structuredIdentityCarrierCensus") or {}
+    ).get("validation") or {}
+    if validation.get("status") != "validated":
+        failure = (validation.get("failures") or [{}])[0]
+        raise SystemExit(
+            "structured identity census failed: "
+            f"validator={failure.get('validator')}; "
+            f"gate={failure.get('gate')}; "
+            f"source={failure.get('sourceFile')}; "
+            f"expected={failure.get('expected')!r}; "
+            f"actual={failure.get('actual')!r}"
+        )
 
 
 if __name__ == "__main__":

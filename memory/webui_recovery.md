@@ -62,6 +62,22 @@ their inputs.
 - Reset returns to Story sort while preserving expanded mission groups.
 - Disabling debug while a hidden page is active returns to a visible page.
 - Mission Pipeline links show evidence-typed trigger chains.
+- Exact typed cinematic actions show their original-binary producer method and
+  both the decoded original-data file and binary audit file; the provenance
+  header reports native producer/action and mission-route attachment counts.
+- Source-bounded recovery cards show generalized shipped-Lua playback and
+  composed CutsceneRoot playback directly in the owning mission view. They
+  expose the Lua controller/line/call or native event/action/root chain, every
+  related original-data and audit file, and an explicit no-ownership/no-order
+  boundary; OCR and manual order are not used as evidence.
+- Exact connected-context cards also expose quest-owned reachable DialogTree
+  playback and typed quest-state-gated LevelScript playback. The mission view
+  names the parent Story or decoded condition/event/action chain, quest anchor,
+  original source file, and explicit no-relative-order boundary.
+- Non-mission spaceship cards distinguish exact carried content from complete
+  actor/family-matched definitions absent from all related typed DialogTrees;
+  the latter show a dedicated definition-gap confidence and attached original
+  tree/table files without implying playback, mission ownership, or order.
 - BlackBox recovery cards expose exact SubGame/bound-LevelScript context,
   separate authored task lanes, complete decoded task/condition topology,
   condition formulas, objective display keys, exact parent playback, and the

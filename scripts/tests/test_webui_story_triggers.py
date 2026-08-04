@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MODULE = ROOT / "webui" / "src" / "features" / "story_triggers.js"
 APP = ROOT / "webui" / "app.js"
 APP_TREE = ROOT / "webui" / "app_tree.js"
+MISSION_PIPELINE = ROOT / "webui" / "src" / "features" / "mission_pipeline" / "index.js"
 
 
 @unittest.skipUnless(shutil.which("node"), "Node.js is required for WebUI JavaScript tests")
@@ -143,3 +144,157 @@ for (const [key, category] of [
             "rebuildTree({ resetScroll: false });",
             app_tree_source,
         )
+
+    def test_mission_pipeline_surfaces_native_producer_and_attached_files(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("route.nativeCinematicProducerRoutes", source)
+        self.assertIn('t("cinematicProducer")', source)
+        self.assertIn("nativeCinematicProducerRouteAttachments", source)
+        self.assertIn("route.sourceFiles", source)
+
+    def test_mission_pipeline_surfaces_fixed_point_carrier_closure(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("metadata?.maximumShortestPathDepth", source)
+        self.assertIn('t("fixedPointTraversal")', source)
+        self.assertIn("nestedCarrierCensus.runtimeEntityHubClosure", source)
+        self.assertIn("nestedCarrierCensus.sharedRuntimeAggregateClosure", source)
+        self.assertIn("nestedCarrierCensus.relatedOriginalFiles", source)
+        self.assertIn('t("exactSerializedInstances")', source)
+        self.assertIn("exactIndexedTypeLabels", source)
+        self.assertIn("objectsWithTruncatedScalars", source)
+
+    def test_mission_pipeline_surfaces_complete_mission_state_alternatives(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("branches.nativeMissionStateBranches", source)
+        self.assertIn("row.externalStoryKeys", source)
+        self.assertIn('data-mission-state-branch=', source)
+        self.assertIn("row.relatedOriginalFiles", source)
+        self.assertIn("alternatives, not Story order or ownership", source)
+
+    def test_mission_pipeline_marks_complete_cross_boundary_native_branches(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("row.externalStoryKeys", source)
+        self.assertIn("row.crossBoundary", source)
+        self.assertIn("nativeCrossBoundaryExternal", source)
+        self.assertIn("nativeCrossBoundaryParallelHint", source)
+        self.assertIn("summary.nativeControlCrossBoundaryBranchCount", source)
+
+    def test_mission_pipeline_surfaces_complete_serialized_native_arms(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("row.fullArms || row.arms", source)
+        self.assertIn("exact_complete_active_action_map", source)
+        self.assertIn("arm.entryAction", source)
+        self.assertIn("arm.exclusiveActions", source)
+        self.assertIn("row.sharedDownstreamActionLocalIds", source)
+        self.assertIn("nativeInactiveArm", source)
+        self.assertIn("summary.nativeControlNonStoryArmCount", source)
+        self.assertIn("Non-Story sibling actions do not establish", source)
+
+    def test_mission_pipeline_surfaces_property_contract_as_non_ordering_context(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("activation.authoredPropertyContract", source)
+        self.assertIn('t("missionObservedProperty")', source)
+        self.assertIn("consumer.propertyKeys", source)
+        self.assertIn("They do not identify the writer, Story owner, or scene-file order.", source)
+
+    def test_mission_pipeline_surfaces_mission_observed_levelscript_context(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("order.missionObservedLevelScriptContexts", source)
+        self.assertIn('t("missionObservedScriptContexts")', source)
+        self.assertIn('t("propertyWriterUnresolved")', source)
+        self.assertIn("row.relatedOriginalFiles", source)
+
+    def test_mission_pipeline_surfaces_exact_active_phase_receivers(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("activation.activePhaseReceiverControl", source)
+        self.assertIn('t("binaryActivePhaseReceiver")', source)
+        self.assertIn("Setup → ActiveBegin → Active(", source)
+        self.assertIn("not who selected public Active", source)
+
+    def test_mission_pipeline_surfaces_exact_client_active_request_selector(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("activation.clientActiveRequestControl", source)
+        self.assertIn('t("binaryClientActiveRequest")', source)
+        self.assertIn("clientActiveRequestControl.runtimePath", source)
+        self.assertIn("server-side selection rule remains unavailable", source)
+        self.assertIn('t("binaryActiveVolume")', source)
+        self.assertIn("clientActiveRequestControl.activeShapeList?.shapes", source)
+        self.assertIn("validated_runtime_position_dependent", source)
+        self.assertIn("shape.position", source)
+        self.assertIn("shape.eulerAngles", source)
+
+    def test_mission_pipeline_distinguishes_public_state_server_carriers(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("publicStateControl.publicStateSourceFlow", source)
+        self.assertIn("publicStateControl.selfSceneInfoMessageId", source)
+        self.assertIn("levelScripts[] → ServerSync", source)
+        self.assertIn("They prove that Enabled is server-supplied", source)
+
+    def test_mission_pipeline_surfaces_fork_arm_story_and_original_files(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("arm.siblingExclusiveQuestIds", source)
+        self.assertIn("arm.storyEvidence", source)
+        self.assertIn("arm.relatedOriginalFiles", source)
+        self.assertIn('t("questForkArmCorridor")', source)
+        self.assertIn('t("questForkArmStoryEvidence")', source)
+        self.assertIn("They do not prove that the server selected the arm", source)
+
+    def test_mission_pipeline_surfaces_exact_empty_levelscript_boundaries(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("objective.levelScriptSources", source)
+        self.assertIn('row.actionMapStatus === "exact_empty_action_map"', source)
+        self.assertIn('t("levelScriptExactEmptyMap")', source)
+        self.assertIn("row.serializedTailRecordCount", source)
+        self.assertIn("row.relatedOriginalFiles", source)
+
+    def test_mission_pipeline_surfaces_binary_proven_quest_success_order(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn('row.kind === "questSucceedLifecycle"', source)
+        self.assertIn("row.objectiveStoryRelation", source)
+        self.assertIn("row.succeedStoryRelation", source)
+        self.assertIn("row.relatedOriginalFiles", source)
+        self.assertIn('t("questSucceedLifecyclePath")', source)
+        self.assertIn("does not prove that the quest succeeds", source)
+
+    def test_mission_pipeline_exposes_undispatched_start_definitions(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("order.questLifecycleDefinitions", source)
+        self.assertIn("questStartActionDefinitionCount", source)
+        self.assertIn("authored_definition_no_current_aot_dispatch", source)
+        self.assertIn('t("questActionStartNoDispatch")', source)
+        self.assertIn("row.relatedOriginalFiles", source)
+
+    def test_mission_pipeline_names_binary_quest_semantic_fields(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("?.questTopologyFieldConsumers?.questSemanticFields", source)
+        self.assertIn("semanticFields.questType?.values", source)
+        self.assertIn("semanticFields.showMode?.values", source)
+        self.assertIn('t("questForkQuestType")', source)
+        self.assertIn('t("questForkShowMode")', source)
+        self.assertIn("postLifecycleConsumerCount", source)
+        self.assertIn("blockNotificationConsumerCount", source)
+        self.assertIn("semanticFields?.optionalObjectiveFlag", source)
+        self.assertIn("structuredIdentityCarrierCensus", source)
+        self.assertIn("structuredIdentityCensusCounts", source)
+        self.assertIn("optionalObservation.optionalFieldWrite?.text", source)
+        self.assertIn("post_lifecycle_block_notification", source)
+        self.assertIn("They do not select a successor arm", source)
+
+    def test_mission_pipeline_surfaces_binary_parallel_scheduler_authority(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("contract.actionExtraThreadSchedulerAudit", source)
+        self.assertIn("extraThreadExecuteMethods", source)
+        self.assertIn("binary_proven_extra_thread_launch", source)
+        self.assertIn("step.siblingOrderEvidence", source)
+        self.assertIn('t("extraThreadScheduler")', source)
+        self.assertIn('t("extraThreadSiblingBoundary")', source)
+        self.assertIn("extraThreadScheduler.relatedOriginalFiles", source)
+
+    def test_mission_pipeline_labels_declared_story_variant_aggregates(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("mission.storyAggregateShell === true", source)
+        self.assertIn("mission.variantMissionIds", source)
+        self.assertIn("mission.relatedOriginalFiles", source)
+        self.assertIn('t("storyAggregateVariants")', source)
+        self.assertIn('t("storyAggregateOriginals")', source)
+        self.assertIn("does not establish mission ownership", source)

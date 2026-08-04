@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import re
@@ -26,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 
-if hasattr(sys.stdout, "reconfigure"):
+if hasattr(sys.stdout, "reconfigure") and not sys.stdout.closed:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 DEFAULT_GAMEASSEMBLY = Path(r"D:\Program Files\Endfield Game\GameAssembly.dll")
@@ -230,6 +231,7 @@ def method_signature(md: Any, method_index: int) -> dict[str, Any]:
         "type": md.type_full_name(type_def),
         "method": md.string(method.name_index),
         "token": f"0x{method.token:08x}",
+        "returnTypeName": md.metadata_type_name(method.return_type),
     }
 
 
@@ -272,6 +274,7 @@ METADATA_REGISTRATION_FIELDS = (
 GENERIC_METHOD_TABLE_STRIDE = 16
 # Il2CppMethodSpec is (methodDefinitionIndex, classIndexIndex, methodIndexIndex).
 METHOD_SPEC_STRIDE = 12
+MAX_GENERIC_ARGUMENTS = 64
 
 
 def metadata_registration_summary(pe: PeImage, metadata_registration_va: int) -> dict[str, Any]:
@@ -362,29 +365,86 @@ def build_generic_method_index(
         return {}
 
     table = pe.buf[table_offset: table_offset + table_count * GENERIC_METHOD_TABLE_STRIDE]
-    slot_to_spec: dict[int, int] = {}
+    slot_to_specs: dict[int, list[int]] = {}
     for index in range(table_count):
         generic_method_index, slot = struct.unpack_from(
             "<ii", table, index * GENERIC_METHOD_TABLE_STRIDE
         )
         if 0 <= generic_method_index < spec_count and 0 <= slot < pointer_count:
-            slot_to_spec.setdefault(slot, generic_method_index)
+            specs = slot_to_specs.setdefault(slot, [])
+            if generic_method_index not in specs:
+                specs.append(generic_method_index)
+
+    type_pointer_to_index: dict[int, int] = {}
+    types_pointer = int(meta_summary["types"], 16)
+    types_count = meta_summary["typesCount"]
+    if types_pointer:
+        for type_index in range(types_count):
+            type_pointer = pe.u64_at_va(types_pointer + type_index * 8)
+            if type_pointer:
+                type_pointer_to_index.setdefault(type_pointer, type_index)
+
+    def decode_generic_instantiation(inst_index: int) -> dict[str, Any]:
+        result: dict[str, Any] = {"genericInstIndex": inst_index, "arguments": []}
+        generic_insts_pointer = int(meta_summary["genericInsts"], 16)
+        generic_insts_count = meta_summary["genericInstsCount"]
+        if inst_index < 0:
+            result["status"] = "notPresent"
+            return result
+        if not generic_insts_pointer or inst_index >= generic_insts_count:
+            result["status"] = "invalidGenericInstIndex"
+            return result
+        inst_pointer = pe.u64_at_va(generic_insts_pointer + inst_index * 8)
+        if not inst_pointer:
+            result["status"] = "nullGenericInstPointer"
+            return result
+        argument_count = pe.u32_at_va(inst_pointer)
+        argument_vector = pe.u64_at_va(inst_pointer + 8)
+        result["argumentCount"] = argument_count
+        if argument_count > MAX_GENERIC_ARGUMENTS:
+            result["status"] = "implausibleArgumentCount"
+            return result
+        if argument_count and not argument_vector:
+            result["status"] = "nullArgumentVector"
+            return result
+        arguments: list[dict[str, Any]] = []
+        for argument_index in range(argument_count):
+            type_pointer = pe.u64_at_va(argument_vector + argument_index * 8)
+            type_index = type_pointer_to_index.get(type_pointer)
+            argument: dict[str, Any] = {"typePointerVa": f"0x{type_pointer:x}"}
+            if type_index is None:
+                argument["status"] = "unregisteredTypePointer"
+            else:
+                argument["typeIndex"] = type_index
+                argument["typeName"] = md.metadata_type_name(type_index)
+                argument["status"] = "decoded"
+            arguments.append(argument)
+        result["arguments"] = arguments
+        result["status"] = (
+            "decoded"
+            if all(argument["status"] == "decoded" for argument in arguments)
+            else "partiallyDecoded"
+        )
+        return result
 
     index: dict[int, list[dict[str, Any]]] = {}
-    for slot, generic_method_index in slot_to_spec.items():
+    for slot, generic_method_indices in slot_to_specs.items():
         pointer = pe.u64_at_va(pointer_base + slot * 8)
         if not pointer:
             continue
-        method_definition_index = struct.unpack_from(
-            "<i", pe.buf, spec_offset + generic_method_index * METHOD_SPEC_STRIDE
-        )[0]
-        if not 0 <= method_definition_index < len(md.methods):
-            continue
-        row = method_signature(md, method_definition_index)
-        row["genericInstantiation"] = True
-        row["genericMethodPointerSlot"] = slot
-        row["methodSpecIndex"] = generic_method_index
-        index.setdefault(pointer, []).append(row)
+        for generic_method_index in generic_method_indices:
+            method_definition_index, class_inst_index, method_inst_index = struct.unpack_from(
+                "<iii", pe.buf, spec_offset + generic_method_index * METHOD_SPEC_STRIDE
+            )
+            if not 0 <= method_definition_index < len(md.methods):
+                continue
+            row = method_signature(md, method_definition_index)
+            row["genericInstantiation"] = True
+            row["genericMethodPointerSlot"] = slot
+            row["methodSpecIndex"] = generic_method_index
+            row["classInstantiation"] = decode_generic_instantiation(class_inst_index)
+            row["methodInstantiation"] = decode_generic_instantiation(method_inst_index)
+            index.setdefault(pointer, []).append(row)
     return index
 
 
@@ -1116,10 +1176,102 @@ def origin_for_memory_expr(expr: str, origins: dict[str, str]) -> str:
 
 
 def is_interesting_origin(origin: str) -> bool:
-    return origin.startswith(("this", "param:", "&this", "&param:"))
+    return origin.startswith(
+        ("this", "param:", "return:", "&this", "&param:", "&return:")
+    )
 
 
-def origin_for_value(value: str, origins: dict[str, str]) -> str:
+def stack_slot_for_memory_expr(expr: str, stack_delta: int) -> int | None:
+    """Normalize a simple RSP-relative operand to its entry-stack slot."""
+    clean = expr.split("=>", 1)[0].replace(" ", "")
+    match = re.fullmatch(r"(?:rsp|esp)([+-]0x[0-9a-f]+)?", clean)
+    if not match:
+        return None
+    disp_text = match.group(1) or "+0x0"
+    sign = -1 if disp_text.startswith("-") else 1
+    return stack_delta + sign * int(disp_text[1:], 16)
+
+
+def instruction_stack_deltas(
+    instructions: list[dict[str, Any]],
+    start_va: int,
+) -> tuple[dict[int, int], int]:
+    """Recover entry-relative RSP deltas across direct native control flow.
+
+    Optimized IL2CPP methods commonly have several epilogues followed by blocks
+    reached from earlier conditional branches. A linear scan would apply one
+    epilogue's ``add rsp``/``pop`` operations to those sibling blocks. Propagate
+    deltas over direct CFG edges instead, with the primary prologue delta as a
+    conservative fallback for blocks reached only through an indirect switch.
+    """
+    if not instructions:
+        return {}, 0
+    by_offset = {int(row.get("offset") or 0): row for row in instructions}
+    offsets = sorted(by_offset)
+    next_offset = {
+        offset: offsets[index + 1]
+        for index, offset in enumerate(offsets[:-1])
+    }
+
+    def adjusted(delta: int, text: str) -> int:
+        if re.fullmatch(r"push [a-z][a-z0-9]*", text):
+            return delta - 8
+        if re.fullmatch(r"pop [a-z][a-z0-9]*", text):
+            return delta + 8
+        match = re.fullmatch(r"(add|sub) (?:rsp|esp), (0x[0-9a-f]+)", text)
+        if match:
+            amount = int(match.group(2), 16)
+            return delta + amount if match.group(1) == "add" else delta - amount
+        return delta
+
+    prologue_delta = 0
+    for offset in offsets:
+        text = str(by_offset[offset].get("text") or "")
+        if text.startswith(("j", "call ", "ret", "int3")):
+            break
+        prologue_delta = adjusted(prologue_delta, text)
+
+    deltas: dict[int, int] = {offsets[0]: 0}
+    pending = [offsets[0]]
+    while pending:
+        offset = pending.pop()
+        text = str(by_offset[offset].get("text") or "")
+        outgoing = adjusted(deltas[offset], text)
+        successors: list[int] = []
+        target_text = branch_target_from_text(text)
+        target_offset = (
+            int(target_text, 16) - start_va if target_text else None
+        )
+        if text.startswith("jmp "):
+            if target_offset in by_offset:
+                successors.append(target_offset)
+        elif text.startswith(("ret", "int3")):
+            pass
+        else:
+            following = next_offset.get(offset)
+            if following is not None:
+                successors.append(following)
+            if text.startswith("j") and target_offset in by_offset:
+                successors.append(target_offset)
+        for successor in successors:
+            if successor not in deltas:
+                deltas[successor] = outgoing
+                pending.append(successor)
+            elif deltas[successor] != outgoing:
+                # Keep the first deterministic path. Valid compiler-generated
+                # block joins normally agree; disagreement is surfaced by the
+                # caller's missing provenance rather than guessed here.
+                continue
+    return deltas, prologue_delta
+
+
+def origin_for_value(
+    value: str,
+    origins: dict[str, str],
+    *,
+    stack_slots: dict[int, str] | None = None,
+    stack_delta: int = 0,
+) -> str:
     value = str(value or "").strip()
     if not value:
         return ""
@@ -1141,6 +1293,10 @@ def origin_for_value(value: str, origins: dict[str, str]) -> str:
         return f"&{origin}" if origin else value
     if value.startswith("[") and value.endswith("]"):
         inner = value[1:-1]
+        if stack_slots is not None:
+            slot = stack_slot_for_memory_expr(inner, stack_delta)
+            if slot is not None:
+                return stack_slots.get(slot, value)
         origin = origin_for_memory_expr(inner, origins)
         return origin or value
     if is_register_name(value):
@@ -2298,6 +2454,12 @@ def build_method_body_summary(
     )
     origins = param_origin_registers(row)
     initial_origins = dict(origins)
+    stack_slots: dict[int, str] = {}
+    stack_deltas, prologue_stack_delta = instruction_stack_deltas(
+        instructions, start_va
+    )
+    stack_spills: list[dict[str, Any]] = []
+    stack_restores: list[dict[str, Any]] = []
     memory_counter: Counter[str] = Counter()
     field_counter: Counter[str] = Counter()
     param_flow: dict[str, list[dict[str, Any]]] = {}
@@ -2319,6 +2481,7 @@ def build_method_body_summary(
     for instr in instructions:
         text = str(instr.get("text") or "")
         offset = int(instr.get("offset") or 0)
+        stack_delta = stack_deltas.get(offset, prologue_stack_delta)
         used_origins = instruction_uses_origin(instr, origins)
         for origin in used_origins:
             remember_flow(origin, instr)
@@ -2344,17 +2507,47 @@ def build_method_body_summary(
         call_match = re.match(r"call 0x([0-9a-f]+)$", text)
         if call_match:
             target_va = int(call_match.group(1), 16)
-            call_rows.append({
+            resolved_targets = method_by_pointer.get(target_va, [])
+            argument_origins = {
+                register: origins[register]
+                for register in ("rcx", "rdx", "r8", "r9")
+                if register in origins
+            }
+            return_types = {
+                str(target.get("returnTypeName") or "")
+                for target in resolved_targets
+                if str(target.get("returnTypeName") or "") not in {"", "System.Void"}
+            }
+            return_origin = (
+                f"return:{next(iter(return_types))}"
+                if len(return_types) == 1
+                else ""
+            )
+            call_row = {
                 "offset": offset,
                 "targetVa": f"0x{target_va:x}",
-                "resolved": method_by_pointer.get(target_va, []),
+                "resolved": resolved_targets,
+                "argumentOrigins": argument_origins,
                 "argumentContext": call_argument_context(
                     data,
                     start_va,
                     offset,
                     window=96,
                 ),
-            })
+            }
+            if return_origin:
+                call_row["returnOrigin"] = return_origin
+            call_rows.append(call_row)
+
+            # Windows x64 calls may clobber these volatile general-purpose
+            # registers. Preserve the captured argument origins above, then
+            # seed RAX only when all resolved aliases agree on one non-void
+            # metadata return type. This makes later field-flow recovery
+            # generic instead of teaching consumers about individual getters.
+            for register in ("rax", "rcx", "rdx", "r8", "r9", "r10", "r11"):
+                origins.pop(register, None)
+            if return_origin:
+                origins["rax"] = return_origin
 
         is_control_flow = text.startswith(("cmp ", "test ", "j", "call ", "ret"))
         if is_control_flow and len(control_flow) < max_instructions * 2:
@@ -2367,8 +2560,11 @@ def build_method_body_summary(
             target = branch_target_from_text(text)
             if target:
                 row_out["targetVa"] = target
-                if call_match:
-                    row_out["resolved"] = method_by_pointer.get(int(target, 16), [])
+                # Tail calls are commonly emitted as an unconditional jump,
+                # especially for compact generic instantiations. Resolve all
+                # direct branch targets so those calls do not disappear from
+                # the native contract merely because the compiler used jmp.
+                row_out["resolved"] = method_by_pointer.get(int(target, 16), [])
             if used_origins:
                 row_out["originUses"] = used_origins
             if memory_origins:
@@ -2393,18 +2589,95 @@ def build_method_body_summary(
                 row_out["memoryOrigins"] = memory_origins
             interesting.append(row_out)
 
+        stack_store = re.match(
+            r"mov \[(?P<slot>(?:rsp|esp)(?:[+-]0x[0-9a-f]+)?)\], (?P<source>.+)$",
+            text,
+        )
+        if stack_store:
+            slot = stack_slot_for_memory_expr(
+                stack_store.group("slot"), stack_delta
+            )
+            if slot is not None:
+                stored_origin = origin_for_value(
+                    stack_store.group("source"),
+                    origins,
+                    stack_slots=stack_slots,
+                    stack_delta=stack_delta,
+                )
+                if is_interesting_origin(stored_origin):
+                    stack_slots[slot] = stored_origin
+                    stack_spills.append({
+                        "offset": offset,
+                        "slot": signed_hex(slot),
+                        "origin": stored_origin,
+                    })
+                else:
+                    stack_slots.pop(slot, None)
+
+        push_match = re.fullmatch(r"push ([a-z][a-z0-9]*)", text)
+        if push_match:
+            pushed_origin = origins.get(
+                canonical_register(push_match.group(1)), ""
+            )
+            pushed_slot = stack_delta - 8
+            if is_interesting_origin(pushed_origin):
+                stack_slots[pushed_slot] = pushed_origin
+                stack_spills.append({
+                    "offset": offset,
+                    "slot": signed_hex(pushed_slot),
+                    "origin": pushed_origin,
+                })
+            else:
+                stack_slots.pop(pushed_slot, None)
+
         write = instr.get("write")
         if write:
             dst = canonical_register(str(write.get("register") or ""))
             if dst in {"rsp", "rbp"}:
                 origins.pop(dst, None)
-                continue
-            if dst:
-                value_origin = origin_for_value(str(write.get("value") or ""), origins)
+            elif dst:
+                value_origin = origin_for_value(
+                    str(write.get("value") or ""),
+                    origins,
+                    stack_slots=stack_slots,
+                    stack_delta=stack_delta,
+                )
                 if value_origin:
                     origins[dst] = value_origin
+                    written_value = str(write.get("value") or "")
+                    stack_restore_slot = (
+                        stack_slot_for_memory_expr(
+                            written_value[1:-1], stack_delta
+                        )
+                        if written_value.startswith("[")
+                        and written_value.endswith("]")
+                        else None
+                    )
+                    if (
+                        is_interesting_origin(value_origin)
+                        and stack_restore_slot is not None
+                    ):
+                        stack_restores.append({
+                            "offset": offset,
+                            "register": dst,
+                            "origin": value_origin,
+                        })
                 elif dst in origins:
                     origins.pop(dst, None)
+
+        pop_match = re.fullmatch(r"pop ([a-z][a-z0-9]*)", text)
+        if pop_match:
+            dst = canonical_register(pop_match.group(1))
+            restored_origin = stack_slots.get(stack_delta, "")
+            if is_interesting_origin(restored_origin):
+                origins[dst] = restored_origin
+                stack_restores.append({
+                    "offset": offset,
+                    "register": dst,
+                    "origin": restored_origin,
+                })
+            else:
+                origins.pop(dst, None)
 
     window_specs: list[tuple[int, str]] = []
     seen_window_offsets: set[int] = set()
@@ -2451,7 +2724,13 @@ def build_method_body_summary(
         "initialRegisterOrigins": initial_origins,
         "finalRegisterOrigins": {
             key: value for key, value in origins.items()
-            if value.startswith(("this", "param:"))
+            if value.startswith(("this", "param:", "return:"))
+        },
+        "stackOriginFlow": {
+            "spillCount": len(stack_spills),
+            "restoreCount": len(stack_restores),
+            "spills": stack_spills[:max_instructions],
+            "restores": stack_restores[:max_instructions],
         },
         "instructionCount": len(instructions),
         "unknownInstructionCount": unknown_count,
@@ -2626,6 +2905,54 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             mapped["genericBodyCandidate"] = generic_candidates[0]
             mapping_status = "mappedGenericInstantiation"
         elif len(generic_candidates) > 1:
+            for candidate in generic_candidates:
+                candidate_pointer = int(candidate["methodPointerVa"], 16)
+                candidate_file_offset, candidate_section, candidate_rva = pe.file_offset_for_va(
+                    candidate_pointer
+                )
+                candidate_scan_size, candidate_next_pointer = estimate_scan_size(
+                    candidate_pointer,
+                    sorted_all_pointers,
+                    args.max_scan_bytes,
+                )
+                candidate_calls, candidate_unresolved_count = scan_direct_calls(
+                    pe,
+                    candidate_pointer,
+                    candidate_scan_size,
+                    method_by_pointer,
+                    catalog_target_keys,
+                    include_unresolved=args.include_unresolved_calls,
+                    arg_context_window=args.arg_context_window,
+                )
+                candidate_body: dict[str, Any] = {
+                    "methodPointerRva": f"0x{candidate_rva:x}",
+                    "fileOffset": (
+                        f"0x{candidate_file_offset:x}"
+                        if candidate_file_offset is not None
+                        else ""
+                    ),
+                    "section": candidate_section,
+                    "scanBytes": candidate_scan_size,
+                    "nextMethodPointerVa": (
+                        f"0x{candidate_next_pointer:x}" if candidate_next_pointer else ""
+                    ),
+                    "headBytes": pe.bytes_at_va(candidate_pointer, args.head_bytes).hex(" "),
+                    "directCalls": candidate_calls,
+                    "unresolvedDirectCallCount": candidate_unresolved_count,
+                }
+                if body_summary_re and (
+                    body_summary_re.search(str(row.get("method") or ""))
+                    or body_summary_re.search(str(row.get("type") or ""))
+                ):
+                    candidate_body["methodBodySummary"] = build_method_body_summary(
+                        row,
+                        pe.bytes_at_va(candidate_pointer, candidate_scan_size),
+                        candidate_pointer,
+                        method_by_pointer,
+                        pe=pe,
+                        max_instructions=args.body_summary_max_instructions,
+                    )
+                candidate["body"] = candidate_body
             mapped["mappingStatus"] = "ambiguousGenericInstantiations"
             mapped["genericBodyCandidates"] = generic_candidates
             mapped_targets.append(mapped)
@@ -2675,7 +3002,9 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "metadata": {
             "metadataPath": str(metadata_path),
+            "metadataSha256": hashlib.sha256(md.buf).hexdigest().upper(),
             "gameAssembly": str(args.gameassembly),
+            "gameAssemblySha256": hashlib.sha256(pe.buf).hexdigest().upper(),
             "imageBase": f"0x{pe.image_base:x}",
             "catalog": str(args.catalog),
         },

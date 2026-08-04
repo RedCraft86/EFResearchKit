@@ -1,5 +1,7 @@
+import base64
 import hashlib
 import json
+import struct
 import subprocess
 import tempfile
 import unittest
@@ -8,7 +10,215 @@ from unittest.mock import patch
 
 
 from scripts import build_mission_pipeline_data as pipeline
-from scripts.story_builder import mission_flow, source_links
+from scripts.story_builder import level_bindings, mission_flow, source_links
+
+
+class LevelScriptSourceEvidenceTests(unittest.TestCase):
+    def test_exact_empty_action_map_attaches_original_file_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "level_a" / "1001.json"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"\x1b\x02\x03" + struct.pack("<III", 0, 0, 0))
+            condition = {
+                "$type": "Fixture.CheckLevelScriptPropertyBool",
+                "uniqueId": "condition_a",
+                "_sceneId": "level_a",
+                "_scriptId": {"scriptId": 1001},
+                "_key": "isFinished",
+            }
+
+            rows = pipeline.level_script_source_evidence(
+                condition,
+                level_script_root=root,
+            )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["actionMapStatus"], "exact_empty_action_map")
+        self.assertEqual(
+            rows[0]["actionMapListCounts"],
+            {"actionList": 0, "getterList": 0, "headerList": 0},
+        )
+        self.assertEqual(len(rows[0]["relatedOriginalFiles"][0]["sha256"]), 64)
+
+
+
+QUEST_STATE_LIFECYCLE_FIXTURE = {
+    "schema": "questStateLifecycleApplication.v1",
+    "classification": "server_selected_quest_identity_state_transition",
+    "message": {
+        "type": "Proto.SC_FIXTURE_QUEST_STATE_UPDATE",
+        "messageId": 111,
+        "identityField": "questId",
+        "stateField": "questState",
+        "successorLikeFields": [],
+    },
+    "stateEnum": {"type": "Fixture.QuestState", "values": []},
+    "transitions": [
+        {
+            "state": 2,
+            "stateName": "Processing",
+            "reachableLifecycleCalls": [{"method": "StartQuest"}],
+        },
+        {
+            "state": 3,
+            "stateName": "Completed",
+            "reachableLifecycleCalls": [{"method": "SucceedQuest"}],
+        },
+    ],
+    "validation": {"status": "validated", "failures": []},
+}
+
+
+QUEST_ENABLE_LIFECYCLE_FIXTURE = {
+    "schema": "questEnableLifecycleApplication.v1",
+    "classification": "server_selected_quest_enable_local_pause_application",
+    "message": {
+        "type": "Proto.SC_FIXTURE_QUEST_ENABLE",
+        "messageId": 122,
+        "identityField": "questId",
+        "consumedControlFields": ["enabled"],
+        "unreadControlFields": ["previousState"],
+        "successorLikeFields": [],
+    },
+    "runtimeControl": {
+        "ownerType": "Fixture.RuntimeQuestData",
+        "field": "paused",
+        "offset": "0x28",
+    },
+    "routes": [
+        {
+            "values": {"enabled": False, "paused": False},
+            "reachableLifecycleCalls": [{
+                "method": "DisableThing", "samePacketIdentity": True,
+            }],
+        },
+        {
+            "values": {"enabled": False, "paused": True},
+            "reachableLifecycleCalls": [{
+                "method": "DisableThing", "samePacketIdentity": True,
+            }],
+        },
+        {
+            "values": {"enabled": True, "paused": False},
+            "reachableLifecycleCalls": [{
+                "method": "BeginThing", "samePacketIdentity": True,
+            }],
+        },
+        {
+            "values": {"enabled": True, "paused": True},
+            "reachableLifecycleCalls": [{
+                "method": "PauseThing", "samePacketIdentity": True,
+            }],
+        },
+    ],
+    "validation": {"status": "validated", "failures": []},
+}
+
+
+STATE_UPDATE_CONTRACT_FIXTURE = {
+    "classification": "server_selected_identity_state_application",
+    "candidateCount": 4,
+    "validatedCandidateCount": 4,
+    "clientSuccessorSelectors": 0,
+    "allLifecycleCallsUsePacketIdentity": True,
+    "questStateLifecycleApplication": QUEST_STATE_LIFECYCLE_FIXTURE,
+    "questEnableLifecycleApplication": QUEST_ENABLE_LIFECYCLE_FIXTURE,
+    "questStartApplication": {
+        "classification": "single_server_selected_quest_objective_initialization",
+        "fieldReadCounts": {
+            "objectiveList": 3,
+            "prevQuestIdList": 0,
+            "flowIndex": 0,
+        },
+        "topologyTraversalCalls": [],
+        "validation": {"status": "validated", "failures": []},
+    },
+    "questSucceedActionApplication": {
+        "schema": "questLifecycleClientAction.v2",
+        "classification": "bounded_current_aot_quest_action_dispatch",
+        "action": {
+            "name": "OnSucceedClientAction",
+            "value": 2,
+        },
+        "startActionDispatchers": [],
+        "runQuestActionFlow": {"sharedPendingCarrier": True},
+        "validation": {"status": "validated", "failures": []},
+    },
+    "questTopologyFieldConsumers": {
+        "classification": "client_display_and_context_topology_only",
+        "activePredecessorConsumerCount": 0,
+        "flowIndexNonSortConsumerCount": 0,
+        "topologyLifecycleCalls": [],
+        "questInfoConsumers": {
+            "verifiedDirectCallCount": 42,
+            "rawE8CandidateCount": 43,
+            "rows": [],
+        },
+        "missionRuntimeConsumers": [],
+        "questSemanticFields": {
+            "schema": "questSemanticFieldConsumers.v2",
+            "classification": "client_presentation_and_post_application_only",
+            "questType": {
+                "values": [
+                    {"id": 0, "name": "Normal"},
+                    {"id": 1, "name": "Block"},
+                    {"id": 2, "name": "Optional"},
+                ],
+                "consumerCount": 7,
+                "postLifecycleConsumerCount": 2,
+                "blockNotificationConsumerCount": 2,
+            },
+            "showMode": {
+                "values": [
+                    {"id": 1, "name": "AlwaysShow"},
+                    {"id": 1000, "name": "AlwaysHide"},
+                ],
+                "consumerCount": 5,
+                "lifecycleConsumerCount": 0,
+            },
+            "optionalObjectiveFlag": {
+                "schema": "questOptionalObjectiveFlag.v1",
+                "classification": "optional_objective_presentation_flag",
+                "validation": {"status": "validated", "failures": []},
+            },
+            "validation": {"status": "validated", "failures": []},
+        },
+        "validation": {"status": "validated", "failures": []},
+    },
+    "rows": [],
+    "relatedOriginalFiles": [
+        {"kind": "original_game_binary"},
+        {"kind": "original_game_metadata"},
+    ],
+    "validation": {"status": "validated", "failures": []},
+}
+
+TASK_AUTHORITY_CONTRACT_FIXTURE = {
+    "schema": "levelScriptTaskAuthority.v1",
+    "classification": "server_selected_scene_script_task_identity",
+    "identityFields": ["sceneNumId", "scriptId", "taskId"],
+    "missionQuestIdentityFields": [],
+    "relatedOriginalFiles": [
+        {"kind": "original_game_binary"},
+        {"kind": "original_game_metadata"},
+    ],
+    "validation": {"status": "validated"},
+}
+
+EXTRA_THREAD_SCHEDULER_CONTRACT_FIXTURE = {
+    "schema": "actionExtraThreadSchedulerCensus.v1",
+    "classification": "typed_children_launch_as_parallel_extra_threads",
+    "extraThreadExecuteMethods": [
+        {
+            "symbol": "Fixture.Actions.Composite.Execute",
+            "writerShape": "inline_list_add_from_typed_collection",
+        }
+    ],
+    "directCalls": [],
+    "relatedOriginalFiles": [],
+    "validation": {"status": "validated", "failures": []},
+}
 
 
 def condition(kind, **values):
@@ -16,10 +226,1082 @@ def condition(kind, **values):
 
 
 class MissionPipelineBuilderTests(unittest.TestCase):
+    def test_quest_fork_state_application_annotation_is_corpus_wide(self):
+        payload = {
+            "questTopology": {
+                "forks": [{
+                    "questId": "m1_q#1",
+                    "arms": [
+                        {"questId": "m1_q#2"},
+                        {"questId": "m1_q#3"},
+                    ],
+                }],
+            },
+        }
+        contract = {
+            **QUEST_STATE_LIFECYCLE_FIXTURE,
+            "source": "reports/story/recovery/protocol_registry_audit.json",
+            "relatedOriginalFiles": [
+                {"kind": "original_game_binary", "sha256": "binary"},
+                {"kind": "original_game_metadata", "sha256": "metadata"},
+            ],
+            "finding": "fixture finding",
+            "boundary": "fixture boundary",
+        }
+
+        counts = pipeline.annotate_quest_fork_state_application(payload, contract)
+
+        fork = payload["questTopology"]["forks"][0]
+        self.assertEqual(counts, {"forks": 1, "arms": 2})
+        self.assertEqual(
+            fork["serverQuestStateApplication"]["message"]["identityField"],
+            "questId",
+        )
+        self.assertEqual(
+            fork["arms"][1]["serverApplicationIdentity"],
+            {
+                "field": "questId",
+                "value": "m1_q#3",
+                "contractReference": (
+                    "runtimeContract.stateUpdateApplicationAudit."
+                    "questStateLifecycleApplication"
+                ),
+            },
+        )
+        self.assertEqual(
+            len(fork["serverQuestStateApplication"]["relatedOriginalFiles"]),
+            2,
+        )
+
+    def test_quest_fork_state_application_fails_closed_on_successor_field(self):
+        contract = {
+            **QUEST_STATE_LIFECYCLE_FIXTURE,
+            "message": {
+                **QUEST_STATE_LIFECYCLE_FIXTURE["message"],
+                "successorLikeFields": ["nextQuestId"],
+            },
+        }
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"validator=quest_fork_state_application gate=applicationShape",
+        ):
+            pipeline.annotate_quest_fork_state_application(
+                {"questTopology": {"forks": []}},
+                contract,
+            )
+
+    def test_quest_fork_enable_application_annotation_is_corpus_wide(self):
+        payload = {
+            "questTopology": {
+                "forks": [{
+                    "questId": "m1_q#1",
+                    "arms": [
+                        {"questId": "m1_q#2"},
+                        {"questId": "m1_q#3"},
+                    ],
+                }],
+            },
+        }
+        contract = {
+            **QUEST_ENABLE_LIFECYCLE_FIXTURE,
+            "source": "reports/story/recovery/protocol_registry_audit.json",
+            "relatedOriginalFiles": [
+                {"kind": "original_game_binary", "sha256": "binary"},
+                {"kind": "original_game_metadata", "sha256": "metadata"},
+            ],
+        }
+
+        counts = pipeline.annotate_quest_fork_enable_application(payload, contract)
+
+        fork = payload["questTopology"]["forks"][0]
+        self.assertEqual(counts, {"forks": 1, "arms": 2})
+        self.assertEqual(
+            fork["serverQuestEnableApplication"]["runtimeControl"]["field"],
+            "paused",
+        )
+        self.assertEqual(
+            fork["arms"][1]["serverEnableApplicationIdentity"],
+            {
+                "field": "questId",
+                "value": "m1_q#3",
+                "contractReference": (
+                    "runtimeContract.stateUpdateApplicationAudit."
+                    "questEnableLifecycleApplication"
+                ),
+            },
+        )
+
+    def test_quest_fork_enable_application_fails_closed_on_incomplete_matrix(self):
+        contract = {
+            **QUEST_ENABLE_LIFECYCLE_FIXTURE,
+            "routes": QUEST_ENABLE_LIFECYCLE_FIXTURE["routes"][:-1],
+        }
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"validator=quest_fork_enable_application gate=applicationShape",
+        ):
+            pipeline.annotate_quest_fork_enable_application(
+                {"questTopology": {"forks": []}},
+                contract,
+            )
+
+    def test_quest_action_dispatch_annotation_is_corpus_driven(self):
+        payload = {
+            "nodes": [{
+                "clientActions": [
+                    {"id": 10, "trigger": 1, "chainIndex": 0},
+                    {"id": 11, "trigger": 2, "chainIndex": 0},
+                    {"id": 12, "trigger": 2, "chainIndex": 1},
+                ],
+            }],
+        }
+        contract = {
+            "source": "reports/story/recovery/protocol_registry_audit.json",
+            "questActionEnum": {"OnStartClientAction": 1},
+            "safeRunDirectCallers": [{
+                "symbol": "Beyond.Gameplay.MissionSystem.SucceedQuest",
+                "questActionValue": 2,
+            }],
+            "startActionDispatchers": [],
+            "boundary": "fixture boundary",
+        }
+
+        counts = pipeline.annotate_quest_action_dispatch(payload, contract)
+
+        actions = payload["nodes"][0]["clientActions"]
+        self.assertEqual(
+            actions[0]["runtimeDispatchStatus"],
+            "authored_definition_no_current_aot_dispatch",
+        )
+        self.assertEqual(
+            actions[1]["runtimeDispatchStatus"],
+            "binary_proven_server_success_dispatch",
+        )
+        self.assertEqual(
+            actions[1]["runtimeDispatchHandler"],
+            "Beyond.Gameplay.MissionSystem.SucceedQuest",
+        )
+        self.assertEqual(
+            counts["roots:authored_definition_no_current_aot_dispatch"], 1
+        )
+        self.assertEqual(
+            counts["rows:binary_proven_server_success_dispatch"], 2
+        )
+
+    def test_quest_fork_semantics_recovers_roles_guards_and_reconvergence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "m1.json"
+            source.write_text('{"missionId":"m1"}', encoding="utf-8")
+            nodes = [
+                {
+                    "id": "m1_q#1", "successors": ["m1_q#2", "m1_q#3"],
+                    "prev": [], "mainPath": True, "mainPathOrder": 0,
+                },
+                {
+                    "id": "m1_q#2", "successors": ["m1_q#4"],
+                    "prev": ["m1_q#1"], "mainPath": True,
+                    "mainPathOrder": 1, "flowIndex": 0, "questType": 0,
+                    "showMode": 1, "objectives": [{"conditionTypes": ["ReachDestination"]}],
+                    "failedCondition": None,
+                },
+                {
+                    "id": "m1_q#3", "successors": ["m1_q#4"],
+                    "prev": ["m1_q#1"], "mainPath": False,
+                    "mainPathOrder": None, "flowIndex": 7, "questType": 1,
+                    "showMode": 1000, "objectives": [{"conditionTypes": ["CheckQuestState"]}],
+                    "failedCondition": {"type": "CheckMissionState"},
+                },
+                {
+                    "id": "m1_q#4", "successors": [],
+                    "prev": ["m1_q#2", "m1_q#3"], "mainPath": True,
+                    "mainPathOrder": 2,
+                },
+            ]
+
+            result = pipeline.build_quest_fork_semantics(nodes, source)
+
+        self.assertEqual(result["validation"]["status"], "validated")
+        self.assertEqual(result["counts"]["forks"], 1)
+        fork = result["forks"][0]
+        self.assertEqual(fork["structure"], "main_path_plus_auxiliary")
+        self.assertEqual(fork["outcome"], "reconverging")
+        self.assertEqual(fork["guardedArmCount"], 1)
+        self.assertEqual(
+            fork["firstCommonDescendant"]["distanceByArm"],
+            {"m1_q#2": 1, "m1_q#3": 1},
+        )
+        self.assertEqual([arm["role"] for arm in fork["arms"]], [
+            "main_path", "auxiliary",
+        ])
+        self.assertEqual(
+            [arm["siblingExclusiveQuestIds"] for arm in fork["arms"]],
+            [["m1_q#2"], ["m1_q#3"]],
+        )
+        self.assertEqual(fork["arms"][1]["flowIndexRole"], "display_sort_only")
+        self.assertEqual(result["schema"], "missionQuestForkSemantics.v2")
+        self.assertEqual(
+            fork["relatedOriginalFiles"][0]["sha256"],
+            hashlib.sha256(b'{"missionId":"m1"}').hexdigest(),
+        )
+
+    def test_quest_fork_semantics_fails_closed_with_source_diagnostic(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "m_bad.json"
+            source.write_text("{}", encoding="utf-8")
+            result = pipeline.build_quest_fork_semantics([
+                {
+                    "id": "m_bad_q#1",
+                    "successors": ["m_bad_q#2", "m_bad_q#missing"],
+                    "prev": [],
+                },
+                {
+                    "id": "m_bad_q#2", "successors": [],
+                    "prev": ["m_bad_q#1"],
+                },
+            ], source)
+
+        self.assertEqual(result["validation"]["status"], "validation_failed")
+        first = result["validation"]["failures"][0]
+        self.assertEqual(first["gate"], "allForkArmsResolve")
+        self.assertEqual(first["questId"], "m_bad_q#1")
+        self.assertEqual(first["actual"], ["m_bad_q#missing"])
+        self.assertTrue(first["sourceFile"].endswith("m_bad.json"))
+        self.assertIn("missionRuntimeSha256", first["sourceHashes"])
+
+    def test_publish_quest_fork_arm_evidence_attaches_typed_story_and_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output_root = root / "webui" / "data" / "mission_pipeline"
+            mission_root = output_root / "missions"
+            sidecar_root = root / "webui" / "data" / "lang" / "CN" / "mission"
+            report_root = root / "reports" / "mission_order"
+            original_root = root / "export_full" / "structured"
+            mission_root.mkdir(parents=True)
+            sidecar_root.mkdir(parents=True)
+            report_root.mkdir(parents=True)
+            original_root.mkdir(parents=True)
+            action_audit = report_root / "action_names.json"
+            action_audit.write_text(json.dumps({
+                "metadata": {
+                    "gameAssemblySha256": "game-hash",
+                    "metadataSha256": "metadata-hash",
+                },
+            }), encoding="utf-8")
+            levelscript = original_root / "levelscript.json"
+            levelscript.write_text("{}", encoding="utf-8")
+            dialog_tree = original_root / "dialog_tree.json"
+            dialog_tree.write_text('{"tree":1}', encoding="utf-8")
+            mission_source = original_root / "m1.json"
+            mission_source.write_text('{"missionId":"m1"}', encoding="utf-8")
+            topology = pipeline.build_quest_fork_semantics([
+                {"id": "m1_q#1", "successors": ["m1_q#2", "m1_q#3"], "prev": []},
+                {"id": "m1_q#2", "successors": [], "prev": ["m1_q#1"]},
+                {"id": "m1_q#3", "successors": [], "prev": ["m1_q#1"]},
+            ], mission_source)
+            mission_payload = {
+                "questTopology": topology,
+                "nodes": [
+                    {
+                        "id": "m1_q#1",
+                    },
+                    {
+                        "id": "m1_q#2",
+                        "dialogTreeDefinitions": [{
+                            "sceneKey": "dlg_m1_1",
+                            "sourceFile": dialog_tree.relative_to(root).as_posix(),
+                            "sourceSha256": hashlib.sha256(dialog_tree.read_bytes()).hexdigest(),
+                        }],
+                    },
+                    {"id": "m1_q#3"},
+                ],
+                "storyOrder": {"branches": {"questForks": topology["forks"]}},
+            }
+            (mission_root / "m1.json").write_text(
+                json.dumps(mission_payload), encoding="utf-8"
+            )
+            (sidecar_root / "m1.json").write_text(json.dumps({
+                "flow": {"quests": [
+                    {"id": "m1_q#1", "storyConnections": []},
+                    {"id": "m1_q#2", "storyConnections": [
+                        {
+                            "key": "radio_m1_1",
+                            "kind": "radio",
+                            "relation": "client_action_succeed",
+                            "direction": "quest_to_story",
+                            "phase": "succeed",
+                            "confidence": "native_typed_direct",
+                            "actionType": "PlayRadio",
+                            "source": "MissionRuntime action",
+                            "sourceFiles": [levelscript.relative_to(root).as_posix()],
+                        },
+                        {
+                            "key": "dlg_m1_1",
+                            "kind": "dialog",
+                            "relation": "objective_condition",
+                            "direction": "story_to_quest",
+                            "phase": "progress",
+                            "confidence": "direct",
+                            "conditionType": "CheckTalkOptionFinish",
+                            "source": "MissionRuntime condition",
+                        },
+                    ]},
+                    {"id": "m1_q#3", "storyConnections": [{
+                        "key": "dlg_m1_2",
+                        "kind": "dialog",
+                        "relation": "failure_condition",
+                        "direction": "story_to_quest",
+                        "phase": "failure",
+                        "confidence": "direct",
+                        "source": "MissionRuntime failure condition",
+                    }]},
+                ]},
+            }), encoding="utf-8")
+            index = {
+                "missions": [{"id": "m1", "file": "missions/m1.json"}],
+            }
+            audit_contract = {
+                "schema": "actionBaseFormatterNameAudit.v1",
+                "status": "validated",
+                "sourceFile": action_audit.relative_to(root).as_posix(),
+                "sourceSha256": hashlib.sha256(action_audit.read_bytes()).hexdigest().upper(),
+                "nativeMappingId": "fixture-action-map",
+                "summary": {"recoveredTags": 2, "validationFailures": 0},
+                "validationFailures": [],
+                "usesOcrOrManualOrder": False,
+            }
+            with patch.object(pipeline, "ROOT", root), patch.object(
+                pipeline, "ACTIONBASE_FORMATTER_NAME_AUDIT", audit_contract
+            ):
+                result = pipeline.publish_quest_fork_arm_evidence(
+                    index, output_root, root / "webui" / "data" / "lang", "CN"
+                )
+
+            published = json.loads((mission_root / "m1.json").read_text(encoding="utf-8"))
+            arms = published["questTopology"]["forks"][0]["arms"]
+            self.assertEqual(result["counts"]["storyEvidencePlacements"], 3)
+            self.assertEqual(result["counts"]["armsWithStoryEvidence"], 2)
+            self.assertEqual(result["counts"]["binaryNamedActionPlacements"], 1)
+            self.assertEqual(
+                [row["key"] for row in arms[0]["storyEvidence"]],
+                ["dlg_m1_1", "radio_m1_1"],
+            )
+            self.assertEqual(len(arms[0]["relatedOriginalFiles"]), 2)
+            self.assertTrue(all(row["sha256"] for row in arms[0]["relatedOriginalFiles"]))
+            self.assertFalse(result["evidencePolicy"]["usesOcrOrManualOrder"])
+            self.assertEqual(
+                published["storyOrder"]["branches"]["questForks"][0],
+                published["questTopology"]["forks"][0],
+            )
+
+    def test_publish_quest_fork_arm_evidence_fails_closed_for_missing_sidecar(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output_root = root / "webui" / "data" / "mission_pipeline"
+            mission_root = output_root / "missions"
+            report_root = root / "reports" / "mission_order"
+            mission_root.mkdir(parents=True)
+            report_root.mkdir(parents=True)
+            action_audit = report_root / "action_names.json"
+            action_audit.write_text('{"metadata":{}}', encoding="utf-8")
+            (mission_root / "m1.json").write_text(json.dumps({
+                "questTopology": {"forks": [{"questId": "m1_q#1", "arms": []}]},
+                "nodes": [],
+            }), encoding="utf-8")
+            index = {"missions": [{"id": "m1", "file": "missions/m1.json"}]}
+            audit_contract = {
+                "status": "validated",
+                "sourceFile": action_audit.relative_to(root).as_posix(),
+                "sourceSha256": hashlib.sha256(action_audit.read_bytes()).hexdigest().upper(),
+            }
+            with patch.object(pipeline, "ROOT", root), patch.object(
+                pipeline, "ACTIONBASE_FORMATTER_NAME_AUDIT", audit_contract
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    r"validator=quest_fork_arm_evidence gate=missionSidecar mission=m1",
+                ):
+                    pipeline.publish_quest_fork_arm_evidence(
+                        index, output_root, root / "webui" / "data" / "lang", "CN"
+                    )
+
+    def test_state_update_contract_revalidates_original_binary_sources(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            gameassembly = root / "GameAssembly.dll"
+            metadata = root / "global-metadata.dat"
+            gameassembly.write_bytes(b"fixture-gameassembly")
+            metadata.write_bytes(b"fixture-metadata")
+            audit_path = root / "protocol_registry_audit.json"
+            audit_path.write_text(json.dumps({
+            "_schema": "endfieldProtocolRegistryAudit.v20",
+                "source": {
+                    "gameAssembly": str(gameassembly),
+                    "gameAssemblySha256": hashlib.sha256(gameassembly.read_bytes()).hexdigest(),
+                    "metadata": str(metadata),
+                    "metadataSha256": hashlib.sha256(metadata.read_bytes()).hexdigest(),
+                },
+                "stateUpdateApplicationCensus": {
+                    "questStateLifecycleApplication": QUEST_STATE_LIFECYCLE_FIXTURE,
+                    "questEnableLifecycleApplication": QUEST_ENABLE_LIFECYCLE_FIXTURE,
+                    "classification": "server_selected_identity_state_application",
+                    "candidateCount": 2,
+                    "validatedCandidateCount": 2,
+                    "clientSuccessorSelectors": 0,
+                    "allLifecycleCallsUsePacketIdentity": True,
+                    "finding": "fixture",
+                    "boundary": "fixture boundary",
+                    "rows": [],
+                    "questStartApplication": {
+                        "classification": "single_server_selected_quest_objective_initialization",
+                        "fieldReadCounts": {
+                            "objectiveList": 3,
+                            "prevQuestIdList": 0,
+                            "flowIndex": 0,
+                        },
+                        "topologyTraversalCalls": [],
+                        "validation": {"status": "validated", "failures": []},
+                    },
+                    "questSucceedActionApplication": {
+                        "schema": "questLifecycleClientAction.v2",
+                        "classification": "bounded_current_aot_quest_action_dispatch",
+                        "startActionDispatchers": [],
+                        "runQuestActionFlow": {"sharedPendingCarrier": True},
+                        "validation": {"status": "validated", "failures": []},
+                    },
+                    "questTopologyFieldConsumers": {
+                        "classification": "client_display_and_context_topology_only",
+                        "activePredecessorConsumerCount": 0,
+                        "flowIndexNonSortConsumerCount": 0,
+                        "topologyLifecycleCalls": [],
+                        "questSemanticFields": {
+                            "schema": "questSemanticFieldConsumers.v2",
+                            "optionalObjectiveFlag": {
+                                "validation": {
+                                    "status": "validated",
+                                    "failures": [],
+                                },
+                            },
+                            "validation": {"status": "validated", "failures": []},
+                        },
+                        "validation": {"status": "validated", "failures": []},
+                    },
+                    "validation": {"status": "validated", "failures": []},
+                },
+            }), encoding="utf-8")
+
+            contract = pipeline.load_state_update_application_contract(audit_path)
+
+        self.assertEqual(contract["validatedCandidateCount"], 2)
+        self.assertEqual(contract["clientSuccessorSelectors"], 0)
+        self.assertEqual(len(contract["relatedOriginalFiles"]), 2)
+
+    def test_state_update_contract_reports_hash_drift(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            gameassembly = root / "GameAssembly.dll"
+            metadata = root / "global-metadata.dat"
+            gameassembly.write_bytes(b"changed")
+            metadata.write_bytes(b"fixture")
+            audit_path = root / "protocol_registry_audit.json"
+            audit_path.write_text(json.dumps({
+            "_schema": "endfieldProtocolRegistryAudit.v20",
+                "source": {
+                    "gameAssembly": str(gameassembly),
+                    "gameAssemblySha256": "0" * 64,
+                    "metadata": str(metadata),
+                    "metadataSha256": hashlib.sha256(metadata.read_bytes()).hexdigest(),
+                },
+                "stateUpdateApplicationCensus": {
+                    "questStateLifecycleApplication": QUEST_STATE_LIFECYCLE_FIXTURE,
+                    "questEnableLifecycleApplication": QUEST_ENABLE_LIFECYCLE_FIXTURE,
+                    "questStartApplication": {
+                        "validation": {"status": "validated", "failures": []},
+                    },
+                    "questSucceedActionApplication": {
+                        "schema": "questLifecycleClientAction.v2",
+                        "classification": "bounded_current_aot_quest_action_dispatch",
+                        "startActionDispatchers": [],
+                        "runQuestActionFlow": {"sharedPendingCarrier": True},
+                        "validation": {"status": "validated", "failures": []},
+                    },
+                    "questTopologyFieldConsumers": {
+                        "questSemanticFields": {
+                            "schema": "questSemanticFieldConsumers.v2",
+                            "optionalObjectiveFlag": {
+                                "validation": {
+                                    "status": "validated",
+                                    "failures": [],
+                                },
+                            },
+                            "validation": {"status": "validated", "failures": []},
+                        },
+                        "validation": {"status": "validated", "failures": []},
+                    },
+                    "validation": {"status": "validated", "failures": []},
+                },
+            }), encoding="utf-8")
+
+            with self.assertRaises(RuntimeError) as raised:
+                pipeline.load_state_update_application_contract(audit_path)
+
+        message = str(raised.exception)
+        self.assertIn("validator=state_update_application_contract", message)
+        self.assertIn("gate=sourceHash", message)
+        self.assertIn("expected=", message)
+        self.assertIn("actual=", message)
+        self.assertIn("GameAssembly.dll", message)
+
+    def test_state_update_contract_fails_closed_on_optional_flag_contract(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            gameassembly = root / "GameAssembly.dll"
+            metadata = root / "global-metadata.dat"
+            gameassembly.write_bytes(b"fixture-gameassembly")
+            metadata.write_bytes(b"fixture-metadata")
+            audit_path = root / "protocol_registry_audit.json"
+            audit_path.write_text(json.dumps({
+            "_schema": "endfieldProtocolRegistryAudit.v20",
+                "source": {
+                    "gameAssembly": str(gameassembly),
+                    "gameAssemblySha256": hashlib.sha256(gameassembly.read_bytes()).hexdigest(),
+                    "metadata": str(metadata),
+                    "metadataSha256": hashlib.sha256(metadata.read_bytes()).hexdigest(),
+                },
+                "stateUpdateApplicationCensus": {
+                    "questStateLifecycleApplication": QUEST_STATE_LIFECYCLE_FIXTURE,
+                    "questEnableLifecycleApplication": QUEST_ENABLE_LIFECYCLE_FIXTURE,
+                    "questStartApplication": {
+                        "validation": {"status": "validated", "failures": []},
+                    },
+                    "questSucceedActionApplication": {
+                        "schema": "questLifecycleClientAction.v2",
+                        "classification": "bounded_current_aot_quest_action_dispatch",
+                        "startActionDispatchers": [],
+                        "runQuestActionFlow": {"sharedPendingCarrier": True},
+                        "validation": {"status": "validated", "failures": []},
+                    },
+                    "questTopologyFieldConsumers": {
+                        "questSemanticFields": {
+                            "schema": "questSemanticFieldConsumers.v2",
+                            "optionalObjectiveFlag": {
+                                "validation": {
+                                    "status": "validation_failed",
+                                    "failures": [{
+                                        "gate": "optionalFieldWrite",
+                                        "expected": "[object+0x50] = 1",
+                                        "actual": "missing",
+                                        "sourceFile": str(gameassembly),
+                                    }],
+                                },
+                            },
+                            "validation": {"status": "validated", "failures": []},
+                        },
+                        "validation": {"status": "validated", "failures": []},
+                    },
+                    "validation": {"status": "validated", "failures": []},
+                },
+            }), encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"gate=optionalFieldWrite.*expected='\[object\+0x50\] = 1'.*actual='missing'",
+            ):
+                pipeline.load_state_update_application_contract(audit_path)
+
+    def test_extra_thread_scheduler_contract_revalidates_original_sources(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            gameassembly = root / "GameAssembly.dll"
+            metadata = root / "global-metadata.dat"
+            gameassembly.write_bytes(b"fixture-gameassembly")
+            metadata.write_bytes(b"fixture-metadata")
+            audit_path = root / "protocol_registry_audit.json"
+            audit_path.write_text(json.dumps({
+                "_schema": "endfieldProtocolRegistryAudit.v20",
+                "source": {
+                    "gameAssembly": str(gameassembly),
+                    "gameAssemblySha256": hashlib.sha256(
+                        gameassembly.read_bytes()
+                    ).hexdigest(),
+                    "metadata": str(metadata),
+                    "metadataSha256": hashlib.sha256(
+                        metadata.read_bytes()
+                    ).hexdigest(),
+                },
+                "actionExtraThreadSchedulerCensus": {
+                    "schema": "actionExtraThreadSchedulerCensus.v1",
+                    "classification": "typed_children_launch_as_parallel_extra_threads",
+                    "discoveryPattern": {"objectIdentityInputs": []},
+                    "extraThreadExecuteMethods": [{
+                        "symbol": "Fixture.Composite.Execute",
+                        "writerShape": "inline_list_add_from_typed_collection",
+                    }],
+                    "validation": {"status": "validated", "failures": []},
+                },
+            }), encoding="utf-8")
+
+            contract = pipeline.load_action_extra_thread_scheduler_contract(
+                audit_path
+            )
+
+        self.assertEqual(
+            contract["classification"],
+            "typed_children_launch_as_parallel_extra_threads",
+        )
+        self.assertEqual(len(contract["relatedOriginalFiles"]), 2)
+
+    def test_extra_thread_scheduler_contract_reports_upstream_shape_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            audit_path = Path(temporary) / "protocol_registry_audit.json"
+            audit_path.write_text(json.dumps({
+                "_schema": "endfieldProtocolRegistryAudit.v20",
+                "actionExtraThreadSchedulerCensus": {
+                    "validation": {
+                        "status": "validation_failed",
+                        "failures": [{
+                            "gate": "knownStructuralWriterShape",
+                            "message": "Fixture.Unknown.Execute",
+                            "expected": ["typed child writer"],
+                            "actual": "unknown",
+                            "sourceFile": "GameAssembly.dll",
+                        }],
+                    },
+                },
+            }), encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"validator=action_extra_thread_scheduler_contract.*"
+                r"gate=knownStructuralWriterShape.*Fixture.Unknown.Execute",
+            ):
+                pipeline.load_action_extra_thread_scheduler_contract(audit_path)
+
+    def test_levelscript_task_authority_validates_general_packet_family(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            gameassembly = root / "GameAssembly.dll"
+            metadata = root / "global-metadata.dat"
+            gameassembly.write_bytes(b"fixture-gameassembly")
+            metadata.write_bytes(b"fixture-metadata")
+            schemas = []
+            for type_name, message_id, direction, fields in (
+                (
+                    "Proto.CS_SCENE_UPDATE_SCRIPT_TASK_PROGRESS", 105,
+                    "client_to_server",
+                    ["sceneNumId", "scriptId", "taskId", "objectiveValueOps"],
+                ),
+                (
+                    "Proto.SC_SCENE_LEVEL_SCRIPT_TASK_STATE_UPDATE", 813,
+                    "server_to_client",
+                    ["sceneNumId", "scriptId", "taskId", "taskState"],
+                ),
+                (
+                    "Proto.SC_SCENE_LEVEL_SCRIPT_TASK_PROGRESS_UPDATE", 815,
+                    "server_to_client",
+                    ["sceneNumId", "scriptId", "taskId", "conditionCompletedMap"],
+                ),
+                (
+                    "Proto.SC_SCENE_LEVEL_SCRIPT_TASK_START_FINISH", 816,
+                    "server_to_client",
+                    ["sceneNumId", "scriptId", "taskId"],
+                ),
+            ):
+                schemas.append({
+                    "type": type_name,
+                    "messageId": message_id,
+                    "direction": direction,
+                    "idMatches": True,
+                    "fields": [{"name": name} for name in fields],
+                })
+            native_paths = {
+                "conditionResultChanged": {"symbol": "condition"},
+                "sendProgress": {"symbol": "send", "messageId": 105},
+                "stateUpdate": {"symbol": "state", "messageId": 813},
+                "progressUpdate": {"symbol": "progress", "messageId": 815},
+                "conditionCompletionChanged": {
+                    "symbol": "completion", "messageId": 815,
+                },
+                "startFinish": {"symbol": "start", "messageId": 816},
+                "scriptSetDone": {"symbol": "done", "messageId": 823},
+            }
+            audit_path = root / "protocol_registry_audit.json"
+            audit_path.write_text(json.dumps({
+            "_schema": "endfieldProtocolRegistryAudit.v20",
+                "source": {
+                    "gameAssembly": str(gameassembly),
+                    "gameAssemblySha256": hashlib.sha256(
+                        gameassembly.read_bytes()
+                    ).hexdigest(),
+                    "metadata": str(metadata),
+                    "metadataSha256": hashlib.sha256(
+                        metadata.read_bytes()
+                    ).hexdigest(),
+                },
+                "selectedSchemas": schemas,
+                "nativeTaskPaths": native_paths,
+            }), encoding="utf-8")
+
+            contract = pipeline.load_levelscript_task_authority_contract(
+                audit_path
+            )
+
+        self.assertEqual(contract["validation"]["status"], "validated")
+        self.assertEqual(contract["validation"]["packetSchemas"], 4)
+        self.assertEqual(contract["validation"]["nativePaths"], 7)
+        self.assertEqual(contract["missionQuestIdentityFields"], [])
+        self.assertEqual(len(contract["relatedOriginalFiles"]), 2)
+
+    def test_levelscript_task_authority_fails_closed_on_schema_drift(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            audit_path = Path(temporary) / "protocol_registry_audit.json"
+            audit_path.write_text(json.dumps({
+            "_schema": "endfieldProtocolRegistryAudit.v20",
+                "selectedSchemas": [],
+                "nativeTaskPaths": {},
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "validator=levelscript_task_authority_contract "
+                "gate=taskPacketSchema",
+            ):
+                pipeline.load_levelscript_task_authority_contract(audit_path)
+
+    def test_levelscript_start_policy_revalidates_generic_binary_contract(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            gameassembly = root / "GameAssembly.dll"
+            metadata = root / "global-metadata.dat"
+            gameassembly.write_bytes(b"fixture-gameassembly")
+            metadata.write_bytes(b"fixture-metadata")
+            audit_path = root / "protocol_registry_audit.json"
+            audit_path.write_text(json.dumps({
+            "_schema": "endfieldProtocolRegistryAudit.v20",
+                "source": {
+                    "gameAssembly": str(gameassembly),
+                    "gameAssemblySha256": hashlib.sha256(
+                        gameassembly.read_bytes()
+                    ).hexdigest(),
+                    "metadata": str(metadata),
+                    "metadataSha256": hashlib.sha256(
+                        metadata.read_bytes()
+                    ).hexdigest(),
+                },
+                "levelScriptStartPolicy": {
+                    "schema": "levelScriptStartPolicy.v1",
+                    "classification": (
+                        "same_with_active_enters_prestart_when_active"
+                    ),
+                    "discoveryPattern": {"objectIdentityInputs": []},
+                    "enumValues": {
+                        "Beyond.Gameplay.LevelScriptStartType": {
+                            "SameWithActive": 2,
+                        },
+                    },
+                    "methods": {"UpdateRuntimeState": {"methodIndex": 1}},
+                    "finding": "fixture finding",
+                    "boundary": "fixture boundary",
+                    "validation": {
+                        "status": "validated",
+                        "failures": [],
+                    },
+                },
+            }), encoding="utf-8")
+
+            contract = pipeline.load_levelscript_start_policy_contract(
+                audit_path
+            )
+
+        self.assertEqual(
+            contract["classification"],
+            "same_with_active_enters_prestart_when_active",
+        )
+        self.assertEqual(contract["discoveryPattern"]["objectIdentityInputs"], [])
+        self.assertEqual(len(contract["relatedOriginalFiles"]), 2)
+        self.assertEqual(contract["validation"]["status"], "validated")
+
+    def test_levelscript_start_policy_fails_closed_on_object_specific_shape(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            audit_path = Path(temporary) / "protocol_registry_audit.json"
+            audit_path.write_text(json.dumps({
+            "_schema": "endfieldProtocolRegistryAudit.v20",
+                "levelScriptStartPolicy": {
+                    "schema": "levelScriptStartPolicy.v1",
+                    "classification": (
+                        "same_with_active_enters_prestart_when_active"
+                    ),
+                    "discoveryPattern": {
+                        "objectIdentityInputs": ["fixture-script-id"],
+                    },
+                    "validation": {
+                        "status": "validated",
+                        "failures": [],
+                    },
+                },
+            }), encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "validator=levelscript_start_policy_contract "
+                "gate=genericContractShape",
+            ):
+                pipeline.load_levelscript_start_policy_contract(audit_path)
+
+    def test_manual_self_control_revalidates_generic_binary_contract(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            gameassembly = root / "GameAssembly.dll"
+            metadata = root / "global-metadata.dat"
+            gameassembly.write_bytes(b"fixture-gameassembly")
+            metadata.write_bytes(b"fixture-metadata")
+            audit_path = root / "protocol_registry_audit.json"
+            audit_path.write_text(json.dumps({
+            "_schema": "endfieldProtocolRegistryAudit.v20",
+                "source": {
+                    "gameAssembly": str(gameassembly),
+                    "gameAssemblySha256": hashlib.sha256(
+                        gameassembly.read_bytes()
+                    ).hexdigest(),
+                    "metadata": str(metadata),
+                    "metadataSha256": hashlib.sha256(
+                        metadata.read_bytes()
+                    ).hexdigest(),
+                },
+                "levelScriptManualSelfControl": {
+                    "schema": "levelScriptManualSelfControl.v1",
+                    "classification": (
+                        "current_context_manual_start_self_target"
+                    ),
+                    "discoveryPattern": {"serializedObjectInputs": []},
+                    "serializedOperandContract": {
+                        "levelIdParamSource": 1000,
+                        "scriptIdParamSource": 1002,
+                    },
+                    "finding": "fixture finding",
+                    "boundary": "fixture boundary",
+                    "validation": {
+                        "status": "validated",
+                        "failures": [],
+                    },
+                },
+            }), encoding="utf-8")
+
+            contract = (
+                pipeline.load_levelscript_manual_self_control_contract(
+                    audit_path
+                )
+            )
+
+        self.assertEqual(
+            contract["classification"],
+            "current_context_manual_start_self_target",
+        )
+        self.assertEqual(
+            contract["serializedOperandContract"]["scriptIdParamSource"],
+            1002,
+        )
+        self.assertEqual(len(contract["relatedOriginalFiles"]), 2)
+
+    def test_manual_self_control_rejects_object_specific_discovery(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            audit_path = Path(temporary) / "protocol_registry_audit.json"
+            audit_path.write_text(json.dumps({
+            "_schema": "endfieldProtocolRegistryAudit.v20",
+                "levelScriptManualSelfControl": {
+                    "schema": "levelScriptManualSelfControl.v1",
+                    "classification": (
+                        "current_context_manual_start_self_target"
+                    ),
+                    "discoveryPattern": {
+                        "serializedObjectInputs": ["fixture-script-id"],
+                    },
+                    "validation": {
+                        "status": "validated",
+                        "failures": [],
+                    },
+                },
+            }), encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "validator=levelscript_manual_self_control_contract "
+                "gate=genericContractShape",
+            ):
+                pipeline.load_levelscript_manual_self_control_contract(
+                    audit_path
+                )
+
+    def test_activation_control_revalidates_generic_binary_contract(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            gameassembly = root / "GameAssembly.dll"
+            metadata = root / "global-metadata.dat"
+            gameassembly.write_bytes(b"fixture-gameassembly")
+            metadata.write_bytes(b"fixture-metadata")
+            audit_path = root / "protocol_registry_audit.json"
+            audit_path.write_text(json.dumps({
+                "_schema": "endfieldProtocolRegistryAudit.v20",
+                "source": {
+                    "gameAssembly": str(gameassembly),
+                    "gameAssemblySha256": hashlib.sha256(
+                        gameassembly.read_bytes()
+                    ).hexdigest(),
+                    "metadata": str(metadata),
+                    "metadataSha256": hashlib.sha256(
+                        metadata.read_bytes()
+                    ).hexdigest(),
+                },
+                "levelScriptActivationControl": {
+                    "schema": "levelScriptActivationControl.v6",
+                    "classification": (
+                        "server_state_subgame_and_runtime_request_paths"
+                    ),
+                    "discoveryPattern": {
+                        "serializedObjectInputs": [
+                            "SubGameInstanceData.id",
+                            "SubGameInstanceData.bindScriptId",
+                        ],
+                    },
+                    "messageIds": {
+                        "CsSceneSetLevelScriptActive": 94,
+                        "ScSceneLevelScriptStateNotify": 37,
+                        "ScSelfSceneInfo": 25,
+                    },
+                    "publicStateSourceFlow": {
+                        "snapshotMessageId": 25,
+                        "incrementalMessageId": 37,
+                    },
+                    "subGameInteractionFlow": {
+                        "callsInCarrierOrder": True,
+                    },
+                    "activeReceiverFlow": {
+                        "triggerActiveDuringValues": {"Active": 0, "Start": 1},
+                        "setupRegisterTriggerCallCount": 1,
+                        "activePhaseEnableBetweenStateSetters": True,
+                    },
+                    "activationSelectorFlow": {
+                        "levelScriptTypeValues": {"SubLevelScript": 4},
+                    },
+                    "activeAreaFlow": {
+                        "outsideShapeHitClearsWithin": True,
+                    },
+                    "finding": "fixture finding",
+                    "boundary": "fixture boundary",
+                    "validation": {
+                        "status": "validated",
+                        "failures": [],
+                    },
+                },
+            }), encoding="utf-8")
+
+            contract = (
+                pipeline.load_levelscript_activation_control_contract(
+                    audit_path
+                )
+            )
+
+        self.assertEqual(
+            contract["classification"],
+            "server_state_subgame_and_runtime_request_paths",
+        )
+        self.assertEqual(
+            contract["messageIds"]["ScSceneLevelScriptStateNotify"], 37
+        )
+        self.assertEqual(
+            contract["publicStateSourceFlow"]["snapshotMessageId"], 25
+        )
+        self.assertEqual(len(contract["relatedOriginalFiles"]), 2)
+        self.assertTrue(
+            contract["activeReceiverFlow"][
+                "activePhaseEnableBetweenStateSetters"
+            ]
+        )
+        self.assertEqual(
+            contract["activationSelectorFlow"]["levelScriptTypeValues"]
+            ["SubLevelScript"],
+            4,
+        )
+        self.assertTrue(
+            contract["activeAreaFlow"]["outsideShapeHitClearsWithin"]
+        )
+
+    def test_activation_control_rejects_object_specific_discovery(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            audit_path = Path(temporary) / "protocol_registry_audit.json"
+            audit_path.write_text(json.dumps({
+                "_schema": "endfieldProtocolRegistryAudit.v20",
+                "levelScriptActivationControl": {
+                    "schema": "levelScriptActivationControl.v6",
+                    "classification": (
+                        "server_state_subgame_and_runtime_request_paths"
+                    ),
+                    "discoveryPattern": {
+                        "serializedObjectInputs": ["fixture-script-id"],
+                    },
+                    "validation": {
+                        "status": "validated",
+                        "failures": [],
+                    },
+                },
+            }), encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "validator=levelscript_activation_control_contract "
+                "gate=genericContractShape",
+            ):
+                pipeline.load_levelscript_activation_control_contract(
+                    audit_path
+                )
+
     def test_offline_story_recovery_schema_tracks_source_queue(self):
         self.assertEqual(
             pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA,
-            "sourceStoryGapQueue.v124",
+            "sourceStoryGapQueue.v130",
+        )
+
+    def test_trigger_route_preserves_exact_connected_context_evidence(self):
+        route = pipeline.build_story_trigger_route(
+            {
+                "key": "radio_arbitrary_2",
+                "relation": "levelscript_quest_state_gate",
+                "direction": "context",
+                "phase": "processing_gate",
+                "confidence": "native_typed_gate",
+                "event": "ScriptEvent_OnLeaderEnterTriggerVolume",
+                "levelId": "map_fixture",
+                "scriptId": "4242",
+                "sourceFile": "LevelScriptData/map_fixture/4242.json",
+                "nativeMappingId": "mapping-v1",
+                "headerLocalId": 7,
+                "gateActionLocalId": 8,
+                "conditionType": "CheckQuestState",
+                "conditionComparer": "Equal",
+                "conditionQuestState": 2,
+                "actionLocalId": 10,
+                "actionCode": "0x0363",
+                "actionKind": "0x0d",
+                "actionName": "PlayRadio",
+            },
+            mission_id="arbitrary",
+            quest_id="arbitrary_q#9",
+            scope="quest",
+        )
+
+        self.assertEqual(
+            route["sourceFiles"],
+            ["LevelScriptData/map_fixture/4242.json"],
+        )
+        self.assertEqual(
+            route["eventNames"],
+            ["ScriptEvent_OnLeaderEnterTriggerVolume"],
+        )
+        self.assertEqual(route["nativeMappingId"], "mapping-v1")
+        self.assertEqual(route["conditionQuestState"], 2)
+        self.assertEqual(
+            [step["kind"] for step in route["steps"]],
+            ["quest", "native_event", "levelscript", "native_action", "story"],
         )
 
     def test_gap_queue_refresh_validates_current_generated_contract(self):
@@ -69,6 +1351,9 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                         "validationFailures": [{
                             "gate": "fixtureGate",
                             "storyKey": "opaque_story",
+                            "expected": {"schemaVersion": 16},
+                            "actual": {"schemaVersion": 15},
+                            "sourceFile": "reports/fixture.json",
                         }],
                     },
                 }),
@@ -79,14 +1364,18 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "run",
                 return_value=subprocess.CompletedProcess([], 0),
             ):
-                with self.assertRaisesRegex(
-                    RuntimeError,
-                    "validator=report.crossOwnerValidation",
-                ):
+                with self.assertRaises(RuntimeError) as raised:
                     pipeline.refresh_source_story_gap_queue(
                         "CN",
                         queue_path,
                     )
+
+        message = str(raised.exception)
+        self.assertIn("validator=report.crossOwnerValidation", message)
+        self.assertIn("story=opaque_story", message)
+        self.assertIn("expected={'schemaVersion': 16}", message)
+        self.assertIn("actual={'schemaVersion': 15}", message)
+        self.assertIn("source=reports/fixture.json", message)
 
     def test_offline_story_recovery_annotates_without_creating_graph_evidence(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -170,6 +1459,30 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                             "orderBoundary": "selection does not order files",
                         }],
                         "closedExactNativeIsolatedScenes": [{
+                            "sceneKey": "dlg_testm1_reachable",
+                            "missionId": "testm1",
+                            "questId": "testm1_q#3",
+                            "parentStoryKey": "dlg_testm1_parent",
+                            "relation": "dialog_tree_reachable_story_playback",
+                            "recoveryStatus":
+                                "closed_exact_connected_dialog_tree_playback_context_no_relative_order",
+                            "sourceFiles": ["TextAsset/parent.json"],
+                            "orderBoundary": "context does not order files",
+                        }, {
+                            "sceneKey": "radio_testm1_gate",
+                            "missionId": "testm1",
+                            "questId": "testm1_q#4",
+                            "relation": "levelscript_quest_state_gate",
+                            "recoveryStatus":
+                                "closed_exact_quest_state_gated_playback_context_no_relative_order",
+                            "conditionType": "CheckQuestState",
+                            "conditionComparer": "Equal",
+                            "conditionQuestState": 2,
+                            "eventNames": ["ScriptEvent_OnLeaderEnterTriggerVolume"],
+                            "actionNames": ["PlayRadio"],
+                            "sourceFiles": ["LevelScriptData/gate.json"],
+                            "orderBoundary": "gate does not order files",
+                        }, {
                             "sceneKey": "misc_dlg_testm1_local_shell",
                             "nominalStoryMissionId": "testm1",
                             "contextMissionId": "testm1",
@@ -202,6 +1515,20 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                                 "closed_exact_composed_root_playback_context_no_relative_order",
                             "playbackBoundary": "exact composed playback",
                             "orderBoundary": "alias does not order files",
+                        }, {
+                            "sceneKey": "cutscene_testm1_lua",
+                            "missionId": "testm1",
+                            "relation": "lua_controller_playback",
+                            "recoveryStatus":
+                                "closed_exact_lua_controller_playback_no_mission_owner_or_relative_order",
+                            "luaFile": "Lua/Phase/Test.lua",
+                            "luaCall": "GameAction.PlayCutscene",
+                            "sourceFiles": [
+                                "Lua/Phase/Test.lua",
+                                "reports/mission_order/lua_consumer_reference_audit.json",
+                            ],
+                            "playbackBoundary": "exact shipped Lua playback",
+                            "graphEffect": "none",
                         }, {
                             "sceneKey": "black_testm1_timeline",
                             "nominalStoryMissionId": "testm1",
@@ -350,6 +1677,11 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                             "cutscene_root_playback_alias_composed",
                     }],
                 },
+                "cutscene_testm1_lua": {
+                    "attachmentStatus": "trigger_known_owner_unresolved",
+                    "nominalMissionId": "testm1",
+                    "routes": [{"relation": "lua_controller_playback"}],
+                },
                 "black_testm1_timeline": {
                     "attachmentStatus": "unlinked_no_trigger_route",
                     "routes": [],
@@ -369,6 +1701,18 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                     "routes": [{
                         "relation":
                             "cross_owner_levelscript_quest_playback_context",
+                    }],
+                },
+                "dlg_testm1_reachable": {
+                    "attachmentStatus": "connected",
+                    "routes": [{
+                        "relation": "dialog_tree_reachable_story_playback",
+                    }],
+                },
+                "radio_testm1_gate": {
+                    "attachmentStatus": "connected",
+                    "routes": [{
+                        "relation": "levelscript_quest_state_gate",
                     }],
                 },
                 "dlg_testm1_tracking": {
@@ -400,7 +1744,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertEqual(result["status"], "active")
         self.assertEqual(result["publishedStoryKeys"], 1)
         self.assertEqual(result["publishedPartialStoryKeys"], 1)
-        self.assertEqual(result["publishedRuntimeContextStoryKeys"], 14)
+        self.assertEqual(result["publishedRuntimeContextStoryKeys"], 17)
         self.assertEqual(result["outsidePipelineCoverageStoryKeys"], 3)
         self.assertEqual(
             manifest["dlg_testm1_1"]["attachmentStatus"],
@@ -493,6 +1837,18 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             "testm2_q#1",
         )
         self.assertEqual(
+            manifest["dlg_testm1_reachable"]["runtimeContextRecovery"][
+                "parentStoryKey"
+            ],
+            "dlg_testm1_parent",
+        )
+        self.assertEqual(
+            manifest["radio_testm1_gate"]["runtimeContextRecovery"][
+                "conditionQuestState"
+            ],
+            2,
+        )
+        self.assertEqual(
             manifest["dlg_testm1_tracking"]["runtimeContextRecovery"][
                 "questIds"
             ],
@@ -503,6 +1859,12 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "relation"
             ],
             "npc_proxy_lazy_destroy_dialog_context",
+        )
+        self.assertEqual(
+            manifest["cutscene_testm1_lua"]["runtimeContextRecovery"][
+                "luaCall"
+            ],
+            "GameAction.PlayCutscene",
         )
         self.assertEqual(
             manifest["dlg_testm1_multi"]["runtimeContextRecovery"][
@@ -604,6 +1966,62 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertEqual(result["status"], "rejected_stale_or_incompatible")
         self.assertNotIn("offlineRecovery", manifest["dlg_testm1_1"])
 
+    def test_project_authored_story_provenance_is_visible_but_graph_neutral(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            queue_path = Path(temporary) / "gap_queue.json"
+            queue_path.write_text(
+                json.dumps({
+                    "_schema": pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA,
+                    "offlineExhaustionEvidence": {
+                        "status": "active",
+                        "mappingId": "fixture-offline-v1",
+                        "graphEffect": "none",
+                        "sourceHashMismatches": [],
+                    },
+                    "projectAuthoredStoryEvidence": {
+                        "status": "validated",
+                        "graphEffect": "none",
+                        "validationFailures": [],
+                    },
+                    "missions": [{
+                        "mission": "ui_shell",
+                        "closedNonMissionContentIsolatedScenes": [{
+                            "sceneKey": "opaque_notice",
+                            "recoveryStatus":
+                                "excluded_project_authored_story_content",
+                            "evidenceKind":
+                                "project_authored_story_content",
+                            "storyKind": "black",
+                            "sourceFiles": ["scripts/producer.py"],
+                            "gameDataEvidence": False,
+                            "consumerBoundary": "not original game data",
+                            "orderBoundary": "no graph evidence",
+                            "graphEffect": "none",
+                        }],
+                    }],
+                }),
+                encoding="utf-8",
+            )
+            manifest = {
+                "opaque_notice": {
+                    "key": "opaque_notice",
+                    "attachmentStatus": "unlinked",
+                    "routes": [],
+                }
+            }
+
+            result = pipeline.publish_offline_story_recovery(
+                manifest,
+                queue_path,
+            )
+
+        provenance = manifest["opaque_notice"]["contentProvenance"]
+        self.assertEqual(provenance["sourceFiles"], ["scripts/producer.py"])
+        self.assertFalse(provenance["gameDataEvidence"])
+        self.assertEqual(provenance["graphEffect"], "none")
+        self.assertEqual(result["publishedProjectAuthoredStoryKeys"], 1)
+        self.assertEqual(manifest["opaque_notice"]["routes"], [])
+
     def test_offline_recovery_publishes_graph_neutral_missing_mission_shell(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -665,6 +2083,121 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertEqual(shell["edges"], [])
         self.assertTrue(shell["mission"]["offlineRecoveryShell"])
         self.assertEqual(shell["storyOrder"]["mission"], "gm_fixture")
+
+    def test_story_order_attachment_upgrades_late_offline_shell_without_losing_gap_queue(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            mission_root = root / "missions"
+            mission_root.mkdir()
+            gap = {"mission": "gm_fixture", "metrics": {"sceneCount": 2}}
+            pipeline.write_json(mission_root / "gm_fixture.json", {
+                "mission": {"id": "gm_fixture", "offlineRecoveryShell": True},
+                "storyOrder": {"mission": "gm_fixture", "sourceGapQueue": gap},
+            })
+            index = {
+                "counts": {"missions": 1},
+                "missions": [{
+                    "id": "gm_fixture",
+                    "file": "missions/gm_fixture.json",
+                    "offlineRecoveryShell": True,
+                }],
+            }
+            order_row = {
+                "mission": "gm_fixture",
+                "missionData": "story/gm_fixture.json",
+                "summary": {"sceneCount": 2, "nativeControlBranchCount": 1},
+                "branches": {"nativeControlBranches": [{"id": "branch-1"}]},
+            }
+            publication = pipeline.attach_source_story_partial_order(
+                index,
+                root,
+                {"missions": [order_row]},
+                create_variant_aggregate_shells=True,
+                require_complete_branch_publication=True,
+            )
+            shell = json.loads(
+                (mission_root / "gm_fixture.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(publication["publishedNativeBranchPlacements"], 1)
+        self.assertEqual(publication["unpublishedNativeBranchPlacements"], 0)
+        self.assertEqual(shell["storyOrder"]["branches"]["nativeControlBranches"], [{"id": "branch-1"}])
+        self.assertEqual(shell["storyOrder"]["sourceGapQueue"], gap)
+        self.assertTrue(shell["mission"]["offlineRecoveryShell"])
+
+    def test_story_order_attachment_builds_validated_variant_aggregate_shell(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            mission_root = root / "missions"
+            story_root = root / "story"
+            original_root = root / "original"
+            mission_root.mkdir()
+            story_root.mkdir()
+            original_root.mkdir()
+            original = original_root / "variant_a.json"
+            original.write_text('{"missionId":"variant_a"}', encoding="utf-8")
+            original_sha256 = hashlib.sha256(original.read_bytes()).hexdigest()
+            generated = story_root / "variant_a.json"
+            pipeline.write_json(generated, {"mission": "variant_a"})
+            pipeline.write_json(mission_root / "variant_a.json", {
+                "mission": {"id": "variant_a", "levelId": "level_a", "source": str(original)},
+            })
+            index = {
+                "counts": {"missions": 1},
+                "missions": [{
+                    "id": "variant_a",
+                    "levelId": "level_a",
+                    "file": "missions/variant_a.json",
+                }],
+            }
+            order_row = {
+                "mission": "aggregate",
+                "missionData": str(story_root / "aggregate.json"),
+                "missionDataVariants": [str(generated)],
+                "summary": {"sceneCount": 3, "nativeControlBranchCount": 2},
+                "branches": {"nativeControlBranches": [{"id": "b1"}, {"id": "b2"}]},
+            }
+            publication = pipeline.attach_source_story_partial_order(
+                index,
+                root,
+                {"missions": [order_row]},
+                create_variant_aggregate_shells=True,
+                require_complete_branch_publication=True,
+            )
+            shell = json.loads(
+                (mission_root / "aggregate.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(publication["variantAggregateShells"], ["aggregate"])
+        self.assertEqual(publication["publishedNativeBranchPlacements"], 2)
+        self.assertTrue(shell["mission"]["storyAggregateShell"])
+        self.assertEqual(shell["mission"]["variantMissionIds"], ["variant_a"])
+        self.assertEqual(shell["mission"]["levelId"], "level_a")
+        related = shell["mission"]["relatedOriginalFiles"]
+        self.assertEqual(related[0]["relationship"], "declared_story_graph_variant_context")
+        self.assertEqual(related[0]["sha256"], original_sha256)
+        self.assertIn("does not prove mission ownership", shell["mission"]["sourceBoundary"])
+
+    def test_story_order_attachment_fails_closed_for_unpublished_native_branch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            index = {"counts": {"missions": 0}, "missions": []}
+            report = {"missions": [{
+                "mission": "missing",
+                "missionData": "story/missing.json",
+                "branches": {"nativeControlBranches": [{"id": "b1"}]},
+            }]}
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"validator=source_story_order_publication .*gate=allRecoveredNativeBranchesPublished .*mission=missing .*expected=1 actual=0 .*source=story/missing.json",
+            ):
+                pipeline.attach_source_story_partial_order(
+                    index,
+                    root,
+                    report,
+                    create_variant_aggregate_shells=True,
+                    require_complete_branch_publication=True,
+                )
 
     def test_dynamic_scene_cross_references_remain_non_owning(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -1354,9 +2887,22 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             mission_root.mkdir(parents=True)
             (story_root / "CN").mkdir(parents=True)
             (story_root / "CN" / "index.json").write_text("{}", encoding="utf-8")
-            pipeline.write_json(mission_root / "testm1.json", {"mission": {"id": "testm1"}})
+            semantic_fork = {
+                "questId": "testm1_q#1",
+                "successorQuestIds": ["testm1_q#2", "testm1_q#3"],
+                "structure": "main_path_plus_auxiliary",
+                "arms": [{"questId": "testm1_q#2"}, {"questId": "testm1_q#3"}],
+            }
+            pipeline.write_json(mission_root / "testm1.json", {
+                "mission": {"id": "testm1"},
+                "questTopology": {"forks": [semantic_fork]},
+            })
             index = {
                 "missions": [{"id": "testm1", "file": "missions/testm1.json"}],
+                "runtimeContract": {
+                    "stateUpdateApplicationAudit": STATE_UPDATE_CONTRACT_FIXTURE,
+                    "actionExtraThreadSchedulerAudit": EXTRA_THREAD_SCHEDULER_CONTRACT_FIXTURE,
+                },
             }
             order_row = {
                 "mission": "testm1",
@@ -1368,7 +2914,26 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                     "questMergeCount": 1,
                 },
                 "nodes": [{"key": "dlg_testm1_1"}, {"key": "dlg_testm1_2"}],
+                "directEdges": [{
+                    "from": "dlg_testm1_1",
+                    "to": "dlg_testm1_2",
+                    "kind": "levelscriptNativeControlPath",
+                    "events": [{
+                        "transitionSteps": [{
+                            "edge": "Split.actions[0]",
+                            "transitionKind": "parallelFanout",
+                            "runtimeSemantics": "binary_proven_extra_thread_launch",
+                            "siblingOrderEvidence": False,
+                            "runtimeAuthoritySource": "reports/story/recovery/protocol_registry_audit.json",
+                        }],
+                    }],
+                }],
                 "reducedComponentEdges": [{"from": "p1", "to": "p2"}],
+                "branches": {
+                    "questForks": [
+                        {"questId": "testm1_q#1", "successorQuestIds": ["testm1_q#2", "testm1_q#3"]},
+                    ],
+                },
             }
             report = {
                 "_schema": "sourceStoryPartialOrder.v5",
@@ -1382,7 +2947,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 pipeline,
                 "build_source_story_partial_order_report",
                 return_value=report,
-            ), patch.object(
+            ) as build_order_report, patch.object(
                 pipeline,
                 "render_source_story_partial_order_markdown",
                 return_value="# fixture\n",
@@ -1396,10 +2961,91 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 )
 
             self.assertIs(result, report)
+            lifecycle_contract = build_order_report.call_args.kwargs[
+                "quest_succeed_lifecycle_contract"
+            ]
+            self.assertEqual(
+                lifecycle_contract["classification"],
+                "bounded_current_aot_quest_action_dispatch",
+            )
+            self.assertEqual(lifecycle_contract["action"]["value"], 2)
+            self.assertEqual(len(lifecycle_contract["relatedOriginalFiles"]), 2)
+            self.assertIs(
+                build_order_report.call_args.kwargs[
+                    "extra_thread_scheduler_contract"
+                ],
+                EXTRA_THREAD_SCHEDULER_CONTRACT_FIXTURE,
+            )
             mission_payload = json.loads((mission_root / "testm1.json").read_text(encoding="utf-8"))
             self.assertEqual(mission_payload["storyOrder"], order_row)
+            published_step = mission_payload["storyOrder"]["directEdges"][0]["events"][0]["transitionSteps"][0]
+            self.assertEqual(
+                published_step["runtimeSemantics"],
+                "binary_proven_extra_thread_launch",
+            )
+            self.assertFalse(published_step["siblingOrderEvidence"])
+            authority = mission_payload["storyOrder"]["branches"]["questForkAuthority"]
+            self.assertEqual(
+                authority["classification"],
+                "server_selected_start_topology_only",
+            )
+            self.assertEqual(authority["fieldReadCounts"]["objectiveList"], 3)
+            self.assertEqual(authority["fieldReadCounts"]["prevQuestIdList"], 0)
+            self.assertEqual(len(authority["relatedOriginalFiles"]), 2)
+            self.assertEqual(
+                authority["topologyFieldConsumers"]["classification"],
+                "client_display_and_context_topology_only",
+            )
+            self.assertEqual(
+                mission_payload["storyOrder"]["branches"]["questForks"],
+                [semantic_fork],
+            )
             self.assertEqual(index["missions"][0]["storyOrderStrongEdgeCount"], 1)
             self.assertEqual(index["storyOrder"]["schema"], "sourceStoryPartialOrder.v5")
+
+    def test_publish_source_story_partial_order_fails_on_unclassified_fork(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output_root = root / "mission_pipeline"
+            mission_root = output_root / "missions"
+            story_root = root / "lang"
+            mission_root.mkdir(parents=True)
+            (story_root / "CN").mkdir(parents=True)
+            (story_root / "CN" / "index.json").write_text("{}", encoding="utf-8")
+            pipeline.write_json(mission_root / "testm1.json", {
+                "mission": {"id": "testm1"},
+                "questTopology": {"forks": []},
+            })
+            index = {
+                "missions": [{"id": "testm1", "file": "missions/testm1.json"}],
+                "runtimeContract": {
+                    "stateUpdateApplicationAudit": STATE_UPDATE_CONTRACT_FIXTURE,
+                },
+            }
+            report = {
+                "_schema": "sourceStoryPartialOrder.v5",
+                "summary": {},
+                "evidencePolicy": {},
+                "missions": [{
+                    "mission": "testm1",
+                    "branches": {"questForks": [{
+                        "questId": "testm1_q#missing",
+                        "successorQuestIds": ["testm1_q#2", "testm1_q#3"],
+                    }]},
+                }],
+            }
+            with patch.object(
+                pipeline,
+                "build_source_story_partial_order_report",
+                return_value=report,
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "gate=allStoryOrderForksHaveSemantics.*testm1_q#missing",
+                ):
+                    pipeline.publish_source_story_partial_order(
+                        index, output_root, story_root, "CN", root / "reports"
+                    )
 
     def test_publish_quest_objective_story_scope_is_exact_non_owning_context(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -1681,6 +3327,481 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 ),
             )
 
+    def test_native_receiver_post_playback_control_is_identity_agnostic(self):
+        owner = {
+            "status": "exact_serialized_control_path",
+            "downstreamControlStatus": "exact_serialized_typed_reachability",
+            "downstreamControlPaths": [
+                [{
+                    "edge": "ActionBase.nextId",
+                    "localId": 5,
+                    "actionName": "Split",
+                }],
+                [
+                    {
+                        "edge": "ActionBase.nextId",
+                        "localId": 5,
+                        "actionName": "Split",
+                    },
+                    {
+                        "edge": "Split.actions[0]",
+                        "localId": 6,
+                        "actionName": "CallServer",
+                        "recordClass": "server_handoff",
+                        "texts": ["#callback_a", "event_args"],
+                    },
+                ],
+                [
+                    {
+                        "edge": "ActionBase.nextId",
+                        "localId": 5,
+                        "actionName": "Split",
+                    },
+                    {
+                        "edge": "Split.actions[1]",
+                        "localId": 7,
+                        "actionName": "WaitForSeconds",
+                    },
+                ],
+            ],
+        }
+        control = pipeline.exact_native_receiver_post_playback_control(
+            owner,
+            story_key="story_fixture",
+            playback_local_id=4,
+            source_file="fixture/levelscript.json",
+        )
+        self.assertEqual("exactNativePostPlaybackControl.v1", control["schema"])
+        self.assertEqual([5], control["branchPointLocalIds"])
+        self.assertEqual(2, len(control["maximalReachablePaths"]))
+        self.assertEqual(
+            ["#callback_a"],
+            control["serverHandoffs"][0]["callbackCorrelationLabels"],
+        )
+        self.assertFalse(control["missionOwnershipEvidence"])
+        self.assertFalse(control["serverHandlerIdentityEvidence"])
+
+    def test_native_receiver_post_playback_control_fails_closed(self):
+        self.assertEqual(
+            {},
+            pipeline.exact_native_receiver_post_playback_control(
+                {"status": "text_scan_only", "downstreamControlPaths": []},
+                story_key="story_fixture",
+                playback_local_id=4,
+                source_file="fixture/levelscript.json",
+            ),
+        )
+
+    def test_post_playback_callserver_contracts_join_by_source_and_local_id(self):
+        contract = {
+            "eventArgsPtr": {
+                "pathValue": "event_args",
+                "idRef": -1,
+                "paramSource": 0,
+                "path": None,
+            },
+            "eventName": "#01020304",
+            "eventNameIdentity": "record-uid-prefixed",
+            "useCustomEvent": False,
+            "waitForCallback": True,
+            "withEventArgs": False,
+            "callClientOutputUIDs": None,
+            "consumedBytes": 61,
+            "trailingBytes": 0,
+        }
+        nodes = [{
+            "postPlaybackControls": [{
+                "sourceFile": "LevelScriptData/map_fixture/42.json",
+                "serverHandoffs": [{
+                    "localId": 7,
+                    "serializedContract": {
+                        **contract,
+                        "missionOwnershipEvidence": False,
+                        "storyGraphRole": "diagnostic-only",
+                    },
+                }],
+            }],
+        }]
+        result = pipeline.attach_post_playback_callserver_contracts(
+            nodes,
+            {"rows": [{
+                "sourceFile": "LevelScriptData/map_fixture/42.json",
+                "callServerLocalId": 7,
+                "serializedContract": contract,
+            }]},
+        )
+
+        self.assertEqual("validated", result["status"])
+        self.assertEqual(1, result["summary"]["exactContracts"])
+        self.assertEqual(
+            contract,
+            nodes[0]["postPlaybackControls"][0]["serverHandoffs"][0][
+                "serializedContract"
+            ],
+        )
+        self.assertFalse(result["missionOwnershipEvidence"])
+
+    def test_post_playback_callserver_contract_join_fails_closed(self):
+        nodes = [{
+            "postPlaybackControls": [{
+                "sourceFile": "LevelScriptData/map_fixture/42.json",
+                "serverHandoffs": [{"localId": 7}],
+            }],
+        }]
+        result = pipeline.attach_post_playback_callserver_contracts(
+            nodes,
+            {"rows": []},
+        )
+
+        self.assertEqual("validation_failed", result["status"])
+        self.assertEqual(
+            "post_playback_callserver_exact_identity",
+            result["validationFailures"][0]["gate"],
+        )
+
+    def test_level_sequence_action_name_comes_from_binary_formatter_mapping(self):
+        self.assertEqual(
+            "LoadLevelSequenceAction",
+            level_bindings.LEVELSCRIPT_NATIVE_ACTION_NAMES[(0x02FA, 0x09)],
+        )
+
+    def test_actionbase_formatter_loader_recovers_every_tag_and_fails_closed(self):
+        rows = [
+            {
+                "tag": tag,
+                "tagHex": f"0x{tag:04x}",
+                "actionName": f"GenericAction{tag}",
+            }
+            for tag in range(1313)
+        ]
+        payload = {
+            "metadata": {
+                "gameAssemblySha256":
+                    level_bindings.ACTIONBASE_FORMATTER_GAMEASSEMBLY_SHA256,
+                "metadataSha256":
+                    level_bindings.ACTIONBASE_FORMATTER_METADATA_SHA256,
+                "codeRegistration": "0x18b9217d0",
+            },
+            "targetMethod": {
+                "typeToken": "0x02000c1c",
+                "methodToken": "0x0600488f",
+                "methodPointerVa": "0x183998700",
+            },
+            "summary": {
+                "tagCount": 1313,
+                "minTag": 0,
+                "maxTag": 1312,
+                "duplicateTagCount": 0,
+                "missingTagCountInsideRange": 0,
+                "unknownInstructionCount": 0,
+            },
+            "actionNames": [row["actionName"] for row in rows],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            valid_path = Path(temporary) / "valid.json"
+            valid_path.write_text(json.dumps(payload), encoding="utf-8")
+            names, audit = level_bindings.load_actionbase_formatter_names(
+                valid_path
+            )
+            payload["actionNames"][42] = ""
+            invalid_path = Path(temporary) / "invalid.json"
+            invalid_path.write_text(json.dumps(payload), encoding="utf-8")
+            invalid_names, invalid_audit = (
+                level_bindings.load_actionbase_formatter_names(invalid_path)
+            )
+
+        self.assertEqual(1313, len(names))
+        self.assertEqual("GenericAction42", names[42])
+        self.assertEqual("validated", audit["status"])
+        self.assertEqual({}, invalid_names)
+        self.assertEqual("validation_failed", invalid_audit["status"])
+        self.assertEqual(
+            "nonempty_action_name",
+            invalid_audit["validationFailures"][0]["gate"],
+        )
+
+    def test_callserver_callback_contract_loader_fails_closed(self):
+        canonical = json.loads(
+            level_bindings.DEFAULT_CALLSERVER_CALLBACK_CONTRACT.read_text(
+                encoding="utf-8"
+            )
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            valid_path = Path(temporary) / "valid.json"
+            valid_path.write_text(json.dumps(canonical), encoding="utf-8")
+            valid = level_bindings.load_callserver_callback_contract(valid_path)
+
+            canonical["callServer"]["outputFieldOffset"] = "this+0x00"
+            invalid_path = Path(temporary) / "invalid.json"
+            invalid_path.write_text(json.dumps(canonical), encoding="utf-8")
+            invalid = level_bindings.load_callserver_callback_contract(
+                invalid_path
+            )
+
+        self.assertEqual("validated", valid["status"])
+        self.assertEqual("validation_failed", invalid["status"])
+        self.assertEqual(
+            "output_field_offset",
+            invalid["validationFailures"][0]["gate"],
+        )
+
+    def test_callserver_callback_successor_requires_exact_header_contract(self):
+        call_server_record = {
+            "start": 10,
+            "unionTag": 0x0034,
+            "serializedMemberCount": 14,
+        }
+        header = {"start": 20, "uid": "b8747c00"}
+        detail = {
+            "callServer": {"callClientOutputUIDs": ["b8747c00"]},
+        }
+
+        def decode_valid(record):
+            self.assertIs(record, header)
+            return {
+                "nativeEventDetail": {
+                    "type": "ScriptEvent_OnCustomEvent",
+                    "eventKey": "#b8747c00",
+                },
+                "actionHeader": {"nextId": 47},
+            }
+
+        with patch.dict(
+            level_bindings.CALLSERVER_CALLBACK_CONTRACT_AUDIT,
+            {"status": "validated"},
+            clear=True,
+        ):
+            edges = level_bindings._levelscript_native_callserver_callback_successors(
+                call_server_record,
+                detail,
+                records_by_uid={"b8747c00": [header]},
+                membership={20: "headerList#3"},
+                decode_record=decode_valid,
+            )
+            missing = level_bindings._levelscript_native_callserver_callback_successors(
+                call_server_record,
+                detail,
+                records_by_uid={},
+                membership={20: "headerList#3"},
+                decode_record=decode_valid,
+            )
+
+        self.assertEqual(
+            [("CallServer.callClientOutputUIDs[0]#b8747c00", 47)],
+            edges,
+        )
+        self.assertEqual([], missing)
+
+    def test_post_playback_action_name_audit_keeps_outside_union_raw(self):
+        nodes = [{
+            "postPlaybackControls": [{
+                "sourceFile": "fixture.bin",
+                "storyKey": "story_fixture",
+                "actions": [{
+                    "localId": 1,
+                    "opcode": "0x0a10/0x00",
+                    "unionTag": "0x0010",
+                    "serializedMemberCount": 10,
+                    "actionName": "GenericAction",
+                }, {
+                    "localId": 2,
+                    "opcode": "0x1000/0x00",
+                    "unionTag": "",
+                    "serializedMemberCount": 0,
+                    "actionName": "",
+                }],
+            }],
+        }]
+        audit = pipeline.build_post_playback_action_name_audit(
+            nodes,
+            formatter_names={0x0010: "GenericAction"},
+            formatter_audit={
+                "status": "validated",
+                "validationFailures": [],
+            },
+        )
+
+        self.assertEqual(
+            "validated_actionbase_complete_outside_families_retained",
+            audit["status"],
+        )
+        self.assertEqual(1, audit["summary"]["formatterNamedActionPlacements"])
+        self.assertEqual(
+            1,
+            audit["summary"]["unresolvedOutsideActionBasePlacements"],
+        )
+        self.assertEqual(
+            [{"opcode": "0x1000/0x00", "count": 1}],
+            audit["unresolvedActionShapes"],
+        )
+        self.assertFalse(audit["missionOwnershipEvidence"])
+
+    def test_level_sequence_textasset_index_requires_three_way_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            valid_payload = {
+                "cutsceneName": "levelseq_fixture_valid",
+                "path": "fixture/path",
+                "version": 3,
+                "targetFrameRate": 30,
+            }
+            (root / "levelseq_fixture_valid_pABCD.json").write_text(
+                json.dumps({
+                    "m_Name": "levelseq_fixture_valid",
+                    "Name": "levelseq_fixture_valid",
+                    "m_Script": base64.b64encode(
+                        json.dumps(valid_payload).encode("utf-8")
+                    ).decode("ascii"),
+                }),
+                encoding="utf-8",
+            )
+            invalid_payload = {"cutsceneName": "levelseq_other"}
+            (root / "levelseq_fixture_invalid_p1234.json").write_text(
+                json.dumps({
+                    "m_Name": "levelseq_fixture_invalid",
+                    "Name": "levelseq_fixture_invalid",
+                    "m_Script": base64.b64encode(
+                        json.dumps(invalid_payload).encode("utf-8")
+                    ).decode("ascii"),
+                }),
+                encoding="utf-8",
+            )
+
+            index = pipeline.build_level_sequence_textasset_index(root)
+
+        self.assertEqual("degraded_fail_closed", index["status"])
+        self.assertEqual(
+            ["levelseq_fixture_valid"],
+            list(index["assetsById"]),
+        )
+        self.assertEqual(
+            "exact_m_name_name_cutscene_name_match",
+            index["assetsById"]["levelseq_fixture_valid"]["identityStatus"],
+        )
+        self.assertEqual(1, index["summary"]["validationFailures"])
+        self.assertEqual(
+            "m_Name_equals_Name_equals_decoded_cutsceneName",
+            index["validationFailures"][0]["gate"],
+        )
+
+    def test_level_sequence_asset_join_is_type_and_identity_driven(self):
+        nodes = [{
+            "postPlaybackControls": [{
+                "actions": [{
+                    "localId": 5,
+                    "actionName": "LoadLevelSequenceAction",
+                    "texts": ["levelseq_fixture"],
+                }, {
+                    "localId": 6,
+                    "actionName": "SetString",
+                    "texts": ["levelseq_fixture"],
+                }, {
+                    "localId": 7,
+                    "actionName": "StopLevelSequenceAction",
+                    "texts": ["levelseq_missing"],
+                }],
+            }],
+        }]
+        index = {
+            "schema": "exactLevelSequenceTextAssetIndex.v1",
+            "root": "fixture",
+            "status": "exact_complete",
+            "summary": {},
+            "validationFailures": [],
+            "ambiguousLevelSequenceIds": [],
+            "assetsById": {
+                "levelseq_fixture": {
+                    "levelSequenceId": "levelseq_fixture",
+                    "sourceFile": "export/fixture.json",
+                    "identityStatus": "exact_m_name_name_cutscene_name_match",
+                },
+            },
+        }
+
+        audit = pipeline.attach_exact_level_sequence_assets(nodes, index)
+
+        actions = nodes[0]["postPlaybackControls"][0]["actions"]
+        self.assertEqual(
+            "export/fixture.json",
+            actions[0]["levelSequenceReferences"][0]["sourceFile"],
+        )
+        self.assertNotIn("levelSequenceReferences", actions[1])
+        self.assertEqual(
+            "no_exact_validated_textasset",
+            actions[2]["levelSequenceReferences"][0]["identityStatus"],
+        )
+        self.assertEqual(2, audit["summary"]["typedActionPlacements"])
+        self.assertEqual(1, audit["summary"]["exactResolvedLevelSequenceIds"])
+        self.assertEqual(["levelseq_missing"], audit["unresolvedLevelSequenceIds"])
+        self.assertFalse(audit["missionOwnershipEvidence"])
+        self.assertFalse(audit["crossStoryOrderEvidence"])
+
+    def test_post_playback_variable_bridge_is_generic_and_non_promoting(self):
+        exact_owner = {
+            "status": "exact_serialized_control_path",
+            "headerName": "ScriptEvent_OnPropertyChanged",
+            "headerLocalId": 2,
+            "eventDetail": {
+                "payloadSchemaStatus": "exact_current_build_memorypack_fields",
+                "propertyKeyFilter": "other_key",
+            },
+            "downstreamControlStatus": "exact_serialized_typed_reachability",
+            "downstreamControlPaths": [[{
+                "edge": "ActionBase.nextId",
+                "localId": 5,
+                "actionName": "SetBool",
+                "texts": ["shared_key"],
+            }]],
+        }
+        listener_owner = {
+            "status": "exact_serialized_control_path",
+            "headerName": "ScriptEvent_OnBlackboardValueChanged",
+            "headerLocalId": 7,
+            "eventDetail": {
+                "payloadSchemaStatus": "exact_current_build_memorypack_fields",
+                "blackboardKeyFilter": "shared_key",
+            },
+        }
+        native_index = {
+            "story_setter": [{
+                "levelId": "map_fixture",
+                "scriptId": "1001",
+                "sourceFile": "export_full/LevelScriptData/map_fixture/1001.bin",
+                "localId": 4,
+                "nativeEventOwners": [exact_owner],
+            }],
+            "story_listener": [{
+                "levelId": "map_fixture",
+                "scriptId": "1001",
+                "sourceFile": "export_full/LevelScriptData/map_fixture/1001.bin",
+                "localId": 8,
+                "nativeEventOwners": [listener_owner],
+            }],
+        }
+
+        audit = pipeline.build_post_playback_variable_bridge_audit(native_index)
+
+        self.assertEqual(
+            "context_only_execute_notification_family_unproven",
+            audit["status"],
+        )
+        self.assertEqual(1, audit["summary"]["postPlaybackVariableSetters"])
+        self.assertEqual(1, audit["summary"]["exactSetterListenerMatches"])
+        self.assertEqual(1, audit["summary"]["crossStorySetterListenerMatches"])
+        self.assertEqual(
+            "story_listener",
+            audit["setters"][0]["exactListenerMatches"][0]["storyKey"],
+        )
+        self.assertFalse(audit["setters"][0]["orderEvidence"])
+        self.assertFalse(audit["setters"][0]["missionOwnershipEvidence"])
+        self.assertFalse(audit["usesOcrOrManualOrder"])
+
+    def test_post_playback_variable_bridge_closes_zero_overlap(self):
+        audit = pipeline.build_post_playback_variable_bridge_audit({})
+
+        self.assertEqual("closed_no_exact_same_script_key_match", audit["status"])
+        self.assertEqual(0, audit["summary"]["exactSetterListenerMatches"])
+
     def test_native_receiver_gate_formats_recursive_boolean_tree(self):
         leaf = {
             "predicateType": "getterBool",
@@ -1888,6 +4009,104 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         }])
         self.assertEqual(row["questStateRefs"], [])
 
+    def test_objective_recovers_generic_level_script_task_tuple(self):
+        task_condition = condition(
+            "FutureTaskCondition",
+            _sceneId={"constValue": "map_fixture"},
+            _scriptId={"constValue": {"scriptId": 12345}},
+            _taskId={"constValue": "task_fixture"},
+        )
+        task_condition["uniqueId"] = "condition_fixture"
+        row = pipeline.objective_row({
+            "description": {"key": "objective_fixture"},
+            "condition": task_condition,
+        }, 1, include_level_script_source_evidence=False)
+        self.assertEqual(
+            row["condition"]["facts"]["taskId"],
+            "task_fixture",
+        )
+        self.assertEqual(row["levelScriptTaskDependencies"], [{
+            "conditionType": "FutureTaskCondition",
+            "conditionId": "condition_fixture",
+            "levelId": "map_fixture",
+            "scriptId": "12345",
+            "taskId": "task_fixture",
+            "relation": "mission_objective_waits_for_levelscript_task",
+            "runtimeAuthorityReference": (
+                "runtimeContract.levelScriptTaskAuthorityAudit"
+            ),
+            "evidenceBoundary": (
+                "The authored mission objective waits for this exact LevelScript "
+                "task. This does not prove that the mission activates the script, "
+                "owns its Story playback, or selects a Story branch."
+            ),
+        }])
+
+    def test_level_script_task_dependency_validates_original_tuple_and_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mission_source = root / "MissionRuntimeAsset" / "m1.json"
+            task_table = root / "GameplayConfig" / "ScriptTaskExtraInfoTable.json"
+            level_root = root / "LevelScriptData"
+            level_script = level_root / "map_fixture" / "12345.json"
+            for path, payload in (
+                (mission_source, {"missionId": "m1"}),
+                (task_table, {"dataTable": {"map_fixture": {"12345": {
+                    "task_fixture": {
+                        "taskTitle": {"key": "task_title"},
+                        "singleDescription": {"key": "task_description"},
+                        "objectiveCount": 2,
+                    }
+                }}}}),
+                (level_script, {"scriptId": 12345}),
+            ):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(payload), encoding="utf-8")
+            result = pipeline.validate_level_script_task_dependency(
+                {
+                    "levelId": "map_fixture",
+                    "scriptId": "12345",
+                    "taskId": "task_fixture",
+                },
+                mission_id="m1",
+                quest_id="m1_q#1",
+                mission_source=mission_source,
+                task_table_path=task_table,
+                level_script_root=level_root,
+            )
+            self.assertEqual(result["validation"]["status"], "validated")
+            self.assertEqual(result["taskMetadata"], {
+                "titleKey": "task_title",
+                "descriptionKey": "task_description",
+                "objectiveCount": 2,
+            })
+            self.assertEqual(len(result["relatedOriginalFiles"]), 3)
+
+    def test_level_script_task_dependency_fails_closed_for_missing_tuple(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mission_source = root / "m1.json"
+            task_table = root / "ScriptTaskExtraInfoTable.json"
+            mission_source.write_text("{}", encoding="utf-8")
+            task_table.write_text('{"dataTable": {}}', encoding="utf-8")
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"validator=level_script_task_dependency gate=taskTuple "
+                r"mission=m1 quest=m1_q#1 identity=map_fixture/12345/task_fixture",
+            ):
+                pipeline.validate_level_script_task_dependency(
+                    {
+                        "levelId": "map_fixture",
+                        "scriptId": "12345",
+                        "taskId": "task_fixture",
+                    },
+                    mission_id="m1",
+                    quest_id="m1_q#1",
+                    mission_source=mission_source,
+                    task_table_path=task_table,
+                    level_script_root=root / "LevelScriptData",
+                )
+
     def test_build_mission_retains_property_defaults_without_writer_claim(self):
         fixture = self.fixture()
         fixture["properties"] = [{
@@ -2042,6 +4261,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             row = pipeline.objective_row(
                 {"description": {"key": "fixture"}, "condition": combined},
                 1,
+                include_level_script_source_evidence=False,
             )
         finally:
             pipeline._SUBMIT_ITEM_ROWS_CACHE = previous_cache
@@ -2073,7 +4293,24 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             "relation": "same_authored_and_objective",
         }])
 
-    def test_build_all_writes_lazy_index_and_mission_payload(self):
+    @patch.object(
+        pipeline,
+        "load_action_extra_thread_scheduler_contract",
+        return_value=EXTRA_THREAD_SCHEDULER_CONTRACT_FIXTURE,
+    )
+    @patch.object(
+        pipeline,
+        "load_levelscript_task_authority_contract",
+        return_value=TASK_AUTHORITY_CONTRACT_FIXTURE,
+    )
+    @patch.object(
+        pipeline,
+        "load_state_update_application_contract",
+        return_value=STATE_UPDATE_CONTRACT_FIXTURE,
+    )
+    def test_build_all_writes_lazy_index_and_mission_payload(
+        self, _state_loader, _task_loader, _scheduler_loader
+    ):
         self.maxDiff = None
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -2099,6 +4336,8 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "submitItemMissions": 0,
                 "submitItemDialogCoGates": 0,
                 "submitItemLevelScriptCoGates": 0,
+                "levelScriptTaskDependencies": 0,
+                "missionsWithLevelScriptTaskDependencies": 0,
                 "nativeRuntimeBindings": 0,
                 "nativeRuntimeBoundMissions": 0,
                 "nativeRuntimeDistinctScriptIds": 0,
@@ -2109,6 +4348,37 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "trackingObjectives": 0,
                 "missionPropertyRows": 0,
                 "missionsWithProperties": 0,
+                "questForkSemantics": 1,
+                "questForkGuarded": 0,
+                "questForkMainPathPlusAuxiliary": 1,
+                "questForkAllAuxiliary": 0,
+                "questForkMultipleMainPath": 0,
+                "questForkReconverging": 0,
+                "questForkServerStateApplications": 1,
+                "questForkServerStateApplicationArms": 2,
+                "questForkServerEnableApplications": 1,
+                "questForkServerEnableApplicationArms": 2,
+                "stateUpdateApplicationCandidates": 4,
+                "stateUpdateApplicationCandidatesValidated": 4,
+                "stateUpdateClientSuccessorSelectors": 0,
+                "questStartPredecessorReads": 0,
+                "questStartFlowIndexReads": 0,
+                "questStartTopologyTraversalCalls": 0,
+                "questTopologyActivePredecessorConsumers": 0,
+                "questTopologyFlowIndexNonSortConsumers": 0,
+                "questTopologyLifecycleCalls": 0,
+                "questTypeConsumers": 7,
+                "questTypePostLifecycleConsumers": 2,
+                "questTypeBlockNotificationConsumers": 2,
+                "questOptionalObjectiveFlagValidated": True,
+                "questShowModeConsumers": 5,
+                "questShowModeLifecycleConsumers": 0,
+                "questActionStartDefinitionRoots": 0,
+                "questActionStartDefinitionRows": 0,
+                "questActionBinaryDispatchedRoots": 0,
+                "questActionBinaryDispatchedRows": 0,
+                "actionExtraThreadWriterMethods": 1,
+                "actionExtraThreadDirectCalls": 0,
                 # The fixture has one mission with no cross-mission state
                 # condition and no envTalk consumer table, so both new lanes
                 # are legitimately empty rather than absent.
@@ -2131,11 +4401,55 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 },
             )
             self.assertEqual(index["runtimeContract"]["outbound"][1]["message"], "CS_UPDATE_QUEST_OBJECTIVE")
+            state_contract = index["runtimeContract"]["stateUpdateApplicationAudit"]
+            self.assertEqual(state_contract["validatedCandidateCount"], 4)
+            self.assertEqual(state_contract["clientSuccessorSelectors"], 0)
+            self.assertEqual(len(state_contract["relatedOriginalFiles"]), 2)
+            self.assertEqual(
+                index["runtimeContract"]["levelScriptTaskAuthorityAudit"]
+                ["classification"],
+                "server_selected_scene_script_task_identity",
+            )
             payload = json.loads((output_root / "missions" / "testm1.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["missionGraph"], {"upstream": {}, "downstream": {}})
             self.assertEqual(payload["envTalkContext"], [])
+            self.assertEqual(payload["questTopology"]["validation"]["status"], "validated")
+            self.assertEqual(
+                payload["questTopology"]["forks"][0]["structure"],
+                "main_path_plus_auxiliary",
+            )
+            self.assertEqual(
+                payload["questTopology"]["forks"][0]
+                ["serverQuestStateApplication"]["schema"],
+                "questStateLifecycleApplication.v1",
+            )
+            self.assertEqual(
+                payload["questTopology"]["forks"][0]
+                ["serverQuestEnableApplication"]["schema"],
+                "questEnableLifecycleApplication.v1",
+            )
 
-    def test_activity_stage_tables_add_typed_quest_level_hosts_only(self):
+    @patch.object(
+        pipeline,
+        "load_action_extra_thread_scheduler_contract",
+        return_value=EXTRA_THREAD_SCHEDULER_CONTRACT_FIXTURE,
+    )
+    @patch.object(
+        pipeline,
+        "load_levelscript_task_authority_contract",
+        return_value=TASK_AUTHORITY_CONTRACT_FIXTURE,
+    )
+    @patch.object(
+        pipeline,
+        "load_state_update_application_contract",
+        return_value=STATE_UPDATE_CONTRACT_FIXTURE,
+    )
+    def test_activity_stage_tables_add_typed_quest_level_hosts_only(
+        self,
+        _state_loader,
+        _task_loader,
+        _scheduler_loader,
+    ):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             mission_root = root / "input"
@@ -2192,7 +4506,27 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 0,
             )
 
-    def test_subgame_registry_adds_mission_shell_runtime_binding_only(self):
+    @patch.object(
+        pipeline,
+        "load_action_extra_thread_scheduler_contract",
+        return_value=EXTRA_THREAD_SCHEDULER_CONTRACT_FIXTURE,
+    )
+    @patch.object(
+        pipeline,
+        "load_levelscript_task_authority_contract",
+        return_value=TASK_AUTHORITY_CONTRACT_FIXTURE,
+    )
+    @patch.object(
+        pipeline,
+        "load_state_update_application_contract",
+        return_value=STATE_UPDATE_CONTRACT_FIXTURE,
+    )
+    def test_subgame_registry_adds_mission_shell_runtime_binding_only(
+        self,
+        _state_loader,
+        _task_loader,
+        _scheduler_loader,
+    ):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             mission_root = root / "input"
@@ -2646,12 +4980,26 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         metadata = audit["metadata"]
         self.assertEqual(metadata["managedTypeRecords"], 63987)
         self.assertEqual(metadata["runtimeTypeEntries"], 272743)
-        self.assertEqual(metadata["maxCustomTypeDepth"], 3)
-        self.assertEqual(metadata["candidateTypes"], 25)
+        self.assertEqual(
+            metadata["traversalMode"],
+            "cycle_safe_shortest_path_fixed_point",
+        )
+        self.assertEqual(metadata["maximumShortestPathDepth"], 10)
+        self.assertEqual(metadata["maximumTraversedDepth"], 10)
+        self.assertEqual(metadata["candidateTypes"], 112)
         self.assertEqual(metadata["directExactCandidateTypes"], 11)
-        self.assertEqual(metadata["nestedDependentCandidateTypes"], 14)
-        self.assertEqual(metadata["reviewedCandidateTypes"], 25)
+        self.assertEqual(metadata["nestedDependentCandidateTypes"], 101)
+        self.assertEqual(metadata["reviewedCandidateTypes"], 112)
         self.assertEqual(metadata["unreviewedCandidateTypes"], 0)
+        entity_hub = audit["runtimeEntityHubClosure"]
+        self.assertEqual(entity_hub["candidateTypes"], 86)
+        self.assertEqual(entity_hub["exactIndexedTypeLabels"], 0)
+        self.assertEqual(entity_hub["indexedOriginalObjects"], 1335450)
+        self.assertEqual(entity_hub["objectsWithTruncatedScalars"], 1384)
+        self.assertIn("no exact Entity/component script", entity_hub["finding"])
+        shared_aggregate = audit["sharedRuntimeAggregateClosure"]
+        self.assertEqual(shared_aggregate["candidateTypes"], 1)
+        self.assertEqual(len(audit["relatedOriginalFiles"]), 4)
         submitter = audit["pendingItemSubmitterClosure"]
         self.assertEqual(
             submitter["classification"],
@@ -3290,9 +5638,52 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 game_mechanic_condition_table,
                 dungeon_table,
                 text_vo_id_table,
+                native_story_playback_index={},
+                callserver_callback_audit={
+                    "schema": "levelScriptCallServerCallbackAudit.v1",
+                    "status": "validated_complete_corpus",
+                    "summary": {
+                        "callServerActions": 4,
+                        "callbackOutputUids": 2,
+                        "exactCallbackHeaders": 1,
+                        "callbackHeadersReachingStory": 1,
+                        "unresolvedCallbackOutputs": 1,
+                    },
+                    "sources": {
+                        "nativeContract": {"status": "validated"},
+                    },
+                    "rows": [{
+                        "levelId": "map_fixture",
+                        "scriptId": "42",
+                        "sourceFile": "fixture/42.json",
+                        "callServerLocalId": 7,
+                        "callServerUid": "01020304",
+                        "callbackOutputs": [{
+                            "headerUid": "aabbccdd",
+                            "headerLocalId": 8,
+                            "controlGraph": {
+                                "storyKeys": ["radio_testm1_1"],
+                                "actionCount": 3,
+                                "branchPointCount": 1,
+                            },
+                        }],
+                    }],
+                    "unresolvedCallbackOutputs": [{
+                        "headerUid": "deadbeef",
+                    }],
+                    "validationFailures": [],
+                    "evidenceBoundary": "fixture boundary",
+                },
             )
             self.assertIsNotNone(report)
             self.assertEqual(report["counts"]["uniqueStoryFiles"], 4)
+            self.assertEqual(report["counts"]["callServerActions"], 4)
+            self.assertEqual(
+                report["callServerCallbackAudit"]["storyCallbackRoutes"][0][
+                    "storyKeys"
+                ],
+                ["radio_testm1_1"],
+            )
             self.assertEqual(report["counts"]["connectedUniqueStoryFiles"], 3)
             self.assertEqual(report["counts"]["connectedCrossOwnerStoryFiles"], 1)
             self.assertEqual(
@@ -3325,6 +5716,22 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             self.assertEqual(
                 [step["kind"] for step in connected_route["steps"]],
                 ["quest", "native_action", "story"],
+            )
+            self.assertEqual(
+                connected_route["nativeCinematicProducerRoutes"][0]["producerMethod"],
+                "StartDialog",
+            )
+            self.assertIn(
+                "reports/story/recovery/cinematic_queue_runtime_audit.json",
+                connected_route["sourceFiles"],
+            )
+            self.assertEqual(
+                report["counts"]["nativeCinematicProducerStoryFiles"],
+                1,
+            )
+            self.assertEqual(
+                report["counts"]["nativeCinematicProducerRouteAttachments"],
+                1,
             )
             unresolved_routes = trigger_manifest["radio_testm1_1"]["routes"]
             unresolved_route = next(
@@ -3590,6 +5997,18 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
                 )
             self.assertTrue(row["luaFile"].endswith(".lua"))
 
+    def test_handle_calls_are_one_binary_proven_runtime_family(self) -> None:
+        self.assertEqual(7, self.evidence["runtimeHandleDispatcherCallCount"])
+        self.assertEqual(1, self.evidence["runtimeHandleDispatcherFamilyCount"])
+        self.assertEqual(0, self.evidence["unresolvedPlaybackCalls"])
+        contract_methods = set(
+            self.evidence["runtimeHandleContract"]["dispatcherMethods"]
+        )
+        self.assertTrue({
+            row["method"]
+            for row in self.evidence["runtimeHandleDispatcherCalls"]
+        }.issubset(contract_methods))
+
     def test_case_sensitive_gender_select_cutscene_is_not_admitted(self) -> None:
         # The current native resolver preserves "Cutscene_e0m0_1" into
         # case-sensitive StringPathHash resource lookup, so it cannot prove
@@ -3768,6 +6187,7 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
                 "CN",
                 report_root,
                 *table_paths,
+                native_story_playback_index={},
             )
 
         row = report["storyTriggerManifest"]["cutscene_e0m0_1"]
@@ -3848,6 +6268,7 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
                     "CN",
                     report_root,
                     *table_paths,
+                    native_story_playback_index={},
                 )
 
         manifest = report["storyTriggerManifest"][
@@ -3959,6 +6380,7 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
                     "CN",
                     report_root,
                     *table_paths,
+                    native_story_playback_index={},
                 )
 
         manifest = report["storyTriggerManifest"][
@@ -4009,6 +6431,7 @@ class NonMissionContentTableTests(unittest.TestCase):
                 "guide_runtime_asset",
                 "spaceship_dialog_tree",
                 "character_profile_voice",
+                "spaceship_dialog_definition_without_tree_carrier",
             },
         )
 
@@ -4349,6 +6772,61 @@ class MissionDialogTreeDefinitionPublisherTests(unittest.TestCase):
                         story_root,
                         "CN",
                     )
+
+    def test_native_cross_system_contract_loads_generic_closure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            audit_path = Path(temporary) / "census.json"
+            audit_path.write_text(json.dumps({
+                "schemaVersion": "nativeCrossSystemConsumerCensus.v4",
+                "source": {
+                    "gameAssembly": "GameAssembly.dll",
+                    "gameAssemblySha256": "a" * 64,
+                    "globalMetadata": "global-metadata.dat",
+                    "globalMetadataSha256": "b" * 64,
+                },
+                "method": {"selection": "all direct calls", "mappedMethodPointers": 9},
+                "summary": {
+                    "crossSystemCallers": 4,
+                    "classificationCounts": {
+                        "mission_state_controls_dynamic_component_availability": 4,
+                    },
+                },
+                "directConsumerClosure": {
+                    "method": "fixed point",
+                    "counts": {"reachableMethods": 23, "directEdges": 30},
+                },
+                "deferredRefreshClosure": {
+                    "pendingField": {"name": "pending", "offset": "0x48"},
+                    "chain": ["state", "refresh"],
+                    "classification": "availability_refresh",
+                },
+                "missionRuntimeSurface": {
+                    "counts": {"missionIdentityTypes": 174},
+                    "finding": "no broad activation bridge",
+                },
+                "managedCallableSurface": {
+                    "counts": {"callableFields": 13, "directBindingCalls": 5},
+                    "finding": "no callable activation bridge",
+                },
+                "finding": "binary finding",
+                "boundary": "binary boundary",
+                "validation": {"status": "passed", "failures": []},
+            }), encoding="utf-8")
+
+            contract = pipeline.load_native_cross_system_consumer_contract(audit_path)
+
+            self.assertEqual(contract["counts"]["closureReachableMethods"], 23)
+            self.assertEqual(contract["counts"]["closureDirectEdges"], 30)
+            self.assertEqual(contract["deferredRefreshClosure"]["chain"], ["state", "refresh"])
+            self.assertEqual(
+                contract["missionRuntimeSurface"]["counts"]["missionIdentityTypes"],
+                174,
+            )
+            self.assertEqual(
+                contract["managedCallableSurface"]["counts"]["callableFields"],
+                13,
+            )
+            self.assertEqual(contract["classification"], "availability_refresh")
 
 
 if __name__ == "__main__":

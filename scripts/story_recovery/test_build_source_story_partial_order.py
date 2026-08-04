@@ -117,6 +117,180 @@ def mission_payload(
 
 
 class SourceStoryPartialOrderTests(unittest.TestCase):
+    def test_exact_quest_succeed_lifecycle_orders_same_quest_story_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "MissionRuntimeAsset" / "m1.json"
+            source.parent.mkdir(parents=True)
+            source.write_text('{"missionId":"m1"}', encoding="utf-8")
+            payload = mission_payload()
+            payload["timelineRecovery"]["metadata"] = {
+                "source": {"file": "MissionRuntimeAsset/m1.json"},
+            }
+            payload["flow"]["quests"] = [{
+                "id": "m1_q#1",
+                "storyConnections": [
+                    {
+                        "key": "dlg_m1_1",
+                        "relation": "objective_condition",
+                        "direction": "story_to_quest",
+                        "phase": "progress",
+                        "confidence": "direct",
+                        "conditionType": "CheckTalkOptionFinish",
+                    },
+                    {
+                        "key": "radio_m1_1",
+                        "relation": "client_action_succeed",
+                        "direction": "quest_to_story",
+                        "phase": "succeed",
+                        "confidence": "native_typed_direct",
+                        "actionType": "PlayRadio",
+                    },
+                ],
+            }]
+            contract = {
+                "schema": "questLifecycleClientAction.v2",
+                "validation": {"status": "validated", "failures": []},
+                "succeedActionCalls": [{"questActionValue": 2}],
+                "relatedOriginalFiles": [{
+                    "kind": "original_game_binary",
+                    "sourceFile": "GameAssembly.dll",
+                    "sha256": "A" * 64,
+                }],
+            }
+            with patch.object(partial_order, "ROOT", root):
+                result = partial_order.build_mission_partial_order(
+                    "m1",
+                    {"dlg_m1_1": "dlg", "radio_m1_1": "radio"},
+                    payload,
+                    quest_succeed_lifecycle_contract=contract,
+                )
+
+        edge = result["directEdges"][0]
+        self.assertEqual(
+            (edge["from"], edge["to"], edge["kind"], edge["tier"]),
+            ("dlg_m1_1", "radio_m1_1", "questSucceedLifecycle", "strong"),
+        )
+        self.assertEqual(edge["questIds"], ["m1_q#1"])
+        self.assertEqual(len(edge["relatedOriginalFiles"]), 2)
+        self.assertEqual(result["summary"]["questSucceedLifecycleEdgeCount"], 1)
+
+    def test_start_action_definition_is_visible_but_never_orders(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "m1.json"
+            source.write_text('{"missionId":"m1"}', encoding="utf-8")
+            payload = mission_payload()
+            payload["timelineRecovery"]["metadata"] = {
+                "source": {"file": "m1.json"},
+            }
+            payload["flow"]["quests"] = [{
+                "id": "m1_q#1",
+                "storyConnections": [{
+                    "key": "dlg_m1_start",
+                    "relation": "client_action_start",
+                    "direction": "quest_to_story",
+                    "phase": "start",
+                    "confidence": "native_typed_direct",
+                    "actionSlot": "OnStartClientAction",
+                    "actionId": 17,
+                    "actionType": "PlayDialog",
+                }],
+            }]
+            contract = {
+                "schema": "questLifecycleClientAction.v2",
+                "source": "protocol_registry_audit.json",
+                "startActionDispatchers": [],
+                "boundary": "no current AOT slot-1 producer",
+                "validation": {"status": "validated", "failures": []},
+                "relatedOriginalFiles": [{
+                    "kind": "original_game_binary",
+                    "sourceFile": "GameAssembly.dll",
+                    "sha256": "A" * 64,
+                }],
+            }
+            with patch.object(partial_order, "ROOT", root):
+                result = partial_order.build_mission_partial_order(
+                    "m1",
+                    {"dlg_m1_start": "dlg"},
+                    payload,
+                    quest_succeed_lifecycle_contract=contract,
+                )
+
+        self.assertEqual(result["directEdges"], [])
+        self.assertEqual(result["summary"]["questStartActionDefinitionCount"], 1)
+        definition = result["questLifecycleDefinitions"][0]
+        self.assertEqual(definition["storyKey"], "dlg_m1_start")
+        self.assertEqual(
+            definition["runtimeDispatchStatus"],
+            "authored_definition_no_current_aot_dispatch",
+        )
+        self.assertEqual(len(definition["relatedOriginalFiles"]), 2)
+
+    def test_quest_succeed_lifecycle_rejects_reverse_strong_conflict(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "m1.json"
+            source.write_text("{}", encoding="utf-8")
+            payload = mission_payload([{
+                "from": "radio_m1_1",
+                "to": "dlg_m1_1",
+                "kind": "questPrev",
+            }])
+            payload["timelineRecovery"]["metadata"] = {
+                "source": {"file": "m1.json"},
+            }
+            payload["flow"]["quests"] = [{
+                "id": "m1_q#1",
+                "storyConnections": [
+                    {"key": "dlg_m1_1", "relation": "objective_condition",
+                     "direction": "story_to_quest", "phase": "progress"},
+                    {"key": "radio_m1_1", "relation": "client_action_succeed",
+                     "direction": "quest_to_story", "phase": "succeed",
+                     "confidence": "native_typed_direct"},
+                ],
+            }]
+            with patch.object(partial_order, "ROOT", root):
+                result = partial_order.build_mission_partial_order(
+                    "m1",
+                    {"dlg_m1_1": "dlg", "radio_m1_1": "radio"},
+                    payload,
+                    quest_succeed_lifecycle_contract={
+                        "validation": {"status": "validated", "failures": []},
+                    },
+                )
+
+        self.assertEqual(result["summary"]["questSucceedLifecycleEdgeCount"], 0)
+        self.assertEqual(result["warnings"][0]["check"], "noReverseStrongOrderConflict")
+
+    def test_quest_succeed_lifecycle_skips_non_applicable_mission_cleanly(self) -> None:
+        payload = mission_payload()
+        payload["flow"]["quests"] = [{
+            "id": "m1_q#1",
+            "storyConnections": [{
+                "key": "dlg_m1_1",
+                "relation": "objective_condition",
+                "direction": "story_to_quest",
+                "phase": "progress",
+            }],
+        }]
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            {"dlg_m1_1": "dlg"},
+            payload,
+            quest_succeed_lifecycle_contract={
+                "validation": {"status": "validation_failed", "failures": []},
+            },
+        )
+
+        self.assertEqual(result["summary"]["questSucceedLifecycleEdgeCount"], 0)
+        self.assertFalse(any(
+            warning.get("validator") == "questSucceedLifecycle"
+            for warning in result["warnings"]
+            if isinstance(warning, dict)
+        ))
+
     def test_typed_selector_alternatives_are_visible_without_order_edges(self) -> None:
         alternatives = [
             {"role": "first", "key": "dlg_a"},
@@ -973,7 +1147,182 @@ class SourceStoryPartialOrderTests(unittest.TestCase):
             },
         )
         self.assertTrue(all(edge["tier"] == "strong" for edge in native_edges))
+        self.assertTrue(
+            all(edge["transitionKinds"] == ["linear"] for edge in native_edges)
+        )
+        self.assertEqual(
+            native_edges[0]["events"][0]["transitionSteps"][0][
+                "transitionKind"
+            ],
+            "linear",
+        )
+        self.assertEqual(
+            result["summary"]["nativeControlPathTransitionEdgeCount"],
+            3,
+        )
+        self.assertEqual(
+            result["summary"][
+                "nativeControlPathBranchingTransitionEdgeCount"
+            ],
+            0,
+        )
         self.assertEqual(result["summary"]["comparableScenePairs"], 3)
+
+    def test_native_story_transition_suffix_preserves_typed_branch(self) -> None:
+        predicate = json.dumps({
+            "status": "exact_unique_getter",
+            "getterLocalId": 20,
+            "getterName": "BooleanCompare",
+        }, sort_keys=True, separators=(",", ":"))
+        source_path = (
+            (5, "ActionHeader.nextId", "PlayRadio", "play_radio", "{}"),
+        )
+        target_path = (
+            *source_path,
+            (6, "ActionBase.nextId", "IfElseAction", "branch", predicate),
+            (
+                7,
+                "IfElseAction.trueAction",
+                "StartDialogAction",
+                "play_dialog",
+                "{}",
+            ),
+        )
+
+        steps = partial_order._native_story_transition_steps(
+            source_path,
+            target_path,
+        )
+
+        self.assertEqual(
+            [step["transitionKind"] for step in steps],
+            ["linear", "conditionalBranch"],
+        )
+        self.assertEqual(
+            steps[1]["predicate"]["getterName"],
+            "BooleanCompare",
+        )
+        self.assertEqual(steps[1]["sourceLocalId"], 6)
+        self.assertEqual(steps[1]["targetLocalId"], 7)
+        self.assertEqual(
+            partial_order._native_story_transition_steps(
+                target_path,
+                source_path,
+            ),
+            [],
+        )
+
+    def test_parallel_transition_requires_binary_discovered_writer(self) -> None:
+        source_path = (
+            (5, "ActionHeader.nextId", "Split", "branch", "{}"),
+        )
+        target_path = (
+            *source_path,
+            (6, "Split.actions[0]", "PlayRadio", "play_radio", "{}"),
+        )
+        self.assertEqual(
+            partial_order._native_story_transition_steps(
+                source_path,
+                target_path,
+            )[0]["transitionKind"],
+            "linear",
+        )
+        contract = {
+            "source": "reports/story/recovery/protocol_registry_audit.json",
+            "extraThreadExecuteMethods": [{
+                "symbol": "Fixture.Actions.Split.Execute",
+                "writerShape": "inline_list_add_from_typed_collection",
+            }],
+        }
+        step = partial_order._native_story_transition_steps(
+            source_path,
+            target_path,
+            contract,
+        )[0]
+        self.assertEqual(step["transitionKind"], "parallelFanout")
+        self.assertEqual(
+            step["runtimeSemantics"],
+            "binary_proven_extra_thread_launch",
+        )
+        self.assertFalse(step["siblingOrderEvidence"])
+
+    def test_native_control_edge_reports_branching_transition(self) -> None:
+        candidates = {"radio_m1_1": "radio", "dlg_m1_1": "dlg"}
+        predicate = {
+            "status": "exact_unique_getter",
+            "getterLocalId": 20,
+            "getterName": "BooleanCompare",
+        }
+
+        def connection(key: str, path: list[dict]) -> dict:
+            return {
+                "key": key,
+                "levelScriptOccurrences": [{
+                    "levelId": "map_test",
+                    "scriptId": "70000000001",
+                    "sourceFile": "LevelScriptData/map_test/70000000001.json",
+                    "nativeEventOwners": [{
+                        "status": "exact_serialized_control_path",
+                        "headerName": "ScriptEvent_OnCustomEvent",
+                        "headerLocalId": 4,
+                        "path": path,
+                    }],
+                }],
+            }
+
+        source_step = {
+            "localId": 5,
+            "edge": "ActionHeader.nextId",
+            "actionName": "PlayRadio",
+            "recordClass": "play_radio",
+        }
+        payload = mission_payload([])
+        payload["flow"]["missionStoryConnections"] = [
+            connection("radio_m1_1", [source_step]),
+            connection("dlg_m1_1", [
+                source_step,
+                {
+                    "localId": 6,
+                    "edge": "ActionBase.nextId",
+                    "actionName": "IfElseAction",
+                    "recordClass": "branch",
+                    "branchPredicate": predicate,
+                },
+                {
+                    "localId": 7,
+                    "edge": "IfElseAction.trueAction",
+                    "actionName": "StartDialogAction",
+                    "recordClass": "play_dialog",
+                },
+            ]),
+        ]
+
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            candidates,
+            payload,
+        )
+
+        edge = next(
+            edge
+            for edge in result["directEdges"]
+            if edge["kind"] == "levelscriptNativeControlPath"
+        )
+        self.assertTrue(edge["branchingTransition"])
+        self.assertEqual(
+            edge["transitionKinds"],
+            ["conditionalBranch", "linear"],
+        )
+        self.assertEqual(
+            edge["events"][0]["transitionSteps"][1]["predicate"],
+            predicate,
+        )
+        self.assertEqual(
+            result["summary"][
+                "nativeControlPathBranchingTransitionEdgeCount"
+            ],
+            1,
+        )
 
     def test_while_action_path_is_reachability_not_global_story_order(self) -> None:
         candidates = {"radio_m1_1": "radio", "radio_m1_2": "radio"}
@@ -1219,6 +1568,10 @@ class SourceStoryPartialOrderTests(unittest.TestCase):
         self.assertEqual(branch["kind"], "ifElse")
         self.assertEqual(branch["branchLocalId"], 5)
         self.assertEqual(branch["predicate"]["getterName"], "BooleanCompare")
+        self.assertEqual(
+            branch["nativeMappingId"],
+            "gameassembly-2026-08-02-ifelse-execute-0x183d3ad50",
+        )
         self.assertEqual(branch["eventDetail"]["eventKey"], "branch_test")
         self.assertEqual(
             {arm["edge"] for arm in branch["arms"]},
@@ -1231,6 +1584,312 @@ class SourceStoryPartialOrderTests(unittest.TestCase):
         self.assertEqual(result["summary"]["nativeNamedPredicateCount"], 1)
         self.assertEqual(result["summary"]["nativeSemanticPredicateCount"], 1)
         self.assertEqual(result["summary"]["nativeClassOnlyPredicateCount"], 0)
+
+    def test_native_branch_group_keeps_exact_external_story_arms(self) -> None:
+        candidates = {"cutscene_m1_1": "cutscene"}
+        payload = mission_payload([])
+
+        def connection(key: str, edge: str, entry_id: int) -> dict:
+            return {
+                "key": key,
+                "levelScriptOccurrences": [{
+                    "levelId": "map_test",
+                    "scriptId": "70000000001",
+                    "sourceFile": "fixture.json",
+                    "nativeEventOwners": [{
+                        "status": "exact_serialized_control_path",
+                        "headerName": "ScriptEvent_OnLeaderEnterTriggerVolume",
+                        "headerLocalId": 4,
+                        "path": [
+                            {
+                                "localId": 5,
+                                "edge": "ActionHeader.nextId",
+                                "actionName": "Split",
+                            },
+                            {"localId": entry_id, "edge": edge},
+                        ],
+                    }],
+                }],
+            }
+
+        payload["flow"]["missionStoryConnections"] = [
+            connection("cutscene_m1_1", "Split.actions[0]", 6),
+        ]
+        payload["flow"]["unlinkedNativePlayback"] = [
+            connection("radio_m2_1", "Split.actions[1]", 7),
+        ]
+        contract = {
+            "extraThreadExecuteMethods": [{
+                "symbol": "HG.LevelScript.Split.Execute",
+                "writerShape": "direct_scheduler_calls_from_typed_fields",
+            }],
+            "relatedOriginalFiles": [{
+                "kind": "original_game_binary",
+                "sourceFile": "GameAssembly.dll",
+                "sha256": "binary-hash",
+            }],
+        }
+        result = partial_order.build_mission_partial_order(
+            "m1",
+            candidates,
+            payload,
+            extra_thread_scheduler_contract=contract,
+        )
+
+        self.assertEqual(result["directEdges"], [])
+        self.assertEqual(result["summary"]["nativeControlBranchCount"], 1)
+        self.assertEqual(
+            result["summary"]["nativeControlCrossBoundaryBranchCount"], 1
+        )
+        self.assertEqual(
+            result["summary"]["nativeControlCrossBoundaryExternalStoryCount"],
+            1,
+        )
+        branch = result["branches"]["nativeControlBranches"][0]
+        self.assertEqual(branch["missionStoryKeys"], ["cutscene_m1_1"])
+        self.assertEqual(branch["externalStoryKeys"], ["radio_m2_1"])
+        self.assertEqual(
+            branch["nativeMappingId"],
+            "gameassembly-2026-08-02-split-execute-0x18464b110",
+        )
+        self.assertEqual(
+            branch["branchSemantics"],
+            "binary_validated_parallel_story_fanout",
+        )
+        self.assertFalse(branch["ownership"])
+        self.assertFalse(branch["orderEvidence"])
+        self.assertEqual(
+            branch["relatedOriginalFiles"][0]["relationship"],
+            "native_cross_boundary_branch_authority",
+        )
+
+    def test_full_native_branch_arm_context_projects_non_story_and_inactive_slots(self) -> None:
+        branch = {
+            "kind": "switch",
+            "branchLocalId": 4,
+            "nativeMappingId": (
+                "gameassembly-2026-08-02-switchint-execute-0x1849dcca0"
+            ),
+            "sourceFiles": [
+                "LevelScriptData/map_test/70000000001.json",
+            ],
+            "arms": [{
+                "edge": "SwitchInt.case[0]=0",
+                "entryLocalId": 5,
+                "storyKeys": ["cutscene_m1_1"],
+            }],
+        }
+        topology = {
+            "status": "exact_complete_action_map",
+            "actions": [
+                {
+                    "localId": 4,
+                    "actionName": "SwitchInt",
+                    "controlRuntimeMappingId": branch["nativeMappingId"],
+                    "controlDetail": {
+                        "switchCaseValues": [0, 1],
+                        "switchCaseActionLocalIds": [5, 6],
+                        "switchDefaultActionLocalId": 0,
+                    },
+                },
+                {"localId": 5, "actionName": "PlayTimeline", "nextActionLocalId": 7},
+                {"localId": 6, "actionName": "WaitForSeconds", "nextActionLocalId": 7},
+                {"localId": 7, "actionName": "CallServer"},
+            ],
+            "edges": [
+                {
+                    "sourceKind": "action",
+                    "sourceLocalId": 4,
+                    "relation": "SwitchInt.case[0]=0",
+                    "targetActionLocalId": 5,
+                },
+                {
+                    "sourceKind": "action",
+                    "sourceLocalId": 4,
+                    "relation": "SwitchInt.case[1]=1",
+                    "targetActionLocalId": 6,
+                },
+                {
+                    "sourceKind": "action",
+                    "sourceLocalId": 5,
+                    "relation": "ActionBase.nextId",
+                    "targetActionLocalId": 7,
+                },
+                {
+                    "sourceKind": "action",
+                    "sourceLocalId": 6,
+                    "relation": "ActionBase.nextId",
+                    "targetActionLocalId": 7,
+                },
+            ],
+            "runtimeTerminalTargets": [],
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = (
+                Path(temp_dir) / "LevelScriptData" / "map_test"
+                / "70000000001.json"
+            )
+            source_path.parent.mkdir(parents=True)
+            source_path.write_bytes(b"original-levelscript")
+            partial_order._NATIVE_ACTION_TOPOLOGY_CACHE.clear()
+            with patch.object(partial_order, "ROOT", Path(temp_dir)), patch.object(
+                partial_order,
+                "decode_levelscript_native_action_topology",
+                return_value=(topology, None),
+            ):
+                rows, diagnostics = partial_order._full_native_branch_arm_context(
+                    "m1", [branch], None
+                )
+
+        self.assertEqual(diagnostics, [])
+        recovered = rows[0]
+        self.assertEqual(
+            recovered["fullArmCoverageStatus"],
+            "exact_complete_active_action_map",
+        )
+        self.assertEqual(recovered["serializedArmCount"], 3)
+        self.assertEqual(recovered["storyBearingArmCount"], 1)
+        self.assertEqual(recovered["nonStoryArmCount"], 1)
+        self.assertEqual(recovered["inactiveTargetArmCount"], 1)
+        self.assertEqual(
+            recovered["fullArms"][1]["entryAction"]["actionName"],
+            "WaitForSeconds",
+        )
+        self.assertEqual(recovered["sharedDownstreamActionLocalIds"], [7])
+        self.assertEqual(recovered["fullArms"][0]["exclusiveActionCount"], 1)
+        self.assertEqual(recovered["fullArms"][2]["targetStatus"],
+                         "inactive_serialized_target")
+        self.assertEqual(
+            recovered["relatedOriginalFiles"][0]["relationship"],
+            "complete_serialized_native_branch_arms",
+        )
+
+    def test_full_native_branch_arm_context_fails_closed_on_mapping_mismatch(self) -> None:
+        branch = {
+            "kind": "splitFanout",
+            "branchLocalId": 4,
+            "nativeMappingId": "expected-binary-mapping",
+            "sourceFiles": ["LevelScriptData/map_test/70000000001.json"],
+            "arms": [{
+                "edge": "Split.actions[0]",
+                "entryLocalId": 5,
+                "storyKeys": ["radio_m1_1"],
+            }],
+        }
+        topology = {
+            "status": "exact_complete_action_map",
+            "actions": [{
+                "localId": 4,
+                "actionName": "Split",
+                "controlRuntimeMappingId": "different-binary-mapping",
+                "controlDetail": {"splitActionLocalIds": [5]},
+            }],
+            "edges": [],
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = (
+                Path(temp_dir) / "LevelScriptData" / "map_test"
+                / "70000000001.json"
+            )
+            source_path.parent.mkdir(parents=True)
+            source_path.write_bytes(b"original-levelscript")
+            partial_order._NATIVE_ACTION_TOPOLOGY_CACHE.clear()
+            with patch.object(partial_order, "ROOT", Path(temp_dir)), patch.object(
+                partial_order,
+                "decode_levelscript_native_action_topology",
+                return_value=(topology, None),
+            ):
+                rows, diagnostics = partial_order._full_native_branch_arm_context(
+                    "m1", [branch], None
+                )
+
+        self.assertEqual(rows[0]["fullArmCoverageStatus"], "unavailable_fail_closed")
+        self.assertEqual(len(diagnostics), 1)
+        self.assertEqual(
+            diagnostics[0]["gate"], "uniqueRuntimeMappedControlAction"
+        )
+        self.assertEqual(diagnostics[0]["mission"], "m1")
+        self.assertEqual(diagnostics[0]["expected"]["matchingActionCount"], 1)
+        self.assertEqual(diagnostics[0]["actual"]["matchingActionCount"], 0)
+        self.assertIn("sourceSha256", diagnostics[0])
+
+    def test_mission_state_projection_keeps_cross_mission_alternatives_without_order(self) -> None:
+        candidates = {"dlg_m1_true": "dialog"}
+        payload = mission_payload([])
+        predicate = {
+            "status": "exact_unique_getter",
+            "getterName": "CompareMissionState",
+            "getterUnionTag": "0x001f",
+            "getterSerializedMemberCount": 10,
+            "compareMissionState": {
+                "comparerName": "NotEqual",
+                "valueBStateName": "Completed",
+                "nativeMappingId": "gameassembly-2026-07-11-puregetter-mission-state",
+                "pureGetterUnionTag": "0x001f",
+                "serializedMemberCount": 10,
+            },
+            "sourceGetter": {"getMissionState": {
+                "missionId": "m1",
+                "nativeMappingId": "gameassembly-2026-07-11-puregetter-mission-state",
+                "pureGetterUnionTag": "0x013a",
+                "serializedMemberCount": 8,
+            }},
+        }
+
+        def dependency(key: str, edge: str, entry_id: int) -> dict:
+            return {
+                "key": key,
+                "missionStateGatePaths": [{
+                    "levelId": "map_test",
+                    "scriptId": "70000000001",
+                    "sourceFile": "fixture.json",
+                    "controlPath": {
+                        "status": "exact_serialized_control_path",
+                        "headerName": "ScriptEvent_OnLeaderEnterTriggerVolume",
+                        "headerLocalId": 4,
+                        "path": [
+                            {
+                                "localId": 5,
+                                "edge": "ActionHeader.nextId",
+                                "actionName": "IfElseAction",
+                                "branchPredicate": predicate,
+                            },
+                            {"localId": entry_id, "edge": edge},
+                        ],
+                    },
+                }],
+            }
+
+        payload["flow"]["missionStateStoryDependencies"] = [
+            dependency("dlg_m1_true", "IfElseAction.trueAction", 6),
+            dependency("dlg_m2_false", "IfElseAction.falseAction", 7),
+        ]
+        result = partial_order.build_mission_partial_order("m1", candidates, payload)
+
+        self.assertEqual(result["directEdges"], [])
+        self.assertEqual(result["summary"]["nativeMissionStateBranchCount"], 1)
+        self.assertEqual(
+            result["summary"]["nativeMissionStateBranchExternalStoryCount"], 1
+        )
+        branch = result["branches"]["nativeMissionStateBranches"][0]
+        self.assertEqual(branch["missionStoryKeys"], ["dlg_m1_true"])
+        self.assertEqual(branch["externalStoryKeys"], ["dlg_m2_false"])
+        self.assertFalse(branch["ownership"])
+        self.assertFalse(branch["orderEvidence"])
+        self.assertEqual(
+            {arm["edge"] for arm in branch["arms"]},
+            {"IfElseAction.trueAction", "IfElseAction.falseAction"},
+        )
+
+        rejected = partial_order.build_mission_partial_order("m2", candidates, payload)
+        self.assertEqual(rejected["branches"]["nativeMissionStateBranches"], [])
+        payload["flow"]["missionStateStoryDependencies"][0][
+            "missionStateGatePaths"
+        ][0]["controlPath"]["path"][0]["branchPredicate"][
+            "getterSerializedMemberCount"
+        ] = 9
+        malformed = partial_order.build_mission_partial_order("m1", candidates, payload)
+        self.assertEqual(malformed["branches"]["nativeMissionStateBranches"], [])
 
     def test_native_branch_sequence_creates_exact_story_order(self) -> None:
         candidates = {

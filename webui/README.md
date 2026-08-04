@@ -72,6 +72,82 @@ Rebuild Story data after editing overrides.
 - Disabling debug from a hidden page returns to a visible page and URL.
 - Mission Pipeline distinguishes ownership, context, definition-only rows, and
   unresolved native playback.
+- Mission objective cards expose every complete authored LevelScript task
+  tuple, its task display metadata, and hash-checked MissionRuntime,
+  LevelScriptData, and ScriptTaskExtraInfoTable files. These rows are completion
+  dependencies only; they do not claim script activation, Story ownership,
+  branch selection, or scene-file order.
+- Its authored-structure panel expands every MissionRuntime quest fork into
+  main/auxiliary arms, typed objective and failure guards, terminal state, and
+  exact first common descendant. Each arm shows its sibling-exclusive quest
+  corridor, exact typed Story relations, and hash-checked arm-related original
+  files. It links the hash-validated original runtime file and labels
+  server-side arm selection and exclusivity as unresolved.
+- Every authored fork now includes a server-application card derived from the
+  original binary and metadata. It shows the exact arm `questId` values,
+  packet fields, handler, `Processing -> StartQuest` and
+  `Completed -> SucceedQuest` routes, source hashes, and the explicit boundary
+  that the client applies but does not select the successor arm.
+- The same card shows the binary-validated enable/pause matrix: enabled and
+  unpaused starts, enabled and paused remains paused, and disabled reaches
+  `DisableQuest` for either pause value. It also labels `prevQuestState` as
+  serialized but unread, links the exact binary and metadata hashes, and does
+  not promote these application routes to server arm policy or Story order.
+- Its native-boundary panel shows the generally discovered mission/quest
+  identity+state application paths, the exact lifecycle identity flow, the
+  absence of a client successor selector, and the hash-validated original
+  `GameAssembly.dll` and `global-metadata.dat` sources. Each displayed quest
+  fork also shows the binary-derived `StartQuest` boundary: objective-list
+  reads, zero predecessor/flow reads, zero topology traversal calls, and both
+  exact related original files. The same card exposes the whole-client
+  topology-field census: verified direct `GetQuestInfo` callers, the deprecated
+  predecessor-description reader, display-only flow comparator, main-path
+  context/cache consumers, and zero topology-driven lifecycle calls.
+  Fork arms also show installed-metadata names for `questType` and `showMode`.
+  The authority card exposes all seven quest-type consumer methods, the two
+  post-lifecycle `Block` notification corridors, the exact
+  `ObjectiveShowData.optional` write, all five visibility consumer methods,
+  and zero visibility-driven lifecycle calls. These are presentation and
+  post-application notification semantics, not evidence of arm activation or
+  exclusivity.
+  Predecessor forks remain topology rather than claimed server branch choice.
+- The managed-carrier card shows the cycle-safe fixed-point census, maximum
+  shortest type path, Entity/shared-runtime aggregate closures, zero exact
+  indexed Entity/component type labels plus the truncated-scalar boundary, and the binary, metadata, and two
+  original-object-index files used for that boundary. Type-graph reachability
+  alone never creates a mission ownership or order edge.
+- The native cross-system card shows the complete hash-pinned direct-call
+  census across MissionSystem, DynamicScene, LevelScript, and Story APIs,
+  plus the fixed-point consumer closure and the metadata-backed deferred chain
+  `mission/quest state -> pending component set -> BeforeTick -> condition
+  update -> RefreshEntityStatus`. The same card shows the complete managed
+  mission/quest runtime surface and the tracking-only LevelScript caller: it
+  writes `sceneId` but never `missionId`. It links the original binary and
+  metadata hashes. The same card exposes all 13 managed callable fields, five
+  typed binding entry methods, and five current native binding calls: each
+  stays within MissionSystem or LevelScriptRuntime, with zero cross-family
+  bindings. These runtime contexts remain distinct from LevelScript activation,
+  Story ownership, playback causality, and order.
+- Story-order panels show binary-proven quest-success lifecycle edges as
+  `objective Story completed -> server success state -> succeed client action`.
+  Each edge links its exact quest relations and expands the hash-checked
+  MissionRuntime, `GameAssembly.dll`, and metadata files. This proves relative
+  order only for the matching same-quest pair, not that success occurred or
+  which successor branch the server selected.
+- Story-order panels also show exact mission-observed LevelScript contexts when
+  a typed objective names the same `(level, script)` as native Story playback.
+  They expose the quest, condition/property, Story keys, and related original
+  files while visibly preserving unresolved ownership, activation, property
+  writer, and order.
+- The same panel lists authored quest-start Story actions separately when the
+  current installed-binary census has no slot-1 dispatcher. Each row exposes
+  its quest, action, Story file, boundary, and hash-checked MissionRuntime,
+  `GameAssembly.dll`, and metadata files. These definition rows are counted
+  visibly but never become order edges; quest inspectors use the same dispatch
+  badge on every client action.
+- Post-playback `CallServer` rows show their complete binary-decoded serialized
+  contract and exact related `LevelScriptData` file, while keeping correlation
+  labels and argument parameters explicitly non-owning.
 - BlackBox recovery shells show the exact SubGame row, bound LevelScript,
   separate main/extra/fail task lanes, complete decoded task conditions,
   condition formulas, objective display keys, typed parent playback, and the
@@ -85,11 +161,37 @@ Rebuild Story data after editing overrides.
   exact native event-to-Story path. They show the related file and semantic
   control actions, active last-serialized runtime slots, and shadowed physical
   records without treating the rest of the file as mission chronology.
+- The runtime-authority panel shows the structurally discovered ActionBase
+  extra-thread scheduler, every admitted composite writer shape, exact native
+  method/token/field evidence, and binary/metadata hashes. Parallel Story
+  transition badges appear only when this current-build contract validates;
+  sibling action slots remain explicitly unordered.
 - Native branch cards show typed predicate operands when the current binary
   union, formatter field order, payload shape, and runtime consumer all agree;
   embedded root `GameCondition` unions and local getter references retain
   their nested type/operand details, while opaque or changed shapes remain
   visibly unresolved.
+- Cross-boundary native branch cards open by default, badge Story files outside
+  the nominal mission group, show the installed runtime mapping, and attach the
+  hashed LevelScript, MissionRuntime, binary, and metadata inputs. Parallel
+  Split arms and conditional alternatives remain explicitly non-chronological.
+- Native branch cards show the complete original serialized arm shape when its
+  runtime-active action map matches the installed binary mapping. Story arms,
+  active non-Story entry actions, inactive target slots, arm-exclusive action
+  topology, shared downstream actions, and related hash-addressed original
+  files remain visibly distinct; non-Story arms never imply Story ownership,
+  chronology, or mission membership.
+- Mission Pipeline includes every recovered native branch placement. Late
+  Story-only shells receive the full source-order row, while a missing Story
+  namespace becomes a labeled variant aggregate only when its generated bundle
+  explicitly declares validated MissionRuntime variants. The aggregate links
+  those variant missions and shows their hash-addressed original files, without
+  presenting the aggregate as a MissionRuntime mission or ownership proof.
+- Mission-state alternative cards preserve every Story file on both exact
+  serialized arms, including cross-mission nominal groupings, and expose the
+  related original LevelScript, MissionRuntime, binary, and metadata files.
+  They are labeled as alternative selection rather than Story order or
+  ownership.
 - Exact native receiver cards recognize the reusable `EncounterBase<T>` /
   `EncounterData` property contract structurally and show its validated
   LevelData host, LsmPtr module namespace, receiver LevelScript, and typed
@@ -103,6 +205,54 @@ Rebuild Story data after editing overrides.
   child references while missing, cyclic, or unknown children fail closed;
   the UI labels them as receiver-local branches, never mission ownership,
   cross-Story order, or proof of a later server write.
+- Receiver cards with decoded tasks show the binary-validated
+  scene/script/task protocol identity, exact `lt:p`/`lt:mp` LevelData progress
+  properties, and hashes for attached original binaries and data files. The
+  panel keeps this server-backed task lifecycle separate from mission/quest
+  ownership and scene-file ordering.
+- Every receiver whose serialized start type is `SameWithActive` also shows
+  the generic binary-validated `Active + unfinished -> PreStart` transition,
+  the discovered runtime method/enum values, and exact binary/metadata hashes.
+  The panel keeps the still-missing mission/server activation source and
+  cross-Story order visibly unresolved.
+- Receiver cards with a matching serialized current-context ManualStart row
+  show the binary-validated `CURRENT_LEVEL_ID + CURRENT_SCRIPT_ID -> hosting
+  script -> ManualStart -> PreStart` carrier, its authored event/action local-id
+  link, native method addresses, and exact binary/metadata hashes. This is a
+  local self-start edge only; mission ownership, branch selection, and
+  cross-Story order remain explicitly unresolved.
+- Every receiver card shows the binary-validated public state application path
+  and its scene/script/state-only packet boundary. Cards with an exact typed
+  SubGame binding additionally show the original-data
+  `SubGame id -> bindScriptId -> LevelScript -> ManualStart` interaction
+  carrier. Both panels attach current binary/metadata hashes while keeping
+  mission ownership, server branch selection, and cross-Story order unresolved.
+- Every receiver card also shows the binary-validated client start-request
+  lifecycle: `ManualStart flag -> PreStart -> CS start request ->
+  PreStartActionRunning`, including sender addresses, true/false runtime request
+  arguments, and the zero-direct-caller boundary on the public network API.
+  This remains the later Start lifecycle and does not promote the request path
+  to ownership or ordering.
+- Every exact receiver card now shows its original serialized header phase and
+  the generic binary-validated `Setup -> ActiveBegin -> enable Active(0)` path.
+  All 161 receiver headers are Active-phase, including validated runtime-
+  shadowed maps. The 54 manual scripts therefore do not need ManualStart for
+  receiver availability. Each card also joins its exact validated LevelData
+  type to the generic binary selector. All 95 current receivers are non-
+  `SubLevelScript` and visibly show `Enabled -> active-area gate -> PreActive ->
+  active=true -> WaitForStateActive`. Each card also shows its directly decoded
+  original sphere/box activation geometry and the binary-validated active/
+  outside-list gate behavior. The public-state row distinguishes the full-scene
+  `SC_SELF_SCENE_INFO` snapshot from incremental state notifications and shows
+  that both are server-derived. The UI still labels the unavailable server-side
+  selection rule, player position and playthrough-specific spatial result,
+  server acceptance, event occurrence, mission owner, branch choice, and
+  cross-Story order unresolved.
+- Above the exact receiver cards, a corpus-wide original structured-data census
+  shows candidate files, visited records, direct identity carriers, receiver
+  matches, and unreviewed shapes. Only exact script and mission/quest fields in
+  one record count; the panel explicitly excludes filename, ancestor, OCR, and
+  override proximity from evidence.
 - Mission Pipeline opens source-bounded activation gaps in the order panel and
   shows exact ReadingPopUp/RichContent row identities for definition-only text
   files and

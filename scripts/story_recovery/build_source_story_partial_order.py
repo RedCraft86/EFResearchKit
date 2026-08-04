@@ -58,7 +58,7 @@ from story_builder.spawner_binary import (  # noqa: E402
 )
 
 
-SCHEMA = "sourceStoryPartialOrder.v23"
+SCHEMA = "sourceStoryPartialOrder.v31"
 BRANCH_SEQUENCE_RUNTIME = LEVELSCRIPT_NATIVE_CONTROL_RUNTIME_MAPPINGS[
     (0x002D, 0x09)
 ]
@@ -70,8 +70,12 @@ READING_POPUP_TABLE_PATH = (
     ROOT / "export_full" / "structured" / "StreamingAssets"
     / "Table" / "ReadingPopUpTable.json"
 )
+PROTOCOL_REGISTRY_AUDIT_PATH = (
+    ROOT / "reports" / "story" / "recovery" / "protocol_registry_audit.json"
+)
 VARIANT_FLOW_LIST_FIELDS = (
     "missionStoryConnections",
+    "missionStateStoryDependencies",
     "quests",
     "unlinkedNativePlayback",
     "unlinkedDefinitionOnly",
@@ -131,6 +135,7 @@ PROVEN_ORDER_EDGE_KINDS = (
     "levelscriptNativeControlPath",
     "levelscriptNativeOrderedSequence",
     "levelscriptQuestStateActionPath",
+    "questSucceedLifecycle",
     "spawnerWaveGroupPartKilled",
     "spawnerWavePartKilled",
 })
@@ -389,6 +394,7 @@ EVIDENCE_POLICY = {
         "exact serialized LevelScript event-to-action strict path-prefix edges",
         "exact Branch._idList Story order only when installed Branch.Execute semantics and distinct serialized sequence slots agree",
         "exact LevelEvent_OnQuestStateChanged typed playback action paths",
+        "same-quest objective Story completion before a typed succeed client Story action, gated by the current installed SucceedQuest binary contract",
         "exact SpawnerConfig PartKilled target-wave dependencies joined to typed LevelEvent_OnSpawnerWaveBegin playback",
         "exact SpawnerConfig wave/group nesting and PartKilled gates joined to typed wave/group-begin playback",
         "exact same-script RaiseCustomScriptEvent relays from typed spawner callbacks to typed Story playback listeners",
@@ -406,6 +412,7 @@ EVIDENCE_POLICY = {
         "LevelData quest references and PRTS collection order",
         "related LevelScript action graphs attached through exact Story paths but not promoted wholesale to mission order",
         "divergent Split/IfElseAction/SwitchInt/SwitchString Story arms as topology only",
+        "authored quest-start Story actions when the complete current AOT dispatcher census has no slot-1 producer",
     ],
     "rejects": [
         "webui/overrides/story_order.json",
@@ -1401,7 +1408,11 @@ NATIVE_OCCURRENCE_FIELDS = (
 )
 
 
-def _story_connection_rows(flow: dict[str, Any]) -> Iterable[dict[str, Any]]:
+def _story_connection_rows(
+    flow: dict[str, Any],
+    *,
+    include_mission_state_dependencies: bool = False,
+) -> Iterable[dict[str, Any]]:
     for row in flow.get("missionStoryConnections") or []:
         if isinstance(row, dict):
             yield row
@@ -1413,6 +1424,10 @@ def _story_connection_rows(flow: dict[str, Any]) -> Iterable[dict[str, Any]]:
                 yield row
     for field in ("unlinkedNativePlayback", "unlinkedDefinitionOnly"):
         for row in flow.get(field) or []:
+            if isinstance(row, dict):
+                yield row
+    if include_mission_state_dependencies:
+        for row in flow.get("missionStateStoryDependencies") or []:
             if isinstance(row, dict):
                 yield row
 
@@ -2088,6 +2103,18 @@ def _connection_native_occurrences(row: dict[str, Any]) -> list[dict[str, Any]]:
             for occurrence in row.get(field) or []
             if isinstance(occurrence, dict)
         )
+    for gate_path in row.get("missionStateGatePaths") or []:
+        if not isinstance(gate_path, dict):
+            continue
+        control_path = gate_path.get("controlPath")
+        if not isinstance(control_path, dict):
+            continue
+        occurrences.append({
+            "levelId": gate_path.get("levelId"),
+            "scriptId": gate_path.get("scriptId"),
+            "sourceFile": gate_path.get("sourceFile"),
+            "nativeEventOwners": [control_path],
+        })
     if not occurrences and isinstance(row.get("nativeEventOwners"), list):
         occurrences.append({
             "levelId": next(iter(row.get("levelIds") or []), ""),
@@ -2102,6 +2129,8 @@ def _connection_native_occurrences(row: dict[str, Any]) -> list[dict[str, Any]]:
 def _native_event_story_paths(
     flow: dict[str, Any],
     candidate_keys: set[str] | None,
+    *,
+    include_mission_state_dependencies: bool = False,
 ) -> dict[
     tuple[str, str, int, str],
     set[tuple[str, tuple[tuple[Any, ...], ...], tuple[str, ...], str, str]],
@@ -2110,7 +2139,10 @@ def _native_event_story_paths(
         tuple[str, str, int, str],
         set[tuple[str, tuple[tuple[Any, ...], ...], tuple[str, ...], str, str]],
     ] = defaultdict(set)
-    for row in _story_connection_rows(flow):
+    for row in _story_connection_rows(
+        flow,
+        include_mission_state_dependencies=include_mission_state_dependencies,
+    ):
         story_key = safe_key(row.get("key"))
         if candidate_keys is not None and story_key not in candidate_keys:
             continue
@@ -2198,6 +2230,180 @@ def _strict_native_path_prefix(
     )
 
 
+def _parallel_action_names(
+    extra_thread_scheduler_contract: dict[str, Any] | None,
+) -> set[str]:
+    """Project structurally admitted binary writers to action class names."""
+    names: set[str] = set()
+    for row in (extra_thread_scheduler_contract or {}).get(
+        "extraThreadExecuteMethods", []
+    ):
+        if not isinstance(row, dict) or row.get("writerShape") not in {
+            "direct_scheduler_calls_from_typed_fields",
+            "inline_list_add_from_typed_collection",
+        }:
+            continue
+        symbol = safe_key(row.get("symbol"))
+        if symbol.endswith(".Execute"):
+            names.add(symbol.removesuffix(".Execute").rsplit(".", 1)[-1])
+    return names
+
+
+def load_current_parallel_fanout_authority(
+    audit_path: Path = PROTOCOL_REGISTRY_AUDIT_PATH,
+) -> dict[str, Any]:
+    """Fail closed unless the scheduler contract matches its original inputs."""
+    validator = "parallel_fanout_authority"
+    audit = read_json(audit_path, {})
+    if audit.get("_schema") != "endfieldProtocolRegistryAudit.v20":
+        raise RuntimeError(
+            f"validator={validator} gate=auditSchema "
+            "expected='endfieldProtocolRegistryAudit.v20' "
+            f"actual={audit.get('_schema')!r} source={audit_path}"
+        )
+    contract = dict(audit.get("actionExtraThreadSchedulerCensus") or {})
+    validation = contract.get("validation") or {}
+    if validation.get("status") != "validated":
+        failure = (validation.get("failures") or [{}])[0]
+        raise RuntimeError(
+            f"validator={validator} "
+            f"gate={failure.get('gate') or 'upstreamValidation'} "
+            f"message={failure.get('message')} expected={failure.get('expected')!r} "
+            f"actual={failure.get('actual')!r} "
+            f"source={failure.get('sourceFile') or audit_path}"
+        )
+    source = audit.get("source") or {}
+    related_files: list[dict[str, Any]] = []
+    for path_key, hash_key, kind in (
+        ("gameAssembly", "gameAssemblySha256", "original_game_binary"),
+        ("metadata", "metadataSha256", "original_game_metadata"),
+    ):
+        source_path = Path(str(source.get(path_key) or ""))
+        expected = str(source.get(hash_key) or "").lower()
+        if not source_path.is_file():
+            raise RuntimeError(
+                f"validator={validator} gate=sourceExists expected=file "
+                f"actual=missing source={source_path or path_key}"
+            )
+        digest = hashlib.sha256()
+        with source_path.open("rb") as source_handle:
+            for chunk in iter(lambda: source_handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        actual = digest.hexdigest()
+        if actual != expected:
+            raise RuntimeError(
+                f"validator={validator} gate=sourceHash expected={expected!r} "
+                f"actual={actual!r} source={source_path}"
+            )
+        related_files.append({
+            "kind": kind,
+            "sourceFile": str(source_path.resolve()),
+            "sha256": actual,
+            "relationship": "native_action_extra_thread_scheduler_authority",
+        })
+    contract["source"] = (
+        audit_path.relative_to(ROOT).as_posix()
+        if audit_path.is_relative_to(ROOT)
+        else audit_path.as_posix()
+    )
+    contract["relatedOriginalFiles"] = related_files
+    return contract
+
+
+def _native_transition_kind(
+    edge: str,
+    source_action_name: str,
+    parallel_action_names: set[str] | None = None,
+) -> str:
+    """Classify one exact typed successor without interpreting identifiers."""
+    if (
+        source_action_name in (parallel_action_names or set())
+        and re.search(r"\.actions\[[0-9]+\]$", edge)
+    ):
+        return "parallelFanout"
+    if edge in {"IfElseAction.trueAction", "IfElseAction.falseAction"}:
+        return "conditionalBranch"
+    if (
+        edge.startswith("SwitchInt.case[")
+        or edge == "SwitchInt.default"
+        or edge.startswith("SwitchString.case[")
+        or edge == "SwitchString.default"
+    ):
+        return "conditionalBranch"
+    if edge in {
+        "WaitForSecondsInTriggerVolume.successAction",
+        "WaitForSecondsInTriggerVolume.failAction",
+    }:
+        return "outcomeBranch"
+    if edge.startswith("Branch.sequence["):
+        return "orderedSequence"
+    if edge == "ActionBase.nextId" and source_action_name == "Branch":
+        return "orderedSequenceExit"
+    return "linear"
+
+
+def _native_story_transition_steps(
+    source_path: tuple[tuple[Any, ...], ...],
+    target_path: tuple[tuple[Any, ...], ...],
+    extra_thread_scheduler_contract: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Return the exact typed suffix between two prefix-comparable Story actions.
+
+    Each path tuple is already admitted by the current runtime's serialized
+    action-slot and successor-field contract.  This projection keeps edge
+    labels, action identities, and any predicate on the controlling source
+    action so the UI can distinguish linear continuation, parallel fan-out,
+    conditional selection, ordered Branch iteration, and outcome branches.
+    """
+    if not _strict_native_path_prefix(source_path, target_path):
+        return []
+    parallel_action_names = _parallel_action_names(
+        extra_thread_scheduler_contract
+    )
+    steps: list[dict[str, Any]] = []
+    for index in range(len(source_path), len(target_path)):
+        source_step = target_path[index - 1]
+        target_step = target_path[index]
+        edge = safe_key(target_step[1])
+        source_action_name = safe_key(source_step[2])
+        predicate_json = safe_key(source_step[4])
+        predicate = (
+            json.loads(predicate_json)
+            if predicate_json not in {"", "{}"}
+            else {}
+        )
+        transition_kind = _native_transition_kind(
+            edge,
+            source_action_name,
+            parallel_action_names,
+        )
+        step = {
+            key: value
+            for key, value in {
+                "sourceLocalId": int(source_step[0]),
+                "targetLocalId": int(target_step[0]),
+                "edge": edge,
+                "transitionKind": transition_kind,
+                "sourceActionName": source_action_name,
+                "sourceActionClass": safe_key(source_step[3]),
+                "targetActionName": safe_key(target_step[2]),
+                "targetActionClass": safe_key(target_step[3]),
+                "predicate": predicate,
+            }.items()
+            if value not in ("", None, [], {})
+        }
+        if transition_kind == "parallelFanout":
+            step.update({
+                "runtimeSemantics": "binary_proven_extra_thread_launch",
+                "siblingOrderEvidence": False,
+                "runtimeAuthoritySource": safe_key(
+                    (extra_thread_scheduler_contract or {}).get("source")
+                ),
+            })
+        steps.append(step)
+    return steps
+
+
 def _expand_native_control_path_candidates(
     flow: dict[str, Any],
     candidate_kinds: dict[str, str],
@@ -2241,6 +2447,7 @@ def _expand_native_control_path_candidates(
 def _native_control_path_story_edges(
     flow: dict[str, Any],
     candidate_keys: set[str],
+    extra_thread_scheduler_contract: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Recover strict Story order when one native control path prefixes another."""
     event_paths = _native_event_story_paths(flow, candidate_keys)
@@ -2256,6 +2463,13 @@ def _native_control_path_story_edges(
                     continue
                 source_path_ids = tuple(step[0] for step in source_path)
                 target_path_ids = tuple(step[0] for step in target_path)
+                transition_steps = _native_story_transition_steps(
+                    source_path,
+                    target_path,
+                    extra_thread_scheduler_contract,
+                )
+                if not transition_steps:
+                    continue
                 evidence_by_pair[(source_key, target_key)].append({
                     "levelId": signature[0],
                     "scriptId": signature[1],
@@ -2270,6 +2484,11 @@ def _native_control_path_story_edges(
                     ],
                     "sourcePath": list(source_path_ids),
                     "targetPath": list(target_path_ids),
+                    "transitionSteps": transition_steps,
+                    "transitionKinds": sorted({
+                        step["transitionKind"]
+                        for step in transition_steps
+                    }),
                     "sourceFiles": sorted(
                         {*source_files, *target_files},
                         key=natural_key,
@@ -2288,12 +2507,21 @@ def _native_control_path_story_edges(
     ):
         if pair in conflicts:
             continue
+        transition_kinds = sorted({
+            kind
+            for evidence in evidence_rows
+            for kind in evidence.get("transitionKinds") or []
+        })
         edges.append({
             "from": pair[0],
             "to": pair[1],
             "kind": "levelscriptNativeControlPath",
             "tier": "strong",
             "source": "exact serialized event-to-action local-id path prefix",
+            "transitionKinds": transition_kinds,
+            "branchingTransition": any(
+                kind != "linear" for kind in transition_kinds
+            ),
             "sourceFiles": sorted({
                 source_file
                 for evidence in evidence_rows
@@ -2418,6 +2646,206 @@ def _quest_state_action_path_story_edges(
             "events": evidence_rows,
         })
     return edges
+
+
+def _quest_succeed_lifecycle_story_edges(
+    flow: dict[str, Any],
+    candidate_keys: set[str],
+    lifecycle_contract: dict[str, Any] | None,
+    mission_source: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Join authored objective and succeed-action Story rows by exact quest identity."""
+    if lifecycle_contract is None:
+        return [], []
+    contract = lifecycle_contract or {}
+    matched_rows: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
+    for quest in flow.get("quests") or []:
+        if not isinstance(quest, dict):
+            continue
+        quest_id = safe_key(quest.get("id") or quest.get("questId"))
+        rows = [
+            row for row in quest.get("storyConnections") or []
+            if isinstance(row, dict)
+        ]
+        objective_rows = [
+            row for row in rows
+            if safe_key(row.get("key")) in candidate_keys
+            and safe_key(row.get("relation")) == "objective_condition"
+            and safe_key(row.get("direction")) == "story_to_quest"
+            and safe_key(row.get("phase")) == "progress"
+        ]
+        succeed_rows = [
+            row for row in rows
+            if safe_key(row.get("key")) in candidate_keys
+            and safe_key(row.get("relation")) == "client_action_succeed"
+            and safe_key(row.get("direction")) == "quest_to_story"
+            and safe_key(row.get("phase")) == "succeed"
+            and safe_key(row.get("confidence")) == "native_typed_direct"
+        ]
+        matched_rows.extend(
+            (quest_id, source_row, target_row)
+            for source_row in objective_rows
+            for target_row in succeed_rows
+            if safe_key(source_row.get("key"))
+            and safe_key(target_row.get("key"))
+            and safe_key(source_row.get("key"))
+            != safe_key(target_row.get("key"))
+        )
+    if not matched_rows:
+        return [], []
+
+    validation = contract.get("validation") or {}
+    if validation.get("status") != "validated":
+        return [], [{
+            "validator": "questSucceedLifecycle",
+            "check": "validatedInstalledBinaryContract",
+            "expected": "validated",
+            "actual": validation.get("status"),
+            "sourcePaths": [mission_source] if mission_source else [],
+        }]
+
+    mission_path = ROOT / mission_source if mission_source else Path()
+    if not mission_source or not mission_path.is_file():
+        return [], [{
+            "validator": "questSucceedLifecycle",
+            "check": "missionRuntimeSourceExists",
+            "expected": "file",
+            "actual": "missing",
+            "sourcePaths": [mission_source] if mission_source else [],
+        }]
+    mission_sha256 = hashlib.sha256(mission_path.read_bytes()).hexdigest().upper()
+    related_original_files = [
+        {
+            "kind": "original_mission_runtime",
+            "sourceFile": mission_source,
+            "sha256": mission_sha256,
+            "relationship": "authored_quest_objective_and_succeed_action",
+        },
+        *[
+            dict(row)
+            for row in contract.get("relatedOriginalFiles") or []
+            if isinstance(row, dict)
+        ],
+    ]
+
+    def compact(row: dict[str, Any]) -> dict[str, Any]:
+        fields = (
+            "key", "kind", "relation", "direction", "phase", "confidence",
+            "source", "objectiveIndex", "conditionType", "finishId",
+            "actionSlot", "actionId", "actionType",
+        )
+        return {name: row[name] for name in fields if name in row}
+
+    edges: list[dict[str, Any]] = []
+    for quest_id, source_row, target_row in matched_rows:
+        source_key = safe_key(source_row.get("key"))
+        target_key = safe_key(target_row.get("key"))
+        edges.append({
+            "from": source_key,
+            "to": target_key,
+            "kind": "questSucceedLifecycle",
+            "tier": "strong",
+            "source": (
+                "MissionRuntime objective completion -> server quest-success "
+                "state -> binary-proven OnSucceedClientAction dispatch"
+            ),
+            "questIds": [quest_id] if quest_id else [],
+            "sourceFiles": [mission_source],
+            "sourceSha256": {mission_source: mission_sha256},
+            "objectiveStoryRelation": compact(source_row),
+            "succeedStoryRelation": compact(target_row),
+            "nativeLifecycleContract": {
+                "schema": contract.get("schema"),
+                "classification": contract.get("classification"),
+                "succeedQuest": contract.get("succeedQuest") or {},
+                "succeedActionCalls": contract.get("succeedActionCalls") or [],
+                "finding": contract.get("finding") or "",
+                "boundary": contract.get("boundary") or "",
+            },
+            "relatedOriginalFiles": related_original_files,
+        })
+    unique: dict[tuple[str, str, tuple[str, ...]], dict[str, Any]] = {}
+    for edge in edges:
+        signature = (edge["from"], edge["to"], tuple(edge["questIds"]))
+        unique[signature] = edge
+    return sorted(unique.values(), key=_edge_sort_key), []
+
+
+def _quest_lifecycle_definition_rows(
+    flow: dict[str, Any],
+    candidate_keys: set[str],
+    lifecycle_contract: dict[str, Any] | None,
+    mission_source: str,
+) -> list[dict[str, Any]]:
+    """Expose authored lifecycle definitions whose binary dispatcher is absent.
+
+    These are evidence-bearing rows, never order edges. The rule is applied to
+    the entire mission corpus and is admitted only after the binary contract
+    validates that the corresponding current-build AOT dispatcher set is empty.
+    """
+    contract = lifecycle_contract or {}
+    if (
+        (contract.get("validation") or {}).get("status") != "validated"
+        or contract.get("startActionDispatchers")
+    ):
+        return []
+    mission_path = ROOT / mission_source if mission_source else Path()
+    if not mission_source or not mission_path.is_file():
+        return []
+    mission_sha256 = hashlib.sha256(mission_path.read_bytes()).hexdigest().upper()
+    related_original_files = [{
+        "kind": "original_mission_runtime",
+        "sourceFile": mission_source,
+        "sha256": mission_sha256,
+        "relationship": "authored_quest_lifecycle_definition",
+    }, *[
+        dict(row)
+        for row in contract.get("relatedOriginalFiles") or []
+        if isinstance(row, dict)
+    ]]
+    rows: list[dict[str, Any]] = []
+    for quest in flow.get("quests") or []:
+        if not isinstance(quest, dict):
+            continue
+        quest_id = safe_key(quest.get("id") or quest.get("questId"))
+        for relation in quest.get("storyConnections") or []:
+            if not isinstance(relation, dict):
+                continue
+            story_key = safe_key(relation.get("key"))
+            if (
+                story_key not in candidate_keys
+                or safe_key(relation.get("relation")) != "client_action_start"
+                or safe_key(relation.get("direction")) != "quest_to_story"
+                or safe_key(relation.get("phase")) != "start"
+                or safe_key(relation.get("confidence")) != "native_typed_direct"
+            ):
+                continue
+            rows.append({
+                "kind": "questLifecycleDefinition",
+                "questId": quest_id,
+                "storyKey": story_key,
+                "actionSlot": relation.get("actionSlot"),
+                "actionId": relation.get("actionId"),
+                "actionType": relation.get("actionType"),
+                "runtimeDispatchStatus": (
+                    "authored_definition_no_current_aot_dispatch"
+                ),
+                "source": contract.get("source") or "",
+                "boundary": contract.get("boundary") or "",
+                "relatedOriginalFiles": related_original_files,
+            })
+    unique = {
+        (row["questId"], row["storyKey"], row.get("actionId")): row
+        for row in rows
+    }
+    return sorted(
+        unique.values(),
+        key=lambda row: (
+            natural_key(row["questId"]),
+            natural_key(row["storyKey"]),
+            int(row.get("actionId") or -1),
+        ),
+    )
 
 
 def _repo_path(path: Path) -> str:
@@ -3371,14 +3799,401 @@ def _native_branch_kind(edge: str) -> str:
     return ""
 
 
+def _native_branch_runtime_mapping(
+    branch_kind: str,
+    arms: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Resolve a typed branch family to its installed-binary runtime mapping."""
+    pair: tuple[int, int] | None = None
+    if branch_kind == "splitFanout":
+        pair = (0x0495, 0x09)
+    elif branch_kind == "ifElse":
+        pair = (0x00FF, 0x0B)
+    elif branch_kind == "switch":
+        edges = {
+            safe_key(arm.get("edge"))
+            for arm in arms
+            if isinstance(arm, dict)
+        }
+        if edges and all(edge.startswith("SwitchInt.") for edge in edges):
+            pair = (0x04BD, 0x0C)
+        elif edges and all(edge.startswith("SwitchString.") for edge in edges):
+            pair = (0x04BF, 0x0C)
+    return dict(LEVELSCRIPT_NATIVE_CONTROL_RUNTIME_MAPPINGS.get(pair) or {})
+
+
+def _serialized_native_control_arm_slots(
+    action: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Project every configured arm from a decoded typed control action.
+
+    This is deliberately family/schema driven.  Object ids and mission names
+    never participate, and non-positive targets remain visible as inactive
+    serialized slots instead of silently disappearing from the branch shape.
+    """
+    detail = action.get("controlDetail") or {}
+    action_name = safe_key(action.get("actionName"))
+    slots: list[dict[str, Any]] = []
+    if action_name == "Split":
+        slots.extend({
+            "edge": f"Split.actions[{index}]",
+            "entryLocalId": local_id,
+            "serializedIndex": index,
+        } for index, local_id in enumerate(detail.get("splitActionLocalIds") or []))
+    elif action_name == "IfElseAction":
+        slots.extend({
+            "edge": edge,
+            "entryLocalId": detail.get(field),
+            "serializedField": field,
+            "serializedFieldPresent": field in detail,
+        } for field, edge in (
+            ("trueActionLocalId", "IfElseAction.trueAction"),
+            ("falseActionLocalId", "IfElseAction.falseAction"),
+        ))
+    elif action_name in {"SwitchInt", "SwitchString"}:
+        prefix = "switch" if action_name == "SwitchInt" else "switchString"
+        case_ids = detail.get(f"{prefix}CaseActionLocalIds") or []
+        case_values = detail.get(f"{prefix}CaseValues") or []
+        slots.extend({
+            "edge": f"{action_name}.case[{index}]={case_value}",
+            "entryLocalId": local_id,
+            "serializedIndex": index,
+            "caseValue": case_value,
+        } for index, (case_value, local_id) in enumerate(zip(case_values, case_ids)))
+        slots.append({
+            "edge": f"{action_name}.default",
+            "entryLocalId": detail.get(f"{prefix}DefaultActionLocalId"),
+            "serializedField": f"{prefix}DefaultActionLocalId",
+            "serializedFieldPresent": f"{prefix}DefaultActionLocalId" in detail,
+        })
+    return slots
+
+
+def _compact_native_action(action: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: action[key]
+        for key in (
+            "localId",
+            "actionName",
+            "recordClass",
+            "unionTag",
+            "serializedMemberCount",
+            "texts",
+            "nextActionLocalId",
+            "controlKind",
+            "controlRuntimeMappingId",
+        )
+        if action.get(key) not in (None, "", [], {})
+    }
+
+
+def _full_native_branch_arm_context(
+    mission: str,
+    branches: list[dict[str, Any]],
+    original_binary_contract: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Validate and attach the complete serialized shape of Story branches.
+
+    Story paths anchor the branch to a mission card.  The original LevelScript
+    then supplies *all* configured arms, including non-Story actions and
+    inactive targets.  The installed binary mapping validates semantics; no
+    extra Story ownership or chronology is inferred from sibling topology.
+    """
+    annotated: list[dict[str, Any]] = []
+    diagnostics: list[dict[str, Any]] = []
+    for source_branch in branches:
+        branch = dict(source_branch)
+        level_sources = []
+        for source_file in branch.get("sourceFiles") or []:
+            if "LevelScriptData" not in source_file:
+                continue
+            source_path = Path(source_file)
+            if not source_path.is_absolute():
+                source_path = ROOT / source_path
+            if source_path.is_file():
+                level_sources.append((source_file, source_path))
+        # Synthetic/unit fixtures and old degraded inputs retain the existing
+        # Story-only view.  Present original files are always validated.
+        if not level_sources:
+            annotated.append(branch)
+            continue
+
+        matches: list[tuple[str, Path, dict[str, Any], dict[str, Any]]] = []
+        source_failures: list[dict[str, Any]] = []
+        for source_file, source_path in level_sources:
+            cache_key = source_path.resolve().as_posix()
+            if cache_key not in _NATIVE_ACTION_TOPOLOGY_CACHE:
+                try:
+                    _NATIVE_ACTION_TOPOLOGY_CACHE[cache_key] = (
+                        decode_levelscript_native_action_topology(
+                            source_path.read_bytes()
+                        )
+                    )
+                except OSError as error:
+                    source_failures.append({
+                        "sourceFile": source_file,
+                        "error": type(error).__name__,
+                    })
+                    continue
+            topology, topology_diagnostic = _NATIVE_ACTION_TOPOLOGY_CACHE[cache_key]
+            if topology_diagnostic or not str(topology.get("status") or "").startswith(
+                "exact_complete_action_map"
+            ):
+                source_failures.append({
+                    "sourceFile": source_file,
+                    "topologyStatus": topology.get("status"),
+                    "topologyDiagnostic": topology_diagnostic,
+                })
+                continue
+            for action in topology.get("actions") or []:
+                if (
+                    action.get("localId") == branch.get("branchLocalId")
+                    and action.get("controlRuntimeMappingId")
+                    == branch.get("nativeMappingId")
+                ):
+                    matches.append((source_file, source_path, topology, action))
+
+        if len(matches) != 1:
+            diagnostic = {
+                "validator": "nativeBranchFullArmCoverage",
+                "gate": "uniqueRuntimeMappedControlAction",
+                "mission": mission,
+                "branchLocalId": branch.get("branchLocalId"),
+                "expected": {
+                    "matchingActionCount": 1,
+                    "nativeMappingId": branch.get("nativeMappingId"),
+                },
+                "actual": {
+                    "matchingActionCount": len(matches),
+                    "sourceFailures": source_failures[:8],
+                },
+                "sourcePaths": [row[0] for row in level_sources],
+                "sourceSha256": {
+                    source_file: hashlib.sha256(source_path.read_bytes()).hexdigest()
+                    for source_file, source_path in level_sources
+                },
+            }
+            diagnostics.append(diagnostic)
+            branch["fullArmCoverageStatus"] = "unavailable_fail_closed"
+            branch["fullArmValidatorDiagnostic"] = diagnostic
+            annotated.append(branch)
+            continue
+
+        source_file, source_path, topology, action = matches[0]
+        slots = _serialized_native_control_arm_slots(action)
+        detail = action.get("controlDetail") or {}
+        action_name = safe_key(action.get("actionName"))
+        slot_schema_failures: list[dict[str, Any]] = []
+        if action_name == "Split" and "splitActionLocalIds" not in detail:
+            slot_schema_failures.append({
+                "check": "splitActionListPresent",
+                "expected": True,
+                "actual": False,
+            })
+        if action_name == "IfElseAction":
+            missing_fields = [
+                field
+                for field in ("trueActionLocalId", "falseActionLocalId")
+                if field not in detail
+            ]
+            if missing_fields:
+                slot_schema_failures.append({
+                    "check": "ifElseArmFieldsPresent",
+                    "expected": ["trueActionLocalId", "falseActionLocalId"],
+                    "actualMissing": missing_fields,
+                })
+        if action_name in {"SwitchInt", "SwitchString"}:
+            prefix = "switch" if action_name == "SwitchInt" else "switchString"
+            case_values = detail.get(f"{prefix}CaseValues") or []
+            case_ids = detail.get(f"{prefix}CaseActionLocalIds") or []
+            if len(case_values) != len(case_ids):
+                slot_schema_failures.append({
+                    "check": "switchCaseValueTargetCardinality",
+                    "expected": len(case_values),
+                    "actual": len(case_ids),
+                })
+            default_field = f"{prefix}DefaultActionLocalId"
+            if default_field not in detail:
+                slot_schema_failures.append({
+                    "check": "switchDefaultFieldPresent",
+                    "expected": True,
+                    "actual": False,
+                })
+        story_arms = {
+            (safe_key(row.get("edge")), row.get("entryLocalId")): row
+            for row in branch.get("arms") or []
+        }
+        edge_rows = {
+            (safe_key(row.get("relation")), row.get("targetActionLocalId")): row
+            for row in topology.get("edges") or []
+            if row.get("sourceKind") == "action"
+            and row.get("sourceLocalId") == branch.get("branchLocalId")
+        }
+        terminal_rows = {
+            (safe_key(row.get("relation")), row.get("targetActionLocalId")): row
+            for row in topology.get("runtimeTerminalTargets") or []
+            if row.get("sourceKind") == "action"
+            and row.get("sourceLocalId") == branch.get("branchLocalId")
+        }
+        action_by_id = {
+            row.get("localId"): row
+            for row in topology.get("actions") or []
+            if isinstance(row.get("localId"), int)
+        }
+        adjacency: dict[int, set[int]] = defaultdict(set)
+        for row in topology.get("edges") or []:
+            if row.get("sourceKind") != "action":
+                continue
+            src = row.get("sourceLocalId")
+            dst = row.get("targetActionLocalId")
+            if isinstance(src, int) and isinstance(dst, int):
+                adjacency[src].add(dst)
+
+        positive_slots = [
+            (safe_key(slot.get("edge")), slot.get("entryLocalId"))
+            for slot in slots
+            if isinstance(slot.get("entryLocalId"), int)
+            and slot.get("entryLocalId") > 0
+        ]
+        reachable_by_slot: dict[tuple[str, Any], set[int]] = {}
+        for slot_key in positive_slots:
+            target = slot_key[1]
+            pending = [target]
+            reached: set[int] = set()
+            while pending:
+                current = pending.pop()
+                if current in reached or current == branch.get("branchLocalId"):
+                    continue
+                reached.add(current)
+                pending.extend(adjacency.get(current) or [])
+            reachable_by_slot[slot_key] = reached
+        reach_frequency = Counter(
+            local_id
+            for reached in reachable_by_slot.values()
+            for local_id in reached
+        )
+
+        full_arms: list[dict[str, Any]] = []
+        invalid_slots: list[dict[str, Any]] = []
+        for slot in slots:
+            edge = safe_key(slot.get("edge"))
+            target = slot.get("entryLocalId")
+            key = (edge, target)
+            story_arm = story_arms.get(key) or {}
+            full_arm = {**slot, "storyKeys": list(story_arm.get("storyKeys") or [])}
+            if slot.get("serializedFieldPresent") is False:
+                full_arm["targetStatus"] = "unavailable_fail_closed"
+                invalid_slots.append({"edge": edge, "entryLocalId": target})
+            elif not isinstance(target, int) or target <= 0:
+                full_arm["targetStatus"] = "inactive_serialized_target"
+            elif key in edge_rows and target in action_by_id:
+                full_arm["targetStatus"] = "exact_active_action"
+                full_arm["entryAction"] = _compact_native_action(action_by_id[target])
+                exclusive = sorted(
+                    local_id
+                    for local_id in reachable_by_slot.get(key) or set()
+                    if reach_frequency[local_id] == 1
+                )
+                full_arm["exclusiveActionCount"] = len(exclusive)
+                full_arm["exclusiveActions"] = [
+                    _compact_native_action(action_by_id[local_id])
+                    for local_id in exclusive
+                    if local_id in action_by_id
+                ]
+            elif key in terminal_rows:
+                full_arm["targetStatus"] = "missing_runtime_action_slot"
+                full_arm["runtimeTerminal"] = terminal_rows[key]
+            else:
+                full_arm["targetStatus"] = "unavailable_fail_closed"
+                invalid_slots.append({"edge": edge, "entryLocalId": target})
+            full_arms.append(full_arm)
+
+        if not slots or slot_schema_failures or invalid_slots or not set(story_arms).issubset({
+            (safe_key(row.get("edge")), row.get("entryLocalId"))
+            for row in slots
+        }):
+            diagnostic = {
+                "validator": "nativeBranchFullArmCoverage",
+                "gate": "allStoryAndSerializedArmsMatchActiveActionMap",
+                "mission": mission,
+                "branchLocalId": branch.get("branchLocalId"),
+                "expected": {
+                    "storyArmKeys": [list(value) for value in sorted(story_arms)],
+                    "invalidSerializedSlots": [],
+                    "slotSchemaFailures": [],
+                },
+                "actual": {
+                    "serializedArmKeys": [
+                        [safe_key(row.get("edge")), row.get("entryLocalId")]
+                        for row in slots
+                    ],
+                    "invalidSerializedSlots": invalid_slots,
+                    "slotSchemaFailures": slot_schema_failures,
+                },
+                "sourcePaths": [source_file],
+                "sourceSha256": {
+                    source_file: hashlib.sha256(source_path.read_bytes()).hexdigest()
+                },
+            }
+            diagnostics.append(diagnostic)
+            branch["fullArmCoverageStatus"] = "unavailable_fail_closed"
+            branch["fullArmValidatorDiagnostic"] = diagnostic
+            annotated.append(branch)
+            continue
+
+        branch.update({
+            "fullArmCoverageStatus": "exact_complete_active_action_map",
+            "serializedArmCount": len(full_arms),
+            "storyBearingArmCount": sum(bool(row["storyKeys"]) for row in full_arms),
+            "nonStoryArmCount": sum(
+                row["targetStatus"] == "exact_active_action" and not row["storyKeys"]
+                for row in full_arms
+            ),
+            "inactiveTargetArmCount": sum(
+                row["targetStatus"] == "inactive_serialized_target"
+                for row in full_arms
+            ),
+            "runtimeTerminalArmCount": sum(
+                row["targetStatus"] == "missing_runtime_action_slot"
+                for row in full_arms
+            ),
+            "sharedDownstreamActionLocalIds": sorted(
+                local_id for local_id, count in reach_frequency.items() if count > 1
+            ),
+            "fullArms": full_arms,
+            "relatedOriginalFiles": _related_original_branch_files(
+                mission,
+                [source_file],
+                original_binary_contract,
+                level_relationship="complete_serialized_native_branch_arms",
+                mission_relationship="mission_story_branch_anchor_context",
+                binary_relationship="native_branch_runtime_semantics_authority",
+            ),
+            "fullArmEvidenceBoundary": (
+                "Every configured slot comes from the original LevelScript's runtime-active "
+                "action map and is checked against the installed native control mapping. "
+                "Non-Story arms describe sibling action topology only; they do not add Story "
+                "ownership, chronology, or mission membership."
+            ),
+        })
+        annotated.append(branch)
+    return annotated, diagnostics
+
+
 def _native_control_branches_and_merges(
     flow: dict[str, Any],
-    candidate_keys: set[str],
+    candidate_keys: set[str] | None,
+    *,
+    include_mission_state_dependencies: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Expose exact serialized native branch arms and observed convergence."""
     branches: list[dict[str, Any]] = []
     merges: list[dict[str, Any]] = []
-    for signature, routes in _native_event_story_paths(flow, candidate_keys).items():
+    for signature, routes in _native_event_story_paths(
+        flow,
+        None,
+        include_mission_state_dependencies=include_mission_state_dependencies,
+    ).items():
         groups: dict[
             tuple[tuple[int, ...], str],
             dict[
@@ -3446,6 +4261,18 @@ def _native_control_branches_and_merges(
                 json.loads(value)
                 for value in sorted({route[3] for route in all_routes})
             ]
+            all_story_keys = sorted(
+                {route[0] for route in all_routes},
+                key=natural_key,
+            )
+            if candidate_keys is not None and not (
+                set(all_story_keys) & candidate_keys
+            ):
+                continue
+            runtime_mapping = _native_branch_runtime_mapping(
+                branch_kind,
+                arm_rows,
+            )
             branch = {
                 "kind": branch_kind,
                 "levelId": signature[0],
@@ -3457,6 +4284,16 @@ def _native_control_branches_and_merges(
                 "arms": arm_rows,
                 "sourceFiles": source_files,
             }
+            if runtime_mapping:
+                branch["runtimeSemantics"] = runtime_mapping.get("kind")
+                branch["nativeMappingId"] = runtime_mapping.get("mappingId")
+            if candidate_keys is not None:
+                branch["missionStoryKeys"] = [
+                    key for key in all_story_keys if key in candidate_keys
+                ]
+                branch["externalStoryKeys"] = [
+                    key for key in all_story_keys if key not in candidate_keys
+                ]
             if len(event_details) == 1:
                 branch["eventDetail"] = event_details[0]
             elif event_details:
@@ -3560,6 +4397,179 @@ def _native_control_branches_and_merges(
     return branches, merges
 
 
+def _native_mission_state_story_branches(
+    mission: str,
+    flow: dict[str, Any],
+    candidate_keys: set[str],
+    original_binary_contract: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Project complete exact mission-state alternatives without ordering them.
+
+    Mission bundles group Story files nominally, while one serialized branch can
+    choose files from several such groups.  Read every exact dependency row for
+    the bundle, then retain only branches controlled by this mission's constant
+    GetMissionState id and the current installed-build native mapping.
+    """
+    mapping_id = "gameassembly-2026-07-11-puregetter-mission-state"
+    all_branches, _all_merges = _native_control_branches_and_merges(
+        flow,
+        None,
+        include_mission_state_dependencies=True,
+    )
+    projected: list[dict[str, Any]] = []
+    for branch in all_branches:
+        predicate = branch.get("predicate") or {}
+        compare = predicate.get("compareMissionState") or {}
+        state_getter = (
+            (predicate.get("sourceGetter") or {}).get("getMissionState") or {}
+        )
+        if not (
+            branch.get("kind") == "ifElse"
+            and predicate.get("status") == "exact_unique_getter"
+            and predicate.get("getterName") == "CompareMissionState"
+            and predicate.get("getterUnionTag") == "0x001f"
+            and predicate.get("getterSerializedMemberCount") == 10
+            and compare.get("nativeMappingId") == mapping_id
+            and compare.get("pureGetterUnionTag") == "0x001f"
+            and compare.get("serializedMemberCount") == 10
+            and state_getter.get("nativeMappingId") == mapping_id
+            and state_getter.get("pureGetterUnionTag") == "0x013a"
+            and state_getter.get("serializedMemberCount") == 8
+            and safe_key(state_getter.get("missionId")) == mission
+        ):
+            continue
+
+        related_original_files = _related_original_branch_files(
+            mission,
+            list(branch.get("sourceFiles") or []),
+            original_binary_contract,
+            level_relationship="serialized_mission_state_story_branch",
+            mission_relationship="mission_state_identity_context",
+            binary_relationship="native_mission_state_branch_authority",
+        )
+
+        all_story_keys = sorted({
+            safe_key(story_key)
+            for arm in branch.get("arms") or []
+            for story_key in arm.get("storyKeys") or []
+            if safe_key(story_key)
+        }, key=natural_key)
+        projected.append({
+            **branch,
+            "missionStateId": mission,
+            "missionStoryKeys": [
+                key for key in all_story_keys if key in candidate_keys
+            ],
+            "externalStoryKeys": [
+                key for key in all_story_keys if key not in candidate_keys
+            ],
+            "selectionSemantics": "alternative_client_story_selection",
+            "ownership": False,
+            "orderEvidence": False,
+            "relatedOriginalFiles": related_original_files,
+            "evidenceBoundary": (
+                "The serialized LevelScript and installed native getter/comparer "
+                "mapping prove client-side alternative selection from synchronized "
+                "mission state. They do not prove Story ownership, quest identity, "
+                "server transition timing, or order among alternative arms."
+            ),
+        })
+    return projected
+
+
+def _related_original_branch_files(
+    mission: str,
+    source_files: list[str],
+    original_binary_contract: dict[str, Any] | None,
+    *,
+    level_relationship: str,
+    mission_relationship: str,
+    binary_relationship: str,
+) -> list[dict[str, Any]]:
+    """Attach hash-addressed original branch inputs without identity guessing."""
+    related: list[dict[str, Any]] = []
+    for source_file in source_files:
+        source_path = ROOT / source_file
+        if source_path.is_file():
+            related.append({
+                "kind": "original_level_script",
+                "sourceFile": source_file,
+                "sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
+                "relationship": level_relationship,
+            })
+    for root_name in ("Persistent", "StreamingAssets"):
+        mission_source = (
+            ROOT / "export_full" / "structured" / root_name / "Data"
+            / "Json" / "MissionRuntimeAsset" / f"{mission}.json"
+        )
+        if mission_source.is_file():
+            related.append({
+                "kind": "original_mission_runtime",
+                "sourceFile": mission_source.relative_to(ROOT).as_posix(),
+                "sha256": hashlib.sha256(mission_source.read_bytes()).hexdigest(),
+                "relationship": mission_relationship,
+            })
+            break
+    related.extend({
+        **dict(row),
+        "relationship": binary_relationship,
+    } for row in (original_binary_contract or {}).get("relatedOriginalFiles") or [])
+    return related
+
+
+def _attach_cross_boundary_native_branch_context(
+    mission: str,
+    branches: list[dict[str, Any]],
+    original_binary_contract: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Annotate full native branch groups that cross nominal mission grouping."""
+    parallel_names = _parallel_action_names(original_binary_contract)
+    annotated: list[dict[str, Any]] = []
+    for source_branch in branches:
+        branch = dict(source_branch)
+        external_story_keys = list(branch.get("externalStoryKeys") or [])
+        if not external_story_keys:
+            annotated.append(branch)
+            continue
+        runtime_semantics = safe_key(branch.get("runtimeSemantics"))
+        is_parallel = (
+            branch.get("kind") == "splitFanout"
+            and runtime_semantics == "parallel_fanout"
+            and "Split" in parallel_names
+        )
+        branch.update({
+            "crossBoundary": True,
+            "ownership": False,
+            "orderEvidence": False,
+            "branchSemantics": (
+                "binary_validated_parallel_story_fanout"
+                if is_parallel
+                else "binary_mapped_conditional_story_alternatives"
+            ),
+            "relatedOriginalFiles": _related_original_branch_files(
+                mission,
+                list(branch.get("sourceFiles") or []),
+                original_binary_contract,
+                level_relationship="serialized_cross_boundary_story_branch",
+                mission_relationship="mission_candidate_anchor_context",
+                binary_relationship="native_cross_boundary_branch_authority",
+            ),
+            "evidenceBoundary": (
+                "The exact serialized paths and installed Split scheduler prove "
+                "Story-bearing sibling fan-out from one event. Nominal mission "
+                "grouping does not prove ownership, and sibling slots are not "
+                "chronological order."
+                if is_parallel
+                else
+                "The exact serialized cases and installed native control mapping "
+                "prove alternative Story-bearing arms from one event. Nominal "
+                "mission grouping does not prove ownership or order among arms."
+            ),
+        })
+        annotated.append(branch)
+    return annotated
+
+
 def build_mission_partial_order(
     mission: str,
     candidate_kinds: dict[str, str],
@@ -3573,6 +4583,8 @@ def build_mission_partial_order(
     reading_popup_rows: dict[str, Any] | None = None,
     reading_popup_source: str = "",
     reading_popup_sha256: str = "",
+    quest_succeed_lifecycle_contract: dict[str, Any] | None = None,
+    extra_thread_scheduler_contract: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build one source-only mission partial order from generated source evidence."""
     mission_payload = mission_payload if isinstance(mission_payload, dict) else {}
@@ -3665,7 +4677,11 @@ def build_mission_partial_order(
     for key in unresolved_nodes:
         definition_only_nodes.pop(key, None)
 
-    direct_edges.extend(_native_control_path_story_edges(flow, candidate_keys))
+    direct_edges.extend(_native_control_path_story_edges(
+        flow,
+        candidate_keys,
+        extra_thread_scheduler_contract,
+    ))
     native_ordered_sequence_edges, native_ordered_sequences = (
         _native_ordered_branch_sequences(flow, candidate_keys)
     )
@@ -3692,6 +4708,42 @@ def build_mission_partial_order(
         dialog_payloads,
     )
     direct_edges.extend(dialog_tree_conditional_edges)
+    mission_source = safe_key(
+        (((timeline.get("metadata") or {}).get("source") or {}).get("file"))
+    )
+    lifecycle_edges, lifecycle_warnings = _quest_succeed_lifecycle_story_edges(
+        flow,
+        candidate_keys,
+        quest_succeed_lifecycle_contract,
+        mission_source,
+    )
+    lifecycle_definition_rows = _quest_lifecycle_definition_rows(
+        flow,
+        candidate_keys,
+        quest_succeed_lifecycle_contract,
+        mission_source,
+    )
+    existing_strong_pairs = {
+        (safe_key(edge.get("from")), safe_key(edge.get("to")))
+        for edge in direct_edges
+        if safe_key(edge.get("tier")) == "strong"
+    }
+    admitted_lifecycle_edges: list[dict[str, Any]] = []
+    for edge in lifecycle_edges:
+        reverse = (edge["to"], edge["from"])
+        if reverse in existing_strong_pairs:
+            lifecycle_warnings.append({
+                "validator": "questSucceedLifecycle",
+                "check": "noReverseStrongOrderConflict",
+                "mission": mission,
+                "expected": [],
+                "actual": [edge["from"], edge["to"]],
+                "sourcePaths": edge.get("sourceFiles") or [],
+            })
+            continue
+        admitted_lifecycle_edges.append(edge)
+        existing_strong_pairs.add((edge["from"], edge["to"]))
+    direct_edges.extend(admitted_lifecycle_edges)
     narrative_containments, narrative_containment_warnings = (
         _dialog_tree_narrative_containments(
             mission,
@@ -3854,6 +4906,25 @@ def build_mission_partial_order(
     native_control_branches, native_control_merges = _native_control_branches_and_merges(
         flow, candidate_keys
     )
+    (
+        native_control_branches,
+        native_branch_arm_coverage_diagnostics,
+    ) = _full_native_branch_arm_context(
+        mission,
+        native_control_branches,
+        extra_thread_scheduler_contract,
+    )
+    native_control_branches = _attach_cross_boundary_native_branch_context(
+        mission,
+        native_control_branches,
+        extra_thread_scheduler_contract,
+    )
+    native_mission_state_branches = _native_mission_state_story_branches(
+        mission,
+        flow,
+        candidate_keys,
+        extra_thread_scheduler_contract,
+    )
     native_related_action_topologies = _native_related_action_topologies(
         flow, candidate_keys
     )
@@ -3978,6 +5049,29 @@ def build_mission_partial_order(
     cycles = [component for component in components if component["cyclic"]]
     tier_counts = Counter(edge["tier"] for edge in direct_edges)
     kind_counts = Counter(edge["kind"] for edge in direct_edges)
+    native_transition_edges = [
+        edge
+        for edge in direct_edges
+        if edge.get("kind") == "levelscriptNativeControlPath"
+    ]
+    native_transition_kind_counts = Counter(
+        kind
+        for edge in native_transition_edges
+        for kind in edge.get("transitionKinds") or []
+    )
+    native_transition_steps = [
+        step
+        for edge in native_transition_edges
+        for event in edge.get("events") or []
+        if isinstance(event, dict)
+        for step in event.get("transitionSteps") or []
+        if isinstance(step, dict)
+    ]
+    native_transition_named_endpoints = sum(
+        bool(step.get(field))
+        for step in native_transition_steps
+        for field in ("sourceActionName", "targetActionName")
+    )
     warnings: list[str] = []
     if not mission_payload:
         warnings.append("missingMissionBundle")
@@ -4011,9 +5105,84 @@ def build_mission_partial_order(
             "cyclicInternalPairs": cyclic_internal_pairs,
             "sceneGraphOptionGroupCount": len(scene_graph_option_branches),
             "nativeControlBranchCount": len(native_control_branches),
+            "nativeControlFullArmBranchCount": sum(
+                row.get("fullArmCoverageStatus")
+                == "exact_complete_active_action_map"
+                for row in native_control_branches
+            ),
+            "nativeControlSerializedArmCount": sum(
+                int(row.get("serializedArmCount") or 0)
+                for row in native_control_branches
+            ),
+            "nativeControlNonStoryArmCount": sum(
+                int(row.get("nonStoryArmCount") or 0)
+                for row in native_control_branches
+            ),
+            "nativeControlInactiveTargetArmCount": sum(
+                int(row.get("inactiveTargetArmCount") or 0)
+                for row in native_control_branches
+            ),
+            "nativeControlRuntimeTerminalArmCount": sum(
+                int(row.get("runtimeTerminalArmCount") or 0)
+                for row in native_control_branches
+            ),
+            "nativeControlFullArmValidationFailureCount": len(
+                native_branch_arm_coverage_diagnostics
+            ),
+            "nativeControlCrossBoundaryBranchCount": sum(
+                bool(row.get("crossBoundary"))
+                for row in native_control_branches
+            ),
+            "nativeControlCrossBoundaryExternalStoryCount": len({
+                key
+                for row in native_control_branches
+                for key in row.get("externalStoryKeys") or []
+            }),
+            "nativeMissionStateBranchCount": len(native_mission_state_branches),
+            "nativeMissionStateBranchExternalStoryCount": len({
+                key
+                for row in native_mission_state_branches
+                for key in row.get("externalStoryKeys") or []
+            }),
             "nativeControlMergeCount": len(native_control_merges),
+            "nativeControlPathTransitionEdgeCount": len(
+                native_transition_edges
+            ),
+            "nativeControlPathBranchingTransitionEdgeCount": sum(
+                bool(edge.get("branchingTransition"))
+                for edge in native_transition_edges
+            ),
+            "nativeControlPathTransitionKinds": dict(
+                sorted(native_transition_kind_counts.items())
+            ),
+            "nativeControlPathTransitionStepCount": len(
+                native_transition_steps
+            ),
+            "nativeControlPathTransitionActionEndpointCount": (
+                len(native_transition_steps) * 2
+            ),
+            "nativeControlPathNamedActionEndpointCount": (
+                native_transition_named_endpoints
+            ),
+            "nativeControlPathUnresolvedActionEndpointCount": (
+                len(native_transition_steps) * 2
+                - native_transition_named_endpoints
+            ),
             "nativeOrderedSequenceCount": len(native_ordered_sequences),
             "nativeOrderedSequenceEdgeCount": len(native_ordered_sequence_edges),
+            "questSucceedLifecycleEdgeCount": len(admitted_lifecycle_edges),
+            "questSucceedLifecycleQuestCount": len({
+                quest_id
+                for edge in admitted_lifecycle_edges
+                for quest_id in edge.get("questIds") or []
+            }),
+            "questStartActionDefinitionCount": len(lifecycle_definition_rows),
+            "questStartActionDefinitionStoryCount": len({
+                row["storyKey"] for row in lifecycle_definition_rows
+            }),
+            "questStartActionDefinitionQuestCount": len({
+                row["questId"] for row in lifecycle_definition_rows
+            }),
             "nativeRelatedActionTopologyCount": len(
                 native_related_action_topologies
             ),
@@ -4051,11 +5220,13 @@ def build_mission_partial_order(
         "reducedComponentEdges": reduced_component_edges,
         "topologicalLayers": layers,
         "directEdges": direct_edges,
+        "questLifecycleDefinitions": lifecycle_definition_rows,
         "containments": all_containments,
         "cycles": cycles,
         "branches": {
             "sceneGraphOptions": scene_graph_option_branches,
             "nativeControlBranches": native_control_branches,
+            "nativeMissionStateBranches": native_mission_state_branches,
             "nativeControlMerges": native_control_merges,
             "nativeOrderedSequences": native_ordered_sequences,
             "nativeRelatedActionTopologies": native_related_action_topologies,
@@ -4110,6 +5281,8 @@ def build_mission_partial_order(
             *dialog_tree_conditional_warnings,
             *narrative_containment_warnings,
             *open_ui_containment_warnings,
+            *lifecycle_warnings,
+            *native_branch_arm_coverage_diagnostics,
         ],
     }
 
@@ -4176,6 +5349,8 @@ def build_report(
     language: str,
     selected_missions: set[str] | None = None,
     story_data_root: Path | None = None,
+    quest_succeed_lifecycle_contract: dict[str, Any] | None = None,
+    extra_thread_scheduler_contract: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     lang_root = (story_data_root or (ROOT / "webui" / "data" / "lang")) / language
     index_path = lang_root / "index.json"
@@ -4231,6 +5406,7 @@ def build_report(
     rows: list[dict[str, Any]] = []
     totals: Counter[str] = Counter()
     edge_kind_totals: Counter[str] = Counter()
+    native_transition_kind_totals: Counter[str] = Counter()
     for mission in missions:
         candidate_kinds = build_scene_order_candidate_kinds(index_entries, mission, None)
         if not candidate_kinds:
@@ -4282,6 +5458,8 @@ def build_report(
             reading_popup_rows,
             reading_popup_source,
             reading_popup_sha256,
+            quest_succeed_lifecycle_contract,
+            extra_thread_scheduler_contract,
         )
         row["missionData"] = (
             mission_path.relative_to(ROOT).as_posix() if mission_path.is_file() else ""
@@ -4305,6 +5483,15 @@ def build_report(
             "exactLevelScriptPlaybackContextSceneCount"
         ]
         totals["directEdges"] += summary["directEdgeCount"]
+        totals["questStartActionDefinitions"] += summary[
+            "questStartActionDefinitionCount"
+        ]
+        totals["questStartActionDefinitionStories"] += summary[
+            "questStartActionDefinitionStoryCount"
+        ]
+        totals["questStartActionDefinitionQuests"] += summary[
+            "questStartActionDefinitionQuestCount"
+        ]
         totals["strongEdges"] += summary["strongEdgeCount"]
         totals["supportedEdges"] += summary["supportedEdgeCount"]
         totals["weakEdges"] += summary["weakEdgeCount"]
@@ -4325,11 +5512,71 @@ def build_report(
         totals["unorderedScenePairs"] += summary["unorderedScenePairs"]
         totals["sceneGraphOptionGroups"] += summary["sceneGraphOptionGroupCount"]
         totals["nativeControlBranches"] += summary["nativeControlBranchCount"]
+        totals["nativeControlFullArmBranches"] += summary[
+            "nativeControlFullArmBranchCount"
+        ]
+        totals["nativeControlSerializedArms"] += summary[
+            "nativeControlSerializedArmCount"
+        ]
+        totals["nativeControlNonStoryArms"] += summary[
+            "nativeControlNonStoryArmCount"
+        ]
+        totals["nativeControlInactiveTargetArms"] += summary[
+            "nativeControlInactiveTargetArmCount"
+        ]
+        totals["nativeControlRuntimeTerminalArms"] += summary[
+            "nativeControlRuntimeTerminalArmCount"
+        ]
+        totals["nativeControlFullArmValidationFailures"] += summary[
+            "nativeControlFullArmValidationFailureCount"
+        ]
+        totals["nativeControlCrossBoundaryBranches"] += summary[
+            "nativeControlCrossBoundaryBranchCount"
+        ]
+        totals["nativeControlCrossBoundaryExternalStories"] += summary[
+            "nativeControlCrossBoundaryExternalStoryCount"
+        ]
+        totals["nativeMissionStateBranches"] += summary[
+            "nativeMissionStateBranchCount"
+        ]
+        totals["nativeMissionStateBranchExternalStories"] += summary[
+            "nativeMissionStateBranchExternalStoryCount"
+        ]
         totals["nativeControlMerges"] += summary["nativeControlMergeCount"]
+        totals["nativeControlPathTransitionEdges"] += summary[
+            "nativeControlPathTransitionEdgeCount"
+        ]
+        totals["nativeControlPathBranchingTransitionEdges"] += summary[
+            "nativeControlPathBranchingTransitionEdgeCount"
+        ]
+        totals["nativeControlPathTransitionSteps"] += summary[
+            "nativeControlPathTransitionStepCount"
+        ]
+        totals["nativeControlPathTransitionActionEndpoints"] += summary[
+            "nativeControlPathTransitionActionEndpointCount"
+        ]
+        totals["nativeControlPathNamedActionEndpoints"] += summary[
+            "nativeControlPathNamedActionEndpointCount"
+        ]
+        totals["nativeControlPathUnresolvedActionEndpoints"] += summary[
+            "nativeControlPathUnresolvedActionEndpointCount"
+        ]
+        native_transition_kind_totals.update(
+            summary["nativeControlPathTransitionKinds"]
+        )
         totals["nativeOrderedSequences"] += summary["nativeOrderedSequenceCount"]
         totals["nativeOrderedSequenceEdges"] += summary[
             "nativeOrderedSequenceEdgeCount"
         ]
+        totals["questSucceedLifecycleEdges"] += summary[
+            "questSucceedLifecycleEdgeCount"
+        ]
+        totals["questSucceedLifecycleQuests"] += summary[
+            "questSucceedLifecycleQuestCount"
+        ]
+        totals["questSucceedLifecycleMissions"] += int(
+            summary["questSucceedLifecycleEdgeCount"] > 0
+        )
         totals["nativeRelatedActionTopologies"] += summary[
             "nativeRelatedActionTopologyCount"
         ]
@@ -4377,6 +5624,31 @@ def build_report(
         round(totals["comparableScenePairs"] / total_pairs, 6) if total_pairs else 0.0
     )
     summary_payload["edgeKinds"] = dict(sorted(edge_kind_totals.items()))
+    summary_payload["nativeControlPathTransitionKinds"] = dict(
+        sorted(native_transition_kind_totals.items())
+    )
+    summary_payload["binaryValidatedParallelFanoutTransitions"] = (
+        native_transition_kind_totals.get("parallelFanout", 0)
+    )
+    summary_payload["binaryValidatedParallelFanoutEvidenceRows"] = sum(
+        1
+        for mission_row in rows
+        for edge in mission_row.get("directEdges") or []
+        if edge.get("kind") == "levelscriptNativeControlPath"
+        for event in edge.get("events") or []
+        for step in event.get("transitionSteps") or []
+        if step.get("runtimeSemantics")
+        == "binary_proven_extra_thread_launch"
+    )
+    summary_payload["binaryValidatedParallelFanoutBranchGroups"] = sum(
+        1
+        for mission_row in rows
+        for branch in (
+            (mission_row.get("branches") or {}).get("nativeControlBranches")
+            or []
+        )
+        if branch.get("kind") == "splitFanout"
+    )
     summary_payload["dialogLineOptionProvenance"] = dict(sorted(dialog_provenance_totals.items()))
     return {
         "_schema": SCHEMA,
@@ -4388,6 +5660,28 @@ def build_report(
             "conversationDir": conversation_dir.relative_to(ROOT).as_posix() if conversation_dir.is_relative_to(ROOT) else conversation_dir.as_posix(),
         },
         "evidencePolicy": EVIDENCE_POLICY,
+        "parallelFanoutAuthority": {
+            key: value
+            for key, value in {
+                "schema": (extra_thread_scheduler_contract or {}).get("schema"),
+                "classification": (extra_thread_scheduler_contract or {}).get(
+                    "classification"
+                ),
+                "source": (extra_thread_scheduler_contract or {}).get("source"),
+                "finding": (extra_thread_scheduler_contract or {}).get("finding"),
+                "boundary": (extra_thread_scheduler_contract or {}).get("boundary"),
+                "writerMethods": (extra_thread_scheduler_contract or {}).get(
+                    "extraThreadExecuteMethods", []
+                ),
+                "relatedOriginalFiles": (
+                    extra_thread_scheduler_contract or {}
+                ).get("relatedOriginalFiles", []),
+                "validation": (extra_thread_scheduler_contract or {}).get(
+                    "validation"
+                ),
+            }.items()
+            if value not in (None, "", [], {})
+        },
         "summary": summary_payload,
         "missions": rows,
     }
@@ -4412,6 +5706,10 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- direct evidence edges: `{summary.get('directEdges', 0)}` "
         f"(`{summary.get('strongEdges', 0)}` strong, `{summary.get('supportedEdges', 0)}` supported, "
         f"`{summary.get('weakEdges', 0)}` weak)",
+        f"- binary-proven quest-success lifecycle: "
+        f"`{summary.get('questSucceedLifecycleEdges', 0)}` exact Story edges across "
+        f"`{summary.get('questSucceedLifecycleQuests', 0)}` quests in "
+        f"`{summary.get('questSucceedLifecycleMissions', 0)}` missions",
         f"- reduced component edges: `{summary.get('reducedComponentEdges', 0)}`",
         f"- cyclic components: `{summary.get('cycles', 0)}` across "
         f"`{summary.get('missionsWithCycles', 0)}` missions",
@@ -4431,6 +5729,30 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- native control topology: `{summary.get('nativeControlBranches', 0)}` exact "
         f"Split/IfElse/Switch Story fan-outs and `{summary.get('nativeControlMerges', 0)}` "
         "observed convergences",
+        f"- complete native branch arms: "
+        f"`{summary.get('nativeControlFullArmBranches', 0)}` branch placements expose "
+        f"`{summary.get('nativeControlSerializedArms', 0)}` serialized slots, including "
+        f"`{summary.get('nativeControlNonStoryArms', 0)}` active non-Story arms, "
+        f"`{summary.get('nativeControlInactiveTargetArms', 0)}` inactive slots, and "
+        f"`{summary.get('nativeControlRuntimeTerminalArms', 0)}` runtime terminals; "
+        f"`{summary.get('nativeControlFullArmValidationFailures', 0)}` validation failures",
+        f"- complete cross-boundary native topology: "
+        f"`{summary.get('nativeControlCrossBoundaryBranches', 0)}` branch groups retain "
+        f"`{summary.get('nativeControlCrossBoundaryExternalStories', 0)}` exact Story "
+        "references outside nominal mission grouping (never ownership or order)",
+        f"- native mission-state alternatives: "
+        f"`{summary.get('nativeMissionStateBranches', 0)}` exact branch groups exposing "
+        f"`{summary.get('nativeMissionStateBranchExternalStories', 0)}` cross-mission "
+        "Story references (selection evidence only, never chronology)",
+        f"- exact native Story transitions: "
+        f"`{summary.get('nativeControlPathTransitionEdges', 0)}` typed path-prefix edges, "
+        f"including `{summary.get('nativeControlPathBranchingTransitionEdges', 0)}` "
+        "whose source-to-target suffix traverses a typed branch or ordered fan-out",
+        f"- exact native transition action names: "
+        f"`{summary.get('nativeControlPathNamedActionEndpoints', 0)}` / "
+        f"`{summary.get('nativeControlPathTransitionActionEndpoints', 0)}` step endpoints "
+        f"across `{summary.get('nativeControlPathTransitionSteps', 0)}` steps; "
+        f"`{summary.get('nativeControlPathUnresolvedActionEndpoints', 0)}` unresolved",
         f"- native ordered topology: `{summary.get('nativeOrderedSequences', 0)}` exact "
         f"Branch iterators creating `{summary.get('nativeOrderedSequenceEdges', 0)}` "
         "Story-order edges",
@@ -4526,14 +5848,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    report = build_report(args.language, _split_missions(args.mission) or None)
+    report = build_report(
+        args.language,
+        _split_missions(args.mission) or None,
+        extra_thread_scheduler_contract=(
+            load_current_parallel_fanout_authority()
+        ),
+    )
     out_json = args.reports_dir / f"source_story_partial_order_{args.language}.json"
     out_md = args.reports_dir / f"source_story_partial_order_{args.language}.md"
     write_report_json(out_json, report)
     write_text_if_changed(out_md, render_markdown(report))
     summary = report["summary"]
-    print(f"Source-only partial order: {out_md.relative_to(ROOT)}")
-    print(f"Source-only partial-order data: {out_json.relative_to(ROOT)}")
+    print(f"Source-only partial order: {_repo_path(out_md)}")
+    print(f"Source-only partial-order data: {_repo_path(out_json)}")
     print(
         f"{summary.get('missions', 0)} missions; {summary.get('scenes', 0)} scenes; "
         f"{summary.get('strongEdges', 0)} strong edges; "
