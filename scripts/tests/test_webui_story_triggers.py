@@ -152,6 +152,23 @@ for (const [key, category] of [
         self.assertIn("nativeCinematicProducerRouteAttachments", source)
         self.assertIn("route.sourceFiles", source)
 
+    def test_mission_pipeline_surfaces_hash_validated_story_connection_files(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("storyConnectionOriginalFilesHtml", source)
+        self.assertIn("relatedOriginalFilesValidation", source)
+        self.assertIn('t("storyConnectionOriginalFiles")', source)
+        self.assertIn("file.sha256", source)
+        self.assertIn("storyConnectionProvenanceSummary", source)
+        self.assertIn("storyConnectionNonPath", source)
+
+    def test_mission_pipeline_surfaces_generic_receiver_story_context(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("nativeReceiverStoryContextIndex", source)
+        self.assertIn("nativeReceiverStoryContextHtml", source)
+        self.assertIn('t("nativeReceiverStoryContext")', source)
+        self.assertIn("context.relatedOriginalFiles", source)
+        self.assertIn("nativeReceiverStoryContextHint", source)
+
     def test_mission_pipeline_surfaces_fixed_point_carrier_closure(self) -> None:
         source = MISSION_PIPELINE.read_text(encoding="utf-8")
         self.assertIn("metadata?.maximumShortestPathDepth", source)
@@ -204,6 +221,14 @@ for (const [key, category] of [
         self.assertIn('t("propertyWriterUnresolved")', source)
         self.assertIn("row.relatedOriginalFiles", source)
 
+    def test_mission_pipeline_surfaces_mission_named_leveldata_receiver_context(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("order.missionNamedLevelDataReceiverContexts", source)
+        self.assertIn('t("missionNamedLevelDataReceiverContexts")', source)
+        self.assertIn('t("missionNamedLevelDataReceiverBoundary")', source)
+        self.assertIn("row.levelDataHost", source)
+        self.assertIn("mp-leveldata-receiver-context", source)
+
     def test_mission_pipeline_surfaces_exact_active_phase_receivers(self) -> None:
         source = MISSION_PIPELINE.read_text(encoding="utf-8")
         self.assertIn("activation.activePhaseReceiverControl", source)
@@ -246,6 +271,15 @@ for (const [key, category] of [
         self.assertIn('t("levelScriptExactEmptyMap")', source)
         self.assertIn("row.serializedTailRecordCount", source)
         self.assertIn("row.relatedOriginalFiles", source)
+
+    def test_mission_pipeline_surfaces_generic_binary_levelscript_controls(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("row.nativeControlEvidence", source)
+        self.assertIn("nativeLevelScriptControlAttachments", source)
+        self.assertIn("control.serializedOutgoingEdges", source)
+        self.assertIn("control.controlDetail", source)
+        self.assertIn('t("levelScriptNativeControls")', source)
+        self.assertIn("does not prove Story ownership", source)
 
     def test_mission_pipeline_surfaces_binary_proven_quest_success_order(self) -> None:
         source = MISSION_PIPELINE.read_text(encoding="utf-8")

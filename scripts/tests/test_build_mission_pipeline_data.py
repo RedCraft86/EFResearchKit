@@ -41,6 +41,81 @@ class LevelScriptSourceEvidenceTests(unittest.TestCase):
         )
         self.assertEqual(len(rows[0]["relatedOriginalFiles"][0]["sha256"]), 64)
 
+    def test_native_control_evidence_is_generic_and_event_reachable(self) -> None:
+        topology = {
+            "schema": "levelScriptNativeActionTopology.v4",
+            "status": "exact_complete_action_map",
+            "eventRootCount": 1,
+            "eventRoots": [{
+                "localId": 100,
+                "headerName": "ScriptEvent_OnScriptActive",
+                "nextActionLocalId": 10,
+            }],
+            "edges": [
+                {
+                    "sourceKind": "event",
+                    "sourceLocalId": 100,
+                    "targetActionLocalId": 10,
+                    "relation": "ActionHeader.nextId",
+                },
+                {
+                    "sourceKind": "action",
+                    "sourceLocalId": 10,
+                    "targetActionLocalId": 11,
+                    "relation": "ActionBase.nextId",
+                },
+            ],
+            "runtimeTerminalTargets": [],
+            "actions": [
+                {
+                    "localId": 10,
+                    "actionName": "SwitchIntLarger",
+                    "controlKind": "conditional_choice",
+                    "controlRuntimeMappingId": "fixture-switch-larger",
+                    "controlDetail": {"switchIntLargerCaseValues": [0, 1]},
+                },
+                {
+                    "localId": 11,
+                    "actionName": "Split",
+                    "controlKind": "parallel_fanout",
+                    "controlRuntimeMappingId": "fixture-split",
+                    "controlDetail": {"splitActionLocalIds": [12, 13]},
+                },
+            ],
+            "actionControlFlowEvidence": True,
+            "storyOrderEvidence": False,
+            "nativeActionMappingId": "fixture-native-action-map",
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "level_a" / "1001.json"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"fixture")
+            pipeline._LEVEL_SCRIPT_NATIVE_CONTROL_EVIDENCE_CACHE.clear()
+            with patch.object(
+                pipeline,
+                "decode_levelscript_native_action_topology",
+                return_value=(topology, None),
+            ):
+                evidence = pipeline.level_script_native_control_evidence(
+                    b"fixture",
+                    source,
+                )
+
+        self.assertEqual(evidence["controlCount"], 2)
+        self.assertEqual(
+            evidence["controlFamilyCounts"],
+            {"conditional_choice": 1, "parallel_fanout": 1},
+        )
+        self.assertEqual(evidence["eventToControlReachableCount"], 2)
+        self.assertEqual(
+            evidence["controls"][0]["eventRoots"][0]["headerName"],
+            "ScriptEvent_OnScriptActive",
+        )
+        self.assertEqual(
+            evidence["controls"][0]["serializedOutgoingEdges"][0]["targetActionLocalId"],
+            11,
+        )
+
 
 
 QUEST_STATE_LIFECYCLE_FIXTURE = {
@@ -2124,6 +2199,560 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertEqual(shell["storyOrder"]["branches"]["nativeControlBranches"], [{"id": "branch-1"}])
         self.assertEqual(shell["storyOrder"]["sourceGapQueue"], gap)
         self.assertTrue(shell["mission"]["offlineRecoveryShell"])
+
+    def test_serialized_branch_context_projection_is_generic_and_non_owning(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            mission_root = root / "missions"
+            mission_root.mkdir()
+            pipeline.write_json(mission_root / "mission_a.json", {
+                "mission": {"id": "mission_a"},
+            })
+            index = {
+                "counts": {"missions": 1},
+                "missions": [{
+                    "id": "mission_a",
+                    "file": "missions/mission_a.json",
+                }],
+            }
+            order_row = {
+                "mission": "mission_a",
+                "nodes": [{"key": "story_a"}, {"key": "story_b"}],
+                "summary": {"sceneCount": 2},
+                "branches": {"nativeControlBranches": []},
+            }
+            nested_context = {
+                "kind": "serializedBranchInventory",
+                "levelId": "map_a",
+                "scriptId": "1002",
+                "branchLocalId": 7,
+                "sha256": "b" * 64,
+                "sourceFiles": ["LevelScriptData/map_a/1002.json"],
+                "playbackStoryKeys": [],
+                "arms": [{
+                    "nestedControls": [{
+                        "controlKind": "conditional_choice",
+                        "branchingStatus": "multi_playback_arms",
+                        "arms": [{"playbackStoryKeys": ["story_b"]}],
+                    }],
+                }],
+                "relatedOriginalFiles": [{
+                    "sourceFile": "LevelScriptData/map_a/1002.json",
+                    "sha256": "b" * 64,
+                }],
+            }
+            duplicate = {
+                **nested_context,
+                "sourceFiles": ["Persistent/LevelScriptData/map_a/1002.json"],
+            }
+            direct_context = {
+                "kind": "serializedBranchInventory",
+                "levelId": "map_a",
+                "scriptId": "1001",
+                "branchLocalId": 4,
+                "sha256": "a" * 64,
+                "sourceFiles": ["LevelScriptData/map_a/1001.json"],
+                "playbackStoryKeys": ["story_a", "story_external"],
+                "arms": [],
+                "relatedOriginalFiles": [{
+                    "sourceFile": "LevelScriptData/map_a/1001.json",
+                    "sha256": "a" * 64,
+                }],
+            }
+            non_match = {
+                **direct_context,
+                "sha256": "c" * 64,
+                "playbackStoryKeys": ["story_elsewhere"],
+            }
+            publication = pipeline.attach_source_story_partial_order(
+                index,
+                root,
+                {"missions": [order_row], "nativeSerializedBranchInventory": {
+                    "rows": [direct_context, nested_context, duplicate, non_match],
+                }},
+                create_variant_aggregate_shells=False,
+                require_complete_branch_publication=False,
+            )
+            payload = json.loads(
+                (mission_root / "mission_a.json").read_text(encoding="utf-8")
+            )
+
+        contexts = payload["storyOrder"]["branches"]["nativeSerializedBranchContexts"]
+        self.assertEqual(publication["publishedMissionRows"], 1)
+        self.assertEqual(len(contexts), 2)
+        mission_summary = next(row for row in index["missions"] if row["id"] == "mission_a")
+        self.assertEqual(mission_summary["storyOrderNativeSerializedBranchContextCount"], 2)
+        self.assertEqual(mission_summary["storyOrderNativeSerializedBranchContextStoryCount"], 2)
+        self.assertEqual(
+            [row["branchLocalId"] for row in contexts],
+            [4, 7],
+        )
+        self.assertEqual(contexts[0]["missionStoryKeys"], ["story_a"])
+        self.assertEqual(
+            contexts[0]["externalStoryKeys"],
+            ["story_external"],
+        )
+        self.assertEqual(contexts[1]["missionStoryKeys"], ["story_b"])
+        self.assertFalse(contexts[1]["ownership"])
+        self.assertFalse(contexts[1]["orderEvidence"])
+        self.assertEqual(
+            contexts[1]["relatedOriginalFiles"][0]["sourceFile"],
+            "LevelScriptData/map_a/1002.json",
+        )
+        self.assertEqual(
+            payload["storyOrder"]["summary"]["nativeSerializedBranchContextCount"],
+            2,
+        )
+        self.assertEqual(
+            payload["storyOrder"]["summary"]["nativeSerializedBranchContextStoryCount"],
+            2,
+        )
+        self.assertEqual(
+            payload["storyOrder"]["summary"]["nativeSerializedBranchContextMultiPlaybackCount"],
+            1,
+        )
+
+    def test_story_order_cross_reference_is_diagnostic_only(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            mission_root = root / "missions"
+            mission_root.mkdir()
+            pipeline.write_json(mission_root / "mission_a.json", {
+                "mission": {"id": "mission_a"},
+            })
+            index = {
+                "counts": {"missions": 1},
+                "missions": [{
+                    "id": "mission_a",
+                    "file": "missions/mission_a.json",
+                }],
+            }
+            order_row = {
+                "mission": "mission_a",
+                "nodes": [{"key": "story_a"}, {"key": "story_b"}],
+                "directEdges": [
+                    {
+                        "from": "story_a",
+                        "to": "story_b",
+                        "kind": "questPrev",
+                        "tier": "strong",
+                    },
+                    {
+                        "from": "story_b",
+                        "to": "story_a",
+                        "kind": "questPrev",
+                        "tier": "strong",
+                    },
+                ],
+                "summary": {"sceneCount": 2},
+                "branches": {},
+            }
+            cross_reference = (
+                pipeline.build_source_story_order_cross_reference_report(
+                    {"missions": [order_row]},
+                    {"missions": {"mission_a": {"order": ["story_a", "story_b"]}}},
+                    {"missions": {"mission_a": {"order": ["story_b", "story_a"]}}},
+                )
+            )
+            pipeline.attach_source_story_partial_order(
+                index,
+                root,
+                {"missions": [order_row]},
+                create_variant_aggregate_shells=False,
+                require_complete_branch_publication=False,
+                order_cross_reference=cross_reference,
+            )
+            pipeline.attach_source_story_partial_order(
+                index,
+                root,
+                {"missions": [order_row]},
+                create_variant_aggregate_shells=False,
+                require_complete_branch_publication=False,
+            )
+            payload = json.loads(
+                (mission_root / "mission_a.json").read_text(encoding="utf-8")
+            )
+
+        comparison = payload["storyOrder"]["crossReference"]
+        self.assertEqual(comparison["status"], "cross_reference_only")
+        self.assertEqual(comparison["strictEdgeCount"], 2)
+        self.assertEqual(comparison["override"], {
+            "agrees": 1,
+            "disagrees": 1,
+            "uncovered": 0,
+        })
+        self.assertEqual(comparison["ocr"], {
+            "agrees": 1,
+            "disagrees": 1,
+            "uncovered": 0,
+        })
+        self.assertEqual(comparison["conflictCount"], 2)
+        self.assertEqual(len(comparison["disagreementEdges"]), 2)
+        self.assertFalse(comparison["orderEvidence"])
+        self.assertEqual(
+            [edge["from"] for edge in payload["storyOrder"]["directEdges"]],
+            ["story_a", "story_b"],
+        )
+
+    def test_source_order_shell_is_generic_and_hashes_original_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            mission_output = root / "pipeline"
+            story_source = root / "story" / "source_only.json"
+            level_script = (
+                root / "export_full" / "structured" / "StreamingAssets"
+                / "Data" / "Json" / "LevelScriptData" / "map_a" / "1001.json"
+            )
+            binary = root / "GameAssembly.dll"
+            metadata = root / "global-metadata.dat"
+            story_source.parent.mkdir(parents=True)
+            level_script.parent.mkdir(parents=True)
+            story_source.write_text('{"mission":"source_only"}', encoding="utf-8")
+            level_script.write_bytes(b"level-script")
+            binary.write_bytes(b"binary")
+            metadata.write_bytes(b"metadata")
+            related = [
+                {
+                    "kind": "original_game_binary",
+                    "sourceFile": str(binary),
+                    "relationship": "native_branch_authority",
+                    "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+                },
+                {
+                    "kind": "original_game_metadata",
+                    "sourceFile": str(metadata),
+                    "relationship": "native_branch_authority",
+                    "sha256": hashlib.sha256(metadata.read_bytes()).hexdigest(),
+                },
+            ]
+            order_row = {
+                "mission": "source_only",
+                "missionData": str(story_source),
+                "nodes": [{"key": "radio_source_only_1"}],
+                "summary": {"sceneCount": 1, "strongEdgeCount": 1},
+                "directEdges": [{
+                    "from": "radio_source_only_1",
+                    "to": "radio_source_only_2",
+                    "kind": "levelscriptNativeControlPath",
+                    "tier": "strong",
+                    "sourceFiles": [str(level_script)],
+                    "levelIds": ["map_a"],
+                }],
+                "branches": {
+                    "nativeRelatedActionTopologies": [{
+                        "relatedOriginalFiles": related,
+                    }],
+                },
+            }
+            index = {"counts": {"missions": 0}, "missions": []}
+            publication = pipeline.attach_source_story_partial_order(
+                index,
+                mission_output,
+                {"missions": [order_row]},
+                create_variant_aggregate_shells=True,
+                require_complete_branch_publication=True,
+            )
+            shell = json.loads(
+                (mission_output / "missions" / "source_only.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertEqual(publication["sourceOrderShells"], ["source_only"])
+        self.assertEqual(index["counts"]["missions"], 1)
+        summary = index["missions"][0]
+        self.assertTrue(summary["sourceOrderShell"])
+        self.assertTrue(shell["mission"]["sourceOrderShell"])
+        self.assertTrue(shell["storyOrder"]["sourceOrderShell"])
+        self.assertEqual(
+            shell["mission"]["sourceOrderRelatedOriginalFiles"],
+            shell["mission"]["relatedOriginalFiles"],
+        )
+        self.assertEqual(shell["mission"]["levelId"], "map_a")
+        self.assertEqual(
+            shell["storyOrder"]["directEdges"][0]["kind"],
+            "levelscriptNativeControlPath",
+        )
+        self.assertEqual(
+            {row["kind"] for row in shell["mission"]["relatedOriginalFiles"]},
+            {"original_game_binary", "original_game_metadata", "original_level_script"},
+        )
+        self.assertIn("not a mission or quest owner", shell["mission"]["sourceBoundary"])
+
+    def test_source_order_related_files_attach_to_existing_mission(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            mission_root = root / "missions"
+            story_root = root / "story"
+            level_script = root / "level.json"
+            binary = root / "GameAssembly.dll"
+            branch_source = (
+                root / "export_full" / "recovered" / "AnimeStudio-cli"
+                / "StreamingAssets" / "json_by_type" / "TextAsset"
+                / "dlg_existing_branch_p123.json"
+            )
+            validation_source = (
+                root / "export_full" / "recovered" / "AnimeStudio-cli"
+                / "StreamingAssets" / "json_by_type" / "TextAsset"
+                / "dlg_existing_branch_validation_p456.json"
+            )
+            mission_root.mkdir()
+            story_root.mkdir()
+            level_script.write_bytes(b"level")
+            binary.write_bytes(b"binary")
+            branch_source.parent.mkdir(parents=True)
+            branch_source.write_bytes(b"dialog-tree-branch")
+            branch_sha = hashlib.sha256(branch_source.read_bytes()).hexdigest()
+            validation_source.write_bytes(b"dialog-tree-validation")
+            validation_sha = hashlib.sha256(validation_source.read_bytes()).hexdigest()
+            mission_source = story_root / "existing.json"
+            mission_source.write_text("{}", encoding="utf-8")
+            mission_runtime = (
+                root / "export_full" / "structured" / "Persistent" / "Data"
+                / "Json" / "MissionRuntimeAsset" / "existing.json"
+            )
+            mission_runtime.parent.mkdir(parents=True)
+            mission_runtime.write_text("{\"missionId\":\"existing\"}", encoding="utf-8")
+            pipeline.write_json(mission_root / "existing.json", {
+                "mission": {
+                    "id": "existing",
+                    "levelId": "level_a",
+                    "source": str(mission_runtime),
+                },
+                "nodes": [],
+                "storyOrder": {},
+            })
+            index = {
+                "counts": {"missions": 1},
+                "missions": [{
+                    "id": "existing",
+                    "file": "missions/existing.json",
+                }],
+            }
+            order_row = {
+                "mission": "existing",
+                "missionData": str(mission_source),
+                "directEdges": [{
+                    "from": "radio_existing_1",
+                    "to": "radio_existing_2",
+                    "tier": "strong",
+                    "sourceFiles": [str(level_script), str(binary)],
+                }],
+                "branches": {
+                    "dialogLineOptions": [{
+                        "provenance": {
+                            "sourceFiles": [str(branch_source)],
+                        },
+                    }],
+                },
+                "warnings": [{
+                    "validator": "dialogTreeLocalIfNode",
+                    "sourcePaths": [str(validation_source)],
+                    "sourceSha256": {str(validation_source): validation_sha},
+                }],
+            }
+            publication = pipeline.attach_source_story_partial_order(
+                index,
+                root,
+                {"missions": [order_row]},
+                create_variant_aggregate_shells=False,
+                require_complete_branch_publication=True,
+            )
+            payload = json.loads(
+                (mission_root / "existing.json").read_text(encoding="utf-8")
+            )
+
+        related = payload["mission"]["sourceOrderRelatedOriginalFiles"]
+        self.assertEqual(len(related), 3)
+        self.assertEqual({row["sourceFile"] for row in related}, {
+            str(level_script).replace("\\", "/"),
+            str(binary).replace("\\", "/"),
+            str(mission_runtime).replace("\\", "/"),
+        })
+        self.assertEqual(publication["sourceOrderRelatedFileMissions"], ["existing"])
+        self.assertEqual(publication["sourceOrderRelatedFileRows"], 3)
+        self.assertEqual(publication["sourceOrderRelatedDistinctFiles"], 3)
+        self.assertEqual(
+            payload["mission"]["storyBranchRelatedOriginalFiles"],
+            [
+                {
+                    "kind": "original_dialog_tree_source",
+                    "sourceFile": str(branch_source).replace("\\", "/"),
+                    "sha256": branch_sha,
+                    "relationship": "authored_story_branch_source_file",
+                },
+                {
+                    "kind": "original_dialog_tree_source",
+                    "sourceFile": str(validation_source).replace("\\", "/"),
+                    "sha256": validation_sha,
+                    "relationship": "authored_story_branch_validation_source_file",
+                },
+            ],
+        )
+        self.assertEqual(publication["storyBranchRelatedFileMissions"], ["existing"])
+        self.assertEqual(publication["storyBranchRelatedFileRows"], 2)
+        self.assertEqual(publication["storyBranchRelatedDistinctFiles"], 2)
+        self.assertEqual(index["counts"]["sourceOrderRelatedFileMissions"], 1)
+        self.assertEqual(index["missions"][0]["sourceOrderRelatedFileCount"], 3)
+        self.assertEqual(index["missions"][0]["storyBranchRelatedFileCount"], 2)
+        self.assertIn("auditability only", payload["mission"]["sourceOrderRelatedFilesBoundary"])
+
+    def test_story_branch_shell_publishes_missing_pipeline_context(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_root = root / "export_full" / "recovered" / "TextAsset"
+            source_root.mkdir(parents=True)
+            branch_source = source_root / "dlg_branch_only_p001.json"
+            branch_source.write_bytes(b"branch-only")
+            story_source = root / "webui" / "data" / "lang" / "CN" / "mission" / "branch_only.json"
+            story_source.parent.mkdir(parents=True)
+            story_source.write_text("{}", encoding="utf-8")
+            index = {"counts": {"missions": 0}, "missions": []}
+            order_row = {
+                "mission": "branch_only",
+                "missionData": str(story_source),
+                "directEdges": [],
+                "branches": {
+                    "dialogLineOptions": [{
+                        "provenance": {"sourceFiles": [str(branch_source)]},
+                    }],
+                },
+            }
+            publication = pipeline.attach_source_story_partial_order(
+                index,
+                root,
+                {"missions": [order_row]},
+                create_variant_aggregate_shells=True,
+                require_complete_branch_publication=True,
+            )
+            payload = json.loads(
+                (root / "missions" / "branch_only.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertEqual(publication["storyBranchShells"], ["branch_only"])
+        self.assertEqual(publication["storyBranchRelatedFileMissions"], ["branch_only"])
+        self.assertEqual(publication["storyBranchRelatedFileRows"], 1)
+        self.assertTrue(index["missions"][0]["storyBranchShell"])
+        self.assertTrue(payload["mission"]["storyBranchShell"])
+        self.assertTrue(payload["storyOrder"]["storyBranchShell"])
+        self.assertIn("not a mission or quest owner", payload["mission"]["sourceBoundary"])
+        self.assertEqual(
+            payload["mission"]["storyBranchRelatedOriginalFiles"][0]["sourceFile"],
+            str(branch_source).replace("\\", "/"),
+        )
+
+    def test_story_branch_related_files_fail_closed_on_missing_source(self):
+        missing = Path(tempfile.gettempdir()) / "story-branch-source-does-not-exist.json"
+        order_row = {
+            "mission": "missing_branch_source",
+            "branches": {
+                "dialogLineOptions": [{"sourceFiles": [str(missing)]}],
+            },
+        }
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"validator=story_branch_original_files gate=sourceFile "
+            r"mission=missing_branch_source expected=file actual=missing",
+        ):
+            pipeline._story_branch_related_original_files(order_row)
+
+    def test_story_branch_related_files_fail_closed_on_hash_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "branch.json"
+            source.write_bytes(b"actual")
+            order_row = {
+                "mission": "mismatched_branch_source",
+                "warnings": [{
+                    "validator": "dialogTreeLocalIfNode",
+                    "sourcePaths": [str(source)],
+                    "sourceSha256": {str(source): "0" * 64},
+                }],
+            }
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"validator=story_branch_original_files gate=sourceHash "
+                r"mission=mismatched_branch_source",
+            ):
+                pipeline._story_branch_related_original_files(order_row)
+
+    def test_story_branch_related_files_keep_normalized_related_original_rows(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            binary = Path(temporary) / "GameAssembly.dll"
+            binary.write_bytes(b"original-binary")
+            binary_sha = hashlib.sha256(binary.read_bytes()).hexdigest()
+            order_row = {
+                "mission": "normalized_branch_rows",
+                "branches": {
+                    "dialogTreeIfNodes": [{
+                        "relatedOriginalFiles": [{
+                            "kind": "original_game_binary",
+                            "sourceFile": str(binary),
+                            "sha256": binary_sha,
+                            "relationship": "DialogTreeIfNode_GetNextIndex_polarity",
+                        }],
+                    }],
+                },
+            }
+
+            related = pipeline._story_branch_related_original_files(order_row)
+
+        self.assertEqual(
+            related,
+            [{
+                "kind": "original_game_binary",
+                "sourceFile": str(binary).replace("\\", "/"),
+                "sha256": binary_sha,
+                "relationship": "DialogTreeIfNode_GetNextIndex_polarity",
+            }],
+        )
+
+    def test_story_branch_related_files_collect_singular_source_file_shape(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "dlg_branch.json"
+            source.write_bytes(b"singular-source")
+            related = pipeline._story_branch_related_original_files({
+                "mission": "singular_branch_source",
+                "branches": {
+                    "dialogLineOptions": [{
+                        "outcomesByOption": {
+                            "option_a": [{
+                                "sourceFile": str(source),
+                            }],
+                        },
+                    }],
+                },
+            })
+
+        self.assertEqual(
+            related,
+            [{
+                "kind": "original_authored_source",
+                "sourceFile": str(source).replace("\\", "/"),
+                "sha256": hashlib.sha256(b"singular-source").hexdigest(),
+                "relationship": "authored_story_branch_source_file",
+            }],
+        )
+
+    def test_story_branch_related_files_validate_singular_source_hash(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "dlg_branch.json"
+            source.write_bytes(b"singular-source")
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"validator=story_branch_original_files gate=sourceHash "
+                r"mission=singular_branch_hash",
+            ):
+                pipeline._story_branch_related_original_files({
+                    "mission": "singular_branch_hash",
+                    "branches": {
+                        "dialogLineOptions": [{
+                            "sourceFile": str(source),
+                            "sourceSha256": "0" * 64,
+                        }],
+                    },
+                })
 
     def test_story_order_attachment_builds_validated_variant_aggregate_shell(self):
         with tempfile.TemporaryDirectory() as temporary:

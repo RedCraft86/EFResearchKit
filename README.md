@@ -111,21 +111,60 @@ or local source edits.
 
 ### Story
 
-- 5,562 unique Story files across 591 pipeline missions.
-- 4,239 files have an accepted mission/context connection (**76.2%**).
+- 5,564 unique Story files across 606 pipeline missions.
+- 4,237 files have an accepted mission/context connection (**76.1%**).
 - 4,462 have a normalized trigger/context route (**80.2%**).
-- 1,325 remain unlinked; 156 already have exact native playback but lack a
+- 1,327 remain unlinked; 156 already have exact native playback but lack a
   mission/quest activation bridge.
+- 27 exact ordered-`Branch` contexts across four missions now expose every
+  serialized arm and its original-binary hashes; no multi-arm Story-order edge
+  is admitted until a second arm is proven by an original path or runtime trace.
+- The corpus-wide original-binary census covers 81 unique serialized `Branch`
+  groups / 227 slots / 37 exact playback-bearing arms across both copied
+  LevelScript roots; zero groups currently carry playback on two arms. The
+  WebUI also shows each arm's exact reachable native action names/classes,
+  302 nested mapped controls (4 `Branch`, 50 `Split`, 116 `IfElseAction`, and
+  132 `SwitchInt`), 465 nested playback arms, and 208 nested controls with
+  playback on multiple alternatives. All 233 playback-bearing nested controls
+  currently have exact binary predicates (0 playback-predicate gaps), plus 601
+  decoded nested control references and 793 nested serialized slots (629 exact
+  active / 164 explicit inactive). The family schema is mapping-derived and
+  reports 0 arm-schema gaps; the inventory stays context-only and refuses to
+  guess order or ownership.
+  The same binary-driven decoder now covers `SwitchIntLarger` generically:
+  16 copied records across 12 original LevelScript paths (8 deduplicated
+  controls), with only `map01_lv001/2100280004.json` reaching the exact
+  `sm1l1m9` → `dlg_sm1l1m9_5` Story path. Its case targets are inactive, so no
+  new order edge is admitted; the WebUI exposes the complete family census
+  and shows `SwitchIntLarger: 8`. The dungeon copies are also attached to
+  exact `e10m4d5`/`e10m1d5` mission context through their authored
+  MissionRuntime LevelScript property/stage conditions; this does not promote
+  them to Story ownership or inter-file order.
+  The same original-binary projector now exposes five
+  `WaitForSecondsInTriggerVolume` controls as success/fail outcomes in two
+  attached LevelScript files; waiting/current-action and next-tick delay paths
+  remain context, not inferred Story order.
 - A general original-binary Encounter contract now adds exact controller and
   related LevelData/SpawnerConfig context for 27 of those Story keys. Its
   LsmPtr module namespace is shown separately from the receiver LevelScript,
   without inventing mission ownership or order.
+- The receiver audit now recovers the underlying pattern generically: all 15
+  serialized `@<module>_<field>` families are censused by native value shape
+  (including the eight base lifecycle-only families), with stable family keys
+  and exact LevelData sources. New module families no longer require an
+  object-specific recovery function; only a separately binary-validated
+  semantic contract may add a label, and none adds mission ownership or order.
+- Two exact mission-named LevelData receiver contexts (`e9m3` /
+  `cutscene_e9m3_2` and `e3m6` / `cutscene_e3m5_3`) are now visible with their
+  original LevelData and LevelScript files; the filename token and validated
+  dictionary are container context only, not activation, ownership, playback,
+  branch, or Story-order evidence.
 - A general recursive ActionHeader validator now exposes all 30 exact receiver
   playback gates, including AND/OR/NOT/ALL trees, comparisons, property/stage,
   LSM-completion, and interactive-state leaves, without treating those local
   predicates as mission ownership or cross-Story order.
-- All 258 named native branch predicates are operand-decoded where their
-  current binary layout is supported; the pipeline reports 263 semantic
+- All 259 named native branch predicates are operand-decoded where their
+  current binary layout is supported; the pipeline reports 264 semantic
   predicates including inline forms, with 0 class-only and 0 unresolved.
 - Parallel Split semantics now come from a general original-binary scheduler
   census rather than an action-name rule: two writer methods and all three

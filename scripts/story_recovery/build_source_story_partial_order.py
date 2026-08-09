@@ -12,6 +12,7 @@ generated UI rank, ``sceneOrderInfo.questOrder``, or scene-graph node ``order``.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -42,6 +43,7 @@ from story_builder.mission_recovery import (  # noqa: E402
     scene_order_infer_kind,
 )
 from story_builder.level_bindings import (  # noqa: E402
+    LEVELSCRIPT_NATIVE_ACTION_NAMES,
     LEVELSCRIPT_NATIVE_CONTROL_RUNTIME_MAPPINGS,
     LEVELSCRIPT_NATIVE_EXACT_CONTROL_PATH_STATUSES,
     build_levelscript_action_story_occurrences,
@@ -58,7 +60,7 @@ from story_builder.spawner_binary import (  # noqa: E402
 )
 
 
-SCHEMA = "sourceStoryPartialOrder.v31"
+SCHEMA = "sourceStoryPartialOrder.v44"
 BRANCH_SEQUENCE_RUNTIME = LEVELSCRIPT_NATIVE_CONTROL_RUNTIME_MAPPINGS[
     (0x002D, 0x09)
 ]
@@ -66,6 +68,27 @@ BRANCH_SEQUENCE_GAME_ASSEMBLY_SHA256 = (
     "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE"
 )
 _NATIVE_ACTION_TOPOLOGY_CACHE: dict[str, tuple[dict, dict | None]] = {}
+NATIVE_LEVELSCRIPT_ROOTS = (
+    ROOT / "export_full" / "structured" / "StreamingAssets"
+    / "Data" / "Json" / "LevelScriptData",
+    ROOT / "export_full" / "structured" / "Persistent"
+    / "Data" / "Json" / "LevelScriptData",
+)
+NATIVE_SERIALIZED_BRANCH_INVENTORY_SCHEMA = (
+    "nativeSerializedBranchInventory.v11"
+)
+
+# The control family set is derived from the current-build native mapping and
+# action-name table.  It intentionally contains no mission, file, or object
+# identifiers.  Adding a binary-validated control family to
+# LEVELSCRIPT_NATIVE_CONTROL_RUNTIME_MAPPINGS automatically brings it into
+# this corpus census; an unreviewed action remains ordinary topology and is
+# never promoted by this audit.
+NATIVE_TYPED_CONTROL_ACTION_NAMES = frozenset(
+    LEVELSCRIPT_NATIVE_ACTION_NAMES[pair]
+    for pair in LEVELSCRIPT_NATIVE_CONTROL_RUNTIME_MAPPINGS
+    if pair in LEVELSCRIPT_NATIVE_ACTION_NAMES
+)
 READING_POPUP_TABLE_PATH = (
     ROOT / "export_full" / "structured" / "StreamingAssets"
     / "Table" / "ReadingPopUpTable.json"
@@ -187,85 +210,267 @@ EDGE_EVIDENCE_FIELDS = (
 )
 
 
-# Current-build declarations are deliberately narrow and hash locked.  They
-# turn an exact serialized DialogTree branch into chronology only after both
-# the carrier paths and the current GameAssembly branch-selection contract
-# have been audited.  A mismatch emits an actionable warning and no edge.
-DIALOG_TREE_CONDITIONAL_BRANCH_DECLARATIONS = {
-    ("gm02m14", "dlg_gm02m14_1", "dlg_gm02m14_3"): {
-        "sourceFile": (
-            "export_full/recovered/AnimeStudio-cli/StreamingAssets/"
-            "json_by_type/TextAsset/"
-            "dlg_gm02m14_1_p4C5228BE5CCE25DA.json"
-        ),
-        "sourceSha256": (
-            "018DFF862D1EBDA9B0336EDF81F1D862DC2E71271EE0C7695248F507261A00D1"
-        ),
-        "nativeMappingId": "dialog-tree-reachable-story-playback-native-v1",
-        "optionId": "option_dlg_gm02m14_1_2_001",
-        "optionAfterLineId": "dlg_gm02m14_1_005",
-        "branchAfterLineId": "dlg_gm02m14_1_006",
-        "branchNodeId": "9",
-        "parentLineIds": tuple(
-            f"dlg_gm02m14_1_{number:03d}" for number in range(1, 10)
-        ),
-        "parentArmLineIds": (
-            "dlg_gm02m14_1_007",
-            "dlg_gm02m14_1_008",
-            "dlg_gm02m14_1_009",
-        ),
-        "childArmLineIds": (
-            "dlg_gm02m14_3_001",
-            "dlg_gm02m14_3_002",
-            "dlg_gm02m14_3_003",
-        ),
-        "carrierNodePaths": {
-            "dlg_gm02m14_3_001": ("8", "9", "14"),
-            "dlg_gm02m14_3_002": ("8", "9", "14", "15"),
-            "dlg_gm02m14_3_003": ("8", "9", "14", "15", "16", "17"),
+# Current-build binary authority for every serialized DialogTreeIfNode.  The
+# contract is deliberately value/mission independent: the original binary
+# returns the outgoing connection ordinal selected by GameCondition.result.
+# Serialized DialogTree routes still have to prove the complete parent/child
+# carrier closure before this generic rule can emit a Story edge.
+DIALOG_TREE_IF_BINARY_CONTRACT = {
+    "mappingId": "gameassembly-2026-08-02-dialog-tree-if-next-index-v1",
+    "gameAssemblySha256": (
+        "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE"
+    ),
+    "conditionResultTrue": 1,
+    "selectionRule": (
+        "GameCondition.result equals 1 -> outgoing ordinal 1; "
+        "otherwise outgoing ordinal 0"
+    ),
+    "conditionTrueConnectionIndex": 1,
+    "conditionFalseConnectionIndex": 0,
+    "nativeConsumers": (
+        {
+            "method": "DialogTreeIfNode.GetNextIndex",
+            "token": "0x06003be3",
+            "address": "0x1872a51f8",
+            "contract": (
+                "returns outgoing index 1 exactly when "
+                "GameCondition.result equals 1"
+            ),
         },
-        "carrierConnectionIndexes": {
-            "dlg_gm02m14_3_001": (10, 12),
-            "dlg_gm02m14_3_002": (10, 12, 16),
-            "dlg_gm02m14_3_003": (10, 12, 16, 17, 18),
+        {
+            "method": "GameCondition.Activate",
+            "token": "0x0600489f",
+            "address": "0x18332c000",
         },
-        "condition": {
-            "type": "Beyond.Gameplay.CheckLevelScriptPropertyBool",
-            "mapId": "map02_lv005",
-            "scriptId": 90002,
-            "key": "canskip",
-            "value": True,
+        {
+            "method": "GameCondition.get_result",
+            "token": "0x06004884",
+            "address": "0x183a8ad10",
         },
-        "conditionTrueConnectionIndex": 1,
-        "conditionFalseConnectionIndex": 0,
-        "conditionTrueTargetNodeId": "14",
-        "conditionFalseTargetNodeId": "10",
-        "gameAssemblySha256": (
-            "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE"
-        ),
-        "nativeConsumers": (
-            {
-                "method": "DialogTreeIfNode.GetNextIndex",
-                "token": "0x06003be3",
-                "address": "0x1872a51f8",
-                "contract": (
-                    "returns outgoing index 1 exactly when "
-                    "GameCondition.result equals 1"
-                ),
-            },
-            {
-                "method": "GameCondition.Activate",
-                "token": "0x0600489f",
-                "address": "0x18332c000",
-            },
-            {
-                "method": "GameCondition.get_result",
-                "token": "0x06004884",
-                "address": "0x183a8ad10",
-            },
-        ),
-    },
+    ),
 }
+
+# Current-build binary authority for every serialized DialogTreeBranchNode.
+# The contract is deliberately value/mission independent: the original
+# DialogManager scans DialogBranchData.conditions in serialized order, returns
+# the first condition whose GameCondition.result is 1, and falls back to
+# outgoing ordinal 0 when no condition is true.  This maps internal arm
+# selection only; it never promotes a file-order or mission-ownership edge.
+DIALOG_TREE_BRANCH_BINARY_CONTRACT = {
+    "mappingId": "gameassembly-2026-08-02-dialog-tree-branch-next-index-v1",
+    "gameAssemblySha256": (
+        "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE"
+    ),
+    "conditionResultTrue": 1,
+    "defaultConnectionOrdinal": 0,
+    "branchDataConditionsFieldOffset": "0x10",
+    "selectionRule": (
+        "first serialized condition whose GameCondition.result equals 1; "
+        "no true condition returns outgoing ordinal 0"
+    ),
+    "nativeConsumers": (
+        {
+            "method": "DialogTreeBranchNode.GetNextIndex",
+            "token": "0x06003bd3",
+            "address": "0x1872a1c84",
+            "contract": "delegates to DialogManager.GetBranchNextIndex",
+        },
+        {
+            "method": "DialogTreeBranchNode._TrySelectBranch",
+            "token": "0x06003bd4",
+            "address": "0x1872a1d0c",
+            "contract": "delegates branch selection to DialogManager.DoBranchSelect",
+        },
+        {
+            "method": "DialogManager.GetBranchNextIndex",
+            "token": "0x0600f851",
+            "address": "0x186e127b4",
+            "contract": (
+                "iterates DialogBranchData.conditions and returns the first "
+                "condition ordinal with GameCondition.result == 1, else 0"
+            ),
+        },
+        {
+            "method": "DialogManager.DoBranchSelect",
+            "token": "0x0600f787",
+            "address": "0x186e0e8e0",
+            "contract": "applies the selected DialogBranchData arm",
+        },
+        {
+            "method": "GameCondition.Activate",
+            "token": "0x0600489f",
+            "address": "0x18332c000",
+        },
+        {
+            "method": "GameCondition.get_result",
+            "token": "0x06004884",
+            "address": "0x183a8ad10",
+        },
+    ),
+}
+
+# Current-build binary authority for Timeline option routes.  The contract is
+# deliberately value/mission independent: the selected Timeline option row's
+# runtime value is copied into the active option object, and the Timeline
+# runtime only accepts a matching positive option value.  The serialized
+# Runtime Jump/clip track still supplies the actual skipped/returned line
+# windows; this contract does not invent a target from an option index.
+DIALOG_TIMELINE_OPTION_BINARY_CONTRACT = {
+    "mappingId": "gameassembly-2026-08-02-dialog-timeline-option-index-v1",
+    "gameAssemblySha256": (
+        "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE"
+    ),
+    "metadataSha256": (
+        "90C58E26E87C7227A85DDA3FEDF6CE5ED0B06DC1F76E0ABBE75AB20750ADF97E"
+    ),
+    "selectionRule": (
+        "DialogTimelineManager._SelectIndexInTimeline reads selected option "
+        "+0x98; DialogUtils.DialogChooseOption writes runtime +0x18; "
+        "SetDialogOption/active-clip traversal accepts a matching positive "
+        "+0x18"
+    ),
+    "nativeConsumers": (
+        {
+            "method": "DialogTimelineManager._SelectIndexInTimeline",
+            "token": "0x0600f97b",
+            "address": "0x186e4aa04",
+            "contract": (
+                "reads the selected Timeline option +0x98 and passes it to "
+                "DialogUtils.DialogChooseOption"
+            ),
+        },
+        {
+            "method": "DialogUtils.DialogChooseOption",
+            "token": "0x0600f9fb",
+            "address": "0x186e4bbac",
+            "contract": "writes the selected runtime optionIndex to +0x18",
+        },
+        {
+            "method": "DialogTimelineManager.SetDialogOption",
+            "token": "0x0600f979",
+            "address": "0x186e484a8",
+            "contract": (
+                "compares current and candidate +0x18 and treats zero as "
+                "the non-branch/default value"
+            ),
+        },
+        {
+            "method": "DialogTimelineManager.TryTriggerTrunkBindingOption",
+            "token": "0x0600f955",
+            "address": "0x186e48e28",
+            "contract": "enumerates active clips before the option gate",
+        },
+        {
+            "method": "DialogUtils.DialogTimelineGetAllActiveClips",
+            "token": "0x0600f9f9",
+            "address": "0x186e4d6bc",
+            "contract": "collects active Timeline clips for runtime matching",
+        },
+    ),
+}
+_DIALOG_TREE_BINARY_SOURCE_CACHE: dict[str, dict[str, Any] | None] = {}
+_DIALOG_TIMELINE_SOURCE_HASH_CACHE: dict[str, str] = {}
+
+
+def _dialog_tree_resolve_source(source_file: str) -> Path:
+    """Resolve a generated DialogTree source path without corpus-specific IDs."""
+    path = Path(source_file)
+    return path if path.is_absolute() else ROOT / path
+
+
+def _dialog_tree_decode_source(path: Path | None) -> dict[str, Any] | None:
+    """Decode an AnimeStudio TextAsset wrapper into its serialized tree."""
+    if path is None:
+        return None
+    cache_key = str(path.resolve())
+    if cache_key in _DIALOG_TREE_BINARY_SOURCE_CACHE:
+        return _DIALOG_TREE_BINARY_SOURCE_CACHE[cache_key]
+    decoded: dict[str, Any] | None = None
+    try:
+        wrapper = read_json(path, {})
+        encoded = wrapper.get("m_Script") if isinstance(wrapper, dict) else None
+        if isinstance(encoded, str) and encoded.strip():
+            candidate = json.loads(
+                base64.b64decode(encoded).decode("utf-8-sig")
+            )
+            if isinstance(candidate, dict):
+                decoded = candidate
+    except (OSError, ValueError, UnicodeDecodeError):
+        decoded = None
+    _DIALOG_TREE_BINARY_SOURCE_CACHE[cache_key] = decoded
+    return decoded
+
+
+def _dialog_tree_ref(value: Any) -> str:
+    return safe_key(value.get("$ref")) if isinstance(value, dict) else ""
+
+
+def _dialog_tree_branch_info(
+    source: dict[str, Any] | None,
+    branch_id: str,
+) -> tuple[dict[str, Any], list[tuple[int, str]]]:
+    """Return a serialized node and its ordered outgoing connections."""
+    if not isinstance(source, dict) or not branch_id:
+        return {}, []
+    node = next(
+        (
+            item for item in source.get("nodes") or []
+            if isinstance(item, dict) and safe_key(item.get("$id")) == branch_id
+        ),
+        {},
+    )
+    outgoing: list[tuple[int, str]] = []
+    for index, connection in enumerate(source.get("connections") or []):
+        if not isinstance(connection, dict):
+            continue
+        if _dialog_tree_ref(connection.get("_sourceNode")) != branch_id:
+            continue
+        target_id = _dialog_tree_ref(connection.get("_targetNode"))
+        if target_id:
+            outgoing.append((index, target_id))
+    return node, outgoing
+
+
+def _dialog_tree_normalize_condition(value: Any) -> dict[str, Any]:
+    """Compact any serialized GameCondition, including nested conditions."""
+    def normalize(item: Any) -> Any:
+        if isinstance(item, dict):
+            if "constValue" in item:
+                return normalize(item.get("constValue"))
+            if set(item) == {"scriptId"}:
+                return item.get("scriptId")
+            result: dict[str, Any] = {}
+            for key, child in item.items():
+                if key == "$type":
+                    output_key = "type"
+                elif key.startswith("_"):
+                    output_key = key[1:]
+                else:
+                    output_key = key
+                normalized = normalize(child)
+                if normalized not in (None, "", {}, []):
+                    result[output_key] = normalized
+            return result
+        if isinstance(item, list):
+            return [normalize(child) for child in item]
+        return item
+
+    normalized = normalize(value)
+    return normalized if isinstance(normalized, dict) else {}
+
+
+def _dialog_tree_condition_payload(node: dict[str, Any]) -> dict[str, Any]:
+    if_data = node.get("_dialogIfData")
+    value = if_data.get("condition") if isinstance(if_data, dict) else None
+    return _dialog_tree_normalize_condition(value)
+
+
+def _dialog_tree_branch_conditions(node: dict[str, Any]) -> list[dict[str, Any]]:
+    branch_data = node.get("_dialogBranchData")
+    values = branch_data.get("conditions") if isinstance(branch_data, dict) else None
+    if not isinstance(values, list):
+        return []
+    return [_dialog_tree_normalize_condition(value) for value in values]
 
 
 def _configured_game_assembly_path() -> Path:
@@ -283,6 +488,147 @@ def _configured_game_assembly_path() -> Path:
         Path(game_root).parent / "GameAssembly.dll"
         if game_root else Path()
     )
+
+
+def _configured_game_metadata_path() -> Path:
+    """Resolve the metadata paired with the configured original binary."""
+    game_assembly_path = _configured_game_assembly_path()
+    if str(game_assembly_path) in {"", "."}:
+        return Path()
+    return (
+        game_assembly_path.parent
+        / "Endfield_Data"
+        / "il2cpp_data"
+        / "Metadata"
+        / "global-metadata.dat"
+    )
+
+
+def _dialog_timeline_source_hash(path: Path) -> str:
+    """Hash a recovered Timeline source once while preserving missing files."""
+    if str(path) in {"", "."}:
+        return ""
+    cache_key = str(path.resolve())
+    if cache_key in _DIALOG_TIMELINE_SOURCE_HASH_CACHE:
+        return _DIALOG_TIMELINE_SOURCE_HASH_CACHE[cache_key]
+    digest = ""
+    if path.is_file():
+        digest = hashlib.sha256(path.read_bytes()).hexdigest().upper()
+    _DIALOG_TIMELINE_SOURCE_HASH_CACHE[cache_key] = digest
+    return digest
+
+
+def _dialog_timeline_option_evidence(risk: dict[str, Any]) -> dict[str, Any]:
+    """Attach Timeline tracks and the generic original-binary option contract.
+
+    Runtime Jump/clip rows are accepted only from the existing exact
+    serialized-track risk signatures.  This helper adds provenance and makes
+    the binary gate auditable; it never turns an option index into a line or
+    Story target by itself.
+    """
+    contract = DIALOG_TIMELINE_OPTION_BINARY_CONTRACT
+    related_files: list[dict[str, Any]] = []
+    missing_tracks: list[str] = []
+    track_files = _string_list(risk.get("assetTracks"))
+    for source_file in track_files:
+        source_path = Path(source_file)
+        if not source_path.is_absolute():
+            source_path = ROOT / source_path
+        source_hash = _dialog_timeline_source_hash(source_path)
+        if not source_hash:
+            missing_tracks.append(source_file)
+            continue
+        related_files.append({
+            "kind": "dialog_timeline_asset_track",
+            "sourceFile": source_file,
+            "sha256": source_hash,
+            "relationship": "exact_serialized_timeline_option_route_track",
+        })
+
+    binary_path = _configured_game_assembly_path()
+    metadata_path = _configured_game_metadata_path()
+    binary_hash = _dialog_timeline_source_hash(binary_path)
+    metadata_hash = _dialog_timeline_source_hash(metadata_path)
+    validation_failures: list[dict[str, Any]] = []
+    for label, source_path, actual_hash, expected_hash in (
+        ("GameAssembly.dll", binary_path, binary_hash, contract["gameAssemblySha256"]),
+        ("global-metadata.dat", metadata_path, metadata_hash, contract["metadataSha256"]),
+    ):
+        if actual_hash != expected_hash:
+            validation_failures.append({
+                "gate": "originalBinaryHash",
+                "source": label,
+                "sourcePath": str(source_path),
+                "expected": expected_hash,
+                "actual": actual_hash,
+            })
+    if not track_files or missing_tracks:
+        validation_failures.append({
+            "gate": "timelineTrackSources",
+            "source": "dialogTimeline",
+            "sourcePath": missing_tracks,
+            "expected": "at least one serialized option-route asset track exists",
+            "actual": (
+                "missing source files"
+                if missing_tracks
+                else "no asset track paths were supplied"
+            ),
+        })
+    status = "validated" if not validation_failures else "unvalidated"
+    binary_source_file = (
+        str(binary_path.resolve())
+        if str(binary_path) not in {"", "."}
+        else ""
+    )
+    metadata_source_file = (
+        str(metadata_path.resolve())
+        if str(metadata_path) not in {"", "."}
+        else ""
+    )
+    related_files.extend([
+        {
+            "kind": "original_game_binary",
+            "sourceFile": binary_source_file,
+            "sha256": binary_hash,
+            "relationship": "DialogTimeline_option_index_runtime_contract",
+        },
+        {
+            "kind": "original_game_metadata",
+            "sourceFile": metadata_source_file,
+            "sha256": metadata_hash,
+            "relationship": "DialogTimeline_option_index_runtime_contract",
+        },
+    ])
+    return {
+        "binaryMappingId": contract["mappingId"],
+        "gameAssemblySha256": binary_hash,
+        "metadataSha256": metadata_hash,
+        "nativeConsumers": list(contract["nativeConsumers"]),
+        "selectionRule": contract["selectionRule"],
+        "binaryValidation": {
+            "validator": "dialogTimelineOptionBinaryContract",
+            "status": status,
+            "expected": {
+                "gameAssemblySha256": contract["gameAssemblySha256"],
+                "metadataSha256": contract["metadataSha256"],
+                "assetTrackSources": len(track_files),
+            },
+            "actual": {
+                "gameAssemblySha256": binary_hash,
+                "metadataSha256": metadata_hash,
+                "assetTrackSources": len(track_files) - len(missing_tracks),
+                "missingAssetTracks": missing_tracks,
+            },
+            "failures": validation_failures,
+        },
+        "relatedOriginalFiles": related_files,
+        "evidenceBoundary": (
+            "The serialized Timeline track supplies the exact option-index "
+            "skip/return window, while the original binary proves how the "
+            "option index reaches active runtime clips. This does not prove a "
+            "mission trigger, cross-file order, or server branch choice."
+        ),
+    }
 
 
 def load_mission_payload_with_variants(
@@ -388,6 +734,9 @@ EVIDENCE_POLICY = {
         "MissionRuntimeAsset questPrev edges backed by prevQuestIdList",
         "DialogTree authoredDirect option routes",
         "DialogTree/DialogTreeFragment option-to-line branchLines verified against sceneGraphLinks",
+        "Dialog Timeline Runtime Jump/clip option routes with exact serialized track hashes and the installed option-index/active-clip binary contract",
+        "exact serialized DialogTreeBranchNode DialogBranchData.conditions joined to ordered outgoing connections and the installed DialogManager.GetBranchNextIndex rule",
+        "exact serialized DialogTreeIfNode condition joined to its ordered outgoing connections and the installed DialogTreeIfNode.GetNextIndex rule",
         "Dialog Timeline Runtime Jump routes with the exact timelineRouteBranches/runtimeJumpTrack signature",
         "Dialog Timeline branch clips with complete distinct positive runtime optionIndex coverage and convergent post-response jumps",
         "LevelScript LevelEvent_OnDialogExit action-chain edges",
@@ -411,7 +760,10 @@ EVIDENCE_POLICY = {
         "LevelScript file/cross-file order and untyped chain membership",
         "LevelData quest references and PRTS collection order",
         "related LevelScript action graphs attached through exact Story paths but not promoted wholesale to mission order",
-        "divergent Split/IfElseAction/SwitchInt/SwitchString Story arms as topology only",
+        "divergent Split/IfElseAction/SwitchInt/SwitchIntLarger/SwitchString Story arms as topology only",
+        "DialogTreeBranchNode sibling arms and connection order (selection evidence only; no file-order or mission trigger)",
+        "DialogTreeIfNode sibling arms and connection order (selection evidence only; no file-order or mission trigger)",
+        "Dialog Timeline option-index sibling arms and Runtime Jump/clip track windows (selection evidence only; no mission trigger or cross-file chronology)",
         "authored quest-start Story actions when the complete current AOT dispatcher census has no slot-1 producer",
     ],
     "rejects": [
@@ -936,6 +1288,7 @@ def collect_dialog_line_option_branches(
                     "branchLineIds": branch_lines,
                 })
             if complete and runtime_options:
+                timeline_evidence = _dialog_timeline_option_evidence(risk)
                 allowed.append({
                     **base,
                     "provenance": {
@@ -948,11 +1301,25 @@ def collect_dialog_line_option_branches(
                         ),
                         "optionIndex": risk.get("optionIndex") or [],
                         "candidateMapping": "trunkClipOptionIndex",
+                        **{
+                            key: value
+                            for key, value in timeline_evidence.items()
+                            if key not in {"relatedOriginalFiles", "evidenceBoundary"}
+                        },
                     },
                     "options": runtime_options,
                     "commonContinuationLineId": safe_key(
                         risk.get("commonContinuationLineId")
                     ),
+                    "relatedOriginalFiles": timeline_evidence[
+                        "relatedOriginalFiles"
+                    ],
+                    "binaryValidation": timeline_evidence[
+                        "binaryValidation"
+                    ],
+                    "evidenceBoundary": timeline_evidence[
+                        "evidenceBoundary"
+                    ],
                 })
                 continue
             excluded.append({
@@ -992,6 +1359,7 @@ def collect_dialog_line_option_branches(
                     runtime_option["continuationLineId"] = common_continuation
                 runtime_options.append(runtime_option)
             if complete and runtime_options:
+                timeline_evidence = _dialog_timeline_option_evidence(risk)
                 allowed.append({
                     **base,
                     "provenance": {
@@ -1001,6 +1369,11 @@ def collect_dialog_line_option_branches(
                         "source": "dialogTimeline",
                         "assetTracks": _string_list(risk.get("assetTracks")),
                         "optionIndex": risk.get("optionIndex") or [],
+                        **{
+                            key: value
+                            for key, value in timeline_evidence.items()
+                            if key not in {"relatedOriginalFiles", "evidenceBoundary"}
+                        },
                     },
                     "options": runtime_options,
                     "skippedLineIdsByOption": {
@@ -1021,6 +1394,15 @@ def collect_dialog_line_option_branches(
                         key=natural_key,
                     ),
                     "commonContinuationLineId": common_continuation,
+                    "relatedOriginalFiles": timeline_evidence[
+                        "relatedOriginalFiles"
+                    ],
+                    "binaryValidation": timeline_evidence[
+                        "binaryValidation"
+                    ],
+                    "evidenceBoundary": timeline_evidence[
+                        "evidenceBoundary"
+                    ],
                 })
                 continue
             excluded.append({
@@ -1897,62 +2279,184 @@ def _dialog_tree_cross_story_conditional_edges(
     candidate_keys: set[str],
     dialog_payloads: list[tuple[str, dict[str, Any]]] | None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Validate hash-locked cross-file DialogTree conditional branches."""
+    """Recover typed DialogTree If-node Story branches from the corpus.
+
+    The installed binary returns the outgoing connection ordinal selected by
+    ``GameCondition.result``.  This value-independent contract is combined
+    with exact serialized parent/child carrier closure; no mission, Story,
+    option, line, or condition allowlist is used to discover a branch.
+    """
     payloads_by_key = {
         safe_key(payload.get("key")): payload
         for _path, payload in dialog_payloads or []
         if isinstance(payload, dict) and safe_key(payload.get("key"))
     }
-    rows_by_pair = {
-        (
-            safe_key(row.get("parentStoryKey")),
-            safe_key(row.get("key")),
-        ): row
-        for row in _story_connection_rows(flow)
-        if isinstance(row, dict)
-    }
     edges: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
-    for (declared_mission, parent_key, child_key), declaration in (
-        DIALOG_TREE_CONDITIONAL_BRANCH_DECLARATIONS.items()
-    ):
-        if declared_mission != mission:
-            continue
-        source_file = declaration["sourceFile"]
-        source_path = ROOT / source_file
+    seen_pairs: set[tuple[str, str, str, str]] = set()
+
+    def source_files(payload: dict[str, Any]) -> list[str]:
+        line_graph = payload.get("lineGraph")
+        if not isinstance(line_graph, dict):
+            return []
+        return sorted({
+            safe_key(source.get("file"))
+            for source in line_graph.get("sources") or []
+            if isinstance(source, dict)
+            and safe_key(source.get("kind")) == "dialogTree"
+            and safe_key(source.get("file"))
+        }, key=natural_key)
+
+    def story_lines(payload: dict[str, Any]) -> set[str]:
+        return {
+            safe_key(line.get("id"))
+            for line in payload.get("lines") or []
+            if isinstance(line, dict) and safe_key(line.get("id"))
+        }
+
+    def resolved(path_text: str) -> Path:
+        return _dialog_tree_resolve_source(path_text)
+
+    def raw_source(path: Path | None) -> dict[str, Any] | None:
+        return _dialog_tree_decode_source(path)
+
+    def ref(value: Any) -> str:
+        return _dialog_tree_ref(value)
+
+    def branch_info(
+        source: dict[str, Any] | None,
+        branch_id: str,
+    ) -> tuple[dict[str, Any], list[tuple[int, str]]]:
+        return _dialog_tree_branch_info(source, branch_id)
+
+    def condition(node: dict[str, Any]) -> dict[str, Any]:
+        return _dialog_tree_condition_payload(node)
+
+    def path_nodes(
+        source: dict[str, Any] | None,
+        indexes: tuple[int, ...],
+    ) -> tuple[str, ...]:
+        if not isinstance(source, dict) or not indexes:
+            return ()
+        connections = source.get("connections") or []
+        pairs: list[tuple[str, str]] = []
+        for index in indexes:
+            if index < 0 or index >= len(connections):
+                return ()
+            item = connections[index]
+            if not isinstance(item, dict):
+                return ()
+            pairs.append((ref(item.get("_sourceNode")), ref(item.get("_targetNode"))))
+        if (
+            not pairs
+            or any(not source_id or not target_id for source_id, target_id in pairs)
+            or any(pairs[index][1] != pairs[index + 1][0] for index in range(len(pairs) - 1))
+        ):
+            return ()
+        return (pairs[0][0],) + tuple(target_id for _source_id, target_id in pairs)
+
+    try:
         game_assembly_path = _configured_game_assembly_path()
-        source_sha256 = (
-            hashlib.sha256(source_path.read_bytes()).hexdigest().upper()
-            if source_path.is_file() else ""
-        )
-        game_assembly_sha256 = (
-            hashlib.sha256(game_assembly_path.read_bytes()).hexdigest().upper()
-            if game_assembly_path.is_file() else ""
-        )
-        row = rows_by_pair.get((parent_key, child_key)) or {}
+    except OSError:
+        # Synthetic/unit-test payloads may not ship the repository path
+        # configuration.  Such rows remain fail-closed without preventing
+        # unrelated missions from being audited.
+        game_assembly_path = None
+    game_assembly_sha256 = (
+        hashlib.sha256(game_assembly_path.read_bytes()).hexdigest().upper()
+        if game_assembly_path is not None and game_assembly_path.is_file() else ""
+    )
+    contract = DIALOG_TREE_IF_BINARY_CONTRACT
+
+    for row in _story_connection_rows(flow):
+        if not isinstance(row, dict):
+            continue
+        if safe_key(row.get("relation")) != "dialog_tree_reachable_story_playback":
+            continue
+        parent_key = safe_key(row.get("parentStoryKey"))
+        child_key = safe_key(row.get("key"))
+        if (
+            not parent_key
+            or not child_key
+            or parent_key == child_key
+            or parent_key not in candidate_keys
+            or child_key not in candidate_keys
+        ):
+            continue
         parent_payload = payloads_by_key.get(parent_key) or {}
         child_payload = payloads_by_key.get(child_key) or {}
-        parent_line_ids = {
-            safe_key(line.get("id"))
-            for line in parent_payload.get("lines") or []
-            if isinstance(line, dict) and safe_key(line.get("id"))
-        }
-        child_line_ids = {
-            safe_key(line.get("id"))
-            for line in child_payload.get("lines") or []
-            if isinstance(line, dict) and safe_key(line.get("id"))
-        }
+        parent_line_ids = story_lines(parent_payload)
+        child_line_ids = story_lines(child_payload)
         carriers = {
             safe_key(carrier.get("carrierValue")): carrier
             for carrier in row.get("dialogTreeStoryPlaybackCarriers") or []
-            if isinstance(carrier, dict)
-            and safe_key(carrier.get("carrierValue"))
+            if isinstance(carrier, dict) and safe_key(carrier.get("carrierValue"))
         }
-        actual_carrier_paths = {
+        if not parent_line_ids or not child_line_ids or not carriers:
+            continue
+        routes: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        for link in parent_payload.get("sceneGraphLinks") or []:
+            if not isinstance(link, dict):
+                continue
+            for option in link.get("options") or []:
+                if not isinstance(option, dict):
+                    continue
+                outcomes = [
+                    outcome for outcome in option.get("conditionalOutcomes") or []
+                    if isinstance(outcome, dict)
+                ]
+                if len(outcomes) != 2:
+                    continue
+                if any(
+                    set(_string_list(outcome.get("pathLineIds"))) <= child_line_ids
+                    and _string_list(outcome.get("pathLineIds"))
+                    for outcome in outcomes
+                ):
+                    routes.append((link, option))
+        # A reachable Story carrier is not itself a conditional route.  Keep
+        # this adapter's diagnostics scoped to explicit two-arm authored
+        # routes; otherwise ordinary trunk continuations look like malformed
+        # branches even though no IfNode claim was made by the source graph.
+        if not routes:
+            continue
+        route_link, route = routes[0] if len(routes) == 1 else ({}, {})
+        outcomes = [
+            outcome for outcome in route.get("conditionalOutcomes") or []
+            if isinstance(outcome, dict)
+        ]
+        child_outcomes = [
+            outcome for outcome in outcomes
+            if set(_string_list(outcome.get("pathLineIds"))) <= child_line_ids
+            and _string_list(outcome.get("pathLineIds"))
+        ]
+        parent_outcomes = [
+            outcome for outcome in outcomes
+            if outcome not in child_outcomes
+            and set(_string_list(outcome.get("pathLineIds"))) <= parent_line_ids
+        ]
+        child_outcome = child_outcomes[0] if len(child_outcomes) == 1 else {}
+        parent_outcome = parent_outcomes[0] if len(parent_outcomes) == 1 else {}
+        debug = route.get("_debug")
+        branch_node_id = safe_key(
+            debug.get("endNodeId") if isinstance(debug, dict) else ""
+        )
+        source_candidates = source_files(parent_payload)
+        source_file = source_candidates[0] if len(source_candidates) == 1 else ""
+        source_path = resolved(source_file) if source_file else None
+        source_payload = raw_source(source_path) if source_file else None
+        source_sha256 = (
+            hashlib.sha256(source_path.read_bytes()).hexdigest().upper()
+            if source_path is not None and source_path.is_file() else ""
+        )
+        node, outgoing = branch_info(source_payload, branch_node_id)
+        outgoing_targets = [target_id for _index, target_id in outgoing]
+        child_target = safe_key(child_outcome.get("targetNodeId"))
+        parent_target = safe_key(parent_outcome.get("targetNodeId"))
+        carrier_paths = {
             line_id: tuple(_string_list(carrier.get("nodePath")))
             for line_id, carrier in carriers.items()
         }
-        actual_connection_indexes = {
+        carrier_indexes = {
             line_id: tuple(
                 int(connection.get("index"))
                 for connection in carrier.get("connectionPath") or []
@@ -1961,106 +2465,116 @@ def _dialog_tree_cross_story_conditional_edges(
             )
             for line_id, carrier in carriers.items()
         }
-        conditional_routes = []
-        for link in parent_payload.get("sceneGraphLinks") or []:
-            if not isinstance(link, dict):
-                continue
-            for option in link.get("options") or []:
-                if (
-                    isinstance(option, dict)
-                    and safe_key(option.get("optionId"))
-                    == declaration["optionId"]
-                ):
-                    conditional_routes.append((link, option))
-        route_link, route = (
-            conditional_routes[0]
-            if len(conditional_routes) == 1 else ({}, {})
-        )
-        outcomes = route.get("conditionalOutcomes") or []
-        actual_outcomes = {
-            safe_key(outcome.get("targetNodeId")): tuple(
-                _string_list(outcome.get("pathLineIds"))
-            )
-            for outcome in outcomes
-            if isinstance(outcome, dict)
-            and safe_key(outcome.get("targetNodeId"))
-        }
-        expected_child_lines = set(declaration["childArmLineIds"])
         current_parent_lines = {
             safe_key(line_id)
             for carrier in carriers.values()
             for line_id in carrier.get("currentParentTrunkIds") or []
             if safe_key(line_id)
         }
-        expected = {
-            "sourceSha256": declaration["sourceSha256"],
-            "gameAssemblySha256": declaration["gameAssemblySha256"],
-            "candidateKeysPresent": True,
-            "relation": "dialog_tree_reachable_story_playback",
-            "confidence": "native_exact_parent_mission_context",
-            "certainty": "authored_reachable",
-            "nativeMappingId": declaration["nativeMappingId"],
-            "parentLineIds": sorted(
-                declaration["parentLineIds"], key=natural_key
-            ),
-            "childLineIds": sorted(expected_child_lines, key=natural_key),
-            "carrierNodePaths": declaration["carrierNodePaths"],
-            "carrierConnectionIndexes": declaration[
-                "carrierConnectionIndexes"
-            ],
-            "optionAfterLineId": declaration["optionAfterLineId"],
-            "branchAfterLineId": declaration["branchAfterLineId"],
-            "branchNodeId": declaration["branchNodeId"],
-            "outcomeKind": "authoredConditionalBranch",
-            "parentOutcome": tuple(declaration["parentArmLineIds"]),
-            # The emitted route stops at the child option node; the exact
-            # carrier closure above proves the terminal third child line.
-            "childOutcomePrefix": tuple(declaration["childArmLineIds"][:2]),
-        }
+        carrier_path_valid = all(
+            path_nodes(source_payload, carrier_indexes.get(line_id, ()))
+            == carrier_paths.get(line_id, ())
+            and branch_node_id in carrier_paths.get(line_id, ())
+            and carrier_paths.get(line_id, ())[-1:]
+            == (safe_key(carrier.get("nodeId")),)
+            for line_id, carrier in carriers.items()
+        )
         actual = {
             "sourceSha256": source_sha256,
             "gameAssemblySha256": game_assembly_sha256,
-            "candidateKeysPresent": {
-                parent_key, child_key
-            } <= candidate_keys,
+            "candidateKeysPresent": parent_key in candidate_keys and child_key in candidate_keys,
             "relation": safe_key(row.get("relation")),
             "confidence": safe_key(row.get("confidence")),
             "certainty": safe_key(row.get("certainty")),
             "nativeMappingId": safe_key(row.get("nativeMappingId")),
             "parentLineIds": sorted(current_parent_lines, key=natural_key),
-            "childLineIds": sorted(child_line_ids, key=natural_key),
-            "carrierNodePaths": actual_carrier_paths,
-            "carrierConnectionIndexes": actual_connection_indexes,
+            "childLineIds": sorted(set(carriers), key=natural_key),
+            "carrierNodePaths": carrier_paths,
+            "carrierConnectionIndexes": carrier_indexes,
             "optionAfterLineId": safe_key(route_link.get("after")),
             "branchAfterLineId": safe_key(route.get("firstLineId")),
-            "branchNodeId": safe_key((route.get("_debug") or {}).get(
-                "endNodeId"
-            )),
+            "branchNodeId": branch_node_id,
+            "conditionTrueTargetNodeId": child_target,
+            "conditionFalseTargetNodeId": parent_target,
             "outcomeKind": safe_key(route.get("outcomeKind")),
-            "parentOutcome": actual_outcomes.get(
-                declaration["conditionFalseTargetNodeId"], ()
-            ),
-            "childOutcomePrefix": actual_outcomes.get(
-                declaration["conditionTrueTargetNodeId"], ()
-            ),
+            "parentOutcome": tuple(_string_list(parent_outcome.get("pathLineIds"))),
+            "childOutcomePrefix": tuple(_string_list(child_outcome.get("pathLineIds"))),
+            "binaryNodeType": safe_key(node.get("$type")),
+            "binaryOutgoingTargetIds": outgoing_targets,
+            "binaryOutgoingIndexes": [index for index, _target in outgoing],
+            "binaryCarrierPathValid": carrier_path_valid,
+            "condition": condition(node),
         }
-        if actual != expected or parent_line_ids != set(
-            declaration["parentLineIds"]
-        ):
+        valid = (
+            len(routes) == 1
+            and len(source_candidates) == 1
+            and source_path is not None
+            and source_path.is_file()
+            and source_payload is not None
+            and game_assembly_sha256 == contract["gameAssemblySha256"]
+            and safe_key(row.get("nativeMappingId"))
+            == "dialog-tree-reachable-story-playback-native-v1"
+            and safe_key(row.get("confidence"))
+            == "native_exact_parent_mission_context"
+            and safe_key(row.get("certainty")) == "authored_reachable"
+            and safe_key(node.get("$type")) == "Beyond.Gameplay.DialogTreeIfNode"
+            and len(outgoing) == 2
+            and outgoing_targets == [parent_target, child_target]
+            and current_parent_lines == parent_line_ids
+            and set(carriers) == child_line_ids
+            and len(child_outcomes) == 1
+            and len(parent_outcomes) == 1
+            and carrier_path_valid
+            and condition(node)
+            and safe_key(route.get("outcomeKind")) == "authoredConditionalBranch"
+        )
+        option_id = safe_key(route.get("optionId"))
+        signature = (mission, parent_key, child_key, option_id)
+        if signature in seen_pairs:
+            continue
+        seen_pairs.add(signature)
+        if not valid:
             warnings.append({
                 "validator": "dialogTreeCrossStoryConditionalBranch",
                 "gate": "exactSerializedBranchCarrierAndNativePolarity",
                 "mission": mission,
                 "storyKeys": [parent_key, child_key],
-                "sourcePaths": [str(source_path), str(game_assembly_path)],
+                "sourcePaths": [
+                    str(path)
+                    for path in (source_path, game_assembly_path)
+                    if path is not None
+                ],
                 "sourceSha256": {
                     source_file: source_sha256,
                     "GameAssembly.dll": game_assembly_sha256,
                 },
-                "expected": expected,
+                "expected": {
+                    "gameAssemblySha256": contract["gameAssemblySha256"],
+                    "binaryMappingId": contract["mappingId"],
+                    "binaryNodeType": "Beyond.Gameplay.DialogTreeIfNode",
+                    "conditionTrueConnectionIndex": contract["conditionTrueConnectionIndex"],
+                    "conditionFalseConnectionIndex": contract["conditionFalseConnectionIndex"],
+                    "completeParentLineCoverage": True,
+                    "completeChildLineCoverage": True,
+                    "carrierPathValid": True,
+                },
                 "actual": actual,
             })
             continue
+        related_original_files = [
+            {
+                "kind": "dialog_tree_source",
+                "sourceFile": source_file,
+                "sha256": source_sha256,
+                "relationship": "exact_serialized_dialog_tree_conditional_branch",
+            },
+            {
+                "kind": "original_game_binary",
+                "sourceFile": str(game_assembly_path.resolve()),
+                "sha256": game_assembly_sha256,
+                "relationship": "DialogTreeIfNode_GetNextIndex_branch_polarity",
+            },
+        ]
         edges.append({
             "from": parent_key,
             "to": child_key,
@@ -2072,27 +2586,847 @@ def _dialog_tree_cross_story_conditional_edges(
             ),
             "sourceFiles": [source_file],
             "sourceSha256": {source_file: source_sha256},
-            "nativeMappingId": declaration["nativeMappingId"],
-            "optionId": declaration["optionId"],
-            "optionAfterLineId": declaration["optionAfterLineId"],
-            "branchAfterLineId": declaration["branchAfterLineId"],
-            "branchNodeId": declaration["branchNodeId"],
-            "parentArmLineIds": list(declaration["parentArmLineIds"]),
-            "childArmLineIds": list(declaration["childArmLineIds"]),
-            "condition": declaration["condition"],
-            "conditionTrueConnectionIndex": declaration[
-                "conditionTrueConnectionIndex"
-            ],
-            "conditionFalseConnectionIndex": declaration[
-                "conditionFalseConnectionIndex"
-            ],
-            "gameAssemblySha256": declaration["gameAssemblySha256"],
-            "nativeConsumers": list(declaration["nativeConsumers"]),
-            "runtimeReplacementPossible": bool(
-                row.get("runtimeReplacementPossible")
-            ),
+            "relatedOriginalFiles": related_original_files,
+            "nativeMappingId": safe_key(row.get("nativeMappingId")),
+            "binaryMappingId": contract["mappingId"],
+            "optionId": option_id,
+            "optionAfterLineId": safe_key(route_link.get("after")),
+            "branchAfterLineId": safe_key(route.get("firstLineId")),
+            "branchNodeId": branch_node_id,
+            "parentLineIds": sorted(parent_line_ids, key=natural_key),
+            "childLineIds": sorted(child_line_ids, key=natural_key),
+            "parentArmLineIds": _string_list(parent_outcome.get("pathLineIds")),
+            "childArmLineIds": sorted(child_line_ids, key=natural_key),
+            "condition": condition(node),
+            "conditionTrueConnectionIndex": contract["conditionTrueConnectionIndex"],
+            "conditionFalseConnectionIndex": contract["conditionFalseConnectionIndex"],
+            "conditionTrueTargetNodeId": child_target,
+            "conditionFalseTargetNodeId": parent_target,
+            "gameAssemblySha256": game_assembly_sha256,
+            "nativeConsumers": list(contract["nativeConsumers"]),
+            "carrierNodePaths": carrier_paths,
+            "carrierConnectionIndexes": carrier_indexes,
+            "runtimeReplacementPossible": bool(row.get("runtimeReplacementPossible")),
         })
     return edges, warnings
+
+
+def _dialog_tree_local_conditional_branches(
+    dialog_payloads: list[tuple[str, dict[str, Any]]] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Audit every same-Story DialogTreeIfNode route in the corpus.
+
+    This is a selection-evidence census, not an order edge.  A row is emitted
+    only when the generated route points at one serialized DialogTreeIfNode,
+    both outcome targets close over the same Story, the original TextAsset can
+    be decoded, and the installed GameAssembly hash matches the generic
+    outgoing-index contract.  Cross-Story arms are intentionally left to the
+    stricter carrier-closure adapter above.
+    """
+    branches: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    try:
+        game_assembly_path = _configured_game_assembly_path()
+    except OSError:
+        game_assembly_path = None
+    game_assembly_sha256 = (
+        hashlib.sha256(game_assembly_path.read_bytes()).hexdigest().upper()
+        if game_assembly_path is not None and game_assembly_path.is_file()
+        else ""
+    )
+    contract = DIALOG_TREE_IF_BINARY_CONTRACT
+
+    def source_file_for(
+        conv: dict[str, Any],
+        link: dict[str, Any],
+    ) -> str:
+        source_debug = (link.get("_debug") or {}).get("source") or {}
+        source_file = safe_key(link.get("file")) or safe_key(
+            source_debug.get("file")
+        )
+        if source_file:
+            return source_file
+        line_graph = conv.get("lineGraph")
+        if not isinstance(line_graph, dict):
+            return ""
+        candidates = sorted({
+            safe_key(source.get("file"))
+            for source in line_graph.get("sources") or []
+            if isinstance(source, dict)
+            and safe_key(source.get("kind")) == "dialogTree"
+            and safe_key(source.get("file"))
+        }, key=natural_key)
+        return candidates[0] if len(candidates) == 1 else ""
+
+    def compact_arm(
+        outcome: dict[str, Any],
+        *,
+        ordinal: int,
+        connection_index: int,
+    ) -> dict[str, Any]:
+        arm = {
+            "connectionOrdinal": ordinal,
+            "connectionIndex": connection_index,
+            "targetNodeId": safe_key(outcome.get("targetNodeId")),
+            "pathNodeIds": _string_list(outcome.get("pathNodeIds")),
+            "firstLineId": safe_key(outcome.get("firstLineId")),
+            "pathLineIds": _string_list(outcome.get("pathLineIds")),
+            "endNodeId": safe_key(outcome.get("endNodeId")),
+            "endNodeType": safe_key(outcome.get("endNodeType")),
+            "terminal": safe_key(outcome.get("terminal")),
+        }
+        return {
+            key: value
+            for key, value in arm.items()
+            if value not in (None, "", [], {})
+        }
+
+    for conversation_file, conv in dialog_payloads or []:
+        if not isinstance(conv, dict):
+            continue
+        story_key = safe_key(conv.get("key"))
+        if not story_key:
+            continue
+        story_line_ids = {
+            safe_key(line.get("id"))
+            for line in conv.get("lines") or []
+            if isinstance(line, dict) and safe_key(line.get("id"))
+        }
+        for link in conv.get("sceneGraphLinks") or []:
+            if not isinstance(link, dict):
+                continue
+            source_key = safe_key(link.get("sourceKey"))
+            if source_key and source_key != story_key:
+                continue
+            source_file = source_file_for(conv, link)
+            for option in link.get("options") or []:
+                if not isinstance(option, dict):
+                    continue
+                if safe_key(option.get("outcomeKind")) != "authoredConditionalBranch":
+                    continue
+                outcomes = [
+                    outcome
+                    for outcome in option.get("conditionalOutcomes") or []
+                    if isinstance(outcome, dict)
+                ]
+                outcome_line_ids = {
+                    line_id
+                    for outcome in outcomes
+                    for line_id in _string_list(outcome.get("pathLineIds"))
+                }
+                # If an arm names another Story's lines, it belongs to the
+                # cross-Story carrier adapter rather than this local census.
+                if outcome_line_ids - story_line_ids:
+                    continue
+                debug = (
+                    option.get("_debug")
+                    if isinstance(option.get("_debug"), dict)
+                    else {}
+                )
+                branch_node_id = safe_key(debug.get("endNodeId"))
+                option_id = safe_key(option.get("optionId"))
+                signature = (story_key, option_id, branch_node_id)
+                if signature in seen:
+                    continue
+                seen.add(signature)
+                source_path = (
+                    _dialog_tree_resolve_source(source_file)
+                    if source_file
+                    else None
+                )
+                source_payload = _dialog_tree_decode_source(source_path)
+                source_sha256 = (
+                    hashlib.sha256(source_path.read_bytes()).hexdigest().upper()
+                    if source_path is not None and source_path.is_file()
+                    else ""
+                )
+                node, outgoing = _dialog_tree_branch_info(
+                    source_payload,
+                    branch_node_id,
+                )
+                outgoing_targets = [target for _index, target in outgoing]
+                outcome_by_target: dict[str, dict[str, Any]] = {}
+                for outcome in outcomes:
+                    target = safe_key(outcome.get("targetNodeId"))
+                    if target and target not in outcome_by_target:
+                        outcome_by_target[target] = outcome
+                false_outcome = (
+                    outcome_by_target.get(outgoing_targets[0])
+                    if len(outgoing_targets) >= 1
+                    else None
+                )
+                true_outcome = (
+                    outcome_by_target.get(outgoing_targets[1])
+                    if len(outgoing_targets) >= 2
+                    else None
+                )
+                route_path_valid = all(
+                    bool(safe_key(outcome.get("targetNodeId")))
+                    and bool(_string_list(outcome.get("pathNodeIds")))
+                    and _string_list(outcome.get("pathNodeIds"))[0]
+                    == safe_key(outcome.get("targetNodeId"))
+                    and (
+                        not safe_key(outcome.get("endNodeId"))
+                        or _string_list(outcome.get("pathNodeIds"))[-1]
+                        == safe_key(outcome.get("endNodeId"))
+                    )
+                    and (
+                        not safe_key(outcome.get("firstLineId"))
+                        or _string_list(outcome.get("pathLineIds"))[:1]
+                        == [safe_key(outcome.get("firstLineId"))]
+                    )
+                    for outcome in outcomes
+                )
+                valid = (
+                    bool(source_file)
+                    and source_path is not None
+                    and source_path.is_file()
+                    and source_payload is not None
+                    and game_assembly_sha256 == contract["gameAssemblySha256"]
+                    and len(outcomes) == 2
+                    and bool(branch_node_id)
+                    and safe_key(node.get("$type"))
+                    == "Beyond.Gameplay.DialogTreeIfNode"
+                    and len(outgoing) == 2
+                    and len(set(outgoing_targets)) == 2
+                    and len(outcome_by_target) == 2
+                    and false_outcome is not None
+                    and true_outcome is not None
+                    and route_path_valid
+                )
+                actual = {
+                    "sourceFile": source_file,
+                    "sourceSha256": source_sha256,
+                    "gameAssemblySha256": game_assembly_sha256,
+                    "storyKey": story_key,
+                    "optionId": option_id,
+                    "branchNodeId": branch_node_id,
+                    "outcomeCount": len(outcomes),
+                    "outcomeTargetNodeIds": [
+                        safe_key(outcome.get("targetNodeId"))
+                        for outcome in outcomes
+                    ],
+                    "binaryNodeType": safe_key(node.get("$type")),
+                    "binaryOutgoingTargetIds": outgoing_targets,
+                    "binaryOutgoingIndexes": [
+                        index for index, _target in outgoing
+                    ],
+                    "routePathValid": route_path_valid,
+                    "condition": _dialog_tree_condition_payload(node),
+                }
+                if not valid:
+                    warnings.append({
+                        "validator": "dialogTreeLocalConditionalBranch",
+                        "gate": "exactSerializedBranchAndNativePolarity",
+                        "storyKey": story_key,
+                        "optionId": option_id,
+                        "sourcePaths": [
+                            str(path)
+                            for path in (source_path, game_assembly_path)
+                            if path is not None
+                        ],
+                        "sourceSha256": {
+                            source_file: source_sha256,
+                            "GameAssembly.dll": game_assembly_sha256,
+                        },
+                        "expected": {
+                            "gameAssemblySha256": contract["gameAssemblySha256"],
+                            "binaryMappingId": contract["mappingId"],
+                            "binaryNodeType": "Beyond.Gameplay.DialogTreeIfNode",
+                            "conditionTrueConnectionIndex": contract[
+                                "conditionTrueConnectionIndex"
+                            ],
+                            "conditionFalseConnectionIndex": contract[
+                                "conditionFalseConnectionIndex"
+                            ],
+                            "outcomeCount": 2,
+                            "outgoingConnectionCount": 2,
+                            "routePathValid": True,
+                        },
+                        "actual": actual,
+                    })
+                    continue
+                related_original_files = [
+                    {
+                        "kind": "dialog_tree_source",
+                        "sourceFile": source_file,
+                        "sha256": source_sha256,
+                        "relationship": "exact_serialized_dialog_tree_local_conditional_branch",
+                    },
+                    {
+                        "kind": "original_game_binary",
+                        "sourceFile": str(game_assembly_path.resolve()),
+                        "sha256": game_assembly_sha256,
+                        "relationship": "DialogTreeIfNode_GetNextIndex_branch_polarity",
+                    },
+                ]
+                branches.append({
+                    "kind": "dialogTreeLocalConditionalBranch",
+                    "storyKey": story_key,
+                    "optionId": option_id,
+                    "after": safe_key(link.get("after")),
+                    "branchNodeId": branch_node_id,
+                    "condition": _dialog_tree_condition_payload(node),
+                    "conditionTrueConnectionIndex": contract[
+                        "conditionTrueConnectionIndex"
+                    ],
+                    "conditionFalseConnectionIndex": contract[
+                        "conditionFalseConnectionIndex"
+                    ],
+                    "conditionTrueTargetNodeId": outgoing_targets[1],
+                    "conditionFalseTargetNodeId": outgoing_targets[0],
+                    "conditionTrueArm": compact_arm(
+                        true_outcome,
+                        ordinal=1,
+                        connection_index=outgoing[1][0],
+                    ),
+                    "conditionFalseArm": compact_arm(
+                        false_outcome,
+                        ordinal=0,
+                        connection_index=outgoing[0][0],
+                    ),
+                    "sourceFiles": [source_file],
+                    "sourceSha256": {source_file: source_sha256},
+                    "relatedOriginalFiles": related_original_files,
+                    "binaryMappingId": contract["mappingId"],
+                    "gameAssemblySha256": game_assembly_sha256,
+                    "nativeConsumers": list(contract["nativeConsumers"]),
+                    "selectionEvidence": (
+                        "exact serialized DialogTreeIfNode route plus current "
+                        "GameAssembly outgoing-index polarity"
+                    ),
+                    "orderEvidence": False,
+                    "evidenceBoundary": (
+                        "Both arms are inside one DialogTree Story file. This "
+                        "proves conditional selection and related originals, "
+                        "not a total order between the arms or a mission trigger."
+                    ),
+                })
+    branches.sort(
+        key=lambda row: (
+            natural_key(safe_key(row.get("storyKey"))),
+            natural_key(safe_key(row.get("optionId"))),
+            natural_key(safe_key(row.get("branchNodeId"))),
+        )
+    )
+    warnings.sort(
+        key=lambda row: (
+            natural_key(safe_key(row.get("storyKey"))),
+            natural_key(safe_key(row.get("optionId"))),
+        )
+    )
+    return branches, warnings
+
+
+def _dialog_tree_source_files(conv: dict[str, Any]) -> list[str]:
+    """Discover exact serialized DialogTree source files for one Story payload."""
+    line_graph = conv.get("lineGraph")
+    line_graph_sources = (
+        line_graph.get("sources") or []
+        if isinstance(line_graph, dict)
+        else []
+    )
+    files = {
+        safe_key(source.get("file"))
+        for source in line_graph_sources
+        if isinstance(source, dict)
+        and safe_key(source.get("kind")) == "dialogTree"
+        and safe_key(source.get("file"))
+    }
+    # Older generated payloads may expose only a scene-link source.  Use that
+    # fallback only when the explicit line-graph source list is absent, so a
+    # link cannot accidentally attach an unrelated asset to a Story.
+    if not files:
+        for link in conv.get("sceneGraphLinks") or []:
+            if not isinstance(link, dict):
+                continue
+            source_debug = link.get("_debug") or {}
+            source = (
+                source_debug.get("source")
+                if isinstance(source_debug, dict)
+                else {}
+            )
+            for value in (
+                link.get("file"),
+                source.get("file") if isinstance(source, dict) else "",
+            ):
+                if safe_key(value):
+                    files.add(safe_key(value))
+    return sorted(files, key=natural_key)
+
+
+def _dialog_tree_advertised_node_ids(
+    conv: dict[str, Any],
+    source_file: str,
+    node_types: set[str],
+) -> set[str]:
+    """Read generated line-graph node ids without trusting them as evidence."""
+    line_graph = conv.get("lineGraph")
+    if not isinstance(line_graph, dict):
+        return set()
+    ids: set[str] = set()
+    for source in line_graph.get("sources") or []:
+        if (
+            not isinstance(source, dict)
+            or safe_key(source.get("kind")) != "dialogTree"
+            or safe_key(source.get("file")) != source_file
+        ):
+            continue
+        for item in source.get("nodes") or []:
+            if (
+                isinstance(item, dict)
+                and safe_key(item.get("type")) in node_types
+                and safe_key(item.get("id"))
+            ):
+                ids.add(safe_key(item.get("id")))
+    return ids
+
+
+def _dialog_tree_target_type_map(
+    source: dict[str, Any] | None,
+) -> dict[str, str]:
+    return {
+        safe_key(item.get("$id")): safe_key(item.get("$type"))
+        for item in (source or {}).get("nodes") or []
+        if isinstance(item, dict)
+        and safe_key(item.get("$id"))
+    }
+
+
+def _dialog_tree_local_branch_nodes(
+    dialog_payloads: list[tuple[str, dict[str, Any]]] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Census every serialized DialogTreeBranchNode in candidate Story files.
+
+    The collector is intentionally source/corpus driven.  It discovers exact
+    TextAsset paths from generated line-graph source records (with scene-link
+    files as a narrow fallback), scans every serialized BranchNode, and joins
+    its ordered ``DialogBranchData.conditions`` list to the ordered outgoing
+    connections.  The installed binary supplies only the generic selection
+    rule; this function never infers mission activation, ownership, or file
+    chronology from branch or connection order.
+    """
+    branches: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    try:
+        game_assembly_path = _configured_game_assembly_path()
+    except OSError:
+        game_assembly_path = None
+    game_assembly_sha256 = (
+        hashlib.sha256(game_assembly_path.read_bytes()).hexdigest().upper()
+        if game_assembly_path is not None and game_assembly_path.is_file()
+        else ""
+    )
+    contract = DIALOG_TREE_BRANCH_BINARY_CONTRACT
+    branch_node_type = "Beyond.Gameplay.DialogTreeBranchNode"
+
+    for conversation_file, conv in dialog_payloads or []:
+        if not isinstance(conv, dict):
+            continue
+        story_key = safe_key(conv.get("key"))
+        if not story_key:
+            continue
+        for source_file in _dialog_tree_source_files(conv):
+            source_path = _dialog_tree_resolve_source(source_file)
+            source_payload = _dialog_tree_decode_source(source_path)
+            source_sha256 = (
+                hashlib.sha256(source_path.read_bytes()).hexdigest().upper()
+                if source_path.is_file()
+                else ""
+            )
+            node_ids = _dialog_tree_advertised_node_ids(
+                conv,
+                source_file,
+                {"DialogTreeBranchNode", branch_node_type},
+            )
+            if isinstance(source_payload, dict):
+                node_ids.update(
+                    safe_key(node.get("$id"))
+                    for node in source_payload.get("nodes") or []
+                    if isinstance(node, dict)
+                    and safe_key(node.get("$type")) == branch_node_type
+                    and safe_key(node.get("$id"))
+                )
+            for branch_node_id in sorted(node_ids, key=natural_key):
+                signature = (story_key, source_file, branch_node_id)
+                if signature in seen:
+                    continue
+                seen.add(signature)
+                node, outgoing = _dialog_tree_branch_info(
+                    source_payload,
+                    branch_node_id,
+                )
+                branch_data = node.get("_dialogBranchData")
+                raw_conditions = (
+                    branch_data.get("conditions")
+                    if isinstance(branch_data, dict)
+                    else None
+                )
+                raw_conditions = raw_conditions if isinstance(raw_conditions, list) else []
+                normalized_conditions = _dialog_tree_branch_conditions(node)
+                targets = [target_id for _index, target_id in outgoing]
+                node_types = _dialog_tree_target_type_map(source_payload)
+                actual = {
+                    "sourceFile": source_file,
+                    "sourceSha256": source_sha256,
+                    "gameAssemblySha256": game_assembly_sha256,
+                    "storyKey": story_key,
+                    "conversationFile": conversation_file,
+                    "branchNodeId": branch_node_id,
+                    "binaryNodeType": safe_key(node.get("$type")),
+                    "conditionCount": len(raw_conditions),
+                    "normalizedConditionCount": len(normalized_conditions),
+                    "outgoingConnectionCount": len(outgoing),
+                    "outgoingConnectionIndexes": [index for index, _target in outgoing],
+                    "outgoingTargetNodeIds": targets,
+                    "outgoingTargetNodeTypes": [node_types.get(target_id, "") for target_id in targets],
+                    "allTargetsNamed": bool(targets) and all(targets),
+                }
+                valid = (
+                    source_path.is_file()
+                    and source_payload is not None
+                    and game_assembly_sha256 == contract["gameAssemblySha256"]
+                    and safe_key(node.get("$type")) == branch_node_type
+                    and isinstance(branch_data, dict)
+                    and isinstance(branch_data.get("conditions"), list)
+                    and len(raw_conditions) > 0
+                    and len(raw_conditions) == len(outgoing)
+                    and len(outgoing) > 0
+                    and all(targets)
+                    and len(normalized_conditions) == len(raw_conditions)
+                )
+                if not valid:
+                    warnings.append({
+                        "validator": "dialogTreeLocalBranchNode",
+                        "gate": "exactSerializedBranchListAndNativeSelection",
+                        "storyKey": story_key,
+                        "conversationFile": conversation_file,
+                        "branchNodeId": branch_node_id,
+                        "sourcePaths": [
+                            str(path)
+                            for path in (source_path, game_assembly_path)
+                            if path is not None
+                        ],
+                        "sourceSha256": {
+                            source_file: source_sha256,
+                            "GameAssembly.dll": game_assembly_sha256,
+                        },
+                        "expected": {
+                            "gameAssemblySha256": contract["gameAssemblySha256"],
+                            "binaryMappingId": contract["mappingId"],
+                            "binaryNodeType": branch_node_type,
+                            "conditionList": True,
+                            "conditionCountEqualsOutgoingCount": True,
+                            "namedOutgoingTargets": True,
+                        },
+                        "actual": actual,
+                    })
+                    continue
+                arms: list[dict[str, Any]] = []
+                for ordinal, condition in enumerate(normalized_conditions):
+                    connection_index, target_node_id = outgoing[ordinal]
+                    arms.append({
+                        "conditionOrdinal": ordinal,
+                        "connectionOrdinal": ordinal,
+                        "connectionIndex": connection_index,
+                        "condition": condition,
+                        "targetNodeId": target_node_id,
+                        "targetNodeType": node_types.get(target_node_id, ""),
+                        "defaultArm": ordinal == contract["defaultConnectionOrdinal"],
+                        "selectionRule": contract["selectionRule"],
+                    })
+                related_original_files = [
+                    {
+                        "kind": "dialog_tree_source",
+                        "sourceFile": source_file,
+                        "sha256": source_sha256,
+                        "relationship": "exact_serialized_dialog_tree_branch_node",
+                    },
+                    {
+                        "kind": "original_game_binary",
+                        "sourceFile": str(game_assembly_path.resolve()),
+                        "sha256": game_assembly_sha256,
+                        "relationship": "DialogManager_GetBranchNextIndex_selection_rule",
+                    },
+                ]
+                branches.append({
+                    "kind": "dialogTreeBranchNode",
+                    "storyKey": story_key,
+                    "conversationFile": conversation_file,
+                    "branchNodeId": branch_node_id,
+                    "nodeType": branch_node_type,
+                    "conditionCount": len(normalized_conditions),
+                    "conditions": [
+                        {
+                            "conditionOrdinal": ordinal,
+                            "condition": condition,
+                        }
+                        for ordinal, condition in enumerate(normalized_conditions)
+                    ],
+                    "arms": arms,
+                    "sourceFiles": [source_file],
+                    "sourceSha256": {source_file: source_sha256},
+                    "relatedOriginalFiles": related_original_files,
+                    "binaryMappingId": contract["mappingId"],
+                    "gameAssemblySha256": game_assembly_sha256,
+                    "nativeConsumers": list(contract["nativeConsumers"]),
+                    "selectionRule": contract["selectionRule"],
+                    "selectionEvidence": (
+                        "exact serialized DialogTreeBranchNode conditions and "
+                        "current GameAssembly DialogManager selection rule"
+                    ),
+                    "orderEvidence": False,
+                    "evidenceBoundary": (
+                        "This proves native selection of an internal DialogTree arm "
+                        "and attaches its original TextAsset/binary. It does not "
+                        "prove a mission trigger, Story ownership, cross-file order, "
+                        "or chronology among sibling arms."
+                    ),
+                })
+    branches.sort(key=lambda row: (
+        natural_key(safe_key(row.get("storyKey"))),
+        natural_key(safe_key(row.get("conversationFile"))),
+        natural_key(safe_key(row.get("branchNodeId"))),
+    ))
+    warnings.sort(key=lambda row: (
+        natural_key(safe_key(row.get("storyKey"))),
+        natural_key(safe_key(row.get("conversationFile"))),
+        natural_key(safe_key(row.get("branchNodeId"))),
+    ))
+    return branches, warnings
+
+
+def _dialog_tree_local_if_nodes(
+    dialog_payloads: list[tuple[str, dict[str, Any]]] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Census every serialized DialogTreeIfNode in candidate Story sources.
+
+    ``sceneGraphLinks`` expose only a subset of internal IfNodes.  This
+    source-driven census keeps the complete serialized node/arm shape visible,
+    while the current-build binary supplies only the generic true/false
+    connection polarity.  It never infers a mission trigger, ownership, or
+    cross-file chronology from an internal connection.
+    """
+    rows: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    try:
+        game_assembly_path = _configured_game_assembly_path()
+    except OSError:
+        game_assembly_path = None
+    game_assembly_sha256 = (
+        hashlib.sha256(game_assembly_path.read_bytes()).hexdigest().upper()
+        if game_assembly_path is not None and game_assembly_path.is_file()
+        else ""
+    )
+    contract = DIALOG_TREE_IF_BINARY_CONTRACT
+    node_type = "Beyond.Gameplay.DialogTreeIfNode"
+    advertised_types = {"DialogTreeIfNode", node_type}
+
+    for conversation_file, conv in dialog_payloads or []:
+        if not isinstance(conv, dict):
+            continue
+        story_key = safe_key(conv.get("key"))
+        if not story_key:
+            continue
+        for source_file in _dialog_tree_source_files(conv):
+            source_path = _dialog_tree_resolve_source(source_file)
+            source_payload = _dialog_tree_decode_source(source_path)
+            source_sha256 = (
+                hashlib.sha256(source_path.read_bytes()).hexdigest().upper()
+                if source_path.is_file()
+                else ""
+            )
+            node_records: dict[str, tuple[str, dict[str, Any], int]] = {}
+            if isinstance(source_payload, dict):
+                for serialized_ordinal, node in enumerate(
+                    source_payload.get("nodes") or []
+                ):
+                    if (
+                        not isinstance(node, dict)
+                        or safe_key(node.get("$type")) != node_type
+                    ):
+                        continue
+                    node_id = safe_key(node.get("$id"))
+                    record_key = node_id or f"@serialized:{serialized_ordinal}"
+                    node_records[record_key] = (
+                        node_id,
+                        node,
+                        serialized_ordinal,
+                    )
+            for advertised_id in _dialog_tree_advertised_node_ids(
+                conv,
+                source_file,
+                advertised_types,
+            ):
+                node_records.setdefault(advertised_id, (advertised_id, {}, -1))
+            for record_key in sorted(node_records, key=natural_key):
+                node_id, node, serialized_ordinal = node_records[record_key]
+                signature = (story_key, source_file, record_key)
+                if signature in seen:
+                    continue
+                seen.add(signature)
+                if_data = node.get("_dialogIfData")
+                raw_condition = (
+                    if_data.get("condition")
+                    if isinstance(if_data, dict)
+                    else None
+                )
+                condition = _dialog_tree_normalize_condition(raw_condition)
+                _serialized_node, outgoing = _dialog_tree_branch_info(
+                    source_payload,
+                    node_id,
+                )
+                targets = [target_id for _index, target_id in outgoing]
+                target_types = _dialog_tree_target_type_map(source_payload)
+                actual = {
+                    "sourceFile": source_file,
+                    "sourceSha256": source_sha256,
+                    "gameAssemblySha256": game_assembly_sha256,
+                    "storyKey": story_key,
+                    "conversationFile": conversation_file,
+                    "branchNodeId": node_id,
+                    "serializedNodeOrdinal": serialized_ordinal,
+                    "binaryNodeType": safe_key(node.get("$type")),
+                    "conditionType": safe_key(raw_condition.get("$type"))
+                    if isinstance(raw_condition, dict)
+                    else "",
+                    "conditionPresent": isinstance(raw_condition, dict),
+                    "outgoingConnectionCount": len(outgoing),
+                    "outgoingConnectionIndexes": [index for index, _target in outgoing],
+                    "outgoingTargetNodeIds": targets,
+                    "outgoingTargetNodeTypes": [
+                        target_types.get(target_id, "") for target_id in targets
+                    ],
+                    "allTargetsNamed": bool(targets) and all(targets),
+                }
+                valid = (
+                    source_path.is_file()
+                    and source_payload is not None
+                    and game_assembly_sha256 == contract["gameAssemblySha256"]
+                    and safe_key(node.get("$type")) == node_type
+                    and bool(node_id)
+                    and isinstance(raw_condition, dict)
+                    and bool(condition)
+                    and len(outgoing) == 2
+                    and len(targets) == 2
+                    and all(targets)
+                )
+                if not valid:
+                    warnings.append({
+                        "validator": "dialogTreeLocalIfNode",
+                        "gate": "exactSerializedIfConditionAndNativePolarity",
+                        "storyKey": story_key,
+                        "conversationFile": conversation_file,
+                        "branchNodeId": node_id,
+                        "serializedNodeOrdinal": serialized_ordinal,
+                        "sourcePaths": [
+                            str(path)
+                            for path in (source_path, game_assembly_path)
+                            if path is not None
+                        ],
+                        "sourceSha256": {
+                            source_file: source_sha256,
+                            "GameAssembly.dll": game_assembly_sha256,
+                        },
+                        "expected": {
+                            "gameAssemblySha256": contract["gameAssemblySha256"],
+                            "binaryMappingId": contract["mappingId"],
+                            "binaryNodeType": node_type,
+                            "conditionObject": True,
+                            "outgoingConnectionCount": 2,
+                            "namedOutgoingTargets": True,
+                            "trueConnectionOrdinal": contract[
+                                "conditionTrueConnectionIndex"
+                            ],
+                            "falseConnectionOrdinal": contract[
+                                "conditionFalseConnectionIndex"
+                            ],
+                        },
+                        "actual": actual,
+                    })
+                    continue
+                arms = [
+                    {
+                        "conditionResult": "not_1",
+                        "connectionOrdinal": contract[
+                            "conditionFalseConnectionIndex"
+                        ],
+                        "connectionIndex": outgoing[0][0],
+                        "targetNodeId": outgoing[0][1],
+                        "targetNodeType": target_types.get(outgoing[0][1], ""),
+                        "defaultArm": True,
+                        "selectionRule": contract["selectionRule"],
+                    },
+                    {
+                        "conditionResult": 1,
+                        "connectionOrdinal": contract[
+                            "conditionTrueConnectionIndex"
+                        ],
+                        "connectionIndex": outgoing[1][0],
+                        "targetNodeId": outgoing[1][1],
+                        "targetNodeType": target_types.get(outgoing[1][1], ""),
+                        "defaultArm": False,
+                        "selectionRule": contract["selectionRule"],
+                    },
+                ]
+                related_original_files = [
+                    {
+                        "kind": "dialog_tree_source",
+                        "sourceFile": source_file,
+                        "sha256": source_sha256,
+                        "relationship": "exact_serialized_dialog_tree_if_node",
+                    },
+                    {
+                        "kind": "original_game_binary",
+                        "sourceFile": str(game_assembly_path.resolve()),
+                        "sha256": game_assembly_sha256,
+                        "relationship": "DialogTreeIfNode_GetNextIndex_polarity",
+                    },
+                ]
+                rows.append({
+                    "kind": "dialogTreeIfNode",
+                    "storyKey": story_key,
+                    "conversationFile": conversation_file,
+                    "branchNodeId": node_id,
+                    "serializedNodeOrdinal": serialized_ordinal,
+                    "nodeType": node_type,
+                    "condition": condition,
+                    "conditionType": safe_key(raw_condition.get("$type")),
+                    "arms": arms,
+                    "sourceFiles": [source_file],
+                    "sourceSha256": {source_file: source_sha256},
+                    "relatedOriginalFiles": related_original_files,
+                    "binaryMappingId": contract["mappingId"],
+                    "gameAssemblySha256": game_assembly_sha256,
+                    "nativeConsumers": list(contract["nativeConsumers"]),
+                    "selectionRule": contract["selectionRule"],
+                    "selectionEvidence": (
+                        "exact serialized DialogTreeIfNode condition and current "
+                        "GameAssembly outgoing-index polarity"
+                    ),
+                    "orderEvidence": False,
+                    "evidenceBoundary": (
+                        "This proves native selection of an internal DialogTree "
+                        "IfNode arm and attaches its original TextAsset/binary. It "
+                        "does not prove a mission trigger, Story ownership, "
+                        "cross-file order, or chronology among sibling arms."
+                    ),
+                })
+    rows.sort(key=lambda row: (
+        natural_key(safe_key(row.get("storyKey"))),
+        natural_key(safe_key(row.get("conversationFile"))),
+        natural_key(safe_key(row.get("branchNodeId"))),
+    ))
+    warnings.sort(key=lambda row: (
+        natural_key(safe_key(row.get("storyKey"))),
+        natural_key(safe_key(row.get("conversationFile"))),
+        natural_key(safe_key(row.get("branchNodeId"))),
+        row.get("serializedNodeOrdinal", -1),
+    ))
+    return rows, warnings
 
 
 def _connection_native_occurrences(row: dict[str, Any]) -> list[dict[str, Any]]:
@@ -2326,6 +3660,8 @@ def _native_transition_kind(
     if (
         edge.startswith("SwitchInt.case[")
         or edge == "SwitchInt.default"
+        or edge.startswith("SwitchIntLarger.case[")
+        or edge == "SwitchIntLarger.default"
         or edge.startswith("SwitchString.case[")
         or edge == "SwitchString.default"
     ):
@@ -3458,9 +4794,183 @@ def _spawner_wave_group_part_killed_story_edges(
     return edges
 
 
+def _native_ordered_sequence_contexts(
+    topology: dict[str, Any],
+    routes: Iterable[tuple[tuple[str, str, int, str], str, tuple[tuple[Any, ...], ...]]],
+) -> list[dict[str, Any]]:
+    """Project exact Story-path coverage onto serialized Branch sequence slots.
+
+    ``decode_levelscript_native_action_topology`` already recovers the complete
+    runtime action map from the original LevelScript.  This helper only joins
+    that map to paths that independently reached a Story playback record.  It
+    never treats an unvisited sibling arm as a Story placement and never emits
+    order edges; the separate ``_native_ordered_branch_sequences`` gate owns
+    that stricter admission.
+    """
+    action_by_local = {
+        int(action.get("localId")): action
+        for action in topology.get("actions") or []
+        if isinstance(action, dict) and isinstance(action.get("localId"), int)
+    }
+    grouped: dict[
+        tuple[int, tuple[int, ...]],
+        dict[str, Any],
+    ] = {}
+    sequence_pattern = re.compile(r"Branch\.sequence\[(\d+)\]")
+    for signature, story_key, path in routes:
+        for index, step in enumerate(path):
+            if (
+                not isinstance(step, tuple)
+                or len(step) < 3
+                or safe_key(step[2]) != "Branch"
+                or index + 1 >= len(path)
+            ):
+                continue
+            branch_local_id = step[0]
+            if not isinstance(branch_local_id, int):
+                continue
+            action = action_by_local.get(branch_local_id)
+            if not action or safe_key(action.get("actionName")) != "Branch":
+                continue
+            next_step = path[index + 1]
+            edge = safe_key(next_step[1])
+            match = sequence_pattern.fullmatch(edge)
+            sequence_index: int | None = int(match.group(1)) if match else None
+            is_exit = edge == "ActionBase.nextId"
+            if sequence_index is None and not is_exit:
+                continue
+            prefix = tuple(
+                int(prefix_step[0])
+                for prefix_step in path[:index]
+                if isinstance(prefix_step, tuple)
+                and isinstance(prefix_step[0], int)
+            )
+            group = grouped.setdefault(
+                (branch_local_id, prefix),
+                {
+                    "action": action,
+                    "routesByIndex": defaultdict(set),
+                    "routePathsByIndex": defaultdict(set),
+                    "eventSelectors": set(),
+                },
+            )
+            ordinal_key = sequence_index if sequence_index is not None else None
+            group["routesByIndex"][ordinal_key].add(story_key)
+            group["routePathsByIndex"][ordinal_key].add(tuple(
+                int(path_step[0])
+                for path_step in path
+                if isinstance(path_step, tuple)
+                and isinstance(path_step[0], int)
+            ))
+            group["eventSelectors"].add(signature)
+
+    contexts: list[dict[str, Any]] = []
+    for (branch_local_id, prefix), group in sorted(
+        grouped.items(),
+        key=lambda item: (item[0][0], item[0][1]),
+    ):
+        action = group["action"]
+        detail = action.get("controlDetail") or {}
+        serialized_refs = [
+            value
+            for value in detail.get("branchSequenceActionLocalIds") or []
+            if isinstance(value, int)
+        ]
+        routes_by_index = group["routesByIndex"]
+        arm_rows = []
+        for sequence_index, entry_local_id in enumerate(serialized_refs):
+            story_keys = sorted(
+                routes_by_index.get(sequence_index) or set(),
+                key=natural_key,
+            )
+            arm_rows.append({
+                "edge": f"Branch.sequence[{sequence_index}]",
+                "sequenceIndex": sequence_index,
+                "entryLocalId": entry_local_id,
+                "storyKeys": story_keys,
+                "observedRouteCount": len(
+                    group["routePathsByIndex"].get(sequence_index) or set()
+                ),
+            })
+        exit_story_keys = sorted(
+            routes_by_index.get(None) or set(),
+            key=natural_key,
+        )
+        if exit_story_keys:
+            arm_rows.append({
+                "edge": "ActionBase.nextId (after sequence)",
+                "sequenceIndex": None,
+                "entryLocalId": action.get("nextActionLocalId"),
+                "storyKeys": exit_story_keys,
+                "observedRouteCount": len(
+                    group["routePathsByIndex"].get(None) or set()
+                ),
+            })
+        story_bearing_arm_count = sum(
+            bool(row["storyKeys"])
+            for row in arm_rows
+            if row.get("sequenceIndex") is not None
+        )
+        observed_arm_count = sum(
+            bool(group["routesByIndex"].get(index))
+            for index in range(len(serialized_refs))
+        )
+        admission_reason = (
+            "one_or_zero_story_bearing_sequence_arms"
+            if story_bearing_arm_count < 2
+            else "multiple_story_bearing_arms_require_global_conflict_check"
+        )
+        contexts.append({
+            "kind": "orderedSequenceContext",
+            "branchLocalId": branch_local_id,
+            "branchPath": list(prefix),
+            "actionName": "Branch",
+            "controlKind": safe_key(action.get("controlKind")),
+            "nativeMappingId": safe_key(action.get("controlRuntimeMappingId")),
+            "serializedArmCount": len(serialized_refs),
+            "observedSequenceArmCount": observed_arm_count,
+            "storyBearingArmCount": story_bearing_arm_count,
+            "arms": arm_rows,
+            "storyOrderAdmission": "not_admitted",
+            "admissionReason": admission_reason,
+            "eventSelectors": [
+                {
+                    "levelId": signature[0],
+                    "scriptId": signature[1],
+                    "headerLocalId": signature[2],
+                    "eventName": signature[3],
+                }
+                for signature in sorted(
+                    group["eventSelectors"],
+                    key=lambda value: tuple(natural_key(str(item)) for item in value),
+                )
+            ],
+            "runtimeMappingId": BRANCH_SEQUENCE_RUNTIME["mappingId"],
+            "gameAssemblySha256": BRANCH_SEQUENCE_GAME_ASSEMBLY_SHA256,
+            "nativeConsumers": [{
+                "method": "Beyond.Gameplay.Actions.Branch.Execute",
+                "address": "0x18764d990",
+                "contract": (
+                    "dispatches _idList[m_index], reserves Branch for the next "
+                    "item, then resumes ActionBase.nextId after the list"
+                ),
+            }],
+            "evidenceBoundary": (
+                "The original serialized Branch slots and exact Story playback "
+                "paths identify which sequence arms are observed. A missing Story "
+                "in a sibling arm is not proof that the arm is empty at runtime; "
+                "this context therefore does not create Story order or ownership."
+            ),
+        })
+    return contexts
+
+
 def _native_related_action_topologies(
     flow: dict[str, Any],
     candidate_keys: set[str],
+    *,
+    mission: str = "",
+    original_binary_contract: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Attach compact graphs only for exact Story-bearing native paths.
 
@@ -3469,15 +4979,16 @@ def _native_related_action_topologies(
     never admit a file into a mission.
     """
     related: dict[str, dict[str, set[Any]]] = defaultdict(
-        lambda: {"storyKeys": set(), "events": set()}
+        lambda: {"storyKeys": set(), "events": set(), "routes": set()}
     )
     for signature, routes in _native_event_story_paths(flow, candidate_keys).items():
-        for story_key, _path, source_files, _detail, _downstream in routes:
+        for story_key, path, source_files, _detail, _downstream in routes:
             for source_file in source_files:
                 if "LevelScriptData" not in source_file:
                     continue
                 related[source_file]["storyKeys"].add(story_key)
                 related[source_file]["events"].add(signature)
+                related[source_file]["routes"].add((signature, story_key, path))
 
     rows: list[dict[str, Any]] = []
     for source_file, context in sorted(
@@ -3498,6 +5009,10 @@ def _native_related_action_topologies(
             except OSError:
                 continue
         topology, diagnostic = _NATIVE_ACTION_TOPOLOGY_CACHE[cache_key]
+        route_contexts = _native_ordered_sequence_contexts(
+            topology,
+            context["routes"],
+        )
         selected_header_ids = {
             int(signature[2])
             for signature in context["events"]
@@ -3548,6 +5063,15 @@ def _native_related_action_topologies(
             "status": topology.get("status"),
             "sourceFile": source_file,
             "relatedStoryKeys": sorted(context["storyKeys"], key=natural_key),
+            "orderedSequenceContexts": route_contexts,
+            "relatedOriginalFiles": _related_original_branch_files(
+                mission,
+                [source_file],
+                original_binary_contract,
+                level_relationship="exact_native_story_path_related_levelscript",
+                mission_relationship="exact_native_story_path_mission_context",
+                binary_relationship="native_action_topology_binary_authority",
+            ),
             "eventSelectors": [
                 {
                     "levelId": signature[0],
@@ -3792,10 +5316,19 @@ def _native_branch_kind(edge: str) -> str:
         return "splitFanout"
     if edge in {"IfElseAction.trueAction", "IfElseAction.falseAction"}:
         return "ifElse"
+    if edge.startswith("SwitchIntLarger.case[") or edge == "SwitchIntLarger.default":
+        return "switchIntLarger"
     if edge.startswith("SwitchInt.case[") or edge == "SwitchInt.default":
         return "switch"
     if edge.startswith("SwitchString.case[") or edge == "SwitchString.default":
         return "switch"
+    if edge == "WhileAction.doAction":
+        return "while"
+    if edge in {
+        "WaitForSecondsInTriggerVolume.successAction",
+        "WaitForSecondsInTriggerVolume.failAction",
+    }:
+        return "waitTriggerVolume"
     return ""
 
 
@@ -3804,22 +5337,102 @@ def _native_branch_runtime_mapping(
     arms: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Resolve a typed branch family to its installed-binary runtime mapping."""
-    pair: tuple[int, int] | None = None
-    if branch_kind == "splitFanout":
-        pair = (0x0495, 0x09)
-    elif branch_kind == "ifElse":
-        pair = (0x00FF, 0x0B)
-    elif branch_kind == "switch":
+    family_by_kind = {
+        "splitFanout": "Split",
+        "ifElse": "IfElseAction",
+        "switch": "",
+        "switchIntLarger": "SwitchIntLarger",
+        "while": "WhileAction",
+        "waitTriggerVolume": "WaitForSecondsInTriggerVolume",
+    }
+    action_name = family_by_kind.get(branch_kind, "")
+    if branch_kind == "switch":
         edges = {
             safe_key(arm.get("edge"))
             for arm in arms
             if isinstance(arm, dict)
         }
         if edges and all(edge.startswith("SwitchInt.") for edge in edges):
-            pair = (0x04BD, 0x0C)
+            action_name = "SwitchInt"
+        elif edges and all(edge.startswith("SwitchIntLarger.") for edge in edges):
+            action_name = "SwitchIntLarger"
         elif edges and all(edge.startswith("SwitchString.") for edge in edges):
-            pair = (0x04BF, 0x0C)
-    return dict(LEVELSCRIPT_NATIVE_CONTROL_RUNTIME_MAPPINGS.get(pair) or {})
+            action_name = "SwitchString"
+    for pair, name in LEVELSCRIPT_NATIVE_ACTION_NAMES.items():
+        if name != action_name:
+            continue
+        mapping = LEVELSCRIPT_NATIVE_CONTROL_RUNTIME_MAPPINGS.get(pair)
+        if mapping:
+            return dict(mapping)
+    return {}
+
+
+# Serialized arm schemas are family-level declarations, not per-object
+# overrides.  The fields are emitted by the original LevelScript decoder and
+# the edge labels match the installed successor decoder in level_bindings.py.
+# Keeping this table data-driven makes the projection reusable for every
+# serialized action map and makes a missing field visible instead of silently
+# dropping a control.
+NATIVE_CONTROL_ARM_SCHEMAS: dict[str, dict[str, Any]] = {
+    "Branch": {
+        "kind": "indexed",
+        "field": "branchSequenceActionLocalIds",
+        "edgePrefix": "Branch.sequence",
+    },
+    "Split": {
+        "kind": "indexed",
+        "field": "splitActionLocalIds",
+        "edgePrefix": "Split.actions",
+    },
+    "IfElseAction": {
+        "kind": "fields",
+        "fields": (
+            ("trueActionLocalId", "IfElseAction.trueAction"),
+            ("falseActionLocalId", "IfElseAction.falseAction"),
+        ),
+    },
+    "SwitchInt": {
+        "kind": "switch",
+        "caseValues": "switchCaseValues",
+        "caseTargets": "switchCaseActionLocalIds",
+        "defaultField": "switchDefaultActionLocalId",
+        "edgePrefix": "SwitchInt.case",
+        "defaultEdge": "SwitchInt.default",
+    },
+    "SwitchIntLarger": {
+        "kind": "switch",
+        "caseValues": "switchIntLargerCaseValues",
+        "caseTargets": "switchIntLargerCaseActionLocalIds",
+        "defaultField": "switchIntLargerDefaultActionLocalId",
+        "edgePrefix": "SwitchIntLarger.case",
+        "defaultEdge": "SwitchIntLarger.default",
+    },
+    "SwitchString": {
+        "kind": "switch",
+        "caseValues": "switchStringCaseValues",
+        "caseTargets": "switchStringCaseActionLocalIds",
+        "defaultField": "switchStringDefaultActionLocalId",
+        "edgePrefix": "SwitchString.case",
+        "defaultEdge": "SwitchString.default",
+    },
+    "WhileAction": {
+        "kind": "fields",
+        "fields": (("whileDoActionLocalId", "WhileAction.doAction"),),
+    },
+    "WaitForSecondsInTriggerVolume": {
+        "kind": "fields",
+        "fields": (
+            (
+                "waitSuccessActionLocalId",
+                "WaitForSecondsInTriggerVolume.successAction",
+            ),
+            (
+                "waitFailActionLocalId",
+                "WaitForSecondsInTriggerVolume.failAction",
+            ),
+        ),
+    },
+}
 
 
 def _serialized_native_control_arm_slots(
@@ -3833,38 +5446,57 @@ def _serialized_native_control_arm_slots(
     """
     detail = action.get("controlDetail") or {}
     action_name = safe_key(action.get("actionName"))
+    schema = NATIVE_CONTROL_ARM_SCHEMAS.get(action_name)
+    if not schema:
+        return []
     slots: list[dict[str, Any]] = []
-    if action_name == "Split":
+    if schema.get("kind") == "indexed":
+        field = safe_key(schema.get("field"))
+        values = detail.get(field)
+        if not isinstance(values, list):
+            return []
+        edge_prefix = safe_key(schema.get("edgePrefix"))
         slots.extend({
-            "edge": f"Split.actions[{index}]",
+            "edge": f"{edge_prefix}[{index}]",
             "entryLocalId": local_id,
             "serializedIndex": index,
-        } for index, local_id in enumerate(detail.get("splitActionLocalIds") or []))
-    elif action_name == "IfElseAction":
+            "serializedField": field,
+            "serializedFieldPresent": True,
+        } for index, local_id in enumerate(values))
+    elif schema.get("kind") == "fields":
         slots.extend({
             "edge": edge,
             "entryLocalId": detail.get(field),
             "serializedField": field,
             "serializedFieldPresent": field in detail,
-        } for field, edge in (
-            ("trueActionLocalId", "IfElseAction.trueAction"),
-            ("falseActionLocalId", "IfElseAction.falseAction"),
-        ))
-    elif action_name in {"SwitchInt", "SwitchString"}:
-        prefix = "switch" if action_name == "SwitchInt" else "switchString"
-        case_ids = detail.get(f"{prefix}CaseActionLocalIds") or []
-        case_values = detail.get(f"{prefix}CaseValues") or []
-        slots.extend({
-            "edge": f"{action_name}.case[{index}]={case_value}",
-            "entryLocalId": local_id,
-            "serializedIndex": index,
-            "caseValue": case_value,
-        } for index, (case_value, local_id) in enumerate(zip(case_values, case_ids)))
+        } for field, edge in schema.get("fields") or ())
+    elif schema.get("kind") == "switch":
+        case_ids = detail.get(safe_key(schema.get("caseTargets")))
+        case_values = detail.get(safe_key(schema.get("caseValues")))
+        case_ids = case_ids if isinstance(case_ids, list) else []
+        case_values = case_values if isinstance(case_values, list) else []
+        edge_prefix = safe_key(schema.get("edgePrefix"))
+        for index in range(max(len(case_values), len(case_ids))):
+            has_value = index < len(case_values)
+            has_target = index < len(case_ids)
+            case_value = case_values[index] if has_value else None
+            local_id = case_ids[index] if has_target else None
+            slots.append({
+                "edge": f"{edge_prefix}[{index}]={case_value}",
+                "entryLocalId": local_id,
+                "serializedIndex": index,
+                "caseValue": case_value,
+                "serializedField": safe_key(schema.get("caseTargets")),
+                "serializedFieldPresent": has_target and has_value,
+                "serializedCaseValuePresent": has_value,
+                "serializedTargetPresent": has_target,
+            })
+        default_field = safe_key(schema.get("defaultField"))
         slots.append({
-            "edge": f"{action_name}.default",
-            "entryLocalId": detail.get(f"{prefix}DefaultActionLocalId"),
-            "serializedField": f"{prefix}DefaultActionLocalId",
-            "serializedFieldPresent": f"{prefix}DefaultActionLocalId" in detail,
+            "edge": safe_key(schema.get("defaultEdge")),
+            "entryLocalId": detail.get(default_field),
+            "serializedField": default_field,
+            "serializedFieldPresent": default_field in detail,
         })
     return slots
 
@@ -3884,6 +5516,320 @@ def _compact_native_action(action: dict[str, Any]) -> dict[str, Any]:
             "controlRuntimeMappingId",
         )
         if action.get(key) not in (None, "", [], {})
+    }
+
+
+def _native_serialized_branch_arm_projection(
+    topology: dict[str, Any],
+    action: dict[str, Any],
+    playback_by_local: dict[int, set[str]] | None = None,
+    control_predicates_by_local: dict[int, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Project one serialized ``Branch._idList`` without inferring ownership.
+
+    The projection is intentionally independent of mission names and filename
+    order.  It follows only the decoded action adjacency and joins exact
+    playback records supplied by ``build_levelscript_action_story_occurrences``.
+    This makes it reusable for the complete original LevelScript corpus and
+    keeps sibling arms visible even when no Story record is reachable from an
+    arm. When an exact Story path supplies a decoded predicate, that predicate
+    is attached to the nested control without promoting it to ownership/order.
+    """
+    playback_by_local = playback_by_local or {}
+    control_predicates_by_local = control_predicates_by_local or {}
+    branch_local_id = action.get("localId")
+    detail = action.get("controlDetail") or {}
+    serialized_refs = detail.get("branchSequenceActionLocalIds")
+    if not isinstance(serialized_refs, list):
+        serialized_refs = []
+    action_by_local = {
+        int(row.get("localId")): row
+        for row in topology.get("actions") or []
+        if isinstance(row, dict) and isinstance(row.get("localId"), int)
+    }
+    action_edges = [
+        row for row in topology.get("edges") or []
+        if isinstance(row, dict) and row.get("sourceKind") == "action"
+    ]
+    adjacency: dict[int, set[int]] = defaultdict(set)
+    for edge in action_edges:
+        source = edge.get("sourceLocalId")
+        target = edge.get("targetActionLocalId")
+        if isinstance(source, int) and isinstance(target, int):
+            adjacency[source].add(target)
+    active_edge_keys = {
+        (
+            edge.get("sourceLocalId"),
+            safe_key(edge.get("relation")),
+            edge.get("targetActionLocalId"),
+        )
+        for edge in action_edges
+        if isinstance(edge.get("sourceLocalId"), int)
+        and isinstance(edge.get("targetActionLocalId"), int)
+    }
+    terminal_edge_keys = {
+        (
+            edge.get("sourceLocalId"),
+            safe_key(edge.get("relation")),
+            edge.get("targetActionLocalId"),
+        ): edge
+        for edge in topology.get("runtimeTerminalTargets") or []
+        if isinstance(edge, dict)
+        and isinstance(edge.get("sourceLocalId"), int)
+    }
+    branch_targets = {
+        (
+            safe_key(edge.get("relation")),
+            edge.get("targetActionLocalId"),
+        ): edge
+        for edge in action_edges
+        if edge.get("sourceLocalId") == branch_local_id
+    }
+    branch_terminals = {
+        (
+            safe_key(edge.get("relation")),
+            edge.get("targetActionLocalId"),
+        ): edge
+        for edge in topology.get("runtimeTerminalTargets") or []
+        if isinstance(edge, dict)
+        and edge.get("sourceKind") == "action"
+        and edge.get("sourceLocalId") == branch_local_id
+    }
+
+    def target_status(
+        source_local_id: Any,
+        relation: str,
+        target: Any,
+    ) -> tuple[str, dict[str, Any] | None]:
+        if not isinstance(target, int) or target <= 0:
+            return "inactive_serialized_target", None
+        key = (source_local_id, relation, target)
+        if key in active_edge_keys and target in action_by_local:
+            return "exact_active_action", None
+        if key in terminal_edge_keys:
+            return "missing_runtime_action_slot", terminal_edge_keys[key]
+        return "unavailable_fail_closed", None
+
+    def root_target_status(
+        relation: str,
+        target: Any,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Resolve a serialized root Branch edge against exact decoded links."""
+        key = (relation, target)
+        if key in branch_targets and target in action_by_local:
+            return "exact_active_action", None
+        if key in branch_terminals:
+            return "missing_runtime_action_slot", branch_terminals[key]
+        return target_status(branch_local_id, relation, target)
+
+    def downstream(target: Any) -> set[int]:
+        if not isinstance(target, int) or target <= 0:
+            return set()
+        pending = [target]
+        reached: set[int] = set()
+        while pending:
+            current = pending.pop()
+            if current in reached or current == branch_local_id:
+                continue
+            reached.add(current)
+            pending.extend(adjacency.get(current) or [])
+        return reached
+
+    def reachable_semantics(local_ids: set[int]) -> tuple[list[str], list[str]]:
+        """Return exact native names/classes for an arm's decoded action set.
+
+        These labels come from the original action-map decoder.  They are a
+        bounded semantic summary of the sibling arm, not an inferred Story
+        relationship or a filename/order hint.
+        """
+        action_names = sorted({
+            safe_key(action_by_local[local_id].get("actionName"))
+            for local_id in local_ids
+            if local_id in action_by_local
+            and safe_key(action_by_local[local_id].get("actionName"))
+        }, key=natural_key)
+        record_classes = sorted({
+            safe_key(action_by_local[local_id].get("recordClass"))
+            for local_id in local_ids
+            if local_id in action_by_local
+            and safe_key(action_by_local[local_id].get("recordClass"))
+        }, key=natural_key)
+        return action_names, record_classes
+
+    def reachable_control_ids(local_ids: set[int]) -> list[int]:
+        """Return typed control locals reached by one exact action projection."""
+        return sorted(
+            local_id
+            for local_id in local_ids
+            if safe_key(action_by_local.get(local_id, {}).get("actionName"))
+            in NATIVE_TYPED_CONTROL_ACTION_NAMES
+        )
+
+    def playback_projection(local_ids: set[int]) -> tuple[list[int], list[str]]:
+        playback_local_ids = sorted(
+            local_id for local_id in local_ids if local_id in playback_by_local
+        )
+        playback_keys = sorted({
+            story_key
+            for local_id in playback_local_ids
+            for story_key in playback_by_local.get(local_id) or set()
+            if safe_key(story_key)
+        }, key=natural_key)
+        return playback_local_ids, playback_keys
+
+    def nested_controls(local_ids: set[int]) -> list[dict[str, Any]]:
+        """Expose typed controls nested inside one ordered Branch arm."""
+        controls: list[dict[str, Any]] = []
+        for local_id in sorted(local_ids):
+            nested = action_by_local.get(local_id) or {}
+            if safe_key(nested.get("actionName")) not in NATIVE_TYPED_CONTROL_ACTION_NAMES:
+                continue
+            slots = _serialized_native_control_arm_slots(nested)
+            control = _compact_native_action(nested)
+            detail = nested.get("controlDetail") or {}
+            if isinstance(detail, dict):
+                control["controlDetail"] = dict(detail)
+            predicate = control_predicates_by_local.get(local_id)
+            if isinstance(predicate, dict):
+                control["predicate"] = dict(predicate)
+            control["arms"] = []
+            if not slots:
+                # A mapped control with no decodable arm list is still useful
+                # evidence: it marks a schema/decoder gap rather than
+                # disappearing from the branch topology.
+                control.update({
+                    "serializedArmCount": 0,
+                    "armSchemaStatus": "unavailable_fail_closed",
+                    "armSchemaDiagnostic": {
+                        "validator": "nativeSerializedControlArmSchema",
+                        "gate": "mappedControlArmFieldsPresent",
+                        "actionName": safe_key(nested.get("actionName")),
+                        "localId": local_id,
+                        "expected": "family schema fields decodable",
+                        "actual": {
+                            "controlDetailFields": sorted(
+                                detail.keys()
+                            ) if isinstance(detail, dict) else [],
+                        },
+                    },
+                })
+                controls.append(control)
+                continue
+            for slot in slots:
+                relation = safe_key(slot.get("edge"))
+                target = slot.get("entryLocalId")
+                if slot.get("serializedFieldPresent") is False:
+                    status, terminal = "unavailable_fail_closed", None
+                else:
+                    status, terminal = target_status(local_id, relation, target)
+                reached = downstream(target)
+                action_names, record_classes = reachable_semantics(reached)
+                playback_local_ids, playback_keys = playback_projection(reached)
+                nested_arm = dict(slot)
+                nested_arm.update({
+                    "targetStatus": status,
+                    "reachableActionCount": len(reached),
+                    "reachableActionNames": action_names,
+                    "reachableRecordClasses": record_classes,
+                    "reachableControlLocalIds": reachable_control_ids(reached),
+                    "playbackActionLocalIds": playback_local_ids,
+                    "playbackStoryKeys": playback_keys,
+                })
+                if terminal:
+                    nested_arm["runtimeTerminal"] = terminal
+                control["arms"].append(nested_arm)
+            control["serializedArmCount"] = len(control["arms"])
+            control["armSchemaStatus"] = "exact_complete"
+            control["reachableControlLocalIds"] = sorted({
+                child_id
+                for nested_arm in control["arms"]
+                for child_id in nested_arm.get("reachableControlLocalIds") or []
+                if child_id != local_id
+            })
+            control["playbackArmCount"] = sum(
+                bool(nested_arm.get("playbackStoryKeys"))
+                for nested_arm in control["arms"]
+            )
+            control["playbackStoryKeys"] = sorted({
+                story_key
+                for nested_arm in control["arms"]
+                for story_key in nested_arm.get("playbackStoryKeys") or []
+                if safe_key(story_key)
+            }, key=natural_key)
+            control["branchingStatus"] = (
+                "multi_playback_arms"
+                if control["playbackArmCount"] >= 2
+                else "single_playback_arm"
+                if control["playbackArmCount"] == 1
+                else "no_playback"
+            )
+            control["playbackPredicateStatus"] = (
+                "not_applicable"
+                if not control["playbackArmCount"]
+                or control.get("controlKind") == "parallel_fanout"
+                else "exact_unique_getter"
+                if isinstance(control.get("predicate"), dict)
+                else "unresolved_playback_predicate"
+            )
+            controls.append(control)
+        return controls
+
+    arms: list[dict[str, Any]] = []
+    for sequence_index, entry_local_id in enumerate(serialized_refs):
+        relation = f"Branch.sequence[{sequence_index}]"
+        status, terminal = root_target_status(relation, entry_local_id)
+        reached = downstream(entry_local_id)
+        reachable_action_names, reachable_record_classes = reachable_semantics(reached)
+        playback_local_ids, playback_keys = playback_projection(reached)
+        row: dict[str, Any] = {
+            "edge": relation,
+            "sequenceIndex": sequence_index,
+            "entryLocalId": entry_local_id,
+            "targetStatus": status,
+            "reachableActionCount": len(reached),
+            "reachableActionNames": reachable_action_names,
+            "reachableRecordClasses": reachable_record_classes,
+            "reachableControlLocalIds": reachable_control_ids(reached),
+            "nestedControls": nested_controls(reached),
+            "playbackActionLocalIds": playback_local_ids,
+            "playbackStoryKeys": playback_keys,
+        }
+        if status == "exact_active_action" and entry_local_id in action_by_local:
+            row["entryAction"] = _compact_native_action(
+                action_by_local[entry_local_id]
+            )
+        if terminal:
+            row["runtimeTerminal"] = terminal
+        arms.append(row)
+
+    exit_target = action.get("nextActionLocalId")
+    exit_status, exit_terminal = root_target_status("ActionBase.nextId", exit_target)
+    exit_row: dict[str, Any] = {
+        "edge": "ActionBase.nextId (after sequence)",
+        "entryLocalId": exit_target,
+        "targetStatus": exit_status,
+    }
+    if exit_status == "exact_active_action" and exit_target in action_by_local:
+        exit_row["entryAction"] = _compact_native_action(
+            action_by_local[exit_target]
+        )
+    if exit_terminal:
+        exit_row["runtimeTerminal"] = exit_terminal
+
+    return {
+        "branchLocalId": branch_local_id,
+        "runtimeMappingId": safe_key(action.get("controlRuntimeMappingId")),
+        "serializedArmCount": len(arms),
+        "arms": arms,
+        "exit": exit_row,
+        "playbackArmCount": sum(
+            bool(row.get("playbackStoryKeys")) for row in arms
+        ),
+        "playbackStoryKeys": sorted({
+            story_key
+            for row in arms
+            for story_key in row.get("playbackStoryKeys") or []
+        }, key=natural_key),
     }
 
 
@@ -4002,17 +5948,17 @@ def _full_native_branch_arm_context(
                     "expected": ["trueActionLocalId", "falseActionLocalId"],
                     "actualMissing": missing_fields,
                 })
-        if action_name in {"SwitchInt", "SwitchString"}:
-            prefix = "switch" if action_name == "SwitchInt" else "switchString"
-            case_values = detail.get(f"{prefix}CaseValues") or []
-            case_ids = detail.get(f"{prefix}CaseActionLocalIds") or []
+        if action_name in {"SwitchInt", "SwitchIntLarger", "SwitchString"}:
+            schema = NATIVE_CONTROL_ARM_SCHEMAS[action_name]
+            case_values = detail.get(schema["caseValues"]) or []
+            case_ids = detail.get(schema["caseTargets"]) or []
             if len(case_values) != len(case_ids):
                 slot_schema_failures.append({
                     "check": "switchCaseValueTargetCardinality",
                     "expected": len(case_values),
                     "actual": len(case_ids),
                 })
-            default_field = f"{prefix}DefaultActionLocalId"
+            default_field = schema["defaultField"]
             if default_field not in detail:
                 slot_schema_failures.append({
                     "check": "switchDefaultFieldPresent",
@@ -4517,6 +6463,535 @@ def _related_original_branch_files(
     return related
 
 
+def _native_serialized_branch_inventory_not_requested() -> dict[str, Any]:
+    return {
+        "schema": NATIVE_SERIALIZED_BRANCH_INVENTORY_SCHEMA,
+        "status": "not_requested",
+        "summary": {
+            "sourcePathCount": 0,
+            "uniqueContentFileCount": 0,
+            "duplicatePathCount": 0,
+            "serializedBranchGroupCount": 0,
+            "serializedBranchArmCount": 0,
+            "playbackArmCount": 0,
+            "multiPlaybackBranchCount": 0,
+            "nestedControlCount": 0,
+            "nestedPlaybackArmCount": 0,
+            "nestedMultiPlaybackControlCount": 0,
+            "nestedPlaybackControlCount": 0,
+            "nestedPlaybackPredicateGapCount": 0,
+            "nestedControlReferenceCount": 0,
+            "nestedSerializedArmCount": 0,
+            "nestedExactActiveArmCount": 0,
+            "nestedInactiveArmCount": 0,
+            "nestedRuntimeTerminalArmCount": 0,
+            "nestedUnavailableArmCount": 0,
+            "typedControlGroupCount": 0,
+            "typedControlFamilyCounts": {},
+            "controlPredicateConflictCount": 0,
+            "validationFailureCount": 0,
+        },
+        "rows": [],
+        "validationFailures": [],
+        "evidenceBoundary": (
+            "The complete original LevelScript corpus is scanned only for a full "
+            "report build; a mission-filtered report keeps this inventory absent "
+            "rather than presenting a partial census as complete."
+        ),
+    }
+
+
+def _native_serialized_branch_inventory(
+    *,
+    original_binary_contract: dict[str, Any] | None = None,
+    playback_occurrences_by_root: dict[Path, dict[str, list[dict]]] | None = None,
+) -> dict[str, Any]:
+    """Audit every serialized Branch in both original LevelScript roots.
+
+    StreamingAssets and Persistent are treated as source copies, not separate
+    gameplay instances. Branch groups are deduplicated by original file hash
+    and local action id, while every source path remains attached for audit.
+    Playback is joined only from the exact action-class decoder; arbitrary text
+    identifiers never participate.
+    """
+    failures: list[dict[str, Any]] = []
+    file_rows: list[dict[str, Any]] = []
+    hash_to_paths: dict[str, set[str]] = defaultdict(set)
+    path_to_hash: dict[str, str] = {}
+    topology_by_hash: dict[str, tuple[dict, dict | None]] = {}
+    for root in NATIVE_LEVELSCRIPT_ROOTS:
+        root_rel = root.relative_to(ROOT).as_posix()
+        if not root.is_dir():
+            failures.append({
+                "validator": "nativeSerializedBranchInventory",
+                "gate": "sourceRootExists",
+                "sourceRoot": root_rel,
+                "expected": "directory",
+                "actual": "missing",
+            })
+            continue
+        for path in sorted(
+            root.rglob("*.json"),
+            key=lambda item: natural_key(item.relative_to(root).as_posix()),
+        ):
+            try:
+                blob = path.read_bytes()
+            except OSError as error:
+                failures.append({
+                    "validator": "nativeSerializedBranchInventory",
+                    "gate": "sourceFileReadable",
+                    "sourceFile": path.relative_to(ROOT).as_posix(),
+                    "expected": "readable",
+                    "actual": type(error).__name__,
+                })
+                continue
+            source_file = path.relative_to(ROOT).as_posix()
+            digest = hashlib.sha256(blob).hexdigest()
+            resolved_key = path.resolve().as_posix().lower()
+            path_to_hash[resolved_key] = digest
+            hash_to_paths[digest].add(source_file)
+            relative_parts = path.relative_to(root).parts
+            file_rows.append({
+                "path": path,
+                "sourceFile": source_file,
+                "sha256": digest,
+                "levelId": relative_parts[0] if len(relative_parts) > 1 else "",
+                "scriptId": path.stem,
+            })
+            if digest not in topology_by_hash:
+                topology_by_hash[digest] = (
+                    decode_levelscript_native_action_topology(blob)
+                )
+
+    playback_by_hash_local: dict[tuple[str, int], set[str]] = defaultdict(set)
+    control_predicate_variants: dict[tuple[str, int], set[str]] = defaultdict(set)
+    playback_join_misses = 0
+    occurrence_roots = dict(playback_occurrences_by_root or {})
+    for root in NATIVE_LEVELSCRIPT_ROOTS:
+        if root not in occurrence_roots:
+            occurrence_roots[root] = build_levelscript_action_story_occurrences(root)
+        for story_key, occurrences in occurrence_roots[root].items():
+            for occurrence in occurrences or []:
+                if (
+                    not isinstance(occurrence, dict)
+                    or not safe_key(occurrence.get("recordClass")).startswith("play_")
+                    or not isinstance(occurrence.get("localId"), int)
+                ):
+                    continue
+                source_file = safe_key(occurrence.get("sourceFile"))
+                if not source_file:
+                    continue
+                source_path = Path(source_file)
+                if not source_path.is_absolute():
+                    source_path = ROOT / source_path
+                digest = path_to_hash.get(
+                    source_path.resolve().as_posix().lower()
+                )
+                if not digest:
+                    playback_join_misses += 1
+                    continue
+                playback_by_hash_local[
+                    (digest, occurrence["localId"])
+                ].add(safe_key(story_key))
+                for owner in occurrence.get("nativeEventOwners") or []:
+                    if not isinstance(owner, dict):
+                        continue
+                    for path_row in owner.get("path") or []:
+                        if not isinstance(path_row, dict):
+                            continue
+                        local_id = path_row.get("localId")
+                        predicate = path_row.get("branchPredicate")
+                        if not isinstance(local_id, int) or not isinstance(predicate, dict):
+                            continue
+                        try:
+                            control_predicate_variants[(digest, local_id)].add(
+                                json.dumps(
+                                    predicate,
+                                    ensure_ascii=False,
+                                    sort_keys=True,
+                                    separators=(",", ":"),
+                                )
+                            )
+                        except (TypeError, ValueError):
+                            continue
+
+    control_predicates_by_hash_local: dict[tuple[str, int], dict[str, Any]] = {}
+    predicate_conflict_keys: list[tuple[str, int]] = []
+    for key, variants in control_predicate_variants.items():
+        if len(variants) != 1:
+            predicate_conflict_keys.append(key)
+            continue
+        try:
+            predicate = json.loads(next(iter(variants)))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            predicate = None
+        if isinstance(predicate, dict):
+            control_predicates_by_hash_local[key] = predicate
+    for digest, local_id in sorted(predicate_conflict_keys, key=lambda item: (natural_key(item[0]), item[1]))[:32]:
+        failures.append({
+            "validator": "nativeSerializedBranchInventory",
+            "gate": "uniqueControlPredicate",
+            "sourceFiles": sorted(hash_to_paths.get(digest) or [], key=natural_key),
+            "sourceSha256": digest,
+            "localId": local_id,
+            "expected": "one exact branch predicate per action slot",
+            "actual": {"variantCount": len(control_predicate_variants[(digest, local_id)])},
+        })
+
+    grouped: dict[tuple[str, int], dict[str, Any]] = {}
+    reported_topology_failures: set[str] = set()
+    for file_row in file_rows:
+        digest = file_row["sha256"]
+        topology, diagnostic = topology_by_hash[digest]
+        status = safe_key(topology.get("status"))
+        exact_empty_status = status in {
+            "exact_empty_action_map",
+            "exact_no_action_map",
+        }
+        if diagnostic or (
+            not status.startswith("exact_complete_action_map")
+            and not exact_empty_status
+        ):
+            if digest not in reported_topology_failures:
+                failures.append({
+                    "validator": "nativeSerializedBranchInventory",
+                    "gate": "completeSerializedActionEventGraph",
+                    "sourceFiles": sorted(
+                        hash_to_paths[digest], key=natural_key
+                    ),
+                    "sourceSha256": digest,
+                    "expected": "exact_complete_action_map",
+                    "actual": {
+                        "status": status,
+                        "diagnostic": diagnostic,
+                    },
+                })
+                reported_topology_failures.add(digest)
+            continue
+        for action in topology.get("actions") or []:
+            if (
+                not isinstance(action, dict)
+                or safe_key(action.get("actionName")) != "Branch"
+            ):
+                continue
+            branch_local_id = action.get("localId")
+            if not isinstance(branch_local_id, int):
+                failures.append({
+                    "validator": "nativeSerializedBranchInventory",
+                    "gate": "branchLocalIdIsInteger",
+                    "sourceFiles": sorted(
+                        hash_to_paths[digest], key=natural_key
+                    ),
+                    "sourceSha256": digest,
+                    "expected": "integer",
+                    "actual": branch_local_id,
+                })
+                continue
+            key = (digest, branch_local_id)
+            group = grouped.setdefault(key, {
+                "sha256": digest,
+                "sourceFiles": set(),
+                "sourceContexts": set(),
+                "topology": topology,
+                "action": action,
+            })
+            group["sourceFiles"].add(file_row["sourceFile"])
+            group["sourceContexts"].add((
+                file_row["levelId"],
+                file_row["scriptId"],
+            ))
+
+    rows: list[dict[str, Any]] = []
+    for (_digest, _branch_local_id), group in sorted(
+        grouped.items(),
+        key=lambda item: (
+            natural_key(item[1]["sha256"]),
+            int(item[1]["action"].get("localId") or 0),
+        ),
+    ):
+        topology = group["topology"]
+        action = group["action"]
+        digest = group["sha256"]
+        playback_by_local = {
+            local_id: set(story_keys)
+            for (row_digest, local_id), story_keys
+            in playback_by_hash_local.items()
+            if row_digest == digest
+        }
+        control_predicates_by_local = {
+            local_id: predicate
+            for (row_digest, local_id), predicate
+            in control_predicates_by_hash_local.items()
+            if row_digest == digest
+        }
+        projection = _native_serialized_branch_arm_projection(
+            topology,
+            action,
+            playback_by_local,
+            control_predicates_by_local,
+        )
+        branch_local_id = action.get("localId")
+        adjacency: dict[int, set[int]] = defaultdict(set)
+        for edge in topology.get("edges") or []:
+            if edge.get("sourceKind") != "action":
+                continue
+            source = edge.get("sourceLocalId")
+            target = edge.get("targetActionLocalId")
+            if isinstance(source, int) and isinstance(target, int):
+                adjacency[source].add(target)
+        event_roots: list[dict[str, Any]] = []
+        for event in topology.get("eventRoots") or []:
+            if (
+                not isinstance(event, dict)
+                or not isinstance(event.get("nextActionLocalId"), int)
+            ):
+                continue
+            pending = [event["nextActionLocalId"]]
+            visited: set[int] = set()
+            reaches_branch = False
+            while pending:
+                current = pending.pop()
+                if current in visited:
+                    continue
+                visited.add(current)
+                if current == branch_local_id:
+                    reaches_branch = True
+                    break
+                pending.extend(adjacency.get(current) or [])
+            if reaches_branch:
+                event_roots.append({
+                    key: event[key]
+                    for key in (
+                        "localId",
+                        "headerName",
+                        "nextActionLocalId",
+                        "priority",
+                        "triggerActiveDuring",
+                        "filterMode",
+                        "filterMask",
+                        "filterLevel",
+                        "runtimeHeaderSlotMappingId",
+                    )
+                    if event.get(key) not in (None, "", [], {})
+                })
+        source_files = sorted(group["sourceFiles"], key=natural_key)
+        context_values = sorted(
+            group["sourceContexts"],
+            key=lambda value: (
+                natural_key(value[0]),
+                natural_key(value[1]),
+            ),
+        )
+        rows.append({
+            "kind": "serializedBranchInventory",
+            "status": safe_key(topology.get("status")),
+            "levelId": next(
+                (value[0] for value in context_values if value[0]),
+                "",
+            ),
+            "scriptId": next(
+                (value[1] for value in context_values if value[1]),
+                "",
+            ),
+            "sourceContexts": [
+                {"levelId": level_id, "scriptId": script_id}
+                for level_id, script_id in context_values
+            ],
+            "sourceFiles": source_files,
+            "sha256": digest,
+            "branchLocalId": branch_local_id,
+            "actionName": safe_key(action.get("actionName")),
+            "runtimeMappingId": safe_key(
+                action.get("controlRuntimeMappingId")
+            ),
+            "serializedArmCount": projection["serializedArmCount"],
+            "arms": projection["arms"],
+            "exit": projection["exit"],
+            "eventRoots": event_roots,
+            "playbackArmCount": projection["playbackArmCount"],
+            "playbackStoryKeys": projection["playbackStoryKeys"],
+            "relatedOriginalFiles": _related_original_branch_files(
+                "",
+                source_files,
+                original_binary_contract,
+                level_relationship="serialized_branch_inventory_source",
+                mission_relationship="serialized_branch_inventory_no_mission_owner",
+                binary_relationship="native_branch_runtime_semantics_authority",
+            ),
+            "ownership": False,
+            "orderEvidence": False,
+            "evidenceBoundary": (
+                "This row is a corpus-wide serialized Branch reachability "
+                "context. The original LevelScript action map and exact "
+                "playback action-class join identify reachable Story records, "
+                "but do not prove mission ownership, activation, arm "
+                "exclusivity, or Story file order."
+            ),
+        })
+
+    # Keep a corpus-wide count of every binary-mapped control family, not only
+    # controls nested under a serialized Branch arm. This is keyed by content
+    # hash/local id so StreamingAssets and Persistent copies do not inflate
+    # the family census. The family set comes from the current-build mapping
+    # table; no mission or object allowlist participates.
+    typed_control_groups: dict[tuple[str, int], str] = {}
+    for digest, topology_result in topology_by_hash.items():
+        topology, _topology_diagnostic = topology_result
+        for action in topology.get("actions") or []:
+            if not isinstance(action, dict):
+                continue
+            action_name = safe_key(action.get("actionName"))
+            local_id = action.get("localId")
+            if action_name not in NATIVE_TYPED_CONTROL_ACTION_NAMES:
+                continue
+            if not isinstance(local_id, int):
+                continue
+            typed_control_groups[(digest, local_id)] = action_name
+    typed_control_family_counts = Counter(typed_control_groups.values())
+
+    nested_controls = [
+        control
+        for row in rows
+        for arm in row.get("arms") or []
+        for control in arm.get("nestedControls") or []
+    ]
+    nested_control_family_counts = Counter(
+        safe_key(control.get("actionName")) or "unknown"
+        for control in nested_controls
+    )
+    summary = {
+        "sourcePathCount": len(file_rows),
+        "uniqueContentFileCount": len(hash_to_paths),
+        "duplicatePathCount": len(file_rows) - len(hash_to_paths),
+        "serializedBranchGroupCount": len(rows),
+        "serializedBranchArmCount": sum(
+            int(row.get("serializedArmCount") or 0) for row in rows
+        ),
+        "playbackArmCount": sum(
+            int(row.get("playbackArmCount") or 0) for row in rows
+        ),
+        "multiPlaybackBranchCount": sum(
+            int(row.get("playbackArmCount") or 0) >= 2 for row in rows
+        ),
+        "nestedControlCount": len(nested_controls),
+        "nestedControlFamilyCounts": dict(sorted(
+            nested_control_family_counts.items(),
+            key=lambda item: natural_key(item[0]),
+        )),
+        "nestedControlArmSchemaUnavailableCount": sum(
+            control.get("armSchemaStatus") == "unavailable_fail_closed"
+            for control in nested_controls
+        ),
+        "nestedPlaybackArmCount": sum(
+            int(control.get("playbackArmCount") or 0)
+            for row in rows
+            for arm in row.get("arms") or []
+            for control in arm.get("nestedControls") or []
+        ),
+        "nestedMultiPlaybackControlCount": sum(
+            int(control.get("playbackArmCount") or 0) >= 2
+            for row in rows
+            for arm in row.get("arms") or []
+            for control in arm.get("nestedControls") or []
+        ),
+        "nestedPlaybackControlCount": sum(
+            int(control.get("playbackArmCount") or 0) > 0
+            for row in rows
+            for arm in row.get("arms") or []
+            for control in arm.get("nestedControls") or []
+        ),
+        "nestedPlaybackPredicateGapCount": sum(
+            control.get("playbackPredicateStatus")
+            == "unresolved_playback_predicate"
+            for row in rows
+            for arm in row.get("arms") or []
+            for control in arm.get("nestedControls") or []
+        ),
+        "nestedControlReferenceCount": sum(
+            len(nested_arm.get("reachableControlLocalIds") or [])
+            for row in rows
+            for arm in row.get("arms") or []
+            for control in arm.get("nestedControls") or []
+            for nested_arm in control.get("arms") or []
+        ),
+        "nestedSerializedArmCount": sum(
+            len(control.get("arms") or [])
+            for row in rows
+            for arm in row.get("arms") or []
+            for control in arm.get("nestedControls") or []
+        ),
+        "nestedExactActiveArmCount": sum(
+            nested_arm.get("targetStatus") == "exact_active_action"
+            for row in rows
+            for arm in row.get("arms") or []
+            for control in arm.get("nestedControls") or []
+            for nested_arm in control.get("arms") or []
+        ),
+        "nestedInactiveArmCount": sum(
+            nested_arm.get("targetStatus") == "inactive_serialized_target"
+            for row in rows
+            for arm in row.get("arms") or []
+            for control in arm.get("nestedControls") or []
+            for nested_arm in control.get("arms") or []
+        ),
+        "nestedRuntimeTerminalArmCount": sum(
+            nested_arm.get("targetStatus") == "missing_runtime_action_slot"
+            for row in rows
+            for arm in row.get("arms") or []
+            for control in arm.get("nestedControls") or []
+            for nested_arm in control.get("arms") or []
+        ),
+        "nestedUnavailableArmCount": sum(
+            nested_arm.get("targetStatus") == "unavailable_fail_closed"
+            for row in rows
+            for arm in row.get("arms") or []
+            for control in arm.get("nestedControls") or []
+            for nested_arm in control.get("arms") or []
+        ),
+        "typedControlGroupCount": len(typed_control_groups),
+        "typedControlFamilyCounts": dict(sorted(
+            typed_control_family_counts.items(),
+            key=lambda item: natural_key(item[0]),
+        )),
+        "uniquePlaybackStoryKeyCount": len({
+            story_key
+            for row in rows
+            for story_key in row.get("playbackStoryKeys") or []
+        }),
+        "playbackOccurrenceJoinMissCount": playback_join_misses,
+        "controlPredicateConflictCount": len(predicate_conflict_keys),
+        "validationFailureCount": len(failures),
+    }
+    return {
+        "schema": NATIVE_SERIALIZED_BRANCH_INVENTORY_SCHEMA,
+        "status": (
+            "validated_complete_corpus"
+            if not failures
+            else "unavailable_fail_closed"
+        ),
+        "sourceRoots": [
+            root.relative_to(ROOT).as_posix()
+            for root in NATIVE_LEVELSCRIPT_ROOTS
+        ],
+        "summary": summary,
+        "rows": rows,
+        "validationFailures": failures[:32],
+        "relatedOriginalFiles": [
+            dict(row)
+            for row in (
+                (original_binary_contract or {}).get("relatedOriginalFiles")
+                or []
+            )
+        ],
+        "evidenceBoundary": (
+            "The census scans both original LevelScript roots, hashes every "
+            "file, deduplicates identical source copies, and joins only exact "
+            "playback action records. It remains context-only: no inventory "
+            "row creates mission ownership or Story order."
+        ),
+    }
+
+
 def _attach_cross_boundary_native_branch_context(
     mission: str,
     branches: list[dict[str, Any]],
@@ -4707,6 +7182,18 @@ def build_mission_partial_order(
         candidate_keys,
         dialog_payloads,
     )
+    (
+        dialog_local_conditional_branches,
+        dialog_local_conditional_warnings,
+    ) = _dialog_tree_local_conditional_branches(dialog_payloads)
+    (
+        dialog_tree_branch_nodes,
+        dialog_tree_branch_node_warnings,
+    ) = _dialog_tree_local_branch_nodes(dialog_payloads)
+    (
+        dialog_tree_if_nodes,
+        dialog_tree_if_node_warnings,
+    ) = _dialog_tree_local_if_nodes(dialog_payloads)
     direct_edges.extend(dialog_tree_conditional_edges)
     mission_source = safe_key(
         (((timeline.get("metadata") or {}).get("source") or {}).get("file"))
@@ -4926,7 +7413,10 @@ def build_mission_partial_order(
         extra_thread_scheduler_contract,
     )
     native_related_action_topologies = _native_related_action_topologies(
-        flow, candidate_keys
+        flow,
+        candidate_keys,
+        mission=mission,
+        original_binary_contract=extra_thread_scheduler_contract,
     )
     native_named_predicates = sum(
         1
@@ -5034,6 +7524,20 @@ def build_mission_partial_order(
         for row in dialog_line_options
         if safe_key((row.get("provenance") or {}).get("kind"))
     )
+    dialog_line_binary_validated_group_count = sum(
+        (row.get("binaryValidation") or {}).get("status") == "validated"
+        for row in dialog_line_options
+    )
+    dialog_line_binary_validation_failure_count = sum(
+        len((row.get("binaryValidation") or {}).get("failures") or [])
+        for row in dialog_line_options
+    )
+    dialog_line_related_file_count = len({
+        safe_key(related.get("sourceFile"))
+        for row in dialog_line_options
+        for related in row.get("relatedOriginalFiles") or []
+        if isinstance(related, dict) and safe_key(related.get("sourceFile"))
+    })
     excluded_dialog_line_option_count = sum(
         len(row.get("options") or row.get("optionIds") or [])
         for row in excluded_dialog_line_options
@@ -5170,6 +7674,10 @@ def build_mission_partial_order(
             ),
             "nativeOrderedSequenceCount": len(native_ordered_sequences),
             "nativeOrderedSequenceEdgeCount": len(native_ordered_sequence_edges),
+            "nativeOrderedSequenceContextCount": sum(
+                len(row.get("orderedSequenceContexts") or [])
+                for row in native_related_action_topologies
+            ),
             "questSucceedLifecycleEdgeCount": len(admitted_lifecycle_edges),
             "questSucceedLifecycleQuestCount": len({
                 quest_id
@@ -5197,6 +7705,13 @@ def build_mission_partial_order(
             "dialogLineOptionGroupCount": len(dialog_line_options),
             "dialogLineOptionRouteCount": dialog_line_route_count,
             "dialogLineOptionLineCount": dialog_line_count,
+            "dialogLineOptionBinaryValidatedGroupCount": (
+                dialog_line_binary_validated_group_count
+            ),
+            "dialogLineOptionBinaryValidationFailureCount": (
+                dialog_line_binary_validation_failure_count
+            ),
+            "dialogLineOptionRelatedFileCount": dialog_line_related_file_count,
             "excludedDialogLineOptionGroupCount": len(excluded_dialog_line_options),
             "excludedDialogLineOptionCount": excluded_dialog_line_option_count,
             "actionableExcludedDialogLineOptionGroupCount":
@@ -5212,6 +7727,31 @@ def build_mission_partial_order(
             "singleOptionNoExplicitRouteGroupCount":
                 len(single_option_no_explicit_route_groups),
             "dialogLineOptionProvenance": dict(sorted(dialog_line_provenance_counts.items())),
+            "dialogConditionalBranchCount": len(
+                dialog_local_conditional_branches
+            ),
+            "dialogConditionalBranchArmCount": 2 * len(
+                dialog_local_conditional_branches
+            ),
+            "dialogConditionalBranchValidationFailureCount": len(
+                dialog_local_conditional_warnings
+            ),
+            "dialogTreeBranchNodeCount": len(dialog_tree_branch_nodes),
+            "dialogTreeBranchNodeArmCount": sum(
+                len(row.get("arms") or [])
+                for row in dialog_tree_branch_nodes
+            ),
+            "dialogTreeBranchNodeValidationFailureCount": len(
+                dialog_tree_branch_node_warnings
+            ),
+            "dialogTreeIfNodeCount": len(dialog_tree_if_nodes),
+            "dialogTreeIfNodeArmCount": sum(
+                len(row.get("arms") or [])
+                for row in dialog_tree_if_nodes
+            ),
+            "dialogTreeIfNodeValidationFailureCount": len(
+                dialog_tree_if_node_warnings
+            ),
             "edgeKinds": dict(sorted(kind_counts.items())),
         },
         "nodes": nodes,
@@ -5231,6 +7771,9 @@ def build_mission_partial_order(
             "nativeOrderedSequences": native_ordered_sequences,
             "nativeRelatedActionTopologies": native_related_action_topologies,
             "dialogLineOptions": dialog_line_options,
+            "dialogConditionalBranches": dialog_local_conditional_branches,
+            "dialogTreeBranchNodes": dialog_tree_branch_nodes,
+            "dialogTreeIfNodes": dialog_tree_if_nodes,
             "excludedDialogLineOptions": excluded_dialog_line_options,
             "actionableExcludedDialogLineOptions":
                 actionable_excluded_dialog_line_options,
@@ -5279,6 +7822,9 @@ def build_mission_partial_order(
         "warnings": [
             *warnings,
             *dialog_tree_conditional_warnings,
+            *dialog_local_conditional_warnings,
+            *dialog_tree_branch_node_warnings,
+            *dialog_tree_if_node_warnings,
             *narrative_containment_warnings,
             *open_ui_containment_warnings,
             *lifecycle_warnings,
@@ -5375,10 +7921,9 @@ def build_report(
     if selected_missions:
         missions = [mission for mission in missions if mission in selected_missions]
 
+    story_occurrences = build_levelscript_action_story_occurrences()
     playback_source_files_by_key: dict[str, set[str]] = defaultdict(set)
-    for story_key, occurrences in (
-        build_levelscript_action_story_occurrences().items()
-    ):
+    for story_key, occurrences in story_occurrences.items():
         for occurrence in occurrences:
             if (
                 not isinstance(occurrence, dict)
@@ -5437,13 +7982,38 @@ def build_report(
         )
         dialog_payloads: list[tuple[str, dict[str, Any]]] = []
         for story_key in sorted(candidate_kinds, key=natural_key):
-            if not story_key.startswith("dlg_"):
-                continue
             conversation_path = conversation_dir / f"{story_key}.json"
             if not conversation_path.is_file():
                 continue
             conversation_payload = read_json(conversation_path, {})
-            if isinstance(conversation_payload, dict):
+            line_graph = (
+                conversation_payload.get("lineGraph")
+                if isinstance(conversation_payload, dict)
+                else {}
+            )
+            has_dialog_tree_source = isinstance(line_graph, dict) and any(
+                isinstance(source, dict)
+                and safe_key(source.get("kind")) == "dialogTree"
+                and safe_key(source.get("file"))
+                for source in line_graph.get("sources") or []
+            )
+            has_dialog_tree_link = isinstance(conversation_payload, dict) and any(
+                isinstance(link, dict)
+                and (
+                    safe_key(link.get("file"))
+                    or safe_key(
+                        ((link.get("_debug") or {}).get("source") or {}).get("file")
+                        if isinstance(link.get("_debug"), dict)
+                        else ""
+                    )
+                )
+                for link in conversation_payload.get("sceneGraphLinks") or []
+            )
+            is_dialog_namespace = story_key.startswith(("dlg_", "misc_dlg_"))
+            if (
+                isinstance(conversation_payload, dict)
+                and (has_dialog_tree_source or has_dialog_tree_link or is_dialog_namespace)
+            ):
                 dialog_payloads.append((conversation_path.relative_to(ROOT).as_posix(), conversation_payload))
         row = build_mission_partial_order(
             mission,
@@ -5568,6 +8138,9 @@ def build_report(
         totals["nativeOrderedSequenceEdges"] += summary[
             "nativeOrderedSequenceEdgeCount"
         ]
+        totals["nativeOrderedSequenceContexts"] += summary[
+            "nativeOrderedSequenceContextCount"
+        ]
         totals["questSucceedLifecycleEdges"] += summary[
             "questSucceedLifecycleEdgeCount"
         ]
@@ -5590,6 +8163,15 @@ def build_report(
         totals["dialogLineOptionGroups"] += summary["dialogLineOptionGroupCount"]
         totals["dialogLineOptionRoutes"] += summary["dialogLineOptionRouteCount"]
         totals["dialogLineOptionLines"] += summary["dialogLineOptionLineCount"]
+        totals["dialogLineOptionBinaryValidatedGroups"] += summary[
+            "dialogLineOptionBinaryValidatedGroupCount"
+        ]
+        totals["dialogLineOptionBinaryValidationFailures"] += summary[
+            "dialogLineOptionBinaryValidationFailureCount"
+        ]
+        totals["dialogLineOptionRelatedFiles"] += summary[
+            "dialogLineOptionRelatedFileCount"
+        ]
         totals["excludedDialogLineOptionGroups"] += summary["excludedDialogLineOptionGroupCount"]
         totals["excludedDialogLineOptions"] += summary["excludedDialogLineOptionCount"]
         totals["actionableExcludedDialogLineOptionGroups"] += (
@@ -5609,6 +8191,29 @@ def build_report(
         totals["singleOptionNoExplicitRouteGroups"] += (
             summary["singleOptionNoExplicitRouteGroupCount"]
         )
+        totals["dialogConditionalBranches"] += summary[
+            "dialogConditionalBranchCount"
+        ]
+        totals["dialogConditionalBranchArms"] += summary[
+            "dialogConditionalBranchArmCount"
+        ]
+        totals["dialogConditionalBranchValidationFailures"] += summary[
+            "dialogConditionalBranchValidationFailureCount"
+        ]
+        totals["dialogTreeBranchNodes"] += summary[
+            "dialogTreeBranchNodeCount"
+        ]
+        totals["dialogTreeBranchNodeArms"] += summary[
+            "dialogTreeBranchNodeArmCount"
+        ]
+        totals["dialogTreeBranchNodeValidationFailures"] += summary[
+            "dialogTreeBranchNodeValidationFailureCount"
+        ]
+        totals["dialogTreeIfNodes"] += summary["dialogTreeIfNodeCount"]
+        totals["dialogTreeIfNodeArms"] += summary["dialogTreeIfNodeArmCount"]
+        totals["dialogTreeIfNodeValidationFailures"] += summary[
+            "dialogTreeIfNodeValidationFailureCount"
+        ]
         totals["missingMissionBundles"] += int("missingMissionBundle" in row["warnings"])
         totals["missionsWithStrongEdges"] += int(summary["strongEdgeCount"] > 0)
         totals["missionsWithCycles"] += int(summary["cycleCount"] > 0)
@@ -5650,6 +8255,76 @@ def build_report(
         if branch.get("kind") == "splitFanout"
     )
     summary_payload["dialogLineOptionProvenance"] = dict(sorted(dialog_provenance_totals.items()))
+    native_serialized_branch_inventory = (
+        _native_serialized_branch_inventory(
+            original_binary_contract=extra_thread_scheduler_contract,
+            playback_occurrences_by_root={
+                NATIVE_LEVELSCRIPT_ROOTS[0]: story_occurrences,
+            },
+        )
+        if not selected_missions
+        else _native_serialized_branch_inventory_not_requested()
+    )
+    inventory_summary = native_serialized_branch_inventory.get("summary") or {}
+    summary_payload.update({
+        "nativeSerializedBranchGroupCount": int(
+            inventory_summary.get("serializedBranchGroupCount") or 0
+        ),
+        "nativeSerializedBranchArmCount": int(
+            inventory_summary.get("serializedBranchArmCount") or 0
+        ),
+        "nativeSerializedPlaybackArmCount": int(
+            inventory_summary.get("playbackArmCount") or 0
+        ),
+        "nativeSerializedMultiPlaybackBranchCount": int(
+            inventory_summary.get("multiPlaybackBranchCount") or 0
+        ),
+        "nativeSerializedNestedControlCount": int(
+            inventory_summary.get("nestedControlCount") or 0
+        ),
+        "nativeSerializedNestedControlFamilyCounts": dict(
+            inventory_summary.get("nestedControlFamilyCounts") or {}
+        ),
+        "nativeSerializedNestedControlArmSchemaUnavailableCount": int(
+            inventory_summary.get("nestedControlArmSchemaUnavailableCount") or 0
+        ),
+        "nativeSerializedNestedPlaybackArmCount": int(
+            inventory_summary.get("nestedPlaybackArmCount") or 0
+        ),
+        "nativeSerializedNestedMultiPlaybackControlCount": int(
+            inventory_summary.get("nestedMultiPlaybackControlCount") or 0
+        ),
+        "nativeSerializedNestedPlaybackControlCount": int(
+            inventory_summary.get("nestedPlaybackControlCount") or 0
+        ),
+        "nativeSerializedNestedPlaybackPredicateGapCount": int(
+            inventory_summary.get("nestedPlaybackPredicateGapCount") or 0
+        ),
+        "nativeSerializedNestedControlReferenceCount": int(
+            inventory_summary.get("nestedControlReferenceCount") or 0
+        ),
+        "nativeSerializedNestedArmCount": int(
+            inventory_summary.get("nestedSerializedArmCount") or 0
+        ),
+        "nativeSerializedNestedExactActiveArmCount": int(
+            inventory_summary.get("nestedExactActiveArmCount") or 0
+        ),
+        "nativeSerializedNestedInactiveArmCount": int(
+            inventory_summary.get("nestedInactiveArmCount") or 0
+        ),
+        "nativeSerializedNestedRuntimeTerminalArmCount": int(
+            inventory_summary.get("nestedRuntimeTerminalArmCount") or 0
+        ),
+        "nativeSerializedNestedUnavailableArmCount": int(
+            inventory_summary.get("nestedUnavailableArmCount") or 0
+        ),
+        "nativeSerializedBranchPredicateConflictCount": int(
+            inventory_summary.get("controlPredicateConflictCount") or 0
+        ),
+        "nativeSerializedBranchValidationFailureCount": int(
+            inventory_summary.get("validationFailureCount") or 0
+        ),
+    })
     return {
         "_schema": SCHEMA,
         "_generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
@@ -5684,6 +8359,7 @@ def build_report(
         },
         "summary": summary_payload,
         "missions": rows,
+        "nativeSerializedBranchInventory": native_serialized_branch_inventory,
     }
 
 
@@ -5723,6 +8399,27 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- strict intra-dialog option routes: `{summary.get('dialogLineOptionRoutes', 0)}` options "
         f"in `{summary.get('dialogLineOptionGroups', 0)}` groups, covering "
         f"`{summary.get('dialogLineOptionLines', 0)}` branch lines",
+        f"- Timeline option-route binary contract: "
+        f"`{summary.get('dialogLineOptionBinaryValidatedGroups', 0)}` groups "
+        f"validated / `{summary.get('dialogLineOptionRelatedFiles', 0)}` related "
+        f"files / `{summary.get('dialogLineOptionBinaryValidationFailures', 0)}` "
+        "validation failures; selection/track evidence only, never a mission "
+        "or cross-file order edge",
+        f"- binary-validated local DialogTree conditionals: "
+        f"`{summary.get('dialogConditionalBranches', 0)}` routes / "
+        f"`{summary.get('dialogConditionalBranchArms', 0)}` arms; "
+        f"`{summary.get('dialogConditionalBranchValidationFailures', 0)}` validation failures "
+        "(selection evidence only, never a file-order edge)",
+        f"- binary-validated local DialogTree branch nodes: "
+        f"`{summary.get('dialogTreeBranchNodes', 0)}` nodes / "
+        f"`{summary.get('dialogTreeBranchNodeArms', 0)}` condition arms; "
+        f"`{summary.get('dialogTreeBranchNodeValidationFailures', 0)}` validation failures "
+        "(native selection evidence only, never a file-order edge)",
+        f"- binary-validated local DialogTree IfNodes: "
+        f"`{summary.get('dialogTreeIfNodes', 0)}` nodes / "
+        f"`{summary.get('dialogTreeIfNodeArms', 0)}` arms; "
+        f"`{summary.get('dialogTreeIfNodeValidationFailures', 0)}` validation failures "
+        "(native selection evidence only, never a file-order edge)",
         f"- mission-level branches: `{summary.get('questForks', 0)}` quest forks, "
         f"`{summary.get('questMerges', 0)}` quest merges, and "
         f"`{summary.get('sceneGraphOptionGroups', 0)}` authored cross-scene option groups",
@@ -5756,6 +8453,29 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- native ordered topology: `{summary.get('nativeOrderedSequences', 0)}` exact "
         f"Branch iterators creating `{summary.get('nativeOrderedSequenceEdges', 0)}` "
         "Story-order edges",
+        f"- native ordered sequence contexts: `{summary.get('nativeOrderedSequenceContexts', 0)}` "
+        "exact serialized Branch arm projections attached to Story paths; these "
+        "remain context-only unless the global multi-arm order gate admits an edge",
+        f"- corpus serialized Branch inventory: `{summary.get('nativeSerializedBranchGroupCount', 0)}` "
+        f"unique original groups / `{summary.get('nativeSerializedBranchArmCount', 0)}` "
+        f"serialized slots / `{summary.get('nativeSerializedPlaybackArmCount', 0)}` "
+        f"exact playback-bearing arms; `{summary.get('nativeSerializedMultiPlaybackBranchCount', 0)}` "
+        "groups have playback on multiple arms, so this census admits no order or ownership",
+        f"- nested corpus Branch controls: `{summary.get('nativeSerializedNestedControlCount', 0)}` "
+        f"typed control contexts / `{summary.get('nativeSerializedNestedPlaybackArmCount', 0)}` "
+        f"nested playback arms / `{summary.get('nativeSerializedNestedMultiPlaybackControlCount', 0)}` "
+        f"multi-playback controls / `{summary.get('nativeSerializedNestedPlaybackControlCount', 0)}` "
+        f"playback controls / `{summary.get('nativeSerializedNestedPlaybackPredicateGapCount', 0)}` "
+        f"playback predicate gaps / `{summary.get('nativeSerializedNestedControlReferenceCount', 0)}` "
+        f"nested control references / `{summary.get('nativeSerializedNestedArmCount', 0)}` "
+        f"nested slots (`{summary.get('nativeSerializedNestedExactActiveArmCount', 0)}` active, "
+        f"`{summary.get('nativeSerializedNestedInactiveArmCount', 0)}` inactive, "
+        f"`{summary.get('nativeSerializedNestedUnavailableArmCount', 0)}` unavailable); "
+        f"families `{summary.get('nativeSerializedNestedControlFamilyCounts', {})}`; "
+        f"`{summary.get('nativeSerializedNestedControlArmSchemaUnavailableCount', 0)}` "
+        "mapped controls have an unavailable arm schema; "
+        f"`{summary.get('nativeSerializedBranchPredicateConflictCount', 0)}` "
+        "predicate-join conflicts (conflicts fail closed)",
         f"- related native action graphs: `{summary.get('nativeRelatedActionTopologies', 0)}` "
         "original LevelScript files attached only through exact Story control paths",
         f"- conditional predicates: `{summary.get('nativeSemanticPredicates', 0)}` exact "
@@ -5865,7 +8585,13 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"{summary.get('missions', 0)} missions; {summary.get('scenes', 0)} scenes; "
         f"{summary.get('strongEdges', 0)} strong edges; "
-        f"{summary.get('comparablePairRate', 0.0):.2%} comparable pairs"
+        f"{summary.get('comparablePairRate', 0.0):.2%} comparable pairs; "
+        f"{summary.get('dialogConditionalBranches', 0)} binary-validated "
+        "local DialogTree conditionals; "
+        f"{summary.get('dialogTreeBranchNodes', 0)} binary-validated "
+        "DialogTree branch nodes; "
+        f"{summary.get('dialogTreeIfNodes', 0)} binary-validated "
+        "DialogTree IfNodes"
     )
     return 0
 

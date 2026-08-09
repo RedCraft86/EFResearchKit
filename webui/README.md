@@ -111,6 +111,11 @@ Rebuild Story data after editing overrides.
   post-application notification semantics, not evidence of arm activation or
   exclusivity.
   Predecessor forks remain topology rather than claimed server branch choice.
+- Story branch context cards retain both producer `sourceFiles` and already
+  normalized `relatedOriginalFiles`, including the exact GameAssembly and
+  metadata hashes cited by binary validators. Missing MissionRuntime namespaces
+  with that context appear as graph-neutral Story-branch shells; the files are
+  definition/validation context, never ownership, activation, or Story order.
 - The managed-carrier card shows the cycle-safe fixed-point census, maximum
   shortest type path, Entity/shared-runtime aggregate closures, zero exact
   indexed Entity/component type labels plus the truncated-scalar boundary, and the binary, metadata, and two
@@ -139,6 +144,16 @@ Rebuild Story data after editing overrides.
   They expose the quest, condition/property, Story keys, and related original
   files while visibly preserving unresolved ownership, activation, property
   writer, and order.
+- DialogTree conditional Story edges are discovered across the serialized
+  corpus, not by mission-specific declarations. Their cards show the typed
+  predicate, binary-validated true/false connection ordinals, complete carrier
+  line arms, and the exact DialogTree TextAsset plus `GameAssembly.dll` files;
+  ambiguous or incomplete routes remain absent with a bounded diagnostic.
+- The same panel lists exact same-Story authored `DialogTreeIfNode` routes from
+  the corpus-wide validator. Each row shows both serialized arms, nested
+  condition operands, the binary polarity contract, and the related TextAsset
+  plus `GameAssembly.dll`; these are selection-evidence rows only and never
+  imply a file-order edge or mission trigger.
 - The same panel lists authored quest-start Story actions separately when the
   current installed-binary census has no slot-1 dispatcher. Each row exposes
   its quest, action, Story file, boundary, and hash-checked MissionRuntime,
@@ -181,6 +196,20 @@ Rebuild Story data after editing overrides.
   topology, shared downstream actions, and related hash-addressed original
   files remain visibly distinct; non-Story arms never imply Story ownership,
   chronology, or mission membership.
+- Corpus serialized-Branch diagnostics also summarize mapping-derived nested
+  controls: each `Branch`, `IfElseAction`, `SwitchInt`, `SwitchIntLarger`, `SwitchString`,
+  `Split`, `WhileAction`, or the binary-mapped
+  `WaitForSecondsInTriggerVolume` outcome family retains its serialized arms,
+  exact reachable
+  playback keys, and binary predicate when proven. Missing family fields are
+  shown as fail-closed schema gaps. Multi-playback nested controls are
+  displayed as conditional context; they never become file-order edges or
+  ownership claims.
+- Mission objective cards also expose every generic binary-decoded typed
+  control observed by an authored LevelScript condition. The control detail,
+  exact serialized outgoing edges, event roots, mapping id, and hash-addressed
+  source file are mission-context evidence only; a `CheckLevelScript*`
+  condition does not establish Story ownership or inter-file order.
 - Mission Pipeline includes every recovered native branch placement. Late
   Story-only shells receive the full source-order row, while a missing Story
   namespace becomes a labeled variant aggregate only when its generated bundle
@@ -192,6 +221,12 @@ Rebuild Story data after editing overrides.
   related original LevelScript, MissionRuntime, binary, and metadata files.
   They are labeled as alternative selection rather than Story order or
   ownership.
+- Exact native receiver cards also expose the corpus-driven serialized module
+  property-family census. Every `@<module>_<field>` group with at least two
+  fields is shown with its value-type/atom-count shapes, stable family key, and
+  exact LevelData source. The generic namespace rule is binary-validated and
+  does not require per-object declarations; family repetition remains
+  non-owning context until a typed mission/quest foreign key is proven.
 - Exact native receiver cards recognize the reusable `EncounterBase<T>` /
   `EncounterData` property contract structurally and show its validated
   LevelData host, LsmPtr module namespace, receiver LevelScript, and typed
@@ -253,6 +288,12 @@ Rebuild Story data after editing overrides.
   matches, and unreviewed shapes. Only exact script and mission/quest fields in
   one record count; the panel explicitly excludes filename, ancestor, OCR, and
   override proximity from evidence.
+- Mission order panels also attach a generic mission-named LevelData receiver
+  context when the exact LevelData filename token matches a pipeline mission
+  and its validated member-22 `LevelScriptBriefData` dictionary contains the
+  receiver. The panel links the original LevelData and LevelScript files while
+  keeping activation, ownership, playback, branch selection, and Story order
+  false; filename proximity alone is never promoted.
 - Mission Pipeline opens source-bounded activation gaps in the order panel and
   shows exact ReadingPopUp/RichContent row identities for definition-only text
   files and

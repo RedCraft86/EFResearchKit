@@ -87,6 +87,8 @@
       exactPlayback: "exact native playback",
       exactReceiverNodes: "Exact serialized runtime receivers",
       exactReceiverNodesHint: "Each node is an original LevelScript event selector with an exact control path to Story playback. It organizes more recovered files without claiming a mission or quest owner.",
+      nativeReceiverStoryContext: "exact receiver context",
+      nativeReceiverStoryContextHint: "This Story key is joined to an exact native receiver and its original files. The join is context only; it does not add mission ownership, activation, branching, or Story order.",
       playbackGate: "exact receiver playback gate",
       playbackGateTrue: "playback allowed when true",
       playbackGateBoundary: "This original-binary predicate controls only this receiver playback. It does not prove mission ownership, order between Story files, or a later server-side state write.",
@@ -148,6 +150,9 @@
       binarySubGameManualStart: "binary-validated SubGame start carrier",
       binarySubGameManualStartBoundary: "The current binary and typed original row prove SubGame id → bindScriptId → LevelScript lookup → ManualStart. This is an interaction start carrier, not mission ownership, selected branching, or cross-Story order.",
       levelDataContainer: "validated LevelData container",
+      modulePropertyFamily: "serialized module property family",
+      modulePropertyFamilyFields: "serialized field shapes",
+      modulePropertyFamilyBoundary: "Generic @module_suffix field families and native value shapes are exact LevelData context. They do not identify a mission, quest, Story owner, activation selector, branch, or order.",
       encounterController: "binary-proven Encounter controller",
       encounterModuleNamespace: "Encounter LsmPtr module namespace",
       moduleMatchesReceiver: "module id matches receiver id",
@@ -279,6 +284,15 @@
       levelScriptExactEmptyMap: "exact empty executable map",
       levelScriptExecutableMap: "serialized executable map",
       levelScriptTailRecords: "non-executable tail records",
+      levelScriptNativeControls: "binary-decoded typed controls",
+      levelScriptNativeControlHint: "Exact original-binary control topology inside this LevelScript. The authored MissionRuntime condition supplies mission context only; it does not prove Story ownership or Story order.",
+      levelScriptNativeControlFamilies: "control families",
+      levelScriptNativeControlRoots: "event roots",
+      levelScriptNativeControlEdges: "serialized outgoing edges",
+      levelScriptNativeControlMapping: "native mapping",
+      levelScriptNativeControlDetail: "decoded control fields",
+      levelScriptNativeControlReachable: "controls reached from event roots",
+      levelScriptNativeControlDiagnostic: "topology diagnostic",
       taskMetadata: "task metadata",
       or: "or",
       nativeDirectCallers: "native direct callers",
@@ -414,6 +428,24 @@
       branches: "fan-outs",
       storyOrder: "Source-proven Story order",
       storyOrderHint: "This is a partial causal graph. It preserves branches, joins, cycles, and unknown pairs; it is not a guessed total file sequence.",
+      orderCrossReference: "Manual/OCR order cross-reference",
+      orderCrossReferenceHint: "Only strict source partial-order edges are evidence. The active manual override and OCR proposal are shown as diagnostic comparisons; they never create, strengthen, weaken, or remove an edge.",
+      orderCrossReferenceStrictEdges: "strict source edges",
+      orderCrossReferenceOverride: "manual override",
+      orderCrossReferenceOcr: "OCR proposal",
+      orderCrossReferenceAgrees: "agree",
+      orderCrossReferenceDisagrees: "disagree",
+      orderCrossReferenceUncovered: "uncovered",
+      orderCrossReferenceConflicts: "reference conflicts",
+      orderCrossReferenceDisagreementEdges: "disagreement edges",
+      orderCrossReferenceSourceEdge: "source edge",
+      nativeReceiverStoryContexts: "Exact native receiver Story contexts",
+      nativeReceiverStoryContextsHint: "These rows are exact LevelScript receiver-to-Story paths whose Story keys intersect this mission's published nodes. The original binary-backed activation contract and related files are attached for inspection; this is not mission ownership, activation selection, branch choice, or Story order evidence.",
+      nativeReceiverStoryMissionKeys: "mission Story keys",
+      nativeReceiverStoryExternalKeys: "external Story keys",
+      missionNamedLevelDataReceiverContexts: "Mission-named LevelData receiver contexts",
+      missionNamedLevelDataReceiverContextsHint: "The exact LevelData filename names this mission and its validated typed dictionary contains the receiver script. This attaches original files as authored container context only; it does not prove activation, ownership, playback, branch selection, or Story order.",
+      missionNamedLevelDataReceiverBoundary: "Mission-named LevelData container context only",
       missionObservedScriptContexts: "Mission-observed LevelScript contexts",
       missionObservedScriptContextsHint: "An original typed mission objective reads the same level and LevelScript that contains native Story playback. This is related-file context, not ownership, activation, or order evidence.",
       observedProperties: "Observed properties",
@@ -445,6 +477,22 @@
       dialogConditionalTrueArm: "condition true",
       dialogConditionalFalseArm: "condition false",
       dialogConditionalNativeProof: "Native branch selection",
+      dialogConditionalLocal: "same-Story branch (selection evidence)",
+      dialogConditionalBoundary: "This does not order the two arms or prove a mission trigger.",
+      dialogConditionalCount: "binary local DialogTree conditionals",
+      dialogTreeBranchNode: "DialogTree branch node",
+      dialogTreeBranchArm: "condition arm",
+      dialogTreeBranchSelection: "first condition result == 1; no true condition → arm 0",
+      dialogTreeBranchCount: "binary DialogTree branch nodes",
+      dialogTreeBranchBoundary: "This proves native arm selection and related original files, not mission trigger, ownership, cross-file order, or chronology.",
+      dialogTreeIfNode: "DialogTree IfNode",
+      dialogTreeIfArm: "If arm",
+      dialogTreeIfCount: "binary DialogTree IfNodes",
+      dialogTreeIfBoundary: "This is internal condition-selection evidence with original files; it does not prove mission trigger, ownership, cross-file order, or chronology.",
+      dialogTimelineBinaryContract: "Original-binary Timeline option contract",
+      dialogTimelineValidation: "binary validation",
+      dialogTimelineBinaryCount: "binary Timeline option groups",
+      dialogTimelineBoundary: "Timeline tracks supply the exact option-index skip/return window; the binary contract explains runtime option matching. This does not prove a mission trigger, cross-file chronology, or server branch choice.",
       questFork: "quest fork",
       questForkStructure: "Authored quest-fork structure",
       questForkStructureHint: "Arm roles, guards, terminal shape, and reconvergence come from the original MissionRuntime file. Server activation and exclusivity remain unresolved.",
@@ -509,6 +557,8 @@
       nativeSplitFanout: "native Split fan-out",
       nativeIfElseBranch: "native If/Else branch",
       nativeSwitchBranch: "native Switch branch",
+      nativeSwitchIntLargerBranch: "native SwitchIntLarger branch",
+      nativeWaitTriggerVolumeBranch: "native trigger-volume wait outcome",
       nativeControlMerge: "native branch convergence",
       nativeMissionStateBranches: "Mission-state Story alternatives",
       nativeMissionStateBranchesHint: "The original LevelScript and installed native getter/comparer mapping prove which Story files occupy each state-controlled arm, including files nominally grouped under another mission. These are alternatives, not Story order or ownership.",
@@ -528,6 +578,43 @@
       nativeSharedDownstream: "shared downstream actions",
       nativeFullArmHint: "Every slot is decoded from the runtime-active action map in the original LevelScript and checked against the installed binary mapping. Non-Story sibling actions do not establish Story ownership, chronology, or mission membership.",
       nativeOrderedSequence: "native ordered action sequence",
+      nativeSequenceContext: "serialized Branch sequence context",
+      nativeSequenceContextHint: "Exact Story paths reach these Branch arms. The other serialized arms stay visible as unresolved runtime context; this projection does not create Story order or ownership.",
+      nativeSequenceContextNotAdmitted: "order edge not admitted",
+      nativeSequenceContextObserved: "observed Story arm",
+      nativeSerializedBranchInventory: "corpus serialized Branch census",
+      nativeSerializedBranchInventoryHint: "Both original LevelScript roots are hashed and deduplicated. Exact playback action records are joined to every serialized Branch arm; this inventory is context-only and does not assign mission ownership or file order.",
+      nativeSerializedBranchGroups: "serialized Branch groups",
+      nativeSerializedBranchArms: "serialized Branch slots",
+      nativeSerializedPlaybackArms: "playback-bearing arms",
+      nativeSerializedMultiPlaybackArms: "multi-playback groups",
+      nativeSerializedBranchMatched: "mission-matching census rows",
+      nativeSerializedBranchArmPlayback: "exact playback",
+      nativeSerializedBranchReachable: "reachable actions",
+      nativeSerializedBranchActions: "reachable native actions",
+      nativeSerializedBranchClasses: "decoded record classes",
+      nativeSerializedBranchMissionContext: "mission serialized Branch context",
+      nativeSerializedBranchMissionContextHint: "These rows are exact Story-key intersections projected from the original LevelScript census. Related original files are attached for review; the projection does not prove mission ownership, activation, arm exclusivity, or Story file order.",
+      nativeSerializedBranchMissionKeys: "mission Story keys",
+      nativeSerializedBranchExternalKeys: "external Story keys",
+      nativeSerializedNestedControls: "nested typed controls",
+      nativeSerializedNestedArms: "nested serialized arms",
+      nativeSerializedNestedPlayback: "nested exact playback",
+      nativeSerializedNestedPlaybackArms: "nested playback arms",
+      nativeSerializedNestedMultiPlayback: "multi-playback controls",
+      nativeSerializedNestedPlaybackControls: "playback controls",
+      nativeSerializedNestedPredicateGaps: "playback predicate gaps",
+      nativeSerializedNestedControlRefs: "reachable typed controls",
+      nativeSerializedNestedControlReferences: "nested control references",
+      nativeSerializedNestedSlots: "nested slots",
+      nativeSerializedNestedActive: "nested active slots",
+      nativeSerializedNestedInactive: "nested inactive slots",
+      nativeSerializedNestedUnavailable: "nested unavailable slots",
+      nativeSerializedNestedSchemaGaps: "arm-schema gaps",
+      nativeSerializedNestedFamilies: "control families",
+      nativeSerializedTypedFamilies: "typed corpus control families",
+      nativeSerializedPredicateConflicts: "predicate conflicts",
+      nativeSerializedNestedPredicate: "binary predicate",
       nativeStoryTransitions: "Exact native Story transitions",
       nativeStoryTransitionsHint: "Each edge is an original LevelScript path-prefix relation. The typed suffix shows whether playback continues linearly or crosses a parallel, conditional, outcome, or ordered branch.",
       nativeStoryTransitionLinear: "linear",
@@ -871,6 +958,22 @@
       offlineRecoveryCrossMissionTracking: "Cross-mission SNS tracking (navigation only)",
       offlineMissionShell: "Story-only recovery shell",
       offlineMissionShellHint: "No MissionRuntimeAsset exists in the current export. This page exposes exact table definitions and current-build negative carrier evidence only; it has no quest, ownership, playback, handshake, or order edge.",
+      sourceOrderShell: "Source-order recovery shell",
+      sourceOrderShellHint: "No MissionRuntimeAsset exists for this Story namespace. This page exposes strict original-data order and hashed related files only; it is not a mission or quest owner.",
+      storyBranchShell: "Story-branch evidence shell",
+      storyBranchShellHint: "No MissionRuntimeAsset exists for this Story namespace. This page exposes hash-validated authored branch and validation context only; it is not a mission or quest owner and does not establish Story-file order.",
+      sourceOrderRelatedFiles: "Original source-order files",
+      sourceOrderRelatedFilesHint: "These hash-validated original files are attached to the strict source-order report for auditability only. They do not establish mission ownership, activation, branch selection, or a total Story-file order.",
+      storyBranchRelatedFiles: "Original Story-branch files",
+      storyBranchRelatedFilesHint: "These hash-validated original files are collected from authored branch sourceFile/sourceFiles and normalized relatedOriginalFiles records. They provide branch-definition context only; they do not establish mission ownership, activation, or cross-file chronology.",
+      storyConnectionOriginalFiles: "Original files cited by Story connections",
+      storyConnectionOriginalFilesHint: "These SHA-256 records validate the original exported files cited by an accepted Story connection. They are provenance context only; unresolved references remain diagnostic and no ownership or chronology is inferred.",
+      storyConnectionProvenanceSummary: "Original-file provenance audit",
+      storyConnectionProvenanceSummaryHint: "Corpus-wide Story-connection provenance from the current original export. Hashes validate cited bytes only; unresolved paths and non-path tokens remain diagnostics, never ownership or chronology.",
+      storyConnectionSourceReferences: "path refs",
+      storyConnectionAttachedFiles: "hashes",
+      storyConnectionUnresolved: "unresolved paths",
+      storyConnectionNonPath: "non-path tokens",
       storyAggregateShell: "Declared Story variant aggregate",
       storyAggregateShellHint: "This Story namespace combines exact serialized evidence from its declared mission variants. It is not a MissionRuntime mission and does not establish mission ownership, quest ownership, branch selection, or extra chronology.",
       storyAggregateVariants: "Declared mission variants",
@@ -1043,6 +1146,9 @@
       binarySubGameManualStart: "二进制已验证的 SubGame 启动载体",
       binarySubGameManualStartBoundary: "当前二进制与类型化原始记录证明 SubGame ID → bindScriptId → LevelScript 查找 → ManualStart。它是交互启动载体，不证明使命所有权、所选分支或跨 Story 顺序。",
       levelDataContainer: "已验证的 LevelData 容器",
+      modulePropertyFamily: "序列化模块属性族",
+      modulePropertyFamilyFields: "序列化字段形状",
+      modulePropertyFamilyBoundary: "@module_suffix 字段族和原始值形状是精确的 LevelData 上下文。它们不证明使命、任务、Story 所有者、激活选择器、分支或顺序。",
       encounterController: "二进制已证实的遭遇战控制器",
       encounterModuleNamespace: "遭遇战 LsmPtr 模块命名空间",
       moduleMatchesReceiver: "模块 ID 与接收脚本 ID 相同",
@@ -1155,6 +1261,15 @@
       levelScriptExactEmptyMap: "精确的空可执行映射",
       levelScriptExecutableMap: "序列化可执行映射",
       levelScriptTailRecords: "不可执行尾部记录",
+      levelScriptNativeControls: "原始二进制恢复的类型化控制",
+      levelScriptNativeControlHint: "这是单个关卡脚本内由原始二进制精确恢复的控制拓扑。原始使命条件只提供任务上下文，不证明剧情归属或剧情顺序。",
+      levelScriptNativeControlFamilies: "控制族",
+      levelScriptNativeControlRoots: "事件根",
+      levelScriptNativeControlEdges: "序列化出边",
+      levelScriptNativeControlMapping: "原生映射",
+      levelScriptNativeControlDetail: "解码后的控制字段",
+      levelScriptNativeControlReachable: "从事件根可达的控制",
+      levelScriptNativeControlDiagnostic: "拓扑诊断",
       taskMetadata: "任务元数据",
       or: "或",
       nativeDirectCallers: "原生直接调用者",
@@ -1577,6 +1692,22 @@
       offlineRecoveryCrossMissionTracking: "\u8de8\u4efb\u52a1 SNS \u8ffd\u8e2a\uff08\u4ec5\u5bfc\u822a\uff09",
       offlineMissionShell: "\u4ec5\u5267\u60c5\u6062\u590d\u7684\u4efb\u52a1\u5916\u58f3",
       offlineMissionShellHint: "\u5f53\u524d\u5bfc\u51fa\u4e2d\u6ca1\u6709 MissionRuntimeAsset\u3002\u672c\u9875\u4ec5\u5c55\u793a\u7cbe\u786e\u8868\u5b9a\u4e49\u548c\u5f53\u524d\u7248\u672c\u7684\u8f7d\u4f53\u8d1f\u8bc1\u636e\uff1b\u4e0d\u4ea7\u751f\u4efb\u52a1\u8282\u70b9\u3001\u5f52\u5c5e\u3001\u64ad\u653e\u3001\u63e1\u624b\u6216\u987a\u5e8f\u8fb9\u3002",
+      sourceOrderShell: "\u6e90\u6570\u636e\u987a\u5e8f\u6062\u590d\u5916\u58f3",
+      sourceOrderShellHint: "\u8be5 Story \u547d\u540d\u7a7a\u95f4\u6ca1\u6709 MissionRuntimeAsset\u3002\u672c\u9875\u4ec5\u5c55\u793a\u4e25\u683c\u539f\u59cb\u6570\u636e\u987a\u5e8f\u548c\u5df2\u54c8\u5e0c\u7684\u76f8\u5173\u6587\u4ef6\uff1b\u4e0d\u662f\u4efb\u52a1\u6216\u8282\u70b9\u5f52\u5c5e\u3002",
+      storyBranchShell: "Story \u5206\u652f\u8bc1\u636e\u5916\u58f3",
+      storyBranchShellHint: "\u8be5 Story \u547d\u540d\u7a7a\u95f4\u6ca1\u6709 MissionRuntimeAsset\u3002\u672c\u9875\u4ec5\u5c55\u793a\u5df2\u54c8\u5e0c\u9a8c\u8bc1\u7684\u4f5c\u8005\u5206\u652f\u548c\u9a8c\u8bc1\u4e0a\u4e0b\u6587\uff1b\u4e0d\u662f\u4efb\u52a1\u6216\u8282\u70b9\u5f52\u5c5e\uff0c\u4e5f\u4e0d\u5efa\u7acb Story \u6587\u4ef6\u987a\u5e8f\u3002",
+      sourceOrderRelatedFiles: "\u539f\u59cb\u987a\u5e8f\u6587\u4ef6",
+      sourceOrderRelatedFilesHint: "\u8fd9\u4e9b\u5df2\u54c8\u5e0c\u9a8c\u8bc1\u7684\u539f\u59cb\u6587\u4ef6\u4ec5\u4e3a\u4e25\u683c\u6e90\u6570\u636e\u987a\u5e8f\u62a5\u544a\u63d0\u4f9b\u5ba1\u8ba1\u53ef\u8ffd\u6eaf\u6027\uff1b\u4e0d\u5efa\u7acb\u4efb\u52a1\u5f52\u5c5e\u3001\u6fc0\u6d3b\u3001\u5206\u652f\u9009\u62e9\u6216\u5b8c\u6574 Story \u6587\u4ef6\u987a\u5e8f\u3002",
+      storyBranchRelatedFiles: "\u539f\u59cb Story \u5206\u652f\u6587\u4ef6",
+      storyBranchRelatedFilesHint: "\u8fd9\u4e9b\u5df2\u54c8\u5e0c\u9a8c\u8bc1\u7684\u539f\u59cb\u6587\u4ef6\u6765\u81ea\u4f5c\u8005\u5206\u652f sourceFile/sourceFiles \u4ee5\u53ca\u89c4\u8303\u5316 relatedOriginalFiles \u8bb0\u5f55\uff0c\u4ec5\u63d0\u4f9b\u5206\u652f\u5b9a\u4e49\u4e0a\u4e0b\u6587\uff1b\u4e0d\u5efa\u7acb\u4efb\u52a1\u5f52\u5c5e\u3001\u6fc0\u6d3b\u6216\u8de8\u6587\u4ef6\u65f6\u95f4\u987a\u5e8f\u3002",
+      storyConnectionOriginalFiles: "\u5267\u60c5\u8fde\u63a5\u5f15\u7528\u7684\u539f\u59cb\u6587\u4ef6",
+      storyConnectionOriginalFilesHint: "\u8fd9\u4e9b SHA-256 \u8bb0\u5f55\u9a8c\u8bc1\u5df2\u63a5\u53d7 Story \u8fde\u63a5\u5f15\u7528\u7684\u539f\u59cb\u5bfc\u51fa\u6587\u4ef6\u3002\u5b83\u4eec\u4ec5\u63d0\u4f9b\u6765\u6e90\u4e0a\u4e0b\u6587\uff1b\u672a\u89e3\u6790\u7684\u5f15\u7528\u4ecd\u662f\u8bca\u65ad\u4fe1\u606f\uff0c\u4e0d\u63a8\u65ad\u5f52\u5c5e\u6216\u65f6\u95f4\u987a\u5e8f\u3002",
+      storyConnectionProvenanceSummary: "\u539f\u59cb\u6587\u4ef6\u6765\u6e90\u5ba1\u8ba1",
+      storyConnectionProvenanceSummaryHint: "\u6765\u81ea\u5f53\u524d\u539f\u59cb\u5bfc\u51fa\u7684\u5168\u90e8 Story \u8fde\u63a5\u6765\u6e90\u3002\u54c8\u5e0c\u4ec5\u9a8c\u8bc1\u5f15\u7528\u7684\u5b57\u8282\uff1b\u672a\u89e3\u6790\u8def\u5f84\u548c\u975e\u8def\u5f84\u4ee3\u7801\u4ecd\u662f\u8bca\u65ad\u4fe1\u606f\uff0c\u4e0d\u4f5c\u4e3a\u5f52\u5c5e\u6216\u65f6\u95f4\u987a\u5e8f\u3002",
+      storyConnectionSourceReferences: "\u8def\u5f84\u5f15\u7528",
+      storyConnectionAttachedFiles: "\u54c8\u5e0c\u6587\u4ef6",
+      storyConnectionUnresolved: "\u672a\u89e3\u6790\u8def\u5f84",
+      storyConnectionNonPath: "\u975e\u8def\u5f84\u4ee3\u7801",
       storyAggregateShell: "\u58f0\u660e\u7684 Story \u53d8\u4f53\u805a\u5408",
       storyAggregateShellHint: "\u8be5 Story \u547d\u540d\u7a7a\u95f4\u6c47\u603b\u4e86\u5176\u58f0\u660e\u7684\u4efb\u52a1\u53d8\u4f53\u4e2d\u7684\u7cbe\u786e\u5e8f\u5217\u5316\u8bc1\u636e\u3002\u5b83\u672c\u8eab\u4e0d\u662f MissionRuntime \u4efb\u52a1\uff0c\u4e5f\u4e0d\u8bc1\u660e\u4efb\u52a1\u5f52\u5c5e\u3001\u8282\u70b9\u5f52\u5c5e\u3001\u5206\u652f\u9009\u62e9\u6216\u989d\u5916\u65f6\u5e8f\u3002",
       storyAggregateVariants: "\u5df2\u58f0\u660e\u7684\u4efb\u52a1\u53d8\u4f53",
@@ -1620,6 +1751,24 @@
       triggerUnknownTransport: "\u4f20\u8f93\u8fb9\u754c\u672a\u89e3\u6790",
       storyOrder: "\u6e90\u6570\u636e\u8bc1\u660e\u7684\u5267\u60c5\u987a\u5e8f",
       storyOrderHint: "\u8fd9\u662f\u90e8\u5206\u56e0\u679c\u56fe\uff1a\u4fdd\u7559\u5206\u652f\u3001\u6c47\u5408\u3001\u5faa\u73af\u548c\u672a\u77e5\u987a\u5e8f\uff0c\u4e0d\u731c\u6d4b\u552f\u4e00\u6587\u4ef6\u5e8f\u5217\u3002",
+      orderCrossReference: "\u624b\u52a8/OCR \u987a\u5e8f\u4ea4\u53c9\u53c2\u8003",
+      orderCrossReferenceHint: "\u53ea\u6709\u4e25\u683c\u7684\u6e90\u90e8\u5206\u987a\u5e8f\u8fb9\u662f\u8bc1\u636e\u3002\u6d3b\u8dc3\u7684\u624b\u52a8\u8986\u76d6\u548c OCR \u63d0\u6848\u4ec5\u4f5c\u8bca\u65ad\u5bf9\u6bd4\uff1b\u5b83\u4eec\u4e0d\u4f1a\u521b\u5efa\u3001\u52a0\u5f3a\u3001\u524a\u5f31\u6216\u79fb\u9664\u4efb\u4f55\u8fb9\u3002",
+      orderCrossReferenceStrictEdges: "\u4e25\u683c\u6e90\u8fb9",
+      orderCrossReferenceOverride: "\u624b\u52a8\u8986\u76d6",
+      orderCrossReferenceOcr: "OCR \u63d0\u6848",
+      orderCrossReferenceAgrees: "\u4e00\u81f4",
+      orderCrossReferenceDisagrees: "\u4e0d\u4e00\u81f4",
+      orderCrossReferenceUncovered: "\u672a\u8986\u76d6",
+      orderCrossReferenceConflicts: "\u53c2\u8003\u51b2\u7a81",
+      orderCrossReferenceDisagreementEdges: "\u4e0d\u4e00\u81f4\u8fb9",
+      orderCrossReferenceSourceEdge: "\u6e90\u8fb9",
+      nativeReceiverStoryContexts: "\u7cbe\u786e\u539f\u751f\u63a5\u6536\u5668 Story \u4e0a\u4e0b\u6587",
+      nativeReceiverStoryContextsHint: "\u8fd9\u4e9b\u884c\u662f\u7cbe\u786e LevelScript \u63a5\u6536\u5668\u5230 Story \u8def\u5f84\uff0c\u4e14 Story \u952e\u4e0e\u8be5\u4efb\u52a1\u5df2\u53d1\u5e03\u8282\u70b9\u76f8\u4ea4\u3002\u5df2\u9644\u52a0\u539f\u59cb\u4e8c\u8fdb\u5236\u6fc0\u6d3b\u5408\u7ea6\u4e0e\u76f8\u5173\u6587\u4ef6\u4f9b\u590d\u6838\uff1b\u8fd9\u4e0d\u662f\u4efb\u52a1\u5f52\u5c5e\u3001\u6fc0\u6d3b\u9009\u62e9\u3001\u5206\u652f\u9009\u62e9\u6216 Story \u987a\u5e8f\u8bc1\u636e\u3002",
+      nativeReceiverStoryMissionKeys: "\u4efb\u52a1 Story \u952e",
+      nativeReceiverStoryExternalKeys: "\u5916\u90e8 Story \u952e",
+      missionNamedLevelDataReceiverContexts: "\u4efb\u52a1\u547d\u540d LevelData \u63a5\u6536\u5668\u4e0a\u4e0b\u6587",
+      missionNamedLevelDataReceiverContextsHint: "\u539f\u59cb LevelData \u6587\u4ef6\u540d\u5305\u542b\u8be5\u4efb\u52a1\uff0c\u5176\u7c7b\u578b\u5316\u5b57\u5178\u5305\u542b\u8be5\u63a5\u6536\u5668脚本\u3002\u8fd9\u53ea\u9644\u52a0\u539f\u59cb\u6587\u4ef6\u5bb9\u5668\u4e0a\u4e0b\u6587\uff0c\u4e0d\u8bc1\u660e\u6fc0\u6d3b\u3001\u5f52\u5c5e\u3001\u64ad\u653e\u3001\u5206\u652f\u9009\u62e9\u6216\u5267\u60c5\u987a\u5e8f\u3002",
+      missionNamedLevelDataReceiverBoundary: "\u4ec5\u4efb\u52a1\u547d\u540d LevelData \u5bb9\u5668\u4e0a\u4e0b\u6587",
       missionObservedScriptContexts: "\u4efb\u52a1\u89c2\u6d4b\u5230\u7684 LevelScript \u4e0a\u4e0b\u6587",
       missionObservedScriptContextsHint: "\u539f\u59cb\u7c7b\u578b\u5316\u4efb\u52a1\u76ee\u6807\u8bfb\u53d6\u4e86\u540c\u4e00\u5173\u5361\u548c LevelScript\uff0c\u800c\u8be5\u811a\u672c\u5305\u542b\u539f\u751f\u5267\u60c5\u64ad\u653e\u3002\u8fd9\u53ea\u662f\u5173\u8054\u6587\u4ef6\u4e0a\u4e0b\u6587\uff0c\u4e0d\u662f\u5f52\u5c5e\u3001\u6fc0\u6d3b\u6216\u987a\u5e8f\u8bc1\u636e\u3002",
       observedProperties: "\u88ab\u89c2\u6d4b\u5c5e\u6027",
@@ -1651,6 +1800,22 @@
       dialogConditionalTrueArm: "\u6761\u4ef6\u4e3a\u771f",
       dialogConditionalFalseArm: "\u6761\u4ef6\u4e3a\u5047",
       dialogConditionalNativeProof: "\u539f\u751f\u5206\u652f\u9009\u62e9",
+      dialogConditionalLocal: "\u540c\u4e00 Story \u5206\u652f\uff08\u4ec5\u5206\u652f\u9009\u62e9\u8bc1\u636e\uff09",
+      dialogConditionalBoundary: "\u8fd9\u4e0d\u4f1a\u4e3a\u4e24\u4e2a\u5206\u652f\u6392\u5e8f\uff0c\u4e5f\u4e0d\u8bc1\u660e\u4efb\u52a1\u89e6\u53d1\u3002",
+      dialogConditionalCount: "\u4e8c\u8fdb\u5236\u9a8c\u8bc1\u7684\u672c\u5730 DialogTree \u6761\u4ef6\u5206\u652f",
+      dialogTreeBranchNode: "DialogTree \u5206\u652f\u8282\u70b9",
+      dialogTreeBranchArm: "\u6761\u4ef6\u5206\u652f\u81c2",
+      dialogTreeBranchSelection: "\u7b2c\u4e00\u4e2a\u6761\u4ef6 result == 1\uff1b\u65e0\u771f\u6761\u4ef6 \u2192 \u5206\u652f\u81c2 0",
+      dialogTreeBranchCount: "\u4e8c\u8fdb\u5236\u9a8c\u8bc1\u7684 DialogTree \u5206\u652f\u8282\u70b9",
+      dialogTreeBranchBoundary: "\u8fd9\u53ea\u8bc1\u660e\u539f\u751f\u5206\u652f\u9009\u62e9\u548c\u76f8\u5173\u539f\u59cb\u6587\u4ef6\uff0c\u4e0d\u8bc1\u660e\u4efb\u52a1\u89e6\u53d1\u3001\u5f52\u5c5e\u3001\u8de8\u6587\u4ef6\u987a\u5e8f\u6216\u65f6\u5e8f\u3002",
+      dialogTreeIfNode: "DialogTree If \u8282\u70b9",
+      dialogTreeIfArm: "If \u5206\u652f\u81c2",
+      dialogTreeIfCount: "\u4e8c\u8fdb\u5236\u9a8c\u8bc1\u7684 DialogTree If \u8282\u70b9",
+      dialogTreeIfBoundary: "\u8fd9\u662f\u5e26\u539f\u59cb\u6587\u4ef6\u7684\u5185\u90e8\u6761\u4ef6\u9009\u62e9\u8bc1\u636e\uff1b\u4e0d\u8bc1\u660e\u4efb\u52a1\u89e6\u53d1\u3001\u5f52\u5c5e\u3001\u8de8\u6587\u4ef6\u987a\u5e8f\u6216\u65f6\u5e8f\u3002",
+      dialogTimelineBinaryContract: "\u539f\u59cb\u4e8c\u8fdb\u5236 Timeline \u9009\u9879\u5408\u7ea6",
+      dialogTimelineValidation: "\u4e8c\u8fdb\u5236\u9a8c\u8bc1",
+      dialogTimelineBinaryCount: "\u4e8c\u8fdb\u5236 Timeline \u9009\u9879\u5206\u652f\u7ec4",
+      dialogTimelineBoundary: "Timeline \u8f68\u9053\u63d0\u4f9b\u7cbe\u786e\u7684 option-index \u8df3\u8f6c/\u8fd4\u56de\u7a97\u53e3\uff1b\u4e8c\u8fdb\u5236\u5408\u7ea6\u89e3\u91ca\u8fd0\u884c\u65f6\u9009\u9879\u5339\u914d\u3002\u8fd9\u4e0d\u8bc1\u660e\u4efb\u52a1\u89e6\u53d1\u3001\u8de8\u6587\u4ef6\u65f6\u5e8f\u6216\u670d\u52a1\u5668\u5206\u652f\u9009\u62e9\u3002",
       questFork: "\u4efb\u52a1\u5206\u652f",
       questForkStructure: "\u539f\u59cb\u4efb\u52a1\u5206\u652f\u7ed3\u6784",
       questForkStructureHint: "\u5206\u652f\u89d2\u8272\u3001\u5b88\u536b\u6761\u4ef6\u3001\u7ec8\u70b9\u5f62\u72b6\u548c\u518d\u6c47\u5408\u5747\u6765\u81ea\u539f\u59cb MissionRuntime \u6587\u4ef6\uff1b\u670d\u52a1\u7aef\u542f\u52a8\u4e0e\u4e92\u65a5\u7b56\u7565\u4ecd\u672a\u77e5\u3002",
@@ -1715,6 +1880,8 @@
       nativeSplitFanout: "\u539f\u751f Split \u5206\u6d41",
       nativeIfElseBranch: "\u539f\u751f If/Else \u5206\u652f",
       nativeSwitchBranch: "\u539f\u751f Switch \u5206\u652f",
+      nativeSwitchIntLargerBranch: "\u539f\u751f SwitchIntLarger \u5206\u652f",
+      nativeWaitTriggerVolumeBranch: "\u539f\u751f\u89e6\u53d1\u4f53\u79ef\u7b49\u5f85\u7ed3\u679c\u5206\u652f",
       nativeControlMerge: "\u539f\u751f\u5206\u652f\u6c47\u5408",
       nativeMissionStateBranches: "\u4efb\u52a1\u72b6\u6001 Story \u5019\u9009\u5206\u652f",
       nativeMissionStateBranchesHint: "\u539f\u59cb LevelScript \u4e0e\u5df2\u5b89\u88c5\u5ba2\u6237\u7aef\u7684 getter/comparer \u6620\u5c04\u7cbe\u786e\u8bc1\u660e\u6bcf\u4e2a\u72b6\u6001\u5206\u652f\u4e0a\u7684 Story \u6587\u4ef6\uff0c\u5305\u62ec\u540d\u4e49\u4e0a\u5f52\u5165\u5176\u4ed6\u4efb\u52a1\u7684\u6587\u4ef6\u3002\u5b83\u4eec\u662f\u4e92\u65a5\u5019\u9009\uff0c\u4e0d\u662f Story \u987a\u5e8f\u6216\u5f52\u5c5e\u3002",
@@ -1734,6 +1901,43 @@
       nativeSharedDownstream: "\u5171\u4eab\u4e0b\u6e38\u52a8\u4f5c",
       nativeFullArmHint: "\u6bcf\u4e2a\u69fd\u4f4d\u90fd\u6765\u81ea\u539f\u59cb LevelScript \u7684\u8fd0\u884c\u65f6\u6709\u6548\u52a8\u4f5c\u8868\uff0c\u5e76\u4e0e\u5df2\u5b89\u88c5\u5ba2\u6237\u7aef\u7684\u4e8c\u8fdb\u5236\u6620\u5c04\u6821\u9a8c\u3002\u975e Story \u540c\u7ea7\u52a8\u4f5c\u4e0d\u8bc1\u660e Story \u5f52\u5c5e\u3001\u65f6\u5e8f\u6216\u4efb\u52a1\u6210\u5458\u5173\u7cfb\u3002",
       nativeOrderedSequence: "\u539f\u751f\u6709\u5e8f\u52a8\u4f5c\u5e8f\u5217",
+      nativeSequenceContext: "\u5e8f\u5217\u5316 Branch \u5e8f\u5217\u4e0a\u4e0b\u6587",
+      nativeSequenceContextHint: "\u7cbe\u786e Story \u8def\u5f84\u5230\u8fbe\u8fd9\u4e9b Branch \u5206\u652f\u3002\u5176\u4f59\u5e8f\u5217\u5316\u5206\u652f\u4f5c\u4e3a\u672a\u89e3\u51b3\u7684\u8fd0\u884c\u65f6\u4e0a\u4e0b\u6587\u4fdd\u7559\uff1b\u8be5\u6295\u5f71\u4e0d\u4f1a\u521b\u5efa Story \u987a\u5e8f\u6216\u5f52\u5c5e\u3002",
+      nativeSequenceContextNotAdmitted: "\u672a\u63a5\u7eb3\u987a\u5e8f\u8fb9",
+      nativeSequenceContextObserved: "\u5df2\u89c2\u6d4b Story \u5206\u652f",
+      nativeSerializedBranchInventory: "\u5168\u91cf\u5e8f\u5217\u5316 Branch \u666e\u67e5",
+      nativeSerializedBranchInventoryHint: "\u4e24\u4e2a\u539f\u59cb LevelScript \u6839\u76ee\u5f55\u90fd\u8fdb\u884c\u54c8\u5e0c\u5e76\u53bb\u91cd\u3002\u7cbe\u786e\u7684\u64ad\u653e\u52a8\u4f5c\u8bb0\u5f55\u4e0e\u6bcf\u4e2a\u5e8f\u5217\u5316 Branch \u69fd\u4f4d\u5173\u8054\uff1b\u8be5\u666e\u67e5\u4ec5\u662f\u4e0a\u4e0b\u6587\uff0c\u4e0d\u5206\u914d\u4efb\u52a1\u5f52\u5c5e\u6216\u6587\u4ef6\u987a\u5e8f\u3002",
+      nativeSerializedBranchGroups: "\u5e8f\u5217\u5316 Branch \u7ec4",
+      nativeSerializedBranchArms: "\u5e8f\u5217\u5316 Branch \u69fd\u4f4d",
+      nativeSerializedPlaybackArms: "\u542b\u64ad\u653e\u7684\u5206\u652f",
+      nativeSerializedMultiPlaybackArms: "\u591a\u64ad\u653e\u5206\u652f\u7ec4",
+      nativeSerializedBranchMatched: "\u4efb\u52a1\u5339\u914d\u7684\u666e\u67e5\u884c",
+      nativeSerializedBranchArmPlayback: "\u7cbe\u786e\u64ad\u653e",
+      nativeSerializedBranchReachable: "\u53ef\u8fbe\u52a8\u4f5c",
+      nativeSerializedBranchActions: "\u53ef\u8fbe\u539f\u751f\u52a8\u4f5c",
+      nativeSerializedBranchClasses: "\u89e3\u7801\u8bb0\u5f55\u7c7b\u522b",
+      nativeSerializedBranchMissionContext: "\u4efb\u52a1\u5e8f\u5217\u5316 Branch \u4e0a\u4e0b\u6587",
+      nativeSerializedBranchMissionContextHint: "\u8fd9\u4e9b\u884c\u662f\u539f\u59cb LevelScript \u666e\u67e5\u4e2d\u4e0e\u8be5\u4efb\u52a1 Story \u952e\u7cbe\u786e\u4ea4\u96c6\u540e\u7684\u6295\u5f71\u3002\u76f8\u5173\u539f\u59cb\u6587\u4ef6\u5df2\u9644\u52a0\u4f9b\u590d\u6838\uff1b\u8be5\u6295\u5f71\u4e0d\u8bc1\u660e\u4efb\u52a1\u5f52\u5c5e\u3001\u6fc0\u6d3b\u3001\u5206\u652f\u4e92\u65a5\u6027\u6216 Story \u6587\u4ef6\u987a\u5e8f\u3002",
+      nativeSerializedBranchMissionKeys: "\u4efb\u52a1 Story \u952e",
+      nativeSerializedBranchExternalKeys: "\u5916\u90e8 Story \u952e",
+      nativeSerializedNestedControls: "\u5d4c\u5957\u7c7b\u578b\u63a7\u5236",
+      nativeSerializedNestedArms: "\u5d4c\u5957\u5e8f\u5217\u5316\u5206\u652f",
+      nativeSerializedNestedPlayback: "\u5d4c\u5957\u7cbe\u786e\u64ad\u653e",
+      nativeSerializedNestedPlaybackArms: "\u5d4c\u5957\u64ad\u653e\u5206\u652f",
+      nativeSerializedNestedMultiPlayback: "\u591a\u64ad\u653e\u63a7\u5236",
+      nativeSerializedNestedPlaybackControls: "\u64ad\u653e\u63a7\u5236",
+      nativeSerializedNestedPredicateGaps: "\u64ad\u653e\u8c13\u8bcd\u7f3a\u53e3",
+      nativeSerializedNestedControlRefs: "\u53ef\u8fbe\u7c7b\u578b\u63a7\u5236",
+      nativeSerializedNestedControlReferences: "\u5d4c\u5957\u63a7\u5236\u5f15\u7528",
+      nativeSerializedNestedSlots: "\u5d4c\u5957\u69fd\u4f4d",
+      nativeSerializedNestedActive: "\u5d4c\u5957\u6d3b\u52a8\u69fd\u4f4d",
+      nativeSerializedNestedInactive: "\u5d4c\u5957\u7981\u7528\u69fd\u4f4d",
+      nativeSerializedNestedUnavailable: "\u5d4c\u5957\u4e0d\u53ef\u7528\u69fd\u4f4d",
+      nativeSerializedNestedSchemaGaps: "\u5206\u652f\u6a21\u5f0f\u7f3a\u53e3",
+      nativeSerializedNestedFamilies: "\u63a7\u5236\u65cf",
+      nativeSerializedTypedFamilies: "\u5168\u91cf\u7c7b\u578b\u63a7\u5236\u65cf",
+      nativeSerializedPredicateConflicts: "\u8c13\u8bcd\u51b2\u7a81",
+      nativeSerializedNestedPredicate: "\u539f\u751f\u8c13\u8bcd",
       nativeStoryTransitions: "\u7cbe\u786e\u539f\u751f Story \u8f6c\u79fb",
       nativeStoryTransitionsHint: "\u6bcf\u6761\u8fb9\u90fd\u662f\u539f\u59cb LevelScript \u8def\u5f84\u524d\u7f00\u5173\u7cfb\u3002\u7c7b\u578b\u5316\u540e\u7f00\u4f1a\u663e\u793a\u64ad\u653e\u662f\u7ebf\u6027\u7ee7\u7eed\uff0c\u8fd8\u662f\u7ecf\u8fc7\u5e76\u884c\u3001\u6761\u4ef6\u3001\u6210\u529f/\u5931\u8d25\u6216\u6709\u5e8f\u5206\u652f\u3002",
       nativeStoryTransitionLinear: "\u7ebf\u6027",
@@ -2271,6 +2475,8 @@
   function missionBadges(row) {
     const badges = [];
     if (row.offlineRecoveryShell) badges.push(`<span class="mp-list-badge is-evidence">${esc(t("offlineMissionShell"))}</span>`);
+    if (row.sourceOrderShell) badges.push(`<span class="mp-list-badge is-evidence">${esc(t("sourceOrderShell"))}</span>`);
+    if (row.storyBranchShell) badges.push(`<span class="mp-list-badge is-evidence">${esc(t("storyBranchShell"))}</span>`);
     if (row.storyAggregateShell) badges.push(`<span class="mp-list-badge is-evidence">${esc(t("storyAggregateShell"))}</span>`);
     if (row.caseStudy) badges.push(`<span class="mp-list-badge is-evidence">${esc(t("evidence"))}</span>`);
     if (row.fanoutCount) badges.push(`<span class="mp-list-badge">${row.fanoutCount} ${esc(t("branches"))}</span>`);
@@ -3220,15 +3426,55 @@
     </div>`;
   }
 
+  function storyConnectionOriginalFilesHtml(row) {
+    const files = (row?.relatedOriginalFiles || [])
+      .filter((file) => file && file.sourceFile)
+      .map((file) => `<small><code>${esc(file.kind || "file")}</code> <code>${esc(file.sourceFile)}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`)
+      .join("");
+    const validation = row?.relatedOriginalFilesValidation || {};
+    const unresolved = (validation.unresolvedSourceReferences || [])
+      .filter(Boolean)
+      .map((source) => `<code>${esc(source)}</code>`)
+      .join(" ");
+    const nonPath = (validation.nonPathSourceReferences || [])
+      .filter(Boolean)
+      .map((source) => `<code>${esc(source)}</code>`)
+      .join(" ");
+    if (!files && !unresolved && !nonPath) return "";
+    return `<span class="mp-story-connection-originals"><strong>${esc(t("storyConnectionOriginalFiles"))}</strong>${files}${unresolved ? `<small>${esc(t("storyConnectionOriginalFilesHint"))} / unresolved: ${unresolved}</small>` : ""}${nonPath ? `<small>${esc(t("storyConnectionProvenanceSummaryHint"))} / non-path: ${nonPath}</small>` : ""}</span>`;
+  }
+
+  function nativeReceiverStoryContextHtml(row) {
+    const storyKey = String(row?.key || "");
+    if (!storyKey) return "";
+    const contexts = (state.index?.storyCoverage?.nativeReceiverStoryContextIndex?.rows || [])
+      .filter((context) => context && context.storyKey === storyKey);
+    if (!contexts.length) return "";
+    const contextRows = contexts.map((context) => {
+      const location = [context.levelId, context.scriptId].filter(Boolean).join("/") || "?";
+      const events = (context.eventNames || []).filter(Boolean).join(", ");
+      const files = (context.relatedOriginalFiles || [])
+        .filter((file) => file && file.sourceFile)
+        .map((file) => `<code>${esc(file.sourceFile)}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}`)
+        .join(" 路 ");
+      return `<span class="mp-story-receiver-context-row"><code>${esc(location)}</code>${events ? `<small>${esc(events)}</small>` : ""}${context.activationClass ? `<small>${esc(String(context.activationClass).replaceAll("_", " "))}</small>` : ""}${files ? `<small>${files}</small>` : ""}</span>`;
+    }).join("");
+    return `<span class="mp-story-receiver-context"><strong>${esc(t("nativeReceiverStoryContext"))} <span>${contexts.length}</span></strong>${contextRows}<small>${esc(t("nativeReceiverStoryContextHint"))}</small></span>`;
+  }
+
   function storyConnectionLink(row, className, questId = "") {
     const details = storyConnectionDetails(row);
     const routeHtml = storyTriggerRoutes(row, questId).map(triggerRouteHtml).join("");
     const rejectionHtml = storyPlaybackRejections(row).map(playbackRejectionHtml).join("");
     const offlineHtml = offlineRecoveryHtml(row);
+    const originalFilesHtml = storyConnectionOriginalFilesHtml(row);
+    const receiverContextHtml = nativeReceiverStoryContextHtml(row);
     const evidence = [row.confidence, row.source || row.evidence].filter(Boolean).join(" · ");
     return `<a class="is-${className}" href="${esc(storyHref(row.key))}" title="${esc(`${t("openInStory")} · ${evidence}`)}">
       <span>${esc(storyDisplayKind(row))}</span><code>${esc(row.key)}</code><b aria-hidden="true">→</b>
       <em>${esc(details.join(" · "))}</em>${evidence ? `<small>${esc(evidence)}</small>` : ""}
+      ${originalFilesHtml}
+      ${receiverContextHtml}
       ${routeHtml}
       ${rejectionHtml}
       ${offlineHtml}
@@ -3281,10 +3527,15 @@
     });
     const rows = [...unique.values()];
     if (!rows.length) return "";
+    const provenance = state.index?.storyConnectionOriginalFiles?.summary || {};
+    const provenanceSummary = Number(provenance.relationRows || 0)
+      ? `<section class="mp-story-connection-provenance"><h4>${esc(t("storyConnectionProvenanceSummary"))}</h4><p>${esc(t("storyConnectionProvenanceSummaryHint"))}</p><div class="mp-order-metrics"><span><b>${Number(provenance.sourceReferencesConsidered || 0).toLocaleString()}</b>${esc(t("storyConnectionSourceReferences"))}</span><span><b>${Number(provenance.attachedOriginalFiles || 0).toLocaleString()}</b>${esc(t("storyConnectionAttachedFiles"))}</span><span><b>${Number(provenance.unresolvedSourceReferences || 0).toLocaleString()}</b>${esc(t("storyConnectionUnresolved"))}</span><span><b>${Number(provenance.nonPathSourceReferences || 0).toLocaleString()}</b>${esc(t("storyConnectionNonPath"))}</span></div></section>`
+      : "";
     const acceptRows = rows.filter((row) => row.relation === "mission_accept_dialog");
     const contextRows = rows.filter((row) => row.relation !== "mission_accept_dialog");
     return `<details class="mp-mission-story" data-weight="${acceptRows.length ? "strong" : "context"}"${acceptRows.length ? " open" : ""}>
       <summary>${esc(t("missionStoryFiles"))} <span>${rows.length}</span></summary>
+      ${provenanceSummary}
       <div class="mp-story-files">
         ${acceptRows.length ? `<section class="mp-story-group is-incoming"><h4>${esc(t("relationMissionAccept"))} <span>${acceptRows.length}</span></h4>${acceptRows.map((row) => storyConnectionLink(row, "incoming")).join("")}</section>` : ""}
         ${contextRows.length ? `<section class="mp-story-group is-context"><h4>${esc(t("storyContext"))} <span>${contextRows.length}</span></h4>${contextRows.map((row) => storyConnectionLink(row, "context")).join("")}</section>` : ""}
@@ -3641,6 +3892,15 @@
     const summary = order.summary;
     const components = new Map((order.components || []).map((row) => [row.id, row]));
     const directEdges = order.directEdges || [];
+    const relatedOriginalFilesHtml = (row) => (row.relatedOriginalFiles || []).length
+      ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${row.relatedOriginalFiles.length}</span></summary>${row.relatedOriginalFiles.map((related) => `<small><code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("")}</details>`
+      : "";
+    const missionNamedLevelDataContexts = (order.missionNamedLevelDataReceiverContexts || []).map((row) => {
+      const stories = (row.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
+      const host = row.levelDataHost || {};
+      const files = relatedOriginalFilesHtml(row);
+      return `<article class="mp-order-branch is-boundary mp-leveldata-receiver-context"><header><code>${esc(row.missionId || "?")}</code><i>&rarr;</i><code>${esc(row.levelId || "?")} / ${esc(row.scriptId || "?")}</code><i>&harr;</i>${stories}</header><p><strong>${esc(t("missionNamedLevelDataReceiverBoundary"))}</strong> <code>${esc(host.fileName || host.sourceFile || "?")}</code>${host.dictionaryEntryCount != null ? ` <code>${Number(host.dictionaryEntryCount).toLocaleString()} typed scripts</code>` : ""}${row.activationClass ? ` <code>${esc(row.activationClass)}</code>` : ""}</p><small>${esc(row.evidenceBoundary || t("missionNamedLevelDataReceiverContextsHint"))}</small>${files}</article>`;
+    }).join("");
     const missionObservedContexts = (order.missionObservedLevelScriptContexts || []).map((row) => {
       const stories = (row.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
       const conditions = (row.conditionTypes || []).map((name) => `<code>${esc(name)}</code>`).join(" ");
@@ -3648,6 +3908,33 @@
       const files = (row.relatedOriginalFiles || []).map((related) => `<small><code>${esc(related.kind || "file")}</code> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("");
       return `<article class="mp-order-branch is-boundary"><header><code>${esc(row.questId || "?")}</code><i>&rarr;</i><code>${esc(row.levelId || "?")} / ${esc(row.scriptId || "?")}</code><i>&harr;</i>${stories}</header><p>${conditions}${properties ? ` <strong>${esc(t("observedProperties"))}:</strong> ${properties}` : ""}</p><small><strong>${esc(t("propertyWriterUnresolved"))}</strong> ${esc(row.evidenceBoundary || "")}</small>${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}</article>`;
     }).join("");
+    const nativeReceiverStoryContexts = (order.nativeReceiverStoryContexts || []).map((row) => {
+      const receiver = row.receiverEvidence || {};
+      const levelscript = receiver.levelScript || {};
+      const active = receiver.activePhaseReceiver || {};
+      const request = receiver.clientActiveRequest || {};
+      const missionStories = (row.missionStoryKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
+      const externalStories = (row.externalStoryKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
+      const headers = (active.receiverHeaders || []).map((header) => `<code>#${esc(header.listenerHeaderLocalId ?? "?")} ${esc(header.headerName || "?")}</code>`).join(" ");
+      const files = relatedOriginalFilesHtml(row);
+      return `<article class="mp-order-branch is-boundary mp-native-receiver-story-context"><header><b>${esc(t("nativeReceiverStoryContexts"))}</b> <code>${esc(row.levelId || "?")} / ${esc(row.scriptId || "?")}</code><i>&harr;</i>${missionStories}</header>${externalStories ? `<p><strong>${esc(t("nativeReceiverStoryExternalKeys"))}:</strong> ${externalStories}</p>` : ""}<p><strong>${esc(t("nativeReceiverStoryMissionKeys"))}:</strong> ${missionStories || `<code>?</code>`}</p><small><code>${esc(row.activationClass || "?")}</code> / ${esc(levelscript.startTypeName || "?")} / ${esc(levelscript.activeShapeListStatus || "?")} (${Number(levelscript.activeShapeListCount || 0).toLocaleString()} active shapes)</small><small><strong>${esc(t("binaryActivePhaseReceiver"))}:</strong> <code>${esc(active.status || "?")}</code> <code>${esc(active.classification || "?")}</code>${headers ? ` ${headers}` : ""}</small><small><strong>${esc(t("nativeReceiverStoryContexts"))}:</strong> <code>${esc(request.status || "?")}</code> <code>${esc(request.classification || "?")}</code>${request.runtimePath?.length ? ` ${request.runtimePath.map((step) => `<code>${esc(step)}</code>`).join(" ")}` : ""}</small><small>${esc(row.evidenceBoundary || "")}</small>${files}</article>`;
+    }).join("");
+    const orderCrossReference = order.crossReference || null;
+    const orderCrossReferenceStatus = (reference) => {
+      const value = reference || {};
+      const details = [
+        value.status || "uncovered",
+        value.fromIndex != null && value.toIndex != null
+          ? `#${value.fromIndex} → #${value.toIndex}`
+          : "",
+        (value.missing || []).length ? `missing ${(value.missing || []).join(", ")}` : "",
+      ].filter(Boolean).join(" ");
+      return `<code>${esc(details)}</code>`;
+    };
+    const orderCrossReferenceEdges = (orderCrossReference?.disagreementEdges || []).map((edge) => `<div class="mp-order-edge"><a href="${esc(storyHref(edge.from || ""))}"><code>${esc(edge.from || "?")}</code></a><i>&rarr;</i><a href="${esc(storyHref(edge.to || ""))}"><code>${esc(edge.to || "?")}</code></a><small><strong>${esc(t("orderCrossReferenceSourceEdge"))}:</strong> <code>${esc(edge.kind || "sourceEdge")}</code></small><small><strong>${esc(t("orderCrossReferenceOverride"))}:</strong> ${orderCrossReferenceStatus(edge.override)} <strong>${esc(t("orderCrossReferenceOcr"))}:</strong> ${orderCrossReferenceStatus(edge.ocr)}${edge.crossReferenceConflict ? ` <b>${esc(t("orderCrossReferenceConflicts"))}</b>` : ""}</small></div>`).join("");
+    const orderCrossReferenceHtml = orderCrossReference
+      ? `<section class="mp-order-cross-reference"><h4>${esc(t("orderCrossReference"))}</h4><p>${esc(t("orderCrossReferenceHint"))}</p><div class="mp-order-metrics"><span><b>${Number(orderCrossReference.strictEdgeCount || 0).toLocaleString()}</b>${esc(t("orderCrossReferenceStrictEdges"))}</span><span><b>${Number(orderCrossReference.override?.agrees || 0).toLocaleString()}</b>${esc(t("orderCrossReferenceOverride"))} ${esc(t("orderCrossReferenceAgrees"))}</span><span><b>${Number(orderCrossReference.override?.disagrees || 0).toLocaleString()}</b>${esc(t("orderCrossReferenceOverride"))} ${esc(t("orderCrossReferenceDisagrees"))}</span><span><b>${Number(orderCrossReference.ocr?.agrees || 0).toLocaleString()}</b>${esc(t("orderCrossReferenceOcr"))} ${esc(t("orderCrossReferenceAgrees"))}</span><span><b>${Number(orderCrossReference.ocr?.disagrees || 0).toLocaleString()}</b>${esc(t("orderCrossReferenceOcr"))} ${esc(t("orderCrossReferenceDisagrees"))}</span><span><b>${Number(orderCrossReference.conflictCount || 0).toLocaleString()}</b>${esc(t("orderCrossReferenceConflicts"))}</span></div>${orderCrossReferenceEdges ? `<details><summary>${esc(t("orderCrossReferenceDisagreementEdges"))} <span>${(orderCrossReference.disagreementEdges || []).length.toLocaleString()}</span></summary><div class="mp-order-edges">${orderCrossReferenceEdges}</div></details>` : ""}<small>${esc(orderCrossReference.policy || "")}</small>${orderCrossReference.reportJson ? `<small><code>${esc(orderCrossReference.reportJson)}</code></small>` : ""}</section>`
+      : "";
     const componentHtml = (componentId) => {
       const component = components.get(componentId) || {id: componentId, sceneKeys: []};
       const files = (component.sceneKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join("");
@@ -3703,7 +3990,7 @@
     const typedSelectors = (branches.typedStorySelectorGroups || []).map((row) => `<details><summary><b>${esc(t("typedStorySelectors"))}</b> <code>${esc(row.selectorGroupId || "?")}</code></summary><p>${esc(t("typedStorySelectorHint"))}</p>${(row.alternatives || []).map((alternative) => `<div><code>${esc(alternative.role || "?")}</code><i>&rarr;</i><a href="${esc(storyHref(alternative.key))}"><code>${esc(alternative.key || "?")}</code></a></div>`).join("")}${(row.sourceFiles || []).length ? `<small>${row.sourceFiles.map((source) => `<code>${esc(source)}</code>`).join(" ")}</small>` : ""}</details>`).join("");
     const questForks = (branches.questForks || []).map((row) => `<div><b>${esc(t("questFork"))}</b><code>${esc(row.questId || "?")}</code><i>&rarr;</i><span>${(row.successorQuestIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span>${questForkAuthority ? `<small>${esc(t("serverSelectedStart"))}</small>` : ""}</div>`).join("");
     const questMerges = (branches.questMerges || []).map((row) => `<div><b>${esc(t("questMerge"))}</b><span>${(row.predecessorQuestIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ")}</span><i>&rarr;</i><code>${esc(row.questId || "?")}</code></div>`).join("");
-    const nativeBranchLabel = (kind) => t(kind === "splitFanout" ? "nativeSplitFanout" : kind === "ifElse" ? "nativeIfElseBranch" : "nativeSwitchBranch");
+    const nativeBranchLabel = (kind) => t(kind === "splitFanout" ? "nativeSplitFanout" : kind === "ifElse" ? "nativeIfElseBranch" : kind === "switchIntLarger" ? "nativeSwitchIntLargerBranch" : kind === "waitTriggerVolume" ? "nativeWaitTriggerVolumeBranch" : "nativeSwitchBranch");
     const nativeParamText = (label, param) => {
       if (!param || typeof param !== "object") return "";
       const source = param.getterLocalId != null
@@ -3778,9 +4065,6 @@
     const nativeSourcesHtml = (row) => (row.sourceFiles || []).length
       ? `<small><strong>${esc(t("source"))}:</strong> ${(row.sourceFiles || []).map((source) => `<code>${esc(source)}</code>`).join(" ")}</small>`
       : "";
-    const relatedOriginalFilesHtml = (row) => (row.relatedOriginalFiles || []).length
-      ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${row.relatedOriginalFiles.length}</span></summary>${row.relatedOriginalFiles.map((related) => `<small><code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("")}</details>`
-      : "";
     const nativeTransitionKindLabel = (kind) => t(({
       linear: "nativeStoryTransitionLinear",
       parallelFanout: "nativeStoryTransitionParallel",
@@ -3833,7 +4117,7 @@
       const armRows = displayArms.map((arm) => {
         const storyLinks = (arm.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>${external.has(key) ? `<b>${esc(t("nativeCrossBoundaryExternal"))}</b>` : ""}`).join(" ");
         const entry = arm.entryAction
-          ? `<span><b>${esc(t("nativeArmEntryAction"))}</b> <code>#${esc(arm.entryAction.localId ?? "?")} ${esc(arm.entryAction.actionName || arm.entryAction.recordClass || "?")}</code></span>`
+          ? `<span><b>${esc(t("nativeArmEntryAction"))}</b> <code>#${esc(arm.entryAction.localId ?? "?")} ${esc(arm.entryAction.actionName || arm.entryAction.recordClass || "?")}</code>${arm.entryAction.controlRuntimeMappingId ? ` <small><code>${esc(arm.entryAction.controlRuntimeMappingId)}</code></small>` : ""}</span>`
           : "";
         const status = !storyLinks && arm.targetStatus === "exact_active_action"
           ? `<b>${esc(t("nativeNonStoryArm"))}</b>`
@@ -3865,6 +4149,99 @@
     }).join("");
     const nativeMerges = (branches.nativeControlMerges || []).map((row) => `<details><summary><b>${esc(t("nativeControlMerge"))}</b><code>#${esc(row.branchLocalId ?? "?")}</code><i>&rarr;</i><code>#${esc(row.mergeLocalId ?? "?")}</code></summary><small>${esc(row.convergenceStatus === "exact_serialized_downstream_control_convergence" ? t("nativeControlReachability") : row.convergenceStatus || "")}</small><span>${(row.downstreamStoryKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ")}</span>${(row.mergePaths || []).map((path) => `<div><b>${esc(t("nativeControlPath"))}</b>${path.map((localId) => `<code>#${esc(localId)}</code>`).join(" &rarr; ")}</div>`).join("")}${nativeSourcesHtml(row)}</details>`).join("");
     const nativeSequences = (branches.nativeOrderedSequences || []).map((row) => `<details open><summary><b>${esc(t("nativeOrderedSequence"))}</b> <code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}#${esc(row.branchLocalId ?? "?")}</code></summary><small>${esc(row.eventName || "")}</small>${(row.arms || []).map((arm, index) => `<div><code>${index + 1}. ${esc(arm.edge || "?")}</code><span>${(arm.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ")}</span></div>`).join("")}${(row.nativeConsumers || []).map((consumer) => `<small><code>${esc(consumer.method || "?")} @ ${esc(consumer.address || "?")}</code> ${esc(consumer.contract || "")}</small>`).join("")}${nativeSourcesHtml(row)}</details>`).join("");
+    const serializedBranchInventory = state.index?.storyOrder?.nativeSerializedBranchInventory || null;
+    const serializedBranchInventorySummary = serializedBranchInventory?.summary || {};
+    const missionStoryKeys = new Set((order.nodes || []).map((row) => (
+      typeof row === "string" ? row : row?.key
+    )).filter(Boolean));
+    const serializedBranchStoryKeys = (row) => {
+      const keys = new Set();
+      const visit = (value) => {
+        if (Array.isArray(value)) {
+          value.forEach(visit);
+        } else if (value && typeof value === "object") {
+          ["playbackStoryKeys", "storyKeys"].forEach((field) => {
+            const values = value[field];
+            if (Array.isArray(values)) values.forEach((key) => key && keys.add(String(key)));
+            else if (values) keys.add(String(values));
+          });
+          Object.values(value).forEach(visit);
+        }
+      };
+      visit(row);
+      return keys;
+    };
+    const attachedSerializedBranchContexts = (branches.nativeSerializedBranchContexts || [])
+      .filter((row) => row && row.relation === "serialized_branch_story_context");
+    const serializedBranchInventoryRows = attachedSerializedBranchContexts.length
+      ? attachedSerializedBranchContexts
+      : (serializedBranchInventory?.rows || [])
+        .filter((row) => [...serializedBranchStoryKeys(row)].some((key) => missionStoryKeys.has(key)));
+    const serializedBranchMissionContextHtml = attachedSerializedBranchContexts.length
+      ? `<p><strong>${esc(t("nativeSerializedBranchMissionContext"))}: ${attachedSerializedBranchContexts.length.toLocaleString()}</strong> <span>${esc(t("nativeSerializedBranchMissionKeys"))}: ${[...new Set(attachedSerializedBranchContexts.flatMap((row) => row.missionStoryKeys || []))].length.toLocaleString()}</span></p><p>${esc(t("nativeSerializedBranchMissionContextHint"))}</p>`
+      : "";
+    const serializedBranchInventoryArmHtml = (row) => (row.arms || []).map((arm) => {
+      const playback = (arm.playbackStoryKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
+      const action = arm.entryAction
+        ? `<code>#${esc(arm.entryAction.localId ?? "?")} ${esc(arm.entryAction.actionName || arm.entryAction.recordClass || "?")}</code>`
+        : "";
+      const actionNames = (arm.reachableActionNames || [])
+        .map((name) => `<code>${esc(name)}</code>`).join(" ");
+      const recordClasses = (arm.reachableRecordClasses || [])
+        .map((name) => `<code>${esc(name)}</code>`).join(" ");
+      const semanticSummary = [
+        actionNames
+          ? `<small>${esc(t("nativeSerializedBranchActions"))}: ${actionNames}</small>`
+          : "",
+        recordClasses
+          ? `<small>${esc(t("nativeSerializedBranchClasses"))}: ${recordClasses}</small>`
+          : "",
+      ].join("");
+      const nestedControlsHtml = (arm.nestedControls || []).map((control) => {
+        const nestedArms = (control.arms || []).map((nestedArm) => {
+          const nestedPlayback = (nestedArm.playbackStoryKeys || [])
+            .map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`)
+            .join(" ");
+          const nestedNames = (nestedArm.reachableActionNames || [])
+            .map((name) => `<code>${esc(name)}</code>`).join(" ");
+          const nestedControlRefs = (nestedArm.reachableControlLocalIds || [])
+            .map((localId) => `<code>#${esc(localId)}</code>`).join(" ");
+          return `<div><code>${esc(nestedArm.edge || "?")} &rarr; #${esc(nestedArm.entryLocalId ?? "inactive")}</code><span>${nestedPlayback || `<small>${esc(nestedArm.targetStatus || "")}</small>`}</span><small>${esc(t("nativeSerializedBranchReachable"))}: ${Number(nestedArm.reachableActionCount || 0).toLocaleString()}${nestedPlayback ? ` / ${esc(t("nativeSerializedNestedPlayback"))}: ${nestedPlayback}` : ""}</small>${nestedNames ? `<small>${esc(t("nativeSerializedBranchActions"))}: ${nestedNames}</small>` : ""}${nestedControlRefs ? `<small>${esc(t("nativeSerializedNestedControlRefs"))}: ${nestedControlRefs}</small>` : ""}</div>`;
+        }).join("");
+        const detail = control.controlDetail
+          ? `<small><code>${esc(JSON.stringify(control.controlDetail))}</code></small>`
+          : "";
+        const predicate = control.predicate
+          ? `<small>${esc(t("nativeSerializedNestedPredicate"))}: <code>${esc(JSON.stringify(control.predicate))}</code></small>`
+          : "";
+        const nestedPlaybackCount = Number(control.playbackArmCount || 0);
+        const nestedPlaybackSummary = nestedPlaybackCount
+          ? `<span>${nestedPlaybackCount.toLocaleString()} ${esc(t("nativeSerializedNestedPlaybackArms"))}</span>`
+          : "";
+        const nestedBranchingSummary = control.branchingStatus === "multi_playback_arms"
+          ? `<b>${esc(t("nativeSerializedNestedMultiPlayback"))}</b>`
+          : "";
+        const nestedPredicateGap = control.playbackPredicateStatus === "unresolved_playback_predicate"
+          ? `<b>${esc(t("nativeSerializedNestedPredicateGaps"))}</b>`
+          : "";
+        const nestedSchemaGap = control.armSchemaStatus === "unavailable_fail_closed"
+          ? `<b>${esc(t("nativeSerializedNestedSchemaGaps"))}</b>`
+          : "";
+        return `<details><summary><b><code>#${esc(control.localId ?? "?")} ${esc(control.actionName || control.recordClass || "?")}</code></b><span>${Number(control.serializedArmCount || 0).toLocaleString()} ${esc(t("nativeSerializedNestedArms"))}</span>${nestedPlaybackSummary}${nestedBranchingSummary}${nestedPredicateGap}${nestedSchemaGap}</summary>${detail}${predicate}${nestedArms}</details>`;
+      }).join("");
+      const nestedSummary = nestedControlsHtml
+        ? `<small>${esc(t("nativeSerializedNestedControls"))}: ${(arm.nestedControls || []).length.toLocaleString()}</small>${nestedControlsHtml}`
+        : "";
+      return `<div><code>${esc(arm.edge || "?")} &rarr; #${esc(arm.entryLocalId ?? "inactive")}</code><span>${playback || `<small>${esc(arm.targetStatus || "")}</small>`}</span>${action ? `<small>${esc(t("nativeArmEntryAction"))}: ${action}</small>` : ""}<small>${esc(t("nativeSerializedBranchReachable"))}: ${Number(arm.reachableActionCount || 0).toLocaleString()}${playback ? ` / ${esc(t("nativeSerializedBranchArmPlayback"))}: ${playback}` : ""}</small>${semanticSummary}${nestedSummary}</div>`;
+    }).join("");
+    const serializedBranchInventoryRowsHtml = serializedBranchInventoryRows.map((row) => `<details open><summary><b>${esc(row.relation === "serialized_branch_story_context" ? t("nativeSerializedBranchMissionContext") : t("nativeSerializedBranchInventory"))}</b> <code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}#${esc(row.branchLocalId ?? "?")}</code><span>${Number(row.serializedArmCount || 0).toLocaleString()} ${esc(t("nativeSerializedBranchArms"))}</span><span>${Number(row.playbackArmCount || 0).toLocaleString()} ${esc(t("nativeSerializedPlaybackArms"))}</span></summary><p>${(row.sourceContexts || []).map((context) => `<code>${esc(context.levelId || "?")}/${esc(context.scriptId || "?")}</code>`).join(" ")}</p>${row.missionStoryKeys?.length ? `<small><strong>${esc(t("nativeSerializedBranchMissionKeys"))}:</strong> ${row.missionStoryKeys.map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ")}</small>` : ""}${row.externalStoryKeys?.length ? `<small><strong>${esc(t("nativeSerializedBranchExternalKeys"))}:</strong> ${row.externalStoryKeys.map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ")}</small>` : ""}${(row.eventRoots || []).length ? `<small>${esc(t("triggerEvents"))}: ${(row.eventRoots || []).map((event) => `<code>#${esc(event.localId ?? "?")} ${esc(event.headerName || "?")} &rarr; #${esc(event.nextActionLocalId ?? "?")}</code>`).join(" ")}</small>` : ""}${serializedBranchInventoryArmHtml(row)}${row.exit ? `<small><code>${esc(row.exit.edge || "ActionBase.nextId")}</code> &rarr; #${esc(row.exit.entryLocalId ?? "inactive")} <code>${esc(row.exit.targetStatus || "")}</code></small>` : ""}${relatedOriginalFilesHtml(row)}<small>${esc(row.contextEvidenceBoundary || row.evidenceBoundary || "")}</small></details>`).join("");
+    const serializedBranchInventoryHtml = serializedBranchInventory?.schema
+      ? `<section class="mp-native-serialized-branch-inventory"><h4>${esc(t("nativeSerializedBranchInventory"))}</h4><p>${esc(t("nativeSerializedBranchInventoryHint"))}</p>${serializedBranchMissionContextHtml}<div class="mp-order-metrics"><span><b>${Number(serializedBranchInventorySummary.serializedBranchGroupCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedBranchGroups"))}</span><span><b>${Number(serializedBranchInventorySummary.serializedBranchArmCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedBranchArms"))}</span><span><b>${Number(serializedBranchInventorySummary.playbackArmCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedPlaybackArms"))}</span><span><b>${Number(serializedBranchInventorySummary.multiPlaybackBranchCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedMultiPlaybackArms"))}</span><span><b>${Number(serializedBranchInventorySummary.nestedControlCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedNestedControls"))}</span><span><b>${Number(serializedBranchInventorySummary.nestedPlaybackArmCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedNestedPlaybackArms"))}</span><span><b>${Number(serializedBranchInventorySummary.nestedMultiPlaybackControlCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedNestedMultiPlayback"))}</span><span><b>${Number(serializedBranchInventorySummary.nestedPlaybackControlCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedNestedPlaybackControls"))}</span><span><b>${Number(serializedBranchInventorySummary.nestedPlaybackPredicateGapCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedNestedPredicateGaps"))}</span><span><b>${Number(serializedBranchInventorySummary.nestedControlReferenceCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedNestedControlReferences"))}</span><span><b>${Number(serializedBranchInventorySummary.nestedSerializedArmCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedNestedSlots"))}</span><span><b>${Number(serializedBranchInventorySummary.nestedExactActiveArmCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedNestedActive"))}</span><span><b>${Number(serializedBranchInventorySummary.nestedInactiveArmCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedNestedInactive"))}</span><span><b>${Number(serializedBranchInventorySummary.nestedUnavailableArmCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedNestedUnavailable"))}</span><span><b>${Number(serializedBranchInventorySummary.nestedControlArmSchemaUnavailableCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedNestedSchemaGaps"))}</span><span><b>${Number(serializedBranchInventorySummary.controlPredicateConflictCount || 0).toLocaleString()}</b>${esc(t("nativeSerializedPredicateConflicts"))}</span></div><small><code>${esc(serializedBranchInventory.status || "unavailable")}</code> / ${Number(serializedBranchInventorySummary.sourcePathCount || 0).toLocaleString()} source paths / ${Number(serializedBranchInventorySummary.uniqueContentFileCount || 0).toLocaleString()} unique hashes</small>${Object.keys(serializedBranchInventorySummary.nestedControlFamilyCounts || {}).length ? `<small>${esc(t("nativeSerializedNestedFamilies"))}: <code>${esc(JSON.stringify(serializedBranchInventorySummary.nestedControlFamilyCounts))}</code></small>` : ""}${serializedBranchInventoryRowsHtml ? `<p><strong>${esc(t("nativeSerializedBranchMatched"))}: ${serializedBranchInventoryRows.length.toLocaleString()}</strong></p><div class="mp-order-branches">${serializedBranchInventoryRowsHtml}</div>` : `<small>${esc(t("nativeSerializedBranchMatched"))}: 0</small>`}${serializedBranchInventory.validationFailures?.length ? `<small>${esc(t("nativeSerializedBranchInventory"))} validation failures: ${serializedBranchInventory.validationFailures.length}</small>` : ""}<small>${esc(serializedBranchInventory.evidenceBoundary || "")}</small></section>`
+      : "";
+    const typedControlFamilyHtml = serializedBranchInventory?.schema
+      && Number(serializedBranchInventorySummary.typedControlGroupCount || 0)
+      ? `<section><h4>${esc(t("nativeSerializedTypedFamilies"))}</h4><p><b>${Number(serializedBranchInventorySummary.typedControlGroupCount || 0).toLocaleString()}</b> ${esc(t("nativeSerializedTypedFamilies"))}: <code>${esc(JSON.stringify(serializedBranchInventorySummary.typedControlFamilyCounts || {}))}</code></p></section>`
+      : "";
     const relatedActionTopologies = (branches.nativeRelatedActionTopologies || []).map((row) => {
       const selectedEvents = (row.selectedEventRoots || []).map((event) => {
         const metadata = [
@@ -3878,11 +4255,28 @@
         const shadowed = (action.runtimeShadowedRecordOffsets || []).length
           ? `<small>${(action.runtimeShadowedRecordOffsets || []).length} ${esc(t("offlineRecoverySubGameActionShadowed"))}; ${esc(t("offlineRecoverySubGameActionActiveSlot"))}</small>`
           : "";
-        return `<div><code>#${esc(action.localId ?? "?")}</code><b>${esc(action.actionName || "?")}</b><span>${esc(action.controlKind || "")}</span>${shadowed}</div>`;
+        const mapping = action.controlRuntimeMappingId
+          ? `<small><code>${esc(action.controlRuntimeMappingId)}</code></small>`
+          : "";
+        const detail = action.controlDetail
+          ? `<small><code>${esc(JSON.stringify(action.controlDetail))}</code></small>`
+          : "";
+        return `<div><code>#${esc(action.localId ?? "?")}</code><b>${esc(action.actionName || "?")}</b><span>${esc(action.controlKind || "")}</span>${mapping}${detail}${shadowed}</div>`;
+      }).join("");
+      const sequenceContexts = (row.orderedSequenceContexts || []).map((context) => {
+        const arms = (context.arms || []).map((arm) => {
+          const stories = (arm.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
+          const observed = Number(arm.observedRouteCount || 0) > 0
+            ? `<b>${esc(t("nativeSequenceContextObserved"))}</b>`
+            : "";
+          return `<div><code>${esc(arm.edge || "?")} &rarr; #${esc(arm.entryLocalId ?? "inactive")}</code><span>${stories || observed || ""}</span></div>`;
+        }).join("");
+        const reason = context.admissionReason || t("nativeSequenceContextNotAdmitted");
+        return `<details open><summary><b>${esc(t("nativeSequenceContext"))}</b> <code>#${esc(context.branchLocalId ?? "?")}</code><span>${Number(context.storyBearingArmCount || 0).toLocaleString()} / ${Number(context.serializedArmCount || 0).toLocaleString()} Story arms</span><b>${esc(t("nativeSequenceContextNotAdmitted"))}</b></summary><small>${esc(reason)}</small>${arms}${(context.nativeConsumers || []).map((consumer) => `<small><code>${esc(consumer.method || "?")} @ ${esc(consumer.address || "?")}</code> ${esc(consumer.contract || "")}</small>`).join("")}</details>`;
       }).join("");
       const terminals = (row.runtimeTerminalTargets || []).map((target) => `<div><code>#${esc(target.sourceLocalId ?? "?")}</code><span>${esc(target.relation || "edge")} &rarr; #${esc(target.targetActionLocalId ?? "?")}</span><small>${esc(t("offlineRecoverySubGameActionTerminals"))}</small></div>`).join("");
       const stories = (row.relatedStoryKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
-      return `<details><summary><code>${esc(row.sourceFile || "?")}</code><span>${Number(row.eventRootCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionEvents"))}</span>${Number(row.physicalHeaderRecordCount || 0) !== Number(row.eventRootCount || 0) ? `<span>${Number(row.physicalHeaderRecordCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionPhysicalEvents"))}</span>` : ""}<span>${Number(row.actionNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionNodes"))}</span>${Number(row.runtimeShadowedIndexedRecordCount || 0) ? `<span>${Number(row.runtimeShadowedIndexedRecordCount).toLocaleString()} ${esc(t("offlineRecoverySubGameActionShadowed"))}</span>` : ""}${Number(row.runtimeTerminalTargetCount || 0) ? `<span>${Number(row.runtimeTerminalTargetCount).toLocaleString()} ${esc(t("offlineRecoverySubGameActionTerminals"))}</span>` : ""}</summary><p>${stories}</p><p><span>${Number(row.orderedSequenceNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionSequences"))}</span> <span>${Number(row.parallelFanoutNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionFanouts"))}</span> <span>${Number(row.conditionalBranchNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionChoices"))}</span> <span>${Number(row.loopNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionLoops"))}</span></p>${selectedEvents}${controls}${terminals}<small>${esc(row.relationshipBoundary || "")}</small></details>`;
+      return `<details><summary><code>${esc(row.sourceFile || "?")}</code><span>${Number(row.eventRootCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionEvents"))}</span>${Number(row.physicalHeaderRecordCount || 0) !== Number(row.eventRootCount || 0) ? `<span>${Number(row.physicalHeaderRecordCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionPhysicalEvents"))}</span>` : ""}<span>${Number(row.actionNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionNodes"))}</span>${Number(row.runtimeShadowedIndexedRecordCount || 0) ? `<span>${Number(row.runtimeShadowedIndexedRecordCount).toLocaleString()} ${esc(t("offlineRecoverySubGameActionShadowed"))}</span>` : ""}${Number(row.runtimeTerminalTargetCount || 0) ? `<span>${Number(row.runtimeTerminalTargetCount).toLocaleString()} ${esc(t("offlineRecoverySubGameActionTerminals"))}</span>` : ""}</summary><p>${stories}</p><p><span>${Number(row.orderedSequenceNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionSequences"))}</span> <span>${Number(row.parallelFanoutNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionFanouts"))}</span> <span>${Number(row.conditionalBranchNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionChoices"))}</span> <span>${Number(row.loopNodeCount || 0).toLocaleString()} ${esc(t("offlineRecoverySubGameActionLoops"))}</span></p>${selectedEvents}${sequenceContexts ? `<p><strong>${esc(t("nativeSequenceContext"))}</strong></p><p>${esc(t("nativeSequenceContextHint"))}</p>${sequenceContexts}` : ""}${controls}${terminals}${relatedOriginalFilesHtml(row)}<small>${esc(row.relationshipBoundary || "")}</small></details>`;
     }).join("");
     const sceneOptions = (branches.sceneGraphOptions || []).map((row) => `<div><b>${esc(t("optionBranches"))}</b><a href="${esc(storyHref(row.from))}"><code>${esc(row.from || "?")}</code></a><i>&rarr;</i><span>${(row.arms || []).flatMap((arm) => arm.targets || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ")}</span></div>`).join("");
     const dialogConditionalBranches = directEdges.filter((row) => row.kind === "dialogTreeCrossStoryConditionalBranch").map((row) => {
@@ -3894,15 +4288,82 @@
         condition.value != null ? `= ${String(condition.value)}` : "",
       ].filter(Boolean).map((value) => `<code>${esc(value)}</code>`).join(" ");
       const nativeProof = (row.nativeConsumers || []).map((consumer) => `<code>${esc(consumer.method || "?")} ${esc(consumer.token || "")} @ ${esc(consumer.address || "?")}</code>`).join(" ");
-      return `<details open><summary><b>${esc(t("dialogConditionalBranch"))}</b> <a href="${esc(storyHref(row.from))}"><code>${esc(row.from || "?")}</code></a> <i>&rarr;</i> <a href="${esc(storyHref(row.to))}"><code>${esc(row.to || "?")}</code></a></summary><p class="mp-native-predicate"><b>${esc(t("nativePredicate"))}</b>${predicate}</p><div><b>${esc(t("dialogConditionalTrueArm"))}</b><code>index ${esc(row.conditionTrueConnectionIndex ?? "?")}</code><span>${(row.childArmLineIds || []).map((lineId) => `<code>${esc(lineId)}</code>`).join(" ")}</span></div><div><b>${esc(t("dialogConditionalFalseArm"))}</b><code>index ${esc(row.conditionFalseConnectionIndex ?? "?")}</code><span>${(row.parentArmLineIds || []).map((lineId) => `<code>${esc(lineId)}</code>`).join(" ")}</span></div><small><strong>${esc(t("dialogConditionalNativeProof"))}:</strong> ${nativeProof}</small><small>${(row.sourceFiles || []).map((source) => `<code>${esc(source)}</code>`).join(" ")}</small></details>`;
+      const originals = (row.relatedOriginalFiles || []).map((related) => `<small><code>${esc(related.kind || "file")}</code> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("");
+      return `<details open><summary><b>${esc(t("dialogConditionalBranch"))}</b> <a href="${esc(storyHref(row.from))}"><code>${esc(row.from || "?")}</code></a> <i>&rarr;</i> <a href="${esc(storyHref(row.to))}"><code>${esc(row.to || "?")}</code></a></summary><p class="mp-native-predicate"><b>${esc(t("nativePredicate"))}</b>${predicate}</p><div><b>${esc(t("dialogConditionalTrueArm"))}</b><code>index ${esc(row.conditionTrueConnectionIndex ?? "?")}</code><span>${(row.childArmLineIds || []).map((lineId) => `<code>${esc(lineId)}</code>`).join(" ")}</span></div><div><b>${esc(t("dialogConditionalFalseArm"))}</b><code>index ${esc(row.conditionFalseConnectionIndex ?? "?")}</code><span>${(row.parentArmLineIds || []).map((lineId) => `<code>${esc(lineId)}</code>`).join(" ")}</span></div><small><strong>${esc(t("dialogConditionalNativeProof"))}:</strong> ${nativeProof}</small><small>${(row.sourceFiles || []).map((source) => `<code>${esc(source)}</code>`).join(" ")}</small>${originals ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${originals}</details>` : ""}</details>`;
     }).join("");
-    const dialogOptions = (branches.dialogLineOptions || []).map((row) => `<details><summary><code>${esc(row.storyKey || "?")}</code> 路 ${esc(t("optionBranches"))} ${esc(row.group ?? "?")}</summary>${(row.options || []).map((option) => {
-      const branchLines = option.branchLineIds || [];
-      const directContinuation = option.directContinuation && option.continuationLineId
-        ? `<small>${esc(t("optionDirectContinuation"))}</small> <code>${esc(option.continuationLineId)}</code>`
+    const dialogLocalConditionalBranches = (branches.dialogConditionalBranches || []).map((row) => {
+      const condition = row.condition || {};
+      const predicate = Object.keys(condition).length
+        ? `<code>${esc(JSON.stringify(condition))}</code>`
+        : `<span>${esc(t("nativePredicateOpaque"))}</span>`;
+      const nativeProof = (row.nativeConsumers || []).map((consumer) => `<code>${esc(consumer.method || "?")} ${esc(consumer.token || "")} @ ${esc(consumer.address || "?")}</code>`).join(" ");
+      const armHtml = (label, arm, index) => {
+        const lines = (arm?.pathLineIds || []).map((lineId) => `<code>${esc(lineId)}</code>`).join(" ");
+        const target = arm?.targetNodeId ? `<code>target #${esc(arm.targetNodeId)}</code>` : "";
+        const terminal = arm?.terminal ? `<code>${esc(arm.terminal)}</code>` : "";
+        return `<div><b>${esc(t(label))}</b><code>index ${esc(index ?? "?")}</code>${target}${terminal}<span>${lines}</span></div>`;
+      };
+      const originals = (row.relatedOriginalFiles || []).map((related) => `<small><code>${esc(related.kind || "file")}</code> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("");
+      return `<details open><summary><b>${esc(t("dialogConditionalBranch"))}</b> <span>${esc(t("dialogConditionalLocal"))}</span> <a href="${esc(storyHref(row.storyKey))}"><code>${esc(row.storyKey || "?")}</code></a> <i>#${esc(row.branchNodeId || "?")}</i></summary><p class="mp-native-predicate"><b>${esc(t("nativePredicate"))}</b>${predicate}</p>${armHtml("dialogConditionalTrueArm", row.conditionTrueArm, row.conditionTrueConnectionIndex)}${armHtml("dialogConditionalFalseArm", row.conditionFalseArm, row.conditionFalseConnectionIndex)}<small><strong>${esc(t("dialogConditionalNativeProof"))}:</strong> ${nativeProof}</small><small>${(row.sourceFiles || []).map((source) => `<code>${esc(source)}</code>`).join(" ")}</small><small>${esc(t("dialogConditionalBoundary"))}</small>${originals ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${originals}</details>` : ""}</details>`;
+    }).join("");
+    const dialogTreeBranchNodes = (branches.dialogTreeBranchNodes || []).map((row) => {
+      const nativeProof = (row.nativeConsumers || []).map((consumer) => `<code>${esc(consumer.method || "?")} ${esc(consumer.token || "")} @ ${esc(consumer.address || "?")}</code>`).join(" ");
+      const arms = (row.arms || []).map((arm) => {
+        const condition = arm.condition && Object.keys(arm.condition).length
+          ? `<code>${esc(JSON.stringify(arm.condition))}</code>`
+          : `<span>${esc(t("nativePredicateOpaque"))}</span>`;
+        const target = arm.targetNodeId
+          ? `<code>#${esc(arm.targetNodeId)}</code>${arm.targetNodeType ? ` <small>${esc(arm.targetNodeType)}</small>` : ""}`
+          : "";
+        const defaultArm = arm.defaultArm ? `<b>${esc(t("dialogTreeBranchSelection"))}</b>` : "";
+        return `<div><b>${esc(t("dialogTreeBranchArm"))} ${esc(arm.conditionOrdinal ?? "?")}</b><span>${condition}</span><code>connection ${esc(arm.connectionOrdinal ?? "?")} / raw ${esc(arm.connectionIndex ?? "?")}</code><span>&rarr; ${target}</span>${defaultArm ? `<small>${defaultArm}</small>` : ""}</div>`;
+      }).join("");
+      const originals = (row.relatedOriginalFiles || []).map((related) => `<small><code>${esc(related.kind || "file")}</code> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("");
+      return `<details open><summary><b>${esc(t("dialogTreeBranchNode"))}</b> <a href="${esc(storyHref(row.storyKey))}"><code>${esc(row.storyKey || "?")}</code></a> <i>#${esc(row.branchNodeId || "?")}</i><span>${Number(row.conditionCount || 0).toLocaleString()} ${esc(t("dialogTreeBranchArm"))}</span></summary><p class="mp-native-predicate"><b>${esc(t("dialogTreeBranchSelection"))}</b> <code>${esc(row.selectionRule || "")}</code></p>${arms}<small><strong>${esc(t("dialogConditionalNativeProof"))}:</strong> ${nativeProof}</small><small>${(row.sourceFiles || []).map((source) => `<code>${esc(source)}</code>`).join(" ")}</small><small>${esc(t("dialogTreeBranchBoundary"))}</small>${originals ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${originals}</details>` : ""}</details>`;
+    }).join("");
+    const dialogOptionsWithEvidence = (branches.dialogLineOptions || []).map((row) => {
+      const provenance = row.provenance || {};
+      const validation = row.binaryValidation || provenance.binaryValidation || {};
+      const consumers = (provenance.nativeConsumers || [])
+        .map((consumer) => `<code>${esc(consumer.method || "?")} ${esc(consumer.token || "")} @ ${esc(consumer.address || "?")}</code>`)
+        .join(" ");
+      const relatedOriginalFiles = (row.relatedOriginalFiles || [])
+        .map((related) => `<small><code>${esc(related.kind || "file")}</code> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`)
+        .join("");
+      const validationFailures = (validation.failures || []).length
+        ? `<small>${esc(JSON.stringify(validation.failures))}</small>`
         : "";
-      return `<div><code>${esc(option.optionId || "?")}</code><i>&rarr;</i><span>${branchLines.map((line) => `<code>${esc(line)}</code>`).join(" ")}${directContinuation}</span></div>`;
-    }).join("")}</details>`).join("");
+      const binaryEvidence = validation.status
+        ? `<p class="mp-native-predicate"><b>${esc(t("dialogTimelineBinaryContract"))}</b> <code>${esc(provenance.selectionRule || "")}</code> <span>${esc(t("dialogTimelineValidation"))}: ${esc(validation.status)}</span></p><small>${consumers}</small>${validationFailures}`
+        : "";
+      const sources = (provenance.sourceFiles || provenance.assetTracks || [])
+        .map((source) => `<code>${esc(source)}</code>`)
+        .join(" ");
+      return `<details><summary><code>${esc(row.storyKey || "?")}</code> · ${esc(t("optionBranches"))} ${esc(row.group ?? "?")}</summary>${(row.options || []).map((option) => {
+        const branchLines = option.branchLineIds || [];
+        const directContinuation = option.directContinuation && option.continuationLineId
+          ? `<small>${esc(t("optionDirectContinuation"))}</small> <code>${esc(option.continuationLineId)}</code>`
+          : "";
+        return `<div><code>${esc(option.optionId || "?")}</code><i>&rarr;</i><span>${branchLines.map((line) => `<code>${esc(line)}</code>`).join(" ")}${directContinuation}</span></div>`;
+      }).join("")}${binaryEvidence}${sources ? `<small>${sources}</small>` : ""}${row.evidenceBoundary ? `<small>${esc(row.evidenceBoundary)}</small>` : ""}${relatedOriginalFiles ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${relatedOriginalFiles}</details>` : ""}</details>`;
+    }).join("");
+    const dialogTreeIfNodes = (branches.dialogTreeIfNodes || []).map((row) => {
+      const condition = row.condition && Object.keys(row.condition).length
+        ? `<code>${esc(JSON.stringify(row.condition))}</code>`
+        : `<span>${esc(t("nativePredicateOpaque"))}</span>`;
+      const nativeProof = (row.nativeConsumers || []).map((consumer) => `<code>${esc(consumer.method || "?")} ${esc(consumer.token || "")} @ ${esc(consumer.address || "?")}</code>`).join(" ");
+      const arms = (row.arms || []).map((arm) => {
+        const target = arm.targetNodeId
+          ? `<code>#${esc(arm.targetNodeId)}</code>${arm.targetNodeType ? ` <small>${esc(arm.targetNodeType)}</small>` : ""}`
+          : "";
+        const result = arm.conditionResult === 1
+          ? `<code>result == 1</code>`
+          : `<code>result != 1</code>`;
+        return `<div><b>${esc(t("dialogTreeIfArm"))}</b> ${result}<code>connection ${esc(arm.connectionOrdinal ?? "?")} / raw ${esc(arm.connectionIndex ?? "?")}</code><span>&rarr; ${target}</span>${arm.defaultArm ? `<small>${esc(t("dialogTreeBranchSelection"))}</small>` : ""}</div>`;
+      }).join("");
+      const originals = (row.relatedOriginalFiles || []).map((related) => `<small><code>${esc(related.kind || "file")}</code> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("");
+      return `<details><summary><b>${esc(t("dialogTreeIfNode"))}</b> <a href="${esc(storyHref(row.storyKey))}"><code>${esc(row.storyKey || "?")}</code></a> <i>#${esc(row.branchNodeId || "?")}</i><span>${esc(row.conditionType || "")}</span></summary><p class="mp-native-predicate"><b>${esc(t("nativePredicate"))}</b>${condition}</p>${arms}<small><strong>${esc(t("dialogConditionalNativeProof"))}:</strong> ${nativeProof}</small><small>${(row.sourceFiles || []).map((source) => `<code>${esc(source)}</code>`).join(" ")}</small><small>${esc(t("dialogTreeIfBoundary"))}</small>${originals ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${originals}</details>` : ""}</details>`;
+    }).join("");
     const offlineRows = offlineRecoveryRowsForMission();
     const offlineGaps = offlineRows.map((row) => {
       const timeline = row.sharedTimelineContext?.timeline;
@@ -4347,7 +4808,10 @@
     return `<details class="mp-mission-story mp-story-order" data-weight="${Number(summary.strongEdgeCount) ? "strong" : "context"}"${Number(summary.strongEdgeCount) || offlineRows.length ? " open" : ""}>
       <summary>${esc(t("storyOrder"))} <span>${Number(summary.sceneCount || 0).toLocaleString()}</span></summary>
       <p>${esc(t("storyOrderHint"))}</p>
-      <div class="mp-order-metrics"><span><b>${Number(summary.strongEdgeCount || 0).toLocaleString()}</b>${esc(t("strongEdges"))}</span><span><b>${Number(summary.questSucceedLifecycleEdgeCount || 0).toLocaleString()}</b>${esc(t("questSucceedLifecycleEdges"))}</span><span><b>${Number(summary.questStartActionDefinitionCount || 0).toLocaleString()}</b>${esc(t("questStartDefinitions"))}</span><span><b>${Number(summary.nativeControlPathTransitionEdgeCount || 0).toLocaleString()}</b>${esc(t("nativeStoryTransitions"))}</span><span><b>${Number(summary.nativeControlPathBranchingTransitionEdgeCount || 0).toLocaleString()}</b>${esc(t("nativeStoryTransitionBranching"))}</span>${summary.nativeControlNonStoryArmCount ? `<span><b>${Number(summary.nativeControlNonStoryArmCount).toLocaleString()}</b>${esc(t("nativeNonStoryArm"))}</span>` : ""}${summary.nativeControlCrossBoundaryBranchCount ? `<span><b>${Number(summary.nativeControlCrossBoundaryBranchCount).toLocaleString()}</b>${esc(t("nativeCrossBoundaryStories"))}</span>` : ""}<span><b>${Number(summary.weakEdgeCount || 0).toLocaleString()}</b>${esc(t("weakEdges"))}</span><span><b>${Number(summary.cycleCount || 0).toLocaleString()}</b>${esc(t("orderCycles"))}</span><span><b>${Number(summary.unorderedScenePairs || 0).toLocaleString()}</b>${esc(t("unknownPairs"))}</span><span><b>${offlineRows.length.toLocaleString()}</b>${esc(t("offlineRecoveryGaps"))}</span></div>
+      ${orderCrossReferenceHtml}
+      <div class="mp-order-metrics"><span><b>${Number(summary.strongEdgeCount || 0).toLocaleString()}</b>${esc(t("strongEdges"))}</span><span><b>${Number(summary.questSucceedLifecycleEdgeCount || 0).toLocaleString()}</b>${esc(t("questSucceedLifecycleEdges"))}</span><span><b>${Number(summary.questStartActionDefinitionCount || 0).toLocaleString()}</b>${esc(t("questStartDefinitions"))}</span><span><b>${Number(summary.nativeControlPathTransitionEdgeCount || 0).toLocaleString()}</b>${esc(t("nativeStoryTransitions"))}</span><span><b>${Number(summary.nativeControlPathBranchingTransitionEdgeCount || 0).toLocaleString()}</b>${esc(t("nativeStoryTransitionBranching"))}</span>${summary.dialogConditionalBranchCount ? `<span><b>${Number(summary.dialogConditionalBranchCount).toLocaleString()}</b>${esc(t("dialogConditionalCount"))}</span>` : ""}${summary.dialogTreeBranchNodeCount ? `<span><b>${Number(summary.dialogTreeBranchNodeCount).toLocaleString()}</b>${esc(t("dialogTreeBranchCount"))}</span>` : ""}${summary.dialogTreeIfNodeCount ? `<span><b>${Number(summary.dialogTreeIfNodeCount).toLocaleString()}</b>${esc(t("dialogTreeIfCount"))}</span>` : ""}${summary.dialogLineOptionBinaryValidatedGroupCount ? `<span><b>${Number(summary.dialogLineOptionBinaryValidatedGroupCount).toLocaleString()}</b>${esc(t("dialogTimelineBinaryCount"))}</span>` : ""}${summary.nativeSerializedBranchContextCount ? `<span><b>${Number(summary.nativeSerializedBranchContextCount).toLocaleString()}</b>${esc(t("nativeSerializedBranchMissionContext"))}</span>` : ""}${summary.nativeReceiverStoryContextCount ? `<span><b>${Number(summary.nativeReceiverStoryContextCount).toLocaleString()}</b>${esc(t("nativeReceiverStoryContexts"))}</span>` : ""}${summary.nativeControlNonStoryArmCount ? `<span><b>${Number(summary.nativeControlNonStoryArmCount).toLocaleString()}</b>${esc(t("nativeNonStoryArm"))}</span>` : ""}${summary.nativeControlCrossBoundaryBranchCount ? `<span><b>${Number(summary.nativeControlCrossBoundaryBranchCount).toLocaleString()}</b>${esc(t("nativeCrossBoundaryStories"))}</span>` : ""}<span><b>${Number(summary.weakEdgeCount || 0).toLocaleString()}</b>${esc(t("weakEdges"))}</span><span><b>${Number(summary.cycleCount || 0).toLocaleString()}</b>${esc(t("orderCycles"))}</span><span><b>${Number(summary.unorderedScenePairs || 0).toLocaleString()}</b>${esc(t("unknownPairs"))}</span><span><b>${offlineRows.length.toLocaleString()}</b>${esc(t("offlineRecoveryGaps"))}</span></div>
+      ${nativeReceiverStoryContexts ? `<section><h4>${esc(t("nativeReceiverStoryContexts"))} <span>${(order.nativeReceiverStoryContexts || []).length}</span></h4><p>${esc(t("nativeReceiverStoryContextsHint"))}</p><div class="mp-order-branches">${nativeReceiverStoryContexts}</div></section>` : ""}
+      ${missionNamedLevelDataContexts ? `<section><h4>${esc(t("missionNamedLevelDataReceiverContexts"))} <span>${(order.missionNamedLevelDataReceiverContexts || []).length}</span></h4><p>${esc(t("missionNamedLevelDataReceiverContextsHint"))}</p><div class="mp-order-branches">${missionNamedLevelDataContexts}</div></section>` : ""}
       ${missionObservedContexts ? `<section><h4>${esc(t("missionObservedScriptContexts"))}</h4><p>${esc(t("missionObservedScriptContextsHint"))}</p><div class="mp-order-branches">${missionObservedContexts}</div></section>` : ""}
       ${causalEdges ? `<section><h4>${esc(t("causalEdges"))}</h4><div class="mp-order-edges">${causalEdges}</div></section>` : ""}
       ${nativeTransitions ? `<section><h4>${esc(t("nativeStoryTransitions"))}</h4><p>${esc(t("nativeStoryTransitionsHint"))}</p><div class="mp-order-branches">${nativeTransitions}</div></section>` : ""}
@@ -4357,9 +4821,11 @@
       ${containments ? `<section><h4>${esc(t("embeddedStory"))}</h4><p>${esc(t("embeddedStoryHint"))}</p><div class="mp-order-edges">${containments}</div></section>` : ""}
       ${frontiers ? `<details class="mp-order-frontiers"><summary>${esc(t("partialFrontier"))}</summary>${frontiers}</details>` : ""}
       ${cycles ? `<section class="mp-order-cycles"><h4>${esc(t("orderCycles"))}</h4><p>${esc(t("orderCycleHint"))}</p>${cycles}</section>` : ""}
-      ${questForks || questMerges || nativeBranches || nativeMerges || nativeSequences || sceneOptions || dialogConditionalBranches || typedSelectors ? `<section><h4>${esc(t("forkMerge"))}</h4>${questForkAuthorityHtml}<div class="mp-order-branches">${questForks}${questMerges}${nativeBranches}${nativeMerges}${nativeSequences}${sceneOptions}${dialogConditionalBranches}${typedSelectors}</div></section>` : ""}
+      ${questForks || questMerges || nativeBranches || nativeMerges || nativeSequences || sceneOptions || dialogConditionalBranches || dialogLocalConditionalBranches || dialogTreeBranchNodes || dialogTreeIfNodes || typedSelectors ? `<section><h4>${esc(t("forkMerge"))}</h4>${questForkAuthorityHtml}<div class="mp-order-branches">${questForks}${questMerges}${nativeBranches}${nativeMerges}${nativeSequences}${sceneOptions}${dialogConditionalBranches}${dialogLocalConditionalBranches}${dialogTreeBranchNodes}${dialogTreeIfNodes}${typedSelectors}</div></section>` : ""}
+      ${serializedBranchInventoryHtml}
+      ${typedControlFamilyHtml}
       ${relatedActionTopologies ? `<section><h4>${esc(t("nativeRelatedActionGraphs"))}</h4><p>${esc(t("nativeRelatedActionGraphsHint"))}</p><div class="mp-order-branches">${relatedActionTopologies}</div></section>` : ""}
-      ${dialogOptions ? `<section><h4>${esc(t("optionBranches"))}</h4><div class="mp-order-dialog-branches">${dialogOptions}</div></section>` : ""}
+      ${dialogOptionsWithEvidence ? `<section><h4>${esc(t("optionBranches"))}</h4><div class="mp-order-dialog-branches">${dialogOptionsWithEvidence}</div></section>` : ""}
       ${offlineGaps ? `<details class="mp-order-recovery-gaps" open><summary>${esc(t("offlineRecoveryGaps"))} <span>${offlineRows.length.toLocaleString()}</span></summary><p>${esc(t("offlineRecoveryGapsHint"))}</p><div>${offlineGaps}</div></details>` : ""}
       <small>${esc(t("isolatedScenes"))}: ${Number(summary.isolatedSceneCount || 0).toLocaleString()} 路 ${esc(t("weakOnlyScenes"))}: ${Number(summary.weakOnlySceneCount || 0).toLocaleString()}</small>
     </details>`;
@@ -4438,11 +4904,23 @@
     const row = state.index?.missions?.find((item) => item.id === mission.id) || {};
     const caseStudy = state.mission.caseStudy;
     const offlineShell = mission.offlineRecoveryShell === true;
+    const sourceOrderShell = mission.sourceOrderShell === true;
+    const storyBranchShell = mission.storyBranchShell === true;
     const aggregateShell = mission.storyAggregateShell === true;
-    const shellLabel = aggregateShell ? t("storyAggregateShell") : t("offlineMissionShell");
-    const shellHint = aggregateShell ? t("storyAggregateShellHint") : t("offlineMissionShellHint");
+    const shellLabel = aggregateShell ? t("storyAggregateShell") : sourceOrderShell ? t("sourceOrderShell") : storyBranchShell ? t("storyBranchShell") : t("offlineMissionShell");
+    const shellHint = aggregateShell ? t("storyAggregateShellHint") : sourceOrderShell ? t("sourceOrderShellHint") : storyBranchShell ? t("storyBranchShellHint") : t("offlineMissionShellHint");
     const aggregateVariants = (mission.variantMissionIds || []).map((id) => `<button class="mp-graph-link" type="button" data-mission="${esc(id)}"><code>${esc(id)}</code></button>`).join("");
     const aggregateOriginals = (mission.relatedOriginalFiles || []).map((related) => `<small><code>${esc(related.variantMissionId || related.kind || "file")}</code> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("");
+    const sourceOrderRelatedFiles = !aggregateShell
+      ? (mission.sourceOrderRelatedOriginalFiles || (sourceOrderShell ? mission.relatedOriginalFiles : []))
+      : [];
+    const sourceOrderOriginals = sourceOrderRelatedFiles.map((related) => `<small><code>${esc(related.kind || "file")}</code> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""} / <code>${esc(related.relationship || "")}</code></small>`).join("");
+    const storyBranchRelatedFiles = !aggregateShell
+      ? (mission.storyBranchRelatedOriginalFiles || [])
+      : [];
+    const storyBranchOriginals = storyBranchRelatedFiles.map((related) => `<small><code>${esc(related.kind || "file")}</code> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""} / <code>${esc(related.relationship || "")}</code></small>`).join("");
+    const hasSourceOrderFiles = Boolean(sourceOrderOriginals);
+    const hasStoryBranchFiles = Boolean(storyBranchOriginals);
     const metrics = [
       [row.questCount || state.mission.nodes?.length || 0, t("quests")],
       [row.entryCount || 0, t("roots")],
@@ -4459,11 +4937,11 @@
         <div><p class="mp-summary-kicker">${esc(mission.levelId || "—")}</p><h2>${esc(missionName(mission.id))}</h2><code>${esc(mission.id)}</code></div>
         <div class="mp-summary-metrics">${metrics.map(([value, label]) => `<span><strong>${value}</strong>${esc(label)}</span>`).join("")}</div>
       </div>
-      <div class="mp-case${caseStudy || offlineShell || aggregateShell ? " has-case" : ""}">
+      <div class="mp-case${caseStudy || offlineShell || sourceOrderShell || storyBranchShell || aggregateShell || hasSourceOrderFiles || hasStoryBranchFiles ? " has-case" : ""}">
         <span class="mp-case-icon" aria-hidden="true">${caseStudy ? "◎" : "○"}</span>
-        <div><strong>${esc(offlineShell || aggregateShell ? shellLabel : (caseStudy?.title || t("evidence")))}</strong><p>${esc(offlineShell || aggregateShell ? shellHint : (caseStudy?.summary || t("noCase")))}</p>${aggregateVariants ? `<div><b>${esc(t("storyAggregateVariants"))}:</b> ${aggregateVariants}</div>` : ""}${aggregateOriginals ? `<details><summary>${esc(t("storyAggregateOriginals"))} <span>${mission.relatedOriginalFiles.length}</span></summary>${aggregateOriginals}</details>` : ""}${caseStudy ? `<span class="mp-confidence">${esc(t("confidence"))}: ${esc(caseStudy.confidence)}</span>` : ""}</div>
+         <div><strong>${esc(offlineShell || sourceOrderShell || storyBranchShell || aggregateShell ? shellLabel : hasSourceOrderFiles ? t("sourceOrderRelatedFiles") : hasStoryBranchFiles ? t("storyBranchRelatedFiles") : (caseStudy?.title || t("evidence")))}</strong><p>${esc(offlineShell || sourceOrderShell || storyBranchShell || aggregateShell ? shellHint : hasSourceOrderFiles ? t("sourceOrderRelatedFilesHint") : hasStoryBranchFiles ? t("storyBranchRelatedFilesHint") : (caseStudy?.summary || t("noCase")))}</p>${aggregateVariants ? `<div><b>${esc(t("storyAggregateVariants"))}:</b> ${aggregateVariants}</div>` : ""}${aggregateOriginals ? `<details><summary>${esc(t("storyAggregateOriginals"))} <span>${mission.relatedOriginalFiles.length}</span></summary>${aggregateOriginals}</details>` : ""}${sourceOrderOriginals ? `<details><summary>${esc(t("sourceOrderRelatedFiles"))} <span>${sourceOrderRelatedFiles.length}</span></summary><p>${esc(mission.sourceOrderRelatedFilesBoundary || t("sourceOrderRelatedFilesHint"))}</p>${sourceOrderOriginals}</details>` : ""}${storyBranchOriginals ? `<details><summary>${esc(t("storyBranchRelatedFiles"))} <span>${storyBranchRelatedFiles.length}</span></summary><p>${esc(mission.storyBranchRelatedFilesBoundary || t("storyBranchRelatedFilesHint"))}</p>${storyBranchOriginals}</details>` : ""}${caseStudy ? `<span class="mp-confidence">${esc(t("confidence"))}: ${esc(caseStudy.confidence)}</span>` : ""}</div>
       </div>
-      ${offlineShell || aggregateShell ? "" : `<div class="mp-mission-handshake">
+      ${offlineShell || sourceOrderShell || storyBranchShell || aggregateShell ? "" : `<div class="mp-mission-handshake">
         <strong>${esc(t("missionHandshake"))}</strong>
         <span class="is-outbound">${esc(t("acceptRequest"))}</span>
         <i aria-hidden="true">⇄</i>
@@ -4870,6 +5348,8 @@
           ).values()];
           const activationHosts = (activation.levelDataHosts || [])
             .filter((host) => host && host.fileName);
+          const modulePropertyFamilies = (activation.modulePropertyFamilies || [])
+            .filter((family) => family && family.moduleId);
           const encounterContexts = (activation.encounterControllerContexts || [])
             .filter((context) => context && context.classification);
           const nominalHostComparison = activation.nominalMissionHostComparison || {};
@@ -5024,6 +5504,13 @@
               ${activePhaseReceiverControl.status === "validated" && activePhaseReceiverHeader ? `<div class="is-boundary"><span>${esc(t("binaryActivePhaseReceiver"))}</span><i aria-hidden="true">→</i><code>Setup → ActiveBegin → Active(${esc(activePhaseReceiverHeader.triggerActiveDuring ?? "?")})</code><b>header #${esc(activePhaseReceiverHeader.listenerHeaderLocalId)}</b><small>${esc([activePhaseReceiverHeader.headerName || "receiver", `action #${activePhaseReceiverHeader.nextActionLocalId ?? "?"}`, `register +${activePhaseReceiverControl.runtimeFlow?.setupRegisterTriggerCallOffsets?.[0] ?? "?"}`, `enable +${activePhaseReceiverControl.runtimeFlow?.activePhaseEnableCallOffsets?.[0] ?? "?"}`, `Setup ${activePhaseReceiverControl.methods?.Setup?.methodPointerVa || "?"}`].join(" · "))}</small></div><small>${esc(activePhaseReceiverControl.evidenceBoundary || t("binaryActivePhaseReceiverBoundary"))}</small>` : ""}
               ${subGameStartControl.validation?.status === "validated" ? `<div><span>${esc(t("binarySubGameManualStart"))}</span><i aria-hidden="true">→</i><code>SubGame id → bindScriptId → LevelScript</code><b>ManualStart</b><small>${esc([`interaction ${subGameStartControl.challengeMethod?.methodPointerVa || "?"}`, `ManualStart ${subGameStartControl.manualStartMethod?.methodPointerVa || "?"}`, `fields ${binaryOffset(subGameStartControl.fieldOffsets?.["challengeStartPoint.m_subGameId"])}/${binaryOffset(subGameStartControl.fieldOffsets?.["subGameInstanceData.bindScriptId"])}`, subGameStartControl.subGameInteractionFlow?.callsInCarrierOrder ? "lookup calls ordered" : "lookup order unresolved"].join(" · "))}</small></div><small>${esc(subGameStartControl.evidenceBoundary || t("binarySubGameManualStartBoundary"))}</small>` : ""}
               ${activationRelatedFiles.map((related) => `<div><span>${esc(t("relatedOriginalFile"))}</span><i aria-hidden="true">→</i><code>${esc(related.sourceFile)}</code><b>${esc(String(related.kind || "source").replaceAll("_", " "))}</b><small>${esc([String(related.relationship || "").replaceAll("_", " "), related.sha256 ? `SHA-256 ${related.sha256}` : ""].filter(Boolean).join(" · "))}</small></div>`).join("")}
+              ${modulePropertyFamilies.map((family) => {
+                const features = (family.pattern?.features || []).filter(Boolean).join(", ");
+                const fields = (family.propertySignatures || []).map((signature) => `${signature.suffix || "?"}:${signature.valueType ?? "?"}/${signature.atomCount ?? "?"}`).join(", ");
+                const files = (family.relatedFiles || []).filter((related) => related && related.sourceFile);
+                return `<div class="is-boundary"><span>${esc(t("modulePropertyFamily"))}</span><i aria-hidden="true">→</i><code>${esc(`@${family.moduleId}_*`)}</code><b>${esc(features || "serialized_module_fields")}</b><small>${esc(`${t("modulePropertyFamilyFields")}: ${fields}${family.moduleIdMatchesReceiverScript ? ` · receiver ${family.receiverScriptId || "?"}` : ""}`)}</small></div>${files.map((related) => `<div><span>${esc(t("relatedOriginalFile"))}</span><i aria-hidden="true">→</i><code>${esc(related.sourceFile)}</code><b>${esc(String(related.kind || "source").replaceAll("_", " "))}</b><small>${esc(String(related.relationship || "").replaceAll("_", " "))}</small></div>`).join("")}`;
+              }).join("")}
+              ${modulePropertyFamilies.length ? `<small>${esc(t("modulePropertyFamilyBoundary"))}</small>` : ""}
               ${encounterContexts.flatMap((context) => [
                 `<div><span>${esc(t("encounterController"))}</span><i aria-hidden="true">→</i><code>${esc(context.runtimeType || "EncounterBase<T>")}</code><b>${esc(t("noMissionOwner"))}</b><small>${esc(`${context.dataType || "EncounterData"} · ${context.mappingId || ""}`)}</small></div>`,
                 `<div><span>${esc(t("encounterModuleNamespace"))}</span><i aria-hidden="true">→</i><code>${esc(context.moduleId || "—")}</code><b>${esc(context.moduleIdMatchesReceiverScript ? t("moduleMatchesReceiver") : t("relatedModuleNamespace"))}</b><small>${esc(`receiver LevelScript ${context.receiverScriptId || selector.listenerScriptId || "—"}`)}</small></div>`,
@@ -5440,9 +5927,27 @@
       const statusLabel = row.actionMapStatus === "exact_empty_action_map" ? t("levelScriptExactEmptyMap") : t("levelScriptExecutableMap");
       return `<details${row.actionMapStatus === "exact_empty_action_map" ? " open" : ""} class="mp-quest-task-dependency"><summary><b>${esc(t("levelScriptSource"))}</b> <code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}</code> <span>${esc(statusLabel)}</span></summary><p><code>${esc(countText)}</code>${row.serializedTailRecordCount ? ` 路 ${esc(t("levelScriptTailRecords"))}: ${Number(row.serializedTailRecordCount).toLocaleString()}` : ""}</p><small>${esc(row.evidenceBoundary || "")}</small>${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}</details>`;
     }).join("");
+    const nativeLevelScriptControlAttachments = (objective.levelScriptSources || []).map((row) => {
+      const evidence = row.nativeControlEvidence || {};
+      const controls = evidence.controls || [];
+      const diagnostic = evidence.validatorDiagnostic
+        ? `<small><b>${esc(t("levelScriptNativeControlDiagnostic"))}:</b> <code>${esc(JSON.stringify(evidence.validatorDiagnostic))}</code></small>`
+        : "";
+      if (!controls.length && !diagnostic) return "";
+      const rows = controls.map((control) => {
+        const detail = control.controlDetail && Object.keys(control.controlDetail).length
+          ? `<code>${esc(JSON.stringify(control.controlDetail))}</code>`
+          : "";
+        const roots = (control.eventRoots || []).map((root) => `#${root.localId ?? "?"} ${root.headerName || "?"} -> #${root.nextActionLocalId ?? "?"}`).join(" / ");
+        const edges = (control.serializedOutgoingEdges || []).map((edge) => `${edge.sourceKind || "action"} #${edge.sourceLocalId ?? "?"} -> #${edge.targetActionLocalId ?? "?"} ${edge.relation || ""}`).join(" / ");
+        return `<article class="mp-levelscript-native-control"><header><b>${esc(control.actionName || control.controlKind || "typed control")}</b> <code>#${esc(control.localId ?? "?")}</code>${control.controlKind ? ` <span>${esc(control.controlKind)}</span>` : ""}</header>${control.controlRuntimeMappingId ? `<small><b>${esc(t("levelScriptNativeControlMapping"))}:</b> <code>${esc(control.controlRuntimeMappingId)}</code></small>` : ""}${detail ? `<small><b>${esc(t("levelScriptNativeControlDetail"))}:</b> ${detail}</small>` : ""}${roots ? `<small><b>${esc(t("levelScriptNativeControlRoots"))}:</b> ${esc(roots)}</small>` : ""}${edges ? `<small><b>${esc(t("levelScriptNativeControlEdges"))}:</b> ${esc(edges)}</small>` : ""}</article>`;
+      }).join("");
+      const families = Object.entries(evidence.controlFamilyCounts || {}).map(([family, count]) => `${family}=${Number(count).toLocaleString()}`).join(" / ");
+      return `<details class="mp-levelscript-native-controls"><summary><b>${esc(t("levelScriptNativeControls"))}</b> <code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}</code> <span>${Number(evidence.controlCount || controls.length).toLocaleString()}</span></summary><p>${families ? `${esc(t("levelScriptNativeControlFamilies"))}: <code>${esc(families)}</code> / ` : ""}${Number(evidence.eventRootCount || 0).toLocaleString()} ${esc(t("levelScriptNativeControlRoots"))} / ${Number(evidence.eventToControlReachableCount || 0).toLocaleString()} ${esc(t("levelScriptNativeControlReachable"))}</p><small>${esc(evidence.evidenceBoundary || t("levelScriptNativeControlHint"))}</small>${diagnostic}${rows}</details>`;
+    }).join("");
     return `<article class="mp-objective"><header><strong>${esc(t("objectives"))} ${objective.index}</strong><span class="mp-authority is-${esc(objective.authority)}">${esc(objective.authority)}</span></header>
       <p>${esc(objective.descriptionKey || t("noObjective"))}</p>
-      <div class="mp-objective-special">${finishRows}${stateRows}${placeholderRows}${submissionRows}${submissionCoGates}${submissionLevelScriptCoGates}</div>${levelScriptSources}${taskDependencies}
+      <div class="mp-objective-special">${finishRows}${stateRows}${placeholderRows}${submissionRows}${submissionCoGates}${submissionLevelScriptCoGates}</div>${levelScriptSources}${nativeLevelScriptControlAttachments}${taskDependencies}
       ${objectiveTrackingHtml(objective.tracking)}
       ${renderConditionTree(objective.condition)}
     </article>`;

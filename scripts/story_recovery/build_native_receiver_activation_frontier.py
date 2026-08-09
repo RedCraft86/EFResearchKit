@@ -18,6 +18,7 @@ server-side state selector.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -65,7 +66,24 @@ from story_builder.mission_recovery import (  # noqa: E402
 )
 
 
-SCHEMA = "nativeReceiverActivationFrontier.v24"
+SCHEMA = "nativeReceiverActivationFrontier.v25"
+
+# This is the binary-validated namespace rule shared by every LevelScript
+# module property.  LevelData writes the module's save-state fields as
+# ``@<LsmPtr id>_<save key>``; the id is a runtime namespace, not an object or
+# mission identifier.  Keep this evidence separate from the semantic
+# Encounter adapter below so new typed module families can be surfaced without
+# adding one function per object.
+LEVELSCRIPT_MODULE_PROPERTY_MAPPING_ID = (
+    "gameassembly-2026-08-02-levelscriptmodule-save-prefix-v1"
+)
+LEVELSCRIPT_MODULE_PROPERTY_GAMEASSEMBLY_SHA256 = (
+    "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE"
+)
+LEVELSCRIPT_MODULE_PROPERTY_METADATA_SHA256 = (
+    "90C58E26E87C7227A85DDA3FEDF6CE5ED0B06DC1F76E0ABBE75AB20750ADF97E"
+)
+LEVELSCRIPT_MODULE_PROPERTY_NAME_RE = re.compile(r"@(?P<module_id>\d+)_(?P<suffix>.+)")
 
 # The installed 2026-08-02 binary identifies this serialized property family
 # as the reusable Encounter controller contract.  The names below are suffixes
@@ -158,6 +176,322 @@ def safe_text(value: Any) -> str:
     return str(value if value is not None else "").strip()
 
 
+def _story_order_keys(story_order: dict[str, Any]) -> set[str]:
+    """Read only exact Story node keys from a published order row."""
+    return {
+        safe_text(node if isinstance(node, str) else node.get("key"))
+        for node in story_order.get("nodes") or []
+        if (isinstance(node, str) and safe_text(node))
+        or (isinstance(node, dict) and safe_text(node.get("key")))
+    }
+
+
+def _receiver_related_files(row: dict[str, Any]) -> list[dict[str, str]]:
+    """Keep the exact original-file evidence attached to a compact context row."""
+    related: dict[tuple[str, str], dict[str, str]] = {}
+    for item in row.get("relatedOriginalFiles") or []:
+        if not isinstance(item, dict):
+            continue
+        source_file = safe_text(item.get("sourceFile"))
+        if not source_file:
+            continue
+        normalized = source_file.replace("\\", "/")
+        related[(normalized, safe_text(item.get("relationship")))] = {
+            "kind": safe_text(item.get("kind")),
+            "sourceFile": normalized,
+            "relationship": safe_text(item.get("relationship")),
+            "sha256": safe_text(item.get("sha256")),
+        }
+    return [
+        related[key]
+        for key in sorted(related)
+    ]
+
+
+def _receiver_native_evidence_context(row: dict[str, Any]) -> dict[str, Any]:
+    """Compact the binary-validated receiver contract for mission-card display."""
+    levelscript = row.get("levelScript") or {}
+    active = row.get("activePhaseReceiverControl") or {}
+    request = row.get("clientActiveRequestControl") or {}
+    start_policy = row.get("startRuntimePolicy") or {}
+    active_shape = levelscript.get("activeShapeList") or {}
+    headers = [
+        {
+            "listenerHeaderLocalId": header.get("listenerHeaderLocalId"),
+            "headerName": safe_text(header.get("headerName")),
+            "triggerActiveDuring": header.get("triggerActiveDuring"),
+            "nextActionLocalId": header.get("nextActionLocalId"),
+        }
+        for header in active.get("receiverHeaders") or []
+        if isinstance(header, dict)
+    ]
+    return {
+        "levelScript": {
+            "scriptIdVerified": bool(levelscript.get("scriptIdVerified")),
+            "serializedMemberCount": levelscript.get("serializedMemberCount"),
+            "actionMapRecordCount": levelscript.get("actionMapRecordCount"),
+            "startTypeName": safe_text(levelscript.get("startTypeName")),
+            "endTypeName": safe_text(
+                (active_shape.get("followingFields") or {}).get("endTypeName")
+            ),
+            "activeShapeListStatus": safe_text(
+                levelscript.get("activeShapeListStatus")
+            ),
+            "activeShapeListCount": levelscript.get("activeShapeListCount"),
+            "taskMapStatus": safe_text(levelscript.get("taskMapStatus")),
+            "taskMapCount": levelscript.get("taskMapCount"),
+        },
+        "activePhaseReceiver": {
+            "schema": safe_text(active.get("schema")),
+            "status": safe_text(active.get("status")),
+            "classification": safe_text(active.get("classification")),
+            "allReceiversActivePhase": bool(
+                active.get("allReceiversActivePhase")
+            ),
+            "listenerHeaderCount": active.get("listenerHeaderCount"),
+            "resolvedHeaderCount": active.get("resolvedHeaderCount"),
+            "receiverHeaders": headers,
+            "topologySchema": safe_text(active.get("topologySchema")),
+            "topologyStatus": safe_text(active.get("topologyStatus")),
+            "runtimeFlow": {
+                key: active.get("runtimeFlow", {}).get(key)
+                for key in (
+                    "setupRegisterTriggerCallCount",
+                    "setupRegisterTriggerCallOffsets",
+                    "activePhaseEnableCallOffsets",
+                    "activeBeginStateValue",
+                    "activeBeginSetterOffsets",
+                    "activePhaseEnableBetweenStateSetters",
+                )
+                if active.get("runtimeFlow", {}).get(key) not in (None, [], {})
+            },
+        },
+        "clientActiveRequest": {
+            "schema": safe_text(request.get("schema")),
+            "status": safe_text(request.get("status")),
+            "classification": safe_text(request.get("classification")),
+            "levelScriptType": request.get("levelScriptType"),
+            "levelScriptTypeName": safe_text(request.get("levelScriptTypeName")),
+            "clientProducesActiveRequest": bool(
+                request.get("clientProducesActiveRequest")
+            ),
+            "requiresActiveAreaGate": bool(request.get("requiresActiveAreaGate")),
+            "entryPublicState": request.get("entryPublicState"),
+            "spatialGateStatus": safe_text(request.get("spatialGateStatus")),
+            "runtimePath": [
+                safe_text(value)
+                for value in request.get("runtimePath") or []
+                if safe_text(value)
+            ],
+        },
+        "startRuntimePolicy": {
+            "schema": safe_text(start_policy.get("schema")),
+            "classification": safe_text(start_policy.get("classification")),
+            "validation": (start_policy.get("validation") or {}).get("status"),
+        },
+        "binaryBoundary": safe_text(
+            active.get("evidenceBoundary")
+            or request.get("evidenceBoundary")
+            or start_policy.get("evidenceBoundary")
+        ),
+    }
+
+
+def _receiver_story_context(
+    row: dict[str, Any],
+    mission_id: str,
+    mission_story_keys: set[str],
+) -> dict[str, Any] | None:
+    """Project one exact receiver/Story intersection without promoting ownership."""
+    story_keys = {
+        safe_text(key) for key in row.get("storyKeys") or [] if safe_text(key)
+    }
+    matched = story_keys & mission_story_keys
+    if not matched:
+        return None
+    level_id = safe_text(row.get("levelId"))
+    script_id = safe_text(row.get("scriptId"))
+    if not level_id or not script_id:
+        return None
+    return {
+        "relation": "native_receiver_story_context",
+        "missionId": mission_id,
+        "levelId": level_id,
+        "scriptId": script_id,
+        "storyKeys": sorted(story_keys),
+        "missionStoryKeys": sorted(matched),
+        "externalStoryKeys": sorted(story_keys - mission_story_keys),
+        "storyKinds": sorted({
+            safe_text(kind)
+            for kind in row.get("storyKinds") or []
+            if safe_text(kind)
+        }),
+        "eventNames": sorted({
+            safe_text(name)
+            for name in row.get("eventNames") or []
+            if safe_text(name)
+        }),
+        "listenerHeaderLocalIds": sorted({
+            value
+            for value in row.get("listenerHeaderLocalIds") or []
+            if isinstance(value, int)
+        }),
+        "activationClass": safe_text(row.get("activationClass")),
+        "missionOwnerStatus": safe_text(row.get("missionOwnerStatus")),
+        "receiverEvidence": _receiver_native_evidence_context(row),
+        "ownership": False,
+        "activation": False,
+        "storyPlayback": False,
+        "orderEvidence": False,
+        "relatedOriginalFiles": _receiver_related_files(row),
+        "evidenceBoundary": (
+            "The original LevelScript receiver row has an exact native path to "
+            "the listed Story keys, and those keys intersect this mission's "
+            "published Story nodes. The attached binary-backed receiver contract "
+            "proves availability/control shape only; it does not prove the mission "
+            "selected activation, event firing, ownership, branch choice, or "
+            "inter-Story order."
+        ),
+    }
+
+
+def _receiver_story_context_index(
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a compact Story-key index for every exact receiver placement.
+
+    This is a presentation join only.  It is keyed by the serialized
+    ``(levelId, scriptId, storyKey)`` shape recovered from native receiver
+    rows, never by a hand-maintained Story/object list.  The index keeps the
+    exact source files and binary boundary beside unassigned Story cards while
+    explicitly retaining the unresolved ownership/order status.
+    """
+    contexts: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in report.get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        level_id = safe_text(row.get("levelId"))
+        script_id = safe_text(row.get("scriptId"))
+        if not level_id or not script_id:
+            continue
+        story_keys = sorted({
+            safe_text(key)
+            for key in row.get("storyKeys") or []
+            if safe_text(key)
+        })
+        if not story_keys:
+            continue
+        related_files = _receiver_related_files(row)
+        context_boundary = (
+            "The exact serialized native receiver path and activation-frontier "
+            "files are attached for this Story key. They prove receiver "
+            "availability/control shape only; they do not prove mission or "
+            "quest ownership, event firing, branch selection, or Story order."
+        )
+        for story_key in story_keys:
+            key = (story_key, level_id, script_id)
+            context = contexts.setdefault(
+                key,
+                {
+                    "relation": "native_receiver_story_context",
+                    "storyKey": story_key,
+                    "levelId": level_id,
+                    "scriptId": script_id,
+                    "storyKinds": [],
+                    "eventNames": [],
+                    "listenerHeaderLocalIds": [],
+                    "receiverNodeCount": 0,
+                    "receiverToStoryPlacementCount": 0,
+                    "activationClass": safe_text(row.get("activationClass")),
+                    "missionOwnerStatus": safe_text(
+                        row.get("missionOwnerStatus")
+                    ) or "unresolved",
+                    "relatedOriginalFiles": related_files,
+                    "ownership": False,
+                    "activation": False,
+                    "storyPlayback": False,
+                    "orderEvidence": False,
+                    "evidenceBoundary": context_boundary,
+                },
+            )
+            context["storyKinds"] = sorted({
+                *context.get("storyKinds", []),
+                *(
+                    safe_text(kind)
+                    for kind in row.get("storyKinds") or []
+                    if safe_text(kind)
+                ),
+            })
+            context["eventNames"] = sorted({
+                *context.get("eventNames", []),
+                *(
+                    safe_text(name)
+                    for name in row.get("eventNames") or []
+                    if safe_text(name)
+                ),
+            })
+            context["listenerHeaderLocalIds"] = sorted({
+                *context.get("listenerHeaderLocalIds", []),
+                *(
+                    value
+                    for value in row.get("listenerHeaderLocalIds") or []
+                    if isinstance(value, int)
+                ),
+            })
+            context["receiverNodeCount"] += int(
+                row.get("receiverNodeCount") or 0
+            )
+            context["receiverToStoryPlacementCount"] += int(
+                row.get("receiverToStoryPlacementCount") or 0
+            )
+            file_map = {
+                (
+                    safe_text(item.get("sourceFile")),
+                    safe_text(item.get("sha256")),
+                ): item
+                for item in context.get("relatedOriginalFiles") or []
+                if isinstance(item, dict) and safe_text(item.get("sourceFile"))
+            }
+            file_map.update({
+                (
+                    safe_text(item.get("sourceFile")),
+                    safe_text(item.get("sha256")),
+                ): item
+                for item in related_files
+                if isinstance(item, dict) and safe_text(item.get("sourceFile"))
+            })
+            context["relatedOriginalFiles"] = [
+                file_map[file_key]
+                for file_key in sorted(file_map)
+            ]
+
+    rows = [contexts[key] for key in sorted(contexts)]
+    return {
+        "schema": "nativeReceiverStoryContextIndex.v1",
+        "rows": rows,
+        "counts": {
+            "storyKeys": len({row["storyKey"] for row in rows}),
+            "contextRows": len(rows),
+            "relatedOriginalFiles": len({
+                (
+                    safe_text(item.get("sourceFile")),
+                    safe_text(item.get("sha256")),
+                )
+                for row in rows
+                for item in row.get("relatedOriginalFiles") or []
+                if isinstance(item, dict) and safe_text(item.get("sourceFile"))
+            }),
+        },
+        "evidenceBoundary": (
+            "This index joins exact serialized native receiver placements to "
+            "their Story keys for inspection. It is non-owning context: no row "
+            "adds mission ownership, activation, branch, completion, or Story "
+            "order evidence."
+        ),
+        "usesOcrOrManualOrder": False,
+    }
+
+
 def _original_file_kind(source_file: str) -> str:
     normalized = source_file.replace("\\", "/")
     for marker, kind in (
@@ -172,6 +506,32 @@ def _original_file_kind(source_file: str) -> str:
         if marker in normalized:
             return kind
     return "original_game_data"
+
+
+_SOURCE_FILE_HASH_CACHE: dict[Path, str] = {}
+
+
+def _source_file_sha256(source_file: str) -> str:
+    """Hash an exported original-data path when it is present.
+
+    Receiver reports are also used with reduced fixture corpora, so a missing
+    fixture path remains a context row with an empty hash rather than making
+    publication fail.  The root and export boundary are explicit; arbitrary
+    WebUI or scratch paths are never treated as original bytes.
+    """
+    normalized = safe_text(source_file).replace("\\", "/")
+    if not normalized.startswith("export_full/"):
+        return ""
+    path = (ROOT / Path(normalized)).resolve()
+    export_root = (ROOT / "export_full").resolve()
+    if not path.is_file() or not path.is_relative_to(export_root):
+        return ""
+    cached = _SOURCE_FILE_HASH_CACHE.get(path)
+    if cached:
+        return cached
+    digest = hashlib.sha256(read_bytes_cached(path)).hexdigest()
+    _SOURCE_FILE_HASH_CACHE[path] = digest
+    return digest
 
 
 def collect_related_original_files(*values: Any) -> list[dict[str, str]]:
@@ -208,6 +568,11 @@ def collect_related_original_files(*values: Any) -> list[dict[str, str]]:
             "kind": _original_file_kind(path),
             "sourceFile": path,
             "relationship": "exact_typed_activation_frontier_context",
+            **(
+                {"sha256": digest}
+                if (digest := _source_file_sha256(path))
+                else {}
+            ),
         }
         for path in sorted(paths)
     ]
@@ -1585,6 +1950,189 @@ def single_native_atom_value(
     return atoms[0].get("valueBit64")
 
 
+def _module_property_signature(property_row: dict[str, Any]) -> dict[str, Any]:
+    """Return a value-free signature for one serialized module property.
+
+    Values such as spawner ids and entity references vary by instance.  The
+    serialized value type, atom count, and atom representation are the stable
+    shape evidence that can be compared across hosts without naming a level,
+    receiver, or mission.
+    """
+    name = safe_text(property_row.get("name"))
+    match = LEVELSCRIPT_MODULE_PROPERTY_NAME_RE.fullmatch(name)
+    value_type = property_row.get("valueType")
+    atom_count = property_row.get("atomCount")
+    atoms = property_row.get("atoms") or []
+    atom_shapes: list[str] = []
+    for atom in atoms:
+        if not isinstance(atom, dict):
+            atom_shapes.append("invalid")
+        elif isinstance(atom.get("valueBit64"), bool):
+            atom_shapes.append("bool")
+        elif isinstance(atom.get("valueBit64"), int):
+            atom_shapes.append("int")
+        elif atom.get("valueBit64") is None:
+            atom_shapes.append("null")
+        else:
+            atom_shapes.append(type(atom.get("valueBit64")).__name__)
+    return {
+        "name": name,
+        "moduleId": match.group("module_id") if match else "",
+        "suffix": match.group("suffix") if match else "",
+        "valueType": value_type,
+        "atomCount": atom_count,
+        "atomShapes": atom_shapes,
+    }
+
+
+def _module_property_family_key(signatures: list[dict[str, Any]]) -> str:
+    """Build a deterministic value-independent family key."""
+    shape = [
+        (
+            safe_text(signature.get("suffix")),
+            signature.get("valueType"),
+            signature.get("atomCount"),
+            tuple(signature.get("atomShapes") or []),
+        )
+        for signature in signatures
+    ]
+    return hashlib.sha256(
+        json.dumps(shape, ensure_ascii=False, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
+def _module_property_family_pattern(
+    signatures: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Classify only reusable field-shape features, never an object id.
+
+    The feature flags intentionally describe what is serialized.  They are
+    not ownership claims.  A semantic adapter can add stronger binary meaning
+    (for example the Encounter contract) only after this generic census has
+    validated the complete family shape.
+    """
+    by_suffix = {
+        safe_text(signature.get("suffix")): signature
+        for signature in signatures
+        if safe_text(signature.get("suffix"))
+    }
+    lifecycle = {
+        suffix
+        for suffix in ("is_enabled", "is_completed")
+        if suffix in by_suffix
+        and by_suffix[suffix].get("valueType") == 1
+        and by_suffix[suffix].get("atomCount") == 1
+        and by_suffix[suffix].get("atomShapes") == ["int"]
+    }
+    typed_payload = {
+        suffix
+        for suffix in by_suffix
+        if suffix not in {"is_enabled", "is_completed"}
+        and by_suffix[suffix].get("valueType") not in (None, 0)
+    }
+    features: list[str] = []
+    if len(lifecycle) == 2:
+        features.append("base_lifecycle_pair")
+    if typed_payload:
+        features.append("typed_payload_fields")
+    if any(
+        suffix in by_suffix
+        for suffix in ("spawner_id", "enemy_list")
+    ):
+        features.append("encounter_candidate_fields")
+    if not features:
+        features.append("serialized_module_fields")
+    return {
+        "features": features,
+        "propertyCount": len(signatures),
+        "suffixes": [
+            safe_text(signature.get("suffix"))
+            for signature in signatures
+            if safe_text(signature.get("suffix"))
+        ],
+    }
+
+
+def module_property_family_contexts(
+    hosts: list[dict[str, Any]],
+    *,
+    receiver_script_id: str = "",
+) -> list[dict[str, Any]]:
+    """Census every serialized ``@module_suffix`` family in every host.
+
+    This is the reusable recovery surface.  It groups by the serialized
+    namespace pattern and preserves exact field/value shapes, so future
+    controllers can be recognized from corpus repetition and binary metadata
+    without adding a host- or object-specific allowlist.
+    """
+    contexts: list[dict[str, Any]] = []
+    for host in hosts:
+        brief = host.get("briefData") or {}
+        grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for property_row in brief.get("properties") or []:
+            if not isinstance(property_row, dict):
+                continue
+            signature = _module_property_signature(property_row)
+            module_id = safe_text(signature.get("moduleId"))
+            suffix = safe_text(signature.get("suffix"))
+            if not module_id or not suffix:
+                continue
+            grouped[module_id].append(signature)
+        for module_id, signatures in sorted(grouped.items(), key=lambda item: int(item[0])):
+            signatures = sorted(
+                signatures,
+                key=lambda signature: (
+                    safe_text(signature.get("suffix")),
+                    str(signature.get("valueType")),
+                    str(signature.get("atomCount")),
+                ),
+            )
+            if len(signatures) < 2:
+                continue
+            pattern = _module_property_family_pattern(signatures)
+            source_file = safe_text(host.get("sourceFile"))
+            contexts.append({
+                "classification": "levelscript_module_property_family",
+                "mappingId": LEVELSCRIPT_MODULE_PROPERTY_MAPPING_ID,
+                "runtimeType": "Beyond.Gameplay.Core.LevelScriptModule",
+                "moduleId": module_id,
+                "receiverScriptId": safe_text(receiver_script_id),
+                "moduleIdMatchesReceiverScript": (
+                    bool(receiver_script_id) and module_id == receiver_script_id
+                ),
+                "familyKey": _module_property_family_key(signatures),
+                "pattern": pattern,
+                "propertySignatures": signatures,
+                "relatedFiles": ([{
+                    "kind": "leveldata_module_property_host",
+                    "sourceFile": source_file,
+                    "relationship": "serialized_module_property_family",
+                }] if source_file else []),
+                "missionOwnerStatus": "unresolved",
+                "storyBinding": False,
+                "orderEvidence": False,
+                "binaryEvidence": {
+                    "gameAssemblySha256": (
+                        LEVELSCRIPT_MODULE_PROPERTY_GAMEASSEMBLY_SHA256
+                    ),
+                    "globalMetadataSha256": (
+                        LEVELSCRIPT_MODULE_PROPERTY_METADATA_SHA256
+                    ),
+                    "namespaceMethod": "LevelScriptModule.GetSaveKeyPrefixed",
+                    "moduleIdFieldOffset": "this+0x18",
+                },
+                "evidenceBoundary": (
+                    "The original LevelData property names and native value "
+                    "shapes prove a reusable module namespace family only. "
+                    "The module id is not a mission, quest, Story owner, "
+                    "activation selector, branch, or playback order."
+                ),
+            })
+    return contexts
+
+
 def encounter_controller_contexts(
     level_id: str,
     receiver_script_id: str,
@@ -2370,6 +2918,10 @@ def build_report(
             leveldata_root=leveldata_root,
             levelscript_root=levelscript_root,
         )
+        module_property_families = module_property_family_contexts(
+            hosts,
+            receiver_script_id=script_id,
+        )
         encounter_contexts = encounter_controller_contexts(
             level_id,
             script_id,
@@ -2500,6 +3052,7 @@ def build_report(
             {"sourceFile": rel_path(script_path)},
             receiver,
             hosts,
+            module_property_families,
             encounter_contexts,
             subgames,
             dungeon_contexts,
@@ -2698,6 +3251,7 @@ def build_report(
                     or [],
                 },
                 "levelDataHosts": hosts,
+                "modulePropertyFamilies": module_property_families,
                 "encounterControllerContexts": encounter_contexts,
                 "nominalMissionHostComparison": nominal_host_comparison,
                 "incomingLiteralManualControls": incoming,
@@ -2803,6 +3357,17 @@ def build_report(
                 "gameAssemblySha256": ENCOUNTER_GAMEASSEMBLY_SHA256,
                 "globalMetadataSha256": ENCOUNTER_METADATA_SHA256,
             },
+            "modulePropertyFamilyEvidence": {
+                "mappingId": LEVELSCRIPT_MODULE_PROPERTY_MAPPING_ID,
+                "namespaceMethod": "Beyond.Gameplay.Core.LevelScriptModule.GetSaveKeyPrefixed",
+                "moduleIdFieldOffset": "this+0x18",
+                "gameAssemblySha256": (
+                    LEVELSCRIPT_MODULE_PROPERTY_GAMEASSEMBLY_SHA256
+                ),
+                "globalMetadataSha256": (
+                    LEVELSCRIPT_MODULE_PROPERTY_METADATA_SHA256
+                ),
+            },
         },
         "evidencePolicy": {
             "purpose": (
@@ -2830,6 +3395,14 @@ def build_report(
                 "related original-data files. The module id can differ from "
                 "the hosting LevelScript id; neither identity supplies a "
                 "MissionRuntime owner, Story branch, or order edge."
+            ),
+            "modulePropertyFamilyBoundary": (
+                "Every @module_suffix group is a generic serialized native "
+                "module namespace census. Field names, value shapes, and "
+                "related LevelData files are exact original-data context; "
+                "module ids and repeated field families do not identify a "
+                "mission, quest, Story owner, activation selector, branch, "
+                "or chronology."
             ),
             "subGameBoundary": (
                 "The hash-validated current binary proves that challenge-start "
@@ -3099,6 +3672,26 @@ def build_report(
                 any(host.get("missionNamedHost") for host in row["levelDataHosts"])
                 for row in rows
             ),
+            "modulePropertyFamilyCount": sum(
+                len(row.get("modulePropertyFamilies") or [])
+                for row in rows
+            ),
+            "scriptsWithModulePropertyFamilies": sum(
+                bool(row.get("modulePropertyFamilies")) for row in rows
+            ),
+            "modulePropertyFamilyRelatedFiles": len({
+                safe_text(related.get("sourceFile"))
+                for row in rows
+                for family in row.get("modulePropertyFamilies") or []
+                for related in family.get("relatedFiles") or []
+                if isinstance(related, dict) and safe_text(related.get("sourceFile"))
+            }),
+            "modulePropertyFamilyFeatures": dict(sorted(Counter(
+                feature
+                for row in rows
+                for family in row.get("modulePropertyFamilies") or []
+                for feature in (family.get("pattern") or {}).get("features") or []
+            ).items())),
             "scriptsWithEncounterControllerContract": sum(
                 bool(row.get("encounterControllerContexts")) for row in rows
             ),
@@ -3395,6 +3988,12 @@ def publish_to_pipeline_index(
     coverage = index_payload.get("storyCoverage")
     if not isinstance(coverage, dict):
         return 0
+    # Keep a compact Story-key lookup beside the full receiver nodes.  The
+    # WebUI uses this to show exact native receiver files on unassigned Story
+    # cards without copying the entire activation contract into every card.
+    coverage["nativeReceiverStoryContextIndex"] = _receiver_story_context_index(
+        report
+    )
     row_index = {
         (safe_text(row.get("levelId")), safe_text(row.get("scriptId"))): row
         for row in report.get("rows") or []
@@ -3436,6 +4035,56 @@ def publish_to_pipeline_index(
                 }
                 for host in row.get("levelDataHosts") or []
                 if isinstance(host, dict)
+            ],
+            "modulePropertyFamilies": [
+                {
+                    "classification": safe_text(
+                        family.get("classification")
+                    ),
+                    "mappingId": safe_text(family.get("mappingId")),
+                    "runtimeType": safe_text(family.get("runtimeType")),
+                    "moduleId": safe_text(family.get("moduleId")),
+                    "receiverScriptId": safe_text(
+                        family.get("receiverScriptId")
+                    ),
+                    "moduleIdMatchesReceiverScript": bool(
+                        family.get("moduleIdMatchesReceiverScript")
+                    ),
+                    "familyKey": safe_text(family.get("familyKey")),
+                    "pattern": family.get("pattern") or {},
+                    "propertySignatures": [
+                        {
+                            "suffix": safe_text(signature.get("suffix")),
+                            "valueType": signature.get("valueType"),
+                            "atomCount": signature.get("atomCount"),
+                            "atomShapes": signature.get("atomShapes") or [],
+                        }
+                        for signature in family.get("propertySignatures") or []
+                        if isinstance(signature, dict)
+                    ],
+                    "relatedFiles": [
+                        {
+                            "kind": safe_text(related.get("kind")),
+                            "sourceFile": safe_text(
+                                related.get("sourceFile")
+                            ),
+                            "relationship": safe_text(
+                                related.get("relationship")
+                            ),
+                        }
+                        for related in family.get("relatedFiles") or []
+                        if isinstance(related, dict)
+                        and safe_text(related.get("sourceFile"))
+                    ],
+                    "missionOwnerStatus": "unresolved",
+                    "storyBinding": False,
+                    "orderEvidence": False,
+                    "evidenceBoundary": safe_text(
+                        family.get("evidenceBoundary")
+                    ),
+                }
+                for family in row.get("modulePropertyFamilies") or []
+                if isinstance(family, dict)
             ],
             "encounterControllerContexts": [
                 {
@@ -3734,12 +4383,97 @@ def publish_to_pipeline_index(
             })
 
     published_contexts = 0
+    published_mission_named_contexts = 0
+    published_receiver_story_contexts = 0
     if mission_root is not None:
         mission_summaries = {
             safe_text(row.get("id")): row
             for row in index_payload.get("missions") or []
             if isinstance(row, dict) and safe_text(row.get("id"))
         }
+        mission_named_contexts_by_mission: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in report.get("rows") or []:
+            if not isinstance(row, dict):
+                continue
+            level_id = safe_text(row.get("levelId"))
+            script_id = safe_text(row.get("scriptId"))
+            story_keys = sorted({
+                safe_text(key)
+                for key in row.get("storyKeys") or []
+                if safe_text(key)
+            })
+            if not level_id or not script_id or not story_keys:
+                continue
+            related_files = [
+                {
+                    "kind": safe_text(related.get("kind")),
+                    "sourceFile": safe_text(related.get("sourceFile")),
+                    "relationship": safe_text(related.get("relationship")),
+                    "sha256": safe_text(related.get("sha256")),
+                }
+                for related in row.get("relatedOriginalFiles") or []
+                if isinstance(related, dict)
+                and safe_text(related.get("sourceFile"))
+            ]
+            levelscript = row.get("levelScript") or {}
+            for host in row.get("levelDataHosts") or []:
+                if not isinstance(host, dict) or not host.get("missionNamedHost"):
+                    continue
+                mission_id = safe_text(host.get("hostMissionId"))
+                if not mission_id or mission_id not in mission_summaries:
+                    continue
+                host_source = safe_text(host.get("sourceFile"))
+                host_file = safe_text(host.get("fileName"))
+                host_related = list(related_files)
+                if host_source and not any(
+                    safe_text(item.get("sourceFile")) == host_source
+                    for item in host_related
+                ):
+                    host_related.append({
+                        "kind": "leveldata",
+                        "sourceFile": host_source,
+                        "relationship": "exact_mission_named_leveldata_receiver_context",
+                        "sha256": "",
+                    })
+                mission_named_contexts_by_mission[mission_id].append({
+                    "relation": "mission_named_leveldata_receiver_context",
+                    "missionId": mission_id,
+                    "levelId": level_id,
+                    "scriptId": script_id,
+                    "storyKeys": story_keys,
+                    "eventNames": [
+                        safe_text(name)
+                        for name in row.get("eventNames") or []
+                        if safe_text(name)
+                    ],
+                    "listenerHeaderLocalIds": [
+                        value
+                        for value in row.get("listenerHeaderLocalIds") or []
+                        if isinstance(value, int)
+                    ],
+                    "activationClass": safe_text(row.get("activationClass")),
+                    "levelDataHost": {
+                        "fileName": host_file,
+                        "sourceFile": host_source,
+                        "dictionaryEntryCount": host.get("dictionaryEntryCount"),
+                        "hostMissionId": mission_id,
+                        "briefData": host.get("briefData") or {},
+                        "encoding": "leveldata_filename_mission_token_plus_member22_dictionary",
+                    },
+                    "ownership": False,
+                    "activation": False,
+                    "storyPlayback": False,
+                    "orderEvidence": False,
+                    "relatedOriginalFiles": host_related,
+                    "evidenceBoundary": (
+                        "The exact mission token in the LevelData filename and the "
+                        "validated member-22 LevelScriptBriefData dictionary place "
+                        "this receiver in an authored mission-named asset container. "
+                        "That container context does not prove the server activation "
+                        "selector, quest ownership, Story playback ownership, branch "
+                        "selection, completion, or inter-file Story order."
+                    ),
+                })
         for mission_id, contexts in sorted(contexts_by_mission.items()):
             path = mission_root / f"{mission_id}.json"
             payload = read_json(path)
@@ -3770,6 +4504,109 @@ def publish_to_pipeline_index(
                 mission_summary["storyOrderMissionObservedLevelScriptContextCount"] = (
                     len(ordered)
                 )
+        for mission_id, contexts in sorted(mission_named_contexts_by_mission.items()):
+            path = mission_root / f"{mission_id}.json"
+            payload = read_json(path)
+            if not isinstance(payload, dict):
+                continue
+            unique = {
+                (
+                    safe_text(context.get("levelId")),
+                    safe_text(context.get("scriptId")),
+                    safe_text(
+                        (context.get("levelDataHost") or {}).get("sourceFile")
+                    ),
+                    tuple(context.get("storyKeys") or []),
+                ): context
+                for context in contexts
+            }
+            ordered = [unique[key] for key in sorted(unique, key=str)]
+            story_order = payload.setdefault("storyOrder", {})
+            story_order["missionNamedLevelDataReceiverContexts"] = ordered
+            summary = story_order.setdefault("summary", {})
+            summary["missionNamedLevelDataReceiverContextCount"] = len(ordered)
+            summary["missionNamedLevelDataReceiverContextStoryCount"] = len({
+                key for context in ordered for key in context["storyKeys"]
+            })
+            write_json(path, payload)
+            published_mission_named_contexts += len(ordered)
+            mission_summary = mission_summaries.get(mission_id)
+            if mission_summary is not None:
+                mission_summary[
+                    "storyOrderMissionNamedLevelDataReceiverContextCount"
+                ] = len(ordered)
+        receiver_contexts_by_mission: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for mission_id, mission_summary in sorted(mission_summaries.items()):
+            path = mission_root / f"{mission_id}.json"
+            payload = read_json(path)
+            if not isinstance(payload, dict):
+                continue
+            story_order = payload.get("storyOrder") or {}
+            if not isinstance(story_order, dict):
+                continue
+            mission_story_keys = _story_order_keys(story_order)
+            if not mission_story_keys:
+                continue
+            for row in report.get("rows") or []:
+                if not isinstance(row, dict):
+                    continue
+                context = _receiver_story_context(
+                    row,
+                    mission_id,
+                    mission_story_keys,
+                )
+                if context is not None:
+                    receiver_contexts_by_mission[mission_id].append(context)
+        for mission_id, contexts in sorted(receiver_contexts_by_mission.items()):
+            path = mission_root / f"{mission_id}.json"
+            payload = read_json(path)
+            if not isinstance(payload, dict):
+                continue
+            unique = {
+                (
+                    safe_text(context.get("levelId")),
+                    safe_text(context.get("scriptId")),
+                    tuple(context.get("missionStoryKeys") or []),
+                    tuple(
+                        (related.get("sourceFile"), related.get("sha256"))
+                        for related in context.get("relatedOriginalFiles") or []
+                    ),
+                ): context
+                for context in contexts
+            }
+            ordered = [unique[key] for key in sorted(unique, key=str)]
+            story_order = payload.setdefault("storyOrder", {})
+            story_order["nativeReceiverStoryContexts"] = ordered
+            summary = story_order.setdefault("summary", {})
+            summary["nativeReceiverStoryContextCount"] = len(ordered)
+            summary["nativeReceiverStoryContextStoryCount"] = len({
+                key for context in ordered for key in context["missionStoryKeys"]
+            })
+            summary["nativeReceiverStoryContextRelatedFileCount"] = len({
+                related.get("sourceFile")
+                for context in ordered
+                for related in context.get("relatedOriginalFiles") or []
+                if related.get("sourceFile")
+            })
+            write_json(path, payload)
+            published_receiver_story_contexts += len(ordered)
+            mission_summary = mission_summaries.get(mission_id)
+            if mission_summary is None:
+                continue
+            mission_summary["storyOrderNativeReceiverStoryContextCount"] = len(
+                ordered
+            )
+            mission_summary["storyOrderNativeReceiverStoryContextStoryCount"] = len({
+                key for context in ordered for key in context["missionStoryKeys"]
+            })
+            mission_summary[
+                "storyOrderNativeReceiverStoryContextRelatedFileCount"
+            ] = len({
+                related.get("sourceFile")
+                for context in ordered
+                for related in context.get("relatedOriginalFiles") or []
+                if related.get("sourceFile")
+            })
 
     coverage["nativeReceiverActivationFrontier"] = {
         "schemaVersion": report.get("schemaVersion"),
@@ -3787,6 +4624,10 @@ def publish_to_pipeline_index(
         "reportMarkdown": rel_path(DEFAULT_MARKDOWN),
         "annotatedReceiverNodes": annotated,
         "publishedMissionObservedLevelScriptContexts": published_contexts,
+        "publishedMissionNamedLevelDataReceiverContexts": (
+            published_mission_named_contexts
+        ),
+        "publishedNativeReceiverStoryContexts": published_receiver_story_contexts,
     }
     return annotated
 
@@ -3867,6 +4708,17 @@ def markdown_report(payload: dict[str, Any]) -> str:
         (
             "- Scripts in a validated mission-named LevelData host: "
             f"`{counts.get('scriptsWithMissionNamedHost')}`"
+        ),
+        (
+            "- Generic serialized module property families / scripts / "
+            "related files: "
+            f"`{counts.get('modulePropertyFamilyCount')}` / "
+            f"`{counts.get('scriptsWithModulePropertyFamilies')}` / "
+            f"`{counts.get('modulePropertyFamilyRelatedFiles')}`"
+        ),
+        (
+            "- Generic module family features: "
+            f"`{counts.get('modulePropertyFamilyFeatures')}`"
         ),
         (
             "- Receiver scripts / Encounter modules / Story keys with the "

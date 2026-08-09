@@ -1761,6 +1761,86 @@ body:not(.show-debug) .mp-source-provenance { display: none; }
   font-size: 7.5px;
 }
 
+.mp-story-connection-originals {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 2px;
+  padding: 4px 6px;
+  border-left: 2px solid #829297;
+  background: rgba(130, 146, 151, 0.06);
+  overflow-wrap: anywhere;
+}
+
+.mp-story-connection-originals strong {
+  color: #53666b;
+  font-size: 8px;
+}
+
+.mp-story-connection-originals small {
+  color: var(--muted);
+  font-size: 7.5px;
+  line-height: 1.35;
+}
+
+.mp-story-receiver-context {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 2px;
+  padding: 4px 6px;
+  border-left: 2px solid var(--mp-client);
+  background: rgba(54, 127, 132, 0.055);
+  overflow-wrap: anywhere;
+}
+
+.mp-story-receiver-context strong {
+  color: var(--mp-client);
+  font-size: 8px;
+}
+
+.mp-story-receiver-context-row {
+  display: grid;
+  gap: 1px;
+  color: var(--muted);
+  font-size: 7.5px;
+  line-height: 1.35;
+}
+
+.mp-story-receiver-context-row code {
+  color: var(--text);
+  font-size: 7.5px;
+}
+
+.mp-story-receiver-context > small {
+  color: var(--muted);
+  font-size: 7.5px;
+  line-height: 1.35;
+}
+
+.mp-story-connection-provenance {
+  margin: 8px 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(130, 146, 151, 0.28);
+  border-radius: 4px;
+  background: rgba(130, 146, 151, 0.045);
+}
+
+.mp-story-connection-provenance h4 {
+  margin: 0 0 2px;
+  color: #53666b;
+  font-size: 9px;
+}
+
+.mp-story-connection-provenance p {
+  margin: 0 0 5px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.35;
+}
+
+.mp-story-connection-provenance .mp-order-metrics {
+  margin: 0;
+}
+
 .mp-trigger-route {
   grid-column: 1 / -1;
   display: grid;
@@ -2198,6 +2278,10 @@ body:not(.show-debug) .mp-playback-rejection {
 .mp-quest-succeed-lifecycle {
   border-left: 3px solid color-mix(in srgb, var(--accent) 78%, var(--border)) !important;
 }
+.mp-leveldata-receiver-context {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 58%, var(--border)) !important;
+}
+.mp-leveldata-receiver-context > p { margin: .4rem 0; }
 .mp-quest-succeed-lifecycle > p { margin: .4rem 0; }
 .mp-quest-lifecycle-files { flex-basis: 100%; margin-top: .35rem; }
 .mp-quest-lifecycle-files > summary { cursor: pointer; color: var(--muted); }
@@ -2498,6 +2582,41 @@ body:not(.show-debug) .mp-playback-rejection {
 .mp-objective > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .mp-objective > header strong { font-size: 10px; }
 .mp-objective > p { margin: 4px 0; color: var(--muted); font: 9px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+
+.mp-levelscript-native-controls {
+  margin: 6px 0;
+  padding: 6px 8px;
+  border: 1px dashed rgba(54, 127, 132, 0.35);
+  border-radius: 7px;
+  background: rgba(54, 127, 132, 0.035);
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.mp-levelscript-native-controls > summary {
+  color: var(--text);
+  font-size: 9px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.mp-levelscript-native-controls > summary span { margin-left: 4px; color: var(--mp-client); }
+.mp-levelscript-native-controls > p { margin: 5px 0; overflow-wrap: anywhere; }
+.mp-levelscript-native-controls > small { display: block; margin: 4px 0; overflow-wrap: anywhere; }
+
+.mp-levelscript-native-control {
+  display: grid;
+  gap: 3px;
+  margin: 5px 0 0;
+  padding: 5px 6px;
+  border-radius: 5px;
+  background: white;
+}
+
+.mp-levelscript-native-control > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; color: var(--text); }
+.mp-levelscript-native-control > header span { color: var(--mp-client); font-size: 8px; }
+.mp-levelscript-native-control > small { display: block; overflow-wrap: anywhere; }
+.mp-levelscript-native-control code { overflow-wrap: anywhere; }
 
 .mp-objective-tracking {
   margin-top: 7px;
