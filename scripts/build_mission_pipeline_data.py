@@ -58,6 +58,13 @@ try:
         build_report as build_callserver_callback_audit_report,
         markdown_report as render_callserver_callback_audit_markdown,
     )
+    from story_recovery.build_dialog_finish_branch_audit import (
+        DEFAULT_JSON as DIALOG_FINISH_BRANCH_AUDIT_JSON,
+        DEFAULT_MARKDOWN as DIALOG_FINISH_BRANCH_AUDIT_MARKDOWN,
+        build_report as build_dialog_finish_branch_audit_report,
+        markdown_report as render_dialog_finish_branch_audit_markdown,
+        publish_to_pipeline_index as publish_dialog_finish_branch_audit,
+    )
     from story_recovery.build_mission_dependency_graph import (
         build_report as build_mission_dependency_graph_report,
     )
@@ -80,6 +87,12 @@ try:
     from story_recovery.build_source_story_order_cross_reference import (
         build_report as build_source_story_order_cross_reference_report,
         render_markdown as render_source_story_order_cross_reference_markdown,
+    )
+    from story_recovery.build_timeline_embedded_story_runtime_audit import (
+        DEFAULT_JSON as TIMELINE_EMBEDDED_RUNTIME_JSON,
+        DEFAULT_MD as TIMELINE_EMBEDDED_RUNTIME_MARKDOWN,
+        build_default_report as build_timeline_embedded_runtime_report,
+        render_markdown as render_timeline_embedded_runtime_markdown,
     )
 except ModuleNotFoundError:  # imported as ``scripts.build_mission_pipeline_data``
     from scripts.common import (
@@ -117,6 +130,13 @@ except ModuleNotFoundError:  # imported as ``scripts.build_mission_pipeline_data
         build_report as build_callserver_callback_audit_report,
         markdown_report as render_callserver_callback_audit_markdown,
     )
+    from scripts.story_recovery.build_dialog_finish_branch_audit import (
+        DEFAULT_JSON as DIALOG_FINISH_BRANCH_AUDIT_JSON,
+        DEFAULT_MARKDOWN as DIALOG_FINISH_BRANCH_AUDIT_MARKDOWN,
+        build_report as build_dialog_finish_branch_audit_report,
+        markdown_report as render_dialog_finish_branch_audit_markdown,
+        publish_to_pipeline_index as publish_dialog_finish_branch_audit,
+    )
     from scripts.story_recovery.build_mission_dependency_graph import (
         build_report as build_mission_dependency_graph_report,
     )
@@ -139,6 +159,12 @@ except ModuleNotFoundError:  # imported as ``scripts.build_mission_pipeline_data
     from scripts.story_recovery.build_source_story_order_cross_reference import (
         build_report as build_source_story_order_cross_reference_report,
         render_markdown as render_source_story_order_cross_reference_markdown,
+    )
+    from scripts.story_recovery.build_timeline_embedded_story_runtime_audit import (
+        DEFAULT_JSON as TIMELINE_EMBEDDED_RUNTIME_JSON,
+        DEFAULT_MD as TIMELINE_EMBEDDED_RUNTIME_MARKDOWN,
+        build_default_report as build_timeline_embedded_runtime_report,
+        render_markdown as render_timeline_embedded_runtime_markdown,
     )
 
 
@@ -13912,6 +13938,32 @@ def main() -> int:
         args.story_data_root.resolve(),
         args.story_language,
     )
+    dialog_finish_branch_audit: dict[str, Any] = {}
+    if output_root == DEFAULT_OUTPUT_ROOT.resolve():
+        (
+            dialog_finish_branch_audit,
+            dialog_finish_pipeline_payloads,
+        ) = build_dialog_finish_branch_audit_report(
+            index,
+            output_root,
+        )
+        write_report_json(
+            DIALOG_FINISH_BRANCH_AUDIT_JSON,
+            dialog_finish_branch_audit,
+        )
+        write_text_if_changed(
+            DIALOG_FINISH_BRANCH_AUDIT_MARKDOWN,
+            render_dialog_finish_branch_audit_markdown(
+                dialog_finish_branch_audit
+            ),
+        )
+        publish_dialog_finish_branch_audit(
+            index,
+            dialog_finish_branch_audit,
+            dialog_finish_pipeline_payloads,
+            output_root,
+        )
+        write_json(output_root / "index.json", index)
     order_report = publish_source_story_partial_order(
         index,
         output_root,
@@ -13921,6 +13973,7 @@ def main() -> int:
     # The complete-corpus callback audit is generated once for the canonical
     # pipeline. Reduced fixture outputs never overwrite or silently consume it.
     callserver_callback_audit: dict[str, Any] = {}
+    timeline_embedded_runtime_audit: dict[str, Any] = {}
     if output_root == DEFAULT_OUTPUT_ROOT.resolve():
         callserver_callback_audit = build_callserver_callback_audit_report()
         write_report_json(
@@ -13931,6 +13984,17 @@ def main() -> int:
             CALLSERVER_CALLBACK_AUDIT_MARKDOWN,
             render_callserver_callback_audit_markdown(
                 callserver_callback_audit
+            ),
+        )
+        timeline_embedded_runtime_audit = build_timeline_embedded_runtime_report()
+        write_report_json(
+            TIMELINE_EMBEDDED_RUNTIME_JSON,
+            timeline_embedded_runtime_audit,
+        )
+        write_text_if_changed(
+            TIMELINE_EMBEDDED_RUNTIME_MARKDOWN,
+            render_timeline_embedded_runtime_markdown(
+                timeline_embedded_runtime_audit
             ),
         )
     coverage = build_story_binding_coverage(
@@ -14035,6 +14099,9 @@ def main() -> int:
             ),
             "dynamicSceneIdentityCrossReferences":
                 coverage.get("dynamicSceneIdentityCrossReferences"),
+            "timelineEmbeddedStoryRuntimeAudit": (
+                timeline_embedded_runtime_audit or {}
+            ),
             "reportJson": repo_path(coverage_report),
             "reportMarkdown": repo_path(args.report_root.resolve() / f"{report_stem}.md"),
         }

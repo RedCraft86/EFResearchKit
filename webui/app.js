@@ -53,6 +53,7 @@ const STATE = {
   languageInfo: DEFAULT_LANGUAGE_INFO,
   uiLocale: "zh",
   actorNames: {},        // aid -> [name, ...]
+  characterNames: {},    // character id/tail -> localized display name
   missionNames: {},      // mission id -> display name
   simActorIds: new Set(),
   rawStoryTypes: new Set(),
@@ -3180,9 +3181,12 @@ function applyUiStrings() {
   const brandTitle = $("#brand-title");
   if (brandTitle) brandTitle.textContent = uiText("suiteTitle");
 
-  $("#story-tab").textContent = uiText("storyTab");
-  $("#mission-pipeline-tab").textContent = uiText("missionPipelineTab");
-  $("#assets-tab").textContent = uiText("assetsTab");
+  // Every nav tab (story, characters, gameplay, mission-pipeline, ...) carries
+  // its label key as data-i18n; this is the one place that applies it, so a
+  // new tab only needs the attribute plus an app_labels.js entry.
+  $$("[data-i18n]").forEach((el) => {
+    el.textContent = uiText(el.dataset.i18n);
+  });
   $("#ui-language-label").textContent = uiText("uiLanguage");
   syncUiLanguageSwitch();
 
@@ -3350,6 +3354,7 @@ async function switchLanguage(languageCode, { preserveSelection = true, requeste
     STATE.actorNames = normalizeActorNames(actorsPayload.actorNames || {});
     STATE.missionNames = missionsPayload.missionNames || {};
     STATE.entries = normalizeLoadedEntries(index.entries || []);
+    STATE.characterNames = computeCharacterNames(STATE.entries);
     applyStoryOrderGroupingOverridesToEntries(STATE.entries);
     applyOptionOverrideFlagsToEntries(await loadOptionOverridePayload(), STATE.entries);
     STATE.entryByKey = new Map(STATE.entries.map((entry) => [entry.k, entry]));
@@ -3770,6 +3775,8 @@ function renderItem(row) {
   const kindNm = meta.name;
   const triggerSummary = STATE.showDebug ? storyTriggerCompactText(e.k) : null;
 
+  // Recovered order remains available to sorting and debug controls, but the
+  // numeric position is intentionally not repeated beside every file title.
   div.innerHTML =
     `<div class="item-line1">` +
       `<span class="badge ${kindCls}">${escapeHtml(kindNm)}</span>` +

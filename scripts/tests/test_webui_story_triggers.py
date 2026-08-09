@@ -169,6 +169,48 @@ for (const [key, category] of [
         self.assertIn("context.relatedOriginalFiles", source)
         self.assertIn("nativeReceiverStoryContextHint", source)
 
+    def test_mission_pipeline_surfaces_timeline_runtime_and_exact_activation_boundary(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("timelineEmbeddedStoryRuntimeAudit", source)
+        self.assertIn("timelineRuntimeHtml", source)
+        self.assertIn('t("timelineEmbeddedRuntimeChain")', source)
+        self.assertIn("controlRuntimeContract", source)
+        self.assertIn("row.directorHosts", source)
+        self.assertIn("control.exposedReferenceKey", source)
+        self.assertIn("control.parentTimelineIdentity", source)
+        self.assertIn('t("timelineEmbeddedDirectorBoundary")', source)
+        self.assertIn("file.rawDataSha256", source)
+        self.assertIn("timelineActivationRoutesById", source)
+        self.assertIn("row.parentDialogActivationRouteIds", source)
+        self.assertIn('t("timelineEmbeddedActivationRoute")', source)
+        self.assertIn("route.missionShellIds", source)
+        self.assertIn("route.actionChain", source)
+        self.assertIn("route.controlDecisions", source)
+        self.assertIn("missionTimelineActivationHtml", source)
+        self.assertIn("route?.missionShellOwnership", source)
+        self.assertIn("route.localTriggerVolumeContext", source)
+        self.assertIn('t("timelineEmbeddedTriggerVolume")', source)
+        self.assertIn("volume.waitSrvRes", source)
+        self.assertIn("timelineQuestSpatialContextsHtml", source)
+        self.assertIn("route?.questSpatialContexts", source)
+        self.assertIn('t("timelineEmbeddedQuestSpatialBoundary")', source)
+        self.assertIn("row.containmentMethod", source)
+        self.assertIn("route.relatedOriginalFiles", source)
+        self.assertIn("timelineConfigurationContextsById", source)
+        self.assertIn("row.parentDialogConfigurationContextIds", source)
+        self.assertIn("missionTimelineConfigurationHtml", source)
+        self.assertIn('t("timelineEmbeddedConfigurationRoute")', source)
+        self.assertIn("context.questNavigationContext", source)
+        self.assertIn("context.relatedOriginalFiles", source)
+        self.assertIn(
+            "This is configuration/navigation context, not proof of parent playback, quest activation, branch selection, or Story order.",
+            source,
+        )
+        self.assertIn(
+            "A conditional path proves the authored route, not that its case was selected at runtime; parallel siblings remain unordered.",
+            source,
+        )
+
     def test_mission_pipeline_surfaces_fixed_point_carrier_closure(self) -> None:
         source = MISSION_PIPELINE.read_text(encoding="utf-8")
         self.assertIn("metadata?.maximumShortestPathDepth", source)

@@ -365,10 +365,42 @@
       dialogTreeNodes: "nodes",
       dialogTreeConnections: "connections",
       dialogTreeBranchGroups: "multi-option groups",
+      dialogTreeNormalOptions: "normal options",
+      dialogTreeValidatedRoutes: "validated normal-option routes",
+      dialogTreeRejectedRoutes: "rejected normal-option routes",
+      dialogTreeValidatedFinishEndpoints: "validated prime-reachable finish endpoints",
+      dialogTreeRejectedFinishEndpoints: "rejected finish endpoints",
+      dialogTreeDefaultIndexes: "runtime-default connection indexes",
+      dialogTreeMismatchNodes: "unequal option/connection nodes",
+      dialogTreeExtraOptionNodes: "extra-option nodes",
+      dialogTreeCorpusRouteGaps: "full-corpus route gaps",
+      dialogTreeUnreferencedDefinitionRoutes: "unreferenced definition options",
+      dialogTreeZeroEdgeRoutes: "options on linked zero-edge nodes",
+      dialogTreeOutOfBoundsRoutes: "out-of-bounds indexes on partial nodes",
+      dialogTreeRoutingClass: "routing class",
+      dialogTreeIncomingConnections: "incoming connections",
+      dialogTreeRouteTopology: "Physical option-edge routing",
+      dialogTreeRouteIndex: "connection index",
+      dialogTreeRouteHint: "The original binary sets doNext while showing normal options, then passes NormalOptionData.index to DialogTree.Continue. Missing edges are not terminal choices: unequal counts are valid only when exact indexes resolve; unreferenced definitions, zero-edge nodes, and invalid indexes remain visible and fail closed.",
       dialogTreeNoOrder: "Definition/internal graph only · no cross-file order promotion",
       dialogTreeObserver: "Mission observer",
       dialogTreeObjectiveObserver: "objective",
       dialogTreeFailureObserver: "failure guard",
+      dialogFinishBranchDependencies: "Option outcome → mission objective",
+      dialogFinishBranchDependencyHint: "An original option outcome writes the exact finish number required by this objective. This proves a causal branch dependency, not the observed player choice, dialog activation, server-selected successor, or total Story-file order.",
+      dialogFinishEndpointDependencies: "Authored finish endpoint → mission objective",
+      dialogFinishEndpointDependencyHint: "An exact original finish node is reachable from the binary-proven serialized prime node and emits the finish number required by this objective. The route or player choice that reaches it remains unknown.",
+      dialogFinishPrimePath: "Prime-node path",
+      dialogFinishProducer: "Original producer",
+      dialogFinishConsumer: "Mission consumer",
+      dialogFinishBranchStat: "exact option→objective branches",
+      dialogFinishEndpointStat: "endpoint-only dependencies",
+      dialogFinishExactCoverageStat: "exact finish consumers covered",
+      dialogFinishRuntimeDefault: "runtime-default Int32 0",
+      dialogFinishExplicitValue: "explicit finishId",
+      dialogFinishProducerScope: "Runtime branch scope",
+      dialogFinishDefaultStat: "runtime-default producers",
+      dialogFinishReusedScopeStat: "option IDs reused across node scopes",
       clientActions: "Client actions after synchronized state",
       source: "Source",
       protocol: "Selected quest network pipeline",
@@ -757,6 +789,37 @@
       relationSnsMissionLink: "SNS row explicitly links this conversation to the mission",
       relationTimelineBlack: "serialized Timeline contains this black-screen Story inside a dialog root",
       relationTimelineBlackUnresolved: "serialized Timeline root is proven; its dialog/mission anchor is unresolved",
+      timelineEmbeddedRuntime: "exact Timeline runtime presentation",
+      timelineEmbeddedClip: "serialized clip",
+      timelineEmbeddedRuntimeChain: "installed-binary runtime chain",
+      timelineEmbeddedDirectorChain: "exact PlayableDirector control chain",
+      timelineEmbeddedDirectorInstance: "Timeline-referencing director instance",
+      timelineEmbeddedControlledDirector: "ExposedReference-controlled nested director",
+      timelineEmbeddedCutsceneRoot: "authored CutsceneRoot",
+      timelineEmbeddedDirectorBoundary: "Director and ControlPlayableAsset links prove playback composition only; they do not identify the mission/quest activator or server-selected branch.",
+      timelineEmbeddedActivationChain: "exact parent-dialog activation",
+      timelineEmbeddedActivationRoute: "native event/action route",
+      timelineEmbeddedConfigurationChain: "mission-scoped parent-dialog configuration",
+      timelineEmbeddedConfigurationRoute: "NPC proxy configuration context",
+      timelineEmbeddedConfigurationSelection: "one-based active row selection",
+      timelineEmbeddedQuestNavigation: "exact quest navigation context",
+      timelineEmbeddedConfigurationBoundary: "The original NpcProxyEx row pairs this parent dialog with a mission. A quest is shown only when one typed MissionRuntime NPC-proxy tracking consumer matches that exact mission and proxy. The installed binary validates one-based active-row selection and separate dialog/mission consumers, but the observed server-selected row is unavailable. This is configuration/navigation context, not proof of parent playback, quest activation, branch selection, or Story order.",
+      timelineEmbeddedTriggerVolume: "exact local trigger geometry",
+      timelineEmbeddedTriggerVolumeBoundary: "The event selector resolves to this same-LevelScript volume. Its serialized fields contain no mission or quest foreign identity.",
+      timelineEmbeddedMissionShell: "validated mission shell",
+      timelineEmbeddedMissionAreaContext: "mission-area context only",
+      timelineEmbeddedQuestSpatialContext: "quest tracking points inside this trigger",
+      timelineEmbeddedQuestSpatialPoint: "typed tracking point",
+      timelineEmbeddedQuestSpatialContainment: "exact containment",
+      timelineEmbeddedQuestSpatialBoundary: "The original quest tracking target lies inside the exact event-selected trigger shape. This narrows spatial context only; it does not prove that the quest entered the volume, activated or owns playback, selected a branch, or orders Story files.",
+      timelineEmbeddedActivationFiles: "related original files",
+      timelineEmbeddedActivationBoundary: "The typed event/action path proves parent-dialog playback, exact local trigger geometry proves where the event listens, and a unique LevelData member-22 host proves only the mission shell. Typed quest tracking points inside that shape are spatial context, not activation. A conditional path proves the authored route, not that its case was selected at runtime; parallel siblings remain unordered. None proves the activating quest or cross-Timeline order.",
+      timelineEmbeddedParallelFanout: "parallel fan-out; siblings unordered",
+      timelineEmbeddedConditionalRoute: "conditional authored route",
+      timelineEmbeddedSelectionUnobserved: "runtime selection not observed",
+      timelineEmbeddedEventPredicate: "event validation parameter",
+      timelineEmbeddedBranchPredicate: "branch predicate",
+      timelineEmbeddedRuntimeBoundary: "This proves live Timeline presentation and local clip timing. Mission ownership is published only for exact parent-dialog routes with a unique validated LevelData shell; quest activation, branch selection, and cross-Timeline order remain unresolved.",
       relationDialogNarrativeAction: "typed DialogTree action presents this black-screen text inside its parent dialog",
       relationDialogNarrativeActionUnscoped: "typed DialogTree containment is exact; parent mission/quest placement is unresolved",
       relationDialogLeftSubtitleAction: "typed DialogTree action presents this text in the local left-subtitle UI",
@@ -1336,10 +1399,42 @@
       dialogTreeNodes: "节点",
       dialogTreeConnections: "连接",
       dialogTreeBranchGroups: "多选项组",
+      dialogTreeNormalOptions: "普通选项",
+      dialogTreeValidatedRoutes: "已验证普通选项路径",
+      dialogTreeRejectedRoutes: "已拒绝普通选项路径",
+      dialogTreeValidatedFinishEndpoints: "已验证主入口可达结束端点",
+      dialogTreeRejectedFinishEndpoints: "已拒绝结束端点",
+      dialogTreeDefaultIndexes: "运行时默认连接索引",
+      dialogTreeMismatchNodes: "选项/连接数量不等的节点",
+      dialogTreeExtraOptionNodes: "额外选项节点",
+      dialogTreeCorpusRouteGaps: "全语料路径缺口",
+      dialogTreeUnreferencedDefinitionRoutes: "未被图引用的定义选项",
+      dialogTreeZeroEdgeRoutes: "已连接零输出边节点上的选项",
+      dialogTreeOutOfBoundsRoutes: "部分连接节点上的越界索引",
+      dialogTreeRoutingClass: "路径结构分类",
+      dialogTreeIncomingConnections: "输入连接",
+      dialogTreeRouteTopology: "选项到物理边的路径",
+      dialogTreeRouteIndex: "连接索引",
+      dialogTreeRouteHint: "原始二进制在显示普通选项时设置 doNext，随后把 NormalOptionData.index 传给 DialogTree.Continue。缺失输出边不是结局选项：只有精确索引可解析时数量不等才有效；未引用定义、零输出边节点和无效索引都会保留显示并关闭推断。",
       dialogTreeNoOrder: "仅定义与内部图 · 不提升为跨文件顺序",
       dialogTreeObserver: "任务监听条件",
       dialogTreeObjectiveObserver: "目标",
       dialogTreeFailureObserver: "失败条件",
+      dialogFinishBranchDependencies: "选项结果 → 任务目标",
+      dialogFinishBranchDependencyHint: "原始选项结果写入了该目标所要求的精确完成编号。这证明因果分支依赖，但不证明玩家实际选择、对话激活、服务端选择的后继或完整剧情文件顺序。",
+      dialogFinishEndpointDependencies: "原始结束端点 → 任务目标",
+      dialogFinishEndpointDependencyHint: "精确的原始结束节点从二进制证明的序列化主入口节点可达，并产生该目标所需的完成编号。到达它的路径或玩家选择仍未知。",
+      dialogFinishPrimePath: "主入口节点路径",
+      dialogFinishProducer: "原始产生端",
+      dialogFinishConsumer: "任务消费端",
+      dialogFinishBranchStat: "精确选项→目标分支",
+      dialogFinishEndpointStat: "仅结束端点依赖",
+      dialogFinishExactCoverageStat: "已覆盖精确完成条件",
+      dialogFinishRuntimeDefault: "运行时默认 Int32 0",
+      dialogFinishExplicitValue: "显式 finishId",
+      dialogFinishProducerScope: "运行时分支作用域",
+      dialogFinishDefaultStat: "运行时默认值产生端",
+      dialogFinishReusedScopeStat: "跨节点作用域复用的选项 ID",
       clientActions: "状态同步后的客户端动作",
       source: "来源",
       protocol: "所选任务节点的网络管线",
@@ -1487,6 +1582,37 @@
       relationSnsMissionLink: "SNS 原始表记录将该会话明确连接到此使命",
       relationTimelineBlack: "序列化 Timeline 将该黑屏剧情包含在对话根节点中",
       relationTimelineBlackUnresolved: "已证明序列化 Timeline 根节点，但尚未解析对话或使命锚点",
+      timelineEmbeddedRuntime: "精确 Timeline 运行时呈现",
+      timelineEmbeddedClip: "序列化片段",
+      timelineEmbeddedRuntimeChain: "已安装二进制运行链",
+      timelineEmbeddedDirectorChain: "精确 PlayableDirector 控制链",
+      timelineEmbeddedDirectorInstance: "引用该 Timeline 的 Director 实例",
+      timelineEmbeddedControlledDirector: "由 ExposedReference 控制的嵌套 Director",
+      timelineEmbeddedCutsceneRoot: "原始 CutsceneRoot",
+      timelineEmbeddedDirectorBoundary: "Director 与 ControlPlayableAsset 链仅证明播放组成；它们不识别使命/任务激活者或服务器选择的分支。",
+      timelineEmbeddedActivationChain: "精确父对话激活链",
+      timelineEmbeddedActivationRoute: "原生事件/动作路径",
+      timelineEmbeddedConfigurationChain: "使命范围内的父对话配置",
+      timelineEmbeddedConfigurationRoute: "NPC 代理配置上下文",
+      timelineEmbeddedConfigurationSelection: "从一开始计数的活动行选择",
+      timelineEmbeddedQuestNavigation: "精确任务导航上下文",
+      timelineEmbeddedConfigurationBoundary: "原始 NpcProxyEx 行将该父对话与使命直接配对。仅当一个类型化 MissionRuntime NPC 代理跟踪消费者匹配同一使命与代理时才显示任务。已安装二进制验证了从一开始计数的活动行选择，以及分离的对话与使命消费者，但无法观测服务器实际选择的行。这只是配置/导航上下文，不证明父对话播放、任务激活、分支选择或 Story 顺序。",
+      timelineEmbeddedTriggerVolume: "精确本地触发区域",
+      timelineEmbeddedTriggerVolumeBoundary: "事件选择器解析到同一 LevelScript 中的该触发区域；其序列化字段不含使命或任务外键身份。",
+      timelineEmbeddedMissionShell: "已验证使命外壳",
+      timelineEmbeddedMissionAreaContext: "仅使命区域上下文",
+      timelineEmbeddedQuestSpatialContext: "位于该触发区域内的任务跟踪点",
+      timelineEmbeddedQuestSpatialPoint: "类型化跟踪点",
+      timelineEmbeddedQuestSpatialContainment: "精确包含关系",
+      timelineEmbeddedQuestSpatialBoundary: "原始任务跟踪目标位于事件精确选中的触发形状内。这只缩小空间上下文；不证明任务实际进入区域、激活或拥有播放、选择分支，也不证明 Story 文件顺序。",
+      timelineEmbeddedActivationFiles: "相关原始文件",
+      timelineEmbeddedActivationBoundary: "类型化事件/动作路径证明父对话播放，精确本地触发区域证明事件监听位置，唯一的 LevelData member-22 宿主仅证明使命外壳。位于该形状内的类型化任务跟踪点只是空间上下文，不是激活证据。条件路径只证明作者编写了该路线，不证明运行时实际选择了该分支；并行同级保持无序。这些都不证明激活任务或跨 Timeline 顺序。",
+      timelineEmbeddedParallelFanout: "并行分流；同级无序",
+      timelineEmbeddedConditionalRoute: "作者编写的条件路线",
+      timelineEmbeddedSelectionUnobserved: "未观测到运行时选择",
+      timelineEmbeddedEventPredicate: "事件验证参数",
+      timelineEmbeddedBranchPredicate: "分支谓词",
+      timelineEmbeddedRuntimeBoundary: "这证明 Timeline 实时呈现与局部片段时序。仅当父对话路径精确且 LevelData 宿主唯一时才发布使命归属；任务激活、分支选择与跨 Timeline 顺序仍未解析。",
       relationDialogNarrativeAction: "类型化 DialogTree 动作在父对话中呈现该黑屏文本",
       relationDialogNarrativeActionUnscoped: "DialogTree 包含关系精确，但父对话的使命或任务位置尚未解析",
       relationDialogLeftSubtitleAction: "类型化 DialogTree 动作在本地左侧字幕界面中呈现该文本",
@@ -2381,6 +2507,9 @@
       [counts.missionGraphPrecedenceEdges, t("missionGraphEdgesStat")],
       [counts.envTalkQuestContextFiles, t("envTalkContextStat")],
       [counts.envTalkStateContextFiles, t("envTalkStateContextStat")],
+      [counts.dialogFinishBranchDependencies, t("dialogFinishBranchStat")],
+      [counts.dialogFinishEndpointDependencies, t("dialogFinishEndpointStat")],
+      [counts.dialogFinishExactConsumerCoverage, t("dialogFinishExactCoverageStat")],
     ];
     if (state.index?.runtimeTrace) stats.push([runtimeCounts.storyPlaybacks, t("runtimeObserved")]);
     node.innerHTML = stats.map(([value, label]) => `<strong>${Number(value || 0).toLocaleString()}</strong><span>${esc(label)}</span>`).join("");
@@ -2412,7 +2541,12 @@
       ${changedFiles.length ? `<code>${esc(changedFiles.join(", "))}</code>` : ""}
       <span>${esc(t("sourceMissingFiles"))}: ${Number(missingFiles.length).toLocaleString()}</span>
       ${state.index?.storyCoverage?.luaStoryPlaybackEvidence?.status ? `<span>${esc(t("luaPlaybackAudit"))}: <strong>${esc(state.index.storyCoverage.luaStoryPlaybackEvidence.status)}</strong> · ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.scannedPlaybackCalls || 0).toLocaleString()} calls · ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.acceptedTableCarrierCalls || 0).toLocaleString()} table-owned · ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.runtimeHandleDispatcherCallCount || 0).toLocaleString()} runtime branches / ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.runtimeHandleDispatcherFamilyCount || 0).toLocaleString()} queue family · ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.runtimeHandleContract?.nativeProducerCount || 0).toLocaleString()} native producers / ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.runtimeHandleContract?.typedActionProducerTypeCount || 0).toLocaleString()} typed actions · ${Number(state.index.storyCoverage.counts?.nativeCinematicProducerRouteAttachments || 0).toLocaleString()} mission-route attachments · ${Number(state.index.storyCoverage.luaStoryPlaybackEvidence.unresolvedPlaybackCalls || 0).toLocaleString()} authored unresolved · <code>${esc(state.index.storyCoverage.luaStoryPlaybackEvidence.auditSha256 || "")}</code></span>` : ""}
+      ${state.index?.dialogFinishBranchRecovery?.status ? `<span>${esc(t("dialogFinishBranchDependencies"))}: <strong>${esc(state.index.dialogFinishBranchRecovery.status)}</strong> · ${Number(state.index.dialogFinishBranchRecovery.counts?.publishedDependencies || 0).toLocaleString()} ${esc(t("dialogFinishBranchStat"))} · ${Number(state.index.dialogFinishBranchRecovery.counts?.dialogTreeValidatedNormalOptionRoutes || 0).toLocaleString()} ${esc(t("dialogTreeValidatedRoutes"))} / ${Number(state.index.dialogFinishBranchRecovery.counts?.dialogTreeRejectedNormalOptionRoutes || 0).toLocaleString()} ${esc(t("dialogTreeRejectedRoutes"))} · ${Number(state.index.dialogFinishBranchRecovery.counts?.dialogTreeConnectionCountMismatchNodes || 0).toLocaleString()} ${esc(t("dialogTreeMismatchNodes"))} · ${Number(state.index.dialogFinishBranchRecovery.counts?.corpusRejectedNormalOptionRoutes || 0).toLocaleString()} ${esc(t("dialogTreeCorpusRouteGaps"))}: ${Number(state.index.dialogFinishBranchRecovery.counts?.corpusUnreferencedOptionDefinitionRoutes || 0).toLocaleString()} ${esc(t("dialogTreeUnreferencedDefinitionRoutes"))} / ${Number(state.index.dialogFinishBranchRecovery.counts?.corpusLinkedNormalOptionsWithoutOutgoingConnections || 0).toLocaleString()} ${esc(t("dialogTreeZeroEdgeRoutes"))} / ${Number(state.index.dialogFinishBranchRecovery.counts?.corpusSerializedConnectionIndexesOutOfBounds || 0).toLocaleString()} ${esc(t("dialogTreeOutOfBoundsRoutes"))} · ${Number(state.index.dialogFinishBranchRecovery.counts?.dialogTreeRuntimeDefaultFinishRows || 0).toLocaleString()} ${esc(t("dialogFinishDefaultStat"))} · ${Number(state.index.dialogFinishBranchRecovery.counts?.reusedOptionIdsAcrossScopes || 0).toLocaleString()} ${esc(t("dialogFinishReusedScopeStat"))} · ${Number(state.index.dialogFinishBranchRecovery.counts?.missions || 0).toLocaleString()} ${esc(t("missions"))} · <code>${esc(state.index.dialogFinishBranchRecovery.reportJson || "")}</code></span>` : ""}
     `;
+    if (state.index?.dialogFinishBranchRecovery?.status) {
+      const recoveryCounts = state.index.dialogFinishBranchRecovery.counts || {};
+      sourceNode.insertAdjacentHTML("beforeend", `<span>${Number(recoveryCounts.exactConsumerCoverage || 0).toLocaleString()} / ${Number(recoveryCounts.exactMissionConsumers || 0).toLocaleString()} ${esc(t("dialogFinishExactCoverageStat"))}: ${Number(recoveryCounts.publishedDependencies || 0).toLocaleString()} ${esc(t("dialogFinishBranchStat"))} + ${Number(recoveryCounts.publishedEndpointDependencies || 0).toLocaleString()} ${esc(t("dialogFinishEndpointStat"))} · ${Number(recoveryCounts.dialogTreeValidatedFinishEndpoints || 0).toLocaleString()} ${esc(t("dialogTreeValidatedFinishEndpoints"))} / ${Number(recoveryCounts.dialogTreeRejectedFinishEndpoints || 0).toLocaleString()} ${esc(t("dialogTreeRejectedFinishEndpoints"))}</span>`);
+    }
   }
 
   function missionName(id) {
@@ -3544,6 +3678,81 @@
     </details>`;
   }
 
+  function timelineQuestSpatialContextsHtml(route) {
+    const contexts = (route?.questSpatialContexts || []).filter((row) => row?.questId);
+    if (!contexts.length) return "";
+    const rows = contexts.map((row) => {
+      const point = row.trackingPosition || {};
+      const pointText = [point.x, point.y, point.z].every((value) => value != null)
+        ? `(${point.x}, ${point.y}, ${point.z})`
+        : "?";
+      const identity = row.missionAreaId || row.npcProxyId || row.sourceType || "tracking";
+      const containment = row.containmentMethod === "sphere_radius"
+        ? `distance=${row.distanceToCenter ?? "?"}, margin=${row.boundaryMargin ?? "?"}`
+        : Object.entries(row.boundaryMargins || {}).map(([axis, value]) => `${axis}=${value}`).join(", ");
+      return `<li><code>${esc(row.questId)}</code> <b>${esc(row.trackingType || t("timelineEmbeddedQuestSpatialPoint"))}</b> <code>${esc(identity)}</code><br><small>${esc(t("timelineEmbeddedQuestSpatialPoint"))} <code>${esc(pointText)}</code>${containment ? ` · ${esc(t("timelineEmbeddedQuestSpatialContainment"))} <code>${esc(containment)}</code>` : ""}</small></li>`;
+    }).join("");
+    return `<details class="mp-timeline-spatial-context"><summary>${esc(t("timelineEmbeddedQuestSpatialContext"))} <span>${contexts.length}</span></summary><ul>${rows}</ul><small>${esc(t("timelineEmbeddedQuestSpatialBoundary"))}</small></details>`;
+  }
+
+  function missionTimelineActivationHtml() {
+    const missionId = String(state.missionId || state.mission?.mission?.id || "");
+    const audit = state.index?.storyCoverage?.timelineEmbeddedStoryRuntimeAudit || {};
+    const routes = (audit.activationRoutes || []).filter((route) =>
+      route?.missionShellOwnership
+      && (route.missionShellIds || []).map(String).includes(missionId),
+    );
+    if (!routes.length) return "";
+    const routeHtml = routes.map((route) => {
+      const storyKeys = (route.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
+      const path = (route.actionChain || []).map((step) => `<li><code>${esc(step.edge || "edge")} &rarr; #${esc(step.localId ?? "?")}</code> <b>${esc(step.actionName || step.recordClass || "action")}</b></li>`).join("");
+      const decisions = (route.controlDecisions || []).map((decision) => {
+        const conditional = decision.controlKind === "conditional_choice" || decision.controlKind === "conditional_loop";
+        const label = decision.controlKind === "parallel_fanout"
+          ? t("timelineEmbeddedParallelFanout")
+          : t("timelineEmbeddedConditionalRoute");
+        return `<small class="mp-timeline-control-decision ${conditional ? "is-conditional" : "is-parallel"}"><b>${esc(label)}</b> <code>${esc(decision.selectedEdge || "?")}</code>${conditional ? `<br>${esc(t("timelineEmbeddedSelectionUnobserved"))}` : ""}</small>`;
+      }).join("");
+      const spatialContexts = timelineQuestSpatialContextsHtml(route);
+      const files = (route.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.role || "file")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}<br><code>${esc(file.path || "")}</code></small>`).join("");
+      return `<article><header><code>${esc(route.levelId || "?")}/${esc(route.scriptId || "?")}</code><b>${esc(route.dialogKey || "?")}</b></header><p><code>${esc(route.headerName || "?")} #${esc(route.headerLocalId ?? "?")}</code> &rarr; <code>#${esc(route.playActionLocalId ?? "?")} ${esc(route.playActionName || "play_dialog")}</code></p><p>${storyKeys}</p>${path ? `<ol>${path}</ol>` : ""}${decisions}${spatialContexts}<details><summary>${esc(t("timelineEmbeddedActivationFiles"))} <span>${(route.relatedOriginalFiles || []).length}</span></summary>${files}</details></article>`;
+    }).join("");
+    return `<details class="mp-mission-story mp-timeline-activation" data-weight="context" open><summary>${esc(t("timelineEmbeddedActivationChain"))} <span>${routes.length}</span></summary>${routeHtml}<small class="mp-timeline-activation-boundary">${esc(t("timelineEmbeddedActivationBoundary"))}</small></details>`;
+  }
+
+  function timelineConfigurationContextsHtml(contexts, { missionSummary = false } = {}) {
+    const rows = (contexts || []).filter((context) => context?.id && context?.missionId);
+    if (!rows.length) return "";
+    const audit = state.index?.storyCoverage?.timelineEmbeddedStoryRuntimeAudit || {};
+    const contract = audit.parentDialogConfiguration?.nativeContract || {};
+    const methods = (contract.methods || []).map((method) =>
+      `<small><code>${esc(method.type || "?")}.${esc(method.method || "?")}</code> <code>${esc(method.va || "?")}</code></small>`,
+    ).join("");
+    const cards = rows.map((context) => {
+      const stories = (context.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
+      const quests = (context.candidateQuestIds || []).map((questId) => `<code>${esc(questId)}</code>`).join(" ");
+      const tracking = (context.trackingRows || []).map((row) =>
+        `<small><code>${esc(row.questId || "?")}</code> / <code>${esc(row.type || "NpcProxyTrackingInfo")}</code> / objective <code>${esc(row.objectiveIndex ?? "?")}</code> / tracking <code>${esc(row.trackingIndex ?? "?")}</code><br><code>${esc(row.missionRuntimeSourcePath || "")}</code></small>`,
+      ).join("");
+      const files = (context.relatedOriginalFiles || []).map((file) =>
+        `<small><code>${esc(file.role || "file")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}<br><code>${esc(file.path || "")}</code></small>`,
+      ).join("");
+      return `<article><header><b>${esc(t("timelineEmbeddedConfigurationRoute"))}</b><code>${esc(context.missionId)}</code></header><p><code>${esc(context.npcProxyId || "?")}</code> &rarr; <code>${esc(context.dialogKey || "?")}</code>${stories ? ` &rarr; ${stories}` : ""}</p><p><strong>${esc(t("timelineEmbeddedConfigurationSelection"))}</strong> <code>${esc(context.activeRowSelection || contract.activeRowSelection || "?")}</code></p>${context.questNavigationContext ? `<p><strong>${esc(t("timelineEmbeddedQuestNavigation"))}</strong> ${quests}</p>${tracking}` : `<p><code>${esc(context.questNavigationStatus || "no_typed_tracking_quest")}</code></p>`}${methods}<details><summary>${esc(t("timelineEmbeddedActivationFiles"))} <span>${(context.relatedOriginalFiles || []).length}</span></summary>${files}</details></article>`;
+    }).join("");
+    const detailClass = missionSummary
+      ? "mp-mission-story mp-timeline-activation mp-timeline-configuration"
+      : "mp-timeline-configuration";
+    return `<details class="${detailClass}" data-weight="context"${missionSummary ? " open" : ""}><summary>${esc(t("timelineEmbeddedConfigurationChain"))} <span>${rows.length}</span></summary>${cards}<small class="mp-timeline-activation-boundary">${esc(t("timelineEmbeddedConfigurationBoundary"))}</small></details>`;
+  }
+
+  function missionTimelineConfigurationHtml() {
+    const missionId = String(state.missionId || state.mission?.mission?.id || "");
+    const contexts = (
+      state.index?.storyCoverage?.timelineEmbeddedStoryRuntimeAudit?.configurationContexts || []
+    ).filter((context) => String(context?.missionId || "") === missionId);
+    return timelineConfigurationContextsHtml(contexts, { missionSummary: true });
+  }
+
   function missionStateDependenciesHtml() {
     const rows = (state.localized?.flow?.missionStateStoryDependencies || [])
       .filter((row) => row && row.key);
@@ -3770,6 +3979,117 @@
         .filter((row) => row && row.key)
         .map((row) => [row.key, row]),
     );
+    const timelineRuntimeAudit = state.index?.storyCoverage?.timelineEmbeddedStoryRuntimeAudit || {};
+    const timelineRuntimeRowsByKey = new Map();
+    (timelineRuntimeAudit.rows || []).forEach((row) => {
+      if (!row?.key) return;
+      if (!timelineRuntimeRowsByKey.has(row.key)) timelineRuntimeRowsByKey.set(row.key, []);
+      timelineRuntimeRowsByKey.get(row.key).push(row);
+    });
+    const runtimeFamilies = timelineRuntimeAudit.runtimeContract?.families || [];
+    const controlRuntime = timelineRuntimeAudit.controlRuntimeContract?.controlPlayableAsset || {};
+    const timelineActivationRoutesById = new Map(
+      (timelineRuntimeAudit.activationRoutes || [])
+        .filter((row) => row?.id)
+        .map((row) => [row.id, row]),
+    );
+    const timelineConfigurationContextsById = new Map(
+      (timelineRuntimeAudit.configurationContexts || [])
+        .filter((row) => row?.id)
+        .map((row) => [row.id, row]),
+    );
+    const timelineRuntimeHtml = (key) => {
+      const rows = timelineRuntimeRowsByKey.get(key) || [];
+      if (!rows.length) return "";
+      const directorHosts = [];
+      const seenDirectors = new Set();
+      rows.forEach((row) => (row.directorHosts || []).forEach((host) => {
+        const identity = `${host.directorIdentity?.sourceFile || ""}:${host.directorIdentity?.pathId || ""}`;
+        if (!seenDirectors.has(identity)) {
+          seenDirectors.add(identity);
+          directorHosts.push(host);
+        }
+      }));
+      const activationRoutes = [];
+      const seenActivationRoutes = new Set();
+      rows.forEach((row) => (row.parentDialogActivationRouteIds || []).forEach((routeId) => {
+        const route = timelineActivationRoutesById.get(routeId);
+        if (route && !seenActivationRoutes.has(routeId)) {
+          seenActivationRoutes.add(routeId);
+          activationRoutes.push(route);
+        }
+      }));
+      const configurationContexts = [];
+      const seenConfigurationContexts = new Set();
+      rows.forEach((row) => (row.parentDialogConfigurationContextIds || []).forEach((contextId) => {
+        const context = timelineConfigurationContextsById.get(contextId);
+        if (context && !seenConfigurationContexts.has(contextId)) {
+          seenConfigurationContexts.add(contextId);
+          configurationContexts.push(context);
+        }
+      }));
+      const directorHtml = directorHosts.map((host) => {
+        const director = host.directorIdentity || {};
+        const directRoots = (host.cutsceneRoots || []).map((root) => `<code>${esc(root.timelineName || "?")}</code>`).join(" ");
+        const controls = (host.controlChains || []).map((control) => {
+          const roots = (control.cutsceneRoots || []).map((root) => `<code>${esc(root.timelineName || "?")}</code>`).join(" ");
+          const gameObject = control.resolvedGameObjectIdentity || {};
+          const parentDirector = control.parentDirectorIdentity || {};
+          const parentTimeline = control.parentTimelineIdentity || {};
+          const binding = control.autoBindingPath
+            ? ` / <code>autoBinding=${esc(control.autoBindingPath)}</code>`
+            : "";
+          return `<small class="mp-timeline-director-chain"><strong>${esc(t("timelineEmbeddedControlledDirector"))}</strong> <code>${esc(control.exposedReferenceKey || "?")}</code><br><code>${esc(gameObject.sourceFile || "?")}</code> / GO PathID <code>${esc(gameObject.pathId || "?")}</code> &rarr; <code>${esc(parentDirector.sourceFile || "?")}</code> / Director PathID <code>${esc(parentDirector.pathId || "?")}</code> &rarr; <code>${esc(parentTimeline.sourceFile || "?")}</code> / Timeline PathID <code>${esc(parentTimeline.pathId || "?")}</code><br>Control clip <code>${Number(control.clipStart || 0).toFixed(3)}s + ${Number(control.clipDuration || 0).toFixed(3)}s</code> / <code>optionIndex=${esc(control.clipOptionIndex ?? "?")}</code>${binding}${roots ? `<br><strong>${esc(t("timelineEmbeddedCutsceneRoot"))}</strong> ${roots}` : ""}</small>`;
+        }).join("");
+        return `<article class="mp-timeline-director"><p><strong>${esc(t("timelineEmbeddedDirectorInstance"))}</strong> <code>${esc(director.sourceFile || "?")}</code> / PathID <code>${esc(director.pathId || "?")}</code></p>${directRoots ? `<small><strong>${esc(t("timelineEmbeddedCutsceneRoot"))}</strong> ${directRoots}</small>` : ""}${controls}</article>`;
+      }).join("");
+      const clips = rows.map((row) => {
+        const files = (row.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.role || "file")}</code> <code>${esc(file.sourceFile || "")}</code> / PathID <code>${esc(file.pathId ?? "?")}</code>${file.rawDataSha256 ? ` / SHA-256 <code>${esc(file.rawDataSha256)}</code>` : ""}<br><code>${esc(file.path || "")}</code></small>`).join("");
+        return `<article><p><strong>${esc(t("timelineEmbeddedClip"))}</strong> <code>${esc(row.timeline || "?")}</code> <code>${Number(row.clipStart || 0).toFixed(3)}s + ${Number(row.clipDuration || 0).toFixed(3)}s</code> <code>optionIndex=${esc(row.clipOptionIndex ?? "?")}</code></p><small><code>${esc(row.textId || "")}</code> / <code>${esc(row.dialogKey || "unresolved")}</code> / <code>${esc(row.sourceFile || "")}</code></small>${files}</article>`;
+      }).join("");
+      const chain = runtimeFamilies.map((family) => `<small><code>${esc(family.type || "")}</code> <code>CreatePlayable ${esc(family.createPlayable?.va || "?")}</code> &rarr; ${(family.createPlayable?.behaviourInitializers || []).map((value) => `<code>${esc(value)}</code>`).join(" ")}</small>`).join("");
+      const controlChain = controlRuntime.type ? `<p><strong>${esc(t("timelineEmbeddedDirectorChain"))}</strong></p><small><code>${esc(controlRuntime.type)}</code> <code>CreatePlayable ${esc(controlRuntime.methods?.CreatePlayable?.va || "?")}</code></small>${directorHtml}<small>${esc(t("timelineEmbeddedDirectorBoundary"))}</small>` : "";
+      const activationHtml = activationRoutes.length ? `<section class="mp-timeline-activation"><h5>${esc(t("timelineEmbeddedActivationChain"))} <span>${activationRoutes.length}</span></h5>${activationRoutes.map((route) => {
+        const missions = (route.missionShellIds || []).map((missionId) => `<code>${esc(missionId)}</code>`).join(" ");
+        const actionChain = (route.actionChain || []).map((action) => `<li><code>${esc(action.edge || "edge")} &rarr; #${esc(action.localId ?? "?")}</code><b>${esc(action.actionName || action.recordClass || action.class || action.hint || action.opcode || "action")}</b>${action.controlKind ? `<span>${esc(action.controlKind)}</span>` : ""}${(action.texts || []).map((value) => `<code>${esc(value)}</code>`).join(" ")}</li>`).join("");
+        const controlDecisions = (route.controlDecisions || []).map((decision) => {
+          const conditional = decision.controlKind === "conditional_choice" || decision.controlKind === "conditional_loop";
+          const label = decision.controlKind === "parallel_fanout"
+            ? t("timelineEmbeddedParallelFanout")
+            : t("timelineEmbeddedConditionalRoute");
+          const predicate = decision.branchPredicate || {};
+          const predicateText = [predicate.getterName, predicate.detailKind, predicate.status].filter(Boolean).join(" / ");
+          return `<small class="mp-timeline-control-decision ${conditional ? "is-conditional" : "is-parallel"}"><b>${esc(label)}</b> <code>#${esc(decision.sourceLocalId ?? "?")} ${esc(decision.sourceActionName || "control")}</code> &rarr; <code>${esc(decision.selectedEdge || "?")}</code>${predicateText ? `<br><strong>${esc(t("timelineEmbeddedBranchPredicate"))}</strong> <code>${esc(predicateText)}</code>` : ""}${conditional ? `<br>${esc(t("timelineEmbeddedSelectionUnobserved"))}` : ""}</small>`;
+        }).join("");
+        const eventValidate = route.eventDetail?.validateParam || {};
+        const eventPredicate = Object.keys(eventValidate).length
+          ? `<small class="mp-timeline-event-predicate"><strong>${esc(t("timelineEmbeddedEventPredicate"))}</strong> <code>${esc(JSON.stringify(eventValidate))}</code></small>`
+          : "";
+        const triggerContext = route.localTriggerVolumeContext || {};
+        const triggerVolumes = (triggerContext.triggerVolumes || []).map((volume) => {
+          const shapes = (volume.shapes || []).map((shape) => {
+            const position = shape.position || {};
+            const size = shape.size || {};
+            const positionText = [position.x, position.y, position.z].every((value) => value != null)
+              ? `${t("triggerVolumePosition")}: ${position.x}, ${position.y}, ${position.z}`
+              : "";
+            const dimensions = shape.shapeType === "Sphere" && shape.radius != null
+              ? `${t("triggerVolumeRadius")} ${shape.radius}`
+              : [size.x, size.y, size.z].every((value) => value != null)
+                ? `size ${size.x}, ${size.y}, ${size.z}`
+                : "";
+            return `<small><code>${esc(shape.shapeType || "?")}</code>${dimensions ? ` <code>${esc(dimensions)}</code>` : ""}${positionText ? `<br>${esc(positionText)}` : ""}</small>`;
+          }).join("");
+          return `<div><code>slot ${esc(volume.slotId ?? "?")}</code> <code>${esc(volume.triggerVolumeType || "?")}</code> <code>waitSrvRes=${esc(volume.waitSrvRes ?? "?")}</code>${shapes}</div>`;
+        }).join("");
+        const triggerHtml = triggerVolumes ? `<details open><summary>${esc(t("timelineEmbeddedTriggerVolume"))} <span>${(triggerContext.triggerVolumes || []).length}</span></summary>${triggerVolumes}<small>${esc(t("timelineEmbeddedTriggerVolumeBoundary"))}</small></details>` : "";
+        const missionAreas = (route.missionAreaReferences || []).map((reference) => `<small><code>${esc(reference.missionId || "?")}</code> / <code>${esc(reference.questId || "?")}</code> / <code>${esc(reference.missionAreaId || "?")}</code></small>`).join("");
+        const files = (route.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.role || "file")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}<br><code>${esc(file.path || "")}</code></small>`).join("");
+        return `<article><header><b>${esc(t("timelineEmbeddedActivationRoute"))}</b><code>${esc(route.levelId || "?")}/${esc(route.scriptId || "?")}</code></header><p><code>${esc(route.headerName || "?")} #${esc(route.headerLocalId ?? "?")}</code> &rarr; <code>#${esc(route.playActionLocalId ?? "?")} ${esc(route.playActionName || "play_dialog")}</code> &rarr; <code>${esc(route.dialogKey || "?")}</code></p>${eventPredicate}${actionChain ? `<ol>${actionChain}</ol>` : ""}${controlDecisions}${triggerHtml}${missions ? `<p><strong>${esc(t("timelineEmbeddedMissionShell"))}</strong> ${missions}</p>` : ""}${missionAreas ? `<details><summary>${esc(t("timelineEmbeddedMissionAreaContext"))} <span>${(route.missionAreaReferences || []).length}</span></summary>${missionAreas}</details>` : ""}${timelineQuestSpatialContextsHtml(route)}${files ? `<details><summary>${esc(t("timelineEmbeddedActivationFiles"))} <span>${(route.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}<small class="mp-timeline-activation-boundary">${esc(t("timelineEmbeddedActivationBoundary"))}</small></article>`;
+      }).join("")}</section>` : "";
+      const configurationHtml = timelineConfigurationContextsHtml(configurationContexts);
+      return `<details class="mp-timeline-runtime"><summary><strong>${esc(t("timelineEmbeddedRuntime"))}</strong> <span>${rows.length}</span></summary><p><strong>${esc(t("timelineEmbeddedRuntimeChain"))}</strong></p>${chain}${activationHtml}${configurationHtml}${controlChain}${clips}<small>${esc(t("timelineEmbeddedRuntimeBoundary"))}</small></details>`;
+    };
     return `<details class="mp-mission-story mp-unassigned-story" data-weight="context">
       <summary>${esc(t("unassignedStory"))} <span>${keys.length}</span></summary>
       <div class="mp-story-files"><section class="mp-story-group is-context">
@@ -3786,13 +4106,13 @@
             nativeMappingId: nativeRow?.nativeMappingId || "",
             source: [containmentRow.source, nativeRow?.source].filter(Boolean).join("; "),
           } : (nativeRow || definitionOnlyByKey.get(key));
-          return storyConnectionLink(evidenceRow || {
+          return `<div class="mp-unassigned-story-row">${storyConnectionLink(evidenceRow || {
             key,
             relation: "unassigned_story",
             direction: "context",
             confidence: "unassigned",
             source: t("unassignedStoryHint"),
-          }, "context");
+          }, "context")}${timelineRuntimeHtml(key)}</div>`;
         }).join("")}
       </section></div>
       <small>${esc(t("unassignedStoryHint"))}</small>
@@ -4961,6 +5281,8 @@
     ["runtime", "summarySectionRuntime", () => [nativeRuntimeBindingsHtml(), runtimeTraceHtml()]],
     ["story", "summarySectionStory", () => [
       missionStoryConnectionsHtml(),
+      missionTimelineActivationHtml(),
+      missionTimelineConfigurationHtml(),
       missionStateDependenciesHtml(),
       envTalkContextHtml(),
     ]],
@@ -5914,6 +6236,46 @@
     }).join("");
     const submissionCoGates = (objective.submissionDialogCoGates || []).map((row) => `<span class="mp-state-chip" title="${esc(t("submissionDialogCoGateHint"))}"><b>${esc(t("submissionDialogCoGate"))}</b> · <code>${esc(row.submissionId || "")}</code> + <code>${esc(row.dialogId || "")}</code> · ${row.finishId < 0 ? esc(t("anyFinish")) : `${esc(t("finish"))} ${esc(row.finishId)}`}</span>`).join("");
     const submissionLevelScriptCoGates = (objective.submissionLevelScriptCoGates || []).map((row) => `<span class="mp-state-chip" title="${esc(t("submissionLevelScriptCoGateHint"))}"><b>${esc(t("submissionLevelScriptCoGate"))}</b> · <code>${esc(row.submissionId || "")}</code> + <code>${esc(row.levelId || "")}/${esc(row.scriptId || "")}</code></span>`).join("");
+    const dialogFinishBranchDependencies = (objective.dialogFinishBranchDependencies || []).map((row) => {
+      const options = (row.optionIds || []).map((optionId) => `<code>${esc(optionId)}</code>`).join(" ");
+      const producers = (row.producerFamilies || []).map((family) => `<code>${esc(family)}</code>`).join(" ");
+      const producerEvidence = row.producerEvidence || [];
+      const finishIdSources = new Set(producerEvidence.flatMap((producer) => producer.finishIdSources || []));
+      const defaultBadge = finishIdSources.has("runtime_default") ? `<span>${esc(t("dialogFinishRuntimeDefault"))}</span>` : `<span>${esc(t("dialogFinishExplicitValue"))}</span>`;
+      const producerScopes = producerEvidence.map((producer) => {
+        const scope = producer.producerScope || {};
+        return `<small><strong>${esc(t("dialogFinishProducerScope"))}:</strong> <code>${esc(scope.kind || "?")}</code> <code>${esc(scope.key || "?")}</code> · <code>${esc((producer.finishIdSources || []).join("+") || "unknown")}</code></small>`;
+      }).join("");
+      const files = (row.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.kind || "file")}</code> <code>${esc(file.sourceFile || "")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`).join("");
+      return `<details open class="mp-quest-task-dependency mp-dialog-finish-branch-dependency">
+        <summary><b>${esc(t("dialogFinishBranchDependencies"))}</b> ${options}<i>&rarr;</i><code>${esc(row.dialogId || "?")} / ${esc(t("finish"))} ${esc(row.finishId ?? "?")}</code><i>&rarr;</i><code>${esc(row.questId || questId)} / #${esc(row.objectiveIndex ?? "?")}</code> ${defaultBadge}</summary>
+        <p><strong>${esc(t("dialogFinishProducer"))}:</strong> ${producers || `<code>?</code>`}</p>
+        ${producerScopes}
+        <small><strong>${esc(t("dialogFinishConsumer"))}:</strong> <code>${esc(row.conditionId || "?")}</code> / <code>CheckTalkOptionFinish</code></small>
+        <small>${esc(row.evidenceBoundary || t("dialogFinishBranchDependencyHint"))}</small>
+        ${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}
+      </details>`;
+    }).join("");
+    const dialogFinishEndpointDependencies = (objective.dialogFinishEndpointDependencies || []).map((row) => {
+      const producerEvidence = row.producerEvidence || [];
+      const finishNodes = producerEvidence.map((producer) => `<code>${esc(producer.finishNodeId || "?")}</code>`).join(" ");
+      const valueSources = [...new Set(producerEvidence.map((producer) => producer.finishIdSource || "unknown"))];
+      const defaultBadge = valueSources.includes("runtime_default") ? `<span>${esc(t("dialogFinishRuntimeDefault"))}</span>` : `<span>${esc(t("dialogFinishExplicitValue"))}</span>`;
+      const endpointPaths = producerEvidence.map((producer) => {
+        const path = (producer.nodePath || []).join(" → ") || "?";
+        const predecessors = (producer.predecessorNodeTypes || []).join(" + ") || "?";
+        return `<small><strong>${esc(t("dialogFinishPrimePath"))}:</strong> <code>${esc(path)}</code> · ${esc(t("predecessor"))}: <code>${esc(predecessors)}</code></small>`;
+      }).join("");
+      const files = (row.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.kind || "file")}</code> <code>${esc(file.sourceFile || "")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`).join("");
+      return `<details open class="mp-quest-task-dependency mp-dialog-finish-branch-dependency">
+        <summary><b>${esc(t("dialogFinishEndpointDependencies"))}</b> <code>${esc(row.dialogId || "?")} / ${esc(t("finish"))} ${esc(row.finishId ?? "?")}</code><i>&rarr;</i><code>${esc(row.questId || questId)} / #${esc(row.objectiveIndex ?? "?")}</code> ${defaultBadge}</summary>
+        <p><strong>${esc(t("dialogFinishProducer"))}:</strong> ${finishNodes || `<code>?</code>`}</p>
+        ${endpointPaths}
+        <small><strong>${esc(t("dialogFinishConsumer"))}:</strong> <code>${esc(row.conditionId || "?")}</code> / <code>CheckTalkOptionFinish</code></small>
+        <small>${esc(row.evidenceBoundary || t("dialogFinishEndpointDependencyHint"))}</small>
+        ${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}
+      </details>`;
+    }).join("");
     const taskDependencies = (objective.levelScriptTaskDependencies || []).map((row) => {
       const metadata = row.taskMetadata || {};
       const files = (row.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.kind || "file")}</code> <code>${esc(file.sourceFile || "")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`).join("");
@@ -5947,7 +6309,7 @@
     }).join("");
     return `<article class="mp-objective"><header><strong>${esc(t("objectives"))} ${objective.index}</strong><span class="mp-authority is-${esc(objective.authority)}">${esc(objective.authority)}</span></header>
       <p>${esc(objective.descriptionKey || t("noObjective"))}</p>
-      <div class="mp-objective-special">${finishRows}${stateRows}${placeholderRows}${submissionRows}${submissionCoGates}${submissionLevelScriptCoGates}</div>${levelScriptSources}${nativeLevelScriptControlAttachments}${taskDependencies}
+      <div class="mp-objective-special">${finishRows}${stateRows}${placeholderRows}${submissionRows}${submissionCoGates}${submissionLevelScriptCoGates}</div>${dialogFinishBranchDependencies}${dialogFinishEndpointDependencies}${levelScriptSources}${nativeLevelScriptControlAttachments}${taskDependencies}
       ${objectiveTrackingHtml(objective.tracking)}
       ${renderConditionTree(objective.condition)}
     </article>`;
@@ -5957,12 +6319,42 @@
     const definitions = node.dialogTreeDefinitions || [];
     if (!definitions.length) return "";
     const rows = definitions.map((row) => {
+      const routeRecovery = row.optionRouteRecovery || {};
+      const routeCounts = routeRecovery.counts || {};
+      const finishEndpointRecovery = row.finishEndpointRecovery || {};
+      const finishEndpointCounts = finishEndpointRecovery.counts || {};
       const facts = [
         `${Number((row.lineIds || []).length)} ${t("dialogTreeLines")}`,
         `${Number(row.nodeCount || 0)} ${t("dialogTreeNodes")}`,
         `${Number(row.connectionCount || 0)} ${t("dialogTreeConnections")}`,
         `${Number(row.branchingOptionGroupCount || 0)} ${t("dialogTreeBranchGroups")}`,
+        `${Number(routeCounts.validatedNormalOptionRoutes || 0)} ${t("dialogTreeValidatedRoutes")}`,
+        `${Number(routeCounts.rejectedNormalOptionRoutes || 0)} ${t("dialogTreeRejectedRoutes")}`,
+        `${Number(finishEndpointCounts.validatedFinishEndpoints || 0)} ${t("dialogTreeValidatedFinishEndpoints")}`,
+        `${Number(finishEndpointCounts.rejectedFinishEndpoints || 0)} ${t("dialogTreeRejectedFinishEndpoints")}`,
       ];
+      const routeNodes = (routeRecovery.nodes || []).filter((routeNode) =>
+        routeNode.normalOptionCount !== routeNode.outgoingConnectionCount
+        || (routeNode.extraOptionConnectionIndices || []).length
+        || (routeNode.issues || []).length
+      );
+      const routeTopology = routeNodes.length ? `<details class="mp-dialog-tree-route-topology"><summary><b>${esc(t("dialogTreeRouteTopology"))}</b> · ${Number(routeCounts.connectionCountMismatchNodes || 0).toLocaleString()} ${esc(t("dialogTreeMismatchNodes"))} · ${Number(routeCounts.extraOptionNodes || 0).toLocaleString()} ${esc(t("dialogTreeExtraOptionNodes"))}</summary><small>${esc(t("dialogTreeRouteHint"))}</small>${routeNodes.map((routeNode) => {
+        const routes = (routeNode.routes || []).map((route) => {
+          const target = route.status === "validated"
+            ? ` → ${esc(route.targetNodeType || "?")} <code>${esc(route.targetNodeId || "?")}</code>`
+            : ` · <strong>${esc(route.status || "rejected")}</strong> · <code>${esc(route.failureClass || "unclassified_route_failure")}</code> · ${esc(route.issue?.gate || "validation_failed")}`;
+          return `<li><code>${esc(route.optionId || `#${route.optionOrdinal ?? "?"}`)}</code> · ${esc(t("dialogTreeRouteIndex"))} <code>${esc(route.connectionIndex ?? "?")}</code> (${esc(route.connectionIndexSource || "?")})${target}</li>`;
+        }).join("");
+        return `<article class="mp-action"><small><code>${esc(routeNode.nodeId || "?")}</code> · ${Number(routeNode.normalOptionCount || 0)} ${esc(t("dialogTreeNormalOptions"))} / ${Number(routeNode.outgoingConnectionCount || 0)} ${esc(t("dialogTreeConnections"))} · ${esc(t("dialogTreeIncomingConnections"))} ${Number(routeNode.incomingConnectionCount || 0)} · ${esc(t("dialogTreeRoutingClass"))} <code>${esc(routeNode.routingClass || "unclassified")}</code></small><ul>${routes}</ul></article>`;
+      }).join("")}</details>` : "";
+      const finishEndpoints = finishEndpointRecovery.endpoints || [];
+      const finishEndpointTopology = finishEndpoints.length ? `<details class="mp-dialog-tree-route-topology"><summary><b>${esc(t("dialogFinishEndpointDependencies"))}</b> · ${Number(finishEndpointCounts.validatedFinishEndpoints || 0).toLocaleString()} ${esc(t("dialogTreeValidatedFinishEndpoints"))} / ${Number(finishEndpointCounts.rejectedFinishEndpoints || 0).toLocaleString()} ${esc(t("dialogTreeRejectedFinishEndpoints"))}</summary><small>${esc(t("dialogFinishEndpointDependencyHint"))}</small><ul>${finishEndpoints.map((endpoint) => {
+        const finishValue = endpoint.finishId == null ? "?" : endpoint.finishId;
+        const path = (endpoint.nodePath || []).join(" → ");
+        const predecessors = (endpoint.predecessorNodeTypes || []).join(" + ");
+        const failure = endpoint.status === "validated" ? "" : ` · <strong>${esc(endpoint.status || "rejected")}</strong> · <code>${esc(endpoint.failureClass || "unclassified_finish_endpoint_failure")}</code> · ${esc(endpoint.issue?.gate || "validation_failed")}`;
+        return `<li><code>${esc(endpoint.nodeId || `#${endpoint.nodeOrdinal ?? "?"}`)}</code> · ${esc(t("finish"))} <code>${esc(finishValue)}</code> (${esc(endpoint.finishIdSource || "?")})${path ? ` · ${esc(t("dialogFinishPrimePath"))} <code>${esc(path)}</code>` : ""}${predecessors ? ` · ${esc(t("predecessor"))} <code>${esc(predecessors)}</code>` : ""}${failure}</li>`;
+      }).join("")}</ul></details>` : "";
       const observers = (row.missionObservers || []).map((observer) => {
         const relation = observer.relation === "failed_condition"
           ? t("dialogTreeFailureObserver")
@@ -5978,6 +6370,9 @@
         ${observers.map((observer) => `<small>${esc(t("dialogTreeObserver"))}: ${esc(observer)}</small>`).join("")}
         <small><code>${esc(row.sourceFile || "")}</code></small>
         <small>SHA-256 <code>${esc(row.sourceSha256 || "")}</code></small>
+        ${routeCounts.runtimeDefaultConnectionIndexes ? `<small>${Number(routeCounts.runtimeDefaultConnectionIndexes).toLocaleString()} ${esc(t("dialogTreeDefaultIndexes"))}</small>` : ""}
+        ${routeTopology}
+        ${finishEndpointTopology}
         <small>${esc(t("dialogTreeNoOrder"))}</small>
       </article>`;
     }).join("");

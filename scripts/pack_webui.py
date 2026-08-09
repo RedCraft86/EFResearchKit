@@ -4,7 +4,7 @@
 The primary package keeps the story/gameplay/reference browser text data, code,
 and emoji image files. A companion assets package contains the larger exported
 image/video files that the story renderer can display, and a standalone audio
-package contains decoded story audio files. OBJ/FBX files, Blender bundles,
+package contains lossless FLAC story audio files. OBJ/FBX files, Blender bundles,
 legacy local index folders, and the asset-browser data page are intentionally
 left out.
 """
@@ -50,7 +50,8 @@ TEXT_EXTENSIONS = {
     ".yaml",
 }
 
-AUDIO_EXTENSIONS = {".wav", ".wem"}
+PACK_AUDIO_FORMAT = "flac"
+AUDIO_EXTENSIONS = {f".{PACK_AUDIO_FORMAT}"}
 
 IMAGE_TOKEN_RE = re.compile(
     r"<image\b(?!\s*=)[^>]*>[\s\S]*?</image>"
@@ -65,10 +66,10 @@ ASSET_TAB_RE = re.compile(r'(<button\s+id="assets-tab"(?=[\s>]))([^>]*>)', re.IG
 ASSET_SHIM_JS = """(() => {
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
-  const AVAILABLE_VIEWS = new Set(["story", "characters", "gameplay", "mission-pipeline", "progression", "projectiles", "combat", "economy", "world", "presentation", "reference", "updates"]);
+  const AVAILABLE_VIEWS = new Set(["story", "characters", "gameplay", "audio", "mission-pipeline", "reference", "updates"]);
   const HIDDEN_VIEWS = new Set(["assets"]);
-  const DEBUG_ONLY_VIEWS = new Set(["characters", "progression", "projectiles", "combat", "economy", "world", "presentation"]);
-  const DEBUG_VIEW_FALLBACKS = Object.freeze({ characters: "story", progression: "gameplay", projectiles: "gameplay", combat: "gameplay", economy: "gameplay", world: "gameplay", presentation: "story" });
+  const DEBUG_ONLY_VIEWS = new Set(["audio", "mission-pipeline"]);
+  const DEBUG_VIEW_FALLBACKS = Object.freeze({ audio: "gameplay", "mission-pipeline": "gameplay" });
   let activeView = "story";
 
   function resolveViewFromHash() {
@@ -168,11 +169,11 @@ Run from this extracted directory:
 
 Then open the printed localhost URL.
 
-This package includes story, characters/NPC evidence, gameplay, the experimental mission pipeline, progression/rewards, projectile, combat, factory/economy,
-static world, entity presentation,
-reference text data, WebUI code, emoji
-images, and the compact media indexes. Larger story images and videos are in
-the companion assets zip. Decoded story audio is in the standalone audio zip.
+This package includes Story, Characters, Gameplay, Text, Updates, the
+experimental Mission Pipeline, the debug-only Audio semantic index, WebUI code,
+emoji images, and compact media indexes. Larger story images and videos are in
+the companion assets zip. Decoded audio and raw audio indexes are in the
+standalone audio zip.
 Extract those zips into the same directory after this one when you want
 inline/wiki media or playable audio too.
 
@@ -221,10 +222,11 @@ AUDIO_PACKAGE_README = """Endfield WebUI story audio package
 Extract this zip into the same directory as the matching story package, after
 the story package has been extracted.
 
-It contains decoded story audio files and audio indexes used by WebUI dialog and
-cutscene audio controls. Larger image/video media is in the companion assets
-package. Emoji images, WebUI code, and story/reference text data are in the
-main story package.
+It contains lossless FLAC audio files and raw audio indexes used by WebUI dialog,
+cutscene, Gameplay, and debug Audio controls. Legacy WAV/WEM files are
+intentionally not included. Larger image/video media is in the companion assets
+package. Emoji images, WebUI code, and story/reference text data are in the main
+story package.
 """
 
 
@@ -283,6 +285,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Do not scan or write the standalone audio zip.",
     )
+    parser.add_argument(
+        "--audio-format",
+        choices=(PACK_AUDIO_FORMAT,),
+        default=PACK_AUDIO_FORMAT,
+        help="Audio format for the standalone package (legacy WAV/WEM are excluded).",
+    )
     return parser.parse_args(argv)
 
 
@@ -339,16 +347,26 @@ def iter_webui_text_files(webui_root: Path) -> Iterable[Path]:
             continue
         if rel.startswith("data/decoded/"):
             continue
+        if re.match(r"^data/lang/[^/]+/progression(?:/|$)", rel):
+            continue
         if path.suffix.lower() in TEXT_EXTENSIONS:
             yield path
 
 
-def iter_exported_audio_files(export_root: Path) -> Iterable[Path]:
+def iter_exported_audio_files(
+    export_root: Path,
+    audio_format: str = PACK_AUDIO_FORMAT,
+) -> Iterable[Path]:
     audio_root = export_root / "structured" / "Audio"
     if not audio_root.exists():
         return
+    extension = "." + str(audio_format or PACK_AUDIO_FORMAT).lstrip(".").lower()
     for path in sorted(audio_root.rglob("*")):
-        if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS:
+        if (
+            path.is_file()
+            and path.suffix.lower() == extension
+            and extension in AUDIO_EXTENSIONS
+        ):
             yield path
 
 
@@ -1170,7 +1188,11 @@ def webui_arcname(webui_root: Path, path: Path) -> str:
     return archive_name(Path("webui") / path.relative_to(webui_root))
 
 
-def plan_package(*, include_audio: bool = True) -> PackagePlan:
+def plan_package(
+    *,
+    include_audio: bool = True,
+    audio_format: str = PACK_AUDIO_FORMAT,
+) -> PackagePlan:
     webui_root = WEBUI_ROOT.resolve()
     project_root = PROJECT_ROOT.resolve()
     export_root = EXPORT_ROOT.resolve()
@@ -1196,7 +1218,10 @@ def plan_package(*, include_audio: bool = True) -> PackagePlan:
         for rel in sorted(str(entry.get("r") or "") for entry in selected_videos)
     ]
     audio_files = (
-        [exported_file(export_root, path) for path in iter_exported_audio_files(export_root)]
+        [
+            exported_file(export_root, path)
+            for path in iter_exported_audio_files(export_root, audio_format)
+        ]
         if include_audio
         else []
     )
@@ -1240,7 +1265,10 @@ def create_package(args: argparse.Namespace) -> int:
     if len(set(package_outputs.values())) != len(package_outputs):
         raise SystemExit("Package output paths must be different.")
 
-    plan = plan_package(include_audio=audio_output is not None)
+    plan = plan_package(
+        include_audio=audio_output is not None,
+        audio_format=args.audio_format,
+    )
     missing_images = [image for image in plan.exported_images if not image.source_path.exists()]
     existing_images = [image for image in plan.exported_images if image.source_path.exists()]
     missing_videos = [video for video in plan.exported_videos if not video.source_path.exists()]
@@ -1265,6 +1293,8 @@ def create_package(args: argparse.Namespace) -> int:
     print(f"Story zip: {output}")
     print(f"Assets zip: {assets_output}")
     print(f"Audio zip: {audio_output if audio_output is not None else 'skipped'}")
+    if audio_output is not None:
+        print(f"Audio format: {args.audio_format}")
     generated_text_count = 7
     print(f"Text files: {len(copied_text_files) + generated_text_count:,}")
     print(f"Story image IDs: {plan.image_refs:,}")

@@ -680,6 +680,128 @@ body:not(.show-debug) .mp-source-provenance { display: none; }
   overflow: auto;
 }
 
+.mp-unassigned-story-row {
+  display: grid;
+  gap: 4px;
+}
+
+.mp-timeline-runtime {
+  padding: 5px 7px;
+  border: 1px solid #8aa0a6;
+  border-left: 3px solid #657f87;
+  border-radius: 7px;
+  background: rgba(101, 127, 135, 0.07);
+  font-size: 8px;
+}
+
+.mp-timeline-runtime > summary {
+  cursor: pointer;
+  color: #506970;
+}
+
+.mp-timeline-runtime article {
+  display: grid;
+  gap: 2px;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px dashed #aebdc1;
+}
+
+.mp-timeline-runtime .mp-timeline-director {
+  padding: 6px;
+  border: 1px solid rgba(101, 127, 135, 0.35);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.mp-timeline-director-chain {
+  display: block;
+  padding-left: 7px;
+  border-left: 2px solid #8aa0a6;
+}
+
+.mp-timeline-activation {
+  display: grid;
+  gap: 5px;
+  margin: 6px 0;
+  padding: 6px;
+  border: 1px solid rgba(63, 126, 93, 0.42);
+  border-left: 3px solid #3f7e5d;
+  border-radius: 6px;
+  background: rgba(63, 126, 93, 0.08);
+}
+
+.mp-timeline-activation h5,
+.mp-timeline-activation header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 7px;
+  align-items: center;
+  margin: 0;
+}
+
+.mp-timeline-activation article {
+  margin: 0;
+  padding: 6px;
+  border: 1px solid rgba(63, 126, 93, 0.25);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.mp-timeline-activation ol {
+  display: grid;
+  gap: 2px;
+  margin: 2px 0;
+  padding-left: 18px;
+}
+
+.mp-timeline-activation li,
+.mp-timeline-activation details > small,
+.mp-timeline-activation-boundary {
+  overflow-wrap: anywhere;
+}
+
+.mp-timeline-activation details > small { display: block; }
+.mp-timeline-control-decision,
+.mp-timeline-event-predicate {
+  display: block;
+  margin: 3px 0;
+  padding: 5px 7px;
+  border-left: 3px solid #728d96;
+  border-radius: 3px;
+  background: rgba(114, 141, 150, 0.09);
+}
+.mp-timeline-control-decision.is-parallel { border-left-color: #477fa1; }
+.mp-timeline-control-decision.is-conditional { border-left-color: #9a6c2f; }
+.mp-timeline-control-decision code,
+.mp-timeline-event-predicate code { overflow-wrap: anywhere; }
+.mp-timeline-spatial-context {
+  margin: 5px 0;
+  padding: 5px 7px;
+  border: 1px solid rgba(69, 115, 154, 0.28);
+  border-left: 3px solid #45739a;
+  border-radius: 4px;
+  background: rgba(69, 115, 154, 0.07);
+}
+.mp-timeline-spatial-context ul {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0;
+  padding-left: 18px;
+}
+.mp-timeline-spatial-context > small { color: var(--muted); }
+.mp-timeline-activation details > div {
+  display: grid;
+  gap: 2px;
+  margin: 3px 0;
+  padding-left: 7px;
+  border-left: 2px solid rgba(63, 126, 93, 0.35);
+}
+.mp-timeline-activation-boundary { color: var(--muted); }
+
+.mp-timeline-runtime p,
+.mp-timeline-runtime small { margin: 0; overflow-wrap: anywhere; }
+
 /* Source-proven non-mission content is a closed class, not an open gap. */
 .mp-non-mission-content > summary {
   color: var(--muted);

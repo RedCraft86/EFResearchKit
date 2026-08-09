@@ -2,14 +2,18 @@
 
 ## Current status
 
-The static WebUI is the primary project surface. It reliably builds Story,
-Text Tables, Gameplay, Mission Pipeline, Assets, and Updates data from
-`export_full/`. Generated data is reproducible; user-managed Story order stays
-in `webui/overrides/story_order.json`.
+The static WebUI is the primary project surface. Normal navigation exposes
+Story, Characters, Gameplay, Assets, Text, and Updates. Mission Pipeline is
+experimental and appears only with `Show debug info`.
 
-Normal navigation exposes Story, Text Tables, Gameplay, Mission Pipeline,
-Assets, and Updates. Experimental semantic views and source/debug panels are
-behind `Show debug info`.
+Story, localized reference data, character identities, gameplay semantics,
+assets, and update comparisons build reproducibly from `export_full/`.
+User-managed Story order remains outside generated data in
+`webui/overrides/story_order.json`.
+
+Standalone Progression and Combat & Projectiles views are retired. Progression
+requirements and useful projectile/audio summaries live in Gameplay; raw
+combat, matching, and unresolved-ownership evidence remains debug-only.
 
 ## Build and serve
 
@@ -18,8 +22,7 @@ behind `Show debug info`.
 python serve.py
 ```
 
-Before starting a server, reuse `http://127.0.0.1:8765/` if it is already
-running.
+Reuse `http://127.0.0.1:8765/` before starting another server.
 
 Useful variants:
 
@@ -33,83 +36,62 @@ Useful variants:
 python scripts\pack_webui.py
 ```
 
-`export.bat` verifies `export_full/` freshness. Installed-game refreshes require
+`export.bat` freshness-checks `export_full/`. Installed-game refreshes require
 `--export-from-game`; asset indexes and CN audio require `--with-assets` or
 `export_assets.bat`.
 
-## Data contract
+## Stable data contracts
 
-Important generated roots:
+Primary generated roots are:
 
 ```text
 webui/data/manifest.json
-webui/data/lang/<LANG>/index.json
-webui/data/lang/<LANG>/conv/
-webui/data/lang/<LANG>/mission/
-webui/data/lang/<LANG>/reference/
+webui/data/lang/<LANG>/{index,conv,mission,reference}/
+webui/data/lang/<LANG>/characters/index.json
+webui/data/lang/<LANG>/gameplay/
+webui/data/lang/<LANG>/{economy,world,presentation}/
+webui/data/gameplay/projectiles.json
 webui/data/mission_pipeline/
 webui/data/assets/
 webui/data/updates/latest.json
 ```
 
-Builders must fail visibly when required evidence is stale. Presentation and
-Combat degrade explicitly when their source graph is missing or older than
-their inputs.
-
-## Frontend behavior
-
-- Story recovery issue/method filters remain visible in normal and debug mode.
-- Reset returns to Story sort while preserving expanded mission groups.
-- Disabling debug while a hidden page is active returns to a visible page.
-- Mission Pipeline links show evidence-typed trigger chains.
-- Exact typed cinematic actions show their original-binary producer method and
-  both the decoded original-data file and binary audit file; the provenance
-  header reports native producer/action and mission-route attachment counts.
-- Source-bounded recovery cards show generalized shipped-Lua playback and
-  composed CutsceneRoot playback directly in the owning mission view. They
-  expose the Lua controller/line/call or native event/action/root chain, every
-  related original-data and audit file, and an explicit no-ownership/no-order
-  boundary; OCR and manual order are not used as evidence.
-- Exact connected-context cards also expose quest-owned reachable DialogTree
-  playback and typed quest-state-gated LevelScript playback. The mission view
-  names the parent Story or decoded condition/event/action chain, quest anchor,
-  original source file, and explicit no-relative-order boundary.
-- Non-mission spaceship cards distinguish exact carried content from complete
-  actor/family-matched definitions absent from all related typed DialogTrees;
-  the latter show a dedicated definition-gap confidence and attached original
-  tree/table files without implying playback, mission ownership, or order.
-- BlackBox recovery cards expose exact SubGame/bound-LevelScript context,
-  separate authored task lanes, complete decoded task/condition topology,
-  condition formulas, objective display keys, exact parent playback, and the
-  serialized event/action graph. Ordered sequences, parallel fan-outs,
-  conditional choices, loops, Story targets, runtime-shadowed duplicate-id
-  records, and missing-slot normal terminals are visible,
-  while definition-only parents and unordered event roots remain explicit;
-  neither task definitions nor separate action roots invent Story chronology.
-- Mission Story-order panels list compact original LevelScript graphs only when
-  an exact native event-to-Story path relates the file to that mission. Their
-  remaining actions are visibly file-local and do not imply extra order;
-  active last-serialized header/action/getter slots stay distinct from
-  shadowed physical records. The selected event listener exposes priority,
-  active-during, and filter metadata, while the UI states that listener
-  priority and physical list order are not Story chronology.
-- Native playback without mission ownership stays explicitly unassigned.
-- Definition-only rows remain distinct from playback.
-- Mission or scene order is never inferred from registration or file order.
-
-Inline media:
-
-- `sns_emoji_*` stays small and inline with no hover or modal.
-- `sns_image_*`, `sns_sticker_*`, and other non-emoji SNS media use normal
-  proportions with bounded previews.
+Generated payloads are never manual inputs. Gameplay loads optional combat,
+projectile, audio, and asset sidecars independently and degrades to its base
+record when one is missing. Presentation and combat payloads record an
+explicit degraded reason when the source graph is absent or stale.
 
 Runtime overrides:
 
-- `webui/overrides/story_order.json`: full user-managed mission order.
-- `webui/overrides/options.json`: manual option positions/responses.
-- `webui/overrides/narrative_videos.json`: explicit video attachment rules.
+- `story_order.json`, `options.json`, and `narrative_videos.json` require a
+  Story rebuild.
+- `character_merges.json` and `character_name_overrides.json` are edited live
+  through `serve.py` and use stable canonical character ids.
 
-Rebuild Story data after changing overrides.
+## Stable frontend behavior
+
+- Recovery issue/method filters remain visible in normal and debug modes.
+- Story source panels and manual order controls stay behind debug mode.
+- Reset restores Story sort while preserving expanded mission groups.
+- Disabling debug from Mission Pipeline returns to a visible page and URL.
+- `sns_emoji_*` stays small and inline without hover/modal behavior;
+  non-emoji SNS media preserves normal proportions and bounded previews.
+- Character groups remain stable across languages because overrides key on a
+  constituent table/asset id rather than display text.
+- Gameplay owns breakthrough requirements, authored enemy stat points,
+  selectable enemy variants, linked assets, compact projectile behavior, and
+  playable Story-style sound controls. Character and enemy audio is one final
+  detail section after normal and integrated content, never embedded in skill
+  cards; shared selector events expose bank, Stop, selector-node, and child-edge
+  evidence before their together-listed files. Character Normal Skill,
+  Ultimate, and Combo discs preserve the exact element colors authored in
+  `CharTypeTable.json`; Normal Attack remains neutral.
+- A skill can legitimately have no separate projectile template. Exact,
+  inferred, and unresolved skill/enemy/projectile ownership stay distinct.
+- Mission Pipeline distinguishes exact playback, ownership, non-owning
+  context, definition-only data, and unresolved activation.
+- Quest topology, native registration, source order, and code addresses never
+  become mission ownership or Story chronology by themselves.
 
 ## Updates and packaging
 
@@ -121,18 +103,29 @@ Rebuild Story data after changing overrides.
 python scripts\pack_webui.py
 ```
 
-Updates compare previous/current export roots only. Packaging produces the
-static browser plus optional assets and audio archives.
+Updates compare saved/current export roots only. Packaging includes the static
+browser and optional asset/audio archives while omitting retired generated
+Progression payloads.
+
+## Highest-value gaps
+
+- Keep optional semantic sidecars visibly degraded rather than silently stale.
+- Continue improving exact Gameplay-to-asset and sound ownership.
+- Preserve clear evidence labels as Mission Pipeline gains new runtime joins.
+- Keep the Characters false-positive exclusions and live override data clean.
+- Maintain responsive, accessible behavior across large Story, Gameplay, and
+  Assets datasets.
 
 ## Verification
 
 After frontend or data changes:
 
-1. Check export freshness.
-2. Run the smallest relevant builder.
-3. Open Story, Mission Pipeline, Text Tables, Assets, and Updates as applicable.
-4. Verify normal/debug navigation and inline SNS media.
-5. Keep generated reports under their topic folders.
+1. Check export freshness and run the smallest relevant builder.
+2. Smoke-test all six normal pages and the debug-only Mission Pipeline.
+3. Verify Story reset/filter behavior and inline SNS fixtures.
+4. Open a playable character and enemy; check variants, progression,
+   projectiles, sounds, and asset links.
+5. Check console errors and keep generated reports in their topic folders.
 
-The default CN Story build is minutes, so batch recovery edits and use focused
-tests or `--mission-pipeline-data-only` during iteration.
+Batch Story recovery changes; the default CN build takes minutes, and even a
+Mission Pipeline data-only rebuild can be expensive on this checkout.

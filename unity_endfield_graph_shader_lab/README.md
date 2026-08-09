@@ -1479,6 +1479,64 @@ D3D11 verifier reported zero XY, Z, and fragment-consumer word mismatches on an
 RTX 5080; its result is
 `scratch/light_binning_reference_vectors_20260713/gpu_verification.json`.
 
+The resolver-side binding is now closed one step further. Installed
+`GameAssembly` evidence fixes `_LightBinningConstants` at 48 bytes: four ints
+followed by eight floats, with 32-pixel tiles, 2,048 Z slices, camera near/far,
+and a native-cull survivor count capped at 32. The runtime can publish that
+exact ABI under the default-off
+`ENDFIELD_RECOVERED_LIGHT_BINNING_CONSTANTS=1` selector, but only when the
+isolated Overview rig supplies a source-closed count; otherwise it binds 48
+zero bytes and clears `_EndfieldRecoveredLightBinningConstantsReady`. Run
+`verify_recovered_light_binning_constants.bat --all` to check the 12 words,
+field offsets, and failure diagnostics on D3D11 and D3D12. The verified Wulfa
+fixture has 8 isolated lights and 120x68 tiles at 3840x2160. It is not the
+retail room census: the native whole-scene candidate/survivor list and final
+`lightCount` remain open. Installed Gacha Lua now proves that Zhuangfy selects
+the six-light `light_overview` character group, initializes its four
+`CharInfoLightFollower` components, and activates the 12-light
+`SceneLight6Rarity` room group. The exact known serialized candidate union is
+therefore 18 lights (3 type 0, 15 type 2), with no authored cookies and one
+character-light shadow request. Run
+`python tools\audit_gacha_light_population.py --check` to validate the pinned
+Lua, tables, prefabs, group membership, and native follower-method evidence.
+The same audit now also pins the native normal candidate core. The shipped
+Gacha route has `useFallbackLightCulling=false` and `0 x 0` occlusion
+dimensions. Read-only installed-client registry values independently store
+`3840x2160` in Unity and game settings. At that selected 16:9 aspect, the
+hash-pinned native AABB, authored OBB, point-sphere, and spot-cone paths admit
+exactly 11 room rows; only `Spot Light (20)` is rejected. This closes the
+selected-aspect authored room subset while retaining 17 as the combined
+authored survivor upper bound. Character-light follower transforms/culling,
+other display aspects, and unrelated live lights remain open, so 17 is not the
+target-frame survivor array.
+Offline IL2CPP/xref recovery now fixes the handoff precisely:
+`LightCullResult` is `visibleLightsPtr + visibleLightCount`; its only direct
+producer is `HGCullingSystem.CullLights`, both GameAssembly call sites belong
+to `HGCamera.DoECSCulling`, and both pass `maxCount=256` before `SetupState`
+filters native types 0/2. A targeted AnimeStudio InitBundle extraction now
+closes the installed Windows desktop `PunctualLightMaxCount` at 256; native
+`SetupState` sorts priority descending and then squared camera distance
+ascending before taking `min(survivors, cap)`. The equal upstream/settings
+caps prove that the settings layer cannot truncate this result a second time.
+Run `python tools\audit_light_cull_cap.py --check` to validate the pinned
+binary, settings, IFix, route, cap, and ordering evidence. Closing the retail
+value still requires an explicitly authorized target-frame capture of that
+pointer/count and array; unrelated live native lights are not inferred from
+the authored room JSON, and no retail-process attachment or injection was
+used.
+
+Binding 37 has a similarly narrow recovered transport. Installed
+`HGLightCookieManager` code creates 32 zero atlas records plus 32 zero matrices,
+then uploads exactly 512+2,048 bytes. Missing cookies map to index `-1`, and the
+selected resolver samples `_LightCookie` only for nonnegative indices. Set
+`ENDFIELD_RECOVERED_LIGHT_COOKIE_DATA=1` (or pass
+`-endfield-recovered-light-cookie-data`) to publish the exact all-zero
+`_LightCookieData` only for the source-closed Wulfa/Zhuangfy isolated Overview
+lists; every cookie-bearing or mismatched frame clears
+`_EndfieldRecoveredLightCookieDataReady`. Run
+`verify_recovered_light_cookie_data.bat --all` for the 640-word D3D11/D3D12
+transport check. This does not recover a non-empty retail cookie atlas.
+
 The normal-mapped body Skin branch is separate from that face reduction and is
 source-gated to exactly `M_actor_wulfa_body_01` (Material PathID
 `7152188194418193687`) and `M_actor_zhuangfy_body_01` (Material PathID
@@ -1946,11 +2004,82 @@ source-specialized five-MRT diagnostic
 also validates the exact sphere/material packing on D3D12. It uses a
 deterministic packing-audit projection and `ZTest Always`; it is not the
 original depth owner or deferred resolve. Exact SPIR-V/DXBC comparison
-role-identifies unnamed binding 32 as `_LightBinningConstants`; its live values
-are not captured. Exact original cross-shader layout also identifies b34 as
-`ShadowData`; binary use identifies b37 as the 32-entry `LightCookieData`
-layout. Exact original `ScreenSpaceShadowResolve` metadata identifies b38 as
-the 3,568-byte `HDPunctualLightCharacterShadowData` layout. The remaining
+role-identifies unnamed binding 32 as `_LightBinningConstants`. Its exact
+native 48-byte field layout/upload and a default-off, fail-closed isolated-count
+Unity publisher are now source-closed; all 12 words read back bit-exactly on
+D3D11 and D3D12. The retail whole-scene cull survivors and final `lightCount`
+are still not captured. Exact original cross-shader layout identifies b34 as
+the 11,440-byte `ShadowData`; the selected resolver reads only PunctualLight
+rows `c64..c400`. The native four-section transport, atlas sizing/format,
+cache allocation, point/spot matrix construction, PCF_3x3 parameters,
+strength fade, normalized rects, and texel size are binary-source-closed. The
+default-off lab publisher now consumes the source-backed punctual producer in
+the same frame: Wulfa row 4 fills spot slot 40, while Zhuangfy row 4 fills
+point slots 40..45, with the matching `6144x4096` D16 atlas. Full
+`_ShadowData` and the D3D11 `EndfieldCB5` 401-vector prefix read back
+bit-exactly on D3D11/D3D12; all unowned rows remain zero and missing
+prerequisites fail closed. Wulfa active/control beauty remains bit-identical.
+Because every isolated light is `CharacterOnly`, the selected original
+consumer exits before reading b34 or `_PunctualLightShadowTexV2`; this closes
+transport and same-frame ownership, not pass 0. Run
+`verify_recovered_deferred_shadow_data.bat` to repeat the source audit, GPU
+probes, spot/point frames, beauty control, and failure gate. General-scene/
+static-cache rows, retail physical-resource identity and atlas pixels, runtime
+IFix/setting overrides, non-punctual sections, and a binding-compatible pass-0
+implementation remain open.
+Binding 37 now has its native
+`HGLightCookieManager` initialization,
+32-record atlas/matrix layout, exact 2,560-byte upload, and `-1` no-cookie guard
+closed. A default-off publisher emits the exact all-zero buffer only for the
+source-closed Wulfa/Zhuangfy isolated Overview lists; all 640 words read back
+bit-exactly on D3D11 and D3D12. Any cookie-bearing light fails closed because
+non-empty retail atlas allocation, pixels, transforms, and settled whole-scene
+values remain open. Exact original `ScreenSpaceShadowResolve` metadata identifies b38 as
+the 3,568-byte `HDPunctualLightCharacterShadowData` layout. Its installed
+`HGHDPLSCharacterShadowManager` owner, static storage, per-frame resets, push-
+pass packing, and selected resolver access are now pinned. `FrameSetup` clears
+all 56 character-index/channel pairs before candidate processing; the selected
+fragment reads only each pair's `.y`, so an inactive frame provably chooses the
+punctual-atlas fallback. This is not a byte-exact zero-buffer fixture: matrices
+and params are persistent, atlas/global values are frame-derived, and the
+callback requests `0xDE0` bytes while writing the reflected final float4 at
+`+0xDE0`. Installed `UnityPlayer` recovery now proves that `CBHandle.size`, the
+serialized command, and global shader state all retain the logical `0xDE0`
+size. The ring keeps that length after 16-byte rounding but aligns allocation
+starts to `0x100`, so the next allocation begins at `0xE00` and the final CPU
+float4 is isolated in inter-allocation padding. The recorded target forces
+Direct3D 11; the installed backend converts `0xDE0` to 222 constants and rounds
+the `PSSetConstantBuffers1` range to 224 constants / `0xE00` bytes. The c222
+tail is therefore shader-visible on the target path. Publication remains
+fail-closed only for settled active values and their matching resources. The
+same native path now closes all six `HGSettingParameters` HDPLS offsets and the
+current constructor defaults: enabled, atlas height 2048, reduced screen-space
+resolution enabled, and zero depth bias/normal bias/softness. With
+`S=max(256,hdplsAtlasHeight)`, the atlas is `2S x S`; the default is `4096x2048`
+with a `4x2` tile grid through eight requests or `8x4` above eight. Each active
+params row is its normalized tile `xyxy`; atlas texel size is
+`(1/(2S),1/S,2S,S)`, global params are `(softness,0,0,0)`, screen-space
+positions are `float4(HGSharedLightData.worldPosition.xyz,0)`, and both channel
+and bit selectors have exact native formulas. The installed unpatched
+`GetShadowParamsFromCharacter` path is now closed too: it treats
+`Bounds.extents` as a bounding-sphere radius, aims from the light position at
+the bounds center (falling back to the light rotation below a `1e-5` direction
+epsilon), builds `TRS(lightPosition,rotation,one)`, and derives a `0.1..179.9`
+degree cone from `2*asin(radius/distance)`. `FrameSetup` feeds this result and
+the light near/far/guard values through the already closed reversed-Z
+`ExtractSpotLightMatrix` / `GetShadowTransform` path, stores the matrix by
+request index, and forwards the HDPLS depth/normal bias to the caster pass.
+Resource recovery now distinguishes the request-gated `2S x S` D16
+`_HDPLSTex` caster atlas from the reduced/full-size RGBA8
+`_HDPLSScreenSpaceShadowMask` consumed by deferred binding 22. Their
+RenderGraph dependencies and global publication are closed; inactive frames
+clear all selectors and bind white to both slots, so stale resources cannot
+escape. The hash-pinned installed Persistent IFix table has 30 targets and
+replaces neither `0x877` nor `0x890` owner method, closing the current on-disk
+branch choice; future/network patches remain a version boundary. Live
+bounds/light/settings values, resulting active rows/selectors, unused
+persistent rows, atlas texels, and resolved RGBA pixels remain capture-only.
+The remaining
 16 texture names are now pinned from their original sampling behavior and the
 hash/offset-pinned installed IL2CPP shader-property table: low-resolution
 directional shadow/ramp, HDPLS, punctual atlas, cookie, multiscattering LUT,
@@ -2011,14 +2140,37 @@ publication order. A textures are 128x64x128
 `B10G11R11_UFloatPack32`; default-quality B textures are 128x64x384
 `R8G8B8A8_UNorm`. All are random-write point/repeat `Tex3D` resources with one
 mip, named `ClipMapA/BLod{0,1,3}`. A missing native object publishes the same
-1x1x1 zero `UnityDefault3D` resource to all six globals. Exact streamed scene
-voxel payloads, persistent-atlas transient dimensions, and per-frame IV
-parameters remain open.
+1x1x1 zero `UnityDefault3D` resource to all six globals. The installed
+non-IFix V2 path is now closed further: its constructor initializes all three
+path fields to `System.String.Empty`; `StreamingInNewMapV2` sets
+`m_exportpathV2 = indexRootPath + "/aiTest/index.bytes"`; and that suffix has
+zero matches in the complete 224-file primary-plus-fallback IV VFS inventory.
+Neither installed IFix, a direct managed call, nor the 1,290 decoded Lua files
+replace or invoke that path. `ReloadIndexFileV2` can still pass an arbitrary
+path through `SetMap`, so indirect/native invocation remains a runtime boundary.
+Four exact shipped indices also close the on-disk record families: marker
+`0x03000002` uses 32-byte records, while marker `0x03000003` adds separate
+stored/decoded lengths and a counted 20-byte tail after 36-byte records. The
+extracted gacha-character index's 24 contiguous records exactly cover its
+1,399,240-byte `iv_0_0.bytes`, but that payload belongs to the separately
+proven old gacha manager and is not a CharInfo V2 fixture. The native missing-
+map path is now exact: `SetMap` clears/releases all six full-size clipmaps,
+settles inactive, and publishes one shared Unity default 1x1x1 zero Tex3D plus
+parameters `0/0/0/(0,1/3,0,0)`. Generic reflection/external reload invocation,
+populated transient-atlas dimensions, live parameters, and texels remain open.
 The character cubemap (`T_hdri_reflection_char_01`), sky cubemap
 (`T_hdri_006`), and environment reflection-map cubemap
 (`T_hdri_env_char_01`, PathID `2404688955498524548`) are exact 128x128 BC6H
 six-face/eight-mip payloads. `recover_charinfo_cubemap.bat` re-extracts and
-hash-verifies all three. The installed `ReflectionProbeBinningCS`
+hash-verifies all three. The installed `LightBinningXYCS` and
+`LightBinningZCS` assets are now exact too: all eight D3D11/Vulkan programs,
+the 28-byte host `BinningData` layout, 32-pixel/2,048-slice light segment,
+8x8/64x1 dispatch formulas, and combined light/reflection word offsets are
+hash-pinned. A default-off raw bridge now combines the exact isolated light
+words with the source-closed zero-local-reflection tail and publishes canonical
+`_BinningBuffer` plus all four offsets. At 3840x2160, all 90,848 words / 363,392
+bytes read back bit-exactly on both D3D11 and D3D12; retail target-frame light
+survivors and pass-0 activation remain open. The installed `ReflectionProbeBinningCS`
 `SampleOneTextureMip4AndNotReadSrc` producer is now source-closed: two exact
 dispatches populate slice 0, mips 0..7 of a 576x576x32 linear RGBAHalf
 `_ReflectionProbeOctTextureArray`, and a Unity GPU diagnostic reproduces every
@@ -2026,14 +2178,85 @@ expected mip byte-for-byte on repeated runs. The installed managed/native
 producer for the 4,160-byte `ReflectionProbeGlobalData` buffer is also pinned,
 including its four-vector header, reserved global record, 31 local-record
 slots, zero-local-probe count, exact CharInfo sky-SH luminance vector, and the
-32-pixel camera binning/combined byte-address-buffer layout. The lab contains
-a source-derived owner for this exact no-local-probe resource set, but nothing
-constructs or publishes it in the presentation path; it and the original
-pass-0 consumer remain deliberately default-off. The remaining streamed
+32-pixel camera binning/combined byte-address-buffer layout. The compatibility
+pipeline now owns that producer and, only under the existing default-off
+canonical selector and exact `T_hdri_env_char_01` asset gate, co-publishes its
+oct texture/global buffer in the same camera command stream without replacing
+the canonical `_BinningBuffer`. It now binds both the full 260-vector canonical
+buffer and the selected original D3D11 `EndfieldCB2` 259-vector prefix.
+D3D11/D3D12 probes read both paths bit-exactly, observe both ready flags,
+preserve light/reflection sentinels, and see the 576x576x32 texture; missing or
+wrong sources clear readiness and fail closed.
+The native 128-byte `VisibilitySHConstData` b33 layout is also fully closed.
+The producer zero-fills all 128 source bytes, overwrites fixed rows 0..2 and
+camera-derived rows 3..4, then copies untouched zero rows 5..7. All 32 words
+join that same default-off frame gate and read back bit-exactly on D3D11/D3D12;
+the selected deferred consumer itself reads bytes 32..63. The recovered Wulfa
+capsule pass now co-publishes its half-resolution result as canonical
+`_VisibilitySHRT` only while this full frame gate is ready. D3D11/D3D12 read
+the same 320x360 RGBAHalf bytes (20,006 nonzero pixels), and an upstream-off
+D3D12 run proves canonical publication fails closed while the diagnostic output
+remains available. This is source-backed current-pose output, not a retail
+settled-frame capture, and the pass-0 consumer remains disabled.
+The next producer boundary is now closed as a non-presented diagnostic: a
+default-off SphereOutside sidecar uses the physical CharInfo camera projection,
+source transform, exact material depth/stencil state, five logical 640x720 MRT
+formats, and D32S8. SceneColor, SceneMV, and GBuffer A/B/C read back bit-exactly
+across D3D11/D3D12 without changing the beauty frame; missing canonical
+binning/reflection/b33 prerequisites produce no draw or readback. This does not
+claim the original render graph's physical identity, lifetime, or presentation.
+The original pass-0 consumer remains deliberately disabled.
+
+The selected original pass-0 `_TransformVariables` b30 reads are now closed for
+the physical camera's view matrix, inverse view, inverse GPU view-projection,
+and world-space position. A default-off same-frame publisher exposes the full
+1,312-byte buffer plus the 720-byte D3D11 bridge; all 328 words are identical
+on D3D11/D3D12, while the 69 unselected history/jitter/stereo rows stay zero.
+This closes only the fields proven used by the selected binary and does not
+enable pass 0.
+
+The selected `_LightDataBuffer` b31 reads are also closed for the isolated
+Wulfa/Zhuangfy CharInfo fixture. Native construction and `PrepareCPUData`
+packing prove a 32,864-byte layout of six header vectors plus 256 eight-vector
+punctual records. The exact CharInfo directional header is published; every
+selected punctual row has zero OBB flags and `CharacterOnly=1`, so the selected
+SphereOutside program exits before unresolved general-light or shadow fields.
+All 8,216 words match on D3D11/D3D12 through both `_LightDataBuffer` and the
+original DXBC-shell `EndfieldCB4` bridge, with unknown words zero and unchanged
+beauty output. This source-closes only that consumer subset; general-scene
+punctual records and pass 0 remain open.
+
+`ShaderVariablesGlobal` b35 is now exactly scoped and transported. The
+selected body references 33 fields, and installed native reset producers close
+atmosphere rows c71..c76, height-fog rows c77..c82, and disabled-volumetric rows
+c83..c87. Current constructors, `IsActive`/camera getters, and the selected
+CharInfo/global/LookDev VolumeProfiles close c30 as `(0,0,1,1)`; the
+`HGSettingParameters` default and every shipped platform/tier override close
+c31.x as `reflectionProbeMaxSampleMip=7`. Perspective c4.w, mip bias c26.x,
+binning/environment c28/c29, inactive IV parameters c132..c134, and disabled
+wetness c156.x are also closed; frame count is read only behind the exact-zero
+volumetric gate. Native `HGCamera.UpdateFrustum` builds c3 as
+`(-1, near, far, 1/far)`; the original serialized Zhuangfy Overview lens is
+near=0.1/far=50, so live c3.y is exactly 0.1. The enabled weight-1 CharInfo
+environment volume selects `CharInfo_Env`; installed
+`UpdateShaderVariablesIrradianceVolume` and `GetCoefficientsL1` code proves
+c135..c137 each equal the serialized ambient-SH reorder
+`(SH3,SH1,SH2,SH0) * skyDirectIntensity`, exactly
+`(-0.0075507611,0.4722373188,0.0121708093,1.0963056087)`. All selected b35
+value producers are source-closed. A default-off publisher binds the full
+200-vector canonical buffer and the 157-vector D3D11 `EndfieldCB1` prefix.
+D3D11/D3D12 read back 800/800 and 628/628 words exactly; raw c28 integer
+offsets are preserved, all unselected rows stay zero, same-frame Wulfa
+activation succeeds, and missing canonical prerequisites fail closed without
+changing D3D12 beauty. Pass 0 remains disabled.
+
+The remaining streamed
 `m_defaultIV` voxel contents/per-frame parameters, light/shadow resources,
 settled VisibilitySH `PassInput.enabled`, exact posed record values and
 view-cull survivors, render-graph/subpass state, and a binding-compatible
-pass-0 + WriteAlpha resolve are not closed. VisibilitySH's exact LUTs, target,
+pass-0 resolve are not closed. The current installed `RenderWithAlpha=false`
+Gacha route submits no WriteAlpha draw; its recovered passes stay available only
+for a future source-closed true route. VisibilitySH's exact LUTs, target,
 empty fallback, native output/packing ABI, actor candidates, and producer pass
 are source-closed but remain deliberately unpublished with pass 0.
 For `ShadowPlane`, the selected
@@ -2050,6 +2273,16 @@ imitate the screenshot. Build/verify this imported asset graph with:
 build_charinfo_presentation_recovery.bat
 verify_charinfo_presentation_recovery.bat
 python tools\verify_charinfo_outside_lit_recovery.py
+verify_recovered_canonical_binning_buffer.bat --all
+verify_recovered_canonical_reflection_frame.bat --all
+verify_recovered_visibility_sh_constants.bat --all
+verify_recovered_visibility_sh_frame.bat --all
+verify_recovered_visibility_sh_frame.bat --fail-closed-d3d12
+verify_recovered_deferred_gbuffer_frame.bat --all
+verify_recovered_deferred_gbuffer_frame.bat --fail-closed-d3d12
+verify_recovered_deferred_transform_variables.bat --all
+python tools\audit_deferred_shader_variables_global.py --check
+verify_recovered_shader_variables_global.bat --all
 verify_sphereoutside_hgbuffer_diagnostic.bat
 verify_charinfo_shadow_receiver_recovery.bat
 ```
@@ -3112,7 +3345,8 @@ Skin/Cloth/Hair/Eye diagnostic binding, but mixed material-reference results
 and unrecovered retail surface ownership prevent global promotion. The lab now
 executes all 14 active character-shadow slots (the shader ABI retains 15), but
 still lacks the generic ECS backend/live caster census, complete client
-consumption, and full-client punctual visible-light/cache-slot population,
+consumption, and target-frame punctual visible-light/caster membership plus
+physical atlas contents,
 capsule visibility-SH and generic scene-R screen-space shadow resolve, full pre-depth/stencil
 schedule, irradiance-volume sampling, the native arbitrary-scene light
 candidate list and full eight-word camera-cluster population (pass-0
