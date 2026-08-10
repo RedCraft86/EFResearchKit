@@ -118,12 +118,97 @@ never promotes an edge.
   Duplicate Timeline clips must agree within their runtime option scope. These
   rows prove an objective dependency, not player selection, dialog activation,
   server successor choice, or total Story-file order.
+- Registered DialogTree and NpcProxy-consumer recovery is corpus-driven: core
+  isolated Story targets join mechanically through `misc_dlg_` aliases, the
+  current DialogId registry, exact hash-validated TextAssets, authored option
+  routes and finish endpoints, exact `NpcProxyEx`/`NpcProxy` rows, typed
+  LevelScript/native/object carrier censuses, and the installed binaries. The
+  current definition path ignores the copied per-object definition fields for
+  72 of 102 maintained rows. The NpcProxy pattern independently validates 54
+  DialogTrees and 60 selected rows, including aliases and multi-proxy cases;
+  all 44 formerly copied consumer declarations (48 rows) match it exactly and
+  have been removed. Mission tracking is also corpus-driven: the complete
+  active MissionRuntime root currently has 490 mission payloads and 839 typed
+  `NpcProxyTrackingInfo` rows; 781 exact unfiltered rows qualify, while 58
+  filtered rows stay outside this relation. The same proxy/level join recovers
+  tracking context for 26 maintained dialog definitions without any copied
+  tracking declaration. The broader Story builder qualifies 146 proxy contexts
+  covering 210 configured dialogs in 82 missions. Each context carries its
+  exact original source file and hash; 13 former per-dialog tracking blocks and
+  the former one-proxy publication allowlist have been removed. This family
+  retains 312 authored lines, 90 validated option routes, and 68 prime-reachable
+  finish endpoints; three unresolved option-node identities remain visibly fail
+  closed. One transient row without a current
+  `NpcProxyTable` identity fails closed with a bounded diagnostic. Internal
+  DialogTree routes remain local structure and NpcProxy active-row selection
+  remains a consumer relation; neither creates mission activation or
+  cross-file order.
 
 ## LevelScript and native conclusions
 
 - Exact native playback actions, event headers, predicates, and local control
   graphs are decoded from original LevelScript data with hash-pinned binary
   contracts.
+- The active LevelScript overlay (`Persistent` over the matching
+  `StreamingAssets` path) contains 230 validated `CheckTalkOptionFinish`
+  consumers: 42 exact nonnegative finish ids and 188 any-finish checks. All 230
+  now resolve through complete task maps, yielding 227 exact task identities
+  with no bounded fragment remaining. The decoder does not add a payload branch
+  per condition class: the current binary's root `GameCondition` formatter
+  supplies union identity and member count, then one reusable backtracking
+  decoder proves a unique sequence of self-delimiting `Param<T>` wire shapes
+  against the condition dictionary key, objective envelope, and complete task
+  map. Scalar interpretations with the same boundary remain opaque. A reusable
+  string-collection Param shape covers collection-valued fields. All 227 tasks
+  are authored type `None`, untracked, and automatic-check; 214 contain one
+  condition and 13 retain multi-condition structure. The current binary
+  validates the general lifecycle without object-specific ids: the typed
+  server state is forwarded through LevelScriptManager, LevelScriptRuntime,
+  and ScriptTaskRuntime; Processing walks the task conditions, installs the
+  result-change delegate, activates/binds each GameCondition, and reports the
+  exact level/script/task/condition identity. This proves reusable runtime
+  semantics after server selection, not which task the server selected in a
+  session. All 42 exact consumers join to a prime-reachable authored DialogTree
+  finish endpoint; none lacks an original endpoint. Exact
+  MissionRuntime finish matches publish 15 objective placements across 14 task
+  rows and 13 missions, all from complete maps. Five
+  any-finish objective placements across four missions accept an exact task
+  outcome under the hash-locked native predicate, while 17 objective placements
+  across five missions reference the same active LevelScript as eight task
+  consumers. These remain context-only. One row, `c28m3`, also has an exact
+  same-mission SubGame task carrier. A general minimal-object field-shape census
+  over all 85,405 active structured files outside LevelScript definition
+  families independently finds that same `c28m3` script/task/mission carrier
+  and no typed-JSON carrier for the other 39 exact-finish task identities. The
+  maintained prefix gate counts serialized files without reading them as JSON.
+  A generic serialized-object pass now validates all 40 exact task identities
+  (42 finish-condition rows) across 27 LevelData files: the complete member-22
+  dictionary must place paired `lt:p`/`lt:mp` properties inside the exact
+  script's `LevelScriptBriefData` entry. Independent whole-shell references
+  resolve 20 task identities to one mission shell, retain 11 as shared, and
+  leave nine shell identities unresolved. This attaches 21 authored consumer
+  rows through LevelData plus the existing SubGame-owned row to 17 Mission
+  Pipeline missions. The LevelData carrier proves persistent task-condition
+  placement and shell context, not activation, quest ownership, or Story order.
+  A third corpus-wide join now reads all 849 typed `NpcProxyTrackingInfo` rows
+  across 588 proxies directly from the active original MissionRuntime overlay,
+  then requires the same proxy's authored `NpcProxyEx` mission and a
+  `WorldEntityRegistry.segmentIdGlobal` identical to the exact LevelScript id.
+  It finds seven task-script contexts: six unique and one shared. Seven task
+  consumer rows use the unique script-local shell tier; six corroborate the
+  existing unique LevelData result, while `map01_lv002/200080000/f69e4698`
+  refines the shared `sm1l2m2`/`sm1l2m3` whole shell to `sm1l2m3`. The shared
+  `map02_lv002/22800280001` context remains ambiguous between `f1m20` and
+  `sm2l6m1`. Mission Pipeline now attaches 23 authored consumer rows to 18
+  missions. This segment join remains mission-shell context, not NPC or task
+  activation, quest ownership, or Story order.
+  The other 28 endpoint-to-task
+  dependencies lack an exact MissionRuntime finish match; this is no longer an
+  endpoint gap, but server selection and mission/task ownership remain
+  unresolved. Every
+  mission-to-script placement hash-matches the active `Persistent`-over-
+  `StreamingAssets` source before publication. None of these tiers proves
+  player choice, server successor selection, or Story order.
 - Split/fan-out scheduling preserves sibling actions as parallel or unordered.
   Array/list position is never chronology.
 - Parent-dialog activation uses the same corpus-wide typed control-path walker,
@@ -218,19 +303,33 @@ Reject as proof:
 1. Recover a typed mission/quest owner for the 156 unlinked Story files that
    already have exact native playback, especially repeated LevelScript
    receiver families.
-2. Find any client-visible carrier for server-side mission/quest successor
+2. Resolve the remaining ambiguous LevelData mission shells with an independent
+   typed server-selection or mission-owner carrier. The LevelData census still
+   retains 11 shared and nine unresolved identities, but the NpcProxy segment
+   tier now refines one shared task script to `sm1l2m3`; ten shared identities
+   therefore remain unresolved at the task-owner tier. The exact
+   member-22 task-progress boundary is complete for all 40 task identities, but
+   28 authored endpoint-to-task dependencies still lack an exact
+   MissionRuntime finish match. Complete task maps, client lifecycle, authored
+   DialogTree endpoints, and original LevelData carrier files are recovered.
+3. Find any client-visible carrier for server-side mission/quest successor
    selection or LevelScript activation policy. Current state/update packets do
    not co-carry Story ownership.
-3. Resolve source-bounded parent-dialog and Timeline placements only when a new
+4. Resolve source-bounded parent-dialog and Timeline placements only when a new
    exact producer/consumer or mission foreign key appears.
-4. Improve within-mission order through strong relations. Do not turn the
+5. Improve within-mission order through strong relations. Do not turn the
    current sparse partial order into a total order by heuristic sorting.
-5. Revisit option gaps only when new runtime route evidence appears; most
+6. Revisit option gaps only when new runtime route evidence appears; most
    no-route rows are single-option acknowledgements or already bounded
    cosmetic/shared definitions. The 20 corpus-level rejected normal-option
    routes are structurally classified; revisit them only if a new original
    connection or native fallback appears. Do not repair them with positional
    replication or object-specific exceptions.
+7. Republish the StreamingAssets object-index commit marker only through a
+   current-CLI Story carrier refresh. The surviving merged outputs and worker
+   parts still hash-match their last valid report and the installed-data
+   fingerprint is unchanged, but the current AnimeStudio implementation hashes
+   differ from that producer; copying the old marker would violate provenance.
 
 The current source-only gap queue ranks actionable isolated scenes by mission.
 Use it as a work queue, not as a proposed Story order.

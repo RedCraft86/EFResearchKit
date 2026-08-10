@@ -16,6 +16,97 @@ SPEC.loader.exec_module(build_audio)
 
 
 class AudioCategoryTests(unittest.TestCase):
+    def test_current_interactive_audio_union_tag_and_complete_rows(self) -> None:
+        from scripts import build_data_index
+
+        def string(value: str) -> bytes:
+            raw = value.encode("utf-8")
+            return pack("<I", len(raw)) + raw
+
+        body = b"".join([
+            pack("<I", 0),
+            bytes([13]),
+            pack("<I", 1),
+            pack("<iI", 13, 1),
+            string("au_int_fixture_break"),
+            pack("<I", 1),
+            bytes([3]),
+            string("au_int_fixture_open"),
+            string("panel_open"),
+            string("Open panel"),
+            bytes([1] + [0] * 10),
+        ])
+
+        self.assertEqual(build_data_index.INTERACTIVE_AUDIO_COMPONENT_TAG, 0x005D)
+        self.assertEqual(
+            build_data_index.BASE_COMPONENT_UNION_TAGS[0x005D],
+            "Core_InteractiveAudioData",
+        )
+        decoded, end = build_data_index.parse_interactive_audio_component(body, 0, 2)
+        self.assertEqual(end, len(body))
+        self.assertEqual(decoded["audioRows"][0]["stateName"], "Destroy")
+        self.assertEqual(decoded["audioRows"][0]["events"], ["au_int_fixture_break"])
+        self.assertEqual(decoded["customRows"][0]["name"], "panel_open")
+
+    def test_current_play_sound_union_tag_matches_binary_formatter_audit(self) -> None:
+        from scripts import build_data_index
+
+        self.assertEqual(build_data_index.BUFF_PLAY_SOUND_ACTION_TAG, 0x010D)
+        self.assertEqual(
+            build_data_index.BUFF_ABILITY_ACTION_TAG_NAMES[0x010D],
+            "Core_PlaySoundAction_PlaySoundActionData",
+        )
+        self.assertEqual(build_data_index.BUFF_ABILITY_ACTION_TAG_MEMBER_COUNTS[0x010D], 22)
+
+    def test_collects_and_merges_decoded_buff_play_sound_actions(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            export_root = Path(raw_root)
+            sources = [
+                "structured/StreamingAssets/Data/Json/BuffData/buff_timed.json",
+                "structured/Persistent/Data/Json/BuffData/buff_timed.json",
+            ]
+            for source in sources:
+                path = export_root / source
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"fixture")
+            decoded = [(
+                {
+                    "index": 2,
+                    "startFrame": 17,
+                    "endFrame": 34,
+                },
+                {
+                    "onlyExecuteWhenSourceIsGuard": False,
+                    "onlyExecuteWhenSourceIsMainChar": True,
+                },
+                {
+                    "soundEvent": "au_test_timed",
+                    "prefix": {"isEnable": True, "serverActionIndex": 9},
+                    "stopOnEnd": True,
+                    "stopFadeDurationMs": 300,
+                    "targetSettingsEnvelopePartial": {
+                        "semanticStatus": "partial-target-settings-envelope-opaque",
+                        "shape": "string-slot",
+                        "stringSlotValue": "smart_target",
+                    },
+                },
+            )]
+            result = build_audio.collect_buff_play_sound_actions(
+                export_root,
+                {"buff_timed": {"sources": set(sources)}},
+                decoder=lambda *_args: decoded,
+            )
+
+            rows = result["byBuffEvent"]["buff_timed"]["au_test_timed"]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["startFrame"], 17)
+            self.assertEqual(rows[0]["endFrame"], 34)
+            self.assertTrue(rows[0]["onlyExecuteWhenSourceIsMainChar"])
+            self.assertTrue(rows[0]["stopOnEnd"])
+            self.assertEqual(rows[0]["targetSelector"], "smart_target")
+            self.assertEqual(rows[0]["sourcePaths"], sources[::-1])
+            self.assertEqual(result["counts"]["buffPlaySoundActionOccurrences"], 1)
+
     def test_wav_decode_defaults_to_lossless_flac_output(self) -> None:
         self.assertEqual(
             build_audio.audio_output_format(argparse.Namespace(format="wav", audio_format=None)),
@@ -82,6 +173,186 @@ class AudioCategoryTests(unittest.TestCase):
         self.assertEqual(labels["99"], "type99")
         self.assertEqual(selectors, [6])
 
+    def test_v150_play_action_decodes_properties_ranges_and_exact_tail(self) -> None:
+        data = b"".join([
+            pack("<HI", 0x0403, 1234),
+            bytes([0x01]),
+            bytes([4, 0x39, 0x3A, 0x3B, 0x7F]),
+            pack("<ii", 350, 500),
+            pack("<f", 25.0),
+            b"\x01\x02\x03\x04",
+            bytes([2, 0x39, 0x3B]),
+            pack("<ii", -25, 50),
+            pack("<ff", 5.0, 10.0),
+            bytes([0xA6]),
+            pack("<II", 9876, 30),
+        ])
+
+        result = build_audio.hirc_v150_playback_action(data, 150)
+
+        self.assertEqual(result["actionParserStatus"], "typedExactV150")
+        self.assertEqual(result["targetFlagsRaw"], 1)
+        self.assertTrue(result["targetIsBus"])
+        self.assertEqual(
+            [row["propertyName"] for row in result["properties"]],
+            ["delayTime", "transitionTime", "probability", "property0x7f"],
+        )
+        self.assertEqual(result["properties"][0]["value"], 350)
+        self.assertEqual(result["properties"][1]["value"], 500)
+        self.assertAlmostEqual(result["properties"][2]["value"], 25.0)
+        self.assertEqual(result["properties"][3]["encoding"], "rawUnion32")
+        self.assertEqual(result["properties"][3]["rawHex"], "01020304")
+        self.assertNotIn("value", result["properties"][3])
+        self.assertEqual(result["delay"], {
+            "serializationStatus": "explicitBaseAndRange",
+            "baseValuesMs": [350],
+            "modifierRangesMs": [{"minimum": -25, "maximum": 50}],
+            "runtimeSelection": "boundedModifierUnresolved",
+        })
+        self.assertEqual(result["transition"]["baseValuesMs"], [500])
+        self.assertEqual(result["probability"]["baseValuesPercent"], [25.0])
+        self.assertEqual(
+            result["probability"]["modifierRangesPercent"],
+            [{"minimum": 5.0, "maximum": 10.0}],
+        )
+        self.assertEqual(result["probability"]["runtimeSelection"], "actionGateNotEvaluated")
+        self.assertEqual(result["fade"], {
+            "flagsRaw": 0xA6,
+            "curveId": 6,
+            "curveLabel": "Exp1",
+            "bankId": 9876,
+            "bankType": 30,
+            "bankTypeLabel": "Event",
+        })
+
+    def test_v150_play_event_accepts_zero_tail_and_rejects_extra_bytes(self) -> None:
+        data = b"".join([
+            pack("<HI", 0x2103, 1234),
+            bytes([0]),
+            bytes([1, 0x39]),
+            pack("<i", 100),
+            bytes([0]),
+        ])
+
+        result = build_audio.hirc_v150_playback_action(data, 150)
+        self.assertEqual(result["actionParserStatus"], "typedExactV150")
+        self.assertEqual(result["delay"]["baseValuesMs"], [100])
+        self.assertNotIn("fade", result)
+
+        failed = build_audio.hirc_v150_playback_action(data + b"\x00", 150)
+        self.assertEqual(failed["actionParserStatus"], "failedClosed")
+        self.assertEqual(
+            failed["actionParserFailure"]["reason"],
+            "unexpectedPlayEventTrailingBytes",
+        )
+        self.assertNotIn("delay", failed)
+
+    def test_v150_playback_action_failures_are_bounded_and_claim_no_timing(self) -> None:
+        valid_empty_play = b"".join([
+            pack("<HI", 0x0403, 1234),
+            bytes([0, 0, 0, 4]),
+            pack("<II", 123, 30),
+        ])
+        cases = {
+            "unsupportedBankVersion": (valid_empty_play, 154),
+            "truncatedActionHeader": (pack("<HI", 0x0403, 1234), 150),
+            "truncatedScalarPropertyIds": (
+                pack("<HI", 0x0403, 1234) + bytes([0, 2, 0x39]),
+                150,
+            ),
+            "truncatedScalarPropertyValues": (
+                pack("<HI", 0x0403, 1234) + bytes([0, 1, 0x39, 1, 2]),
+                150,
+            ),
+            "truncatedRangePropertyValues": (
+                pack("<HI", 0x0403, 1234)
+                + bytes([0, 0, 1, 0x39])
+                + pack("<i", 1),
+                150,
+            ),
+            "truncatedPlayTail": (valid_empty_play[:-1], 150),
+            "unexpectedPlayTrailingBytes": (valid_empty_play + b"\x00", 150),
+        }
+        for reason, (data, version) in cases.items():
+            with self.subTest(reason=reason):
+                result = build_audio.hirc_v150_playback_action(data, version)
+                self.assertEqual(result["actionParserStatus"], "failedClosed")
+                self.assertEqual(result["actionParserFailure"]["reason"], reason)
+                self.assertGreaterEqual(result["actionParserFailure"]["remainingBytes"], 0)
+                self.assertNotIn("properties", result)
+                self.assertNotIn("delay", result)
+
+    def test_action_dispatch_preserves_ordinals_and_classifies_timing_conservatively(self) -> None:
+        def play(target_id: int, delay_ms: int | None = None) -> bytes:
+            property_bundle = bytes([0])
+            if delay_ms is not None:
+                property_bundle = bytes([1, 0x39]) + pack("<i", delay_ms)
+            return b"".join([
+                pack("<HI", 0x0403, target_id),
+                bytes([0]),
+                property_bundle,
+                bytes([0, 4]),
+                pack("<II", 99, 30),
+            ])
+
+        sound = bytearray(30)
+        sound[5:9] = pack("<I", 777)
+        objects = {
+            1: {"type": 4, "data": bytes([2]) + pack("<II", 2, 3)},
+            2: {"type": 3, "data": play(4)},
+            3: {"type": 3, "data": play(4)},
+            4: {"type": 2, "data": bytes(sound)},
+        }
+
+        result = build_audio.traverse_hirc_event(1, objects, {777}, bank_version=150)
+        self.assertEqual(result["mediaIds"], [777])
+        self.assertEqual(
+            [row["eventActionOrdinal"] for row in result["actionEvidence"]],
+            [0, 1],
+        )
+        self.assertEqual(
+            [row["dispatchEventId"] for row in result["actionEvidence"]],
+            [1, 1],
+        )
+        self.assertEqual(
+            result["actionDispatchEvidence"]["timingClass"],
+            "coDispatchNoExplicitDelay",
+        )
+        self.assertEqual(result["actionDispatchEvidence"]["typedPlaybackActionCount"], 2)
+        self.assertEqual(result["actionDispatchEvidence"]["failedPlaybackActionCount"], 0)
+        self.assertTrue(result["actionDispatchEvidence"]["simultaneityCandidate"])
+
+        objects[3] = {"type": 3, "data": play(4, 350)}
+        staggered = build_audio.traverse_hirc_event(1, objects, {777}, bank_version=150)
+        self.assertEqual(staggered["mediaIds"], [777])
+        self.assertEqual(
+            staggered["actionDispatchEvidence"]["timingClass"],
+            "coDispatchWithAuthoredDelayDifference",
+        )
+        self.assertFalse(staggered["actionDispatchEvidence"]["simultaneityCandidate"])
+        self.assertEqual(staggered["actionDispatchEvidence"]["explicitDelayActionCount"], 1)
+
+    def test_failed_action_evidence_does_not_change_target_reachability(self) -> None:
+        sound = bytearray(30)
+        sound[5:9] = pack("<I", 777)
+        objects = {
+            1: {"type": 4, "data": bytes([1]) + pack("<I", 2)},
+            # The legacy typed target prefix is valid, but the evidence bundle is truncated.
+            2: {"type": 3, "data": pack("<HI", 0x0403, 3)},
+            3: {"type": 2, "data": bytes(sound)},
+        }
+
+        result = build_audio.traverse_hirc_event(1, objects, {777}, bank_version=150)
+        self.assertEqual(result["mediaIds"], [777])
+        self.assertEqual(result["traversalStatus"], "complete")
+        self.assertEqual(result["actionDispatchEvidence"]["failedPlaybackActionCount"], 1)
+        self.assertTrue(result["actionEvidence"][0]["traversed"])
+        self.assertEqual(result["actionEvidence"][0]["actionParserStatus"], "failedClosed")
+        self.assertEqual(
+            result["actionEvidence"][0]["actionParserFailure"]["reason"],
+            "truncatedActionHeader",
+        )
+
     def test_typed_hirc_traversal_uses_reciprocal_children_and_sound_source(self) -> None:
         event_id = 100
         play_action = 101
@@ -135,17 +406,260 @@ class AudioCategoryTests(unittest.TestCase):
         )
         self.assertNotIn(unrelated_sound, result["visitedObjectIds"])
 
-    def test_typed_hirc_traversal_fails_closed_on_music_node(self) -> None:
+    def test_v150_switch_mapping_preserves_flat_value_packages_without_pruning(self) -> None:
+        event_id = 100
+        action_id = 101
+        switch_id = 200
+        sound_a = 301
+        sound_b = 302
+        group_id = 0x3C9C2C56
+        default_value_id = 0x8D36849F
+        value_id = 0xF44F784A
+        children_offset = 40
+
+        switch_data = bytearray(children_offset - 9)
+        switch_data.extend(pack("<II", group_id, default_value_id))
+        switch_data.append(1)
+        switch_data.extend(pack("<III", 2, sound_a, sound_b))
+        switch_data.extend(pack("<I", 2))
+        switch_data.extend(pack("<III", value_id, 1, sound_a))
+        switch_data.extend(pack("<II", default_value_id, 0))
+        switch_data.extend(pack("<I", 2))
+        switch_data.extend(pack("<IBiiB", sound_a, 3, 500, -250, 7))
+        switch_data.extend(pack("<IBiiB", sound_b, 0, 1, 0, 0))
+
+        def sound_data(media_id: int) -> bytes:
+            data = bytearray(30)
+            data[5:9] = pack("<I", media_id)
+            data[22:26] = pack("<I", switch_id)
+            return bytes(data)
+
+        objects = {
+            event_id: {"type": 4, "data": bytes([1]) + pack("<I", action_id)},
+            action_id: {"type": 3, "data": pack("<HI", 0x0403, switch_id)},
+            switch_id: {"type": 6, "data": bytes(switch_data)},
+            sound_a: {"type": 2, "data": sound_data(401)},
+            sound_b: {"type": 2, "data": sound_data(402)},
+        }
+
+        result = build_audio.traverse_hirc_event(
+            event_id, objects, {401, 402}, bank_version=150
+        )
+
+        self.assertEqual(result["mediaIds"], [401, 402])
+        self.assertEqual(result["traversalStatus"], "complete")
+        switch = result["containerEvidence"][0]["switchMappingEvidence"]
+        self.assertEqual(switch["parserStatus"], "typedExactV150FlatPackages")
+        self.assertEqual(switch["selectionStructure"], "flatValuePackages")
+        self.assertEqual(switch["groupId"], group_id)
+        self.assertEqual(switch["defaultValueId"], default_value_id)
+        self.assertTrue(switch["continuousValidation"])
+        self.assertEqual(switch["packages"][0], {
+            "packageIndex": 0,
+            "valueId": value_id,
+            "isDefaultValue": False,
+            "mappedChildCount": 1,
+            "childIds": [sound_a],
+        })
+        self.assertTrue(switch["packages"][1]["isDefaultValue"])
+        self.assertEqual(switch["unmappedChildIds"], [sound_b])
+        self.assertEqual(switch["associations"][0]["parameterARaw"], 500)
+        self.assertEqual(switch["associations"][0]["parameterBRaw"], -250)
+        self.assertEqual(
+            switch["runtimeSelection"],
+            "groupValueUnobservedAllChildrenRemainPossible",
+        )
+
+        no_package_data = bytearray(children_offset - 9)
+        no_package_data.extend(pack("<II", 0x3C9C2C56, 0x8D36849F))
+        no_package_data.append(0)
+        no_package_data.extend(pack("<III", 2, sound_a, sound_b))
+        no_package_data.extend(pack("<I", 0))
+        no_package = build_audio.hirc_v150_switch_mapping(
+            bytes(no_package_data),
+            children_offset,
+            2,
+            bank_version=150,
+        )
+        self.assertEqual(no_package["parserStatus"], "unresolvedV150SwitchTail")
+        self.assertEqual(no_package["failureReason"], "noValuePackages")
+
+    def test_v150_switch_mapping_marks_distinct_layout_unresolved_without_pruning(self) -> None:
+        switch_id = 200
+        sound_a = 301
+        sound_b = 302
+        children_offset = 40
+        switch_data = bytearray(children_offset - 9)
+        # Current distinct-layout objects do not have the flat selector header
+        # at C-9; interpreting their final header byte as continuous-validation
+        # yields a non-boolean value and must fail before package claims.
+        switch_data.extend(bytes.fromhex("00949cee04bb233163"))
+        switch_data.extend(pack("<III", 2, sound_a, sound_b))
+        switch_data.extend(pack("<I", 2))
+        switch_data.extend(pack("<IBiiB", sound_a, 0, 1, 0, 0))
+        switch_data.extend(pack("<IBiiB", sound_b, 0, 1, 0, 0))
+
+        def sound_data(media_id: int) -> bytes:
+            data = bytearray(30)
+            data[5:9] = pack("<I", media_id)
+            data[22:26] = pack("<I", switch_id)
+            return bytes(data)
+
+        objects = {
+            100: {"type": 4, "data": bytes([1]) + pack("<I", 101)},
+            101: {"type": 3, "data": pack("<HI", 0x0403, switch_id)},
+            switch_id: {"type": 6, "data": bytes(switch_data)},
+            sound_a: {"type": 2, "data": sound_data(401)},
+            sound_b: {"type": 2, "data": sound_data(402)},
+        }
+
+        result = build_audio.traverse_hirc_event(
+            100, objects, {401, 402}, bank_version=150
+        )
+
+        self.assertEqual(result["mediaIds"], [401, 402])
+        self.assertEqual(result["traversalStatus"], "complete")
+        switch = result["containerEvidence"][0]["switchMappingEvidence"]
+        self.assertEqual(switch["parserStatus"], "unresolvedV150SwitchTail")
+        self.assertEqual(switch["failureReason"], "invalidContinuousValidation")
+        self.assertGreater(switch["unresolvedTailByteLength"], 0)
+        self.assertEqual(
+            switch["runtimeSelection"],
+            "groupValueUnobservedAllChildrenRemainPossible",
+        )
+
+    def test_typed_hirc_traversal_resolves_v150_music_graph_and_track_media(self) -> None:
+        def node_base(parent_id: int) -> bytes:
+            return bytes(4) + pack("<II", 0, parent_id)
+
+        def common_music_prefix(parent_id: int, child_ids: list[int]) -> bytes:
+            return b"".join([
+                bytes([0]),
+                node_base(parent_id),
+                bytes(7),
+                pack("<I", len(child_ids)),
+                *(pack("<I", child_id) for child_id in child_ids),
+                pack("<ddfBBBI", 1.0, 0.0, 120.0, 4, 4, 0, 0),
+            ])
+
+        event_id = 1
+        action_id = 2
+        switch_id = 10
+        ranseq_id = 11
+        segment_id = 12
+        track_id = 13
+        media_id = 777
+
+        switch_data = b"".join([
+            common_music_prefix(0, [ranseq_id]),
+            pack("<I", 0),  # transition rules
+            bytes([1]),
+            pack("<II", 1, 0x12345678),
+            bytes([0]),
+            pack("<I", 24),
+            bytes([0]),
+            pack("<IIHH", 0, 0x00010001, 1, 100),
+            pack("<IIHH", 0x87654321, ranseq_id, 1, 100),
+        ])
+        ranseq_data = b"".join([
+            common_music_prefix(switch_id, [segment_id]),
+            pack("<I", 0),  # transition rules
+            pack("<I", 2),
+            pack("<IIIIhhhIHBB", 0, 100, 1, 0, 1, 1, 1, 50, 0, 1, 0),
+            pack("<IIIIhhhIHBB", segment_id, 101, 0, 0xFFFFFFFF, 1, 1, 1, 50, 0, 0, 0),
+        ])
+        segment_data = b"".join([
+            common_music_prefix(ranseq_id, [track_id]),
+            pack("<dI", 3000.0, 1),
+            pack("<Id", 1, 0.0),
+            b"Entry\x00",
+        ])
+        track_data = b"".join([
+            bytes([0]),
+            pack("<I", 1),
+            pack("<IBIIB", 0x00040001, 2, media_id, 2048, 0x80),
+            pack("<I", 1),
+            pack("<III4d", 0, media_id, 0, 0.0, 0.0, 0.0, 3000.0),
+            pack("<I", 1),  # subtracks
+            pack("<I", 0),  # automation items
+            node_base(segment_id),
+        ])
+        objects = {
+            event_id: {"type": 4, "data": bytes([1]) + pack("<I", action_id)},
+            action_id: {"type": 3, "data": pack("<HI", 0x0403, switch_id)},
+            switch_id: {"type": 12, "data": switch_data},
+            ranseq_id: {"type": 13, "data": ranseq_data},
+            segment_id: {"type": 10, "data": segment_data},
+            track_id: {"type": 11, "data": track_data},
+        }
+
+        result = build_audio.traverse_hirc_event(event_id, objects, {media_id}, bank_version=150)
+        self.assertEqual(result["mediaIds"], [media_id])
+        self.assertEqual(result["traversalStatus"], "complete")
+        self.assertEqual(result["unresolvedNodes"], [])
+        self.assertEqual(
+            [row["objectType"] for row in result["musicNodeEvidence"]],
+            [12, 13, 10, 11],
+        )
+        switch = result["musicNodeEvidence"][0]
+        self.assertEqual(switch["treeDepth"], 1)
+        self.assertEqual(switch["treeLeaves"][0]["audioNodeId"], ranseq_id)
+        ranseq = result["musicNodeEvidence"][1]
+        self.assertEqual(ranseq["selectionTypeLabels"], ["continuousSequence", "none"])
+        self.assertEqual(ranseq["playlistItems"][1]["segmentId"], segment_id)
+        track = result["musicNodeEvidence"][3]
+        self.assertEqual(track["sources"][0]["mediaId"], media_id)
+        self.assertEqual(result["mediaEvidence"][0]["musicTrackObjectIds"], [track_id])
+        self.assertEqual(result["mediaEvidence"][0]["selectionPaths"], [[
+            "musicSwitchCandidate",
+            "musicPlaylistCandidate",
+            "musicTrack",
+            "musicTrackSource",
+        ]])
+
+    def test_v150_empty_music_children_require_unique_typed_tail(self) -> None:
+        node_base = bytes(4) + pack("<II", 0, 0)
+        segment_data = b"".join([
+            bytes([0]),
+            node_base,
+            bytes(7),
+            pack("<I", 0),
+            pack("<ddfBBBI", 1.0, 0.0, 120.0, 4, 4, 0, 0),
+            pack("<dI", 0.0, 0),
+        ])
         objects = {
             1: {"type": 4, "data": bytes([1]) + pack("<I", 2)},
             2: {"type": 3, "data": pack("<HI", 0x0403, 3)},
-            3: {"type": 10, "data": pack("<I", 777)},
-            777: {"type": 2, "data": bytes(30)},
+            3: {"type": 10, "data": segment_data},
+        }
+
+        result = build_audio.traverse_hirc_event(1, objects, set(), bank_version=150)
+        self.assertEqual(result["traversalStatus"], "complete")
+        self.assertEqual(result["mediaIds"], [])
+        self.assertEqual(result["containerEvidence"][0]["childCount"], 0)
+        self.assertEqual(result["containerEvidence"][0]["parserConfidence"], "typedTailExactEmpty")
+
+    def test_typed_hirc_traversal_fails_closed_on_truncated_music_track(self) -> None:
+        objects = {
+            1: {"type": 4, "data": bytes([1]) + pack("<I", 2)},
+            2: {"type": 3, "data": pack("<HI", 0x0403, 3)},
+            # A media-looking U32 in a malformed MusicTrack is not a source edge.
+            3: {"type": 11, "data": pack("<II", 1, 777)},
         }
         result = build_audio.traverse_hirc_event(1, objects, {777})
         self.assertEqual(result["mediaIds"], [])
         self.assertEqual(result["traversalStatus"], "partial")
-        self.assertEqual(result["unresolvedNodes"][0]["reason"], "unsupportedTypedNode")
+        self.assertEqual(result["unresolvedNodes"][0]["reason"], "musicTrackPrefixUnresolved")
+
+    def test_typed_hirc_traversal_rejects_music_nodes_from_non_v150_bank(self) -> None:
+        objects = {
+            1: {"type": 4, "data": bytes([1]) + pack("<I", 2)},
+            2: {"type": 3, "data": pack("<HI", 0x0403, 3)},
+            3: {"type": 11, "data": bytes(64)},
+        }
+        result = build_audio.traverse_hirc_event(1, objects, set(), bank_version=154)
+        self.assertEqual(result["mediaIds"], [])
+        self.assertEqual(result["unresolvedNodes"][0]["reason"], "unsupportedMusicBankVersion")
 
     def test_play_event_follows_nested_event_actions(self) -> None:
         sound = bytearray(30)
@@ -160,6 +674,13 @@ class AudioCategoryTests(unittest.TestCase):
         result = build_audio.traverse_hirc_event(1, objects, {99})
         self.assertEqual(result["mediaIds"], [99])
         self.assertEqual([row["operation"] for row in result["actionEvidence"]], ["playEvent", "play"])
+        self.assertEqual(
+            [
+                (row["dispatchEventId"], row["eventActionOrdinal"], row["isRootEventAction"])
+                for row in result["actionEvidence"]
+            ],
+            [(1, 0, True), (3, 0, False)],
+        )
 
     def test_shared_sound_keeps_every_play_root_without_duplicate_media(self) -> None:
         sound = bytearray(30)
@@ -274,7 +795,7 @@ class ProjectileAudioLinkTests(unittest.TestCase):
                 }),
                 encoding="utf-8",
             )
-            key = build_audio.projectile_event_key(0xFFFFFFFF)
+            key = "au_projectile_named_event"
             stats = build_audio.link_projectile_audio(
                 webui_root,
                 {key: [{
@@ -293,6 +814,7 @@ class ProjectileAudioLinkTests(unittest.TestCase):
             self.assertEqual(stats["projectileSoundRefsLinked"], 1)
             self.assertTrue(launch["event"]["foundInWwise"])
             self.assertEqual(launch["event"]["runtimeSelection"], "singleCandidate")
+            self.assertEqual(launch["event"]["canonicalEventIds"], [key])
             self.assertEqual(launch["audio"][0]["mediaId"], 7)
 
 
@@ -338,6 +860,19 @@ AnimationClip:
 """,
                 encoding="utf-8",
             )
+            (clip_root / "A_actor_unknown_ui_generic_p0000000000000002.anim").write_text(
+                """%YAML 1.1
+AnimationClip:
+  m_Name: A_actor_unknown_ui_generic
+  m_Events:
+  - time: 0.5
+    functionName: PostAudioEvent
+    data: au_ui_generic
+    floatParameter: 0
+    intParameter: 0
+""",
+                encoding="utf-8",
+            )
             result = build_audio.collect_gameplay_animation_audio(
                 export_root,
                 [{"kind": "character", "id": "chr_0001_test", "skillGroups": []}],
@@ -352,6 +887,10 @@ AnimationClip:
             )
             self.assertEqual({row["clipContext"] for row in owner["events"]["player_fol_fs_walk"]}, {"battle"})
             self.assertEqual({row["clipReachability"] for row in owner["events"]["player_fol_fs_walk"]}, {"unresolved"})
+            self.assertEqual(set(result["unownedEvents"]), {"au_ui_generic"})
+            self.assertEqual(result["unownedEvents"]["au_ui_generic"][0]["ownerStatus"], "unresolved")
+            self.assertEqual(result["counts"]["animationAudioClipsScanned"], 2)
+            self.assertEqual(result["counts"]["animationAudioClipsOwnerUnresolved"], 1)
 
     def test_collects_direct_character_and_bounded_enemy_audio(self) -> None:
         with tempfile.TemporaryDirectory() as raw_root:
@@ -401,6 +940,97 @@ AnimationClip:
             self.assertEqual(set(enemy_skill["events"]), {"au_enemy_attack"})
             self.assertEqual(enemy_spawn["confidence"], "direct")
             self.assertEqual(set(enemy_spawn["events"]), {"au_enemy_spawn"})
+
+    def test_exact_play_sound_event_seeds_buff_traversal_and_keeps_owner_gap(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            root = Path(raw_root)
+            webui_root = root / "webui"
+            export_root = root / "export_full"
+            gameplay_path = webui_root / "data/lang/CN/gameplay/index.json"
+            gameplay_path.parent.mkdir(parents=True)
+            gameplay_path.write_text(json.dumps({"entries": [{
+                "kind": "character",
+                "id": "chr_test",
+                "skillGroups": [{"id": "normal", "skills": [{"id": "chr_test_normal"}]}],
+            }]}), encoding="utf-8")
+            skill_root = export_root / "structured/StreamingAssets/Data/Json/SkillData"
+            buff_root = export_root / "structured/StreamingAssets/Data/Json/BuffData"
+            skill_root.mkdir(parents=True)
+            buff_root.mkdir(parents=True)
+            # The generic inventory sees the BuffData dependency, but not the
+            # typed PlaySoundActionData Event string supplied by the decoder.
+            (skill_root / "chr_test_normal.json").write_bytes(
+                self.memorypack_strings(47, "buff_test_timed")
+            )
+            (buff_root / "buff_test_timed.json").write_bytes(
+                self.memorypack_strings(30, "buff_test_timed")
+            )
+            (buff_root / "buff_orphan.json").write_bytes(
+                self.memorypack_strings(30, "buff_orphan")
+            )
+            linked_action = {
+                "buffId": "buff_test_timed",
+                "eventId": "au_test_timed",
+                "timelineActionIndex": 0,
+                "actionDataIndex": 0,
+                "startFrame": 17,
+                "endFrame": 34,
+                "serverActionIndex": 9,
+                "runtimeConditionStatus": "unresolved",
+            }
+            orphan_action = {
+                "buffId": "buff_orphan",
+                "eventId": "au_test_orphan",
+                "timelineActionIndex": 0,
+                "actionDataIndex": 0,
+                "startFrame": 2,
+                "endFrame": 8,
+                "serverActionIndex": 10,
+                "runtimeConditionStatus": "unresolved",
+            }
+            decoded = {
+                "byBuffEvent": {
+                    "buff_test_timed": {"au_test_timed": [linked_action]},
+                    "buff_orphan": {"au_test_orphan": [orphan_action]},
+                },
+                "counts": {
+                    "buffPlaySoundActionOccurrences": 2,
+                    "buffPlaySoundUniqueEvents": 2,
+                },
+            }
+
+            with mock.patch.object(
+                build_audio,
+                "collect_buff_play_sound_actions",
+                return_value=decoded,
+            ):
+                result = build_audio.collect_gameplay_audio_references(
+                    webui_root,
+                    export_root,
+                    "CN",
+                )
+
+            owner = next(row for row in result["owners"] if row["ownerKind"] == "character")
+            self.assertEqual(set(owner["events"]), {"au_test_timed"})
+            evidence = owner["events"]["au_test_timed"][0]
+            self.assertEqual(evidence["buffIds"], ["buff_test_timed"])
+            self.assertEqual(evidence["playSoundActions"][0]["startFrame"], 17)
+            self.assertEqual(
+                evidence["playSoundActions"][0]["runtimeConditionStatus"],
+                "unresolved",
+            )
+            catalog = {row["eventId"]: row for row in result["authoredPlaySoundActions"]}
+            self.assertEqual(
+                catalog["au_test_timed"]["ownerLinkStatus"],
+                "linkedThroughBuffDependency",
+            )
+            self.assertEqual(catalog["au_test_orphan"]["ownerLinkStatus"], "unresolved")
+            self.assertEqual(result["counts"]["buffPlaySoundSeededEventRefs"], 2)
+            self.assertEqual(
+                result["counts"]["buffPlaySoundActionsLinkedToGameplayOwner"],
+                1,
+            )
+            self.assertEqual(result["counts"]["buffPlaySoundActionsOwnerUnresolved"], 1)
 
     def test_collects_enemy_template_skill_authored_under_another_enemy(self) -> None:
         with tempfile.TemporaryDirectory() as raw_root:
@@ -540,6 +1170,7 @@ AnimationClip:
                     "groupId": "normal",
                     "skillId": "chr_test_normal",
                     "confidence": "direct",
+                    "ownershipMethod": "gameplaySkillId",
                     "events": {"au_yes": [{"kind": "skillData"}], "au_no": [{"kind": "skillData"}]},
                 }, {
                     "ownerKind": "enemy",
@@ -547,6 +1178,7 @@ AnimationClip:
                     "groupId": "",
                     "skillId": "eny_test_attack",
                     "confidence": "inferred",
+                    "ownershipMethod": "enemyIdPrefix",
                     "events": {"au_yes": [{"kind": "skillData"}]},
                 }],
                 "animationOwners": [{
@@ -561,6 +1193,19 @@ AnimationClip:
                         "function": "PostAudioEvent",
                     }]},
                 }],
+                "unownedAnimationEvents": {
+                    "au_owner_unresolved": [{
+                        "kind": "animationClipEvent",
+                        "authoredEventId": "au_owner_unresolved",
+                        "clip": "UI_Generic",
+                        "clipSource": "AnimationClip/UI_Generic.anim",
+                        "actionKind": "action",
+                        "clipContext": "ui",
+                        "function": "PostAudioEvent",
+                        "time": 0.5,
+                        "ownerStatus": "unresolved",
+                    }],
+                },
                 "profileVoiceOwners": [{
                     "ownerId": "chr_voice",
                     "voices": [{
@@ -589,13 +1234,23 @@ AnimationClip:
             payload = json.loads((webui_root / "data/lang/CN/gameplay/sound_effects.json").read_text(encoding="utf-8"))
             events = payload["characters"]["chr_test"]["groups"]["normal"]["events"]
             self.assertEqual(stats["gameplayAudioRefsLinked"], 4)
+            self.assertEqual(stats["gameplaySerializedAudioRefs"], 5)
+            self.assertEqual(stats["gameplayReferenceOnlyAudioRefs"], 1)
             self.assertEqual(stats["animationAudioRefsLinked"], 1)
             self.assertEqual(stats["profileVoiceRefsLinked"], 1)
-            self.assertEqual([row["id"] for row in events], ["au_yes"])
+            self.assertEqual([row["id"] for row in events], ["au_no", "au_yes"])
+            unresolved, resolved = events
+            self.assertFalse(unresolved["foundInWwise"])
+            self.assertFalse(unresolved["hasPlayableMedia"])
+            self.assertEqual(unresolved["runtimeSelection"], "eventNotFoundInWwise")
+            self.assertEqual(resolved["triggerBindingStatus"], "exactSkillConfig")
+            self.assertEqual(resolved["triggerRelationTypes"], ["skillDataEventReference"])
+            self.assertEqual(resolved["triggerBindings"][0]["ownershipMethod"], "gameplaySkillId")
             enemy = payload["enemies"]["eny_test"]
             self.assertEqual(enemy["ownershipConfidence"], "inferred")
             self.assertEqual(enemy["skillIds"], ["eny_test_attack"])
             self.assertEqual([row["id"] for row in enemy["events"]], ["au_yes"])
+            self.assertEqual(enemy["events"][0]["triggerBindingStatus"], "inferredSkillConfigOwner")
             animation = payload["enemies"]["eny_animation"]
             self.assertEqual(animation["animationOwnershipConfidence"], "inferred")
             self.assertEqual(animation["animationEvents"][0]["actionKinds"], ["attack"])
@@ -609,6 +1264,14 @@ AnimationClip:
                 animation["animationEvents"][0]["sourceAnimationClips"],
                 ["A_monster_test_battle_attack1"],
             )
+            animation_evidence = json.loads(
+                (webui_root / "data/lang/CN/gameplay/sound_effects_animation_evidence.json")
+                .read_text(encoding="utf-8")
+            )
+            unresolved_animation = animation_evidence["ownerUnresolved"][0]
+            self.assertEqual(unresolved_animation["id"], "au_owner_unresolved")
+            self.assertEqual(unresolved_animation["ownerStatus"], "unresolved")
+            self.assertEqual(unresolved_animation["animationClipContexts"], ["ui"])
             self.assertEqual(
                 payload["characters"]["chr_voice"]["profileVoices"][0]["actionKinds"],
                 ["attackVoice"],
@@ -652,8 +1315,56 @@ AnimationClip:
                 [{
                     "eventId": "player_fol_fs_walk",
                     "bankId": 100,
+                    "bankVersion": 150,
                     "traversalStatus": "complete",
                     "rootStopActionCount": 1,
+                    "actionDispatchEvidence": {
+                        "timingClass": "coDispatchWithAuthoredDelayDifference",
+                        "playbackActionCount": 2,
+                        "typedPlaybackActionCount": 2,
+                        "failedPlaybackActionCount": 0,
+                        "multiPlayback": True,
+                        "simultaneityCandidate": False,
+                        "explicitDelayActionCount": 1,
+                        "explicitTransitionActionCount": 0,
+                        "probabilityGatedActionCount": 1,
+                        "evidenceBoundary": "serialized membership only",
+                    },
+                    "actionEvidence": [{
+                        "actionId": 101,
+                        "eventActionOrdinal": 0,
+                        "operation": "play",
+                        "actionParserStatus": "typedExactV150",
+                        "delay": {
+                            "serializationStatus": "implicitDefaultNotSerialized",
+                            "baseValuesMs": [],
+                            "modifierRangesMs": [],
+                        },
+                        "transition": {},
+                        "probability": {},
+                    }, {
+                        "actionId": 102,
+                        "eventActionOrdinal": 1,
+                        "operation": "play",
+                        "actionParserStatus": "typedExactV150",
+                        "delay": {
+                            "serializationStatus": "explicitBase",
+                            "baseValuesMs": [350],
+                            "modifierRangesMs": [],
+                        },
+                        "transition": {},
+                        "probability": {
+                            "serializationStatus": "explicitBase",
+                            "baseValuesPercent": [5.0],
+                            "modifierRangesPercent": [],
+                            "runtimeSelection": "actionGateNotEvaluated",
+                        },
+                    }, {
+                        "actionId": 103,
+                        "eventActionOrdinal": 2,
+                        "operation": "stop",
+                        "actionParserStatus": "unsupportedActionKind",
+                    }],
                     "containerEvidence": [{
                         "objectId": 10,
                         "objectType": 5,
@@ -694,6 +1405,17 @@ AnimationClip:
                 "randomAlternative": {"nodeCount": 1, "childEdgeCount": 12},
                 "switchCandidate": {"nodeCount": 1, "childEdgeCount": 4},
             })
+            self.assertEqual(payload["schemaVersion"], 4)
+            dispatch = event_a["actionDispatchEvidence"][0]
+            self.assertEqual(dispatch["bankId"], 100)
+            self.assertEqual(dispatch["bankVersion"], 150)
+            self.assertEqual(dispatch["timingClass"], "coDispatchWithAuthoredDelayDifference")
+            self.assertEqual(dispatch["playbackActionCount"], 2)
+            self.assertEqual(dispatch["explicitDelayActionCount"], 1)
+            self.assertEqual(dispatch["probabilityGatedActionCount"], 1)
+            self.assertEqual([row["actionId"] for row in dispatch["actions"]], [101, 102])
+            self.assertEqual(dispatch["actions"][1]["delay"]["baseValuesMs"], [350])
+            self.assertEqual(dispatch["actions"][1]["probability"]["baseValuesPercent"], [5.0])
             self.assertEqual(payload["characters"]["chr_a"]["metrics"]["sharedAnimationEventCount"], 1)
             self.assertEqual(payload["characters"]["chr_a"]["metrics"]["uniqueEventMediaPairCount"], 2)
             self.assertEqual(stats["characterAnimationUniqueEvents"], 1)
@@ -749,6 +1471,127 @@ AnimationClip:
             self.assertEqual(stats["gameplayRawPossibleMediaAssociations"], 4)
             self.assertEqual(stats["gameplayPossibleMediaAssociations"], 2)
             self.assertEqual(payload["characters"]["chr_test"]["metrics"]["skillEventAssociationCount"], 1)
+
+    def test_exact_and_inferred_trigger_statuses_remain_per_event(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            webui_root = Path(raw_root)
+            references = {
+                "eventNames": {"au_exact", "au_inferred"},
+                "owners": [{
+                    "ownerKind": "character",
+                    "ownerId": "chr_test",
+                    "groupId": "normal",
+                    "skillId": "chr_test_normal",
+                    "confidence": "direct",
+                    "ownershipMethod": "gameplaySkillId",
+                    "sources": ["SkillData/chr_test_normal.json"],
+                    "events": {"au_exact": [{"kind": "skillData", "skillId": "chr_test_normal"}]},
+                }, {
+                    "ownerKind": "character",
+                    "ownerId": "chr_test",
+                    "groupId": "normal",
+                    "skillId": "chr_test_normal_followup",
+                    "confidence": "inferred",
+                    "ownershipMethod": "playableSkillFamilyPrefix",
+                    "sources": ["SkillData/chr_test_normal_followup.json"],
+                    "events": {"au_inferred": [{"kind": "skillBuffData", "buffIds": ["buff_followup"]}]},
+                }],
+                "animationOwners": [],
+                "profileVoiceOwners": [],
+                "counts": {},
+            }
+            build_audio.link_gameplay_audio(
+                webui_root,
+                "CN",
+                references,
+                {
+                    "au_exact": [{"src": "data/audio/shared/exact.wav", "mediaId": 1}],
+                    "au_inferred": [{"src": "data/audio/shared/inferred.wav", "mediaId": 2}],
+                },
+                [{"eventId": "au_exact"}, {"eventId": "au_inferred"}],
+            )
+
+            payload = json.loads(
+                (webui_root / "data/lang/CN/gameplay/sound_effects.json").read_text(encoding="utf-8")
+            )
+            group = payload["characters"]["chr_test"]["groups"]["normal"]
+            events = {event["id"]: event for event in group["events"]}
+            self.assertEqual(group["ownershipConfidence"], "inferred")
+            self.assertEqual(events["au_exact"]["triggerBindingStatus"], "exactSkillConfig")
+            self.assertEqual(events["au_exact"]["triggerBindings"][0]["requestEvidence"], "exactAuthoredDependency")
+            self.assertEqual(events["au_exact"]["triggerBindings"][0]["runtimeActivationStatus"], "conditionAndTimingUnresolved")
+            self.assertEqual(events["au_inferred"]["triggerBindingStatus"], "inferredSkillConfigOwner")
+            self.assertEqual(events["au_inferred"]["triggerRelationTypes"], ["skillBuffChain"])
+            self.assertEqual(events["au_inferred"]["triggerBindings"][0]["buffIds"], ["buff_followup"])
+            self.assertEqual(group.get("skillIds"), ["chr_test_normal", "chr_test_normal_followup"])
+            self.assertEqual(payload["characters"]["chr_test"]["metrics"]["exactSkillTriggerEventCount"], 1)
+            self.assertEqual(payload["characters"]["chr_test"]["metrics"]["inferredSkillTriggerEventCount"], 1)
+            self.assertEqual(payload["counts"]["exactSkillConfigTriggerRefs"], 1)
+            self.assertEqual(payload["counts"]["inferredSkillConfigOwnerRefs"], 1)
+
+    def test_play_sound_action_binding_preserves_frame_window_and_lifecycle(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            webui_root = Path(raw_root)
+            play_sound = {
+                "buffId": "buff_test_timed",
+                "eventId": "au_exact_timed",
+                "startFrame": 17,
+                "endFrame": 34,
+                "stopOnEnd": True,
+                "stopFadeDurationMs": 300,
+                "targetSettingsStatus": "partial-target-settings-envelope-opaque",
+                "targetSelector": "smart_target",
+                "sourcePaths": ["structured/StreamingAssets/Data/Json/BuffData/buff_test_timed.json"],
+                "runtimeConditionStatus": "unresolved",
+            }
+            references = {
+                "eventNames": {"au_exact_timed"},
+                "authoredPlaySoundActions": [play_sound],
+                "owners": [{
+                    "ownerKind": "character",
+                    "ownerId": "chr_test",
+                    "groupId": "normal",
+                    "skillId": "chr_test_normal",
+                    "confidence": "direct",
+                    "ownershipMethod": "gameplaySkillId",
+                    "sources": ["SkillData/chr_test_normal.json"],
+                    "events": {"au_exact_timed": [{
+                        "kind": "skillBuffData",
+                        "skillId": "chr_test_normal",
+                        "buffIds": ["buff_test_timed"],
+                        "playSoundActions": [play_sound],
+                    }]},
+                }],
+                "animationOwners": [],
+                "profileVoiceOwners": [],
+                "counts": {},
+            }
+            build_audio.link_gameplay_audio(
+                webui_root,
+                "CN",
+                references,
+                {"au_exact_timed": [{"src": "data/audio/shared/timed.wav", "mediaId": 3}]},
+                [{"eventId": "au_exact_timed"}],
+            )
+
+            payload = json.loads(
+                (webui_root / "data/lang/CN/gameplay/sound_effects.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(payload["schemaVersion"], 4)
+            self.assertEqual(payload["authoredPlaySoundActions"][0]["startFrame"], 17)
+            event = payload["characters"]["chr_test"]["groups"]["normal"]["events"][0]
+            binding = event["triggerBindings"][0]
+            self.assertEqual(event["triggerBindingStatus"], "exactSkillConfig")
+            self.assertEqual(event["triggerRelationTypes"], ["buffPlaySoundAction", "skillBuffChain"])
+            self.assertEqual(binding["requestEvidence"], "exactAuthoredPlaySoundAction")
+            self.assertEqual(
+                binding["runtimeActivationStatus"],
+                "authoredFrameWindowRecoveredConditionUnresolved",
+            )
+            self.assertEqual(binding["playSoundActions"][0]["startFrame"], 17)
+            self.assertEqual(binding["playSoundActions"][0]["endFrame"], 34)
+            self.assertTrue(binding["playSoundActions"][0]["stopOnEnd"])
+            self.assertTrue(any(path.endswith("buff_test_timed.json") for path in binding["sourcePaths"]))
 
 
 if __name__ == "__main__":

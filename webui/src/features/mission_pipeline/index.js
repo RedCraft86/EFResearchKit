@@ -35,6 +35,7 @@
       title: "Mission Pipeline",
       scope: "Authored quest structure with an explicit native client/server boundary.",
       warning: "Predecessor arrows are client-visible prerequisites. The server still decides which quest state to synchronize next.",
+      definitionRecoveryScope: "Definition files are discovered by pattern from the current DialogId registry and exact hashed DialogTree assets. Per-object filename, line, option, and branch declarations are not required; only typed consumers can attach or order a file.",
       missionSource: "MissionRuntime source",
       sourceCompletePersistent: "complete Persistent override",
       sourceStreamingFallback: "StreamingAssets fallback",
@@ -390,6 +391,56 @@
       dialogFinishBranchDependencyHint: "An original option outcome writes the exact finish number required by this objective. This proves a causal branch dependency, not the observed player choice, dialog activation, server-selected successor, or total Story-file order.",
       dialogFinishEndpointDependencies: "Authored finish endpoint → mission objective",
       dialogFinishEndpointDependencyHint: "An exact original finish node is reachable from the binary-proven serialized prime node and emits the finish number required by this objective. The route or player choice that reaches it remains unknown.",
+      dialogFinishLevelScriptTaskDependencies: "Shared finish → LevelScript task",
+      dialogFinishLevelScriptTaskDependencyHint: "The same binary-proven dialog finish state is consumed by this mission objective and an original LevelScript task condition. This is branch-state fan-out, not proof that the task was active, that this mission owns the script, or cross-file order.",
+      dialogFinishTaskConsumer: "LevelScript task consumer",
+      dialogFinishTaskIdentityUnresolved: "task id unresolved in mixed map",
+      dialogFinishTaskMissionShell: "Exact mission shell",
+      dialogFinishTaskOwnershipGap: "Mission-shell owner unresolved",
+      dialogFinishTaskStat: "shared finish→task dependencies",
+      dialogFinishOwnedTaskStat: "same-mission exact task-shell links",
+      dialogFinishTaskExactConsumers: "exact LevelScript consumers",
+      dialogFinishTaskCompleteMaps: "complete maps",
+      dialogFinishTaskFragments: "bounded fragments",
+      dialogFinishTaskLifecycle: "Binary-validated task lifecycle",
+      dialogFinishTaskLifecycleHint: "Server state is forwarded through the generic LevelScript task runtime. Processing activates and binds every authored condition; condition changes report the exact level/script/task/condition identity. This does not identify a mission owner or Story-file order.",
+      dialogFinishTaskDefinition: "Authored task shape",
+      dialogFinishTaskType: "task type",
+      dialogFinishTaskFlags: "flags",
+      dialogFinishTaskConditions: "conditions",
+      dialogFinishTaskUntracked: "untracked",
+      dialogFinishTaskTracked: "tracked",
+      dialogFinishTaskManual: "manual check",
+      dialogFinishTaskAutomatic: "automatic check",
+      dialogFinishTaskCarrier: "exact external script/task carriers",
+      dialogFinishTaskUncarried: "task identities with no external carrier",
+      dialogFinishTaskCarrierScope: "active files in typed carrier census",
+      dialogFinishTaskCarrierJsonFiles: "typed JSON files",
+      dialogFinishTaskCarrierJsonCandidates: "typed-JSON exact-task candidates",
+      dialogFinishTaskCarrierNonJsonFiles: "serialized files excluded",
+      dialogFinishLevelDataCarrier: "exact LevelData task-progress carriers",
+      dialogFinishLevelDataCarrierFiles: "raw-candidate LevelData files",
+      dialogFinishLevelDataUniqueShells: "unique mission shells",
+      dialogFinishLevelDataSharedShells: "shared mission shells",
+      dialogFinishLevelDataUnresolvedShells: "unresolved mission shells",
+      dialogFinishLevelDataUncarried: "task conditions without a LevelData carrier",
+      dialogFinishNpcProxySegmentContexts: "exact NpcProxy segment/script contexts",
+      dialogFinishNpcProxyUniqueShells: "unique script-local mission shells",
+      dialogFinishNpcProxySharedShells: "shared script-local mission shells",
+      dialogFinishAuthoredTaskShellDependencies: "authored finish→task mission-shell links",
+      dialogFinishAuthoredTaskShellHint: "The exact task condition is persisted inside the decoded LevelScript entry of this original LevelData shell. The shell link does not prove task activation, quest ownership, player choice, or Story order.",
+      dialogFinishAuthoredTaskStat: "authored finish→task dependencies",
+      dialogFinishUnresolvedEndpointStat: "task consumers without an authored endpoint",
+      dialogFinishAnyContextStat: "mission any-finish contexts",
+      dialogFinishScriptContextStat: "mission→active-script contexts",
+      dialogFinishAnyTaskContexts: "Any-finish mission context",
+      dialogFinishAnyTaskContextHint: "This mission objective accepts any recorded finish for the dialog, while the related original LevelScript task consumes the displayed exact finish. The binary predicate proves compatibility, not task activation, ownership, or Story order.",
+      dialogFinishMissionScriptContexts: "Mission→active LevelScript context",
+      dialogFinishMissionScriptContextHint: "This objective reads the exact active LevelScript containing the displayed task finish consumer. It is an original-file observation context, not proof that the mission starts or owns the task, dialog, or Story order.",
+      dialogFinishUnmatchedTaskDependencies: "Authored finish→task dependencies without an exact mission finish match",
+      dialogFinishUnmatchedTaskDependenciesHint: "Every row joins a prime-reachable authored DialogTree finish endpoint to an exact original LevelScript task consumer. Mission ownership remains explicitly unresolved unless a typed SubGame row co-carries the script and task IDs.",
+      levelScriptActiveOverlay: "active LevelScript overlay",
+      levelScriptShadowedSources: "shadowed fallback sources",
       dialogFinishPrimePath: "Prime-node path",
       dialogFinishProducer: "Original producer",
       dialogFinishConsumer: "Mission consumer",
@@ -957,6 +1008,7 @@
       offlineRecoveryFinishIdAbsent: "finishId not serialized",
       offlineRecoveryEvidenceResultBranch: "Exact result branch",
       offlineRecoveryEvidenceTrackedNpc: "Mission-tracked NPC dialog — playback owner unknown",
+      offlineRecoveryTrackingAutoCensus: "Auto-discovered from complete active MissionRuntime corpus",
       offlineRecoveryEvidenceEmptyHost: "Definition only \u2014 mission script empty",
       offlineRecoveryEmptyHost: "Exact empty mission host",
       offlineRecoveryEmptyHostBoundary: "The mission-named LevelData contains one propertyless LevelScript. Its action list, UID records, and task maps are empty, so it cannot activate or order these Story definitions.",
@@ -964,11 +1016,14 @@
       offlineRecoveryEvidenceUnregistered: "Unregistered definition — no runtime consumer",
       offlineRecoveryEvidenceRadioOnly: "Radio definition only — consumer unknown",
       offlineRecoveryEvidenceBinaryRadio: "Definition only — no consumer on current original-data surfaces",
-      offlineRecoveryEvidenceNpcProxyConsumer: "Native NPC-proxy consumer - mission activation unknown",
+      offlineRecoveryEvidenceNpcProxyConsumer: "Auto-discovered DialogTree + native NPC-proxy consumer - mission activation unknown",
       offlineRecoveryEvidenceBinarySns: "SNS definition only - no consumer on current original-data surfaces",
       offlineRecoveryEvidenceBinaryReadingPopup: "Readable definition only - no activator on current original-data surfaces",
       offlineRecoveryEvidenceBinaryUnregisteredDialog: "Unregistered dialog definition - no consumer on current original-data surfaces",
-      offlineRecoveryEvidenceBinaryRegisteredDialogTree: "Registered DialogTree definition - no activator on current original-data surfaces",
+      offlineRecoveryEvidenceBinaryRegisteredDialogTree: "Auto-discovered DialogTree definition - no activator on current original-data surfaces",
+      offlineRecoveryOptionRoutes: "Validated authored option routes",
+      offlineRecoveryConnectionIndex: "connection index",
+      offlineRecoveryRouteIssues: "route nodes left unresolved (fail closed)",
       offlineRecoveryEvidenceMissionlessNativePlayback: "Exact local playback - mission bridge and order unknown",
       runtimeRecoveryEvidenceSameMissionLevelDataPlayback: "Exact native playback in this mission shell - quest trigger and order unknown",
       runtimeRecoveryEvidenceLuaControllerPlayback: "Exact shipped-Lua playback - mission owner and order unknown",
@@ -1424,6 +1479,53 @@
       dialogFinishBranchDependencyHint: "原始选项结果写入了该目标所要求的精确完成编号。这证明因果分支依赖，但不证明玩家实际选择、对话激活、服务端选择的后继或完整剧情文件顺序。",
       dialogFinishEndpointDependencies: "原始结束端点 → 任务目标",
       dialogFinishEndpointDependencyHint: "精确的原始结束节点从二进制证明的序列化主入口节点可达，并产生该目标所需的完成编号。到达它的路径或玩家选择仍未知。",
+      dialogFinishLevelScriptTaskDependencies: "共享完成状态 → LevelScript 任务",
+      dialogFinishLevelScriptTaskDependencyHint: "同一项经二进制证明的对话完成状态，同时被该任务目标与原始 LevelScript 任务条件消费。这是分支状态扇出证据，不证明任务已激活、该使命拥有脚本或跨文件顺序。",
+      dialogFinishTaskConsumer: "LevelScript 任务消费端",
+      dialogFinishTaskIdentityUnresolved: "混合任务图中的任务 ID 未解析",
+      dialogFinishTaskMissionShell: "精确使命壳",
+      dialogFinishTaskOwnershipGap: "使命壳归属未解析",
+      dialogFinishTaskStat: "共享完成状态→任务依赖",
+      dialogFinishOwnedTaskStat: "同使命精确任务外壳链接",
+      dialogFinishTaskExactConsumers: "精确 LevelScript 消费端",
+      dialogFinishTaskCompleteMaps: "完整任务图",
+      dialogFinishTaskFragments: "有界片段",
+      dialogFinishTaskLifecycle: "二进制验证的任务生命周期",
+      dialogFinishTaskLifecycleHint: "服务端状态通过通用 LevelScript 任务运行时传递。Processing 会激活并绑定每个原始条件；条件变化按 level/script/task/condition 精确身份上报。这不证明使命归属或剧情文件顺序。",
+      dialogFinishTaskDefinition: "原始任务结构",
+      dialogFinishTaskType: "任务类型",
+      dialogFinishTaskFlags: "标志",
+      dialogFinishTaskConditions: "条件",
+      dialogFinishTaskUntracked: "不跟踪",
+      dialogFinishTaskTracked: "可跟踪",
+      dialogFinishTaskManual: "手动检查",
+      dialogFinishTaskAutomatic: "自动检查",
+      dialogFinishTaskCarrier: "精确外部 script/task 载体",
+      dialogFinishTaskUncarried: "无外部载体的任务身份",
+      dialogFinishTaskCarrierScope: "类型化载体普查中的活动文件",
+      dialogFinishTaskCarrierJsonFiles: "类型化 JSON 文件",
+      dialogFinishTaskCarrierJsonCandidates: "类型化 JSON 精确任务候选",
+      dialogFinishTaskCarrierNonJsonFiles: "已排除的序列化文件",
+      dialogFinishLevelDataCarrier: "精确 LevelData 任务进度载体",
+      dialogFinishLevelDataCarrierFiles: "LevelData 原始候选文件",
+      dialogFinishLevelDataUniqueShells: "唯一使命外壳",
+      dialogFinishLevelDataSharedShells: "共享使命外壳",
+      dialogFinishLevelDataUnresolvedShells: "未解析使命外壳",
+      dialogFinishLevelDataUncarried: "无 LevelData 载体的任务条件",
+      dialogFinishAuthoredTaskShellDependencies: "原始完成→任务使命外壳链接",
+      dialogFinishAuthoredTaskShellHint: "精确任务条件持久化在该原始 LevelData 外壳中已解码的 LevelScript 条目内。外壳链接不证明任务激活、Quest 所有权、玩家选择或 Story 顺序。",
+      dialogFinishAuthoredTaskStat: "原始完成端点→任务依赖",
+      dialogFinishUnresolvedEndpointStat: "缺少原始结束端点的任务消费端",
+      dialogFinishAnyContextStat: "使命任意完成上下文",
+      dialogFinishScriptContextStat: "使命→活动脚本上下文",
+      dialogFinishAnyTaskContexts: "任意完成使命上下文",
+      dialogFinishAnyTaskContextHint: "该使命目标接受此对话的任意已记录完成值，而相关原始 LevelScript 任务消费显示的精确值。二进制谓词只证明两者兼容，不证明任务激活、归属或剧情顺序。",
+      dialogFinishMissionScriptContexts: "使命→活动 LevelScript 上下文",
+      dialogFinishMissionScriptContextHint: "该目标读取包含所示任务完成条件的精确活动 LevelScript。这是原始文件观察上下文，不证明使命启动或拥有该任务、对话或剧情顺序。",
+      dialogFinishUnmatchedTaskDependencies: "无精确使命完成匹配的原始完成端点→任务依赖",
+      dialogFinishUnmatchedTaskDependenciesHint: "每一行都把从主入口可达的原始 DialogTree 结束端点连接到精确的原始 LevelScript 任务消费端。除非类型化 SubGame 记录同时携带脚本与任务 ID，否则使命归属保持未解析。",
+      levelScriptActiveOverlay: "活动 LevelScript 覆盖层",
+      levelScriptShadowedSources: "被覆盖的后备来源",
       dialogFinishPrimePath: "主入口节点路径",
       dialogFinishProducer: "原始产生端",
       dialogFinishConsumer: "任务消费端",
@@ -1754,6 +1856,7 @@
       offlineRecoveryFinishIdAbsent: "\u672a\u5e8f\u5217\u5316 finishId",
       offlineRecoveryEvidenceResultBranch: "\u7cbe\u786e\u7ed3\u679c\u5206\u652f",
       offlineRecoveryEvidenceTrackedNpc: "\u4efb\u52a1\u8ffd\u8e2a NPC \u5bf9\u8bdd\uff0c\u64ad\u653e\u5f52\u5c5e\u672a\u77e5",
+      offlineRecoveryTrackingAutoCensus: "\u4ece\u5b8c\u6574\u7684\u5f53\u524d MissionRuntime \u8bed\u6599\u81ea\u52a8\u53d1\u73b0",
       offlineRecoveryEvidenceEmptyHost: "\u4ec5\u5b9a\u4e49 \u2014 \u4efb\u52a1\u811a\u672c\u4e3a\u7a7a",
       offlineRecoveryEmptyHost: "\u7cbe\u786e\u7a7a\u4efb\u52a1\u5bbf\u4e3b",
       offlineRecoveryEmptyHostBoundary: "\u8fd9\u4e2a\u4efb\u52a1\u547d\u540d\u7684 LevelData \u53ea\u5305\u542b\u4e00\u4e2a\u65e0\u5c5e\u6027\u7684 LevelScript\u3002\u5176\u52a8\u4f5c\u5217\u8868\u3001UID \u8bb0\u5f55\u548c\u4efb\u52a1\u6620\u5c04\u5747\u4e3a\u7a7a\uff0c\u56e0\u6b64\u4e0d\u80fd\u6fc0\u6d3b\u6216\u6392\u5217\u8fd9\u4e9b Story \u5b9a\u4e49\u3002",
@@ -2264,6 +2367,7 @@
           <div id="mp-corpus" class="mp-corpus" role="status" aria-live="polite"></div>
         </header>
         <div id="mp-warning" class="mp-boundary-warning" role="note"></div>
+        <div id="mp-definition-recovery" class="mp-boundary-warning" role="note"></div>
         <div id="mp-source-provenance" class="mp-source-provenance" role="note" hidden></div>
         <div id="mp-non-mission-overview" class="mp-non-mission-overview"></div>
         <div class="mp-layout">
@@ -2389,6 +2493,7 @@
       "mission-pipeline-tab": t("title"),
       "mp-eyebrow": t("eyebrow"), "mp-title": t("title"), "mp-scope": t("scope"),
       "mp-warning": t("warning"), "mp-search-label": t("search"), "mp-structure-label": t("structure"),
+      "mp-definition-recovery": t("definitionRecoveryScope"),
       "mp-show-hidden-label": t("showHidden"), "mp-show-dependencies-label": t("dependencies"),
       "mp-show-edge-labels-label": t("edgeLabels"), "mp-orientation-label": t("orientation"),
       "mp-fit": t("fit"), "mp-center": t("center"), "mp-graph-title": t("graph"), "mp-drag-hint": t("dragHint"),
@@ -2510,6 +2615,8 @@
       [counts.dialogFinishBranchDependencies, t("dialogFinishBranchStat")],
       [counts.dialogFinishEndpointDependencies, t("dialogFinishEndpointStat")],
       [counts.dialogFinishExactConsumerCoverage, t("dialogFinishExactCoverageStat")],
+      [counts.dialogFinishLevelScriptTaskDependencies, t("dialogFinishTaskStat")],
+      [counts.dialogFinishOwnedLevelScriptTaskDependencies, t("dialogFinishOwnedTaskStat")],
     ];
     if (state.index?.runtimeTrace) stats.push([runtimeCounts.storyPlaybacks, t("runtimeObserved")]);
     node.innerHTML = stats.map(([value, label]) => `<strong>${Number(value || 0).toLocaleString()}</strong><span>${esc(label)}</span>`).join("");
@@ -2546,6 +2653,17 @@
     if (state.index?.dialogFinishBranchRecovery?.status) {
       const recoveryCounts = state.index.dialogFinishBranchRecovery.counts || {};
       sourceNode.insertAdjacentHTML("beforeend", `<span>${Number(recoveryCounts.exactConsumerCoverage || 0).toLocaleString()} / ${Number(recoveryCounts.exactMissionConsumers || 0).toLocaleString()} ${esc(t("dialogFinishExactCoverageStat"))}: ${Number(recoveryCounts.publishedDependencies || 0).toLocaleString()} ${esc(t("dialogFinishBranchStat"))} + ${Number(recoveryCounts.publishedEndpointDependencies || 0).toLocaleString()} ${esc(t("dialogFinishEndpointStat"))} · ${Number(recoveryCounts.dialogTreeValidatedFinishEndpoints || 0).toLocaleString()} ${esc(t("dialogTreeValidatedFinishEndpoints"))} / ${Number(recoveryCounts.dialogTreeRejectedFinishEndpoints || 0).toLocaleString()} ${esc(t("dialogTreeRejectedFinishEndpoints"))}</span>`);
+      sourceNode.insertAdjacentHTML("beforeend", `<span>${Number(recoveryCounts.levelScriptTaskSharedConsumerDependencies || 0).toLocaleString()} ${esc(t("dialogFinishTaskStat"))} / ${Number(recoveryCounts.levelScriptTaskSameMissionShellDependencies || 0).toLocaleString()} ${esc(t("dialogFinishOwnedTaskStat"))} · ${Number(recoveryCounts.levelScriptTaskExactFinishConsumers || 0).toLocaleString()} ${esc(t("dialogFinishTaskExactConsumers"))} (${Number(recoveryCounts.levelScriptTaskExactCompleteMapConsumers || 0).toLocaleString()} ${esc(t("dialogFinishTaskCompleteMaps"))} + ${Number(recoveryCounts.levelScriptTaskExactBoundedFragmentConsumers || 0).toLocaleString()} ${esc(t("dialogFinishTaskFragments"))})</span>`);
+      sourceNode.insertAdjacentHTML("beforeend", `<span>${Number(recoveryCounts.levelScriptTaskAuthoredFinishDependencies || 0).toLocaleString()} ${esc(t("dialogFinishAuthoredTaskStat"))} / ${Number(recoveryCounts.levelScriptTaskUnresolvedAuthoredFinishEndpoints || 0).toLocaleString()} ${esc(t("dialogFinishUnresolvedEndpointStat"))} · ${Number(recoveryCounts.levelScriptTaskAnyFinishMissionContexts || 0).toLocaleString()} ${esc(t("dialogFinishAnyContextStat"))} · ${Number(recoveryCounts.levelScriptTaskMissionScriptContexts || 0).toLocaleString()} ${esc(t("dialogFinishScriptContextStat"))}</span>`);
+      sourceNode.insertAdjacentHTML("beforeend", `<span>${Number(recoveryCounts.levelScriptTaskExternalIdentityCarriers || 0).toLocaleString()} ${esc(t("dialogFinishTaskCarrier"))} / ${Number(recoveryCounts.levelScriptTaskExternalUncarriedIdentities || 0).toLocaleString()} ${esc(t("dialogFinishTaskUncarried"))}</span>`);
+      sourceNode.insertAdjacentHTML("beforeend", `<span>${Number(recoveryCounts.levelScriptTaskCarrierActiveLogicalFiles || 0).toLocaleString()} ${esc(t("dialogFinishTaskCarrierScope"))} · ${Number(recoveryCounts.levelScriptTaskCarrierTypedJsonFiles || 0).toLocaleString()} ${esc(t("dialogFinishTaskCarrierJsonFiles"))} / ${Number(recoveryCounts.levelScriptTaskCarrierNonJsonFiles || 0).toLocaleString()} ${esc(t("dialogFinishTaskCarrierNonJsonFiles"))} · ${Number(recoveryCounts.levelScriptTaskCarrierTypedJsonCandidates || 0).toLocaleString()} ${esc(t("dialogFinishTaskCarrierJsonCandidates"))}</span>`);
+      sourceNode.insertAdjacentHTML("beforeend", `<span>${Number(recoveryCounts.levelScriptTaskLevelDataProgressCarriers || 0).toLocaleString()} ${esc(t("dialogFinishLevelDataCarrier"))} / ${Number(recoveryCounts.levelScriptTaskLevelDataRawCandidateFiles || 0).toLocaleString()} ${esc(t("dialogFinishLevelDataCarrierFiles"))} · ${Number(recoveryCounts.levelScriptTaskLevelDataUniqueMissionShellIdentities || 0).toLocaleString()} ${esc(t("dialogFinishLevelDataUniqueShells"))} / ${Number(recoveryCounts.levelScriptTaskLevelDataSharedMissionShellIdentities || 0).toLocaleString()} ${esc(t("dialogFinishLevelDataSharedShells"))} / ${Number(recoveryCounts.levelScriptTaskLevelDataUnresolvedMissionShellIdentities || 0).toLocaleString()} ${esc(t("dialogFinishLevelDataUnresolvedShells"))} · ${Number(recoveryCounts.levelScriptTaskLevelDataUncarriedConditions || 0).toLocaleString()} ${esc(t("dialogFinishLevelDataUncarried"))}</span>`);
+      sourceNode.insertAdjacentHTML("beforeend", `<span>${Number(recoveryCounts.levelScriptTaskNpcProxyMatchedScripts || 0).toLocaleString()} ${esc(t("dialogFinishNpcProxySegmentContexts"))} / ${Number(recoveryCounts.levelScriptTaskNpcProxyUniqueMissionShellScripts || 0).toLocaleString()} ${esc(t("dialogFinishNpcProxyUniqueShells"))} / ${Number(recoveryCounts.levelScriptTaskNpcProxySharedMissionShellScripts || 0).toLocaleString()} ${esc(t("dialogFinishNpcProxySharedShells"))}</span>`);
+      const lifecycle = state.index?.runtimeContract?.levelScriptTaskLifecycleAudit || {};
+      if (lifecycle.validation?.status === "validated") {
+        const chain = (lifecycle.serverStateApplicationChain || []).map((symbol) => `<code>${esc(symbol)}</code>`).join(" &rarr; ");
+        sourceNode.insertAdjacentHTML("beforeend", `<span><strong>${esc(t("dialogFinishTaskLifecycle"))}:</strong> ${chain} · ${Number(lifecycle.processingConditionCallCount || 0).toLocaleString()} ${esc(t("dialogFinishTaskConditions"))}</span><small>${esc(lifecycle.boundary || t("dialogFinishTaskLifecycleHint"))}</small>`);
+      }
     }
   }
 
@@ -3771,7 +3889,14 @@
     if (!rows.length) return "";
     return `<details class="mp-mission-story mp-runtime-bindings mp-subgame-bindings" data-weight="strong" open>
       <summary>${esc(t("subGameBindings"))} <span>${rows.length}</span></summary>
-      <div class="mp-runtime-binding-grid">${rows.map((row) => { const network = row.networkIdentity || {}; return `<article>
+      <div class="mp-runtime-binding-grid">${rows.map((row) => {
+        const network = row.networkIdentity || {};
+        const taskLanes = Object.entries(row.taskLanes || {}).flatMap(([lane, tasks]) => (tasks || []).map((task) => `<span><code>${esc(lane)}</code> <code>${esc(task.taskId || "?")}</code></span>`)).join(" ");
+        const taskDependencies = (row.dialogFinishTaskDependencies || []).map((dependency) => {
+          const files = (dependency.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.kind || "file")}</code> <code>${esc(file.sourceFile || "")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`).join("");
+          return `<details open class="mp-subgame-finish-task"><summary><b>${esc(t("dialogFinishLevelScriptTaskDependencies"))}</b> <code>${esc(dependency.dialogId || "?")} / ${esc(t("finish"))} ${esc(dependency.finishId ?? "?")}</code></summary><p><code>${esc(dependency.taskId || "?")}</code> / <code>${esc(dependency.taskConditionId || "?")}</code> / <code>${esc(dependency.taskMapDecodeStatus || "?")}</code></p><small>${esc(dependency.evidenceBoundary || t("dialogFinishLevelScriptTaskDependencyHint"))}</small>${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(dependency.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}</details>`;
+        }).join("");
+        return `<article>
         <header><code>${esc(row.subGameId)}</code><b>${esc(row.confidence || "typed_original_data")}</b></header>
         <p><span>${esc(t("subGameScript"))}</span><code>${esc(row.bindScriptId)}</code></p>
         <p><span>${esc(t("subGameMode"))}</span><code>${esc(row.modeId || row.runtimeType || "—")}</code></p>
@@ -3783,6 +3908,8 @@
           <p class="is-send"><span>C → S · ${esc(t("subGameStopSend"))}</span><code>${esc(network.stopRequest || "CS_GAME_MECHANICS_REQ_STOP")}</code></p>
           <p class="is-return"><span>S → C · ${esc(t("subGameStopReturn"))}</span><code>${esc(network.leavePush || "SC_GAME_MECHANICS_SYNC_LEAVE_GAME_INST")}</code></p>
         </div>
+        ${taskLanes ? `<p class="mp-subgame-task-lanes"><span>${esc(t("offlineRecoverySubGameTaskLanes"))}</span>${taskLanes}</p>` : ""}
+        ${taskDependencies}
         <small>${esc(row.runtimeType || "")}</small>
         <small><b>${esc(t("subGameLifecycle"))}:</b> ${esc(t("subGameLifecycleHint"))}</small>
       </article>`; }).join("")}</div>
@@ -4119,6 +4246,44 @@
     </details>${nonMissionContentHtml(nonMissionRows)}`;
   }
 
+  function dialogFinishTaskDefinitionHtml(row) {
+    const definition = row?.taskDefinition;
+    if (!definition) return "";
+    const conditionTypes = Object.entries(definition.conditionTypeCounts || {})
+      .map(([name, count]) => `<code>${esc(name)}=${Number(count).toLocaleString()}</code>`)
+      .join(" ");
+    const tracking = definition.canBeTracked ? t("dialogFinishTaskTracked") : t("dialogFinishTaskUntracked");
+    const checking = definition.needManualCheck ? t("dialogFinishTaskManual") : t("dialogFinishTaskAutomatic");
+    const levelDataCarriers = row.levelDataTaskProgressCarriers || [];
+    const carriers = [
+      ...(row.externalTaskIdentityCarriers || []),
+      ...levelDataCarriers,
+    ];
+    return `<p class="mp-dialog-finish-task-shape"><strong>${esc(t("dialogFinishTaskDefinition"))}:</strong> ${esc(t("dialogFinishTaskType"))} <code>${esc(definition.taskTypeName || (definition.taskType ?? "?"))}</code> · ${esc(t("dialogFinishTaskFlags"))} <code>${esc(tracking)}</code> <code>${esc(checking)}</code> · ${Number(definition.conditionCount || 0).toLocaleString()} ${esc(t("dialogFinishTaskConditions"))} ${conditionTypes}</p><small><strong>${esc(t("dialogFinishTaskCarrier"))}:</strong> ${Number(carriers.length).toLocaleString()}</small>`;
+  }
+
+  function dialogFinishUnmatchedTaskDependenciesHtml() {
+    const rows = state.index?.dialogFinishBranchRecovery
+      ?.missionRuntimeUnmatchedLevelScriptTaskFinishDependencies || [];
+    if (!rows.length) return "";
+    return `<details class="mp-mission-story mp-dialog-finish-unmatched" data-weight="context" open>
+      <summary>${esc(t("dialogFinishUnmatchedTaskDependencies"))} <span>${rows.length.toLocaleString()}</span></summary>
+      <small>${esc(t("dialogFinishUnmatchedTaskDependenciesHint"))}</small>
+      <div class="mp-dialog-finish-unmatched-list">${rows.map((row) => {
+        const taskId = row.taskId || t("dialogFinishTaskIdentityUnresolved");
+        const contexts = row.missionContextSummary || {};
+        const files = (row.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.kind || "file")}</code> <code>${esc(file.sourceFile || "")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`).join("");
+        return `<article class="mp-dialog-finish-unmatched-row">
+          <header><a href="${esc(storyHref(row.dialogId || ""))}"><code>${esc(row.dialogId || "?")}</code></a><b>${esc(t("finish"))} ${esc(row.finishId ?? "?")}</b><i>&rarr;</i><code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}</code></header>
+          <p><strong>${esc(t("dialogFinishTaskConsumer"))}:</strong> <code>${esc(taskId)}</code> / <code>${esc(row.taskConditionId || "?")}</code> / <code>${esc(row.taskMapDecodeStatus || "?")}</code></p>
+          ${dialogFinishTaskDefinitionHtml(row)}
+          <small>${esc(t("dialogFinishTaskOwnershipGap"))} · exact ${Number(contexts.exactFinishPlacements || 0).toLocaleString()} / any ${Number(contexts.anyFinishPlacements || 0).toLocaleString()} / script ${Number(contexts.exactScriptPlacements || 0).toLocaleString()}</small>
+          ${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}
+        </article>`;
+      }).join("")}</div>
+    </details>`;
+  }
+
   function questTopologyHtml() {
     const topology = state.mission?.questTopology;
     const forks = topology?.forks || [];
@@ -4203,6 +4368,32 @@
         ${(fork.relatedOriginalFiles || []).map((related) => `<small><strong>${esc(t("relatedOriginalFile"))}:</strong> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("")}
         <small>${esc(fork.evidenceBoundary || topology.evidenceBoundary || "")}</small>
       </details>`).join("")}</div>
+    </details>`;
+  }
+
+  function dialogFinishAuthoredTaskShellDependenciesHtml() {
+    const rows = state.mission?.dialogFinishAuthoredTaskShellDependencies || [];
+    if (!rows.length) return "";
+    const body = rows.map((row) => {
+      const owner = row.missionShellOwner || {};
+      const carrier = owner.ownerKind === "leveldata_task_progress_mission_shell"
+        ? "LevelData member-22 + lt:p/lt:mp"
+        : owner.ownerKind === "npc_proxy_segment_script_mission_shell"
+          ? "MissionRuntime NpcProxy + NpcProxyEx + registry segment"
+          : "SubGame exact script/task carrier";
+      const files = (row.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.kind || "file")}</code> <code>${esc(file.sourceFile || "")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`).join("");
+      return `<article class="mp-dialog-finish-unmatched-row">
+        <header><a href="${esc(storyHref(row.dialogId || ""))}"><code>${esc(row.dialogId || "?")}</code></a><b>${esc(t("finish"))} ${esc(row.finishId ?? "?")}</b><i>&rarr;</i><code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}/${esc(row.taskId || "?")}</code></header>
+        <p><strong>${esc(t("dialogFinishTaskMissionShell"))}:</strong> <code>${esc(owner.missionId || "?")}</code> / <code>${esc(carrier)}</code></p>
+        ${dialogFinishTaskDefinitionHtml(row)}
+        <small>${esc(row.evidenceBoundary || t("dialogFinishAuthoredTaskShellHint"))}</small>
+        ${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}
+      </article>`;
+    }).join("");
+    return `<details class="mp-mission-story mp-dialog-finish-unmatched" data-weight="context" open>
+      <summary>${esc(t("dialogFinishAuthoredTaskShellDependencies"))} <span>${rows.length.toLocaleString()}</span></summary>
+      <small>${esc(t("dialogFinishAuthoredTaskShellHint"))}</small>
+      <div class="mp-dialog-finish-unmatched-list">${body}</div>
     </details>`;
   }
 
@@ -4691,6 +4882,7 @@
       const sources = [
         ...(row.sourceFiles || []),
         ...(row.definitionSourceFiles || []),
+        ...(row.consumerSourceFiles || []),
         ...(row.originalBinaryFiles || []),
         ...(row.originalGameFiles || []),
         ...(row.definitionAssets || []),
@@ -4700,6 +4892,8 @@
         row.runtimeRegistry,
         row.npcProxyConsumers?.length ? "NpcProxyExDataTable" : "",
         row.missionNpcProxyTracking?.sourceFile,
+        ...(row.missionNpcProxyTrackingContexts || [])
+          .flatMap((context) => context.sourceFiles || []),
         row.missionQuestBranchContext?.sourceFile,
         row.missionQuestSequenceContext?.sourceFile,
         row.missionQuestTopologyContext?.sourceFile,
@@ -4749,11 +4943,28 @@
       const terminalOptions = terminalOptionGroups.length
         ? `<div class="mp-order-dialog-branches"><strong>${esc(t("offlineRecoveryTerminalOptions"))}</strong>${terminalOptionGroups.map((group) => `<details open><summary><code>#${esc(group.optionGroup ?? "?")}</code></summary>${(group.routes || []).map((route) => `<div><code>${esc(route.optionId || "?")}</code><i>&rarr;</i><span>${route.finishIdSerialized ? `${esc(t("offlineRecoveryFinishId"))} <code>${esc(route.finishId)}</code>` : esc(t("offlineRecoveryFinishIdAbsent"))}</span></div>`).join("")}</details>`).join("")}</div>`
         : "";
-      const recoveredLineCount = Array.isArray(row.lineIds) ? row.lineIds.length : 0;
-      const missionTracking = row.missionNpcProxyTracking;
-      const missionTrackingContext = missionTracking
-        ? `<p><strong>${esc(t("offlineRecoveryMissionTracking"))}</strong>${missionTracking.crossMission ? `<span>${esc(t("offlineRecoveryRuntimeMission"))}: <code>${esc(missionTracking.missionId || "?")}</code></span>` : ""}<code>${esc(missionTracking.proxyId || "?")}</code><code>${esc(missionTracking.levelId || "?")}</code>${(missionTracking.questIds || []).length ? `<span>${esc(t("offlineRecoveryTrackedQuests"))}: ${(missionTracking.questIds || []).map((questId) => `<code>${esc(questId)}</code>`).join(" ")}</span>` : ""}</p>`
+      const recoveredOptionRouteNodes = Array.isArray(row.optionRouteRecovery?.nodes)
+        ? row.optionRouteRecovery.nodes
+        : [];
+      const recoveredOptionRouteIssues = Array.isArray(row.optionRouteRecovery?.issues)
+        ? row.optionRouteRecovery.issues.length
+        : 0;
+      const recoveredOptionRoutes = recoveredOptionRouteNodes.length
+        ? `<div class="mp-order-dialog-branches"><strong>${esc(t("offlineRecoveryOptionRoutes"))}</strong>${recoveredOptionRouteIssues ? `<small>${recoveredOptionRouteIssues.toLocaleString()} ${esc(t("offlineRecoveryRouteIssues"))}</small>` : ""}${recoveredOptionRouteNodes.map((node) => `<details open><summary><code>node #${esc(node.nodeId ?? "?")}</code> <span>${Number(node.normalOptionCount || 0).toLocaleString()} routes</span></summary>${(node.routes || []).map((route) => `<div><code>${esc(route.optionId || "?")}</code><i>&rarr;</i><code>${esc(route.targetNodeType || "node")} #${esc(route.targetNodeId ?? "?")}</code><span>${esc(t("offlineRecoveryConnectionIndex"))} <code>${esc(route.connectionIndex ?? "?")}</code> / ${esc(route.connectionIndexSource || "?")}</span></div>`).join("")}</details>`).join("")}</div>`
         : "";
+      const recoveredLineCount = Array.isArray(row.lineIds) ? row.lineIds.length : 0;
+      const missionTrackings = Array.isArray(
+        row.missionNpcProxyTrackingContexts,
+      ) && row.missionNpcProxyTrackingContexts.length
+        ? row.missionNpcProxyTrackingContexts
+        : (row.missionNpcProxyTracking ? [row.missionNpcProxyTracking] : []);
+      const missionTrackingContext = missionTrackings.map((missionTracking) => {
+        const trackingSources = (missionTracking.sourceFiles || []).map((sourceFile) => {
+          const sourceHash = missionTracking.sourceSha256?.[sourceFile];
+          return `<small><code>${esc(sourceFile)}</code>${sourceHash ? ` / SHA-256 <code>${esc(sourceHash)}</code>` : ""}</small>`;
+        }).join("");
+        return `<div><p><strong>${esc(t("offlineRecoveryMissionTracking"))}</strong><span>${esc(t("offlineRecoveryTrackingAutoCensus"))}</span>${missionTracking.crossMission ? `<span>${esc(t("offlineRecoveryRuntimeMission"))}: <code>${esc(missionTracking.missionId || "?")}</code></span>` : ""}<code>${esc(missionTracking.proxyId || "?")}</code><code>${esc(missionTracking.levelId || "?")}</code>${(missionTracking.questIds || []).length ? `<span>${esc(t("offlineRecoveryTrackedQuests"))}: ${(missionTracking.questIds || []).map((questId) => `<code>${esc(questId)}</code>`).join(" ")}</span>` : ""}</p>${trackingSources}</div>`;
+      }).join("");
       const npcProxyConsumers = Array.isArray(row.npcProxyConsumers)
         ? row.npcProxyConsumers
         : [];
@@ -5103,7 +5314,7 @@
       const cutsceneAliasContext = row.rootPlaybackAlias
         ? `<p><strong>${esc(t("offlineRecoveryCutsceneAlias"))}</strong><span><code>${esc(row.rootPlaybackAlias.rootStoryKey || "?")}</code> &rarr; <code>${esc(row.rootPlaybackAlias.playableAssetStoryKey || "?")}</code> · ${esc(t(row.cutsceneAliasRole === "cutscene_root" ? "offlineRecoveryCutsceneAliasRootRole" : "offlineRecoveryCutsceneAliasPlayableRole"))}</span></p>`
         : "";
-      return `<article><header><a href="${esc(storyHref(row.key))}"><code>${esc(row.key)}</code></a><b>${esc(evidenceLabel)}</b></header>${runtimeContext}${cutsceneAliasContext}${timeline ? `<p><strong>${esc(t("offlineRecoveryInternalTimeline"))}</strong><code>${esc(timeline)}</code>${lineCount ? `<span>${lineCount.toLocaleString()} ${esc(t("offlineRecoveryLines"))}</span>` : ""}</p>` : ""}${facts}${parentDialogTreeContext}${parentLevelContext}${missingLineFragmentContext}${prtsCarrierContext}${dialogSummaryContext}${missionTrackingContext}${npcProxyConsumerContext}${nativeConsumerContext}${snsDefinitionContext}${missionBranchContext}${missionSequenceContext}${missionTopologyContext}${taskConsumerContext}${dialogResultBranchContext}${emptyHostContext}${runtimeTrackingContext}${relatedOriginalDataContext}${options}${printableTokenBoundary}${internalBranches}${terminalOptions}${popup}${nativePathEvidence}${evidenceBoundary}${sources.length ? `<small>${[...new Set(sources)].map((source) => `<code>${esc(source)}</code>`).join(" ")}</small>` : ""}</article>`;
+      return `<article><header><a href="${esc(storyHref(row.key))}"><code>${esc(row.key)}</code></a><b>${esc(evidenceLabel)}</b></header>${runtimeContext}${cutsceneAliasContext}${timeline ? `<p><strong>${esc(t("offlineRecoveryInternalTimeline"))}</strong><code>${esc(timeline)}</code>${lineCount ? `<span>${lineCount.toLocaleString()} ${esc(t("offlineRecoveryLines"))}</span>` : ""}</p>` : ""}${facts}${parentDialogTreeContext}${parentLevelContext}${missingLineFragmentContext}${prtsCarrierContext}${dialogSummaryContext}${missionTrackingContext}${npcProxyConsumerContext}${nativeConsumerContext}${snsDefinitionContext}${missionBranchContext}${missionSequenceContext}${missionTopologyContext}${taskConsumerContext}${dialogResultBranchContext}${emptyHostContext}${runtimeTrackingContext}${relatedOriginalDataContext}${options}${printableTokenBoundary}${internalBranches}${terminalOptions}${recoveredOptionRoutes}${popup}${nativePathEvidence}${evidenceBoundary}${sources.length ? `<small>${[...new Set(sources)].map((source) => `<code>${esc(source)}</code>`).join(" ")}</small>` : ""}</article>`;
     }).join("");
     const containments = (order.containments || []).map((row) => {
       const after = (row.embeddedAfterLineIds || []).map((id) => `<code>${esc(id)}</code>`).join(" ");
@@ -5197,9 +5408,10 @@
   function renderNonMissionOverview() {
     const target = byId("mp-non-mission-overview");
     if (!target) return;
-    target.innerHTML = nonMissionContentHtml(
-      Array.from(nonMissionContentByKey().values()),
-    );
+    target.innerHTML = [
+      nonMissionContentHtml(Array.from(nonMissionContentByKey().values())),
+      dialogFinishUnmatchedTaskDependenciesHtml(),
+    ].join("");
   }
 
   function missionPropertiesHtml() {
@@ -5281,6 +5493,7 @@
     ["runtime", "summarySectionRuntime", () => [nativeRuntimeBindingsHtml(), runtimeTraceHtml()]],
     ["story", "summarySectionStory", () => [
       missionStoryConnectionsHtml(),
+      dialogFinishAuthoredTaskShellDependenciesHtml(),
       missionTimelineActivationHtml(),
       missionTimelineConfigurationHtml(),
       missionStateDependenciesHtml(),
@@ -6276,6 +6489,54 @@
         ${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}
       </details>`;
     }).join("");
+    const dialogFinishLevelScriptTaskDependencies = (objective.dialogFinishLevelScriptTaskDependencies || []).map((row) => {
+      const options = (row.optionIds || []).map((optionId) => `<code>${esc(optionId)}</code>`).join(" ");
+      const owner = row.missionShellOwner || null;
+      const ownerHtml = owner
+        ? owner.ownerKind === "leveldata_task_progress_mission_shell"
+          ? `<small><strong>${esc(t("dialogFinishTaskMissionShell"))}:</strong> <code>${esc(owner.missionId || "?")}</code> / <code>LevelData member-22 + lt:p/lt:mp</code></small>`
+          : owner.ownerKind === "npc_proxy_segment_script_mission_shell"
+            ? `<small><strong>${esc(t("dialogFinishTaskMissionShell"))}:</strong> <code>${esc(owner.missionId || "?")}</code> / <code>NpcProxy segment ${esc((owner.proxyIds || []).join(", ") || "?")}</code></small>`
+            : `<small><strong>${esc(t("dialogFinishTaskMissionShell"))}:</strong> <code>${esc(owner.missionId || "?")}</code> / <code>${esc(owner.subGameId || "?")}</code> / <code>${esc(owner.taskLane || "?")}</code></small>`
+        : `<small><strong>${esc(t("dialogFinishTaskOwnershipGap"))}</strong></small>`;
+      const taskId = row.taskId
+        ? `<code>${esc(row.taskId)}</code>`
+        : `<span>${esc(t("dialogFinishTaskIdentityUnresolved"))}</span>`;
+      const files = (row.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.kind || "file")}</code> <code>${esc(file.sourceFile || "")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`).join("");
+      return `<details open class="mp-quest-task-dependency mp-dialog-finish-branch-dependency mp-dialog-finish-task-dependency">
+        <summary><b>${esc(t("dialogFinishLevelScriptTaskDependencies"))}</b> ${options}<i>&rarr;</i><code>${esc(row.dialogId || "?")} / ${esc(t("finish"))} ${esc(row.finishId ?? "?")}</code><i>&rarr;</i><code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}</code> ${taskId}</summary>
+        <p><strong>${esc(t("dialogFinishTaskConsumer"))}:</strong> <code>${esc(row.taskConditionId || "?")}</code> / <code>CheckTalkOptionFinish</code> / <code>${esc(row.taskMapDecodeStatus || "?")}</code></p>
+        ${dialogFinishTaskDefinitionHtml(row)}
+        ${ownerHtml}
+        <small>${esc(row.evidenceBoundary || t("dialogFinishLevelScriptTaskDependencyHint"))}</small>
+        ${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}
+      </details>`;
+    }).join("");
+    const dialogFinishAnyTaskContexts = (objective.dialogFinishLevelScriptTaskAnyFinishContexts || []).map((row) => {
+      const taskId = row.taskId || t("dialogFinishTaskIdentityUnresolved");
+      const files = (row.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.kind || "file")}</code> <code>${esc(file.sourceFile || "")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`).join("");
+      return `<details open class="mp-quest-task-dependency mp-dialog-finish-task-context is-any-finish-context">
+        <summary><b>${esc(t("dialogFinishAnyTaskContexts"))}</b> <code>${esc(row.dialogId || "?")} / ${esc(t("anyFinish"))}</code><i>&harr;</i><code>${esc(t("finish"))} ${esc(row.finishId ?? "?")}</code><i>&rarr;</i><code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}</code></summary>
+        <p><strong>${esc(t("dialogFinishTaskConsumer"))}:</strong> <code>${esc(taskId)}</code> / <code>${esc(row.taskConditionId || "?")}</code></p>
+        <small><strong>${esc(t("dialogFinishTaskOwnershipGap"))}</strong></small>
+        <small>${esc(row.evidenceBoundary || t("dialogFinishAnyTaskContextHint"))}</small>
+        ${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}
+      </details>`;
+    }).join("");
+    const dialogFinishMissionScriptContexts = (objective.dialogFinishLevelScriptTaskMissionScriptContexts || []).map((row) => {
+      const taskId = row.taskId || t("dialogFinishTaskIdentityUnresolved");
+      const overlay = row.levelScriptOverlay || {};
+      const shadowed = overlay.shadowedSources || [];
+      const files = (row.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.kind || "file")}</code> <code>${esc(file.sourceFile || "")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`).join("");
+      return `<details open class="mp-quest-task-dependency mp-dialog-finish-task-context is-script-context">
+        <summary><b>${esc(t("dialogFinishMissionScriptContexts"))}</b> <code>${esc(row.missionConditionType || "condition")}</code><i>&rarr;</i><code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}</code><i>&rarr;</i><code>${esc(row.dialogId || "?")} / ${esc(t("finish"))} ${esc(row.finishId ?? "?")}</code></summary>
+        <p><strong>${esc(t("dialogFinishTaskConsumer"))}:</strong> <code>${esc(taskId)}</code> / <code>${esc(row.taskConditionId || "?")}</code></p>
+        ${overlay.activeSourceFile ? `<small><strong>${esc(t("levelScriptActiveOverlay"))}:</strong> <code>${esc(overlay.activeSourceFile)}</code> / SHA-256 <code>${esc(overlay.activeSha256 || "")}</code></small>` : ""}
+        ${shadowed.length ? `<small><strong>${esc(t("levelScriptShadowedSources"))}:</strong> ${shadowed.map((source) => `<code>${esc(source.sourceFile || "?")}</code>`).join(" ")}</small>` : ""}
+        <small>${esc(row.evidenceBoundary || t("dialogFinishMissionScriptContextHint"))}</small>
+        ${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}
+      </details>`;
+    }).join("");
     const taskDependencies = (objective.levelScriptTaskDependencies || []).map((row) => {
       const metadata = row.taskMetadata || {};
       const files = (row.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.kind || "file")}</code> <code>${esc(file.sourceFile || "")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`).join("");
@@ -6287,7 +6548,9 @@
       const countText = ["actionList", "getterList", "headerList"].map((name) => `${name}=${counts[name] ?? "?"}`).join(" / ");
       const files = (row.relatedOriginalFiles || []).map((file) => `<small><code>${esc(file.sourceFile || "")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`).join("");
       const statusLabel = row.actionMapStatus === "exact_empty_action_map" ? t("levelScriptExactEmptyMap") : t("levelScriptExecutableMap");
-      return `<details${row.actionMapStatus === "exact_empty_action_map" ? " open" : ""} class="mp-quest-task-dependency"><summary><b>${esc(t("levelScriptSource"))}</b> <code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}</code> <span>${esc(statusLabel)}</span></summary><p><code>${esc(countText)}</code>${row.serializedTailRecordCount ? ` 路 ${esc(t("levelScriptTailRecords"))}: ${Number(row.serializedTailRecordCount).toLocaleString()}` : ""}</p><small>${esc(row.evidenceBoundary || "")}</small>${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}</details>`;
+      const overlay = row.levelScriptOverlay || {};
+      const shadowed = overlay.shadowedSources || [];
+      return `<details${row.actionMapStatus === "exact_empty_action_map" ? " open" : ""} class="mp-quest-task-dependency"><summary><b>${esc(t("levelScriptSource"))}</b> <code>${esc(row.levelId || "?")}/${esc(row.scriptId || "?")}</code> <span>${esc(statusLabel)}</span></summary><p><code>${esc(countText)}</code>${row.serializedTailRecordCount ? ` · ${esc(t("levelScriptTailRecords"))}: ${Number(row.serializedTailRecordCount).toLocaleString()}` : ""}</p>${overlay.activeSourceFile ? `<small><strong>${esc(t("levelScriptActiveOverlay"))}:</strong> <code>${esc(overlay.activeSourceFile)}</code> / SHA-256 <code>${esc(overlay.activeSha256 || "")}</code></small>` : ""}${shadowed.length ? `<small><strong>${esc(t("levelScriptShadowedSources"))}:</strong> ${shadowed.map((source) => `<code>${esc(source.sourceFile || "?")}</code>${source.sha256 ? ` <code>${esc(source.sha256)}</code>` : ""}`).join(" ")}</small>` : ""}<small>${esc(row.evidenceBoundary || "")}</small>${files ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${files}</details>` : ""}</details>`;
     }).join("");
     const nativeLevelScriptControlAttachments = (objective.levelScriptSources || []).map((row) => {
       const evidence = row.nativeControlEvidence || {};
@@ -6309,7 +6572,7 @@
     }).join("");
     return `<article class="mp-objective"><header><strong>${esc(t("objectives"))} ${objective.index}</strong><span class="mp-authority is-${esc(objective.authority)}">${esc(objective.authority)}</span></header>
       <p>${esc(objective.descriptionKey || t("noObjective"))}</p>
-      <div class="mp-objective-special">${finishRows}${stateRows}${placeholderRows}${submissionRows}${submissionCoGates}${submissionLevelScriptCoGates}</div>${dialogFinishBranchDependencies}${dialogFinishEndpointDependencies}${levelScriptSources}${nativeLevelScriptControlAttachments}${taskDependencies}
+      <div class="mp-objective-special">${finishRows}${stateRows}${placeholderRows}${submissionRows}${submissionCoGates}${submissionLevelScriptCoGates}</div>${dialogFinishBranchDependencies}${dialogFinishEndpointDependencies}${dialogFinishLevelScriptTaskDependencies}${dialogFinishAnyTaskContexts}${dialogFinishMissionScriptContexts}${levelScriptSources}${nativeLevelScriptControlAttachments}${taskDependencies}
       ${objectiveTrackingHtml(objective.tracking)}
       ${renderConditionTree(objective.condition)}
     </article>`;

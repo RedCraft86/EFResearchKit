@@ -210,6 +210,14 @@ DEFAULT_LEVEL_SCRIPT_DATA_ROOT = (
     ROOT / "export_full" / "structured" / "StreamingAssets" / "Data" / "Json"
     / "LevelScriptData"
 )
+DEFAULT_PERSISTENT_LEVEL_SCRIPT_DATA_ROOT = (
+    ROOT / "export_full" / "structured" / "Persistent" / "Data" / "Json"
+    / "LevelScriptData"
+)
+DEFAULT_LEVEL_SCRIPT_DATA_ROOTS = (
+    DEFAULT_LEVEL_SCRIPT_DATA_ROOT,
+    DEFAULT_PERSISTENT_LEVEL_SCRIPT_DATA_ROOT,
+)
 DEFAULT_PROTOCOL_REGISTRY_AUDIT = (
     ROOT / "reports" / "story" / "recovery" / "protocol_registry_audit.json"
 )
@@ -1519,9 +1527,11 @@ RUNTIME_CONTRACT = {
         ),
         "bindScriptFinding": (
             "The installed MemoryPack setter stores bindScriptId at row offset +0x50. "
-            "WorldChallengeGame.SendQuit reads that exact field, resolves the LevelScript, "
-            "calls LevelScriptRuntime.ManualEnd, and then sends the stop request. Audited "
-            "concrete and shared OnStart paths do not read bindScriptId."
+            "InteractiveLogicChallengeStartPoint._OnInteract resolves the typed row, "
+            "reads that exact field, resolves the LevelScript, and calls "
+            "LevelScriptRuntime.ManualStart. WorldChallengeGame.SendQuit reads the same "
+            "field before ManualEnd and the stop request. These prove the generic bound-"
+            "script lifecycle, not which interaction occurred."
         ),
         "ownershipBoundary": (
             "No audited GameMechanics lifecycle packet carries missionId, questId, "
@@ -3130,6 +3140,21 @@ RUNTIME_CONTRACT = {
             "confidence": "native_proven",
         },
         {
+            "symbol": (
+                "InteractiveLogicChallengeStartPoint._OnInteract -> "
+                "LevelScriptRuntime.ManualStart"
+            ),
+            "address": "0x18713e548 + 0x34a -> 0x186faac74",
+            "finding": (
+                "Resolves the typed SubGame row from m_subGameId, reads "
+                "bindScriptId at exact row offset +0x50, resolves that LevelScript, "
+                "and calls ManualStart. This proves a generic interaction-start "
+                "carrier for the exact bound script, not that an interaction fired, "
+                "which mission owns Story playback, or Story order."
+            ),
+            "confidence": "native_proven",
+        },
+        {
             "symbol": "MissionSystem.OnSubConditionProgressChanged",
             "address": "0x183a6fc20",
             "finding": "Sends an absolute CS_UPDATE_QUEST_OBJECTIVE operation for the changed condition id.",
@@ -4548,8 +4573,9 @@ def load_subgame_mission_bindings(
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
     """Load exact mission/script identities co-authored in typed SubGame rows.
 
-    The relation is deliberately mission-shell context. It never attaches a
-    quest or Story file, even when the bound script has native playback.
+    The relation is deliberately mission-shell context. Authored task lanes are
+    retained so later generic recovery can require an exact script/task carrier.
+    It never attaches a quest or Story file merely because the script is bound.
     """
     if table_path is None or not table_path.is_file():
         return {}, {
@@ -4589,6 +4615,28 @@ def load_subgame_mission_bindings(
         runtime_type = str(raw.get("$type") or "")
         if "," in runtime_type:
             runtime_type = runtime_type.split(",", 1)[0]
+        task_lanes: dict[str, list[dict[str, Any]]] = {}
+        for source_field, lane in (
+            ("mainTasks", "main"),
+            ("extraTasks", "extra"),
+            ("failTasks", "fail"),
+        ):
+            values = raw.get(source_field)
+            if not isinstance(values, list):
+                raise ValueError(
+                    "SubGame task lane is not an array: "
+                    f"source={table_path} subGameId={subgame_id} "
+                    f"lane={source_field} actual={type(values).__name__}"
+                )
+            task_lanes[lane] = [
+                {
+                    key: value
+                    for key, value in task.items()
+                    if key in {"taskId", "levelScriptId", "failInfo"}
+                }
+                for task in values
+                if isinstance(task, dict) and str(task.get("taskId") or "")
+            ]
         bindings[mission_id].append({
             "subGameId": str(subgame_id),
             "bindScriptId": str(script_id),
@@ -4602,6 +4650,7 @@ def load_subgame_mission_bindings(
             "confidence": "typed_original_data",
             "source": repo_path(table_path),
             "storyBinding": False,
+            "taskLanes": task_lanes,
             "networkIdentity": {
                 "authoredKeyField": "gameId",
                 "authoredKeyValue": str(subgame_id),
@@ -4633,15 +4682,27 @@ def load_subgame_mission_bindings(
         },
         "bindScriptNativeEvidence": {
             "serializedFieldOffset": "0x50",
-            "knownConsumer": "WorldChallengeGame.SendQuit",
-            "knownConsumerAddress": "0x186f60cc8",
-            "knownEffect": "LevelScriptManager.TryGetLevelScript -> LevelScriptRuntime.ManualEnd -> send stop request",
-            "auditedOnStartConsumerFound": False,
+            "startConsumer": "InteractiveLogicChallengeStartPoint._OnInteract",
+            "startConsumerToken": "0x0600231a",
+            "startConsumerAddress": "0x18713e548",
+            "startEffect": (
+                "SubGame table lookup -> bindScriptId read -> "
+                "LevelScriptManager.TryGetLevelScript -> LevelScriptRuntime.ManualStart"
+            ),
+            "stopConsumer": "WorldChallengeGame.SendQuit",
+            "stopConsumerAddress": "0x186f60cc8",
+            "stopEffect": (
+                "LevelScriptManager.TryGetLevelScript -> "
+                "LevelScriptRuntime.ManualEnd -> send stop request"
+            ),
+            "auditedOnStartConsumerFound": True,
         },
         "evidenceBoundary": (
-            "Exact typed mission↔SubGame↔LevelScript shell only; no quest or Story "
-            "attachment is inferred from co-membership. OCR, manual, and gameplay "
-            "cross-references cannot promote this relation."
+            "Exact typed mission-to-SubGame-to-LevelScript shell and authored task "
+            "lanes only; the binary proves the generic interaction ManualStart "
+            "carrier but not that it fired. No quest or Story attachment is inferred "
+            "from co-membership. OCR, manual, and gameplay cross-references cannot "
+            "promote this relation."
         ),
     }
 
@@ -7423,6 +7484,117 @@ def load_levelscript_task_authority_contract(
     }
 
 
+def load_levelscript_task_lifecycle_contract(
+    audit_path: Path = DEFAULT_PROTOCOL_REGISTRY_AUDIT,
+) -> dict[str, Any]:
+    """Revalidate the current-binary generic task-condition lifecycle."""
+    validator = "levelscript_task_lifecycle_contract"
+    if not audit_path.is_file():
+        raise RuntimeError(
+            f"validator={validator} gate=auditExists expected=file "
+            f"actual=missing source={audit_path}"
+        )
+    audit = read_json(audit_path)
+    if audit.get("_schema") != "endfieldProtocolRegistryAudit.v20":
+        raise RuntimeError(
+            f"validator={validator} gate=auditSchema "
+            "expected='endfieldProtocolRegistryAudit.v20' "
+            f"actual={audit.get('_schema')!r} source={audit_path}"
+        )
+    contract = audit.get("levelScriptTaskLifecycle") or {}
+    expected = {
+        "schema": "levelScriptTaskLifecycle.v1",
+        "classification": "generic_server_selected_task_condition_lifecycle",
+        "status": "validated",
+        "states": {"None": 0, "Processing": 1, "Completed": 2},
+        "taskTypes": {
+            "None": 0,
+            "Main": 1,
+            "Extra": 2,
+            "Fail": 3,
+            "Custom": 4,
+        },
+        "stateArgumentForwarding": True,
+        "conditionProgressSender": (
+            "Beyond.Gameplay.GameplayNetwork.SendLevelScriptUpdateTaskProgress"
+        ),
+        "conditionIdentityFieldReads": [
+            "levelScriptPtr",
+            "levelNum",
+            "taskKey",
+            "conditionId",
+        ],
+    }
+    actual = {
+        "schema": contract.get("schema"),
+        "classification": contract.get("classification"),
+        "status": (contract.get("validation") or {}).get("status"),
+        "states": contract.get("scriptTaskStateEnum"),
+        "taskTypes": contract.get("levelScriptTaskTypeEnum"),
+        "stateArgumentForwarding": contract.get("stateArgumentForwarding"),
+        "conditionProgressSender": contract.get("conditionProgressSender"),
+        "conditionIdentityFieldReads": contract.get(
+            "conditionIdentityFieldReads"
+        ),
+    }
+    if actual != expected:
+        raise RuntimeError(
+            f"validator={validator} gate=contractShape "
+            f"expected={expected!r} actual={actual!r} source={audit_path}"
+        )
+    processing_calls = contract.get("processingConditionCallCount")
+    if not isinstance(processing_calls, int) or processing_calls < 1:
+        raise RuntimeError(
+            f"validator={validator} gate=processingConditionCallCount "
+            f"expected=>=1 actual={processing_calls!r} source={audit_path}"
+        )
+    expected_operations = [
+        "Beyond.Gameplay.GameCondition+ResultChange..ctor",
+        "System.Delegate.Combine",
+        "Beyond.Gameplay.GameCondition.Activate",
+        "Beyond.Gameplay.GameCondition.BindingEvent",
+    ]
+    if contract.get("conditionProcessingOperations") != expected_operations:
+        raise RuntimeError(
+            f"validator={validator} gate=conditionProcessingOperations "
+            f"expected={expected_operations!r} "
+            f"actual={contract.get('conditionProcessingOperations')!r} "
+            f"source={audit_path}"
+        )
+    source = audit.get("source") or {}
+    related_files: list[dict[str, Any]] = []
+    for path_key, hash_key, kind in (
+        ("gameAssembly", "gameAssemblySha256", "original_game_binary"),
+        ("metadata", "metadataSha256", "original_game_metadata"),
+    ):
+        source_text = str(source.get(path_key) or "")
+        expected_hash = str(source.get(hash_key) or "").lower()
+        source_path = Path(source_text)
+        if not source_text or not source_path.is_file():
+            raise RuntimeError(
+                f"validator={validator} gate=sourceExists expected=file "
+                f"actual=missing source={source_text or path_key}"
+            )
+        actual_hash = sha256_path(source_path)
+        if actual_hash != expected_hash:
+            raise RuntimeError(
+                f"validator={validator} gate=sourceHash "
+                f"expected={expected_hash!r} actual={actual_hash!r} "
+                f"source={source_path}"
+            )
+        related_files.append({
+            "kind": kind,
+            "sourceFile": str(source_path.resolve()),
+            "sha256": actual_hash,
+            "relationship": "generic_levelscript_task_lifecycle",
+        })
+    return {
+        **contract,
+        "source": repo_path(audit_path),
+        "relatedOriginalFiles": related_files,
+    }
+
+
 def load_levelscript_start_policy_contract(
     audit_path: Path = DEFAULT_PROTOCOL_REGISTRY_AUDIT,
 ) -> dict[str, Any]:
@@ -10047,6 +10219,76 @@ def level_script_task_dependencies(condition: Any) -> list[dict[str, Any]]:
 _LEVEL_SCRIPT_NATIVE_CONTROL_EVIDENCE_CACHE: dict[str, dict[str, Any]] = {}
 
 
+def resolve_active_level_script_source(
+    level_id: str,
+    script_id: str,
+    *,
+    level_script_root: Path = DEFAULT_LEVEL_SCRIPT_DATA_ROOT,
+    level_script_roots: Iterable[Path] | None = None,
+) -> tuple[Path | None, dict[str, Any]]:
+    """Resolve one logical LevelScript through an ordered source overlay.
+
+    Roots are fallback-to-override.  Default production lookup therefore uses
+    StreamingAssets followed by Persistent, while callers that pass a custom
+    singular root keep the historical one-root behavior unless they explicitly
+    provide ``level_script_roots``.
+    """
+    if level_script_roots is None:
+        roots = (
+            DEFAULT_LEVEL_SCRIPT_DATA_ROOTS
+            if level_script_root == DEFAULT_LEVEL_SCRIPT_DATA_ROOT
+            else (level_script_root,)
+        )
+    else:
+        roots = tuple(Path(root) for root in level_script_roots)
+    if not roots:
+        return None, {
+            "rule": "later root wins",
+            "searchedSources": [],
+            "activeSourceFile": None,
+            "shadowedSources": [],
+        }
+
+    candidates: list[dict[str, Any]] = []
+    searched: list[str] = []
+    for priority, root in enumerate(roots):
+        path = root / level_id / f"{script_id}.json"
+        searched.append(repo_path(path))
+        if path.is_file():
+            candidates.append({
+                "priority": priority,
+                "sourceFile": repo_path(path),
+                "sha256": sha256_path(path),
+                "path": path,
+            })
+    active = candidates[-1] if candidates else None
+    shadowed = [
+        {
+            "priority": row["priority"],
+            "sourceFile": row["sourceFile"],
+            "sha256": row["sha256"],
+            "sameBytesAsActive": bool(
+                active and row["sha256"] == active["sha256"]
+            ),
+        }
+        for row in candidates[:-1]
+    ]
+    return (
+        active["path"] if active else None,
+        {
+            "rule": "later root wins; Persistent overrides StreamingAssets",
+            "searchedSources": searched,
+            "activeSourceFile": active["sourceFile"] if active else None,
+            "activeSha256": active["sha256"] if active else None,
+            "activePriority": active["priority"] if active else None,
+            "shadowedSources": shadowed,
+            "changedOverride": any(
+                not row["sameBytesAsActive"] for row in shadowed
+            ),
+        },
+    )
+
+
 def level_script_native_control_evidence(
     data: bytes,
     source_path: Path,
@@ -10187,6 +10429,7 @@ def level_script_source_evidence(
     condition: Any,
     *,
     level_script_root: Path = DEFAULT_LEVEL_SCRIPT_DATA_ROOT,
+    level_script_roots: Iterable[Path] | None = None,
 ) -> list[dict[str, Any]]:
     """Attach exact authored LevelScript files and executable-map boundaries.
 
@@ -10208,12 +10451,18 @@ def level_script_source_evidence(
         if identity in seen:
             continue
         seen.add(identity)
-        source_path = level_script_root / identity[0] / f"{identity[1]}.json"
-        if not source_path.is_file():
+        source_path, overlay = resolve_active_level_script_source(
+            identity[0],
+            identity[1],
+            level_script_root=level_script_root,
+            level_script_roots=level_script_roots,
+        )
+        if source_path is None:
             raise RuntimeError(
                 "validator=level_script_source_evidence gate=levelScriptExists "
                 f"condition={row.get('uniqueId') or '-'} identity={identity[0]}/{identity[1]} "
-                f"expected=file actual=missing source={source_path}"
+                "expected=active_overlay_file actual=missing "
+                f"sources={overlay['searchedSources']!r}"
             )
         data = read_bytes_cached(source_path)
         records = extract_levelscript_uid_records(data)
@@ -10238,11 +10487,12 @@ def level_script_source_evidence(
                 for item in action_map.get("serializedLists") or []
                 if item.get("name") == "outsideSerializedActionMap"
             ),
+            "levelScriptOverlay": overlay,
             "nativeControlEvidence": native_control_evidence,
             "relatedOriginalFiles": [{
                 "kind": "level_script",
                 "sourceFile": repo_path(source_path),
-                "relationship": "authored_condition_operand",
+                "relationship": "authored_condition_operand_active_overlay",
                 "sha256": sha256_path(source_path),
             }],
             "evidenceBoundary": (
@@ -10264,6 +10514,7 @@ def validate_level_script_task_dependency(
     mission_source: Path,
     task_table_path: Path = DEFAULT_SCRIPT_TASK_EXTRA_INFO_TABLE,
     level_script_root: Path = DEFAULT_LEVEL_SCRIPT_DATA_ROOT,
+    level_script_roots: Iterable[Path] | None = None,
 ) -> dict[str, Any]:
     """Fail closed while joining an authored tuple to original serialized files."""
     validator = "level_script_task_dependency"
@@ -10290,12 +10541,17 @@ def validate_level_script_task_dependency(
             f"actual=missing source={task_table_path} "
             f"sourceHashes={{'taskTable':'{sha256_path(task_table_path)}'}}"
         )
-    level_script_path = level_script_root / level_id / f"{script_id}.json"
-    if not level_script_path.is_file():
+    level_script_path, overlay = resolve_active_level_script_source(
+        level_id,
+        script_id,
+        level_script_root=level_script_root,
+        level_script_roots=level_script_roots,
+    )
+    if level_script_path is None:
         raise RuntimeError(
             f"validator={validator} gate=levelScriptExists mission={mission_id} "
             f"quest={quest_id} identity={identity} expected=file actual=missing "
-            f"source={level_script_path} "
+            f"sources={overlay['searchedSources']!r} "
             f"sourceHashes={{'taskTable':'{sha256_path(task_table_path)}'}}"
         )
 
@@ -10327,6 +10583,7 @@ def validate_level_script_task_dependency(
             "objectiveCount": task_row.get("objectiveCount"),
         },
         "relatedOriginalFiles": related,
+        "levelScriptOverlay": overlay,
         "validation": {"status": "validated", "validator": validator},
     })
     return result
@@ -11404,6 +11661,7 @@ def build_all(
         load_action_extra_thread_scheduler_contract()
     )
     task_authority_contract = load_levelscript_task_authority_contract()
+    task_lifecycle_contract = load_levelscript_task_lifecycle_contract()
     start_policy_contract = load_levelscript_start_policy_contract()
     manual_self_control_contract = (
         load_levelscript_manual_self_control_contract()
@@ -11419,6 +11677,7 @@ def build_all(
         "stateUpdateApplicationAudit": state_update_contract,
         "actionExtraThreadSchedulerAudit": extra_thread_scheduler_contract,
         "levelScriptTaskAuthorityAudit": task_authority_contract,
+        "levelScriptTaskLifecycleAudit": task_lifecycle_contract,
         "levelScriptStartPolicyAudit": start_policy_contract,
         "levelScriptManualSelfControlAudit": manual_self_control_contract,
         "levelScriptActivationControlAudit": activation_control_contract,

@@ -27,7 +27,9 @@ try:
         build_audio_semantic_data,
         collect_metadata_audio_literals,
         collect_table_audio_event_hashes,
+        collect_table_audio_event_names,
         hashed_event_key,
+        is_rtpc_parameter_name,
     )
 except ImportError:  # Imported as scripts.build_audio from repository-root tests.
     from scripts.build_audio_semantics import (
@@ -36,7 +38,9 @@ except ImportError:  # Imported as scripts.build_audio from repository-root test
         build_audio_semantic_data,
         collect_metadata_audio_literals,
         collect_table_audio_event_hashes,
+        collect_table_audio_event_names,
         hashed_event_key,
+        is_rtpc_parameter_name,
     )
 
 
@@ -149,7 +153,7 @@ EVENT_BANK_VFS_BLOCK_TYPES = (
     "audio-korean",
 )
 EVENT_BANK_FILE_REGEX = r"(^|[\\/])[^\\/]*banks\.pck$"
-EVENT_EVIDENCE_SCHEMA_VERSION = 6
+EVENT_EVIDENCE_SCHEMA_VERSION = 9
 
 # Wwise 2024.1 / bank version 150 HIRC action operations.  The serialized
 # value is a little-endian U16 whose high byte is the operation and low byte is
@@ -161,8 +165,37 @@ HIRC_ACTION_OPERATION_LABELS = {
     0x2100: "playEvent",
 }
 HIRC_PLAYBACK_ACTION_OPERATIONS = frozenset({0x0400, 0x2100})
-HIRC_TYPED_CHILD_CONTAINER_TYPES = frozenset({5, 6, 7, 9})
-HIRC_AUDIO_NODE_TYPES = frozenset({2, 5, 6, 7, 9})
+HIRC_ACTION_PROPERTY_LABELS = {
+    0x39: "delayTime",
+    0x3A: "transitionTime",
+    0x3B: "probability",
+}
+HIRC_FADE_CURVE_LABELS = {
+    0: "Log3",
+    1: "Sine",
+    2: "Log1",
+    3: "InvSCurve",
+    4: "Linear",
+    5: "SCurve",
+    6: "Exp1",
+    7: "SineRecip",
+    8: "Exp3",
+    9: "Constant",
+}
+HIRC_BANK_TYPE_LABELS = {
+    0: "User",
+    30: "Event",
+    31: "Bus",
+}
+HIRC_MUSIC_NODE_TYPES = frozenset({10, 11, 12, 13})
+HIRC_MUSIC_PARENT_NODE_TYPES = frozenset({10, 12, 13})
+HIRC_MUSIC_CHILD_TYPES = {
+    10: frozenset({11}),
+    12: frozenset({10, 12, 13}),
+    13: frozenset({10, 12, 13}),
+}
+HIRC_TYPED_CHILD_CONTAINER_TYPES = frozenset({5, 6, 7, 9, *HIRC_MUSIC_PARENT_NODE_TYPES})
+HIRC_AUDIO_NODE_TYPES = frozenset({2, 5, 6, 7, 9, *HIRC_MUSIC_NODE_TYPES})
 
 LANGUAGE_AUDIO_BLOCKS = ("voice",)
 SHARED_AUDIO_STORAGE = "shared"
@@ -641,39 +674,54 @@ def collect_gameplay_animation_audio(
         / "recovered/AnimeStudio-cli/StreamingAssets/convert_by_type/AnimationClip"
     )
     owners: dict[tuple[str, str], dict[str, Any]] = {}
+    unowned_events: dict[str, list[dict[str, Any]]] = defaultdict(list)
     scanned_clips = 0
     matched_clips = 0
-    callback_rows = 0
+    unowned_clips = 0
+    owned_callback_rows = 0
+    unowned_callback_rows = 0
     if root.exists():
-        for pattern in ("A_actor_*.anim", "A_monster_*.anim"):
-            for path in sorted(root.glob(pattern)):
-                scanned_clips += 1
-                filename_clip_name = ANIMATION_CLIP_HASH_SUFFIX_RE.sub("", path.stem)
-                filename_match = ANIMATION_ACTOR_RE.match(filename_clip_name)
-                if not filename_match:
-                    continue
-                matched_owners = token_owners.get(
+        candidate_paths = sorted([
+            *root.glob("A_actor_*.anim"),
+            *root.glob("A_monster_*.anim"),
+        ])
+        for path in candidate_paths:
+            scanned_clips += 1
+            filename_clip_name = ANIMATION_CLIP_HASH_SUFFIX_RE.sub("", path.stem)
+            filename_match = ANIMATION_ACTOR_RE.match(filename_clip_name)
+            matched_owners = (
+                token_owners.get(
                     (filename_match.group(1).lower(), filename_match.group(2).lower())
                 ) or []
-                if not matched_owners:
-                    continue
-                try:
-                    data = path.read_bytes()
-                except OSError:
-                    continue
-                if b"functionName: PostAudio" not in data and b"functionName: OnCustomFootStep" not in data:
-                    continue
-                clip_name, clip_events = animation_clip_audio_events(data)
-                if not clip_events:
-                    continue
+                if filename_match
+                else []
+            )
+            try:
+                data = path.read_bytes()
+            except OSError:
+                continue
+            if b"functionName: PostAudio" not in data and b"functionName: OnCustomFootStep" not in data:
+                continue
+            clip_name, clip_events = animation_clip_audio_events(data)
+            if not clip_events:
+                continue
+            clip_kind = animation_clip_action_kind(clip_name)
+            clip_context = animation_clip_context(clip_name)
+            try:
+                clip_source = normalize_posix(path.relative_to(export_root))
+            except ValueError:
+                clip_source = normalize_posix(path)
+            base_evidence = {
+                "kind": "animationClipEvent",
+                "clip": clip_name,
+                "clipSource": clip_source,
+                "actionKind": clip_kind,
+                "clipContext": clip_context,
+                "clipReachability": "unresolved",
+            }
+            if matched_owners:
                 matched_clips += 1
-                callback_rows += len(clip_events)
-                clip_kind = animation_clip_action_kind(clip_name)
-                clip_context = animation_clip_context(clip_name)
-                try:
-                    clip_source = normalize_posix(path.relative_to(export_root))
-                except ValueError:
-                    clip_source = normalize_posix(path)
+                owned_callback_rows += len(clip_events)
                 for owner in matched_owners:
                     owner_key = (owner["ownerKind"], owner["ownerId"])
                     record = owners.setdefault(owner_key, {
@@ -686,25 +734,40 @@ def collect_gameplay_animation_audio(
                         if not event_key:
                             continue
                         record["events"][event_key].append({
-                            "kind": "animationClipEvent",
+                            **base_evidence,
                             "authoredEventId": authored_event_id,
-                            "clip": clip_name,
-                            "clipSource": clip_source,
-                            "actionKind": clip_kind,
-                            "clipContext": clip_context,
-                            "clipReachability": "unresolved",
                             "eventIndex": event.get("index"),
                             "time": event.get("time"),
                             "function": event.get("function"),
                             "floatParameter": event.get("floatParameter"),
                             "intParameter": event.get("intParameter"),
                         })
+            else:
+                unowned_clips += 1
+                unowned_callback_rows += len(clip_events)
+                for event in clip_events:
+                    authored_event_id = str(event.get("eventId") or "").strip()
+                    event_key = authored_event_id.lower()
+                    if not event_key:
+                        continue
+                    unowned_events[event_key].append({
+                        **base_evidence,
+                        "authoredEventId": authored_event_id,
+                        "ownerStatus": "unresolved",
+                        "actorKindToken": filename_match.group(1).lower() if filename_match else "",
+                        "actorIdentityToken": filename_match.group(2).lower() if filename_match else "",
+                        "eventIndex": event.get("index"),
+                        "time": event.get("time"),
+                        "function": event.get("function"),
+                        "floatParameter": event.get("floatParameter"),
+                        "intParameter": event.get("intParameter"),
+                    })
 
     event_names = {
         event_key
         for owner in owners.values()
         for event_key in owner["events"]
-    }
+    }.union(unowned_events)
     normalized_owners: list[dict[str, Any]] = []
     for owner in owners.values():
         normalized_owners.append({
@@ -720,12 +783,27 @@ def collect_gameplay_animation_audio(
     return {
         "eventNames": event_names,
         "owners": sorted(normalized_owners, key=lambda row: (row["ownerKind"], row["ownerId"])),
+        "unownedEvents": {
+            event_key: sorted(
+                evidence,
+                key=lambda row: (
+                    str(row.get("clip") or ""),
+                    float(row.get("time") or 0),
+                    str(row.get("function") or ""),
+                ),
+            )
+            for event_key, evidence in sorted(unowned_events.items())
+        },
         "counts": {
             "animationAudioClipsScanned": scanned_clips,
             "animationAudioClipsOwned": matched_clips,
-            "animationAudioCallbackRows": callback_rows,
+            "animationAudioClipsOwnerUnresolved": unowned_clips,
+            "animationAudioCallbackRows": owned_callback_rows + unowned_callback_rows,
+            "animationAudioOwnedCallbackRows": owned_callback_rows,
+            "animationAudioOwnerUnresolvedCallbackRows": unowned_callback_rows,
             "animationAudioEventNames": len(event_names),
             "animationAudioOwnerEventRefs": sum(len(owner["events"]) for owner in owners.values()),
+            "animationAudioOwnerUnresolvedEventRefs": len(unowned_events),
         },
     }
 
@@ -751,6 +829,266 @@ def gameplay_buff_audio(
             if linked_id not in visited:
                 queue.append(linked_id)
     return events
+
+
+def play_sound_action_marker(row: dict[str, Any]) -> tuple[Any, ...]:
+    """Stable identity for one decoded BuffData PlaySound timeline action."""
+
+    return tuple(
+        row.get(key)
+        for key in (
+            "buffId", "eventId", "timelineActionIndex", "actionDataIndex",
+            "startFrame", "endFrame", "serverActionIndex",
+        )
+    )
+
+
+def seed_buff_play_sound_events(
+    buff_records: dict[str, dict[str, Any]],
+    by_buff_event: dict[str, dict[str, list[dict[str, Any]]]],
+) -> int:
+    """Add exact typed PlaySound Events to their owning BuffData records.
+
+    PlaySoundActionData uses a typed MemoryPack string slot that is not always
+    visible to the generic length-prefixed string inventory.  Seeding only the
+    exact decoder rows lets the existing BuffData dependency traversal carry
+    those requests to gameplay owners without inventing an owner for an
+    otherwise unreachable BuffData record.
+    """
+
+    seeded = 0
+    for buff_id, events in sorted((by_buff_event or {}).items()):
+        record = buff_records.get(str(buff_id))
+        if not isinstance(record, dict):
+            continue
+        record_events = record.setdefault("events", set())
+        for event_key, actions in sorted((events or {}).items()):
+            authored_ids = {
+                str(action.get("eventId") or "").strip()
+                for action in actions or []
+                if isinstance(action, dict) and str(action.get("eventId") or "").strip()
+            }
+            if not authored_ids and str(event_key or "").strip():
+                authored_ids.add(str(event_key).strip())
+            for event_id in sorted(authored_ids):
+                if event_id in record_events:
+                    continue
+                record_events.add(event_id)
+                seeded += 1
+    return seeded
+
+
+def annotate_play_sound_action_owner_links(
+    actions: list[dict[str, Any]],
+    owners: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Keep every decoded action while explicitly marking unresolved owners."""
+
+    linked_markers: set[tuple[Any, ...]] = set()
+    for owner in owners:
+        for evidence_rows in (owner.get("events") or {}).values():
+            for evidence in evidence_rows or []:
+                if not isinstance(evidence, dict):
+                    continue
+                for action in evidence.get("playSoundActions") or []:
+                    if isinstance(action, dict):
+                        linked_markers.add(play_sound_action_marker(action))
+    annotated = []
+    linked = 0
+    for action in actions:
+        has_link = play_sound_action_marker(action) in linked_markers
+        linked += int(has_link)
+        annotated.append({
+            **action,
+            "ownerLinkStatus": "linkedThroughBuffDependency" if has_link else "unresolved",
+        })
+    return annotated, {
+        "buffPlaySoundActionsLinkedToGameplayOwner": linked,
+        "buffPlaySoundActionsOwnerUnresolved": len(annotated) - linked,
+    }
+
+
+def collect_buff_play_sound_actions(
+    export_root: Path,
+    buff_records: dict[str, dict[str, Any]],
+    *,
+    decoder: Any | None = None,
+) -> dict[str, Any]:
+    """Decode exact current-build PlaySound timeline actions from BuffData.
+
+    The generic string scan proves only that a BuffData dependency contains an
+    event id.  The MemoryPack action decoder additionally recovers the authored
+    timeline frame window and the PlaySoundActionData lifetime/routing controls.
+    TargetSettings remains a bounded opaque envelope, so these rows deliberately
+    stop short of claiming that the runtime condition or target was selected.
+    """
+
+    if decoder is None:
+        try:
+            from build_data_index import (
+                BUFF_ABILITY_ACTION_TAG_MEMBER_COUNTS,
+                BUFF_PLAY_SOUND_ACTION_TAG,
+                MEMORYPACK_UNION_WIDE_TAG,
+                consume_buff_play_sound_action,
+            )
+        except ImportError:  # Imported as scripts.build_audio from repository-root tests.
+            from scripts.build_data_index import (
+                BUFF_ABILITY_ACTION_TAG_MEMBER_COUNTS,
+                BUFF_PLAY_SOUND_ACTION_TAG,
+                MEMORYPACK_UNION_WIDE_TAG,
+                consume_buff_play_sound_action,
+            )
+
+        member_count = BUFF_ABILITY_ACTION_TAG_MEMBER_COUNTS[BUFF_PLAY_SOUND_ACTION_TAG]
+        signature = bytes([MEMORYPACK_UNION_WIDE_TAG]) + int(BUFF_PLAY_SOUND_ACTION_TAG).to_bytes(2, "little") + bytes([member_count])
+
+        def decoder(_path: Path, data: bytes, _size: int) -> list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]]:
+            """Find locally self-bounded single-item PlaySound timeline records.
+
+            This deliberately does not depend on the broad BuffData schema or
+            tail parser.  The current records have a one-item SequenceActionData
+            envelope immediately before the typed union item and the two guard
+            booleans/startFrame/ForceSyncAnimData boundary immediately after it.
+            """
+
+            rows: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]] = []
+            position = data.find(signature)
+            while position >= 0:
+                record_start = position - 10
+                try:
+                    if (
+                        record_start < 0
+                        or data[record_start] != 4
+                        or data[position - 5] != 3
+                        or unpack_from("<I", data, position - 4)[0] != 1
+                    ):
+                        raise ValueError("not-single-item-timeline-envelope")
+                    end_frame = unpack_from("<i", data, record_start + 1)[0]
+                    action, action_end = consume_buff_play_sound_action(
+                        data,
+                        position,
+                        len(data),
+                        3,
+                        member_count,
+                    )
+                    if action_end + 7 > len(data):
+                        raise ValueError("truncated-timeline-suffix")
+                    only_guard = data[action_end]
+                    only_main_char = data[action_end + 1]
+                    if only_guard not in (0, 1) or only_main_char not in (0, 1):
+                        raise ValueError("invalid-timeline-guard-bool")
+                    start_frame = unpack_from("<i", data, action_end + 2)[0]
+                    if data[action_end + 6] != 4:
+                        raise ValueError("missing-force-sync-boundary")
+                    rows.append((
+                        {"index": len(rows), "startFrame": start_frame, "endFrame": end_frame},
+                        {
+                            "onlyExecuteWhenSourceIsGuard": bool(only_guard),
+                            "onlyExecuteWhenSourceIsMainChar": bool(only_main_char),
+                        },
+                        action,
+                    ))
+                except (IndexError, ValueError):
+                    pass
+                position = data.find(signature, position + 1)
+            return rows
+
+    merged: dict[tuple[Any, ...], dict[str, Any]] = {}
+    decoded_files = 0
+    decode_failures = 0
+    for buff_id, record in sorted(buff_records.items()):
+        for source in sorted(record.get("sources") or set()):
+            path = export_root / PurePosixPath(str(source))
+            try:
+                data = path.read_bytes()
+                decoded_actions = decoder(path, data, len(data)) or []
+            except (OSError, ValueError):
+                decode_failures += 1
+                continue
+            if not decoded_actions:
+                continue
+            source_has_play_sound = False
+            for action_index, (timeline, sequence, action) in enumerate(decoded_actions):
+                event_id = str(action.get("soundEvent") or "").strip()
+                if not event_id:
+                    continue
+                source_has_play_sound = True
+                prefix = action.get("prefix") or {}
+                target = action.get("targetSettingsEnvelopePartial") or {}
+                row = {
+                    "buffId": buff_id,
+                    "eventId": event_id,
+                    "timelineActionIndex": timeline.get("index"),
+                    "actionDataIndex": action_index,
+                    "startFrame": timeline.get("startFrame"),
+                    "endFrame": timeline.get("endFrame"),
+                    "onlyExecuteWhenSourceIsGuard": bool(sequence.get("onlyExecuteWhenSourceIsGuard")),
+                    "onlyExecuteWhenSourceIsMainChar": bool(sequence.get("onlyExecuteWhenSourceIsMainChar")),
+                    "isEnabled": bool(prefix.get("isEnable")),
+                    "priorityLevel": prefix.get("priorityLevel"),
+                    "priorityOffset": prefix.get("priorityOffset"),
+                    "serverActionIndex": prefix.get("serverActionIndex"),
+                    "canInterruptTimeMs": action.get("canInterruptTimeMs"),
+                    "interruptFadeDurationMs": action.get("intrptFadeDurationMs"),
+                    "jumpToWhenPlayMs": action.get("jumpToWhenPlayMs"),
+                    "stopFadeDurationMs": action.get("stopFadeDurationMs"),
+                    "stopOnEnd": bool(action.get("stopOnEnd")),
+                    "useTempEmitter": bool(action.get("useTempEmitter")),
+                    "followMountPoint": bool(action.get("followMountPoint")),
+                    "mountPoint": str(action.get("mountPoint") or ""),
+                    "targetSettingsStatus": str(target.get("semanticStatus") or "unresolved"),
+                    "targetSettingsShape": str(target.get("shape") or ""),
+                    "targetSelector": str(target.get("stringSlotValue") or ""),
+                    "timeDilationFadeInDurationMs": action.get("timeDilationFadeInDurationMs"),
+                    "timeDilationFadeOutDurationMs": action.get("timeDilationFadeOutDurationMs"),
+                    "timeDilationPauseThreshold": action.get("timeDilationPauseThreshold"),
+                    "timeDilationSeekThreshold": action.get("timeDilationSeekThreshold"),
+                    "useTimeDilationPauseAndSeek": bool(action.get("useTimeDilationPauseAndSeek")),
+                    "useWeaponMountPoint": bool(action.get("useWeaponMountPoint")),
+                    "weaponIndex": action.get("weaponIndex"),
+                    "weaponMountPoint": str(action.get("weaponMountPoint") or ""),
+                    "sourcePaths": [str(source)],
+                    "evidence": "memoryPackPlaySoundActionData",
+                    "runtimeConditionStatus": "unresolved",
+                }
+                marker = tuple(
+                    json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                    for key, value in row.items()
+                    if key not in {"sourcePaths"}
+                )
+                existing = merged.get(marker)
+                if existing is None:
+                    merged[marker] = row
+                else:
+                    existing["sourcePaths"] = sorted(set(existing["sourcePaths"]).union(row["sourcePaths"]))
+            if source_has_play_sound:
+                decoded_files += 1
+
+    by_buff_event: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
+    for row in merged.values():
+        by_buff_event[str(row["buffId"])][str(row["eventId"]).lower()].append(row)
+    return {
+        "byBuffEvent": {
+            buff_id: {
+                event_id: sorted(
+                    rows,
+                    key=lambda row: (
+                        int(row.get("startFrame") or 0),
+                        int(row.get("endFrame") or 0),
+                        int(row.get("serverActionIndex") or 0),
+                    ),
+                )
+                for event_id, rows in sorted(events.items())
+            }
+            for buff_id, events in sorted(by_buff_event.items())
+        },
+        "counts": {
+            "buffPlaySoundDecodedSourceFiles": decoded_files,
+            "buffPlaySoundDecodeFailures": decode_failures,
+            "buffPlaySoundActionOccurrences": len(merged),
+            "buffPlaySoundUniqueEvents": len({str(row["eventId"]).lower() for row in merged.values()}),
+        },
+    }
 
 
 def collect_gameplay_audio_references(
@@ -795,6 +1133,20 @@ def collect_gameplay_audio_references(
 
     skill_records = gameplay_config_records(export_root, "SkillData")
     buff_records = gameplay_config_records(export_root, "BuffData")
+    buff_play_sound = collect_buff_play_sound_actions(export_root, buff_records)
+    buff_play_sound_by_id = buff_play_sound.get("byBuffEvent") or {}
+    seeded_play_sound_events = seed_buff_play_sound_events(
+        buff_records,
+        buff_play_sound_by_id,
+    )
+
+    def play_sound_rows(event_id: str, buff_ids: set[str]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        event_key = event_id.lower()
+        for buff_id in sorted(buff_ids):
+            rows.extend((buff_play_sound_by_id.get(buff_id) or {}).get(event_key) or [])
+        return rows
+
     enemy_source_files = enemy_template_source_files(export_root)
     enemy_template_skills = enemy_template_skill_references(
         export_root,
@@ -807,7 +1159,17 @@ def collect_gameplay_audio_references(
         for skill_id, sources in skills.items():
             template_owners_by_skill[skill_id].append((enemy_id, sources))
     owners: list[dict[str, Any]] = []
-    event_names: set[str] = set()
+    authored_play_sound_actions = [
+        row
+        for events in (buff_play_sound.get("byBuffEvent") or {}).values()
+        for rows in events.values()
+        for row in rows
+    ]
+    event_names: set[str] = {
+        str(row.get("eventId") or "").lower()
+        for row in authored_play_sound_actions
+        if str(row.get("eventId") or "")
+    }
     owned_skill_ids: set[str] = set()
 
     for skill_id, record in sorted(skill_records.items()):
@@ -869,11 +1231,15 @@ def collect_gameplay_audio_references(
         for event_id in sorted(record.get("events") or set()):
             event_evidence[event_id].append({"kind": "skillData", "skillId": skill_id})
         for event_id, buff_ids in gameplay_buff_audio(set(record.get("buffs") or set()), buff_records).items():
-            event_evidence[event_id].append({
+            evidence = {
                 "kind": "skillBuffData",
                 "skillId": skill_id,
                 "buffIds": sorted(buff_ids),
-            })
+            }
+            actions = play_sound_rows(event_id, buff_ids)
+            if actions:
+                evidence["playSoundActions"] = actions
+            event_evidence[event_id].append(evidence)
         if not event_evidence:
             continue
         owned_skill_ids.add(skill_id)
@@ -912,7 +1278,15 @@ def collect_gameplay_audio_references(
             "ownershipSources": [],
             "sources": [],
             "events": {
-                event_id: [{"kind": "enemyBornBuffData", "buffIds": sorted(buff_ids)}]
+                event_id: [{
+                    "kind": "enemyBornBuffData",
+                    "buffIds": sorted(buff_ids),
+                    **(
+                        {"playSoundActions": play_sound_rows(event_id, buff_ids)}
+                        if play_sound_rows(event_id, buff_ids)
+                        else {}
+                    ),
+                }]
                 for event_id, buff_ids in sorted(buff_events.items())
             },
         })
@@ -925,10 +1299,15 @@ def collect_gameplay_audio_references(
     )
     profile_voices = collect_gameplay_profile_voices(export_root, entries)
     event_names.update(animation_audio.get("eventNames") or set())
+    authored_play_sound_actions, play_sound_owner_counts = (
+        annotate_play_sound_action_owner_links(authored_play_sound_actions, owners)
+    )
     return {
         "eventNames": event_names,
         "owners": owners,
+        "authoredPlaySoundActions": authored_play_sound_actions,
         "animationOwners": animation_audio.get("owners") or [],
+        "unownedAnimationEvents": animation_audio.get("unownedEvents") or {},
         "profileVoiceOwners": profile_voices.get("owners") or [],
         "counts": {
             "gameplayCharacterSkills": len(character_skills),
@@ -937,6 +1316,9 @@ def collect_gameplay_audio_references(
             "audioEventNames": len(event_names),
             "enemyTemplatesWithSkillReferences": len(enemy_template_skills),
             "enemyTemplateSkillReferences": sum(len(skills) for skills in enemy_template_skills.values()),
+            **(buff_play_sound.get("counts") or {}),
+            "buffPlaySoundSeededEventRefs": seeded_play_sound_events,
+            **play_sound_owner_counts,
             **(animation_audio.get("counts") or {}),
             **(profile_voices.get("counts") or {}),
         },
@@ -981,9 +1363,83 @@ def link_gameplay_audio(
         if event_key:
             event_evidence_by_id[event_key].append(row)
     found_events = set(event_evidence_by_id)
-    event_cache: dict[str, dict[str, Any] | None] = {}
+    event_cache: dict[str, dict[str, Any]] = {}
 
-    def linked_event(event_id: str) -> dict[str, Any] | None:
+    def gameplay_trigger_binding(owner: dict[str, Any], evidence: list[dict[str, Any]]) -> dict[str, Any]:
+        owner_kind = str(owner.get("ownerKind") or "")
+        confidence = str(owner.get("confidence") or "inferred")
+        method = str(owner.get("ownershipMethod") or "")
+        evidence_kinds = sorted({str(row.get("kind") or "") for row in evidence if isinstance(row, dict) and row.get("kind")})
+        relation_types: list[str] = []
+        if "skillData" in evidence_kinds:
+            relation_types.append("skillDataEventReference")
+        if "skillBuffData" in evidence_kinds:
+            relation_types.append("skillBuffChain")
+        if "enemyBornBuffData" in evidence_kinds:
+            relation_types.append("enemyBornBuffChain")
+        play_sound_actions = [
+            action
+            for row in evidence
+            if isinstance(row, dict)
+            for action in row.get("playSoundActions") or []
+            if isinstance(action, dict)
+        ]
+        if play_sound_actions:
+            relation_types.append("buffPlaySoundAction")
+        if owner_kind == "character" and confidence == "direct" and method == "gameplaySkillId":
+            status = "exactSkillConfig"
+        elif owner_kind == "enemy" and confidence == "direct" and method == "enemyBornBuffField":
+            status = "exactEnemyBornBuffConfig"
+        else:
+            status = "inferredSkillConfigOwner"
+        if play_sound_actions:
+            request_evidence = (
+                "exactAuthoredPlaySoundAction"
+                if status != "inferredSkillConfigOwner"
+                else "inferredOwnerExactAuthoredPlaySoundAction"
+            )
+            activation_status = "authoredFrameWindowRecoveredConditionUnresolved"
+        else:
+            request_evidence = (
+                "exactAuthoredDependency"
+                if status != "inferredSkillConfigOwner"
+                else "inferredOwnerExactAuthoredDependency"
+            )
+            activation_status = "conditionAndTimingUnresolved"
+        binding = {
+            "status": status,
+            "requestEvidence": request_evidence,
+            "runtimeActivationStatus": activation_status,
+            "ownerKind": owner_kind,
+            "ownerId": str(owner.get("ownerId") or ""),
+            "groupId": str(owner.get("groupId") or ""),
+            "skillId": str(owner.get("skillId") or ""),
+            "confidence": confidence,
+            "ownershipMethod": method,
+            "relationTypes": relation_types,
+            "evidenceKinds": evidence_kinds,
+            "buffIds": sorted({
+                str(buff_id)
+                for row in evidence
+                if isinstance(row, dict)
+                for buff_id in row.get("buffIds") or []
+                if str(buff_id)
+            }),
+            "sourcePaths": sorted(set(filter(None, [
+                *(owner.get("sources") or []),
+                *(owner.get("ownershipSources") or []),
+                *(
+                    source_path
+                    for action in play_sound_actions
+                    for source_path in action.get("sourcePaths") or []
+                ),
+            ]))),
+        }
+        if play_sound_actions:
+            binding["playSoundActions"] = play_sound_actions
+        return binding
+
+    def linked_event(event_id: str) -> dict[str, Any]:
         event_key = event_id.lower()
         if event_key in event_cache:
             return event_cache[event_key]
@@ -996,9 +1452,6 @@ def link_gameplay_audio(
                 continue
             seen.add(key)
             media.append(compact)
-        if not media:
-            event_cache[event_key] = None
-            return None
         content_counts = Counter(
             str(row.get("contentSha256") or "")
             for row in media
@@ -1039,6 +1492,39 @@ def link_gameplay_audio(
             "rootStopActionCount": sum(int(row.get("rootStopActionCount") or 0) for row in evidence_rows),
             "containers": selector_containers,
         }
+        action_dispatch_evidence: list[dict[str, Any]] = []
+        for evidence_row in evidence_rows:
+            dispatch = evidence_row.get("actionDispatchEvidence") or {}
+            if not isinstance(dispatch, dict) or not dispatch:
+                continue
+            actions: list[dict[str, Any]] = []
+            for action in evidence_row.get("actionEvidence") or []:
+                if not isinstance(action, dict) or action.get("operation") not in {"play", "playEvent"}:
+                    continue
+                actions.append({
+                    "actionId": action.get("actionId"),
+                    "eventActionOrdinal": action.get("eventActionOrdinal"),
+                    "operation": action.get("operation"),
+                    "actionParserStatus": action.get("actionParserStatus"),
+                    "delay": action.get("delay") or {},
+                    "transition": action.get("transition") or {},
+                    "probability": action.get("probability") or {},
+                })
+            action_dispatch_evidence.append({
+                "bankId": evidence_row.get("bankId"),
+                "bankVersion": evidence_row.get("bankVersion"),
+                "timingClass": dispatch.get("timingClass"),
+                "playbackActionCount": int(dispatch.get("playbackActionCount") or 0),
+                "typedPlaybackActionCount": int(dispatch.get("typedPlaybackActionCount") or 0),
+                "failedPlaybackActionCount": int(dispatch.get("failedPlaybackActionCount") or 0),
+                "multiPlayback": bool(dispatch.get("multiPlayback")),
+                "simultaneityCandidate": bool(dispatch.get("simultaneityCandidate")),
+                "explicitDelayActionCount": int(dispatch.get("explicitDelayActionCount") or 0),
+                "explicitTransitionActionCount": int(dispatch.get("explicitTransitionActionCount") or 0),
+                "probabilityGatedActionCount": int(dispatch.get("probabilityGatedActionCount") or 0),
+                "evidenceBoundary": dispatch.get("evidenceBoundary"),
+                "actions": actions,
+            })
         root_action_ids = sorted({
             int(root_action_id)
             for item in media
@@ -1060,6 +1546,7 @@ def link_gameplay_audio(
         value = {
             "id": event_id,
             "foundInWwise": event_key in found_events,
+            "hasPlayableMedia": bool(media),
             "possibleMediaCount": len(media),
             "playableCandidates": len(media),
             "playRootCount": len(root_action_ids) or max(
@@ -1071,8 +1558,11 @@ def link_gameplay_audio(
             "traversalStatus": traversal_status,
             "unresolvedNodeCount": sum(len(row.get("unresolvedNodes") or []) for row in evidence_rows),
             "selectorEvidence": selector_evidence,
+            "actionDispatchEvidence": action_dispatch_evidence,
             "runtimeSelection": (
-                "runtimeBranchUnresolved" if any(value != "directSound" for value in relation_types)
+                "eventNotFoundInWwise" if event_key not in found_events
+                else "noDecodedPossibleMedia" if not media
+                else "runtimeBranchUnresolved" if any(value != "directSound" for value in relation_types)
                 else "multiplePlayRootsTimingUnresolved" if len(root_action_ids) > 1
                 else "singlePossibleMedia" if len(media) == 1
                 else "multiplePossibleMediaUnresolved"
@@ -1119,11 +1609,15 @@ def link_gameplay_audio(
         for event_id, evidence in sorted((owner.get("events") or {}).items()):
             discovered_refs += 1
             linked = linked_event(event_id)
-            if not linked:
-                continue
-            linked_refs += 1
-            candidate_count += int(linked.get("playableCandidates") or 0)
-            event_rows.append({**linked, "evidence": evidence})
+            candidates = int(linked.get("playableCandidates") or 0)
+            if candidates:
+                linked_refs += 1
+                candidate_count += candidates
+            event_rows.append({
+                **linked,
+                "evidence": evidence,
+                "triggerBindings": [gameplay_trigger_binding(owner, evidence)],
+            })
         if not event_rows:
             continue
         owner_kind = str(owner.get("ownerKind") or "")
@@ -1147,6 +1641,16 @@ def link_gameplay_audio(
                     existing[event_id] = event
                 else:
                     existing[event_id].setdefault("evidence", []).extend(event.get("evidence") or [])
+                    bindings = existing[event_id].setdefault("triggerBindings", [])
+                    binding_markers = {
+                        json.dumps(binding, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                        for binding in bindings
+                    }
+                    for binding in event.get("triggerBindings") or []:
+                        marker = json.dumps(binding, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                        if marker not in binding_markers:
+                            binding_markers.add(marker)
+                            bindings.append(binding)
                     if skill_id and skill_id not in existing[event_id].setdefault("sourceSkillIds", []):
                         existing[event_id]["sourceSkillIds"].append(skill_id)
         elif owner_kind == "enemy":
@@ -1175,6 +1679,16 @@ def link_gameplay_audio(
                     existing[event_id] = event
                 else:
                     existing[event_id].setdefault("evidence", []).extend(event.get("evidence") or [])
+                    bindings = existing[event_id].setdefault("triggerBindings", [])
+                    binding_markers = {
+                        json.dumps(binding, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                        for binding in bindings
+                    }
+                    for binding in event.get("triggerBindings") or []:
+                        marker = json.dumps(binding, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                        if marker not in binding_markers:
+                            binding_markers.add(marker)
+                            bindings.append(binding)
                     if skill_id and skill_id not in existing[event_id].setdefault("sourceSkillIds", []):
                         existing[event_id]["sourceSkillIds"].append(skill_id)
 
@@ -1187,13 +1701,12 @@ def link_gameplay_audio(
         for event_id, evidence in normalized_animation_events(owner):
             discovered_refs += 1
             linked = linked_event(event_id)
-            if not linked:
-                continue
-            linked_refs += 1
-            animation_linked_refs += 1
             candidates = int(linked.get("playableCandidates") or 0)
-            candidate_count += candidates
-            animation_candidate_count += candidates
+            if candidates:
+                linked_refs += 1
+                animation_linked_refs += 1
+                candidate_count += candidates
+                animation_candidate_count += candidates
             action_kinds = sorted({str(row.get("actionKind") or "action") for row in evidence})
             clips = sorted({str(row.get("clip") or "") for row in evidence if row.get("clip")})
             functions = sorted({str(row.get("function") or "") for row in evidence if row.get("function")})
@@ -1218,6 +1731,7 @@ def link_gameplay_audio(
                 "playRootCount": linked.get("playRootCount"),
                 "mediaRelationTypes": linked.get("mediaRelationTypes") or [],
                 "selectorEvidence": linked.get("selectorEvidence") or {},
+                "actionDispatchEvidence": linked.get("actionDispatchEvidence") or [],
                 "traversalStatus": linked.get("traversalStatus"),
                 "runtimeSelection": linked.get("runtimeSelection"),
                 "evidence": evidence,
@@ -1319,18 +1833,39 @@ def link_gameplay_audio(
             record = characters.setdefault(owner_id, {"groups": {}})
             record.setdefault("profileVoices", []).extend(resolved_voices)
 
+    def finalize_trigger_event(event: dict[str, Any]) -> None:
+        bindings = event.get("triggerBindings") or []
+        statuses = {str(binding.get("status") or "") for binding in bindings if isinstance(binding, dict)}
+        if "exactSkillConfig" in statuses:
+            event["triggerBindingStatus"] = "exactSkillConfig"
+        elif "exactEnemyBornBuffConfig" in statuses:
+            event["triggerBindingStatus"] = "exactEnemyBornBuffConfig"
+        elif bindings:
+            event["triggerBindingStatus"] = "inferredSkillConfigOwner"
+        event["triggerRelationTypes"] = sorted({
+            str(relation)
+            for binding in bindings
+            if isinstance(binding, dict)
+            for relation in binding.get("relationTypes") or []
+            if str(relation)
+        })
+
     for value in characters.values():
         for group in value.get("groups", {}).values():
             group["skillIds"].sort()
             group["ownershipConfidence"] = "inferred" if "inferred" in group.pop("ownershipConfidence", []) else "direct"
             group["ownershipMethods"] = sorted(set(filter(None, group.get("ownershipMethods") or [])))
             group["ownershipSources"] = sorted(set(filter(None, group.get("ownershipSources") or [])))
+            for event in group["events"]:
+                finalize_trigger_event(event)
             group["events"].sort(key=lambda row: str(row.get("id") or ""))
         value["animationOwnershipSources"] = sorted(set(filter(None, value.get("animationOwnershipSources") or [])))
         value.get("animationEvents", []).sort(key=lambda row: str(row.get("id") or ""))
         value.get("profileVoices", []).sort(key=lambda row: str(row.get("id") or ""))
     for value in enemies.values():
         value["skillIds"].sort()
+        for event in value["events"]:
+            finalize_trigger_event(event)
         value["events"].sort(key=lambda row: str(row.get("id") or ""))
         value["ownershipConfidence"] = "inferred" if "inferred" in value.pop("ownershipConfidence", []) else "direct"
         value["ownershipMethods"] = sorted(set(filter(None, value.get("ownershipMethods") or [])))
@@ -1390,6 +1925,8 @@ def link_gameplay_audio(
             "skillEventAssociationCount": len(skill_events),
             "skillUniqueEventCount": len({str(event.get("id") or "").lower() for event in skill_events if event.get("id")}),
             "skillPossibleMediaAssociationCount": sum(possible_media_count(event) for event in skill_events),
+            "exactSkillTriggerEventCount": sum(event.get("triggerBindingStatus") == "exactSkillConfig" for event in skill_events),
+            "inferredSkillTriggerEventCount": sum(event.get("triggerBindingStatus") != "exactSkillConfig" for event in skill_events),
             "animationEventCount": len(animation_events),
             "animationCallbackOccurrenceCount": sum(int(event.get("animationOccurrenceCount") or len(event.get("evidence") or [])) for event in animation_events),
             "animationPossibleMediaAssociationCount": sum(possible_media_count(event) for event in animation_events),
@@ -1470,26 +2007,47 @@ def link_gameplay_audio(
         for owner in characters.values()
         for event in owner.get("profileVoices") or []
     ]
-    serialized_linked_refs = len(serialized_skill_events) + len(serialized_animation_events) + len(serialized_profile_voices)
+    serialized_refs = len(serialized_skill_events) + len(serialized_animation_events) + len(serialized_profile_voices)
+    serialized_playable_refs = sum(
+        possible_media_count(event) > 0
+        for event in [*serialized_skill_events, *serialized_animation_events, *serialized_profile_voices]
+    )
     serialized_candidate_associations = sum(
         possible_media_count(event)
         for event in [*serialized_skill_events, *serialized_animation_events, *serialized_profile_voices]
     )
     serialized_animation_candidates = sum(possible_media_count(event) for event in serialized_animation_events)
+    serialized_exact_skill_triggers = sum(
+        event.get("triggerBindingStatus") == "exactSkillConfig"
+        for event in serialized_skill_events
+    )
+    serialized_exact_enemy_born_triggers = sum(
+        event.get("triggerBindingStatus") == "exactEnemyBornBuffConfig"
+        for event in serialized_skill_events
+    )
+    serialized_inferred_skill_triggers = sum(
+        event.get("triggerBindingStatus") == "inferredSkillConfigOwner"
+        for event in serialized_skill_events
+    )
     stats = {
         **(references.get("counts") or {}),
         "gameplayAudioRefs": discovered_refs,
         "gameplayAudioRefsDiscovered": discovered_refs,
-        "gameplayAudioRefsLinked": serialized_linked_refs,
-        "gameplaySerializedAudioRefs": serialized_linked_refs,
+        "gameplayAudioRefsLinked": serialized_playable_refs,
+        "gameplaySerializedAudioRefs": serialized_refs,
+        "gameplayReferenceOnlyAudioRefs": serialized_refs - serialized_playable_refs,
         "gameplayRawAudioRefsLinked": linked_refs,
         "gameplayAudioCandidates": unique_event_media_pairs + len(profile_voice_media_keys),
         "gameplayPossibleMediaAssociations": serialized_candidate_associations,
         "gameplaySerializedPossibleMediaAssociations": serialized_candidate_associations,
         "gameplayRawPossibleMediaAssociations": candidate_count,
+        "exactSkillConfigTriggerRefs": serialized_exact_skill_triggers,
+        "exactEnemyBornBuffTriggerRefs": serialized_exact_enemy_born_triggers,
+        "inferredSkillConfigOwnerRefs": serialized_inferred_skill_triggers,
         "gameplayUniqueEventMediaPairs": unique_event_media_pairs,
         "gameplayUniquePlayableFiles": len(unique_playable_files),
-        "animationAudioRefsLinked": len(serialized_animation_events),
+        "animationAudioRefsLinked": sum(possible_media_count(event) > 0 for event in serialized_animation_events),
+        "animationAudioRefsSerialized": len(serialized_animation_events),
         "animationAudioRawRefsLinked": animation_linked_refs,
         "animationAudioPossibleMediaAssociations": serialized_animation_candidates,
         "animationAudioRawPossibleMediaAssociations": animation_candidate_count,
@@ -1503,7 +2061,7 @@ def link_gameplay_audio(
         "enemiesWithPlayableSfx": len(enemies),
     }
     path = webui_root / Path(str(GAMEPLAY_SFX_REL).format(language=language))
-    animation_evidence: dict[str, dict[str, list[dict[str, Any]]]] = {
+    animation_evidence: dict[str, Any] = {
         "characters": {},
         "enemies": {},
     }
@@ -1532,6 +2090,26 @@ def link_gameplay_audio(
                 event.pop("evidence", None)
             if evidence_events:
                 animation_evidence[bucket_name][owner_id] = evidence_events
+    unresolved_animation_events: list[dict[str, Any]] = []
+    for event_id, evidence in sorted((references.get("unownedAnimationEvents") or {}).items()):
+        rows = [row for row in evidence or [] if isinstance(row, dict)]
+        unresolved_animation_events.append({
+            "id": event_id,
+            "actionKinds": sorted({str(row.get("actionKind") or "action") for row in rows}),
+            "animationFunctions": sorted({str(row.get("function") or "") for row in rows if row.get("function")}),
+            "animationClipContexts": sorted({str(row.get("clipContext") or "other") for row in rows}),
+            "clipReachability": "unresolved",
+            "sourceAnimationClips": sorted({str(row.get("clip") or "") for row in rows if row.get("clip")}),
+            "authoredEventIds": sorted({
+                str(row.get("authoredEventId") or event_id)
+                for row in rows
+                if str(row.get("authoredEventId") or event_id)
+            }),
+            "ownerStatus": "unresolved",
+            "evidence": rows,
+        })
+    if unresolved_animation_events:
+        animation_evidence["ownerUnresolved"] = unresolved_animation_events
     json_dump(path.with_name(GAMEPLAY_SFX_ANIMATION_CATALOG_NAME), {
         "schemaVersion": 1,
         "language": language,
@@ -1543,23 +2121,28 @@ def link_gameplay_audio(
         **animation_evidence,
     })
     json_dump(path, {
-        "schemaVersion": 2,
+        "schemaVersion": 4,
         "language": language,
         "counts": stats,
         "animationEventCatalogPath": GAMEPLAY_SFX_ANIMATION_CATALOG_NAME,
         "animationEvidencePath": GAMEPLAY_SFX_ANIMATION_EVIDENCE_NAME,
+        "authoredPlaySoundActions": references.get("authoredPlaySoundActions") or [],
         "characters": characters,
         "enemies": enemies,
         "scope": {
-            "source": "SkillData/BuffData event references, EnemyData ability bundles, AnimationClip audio callbacks, CharacterTable profile voices, and Wwise HIRC traversal",
+            "source": "SkillData/BuffData event references, decoded BuffData PlaySound actions, EnemyData ability bundles, AnimationClip audio callbacks, CharacterTable profile voices, and Wwise HIRC traversal",
+            "playSoundActionBoundary": "Current MemoryPack PlaySoundActionData yields exact event, frame window, stop/fade, routing, and time-dilation controls. TargetSettings semantics and runtime activation conditions remain unresolved.",
             "characterOwnership": "direct gameplay skill id",
             "characterFamilyOwnership": "longest playable skill id prefix inferred for authored child SkillData",
             "enemyOwnership": "exact SkillData identifiers recovered from enemy-template AbilitySystemData, with enemy-id prefix fallback and exact born-buff fields",
             "enemyTemplateBoundary": "AbilitySystemData containment is exact, while identifiers preserved only in partially decoded string-hint tails remain ownership-inferred.",
             "animationOwnership": "exact AnimationClip callback, timestamp, and payload; actor ownership inferred from exact character/enemy animation tokens and recovered enemy animation-config reuse; current-controller clip reachability remains unresolved",
+            "unownedAnimationBoundary": "Every actor/monster AnimationClip callback with a supported audio function is retained. Clips without a bounded playable-character or enemy-template token stay owner-unresolved and appear only in the debug Audio evidence surface; generic non-actor clip indexing remains a separate exporter gap.",
             "animationMediaBoundary": "An owned clip proves that its callback requests the Event. Shared playable-character Events expose a shared Wwise selector graph; its reachable leaves are not attributed to one character until switch/state values are decoded.",
             "profileVoiceOwnership": "direct CharacterTable.profileVoice ownership linked to the exact AudioDialog path stem; bark/random selection remains unresolved",
+            "referenceOnlyBoundary": "Exact SkillData/BuffData and owned AnimationClip trigger contexts remain serialized when the Event is absent from current Wwise banks or has no decoded possible media; Gameplay only renders records with playable files.",
             "runtimeSelection": "Possible media files come from typed Wwise v150 edges and are grouped by Play root and selector relation; the live branch selected by switches, states, random/sequence containers, and layers remains unresolved.",
+            "actionDispatchBoundary": "Typed v150 Event Action ordinals and serialized DelayTime, TransitionTime, and Probability properties are preserved. They prove authored dispatch membership and controls, not live action execution, evaluated probability, or sample-accurate audible simultaneity.",
         },
     })
     return stats
@@ -1594,6 +2177,7 @@ def link_projectile_audio(
         return {"projectileSoundRefs": 0, "projectileSoundEvents": 0, "projectileSoundRefsLinked": 0, "projectileAudioCandidates": 0}
 
     evidence_by_hash: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    event_ids_by_hash: dict[int, set[str]] = defaultdict(set)
     for row in event_evidence:
         if not isinstance(row, dict):
             continue
@@ -1601,8 +2185,11 @@ def link_projectile_audio(
             event_hash = int(row.get("eventHash")) & 0xFFFFFFFF
         except (TypeError, ValueError):
             continue
-        if str(row.get("eventId") or "").startswith(PROJECTILE_EVENT_PREFIX):
-            evidence_by_hash[event_hash].append(row)
+        event_id = str(row.get("eventId") or "").strip()
+        if not event_id:
+            continue
+        evidence_by_hash[event_hash].append(row)
+        event_ids_by_hash[event_hash].add(event_id)
 
     refs = 0
     linked_refs = 0
@@ -1629,22 +2216,24 @@ def link_projectile_audio(
             evidence = evidence_by_hash.get(event_hash) or []
             media: list[dict[str, Any]] = []
             seen_media: set[tuple[str, str]] = set()
-            for audio in event_audio_by_id.get(key, []):
-                src = str(audio.get("src") or "")
-                media_id = str(audio.get("mediaId") or audio.get("id") or "")
-                dedupe_key = (src, media_id)
-                if not src or dedupe_key in seen_media:
-                    continue
-                seen_media.add(dedupe_key)
-                media.append({
-                    key: audio[key]
-                    for key in (
-                        "src", "mediaId", "format", "bytes", "audioScope",
-                        "audioCategory", "audioCategoryDetail", "sourceBlock",
-                        "sourceBlockLabel", "sourceBank", "bankId", "bank",
-                    )
-                    if audio.get(key) is not None
-                })
+            canonical_event_ids = sorted(event_ids_by_hash.get(event_hash) or {key})
+            for canonical_event_id in canonical_event_ids:
+                for audio in event_audio_by_id.get(canonical_event_id, []):
+                    src = str(audio.get("src") or "")
+                    media_id = str(audio.get("mediaId") or audio.get("id") or "")
+                    dedupe_key = (src, media_id)
+                    if not src or dedupe_key in seen_media:
+                        continue
+                    seen_media.add(dedupe_key)
+                    media.append({
+                        key: audio[key]
+                        for key in (
+                            "src", "mediaId", "format", "bytes", "audioScope",
+                            "audioCategory", "audioCategoryDetail", "sourceBlock",
+                            "sourceBlockLabel", "sourceBank", "bankId", "bank",
+                        )
+                        if audio.get(key) is not None
+                    })
             event_found = bool(evidence)
             if event_found:
                 resolved_hashes.add(event_hash)
@@ -1658,6 +2247,7 @@ def link_projectile_audio(
                 "playableCandidates": len(media),
                 "source": "wwiseHirc" if event_found else "unresolved",
                 "runtimeSelection": "unresolved" if len(media) > 1 else "singleCandidate" if media else "none",
+                "canonicalEventIds": canonical_event_ids,
             }
             if media:
                 value["audio"] = media
@@ -2096,6 +2686,195 @@ def hirc_action_type(data: bytes) -> int | None:
     return unpack_from("<H", data, 0)[0]
 
 
+def _hirc_v150_action_property_value(property_id: int, raw: bytes) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "rawHex": raw.hex(),
+        "rawU32": unpack_from("<I", raw, 0)[0],
+    }
+    if property_id in {0x39, 0x3A}:
+        row.update({
+            "encoding": "signedInt32Milliseconds",
+            "value": unpack_from("<i", raw, 0)[0],
+            "unit": "ms",
+        })
+    elif property_id == 0x3B:
+        row.update({
+            "encoding": "float32Percent",
+            "value": unpack_from("<f", raw, 0)[0],
+            "unit": "percent",
+        })
+    else:
+        row["encoding"] = "rawUnion32"
+    return row
+
+
+def _hirc_v150_action_property_summary(
+    property_id: int,
+    properties: list[dict[str, Any]],
+    ranged_modifiers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    scalar_values = [
+        row["value"]
+        for row in properties
+        if row["propertyId"] == property_id and "value" in row
+    ]
+    modifier_ranges = [
+        {
+            "minimum": row["minimum"]["value"],
+            "maximum": row["maximum"]["value"],
+        }
+        for row in ranged_modifiers
+        if row["propertyId"] == property_id
+        and "value" in row["minimum"]
+        and "value" in row["maximum"]
+    ]
+    if scalar_values and modifier_ranges:
+        status = "explicitBaseAndRange"
+    elif scalar_values:
+        status = "explicitBase"
+    elif modifier_ranges:
+        status = "explicitRangeOnly"
+    else:
+        status = "implicitDefaultNotSerialized"
+    suffix = "Percent" if property_id == 0x3B else "Ms"
+    summary: dict[str, Any] = {
+        "serializationStatus": status,
+        f"baseValues{suffix}": scalar_values,
+        f"modifierRanges{suffix}": modifier_ranges,
+    }
+    if modifier_ranges:
+        summary["runtimeSelection"] = "boundedModifierUnresolved"
+    if property_id == 0x3B:
+        summary["runtimeSelection"] = "actionGateNotEvaluated"
+    return summary
+
+
+def hirc_v150_playback_action(data: bytes, bank_version: int | None) -> dict[str, Any]:
+    """Decode exact v150 Play/PlayEvent Action evidence without creating edges.
+
+    The target helpers above deliberately remain independent: a failed evidence
+    parse must never suppress an otherwise valid typed playback target.  This
+    decoder returns no property/timing claims unless the complete Action body is
+    consumed according to its operation-specific v150 layout.
+    """
+
+    def failed(reason: str, offset: int = 0, expected_bytes: int | None = None) -> dict[str, Any]:
+        failure: dict[str, Any] = {
+            "reason": reason,
+            "offset": offset,
+            "dataSize": len(data),
+            "remainingBytes": max(0, len(data) - offset),
+        }
+        if expected_bytes is not None:
+            failure["expectedBytes"] = expected_bytes
+        return {
+            "actionParserStatus": "failedClosed",
+            "actionParserFailure": failure,
+        }
+
+    if bank_version != 150:
+        result = failed("unsupportedBankVersion")
+        result["actionParserFailure"]["bankVersion"] = bank_version
+        return result
+    if len(data) < 7:
+        return failed("truncatedActionHeader", 0, 7)
+
+    action_type = unpack_from("<H", data, 0)[0]
+    operation = action_type & 0xFF00
+    if operation not in HIRC_PLAYBACK_ACTION_OPERATIONS:
+        result = failed("unsupportedPlaybackOperation")
+        result["actionParserFailure"]["operation"] = operation
+        return result
+
+    def read_count(offset: int, reason: str) -> tuple[int, int] | dict[str, Any]:
+        if offset >= len(data):
+            return failed(reason, offset, 1)
+        return data[offset], offset + 1
+
+    pos = 7
+    scalar_count_row = read_count(pos, "truncatedScalarPropertyCount")
+    if isinstance(scalar_count_row, dict):
+        return scalar_count_row
+    scalar_count, pos = scalar_count_row
+    if pos + scalar_count > len(data):
+        return failed("truncatedScalarPropertyIds", pos, scalar_count)
+    scalar_ids = list(data[pos : pos + scalar_count])
+    pos += scalar_count
+    scalar_bytes = scalar_count * 4
+    if pos + scalar_bytes > len(data):
+        return failed("truncatedScalarPropertyValues", pos, scalar_bytes)
+    properties: list[dict[str, Any]] = []
+    for property_id in scalar_ids:
+        value = _hirc_v150_action_property_value(property_id, data[pos : pos + 4])
+        properties.append({
+            "propertyId": property_id,
+            "propertyName": HIRC_ACTION_PROPERTY_LABELS.get(
+                property_id, f"property0x{property_id:02x}"
+            ),
+            **value,
+        })
+        pos += 4
+
+    range_count_row = read_count(pos, "truncatedRangePropertyCount")
+    if isinstance(range_count_row, dict):
+        return range_count_row
+    range_count, pos = range_count_row
+    if pos + range_count > len(data):
+        return failed("truncatedRangePropertyIds", pos, range_count)
+    range_ids = list(data[pos : pos + range_count])
+    pos += range_count
+    range_bytes = range_count * 8
+    if pos + range_bytes > len(data):
+        return failed("truncatedRangePropertyValues", pos, range_bytes)
+    ranged_modifiers: list[dict[str, Any]] = []
+    for property_id in range_ids:
+        minimum = _hirc_v150_action_property_value(property_id, data[pos : pos + 4])
+        maximum = _hirc_v150_action_property_value(property_id, data[pos + 4 : pos + 8])
+        ranged_modifiers.append({
+            "propertyId": property_id,
+            "propertyName": HIRC_ACTION_PROPERTY_LABELS.get(
+                property_id, f"property0x{property_id:02x}"
+            ),
+            "encoding": minimum["encoding"],
+            "minimum": minimum,
+            "maximum": maximum,
+            "runtimeSelection": "boundedModifierUnresolved",
+        })
+        pos += 8
+
+    evidence: dict[str, Any] = {
+        "actionParserStatus": "typedExactV150",
+        "targetFlagsRaw": data[6],
+        "targetIsBus": bool(data[6] & 0x01),
+        "properties": properties,
+        "rangedModifiers": ranged_modifiers,
+        "delay": _hirc_v150_action_property_summary(0x39, properties, ranged_modifiers),
+        "transition": _hirc_v150_action_property_summary(0x3A, properties, ranged_modifiers),
+        "probability": _hirc_v150_action_property_summary(0x3B, properties, ranged_modifiers),
+    }
+    remaining = len(data) - pos
+    if operation == 0x0400:
+        if remaining < 9:
+            return failed("truncatedPlayTail", pos, 9)
+        if remaining > 9:
+            return failed("unexpectedPlayTrailingBytes", pos + 9, 0)
+        fade_flags = data[pos]
+        curve_id = fade_flags & 0x1F
+        bank_id = unpack_from("<I", data, pos + 1)[0]
+        bank_type = unpack_from("<I", data, pos + 5)[0]
+        evidence["fade"] = {
+            "flagsRaw": fade_flags,
+            "curveId": curve_id,
+            "curveLabel": HIRC_FADE_CURVE_LABELS.get(curve_id, f"curve{curve_id}"),
+            "bankId": bank_id,
+            "bankType": bank_type,
+            "bankTypeLabel": HIRC_BANK_TYPE_LABELS.get(bank_type, f"bankType{bank_type}"),
+        }
+    elif remaining:
+        return failed("unexpectedPlayEventTrailingBytes", pos, 0)
+    return evidence
+
+
 def hirc_sound_media_id(data: bytes) -> int | None:
     """Return the v150 AkBankSourceData source ID from a Sound object.
 
@@ -2110,9 +2889,151 @@ def hirc_sound_media_id(data: bytes) -> int | None:
     return unpack_from("<I", data, 5)[0]
 
 
+def _hirc_v150_u32(data: bytes, offset: int) -> tuple[int, int]:
+    if offset < 0 or offset + 4 > len(data):
+        raise ValueError("truncated v150 U32")
+    return unpack_from("<I", data, offset)[0], offset + 4
+
+
+def _hirc_v150_node_base_parent(data: bytes, offset: int) -> tuple[int, int]:
+    """Decode the v150 NodeBase prefix through its DirectParentID field.
+
+    FX and metadata lists are variable length.  Reading their authored counts is
+    required before the bus and parent IDs; treating the parent as an arbitrary
+    U32 at a guessed offset would make reciprocal child proof circular.
+    """
+
+    if offset < 0 or offset + 2 > len(data):
+        raise ValueError("truncated v150 initial FX header")
+    offset += 1  # bIsOverrideParentFX
+    effect_count = data[offset]
+    offset += 1
+    if effect_count:
+        offset += 1  # bBypassAll
+        effect_bytes = effect_count * 6  # U8 index + U32 ID + U8 flags
+        if offset + effect_bytes > len(data):
+            raise ValueError("truncated v150 initial FX list")
+        offset += effect_bytes
+
+    if offset + 2 > len(data):
+        raise ValueError("truncated v150 metadata header")
+    offset += 1  # bIsOverrideParentMetadata
+    metadata_count = data[offset]
+    offset += 1
+    metadata_bytes = metadata_count * 6  # U8 index + U32 ID + U8 share-set flag
+    if offset + metadata_bytes > len(data):
+        raise ValueError("truncated v150 metadata list")
+    offset += metadata_bytes
+
+    _override_bus_id, offset = _hirc_v150_u32(data, offset)
+    parent_id, offset = _hirc_v150_u32(data, offset)
+    return parent_id, offset
+
+
+def hirc_v150_music_track(data: bytes) -> dict[str, Any] | None:
+    """Decode the typed prefix of a v150 MusicTrack.
+
+    This reaches every AkBankSourceData row and the NodeBase parent without
+    interpreting the later property/RTPC payload.  Every variable-length list
+    is bounded against the enclosing HIRC object's bytes and failures return
+    ``None`` rather than searching for media-looking integers.
+    """
+
+    try:
+        if len(data) < 5:
+            raise ValueError("truncated v150 MusicTrack header")
+        flags = data[0]
+        source_count, offset = _hirc_v150_u32(data, 1)
+        sources: list[dict[str, Any]] = []
+        for _ in range(source_count):
+            plugin_id, offset = _hirc_v150_u32(data, offset)
+            if offset + 10 > len(data):
+                raise ValueError("truncated v150 MusicTrack source")
+            stream_type = data[offset]
+            media_id = unpack_from("<I", data, offset + 1)[0]
+            memory_size = unpack_from("<I", data, offset + 5)[0]
+            source_bits = data[offset + 9]
+            offset += 10
+            plugin_parameter_size = 0
+            if plugin_id & 0x0F == 2:
+                plugin_parameter_size, offset = _hirc_v150_u32(data, offset)
+                if offset + plugin_parameter_size > len(data):
+                    raise ValueError("truncated v150 MusicTrack plugin parameters")
+                offset += plugin_parameter_size
+            sources.append({
+                "mediaId": media_id,
+                "pluginId": plugin_id,
+                "pluginType": plugin_id & 0x0F,
+                "streamType": stream_type,
+                "inMemoryMediaSize": memory_size,
+                "sourceBits": source_bits,
+                "pluginParameterSize": plugin_parameter_size,
+            })
+
+        playlist_count, offset = _hirc_v150_u32(data, offset)
+        playlist_items: list[dict[str, Any]] = []
+        for _ in range(playlist_count):
+            if offset + 44 > len(data):
+                raise ValueError("truncated v150 MusicTrack playlist")
+            playlist_items.append({
+                "trackId": unpack_from("<I", data, offset)[0],
+                "mediaId": unpack_from("<I", data, offset + 4)[0],
+                "eventId": unpack_from("<I", data, offset + 8)[0],
+            })
+            offset += 44  # IDs above + four F64 clip timing values.
+        subtrack_count = None
+        if playlist_count:
+            subtrack_count, offset = _hirc_v150_u32(data, offset)
+
+        automation_count, offset = _hirc_v150_u32(data, offset)
+        automation_point_count = 0
+        for _ in range(automation_count):
+            if offset + 12 > len(data):
+                raise ValueError("truncated v150 MusicTrack automation header")
+            point_count = unpack_from("<I", data, offset + 8)[0]
+            offset += 12
+            point_bytes = point_count * 12  # F32 From + F32 To + U32 interpolation.
+            if offset + point_bytes > len(data):
+                raise ValueError("truncated v150 MusicTrack automation points")
+            offset += point_bytes
+            automation_point_count += point_count
+
+        node_base_offset = offset
+        parent_id, _parent_end = _hirc_v150_node_base_parent(data, node_base_offset)
+        return {
+            "flags": flags,
+            "parentId": parent_id,
+            "nodeBaseOffset": node_base_offset,
+            "sourceCount": source_count,
+            "sources": sources,
+            "playlistItemCount": playlist_count,
+            "playlistItems": playlist_items,
+            "subtrackCount": subtrack_count,
+            "automationCount": automation_count,
+            "automationPointCount": automation_point_count,
+        }
+    except (ValueError, OverflowError):
+        return None
+
+
+def _hirc_v150_music_parent_id(data: bytes) -> int | None:
+    try:
+        # v150 MusicSegment/Switch/RanSeq begin with a U8 MIDI override flag,
+        # followed by the common NodeBase prefix.
+        parent_id, _offset = _hirc_v150_node_base_parent(data, 1)
+        return parent_id
+    except (ValueError, OverflowError):
+        return None
+
+
 def hirc_object_parent_id(object_type: int, data: bytes) -> int | None:
     if object_type == 2:
         offset = 22
+    elif object_type == 11:
+        track = hirc_v150_music_track(data)
+        return int(track["parentId"]) if track else None
+    elif object_type in HIRC_MUSIC_PARENT_NODE_TYPES:
+        return _hirc_v150_music_parent_id(data)
     elif object_type in HIRC_TYPED_CHILD_CONTAINER_TYPES:
         offset = 8
     else:
@@ -2140,6 +3061,7 @@ def hirc_reciprocal_child_list(
 
     if object_type not in HIRC_TYPED_CHILD_CONTAINER_TYPES:
         return None
+    allowed_child_types = HIRC_MUSIC_CHILD_TYPES.get(object_type, HIRC_AUDIO_NODE_TYPES)
     for offset in range(0, max(0, len(data) - 7)):
         count = unpack_from("<I", data, offset)[0]
         if count <= 0 or count > (len(data) - offset - 4) // 4:
@@ -2151,7 +3073,7 @@ def hirc_reciprocal_child_list(
         if any(child_id not in objects for child_id in children):
             continue
         if any(
-            int(objects[child_id].get("type") or 0) not in HIRC_AUDIO_NODE_TYPES
+            int(objects[child_id].get("type") or 0) not in allowed_child_types
             or hirc_object_parent_id(
                 int(objects[child_id].get("type") or 0),
                 objects[child_id].get("data") or b"",
@@ -2161,6 +3083,456 @@ def hirc_reciprocal_child_list(
             continue
         return children, offset
     return None
+
+
+def hirc_v150_switch_mapping(
+    data: bytes,
+    children_offset: int,
+    child_count: int,
+    *,
+    bank_version: int | None,
+) -> dict[str, Any]:
+    """Decode the bounded flat mapping tail of a v150 type-6 container.
+
+    The current flat layout places ``groupId``, ``defaultValueId``, and the
+    continuous-validation byte immediately before the already-proven Children
+    array.  Children are followed by variable value packages and a fixed-size
+    14-byte association row for each serialized association.  Some current
+    type-6 objects use a distinct tail; those fail closed with offsets while
+    normal child traversal remains unchanged.
+    """
+
+    tail_start = children_offset + 4 + child_count * 4
+
+    def unresolved(reason: str, offset: int) -> dict[str, Any]:
+        bounded_offset = max(0, min(offset, len(data)))
+        return {
+            "parserStatus": "unresolvedV150SwitchTail",
+            "failureReason": reason,
+            "unresolvedTailOffset": bounded_offset,
+            "unresolvedTailByteLength": len(data) - bounded_offset,
+            "runtimeSelection": "groupValueUnobservedAllChildrenRemainPossible",
+        }
+
+    if bank_version != 150:
+        return {
+            "parserStatus": "unsupportedBankVersion",
+            "bankVersion": bank_version,
+            "unresolvedTailOffset": tail_start,
+            "unresolvedTailByteLength": max(0, len(data) - tail_start),
+            "runtimeSelection": "groupValueUnobservedAllChildrenRemainPossible",
+        }
+    if children_offset < 9:
+        return unresolved("selectorHeaderBeforeObjectStart", children_offset)
+    if tail_start + 4 > len(data):
+        return unresolved("truncatedPackageCount", tail_start)
+
+    group_id = unpack_from("<I", data, children_offset - 9)[0]
+    default_value_id = unpack_from("<I", data, children_offset - 5)[0]
+    continuous_raw = data[children_offset - 1]
+    if continuous_raw not in (0, 1):
+        return unresolved("invalidContinuousValidation", children_offset - 1)
+
+    package_count = unpack_from("<I", data, tail_start)[0]
+    if package_count == 0:
+        return unresolved("noValuePackages", tail_start)
+    offset = tail_start + 4
+    if package_count > (len(data) - offset) // 8:
+        return unresolved("invalidPackageCount", tail_start)
+    packages: list[dict[str, Any]] = []
+    mapped_child_ids: set[int] = set()
+    for package_index in range(package_count):
+        if offset + 8 > len(data):
+            return unresolved("truncatedPackageHeader", offset)
+        value_id, mapped_child_count = unpack_from("<II", data, offset)
+        offset += 8
+        if mapped_child_count > (len(data) - offset) // 4:
+            return unresolved("invalidMappedChildCount", offset - 4)
+        child_ids = [
+            unpack_from("<I", data, offset + index * 4)[0]
+            for index in range(mapped_child_count)
+        ]
+        offset += mapped_child_count * 4
+        mapped_child_ids.update(child_ids)
+        packages.append({
+            "packageIndex": package_index,
+            "valueId": value_id,
+            "isDefaultValue": value_id == default_value_id,
+            "mappedChildCount": mapped_child_count,
+            "childIds": child_ids,
+        })
+
+    if offset + 4 > len(data):
+        return unresolved("truncatedAssociationCount", offset)
+    association_count = unpack_from("<I", data, offset)[0]
+    offset += 4
+    association_bytes = association_count * 14
+    if association_count > (len(data) - offset) // 14:
+        return unresolved("invalidAssociationCount", offset - 4)
+    if offset + association_bytes != len(data):
+        return unresolved("unexpectedAssociationTrailingBytes", offset + association_bytes)
+    associations: list[dict[str, Any]] = []
+    for association_index in range(association_count):
+        child_id = unpack_from("<I", data, offset)[0]
+        flags_raw = data[offset + 4]
+        parameter_a = unpack_from("<i", data, offset + 5)[0]
+        parameter_b = unpack_from("<i", data, offset + 9)[0]
+        parameter_c = data[offset + 13]
+        associations.append({
+            "associationIndex": association_index,
+            "childId": child_id,
+            "flagsRaw": flags_raw,
+            "parameterARaw": parameter_a,
+            "parameterBRaw": parameter_b,
+            "parameterCRaw": parameter_c,
+        })
+        offset += 14
+
+    authored_children = {
+        unpack_from("<I", data, children_offset + 4 + index * 4)[0]
+        for index in range(child_count)
+    }
+    association_child_ids = {row["childId"] for row in associations}
+    return {
+        "parserStatus": "typedExactV150FlatPackages",
+        "selectionStructure": "flatValuePackages",
+        "groupId": group_id,
+        "defaultValueId": default_value_id,
+        "continuousValidation": bool(continuous_raw),
+        "continuousValidationRaw": continuous_raw,
+        "packageCount": package_count,
+        "packages": packages,
+        "associationCount": association_count,
+        "associations": associations,
+        "mappedChildIdsOutsideChildren": sorted(mapped_child_ids - authored_children),
+        "unmappedChildIds": sorted(authored_children - mapped_child_ids),
+        "associationChildIdsOutsideChildren": sorted(
+            association_child_ids - authored_children
+        ),
+        "decisionTreeStatus": "noSeparateBytesAfterTypedFlatPackagesAndAssociations",
+        "runtimeSelection": "groupValueUnobservedAllChildrenRemainPossible",
+    }
+
+
+def _hirc_v150_music_common_tail(
+    data: bytes,
+    children_offset: int,
+    child_count: int,
+) -> tuple[dict[str, Any], int] | None:
+    """Decode the fixed v150 music meter/stinger tail after Children."""
+
+    try:
+        offset = children_offset + 4 + child_count * 4
+        if offset + 27 > len(data):
+            raise ValueError("truncated v150 music meter")
+        grid_period = unpack_from("<d", data, offset)[0]
+        grid_offset = unpack_from("<d", data, offset + 8)[0]
+        tempo = unpack_from("<f", data, offset + 16)[0]
+        time_signature_numerator = data[offset + 20]
+        time_signature_beat = data[offset + 21]
+        meter_override = bool(data[offset + 22])
+        stinger_count = unpack_from("<I", data, offset + 23)[0]
+        offset += 27
+        stinger_bytes = stinger_count * 24
+        if offset + stinger_bytes > len(data):
+            raise ValueError("truncated v150 music stingers")
+        stingers = [
+            {
+                "triggerId": unpack_from("<I", data, offset + index * 24)[0],
+                "segmentId": unpack_from("<I", data, offset + index * 24 + 4)[0],
+                "syncType": unpack_from("<I", data, offset + index * 24 + 8)[0],
+                "cueFilterHash": unpack_from("<I", data, offset + index * 24 + 12)[0],
+            }
+            for index in range(stinger_count)
+        ]
+        offset += stinger_bytes
+        return ({
+            "gridPeriod": grid_period,
+            "gridOffset": grid_offset,
+            "tempo": tempo,
+            "timeSignatureNumerator": time_signature_numerator,
+            "timeSignatureBeat": time_signature_beat,
+            "meterOverride": meter_override,
+            "stingerCount": stinger_count,
+            "stingers": stingers,
+        }, offset)
+    except (ValueError, OverflowError):
+        return None
+
+
+def _hirc_v150_music_transition_tail(
+    data: bytes,
+    offset: int,
+) -> tuple[dict[str, Any], int] | None:
+    """Decode v150 MusicTransAware rules far enough to reach selector data."""
+
+    try:
+        rule_count, offset = _hirc_v150_u32(data, offset)
+        rules: list[dict[str, Any]] = []
+        for _ in range(rule_count):
+            source_count, offset = _hirc_v150_u32(data, offset)
+            source_bytes = source_count * 4
+            if offset + source_bytes > len(data):
+                raise ValueError("truncated v150 music transition sources")
+            source_ids = [unpack_from("<I", data, offset + index * 4)[0] for index in range(source_count)]
+            offset += source_bytes
+            destination_count, offset = _hirc_v150_u32(data, offset)
+            destination_bytes = destination_count * 4
+            if offset + destination_bytes > len(data):
+                raise ValueError("truncated v150 music transition destinations")
+            destination_ids = [
+                unpack_from("<I", data, offset + index * 4)[0]
+                for index in range(destination_count)
+            ]
+            offset += destination_bytes
+            if offset + 48 > len(data):
+                raise ValueError("truncated v150 music transition rule")
+            # Source rule is 21 bytes; destination rule is 26 bytes in v150.
+            offset += 47
+            has_transition_segment = bool(data[offset])
+            offset += 1
+            transition_segment_id = None
+            if has_transition_segment:
+                if offset + 30 > len(data):
+                    raise ValueError("truncated v150 music transition segment")
+                transition_segment_id = unpack_from("<I", data, offset)[0]
+                offset += 30
+            rules.append({
+                "sourceIds": source_ids,
+                "destinationIds": destination_ids,
+                "transitionSegmentId": transition_segment_id,
+            })
+        return ({"transitionRuleCount": rule_count, "transitionRules": rules}, offset)
+    except (ValueError, OverflowError):
+        return None
+
+
+def hirc_v150_music_segment_structure(
+    data: bytes,
+    children_offset: int,
+    child_count: int,
+) -> dict[str, Any] | None:
+    common = _hirc_v150_music_common_tail(data, children_offset, child_count)
+    if not common:
+        return None
+    common_row, offset = common
+    try:
+        if offset + 12 > len(data):
+            raise ValueError("truncated v150 MusicSegment")
+        duration = unpack_from("<d", data, offset)[0]
+        marker_count = unpack_from("<I", data, offset + 8)[0]
+        offset += 12
+        markers: list[dict[str, Any]] = []
+        for _ in range(marker_count):
+            if offset + 12 > len(data):
+                raise ValueError("truncated v150 MusicSegment marker")
+            marker_id = unpack_from("<I", data, offset)[0]
+            position = unpack_from("<d", data, offset + 4)[0]
+            offset += 12
+            name_end = data.find(b"\x00", offset)
+            if name_end < 0:
+                raise ValueError("unterminated v150 MusicSegment marker")
+            marker_name = data[offset:name_end].decode("utf-8", errors="replace")
+            offset = name_end + 1
+            markers.append({"id": marker_id, "position": position, "name": marker_name})
+        if offset != len(data):
+            raise ValueError("unexpected v150 MusicSegment trailing bytes")
+        return {**common_row, "duration": duration, "markerCount": marker_count, "markers": markers}
+    except (ValueError, OverflowError):
+        return None
+
+
+def hirc_v150_music_switch_structure(
+    data: bytes,
+    children_offset: int,
+    child_count: int,
+) -> dict[str, Any] | None:
+    common = _hirc_v150_music_common_tail(data, children_offset, child_count)
+    if not common:
+        return None
+    common_row, offset = common
+    transitions = _hirc_v150_music_transition_tail(data, offset)
+    if not transitions:
+        return None
+    transition_row, offset = transitions
+    try:
+        if offset + 5 > len(data):
+            raise ValueError("truncated v150 MusicSwitch header")
+        continue_playback = bool(data[offset])
+        tree_depth = unpack_from("<I", data, offset + 1)[0]
+        offset += 5
+        argument_bytes = tree_depth * 4
+        if offset + argument_bytes + tree_depth > len(data):
+            raise ValueError("truncated v150 MusicSwitch arguments")
+        group_ids = [unpack_from("<I", data, offset + index * 4)[0] for index in range(tree_depth)]
+        offset += argument_bytes
+        group_types = list(data[offset:offset + tree_depth])
+        offset += tree_depth
+        tree_size, offset = _hirc_v150_u32(data, offset)
+        if offset + 1 + tree_size != len(data) or tree_size % 12:
+            raise ValueError("invalid v150 MusicSwitch decision tree size")
+        tree_mode = data[offset]
+        offset += 1
+        tree_data = data[offset:offset + tree_size]
+        raw_nodes = [
+            {
+                "key": unpack_from("<I", tree_data, index)[0],
+                "value": unpack_from("<I", tree_data, index + 4)[0],
+                "weight": unpack_from("<H", tree_data, index + 8)[0],
+                "probability": unpack_from("<H", tree_data, index + 10)[0],
+            }
+            for index in range(0, tree_size, 12)
+        ]
+        leaves: list[dict[str, Any]] = []
+        visited: set[int] = set()
+
+        def visit(index: int, depth: int, path: tuple[int, ...]) -> None:
+            if index < 0 or index >= len(raw_nodes) or index in visited:
+                raise ValueError("invalid v150 MusicSwitch tree topology")
+            visited.add(index)
+            node = raw_nodes[index]
+            current_path = (*path, int(node["key"]))
+            if depth >= tree_depth:
+                leaves.append({
+                    "audioNodeId": int(node["value"]),
+                    "pathKeys": list(current_path),
+                    "weight": int(node["weight"]),
+                    "probability": int(node["probability"]),
+                })
+                return
+            child_index = int(node["value"]) & 0xFFFF
+            child_count_value = (int(node["value"]) >> 16) & 0xFFFF
+            if not child_count_value or child_index + child_count_value > len(raw_nodes):
+                raise ValueError("invalid v150 MusicSwitch child range")
+            for child in range(child_index, child_index + child_count_value):
+                visit(child, depth + 1, current_path)
+
+        if raw_nodes:
+            visit(0, 0, ())
+        if len(visited) != len(raw_nodes):
+            raise ValueError("unreachable v150 MusicSwitch tree nodes")
+        return {
+            **common_row,
+            **transition_row,
+            "continuePlayback": continue_playback,
+            "treeDepth": tree_depth,
+            "arguments": [
+                {"groupId": group_id, "groupType": group_types[index]}
+                for index, group_id in enumerate(group_ids)
+            ],
+            "treeMode": tree_mode,
+            "treeNodeCount": len(raw_nodes),
+            "treeLeafCount": len(leaves),
+            "treeLeaves": leaves,
+        }
+    except (ValueError, OverflowError):
+        return None
+
+
+def hirc_v150_music_random_sequence_structure(
+    data: bytes,
+    children_offset: int,
+    child_count: int,
+) -> dict[str, Any] | None:
+    common = _hirc_v150_music_common_tail(data, children_offset, child_count)
+    if not common:
+        return None
+    common_row, offset = common
+    transitions = _hirc_v150_music_transition_tail(data, offset)
+    if not transitions:
+        return None
+    transition_row, offset = transitions
+    try:
+        playlist_count, offset = _hirc_v150_u32(data, offset)
+        items: list[dict[str, Any]] = []
+
+        def read_item(depth: int, parent_index: int | None) -> None:
+            nonlocal offset
+            if len(items) >= playlist_count or offset + 30 > len(data):
+                raise ValueError("truncated v150 MusicRanSeq playlist")
+            segment_id = unpack_from("<I", data, offset)[0]
+            playlist_item_id = unpack_from("<I", data, offset + 4)[0]
+            nested_count = unpack_from("<I", data, offset + 8)[0]
+            selection_type = unpack_from("<I", data, offset + 12)[0]
+            row = {
+                "index": len(items),
+                "parentIndex": parent_index,
+                "depth": depth,
+                "segmentId": segment_id,
+                "playlistItemId": playlist_item_id,
+                "childCount": nested_count,
+                "selectionType": selection_type,
+                "selectionTypeLabel": {
+                    0: "continuousSequence",
+                    1: "stepSequence",
+                    2: "continuousRandom",
+                    3: "stepRandom",
+                    0xFFFFFFFF: "none",
+                }.get(selection_type, f"type{selection_type}"),
+                "loop": unpack_from("<h", data, offset + 16)[0],
+                "loopMin": unpack_from("<h", data, offset + 18)[0],
+                "loopMax": unpack_from("<h", data, offset + 20)[0],
+                "weight": unpack_from("<I", data, offset + 22)[0],
+                "avoidRepeatCount": unpack_from("<H", data, offset + 26)[0],
+                "usesWeight": bool(data[offset + 28]),
+                "shuffle": bool(data[offset + 29]),
+            }
+            offset += 30
+            item_index = len(items)
+            items.append(row)
+            for _ in range(nested_count):
+                read_item(depth + 1, item_index)
+
+        if playlist_count:
+            read_item(0, None)
+        if len(items) != playlist_count or offset != len(data):
+            raise ValueError("invalid v150 MusicRanSeq playlist size")
+        return {
+            **common_row,
+            **transition_row,
+            "playlistItemCount": playlist_count,
+            "playlistItems": items,
+            "selectionTypeLabels": sorted({str(row["selectionTypeLabel"]) for row in items}),
+        }
+    except (ValueError, OverflowError, RecursionError):
+        return None
+
+
+def hirc_v150_music_structure(
+    object_type: int,
+    data: bytes,
+    children_offset: int,
+    child_count: int,
+) -> dict[str, Any] | None:
+    parser = {
+        10: hirc_v150_music_segment_structure,
+        12: hirc_v150_music_switch_structure,
+        13: hirc_v150_music_random_sequence_structure,
+    }.get(object_type)
+    return parser(data, children_offset, child_count) if parser else None
+
+
+def hirc_v150_empty_music_children(
+    object_type: int,
+    data: bytes,
+) -> tuple[list[int], int, dict[str, Any]] | None:
+    """Prove an empty music Children array through a unique typed tail parse.
+
+    Empty lists have no child parent backlinks.  A zero count is accepted only
+    when exactly one offset lets the complete type-specific meter/transition/
+    selector tail consume the HIRC object to its exact end.
+    """
+
+    matches: list[tuple[list[int], int, dict[str, Any]]] = []
+    for offset in range(0, max(0, len(data) - 3)):
+        if unpack_from("<I", data, offset)[0] != 0:
+            continue
+        structure = hirc_v150_music_structure(object_type, data, offset, 0)
+        if structure:
+            matches.append(([], offset, structure))
+            if len(matches) > 1:
+                return None
+    return matches[0] if len(matches) == 1 else None
 
 
 def hirc_media_relation_types(path_object_types: list[int]) -> list[str]:
@@ -2206,32 +3578,147 @@ def hirc_random_sequence_properties(data: bytes, children_offset: int) -> dict[s
     }
 
 
+def summarize_hirc_action_dispatch(
+    event_id: int,
+    root_action_ids: list[int],
+    action_evidence: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Describe serialized Event dispatch without claiming runtime sequence."""
+
+    root_rows = sorted(
+        (
+            row
+            for row in action_evidence
+            if row.get("dispatchEventId") == event_id and row.get("isRootEventAction")
+        ),
+        key=lambda row: int(row.get("eventActionOrdinal") or 0),
+    )
+    playback_rows = [
+        row
+        for row in root_rows
+        if row.get("operation") in {"play", "playEvent"}
+    ]
+    playback_count = len(playback_rows)
+    if not playback_count:
+        timing_class = "noPlayback"
+    elif playback_count == 1:
+        timing_class = "singlePlayback"
+    elif any(row.get("actionParserStatus") != "typedExactV150" for row in playback_rows):
+        timing_class = "coDispatchActionTimingUnresolved"
+    elif any(
+        (row.get("delay") or {}).get("modifierRangesMs")
+        for row in playback_rows
+    ):
+        timing_class = "dynamicDelayRangeUnresolved"
+    else:
+        delay_signatures = {
+            tuple((row.get("delay") or {}).get("baseValuesMs") or [])
+            for row in playback_rows
+        }
+        if delay_signatures == {()}:
+            timing_class = "coDispatchNoExplicitDelay"
+        elif len(delay_signatures) > 1:
+            timing_class = "coDispatchWithAuthoredDelayDifference"
+        else:
+            timing_class = "coDispatchUniformExplicitDelay"
+
+    def explicit_property_count(name: str) -> int:
+        return sum(
+            (row.get(name) or {}).get("serializationStatus")
+            not in {None, "implicitDefaultNotSerialized"}
+            for row in playback_rows
+        )
+
+    return {
+        "serializedActionCount": len(root_action_ids),
+        "serializedActionIds": root_action_ids,
+        "playbackActionCount": playback_count,
+        "playbackActionOrdinals": [row["eventActionOrdinal"] for row in playback_rows],
+        "typedPlaybackActionCount": sum(
+            row.get("actionParserStatus") == "typedExactV150" for row in playback_rows
+        ),
+        "failedPlaybackActionCount": sum(
+            row.get("actionParserStatus") == "failedClosed" for row in playback_rows
+        ),
+        "multiPlayback": playback_count > 1,
+        "timingClass": timing_class,
+        "simultaneityCandidate": timing_class == "coDispatchNoExplicitDelay",
+        "explicitDelayActionCount": explicit_property_count("delay"),
+        "explicitTransitionActionCount": explicit_property_count("transition"),
+        "probabilityGatedActionCount": explicit_property_count("probability"),
+        "evidenceBoundary": (
+            "Action ordinals prove serialized Event membership, not sequential "
+            "execution or sample-accurate simultaneous audible onset."
+        ),
+    }
+
+
 def traverse_hirc_event(
     event_id: int,
     objects: dict[int, dict[str, Any]],
     decoded_media_ids: set[int] | None = None,
+    bank_version: int | None = 150,
 ) -> dict[str, Any]:
     """Traverse one Event using only typed, downward v150 HIRC edges."""
 
     decoded_media_ids = decoded_media_ids or set()
     event_object = objects.get(event_id) or {}
     root_action_ids = hirc_event_action_ids(event_object.get("data") or b"")
-    queue: deque[tuple[int, int, tuple[int, ...], tuple[int, ...], tuple[str, ...]]] = deque(
-        (action_id, action_id, (event_id,), (4,), ()) for action_id in root_action_ids
+    queue: deque[
+        tuple[int, int, tuple[int, ...], tuple[int, ...], tuple[str, ...], int | None, int | None]
+    ] = deque(
+        (action_id, action_id, (event_id,), (4,), (), ordinal, event_id)
+        for ordinal, action_id in enumerate(root_action_ids)
     )
     visited: set[int] = {event_id}
-    visited_paths: set[tuple[int, int]] = set()
+    visited_paths: set[tuple[int, int, int | None, int | None]] = set()
     source_media_ids: list[int] = []
     resolved_media_ids: list[int] = []
     media_evidence_by_id: dict[int, dict[str, Any]] = {}
     action_evidence: list[dict[str, Any]] = []
     container_evidence: list[dict[str, Any]] = []
+    music_node_evidence: list[dict[str, Any]] = []
     unresolved_nodes: list[dict[str, Any]] = []
-    root_operations: dict[int, int | None] = {}
+
+    def record_media(
+        media_id: int,
+        object_id: int,
+        object_type: int,
+        root_action_id: int,
+        relations: tuple[str, ...],
+    ) -> None:
+        if media_id not in source_media_ids:
+            source_media_ids.append(media_id)
+        if media_id in decoded_media_ids and media_id not in resolved_media_ids:
+            resolved_media_ids.append(media_id)
+        media_row = media_evidence_by_id.setdefault(media_id, {
+            "mediaId": media_id,
+            "decoded": media_id in decoded_media_ids,
+            "soundObjectIds": set(),
+            "musicTrackObjectIds": set(),
+            "rootActionIds": set(),
+            "relationTypes": set(),
+            "selectionPaths": set(),
+        })
+        if object_type == 2:
+            media_row["soundObjectIds"].add(object_id)
+        elif object_type == 11:
+            media_row["musicTrackObjectIds"].add(object_id)
+        media_row["rootActionIds"].add(root_action_id)
+        media_row["relationTypes"].update(relations)
+        media_row["selectionPaths"].add(relations)
 
     while queue:
-        object_id, root_action_id, path_ids, path_types, path_relations = queue.popleft()
-        visit_key = (object_id, root_action_id)
+        (
+            object_id,
+            root_action_id,
+            path_ids,
+            path_types,
+            path_relations,
+            event_action_ordinal,
+            dispatch_event_id,
+        ) = queue.popleft()
+        visit_key = (object_id, root_action_id, dispatch_event_id, event_action_ordinal)
         if visit_key in visited_paths:
             continue
         visited_paths.add(visit_key)
@@ -2249,9 +3736,27 @@ def traverse_hirc_event(
         current_path_ids = (*path_ids, object_id)
         current_path_types = (*path_types, object_type)
 
+        if object_type in HIRC_MUSIC_NODE_TYPES and bank_version != 150:
+            unresolved_nodes.append({
+                "objectId": object_id,
+                "objectType": object_type,
+                "rootActionId": root_action_id,
+                "reason": "unsupportedMusicBankVersion",
+                "bankVersion": bank_version,
+            })
+            continue
+
         if object_type == 4:
-            for action_id in hirc_event_action_ids(data):
-                queue.append((action_id, root_action_id, current_path_ids, current_path_types, path_relations))
+            for ordinal, action_id in enumerate(hirc_event_action_ids(data)):
+                queue.append((
+                    action_id,
+                    root_action_id,
+                    current_path_ids,
+                    current_path_types,
+                    path_relations,
+                    ordinal,
+                    object_id,
+                ))
             continue
 
         if object_type == 3:
@@ -2259,21 +3764,33 @@ def traverse_hirc_event(
             operation = (action_type & 0xFF00) if action_type is not None else None
             target_id = hirc_action_target_id(data)
             target_type = int((objects.get(target_id) or {}).get("type") or 0) if target_id is not None else 0
-            if object_id in root_action_ids:
-                root_operations[object_id] = operation
             traversed = operation in HIRC_PLAYBACK_ACTION_OPERATIONS and target_id is not None
-            action_evidence.append({
+            action_row = {
                 "actionId": object_id,
                 "rootActionId": root_action_id,
+                "dispatchEventId": dispatch_event_id,
+                "eventActionOrdinal": event_action_ordinal,
+                "isRootEventAction": len(path_ids) == 1 and dispatch_event_id == event_id,
                 "actionType": action_type,
                 "operation": HIRC_ACTION_OPERATION_LABELS.get(operation, f"operation0x{operation:04x}" if operation is not None else "truncated"),
                 "scope": (action_type & 0x00FF) if action_type is not None else None,
                 "targetId": target_id,
                 "targetType": target_type or None,
                 "traversed": traversed,
-            })
+            }
+            if operation in HIRC_PLAYBACK_ACTION_OPERATIONS:
+                action_row.update(hirc_v150_playback_action(data, bank_version))
+            action_evidence.append(action_row)
             if traversed:
-                queue.append((target_id, root_action_id, current_path_ids, current_path_types, path_relations))
+                queue.append((
+                    target_id,
+                    root_action_id,
+                    current_path_ids,
+                    current_path_types,
+                    path_relations,
+                    event_action_ordinal,
+                    dispatch_event_id,
+                ))
             continue
 
         if object_type == 2:
@@ -2286,27 +3803,52 @@ def traverse_hirc_event(
                     "reason": "truncatedSoundSource",
                 })
                 continue
-            if media_id not in source_media_ids:
-                source_media_ids.append(media_id)
-            if media_id in decoded_media_ids and media_id not in resolved_media_ids:
-                resolved_media_ids.append(media_id)
-            media_row = media_evidence_by_id.setdefault(media_id, {
-                "mediaId": media_id,
-                "decoded": media_id in decoded_media_ids,
-                "soundObjectIds": set(),
-                "rootActionIds": set(),
-                "relationTypes": set(),
-                "selectionPaths": set(),
-            })
             relations = tuple(path_relations) or ("directSound",)
-            media_row["soundObjectIds"].add(object_id)
-            media_row["rootActionIds"].add(root_action_id)
-            media_row["relationTypes"].update(relations)
-            media_row["selectionPaths"].add(relations)
+            record_media(media_id, object_id, object_type, root_action_id, relations)
+            continue
+
+        if object_type == 11:
+            track = hirc_v150_music_track(data)
+            if not track:
+                unresolved_nodes.append({
+                    "objectId": object_id,
+                    "objectType": object_type,
+                    "rootActionId": root_action_id,
+                    "reason": "musicTrackPrefixUnresolved",
+                })
+                continue
+            music_node_evidence.append({
+                "objectId": object_id,
+                "objectType": object_type,
+                "rootActionId": root_action_id,
+                "nodeKind": "musicTrack",
+                "parentId": track["parentId"],
+                "sourceCount": track["sourceCount"],
+                "sources": track["sources"],
+                "playlistItemCount": track["playlistItemCount"],
+                "playlistItems": track["playlistItems"],
+                "subtrackCount": track["subtrackCount"],
+                "automationCount": track["automationCount"],
+                "automationPointCount": track["automationPointCount"],
+                "parserConfidence": "typedExactV150",
+            })
+            relations = (*path_relations, "musicTrackSource")
+            for source in track["sources"]:
+                media_id = int(source.get("mediaId") or 0)
+                if media_id:
+                    record_media(media_id, object_id, object_type, root_action_id, relations)
             continue
 
         if object_type in HIRC_TYPED_CHILD_CONTAINER_TYPES:
             parsed = hirc_reciprocal_child_list(object_id, object_type, data, objects)
+            structure = None
+            parser_confidence = "reciprocalParentExact"
+            if not parsed and object_type in HIRC_MUSIC_PARENT_NODE_TYPES:
+                empty_music = hirc_v150_empty_music_children(object_type, data)
+                if empty_music:
+                    child_ids, offset, structure = empty_music
+                    parsed = (child_ids, offset)
+                    parser_confidence = "typedTailExactEmpty"
             if not parsed:
                 unresolved_nodes.append({
                     "objectId": object_id,
@@ -2322,22 +3864,71 @@ def traverse_hirc_event(
                 "rootActionId": root_action_id,
                 "childrenOffset": offset,
                 "childCount": len(child_ids),
-                "parserConfidence": "reciprocalParentExact",
+                "parserConfidence": parser_confidence,
             }
             if object_type == 5:
                 container_row.update(hirc_random_sequence_properties(data, offset))
                 relation = "sequenceItem" if container_row.get("mode") == 1 else "randomAlternative"
             elif object_type == 6:
+                container_row["switchMappingEvidence"] = hirc_v150_switch_mapping(
+                    data,
+                    offset,
+                    len(child_ids),
+                    bank_version=bank_version,
+                )
                 relation = "switchCandidate"
             elif object_type == 9:
                 relation = "layerChild"
+            elif object_type == 10:
+                relation = "musicTrack"
+                structure = structure or hirc_v150_music_structure(object_type, data, offset, len(child_ids))
+                node_kind = "musicSegment"
+            elif object_type == 12:
+                relation = "musicSwitchCandidate"
+                structure = structure or hirc_v150_music_structure(object_type, data, offset, len(child_ids))
+                node_kind = "musicSwitchContainer"
+            elif object_type == 13:
+                relation = "musicPlaylistCandidate"
+                structure = structure or hirc_v150_music_structure(object_type, data, offset, len(child_ids))
+                node_kind = "musicRandomSequenceContainer"
             else:
                 relation = "groupChild"
             container_row["edgeKind"] = relation
             container_evidence.append(container_row)
+            if object_type in HIRC_MUSIC_PARENT_NODE_TYPES:
+                music_row = {
+                    **container_row,
+                    "nodeKind": node_kind,
+                    "childIds": child_ids,
+                }
+                if structure:
+                    music_row.update(structure)
+                    music_row["structureStatus"] = "typedExactV150"
+                else:
+                    music_row["structureStatus"] = "structureTailUnresolved"
+                    unresolved_nodes.append({
+                        "objectId": object_id,
+                        "objectType": object_type,
+                        "rootActionId": root_action_id,
+                        "reason": "musicStructureTailUnresolved",
+                    })
+                music_node_evidence.append(music_row)
+                if not structure:
+                    # Reciprocal parent proof identifies a likely Children block,
+                    # but music edges are traversed only when the serialized tail
+                    # starting at that exact boundary also parses to object end.
+                    continue
             child_relations = (*path_relations, relation)
             for child_id in child_ids:
-                queue.append((child_id, root_action_id, current_path_ids, current_path_types, child_relations))
+                queue.append((
+                    child_id,
+                    root_action_id,
+                    current_path_ids,
+                    current_path_types,
+                    child_relations,
+                    event_action_ordinal,
+                    dispatch_event_id,
+                ))
             continue
 
         unresolved_nodes.append({
@@ -2351,27 +3942,38 @@ def traverse_hirc_event(
         {
             "mediaId": media_id,
             "decoded": bool(row["decoded"]),
-            "soundObjectCount": len(row["soundObjectIds"]),
-            "soundObjectIds": sorted(row["soundObjectIds"]),
+            **({
+                "soundObjectCount": len(row["soundObjectIds"]),
+                "soundObjectIds": sorted(row["soundObjectIds"]),
+            } if row["soundObjectIds"] else {}),
+            **({
+                "musicTrackObjectCount": len(row["musicTrackObjectIds"]),
+                "musicTrackObjectIds": sorted(row["musicTrackObjectIds"]),
+            } if row["musicTrackObjectIds"] else {}),
             "rootActionIds": sorted(row["rootActionIds"]),
             "relationTypes": sorted(row["relationTypes"]),
             "selectionPaths": [list(path) for path in sorted(row["selectionPaths"])],
         }
         for media_id, row in sorted(media_evidence_by_id.items())
     ]
+    action_dispatch_evidence = summarize_hirc_action_dispatch(
+        event_id, root_action_ids, action_evidence
+    )
     return {
         "actionIds": root_action_ids,
-        "rootPlayActionCount": sum(
-            operation in HIRC_PLAYBACK_ACTION_OPERATIONS
-            for operation in root_operations.values()
+        "rootPlayActionCount": action_dispatch_evidence["playbackActionCount"],
+        "rootStopActionCount": sum(
+            row.get("isRootEventAction") and row.get("operation") == "stop"
+            for row in action_evidence
         ),
-        "rootStopActionCount": sum(operation == 0x0100 for operation in root_operations.values()),
         "visitedObjectIds": sorted(visited),
         "sourceMediaIds": source_media_ids,
         "mediaIds": resolved_media_ids,
         "mediaEvidence": media_evidence,
         "actionEvidence": action_evidence,
+        "actionDispatchEvidence": action_dispatch_evidence,
         "containerEvidence": container_evidence,
+        "musicNodeEvidence": music_node_evidence,
         "unresolvedNodes": unresolved_nodes,
         "traversalStatus": "partial" if unresolved_nodes else "complete",
     }
@@ -3504,7 +5106,12 @@ def collect_event_audio_index(
                 event_object = objects[event_hash]
                 if not event_object or event_object.get("type") != 4:
                     continue
-                traversal = traverse_hirc_event(event_hash, objects, numeric_audio_ids)
+                traversal = traverse_hirc_event(
+                    event_hash,
+                    objects,
+                    numeric_audio_ids,
+                    bank_version=bank_version,
+                )
                 action_ids = traversal["actionIds"]
                 visited = set(traversal["visitedObjectIds"])
                 media_ids = traversal["mediaIds"]
@@ -3522,6 +5129,8 @@ def collect_event_audio_index(
                     "bank": bank_name,
                     "actionIds": action_ids,
                     "actionEvidence": traversal["actionEvidence"],
+                    "actionDispatchEvidence": traversal["actionDispatchEvidence"],
+                    "actionParser": "wwise150TypedPlaybackActionBundles",
                     "rootPlayActionCount": traversal["rootPlayActionCount"],
                     "rootStopActionCount": traversal["rootStopActionCount"],
                     "visitedObjectIds": sorted(visited),
@@ -3529,13 +5138,14 @@ def collect_event_audio_index(
                     "objectTypeLabels": object_type_labels,
                     "selectionObjectTypes": selection_object_types,
                     "containerEvidence": traversal["containerEvidence"],
+                    "musicNodeEvidence": traversal["musicNodeEvidence"],
                     "mediaEvidence": traversal["mediaEvidence"],
                     "sourceMediaIds": traversal["sourceMediaIds"],
                     "mediaIds": media_ids,
                     "resolvedMediaCount": len(media_ids),
                     "unresolvedNodes": traversal["unresolvedNodes"],
                     "traversalStatus": traversal["traversalStatus"],
-                    "edgeParser": "wwise150TypedReciprocalChildren",
+                    "edgeParser": "wwise150TypedReciprocalChildrenSwitchMappingAndMusic",
                     "source": "wwiseHirc",
                     "nestedReferenceConfidence": "typedExact" if not traversal["unresolvedNodes"] else "typedPartial",
                 }
@@ -3546,6 +5156,7 @@ def collect_event_audio_index(
                             key: row[key]
                             for key in (
                                 "mediaId", "soundObjectCount", "soundObjectIds",
+                                "musicTrackObjectCount", "musicTrackObjectIds",
                                 "rootActionIds", "relationTypes", "selectionPaths",
                             )
                             if row.get(key) not in (None, "", [])
@@ -3603,8 +5214,13 @@ def collect_event_audio_index(
             "evidenceBoundary": (
                 "Exact serialized HIRC object-family counts. Event, Action, Sound, and "
                 "types 5/6/7/9 use typed downward edges with reciprocal parent proof; "
-                "music nodes 10-13 and unresolved child structures fail closed. Runtime "
-                "switch, random, sequence, and layer selection is not evaluated."
+                "type-6 flat value packages are emitted only when their complete v150 "
+                "mapping and association tail consumes exactly, while distinct tails stay unresolved. "
+                "Version-150 MusicSegment/Track/Switch/RanSeq nodes use bounded typed "
+                "prefixes, exact track sources, and reciprocal music children; truncated, "
+                "non-v150, and unresolved structures fail closed. Runtime switch, random, "
+                "sequence, transition, and layer selection is not evaluated, and switch "
+                "mapping evidence never prunes possible children without a runtime group value."
             ),
         })
 
@@ -4505,11 +6121,15 @@ def build_audio(args: argparse.Namespace) -> int:
     if not conv_dir.exists():
         raise SystemExit(f"Conversation directory not found: {conv_dir}")
     event_names = collect_audio_event_names(conv_dir, args.export_root)
+    event_names.update(collect_table_audio_event_names(args.export_root))
     metadata_path = args.game_root / "il2cpp_data" / "Metadata" / "global-metadata.dat"
     if not metadata_path.is_file():
         cached_metadata_path = args.export_root / "recovered" / "il2cpp" / "global-metadata.dat"
         metadata_path = cached_metadata_path if cached_metadata_path.is_file() else None
-    binary_managed_event_names = set(collect_metadata_audio_literals(metadata_path))
+    binary_managed_event_names = {
+        name for name in collect_metadata_audio_literals(metadata_path)
+        if not is_rtpc_parameter_name(name)
+    }
     event_names.update(binary_managed_event_names)
     fmv_attach_overrides = load_narrative_video_attach_overrides(args.webui_root)
     audio_source_overrides = load_narrative_video_audio_source_overrides(args.webui_root)

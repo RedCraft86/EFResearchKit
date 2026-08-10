@@ -60,11 +60,99 @@ NPC archetypes are imported as labeled source kits.
   the normal core with fallback and occlusion disabled. Matching read-only
   Unity/game settings select `3840x2160`; at that 16:9 aspect, native AABB,
   authored OBB, point-sphere, and spot-cone tests admit exactly 11 room lights
-  and reject only `Spot Light (20)`, retaining 17 as the combined authored
-  survivor upper bound. Character-light follower transforms/culling, other
-  aspects, and unrelated runtime lights remain open. Only an authorized
-  target-frame array capture can settle the live survivor order and final
-  retail `lightCount`.
+  and reject only `Spot Light (20)`. Installed layer data fixes recursive
+  Gacha assignment at layer 30. Identity prefab/Timeline placement, native
+  follower equations, and the original entrance/loop ACL streams close all six
+  character lights: their constant root motion removes to identity, no muscle
+  lanes are mapped, and every light passes across all 844 decoded QVV frames.
+  The exact known authored contribution is therefore 17, with its internal
+  priority/distance order closed. Other display aspects, runtime/custom
+  carry-in, the target-frame pointer/count, whole-list order, and final retail
+  `lightCount` remain open. The maintained cap audit now directly pins both
+  `DoECSCulling` call sites through the UnityPlayer candidate core: its native
+  gates, hidden-sret handoff, 16-byte `LightCullResult`, and 148-byte
+  `VisibleLight` capture stride are source-closed. An authorized target-frame
+  capture therefore has an exact pointer/count/row decoding contract, but no
+  live values are inferred offline. The same maintained audit now closes
+  `AddCullViewByMatrix` from its 16-argument binding through six-plane
+  construction and the scheduled view record. The managed screen-size minimum
+  is squared and stored at view `+0x18`; its installed desktop default is zero.
+  Candidate visibility bit 0 is evaluated before the mask-enabled bit and
+  `Camera.cullingMask & candidate.layerMask`. `sceneCullingMask` is forwarded
+  but not read by this hash-pinned constructor. The next dispatch boundary is
+  now split exactly: normal views use a six-plane AABB predicate, while
+  `cameraType == 0x80` uses a sphere/distance predicate; neither reads view
+  `+0x18`. Retail serializer/deserializer evidence now identifies the formerly
+  generic 28-byte record exactly as `HGTreeRenderer`, nested under
+  `HGTreeInstance.renderers`, with `lodScreenSizeMaxSquared` and
+  `lodScreenSizeMinSquared` at `+0x14/+0x18`. The dedicated 729-entry HG
+  internal-call name/function tables pair `HGTreeRender.CreateRendererList`
+  index 564 with `0x1801D9D10` and `RegisterTreeBatchGroup` index 567 with
+  `0x1801DA040`. The former reaches `0x18107EE40 -> 0x181080730` and selects
+  runtime batch jobs `0x181067A70/0x181064190`; the latter reaches registration
+  core `0x181086050`. Loader `0x1810C5F30` now closes that transform: it
+  writes `count`, a `0x18`-stride runtime-record array sized to capacity
+  buckets 1/2/4/8/16/32, then a separate 8-byte LOD pair array at
+  `4 + 0x18*capacity`. Each source record calls `0x181086050` with
+  `batchKey`, mesh/material PPtrs, and `subMeshIndex`; its returned 16-bit
+  handle plus `batchKey/renderFlags` enter the runtime record, while the two
+  serialized LOD floats copy verbatim to the pair array. Dedicated HG entries
+  568/569 are `UnregisterTreeBatchGroup` and
+  `UnregisterTreeBatchGroupWithHandle`; owner cleanup `0x1810BCE00` iterates
+  the same blob and passes record `+0x04` as `batchKey` and `+0x02` as the
+  16-bit handle to `0x181087E00`, closing that registration lifecycle. This
+  loader blob is not the other 24-byte structure used by LOD jobs. The latter
+  is archetype component bit 67: `+0x00` is LOD count, `+0x01/+0x02` are the
+  desired and availability-resolved indices, `+0x03` carries transition/output
+  history, `+0x04/+0x05` are pending/available LOD masks, `+0x08` is a 64-bit
+  renderer-readiness set, and `+0x10..+0x17` are eight cumulative renderer
+  range endpoints. Writer `0x1810842E0` closes the request, completion, and
+  unload bit transitions. The indexed accessor `0x1811648A0` exposes the same
+  component per entity, and writer `0x181159010` closes its initial LOD0
+  completion/fallback transition: when only LOD0 is pending it zeroes the
+  desired/resolved/history indices, changes pending/available masks to `0/1`,
+  and fills readiness bits from the companion renderer/subresource count;
+  otherwise it writes sentinel 8 to all three indices and clears readiness.
+  It does not produce the LOD count or cumulative range endpoints. Installed
+  scripting registration `0x1807EEEE0 -> 0x1807EC5E0` now directly closes
+  `::Scripting::UnityEngine::HyperGryph::ECS::HGTreeComponentProxy` to native
+  type `HGTreeComponent` in namespace `UnityEngine.HyperGryph.ECS`, module
+  `UnityEngine.HGGraphicsModule.dll`. Dedicated HG internal-call index 712,
+  `EntityManager.GetOrRegisterEntityTypeImpl_Injected` at `0x1801E0D90`, now
+  closes the next step: each stride-8 input contributes its signed 16-bit
+  component ID to `mask[id >> 6]` at bit `id & 63`, so ID 67 is exactly high
+  qword bit 3 (`0x8`). Current metadata method 478429/token `0x06000279`
+  maps `HGTreeComponent.get_id` to GameAssembly `0x184DBCEC0`; its exact body
+  is `mov eax, 0x50; ret`. `HGTreeComponent` is therefore ID 80/high-qword
+  bit 16 (`0x10000`), proving that the component-67 LOD state is a separate,
+  still unnamed native component rather than `HGTreeComponent`. Writer
+  `0x181157760` also closes a second direct-availability initialization path:
+  it either marks every LOD and companion subresource available or marks only
+  the terminal LOD and the exact readiness range selected through the
+  cumulative endpoints. It consumes but still does not produce LOD count or
+  those endpoints. Dispatch
+  segment `0x181079FB1` selects the recovered LOD job variants. The direct route uses
+  `minSquared < distanceSquared <= maxSquared`; the scaled route uses
+  `(viewFactor*instanceScale)/max(0.0001,distanceSquared)` and the same
+  exclusive-lower/inclusive-upper interval after ArtTag scaling. Its upstream
+  controls are now closed: builder `0x18106EAD0` emits a `0xC30` payload and a
+  64-byte packet containing its pointer plus the 56-byte
+  `LODCrossFadeConfig`; packet `+0x3C/+0x3E` are `enableDither/lodBias`.
+  `HGCullingSystem` stores squared `parentLODBias` at state `+0x180` and the
+  two 256-entry ArtTag encodings at `+0x184/+0x584`. Nonzero view `lodBias`
+  multiplies both copied tables by `(1 + lodBias/255)^2`.
+  `HGLODStreamingSystem.Get/SetArtTagLODStreamingOffset` directly owns the
+  256-int table at state `+0x74`; payload `+0x82C` copies it, and every LOD job
+  adds its signed entry to the selected index before clamping to
+  `[0,lodCount-1]`. The
+  former index-10320,
+  `0x180175A10 -> 0x180A5E320`, and virtual-slot conclusion is retracted: it
+  crossed the HG table boundary into unrelated Animator code. The remaining
+  initially zero loader-record bytes, the component-67 native identity and
+  LOD-count/range producer, the unrelated scheduled consumer of view
+  `+0x18`,
+  any separate
+  `sceneCullingMask` consumer, and zero-threshold pass behavior remain open.
 - Installed `LightBinningXYCS`/`LightBinningZCS` recovery now pins all eight
   D3D11/Vulkan kernel programs plus the exact 28-byte `BinningData` ABI,
   32-pixel/2,048-slice layout, 8x8/64x1 dispatch formulas, and shared light +
@@ -101,7 +189,39 @@ NPC archetypes are imported as labeled source kits.
   shadow words. All 8,216 words match through `_LightDataBuffer` and the D3D11
   `EndfieldCB4` bridge on both APIs; unknown words remain zero, same-frame
   activation is fail-closed, beauty is unchanged, and pass 0 remains disabled.
-  General-scene punctual payloads are still unrecovered.
+  The installed `PrepareCPUData` body now also closes the complete eight-float4
+  write schema for both Spot and Point/linear-extension rows. The exact
+  selected-aspect Gacha room contribution is one Spot, six ordinary Point,
+  and four positive-length linear-extension Point lights; all eleven enable
+  authored OBB culling and are unshadowed/cookie-free. Each has an exact
+  serialized `HGAdditionalLightData` component rather than an unresolved
+  default. Installed `GetLightNPRData`/`GetLightAdditionalData` close the
+  32-byte return layout and b31 record3.yzw, record4, and record6.w: every row
+  uses NPR type 0 with `(1,1,0,0)`, `CharacterOnly=false`, and falloff `-1`;
+  volumetric intensity is 0/1/10 on 2/5/4 rows. The same body now closes the
+  OBB chain as inverse TRS of authored relative position, ZXY orientation, and
+  half extents, packed row-major into six half2 words at record5.xyz/6.xyz.
+  Installed `HGUtils.PackTwoHalfValuesAsFloat` and
+  `Unity.Mathematics.math.f32tof16` close the word order and IEEE conversion;
+  all 11 analytic candidates map authored corners back to the unit box within
+  `0.002611`. Exact signed-zero bits and one `Spot Light (12)` reciprocal at a
+  one-float32-ULP half boundary still need the exact UnityPlayer matrix-inverse
+  output or a retail buffer capture. Pinned `globalgamemanagers` objects prove
+  Linear color space and linear light intensity; all 11 rows disable color
+  temperature, distance/far-show falloff, animation, multistate, and flicker.
+  UnityPlayer `finalColor`, `Color.linear`, animation-disable, and flicker
+  bodies therefore close exact b31 record0.xyz bits as linearized authored RGB
+  times intensity, with falloff/flicker both 1. The two `PrepareCPUData`
+  branches close record0.w as `float(lightKind + 2*shadowOnly)`: the one Spot
+  row is exactly 0 and all ten Point/linear-extension rows are exactly 1.
+  Record0 is therefore fully closed. The metadata-backed
+  `VisibleLight.get_range` field at `+0x68` and the native scalar divide close
+  record1.w for all 11 rows. Hash-pinned half-angle scaling and the original
+  scalar-cosine body close record2.z plus the Spot row's record2.w; the Point
+  branch closes record2.z as `HGSharedLightData.length` (`-1` on six ordinary
+  Points, `18` on four linear extensions). Target-frame record1.xyz/record2.xy,
+  Point record2.w shadow-face packing, runtime carry-in, and final byte-exact
+  b31 rows remain open.
 - Deferred binding 34 is the exact 11,440-byte `ShadowData`; the selected
   resolver reads only its Punctual rows `c64..c400` (bytes 1,024..6,415).
   Native allocation, four-section copy/bind transport, atlas sizing/format,
@@ -262,12 +382,15 @@ runtime code, or shaders rather than hand-editing generated prefabs.
 
 ## Highest-value next work
 
-1. Recover the six character-light follower transforms/cull outcomes, then the
-   retail survivor list from the source-closed 18-row input, exact selected-
-   aspect 11-row room subset, and 17-row combined upper bound while preserving
-   other display aspects and runtime/custom carry-in; populate
-   exact shadow, depth, GBuffer, irradiance, non-empty cookie, and VisibilitySH
-   inputs afterward.
+1. Recover the actual scheduled renderer/entity consumer of cull-view
+   `screenSizeMinimumSquared` without importing the separate HGTreeRenderer LOD
+   bounds. Resolve the remaining loader-record zero bytes plus the component-67
+   LOD-count/range producer and exact native type-name link. Then recover the retail
+   survivor list at the exact `HGCamera.DoECSCulling` return boundary,
+   starting from the source-closed 18-row authored input and exact
+   selected-aspect 17-row authored result while preserving runtime/custom
+   carry-in and other display aspects; populate exact shadow, depth, GBuffer,
+   irradiance, non-empty cookie, and VisibilitySH inputs afterward.
 2. Validate selected paths against accepted retail captures.
 3. Extend exact texture/mip and material-variant support only where visible.
 4. Generalize animation from a second exact Avatar/clip oracle.

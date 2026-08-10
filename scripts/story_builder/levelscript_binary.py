@@ -802,6 +802,9 @@ LEVELSCRIPT_NATIVE_EVENT_PAYLOAD_MAPPING_ID = (
 LEVELSCRIPT_NATIVE_FMV_ACTION_MAPPING_ID = (
     "gameassembly-2026-07-11-memorypack-play-fmv-action-fields"
 )
+LEVELSCRIPT_NATIVE_AUDIO_ACTION_MAPPING_ID = (
+    "gameassembly-2026-08-09-memorypack-audio-action-fields"
+)
 NOISY_PROPERTY_PREFIXES = (
     "$",
     "#",
@@ -6294,6 +6297,551 @@ def _decode_tagged_string_parameter_at(
     return text, field_end
 
 
+def _decode_audio_param_tail(
+    payload: bytes,
+    cursor: int,
+) -> tuple[dict[str, Any], int] | None:
+    """Decode the audio-action Param tail, including getter source ``-1``."""
+    if cursor + 12 > len(payload):
+        return None
+    id_ref, param_source, path_size = struct.unpack_from("<iii", payload, cursor)
+    cursor += 12
+    if id_ref < -1 or param_source < -1 or param_source > 0x10000:
+        return None
+    if path_size == -1:
+        path = None
+    elif 0 <= path_size <= 1024 and cursor + path_size <= len(payload):
+        try:
+            path = payload[cursor : cursor + path_size].decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+        cursor += path_size
+    else:
+        return None
+    return {"idRef": id_ref, "paramSource": param_source, "path": path}, cursor
+
+
+def _decode_audio_scalar_param(
+    payload: bytes,
+    cursor: int,
+    value_kind: str,
+) -> tuple[dict[str, Any], int] | None:
+    """Decode a string/bool/i32/float audio Param with its exact binding."""
+    if cursor >= len(payload) or payload[cursor] != 0x04:
+        return None
+    if value_kind == "string":
+        if cursor + 5 > len(payload):
+            return None
+        size = struct.unpack_from("<i", payload, cursor + 1)[0]
+        value_cursor = cursor + 5
+        if size == -1:
+            value = None
+        elif 0 <= size <= 1024 and value_cursor + size <= len(payload):
+            try:
+                value = payload[value_cursor : value_cursor + size].decode("utf-8")
+            except UnicodeDecodeError:
+                return None
+            value_cursor += size
+        else:
+            return None
+    elif value_kind == "bool":
+        if cursor + 2 > len(payload) or payload[cursor + 1] not in (0, 1):
+            return None
+        value = bool(payload[cursor + 1])
+        value_cursor = cursor + 2
+    elif value_kind == "i32":
+        if cursor + 5 > len(payload):
+            return None
+        value = struct.unpack_from("<i", payload, cursor + 1)[0]
+        value_cursor = cursor + 5
+    elif value_kind == "float":
+        if cursor + 5 > len(payload):
+            return None
+        raw_value = struct.unpack_from("<f", payload, cursor + 1)[0]
+        if not math.isfinite(raw_value):
+            return None
+        value = _round_float(raw_value)
+        value_cursor = cursor + 5
+    else:
+        return None
+    tail = _decode_audio_param_tail(payload, value_cursor)
+    if tail is None:
+        return None
+    detail, end = tail
+    return {"value": value, **detail}, end
+
+
+def _decode_audio_string_param(payload: bytes, cursor: int) -> tuple[dict[str, Any], int] | None:
+    return _decode_audio_scalar_param(payload, cursor, "string")
+
+
+def _decode_audio_bool_param(payload: bytes, cursor: int) -> tuple[dict[str, Any], int] | None:
+    return _decode_audio_scalar_param(payload, cursor, "bool")
+
+
+def _decode_audio_i32_param(payload: bytes, cursor: int) -> tuple[dict[str, Any], int] | None:
+    return _decode_audio_scalar_param(payload, cursor, "i32")
+
+
+def _decode_audio_float_param(payload: bytes, cursor: int) -> tuple[dict[str, Any], int] | None:
+    return _decode_audio_scalar_param(payload, cursor, "float")
+
+
+def _decode_audio_entity_param(payload: bytes, cursor: int) -> tuple[dict[str, Any], int] | None:
+    decoded = _decode_constant_entity_ptr_param(payload, cursor)
+    if decoded is None:
+        return None
+    detail, end = decoded
+    if detail.get("idRef", -2) < -1:
+        return None
+    if not -1 <= detail.get("paramSource", -2) <= 0x10000:
+        return None
+    return detail, end
+
+
+def _decode_vector3_param(
+    payload: bytes,
+    cursor: int,
+) -> tuple[dict[str, Any], int] | None:
+    """Decode one authored ``Param<Vector3>`` and its binding tail."""
+    if cursor + 13 > len(payload) or payload[cursor] != 0x04:
+        return None
+    raw = struct.unpack_from("<fff", payload, cursor + 1)
+    if not all(math.isfinite(value) for value in raw):
+        return None
+    tail = _decode_audio_param_tail(payload, cursor + 13)
+    if tail is None:
+        return None
+    detail, end = tail
+    return {
+        "value": {
+            "x": _round_float(raw[0]),
+            "y": _round_float(raw[1]),
+            "z": _round_float(raw[2]),
+        },
+        **detail,
+    }, end
+
+
+def _decode_quaternion_param(
+    payload: bytes,
+    cursor: int,
+) -> tuple[dict[str, Any], int] | None:
+    """Decode one authored ``Param<Quaternion>`` and its binding tail."""
+    if cursor + 17 > len(payload) or payload[cursor] != 0x04:
+        return None
+    raw = struct.unpack_from("<ffff", payload, cursor + 1)
+    if not all(math.isfinite(value) for value in raw):
+        return None
+    tail = _decode_audio_param_tail(payload, cursor + 17)
+    if tail is None:
+        return None
+    detail, end = tail
+    return {
+        "value": {
+            "x": _round_float(raw[0]),
+            "y": _round_float(raw[1]),
+            "z": _round_float(raw[2]),
+            "w": _round_float(raw[3]),
+        },
+        **detail,
+    }, end
+
+
+def _decode_nullable_audio_field(
+    payload: bytes,
+    cursor: int,
+    decoder: Any,
+) -> tuple[dict[str, Any], int] | None:
+    """Decode a nullable MemoryPack audio-action field.
+
+    ``Param<T>`` and ``ParamOutput<T>`` are reference members. The installed
+    blobs serialize an absent member as one ``0xff`` byte and a present member
+    with its ordinary typed formatter.
+    """
+    if cursor < len(payload) and payload[cursor] == 0xFF:
+        return {"present": False, "bindingKind": "null"}, cursor + 1
+    decoded = decoder(payload, cursor)
+    if decoded is None:
+        return None
+    detail, end = decoded
+    detail = {"present": True, **detail}
+    if "idRef" in detail:
+        detail["bindingKind"] = (
+            "constant"
+            if detail.get("idRef") == -1
+            and detail.get("paramSource") == 0
+            and detail.get("path") is None
+            else "dynamic"
+        )
+    else:
+        detail["bindingKind"] = "output"
+    return detail, end
+
+
+def _finish_audio_action_fields(
+    payload: bytes,
+    end: int,
+    detail: dict[str, Any],
+) -> dict[str, Any]:
+    """Accept exact audio fields plus proven outer ActionMap list framing.
+
+    The final physical action in a serialized list can be followed, before
+    the next UID record, by one list count or by an empty-list count and the
+    following list count. Those u32 values are container framing, not action
+    fields. Current installed records use only these three bounded forms.
+    """
+    trailer = payload[end:]
+    framing: list[int] = []
+    if not trailer:
+        pass
+    elif len(trailer) == 4:
+        framing = [struct.unpack_from("<I", trailer, 0)[0]]
+    elif len(trailer) == 8 and trailer[:4] == b"\x00\x00\x00\x00":
+        framing = list(struct.unpack_from("<II", trailer, 0))
+    else:
+        return {}
+    if any(value > 0x10000 for value in framing):
+        return {}
+    out = {
+        **detail,
+        "consumedBytes": end,
+        "payloadShape": "audio-action-exact-current-build-memorypack-fields",
+        "nativeMappingId": LEVELSCRIPT_NATIVE_AUDIO_ACTION_MAPPING_ID,
+    }
+    if framing:
+        out["trailingActionMapFramingU32s"] = framing
+    return out
+
+
+def _decode_audio_action(
+    payload: bytes,
+    semantic_key: tuple[int, int],
+) -> dict[str, Any]:
+    """Decode the installed high-yield ActionBase audio field layouts.
+
+    The union tag/member-count pair selects one exact generated MemoryPack
+    formatter. Every declared derived member is decoded in generated-setter
+    order. Literal Event/cue bindings are emitted only for constant string
+    parameters; dynamic parameters retain idRef/source/path evidence without
+    being promoted to an authored name.
+    """
+    layouts: dict[
+        tuple[int, int],
+        tuple[str, tuple[tuple[str, Any], ...]],
+    ] = {
+        (0x0306, 0x09): (
+            "ManualRestoreMusicState",
+            (
+                ("delay", _decode_audio_float_param),
+            ),
+        ),
+        (0x0307, 0x0B): (
+            "ManualSetMusicState",
+            (
+                ("baseState", _decode_audio_i32_param),
+                ("battleIntensityState", _decode_audio_i32_param),
+                ("battleState", _decode_audio_i32_param),
+            ),
+        ),
+        (0x034C, 0x0C): (
+            "PlayAudiAtPosition",
+            (
+                ("audioPlayingId", _decode_param_output),
+                ("key", _decode_audio_string_param),
+                ("position", _decode_vector3_param),
+                ("stopOnRelease", _decode_audio_bool_param),
+            ),
+        ),
+        (0x034E, 0x0B): (
+            "PlayAudio",
+            (
+                ("audioPlayingId", _decode_param_output),
+                ("key", _decode_audio_string_param),
+                ("stopOnRelease", _decode_audio_bool_param),
+            ),
+        ),
+        (0x034F, 0x10): (
+            "PlayAudioAndWait",
+            (
+                ("eventName", _decode_audio_string_param),
+                ("playCompleteThreshold", _decode_audio_float_param),
+                ("playingId", _decode_param_output),
+                ("playType", _decode_audio_i32_param),
+                ("position", _decode_vector3_param),
+                ("stopAudioOnRelease", _decode_audio_bool_param),
+                ("targetEntity", _decode_audio_entity_param),
+                ("targetProxy", _decode_audio_string_param),
+            ),
+        ),
+        (0x034A, 0x14): (
+            "Play3DRadio",
+            (
+                ("attenuationType", _decode_audio_i32_param),
+                ("enableAdvancedOptions", _decode_audio_bool_param),
+                ("entityPtr", _decode_audio_entity_param),
+                ("fromBegin", _decode_audio_bool_param),
+                ("index", _decode_audio_i32_param),
+                ("noFlushAfterLoading", _decode_audio_bool_param),
+                ("npcProxyId", _decode_audio_string_param),
+                ("onlyOnce", _decode_audio_bool_param),
+                ("radioId", _decode_audio_string_param),
+                ("reverbOffset", _decode_audio_float_param),
+                ("useNpcProxy", _decode_audio_bool_param),
+                ("voOffset", _decode_audio_float_param),
+            ),
+        ),
+        (0x034B, 0x14): (
+            "Play3DRadioAndWait",
+            (
+                ("attenuationType", _decode_audio_i32_param),
+                ("enableAdvancedOptions", _decode_audio_bool_param),
+                ("entityPtr", _decode_audio_entity_param),
+                ("fromBegin", _decode_audio_bool_param),
+                ("index", _decode_audio_i32_param),
+                ("noFlushAfterLoading", _decode_audio_bool_param),
+                ("npcProxyId", _decode_audio_string_param),
+                ("onlyOnce", _decode_audio_bool_param),
+                ("radioId", _decode_audio_string_param),
+                ("reverbOffset", _decode_audio_float_param),
+                ("useNpcProxy", _decode_audio_bool_param),
+                ("voOffset", _decode_audio_float_param),
+            ),
+        ),
+        (0x0352, 0x0C): (
+            "PlayAudioOnTarget",
+            (
+                ("audioKey", _decode_audio_string_param),
+                ("audioPlayingId", _decode_param_output),
+                ("stopOnRelease", _decode_audio_bool_param),
+                ("target", _decode_audio_entity_param),
+            ),
+        ),
+        (0x0367, 0x11): (
+            "PlayStandaloneMusic",
+            (
+                ("handleId", _decode_param_output),
+                ("playKey", _decode_audio_i32_param),
+                ("playType", _decode_audio_i32_param),
+                ("position", _decode_vector3_param),
+                ("rotation", _decode_quaternion_param),
+                ("size", _decode_vector3_param),
+                ("startEvent", _decode_audio_string_param),
+                ("stopEvent", _decode_audio_string_param),
+                ("stopOnRelease", _decode_audio_bool_param),
+            ),
+        ),
+        (0x0363, 0x0D): (
+            "PlayRadio",
+            (
+                ("fromBegin", _decode_audio_bool_param),
+                ("index", _decode_audio_i32_param),
+                ("noFlushAfterLoading", _decode_audio_bool_param),
+                ("onlyOnce", _decode_audio_bool_param),
+                ("radioId", _decode_audio_string_param),
+            ),
+        ),
+        (0x0364, 0x0D): (
+            "PlayRadioAndWait",
+            (
+                ("fromBegin", _decode_audio_bool_param),
+                ("index", _decode_audio_i32_param),
+                ("noFlushAfterLoading", _decode_audio_bool_param),
+                ("onlyOnce", _decode_audio_bool_param),
+                ("radioId", _decode_audio_string_param),
+            ),
+        ),
+        (0x036B, 0x13): (
+            "PostAudioCue",
+            (
+                ("behaviourType", _decode_audio_i32_param),
+                ("boolParam", _decode_audio_bool_param),
+                ("boolParam1", _decode_audio_bool_param),
+                ("boolParam2", _decode_audio_bool_param),
+                ("cueHandlerId", _decode_param_output),
+                ("floatParam", _decode_audio_float_param),
+                ("intParam", _decode_audio_i32_param),
+                ("name", _decode_audio_string_param),
+                ("placeholderMusicFadeInType", _decode_audio_i32_param),
+                ("stringParam", _decode_audio_string_param),
+                ("volume0To10", _decode_audio_float_param),
+            ),
+        ),
+        (0x0371, 0x0B): (
+            "PostAudioStatusEvent",
+            (
+                ("onlyTriggerExitAfterNodeTriggered", _decode_audio_bool_param),
+                ("statusEnterEvent", _decode_audio_string_param),
+                ("statusExitEvent", _decode_audio_string_param),
+            ),
+        ),
+        (0x0373, 0x0C): (
+            "PostMusicEvent",
+            (
+                ("musicEvent", _decode_audio_string_param),
+                ("musicEventOnRelease", _decode_audio_string_param),
+                ("musicEventType", _decode_audio_i32_param),
+                ("playingId", _decode_param_output),
+            ),
+        ),
+        (0x03D5, 0x0F): (
+            "SetAudioCueVar",
+            (
+                ("boolValue", _decode_audio_bool_param),
+                ("floatValue", _decode_audio_float_param),
+                ("intValue", _decode_audio_i32_param),
+                ("scope", _decode_audio_i32_param),
+                ("stringValue", _decode_audio_string_param),
+                ("varName", _decode_audio_string_param),
+                ("varType", _decode_audio_i32_param),
+            ),
+        ),
+        (0x04A7, 0x0E): (
+            "StartPlaceholderMusic_DevOnly",
+            (
+                ("musicId", _decode_audio_i32_param),
+                ("placeholderMusicFadeInType", _decode_audio_i32_param),
+                ("seekPositionSeconds", _decode_audio_float_param),
+                ("stopOnDialogEnd", _decode_audio_bool_param),
+                ("stopOnLoading", _decode_audio_bool_param),
+                ("volume", _decode_audio_float_param),
+            ),
+        ),
+        (0x04AC, 0x0A): (
+            "StopAudio",
+            (
+                ("audioId", _decode_audio_i32_param),
+                ("fadeTimeMs", _decode_audio_i32_param),
+            ),
+        ),
+        (0x04B4, 0x0B): (
+            "StopPlaceholderMusic_DevOnly",
+            (
+                ("fadeOutTimeSeconds", _decode_audio_float_param),
+                ("musicId", _decode_audio_i32_param),
+                ("stopSpecificMusic", _decode_audio_bool_param),
+            ),
+        ),
+        (0x04B5, 0x09): (
+            "StopRadio",
+            (
+                ("radioId", _decode_audio_string_param),
+            ),
+        ),
+        (0x04B7, 0x0A): (
+            "StopVoice",
+            (
+                ("fadeOutTime", _decode_audio_i32_param),
+                ("voiceHandle", _decode_audio_i32_param),
+            ),
+        ),
+        (0x04BA, 0x09): (
+            "SwitchAIBarkEnable",
+            (
+                ("enable", _decode_audio_bool_param),
+            ),
+        ),
+        (0x04BC, 0x0B): (
+            "SwitchAudioState",
+            (
+                ("modelLevel", _decode_audio_i32_param),
+                ("target", _decode_audio_entity_param),
+                ("value", _decode_audio_i32_param),
+            ),
+        ),
+        (0x04CA, 0x09): (
+            "ToggleClearScreenButRadio",
+            (
+                ("isShow", _decode_audio_bool_param),
+            ),
+        ),
+    }
+    layout = layouts.get(semantic_key)
+    if layout is None:
+        return {}
+    action_name, serialized_fields = layout
+    cursor = 0
+    fields: dict[str, dict[str, Any]] = {}
+    for field_name, decoder in serialized_fields:
+        decoded = _decode_nullable_audio_field(payload, cursor, decoder)
+        if decoded is None:
+            return {}
+        field_detail, cursor = decoded
+        fields[field_name] = {
+            "sourceField": f"_{field_name}",
+            **field_detail,
+        }
+
+    event_roles = {
+        "PlayAudiAtPosition": (("key", "play"),),
+        "PlayAudio": (("key", "play"),),
+        "PlayAudioAndWait": (("eventName", "play"),),
+        "PlayAudioOnTarget": (("audioKey", "play"),),
+        "PlayStandaloneMusic": (
+            ("startEvent", "standaloneStart"),
+            ("stopEvent", "standaloneStop"),
+        ),
+        "PostAudioStatusEvent": (
+            ("statusEnterEvent", "statusEnter"),
+            ("statusExitEvent", "statusExit"),
+        ),
+        "PostMusicEvent": (
+            ("musicEvent", "post"),
+            ("musicEventOnRelease", "release"),
+        ),
+    }
+    event_bindings = []
+    for field_name, role in event_roles.get(action_name, ()):
+        field = fields[field_name]
+        value = field.get("value")
+        if (
+            field.get("bindingKind") == "constant"
+            and isinstance(value, str)
+            and value
+        ):
+            event_bindings.append({
+                "eventName": value,
+                "role": role,
+                "sourceField": field["sourceField"],
+            })
+    cue_bindings = []
+    if action_name == "PostAudioCue":
+        field = fields["name"]
+        value = field.get("value")
+        if field.get("bindingKind") == "constant" and isinstance(value, str) and value:
+            cue_bindings.append({
+                "cueName": value,
+                "role": "invoke",
+                "sourceField": field["sourceField"],
+            })
+    radio_bindings = []
+    radio_roles = {
+        "Play3DRadio": "play3D",
+        "Play3DRadioAndWait": "play3DAndWait",
+        "PlayRadio": "play",
+        "PlayRadioAndWait": "playAndWait",
+        "StopRadio": "stop",
+    }
+    radio_role = radio_roles.get(action_name)
+    if radio_role:
+        field = fields["radioId"]
+        value = field.get("value")
+        if field.get("bindingKind") == "constant" and isinstance(value, str) and value:
+            radio_bindings.append({
+                "radioId": value,
+                "role": radio_role,
+                "sourceField": field["sourceField"],
+            })
+
+    return _finish_audio_action_fields(payload, cursor, _drop_empty({
+        "action": action_name,
+        "fields": fields,
+        "eventBindings": event_bindings,
+        "cueBindings": cue_bindings,
+        "radioBindings": radio_bindings,
+    }))
+
+
 def _decode_fmv_action(
     payload: bytes,
     payload_start: int,
@@ -6561,6 +7109,34 @@ def decode_levelscript_record_payload(
         fmv_action = _decode_fmv_action(payload, payload_start, record)
         if fmv_action:
             out["fmvAction"] = fmv_action
+    if semantic_key in {
+        (0x0306, 0x09),
+        (0x0307, 0x0B),
+        (0x034C, 0x0C),
+        (0x034E, 0x0B),
+        (0x034F, 0x10),
+        (0x034A, 0x14),
+        (0x034B, 0x14),
+        (0x0352, 0x0C),
+        (0x0367, 0x11),
+        (0x0363, 0x0D),
+        (0x0364, 0x0D),
+        (0x036B, 0x13),
+        (0x0371, 0x0B),
+        (0x0373, 0x0C),
+        (0x03D5, 0x0F),
+        (0x04A7, 0x0E),
+        (0x04AC, 0x0A),
+        (0x04B4, 0x0B),
+        (0x04B5, 0x09),
+        (0x04B7, 0x0A),
+        (0x04BA, 0x09),
+        (0x04BC, 0x0B),
+        (0x04CA, 0x09),
+    }:
+        audio_action = _decode_audio_action(payload, semantic_key)
+        if audio_action:
+            out["audioAction"] = audio_action
     if semantic_key == (0x031E, 0x0C):
         npc_patrol_start = _decode_npc_patrol_start_action(payload)
         if npc_patrol_start:
@@ -6888,7 +7464,7 @@ LEVELSCRIPT_TASK_MISSION_STATE_MAPPING_ID = (
     "gameassembly-2026-07-22-levelscript-task-check-mission-state-0x67"
 )
 LEVELSCRIPT_TASK_CONDITION_MAPPING_ID = (
-    "gameassembly-2026-08-02-levelscript-task-root-gamecondition-tags"
+    "gameassembly-2026-08-09-levelscript-task-root-gamecondition-tags-v2"
 )
 LEVELSCRIPT_TASK_CONDITION_TAGS = {
     0x0017: ("CheckBuildingConnected", 8),
@@ -6897,19 +7473,32 @@ LEVELSCRIPT_TASK_CONDITION_TAGS = {
     0x001A: ("CheckBuildingConnectedSpecify", 9),
     0x001B: ("CheckBuildingStateInArea", 9),
     0x0023: ("CheckClientGlobalVar", 7),
+    0x0029: ("CheckCutsceneFinish", 5),
+    0x002E: ("CheckDomainShopChannelLevel", 7),
     0x0035: ("CheckFacBuildingState", 8),
     0x0038: ("CheckFluidVolume", 9),
     0x0039: ("CheckFMVFinish", 5),
+    0x003D: ("CheckGuideGroupComplete", 6),
     0x0045: ("CheckInteractiveDestroyed", 6),
+    0x0048: ("CheckInteractiveLock", 7),
     0x0050: ("CheckLevelScriptPropertyBool", 9),
     0x0051: ("CheckLevelScriptPropertyInt", 9),
     0x0053: ("CheckLevelScriptStage", 8),
+    0x005C: ("CheckLsmEncounterCompleted", 7),
     0x0067: ("CheckMissionState", 7),
     0x006A: ("CheckMonsterKilled", 9),
     0x006B: ("CheckMonsterSpawnerComplete", 6),
+    0x0070: ("CheckPerfectlyPassDungeonId", 5),
+    0x0074: ("CheckPlayerInMap", 5),
+    0x007D: ("CheckPRTSUnlocked", 5),
+    0x007E: ("CheckQuestState", 7),
     0x0084: ("CheckRepairBuilding", 6),
+    0x0085: ("CheckRepeatableTalkFinish", 6),
+    0x0086: ("CheckRichContentReadingDone", 5),
+    0x0089: ("CheckScanInteractive", 6),
     0x008D: ("CheckScriptTaskStateEqual", 9),
     0x008F: ("CheckServerGlobalVar", 7),
+    0x0091: ("CheckSewageTreatPlantLevel", 7),
     0x009F: ("CheckTalkOptionFinish", 6),
     0x00B2: ("CombineCondition", 6),
     0x00D0: ("OnBuildingPanelOpen", 6),
@@ -7048,6 +7637,34 @@ def _decode_entity_ptr_list_param(
     return {"values": values, **detail}, end
 
 
+def _decode_string_collection_param(
+    payload: bytes,
+    cursor: int,
+) -> tuple[dict[str, Any], int] | None:
+    """Decode the shared constant ``Param<collection<string>>`` wire shape."""
+    if cursor + 5 > len(payload) or payload[cursor] != 0x04:
+        return None
+    count = struct.unpack_from("<i", payload, cursor + 1)[0]
+    cursor += 5
+    if count == -1:
+        values = None
+    elif 0 <= count <= 1024:
+        values = []
+        for _ in range(count):
+            decoded = _decode_nullable_string_value(payload, cursor)
+            if decoded is None:
+                return None
+            value, cursor = decoded
+            values.append(value.get("value"))
+    else:
+        return None
+    tail = _decode_param_tail(payload, cursor)
+    if tail is None:
+        return None
+    detail, end = tail
+    return {"values": values, **detail}, end
+
+
 def _decode_task_condition_union_header(
     data: bytes,
     offset: int,
@@ -7105,6 +7722,138 @@ def _condition_param(
     if decoded is None or decoded[1] > limit:
         return None
     return decoded
+
+
+def _decode_generic_task_condition_fields(
+    data: bytes,
+    offset: int,
+    limit: int,
+    *,
+    field_count: int,
+) -> tuple[list[dict[str, Any]], int] | None:
+    """Recover a unique authored ``Param`` sequence without per-type code.
+
+    Current ``GameConditionForMemoryPack`` payloads share four base members;
+    the union member count therefore bounds the number of concrete fields.
+    Generated condition formatters serialize those fields as self-delimiting
+    ``Param<T>`` values.  Try the reusable Param shapes, retain only endpoints
+    followed by the exact task-objective envelope, and fail closed unless one
+    field-boundary sequence survives.  Equal-size scalar interpretations are
+    deliberately kept opaque instead of guessing an enum/int/float meaning.
+    """
+    if field_count < 0 or field_count > 32:
+        return None
+
+    def scalar4_param(cursor: int) -> tuple[dict[str, Any], int] | None:
+        if cursor + 5 > limit or data[cursor] != 0x04:
+            return None
+        tail = _decode_param_tail(data, cursor + 5)
+        if tail is None or tail[1] > limit:
+            return None
+        raw = data[cursor + 1 : cursor + 5]
+        detail, end = tail
+        return {
+            "shape": "param-scalar4",
+            "rawHex": raw.hex(),
+            "int32Value": struct.unpack_from("<i", raw)[0],
+            "uint32Value": struct.unpack_from("<I", raw)[0],
+            **detail,
+        }, end
+
+    def wrap(
+        shape: str,
+        decoder: Any,
+        cursor: int,
+    ) -> tuple[dict[str, Any], int] | None:
+        decoded = decoder(data, cursor)
+        if decoded is None or decoded[1] > limit:
+            return None
+        value, end = decoded
+        return {"shape": shape, **value}, end
+
+    decoders = (
+        ("param-string", _decode_string_param),
+        ("param-string-collection", _decode_string_collection_param),
+        ("param-bool", _decode_bool_param),
+        ("param-entity-ptr", _decode_constant_entity_ptr_param),
+        ("param-entity-ptr-list", _decode_entity_ptr_list_param),
+        ("param-levelscript-ptr", _decode_levelscript_ptr_param),
+        ("param-levelscript-task-ptr", _decode_levelscript_task_ptr_param),
+        ("param-u64", _decode_u64_param),
+    )
+    memo: dict[tuple[int, int], list[tuple[list[dict[str, Any]], int]]] = {}
+
+    def visit(
+        cursor: int,
+        remaining: int,
+    ) -> list[tuple[list[dict[str, Any]], int]]:
+        memo_key = (cursor, remaining)
+        cached = memo.get(memo_key)
+        if cached is not None:
+            return cached
+        if remaining == 0:
+            if cursor + 5 > limit or data[cursor] not in (0, 1):
+                memo[memo_key] = []
+                return []
+            objective_enum = struct.unpack_from("<i", data, cursor + 1)[0]
+            memo[memo_key] = (
+                [([], cursor)] if 0 <= objective_enum <= 0x100 else []
+            )
+            return memo[memo_key]
+
+        candidates: dict[int, list[dict[str, Any]]] = {}
+        scalar = scalar4_param(cursor)
+        if scalar is not None:
+            candidates[scalar[1]] = [scalar[0]]
+        for shape, decoder in decoders:
+            decoded = wrap(shape, decoder, cursor)
+            if decoded is None:
+                continue
+            field, end = decoded
+            same_end = candidates.setdefault(end, [])
+            if not any(row.get("shape") == shape for row in same_end):
+                same_end.append(field)
+
+        rows: list[tuple[list[dict[str, Any]], int]] = []
+        for end, same_end_fields in sorted(candidates.items()):
+            if len(same_end_fields) == 1:
+                field = same_end_fields[0]
+            else:
+                field = {
+                    "shape": "ambiguous-same-boundary",
+                    "candidateShapes": [
+                        row.get("shape") for row in same_end_fields
+                    ],
+                    "candidates": same_end_fields,
+                }
+            for tail_fields, final_end in visit(end, remaining - 1):
+                rows.append(([field, *tail_fields], final_end))
+                if len(rows) > 128:
+                    memo[memo_key] = []
+                    return []
+        memo[memo_key] = rows
+        return rows
+
+    parses = visit(offset, field_count)
+    boundary_sequences = {
+        (
+            end,
+            tuple(
+                (
+                    str(field.get("shape") or ""),
+                    tuple(
+                        str(value)
+                        for value in field.get("candidateShapes") or []
+                    ),
+                )
+                for field in fields
+            ),
+        ): (fields, end)
+        for fields, end in parses
+    }
+    if len(boundary_sequences) != 1:
+        return None
+    return next(iter(boundary_sequences.values()))
 
 
 def _decode_levelscript_task_condition(
@@ -7462,7 +8211,22 @@ def _decode_levelscript_task_condition(
         fields["conditionEvalString"] = expression
         fields["subConditionCount"] = 0
     else:
-        return None
+        generic = _decode_generic_task_condition_fields(
+            data,
+            cursor,
+            limit,
+            field_count=member_count - 4,
+        )
+        if generic is None:
+            return None
+        serialized_fields, cursor = generic
+        fields["serializedFields"] = serialized_fields
+        fields["payloadShape"] = (
+            "unique-memorypack-param-boundary-sequence"
+        )
+        fields["fieldSemanticsStatus"] = (
+            "opaque_formatter_fields_no_semantic_name_in_decoder"
+        )
 
     return {
         "type": condition_type,
@@ -7923,6 +8687,131 @@ def decode_levelscript_task_conditions(
         )
         signatures.setdefault(signature, row)
     return list(signatures.values()) if len(signatures) == 1 else []
+
+
+def scan_levelscript_task_condition_fragments(
+    data: bytes,
+    script_id: int | str,
+    *,
+    condition_types: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Recover individually bounded task conditions from mixed task maps.
+
+    A complete task map cannot be decoded when even one neighboring condition
+    uses an unsupported union tag.  This scanner keeps the admission rule
+    structural instead of adding per-file exceptions: a supported condition
+    must sit inside one uniquely identified top-level task-map interval, have
+    an immediately preceding ``TaskCondition`` dictionary key equal to the
+    condition's serialized ``uniqueId``, consume its complete typed payload,
+    and have the exact trailing objective fields.
+
+    The surrounding task id is deliberately left unresolved because proving
+    it would require walking every preceding condition.  These fragments are
+    exact condition-consumer evidence, but never task ownership, mission
+    ownership, activation, or Story order.
+    """
+    try:
+        numeric_script_id = int(script_id)
+    except (TypeError, ValueError):
+        return []
+    if not data or data[0] not in (26, 27) or len(data) < 8:
+        return []
+
+    hosts: dict[tuple[int, int, int], dict[str, Any]] = {}
+    for script_id_offset in _u64_offsets(data, numeric_script_id):
+        host = _tail_candidate(data, script_id_offset)
+        task_count = host.get("taskMapCount")
+        task_map_offset = host.get("taskMapOffset")
+        if (
+            not host.get("startTypeName")
+            or host.get("taskMapStatus") != "present"
+            or not isinstance(task_count, int)
+            or not isinstance(task_map_offset, int)
+            or task_count <= 0
+            or task_count > 128
+        ):
+            continue
+        start = task_map_offset + 4
+        trigger_offset = host.get("triggerVolumesOffset")
+        end = (
+            int(trigger_offset)
+            if isinstance(trigger_offset, int) and trigger_offset > start
+            else len(data)
+        )
+        if start >= end:
+            continue
+        hosts.setdefault((task_map_offset, end, task_count), host)
+    if len(hosts) != 1:
+        return []
+
+    (task_map_offset, limit, task_count), host = next(iter(hosts.items()))
+    fragments: dict[tuple[int, int, str], dict[str, Any]] = {}
+    cursor = task_map_offset + 4
+    while cursor < limit:
+        decoded = _decode_levelscript_task_condition(data, cursor, limit)
+        if decoded is None:
+            cursor += 1
+            continue
+        condition, condition_end = decoded
+        condition_type = str(condition.get("type") or "")
+        condition_key = str(condition.get("uniqueId") or "")
+        if (
+            (condition_types is not None and condition_type not in condition_types)
+            or not re.fullmatch(r"[0-9a-f]{8}", condition_key)
+        ):
+            cursor += 1
+            continue
+
+        key_bytes = condition_key.encode("ascii")
+        condition_entry_offset = cursor - 4 - len(key_bytes) - 1
+        envelope_valid = (
+            condition_entry_offset >= task_map_offset + 4
+            and struct.unpack_from("<I", data, condition_entry_offset)[0]
+            == len(key_bytes)
+            and data[
+                condition_entry_offset + 4 : condition_entry_offset + 4 + len(key_bytes)
+            ]
+            == key_bytes
+            and data[cursor - 1] == 3
+        )
+        if not envelope_valid or condition_end + 5 > limit:
+            cursor += 1
+            continue
+        is_main_objective = data[condition_end]
+        objective_enum = struct.unpack_from("<i", data, condition_end + 1)[0]
+        if is_main_objective not in (0, 1) or not 0 <= objective_enum <= 0x100:
+            cursor += 1
+            continue
+
+        signature = (cursor, condition_end, condition_key)
+        fragments[signature] = {
+            "scriptId": str(numeric_script_id),
+            "levelScriptSerializedMemberCount": data[0],
+            "startType": str(host.get("startTypeName") or ""),
+            "taskMapOffset": task_map_offset,
+            "taskMapOffsetHex": _offset_hex(task_map_offset),
+            "taskMapCount": task_count,
+            "taskMapEndOffset": limit,
+            "taskMapEndOffsetHex": _offset_hex(limit),
+            "taskMapBoundaryStatus": (
+                "exact_trigger_volumes_offset"
+                if isinstance(host.get("triggerVolumesOffset"), int)
+                else "exact_file_boundary"
+            ),
+            "taskIdentityStatus": "unresolved_in_mixed_task_map",
+            "conditionKey": condition_key,
+            "conditionEntryOffset": condition_entry_offset,
+            "conditionEntryOffsetHex": _offset_hex(condition_entry_offset),
+            "taskConditionMemberCount": 3,
+            "isMainObjective": bool(is_main_objective),
+            "objectiveEnum": objective_enum,
+            "condition": condition,
+            "payloadShape": (
+                "validated-task-condition-fragment-inside-unique-top-level-task-map"
+            ),
+        }
+        cursor = condition_end + 5
+    return sorted(fragments.values(), key=lambda row: row["conditionEntryOffset"])
 
 
 def decode_levelscript_task_mission_state_dependencies(

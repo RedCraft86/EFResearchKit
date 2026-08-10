@@ -152,6 +152,26 @@ for (const [key, category] of [
         self.assertIn("nativeCinematicProducerRouteAttachments", source)
         self.assertIn("route.sourceFiles", source)
 
+    def test_mission_pipeline_labels_pattern_discovered_dialog_definitions(
+        self,
+    ) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn(
+            "Auto-discovered DialogTree definition - no activator on "
+            "current original-data surfaces",
+            source,
+        )
+        self.assertIn(
+            "registered_dialog_tree_definition_binary_consumer_surface_exhausted",
+            source,
+        )
+        self.assertIn('id="mp-definition-recovery"', source)
+        self.assertIn(
+            "Per-object filename, line, option, and branch declarations are "
+            "not required",
+            source,
+        )
+
     def test_mission_pipeline_surfaces_hash_validated_story_connection_files(self) -> None:
         source = MISSION_PIPELINE.read_text(encoding="utf-8")
         self.assertIn("storyConnectionOriginalFilesHtml", source)
@@ -366,6 +386,35 @@ for (const [key, category] of [
         self.assertIn('t("extraThreadSiblingBoundary")', source)
         self.assertIn("extraThreadScheduler.relatedOriginalFiles", source)
 
+    def test_mission_pipeline_surfaces_generic_task_lifecycle_and_carriers(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("levelScriptTaskLifecycleAudit", source)
+        self.assertIn("serverStateApplicationChain", source)
+        self.assertIn("processingConditionCallCount", source)
+        self.assertIn("dialogFinishTaskDefinitionHtml", source)
+        self.assertIn("definition.taskTypeName", source)
+        self.assertIn("definition.conditionTypeCounts", source)
+        self.assertIn("externalTaskIdentityCarriers", source)
+        self.assertIn('t("dialogFinishTaskUncarried")', source)
+        self.assertIn("levelScriptTaskExactCompleteMapConsumers", source)
+        self.assertIn("levelScriptTaskExactBoundedFragmentConsumers", source)
+        self.assertIn("levelScriptTaskCarrierActiveLogicalFiles", source)
+        self.assertIn("levelScriptTaskCarrierTypedJsonFiles", source)
+        self.assertIn("levelScriptTaskCarrierTypedJsonCandidates", source)
+        self.assertIn("levelScriptTaskCarrierNonJsonFiles", source)
+        self.assertIn('t("dialogFinishTaskCarrierScope")', source)
+        self.assertIn("levelScriptTaskLevelDataProgressCarriers", source)
+        self.assertIn("levelScriptTaskLevelDataUniqueMissionShellIdentities", source)
+        self.assertIn("levelScriptTaskNpcProxyMatchedScripts", source)
+        self.assertIn("levelScriptTaskNpcProxyUniqueMissionShellScripts", source)
+        self.assertIn("npc_proxy_segment_script_mission_shell", source)
+        self.assertIn("MissionRuntime NpcProxy + NpcProxyEx + registry segment", source)
+        self.assertIn("dialogFinishAuthoredTaskShellDependenciesHtml", source)
+        self.assertIn("state.mission?.dialogFinishAuthoredTaskShellDependencies", source)
+        self.assertNotIn("recoveryCounts.levelScriptTaskSharedConsumerCompleteMaps", source)
+        self.assertNotIn("recoveryCounts.levelScriptTaskSharedConsumerFragments", source)
+        self.assertIn("does not identify a mission owner or Story-file order", source)
+
     def test_mission_pipeline_labels_declared_story_variant_aggregates(self) -> None:
         source = MISSION_PIPELINE.read_text(encoding="utf-8")
         self.assertIn("mission.storyAggregateShell === true", source)
@@ -374,3 +423,14 @@ for (const [key, category] of [
         self.assertIn('t("storyAggregateVariants")', source)
         self.assertIn('t("storyAggregateOriginals")', source)
         self.assertIn("does not establish mission ownership", source)
+
+    def test_mission_pipeline_shows_composed_npc_proxy_dialog_branches(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("Auto-discovered DialogTree + native NPC-proxy consumer", source)
+        self.assertIn("Auto-discovered from complete active MissionRuntime corpus", source)
+        self.assertIn("row.missionNpcProxyTrackingContexts", source)
+        self.assertIn("missionTracking.sourceSha256?.[sourceFile]", source)
+        self.assertIn("row.optionRouteRecovery?.nodes", source)
+        self.assertIn("route.connectionIndexSource", source)
+        self.assertIn("...(row.consumerSourceFiles || [])", source)
+        self.assertIn("${recoveredOptionRoutes}", source)

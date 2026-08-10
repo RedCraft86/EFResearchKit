@@ -29,7 +29,7 @@ Normal navigation exposes:
 - **Updates:** differences between previous and current exported game data.
 
 **Mission Pipeline** is experimental and appears only with `Show debug info`.
-**Audio** is also debug-only. It exposes the current binary-validated runtime
+**Audio** is a normal page. It exposes the current binary-validated runtime
 model, Wwise HIRC object families, authored event contexts, typed possible
 media leaves, and the physical decoded-media inventory without presenting the
 offline graph as a live playback trace.
@@ -47,7 +47,7 @@ projectile matching evidence, and unresolved ownership remain debug-only.
 - `reference.js`, `assets.js`, `updates.js`: Text, Assets, and Updates pages.
 - `src/features/characters/`: Characters page and live override editing.
 - `src/features/gameplay/`: Gameplay page and integrations.
-- `src/features/audio/`: lazy, virtualized debug Audio page.
+- `src/features/audio/`: lazy, virtualized Audio page.
 - `src/features/mission_pipeline/`: experimental mission evidence view.
 - `src/features/{economy,world,presentation,projectiles,combat}/`: semantic
   payload integrations used by Gameplay or debug views.
@@ -93,6 +93,36 @@ are not a browser-playable output format. Event details list every typed
 possible media leaf together and group it by Play root and Random, Sequence,
 Switch/State, Layer, or direct-Sound evidence. Partial typed graphs and
 byte-identical decoded content under distinct media ids remain explicit.
+Version-150 music Events use the same evidence boundary but additionally show
+typed Music Switch, playlist, segment, track, and track-source nodes; these are
+possible authored paths, not an observed current track.
+Skill contexts separately tag exact Gameplay-action-to-SkillData dependencies and
+inferred child-skill-family ownership. Their evidence records whether the Event
+was found as a complete length-prefixed reference in SkillData or through an
+exact BuffData chain; the generic scan does not recover a field/callsite, and
+runtime condition/timing remains explicitly unresolved for dependency-only
+rows. Decoded BuffData `PlaySoundActionData` adds exact authored frame windows,
+stop/fade lifetime, routing, selector hints, and time-dilation controls for the
+recovered subset; `TargetSettings`, live activation, and Wwise branch selection
+remain explicit gaps. Exact PlaySound actions have their own Audio Event filter
+and stay visible even when no displayed skill owner is proven. All trigger tags
+and source/action fields are searchable.
+Interactive-object contexts keep global model/sub-template defaults separate
+from per-entity `InteractiveData` component overrides. Both expose exact
+lifecycle/custom state, identity, source path, and Event evidence; global audio
+policy adds entity-init and enter/exit state-mask Event mappings. These are
+authored state-entry requests, not live traces or Wwise SetState operations.
+Projectile contexts expose each exact nonzero launch, loop, reach, hit, block,
+finish, or proximity-sizzle Event field with projectile identity and source
+PathID. Skill ids stored by the projectile remain template references rather
+than proof that a displayed skill spawned it; lifecycle execution and Wwise
+branch selection remain unresolved.
+The Audio control catalog keeps cue and parameter entities separate from Wwise
+Events. Only AudioCue behavior expressions with `exprType=3` become Event
+contexts; `exprType=8` operands, Global `musicCue*` IDs, and RTPC names retain
+their own typed records and missing-definition state. LevelScript `PostAudioCue`
+names are joined through the shipped exact string hash to cue definitions; the
+script action, handler condition, and Wwise branch remain separate runtime gates.
 
 ## Runtime overrides
 
@@ -156,19 +186,22 @@ sns_topic_map02_lv005_12002
   Pulse `#FFC000`; Normal Attack remains neutral.
 - Enemy variants are a selectable difference table. Stat controls expose only
   authored points and never interpolate missing levels.
-- Character skill rows show one compact linked-projectile summary and playable
-  sound groups in normal mode. A skill may legitimately have no separate
-  projectile template.
-- Exact Wwise media candidates stay grouped when switch/random selection is
-  unresolved. Direct and inferred skill/enemy ownership are labeled.
+- Character skill rows show one compact linked-projectile summary and only the
+  playable Events proven through that displayed Gameplay action id's exact
+  SkillData or BuffData dependency chain. A skill may legitimately have no
+  separate projectile template.
+- Typed Wwise possible-media leaves are listed together, with Play roots and
+  switch/state/random/sequence/layer evidence shown separately; the UI does
+  not present them as equivalent choices or observed live playback. Direct and
+  inferred skill/enemy ownership are labeled.
 - Character-owned animation callbacks and shared Wwise animation systems are
   separate Gameplay groups. Shared footstep/cloth/material Events show owner
   counts and global reachable leaves without presenting those leaves as the
   character's private sound library; opening one Event still lists every
-  playable file together. Character and enemy audio appears only as the final
-  detail section, after normal and integrated content rather than inside skill
-  cards; compact bank, Stop, selector-node, and child-edge counts substantiate
-  large Wwise fan-outs.
+  playable file together. Inferred character-skill links, animation systems,
+  and profile voice remain in the final character section; enemy audio remains
+  at the end of the enemy page. Compact bank, Stop, selector-node, and
+  child-edge counts substantiate large Wwise fan-outs.
 - Gameplay thumbnails and model paths link back to the matching Assets entry.
 
 ### Mission Pipeline

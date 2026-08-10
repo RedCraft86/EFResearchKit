@@ -3,7 +3,7 @@
   const COLLAPSED_KINDS_STORAGE_KEY = "gameplay_collapsed_kinds";
   const LEVEL_FRACTION_STORAGE_KEY = "gameplay_level_fraction";
   const GAMEPLAY_DATA_VERSION = "20260809-gp10";
-  const GAMEPLAY_INTEGRATION_VERSION = "20260809-sfx3";
+  const GAMEPLAY_INTEGRATION_VERSION = "20260809-sfx5";
   const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
   // Fixed display order for the data-type groups in the list.
   const KIND_ORDER = ["character", "weapon", "equipment", "item", "enemy"];
@@ -1191,6 +1191,32 @@
       || Number(event?.animationOwnerCount || 0) > 1;
   }
 
+  function gameplaySoundHasExactSkillTrigger(event) {
+    return event?.triggerBindingStatus === "exactSkillConfig"
+      || (event?.triggerBindings || []).some((binding) => binding?.status === "exactSkillConfig");
+  }
+
+  function gameplaySoundTriggerLabels(event) {
+    const values = [];
+    if (event?.triggerBindingStatus === "exactSkillConfig") values.push(text("soundExactSkillTrigger"));
+    else if (event?.triggerBindingStatus === "exactEnemyBornBuffConfig") values.push(text("soundExactEnemyBornTrigger"));
+    else if (event?.triggerBindingStatus === "inferredSkillConfigOwner") values.push(text("soundInferredSkillTrigger"));
+    const relationLabels = {
+      skillDataEventReference: "soundTriggerSkillData",
+      skillBuffChain: "soundTriggerBuffChain",
+      enemyBornBuffChain: "soundTriggerEnemyBornBuff",
+      buffPlaySoundAction: "soundTriggerPlaySoundAction",
+    };
+    for (const relation of event?.triggerRelationTypes || []) {
+      values.push(text(relationLabels[relation] || relation));
+    }
+    for (const binding of event?.triggerBindings || []) {
+      if (binding?.runtimeActivationStatus === "conditionAndTimingUnresolved") values.push(text("soundTriggerConditionUnresolved"));
+      else if (binding?.runtimeActivationStatus === "authoredFrameWindowRecoveredConditionUnresolved") values.push(text("soundTriggerFrameConditionUnresolved"));
+    }
+    return [...new Set(values.filter(Boolean))];
+  }
+
   function gameplayAudioEventHref(eventId) {
     const url = new URL(window.location.href);
     url.searchParams.delete("gameplay");
@@ -1263,6 +1289,91 @@
     return { roots, relations, soundObjects };
   }
 
+  function mergeGameplaySoundEvents(events) {
+    const merged = new Map();
+    const uniqueScalars = (...values) => [...new Set(values.flat().filter(Boolean))];
+    const uniqueObjects = (...values) => {
+      const rows = new Map();
+      for (const value of values.flat().filter((row) => row && typeof row === "object")) {
+        rows.set(JSON.stringify(value), value);
+      }
+      return [...rows.values()];
+    };
+    const mergeSelectorEvidence = (...values) => {
+      const evidence = values.filter((value) => value && typeof value === "object");
+      if (!evidence.length) return undefined;
+      const containers = {};
+      for (const value of evidence) {
+        for (const [relation, counts] of Object.entries(value.containers || {})) {
+          const previous = containers[relation] || {};
+          containers[relation] = {
+            ...previous,
+            ...counts,
+            nodeCount: Math.max(Number(previous.nodeCount || 0), Number(counts?.nodeCount || 0)),
+            childEdgeCount: Math.max(Number(previous.childEdgeCount || 0), Number(counts?.childEdgeCount || 0)),
+          };
+        }
+      }
+      return {
+        ...evidence[0],
+        ...evidence[evidence.length - 1],
+        bankDefinitionCount: Math.max(...evidence.map((value) => Number(value.bankDefinitionCount || 0))),
+        rootStopActionCount: Math.max(...evidence.map((value) => Number(value.rootStopActionCount || 0))),
+        containers,
+      };
+    };
+    for (const event of events || []) {
+      const key = String(event?.id || "").toLowerCase();
+      if (!key) continue;
+      const previous = merged.get(key);
+      if (!previous) {
+        merged.set(key, { ...event });
+        continue;
+      }
+      const audio = new Map();
+      for (const candidate of [...(previous.audio || []), ...(event.audio || [])]) {
+        const candidateKey = String(candidate?.src || candidate?.mediaId || "");
+        if (!candidateKey) continue;
+        const previousCandidate = audio.get(candidateKey);
+        audio.set(candidateKey, previousCandidate ? {
+          ...previousCandidate,
+          ...candidate,
+          wwiseMediaEvidence: uniqueObjects(previousCandidate.wwiseMediaEvidence || [], candidate.wwiseMediaEvidence || []),
+        } : candidate);
+      }
+      merged.set(key, {
+        ...previous,
+        ...event,
+        foundInWwise: Boolean(previous.foundInWwise || event.foundInWwise),
+        audio: [...audio.values()],
+        actionKinds: uniqueScalars(previous.actionKinds || [], event.actionKinds || []),
+        sourceSkillIds: uniqueScalars(previous.sourceSkillIds || [], event.sourceSkillIds || []),
+        sourceAnimationClips: uniqueScalars(previous.sourceAnimationClips || [], event.sourceAnimationClips || []),
+        animationFunctions: uniqueScalars(previous.animationFunctions || [], event.animationFunctions || []),
+        animationClipContexts: uniqueScalars(previous.animationClipContexts || [], event.animationClipContexts || []),
+        playRootActionIds: uniqueScalars(previous.playRootActionIds || [], event.playRootActionIds || []),
+        mediaRelationTypes: uniqueScalars(previous.mediaRelationTypes || [], event.mediaRelationTypes || []),
+        selectionContainerTypes: uniqueScalars(previous.selectionContainerTypes || [], event.selectionContainerTypes || []),
+        triggerRelationTypes: uniqueScalars(previous.triggerRelationTypes || [], event.triggerRelationTypes || []),
+        selectorEvidence: mergeSelectorEvidence(previous.selectorEvidence, event.selectorEvidence),
+        actionDispatchEvidence: uniqueObjects(previous.actionDispatchEvidence || [], event.actionDispatchEvidence || []),
+        evidence: uniqueObjects(previous.evidence || [], event.evidence || []),
+        triggerBindings: uniqueObjects(previous.triggerBindings || [], event.triggerBindings || []),
+        playRootCount: Math.max(Number(previous.playRootCount || 0), Number(event.playRootCount || 0)),
+        possibleMediaCount: Math.max(Number(previous.possibleMediaCount || 0), Number(event.possibleMediaCount || 0)),
+        playableCandidates: Math.max(Number(previous.playableCandidates || 0), Number(event.playableCandidates || 0)),
+        animationOccurrenceCount: Math.max(Number(previous.animationOccurrenceCount || 0), Number(event.animationOccurrenceCount || 0)),
+        animationClipCount: Math.max(Number(previous.animationClipCount || 0), Number(event.animationClipCount || 0)),
+        animationOwnerCount: Math.max(Number(previous.animationOwnerCount || 0), Number(event.animationOwnerCount || 0)),
+        unresolvedNodeCount: Math.max(Number(previous.unresolvedNodeCount || 0), Number(event.unresolvedNodeCount || 0)),
+        traversalStatus: previous.traversalStatus === "partial" || event.traversalStatus === "partial"
+          ? "partial"
+          : (event.traversalStatus || previous.traversalStatus),
+      });
+    }
+    return [...merged.values()];
+  }
+
   function renderGameplaySoundEvidence(event, audio) {
     const roots = Number(event?.playRootCount || 0) || new Set(audio.flatMap((row) => gameplaySoundMediaEvidence(row).roots)).size;
     const relations = gameplaySoundRelationLabels(event?.mediaRelationTypes || audio.flatMap((row) => (row?.wwiseMediaEvidence || []).flatMap((evidence) => evidence?.relationTypes || [])));
@@ -1281,7 +1392,48 @@
     const status = isPartial ? text("soundTraversalPartial") : event?.traversalStatus === "complete" ? text("soundTraversalTyped") : text("soundTraversalDirect");
     const branch = roots ? `${roots} ${text("soundPlayBranches")}` : text("soundDirectMedia");
     const relationLabels = selectorRelations.length ? selectorRelations : relations;
-    return `<div class="gameplay-sfx-evidence"><span>${escapeHtml(branch)}</span>${animationCallbacks ? `<span>${escapeHtml(`${animationCallbacks} ${text("soundAuthoredCallbacks")} / ${animationClips} ${text("soundAnimationClips")}`)}</span>` : ""}${definitions ? `<span>${escapeHtml(`${definitions} ${text("soundBankDefinitions")}`)}</span>` : ""}${stopActions ? `<span>${escapeHtml(`${stopActions} ${text("soundStopActions")}`)}</span>` : ""}${relationLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}<span class="${isPartial ? "is-partial" : ""}">${escapeHtml(status)}</span></div>`;
+    const triggerLabels = gameplaySoundTriggerLabels(event);
+    const playSoundActions = [...new Map(
+      (event?.triggerBindings || [])
+        .flatMap((binding) => binding?.playSoundActions || [])
+        .map((action) => [JSON.stringify(action), action]),
+    ).values()];
+    const playSoundLabels = playSoundActions.map((action) => {
+      const frameWindow = `${text("soundPlaySoundFrame")} ${action?.startFrame ?? "?"}-${action?.endFrame ?? "?"}`;
+      const lifetime = action?.stopOnEnd
+        ? `${text("soundPlaySoundStopOnEnd")} / ${Number(action?.stopFadeDurationMs || 0)} ms`
+        : text("soundPlaySoundNotStoppedOnEnd");
+      return `${frameWindow} / ${lifetime}`;
+    });
+    const dispatchLabels = [];
+    for (const definition of event?.actionDispatchEvidence || []) {
+      const actionCount = Number(definition?.playbackActionCount || 0);
+      const timingLabel = {
+        singlePlayback: "soundDispatchSingle",
+        coDispatchNoExplicitDelay: "soundDispatchNoExplicitDelay",
+        coDispatchWithAuthoredDelayDifference: "soundDispatchDelayDifference",
+        coDispatchUniformExplicitDelay: "soundDispatchUniformDelay",
+        coDispatchDynamicDelayRangeUnresolved: "soundDispatchDynamicDelay",
+        actionParserUnresolved: "soundDispatchParserUnresolved",
+      }[definition?.timingClass] || "";
+      if (actionCount) {
+        dispatchLabels.push(`${actionCount} ${text("soundPlaybackActions")}${timingLabel ? ` / ${text(timingLabel)}` : ""}`);
+      }
+      for (const action of definition?.actions || []) {
+        const ordinal = Number(action?.eventActionOrdinal);
+        const actionName = `${text("soundPlaybackAction")} ${Number.isFinite(ordinal) ? ordinal + 1 : "?"}`;
+        const delay = action?.delay || {};
+        const transition = action?.transition || {};
+        const probability = action?.probability || {};
+        const explicitParts = [];
+        if ((delay.baseValuesMs || []).length) explicitParts.push(`${text("soundActionDelay")} ${(delay.baseValuesMs || []).join(" / ")} ms`);
+        if ((delay.modifierRangesMs || []).length) explicitParts.push(`${text("soundActionDelayRange")} ${(delay.modifierRangesMs || []).map((range) => `${range.min ?? "?"}-${range.max ?? "?"}`).join(" / ")} ms`);
+        if ((transition.baseValuesMs || []).length) explicitParts.push(`${text("soundActionTransition")} ${(transition.baseValuesMs || []).join(" / ")} ms`);
+        if ((probability.baseValuesPercent || []).length) explicitParts.push(`${text("soundActionProbability")} ${(probability.baseValuesPercent || []).join(" / ")}%`);
+        if (explicitParts.length) dispatchLabels.push(`${actionName}: ${explicitParts.join(" / ")}`);
+      }
+    }
+    return `<div class="gameplay-sfx-evidence">${triggerLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}${playSoundLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}${dispatchLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}<span>${escapeHtml(branch)}</span>${animationCallbacks ? `<span>${escapeHtml(`${animationCallbacks} ${text("soundAuthoredCallbacks")} / ${animationClips} ${text("soundAnimationClips")}`)}</span>` : ""}${definitions ? `<span>${escapeHtml(`${definitions} ${text("soundBankDefinitions")}`)}</span>` : ""}${stopActions ? `<span>${escapeHtml(`${stopActions} ${text("soundStopActions")}`)}</span>` : ""}${relationLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}<span class="${isPartial ? "is-partial" : ""}">${escapeHtml(status)}</span></div>`;
   }
 
   function renderGameplaySoundCandidateList(event, audio) {
@@ -1296,7 +1448,7 @@
       const debugMeta = STATE.showDebug
         ? `<code>${escapeHtml([candidate.mediaId ? `media ${candidate.mediaId}` : "", evidence.soundObjects ? `${evidence.soundObjects} Sound objects` : ""].filter(Boolean).join(" · "))}</code>`
         : "";
-      return `<div class="gameplay-projectile-audio-candidate gameplay-sfx-possible-file"><audio controls preload="none" src="${escapeHtml(candidate.src)}"></audio><small>${escapeHtml(visibleMeta)}</small>${debugMeta}</div>`;
+      return `<div class="gameplay-projectile-audio-candidate gameplay-sfx-possible-file" data-gameplay-sfx-src="${escapeHtml(candidate.src)}"><button type="button" class="gameplay-sfx-candidate-toggle" data-gameplay-sfx-play><small>${escapeHtml(visibleMeta)}</small>${debugMeta}</button><div class="gameplay-sfx-possible-file-player" data-gameplay-sfx-player></div></div>`;
     }).join("");
     return `<div class="gameplay-sfx-possible-files">${cards}</div>`;
   }
@@ -1305,10 +1457,10 @@
     if (!audio.length) return "";
     const key = `sound-${++gameplaySoundCandidateListSequence}`;
     gameplaySoundCandidateLists.set(key, { event, audio });
-    return `<template data-gameplay-sfx-list="${escapeHtml(key)}"></template><p class="gameplay-sfx-list-placeholder">${escapeHtml(text("soundOpenToList"))}</p>`;
+    return `<button type="button" class="gameplay-sfx-list-toggle" data-gameplay-sfx-list-toggle="${escapeHtml(key)}">${escapeHtml(text("soundOpenToList"))}</button><template data-gameplay-sfx-list="${escapeHtml(key)}"></template>`;
   }
 
-  function renderGameplaySoundEvents(events) {
+  function renderGameplaySoundEvents(events, options = {}) {
     const eventRows = events || [];
     return eventRows.map((event) => {
       const audio = (event.audio || []).filter((candidate) => candidate?.src);
@@ -1320,11 +1472,13 @@
       const roots = Number(event.playRootCount || 0);
       const branch = roots ? `${roots} ${text("soundPlayBranches")}` : text("soundDirectMedia");
       const sharedAnimation = gameplaySoundIsSharedAnimation(event);
-      const scope = sharedAnimation
+      const eventScope = sharedAnimation
         ? `${Number(event.animationOwnerCount || 0)} ${text("soundSharedByCharacters")} · ${possibleCount} ${text("soundGlobalPossibleFiles")}`
         : `${branch} · ${possibleCount} ${text("soundPossibleFiles")}`;
+      const actionLabel = options.showActionLabel ? gameplaySoundActionLabel(gameplaySoundActionGroup(event)) : "";
+      const scope = [actionLabel, eventScope].filter(Boolean).join(" · ");
       const boundary = sharedAnimation ? `<p class="gameplay-enemy-sfx-note">${escapeHtml(text("soundSharedRuntimeGraphNote"))}</p>` : "";
-      return `<details class="gameplay-projectile-audio-phase"><summary><strong>${escapeHtml(gameplaySoundEventName(event.id) || text("soundEvent"))}</strong><span>${escapeHtml(scope)}</span></summary>${boundary}${renderGameplaySoundEvidence(event, audio)}${technical}${renderGameplaySoundCandidates(event, audio)}</details>`;
+      return `<article class="gameplay-sfx-event"><header class="gameplay-sfx-event-summary"><strong>${escapeHtml(gameplaySoundEventName(event.id) || text("soundEvent"))}</strong><span>${escapeHtml(scope)}</span></header>${boundary}${renderGameplaySoundEvidence(event, audio)}${technical}${renderGameplaySoundCandidates(event, audio)}</article>`;
     }).join("");
   }
 
@@ -1336,15 +1490,14 @@
       groups.get(action.key).events.push(event);
     }
     const priority = ["attack", "skill", "attackVoice", "skillVoice", "reaction", "reactionVoice", "combatVoice", "movement", "action"];
-    return [...groups.values()]
+    const orderedGroups = [...groups.values()]
       .sort((left, right) => {
         const leftIndex = priority.indexOf(left.values[0]);
         const rightIndex = priority.indexOf(right.values[0]);
         return (leftIndex < 0 ? 99 : leftIndex) - (rightIndex < 0 ? 99 : rightIndex)
           || gameplaySoundActionLabel(left).localeCompare(gameplaySoundActionLabel(right));
-      })
-      .map((group) => `<details class="gameplay-sfx-action"><summary><strong>${escapeHtml(gameplaySoundActionLabel(group))}</strong><span>${escapeHtml(gameplaySoundCountText(group.events, options))}</span></summary>${renderGameplaySoundEvents(group.events)}</details>`)
-      .join("");
+      });
+    return orderedGroups.map((group) => `<section class="gameplay-sfx-action"><header class="gameplay-sfx-action-summary"><strong>${escapeHtml(gameplaySoundActionLabel(group))}</strong><span>${escapeHtml(gameplaySoundCountText(group.events, options))}</span></header>${renderGameplaySoundEvents(group.events)}</section>`).join("");
   }
 
   function gameplayResolvedSoundEvents(events) {
@@ -1387,53 +1540,36 @@
     const playable = playableEvents.reduce((total, event) => total + ((event.audio || []).filter((candidate) => candidate?.src).length || Number(event.possibleMediaCount || event.playableCandidates || 0)), 0);
     if (!playable) return "";
     const confidence = options.confidence ? integrationConfidence(options.confidence) : "";
-    return `<details class="gameplay-related-sfx"><summary><strong>${escapeHtml(options.label || text("relatedSoundEffects"))}</strong><span>${escapeHtml(gameplaySoundCountText(playableEvents, options))}</span>${confidence}</summary><p>${escapeHtml(options.note || text("soundRuntimeNote"))}</p>${renderGameplaySoundActionGroups(playableEvents, options)}</details>`;
+    return `<section class="gameplay-related-sfx"><header class="gameplay-related-sfx-summary"><strong>${escapeHtml(options.label || text("relatedSoundEffects"))}</strong><span>${escapeHtml(gameplaySoundCountText(playableEvents, options))}</span>${confidence}</header><p>${escapeHtml(options.note || text("soundRuntimeNote"))}</p>${renderGameplaySoundActionGroups(playableEvents, options)}</section>`;
   }
 
   function renderCharacterSkillSounds(entry) {
     const groups = STATE.integration.soundEffects?.characters?.[entry?.id]?.groups || {};
-    return (entry?.skillGroups || []).map((group) => {
+    const events = (entry?.skillGroups || []).flatMap((group) => {
       const soundGroup = groups[group?.id] || {};
-      return renderGameplaySoundGroup(soundGroup.events || [], {
-        label: group?.name || group?.typeLabel || text("relatedSoundEffects"),
-        confidence: soundGroup.ownershipConfidence === "inferred" ? "inferred" : "",
-      });
-    }).join("");
+      return (soundGroup.events || []).filter((event) => !gameplaySoundHasExactSkillTrigger(event));
+    });
+    return renderGameplaySoundGroup(mergeGameplaySoundEvents(events), {
+      label: text("inferredSkillSoundEffects"),
+      confidence: "inferred",
+      note: text("inferredSkillSoundEffectsNote"),
+    });
+  }
+
+  function renderActiveSkillSoundEffects(group, character) {
+    const groups = STATE.integration.soundEffects?.characters?.[character?.id]?.groups || {};
+    const soundGroup = groups[group?.id] || {};
+    const events = (soundGroup.events || []).filter(gameplaySoundHasExactSkillTrigger);
+    return renderGameplaySoundGroup(events, {
+      label: text("exactSkillSoundEffects"),
+      confidence: "direct",
+      note: text("soundExactSkillTriggerNote"),
+    });
   }
 
   function renderEnemySoundEffects(entry) {
     const sounds = STATE.integration.soundEffects?.enemies?.[entry?.id] || {};
-    const merged = new Map();
-    for (const event of [...(sounds.events || []), ...(sounds.animationEvents || [])]) {
-      const key = String(event?.id || "").toLowerCase();
-      if (!key) continue;
-      const previous = merged.get(key);
-      if (!previous) {
-        merged.set(key, { ...event });
-        continue;
-      }
-      const audio = new Map();
-      for (const candidate of [...(previous.audio || []), ...(event.audio || [])]) {
-        const candidateKey = String(candidate?.src || candidate?.mediaId || "");
-        if (candidateKey) audio.set(candidateKey, candidate);
-      }
-      merged.set(key, {
-        ...previous,
-        ...event,
-        audio: [...audio.values()],
-        actionKinds: [...new Set([...(previous.actionKinds || []), ...(event.actionKinds || [])])],
-        sourceSkillIds: [...new Set([...(previous.sourceSkillIds || []), ...(event.sourceSkillIds || [])])],
-        sourceAnimationClips: [...new Set([...(previous.sourceAnimationClips || []), ...(event.sourceAnimationClips || [])])],
-        evidence: [...(previous.evidence || []), ...(event.evidence || [])],
-        playRootCount: Math.max(Number(previous.playRootCount || 0), Number(event.playRootCount || 0)),
-        playRootActionIds: [...new Set([...(previous.playRootActionIds || []), ...(event.playRootActionIds || [])])],
-        mediaRelationTypes: [...new Set([...(previous.mediaRelationTypes || []), ...(event.mediaRelationTypes || [])])],
-        traversalStatus: previous.traversalStatus === "partial" || event.traversalStatus === "partial" ? "partial" : (event.traversalStatus || previous.traversalStatus),
-        possibleMediaCount: Math.max(Number(previous.possibleMediaCount || 0), Number(event.possibleMediaCount || 0)),
-        playableCandidates: Math.max(Number(previous.playableCandidates || 0), Number(event.playableCandidates || 0)),
-      });
-    }
-    const playableEvents = gameplayResolvedSoundEvents([...merged.values()])
+    const playableEvents = gameplayResolvedSoundEvents(mergeGameplaySoundEvents([...(sounds.events || []), ...(sounds.animationEvents || [])]))
       .filter((event) => (event.audio || []).some((candidate) => candidate?.src) || Number(event.possibleMediaCount || event.playableCandidates || 0) > 0);
     if (!playableEvents.length) return "";
     const confidence = integrationConfidence(
@@ -1441,7 +1577,7 @@
     );
     const notes = [text("soundRuntimeNote")];
     if ((sounds.animationEvents || []).length) notes.push(text("animationSoundNote"));
-    return `<div class="gameplay-enemy-sfx-meta"><strong>${escapeHtml(gameplaySoundCountText(playableEvents))}</strong>${confidence}</div><p class="gameplay-enemy-sfx-note">${escapeHtml(notes.join(" "))}</p>${renderGameplaySoundActionGroups(playableEvents)}`;
+    return `<div class="gameplay-enemy-sfx-meta"><strong>${escapeHtml(gameplaySoundCountText(playableEvents))}</strong>${confidence}</div><p class="gameplay-enemy-sfx-note">${escapeHtml(notes.join(" "))}</p>${renderGameplaySoundActionGroups(playableEvents, { flattenGroups: true })}`;
   }
 
   function renderCharacterAnimationSounds(entry) {
@@ -1615,6 +1751,7 @@
         <div class="gameplay-skill-meta">${escapeHtml(meta)}</div>
         ${renderActiveSkillCombatMeta(group)}
         ${renderDescription(group.description)}
+        ${renderActiveSkillSoundEffects(group, character)}
       </div>
       ${renderActiveSkillLevels(group)}
       ${renderActiveSkillProjectiles(group)}
@@ -2643,7 +2780,7 @@
   }
 
   function projectileSoundCount(projectile) {
-    return Object.values(projectile?.sounds || {}).filter((value) => value !== null && value !== undefined && value !== "").length;
+    return projectileSoundRows(projectile).length;
   }
 
   function renderProjectileIntegration(entry) {
@@ -2801,20 +2938,41 @@
         audioTab.click();
       });
     });
-    const materializeSoundLists = (container) => {
-      container.querySelectorAll("template[data-gameplay-sfx-list]").forEach((template) => {
-        if (template.parentElement?.closest("details") !== container) return;
-        const key = template.dataset.gameplaySfxList || "";
-        const candidateList = gameplaySoundCandidateLists.get(key);
-        if (candidateList) {
-          template.innerHTML = renderGameplaySoundCandidateList(candidateList.event, candidateList.audio);
-          gameplaySoundCandidateLists.delete(key);
-        }
-        const placeholder = template.nextElementSibling;
-        template.replaceWith(template.content.cloneNode(true));
-        if (placeholder?.classList.contains("gameplay-sfx-list-placeholder")) placeholder.remove();
+    const bindCandidatePlayers = (container) => {
+      container.querySelectorAll("[data-gameplay-sfx-src]:not([data-gameplay-sfx-bound])").forEach((row) => {
+        row.dataset.gameplaySfxBound = "1";
+        const button = row.querySelector("[data-gameplay-sfx-play]");
+        if (!button) return;
+        button.addEventListener("click", () => {
+          const host = row.querySelector("[data-gameplay-sfx-player]");
+          const src = row.dataset.gameplaySfxSrc || "";
+          if (!host || !src || host.querySelector("audio")) return;
+          host.innerHTML = `<audio controls preload="none" src="${escapeHtml(src)}"></audio>`;
+          button.disabled = true;
+          if (window.WebUI.enhanceMediaPlayers) window.WebUI.enhanceMediaPlayers(host);
+        });
       });
     };
+    const materializeSoundList = (template, toggle) => {
+      if (!template) return;
+      const key = template.dataset.gameplaySfxList || "";
+      const candidateList = gameplaySoundCandidateLists.get(key);
+      if (!candidateList) return;
+      template.innerHTML = renderGameplaySoundCandidateList(candidateList.event, candidateList.audio);
+      gameplaySoundCandidateLists.delete(key);
+      template.replaceWith(template.content.cloneNode(true));
+      if (toggle) toggle.remove();
+      bindCandidatePlayers(root);
+    };
+    root.querySelectorAll("[data-gameplay-sfx-list-toggle]").forEach((toggle) => {
+      toggle.addEventListener("click", () => {
+        const key = toggle.dataset.gameplaySfxListToggle || "";
+        const template = [...root.querySelectorAll("template[data-gameplay-sfx-list]")]
+          .find((candidate) => candidate.dataset.gameplaySfxList === key);
+        materializeSoundList(template, toggle);
+      });
+    });
+    bindCandidatePlayers(root);
     const isRevealed = (media) => {
       for (let node = media.parentElement; node && node !== root; node = node.parentElement) {
         if (node.tagName === "DETAILS" && !node.open) return false;
@@ -2831,10 +2989,7 @@
     enhanceVisible();
     root.querySelectorAll("details").forEach((details) => {
       details.addEventListener("toggle", () => {
-        if (details.open) {
-          materializeSoundLists(details);
-          enhanceVisible();
-        }
+        if (details.open) enhanceVisible();
       });
     });
   }
@@ -3240,7 +3395,7 @@
     const requests = [
       ["combat", integrationPath("combat", nextLanguage), (payload) => payload && Array.isArray(payload.nodes) && Array.isArray(payload.edges)],
       ["projectiles", integrationPath("projectiles", nextLanguage), (payload) => payload && Array.isArray(payload.entries)],
-      ["soundEffects", integrationPath("soundEffects", nextLanguage), (payload) => payload && [1, 2].includes(payload.schemaVersion) && payload.characters && payload.enemies],
+      ["soundEffects", integrationPath("soundEffects", nextLanguage), (payload) => payload && [1, 2, 3, 4].includes(payload.schemaVersion) && payload.characters && payload.enemies],
       ["assets", integrationPath("assets", nextLanguage), (payload) => payload && payload.entries && typeof payload.entries === "object"],
     ];
     const promise = Promise.all(requests.map(async ([kind, path, validator]) => {

@@ -68,9 +68,13 @@ from story_builder.anime_assets import (  # noqa: E402
     recover_dialog_tree_prime_reachable_carriers_for_parent,
 )
 from story_builder.mission_recovery import natural_key  # noqa: E402
+from story_builder.mission_assets import (  # noqa: E402
+    mission_runtime_source_summary,
+    select_complete_mission_runtime_root,
+)
 
 
-SCHEMA = "sourceStoryGapQueue.v130"
+SCHEMA = "sourceStoryGapQueue.v131"
 STORY_BINDING_COVERAGE_SCHEMA_VERSION = 17
 LEVELSCRIPT_INTERACTIVE_NARRATIVE_MAPPING_ID = (
     "levelscript-interactive-narrative-config-v1"
@@ -149,52 +153,16 @@ NON_OWNING_DIAGNOSTIC_QUEST_ATTACH_SOURCES = frozenset({
 NPC_PROXY_DIALOG_SELECTION_GAMEASSEMBLY_SHA256 = (
     "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE"
 )
-UNIQUE_MISSION_TRACKED_PROXY_CONTEXTS = {
-    "gm01m14": {
-        "npcProxyId": "sesidun04_map01_001",
-        "levelId": "map01_lv006",
-        "subDataParentId": 3500120000,
-        "questIds": (
-            "gm01m14_q#4",
-            "gm01m14_q#5",
-            "gm01m14_q#6",
-            "gm01m14_q#8",
-            "gm01m14_q#11",
-            "gm01m14_q#12",
-        ),
-        "dialogIds": (
-            "dlg_gm01m14_2",
-            "dlg_gm01m14_1",
-            "dlg_gm01m14_3",
-            "dlg_gm01m14_6",
-        ),
-        "exDialogIds": (
-            "",
-            "dlg_gm01m14_2",
-            "dlg_gm01m14_1",
-            "dlg_gm01m14_3",
-            "dlg_gm01m14_6",
-        ),
-        "activeRowIndices": (2, 3, 4, 5),
-        "sourceHashes": {
-            (
-                "export_full/structured/Persistent/Data/Json/"
-                "MissionRuntimeAsset/gm01m14.json"
-            ): "7638297AA25019BE648D3DFA9542BEDC1105855369A7BD78879430A5CFFE5464",
-            (
-                "export_full/structured/StreamingAssets/Data/Json/GameplayConfig/"
-                "NpcProxyExDataTable.json"
-            ): "19C9A7DC69DEED52A9EAFD26D216F31826065137490548E5917BE589BA11BBAC",
-            (
-                "export_full/structured/StreamingAssets/Data/Json/GameplayConfig/"
-                "NpcProxyTable.json"
-            ): "E683D0F7666451D7E7E22D863CC9F2C52AC79D1DBAA6F1A89BA2681829C5C5EA",
-            "export_full/recovered/dialog_id_table_index.json": (
-                "3FC412F637063386E7BE4934099A546E24858836FD6C221AA1C2F6BC4092B083"
-            ),
-        },
-    },
-}
+NPC_PROXY_TRACKING_INFO_TYPE = (
+    "Beyond.Gameplay.NpcProxyTrackingInfo, Gameplay.Beyond"
+)
+NPC_PROXY_TRACKING_INFO_FIELDS = frozenset({
+    "$type",
+    "guidingArea",
+    "npcProxyId",
+    "sceneId",
+    "useFilterCondition",
+})
 DIALOG_TREE_NARRATIVE_CONNECTION_MAPPING_ID = (
     "dialog-tree-narrative-mask-connection-native-v1"
 )
@@ -2675,17 +2643,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "au_dlg_gm01m22_2d5_002",
         ),
         "treeBranchGroups": (),
-        "npcProxyConsumer": {
-            "proxyId": "jite_map01_006",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m22_2d5",
-                "missionId": "",
-            },
-        },
     },
     "misc_dlg_gm01m22_3d2": {
         "missionId": "gm01m22",
@@ -2766,32 +2723,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "au_dlg_gm01m4_7_002",
         ),
         "treeBranchGroups": (),
-        "npcProxyConsumer": {
-            "proxyId": "luoke_map01_v1d0d0_gm01m4man",
-            "entryIndex": 3,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m4_7",
-                "missionId": "",
-            },
-        },
-        "missionNpcProxyTracking": {
-            "sourceFile": (
-                "export_full/structured/Persistent/Data/Json/"
-                "MissionRuntimeAsset/gm01m4.json"
-            ),
-            "sourceSha256":
-                "43F95A2A63978A06F1CDCC73EC073154A88A7A3E1DB9C6EA2F4195862390868D",
-            "proxyId": "luoke_map01_v1d0d0_gm01m4man",
-            "levelId": "map01_lv001",
-            "rows": ({
-                "questId": "gm01m4_q#2",
-                "objectiveIndex": 0,
-                "trackingIndex": 0,
-            },),
-        },
     },
     "misc_dlg_gm01m4_3d5": {
         "missionId": "gm01m4",
@@ -2828,32 +2759,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             ),
             "routeKind": "authored_split",
         },),
-        "npcProxyConsumer": {
-            "proxyId": "luoke_map01_v1d0d0_gm01m4man",
-            "entryIndex": 1,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m4_3d5",
-                "missionId": "",
-            },
-        },
-        "missionNpcProxyTracking": {
-            "sourceFile": (
-                "export_full/structured/Persistent/Data/Json/"
-                "MissionRuntimeAsset/gm01m4.json"
-            ),
-            "sourceSha256":
-                "43F95A2A63978A06F1CDCC73EC073154A88A7A3E1DB9C6EA2F4195862390868D",
-            "proxyId": "luoke_map01_v1d0d0_gm01m4man",
-            "levelId": "map01_lv001",
-            "rows": ({
-                "questId": "gm01m4_q#2",
-                "objectiveIndex": 0,
-                "trackingIndex": 0,
-            },),
-        },
     },
     "dlg_gm01m6_6": {
         "missionId": "gm01m6",
@@ -2871,32 +2776,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "au_dlg_gm01m6_6_002",
         ),
         "treeBranchGroups": (),
-        "npcProxyConsumer": {
-            "proxyId": "heerman_map01_default",
-            "entryIndex": 1,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m6_6",
-                "missionId": "",
-            },
-        },
-        "missionNpcProxyTracking": {
-            "sourceFile": (
-                "export_full/structured/Persistent/Data/Json/"
-                "MissionRuntimeAsset/gm01m6.json"
-            ),
-            "sourceSha256":
-                "210142C46704FA160B2397BB48A78EC989D6BEF04D029AEB17A6FF745CC8DBF7",
-            "proxyId": "heerman_map01_default",
-            "levelId": "map01_lv006",
-            "rows": ({
-                "questId": "gm01m6_q#12",
-                "objectiveIndex": 0,
-                "trackingIndex": 0,
-            },),
-        },
     },
     "dlg_gm01m6_7": {
         "missionId": "gm01m6",
@@ -2914,17 +2793,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "au_dlg_gm01m6_7_002",
         ),
         "treeBranchGroups": (),
-        "npcProxyConsumer": {
-            "proxyId": "sikete_map01_default",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m6_7",
-                "missionId": "",
-            },
-        },
     },
     "misc_dlg_gm01m6_1d5": {
         "missionId": "gm01m6",
@@ -2965,39 +2833,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "au_dlg_gm01m6_3d7_002",
         ),
         "treeBranchGroups": (),
-        "npcProxyConsumer": {
-            "proxyId": "heerman_map01_001",
-            "entryIndex": 3,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m6_3d7",
-                "missionId": "",
-            },
-        },
-        "missionNpcProxyTracking": {
-            "sourceFile": (
-                "export_full/structured/Persistent/Data/Json/"
-                "MissionRuntimeAsset/gm01m6.json"
-            ),
-            "sourceSha256":
-                "210142C46704FA160B2397BB48A78EC989D6BEF04D029AEB17A6FF745CC8DBF7",
-            "proxyId": "heerman_map01_001",
-            "levelId": "map01_lv006",
-            "rows": (
-                {
-                    "questId": "gm01m6_q#3",
-                    "objectiveIndex": 0,
-                    "trackingIndex": 0,
-                },
-                {
-                    "questId": "gm01m6_q#10",
-                    "objectiveIndex": 0,
-                    "trackingIndex": 0,
-                },
-            ),
-        },
     },
     "misc_dlg_gm01m6_4d5": {
         "missionId": "gm01m6",
@@ -3015,17 +2850,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
         "optionIds": ("option_dlg_gm01m6_4d5_1_001",),
         "missingAudioIds": ("au_dlg_gm01m6_4d5_001",),
         "treeBranchGroups": (),
-        "npcProxyConsumer": {
-            "proxyId": "heerman_map01_002",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m6_4d5",
-                "missionId": "",
-            },
-        },
     },
     "misc_dlg_gm01m6_4d7": {
         "missionId": "gm01m6",
@@ -3043,17 +2867,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
         "optionIds": (),
         "missingAudioIds": ("au_dlg_gm01m6_4d7_001",),
         "treeBranchGroups": (),
-        "npcProxyConsumer": {
-            "proxyId": "sikete_map01_002",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m6_4d7",
-                "missionId": "",
-            },
-        },
     },
     "dlg_gm01m7_1": {
         "missionId": "gm01m7",
@@ -3103,32 +2916,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
                 "routeKind": "authored_convergence",
             },
         ),
-        "npcProxyConsumer": {
-            "proxyId": "sesidun_map01_003",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m7_1",
-            },
-        },
-        "missionNpcProxyTracking": {
-            "sourceFile": (
-                "export_full/structured/Persistent/Data/Json/"
-                "MissionRuntimeAsset/gm01m12.json"
-            ),
-            "sourceSha256":
-                "B5022E18326385BCCCC4ACFBC076A5563C5B18066D291D1CA63F2DB11AC12EBB",
-            "runtimeMissionId": "gm01m12",
-            "proxyId": "sesidun_map01_003",
-            "levelId": "map01_lv001",
-            "rows": ({
-                "questId": "gm01m12_q#14",
-                "objectiveIndex": 0,
-                "trackingIndex": 0,
-            },),
-        },
     },
     "dlg_gm01m7_2": {
         "missionId": "gm01m7",
@@ -3150,44 +2937,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             f"au_dlg_gm01m7_2_{number:03d}" for number in range(1, 4)
         ),
         "treeBranchGroups": (),
-        "npcProxyConsumers": (
-            {
-                "proxyId": "sesidun_map01_002",
-                "entryIndex": 2,
-                "entry": {
-                    "addDialogExOption": False,
-                    "envTalkData": {"envTalkOverrideNpc": True},
-                    "dialogExOptionData": [],
-                    "dialogId": "dlg_gm01m7_2",
-                },
-            },
-            {
-                "proxyId": "wolfgd_map01_gm01m12",
-                "entryIndex": 1,
-                "entry": {
-                    "addDialogExOption": False,
-                    "envTalkData": {"envTalkOverrideNpc": True},
-                    "dialogExOptionData": [],
-                    "dialogId": "dlg_gm01m7_2",
-                },
-            },
-        ),
-        "missionNpcProxyTracking": {
-            "sourceFile": (
-                "export_full/structured/Persistent/Data/Json/"
-                "MissionRuntimeAsset/gm01m12.json"
-            ),
-            "sourceSha256":
-                "B5022E18326385BCCCC4ACFBC076A5563C5B18066D291D1CA63F2DB11AC12EBB",
-            "runtimeMissionId": "gm01m12",
-            "proxyId": "wolfgd_map01_gm01m12",
-            "levelId": "map01_lv005",
-            "rows": tuple({
-                "questId": f"gm01m12_q#{number}",
-                "objectiveIndex": 0,
-                "trackingIndex": 0,
-            } for number in (2, 3, 4, 6, 12)),
-        },
     },
     "dlg_gm01m7_3": {
         "missionId": "gm01m7",
@@ -3221,44 +2970,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "targetLineIds": ("dlg_gm01m7_3_003",) * 3,
             "routeKind": "authored_convergence",
         },),
-        "npcProxyConsumers": (
-            {
-                "proxyId": "sesidun_map01_002",
-                "entryIndex": 3,
-                "entry": {
-                    "addDialogExOption": False,
-                    "envTalkData": {"envTalkOverrideNpc": True},
-                    "dialogExOptionData": [],
-                    "dialogId": "dlg_gm01m7_3",
-                },
-            },
-            {
-                "proxyId": "wolfgd_map01_gm01m12",
-                "entryIndex": 2,
-                "entry": {
-                    "addDialogExOption": False,
-                    "envTalkData": {"envTalkOverrideNpc": True},
-                    "dialogExOptionData": [],
-                    "dialogId": "dlg_gm01m7_3",
-                },
-            },
-        ),
-        "missionNpcProxyTracking": {
-            "sourceFile": (
-                "export_full/structured/Persistent/Data/Json/"
-                "MissionRuntimeAsset/gm01m12.json"
-            ),
-            "sourceSha256":
-                "B5022E18326385BCCCC4ACFBC076A5563C5B18066D291D1CA63F2DB11AC12EBB",
-            "runtimeMissionId": "gm01m12",
-            "proxyId": "wolfgd_map01_gm01m12",
-            "levelId": "map01_lv005",
-            "rows": tuple({
-                "questId": f"gm01m12_q#{number}",
-                "objectiveIndex": 0,
-                "trackingIndex": 0,
-            } for number in (2, 3, 4, 6, 12)),
-        },
     },
     "dlg_gm01m7_5": {
         "missionId": "gm01m7",
@@ -3291,44 +3002,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "targetLineIds": ("dlg_gm01m7_5_012",) * 2,
             "routeKind": "authored_convergence",
         },),
-        "npcProxyConsumers": (
-            {
-                "proxyId": "sesidun_map01_002",
-                "entryIndex": 1,
-                "entry": {
-                    "addDialogExOption": False,
-                    "envTalkData": {"envTalkOverrideNpc": True},
-                    "dialogExOptionData": [],
-                    "dialogId": "dlg_gm01m7_5",
-                },
-            },
-            {
-                "proxyId": "wolfgd_map01_gm01m12",
-                "entryIndex": 3,
-                "entry": {
-                    "addDialogExOption": False,
-                    "envTalkData": {"envTalkOverrideNpc": True},
-                    "dialogExOptionData": [],
-                    "dialogId": "dlg_gm01m7_5",
-                },
-            },
-        ),
-        "missionNpcProxyTracking": {
-            "sourceFile": (
-                "export_full/structured/Persistent/Data/Json/"
-                "MissionRuntimeAsset/gm01m12.json"
-            ),
-            "sourceSha256":
-                "B5022E18326385BCCCC4ACFBC076A5563C5B18066D291D1CA63F2DB11AC12EBB",
-            "runtimeMissionId": "gm01m12",
-            "proxyId": "wolfgd_map01_gm01m12",
-            "levelId": "map01_lv005",
-            "rows": tuple({
-                "questId": f"gm01m12_q#{number}",
-                "objectiveIndex": 0,
-                "trackingIndex": 0,
-            } for number in (2, 3, 4, 6, 12)),
-        },
     },
     "dlg_gm01m7_7": {
         "missionId": "gm01m7",
@@ -3347,32 +3020,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             f"au_dlg_gm01m7_7_{number:03d}" for number in range(1, 4)
         ),
         "treeBranchGroups": (),
-        "npcProxyConsumer": {
-            "proxyId": "wolfgd_map01_gm01m12",
-            "entryIndex": 4,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m7_7",
-            },
-        },
-        "missionNpcProxyTracking": {
-            "sourceFile": (
-                "export_full/structured/Persistent/Data/Json/"
-                "MissionRuntimeAsset/gm01m12.json"
-            ),
-            "sourceSha256":
-                "B5022E18326385BCCCC4ACFBC076A5563C5B18066D291D1CA63F2DB11AC12EBB",
-            "runtimeMissionId": "gm01m12",
-            "proxyId": "wolfgd_map01_gm01m12",
-            "levelId": "map01_lv005",
-            "rows": tuple({
-                "questId": f"gm01m12_q#{number}",
-                "objectiveIndex": 0,
-                "trackingIndex": 0,
-            } for number in (2, 3, 4, 6, 12)),
-        },
     },
     "dlg_a1m2_4": {
         "missionId": "a1m2",
@@ -3393,21 +3040,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
         "missingAudioIds": tuple(
             f"au_dlg_a1m2_4_{number:03d}" for number in range(1, 4)
         ),
-        "npcProxyConsumer": {
-            "proxyId": "kelala_map01_v1d1d0_005",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {
-                    "envTalkIds": [],
-                    "envTalkOdd": [],
-                    "envTalkOverrideNpc": True,
-                },
-                "dialogExOptionData": [],
-                "dialogId": "dlg_a1m2_4",
-                "missionId": "",
-            },
-        },
     },
     "dlg_a1m8d3_2": {
         "missionId": "a1m8d3",
@@ -3471,21 +3103,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
         "missingAudioIds": tuple(
             f"au_dlg_e11m8d5_1_{number:03d}" for number in range(1, 11)
         ),
-        "npcProxyConsumer": {
-            "proxyId": "lizy_map02_v1d4d0_world",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {
-                    "envTalkIds": [],
-                    "envTalkOdd": [],
-                    "envTalkOverrideNpc": True,
-                },
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e11m8d5_1",
-                "missionId": "",
-            },
-        },
     },
     "dlg_e2m8d5_2": {
         "missionId": "e2m8d5",
@@ -3507,16 +3124,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "option_dlg_e2m8d5_2_1_001",
             "option_dlg_e2m8d5_2_1_002",
         ),
-        "npcProxyConsumer": {
-            "proxyId": "pelica_map01_e2m8d5",
-            "entryIndex": 2,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e2m8d5_2",
-            },
-        },
     },
     "dlg_e2m8d5_3": {
         "missionId": "e2m8d5",
@@ -3531,17 +3138,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             f"dlg_e2m8d5_3_{number:03d}" for number in range(1, 6)
         ),
         "optionIds": ("option_dlg_e2m8d5_3_1_001",),
-        "npcProxyConsumer": {
-            "proxyId": "chen_map01_e2m8d5",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e2m8d5_3",
-                "missionId": "",
-            },
-        },
     },
     "misc_dlg_e2m5d5_1d5": {
         "missionId": "e2m5d5",
@@ -3561,16 +3157,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "dlg_e2m5d5_1d5_003",
         ),
         "optionIds": (),
-        "npcProxyConsumer": {
-            "proxyId": "pelica_map01_e2m5d5",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e2m5d5_1d5",
-            },
-        },
     },
     "misc_dlg_e2m5d5_1d7": {
         "missionId": "e2m5d5",
@@ -3588,17 +3174,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             f"dlg_e2m5d5_1d7_{number:03d}" for number in range(1, 6)
         ),
         "optionIds": (),
-        "npcProxyConsumer": {
-            "proxyId": "chen_map01_e2m5d5",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e2m5d5_1d7",
-                "missionId": "",
-            },
-        },
     },
     "dlg_e8m5_6": {
         "missionId": "e8m5",
@@ -3652,17 +3227,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             f"option_dlg_e8m1_10_1_{number:03d}"
             for number in range(1, 6)
         ),
-        "npcProxyConsumer": {
-            "proxyId": "ximo_map02_default",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e8m1_10",
-                "missionId": "",
-            },
-        },
     },
     "misc_dlg_e1m10_2d7": {
         "missionId": "e1m10",
@@ -3699,17 +3263,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             f"dlg_e1m2_6_{number:03d}" for number in range(1, 5)
         ),
         "optionIds": ("option_dlg_e1m2_6_1_001",),
-        "npcProxyConsumer": {
-            "proxyId": "chen_map01_e1m2Factory",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e1m2_6",
-                "missionId": "",
-            },
-        },
     },
     "dlg_e1m1_6": {
         "missionId": "e1m1",
@@ -3724,17 +3277,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             f"dlg_e1m1_6_{number:03d}" for number in range(1, 6)
         ),
         "optionIds": (),
-        "npcProxyConsumer": {
-            "proxyId": "chen_map01_e1m1Basement1",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e1m1_6",
-                "missionId": "",
-            },
-        },
     },
     "dlg_e6m2_1": {
         "missionId": "e6m2",
@@ -3752,17 +3294,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             f"option_dlg_e6m2_1_1_{number:03d}"
             for number in range(1, 6)
         ),
-        "npcProxyConsumer": {
-            "proxyId": "zhuangfy_indie_dg005_e6m1Final",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e6m2_1",
-                "missionId": "",
-            },
-        },
     },
     "dlg_e6m2_2": {
         "missionId": "e6m2",
@@ -3785,16 +3316,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "option_dlg_e6m2_2_2_001",
             "option_dlg_e6m2_2_2_002",
         ),
-        "npcProxyConsumer": {
-            "proxyId": "mifu_indie_dg005_e6m1DianTiKou",
-            "entryIndex": 2,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e6m2_2",
-            },
-        },
     },
     "dlg_e9m4_14": {
         "missionId": "e9m4",
@@ -3815,16 +3336,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "dlg_e9m4_14_009",
         ),
         "optionIds": (),
-        "npcProxyConsumer": {
-            "proxyId": "lizhui_map02_e9m4",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e9m4_14",
-            },
-        },
     },
     "dlg_e3m2_3": {
         "missionId": "e3m2",
@@ -3844,16 +3355,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "au_dlg_e3m2_3_001",
             "au_dlg_e3m2_3_002",
         ),
-        "npcProxyConsumer": {
-            "proxyId": "angelu_map01_e3m201",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e3m2_3",
-            },
-        },
     },
     "dlg_e2m2_7": {
         "missionId": "e2m2",
@@ -3872,17 +3373,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "option_dlg_e2m2_7_1_002",
             "option_dlg_e2m2_7_2_001",
         ),
-        "npcProxyConsumer": {
-            "proxyId": "tata_map01_i002",
-            "entryIndex": 1,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e2m2_7",
-                "missionId": "",
-            },
-        },
     },
     "misc_dlg_e2m2_1d5": {
         "missionId": "e2m2",
@@ -3900,17 +3390,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             f"dlg_e2m2_1d5_{number:03d}" for number in range(1, 12)
         ),
         "optionIds": ("option_dlg_e2m2_1d5_1_001",),
-        "npcProxyConsumer": {
-            "proxyId": "fabian_map01_lv005",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e2m2_1d5",
-                "missionId": "",
-            },
-        },
     },
     "misc_dlg_e2m2_4d5": {
         "missionId": "e2m2",
@@ -3931,17 +3410,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "option_dlg_e2m2_4d5_1_001",
             "option_dlg_e2m2_4d5_1_002",
         ),
-        "npcProxyConsumer": {
-            "proxyId": "ailaizha_map01_lv005",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e2m2_4d5",
-                "missionId": "",
-            },
-        },
     },
     "misc_dlg_e1m3_5d5": {
         "missionId": "e1m3",
@@ -3986,17 +3454,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "option_dlg_e2m5_6_1_001",
             "option_dlg_e2m5_6_1_002",
         ),
-        "npcProxyConsumer": {
-            "proxyId": "tata_map01_i008",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e2m5_6",
-                "missionId": "",
-            },
-        },
     },
     "dlg_e2m6_12": {
         "missionId": "e2m6",
@@ -4092,17 +3549,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
                 "dlg_e5m2_2_031",
             ),
         },
-        "npcProxyConsumer": {
-            "proxyId": "tangtang_map02_e5m2rongdong",
-            "entryIndex": 1,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e5m2_2",
-                "missionId": "",
-            },
-        },
     },
     "dlg_e5m2_8": {
         "missionId": "e5m2",
@@ -4121,17 +3567,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "option_dlg_e5m2_8_1_001",
             "option_dlg_e5m2_8_1_002",
         ),
-        "npcProxyConsumer": {
-            "proxyId": "tangtang_map02_e5m2duizhi",
-            "entryIndex": 1,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e5m2_8",
-                "missionId": "",
-            },
-        },
     },
     "misc_dlg_e5m2_3d5": {
         "missionId": "e5m2",
@@ -4154,16 +3589,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
         ),
         "optionIds": (),
         "missingAudioIds": ("au_dlg_e5m2_3d5_003",),
-        "npcProxyConsumer": {
-            "proxyId": "ruanyi_map02_e5m2rongdong",
-            "entryIndex": 1,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e5m2_3d5",
-            },
-        },
     },
     "dlg_e5m1_3": {
         "missionId": "e5m1",
@@ -4182,17 +3607,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "option_dlg_e5m1_3_1_001",
             "option_dlg_e5m1_3_1_002",
         ),
-        "npcProxyConsumer": {
-            "proxyId": "pelica_base01_lv001_e5m1back",
-            "entryIndex": 1,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e5m1_3",
-                "missionId": "",
-            },
-        },
     },
     "dlg_e10m1_7": {
         "missionId": "e10m1",
@@ -4467,16 +3881,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "dlg_e6m1_14_004",
         ),
         "optionIds": (),
-        "npcProxyConsumer": {
-            "proxyId": "lugang_map02_e6m1ZhenLie",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_e6m1_14",
-            },
-        },
     },
     "dlg_e6m1_15": {
         "missionId": "e6m1",
@@ -4495,30 +3899,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
         "optionIds": (
             "option_dlg_e6m1_15_1_001",
             "option_dlg_e6m1_15_1_002",
-        ),
-        "npcProxyConsumers": (
-            {
-                "proxyId": "puyuan_map02_default",
-                "entryIndex": 0,
-                "entry": {
-                    "addDialogExOption": False,
-                    "envTalkData": {"envTalkOverrideNpc": True},
-                    "dialogExOptionData": [],
-                    "dialogId": "dlg_e6m1_15",
-                    "missionId": "",
-                },
-            },
-            {
-                "proxyId": "puyuan_map02_e6m1ZhenLie",
-                "entryIndex": 0,
-                "entry": {
-                    "addDialogExOption": False,
-                    "envTalkData": {"envTalkOverrideNpc": True},
-                    "dialogExOptionData": [],
-                    "dialogId": "dlg_e6m1_15",
-                    "missionId": "",
-                },
-            },
         ),
     },
     "dlg_e6m3_12": {
@@ -4743,16 +4123,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "targetLineIds": ("dlg_gm01m12_1_005",) * 2,
             "routeKind": "authored_convergence",
         },),
-        "npcProxyConsumer": {
-            "proxyId": "sesidun_map01_001",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m12_1",
-            },
-        },
     },
     "dlg_gm01m12_3": {
         "missionId": "gm01m12",
@@ -4783,16 +4153,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "targetLineIds": ("dlg_gm01m12_3_002",) * 2,
             "routeKind": "authored_convergence",
         },),
-        "npcProxyConsumer": {
-            "proxyId": "sesidun_map01_001",
-            "entryIndex": 2,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m12_3",
-            },
-        },
     },
     "dlg_gm01m12_6": {
         "missionId": "gm01m12",
@@ -4828,32 +4188,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             f"au_dlg_gm01m20_1_{number:03d}" for number in range(1, 5)
         ),
         "treeBranchGroups": (),
-        "npcProxyConsumer": {
-            "proxyId": "kupe_map01_normal",
-            "entryIndex": 6,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m20_1",
-                "missionId": "",
-            },
-        },
-        "missionNpcProxyTracking": {
-            "sourceFile": (
-                "export_full/structured/Persistent/Data/Json/"
-                "MissionRuntimeAsset/gm01m20.json"
-            ),
-            "sourceSha256":
-                "01BC364A3A64CFFE8BE236B017020D76ACDBB42866862031A5DC4405B501E355",
-            "proxyId": "kupe_map01_normal",
-            "levelId": "map01_lv001",
-            "rows": tuple({
-                "questId": f"gm01m20_q#{quest}",
-                "objectiveIndex": 0,
-                "trackingIndex": 0,
-            } for quest in (1, 3, 2, 10)),
-        },
     },
     "dlg_gm01m20_5": {
         "missionId": "gm01m20",
@@ -4872,17 +4206,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             f"au_dlg_gm01m20_5_{number:03d}" for number in range(1, 5)
         ),
         "treeBranchGroups": (),
-        "npcProxyConsumer": {
-            "proxyId": "bulongze_map01_normal",
-            "entryIndex": 0,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m20_5",
-                "missionId": "",
-            },
-        },
     },
     "dlg_gm01m20_6": {
         "missionId": "gm01m20",
@@ -4900,17 +4223,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             "au_dlg_gm01m20_6_002",
         ),
         "treeBranchGroups": (),
-        "npcProxyConsumer": {
-            "proxyId": "bulongze_map01_normal",
-            "entryIndex": 1,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m20_6",
-                "missionId": "",
-            },
-        },
     },
     "dlg_gm01m20_7": {
         "missionId": "gm01m20",
@@ -4929,32 +4241,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS = {
             f"au_dlg_gm01m20_7_{number:03d}" for number in range(1, 4)
         ),
         "treeBranchGroups": (),
-        "npcProxyConsumer": {
-            "proxyId": "kupe_map01_normal",
-            "entryIndex": 5,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m20_7",
-                "missionId": "",
-            },
-        },
-        "missionNpcProxyTracking": {
-            "sourceFile": (
-                "export_full/structured/Persistent/Data/Json/"
-                "MissionRuntimeAsset/gm01m20.json"
-            ),
-            "sourceSha256":
-                "01BC364A3A64CFFE8BE236B017020D76ACDBB42866862031A5DC4405B501E355",
-            "proxyId": "kupe_map01_normal",
-            "levelId": "map01_lv001",
-            "rows": tuple({
-                "questId": f"gm01m20_q#{quest}",
-                "objectiveIndex": 0,
-                "trackingIndex": 0,
-            } for quest in (1, 3, 2, 10)),
-        },
     },
 }
 OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS.update({
@@ -4990,34 +4276,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS.update({
             ),
             "routeKind": "authored_convergence",
         },),
-        "npcProxyConsumer": {
-            "proxyId": "sesidun02_map01_001",
-            "entryIndex": 1,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m13_2",
-            },
-        },
-        "missionNpcProxyTracking": {
-            "sourceFile": (
-                "export_full/structured/Persistent/Data/Json/"
-                "MissionRuntimeAsset/gm01m13.json"
-            ),
-            "sourceSha256":
-                "383E76E5CA4C9AA632CAE2132D76182E644F992E092CBF43BB5D5EEE1844ED30",
-            "proxyId": "sesidun02_map01_001",
-            "levelId": "map01_lv003",
-            "rows": tuple(
-                {
-                    "questId": f"gm01m13_q#{number}",
-                    "objectiveIndex": 0,
-                    "trackingIndex": 0,
-                }
-                for number in (1, 2, 3, 4, 7, 8, 9, 11, 12)
-            ),
-        },
     },
     "dlg_gm01m13_3": {
         "missionId": "gm01m13",
@@ -5052,34 +4310,6 @@ OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS.update({
             ),
             "routeKind": "authored_convergence",
         },),
-        "npcProxyConsumer": {
-            "proxyId": "sesidun02_map01_001",
-            "entryIndex": 2,
-            "entry": {
-                "addDialogExOption": False,
-                "envTalkData": {"envTalkOverrideNpc": True},
-                "dialogExOptionData": [],
-                "dialogId": "dlg_gm01m13_3",
-            },
-        },
-        "missionNpcProxyTracking": {
-            "sourceFile": (
-                "export_full/structured/Persistent/Data/Json/"
-                "MissionRuntimeAsset/gm01m13.json"
-            ),
-            "sourceSha256":
-                "383E76E5CA4C9AA632CAE2132D76182E644F992E092CBF43BB5D5EEE1844ED30",
-            "proxyId": "sesidun02_map01_001",
-            "levelId": "map01_lv003",
-            "rows": tuple(
-                {
-                    "questId": f"gm01m13_q#{number}",
-                    "objectiveIndex": 0,
-                    "trackingIndex": 0,
-                }
-                for number in (1, 2, 3, 4, 7, 8, 9, 11, 12)
-            ),
-        },
     },
     "misc_dlg_gm01m3_1d5": {
         "missionId": "gm01m3",
@@ -7512,6 +6742,80 @@ def _generic_registered_dialog_tree_definition_facts(
         "optionGroupCount",
         "branchingOptionGroupCount",
     )
+    option_route_recovery = (
+        definition.get("optionRouteRecovery")
+        if isinstance(definition, dict) else None
+    )
+    option_route_nodes = (
+        option_route_recovery.get("nodes")
+        if isinstance(option_route_recovery, dict) else None
+    )
+    option_routes = [
+        route
+        for node in option_route_nodes or []
+        if isinstance(node, dict)
+        for route in node.get("routes") or []
+        if isinstance(route, dict)
+    ]
+    option_routes_valid = (
+        isinstance(option_route_recovery, dict)
+        and option_route_recovery.get("schemaVersion")
+        == "dialogTreeNormalOptionRoutes.v1"
+        and isinstance(option_route_recovery.get("issues"), list)
+        and isinstance(option_route_recovery.get("counts"), dict)
+        and isinstance(option_route_nodes, list)
+        and all(
+            isinstance(node, dict)
+            and isinstance(node.get("routes"), list)
+            and node.get("normalOptionCount") == len(node["routes"])
+            and node.get("issues") == []
+            for node in option_route_nodes
+        )
+        and all(
+            route.get("status") == "validated"
+            and safe_key(route.get("optionId"))
+            in set(definition.get("optionIds") or [])
+            and isinstance(route.get("connectionIndex"), int)
+            and not isinstance(route.get("connectionIndex"), bool)
+            and route["connectionIndex"] >= 0
+            and safe_key(route.get("targetNodeId"))
+            and safe_key(route.get("targetNodeType"))
+            for route in option_routes
+        )
+        and option_route_recovery["counts"].get(
+            "validatedNormalOptionRoutes", 0
+        ) == len(option_routes)
+    )
+    finish_endpoint_recovery = (
+        definition.get("finishEndpointRecovery")
+        if isinstance(definition, dict) else None
+    )
+    finish_endpoints = (
+        finish_endpoint_recovery.get("endpoints")
+        if isinstance(finish_endpoint_recovery, dict) else None
+    )
+    finish_endpoints_valid = (
+        isinstance(finish_endpoint_recovery, dict)
+        and finish_endpoint_recovery.get("schemaVersion")
+        == "dialogTreeFinishEndpoints.v1"
+        and isinstance(finish_endpoint_recovery.get("issues"), list)
+        and isinstance(finish_endpoint_recovery.get("counts"), dict)
+        and isinstance(finish_endpoints, list)
+        and all(
+            isinstance(endpoint, dict)
+            and endpoint.get("status") == "validated"
+            and endpoint.get("reachableFromPrimeNode") is True
+            and isinstance(endpoint.get("finishId"), int)
+            and not isinstance(endpoint.get("finishId"), bool)
+            and safe_key(endpoint.get("nodeId"))
+            and isinstance(endpoint.get("nodePath"), list)
+            and isinstance(endpoint.get("connectionPath"), list)
+            for endpoint in finish_endpoints
+        )
+        and finish_endpoint_recovery["counts"].get(
+            "validatedFinishEndpoints"
+        ) == len(finish_endpoints)
+    )
     structure_valid = (
         isinstance(definition, dict)
         and all(definition.get(key) == value for key, value in required_definition.items())
@@ -7534,6 +6838,8 @@ def _generic_registered_dialog_tree_definition_facts(
             == definition["connectionCount"]
         )
         and isinstance(definition.get("optionIds"), list)
+        and option_routes_valid
+        and finish_endpoints_valid
         and bool(safe_key(definition.get("sourcePathId")))
         and source_valid
     )
@@ -7546,6 +6852,8 @@ def _generic_registered_dialog_tree_definition_facts(
                 **required_definition,
                 "positiveNodeCount": True,
                 "nonnegativeStructureCounts": list(count_fields),
+                "validatedOptionRouteRecovery": True,
+                "validatedFinishEndpointRecovery": True,
                 "exactSourceHash": True,
             },
             "actual": {
@@ -7553,6 +6861,8 @@ def _generic_registered_dialog_tree_definition_facts(
                 "sourceFile": source_file,
                 "sourceSha256": source_sha256,
                 "sourceHashMatches": source_valid,
+                "optionRouteRecovery": option_route_recovery,
+                "finishEndpointRecovery": finish_endpoint_recovery,
                 **({
                     key: definition.get(key)
                     for key in (*count_fields, "nodeTypeCounts")
@@ -7560,8 +6870,9 @@ def _generic_registered_dialog_tree_definition_facts(
             },
         }
     return {
-        key: definition[key]
-        for key in (
+        **{
+            key: definition[key]
+            for key in (
             "sceneKey",
             "assetName",
             "assetType",
@@ -7576,11 +6887,23 @@ def _generic_registered_dialog_tree_definition_facts(
             "connectionCount",
             "optionGroupCount",
             "branchingOptionGroupCount",
+            "optionRouteRecovery",
+            "finishEndpointRecovery",
             "sourceFile",
             "sourcePathId",
             "sourceSha256",
             "sourceType",
-        )
+            )
+        },
+        "optionRouteRecoveryStatus": (
+            "partial_validated_routes_with_fail_closed_issues"
+            if option_route_recovery["issues"] else "exact_validated_routes"
+        ),
+        "finishEndpointRecoveryStatus": (
+            "partial_validated_endpoints_with_fail_closed_issues"
+            if finish_endpoint_recovery["issues"]
+            else "exact_validated_endpoints"
+        ),
     }, None
 
 
@@ -9425,6 +8748,11 @@ def _generic_missionless_npc_proxy_dialog_facts(
     dialog_id_index: Any,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """Recover exact native-selectable proxy rows without assigning order."""
+    definition_root_key = (
+        story_key.removeprefix("misc_")
+        if story_key.startswith("misc_dlg_")
+        else story_key
+    )
     ex_data = (
         npc_proxy_ex_table.get("data")
         if isinstance(npc_proxy_ex_table, dict) else None
@@ -9438,7 +8766,7 @@ def _generic_missionless_npc_proxy_dialog_facts(
         if isinstance(npc_proxy_table, dict) else None
     )
     registry = (
-        dialog_id_index.get(story_key)
+        dialog_id_index.get(definition_root_key)
         if isinstance(dialog_id_index, dict) else None
     )
     if not all(isinstance(value, dict) for value in (
@@ -9464,7 +8792,10 @@ def _generic_missionless_npc_proxy_dialog_facts(
         if not isinstance(rows, list):
             continue
         for active_row_index, row in enumerate(rows):
-            if not isinstance(row, dict) or safe_key(row.get("dialogId")) != story_key:
+            if (
+                not isinstance(row, dict)
+                or safe_key(row.get("dialogId")) != definition_root_key
+            ):
                 continue
             if safe_key(row.get("missionId")):
                 continue
@@ -9509,10 +8840,6 @@ def _generic_missionless_npc_proxy_dialog_facts(
                         "dialogRegistry": registry if isinstance(registry, dict) else registry,
                     },
                 }
-            # NpcProxyEx contains a small number of legacy/environment rows
-            # without a current NpcProxy entity or DialogId registration. They
-            # are valid table data, but cannot satisfy this exact identity
-            # proof and are deliberately left actionable.
             if (
                 not isinstance(info, dict)
                 or set(info) != NPC_PROXY_INFO_FIELDS
@@ -9526,10 +8853,37 @@ def _generic_missionless_npc_proxy_dialog_facts(
                 or not safe_key(proxy.get("levelId"))
                 or not valid_registry
             ):
-                continue
+                return None, {
+                    "validator": "genericMissionlessNpcProxyDialogConsumer",
+                    "gate": "exactNpcProxyConsumerIdentity",
+                    "storyKey": story_key,
+                    "definitionRootKey": definition_root_key,
+                    "npcProxyId": proxy_id,
+                    "activeRowIndex": active_row_index,
+                    "expected": {
+                        "proxyInfoFields": sorted(NPC_PROXY_INFO_FIELDS),
+                        "nonEmptyProxyInfoFields": [
+                            "npcId", "npcNameId", "mapId",
+                        ],
+                        "npcProxyType": "integer",
+                        "proxyId": proxy_id,
+                        "nonEmptyLevelId": True,
+                        "dialogRegistry": {
+                            "registered": True,
+                            "memoryPackRecordKey": True,
+                            "hasRootKey": True,
+                        },
+                    },
+                    "actual": {
+                        "proxyInfo": info,
+                        "proxy": proxy,
+                        "dialogRegistry": registry,
+                    },
+                }
             consumers.append({
                 "npcProxyId": proxy_id,
                 "activeRowIndex": active_row_index,
+                "dialogId": definition_root_key,
                 "levelId": safe_key(proxy.get("levelId")),
                 "subDataParentId": proxy.get("subDataParentId"),
                 "npcId": safe_key(info.get("npcId")),
@@ -9540,9 +8894,616 @@ def _generic_missionless_npc_proxy_dialog_facts(
     if not consumers:
         return None, None
     return {
+        "emittedStoryKey": story_key,
+        "definitionRootKey": definition_root_key,
         "npcProxyConsumers": consumers,
         "dialogIdRegistrationStatus": "memorypack_root_registered",
         "consumerCount": len(consumers),
+    }, None
+
+
+def _build_mission_npc_proxy_tracking_index(
+    streaming_root: Path,
+    persistent_root: Path,
+) -> dict[str, Any]:
+    """Index typed NPC tracking rows from one complete active mission corpus."""
+    selected_root = select_complete_mission_runtime_root(
+        streaming_root,
+        persistent_root,
+    )
+    source_summary = mission_runtime_source_summary(
+        streaming_root,
+        persistent_root,
+    )
+    rows_by_proxy: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    scan_failures: list[dict[str, Any]] = []
+    source_hashes: dict[str, str] = {}
+    source_files = sorted(
+        (
+            path for path in selected_root.glob("*.json")
+            if not path.stem.endswith("_meta")
+        ),
+        key=lambda path: natural_key(path.name),
+    )
+    if not source_files:
+        scan_failures.append({
+            "validator": "missionNpcProxyTrackingCorpus",
+            "gate": "nonEmptySelectedMissionRuntimeCorpus",
+            "sourcePath": _repo_source_path(selected_root),
+            "expected": {"jsonFileCount": "> 0"},
+            "actual": {"jsonFileCount": 0},
+        })
+    for source_path in source_files:
+        source_file = _repo_source_path(source_path)
+        source_sha256 = _sha256_file(source_path)
+        source_hashes[source_file] = source_sha256
+        payload = read_json(source_path, None)
+        mission_id = safe_key(payload.get("missionId")) if isinstance(payload, dict) else ""
+        quest_dic = payload.get("questDic") if isinstance(payload, dict) else None
+        if (
+            not isinstance(payload, dict)
+            or mission_id != source_path.stem
+            or not isinstance(quest_dic, dict)
+        ):
+            scan_failures.append({
+                "validator": "missionNpcProxyTrackingCorpus",
+                "gate": "exactMissionRuntimeFileIdentity",
+                "mission": source_path.stem,
+                "sourcePath": source_file,
+                "sourceSha256": source_sha256,
+                "expected": {
+                    "missionId": source_path.stem,
+                    "questDicType": "dict",
+                },
+                "actual": {
+                    "payloadType": type(payload).__name__,
+                    "missionId": mission_id,
+                    "questDicType": type(quest_dic).__name__,
+                },
+            })
+            continue
+        for quest_id, quest in sorted(quest_dic.items(), key=lambda item: natural_key(item[0])):
+            objectives = quest.get("objectiveList") if isinstance(quest, dict) else None
+            if not isinstance(objectives, list):
+                scan_failures.append({
+                    "validator": "missionNpcProxyTrackingCorpus",
+                    "gate": "missionQuestObjectiveListShape",
+                    "mission": mission_id,
+                    "questId": safe_key(quest_id),
+                    "sourcePath": source_file,
+                    "sourceSha256": source_sha256,
+                    "expected": {"objectiveListType": "list"},
+                    "actual": {"objectiveListType": type(objectives).__name__},
+                })
+                continue
+            for objective_index, objective in enumerate(objectives):
+                tracking_rows = (
+                    objective.get("trackingInfoList")
+                    if isinstance(objective, dict) else None
+                )
+                if tracking_rows is None:
+                    continue
+                if not isinstance(tracking_rows, list):
+                    scan_failures.append({
+                        "validator": "missionNpcProxyTrackingCorpus",
+                        "gate": "missionObjectiveTrackingListShape",
+                        "mission": mission_id,
+                        "questId": safe_key(quest_id),
+                        "objectiveIndex": objective_index,
+                        "sourcePath": source_file,
+                        "sourceSha256": source_sha256,
+                        "expected": {"trackingInfoListType": "list"},
+                        "actual": {
+                            "trackingInfoListType": type(tracking_rows).__name__,
+                        },
+                    })
+                    continue
+                for tracking_index, tracking in enumerate(tracking_rows):
+                    if (
+                        not isinstance(tracking, dict)
+                        or safe_key(tracking.get("$type"))
+                        != NPC_PROXY_TRACKING_INFO_TYPE
+                    ):
+                        continue
+                    proxy_id = safe_key(tracking.get("npcProxyId"))
+                    row = {
+                        "missionId": mission_id,
+                        "questId": safe_key(quest_id),
+                        "objectiveIndex": objective_index,
+                        "trackingIndex": tracking_index,
+                        "npcProxyId": proxy_id,
+                        "sceneId": safe_key(tracking.get("sceneId")),
+                        "tracking": tracking,
+                        "sourceFile": source_file,
+                        "sourceSha256": source_sha256,
+                        "qualified": (
+                            set(tracking) == NPC_PROXY_TRACKING_INFO_FIELDS
+                            and tracking.get("useFilterCondition") is False
+                            and isinstance(
+                                tracking.get("guidingArea"), (int, float)
+                            )
+                            and not isinstance(
+                                tracking.get("guidingArea"), bool
+                            )
+                            and bool(proxy_id)
+                            and bool(safe_key(tracking.get("sceneId")))
+                        ),
+                    }
+                    if proxy_id:
+                        rows_by_proxy[proxy_id].append(row)
+                    else:
+                        scan_failures.append({
+                            "validator": "missionNpcProxyTrackingCorpus",
+                            "gate": "typedTrackingRowHasProxyIdentity",
+                            "mission": mission_id,
+                            "questId": safe_key(quest_id),
+                            "objectiveIndex": objective_index,
+                            "trackingIndex": tracking_index,
+                            "sourcePath": source_file,
+                            "sourceSha256": source_sha256,
+                            "expected": {"nonEmptyNpcProxyId": True},
+                            "actual": tracking,
+                        })
+    for rows in rows_by_proxy.values():
+        rows.sort(key=lambda row: (
+            natural_key(row["missionId"]),
+            natural_key(row["questId"]),
+            row["objectiveIndex"],
+            row["trackingIndex"],
+        ))
+    source_set_digest = hashlib.sha256()
+    for source_file, source_sha256 in source_hashes.items():
+        source_set_digest.update(source_file.encode("utf-8"))
+        source_set_digest.update(b"\0")
+        source_set_digest.update(source_sha256.encode("ascii"))
+        source_set_digest.update(b"\n")
+    return {
+        **source_summary,
+        "selectedRoot": _repo_source_path(selected_root),
+        "status": "inactive_source_validation_failed" if scan_failures else "active",
+        "sourceFiles": list(source_hashes),
+        "sourceSha256": source_hashes,
+        "sourceSetSha256": source_set_digest.hexdigest().upper(),
+        "scannedMissionFileCount": len(source_files),
+        "rowsByProxy": dict(rows_by_proxy),
+        "typedRowCount": sum(len(rows) for rows in rows_by_proxy.values()),
+        "qualifiedRowCount": sum(
+            row["qualified"] for rows in rows_by_proxy.values() for row in rows
+        ),
+        "proxyCount": len(rows_by_proxy),
+        "scanFailureCount": len(scan_failures),
+        "scanFailures": scan_failures[:100],
+    }
+
+
+def _generic_mission_npc_proxy_tracking_contexts(
+    story_key: str,
+    nominal_mission_id: str,
+    npc_proxy_facts: Any,
+    tracking_corpus: Any,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Join exact dialog consumers to unfiltered typed mission tracking rows."""
+    if (
+        not isinstance(npc_proxy_facts, dict)
+        or not isinstance(tracking_corpus, dict)
+        or tracking_corpus.get("status") != "active"
+    ):
+        return [], []
+    consumers = [
+        row for row in (npc_proxy_facts.get("npcProxyConsumers") or [])
+        if isinstance(row, dict) and safe_key(row.get("npcProxyId"))
+    ]
+    rows_by_proxy = tracking_corpus.get("rowsByProxy") or {}
+    contexts: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    for proxy_id in sorted({
+        safe_key(row.get("npcProxyId")) for row in consumers
+    }, key=natural_key):
+        rows = list(rows_by_proxy.get(proxy_id) or [])
+        if not rows:
+            continue
+        proxy_consumers = [
+            row for row in consumers
+            if safe_key(row.get("npcProxyId")) == proxy_id
+        ]
+        source_files = list(dict.fromkeys(
+            safe_key(row.get("sourceFile")) for row in rows
+            if safe_key(row.get("sourceFile"))
+        ))
+        source_sha256 = {
+            source_file: next(
+                safe_key(row.get("sourceSha256"))
+                for row in rows
+                if safe_key(row.get("sourceFile")) == source_file
+            )
+            for source_file in source_files
+        }
+        row_identities = [(
+            safe_key(row.get("missionId")),
+            safe_key(row.get("questId")),
+            row.get("objectiveIndex"),
+            row.get("trackingIndex"),
+        ) for row in rows]
+        mission_ids = {
+            safe_key(row.get("missionId")) for row in rows
+            if safe_key(row.get("missionId"))
+        }
+        scene_ids = {
+            safe_key(row.get("sceneId")) for row in rows
+            if safe_key(row.get("sceneId"))
+        }
+        consumer_levels = {
+            safe_key(row.get("levelId")) for row in proxy_consumers
+            if safe_key(row.get("levelId"))
+        }
+        valid = (
+            all(row.get("qualified") is True for row in rows)
+            and len(row_identities) == len(set(row_identities))
+            and len(mission_ids) == 1
+            and len(scene_ids) == 1
+            and len(consumer_levels) == 1
+            and consumer_levels == scene_ids
+        )
+        if not valid:
+            failures.append({
+                "validator": "genericMissionNpcProxyTrackingContext",
+                "gate": "exactUnfilteredSingleMissionProxyTracking",
+                "storyKey": story_key,
+                "npcProxyId": proxy_id,
+                "sourcePaths": source_files,
+                "sourceSha256": source_sha256,
+                "expected": {
+                    "trackingFields": sorted(NPC_PROXY_TRACKING_INFO_FIELDS),
+                    "useFilterCondition": False,
+                    "guidingArea": "number",
+                    "uniqueRowIdentities": True,
+                    "singleMission": True,
+                    "singleTrackingLevel": True,
+                    "consumerLevelMatchesTrackingLevel": True,
+                },
+                "actual": {
+                    "rowCount": len(rows),
+                    "missionIds": sorted(mission_ids, key=natural_key),
+                    "sceneIds": sorted(scene_ids, key=natural_key),
+                    "consumerLevels": sorted(consumer_levels, key=natural_key),
+                    "duplicateRowIdentityCount": (
+                        len(row_identities) - len(set(row_identities))
+                    ),
+                    "unsupportedRows": [
+                        {
+                            key: row.get(key)
+                            for key in (
+                                "missionId", "questId", "objectiveIndex",
+                                "trackingIndex", "sourceFile", "sourceSha256",
+                                "tracking",
+                            )
+                        }
+                        for row in rows if row.get("qualified") is not True
+                    ][:10],
+                },
+            })
+            continue
+        runtime_mission_id = next(iter(mission_ids))
+        level_id = next(iter(scene_ids))
+        contexts.append({
+            "proxyId": proxy_id,
+            "levelId": level_id,
+            "missionId": runtime_mission_id,
+            "nominalMissionId": nominal_mission_id,
+            "crossMission": runtime_mission_id != nominal_mission_id,
+            "questIds": sorted({
+                safe_key(row.get("questId")) for row in rows
+                if safe_key(row.get("questId"))
+            }, key=natural_key),
+            "rows": [{
+                key: row.get(key)
+                for key in (
+                    "missionId", "questId", "objectiveIndex",
+                    "trackingIndex", "npcProxyId", "sceneId",
+                    "tracking", "sourceFile", "sourceSha256",
+                )
+            } for row in rows],
+            "sourceFile": source_files[0] if len(source_files) == 1 else None,
+            "sourceFiles": source_files,
+            "sourceSha256": source_sha256,
+            "relation": "mission_quest_npc_proxy_tracking_context",
+            "recoveryMethod": "complete_active_mission_runtime_census",
+            "missionContextOnly": True,
+            "missionOwnership": False,
+            "questPlaybackOwnership": False,
+            "orderEvidence": False,
+            "graphEffect": "none",
+        })
+    return contexts, failures
+
+
+@lru_cache(maxsize=1)
+def _current_tracked_proxy_dialog_sources() -> dict[str, Any]:
+    gameplay_root = (
+        ROOT
+        / "export_full"
+        / "structured"
+        / "StreamingAssets"
+        / "Data"
+        / "Json"
+        / "GameplayConfig"
+    )
+    dialog_index_path = (
+        ROOT / "export_full" / "recovered" / "dialog_id_table_index.json"
+    )
+    return {
+        "trackingCorpus": _build_mission_npc_proxy_tracking_index(
+            gameplay_root.parent / "MissionRuntimeAsset",
+            ROOT
+            / "export_full"
+            / "structured"
+            / "Persistent"
+            / "Data"
+            / "Json"
+            / "MissionRuntimeAsset",
+        ),
+        "npcProxyTablePath": gameplay_root / "NpcProxyTable.json",
+        "npcProxyTable": read_json(
+            gameplay_root / "NpcProxyTable.json", {}
+        ),
+        "npcProxyExPath": gameplay_root / "NpcProxyExDataTable.json",
+        "npcProxyEx": read_json(
+            gameplay_root / "NpcProxyExDataTable.json", {}
+        ),
+        "dialogIdIndexPath": dialog_index_path,
+        "dialogIdIndex": read_json(dialog_index_path, {}),
+    }
+
+
+def _validate_general_tracked_proxy_flow_context(
+    row: Any,
+    owner_mission: str,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Revalidate a generated shared-proxy relation against current sources."""
+    story_key = safe_key(row.get("key")) if isinstance(row, dict) else ""
+    proxy_id = safe_key(row.get("npcProxyId")) if isinstance(row, dict) else ""
+    level_ids = _string_list(row.get("levelIds")) if isinstance(row, dict) else []
+    sources = _current_tracked_proxy_dialog_sources()
+    facts = {
+        "npcProxyConsumers": [{
+            "npcProxyId": proxy_id,
+            "levelId": level_ids[0] if len(level_ids) == 1 else "",
+        }],
+    }
+    contexts, tracking_failures = _generic_mission_npc_proxy_tracking_contexts(
+        story_key,
+        owner_mission,
+        facts,
+        sources["trackingCorpus"],
+    )
+    context = contexts[0] if len(contexts) == 1 else None
+    proxy_rows = (sources["npcProxyTable"] or {}).get("dataTable") or {}
+    ex_rows_by_proxy = (sources["npcProxyEx"] or {}).get("data") or {}
+    current_proxy_row = proxy_rows.get(proxy_id)
+    current_ex_rows = ex_rows_by_proxy.get(proxy_id)
+    configured_dialog_ids = [
+        safe_key(ex_row.get("dialogId"))
+        for ex_row in (current_ex_rows or [])
+        if isinstance(ex_row, dict) and safe_key(ex_row.get("dialogId"))
+    ]
+    active_row_index = row.get("activeRowIndex") if isinstance(row, dict) else None
+    selected_dialog_id = ""
+    if (
+        isinstance(active_row_index, int)
+        and not isinstance(active_row_index, bool)
+        and isinstance(current_ex_rows, list)
+        and 1 <= active_row_index <= len(current_ex_rows)
+        and isinstance(current_ex_rows[active_row_index - 1], dict)
+    ):
+        selected_dialog_id = safe_key(
+            current_ex_rows[active_row_index - 1].get("dialogId")
+        )
+    dialog_registry = sources["dialogIdIndex"]
+    registrations_valid = bool(configured_dialog_ids) and all(
+        isinstance(dialog_registry.get(dialog_id), dict)
+        and dialog_registry[dialog_id].get("registered") is True
+        and dialog_registry[dialog_id].get("memoryPackRecordKey") is True
+        for dialog_id in configured_dialog_ids
+    )
+    expected_source_files = sorted({
+        *(context.get("sourceFiles") or [] if context else []),
+        _repo_source_path(sources["npcProxyTablePath"]),
+        _repo_source_path(sources["npcProxyExPath"]),
+        _repo_source_path(sources["dialogIdIndexPath"]),
+    })
+    source_files = sorted(_string_list(row.get("sourceFiles"))) if isinstance(row, dict) else []
+    valid = (
+        isinstance(row, dict)
+        and safe_key(row.get("relation"))
+        == "unique_mission_tracked_npc_proxy_dialog_context"
+        and safe_key(row.get("direction")) == "context"
+        and safe_key(row.get("phase")) == "server_selected_proxy_state"
+        and safe_key(row.get("confidence")) == "native_exact_mission_context"
+        and safe_key(row.get("evidenceTier")) == "derived_exact_mission"
+        and safe_key(row.get("storyOwnerMission")) == owner_mission
+        and context is not None
+        and context.get("missionId") == owner_mission
+        and context.get("crossMission") is False
+        and _string_list(row.get("candidateQuestIds")) == context.get("questIds")
+        and _string_list(row.get("configuredDialogIds")) == configured_dialog_ids
+        and selected_dialog_id == story_key
+        and isinstance(current_proxy_row, dict)
+        and safe_key(current_proxy_row.get("proxyId")) == proxy_id
+        and safe_key(current_proxy_row.get("levelId")) == context.get("levelId")
+        and row.get("npcProxyTableRow") == {
+            "proxyId": proxy_id,
+            "levelId": context.get("levelId"),
+            "subDataParentId": current_proxy_row.get("subDataParentId"),
+        }
+        and row.get("npcProxyExRows") == current_ex_rows
+        and registrations_valid
+        and source_files == expected_source_files
+        and all((ROOT / source_file).is_file() for source_file in source_files)
+        and row.get("storyBinding") is True
+        and row.get("ownership") is False
+        and row.get("questActivation") is False
+        and row.get("questPlayback") is False
+        and row.get("questCompletion") is False
+        and safe_key(row.get("nativeMappingId"))
+        == NPC_PROXY_DIALOG_SELECTION_MAPPING_ID
+        and safe_key(row.get("gameAssemblySha256"))
+        == NPC_PROXY_DIALOG_SELECTION_GAMEASSEMBLY_SHA256
+    )
+    if not valid:
+        return None, {
+            "validator": "generalTrackedNpcProxyDialogFlowContext",
+            "gate": "exactCurrentSourceComposition",
+            "mission": owner_mission,
+            "storyKey": story_key,
+            "npcProxyId": proxy_id,
+            "sourcePaths": source_files or expected_source_files,
+            "sourceSha256": {
+                source_file: _sha256_file(ROOT / source_file)
+                for source_file in source_files or expected_source_files
+            },
+            "expected": {
+                "trackingContext": context,
+                "configuredDialogIds": configured_dialog_ids,
+                "selectedDialogId": story_key,
+                "sourceFiles": expected_source_files,
+                "registeredDialogRoots": True,
+            },
+            "actual": {
+                "trackingFailures": tracking_failures,
+                "candidateQuestIds": _string_list(row.get("candidateQuestIds"))
+                if isinstance(row, dict) else [],
+                "configuredDialogIds": _string_list(row.get("configuredDialogIds"))
+                if isinstance(row, dict) else [],
+                "selectedDialogId": selected_dialog_id,
+                "sourceFiles": source_files,
+            },
+        }
+    return {
+        **context,
+        "storyKey": story_key,
+        "activeRowIndex": active_row_index,
+        "configuredDialogIds": configured_dialog_ids,
+        "sourceFiles": source_files,
+        "sourceSha256": {
+            source_file: _sha256_file(ROOT / source_file)
+            for source_file in source_files
+        },
+    }, None
+
+
+def _compose_registered_dialog_tree_npc_proxy_evidence(
+    tree_evidence: Any,
+    npc_proxy_evidence: Any,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Attach an exact NpcProxy consumer to its recovered DialogTree graph."""
+    validator = "registeredDialogTreeNpcProxyConsumerComposition"
+    expected_kind = "registered_dialog_tree_definition_binary_consumer_surface_exhausted"
+    consumer_kinds = {
+        "missionless_npc_proxy_dialog_native_consumer",
+        "mission_tracked_npc_proxy_dialog_context_without_playback_owner",
+    }
+    tree_key = safe_key(tree_evidence.get("sceneKey")) if isinstance(
+        tree_evidence, dict
+    ) else ""
+    consumer_key = safe_key(npc_proxy_evidence.get("sceneKey")) if isinstance(
+        npc_proxy_evidence, dict
+    ) else ""
+    expected = {
+        "sameNonEmptySceneKey": True,
+        "sameNonEmptyMissionId": True,
+        "sameNonEmptyDefinitionRootKey": True,
+        "treeEvidenceKind": expected_kind,
+        "consumerEvidenceKinds": sorted(consumer_kinds),
+        "nonEmptyNpcProxyConsumers": True,
+    }
+    actual = {
+        "treeSceneKey": tree_key,
+        "consumerSceneKey": consumer_key,
+        "treeMissionId": safe_key(tree_evidence.get("missionId"))
+        if isinstance(tree_evidence, dict) else "",
+        "consumerMissionId": safe_key(npc_proxy_evidence.get("missionId"))
+        if isinstance(npc_proxy_evidence, dict) else "",
+        "treeDefinitionRootKey": safe_key(
+            tree_evidence.get("definitionRootKey")
+        ) if isinstance(tree_evidence, dict) else "",
+        "consumerDefinitionRootKey": safe_key(
+            npc_proxy_evidence.get("definitionRootKey")
+        ) if isinstance(npc_proxy_evidence, dict) else "",
+        "treeEvidenceKind": safe_key(tree_evidence.get("evidenceKind"))
+        if isinstance(tree_evidence, dict) else "",
+        "consumerEvidenceKind": safe_key(
+            npc_proxy_evidence.get("evidenceKind")
+        ) if isinstance(npc_proxy_evidence, dict) else "",
+        "consumerCount": len(npc_proxy_evidence.get("npcProxyConsumers") or [])
+        if isinstance(npc_proxy_evidence, dict) else 0,
+    }
+    if (
+        not tree_key
+        or tree_key != consumer_key
+        or not actual["treeMissionId"]
+        or actual["treeMissionId"] != actual["consumerMissionId"]
+        or not actual["treeDefinitionRootKey"]
+        or actual["treeDefinitionRootKey"]
+        != actual["consumerDefinitionRootKey"]
+        or actual["treeEvidenceKind"] != expected_kind
+        or actual["consumerEvidenceKind"] not in consumer_kinds
+        or actual["consumerCount"] <= 0
+    ):
+        return None, {
+            "validator": validator,
+            "gate": "exactDefinitionConsumerIdentity",
+            "storyKey": consumer_key or tree_key,
+            "expected": expected,
+            "actual": actual,
+        }
+
+    definition_source_files = list(dict.fromkeys([
+        *_string_list(tree_evidence.get("definitionSourceFiles")),
+        *_string_list(npc_proxy_evidence.get("definitionSourceFiles")),
+    ]))
+    source_files = list(dict.fromkeys([
+        *_string_list(tree_evidence.get("sourceFiles")),
+        *_string_list(npc_proxy_evidence.get("sourceFiles")),
+    ]))
+    original_binary_files = list(dict.fromkeys([
+        *_string_list(tree_evidence.get("originalBinaryFiles")),
+        *_string_list(npc_proxy_evidence.get("originalBinaryFiles")),
+    ]))
+    searched_consumer_kinds = list(dict.fromkeys([
+        *_string_list(tree_evidence.get("searchedConsumerKinds")),
+        *_string_list(npc_proxy_evidence.get("searchedConsumerKinds")),
+    ]))
+    return {
+        **tree_evidence,
+        **npc_proxy_evidence,
+        "definitionRecoveryMethod": "pattern_discovered_current_original_data",
+        "definitionTable": "DialogTree TextAsset",
+        "consumerTable": "NpcProxyExDataTable",
+        "definitionSourceFiles": definition_source_files,
+        "consumerSourceFiles": _string_list(
+            npc_proxy_evidence.get("definitionSourceFiles")
+        ),
+        "sourceFiles": source_files,
+        "originalBinaryFiles": original_binary_files,
+        "searchedConsumerKinds": searched_consumer_kinds,
+        "dialogTreeDefinitionStatus": "exact_current_dialog_tree",
+        "npcProxyConsumerStatus": "exact_current_native_selected_rows",
+        "definitionNegativeConsumerMappingId": safe_key(
+            tree_evidence.get("nativeMappingId")
+        ),
+        "nativeMappingId": safe_key(npc_proxy_evidence.get("nativeMappingId")),
+        "consumerBoundary": (
+            "the exact current DialogTree TextAsset proves the internal authored "
+            "graph, and the hash-locked native NPC interaction selector consumes "
+            "every listed missionless NpcProxyEx row; the rows expose no mission "
+            "activator or quest owner"
+        ),
+        "orderBoundary": (
+            "DialogTree nodes and options order content only inside this file, "
+            "while activeCondIndex selects one proxy row; neither table order, "
+            "row index, filename suffix, OCR, nor manual display order establishes "
+            "cross-file mission chronology"
+        ),
     }, None
 
 
@@ -11980,7 +11941,9 @@ def _core_isolated_target_missions(
     return dict(targets)
 
 
-def _audit_sources_match_current_indexes(report: dict[str, Any]) -> bool:
+def _audit_source_index_diagnostics(
+    report: dict[str, Any],
+) -> list[dict[str, Any]]:
     reported = {
         safe_key(row.get("source")): safe_key(
             row.get("stageSignatureSha256")
@@ -11988,6 +11951,7 @@ def _audit_sources_match_current_indexes(report: dict[str, Any]) -> bool:
         for row in report.get("sources") or []
         if isinstance(row, dict) and safe_key(row.get("source"))
     }
+    failures: list[dict[str, Any]] = []
     for source in ("StreamingAssets", "Persistent"):
         summary_path = (
             ROOT
@@ -11999,14 +11963,42 @@ def _audit_sources_match_current_indexes(report: dict[str, Any]) -> bool:
             / "summary.json"
         )
         summary = read_json(summary_path, {})
-        if not isinstance(summary, dict) or summary.get("complete") is not True:
-            return False
         signature = safe_key(
             (summary.get("stageSignature") or {}).get("sha256")
-        ).lower()
-        if not signature or reported.get(source) != signature:
-            return False
-    return True
+        ).lower() if isinstance(summary, dict) else ""
+        expected_signature = reported.get(source, "")
+        if (
+            not summary_path.is_file()
+            or not isinstance(summary, dict)
+            or summary.get("complete") is not True
+            or not signature
+            or expected_signature != signature
+        ):
+            failures.append({
+                "validator": "offlineAnimeStudioCarrierAudit",
+                "gate": "exactCurrentPublishedObjectIndex",
+                "source": source,
+                "sourcePath": str(summary_path),
+                "expected": {
+                    "exists": True,
+                    "complete": True,
+                    "stageSignatureSha256": expected_signature,
+                },
+                "actual": {
+                    "exists": summary_path.is_file(),
+                    "payloadType": type(summary).__name__,
+                    "complete": (
+                        summary.get("complete")
+                        if isinstance(summary, dict) else None
+                    ),
+                    "stageSignatureSha256": signature,
+                },
+            })
+    return failures
+
+
+def _audit_sources_match_current_indexes(report: dict[str, Any]) -> bool:
+    return not _audit_source_index_diagnostics(report)
 
 
 def _offline_text_definition_validation_failure(
@@ -12570,6 +12562,39 @@ def _dialog_tree_terminal_option_routes(
     return sorted(groups, key=lambda row: row["optionGroup"])
 
 
+def _declared_dialog_context_definitions() -> dict[str, dict[str, Any]]:
+    """Return only manual rows that encode a typed external relationship.
+
+    Plain registered DialogTree definitions are intentionally absent.  They
+    are discovered from the current core-isolated target set, DialogId index,
+    TextAsset corpus, Timeline index, action census, native playback census,
+    object-carrier audit, and installed binaries.  A declaration remains only
+    when it supplies an additional original-data relationship whose schema is
+    validated by a dedicated decoder below.
+    """
+    context_fields = {
+        "allowedNonOwningRoute",
+        "sharedTimeline",
+    }
+    context_keys = {
+        story_key
+        for story_key, definition in OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS.items()
+        if context_fields & set(definition)
+    }
+    context_keys.update(OFFLINE_EXHAUSTION_LEVELSCRIPT_TASK_CONSUMERS)
+    for context in OFFLINE_EXHAUSTION_LEVELDATA_DIALOG_BRANCH_CONTEXTS.values():
+        context_keys.update(
+            safe_key(story_key)
+            for story_key in (context.get("propertyDialogs") or {}).values()
+            if safe_key(story_key)
+        )
+    return {
+        story_key: OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[story_key]
+        for story_key in sorted(context_keys, key=natural_key)
+        if story_key in OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS
+    }
+
+
 def build_offline_exhaustion_index(
     partial_report: dict[str, Any],
     table_root: Path,
@@ -12588,6 +12613,24 @@ def build_offline_exhaustion_index(
     playback, or chronology. Every source gate must match the audited build;
     otherwise the complete set reopens automatically.
     """
+    # Most registered DialogTree rows are now recovered by the corpus-wide
+    # registry/TextAsset/action/native-consumer scan below.  Keep the legacy
+    # declarations only for cases that add a separately typed relationship
+    # which cannot be reconstructed from the DialogTree definition alone.
+    # This deliberately makes a new plain DialogTree eligible without adding
+    # its id, filename, hash, lines, options, or branch groups to this module.
+    dialog_context_definitions = _declared_dialog_context_definitions()
+    pattern_dialog_keys = (
+        set(OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS)
+        - set(dialog_context_definitions)
+    )
+    declared_absent_binary_tokens = {
+        story_key: token
+        for story_key, token
+        in OFFLINE_EXHAUSTION_ABSENT_BINARY_TOKENS.items()
+        if story_key not in pattern_dialog_keys
+    }
+
     carrier_audit_path = carrier_audit_path or (
         ROOT
         / "reports"
@@ -12750,7 +12793,7 @@ def build_offline_exhaustion_index(
     )
     source_paths["dialogTextAssetRoot"] = cutscene_definition_root
     for story_key, definition in (
-        OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS.items()
+        dialog_context_definitions.items()
     ):
         source_paths[
             f"dialogDefinition:{story_key}"
@@ -12762,11 +12805,6 @@ def build_offline_exhaustion_index(
                 cutscene_definition_root
                 / definition["extraConfigFilename"]
             )
-        tracking = definition.get("missionNpcProxyTracking")
-        if isinstance(tracking, dict):
-            source_paths[
-                f"missionNpcProxyTracking:{story_key}"
-            ] = ROOT / tracking["sourceFile"]
     for mission_id, context in (
         OFFLINE_EXHAUSTION_MISSION_BRANCH_CONTEXTS.items()
     ):
@@ -12872,7 +12910,7 @@ def build_offline_exhaustion_index(
     for context in OFFLINE_EXHAUSTION_RADIO_CONTEXTS.values():
         expected_hashes[context["sourceKey"]] = context["sha256"]
     for story_key, definition in (
-        OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS.items()
+        dialog_context_definitions.items()
     ):
         expected_hashes[
             f"dialogDefinition:{story_key}"
@@ -12881,11 +12919,6 @@ def build_offline_exhaustion_index(
             expected_hashes[
                 f"dialogExtraConfig:{story_key}"
             ] = definition["extraConfigSha256"]
-        tracking = definition.get("missionNpcProxyTracking")
-        if isinstance(tracking, dict):
-            expected_hashes[
-                f"missionNpcProxyTracking:{story_key}"
-            ] = tracking["sourceSha256"]
     for mission_id, context in (
         OFFLINE_EXHAUSTION_MISSION_BRANCH_CONTEXTS.items()
     ):
@@ -13046,7 +13079,7 @@ def build_offline_exhaustion_index(
             "utf16le": game_assembly_bytes.count(token.encode("utf-16le")),
         }
         for story_key, token
-        in OFFLINE_EXHAUSTION_ABSENT_BINARY_TOKENS.items()
+        in declared_absent_binary_tokens.items()
     }
     present_binary_tokens = {
         story_key: counts
@@ -13104,7 +13137,7 @@ def build_offline_exhaustion_index(
             ),
         }
         for story_key, token
-        in OFFLINE_EXHAUSTION_ABSENT_BINARY_TOKENS.items()
+        in declared_absent_binary_tokens.items()
     }
     present_metadata_tokens = {
         story_key: counts
@@ -14398,6 +14431,11 @@ def build_offline_exhaustion_index(
         if isinstance(carrier_audit, dict)
         else []
     ))
+    carrier_audit_target_digest = safe_key(
+        carrier_audit.get("targetSetSha256")
+        if isinstance(carrier_audit, dict)
+        else ""
+    ).lower()
     radio_mission_by_key = {
         story_key: mission
         for mission, story_keys in OFFLINE_EXHAUSTION_RADIOS_BY_MISSION.items()
@@ -14414,7 +14452,7 @@ def build_offline_exhaustion_index(
     dialog_mission_by_key = {
         story_key: safe_key(definition.get("missionId"))
         for story_key, definition
-        in OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS.items()
+        in dialog_context_definitions.items()
         if story_key not in OFFLINE_EXHAUSTION_POSITIVE_DIALOG_KEYS
     }
     all_dialog_keys = set(dialog_mission_by_key)
@@ -14449,23 +14487,36 @@ def build_offline_exhaustion_index(
         **text_mission_by_key,
     }
     required_keys = set(required_key_missions)
+    carrier_audit_source_diagnostics = _audit_source_index_diagnostics(
+        carrier_audit if isinstance(carrier_audit, dict) else {}
+    )
+    # The carrier audit is reusable per Story key when its published source
+    # indexes still match.  Requiring equality with the whole gap-queue target
+    # digest made one unrelated target-set change invalidate thousands of
+    # independently negative rows.  Every candidate still fails closed unless
+    # it is explicitly present in noCandidateStoryKeys; newly introduced keys
+    # therefore remain actionable until a future carrier audit covers them.
     if (
         not isinstance(carrier_audit, dict)
         or carrier_audit.get("_schema") != "animestudioStoryCarrierAudit.v3"
         or safe_key(carrier_audit.get("targetField"))
         != "coreIsolatedSceneKeys"
-        or safe_key(carrier_audit.get("targetSetSha256")).lower()
-        != core_target_digest.lower()
         or not required_keys <= no_candidate_keys
         or any(
             core_targets.get(story_key) != {mission}
             for story_key, mission in required_key_missions.items()
         )
-        or not _audit_sources_match_current_indexes(carrier_audit)
+        or carrier_audit_source_diagnostics
     ):
         status.update({
             "status": "inactive_carrier_audit_stale_or_incomplete",
             "coreTargetSetSha256": core_target_digest,
+            "carrierAuditTargetSetSha256": carrier_audit_target_digest,
+            "missingRequiredCarrierAuditStoryKeys": sorted(
+                required_keys - no_candidate_keys,
+                key=natural_key,
+            ),
+            "validatorDiagnostics": carrier_audit_source_diagnostics,
         })
         return {}, status
 
@@ -14720,12 +14771,12 @@ def build_offline_exhaustion_index(
     generic_npc_proxy_evidence_by_key: dict[str, dict[str, Any]] = {}
     generic_npc_proxy_validation_failures: list[dict[str, Any]] = []
     generic_npc_proxy_exclusions: dict[str, list[str]] = {
-        "declaredSpecialCase": [],
         "ambiguousMission": [],
         "nativePlayback": [],
         "typedObjectCarrier": [],
         "noMissionlessProxyConsumer": [],
         "invalidConsumer": [],
+        "invalidMissionTracking": [],
     }
     npc_proxy_ex_for_generic = read_json(
         source_paths["npcProxyExDataTable"],
@@ -14736,17 +14787,34 @@ def build_offline_exhaustion_index(
         source_paths["dialogIdIndex"],
         {},
     )
+    mission_tracking_corpus = _build_mission_npc_proxy_tracking_index(
+        ROOT
+        / "export_full"
+        / "structured"
+        / "StreamingAssets"
+        / "Data"
+        / "Json"
+        / "MissionRuntimeAsset",
+        ROOT
+        / "export_full"
+        / "structured"
+        / "Persistent"
+        / "Data"
+        / "Json"
+        / "MissionRuntimeAsset",
+    )
+    generic_mission_tracking_validation_failures = list(
+        mission_tracking_corpus.get("scanFailures") or []
+    )
     if native_playback_index is not None:
         for story_key, missions in sorted(
             core_targets.items(),
             key=lambda item: natural_key(item[0]),
         ):
-            if not story_key.startswith("dlg_"):
-                continue
-            if story_key in all_dialog_keys:
-                generic_npc_proxy_exclusions["declaredSpecialCase"].append(
-                    story_key
-                )
+            if not (
+                story_key.startswith("dlg_")
+                or story_key.startswith("misc_dlg_")
+            ):
                 continue
             if len(missions) != 1:
                 generic_npc_proxy_exclusions["ambiguousMission"].append(
@@ -14794,24 +14862,56 @@ def build_offline_exhaustion_index(
                 ].append(story_key)
                 continue
             mission_id = next(iter(missions))
+            tracking_contexts, tracking_failures = (
+                _generic_mission_npc_proxy_tracking_contexts(
+                    story_key,
+                    mission_id,
+                    facts,
+                    mission_tracking_corpus,
+                )
+            )
+            if tracking_failures:
+                generic_mission_tracking_validation_failures.extend(
+                    tracking_failures
+                )
+                generic_npc_proxy_exclusions[
+                    "invalidMissionTracking"
+                ].append(story_key)
+            tracking_source_files = list(dict.fromkeys(
+                source_file
+                for context in tracking_contexts
+                for source_file in context.get("sourceFiles") or []
+            ))
             generic_npc_proxy_evidence_by_key[story_key] = {
                 "sceneKey": story_key,
                 "missionId": mission_id,
                 "recoveryStatus":
                     "deferred_current_build_offline_surface_exhausted",
                 "evidenceKind":
-                    "missionless_npc_proxy_dialog_native_consumer",
+                    (
+                        "mission_tracked_npc_proxy_dialog_context_without_playback_owner"
+                        if tracking_contexts else
+                        "missionless_npc_proxy_dialog_native_consumer"
+                    ),
                 "definitionTable": "NpcProxyExDataTable",
                 "definitionSourceFiles": [
                     source_display_path(source_paths["npcProxyExDataTable"]),
                     source_display_path(source_paths["npcProxyTable"]),
                     source_display_path(source_paths["dialogIdIndex"]),
                 ],
-                "sourceFiles": [source_display_path(carrier_audit_path)],
+                "sourceFiles": [
+                    source_display_path(carrier_audit_path),
+                    *tracking_source_files,
+                ],
                 "originalBinaryFiles": [
                     source_display_path(source_paths["gameAssembly"]),
                 ],
                 **facts,
+                "missionNpcProxyTracking": (
+                    tracking_contexts[0]
+                    if len(tracking_contexts) == 1 else None
+                ),
+                "missionNpcProxyTrackingContexts": tracking_contexts,
                 "carrierAuditStatus":
                     "no_typed_story_owner_or_runtime_carrier",
                 "carrierAuditTargetSetSha256": core_target_digest,
@@ -15852,6 +15952,7 @@ def build_offline_exhaustion_index(
         source_paths["npcProxyExDataTable"],
         {},
     )
+    npc_proxy_table = read_json(source_paths["npcProxyTable"], {})
     dialog_validation_by_key: dict[str, dict[str, Any]] = {}
     dialog_validation_failures: list[dict[str, Any]] = []
     dialog_definitions_valid = (
@@ -15861,7 +15962,7 @@ def build_offline_exhaustion_index(
         and isinstance(npc_proxy_ex_table, dict)
     )
     for story_key, definition in (
-        OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS.items()
+        dialog_context_definitions.items()
     ):
         if not dialog_definitions_valid:
             break
@@ -15942,171 +16043,58 @@ def build_offline_exhaustion_index(
         actual_missing_audio_ids = set(line_audio_ids) - audio_stems
         shared_timeline = definition.get("sharedTimeline")
         owned_timeline = definition.get("ownedTimeline")
-        npc_proxy_consumer = definition.get("npcProxyConsumer")
-        npc_proxy_consumers = definition.get("npcProxyConsumers")
-        npc_proxy_consumer_contexts: list[dict[str, Any]] = []
-        npc_proxy_consumer_valid = True
-        if npc_proxy_consumer is not None and npc_proxy_consumers is not None:
-            npc_proxy_consumer_valid = False
-        consumer_specs = (
-            [npc_proxy_consumer]
-            if isinstance(npc_proxy_consumer, dict)
-            else (
-                list(npc_proxy_consumers)
-                if isinstance(npc_proxy_consumers, (list, tuple))
-                else []
+        npc_proxy_facts, npc_proxy_failure = (
+            _generic_missionless_npc_proxy_dialog_facts(
+                story_key,
+                npc_proxy_ex_table,
+                npc_proxy_table,
+                dialog_id_index,
             )
         )
-        if (
-            npc_proxy_consumers is not None
-            and (
-                not isinstance(npc_proxy_consumers, (list, tuple))
-                or not npc_proxy_consumers
-                or any(
-                    not isinstance(spec, dict)
-                    for spec in npc_proxy_consumers
-                )
-            )
-        ):
-            npc_proxy_consumer_valid = False
-        for consumer_spec in consumer_specs:
-            proxy_id = safe_key(consumer_spec.get("proxyId"))
-            entry_index = consumer_spec.get("entryIndex")
-            expected_entry = consumer_spec.get("entry")
-            proxy_entries = (
-                (npc_proxy_ex_table.get("data") or {}).get(proxy_id)
-                if isinstance(npc_proxy_ex_table.get("data"), dict)
-                else None
-            )
-            current_consumer_valid = (
-                isinstance(entry_index, int)
-                and not isinstance(entry_index, bool)
-                and isinstance(expected_entry, dict)
-                and isinstance(proxy_entries, list)
-                and 0 <= entry_index < len(proxy_entries)
-                and proxy_entries[entry_index] == expected_entry
-                and expected_entry.get("dialogId") == registry_key
-                and not safe_key(expected_entry.get("missionId"))
-            )
-            if not current_consumer_valid:
-                npc_proxy_consumer_valid = False
-                continue
-            npc_proxy_consumer_contexts.append({
-                "proxyId": proxy_id,
-                "entryIndex": entry_index,
-                "dialogId": (
-                    safe_key(expected_entry.get("dialogId"))
-                    if isinstance(expected_entry, dict)
-                    else ""
-                ),
-                "missionId": (
-                    safe_key(expected_entry.get("missionId"))
-                    if isinstance(expected_entry, dict)
-                    else ""
-                ),
+        npc_proxy_consumer_valid = npc_proxy_failure is None
+        npc_proxy_consumer_contexts = [
+            {
+                "proxyId": safe_key(row.get("npcProxyId")),
+                "entryIndex": row.get("activeRowIndex"),
+                "dialogId": registry_key,
+                "missionId": "",
+                "levelId": safe_key(row.get("levelId")),
+                "npcId": safe_key(row.get("npcId")),
+                "npcNameId": safe_key(row.get("npcNameId")),
+                "mapId": safe_key(row.get("mapId")),
                 "relation": "npc_proxy_ex_dialog_consumer_without_mission_id",
                 "missionOwnership": False,
                 "orderEvidence": False,
                 "graphEffect": "none",
-            })
+            }
+            for row in (
+                npc_proxy_facts.get("npcProxyConsumers")
+                if isinstance(npc_proxy_facts, dict)
+                else []
+            )
+            if isinstance(row, dict)
+        ]
         npc_proxy_consumer_context = (
             npc_proxy_consumer_contexts[0]
             if len(npc_proxy_consumer_contexts) == 1
             else None
         )
-        mission_tracking_spec = definition.get("missionNpcProxyTracking")
-        mission_tracking_context: dict[str, Any] | None = None
-        if isinstance(mission_tracking_spec, dict):
-            tracking_source_name = f"missionNpcProxyTracking:{story_key}"
-            tracking_payload = read_json(
-                source_paths[tracking_source_name],
-                {},
+        mission_tracking_contexts, tracking_failures = (
+            _generic_mission_npc_proxy_tracking_contexts(
+                story_key,
+                safe_key(definition.get("missionId")),
+                npc_proxy_facts,
+                mission_tracking_corpus,
             )
-            expected_tracking_rows = list(
-                mission_tracking_spec.get("rows") or []
+        )
+        if tracking_failures:
+            generic_mission_tracking_validation_failures.extend(
+                tracking_failures
             )
-            proxy_id = safe_key(mission_tracking_spec.get("proxyId"))
-            level_id = safe_key(mission_tracking_spec.get("levelId"))
-            nominal_mission_id = safe_key(definition.get("missionId"))
-            runtime_mission_id = (
-                safe_key(mission_tracking_spec.get("runtimeMissionId"))
-                or nominal_mission_id
-            )
-            actual_tracking_rows: list[dict[str, Any]] = []
-            tracking_rows_valid = bool(
-                proxy_id and level_id and expected_tracking_rows
-            )
-            for expected_row in expected_tracking_rows:
-                quest_id = safe_key(expected_row.get("questId"))
-                objective_index = expected_row.get("objectiveIndex")
-                tracking_index = expected_row.get("trackingIndex")
-                actual_tracking: Any = None
-                try:
-                    actual_tracking = (
-                        tracking_payload["questDic"][quest_id]
-                        ["objectiveList"][objective_index]
-                        ["trackingInfoList"][tracking_index]
-                    )
-                except (KeyError, IndexError, TypeError):
-                    tracking_rows_valid = False
-                expected_tracking = {
-                    "$type": (
-                        "Beyond.Gameplay.NpcProxyTrackingInfo, "
-                        "Gameplay.Beyond"
-                    ),
-                    "useFilterCondition": False,
-                    "sceneId": level_id,
-                    "guidingArea": 0.0,
-                    "npcProxyId": proxy_id,
-                }
-                if actual_tracking != expected_tracking:
-                    tracking_rows_valid = False
-                actual_tracking_rows.append({
-                    "questId": quest_id,
-                    "objectiveIndex": objective_index,
-                    "trackingIndex": tracking_index,
-                    "tracking": actual_tracking,
-                })
-            if not tracking_rows_valid:
-                dialog_definitions_valid = False
-                dialog_validation_failures.append({
-                    "validator": "offlineDialogDefinition",
-                    "gate": "exactMissionNpcProxyTrackingContext",
-                    "mission": runtime_mission_id,
-                    "storyKey": story_key,
-                    "sourcePaths": [
-                        str(source_paths[tracking_source_name]),
-                    ],
-                    "sourceSha256": {
-                        tracking_source_name:
-                            actual_hashes.get(tracking_source_name, ""),
-                    },
-                    "expected": {
-                        "proxyId": proxy_id,
-                        "levelId": level_id,
-                        "rows": expected_tracking_rows,
-                    },
-                    "actual": actual_tracking_rows,
-                })
-                break
-            mission_tracking_context = {
-                "proxyId": proxy_id,
-                "levelId": level_id,
-                "missionId": runtime_mission_id,
-                "nominalMissionId": nominal_mission_id,
-                "crossMission": runtime_mission_id != nominal_mission_id,
-                "questIds": [
-                    safe_key(row.get("questId"))
-                    for row in expected_tracking_rows
-                ],
-                "sourceFile": mission_tracking_spec["sourceFile"],
-                "relation": "mission_quest_npc_proxy_tracking_context",
-                "missionContextOnly": True,
-                "missionOwnership": False,
-                "questPlaybackOwnership": False,
-                "orderEvidence": False,
-                "graphEffect": "none",
-            }
+        mission_tracking_context = (
+            mission_tracking_contexts[0]
+            if len(mission_tracking_contexts) == 1 else None
+        )
         timeline_context: dict[str, Any] | None = None
         if isinstance(shared_timeline, dict):
             owner_dialog_key = safe_key(
@@ -16312,7 +16300,26 @@ def build_offline_exhaustion_index(
                     str(source_paths["dialogTextTable"]),
                     str(source_paths["dialogIdIndex"]),
                     str(source_paths["audioDialog"]),
+                    *(
+                        (
+                            str(source_paths["npcProxyExDataTable"]),
+                            str(source_paths["npcProxyTable"]),
+                        )
+                        if npc_proxy_failure is not None else ()
+                    ),
                 ],
+                "sourceSha256": {
+                    name: actual_hashes.get(name, "")
+                    for name in (
+                        "dialogTextTable",
+                        "dialogIdIndex",
+                        "audioDialog",
+                        *(
+                            ("npcProxyExDataTable", "npcProxyTable")
+                            if npc_proxy_failure is not None else ()
+                        ),
+                    )
+                },
                 "expected": {
                     "definitionName": definition_name,
                     "lineIds": list(expected_line_ids),
@@ -16355,6 +16362,7 @@ def build_offline_exhaustion_index(
                     } if isinstance(registry, dict) else None,
                     "timelineContextValid": timeline_context_valid,
                     "npcProxyConsumerValid": npc_proxy_consumer_valid,
+                    "npcProxyConsumerFailure": npc_proxy_failure,
                 },
             })
             dialog_definitions_valid = False
@@ -16375,6 +16383,7 @@ def build_offline_exhaustion_index(
             "npcProxyConsumer": npc_proxy_consumer_context,
             "npcProxyConsumers": npc_proxy_consumer_contexts,
             "missionNpcProxyTracking": mission_tracking_context,
+            "missionNpcProxyTrackingContexts": mission_tracking_contexts,
             "levelScriptTaskConsumer":
                 levelscript_task_consumer_by_story.get(story_key),
             "levelDataDialogBranchContext":
@@ -17226,7 +17235,6 @@ def build_offline_exhaustion_index(
     registered_tree_validation_failures: list[dict[str, Any]] = []
     registered_tree_exclusions: dict[str, list[str]] = {
         "declaredSpecialCase": [],
-        "alreadyRecoveredTypedConsumer": [],
         "alreadyRecoveredHigherPrecedenceEvidence": [],
         "ambiguousMission": [],
         "nativePlayback": [],
@@ -17256,11 +17264,6 @@ def build_offline_exhaustion_index(
             authored_keys = (story_key, definition_root_key)
             if story_key in declared_dialog_keys:
                 registered_tree_exclusions["declaredSpecialCase"].append(story_key)
-                continue
-            if story_key in generic_npc_proxy_evidence_by_key:
-                registered_tree_exclusions[
-                    "alreadyRecoveredTypedConsumer"
-                ].append(story_key)
                 continue
             if len(missions) != 1:
                 registered_tree_exclusions["ambiguousMission"].append(story_key)
@@ -17365,14 +17368,18 @@ def build_offline_exhaustion_index(
             )
         )
         registered_tree_exclusions["binaryRootTokenPresent"] = sorted(
-            registered_tree_binary_present,
+            registered_tree_binary_present
+            - set(generic_npc_proxy_evidence_by_key),
             key=natural_key,
         )
         for story_key, facts in sorted(
             registered_tree_definition_facts.items(),
             key=lambda item: natural_key(item[0]),
         ):
-            if story_key in registered_tree_binary_present:
+            if (
+                story_key in registered_tree_binary_present
+                and story_key not in generic_npc_proxy_evidence_by_key
+            ):
                 continue
             mission_id = next(iter(core_targets[story_key]))
             registered_tree_evidence_by_key[story_key] = {
@@ -17380,6 +17387,9 @@ def build_offline_exhaustion_index(
                 "recoveryStatus": "deferred_current_build_offline_surface_exhausted",
                 "evidenceKind": (
                     "registered_dialog_tree_definition_binary_consumer_surface_exhausted"
+                ),
+                "definitionRecoveryMethod": (
+                    "pattern_discovered_current_original_data"
                 ),
                 **facts,
                 "sceneKey": story_key,
@@ -17408,8 +17418,11 @@ def build_offline_exhaustion_index(
                 "levelScriptActionCensusStatus": "zero_typed_action_occurrences",
                 "nativePlaybackStatus": "zero_typed_native_playback_occurrences",
                 "carrierAuditStatus": "no_typed_story_owner_or_runtime_carrier",
-                "carrierAuditTargetSetSha256": core_target_digest,
+                "carrierAuditTargetSetSha256": carrier_audit_target_digest,
+                "currentCoreTargetSetSha256": core_target_digest,
                 "binaryRootTokenStatus": (
+                    "present_but_resolved_by_exact_typed_npc_proxy_consumer"
+                    if story_key in registered_tree_binary_present else
                     "absent_utf8_and_utf16le_in_current_game_binaries"
                 ),
                 "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
@@ -18698,6 +18711,21 @@ def build_offline_exhaustion_index(
         key=lambda item: natural_key(item[0]),
     ):
         index.setdefault(story_key, evidence)
+    for story_key in sorted(
+        set(generic_npc_proxy_evidence_by_key)
+        & set(registered_tree_evidence_by_key),
+        key=natural_key,
+    ):
+        composed, failure = _compose_registered_dialog_tree_npc_proxy_evidence(
+            registered_tree_evidence_by_key[story_key],
+            generic_npc_proxy_evidence_by_key[story_key],
+        )
+        if failure is not None:
+            generic_npc_proxy_validation_failures.append(failure)
+            del generic_npc_proxy_evidence_by_key[story_key]
+            continue
+        generic_npc_proxy_evidence_by_key[story_key] = composed
+        del registered_tree_evidence_by_key[story_key]
     for evidence_by_key in (
         generic_npc_proxy_evidence_by_key,
         generic_sns_evidence_by_key,
@@ -18708,7 +18736,7 @@ def build_offline_exhaustion_index(
         ):
             index.setdefault(story_key, evidence)
     for story_key in sorted(all_dialog_keys, key=natural_key):
-        definition = OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[story_key]
+        definition = dialog_context_definitions[story_key]
         validation = dialog_validation_by_key[story_key]
         allowed_non_owning_route = definition.get("allowedNonOwningRoute")
         index[story_key] = {
@@ -18725,7 +18753,7 @@ def build_offline_exhaustion_index(
                     if validation["levelScriptTaskConsumer"]
                     else (
                         "mission_tracked_npc_proxy_dialog_context_without_playback_owner"
-                        if validation["missionNpcProxyTracking"]
+                        if validation["missionNpcProxyTrackingContexts"]
                         else (
                             "npc_proxy_dialog_consumer_without_mission_owner"
                             if validation["npcProxyConsumers"]
@@ -18738,14 +18766,14 @@ def build_offline_exhaustion_index(
                     ))
                 ),
             "definitionAsset":
-                OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[story_key]["filename"],
+                dialog_context_definitions[story_key]["filename"],
             "definitionAssets": [
                 filename
                 for filename in (
-                    OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[story_key][
+                    dialog_context_definitions[story_key][
                         "filename"
                     ],
-                    OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS[story_key].get(
+                    dialog_context_definitions[story_key].get(
                         "extraConfigFilename"
                     ),
                 )
@@ -18761,6 +18789,10 @@ def build_offline_exhaustion_index(
                     "audioDialog",
                     "dialogIdIndex",
                     "timelineLineOrders",
+                    *(
+                        ("npcProxyExDataTable", "npcProxyTable")
+                        if validation["npcProxyConsumers"] else ()
+                    ),
                 )
             ],
             "runtimeRegistry": "Beyond.Gameplay.DialogIdTable",
@@ -18809,12 +18841,22 @@ def build_offline_exhaustion_index(
             "npcProxyConsumers": validation["npcProxyConsumers"],
             "missionNpcProxyTracking":
                 validation["missionNpcProxyTracking"],
+            "missionNpcProxyTrackingContexts":
+                validation["missionNpcProxyTrackingContexts"],
             "levelScriptTaskConsumer":
                 validation["levelScriptTaskConsumer"],
             "levelDataDialogBranchContext":
                 validation["levelDataDialogBranchContext"],
             "allowedNonOwningRoute": allowed_non_owning_route,
             "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
+            "npcProxySelectionMappingId": (
+                NPC_PROXY_DIALOG_SELECTION_MAPPING_ID
+                if validation["npcProxyConsumers"] else None
+            ),
+            "originalBinaryFiles": (
+                [source_display_path(source_paths["gameAssembly"])]
+                if validation["npcProxyConsumers"] else []
+            ),
             "gameAssemblySha256":
                 OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
             "consumerBoundary": (
@@ -18831,7 +18873,7 @@ def build_offline_exhaustion_index(
                     "NpcProxyEx missionId is empty and no serialized selection "
                     "condition proves dialog playback, a unique quest owner, "
                     "or activation timing"
-                    if validation["missionNpcProxyTracking"]
+                    if validation["missionNpcProxyTrackingContexts"]
                     else (
                         "the exact NpcProxyEx entry selects this registered "
                         "DialogTree as an NPC interaction dialog, but its "
@@ -19401,6 +19443,36 @@ def build_offline_exhaustion_index(
         "status": "active",
         "coreTargetSetSha256": core_target_digest,
         "deferredStoryKeys": len(index),
+        "dialogDefinitionRecovery": {
+            "pattern": (
+                "core isolated target -> mechanical misc_dlg alias -> exact "
+                "DialogId registration -> exact hashed DialogTree TextAsset -> "
+                "Timeline/action/native/object/binary consumer census"
+            ),
+            "declaredDefinitionRows": len(
+                OFFLINE_EXHAUSTION_DIALOG_DEFINITIONS
+            ),
+            "declaredExternalContextRows": len(
+                dialog_context_definitions
+            ),
+            "patternDiscoveredDefinitionRows": len(
+                registered_tree_definition_facts
+            ),
+            "patternQualifiedDefinitionRows": len(
+                registered_tree_evidence_by_key
+            ),
+            "carrierAuditTargetSetSha256": carrier_audit_target_digest,
+            "currentCoreTargetSetSha256": core_target_digest,
+            "carrierAuditReuseMode": "per_story_key_exact_current_source",
+            "perObjectDefinitionDeclarationRequired": False,
+            "perObjectBinaryTokenDeclarationRequired": False,
+            "evidenceBoundary": (
+                "declarations are retained only for separately typed external "
+                "relationships; definition filenames, hashes, line ids, option "
+                "ids, and internal branches are recovered from current original "
+                "data and never create mission activation or cross-file order"
+            ),
+        },
         "missionRelatedOriginalData": (
             mission_related_original_data_by_mission
         ),
@@ -19480,6 +19552,27 @@ def build_offline_exhaustion_index(
                 else "inactive_native_playback_index_unavailable"
             ),
             "qualifiedStoryKeys": len(generic_npc_proxy_evidence_by_key),
+            "qualifiedConsumerRows": sum(
+                len(row.get("npcProxyConsumers") or [])
+                for row in generic_npc_proxy_evidence_by_key.values()
+            ),
+            "qualifiedDialogTreeDefinitions": sum(
+                row.get("dialogTreeDefinitionStatus")
+                == "exact_current_dialog_tree"
+                for row in generic_npc_proxy_evidence_by_key.values()
+            ),
+            "validatedAuthoredOptionRoutes": sum(
+                int(
+                    ((row.get("optionRouteRecovery") or {}).get("counts") or {}).get(
+                        "validatedNormalOptionRoutes", 0
+                    )
+                )
+                for row in generic_npc_proxy_evidence_by_key.values()
+            ),
+            "failClosedOptionRouteIssues": sum(
+                len((row.get("optionRouteRecovery") or {}).get("issues") or [])
+                for row in generic_npc_proxy_evidence_by_key.values()
+            ),
             "qualifiedMissions": len({
                 safe_key(row.get("missionId"))
                 for row in generic_npc_proxy_evidence_by_key.values()
@@ -19511,6 +19604,60 @@ def build_offline_exhaustion_index(
             },
             "nativeMappingId": NPC_PROXY_DIALOG_SELECTION_MAPPING_ID,
             "carrierAuditTargetSetSha256": core_target_digest,
+            "graphEffect": "none",
+        },
+        "genericMissionNpcProxyTrackingEvidence": {
+            "status": mission_tracking_corpus.get("status"),
+            "selection": mission_tracking_corpus.get("selection"),
+            "selectedRoot": mission_tracking_corpus.get("selectedRoot"),
+            "streamingFileCount": mission_tracking_corpus.get(
+                "streamingFileCount", 0
+            ),
+            "persistentFileCount": mission_tracking_corpus.get(
+                "persistentFileCount", 0
+            ),
+            "scannedMissionFileCount": mission_tracking_corpus.get(
+                "scannedMissionFileCount", 0
+            ),
+            "typedRowCount": mission_tracking_corpus.get("typedRowCount", 0),
+            "qualifiedRowCount": mission_tracking_corpus.get(
+                "qualifiedRowCount", 0
+            ),
+            "proxyCount": mission_tracking_corpus.get("proxyCount", 0),
+            "scanFailureCount": mission_tracking_corpus.get(
+                "scanFailureCount", 0
+            ),
+            "qualifiedStoryKeys": sum(
+                bool(row.get("missionNpcProxyTrackingContexts"))
+                for row in index.values()
+            ),
+            "qualifiedContexts": sum(
+                len(row.get("missionNpcProxyTrackingContexts") or [])
+                for row in index.values()
+            ),
+            "qualifiedQuestRows": sum(
+                len(context.get("rows") or [])
+                for row in index.values()
+                for context in (
+                    row.get("missionNpcProxyTrackingContexts") or []
+                )
+            ),
+            "crossMissionContexts": sum(
+                context.get("crossMission") is True
+                for row in index.values()
+                for context in (
+                    row.get("missionNpcProxyTrackingContexts") or []
+                )
+            ),
+            "validationFailures":
+                generic_mission_tracking_validation_failures,
+            "sourceSetSha256": mission_tracking_corpus.get(
+                "sourceSetSha256", ""
+            ),
+            "relation": "mission_quest_npc_proxy_tracking_context",
+            "missionOwnership": False,
+            "questPlaybackOwnership": False,
+            "orderEvidence": False,
             "graphEffect": "none",
         },
         "genericSnsNegativeConsumerEvidence": {
@@ -19690,7 +19837,9 @@ def build_offline_exhaustion_index(
                 "mappingId": "current-build-levelscript-action-story-occurrence-census-v1",
                 "qualifiedKeysHaveZeroOccurrences": True,
             },
-            "carrierAuditTargetSetSha256": core_target_digest,
+            "carrierAuditTargetSetSha256": carrier_audit_target_digest,
+            "currentCoreTargetSetSha256": core_target_digest,
+            "carrierAuditReuseMode": "per_story_key_exact_current_source",
             "graphEffect": "none",
         },
         "genericRegisteredDialogTreeTrunkGroupEvidence": {
@@ -25161,103 +25310,32 @@ def _closed_exact_runtime_config_isolated_scenes(
 
     already_closed = {row["sceneKey"] for row in closed}
     tracked_proxy_grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    tracked_proxy_declaration = UNIQUE_MISSION_TRACKED_PROXY_CONTEXTS.get(
-        owner_mission
-    )
-    if isinstance(tracked_proxy_declaration, dict):
-        expected_dialog_ids = list(tracked_proxy_declaration["dialogIds"])
-        expected_ex_dialog_ids = list(
-            tracked_proxy_declaration["exDialogIds"]
+    tracked_proxy_context_by_scene: dict[str, dict[str, Any]] = {}
+    for row in _flow_story_connections(flow):
+        scene_key = safe_key(row.get("key"))
+        if (
+            scene_key in already_closed
+            or scene_key not in isolated_scene_keys
+            or safe_key(row.get("relation"))
+            != "unique_mission_tracked_npc_proxy_dialog_context"
+        ):
+            continue
+        context, failure = _validate_general_tracked_proxy_flow_context(
+            row,
+            owner_mission,
         )
-        expected_active_row_indices = list(
-            tracked_proxy_declaration["activeRowIndices"]
-        )
-        expected_quest_ids = list(tracked_proxy_declaration["questIds"])
-        expected_source_hashes = tracked_proxy_declaration["sourceHashes"]
-        sources_valid = all(
-            _sha256_file(ROOT / relative_path) == expected_sha256
-            for relative_path, expected_sha256
-            in expected_source_hashes.items()
-        )
-        for row in _flow_story_connections(flow):
-            scene_key = safe_key(row.get("key"))
-            active_row_index = row.get("activeRowIndex")
-            proxy_table_row = row.get("npcProxyTableRow")
-            ex_rows = row.get("npcProxyExRows")
-            source_files = _string_list(row.get("sourceFiles"))
-            if (
-                not sources_valid
-                or scene_key in already_closed
-                or scene_key not in isolated_scene_keys
-                or safe_key(row.get("relation"))
-                != "unique_mission_tracked_npc_proxy_dialog_context"
-                or safe_key(row.get("direction")) != "context"
-                or safe_key(row.get("phase"))
-                != "server_selected_proxy_state"
-                or safe_key(row.get("confidence"))
-                != "native_exact_mission_context"
-                or safe_key(row.get("evidenceTier"))
-                != "derived_exact_mission"
-                or safe_key(row.get("storyOwnerMission")) != owner_mission
-                or safe_key(row.get("npcProxyId"))
-                != tracked_proxy_declaration["npcProxyId"]
-                or _string_list(row.get("levelIds"))
-                != [tracked_proxy_declaration["levelId"]]
-                or _string_list(row.get("candidateQuestIds"))
-                != expected_quest_ids
-                or _string_list(row.get("configuredDialogIds"))
-                != expected_dialog_ids
-                or not isinstance(active_row_index, int)
-                or isinstance(active_row_index, bool)
-                or active_row_index not in expected_active_row_indices
-                or expected_ex_dialog_ids[active_row_index - 1] != scene_key
-                or row.get("storyBinding") is not True
-                or row.get("ownership") is not False
-                or row.get("questActivation") is not False
-                or row.get("questPlayback") is not False
-                or row.get("questCompletion") is not False
-                or safe_key(row.get("questTriggerStatus"))
-                != (
-                    "shared_tracked_proxy_state_context_not_quest_selection_"
-                    "or_playback"
-                )
-                or safe_key(row.get("selectionOrderStatus"))
-                != (
-                    "one_based_active_row_selection_only_no_cross_row_"
-                    "chronology"
-                )
-                or row.get("serverExchange") is not True
-                or row.get("clientRequest") is not False
-                or row.get("expectedClientReply") is not False
-                or safe_key(row.get("nativeMappingId"))
-                != NPC_PROXY_DIALOG_SELECTION_MAPPING_ID
-                or safe_key(row.get("gameAssemblySha256"))
-                != NPC_PROXY_DIALOG_SELECTION_GAMEASSEMBLY_SHA256
-                or set(source_files) != set(expected_source_hashes)
-                or not isinstance(proxy_table_row, dict)
-                or safe_key(proxy_table_row.get("proxyId"))
-                != tracked_proxy_declaration["npcProxyId"]
-                or safe_key(proxy_table_row.get("levelId"))
-                != tracked_proxy_declaration["levelId"]
-                or proxy_table_row.get("subDataParentId")
-                != tracked_proxy_declaration["subDataParentId"]
-                or not isinstance(ex_rows, list)
-                or len(ex_rows) != len(expected_ex_dialog_ids)
-                or not all(isinstance(ex_row, dict) for ex_row in ex_rows)
-                or [safe_key(ex_row.get("dialogId")) for ex_row in ex_rows]
-                != expected_ex_dialog_ids
-                or any(
-                    safe_key(ex_row.get("missionId"))
-                    for ex_row in ex_rows
-                )
-            ):
-                continue
-            tracked_proxy_grouped[scene_key].append(row)
+        if failure is not None:
+            if validation_failures is not None:
+                validation_failures.append(failure)
+            continue
+        tracked_proxy_grouped[scene_key].append(row)
+        tracked_proxy_context_by_scene[scene_key] = context
 
     for scene_key, rows in tracked_proxy_grouped.items():
         if len(rows) != 1:
             continue
         row = rows[0]
+        context = tracked_proxy_context_by_scene[scene_key]
         closed.append({
             "sceneKey": scene_key,
             "recoveryStatus":
@@ -25265,14 +25343,11 @@ def _closed_exact_runtime_config_isolated_scenes(
             "relation":
                 "unique_mission_tracked_npc_proxy_dialog_context",
             "missionId": owner_mission,
-            "npcProxyId": safe_key(row.get("npcProxyId")),
-            "candidateQuestIds": _string_list(
-                row.get("candidateQuestIds")
-            ),
-            "configuredDialogIds": _string_list(
-                row.get("configuredDialogIds")
-            ),
-            "activeRowIndex": row["activeRowIndex"],
+            "npcProxyId": context["proxyId"],
+            "levelId": context["levelId"],
+            "candidateQuestIds": context["questIds"],
+            "configuredDialogIds": context["configuredDialogIds"],
+            "activeRowIndex": context["activeRowIndex"],
             "selectionSemantics":
                 "exDatas[activeCondIndex - 1].dialogId",
             "contextBoundary": (
@@ -25285,12 +25360,9 @@ def _closed_exact_runtime_config_isolated_scenes(
                 "order, dialog suffix, and quest topology do not order the "
                 "configured dialogs"
             ),
-            "sourceFiles": _string_list(row.get("sourceFiles")),
-            "sourceSha256": {
-                relative_path: expected_sha256
-                for relative_path, expected_sha256
-                in tracked_proxy_declaration["sourceHashes"].items()
-            },
+            "recoveryMethod": "complete_mission_runtime_proxy_census",
+            "sourceFiles": context["sourceFiles"],
+            "sourceSha256": context["sourceSha256"],
         })
 
     already_closed = {row["sceneKey"] for row in closed}
@@ -28094,6 +28166,10 @@ def main(argv: list[str] | None = None) -> int:
             "genericMissionlessNpcProxyDialogEvidence",
         ),
         (
+            "Generic mission NPC-proxy tracking",
+            "genericMissionNpcProxyTrackingEvidence",
+        ),
+        (
             "Generic SNS negative-consumer",
             "genericSnsNegativeConsumerEvidence",
         ),
@@ -28129,11 +28205,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         if failures:
             first = failures[0]
+            first_source = safe_key(
+                (first.get("sourcePaths") or [""])[0]
+            ) or safe_key(first.get("sourcePath"))
             print(
                 f"{label} validator failure: "
                 f"story={safe_key(first.get('storyKey')) or '-'} "
                 f"gate={safe_key(first.get('gate'))} "
-                f"source={safe_key((first.get('sourcePaths') or [''])[0])}"
+                f"source={first_source}"
             )
     carrier_failures = (
         report.get("exactBlackCarrierValidation") or {}

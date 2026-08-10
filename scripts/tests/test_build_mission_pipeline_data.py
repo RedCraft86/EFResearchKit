@@ -41,6 +41,46 @@ class LevelScriptSourceEvidenceTests(unittest.TestCase):
         )
         self.assertEqual(len(rows[0]["relatedOriginalFiles"][0]["sha256"]), 64)
 
+    def test_persistent_level_script_overlay_wins_and_retains_shadowed_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            streaming = root / "StreamingAssets" / "LevelScriptData"
+            persistent = root / "Persistent" / "LevelScriptData"
+            fallback = streaming / "level_a" / "1001.json"
+            override = persistent / "level_a" / "1001.json"
+            fallback.parent.mkdir(parents=True)
+            override.parent.mkdir(parents=True)
+            fallback.write_bytes(
+                b"\x1b\x02\x03" + struct.pack("<III", 0, 0, 0) + b"fallback"
+            )
+            override.write_bytes(
+                b"\x1b\x02\x03" + struct.pack("<III", 0, 0, 0) + b"override"
+            )
+            condition = {
+                "$type": "Fixture.CheckLevelScriptPropertyBool",
+                "uniqueId": "condition_a",
+                "_sceneId": "level_a",
+                "_scriptId": {"scriptId": 1001},
+            }
+
+            rows = pipeline.level_script_source_evidence(
+                condition,
+                level_script_roots=(streaming, persistent),
+            )
+
+        self.assertEqual(1, len(rows))
+        overlay = rows[0]["levelScriptOverlay"]
+        self.assertTrue(overlay["changedOverride"])
+        self.assertTrue(overlay["activeSourceFile"].endswith(
+            "Persistent/LevelScriptData/level_a/1001.json"
+        ))
+        self.assertEqual(1, len(overlay["shadowedSources"]))
+        self.assertFalse(overlay["shadowedSources"][0]["sameBytesAsActive"])
+        self.assertEqual(
+            rows[0]["relatedOriginalFiles"][0]["sourceFile"],
+            overlay["activeSourceFile"],
+        )
+
     def test_native_control_evidence_is_generic_and_event_reachable(self) -> None:
         topology = {
             "schema": "levelScriptNativeActionTopology.v4",
@@ -279,6 +319,49 @@ TASK_AUTHORITY_CONTRACT_FIXTURE = {
         {"kind": "original_game_metadata"},
     ],
     "validation": {"status": "validated"},
+}
+
+TASK_LIFECYCLE_CONTRACT_FIXTURE = {
+    "schema": "levelScriptTaskLifecycle.v1",
+    "classification": "generic_server_selected_task_condition_lifecycle",
+    "scriptTaskStateEnum": {"None": 0, "Processing": 1, "Completed": 2},
+    "levelScriptTaskTypeEnum": {
+        "None": 0,
+        "Main": 1,
+        "Extra": 2,
+        "Fail": 3,
+        "Custom": 4,
+    },
+    "serverStateApplicationChain": [
+        "Beyond.Gameplay.Core.LevelScriptManager.UpdateLevelScriptTaskState",
+        "Beyond.Gameplay.Core.LevelScriptRuntime.UpdateTaskState",
+        (
+            "Beyond.Gameplay.Core.LevelScriptRuntime+"
+            "ScriptTaskRuntime.UpdateTaskState"
+        ),
+    ],
+    "stateArgumentForwarding": True,
+    "processingConditionCallCount": 2,
+    "conditionProcessingOperations": [
+        "Beyond.Gameplay.GameCondition+ResultChange..ctor",
+        "System.Delegate.Combine",
+        "Beyond.Gameplay.GameCondition.Activate",
+        "Beyond.Gameplay.GameCondition.BindingEvent",
+    ],
+    "conditionProgressSender": (
+        "Beyond.Gameplay.GameplayNetwork.SendLevelScriptUpdateTaskProgress"
+    ),
+    "conditionIdentityFieldReads": [
+        "levelScriptPtr",
+        "levelNum",
+        "taskKey",
+        "conditionId",
+    ],
+    "relatedOriginalFiles": [
+        {"kind": "original_game_binary"},
+        {"kind": "original_game_metadata"},
+    ],
+    "validation": {"status": "validated", "failures": []},
 }
 
 EXTRA_THREAD_SCHEDULER_CONTRACT_FIXTURE = {
@@ -1042,6 +1125,60 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "gate=taskPacketSchema",
             ):
                 pipeline.load_levelscript_task_authority_contract(audit_path)
+
+    def test_levelscript_task_lifecycle_revalidates_generic_binary_contract(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            gameassembly = root / "GameAssembly.dll"
+            metadata = root / "global-metadata.dat"
+            gameassembly.write_bytes(b"fixture-gameassembly")
+            metadata.write_bytes(b"fixture-metadata")
+            audit_path = root / "protocol_registry_audit.json"
+            audit_path.write_text(json.dumps({
+                "_schema": "endfieldProtocolRegistryAudit.v20",
+                "source": {
+                    "gameAssembly": str(gameassembly),
+                    "gameAssemblySha256": hashlib.sha256(
+                        gameassembly.read_bytes()
+                    ).hexdigest(),
+                    "metadata": str(metadata),
+                    "metadataSha256": hashlib.sha256(
+                        metadata.read_bytes()
+                    ).hexdigest(),
+                },
+                "levelScriptTaskLifecycle": TASK_LIFECYCLE_CONTRACT_FIXTURE,
+            }), encoding="utf-8")
+
+            contract = pipeline.load_levelscript_task_lifecycle_contract(
+                audit_path
+            )
+
+        self.assertEqual(contract["validation"]["status"], "validated")
+        self.assertEqual(contract["processingConditionCallCount"], 2)
+        self.assertEqual(len(contract["relatedOriginalFiles"]), 2)
+
+    def test_levelscript_task_lifecycle_fails_closed_on_state_drift(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            audit_path = Path(temporary) / "protocol_registry_audit.json"
+            contract = {
+                **TASK_LIFECYCLE_CONTRACT_FIXTURE,
+                "scriptTaskStateEnum": {
+                    "None": 0,
+                    "Processing": 4,
+                    "Completed": 2,
+                },
+            }
+            audit_path.write_text(json.dumps({
+                "_schema": "endfieldProtocolRegistryAudit.v20",
+                "levelScriptTaskLifecycle": contract,
+            }), encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "validator=levelscript_task_lifecycle_contract "
+                "gate=contractShape",
+            ):
+                pipeline.load_levelscript_task_lifecycle_contract(audit_path)
 
     def test_levelscript_start_policy_revalidates_generic_binary_contract(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -4929,6 +5066,11 @@ class MissionPipelineBuilderTests(unittest.TestCase):
     )
     @patch.object(
         pipeline,
+        "load_levelscript_task_lifecycle_contract",
+        return_value=TASK_LIFECYCLE_CONTRACT_FIXTURE,
+    )
+    @patch.object(
+        pipeline,
         "load_levelscript_task_authority_contract",
         return_value=TASK_AUTHORITY_CONTRACT_FIXTURE,
     )
@@ -4938,7 +5080,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         return_value=STATE_UPDATE_CONTRACT_FIXTURE,
     )
     def test_build_all_writes_lazy_index_and_mission_payload(
-        self, _state_loader, _task_loader, _scheduler_loader
+        self, _state_loader, _task_loader, _lifecycle_loader, _scheduler_loader
     ):
         self.maxDiff = None
         with tempfile.TemporaryDirectory() as temporary:
@@ -5065,6 +5207,11 @@ class MissionPipelineBuilderTests(unittest.TestCase):
     )
     @patch.object(
         pipeline,
+        "load_levelscript_task_lifecycle_contract",
+        return_value=TASK_LIFECYCLE_CONTRACT_FIXTURE,
+    )
+    @patch.object(
+        pipeline,
         "load_levelscript_task_authority_contract",
         return_value=TASK_AUTHORITY_CONTRACT_FIXTURE,
     )
@@ -5077,6 +5224,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self,
         _state_loader,
         _task_loader,
+        _lifecycle_loader,
         _scheduler_loader,
     ):
         with tempfile.TemporaryDirectory() as temporary:
@@ -5142,6 +5290,11 @@ class MissionPipelineBuilderTests(unittest.TestCase):
     )
     @patch.object(
         pipeline,
+        "load_levelscript_task_lifecycle_contract",
+        return_value=TASK_LIFECYCLE_CONTRACT_FIXTURE,
+    )
+    @patch.object(
+        pipeline,
         "load_levelscript_task_authority_contract",
         return_value=TASK_AUTHORITY_CONTRACT_FIXTURE,
     )
@@ -5154,6 +5307,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self,
         _state_loader,
         _task_loader,
+        _lifecycle_loader,
         _scheduler_loader,
     ):
         with tempfile.TemporaryDirectory() as temporary:
@@ -5173,6 +5327,9 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                     "modeId": "dungeon_test",
                     "modeType": 2,
                     "gameMechanicsType": 4,
+                    "mainTasks": [{"taskId": "deadbeef"}],
+                    "extraTasks": [],
+                    "failTasks": [],
                 },
                 "world_without_mission": {
                     "$type": "Beyond.Gameplay.Core.WorldChallengeSubGameData, Gameplay.Beyond",
@@ -5189,6 +5346,14 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             self.assertEqual(binding["dungeonMissionId"], "testm1")
             self.assertEqual(binding["relation"], "subgame_bind_script_runtime")
             self.assertFalse(binding["storyBinding"])
+            self.assertEqual(
+                binding["taskLanes"],
+                {
+                    "main": [{"taskId": "deadbeef"}],
+                    "extra": [],
+                    "fail": [],
+                },
+            )
             self.assertEqual(binding["networkIdentity"]["authoredKeyField"], "gameId")
             self.assertEqual(binding["networkIdentity"]["authoredKeyValue"], "dung_test")
             self.assertEqual(binding["networkIdentity"]["startRequest"], "CS_GAME_MECHANICS_REQ_START")
@@ -5206,8 +5371,12 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 index["nativeRuntimeRegistry"]["bindScriptNativeEvidence"]["serializedFieldOffset"],
                 "0x50",
             )
-            self.assertFalse(
+            self.assertTrue(
                 index["nativeRuntimeRegistry"]["bindScriptNativeEvidence"]["auditedOnStartConsumerFound"]
+            )
+            self.assertEqual(
+                index["nativeRuntimeRegistry"]["bindScriptNativeEvidence"]["startConsumerToken"],
+                "0x0600231a",
             )
             self.assertIn(
                 "SC_GAME_MECHANICS_SYNC_ENTER_GAME_INST.gameId",

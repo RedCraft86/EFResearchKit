@@ -15,22 +15,22 @@ SPEC.loader.exec_module(pack_webui)
 
 
 class PackWebuiAudioTests(unittest.TestCase):
-    def test_live_router_marks_audio_debug_only_with_gameplay_fallback(self) -> None:
+    def test_live_router_keeps_audio_normal_and_debug_mission_views(self) -> None:
         project_root = SCRIPT.parents[1]
         router = (project_root / "webui" / "assets.js").read_text(encoding="utf-8")
         html = (project_root / "webui" / "index.html").read_text(encoding="utf-8")
 
-        self.assertIn('const DEBUG_ONLY_VIEWS = new Set(["audio", "mission-pipeline"]);', router)
+        self.assertIn('const DEBUG_ONLY_VIEWS = new Set(["mission-pipeline"]);', router)
         self.assertIn('audio: "gameplay"', router)
         self.assertIn('id="audio-tab"', html)
-        self.assertIn('data-view="audio" data-debug-view', html)
+        self.assertIn('data-view="audio" data-i18n="audioTab"', html)
         self.assertIn('id="audio-view"', html)
 
-    def test_packaged_router_keeps_debug_audio_and_mission_views(self) -> None:
+    def test_packaged_router_keeps_audio_and_debug_mission_views(self) -> None:
         shim = pack_webui.ASSET_SHIM_JS
 
         self.assertIn('"audio"', shim)
-        self.assertIn('const DEBUG_ONLY_VIEWS = new Set(["audio", "mission-pipeline"]);', shim)
+        self.assertIn('const DEBUG_ONLY_VIEWS = new Set(["mission-pipeline"]);', shim)
         self.assertIn('audio: "gameplay"', shim)
         self.assertIn('"mission-pipeline": "gameplay"', shim)
 
@@ -62,18 +62,42 @@ class PackWebuiAudioTests(unittest.TestCase):
 
             self.assertEqual([path.name for path in files], ["current.flac"])
 
-    def test_gameplay_audio_renders_only_in_the_trailing_detail_section(self) -> None:
+    def test_gameplay_exact_skill_audio_is_inline_and_other_audio_trails(self) -> None:
         project_root = SCRIPT.parents[1]
         source = (project_root / "webui" / "src" / "features" / "gameplay" / "index.js").read_text(encoding="utf-8")
         skill_row = source[source.index("function renderActiveSkillRow"):source.index("function renderWeaponDetail")]
         character_detail = source[source.index("function renderCharacterDetail"):source.index("function renderEquipmentSuit")]
         detail_renderer = source[source.index("function renderDetail(entry)"):source.index("function renderListNote")]
 
-        self.assertNotIn("renderActiveSkillSoundEffects", skill_row)
+        self.assertIn("renderActiveSkillSoundEffects(group, character)", skill_row)
+        self.assertIn(".filter(gameplaySoundHasExactSkillTrigger)", source)
+        self.assertIn(".filter((event) => !gameplaySoundHasExactSkillTrigger(event))", source)
+        self.assertIn('buffPlaySoundAction: "soundTriggerPlaySoundAction"', source)
+        self.assertIn('text("soundPlaySoundFrame")', source)
+        self.assertIn('event?.actionDispatchEvidence || []', source)
+        self.assertIn('soundDispatchNoExplicitDelay', source)
+        self.assertIn('soundActionProbability', source)
+        self.assertIn('[data-gameplay-sfx-src]:not([data-gameplay-sfx-bound])', source)
+        self.assertIn('data-gameplay-sfx-player', source)
+        self.assertNotIn('<audio controls preload="none" src="${escapeHtml(candidate.src)}"', source)
+        self.assertIn("[1, 2, 3, 4].includes(payload.schemaVersion)", source)
         self.assertNotIn('section(text("characterActionAudio")', character_detail)
         self.assertIn('entry.kind === "character"', detail_renderer)
         self.assertIn('section(text("relatedSoundEffects"), renderCharacterSoundEffects', detail_renderer)
         self.assertGreater(detail_renderer.index("trailingAudio"), detail_renderer.index("renderIntegratedSections"))
+
+    def test_audio_page_surfaces_typed_music_branch_evidence(self) -> None:
+        project_root = SCRIPT.parents[1]
+        source = (project_root / "webui" / "src" / "features" / "audio" / "index.js").read_text(encoding="utf-8")
+
+        self.assertIn('musicSwitchCandidate: "relationMusicSwitch"', source)
+        self.assertIn('musicPlaylistCandidate: "relationMusicPlaylist"', source)
+        self.assertIn('musicTrackSource: "relationMusicSource"', source)
+        self.assertIn('asArray(evidence?.musicNodeEvidence)', source)
+        self.assertIn('asArray(node?.selectionTypeLabels)', source)
+        self.assertIn('evidence?.actionDispatchEvidence', source)
+        self.assertIn('coDispatchWithAuthoredDelayDifference', (project_root / "scripts" / "build_audio.py").read_text(encoding="utf-8"))
+        self.assertIn('action?.probability?.baseValuesPercent', source)
 
 
 if __name__ == "__main__":

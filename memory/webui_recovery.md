@@ -80,10 +80,15 @@ Runtime overrides:
   constituent table/asset id rather than display text.
 - Gameplay owns breakthrough requirements, authored enemy stat points,
   selectable enemy variants, linked assets, compact projectile behavior, and
-  playable Story-style sound controls. Character and enemy audio is one final
-  detail section after normal and integrated content, never embedded in skill
-  cards; shared selector events expose bank, Stop, selector-node, and child-edge
-  evidence before their together-listed files. Character Normal Skill,
+  playable Story-style sound controls. Only Events joined through the exact
+  displayed Gameplay action id and its SkillData or referenced BuffData return
+  to that skill row as exact Event dependencies, not generic playback claims.
+  Decoded BuffData PlaySound actions add exact authored frame
+  windows and stop/fade lifetime where available; activation conditions and
+  Wwise selection remain unresolved. Inferred skill links, animation systems,
+  profile voice, and all enemy audio stay in the final detail section. Shared
+  selector events expose bank, Stop, selector-node, and child-edge evidence
+  before their together-listed files. Character Normal Skill,
   Ultimate, and Combo discs preserve the exact element colors authored in
   `CharTypeTable.json`; Normal Attack remains neutral.
 - A skill can legitimately have no separate projectile template. Exact,
@@ -121,7 +126,7 @@ Progression payloads.
 After frontend or data changes:
 
 1. Check export freshness and run the smallest relevant builder.
-2. Smoke-test all six normal pages and the debug-only Mission Pipeline.
+2. Smoke-test all normal pages and the debug-only Mission Pipeline.
 3. Verify Story reset/filter behavior and inline SNS fixtures.
 4. Open a playable character and enemy; check variants, progression,
    projectiles, sounds, and asset links.
