@@ -291,12 +291,42 @@ for (const [key, category] of [
         self.assertIn("row.levelDataHost", source)
         self.assertIn("mp-leveldata-receiver-context", source)
 
+    def test_mission_pipeline_surfaces_typed_mission_area_leveldata_shells(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("order.missionAreaLevelDataReceiverContexts", source)
+        self.assertIn(
+            't("missionAreaLevelDataReceiverContexts")',
+            source,
+        )
+        self.assertIn("row.scopeStatus", source)
+        self.assertIn("row.hostMissionIds", source)
+        self.assertIn("row.levelNums", source)
+        self.assertIn(
+            "activation.missionAreaLevelDataShellContext",
+            source,
+        )
+
     def test_mission_pipeline_surfaces_exact_active_phase_receivers(self) -> None:
         source = MISSION_PIPELINE.read_text(encoding="utf-8")
         self.assertIn("activation.activePhaseReceiverControl", source)
         self.assertIn('t("binaryActivePhaseReceiver")', source)
         self.assertIn("Setup → ActiveBegin → Active(", source)
         self.assertIn("not who selected public Active", source)
+
+    def test_mission_pipeline_surfaces_teleport_finish_correlation_boundary(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("receiver.teleportFinishCorrelations", source)
+        self.assertIn('t("teleportFinishCorrelation")', source)
+        self.assertIn("item.actionIdFilter", source)
+        self.assertIn("item.externalSerializedOccurrenceCount", source)
+        self.assertIn("runtime_only_no_serialized_levelscript_producer", source)
+        self.assertIn('t("teleportFinishCorpusFiles")', source)
+        self.assertIn("item.carrierAudit", source)
+        self.assertIn('t("teleportCarrierAudit")', source)
+        self.assertIn("carrier.signatureMethodCount", source)
+        self.assertIn("carrier.containerPathCount", source)
+        self.assertIn("carrier.directCallsiteCount", source)
+        self.assertIn("initializerStates.zero", source)
 
     def test_mission_pipeline_surfaces_exact_client_active_request_selector(self) -> None:
         source = MISSION_PIPELINE.read_text(encoding="utf-8")
@@ -321,10 +351,46 @@ for (const [key, category] of [
         source = MISSION_PIPELINE.read_text(encoding="utf-8")
         self.assertIn("arm.siblingExclusiveQuestIds", source)
         self.assertIn("arm.storyEvidence", source)
+        self.assertIn("arm.authoredSourceEvidence", source)
         self.assertIn("arm.relatedOriginalFiles", source)
         self.assertIn('t("questForkArmCorridor")', source)
         self.assertIn('t("questForkArmStoryEvidence")', source)
+        self.assertIn('t("questForkArmSourceEvidence")', source)
+        self.assertIn("row.conditionTypes", source)
+        self.assertIn("row.clientActionTypes", source)
+        self.assertIn("row.trackingTypes", source)
         self.assertIn("They do not prove that the server selected the arm", source)
+
+    def test_mission_pipeline_surfaces_static_port_and_detached_controls(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("branches.dialogTreeStaticPortControls", source)
+        self.assertIn("row.portContractStatus", source)
+        self.assertIn("arm.outcomeLabel", source)
+        self.assertIn("arm.runtimeProducerStatus", source)
+        self.assertIn("arm.runtimeProducerEvidence", source)
+        self.assertIn("arm.runtimeDynamicProducerEvidence", source)
+        self.assertIn("row.runtimeDynamicProducerArmCount", source)
+        self.assertIn("row.nativeMethods", source)
+        self.assertIn('t("dialogTreeStaticPortExternal")', source)
+        self.assertIn('t("dialogTreeStaticPortDynamicProducer")', source)
+        self.assertIn("external-result control", source)
+        self.assertIn('row.executionStatus === "detached_serialized_control"', source)
+        self.assertIn('t("dialogTreeDetachedBoundary")', source)
+        self.assertIn("which UI result occurred", source)
+
+    def test_mission_pipeline_surfaces_shared_proxy_candidate_topology(self) -> None:
+        source = MISSION_PIPELINE.read_text(encoding="utf-8")
+        self.assertIn("route.candidateQuestTopology", source)
+        self.assertIn("trackedProxyCandidateTopologyHtml", source)
+        self.assertIn("topology.topologyClass", source)
+        self.assertIn("fork.sharedDownstreamCandidateQuestIds", source)
+        self.assertIn("merge.predecessorQuestIds", source)
+        self.assertIn("topology.relatedOriginalFiles", source)
+        self.assertIn("activeCondIndex", source)
+        self.assertIn('t("trackedProxyNoAssignment")', source)
+        self.assertIn("missionTrackedProxyCandidateTopologyHtml", source)
+        self.assertIn("context.configuredDialogIds", source)
+        self.assertIn("storyCoverage?.trackedProxyCandidateTopology", source)
 
     def test_mission_pipeline_surfaces_exact_empty_levelscript_boundaries(self) -> None:
         source = MISSION_PIPELINE.read_text(encoding="utf-8")

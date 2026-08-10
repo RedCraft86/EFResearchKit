@@ -82,7 +82,18 @@ NPC archetypes are imported as labeled source kits.
   but not read by this hash-pinned constructor. The next dispatch boundary is
   now split exactly: normal views use a six-plane AABB predicate, while
   `cameraType == 0x80` uses a sphere/distance predicate; neither reads view
-  `+0x18`. Retail serializer/deserializer evidence now identifies the formerly
+  `+0x18`. The complete hash-pinned scheduled batch core also has no direct
+  scalar load from that offset. Its separate `state +0x180` input is squared
+  `parentLODBias` and is only forwarded through the core and child-job thunk,
+  not consumed as the view threshold. The complete installed CullView-named
+  internal-call surface is now closed: matrix/planes additions share the same
+  scheduled constructor; dispatch passes the `manager+0x38` view-pointer array
+  directly to the batch loop; that loop, both predicates, fence lookup, and
+  reset do not read `+0x18`. Child views instead use a separate
+  `manager+0x58` array of `0xE8`-byte records. Thus the installed
+  `screenSizeMinimumSquared` field is write-only on this pinned native surface,
+  with no later packet copy or threshold gate. Retail serializer/deserializer
+  evidence now identifies the formerly
   generic 28-byte record exactly as `HGTreeRenderer`, nested under
   `HGTreeInstance.renderers`, with `lodScreenSizeMaxSquared` and
   `lodScreenSizeMinSquared` at `+0x14/+0x18`. The dedicated 729-entry HG
@@ -100,8 +111,95 @@ NPC archetypes are imported as labeled source kits.
   568/569 are `UnregisterTreeBatchGroup` and
   `UnregisterTreeBatchGroupWithHandle`; owner cleanup `0x1810BCE00` iterates
   the same blob and passes record `+0x04` as `batchKey` and `+0x02` as the
-  16-bit handle to `0x181087E00`, closing that registration lifecycle. This
-  loader blob is not the other 24-byte structure used by LOD jobs. The latter
+  16-bit handle to `0x181087E00`, closing that registration lifecycle. The
+  tail is now split by binary behavior. Serialized `renderFlags` at `+0x08`
+  remains mutable, with four particle mode-2/3/4/5 setup variants replacing it
+  with bit 20 and a scheduled callback consuming it. A second independent,
+  hash-pinned route corrects the resource mapping by accounting for the
+  4-byte blob header: `HGMeshRendererData` fields
+  `m_Materials/m_Meshes/m_ShadowProxyMeshes` at native `+0x58/+0x78/+0x98`
+  resolve through singleton Material/GeometryHandle maps at `+0x90/+0xA0`
+  and write runtime record `+0x04/+0x08/+0x0C`. Availability writers
+  `0x181157760/0x181159010` and cleanup use the same three destinations.
+  Consequently record `+0x0C` is specifically the shadow-proxy
+  `GeometryHandle`: owner handle `+0x18` supplies it at
+  `0x181157AD1/0x1811592A0`, cleanup clears it at `0x18115C110`, and callback
+  `0x181064B73` consumes it in a combined masked filter. HG internal-call
+  entries 300/301 name `HGGeometrySystem.GetGeometryHandle/GetMesh`; the
+  hash-pinned slot builder closes bits 0..23 as the slot index and bits 24..31
+  as the 8-bit generation incremented at slot `+0x06`. Installed
+  `HGTreeRender.CreateRendererList` metadata names the upstream UInt32 values
+  `renderFlagsMask/renderFlagsValue/lightModeMask`; binding `0x1801D9D10`, core
+  `0x18107EE40`, and scheduler `0x181080730` preserve them into descriptor
+  `+0x40/+0x44/+0x48`. Callback `0x181064190` receives descriptor `+0x04`, so
+  its `+0x3C/+0x40/+0x44` reads are those exact fields. GeometryHandle is thus
+  intentionally folded into the HGTree renderFlags comparison, not a separate
+  bitfield. The current `GameAssembly.dll` direct-call census closes all seven
+  managed callers: three punctual-shadow paths, Deferred PreZ/GBuffer, ASM
+  static shadows, and both directional CSM builders. Deferred uses
+  mask/value/light-mode `0x500/0x100/0x1`; ASM uses
+  `0x01080100/0x01080100/0x400`. Punctual paths add Opaque to the exact
+  `GetECSRenderFlags` static/dynamic truth table. Directional paths use identical
+  mask/value `m_cascadeRenderFlags[i] | 0x02080100`; the hash-named metadata
+  initializer closes the four results as
+  `0x02180100/0x02280100/0x02480100/0x02880100`. Record `+0x10` is not
+  resource-seeded; common
+  Renderer state sync `0x180432CD0` alone maintains that property-flag word at
+  blob `+0x14`. Dedicated HG
+  internal-call entry 204 names `+0x14` as `enabledLightModes`; wrapper
+  `0x1801EB940` reaches the all-record writer at `0x1810D9110`. Installed
+  IL2CPP metadata closes its argument as `UInt32 lightModeMask` and
+  `HGShaderLightMode` as 31 named pass bits `0..30` (`None=0`). The hash-pinned
+  `Beyond.Gameplay.Factory.PerDrawPassConfig._ParseToHGShaderLightMode` body
+  maps its narrower gameplay enum into those sparse bits, and `Apply` calls
+  the managed wrapper directly at `0x1869F3904`. Native initialization is now
+  closed too: the Renderer base constructor defaults field `+0x250` to
+  `0xFFFFFFFF`; builders `0x18042A130/0x18042AB50` copy it directly to every
+  record `+0x14`, while generic path `0x180BCCB60 -> 0x180BCB760` carries the
+  same value through constructor input `+0x20`. The two HGTree renderer-list
+  callbacks store the requested mask at job `+0x44` and test it against a
+  separate `0x60`-stride renderer-entry word at `+0x1C`. That word is now
+  independently closed: builders `0x18109BE90/0x18109C9D0` clear it, query the
+  renderer material/shader against the exact 31-name `HGShaderLightMode` pass
+  table, and set each supported bit. It is therefore a shader-supported-pass
+  mask, not a projection of runtime record `+0x14`. The direct lookup surface
+  is now bounded: all 53 calls to `0x180424C30` are pinned and partitioned into
+  44 exact `0x7F00` calls across 41 entry CFGs plus nine other-family calls.
+  Width-aware cross-hot/cold CFG taint finds no exact-path record `+0x14` read,
+  non-stack record-base pointer store, record-base return, or address-taken
+  stack spill. Its seven exact-result stack stores are local spills/reloads or
+  reused slots (four `blob+0x00`, three `blob+0x04`); none becomes a nested job
+  descriptor. The six direct `blob+0x04` call escapes are
+  three zero initializers at `0x181CA0040` and three calls to classifier
+  `0x181131FC0`, which reads only record `+0x00`. One additional `blob+0x00`
+  tail path, `0x1810CE280 -> 0x181C9F9A0`, copies the full layout with byte
+  count `4 + 32*(familyMask>>8)`: count, `24*capacity` runtime records, and
+  `8*capacity` LOD pairs. It carries `+0x14` verbatim between exact-family
+  blobs but does not interpret it. HG Factory internal-call entries 198/215
+  name the current/obsolete `CreateBatchedEntities` routes; their hash-pinned
+  copy cores `0x1810CE510/0x1810CEBC0` both call this helper. A third exact component-K /
+  ray-tracing-K grouping consumer at `0x18112A790` reads only record
+  `+0x00/+0x04/+0x08/+0x10`. The apparent callback-A `+0x14` read at the same
+  stride is not this blob: `0x181038D70/0x181038DE0` derive its base from ECS
+  archetype component columns 127/126, and the value is consumed as a float.
+  The other HGTree renderer-list variants do not reveal another route:
+  internal-call entries 564/565/566 (default, child-view, and PreZ) reach cores
+  `0x18107EE40/0x18107FCF0/0x181080190`, which all converge on scheduler
+  `0x181080730` and the same two already inspected callbacks. The actual
+  downstream consumer is instead in the separate GPU-driven renderer path.
+  HG internal-call entries 151/152 and 164/165 identify
+  `GPUDrivenRendererV1/V2` default/PreZ routes; their four cores build
+  `0xA0`-byte jobs, whose callbacks read requested light modes from `+0x54`,
+  select the `0x7F00` ECS renderer column, and reach V1/V2 default/PreZ
+  consumers. Representative consumers `0x1810E87E0/0x1810E9AD0/`
+  `0x1810F58F0/0x1810F6BC0` form a record cursor at base `+0x0C` or `+0x10`,
+  read dword `+0x14`, and advance by `0x18`. They OR this
+  `enabledLightModes` word with candidate-pass `+0x18` and callback-derived
+  flags, then apply `(combinedFlags & job[+0x48]) == job[+0x4C]`; requested
+  light modes are independently tested against candidate-pass `+0x1C` with
+  the request mask at job `+0x54`. The downstream native consumption and its separation from
+  the shader-supported-pass mask are therefore closed for all four routes.
+  This loader blob is not the other 24-byte structure used by LOD jobs. The latter
   is archetype component bit 67: `+0x00` is LOD count, `+0x01/+0x02` are the
   desired and availability-resolved indices, `+0x03` carries transition/output
   history, `+0x04/+0x05` are pending/available LOD masks, `+0x08` is a 64-bit
@@ -113,6 +211,12 @@ NPC archetypes are imported as labeled source kits.
   desired/resolved/history indices, changes pending/available masks to `0/1`,
   and fills readiness bits from the companion renderer/subresource count;
   otherwise it writes sentinel 8 to all three indices and clears readiness.
+  The intervening `+0x06/+0x07` word is now closed as reserved/alignment on
+  the direct accessor-derived surface: all 25 direct calls and 21 logical
+  caller bodies are pinned, no caller gives it a standalone/field-specific
+  access or writes it, and all 1,305,818 serialized instances initialize it
+  to zero. Dword reads rooted at `+0x04` include it physically but only update
+  the lower pending/available bytes.
   It does not produce the LOD count or cumulative range endpoints. Installed
   scripting registration `0x1807EEEE0 -> 0x1807EC5E0` now directly closes
   `::Scripting::UnityEngine::HyperGryph::ECS::HGTreeComponentProxy` to native
@@ -125,12 +229,152 @@ NPC archetypes are imported as labeled source kits.
   maps `HGTreeComponent.get_id` to GameAssembly `0x184DBCEC0`; its exact body
   is `mov eax, 0x50; ret`. `HGTreeComponent` is therefore ID 80/high-qword
   bit 16 (`0x10000`), proving that the component-67 LOD state is a separate,
-  still unnamed native component rather than `HGTreeComponent`. Writer
-  `0x181157760` also closes a second direct-availability initialization path:
+  still unnamed native component rather than `HGTreeComponent`. The similarly
+  named managed `RenderObjectLODInfoComponent.get_id` maps to
+  `0x184D9EC60` and returns 6. A complete installed-metadata/codegen census now
+  pins all 30 `UnityEngine.HyperGryph.ECS` declarations returning `Int32` from
+  `get_id`, all 30 module pointer slots, and all 29 concrete constant-return
+  bodies. Their exposed ID set does not contain 67, so component 67 has no
+  managed name on this shipped surface rather than merely failing the two
+  likely-name checks. Raw 8-byte
+  `global-metadata.dat` defaults now close the separate serialized
+  `StreamingComponentType` enum: `HLODGroup = 1<<11`, `HGTree = 1<<41`, and
+  `Count = 43`. HG internal call 677 binds script converters through
+  `0x1801DFF50 -> 0x181170720`; the native registry constructs exactly 43
+  `0x308`-byte slots, selects one with `bsf(componentTypeMask)`, and requires
+  a non-empty component list whose first entry is Transform. These values are
+  converter bits, not ECS component IDs, so they narrow the component-67
+  search to the native LOD-state type identity rather than either managed name.
+  The native entity lifecycle registry is now closed separately: one
+  `ECSEntityType` record is `0x288` bytes, with ten `0x40`-byte callback
+  slots at `+0x08`. Installed `EntityTransition` metadata names slots 0..9.
+  All 105 calls to installer `0x1811701B0` partition exactly between two
+  hash-pinned `StreamingGameplayManager` constructors (52/53). Both install
+  the same component-67 callbacks for `Render` and `MergedRenderCollider` at
+  `UnloadedToLoading`, `LoadingToLoaded`, `UnloadingToUnloaded`, and
+  `LoadingToUnloaded`; waiting slots 2/7 are unbound. The managed constructor
+  replaces only `Water` and `WaterDecal`, so it does not overwrite either
+  component-67 owner registry. The two teardown paths are now exact too.
+  Callbacks intersect the archetype high mask with `0x7F0`; the complete
+  serialized corpus makes that selection one-hot with exactly one of IDs
+  68..73 beside every component-67 archetype. Their sizes
+  `48/88/168/328/648/1288` are an 8-byte header plus 1/2/4/8/16/32 rows of
+  40 bytes, each holding three source pointers and three resource handles.
+  Transition 6 (`UnloadingToUnloaded`) walks `pending|available` LOD ranges,
+  releases all three handles, clears the mapped Material/main-Mesh/
+  shadow-proxy runtime words, and zeroes both mask bytes; type 9 alone adds
+  merged-render-collider cleanup. Shared transition 8
+  (`LoadingToUnloaded`) walks only pending ranges, releases owner handles,
+  clears only pending byte `+0x04`, and preserves the available byte and
+  mapped runtime words. Code admits selector bit 74, but no serialized ID-74
+  companion or native name is claimed.
+  The paired transition-1 load path is now exact. HG internal calls 273..291
+  name `enableLODStreaming` at state `+0x38`, keep-last-resource at `+0x39`,
+  embedded `LODCrossFadeConfig` at `+0x3C`, and the squared HLOD unload-
+  distance table at `+0x474`; entries 283..291 additionally name dirty-distance,
+  reset, status-query, and pending/load/unload-count controls without yet
+  assigning new native fields. Installed IL2CPP field offsets place config
+  `c1` at embedded `+0x18` and managed component-6
+  `RenderObjectLODInfoComponent.lodCenter` at `+0x00`. Type 9 requests either
+  the terminal LOD or every LOD from the streaming switch. Type 0 requests
+  its single row directly when streaming is disabled; when enabled it gates
+  the request by squared `lodCenter`-to-`c1` distance and an unnamed
+  component-75 HLOD-level byte. Both callbacks acquire the exact
+  Material/Mesh/shadow-proxy-Mesh triplet and append 24-byte
+  source/AssetType/handle descriptors at transition context `+0x58`. The
+  acquire core already performs manager bookkeeping. Outer task
+  `0x181172DD0` combines context `+0x50` deferred entries and `+0x58` direct
+  descriptors into a request batch; poller `0x181172750` retains state 0,
+  publishes ready state 1, and removes state 2 without publishing a resolvable
+  relation. The installed `Streaming load asset %lld failed` resolver path and
+  component fallback close state 2 semantically as load failure. Once pending
+  is empty, the task projects the batch through context
+  `+0x60/+0x68/+0x70` and invokes `LoadingToLoaded`, connecting the requests
+  to the pinned Material/Mesh/shadow-proxy runtime writers and LOD availability
+  updates. Its four direct calls are also closed: one in the grid-load state
+  driver and three entity-set branches in the Streaming gameplay batch update.
+  The next update layer is now separated rather than inferred. HG internal-call
+  entry 614 names `StreamingGameplayManager::Tick_Injected`; its binding jumps
+  to `0x181174750`, whose direct call at `0x18117486A` enters the batch update.
+  Entry 615 names a distinct `TickResource_Injected` core at `0x181174AD0`;
+  it has no direct call to the component-67 transition task or request poller,
+  though indirect participation remains possible. The grid path is driven by
+  a native registered callback: constructor code stores thunk `0x180FC5F10`
+  in global slot `0x1821A87F8`, Unity registration records that slot address,
+  and the hash-pinned chain reaches manager, scene, grid, grid-load driver, then
+  transition task synchronously. The managed host is now closed separately.
+  Virtual `GameSceneManager.Tick` calls `BaseGameScene.Update`, then
+  `DynamicStreamingScene.Update -> TickSystem`. `TickSystem` first invokes
+  `TickResource_Injected` on field `m_gameplayManager` at `+0x20`, then walks
+  `m_validSystems` at `+0x180` through virtual Tick slot 19. `_InitTickStatus`
+  constructs `DynamicSceneEcsSystem` and adds it to `m_systems` at `+0x170`;
+  that slot-19 implementation invokes `Tick_Injected` with batch limit
+  `0x800` when its opaque state `+0x54` equals 2, otherwise `0x100`.
+  The native callback's exact lifecycle phase/thread, the virtual caller/thread
+  above `GameSceneManager.Tick`, the stripped state-2 enum symbol, and standalone
+  component names remain open; an `Update` method name alone is not evidence of
+  Unity main-thread execution.
+  The complete hash-pinned `StreamingSceneManagerScript..ctor` has nine Mono
+  converter bindings (bits 12/14/15/19/25/29/32/33/40) and no HGTree bit-41
+  binding, excluding that static constructor delegate route. A direct installed-VFS
+  export also closes all 117 `HGMeshRendererData` objects in chunk
+  `7064D8E2/B428...chk`: their 1,449 valid descriptors cover IDs
+  `0..11,18,29,44,46,47,48`, with no ID 67 and no layout failures. This
+  excludes the generic serialized renderer-data blob family without naming
+  the remaining native producer. The installed UnityPlayer native descriptor
+  table now closes the top-level serialized class IDs as `HGTree=0x2C9CB981`
+  and `HGTreeData=0x59383C91` (with the two HGMesh IDs as positive controls).
+  AnimeStudio now recognizes those exact IDs and admits explicitly selected
+  generic TypeTree objects into an otherwise minimal AssetMap. One controlled
+  full-StreamingAssets scan produced and re-exported the same 117 unique
+  `HGMeshRendererData` identities but zero `HGTree`/`HGTreeData` objects. The
+  static top-level Unity object surface is therefore excluded. The proprietary
+  `.bytes` route is now substantially narrower too: managed
+  `StreamingSceneV2.Create` reaches dedicated HG icall 621 and native loader
+  `0x18117B200`, with the exact path builder, request callback, and custom
+  interleaved-token LZ4 decoder pinned. All 83 serialized `StreamingMapConfig`
+  roots have matching `StreamingChunkInfo` files. A complete scan of 51,012
+  main Streaming payloads (3,088,714,060 decoded bytes; 3,084,834 union
+  records) finds neither HGTree bit 41 nor HLODGroup bit 11 in tag-1 component
+  vectors. Native dispatch tables identify tag 1 as MonoEntity, tag 2 as
+  native ECS, and tag 3 as Proxy; installed byte-backed enums close all 14
+  `ECSEntityType`, 11 `ProxyEntityType`, and 10 `EntityTransition` values.
+  The exact native callback map proves component 67 is shared by type 0
+  `Render` and type 9 `MergedRenderCollider` across transitions 1/3/6/8.
+  The complete scan counts 34,672 Render records
+  across 1,384 files and 2,576,964 MergedRenderCollider records across 4,720
+  files. Entity ownership is therefore closed. Root fields 6/7 pair native
+  entity-ID groups with archetype descriptions; each description carries
+  8-byte `(int16 componentId, int16 elementSize, uint32 auxiliary)` rows and a
+  serialized initial-data blob. Component 67 is exactly `(67,24)`, and
+  hash-pinned copier `0x1801F95E0` copies each
+  `entityCount*elementSize` slice directly into native ECS storage. Across all
+  83 map scopes, its 1,230,041 distinct entity IDs exactly match the type-0/9
+  owner set. The 1,305,818 serialized occurrences initialize LOD count 1..6,
+  fixed state bytes `8/8/8/0/0`, the `+0x06` reserved word to zero, zero
+  readiness, and 102 cumulative renderer range patterns; repeated map/entity
+  records are byte-identical. Thus the
+  LOD-count/range producer is now closed to original game-binary data rather
+  than a later `ConvertFrom` inference. Only the standalone native component
+  name remains open. All 1,576
+  DynamicStreaming init/stream payloads contain only tag-2 records and no
+  component entry. The 457 dynamic `fb_main` files do contain 2,828
+  `FBDynamicSceneTreeRootComp` rows, but their gameplay identities
+  `EDynamicSystem.Tree=11` and `EDynamicSceneData.TreeRootComp=64` are separate
+  from both serialized HGTree bit 41 and ECS component 67. The compact
+  hash/count evidence is
+  `Generated/OriginalData/CharInfoPresentation/streaming_scene_v2_payload_census.json`.
+  Native entity-type registration core `0x1801FAEC0` now closes each input as
+  an 8-byte row `(int16 id, uint16 size, uint32 cumulativeOffset)`, with
+  component storage beginning at byte 8 and archetype size/offset lookups at
+  `+0x42/+0x44 + 8*rank`. No installed-code immediate encodes `(67, 24)`, so
+  the recovered StreamingSceneV2 descriptor/blob path, rather than a static
+  descriptor constant, supplies the ID-67 row and initial LOD values.
+  Writer `0x181157760` also closes a second direct-availability initialization path:
   it either marks every LOD and companion subresource available or marks only
   the terminal LOD and the exact readiness range selected through the
-  cumulative endpoints. It consumes but still does not produce LOD count or
-  those endpoints. Dispatch
+  cumulative endpoints. It consumes the serialized LOD count/endpoints but
+  does not infer them. Dispatch
   segment `0x181079FB1` selects the recovered LOD job variants. The direct route uses
   `minSquared < distanceSquared <= maxSquared`; the scaled route uses
   `(viewFactor*instanceScale)/max(0.0001,distanceSquared)` and the same
@@ -147,12 +391,9 @@ NPC archetypes are imported as labeled source kits.
   `[0,lodCount-1]`. The
   former index-10320,
   `0x180175A10 -> 0x180A5E320`, and virtual-slot conclusion is retracted: it
-  crossed the HG table boundary into unrelated Animator code. The remaining
-  initially zero loader-record bytes, the component-67 native identity and
-  LOD-count/range producer, the unrelated scheduled consumer of view
-  `+0x18`,
-  any separate
-  `sceneCullingMask` consumer, and zero-threshold pass behavior remain open.
+  crossed the HG table boundary into unrelated Animator code. The standalone
+  component-67 native type name, any separate `sceneCullingMask`
+  consumer, and target-frame survivor rows remain open.
 - Installed `LightBinningXYCS`/`LightBinningZCS` recovery now pins all eight
   D3D11/Vulkan kernel programs plus the exact 28-byte `BinningData` ABI,
   32-pixel/2,048-slice layout, 8x8/64x1 dispatch formulas, and shared light +
@@ -382,11 +623,12 @@ runtime code, or shaders rather than hand-editing generated prefabs.
 
 ## Highest-value next work
 
-1. Recover the actual scheduled renderer/entity consumer of cull-view
-   `screenSizeMinimumSquared` without importing the separate HGTreeRenderer LOD
-   bounds. Resolve the remaining loader-record zero bytes plus the component-67
-   LOD-count/range producer and exact native type-name link. Then recover the retail
-   survivor list at the exact `HGCamera.DoECSCulling` return boundary,
+1. Resolve the exact native type names for component 67, its 68..74
+   companion-capacity family, and component 75 from remaining pure-native
+   descriptor/RTTI registries; lifecycle slots, transition-1 load requests,
+   transition-6/8 teardown, managed layouts, serialized LOD-count/range
+   producer, and HGTree renderer-list filter callers are closed. Then recover
+   the retail survivor list at the exact `HGCamera.DoECSCulling` return boundary,
    starting from the source-closed 18-row authored input and exact
    selected-aspect 17-row authored result while preserving runtime/custom
    carry-in and other display aspects; populate exact shadow, depth, GBuffer,

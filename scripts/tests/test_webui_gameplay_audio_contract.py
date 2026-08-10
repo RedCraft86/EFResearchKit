@@ -90,7 +90,7 @@ assert.equal(merged[0].possibleMediaCount, 2);
 """
         )
 
-    def test_audio_placement_and_lazy_event_contract(self) -> None:
+    def test_audio_placement_and_flat_event_contract(self) -> None:
         source = GAMEPLAY.read_text(encoding="utf-8")
         inline = source.split("  function renderActiveSkillSoundEffects", 1)[1].split(
             "\n  function renderEnemySoundEffects", 1
@@ -110,21 +110,49 @@ assert.equal(merged[0].possibleMediaCount, 2);
             'gp$("#gameplay-detail-body").innerHTML = `${rendered.body || ""}${integrated}${trailingAudio}`;',
             source,
         )
-        self.assertIn('data-gameplay-sfx-list-toggle="${escapeHtml(key)}"', source)
-        self.assertIn('data-gameplay-sfx-play', source)
+        self.assertIn('<audio controls preload="none" src="${escapeHtml(candidate.src)}"></audio>', source)
         self.assertIn('<article class="gameplay-sfx-event">', source)
         self.assertNotIn('<details class="gameplay-sfx-action">', source)
         self.assertNotIn('<details class="gameplay-projectile-audio-phase"><summary><strong>${escapeHtml(gameplaySoundEventName(event.id)', source)
         self.assertNotIn('details[data-gameplay-sfx-src]', source)
         self.assertNotIn('<details class="gameplay-related-sfx">', source)
-        self.assertIn('bindCandidatePlayers(root);', source)
-        self.assertIn('root.querySelectorAll("[data-gameplay-sfx-list-toggle]")', source)
-        self.assertNotIn('bindCandidatePlayers(container);', source)
-        self.assertIn('<template data-gameplay-sfx-list="${escapeHtml(key)}"></template>', source)
+        self.assertNotIn('data-gameplay-sfx-list-toggle', source)
+        self.assertNotIn('data-gameplay-sfx-play', source)
+        self.assertNotIn('data-gameplay-sfx-list', source)
+        self.assertNotIn('bindCandidatePlayers', source)
+        self.assertNotIn('container.querySelectorAll("[data-gameplay-sfx-src]', source)
         self.assertIn('details.addEventListener("toggle"', source)
         self.assertIn("renderGameplaySoundEvidence(event, audio)", source)
         self.assertIn('text("soundPlayBranches")', source)
         self.assertIn("selectorEvidence.containers", source)
+
+    def test_related_audio_uses_flat_event_cards_and_keeps_action_labels(self) -> None:
+        source = GAMEPLAY.read_text(encoding="utf-8")
+        groups = source.split("  function renderGameplaySoundActionGroups", 1)[1].split(
+            "\n  function gameplayResolvedSoundEvents", 1
+        )[0]
+        related = source.split("  function renderGameplaySoundGroup", 1)[1].split(
+            "\n  function renderCharacterSkillSounds", 1
+        )[0]
+        self.assertIn(
+            'renderGameplaySoundEvents(group.events, { showActionLabel: true })',
+            groups,
+        )
+        self.assertNotIn('<section class="gameplay-sfx-action">', groups)
+        self.assertNotIn("flattenGroups: true", related)
+        self.assertIn("gameplay-sfx-inline", related)
+        self.assertIn(".filter(gameplaySoundHasExactSkillTrigger)", source)
+
+    def test_gameplay_audio_counts_associations_and_unique_files_separately(self) -> None:
+        source = GAMEPLAY.read_text(encoding="utf-8")
+        count = source.split("  function gameplaySoundCountText", 1)[1].split(
+            "\n  function gameplaySoundIsSharedAnimation", 1
+        )[0]
+        self.assertIn("const mediaKeys = new Set();", count)
+        self.assertIn("soundUniqueFiles", count)
+        labels = (ROOT / "webui" / "src" / "features" / "gameplay" / "labels.js").read_text(encoding="utf-8")
+        self.assertIn("possible media associations", labels)
+        self.assertIn("unique decoded files", labels)
 
 
 if __name__ == "__main__":

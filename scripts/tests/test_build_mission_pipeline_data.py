@@ -649,16 +649,26 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             }), encoding="utf-8")
             levelscript = original_root / "levelscript.json"
             levelscript.write_text("{}", encoding="utf-8")
+            leveldata = original_root / "leveldata.json"
+            leveldata.write_text('{"task":1}', encoding="utf-8")
             dialog_tree = original_root / "dialog_tree.json"
             dialog_tree.write_text('{"tree":1}', encoding="utf-8")
             mission_source = original_root / "m1.json"
-            mission_source.write_text('{"missionId":"m1"}', encoding="utf-8")
+            mission_source.write_text(json.dumps({
+                "missionId": "m1",
+                "questDic": {
+                    "m1_q#1": {},
+                    "m1_q#2": {},
+                    "m1_q#3": {},
+                },
+            }), encoding="utf-8")
             topology = pipeline.build_quest_fork_semantics([
                 {"id": "m1_q#1", "successors": ["m1_q#2", "m1_q#3"], "prev": []},
                 {"id": "m1_q#2", "successors": [], "prev": ["m1_q#1"]},
                 {"id": "m1_q#3", "successors": [], "prev": ["m1_q#1"]},
             ], mission_source)
             mission_payload = {
+                "mission": {"source": mission_source.relative_to(root).as_posix()},
                 "questTopology": topology,
                 "nodes": [
                     {
@@ -666,6 +676,14 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                     },
                     {
                         "id": "m1_q#2",
+                        "levelScriptTaskDependencies": [{
+                            "relatedOriginalFiles": [{
+                                "kind": "level_data",
+                                "relationship": "exact_task_carrier",
+                                "sourceFile": leveldata.relative_to(root).as_posix(),
+                                "sha256": hashlib.sha256(leveldata.read_bytes()).hexdigest(),
+                            }],
+                        }],
                         "dialogTreeDefinitions": [{
                             "sceneKey": "dlg_m1_1",
                             "sourceFile": dialog_tree.relative_to(root).as_posix(),
@@ -745,12 +763,96 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 [row["key"] for row in arms[0]["storyEvidence"]],
                 ["dlg_m1_1", "radio_m1_1"],
             )
-            self.assertEqual(len(arms[0]["relatedOriginalFiles"]), 2)
+            self.assertEqual(len(arms[0]["relatedOriginalFiles"]), 4)
             self.assertTrue(all(row["sha256"] for row in arms[0]["relatedOriginalFiles"]))
+            self.assertEqual(result["counts"]["armsWithRelatedOriginalFiles"], 2)
+            self.assertEqual(result["counts"]["authoredQuestSourcePlacements"], 2)
+            self.assertEqual(
+                arms[0]["authoredSourceEvidence"][0]["questId"],
+                "m1_q#2",
+            )
+            self.assertIn(
+                "mission_runtime_quest_definition",
+                arms[0]["authoredSourceEvidence"][0]["evidenceKinds"],
+            )
+            self.assertIn(
+                "exact_task_carrier",
+                arms[0]["authoredSourceEvidence"][0]["evidenceKinds"],
+            )
+            self.assertEqual(len(arms[1]["relatedOriginalFiles"]), 1)
             self.assertFalse(result["evidencePolicy"]["usesOcrOrManualOrder"])
             self.assertEqual(
                 published["storyOrder"]["branches"]["questForks"][0],
                 published["questTopology"]["forks"][0],
+            )
+
+    def test_publish_quest_fork_arm_evidence_fails_closed_for_missing_original_quest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output_root = root / "webui" / "data" / "mission_pipeline"
+            mission_root = output_root / "missions"
+            sidecar_root = root / "webui" / "data" / "lang" / "CN" / "mission"
+            report_root = root / "reports" / "mission_order"
+            original_root = root / "export_full" / "structured"
+            mission_root.mkdir(parents=True)
+            sidecar_root.mkdir(parents=True)
+            report_root.mkdir(parents=True)
+            original_root.mkdir(parents=True)
+            action_audit = report_root / "action_names.json"
+            action_audit.write_text('{"metadata":{}}', encoding="utf-8")
+            mission_source = original_root / "m1.json"
+            mission_source.write_text(json.dumps({
+                "missionId": "m1",
+                "questDic": {"m1_q#1": {}, "m1_q#2": {}},
+            }), encoding="utf-8")
+            topology = pipeline.build_quest_fork_semantics([
+                {"id": "m1_q#1", "successors": ["m1_q#2", "m1_q#3"], "prev": []},
+                {"id": "m1_q#2", "successors": [], "prev": ["m1_q#1"]},
+                {"id": "m1_q#3", "successors": [], "prev": ["m1_q#1"]},
+            ], mission_source)
+            (mission_root / "m1.json").write_text(json.dumps({
+                "mission": {"source": mission_source.relative_to(root).as_posix()},
+                "questTopology": topology,
+                "nodes": [{"id": quest_id} for quest_id in (
+                    "m1_q#1", "m1_q#2", "m1_q#3"
+                )],
+            }), encoding="utf-8")
+            (sidecar_root / "m1.json").write_text(json.dumps({
+                "flow": {"quests": [
+                    {"id": quest_id, "storyConnections": []}
+                    for quest_id in ("m1_q#1", "m1_q#2", "m1_q#3")
+                ]},
+            }), encoding="utf-8")
+            audit_contract = {
+                "status": "validated",
+                "sourceFile": action_audit.relative_to(root).as_posix(),
+                "sourceSha256": hashlib.sha256(action_audit.read_bytes()).hexdigest().upper(),
+            }
+            with patch.object(pipeline, "ROOT", root), patch.object(
+                pipeline, "ACTIONBASE_FORMATTER_NAME_AUDIT", audit_contract
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    r"validator=quest_fork_arm_evidence gate=corridorQuestsInOriginalQuestDic .*actual=\['m1_q#3'\]",
+                ):
+                    pipeline.publish_quest_fork_arm_evidence(
+                        {"missions": [{"id": "m1", "file": "missions/m1.json"}]},
+                        output_root,
+                        root / "webui" / "data" / "lang",
+                        "CN",
+                    )
+            failed_index = json.loads(
+                (output_root / "index.json").read_text(encoding="utf-8")
+            )
+            validation = failed_index["questForkArmEvidence"]["validation"]
+            self.assertEqual(validation["status"], "validation_failed")
+            self.assertEqual(
+                validation["failures"][0]["gate"],
+                "corridorQuestsInOriginalQuestDic",
+            )
+            self.assertEqual(
+                validation["failures"][0]["sourceHashes"]["missionRuntimeSha256"],
+                hashlib.sha256(mission_source.read_bytes()).hexdigest(),
             )
 
     def test_publish_quest_fork_arm_evidence_fails_closed_for_missing_sidecar(self):
@@ -3586,6 +3688,237 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         )
         self.assertIs(route["clientRequest"], False)
 
+    def test_tracked_proxy_topology_generalizes_nested_fork_and_merge(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = (
+                Path(temporary)
+                / "MissionRuntimeAsset"
+                / "future_arbitrary_mission.json"
+            )
+            source.parent.mkdir(parents=True)
+            source.write_text('{"original":true}', encoding="utf-8")
+            game_assembly = Path(temporary) / "GameAssembly.dll"
+            game_assembly.write_bytes(b"fixture game assembly")
+            row = {
+                "key": "dlg_future_arbitrary_7",
+                "relation": (
+                    "unique_mission_tracked_npc_proxy_dialog_context"
+                ),
+                "npcProxyId": "future_proxy_any_name",
+                "candidateQuestIds": [
+                    "future_arbitrary_q#left",
+                    "future_arbitrary_q#right",
+                    "future_arbitrary_q#merge",
+                ],
+                "sourceFiles": [str(source)],
+                "nativeMappingId": "fixture-generic-selector",
+                "gameAssemblySha256": pipeline.sha256_path(game_assembly),
+            }
+            flow = {"quests": [
+                {"id": "future_arbitrary_q#root", "prev": []},
+                {
+                    "id": "future_arbitrary_q#arm_a",
+                    "prev": ["future_arbitrary_q#root"],
+                },
+                {
+                    "id": "future_arbitrary_q#arm_b",
+                    "prev": ["future_arbitrary_q#root"],
+                },
+                {
+                    "id": "future_arbitrary_q#left",
+                    "prev": ["future_arbitrary_q#arm_a"],
+                },
+                {
+                    "id": "future_arbitrary_q#right",
+                    "prev": ["future_arbitrary_q#arm_b"],
+                },
+                {
+                    "id": "future_arbitrary_q#merge",
+                    "prev": [
+                        "future_arbitrary_q#left",
+                        "future_arbitrary_q#right",
+                    ],
+                },
+            ]}
+
+            topology, failures = (
+                pipeline.build_tracked_proxy_candidate_quest_topology(
+                    row,
+                    flow,
+                    mission_id="future_arbitrary",
+                    game_assembly_path=game_assembly,
+                )
+            )
+
+        self.assertEqual([], failures)
+        self.assertEqual("candidate_partial_order", topology["topologyClass"])
+        self.assertTrue(topology["spansAuthoredForkArms"])
+        self.assertTrue(topology["intersectsAuthoredMerge"])
+        self.assertEqual(
+            [
+                [
+                    "future_arbitrary_q#left",
+                    "future_arbitrary_q#right",
+                ],
+            ],
+            topology["incomparablePairs"],
+        )
+        fork = topology["forks"][0]
+        self.assertTrue(fork["spansMultipleArms"])
+        self.assertEqual(
+            ["future_arbitrary_q#left"],
+            fork["arms"][0]["candidateQuestIds"],
+        )
+        self.assertEqual(
+            ["future_arbitrary_q#right"],
+            fork["arms"][1]["candidateQuestIds"],
+        )
+        self.assertTrue(topology["merges"][0]["mergeQuestIsCandidate"])
+        self.assertFalse(topology["branchSelectionEvidence"])
+        self.assertFalse(topology["storyOrderEvidence"])
+        self.assertRegex(
+            topology["relatedOriginalFiles"][0]["sha256"],
+            r"^[0-9a-f]{64}$",
+        )
+
+    def test_tracked_proxy_topology_fails_closed_on_missing_candidate(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "MissionRuntimeAsset" / "m.json"
+            source.parent.mkdir(parents=True)
+            source.write_text("{}", encoding="utf-8")
+            game_assembly = Path(temporary) / "GameAssembly.dll"
+            game_assembly.write_bytes(b"fixture game assembly")
+            topology, failures = (
+                pipeline.build_tracked_proxy_candidate_quest_topology(
+                    {
+                        "key": "dlg_future_1",
+                        "relation": (
+                            "unique_mission_tracked_npc_proxy_dialog_context"
+                        ),
+                        "npcProxyId": "proxy_future",
+                        "candidateQuestIds": ["future_q#missing"],
+                        "sourceFiles": [str(source)],
+                        "gameAssemblySha256": pipeline.sha256_path(
+                            game_assembly
+                        ),
+                    },
+                    {"quests": [{"id": "future_q#1", "prev": []}]},
+                    mission_id="future",
+                    game_assembly_path=game_assembly,
+                )
+            )
+
+        self.assertIsNone(topology)
+        failure = next(
+            row for row in failures
+            if row["gate"] == "allCandidateQuestsResolve"
+        )
+        self.assertEqual("future", failure["mission"])
+        self.assertEqual("dlg_future_1", failure["storyKey"])
+        self.assertEqual(["future_q#missing"], failure["actual"])
+        self.assertRegex(
+            failure["sourceHashes"]["missionRuntimeSha256"],
+            r"^[0-9a-f]{64}$",
+        )
+
+    def test_tracked_proxy_topology_fails_closed_on_quest_cycle(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "MissionRuntimeAsset" / "m.json"
+            source.parent.mkdir(parents=True)
+            source.write_text("{}", encoding="utf-8")
+            game_assembly = Path(temporary) / "GameAssembly.dll"
+            game_assembly.write_bytes(b"fixture game assembly")
+            topology, failures = (
+                pipeline.build_tracked_proxy_candidate_quest_topology(
+                    {
+                        "key": "dlg_cycle_1",
+                        "relation": (
+                            "unique_mission_tracked_npc_proxy_dialog_context"
+                        ),
+                        "npcProxyId": "proxy_cycle",
+                        "candidateQuestIds": ["cycle_q#1"],
+                        "sourceFiles": [str(source)],
+                        "gameAssemblySha256": pipeline.sha256_path(
+                            game_assembly
+                        ),
+                    },
+                    {"quests": [
+                        {"id": "cycle_q#1", "prev": ["cycle_q#2"]},
+                        {"id": "cycle_q#2", "prev": ["cycle_q#1"]},
+                    ]},
+                    mission_id="cycle",
+                    game_assembly_path=game_assembly,
+                )
+            )
+
+        self.assertIsNone(topology)
+        self.assertIn("acyclicQuestGraph", {
+            failure["gate"] for failure in failures
+        })
+
+    def test_tracked_proxy_topology_fails_closed_on_binary_hash_drift(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "MissionRuntimeAsset" / "m.json"
+            source.parent.mkdir(parents=True)
+            source.write_text("{}", encoding="utf-8")
+            game_assembly = Path(temporary) / "GameAssembly.dll"
+            game_assembly.write_bytes(b"current binary")
+            topology, failures = (
+                pipeline.build_tracked_proxy_candidate_quest_topology(
+                    {
+                        "key": "dlg_hash_1",
+                        "relation": (
+                            "unique_mission_tracked_npc_proxy_dialog_context"
+                        ),
+                        "npcProxyId": "proxy_hash",
+                        "candidateQuestIds": ["hash_q#1"],
+                        "sourceFiles": [str(source)],
+                        "gameAssemblySha256": "d" * 64,
+                    },
+                    {"quests": [{"id": "hash_q#1", "prev": []}]},
+                    mission_id="hash",
+                    game_assembly_path=game_assembly,
+                )
+            )
+
+        self.assertIsNone(topology)
+        failure = next(
+            row for row in failures
+            if row["gate"] == "gameAssemblySourceHashMatches"
+        )
+        self.assertEqual("d" * 64, failure["expected"])
+        self.assertRegex(failure["actual"], r"^[0-9a-f]{64}$")
+
+    def test_tracked_proxy_topology_keeps_definitionless_dialog_ids(self):
+        contexts = {}
+        topology = {
+            "status": "validated",
+            "candidateQuestIds": ["future_q#1"],
+            "topologyClass": "single_candidate",
+        }
+        common = {
+            "npcProxyId": "future_proxy",
+            "configuredDialogIds": [
+                "dlg_future_exported",
+                "dlg_future_definitionless",
+            ],
+        }
+        for key in common["configuredDialogIds"]:
+            pipeline.record_tracked_proxy_candidate_topology(
+                contexts,
+                topology,
+                {**common, "key": key},
+                mission_id="future",
+            )
+
+        self.assertEqual(1, len(contexts))
+        context = next(iter(contexts.values()))
+        self.assertEqual(
+            common["configuredDialogIds"],
+            context["configuredDialogIds"],
+        )
+        self.assertEqual(common["configuredDialogIds"], context["storyKeys"])
+
     def test_trigger_route_preserves_definition_only_horn_context(self):
         row = {
             "key": "dlg_testm1_11",
@@ -4011,9 +4344,30 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             "missionlessNativeRuntimeNodes": [receiver],
         }
         writes = []
+        frontier_report = {
+            "structuredIdentityCarrierCensus": {
+                "validation": {"status": "validated"}
+            },
+            "missionAreaLevelDataShellCensus": {
+                "validation": {"status": "validated"}
+            },
+            "teleportFinishCorrelationCensus": {
+                "validation": {"status": "validated"}
+            },
+        }
         with patch.object(pipeline, "parse_args", return_value=args), \
              patch.object(pipeline, "build_all", return_value=index), \
              patch.object(pipeline, "build_story_binding_coverage", return_value=coverage), \
+             patch.object(
+                 pipeline,
+                 "build_native_receiver_activation_frontier_report",
+                 return_value=frontier_report,
+             ), \
+             patch.object(
+                 pipeline,
+                 "publish_native_receiver_activation_frontier",
+                 return_value=0,
+             ), \
              patch.object(pipeline, "write_json", side_effect=lambda path, data: writes.append((path, data))):
             self.assertEqual(pipeline.main(), 0)
         self.assertEqual(writes[-1][1]["storyCoverage"]["missionlessNativeRuntimeNodes"], [receiver])
@@ -5532,18 +5886,29 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertIn("separate native inbound handler", trigger_done["effect"])
 
     def test_teleport_param_contract_rejects_unused_mission_script_carrier(self):
-        contract = pipeline.RUNTIME_CONTRACT["teleportMissionScriptCarrier"]
+        contract = pipeline.load_native_teleport_param_carrier_contract()
         self.assertEqual(contract["type"], "Beyond.Gameplay.TeleportParam")
         self.assertEqual(contract["size"], "0x38")
         self.assertEqual(contract["layout"]["missionId"], "0x18")
         self.assertEqual(contract["layout"]["levelScriptId"], "0x20")
-        self.assertEqual(contract["directCallerCensus"]["GameLevelLoader.OpenLevel"], 2)
+        self.assertEqual(contract["metadataSignatureMethodCount"], 15)
+        self.assertEqual(contract["containerPathCount"], 10)
+        self.assertEqual(contract["focusFieldAccessCount"], 23)
         self.assertEqual(
-            contract["directCallerCensus"]["GameLevelLoader.LoadAtPosInCurrentMap"],
+            contract["directCallerCensus"][
+                "Beyond.Gameplay.Core.GameLevelLoader.OpenLevel"
+            ],
+            1,
+        )
+        self.assertEqual(
+            contract["directCallerCensus"][
+                "Beyond.Gameplay.Core.GameLevelLoader.LoadAtPosInCurrentMap"
+            ],
             2,
         )
-        self.assertIn("no audited producer co-populates", contract["producerFinding"])
-        self.assertIn("No audited current consumer reads missionId", contract["consumerFinding"])
+        self.assertIn("No nonzero direct AOT originator", contract["producerFinding"])
+        self.assertIn("does not read missionId", contract["consumerFinding"])
+        self.assertEqual(contract["validation"]["status"], "validated")
         self.assertEqual(contract["storyBindingsAdded"], 0)
         self.assertEqual(contract["confidence"], "native_proven_bounded")
         native = next(

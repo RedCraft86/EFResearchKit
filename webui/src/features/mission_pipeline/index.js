@@ -526,6 +526,24 @@
       nativeReceiverStoryContextsHint: "These rows are exact LevelScript receiver-to-Story paths whose Story keys intersect this mission's published nodes. The original binary-backed activation contract and related files are attached for inspection; this is not mission ownership, activation selection, branch choice, or Story order evidence.",
       nativeReceiverStoryMissionKeys: "mission Story keys",
       nativeReceiverStoryExternalKeys: "external Story keys",
+      teleportFinishCorrelation: "Teleport-finish runtime correlation",
+      teleportFinishRuntimeOnly: "no serialized LevelScript producer",
+      teleportFinishExternalOccurrences: "external serialized occurrences",
+      teleportFinishActionCandidates: "action candidates",
+      teleportFinishCorpusFiles: "corpus files",
+      teleportFinishCorpusListeners: "typed listeners",
+      teleportFinishCorpusFilters: "distinct filters",
+      teleportCarrierAudit: "generic native carrier audit",
+      teleportCarrierSignatureMethods: "signature methods",
+      teleportCarrierPaths: "nested carrier paths",
+      teleportCarrierCallsites: "direct callsites",
+      teleportCarrierZeroInitializers: "zero-initialized direct arguments",
+      missionAreaLevelDataReceiverContexts: "Typed MissionArea LevelData receiver shells",
+      missionAreaLevelDataReceiverContextsHint: "A typed MissionRuntime (sceneId, area id) selects LevelBasicInfoTable.idNum, then the exact level-specific MissionAreaTable parent in the same validated LevelData dictionary as this receiver. Unique and shared mission unions are shown exactly; these rows are shell context, not activation, Story ownership, branch selection, or order evidence.",
+      missionAreaLevelDataReceiverScope: "complete shell union",
+      missionAreaLevelDataReceiverAreas: "MissionArea ids",
+      missionAreaLevelDataReceiverLevelNums: "LevelBasic idNum",
+      missionAreaLevelDataReceiverRoots: "sub-data parent roots",
       missionNamedLevelDataReceiverContexts: "Mission-named LevelData receiver contexts",
       missionNamedLevelDataReceiverContextsHint: "The exact LevelData filename names this mission and its validated typed dictionary contains the receiver script. This attaches original files as authored container context only; it does not prove activation, ownership, playback, branch selection, or Story order.",
       missionNamedLevelDataReceiverBoundary: "Mission-named LevelData container context only",
@@ -572,6 +590,20 @@
       dialogTreeIfArm: "If arm",
       dialogTreeIfCount: "binary DialogTree IfNodes",
       dialogTreeIfBoundary: "This is internal condition-selection evidence with original files; it does not prove mission trigger, ownership, cross-file order, or chronology.",
+      dialogTreeStaticPortControl: "DialogTree external-result control",
+      dialogTreeStaticPortArm: "result arm",
+      dialogTreeStaticPortCount: "native static-port controls",
+      dialogTreeStaticPortNamed: "installed named ports",
+      dialogTreeStaticPortUnlabeled: "ordinal-only external results",
+      dialogTreeStaticPortProduced: "current shipped producer",
+      dialogTreeStaticPortDynamicProducer: "dynamic producer; arm index not statically bounded",
+      dialogTreeStaticPortNoProducer: "no current shipped producer found",
+      dialogTreeStaticPortRouter: "complete shipped Lua result router validated",
+      dialogTreeStaticPortProducerEvidence: "producer source",
+      dialogTreeStaticPortExternal: "Actual UI result not observed",
+      dialogTreeStaticPortBoundary: "The original binary, metadata, and complete shipped Lua corpus prove the authored result-port order and current producer paths. They do not show which UI result occurred, assign mission ownership, prove activation, or order sibling Story files. A missing current producer is not a claim of permanent unreachability.",
+      dialogTreeDetachedControl: "Detached serialized control",
+      dialogTreeDetachedBoundary: "This source definition has no serialized identity or outgoing connection, so it is not a live branch and contributes no selection or order edge.",
       dialogTimelineBinaryContract: "Original-binary Timeline option contract",
       dialogTimelineValidation: "binary validation",
       dialogTimelineBinaryCount: "binary Timeline option groups",
@@ -599,6 +631,8 @@
       structuredIdentityReceiverMatches: "receiver matches / unreviewed shapes",
       questForkArmCorridor: "sibling-exclusive quest corridor",
       questForkArmStoryEvidence: "exact related Story evidence",
+      questForkArmSourceEvidence: "exact authored arm source",
+      questForkArmSourceFiles: "validated files",
       questForkArmOriginalFiles: "arm-related original files",
       questForkArmEvidenceBoundary: "These files and Story relations occur on quests reachable only from this sibling arm. They do not prove that the server selected the arm or that sibling arms are mutually exclusive.",
       questForkServerPolicy: "server activation unresolved",
@@ -902,6 +936,21 @@
       triggerPlaybackAlias: "root playback alias · owner unresolved",
       triggerPlaybackAliasConnected: "root playback alias · owner connected",
       triggerDefinition: "definition only · no consumer",
+      trackedProxyTopology: "Authored candidate-quest topology",
+      trackedProxyTopologySingle: "single candidate",
+      trackedProxyTopologyChain: "candidate chain",
+      trackedProxyTopologyAntichain: "candidate antichain",
+      trackedProxyTopologyPartial: "candidate partial order",
+      trackedProxyCandidates: "candidate quests",
+      trackedProxyFork: "authored fork corridor",
+      trackedProxyArm: "sibling arm",
+      trackedProxyShared: "shared downstream candidates",
+      trackedProxyMerge: "authored merge",
+      trackedProxyBinaryBoundary: "Binary selector boundary",
+      trackedProxyNoAssignment: "No configured dialog is assigned to a quest or fork arm.",
+      trackedProxyMissionContexts: "Tracked NPC proxy branch contexts",
+      trackedProxyMissionHint: "All configured rows remain visible, including registered dialog identities without an exported Story definition.",
+      trackedProxyDialogs: "configured dialogs",
       offlineRecoveryBoundary: "Offline recovery boundary",
       projectAuthoredBoundary: "Project-authored WebUI content",
       projectAuthoredEvidence: "Excluded from original-game recovery",
@@ -1750,6 +1799,21 @@
       triggerPlaybackAlias: "\u6839\u64ad\u653e\u522b\u540d \u00b7 \u5f52\u5c5e\u672a\u89e3\u6790",
       triggerPlaybackAliasConnected: "\u6839\u64ad\u653e\u522b\u540d \u00b7 \u5f52\u5c5e\u5df2\u8fde\u63a5",
       triggerDefinition: "\u4ec5\u5b9a\u4e49 \u00b7 \u65e0\u6d88\u8d39\u8005",
+      trackedProxyTopology: "\u5019\u9009\u4efb\u52a1\u7684\u539f\u59cb\u62d3\u6251",
+      trackedProxyTopologySingle: "\u5355\u4e00\u5019\u9009\u4efb\u52a1",
+      trackedProxyTopologyChain: "\u5019\u9009\u4efb\u52a1\u94fe",
+      trackedProxyTopologyAntichain: "\u5019\u9009\u4efb\u52a1\u53cd\u94fe",
+      trackedProxyTopologyPartial: "\u5019\u9009\u4efb\u52a1\u504f\u5e8f",
+      trackedProxyCandidates: "\u5019\u9009\u4efb\u52a1",
+      trackedProxyFork: "\u539f\u59cb\u5206\u652f\u8d70\u5eca",
+      trackedProxyArm: "\u540c\u7ea7\u5206\u652f",
+      trackedProxyShared: "\u5206\u652f\u5171\u4eab\u7684\u4e0b\u6e38\u5019\u9009\u4efb\u52a1",
+      trackedProxyMerge: "\u539f\u59cb\u6c47\u5408",
+      trackedProxyBinaryBoundary: "\u4e8c\u8fdb\u5236\u9009\u62e9\u5668\u8fb9\u754c",
+      trackedProxyNoAssignment: "\u672a\u5c06\u4efb\u4f55\u5df2\u914d\u7f6e\u5bf9\u8bdd\u5206\u914d\u7ed9\u67d0\u4e2a\u4efb\u52a1\u6216\u5206\u652f\u3002",
+      trackedProxyMissionContexts: "\u8ddf\u8e2a NPC \u4ee3\u7406\u7684\u5206\u652f\u4e0a\u4e0b\u6587",
+      trackedProxyMissionHint: "\u4fdd\u7559\u6240\u6709\u5df2\u914d\u7f6e\u884c\uff0c\u5305\u62ec\u5df2\u6ce8\u518c\u4f46\u6ca1\u6709\u5bfc\u51fa Story \u5b9a\u4e49\u7684\u5bf9\u8bdd\u6807\u8bc6\u3002",
+      trackedProxyDialogs: "\u5df2\u914d\u7f6e\u5bf9\u8bdd",
       offlineRecoveryBoundary: "\u79bb\u7ebf\u6062\u590d\u8fb9\u754c",
       projectAuthoredBoundary: "WebUI \u9879\u76ee\u81ea\u5efa\u5185\u5bb9",
       projectAuthoredEvidence: "\u5df2\u4ece\u539f\u59cb\u6e38\u620f\u6062\u590d\u4e2d\u6392\u9664",
@@ -1995,6 +2059,24 @@
       nativeReceiverStoryContextsHint: "\u8fd9\u4e9b\u884c\u662f\u7cbe\u786e LevelScript \u63a5\u6536\u5668\u5230 Story \u8def\u5f84\uff0c\u4e14 Story \u952e\u4e0e\u8be5\u4efb\u52a1\u5df2\u53d1\u5e03\u8282\u70b9\u76f8\u4ea4\u3002\u5df2\u9644\u52a0\u539f\u59cb\u4e8c\u8fdb\u5236\u6fc0\u6d3b\u5408\u7ea6\u4e0e\u76f8\u5173\u6587\u4ef6\u4f9b\u590d\u6838\uff1b\u8fd9\u4e0d\u662f\u4efb\u52a1\u5f52\u5c5e\u3001\u6fc0\u6d3b\u9009\u62e9\u3001\u5206\u652f\u9009\u62e9\u6216 Story \u987a\u5e8f\u8bc1\u636e\u3002",
       nativeReceiverStoryMissionKeys: "\u4efb\u52a1 Story \u952e",
       nativeReceiverStoryExternalKeys: "\u5916\u90e8 Story \u952e",
+      teleportFinishCorrelation: "\u4f20\u9001\u5b8c\u6210\u8fd0\u884c\u65f6\u5173\u8054",
+      teleportFinishRuntimeOnly: "LevelScript \u4e2d\u65e0\u5e8f\u5217\u5316\u751f\u4ea7\u8005",
+      teleportFinishExternalOccurrences: "\u5916\u90e8\u5e8f\u5217\u5316\u51fa\u73b0",
+      teleportFinishActionCandidates: "\u52a8\u4f5c\u5019\u9009",
+      teleportFinishCorpusFiles: "\u5168\u8bed\u6599\u6587\u4ef6",
+      teleportFinishCorpusListeners: "\u7c7b\u578b\u5316\u76d1\u542c\u5668",
+      teleportFinishCorpusFilters: "\u4e0d\u540c\u8fc7\u6ee4\u503c",
+      teleportCarrierAudit: "\u901a\u7528\u539f\u751f\u8f7d\u4f53\u5ba1\u8ba1",
+      teleportCarrierSignatureMethods: "\u7b7e\u540d\u65b9\u6cd5",
+      teleportCarrierPaths: "\u5d4c\u5957\u8f7d\u4f53\u8def\u5f84",
+      teleportCarrierCallsites: "\u76f4\u63a5\u8c03\u7528\u70b9",
+      teleportCarrierZeroInitializers: "\u96f6\u521d\u59cb\u5316\u76f4\u63a5\u53c2\u6570",
+      missionAreaLevelDataReceiverContexts: "\u7c7b\u578b\u5316 MissionArea LevelData \u63a5\u6536\u5668\u4efb\u52a1\u58f3",
+      missionAreaLevelDataReceiverContextsHint: "\u7c7b\u578b\u5316 MissionRuntime (sceneId, \u533a\u57df id) \u5148\u9009\u4e2d LevelBasicInfoTable.idNum\uff0c\u518d\u5230\u8fbe\u4e0e\u8be5\u63a5\u6536\u5668\u540c\u4e00\u5df2\u9a8c\u8bc1 LevelData \u5b57\u5178\u7684\u7cbe\u786e\u5206\u5c42 MissionAreaTable \u7236 id\u3002\u552f\u4e00\u548c\u5171\u4eab\u4efb\u52a1\u96c6\u90fd\u6309\u539f\u6837\u663e\u793a\uff1b\u8fd9\u53ea\u662f\u4efb\u52a1\u58f3\u4e0a\u4e0b\u6587\uff0c\u4e0d\u662f\u6fc0\u6d3b\u3001Story \u5f52\u5c5e\u3001\u5206\u652f\u9009\u62e9\u6216\u987a\u5e8f\u8bc1\u636e\u3002",
+      missionAreaLevelDataReceiverScope: "\u5b8c\u6574\u4efb\u52a1\u58f3\u96c6",
+      missionAreaLevelDataReceiverAreas: "MissionArea id",
+      missionAreaLevelDataReceiverLevelNums: "LevelBasic idNum",
+      missionAreaLevelDataReceiverRoots: "\u5b50\u6570\u636e\u7236\u6839",
       missionNamedLevelDataReceiverContexts: "\u4efb\u52a1\u547d\u540d LevelData \u63a5\u6536\u5668\u4e0a\u4e0b\u6587",
       missionNamedLevelDataReceiverContextsHint: "\u539f\u59cb LevelData \u6587\u4ef6\u540d\u5305\u542b\u8be5\u4efb\u52a1\uff0c\u5176\u7c7b\u578b\u5316\u5b57\u5178\u5305\u542b\u8be5\u63a5\u6536\u5668脚本\u3002\u8fd9\u53ea\u9644\u52a0\u539f\u59cb\u6587\u4ef6\u5bb9\u5668\u4e0a\u4e0b\u6587\uff0c\u4e0d\u8bc1\u660e\u6fc0\u6d3b\u3001\u5f52\u5c5e\u3001\u64ad\u653e\u3001\u5206\u652f\u9009\u62e9\u6216\u5267\u60c5\u987a\u5e8f\u3002",
       missionNamedLevelDataReceiverBoundary: "\u4ec5\u4efb\u52a1\u547d\u540d LevelData \u5bb9\u5668\u4e0a\u4e0b\u6587",
@@ -2041,6 +2123,20 @@
       dialogTreeIfArm: "If \u5206\u652f\u81c2",
       dialogTreeIfCount: "\u4e8c\u8fdb\u5236\u9a8c\u8bc1\u7684 DialogTree If \u8282\u70b9",
       dialogTreeIfBoundary: "\u8fd9\u662f\u5e26\u539f\u59cb\u6587\u4ef6\u7684\u5185\u90e8\u6761\u4ef6\u9009\u62e9\u8bc1\u636e\uff1b\u4e0d\u8bc1\u660e\u4efb\u52a1\u89e6\u53d1\u3001\u5f52\u5c5e\u3001\u8de8\u6587\u4ef6\u987a\u5e8f\u6216\u65f6\u5e8f\u3002",
+      dialogTreeStaticPortControl: "DialogTree \u5916\u90e8\u7ed3\u679c\u63a7\u5236\u8282\u70b9",
+      dialogTreeStaticPortArm: "\u7ed3\u679c\u5206\u652f\u81c2",
+      dialogTreeStaticPortCount: "\u539f\u751f\u9759\u6001\u7aef\u53e3\u63a7\u5236\u8282\u70b9",
+      dialogTreeStaticPortNamed: "\u539f\u59cb\u5ba2\u6237\u7aef\u547d\u540d\u7aef\u53e3",
+      dialogTreeStaticPortUnlabeled: "\u4ec5\u5e8f\u53f7\u7684\u5916\u90e8\u7ed3\u679c",
+      dialogTreeStaticPortProduced: "\u5f53\u524d\u5ba2\u6237\u7aef\u5df2\u6709\u751f\u6210\u8def\u5f84",
+      dialogTreeStaticPortDynamicProducer: "\u5b58\u5728\u52a8\u6001\u751f\u6210\u8def\u5f84\uff0c\u65e0\u6cd5\u9759\u6001\u9650\u5b9a\u5206\u652f\u5e8f\u53f7",
+      dialogTreeStaticPortNoProducer: "\u5f53\u524d\u5ba2\u6237\u7aef\u672a\u627e\u5230\u751f\u6210\u8def\u5f84",
+      dialogTreeStaticPortRouter: "\u5df2\u9a8c\u8bc1\u5b8c\u6574\u5ba2\u6237\u7aef Lua \u7ed3\u679c\u8def\u7531",
+      dialogTreeStaticPortProducerEvidence: "\u751f\u6210\u8def\u5f84\u6e90\u6587\u4ef6",
+      dialogTreeStaticPortExternal: "\u5b9e\u9645 UI \u7ed3\u679c\u4ecd\u672a\u89c2\u6d4b",
+      dialogTreeStaticPortBoundary: "\u539f\u59cb\u4e8c\u8fdb\u5236\u3001\u5143\u6570\u636e\u4e0e\u5b8c\u6574\u5ba2\u6237\u7aef Lua \u8bed\u6599\u8bc1\u660e\u5df2\u521b\u4f5c\u7684\u7ed3\u679c\u7aef\u53e3\u987a\u5e8f\u548c\u5f53\u524d\u751f\u6210\u8def\u5f84\uff1b\u4e0d\u8bc1\u660e\u5b9e\u9645 UI \u7ed3\u679c\u3001\u4efb\u52a1\u5f52\u5c5e\u3001\u6fc0\u6d3b\u6216\u540c\u7ea7 Story \u6587\u4ef6\u987a\u5e8f\u3002\u5f53\u524d\u672a\u627e\u5230\u751f\u6210\u8def\u5f84\u4e0d\u7b49\u4e8e\u6c38\u4e45\u4e0d\u53ef\u8fbe\u3002",
+      dialogTreeDetachedControl: "\u8131\u79bb\u5e8f\u5217\u5316\u63a7\u5236\u8282\u70b9",
+      dialogTreeDetachedBoundary: "\u8be5\u6e90\u5b9a\u4e49\u6ca1\u6709\u5e8f\u5217\u5316\u8eab\u4efd\u6216\u8f93\u51fa\u8fde\u63a5\uff0c\u56e0\u6b64\u4e0d\u662f\u5b9e\u65f6\u5206\u652f\uff0c\u4e5f\u4e0d\u4ea7\u751f\u9009\u62e9\u6216\u987a\u5e8f\u8fb9\u3002",
       dialogTimelineBinaryContract: "\u539f\u59cb\u4e8c\u8fdb\u5236 Timeline \u9009\u9879\u5408\u7ea6",
       dialogTimelineValidation: "\u4e8c\u8fdb\u5236\u9a8c\u8bc1",
       dialogTimelineBinaryCount: "\u4e8c\u8fdb\u5236 Timeline \u9009\u9879\u5206\u652f\u7ec4",
@@ -2068,6 +2164,8 @@
       structuredIdentityReceiverMatches: "\u63a5\u6536\u811a\u672c\u5339\u914d / \u672a\u5ba1\u6838\u5f62\u72b6",
       questForkArmCorridor: "\u540c\u7ea7\u5206\u652f\u72ec\u6709\u4efb\u52a1\u8d70\u5eca",
       questForkArmStoryEvidence: "\u7cbe\u786e\u76f8\u5173 Story \u8bc1\u636e",
+      questForkArmSourceEvidence: "\u7cbe\u786e\u5206\u652f\u81c2\u539f\u59cb\u6765\u6e90",
+      questForkArmSourceFiles: "\u5df2\u9a8c\u8bc1\u6587\u4ef6",
       questForkArmOriginalFiles: "\u5206\u652f\u76f8\u5173\u539f\u59cb\u6587\u4ef6",
       questForkArmEvidenceBoundary: "\u8fd9\u4e9b\u6587\u4ef6\u4e0e Story \u5173\u7cfb\u4f4d\u4e8e\u4ec5\u80fd\u4ece\u8be5\u540c\u7ea7\u5206\u652f\u5230\u8fbe\u7684\u4efb\u52a1\u4e0a\uff1b\u5b83\u4eec\u4e0d\u8bc1\u660e\u670d\u52a1\u7aef\u9009\u4e2d\u4e86\u8be5\u5206\u652f\uff0c\u4e5f\u4e0d\u8bc1\u660e\u540c\u7ea7\u5206\u652f\u4e92\u65a5\u3002",
       questForkServerPolicy: "\u670d\u52a1\u7aef\u542f\u52a8\u7b56\u7565\u672a\u89e3",
@@ -3663,16 +3761,63 @@
     </div>`;
   }
 
+  function trackedProxyCandidateTopologyHtml(topology) {
+    if (!topology || topology.status !== "validated") return "";
+    const classLabel = t(({
+      single_candidate: "trackedProxyTopologySingle",
+      candidate_chain: "trackedProxyTopologyChain",
+      candidate_antichain: "trackedProxyTopologyAntichain",
+      candidate_partial_order: "trackedProxyTopologyPartial",
+    })[topology.topologyClass] || "trackedProxyTopology");
+    const candidates = (topology.candidateQuestIds || [])
+      .map((questId) => `<code>${esc(questId)}</code>`)
+      .join(" ");
+    const forks = (topology.forks || []).map((fork) => {
+      const arms = (fork.arms || []).map((arm) => {
+        const armCandidates = (arm.candidateQuestIds || [])
+          .map((questId) => `<code>${esc(questId)}</code>`)
+          .join(" ");
+        return `<span class="mp-tracked-proxy-arm"><b>${esc(t("trackedProxyArm"))}</b><code>${esc(arm.questId || "?")}</code>${armCandidates ? `<small>${armCandidates}</small>` : ""}</span>`;
+      }).join("");
+      const shared = (fork.sharedDownstreamCandidateQuestIds || [])
+        .map((questId) => `<code>${esc(questId)}</code>`)
+        .join(" ");
+      return `<article class="mp-tracked-proxy-fork${fork.spansMultipleArms ? " is-spanning" : ""}"><header><b>${esc(t("trackedProxyFork"))}</b><code>${esc(fork.questId || "?")}</code></header><div>${arms}</div>${shared ? `<small><strong>${esc(t("trackedProxyShared"))}:</strong> ${shared}</small>` : ""}</article>`;
+    }).join("");
+    const merges = (topology.merges || []).map((merge) => (
+      `<span class="mp-tracked-proxy-merge"><b>${esc(t("trackedProxyMerge"))}</b><code>${esc(merge.questId || "?")}</code><small>${(merge.predecessorQuestIds || []).map((questId) => `<code>${esc(questId)}</code>`).join(" ")}</small></span>`
+    )).join("");
+    const selector = topology.binarySelector || {};
+    const originalFiles = (topology.relatedOriginalFiles || []).map((file) => (
+      `<small><code>${esc(file.kind || "original file")}</code> <code>${esc(file.sourceFile || "?")}</code>${file.sha256 ? ` / SHA-256 <code>${esc(file.sha256)}</code>` : ""}</small>`
+    )).join("");
+    return `<section class="mp-tracked-proxy-topology">
+      <header><strong>${esc(t("trackedProxyTopology"))}</strong><span>${esc(classLabel)}</span></header>
+      <p><b>${esc(t("trackedProxyCandidates"))}:</b> ${candidates}</p>
+      ${forks ? `<div class="mp-tracked-proxy-forks">${forks}</div>` : ""}
+      ${merges ? `<div class="mp-tracked-proxy-merges">${merges}</div>` : ""}
+      <p><b>${esc(t("trackedProxyBinaryBoundary"))}:</b> <code>activeCondIndex</code> &rarr; <code>NpcProxyEx.dialogId</code> · <code>questId</code> &rarr; quest state</p>
+      <p>${(selector.serverStateMessages || []).map((message) => `<code>${esc(message)}</code>`).join(" ")} ${(selector.selectorFields || []).map((field) => `<code>${esc(field)}</code>`).join(" ")}</p>
+      ${selector.mappingId || selector.gameAssemblySha256 ? `<small><code>${esc(selector.mappingId || "binary mapping")}</code>${selector.gameAssemblySha256 ? ` / GameAssembly SHA-256 <code>${esc(selector.gameAssemblySha256)}</code>` : ""}</small>` : ""}
+      <small>${esc(topology.evidenceBoundary || t("trackedProxyNoAssignment"))}</small>
+      ${originalFiles ? `<div class="mp-tracked-proxy-files">${originalFiles}</div>` : ""}
+    </section>`;
+  }
+
   function triggerRouteHtml(route) {
     const steps = (route.steps || []).filter((step) => step && step.kind);
     const paths = (route.nativePaths || []).filter(Boolean);
     const producers = (route.nativeCinematicProducerRoutes || []).filter(Boolean);
     const sources = (route.sourceFiles || []).filter(Boolean);
+    const candidateTopology = trackedProxyCandidateTopologyHtml(
+      route.candidateQuestTopology,
+    );
     if (!steps.length) return "";
     return `<div class="mp-trigger-route is-${esc(route.causality || "context")}">
       <header><strong>${esc(t("triggerRoute"))}</strong><span>${esc(triggerCausalityLabel(route.causality))}</span>${route.controlPathCount ? `<b>${esc(route.controlPathCount)} ${esc(t("triggerExactPaths"))}</b>` : ""}</header>
       <div class="mp-trigger-chain">${steps.map((step, index) => `${index ? '<i aria-hidden="true">&rarr;</i>' : ""}${triggerStepHtml(step)}`).join("")}</div>
       ${paths.length ? `<section class="mp-trigger-events"><header><strong>${esc(t("triggerEvents"))}</strong><small>${esc(t("triggerEventsHint"))}</small></header><div>${paths.map(nativePathHtml).join("")}</div></section>` : ""}
+      ${candidateTopology}
       ${producers.length ? `<small><strong>${esc(t("cinematicProducer"))}:</strong> ${producers.map((row) => `<code>${esc(`${row.actionType || "action"}::${row.actionMethod || "?"} -> ${row.producerType || "producer"}::${row.producerMethod || "?"}`)}</code>`).join(" ")}</small>` : ""}
       ${sources.length ? `<small><strong>${esc(t("source"))}:</strong> ${sources.map((source) => `<code>${esc(source)}</code>`).join(" ")}</small>` : ""}
     </div>`;
@@ -3869,6 +4014,22 @@
       state.index?.storyCoverage?.timelineEmbeddedStoryRuntimeAudit?.configurationContexts || []
     ).filter((context) => String(context?.missionId || "") === missionId);
     return timelineConfigurationContextsHtml(contexts, { missionSummary: true });
+  }
+
+  function missionTrackedProxyCandidateTopologyHtml() {
+    const missionId = String(state.missionId || state.mission?.mission?.id || "");
+    const audit = state.index?.storyCoverage?.trackedProxyCandidateTopology || {};
+    const contexts = (audit.rows || []).filter((row) => (
+      row?.status === "validated" && String(row.missionId || "") === missionId
+    ));
+    if (!contexts.length) return "";
+    const cards = contexts.map((context) => {
+      const dialogs = (context.configuredDialogIds || context.storyKeys || [])
+        .map((key) => `<code>${esc(key)}</code>`)
+        .join(" ");
+      return `<article class="mp-tracked-proxy-context"><header><code>${esc(context.npcProxyId || "?")}</code><b>${esc(context.topologyClass || "candidate topology")}</b></header>${dialogs ? `<p><strong>${esc(t("trackedProxyDialogs"))}:</strong> ${dialogs}</p>` : ""}${trackedProxyCandidateTopologyHtml(context)}</article>`;
+    }).join("");
+    return `<details class="mp-mission-story mp-tracked-proxy-contexts" data-weight="context" open><summary>${esc(t("trackedProxyMissionContexts"))} <span>${contexts.length}</span></summary><p>${esc(t("trackedProxyMissionHint"))}</p>${cards}</details>`;
   }
 
   function missionStateDependenciesHtml() {
@@ -4313,6 +4474,7 @@
       const guard = arm.failedCondition || null;
       const corridor = arm.siblingExclusiveQuestIds || [];
       const storyEvidence = arm.storyEvidence || [];
+      const branchSourceEvidence = arm.authoredSourceEvidence || [];
       const relatedOriginalFiles = arm.relatedOriginalFiles || [];
       const questTypeName = questTypeNames.get(Number(arm.questType));
       const showModeName = showModeNames.get(Number(arm.showMode));
@@ -4323,8 +4485,16 @@
         ${conditions.length ? `<p><strong>${esc(t("questForkObjectiveConditions"))}:</strong>${conditions.map((name) => `<code>${esc(name)}</code>`).join(" ")}</p>` : ""}
         ${guard ? `<div class="mp-quest-fork-guard"><strong>${esc(t("questForkGuardedArm"))}:</strong>${renderConditionTree(guard)}</div>` : ""}
         ${storyEvidence.length ? `<details class="mp-quest-fork-story"><summary>${esc(t("questForkArmStoryEvidence"))} <span>${storyEvidence.length}</span></summary>${storyEvidence.map((row) => `<div><a href="${esc(storyHref(row.key || ""))}"><code>${esc(row.key || "?")}</code></a><code>${esc(row.questId || "?")}</code><b>${esc(row.relation || row.confidence || "typed relation")}</b><small>${esc([row.confidence, row.actionType, row.conditionType, row.direction].filter(Boolean).join(" · "))}</small></div>`).join("")}</details>` : ""}
+        ${branchSourceEvidence.length ? `<details class="mp-quest-fork-sources" open><summary>${esc(t("questForkArmSourceEvidence"))} <span>${branchSourceEvidence.length}</span></summary>${branchSourceEvidence.map((row) => {
+          const facts = [
+            ...(row.conditionTypes || []),
+            ...(row.clientActionTypes || []),
+            ...(row.trackingTypes || []),
+          ];
+          return `<div><header><code>${esc(row.questId || "?")}</code><b>${esc(row.armMembership || "?")} / ${Number((row.relatedOriginalFiles || []).length).toLocaleString()} ${esc(t("questForkArmSourceFiles"))}</b></header>${facts.length ? `<p>${facts.map((fact) => `<code>${esc(fact)}</code>`).join(" ")}</p>` : ""}<small>${esc((row.evidenceKinds || []).join(" / "))}</small></div>`;
+        }).join("")}</details>` : ""}
         ${relatedOriginalFiles.length ? `<details class="mp-quest-fork-files"><summary>${esc(t("questForkArmOriginalFiles"))} <span>${relatedOriginalFiles.length}</span></summary>${relatedOriginalFiles.map((related) => `<small><code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("")}</details>` : ""}
-        ${(corridor.length || storyEvidence.length) ? `<small class="mp-quest-fork-arm-boundary">${esc(arm.storyEvidenceBoundary || arm.corridorEvidenceBoundary || t("questForkArmEvidenceBoundary"))}</small>` : ""}
+        ${(corridor.length || storyEvidence.length || branchSourceEvidence.length) ? `<small class="mp-quest-fork-arm-boundary">${esc(arm.storyEvidenceBoundary || arm.corridorEvidenceBoundary || t("questForkArmEvidenceBoundary"))}</small>` : ""}
       </section>`;
     };
     const serverApplicationHtml = (fork) => {
@@ -4406,6 +4576,15 @@
     const relatedOriginalFilesHtml = (row) => (row.relatedOriginalFiles || []).length
       ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${row.relatedOriginalFiles.length}</span></summary>${row.relatedOriginalFiles.map((related) => `<small><code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("")}</details>`
       : "";
+    const missionAreaLevelDataContexts = (order.missionAreaLevelDataReceiverContexts || []).map((row) => {
+      const stories = (row.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
+      const missions = (row.hostMissionIds || []).map((missionId) => `<code>${esc(missionId)}</code>`).join(" ");
+      const areas = (row.missionAreaIds || []).map((areaId) => `<code>${esc(areaId)}</code>`).join(" ");
+      const levelNums = (row.levelNums || []).map((levelNum) => `<code>${esc(levelNum)}</code>`).join(" ");
+      const roots = (row.subDataParentIds || []).map((rootId) => `<code>${esc(rootId)}</code>`).join(" ");
+      const files = relatedOriginalFilesHtml(row);
+      return `<article class="mp-order-branch is-boundary mp-leveldata-receiver-context"><header><code>${esc(row.missionId || "?")}</code><i>&rarr;</i><code>${esc(row.levelId || "?")} / ${esc(row.scriptId || "?")}</code><i>&harr;</i>${stories}</header><p><strong>${esc(t("missionAreaLevelDataReceiverScope"))}:</strong> <code>${esc(row.scopeStatus || "?")}</code> ${missions}</p>${areas ? `<p><strong>${esc(t("missionAreaLevelDataReceiverAreas"))}:</strong> ${areas}</p>` : ""}${levelNums ? `<p><strong>${esc(t("missionAreaLevelDataReceiverLevelNums"))}:</strong> ${levelNums}</p>` : ""}${roots ? `<p><strong>${esc(t("missionAreaLevelDataReceiverRoots"))}:</strong> ${roots}</p>` : ""}<small>${esc(row.evidenceBoundary || t("missionAreaLevelDataReceiverContextsHint"))}</small>${files}</article>`;
+    }).join("");
     const missionNamedLevelDataContexts = (order.missionNamedLevelDataReceiverContexts || []).map((row) => {
       const stories = (row.storyKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
       const host = row.levelDataHost || {};
@@ -4424,11 +4603,20 @@
       const levelscript = receiver.levelScript || {};
       const active = receiver.activePhaseReceiver || {};
       const request = receiver.clientActiveRequest || {};
+      const teleportRows = receiver.teleportFinishCorrelations || [];
       const missionStories = (row.missionStoryKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
       const externalStories = (row.externalStoryKeys || []).map((key) => `<a href="${esc(storyHref(key))}"><code>${esc(key)}</code></a>`).join(" ");
       const headers = (active.receiverHeaders || []).map((header) => `<code>#${esc(header.listenerHeaderLocalId ?? "?")} ${esc(header.headerName || "?")}</code>`).join(" ");
+      const teleport = teleportRows.map((item) => {
+        const carrier = item.carrierAudit || {};
+        const initializerStates = carrier.actionIdInitializerStates || {};
+        const carrierLine = carrier.schema
+          ? `<small><strong>${esc(t("teleportCarrierAudit"))}:</strong> <code>${esc(carrier.validationStatus || "?")}</code> / ${Number(carrier.signatureMethodCount || 0).toLocaleString()} ${esc(t("teleportCarrierSignatureMethods"))} / ${Number(carrier.containerPathCount || 0).toLocaleString()} ${esc(t("teleportCarrierPaths"))} / ${Number(carrier.directCallsiteCount || 0).toLocaleString()} ${esc(t("teleportCarrierCallsites"))} / ${Number(initializerStates.zero || 0).toLocaleString()} ${esc(t("teleportCarrierZeroInitializers"))}<br><code>${esc(carrier.reportJson || "")}</code></small><small>${esc(carrier.producerFinding || "")}</small>`
+          : "";
+        return `<small><strong>${esc(t("teleportFinishCorrelation"))}:</strong> <code>#${esc(item.listenerHeaderLocalId ?? "?")}</code> <code>${esc(item.actionIdFilter || "?")}</code> <code>${esc(item.classification || "?")}</code> / ${Number(item.externalSerializedOccurrenceCount || 0).toLocaleString()} ${esc(t("teleportFinishExternalOccurrences"))} / ${Number(item.serializedActionCandidateCount || 0).toLocaleString()} ${esc(t("teleportFinishActionCandidates"))}${item.classification === "runtime_only_no_serialized_levelscript_producer" ? ` / <b>${esc(t("teleportFinishRuntimeOnly"))}</b>` : ""}</small><small>${Number(item.corpusFileCount || 0).toLocaleString()} ${esc(t("teleportFinishCorpusFiles"))} / ${Number(item.corpusListenerCount || 0).toLocaleString()} ${esc(t("teleportFinishCorpusListeners"))} / ${Number(item.corpusDistinctFilterCount || 0).toLocaleString()} ${esc(t("teleportFinishCorpusFilters"))}</small>${carrierLine}<small>${esc(item.evidenceBoundary || "")}</small>`;
+      }).join("");
       const files = relatedOriginalFilesHtml(row);
-      return `<article class="mp-order-branch is-boundary mp-native-receiver-story-context"><header><b>${esc(t("nativeReceiverStoryContexts"))}</b> <code>${esc(row.levelId || "?")} / ${esc(row.scriptId || "?")}</code><i>&harr;</i>${missionStories}</header>${externalStories ? `<p><strong>${esc(t("nativeReceiverStoryExternalKeys"))}:</strong> ${externalStories}</p>` : ""}<p><strong>${esc(t("nativeReceiverStoryMissionKeys"))}:</strong> ${missionStories || `<code>?</code>`}</p><small><code>${esc(row.activationClass || "?")}</code> / ${esc(levelscript.startTypeName || "?")} / ${esc(levelscript.activeShapeListStatus || "?")} (${Number(levelscript.activeShapeListCount || 0).toLocaleString()} active shapes)</small><small><strong>${esc(t("binaryActivePhaseReceiver"))}:</strong> <code>${esc(active.status || "?")}</code> <code>${esc(active.classification || "?")}</code>${headers ? ` ${headers}` : ""}</small><small><strong>${esc(t("nativeReceiverStoryContexts"))}:</strong> <code>${esc(request.status || "?")}</code> <code>${esc(request.classification || "?")}</code>${request.runtimePath?.length ? ` ${request.runtimePath.map((step) => `<code>${esc(step)}</code>`).join(" ")}` : ""}</small><small>${esc(row.evidenceBoundary || "")}</small>${files}</article>`;
+      return `<article class="mp-order-branch is-boundary mp-native-receiver-story-context"><header><b>${esc(t("nativeReceiverStoryContexts"))}</b> <code>${esc(row.levelId || "?")} / ${esc(row.scriptId || "?")}</code><i>&harr;</i>${missionStories}</header>${externalStories ? `<p><strong>${esc(t("nativeReceiverStoryExternalKeys"))}:</strong> ${externalStories}</p>` : ""}<p><strong>${esc(t("nativeReceiverStoryMissionKeys"))}:</strong> ${missionStories || `<code>?</code>`}</p><small><code>${esc(row.activationClass || "?")}</code> / ${esc(levelscript.startTypeName || "?")} / ${esc(levelscript.activeShapeListStatus || "?")} (${Number(levelscript.activeShapeListCount || 0).toLocaleString()} active shapes)</small><small><strong>${esc(t("binaryActivePhaseReceiver"))}:</strong> <code>${esc(active.status || "?")}</code> <code>${esc(active.classification || "?")}</code>${headers ? ` ${headers}` : ""}</small>${teleport}<small><strong>${esc(t("nativeReceiverStoryContexts"))}:</strong> <code>${esc(request.status || "?")}</code> <code>${esc(request.classification || "?")}</code>${request.runtimePath?.length ? ` ${request.runtimePath.map((step) => `<code>${esc(step)}</code>`).join(" ")}` : ""}</small><small>${esc(row.evidenceBoundary || "")}</small>${files}</article>`;
     }).join("");
     const orderCrossReference = order.crossReference || null;
     const orderCrossReferenceStatus = (reference) => {
@@ -4859,6 +5047,10 @@
       }).join("")}${binaryEvidence}${sources ? `<small>${sources}</small>` : ""}${row.evidenceBoundary ? `<small>${esc(row.evidenceBoundary)}</small>` : ""}${relatedOriginalFiles ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${relatedOriginalFiles}</details>` : ""}</details>`;
     }).join("");
     const dialogTreeIfNodes = (branches.dialogTreeIfNodes || []).map((row) => {
+      const originals = (row.relatedOriginalFiles || []).map((related) => `<small><code>${esc(related.kind || "file")}</code> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("");
+      if (row.executionStatus === "detached_serialized_control") {
+        return `<details><summary><b>${esc(t("dialogTreeDetachedControl"))}</b> <a href="${esc(storyHref(row.storyKey))}"><code>${esc(row.storyKey || "?")}</code></a> <i>#serialized:${esc(row.serializedNodeOrdinal ?? "?")}</i><span>${esc(row.conditionType || "")}</span></summary><small>${esc(t("dialogTreeDetachedBoundary"))}</small>${originals ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${originals}</details>` : ""}</details>`;
+      }
       const condition = row.condition && Object.keys(row.condition).length
         ? `<code>${esc(JSON.stringify(row.condition))}</code>`
         : `<span>${esc(t("nativePredicateOpaque"))}</span>`;
@@ -4872,8 +5064,39 @@
           : `<code>result != 1</code>`;
         return `<div><b>${esc(t("dialogTreeIfArm"))}</b> ${result}<code>connection ${esc(arm.connectionOrdinal ?? "?")} / raw ${esc(arm.connectionIndex ?? "?")}</code><span>&rarr; ${target}</span>${arm.defaultArm ? `<small>${esc(t("dialogTreeBranchSelection"))}</small>` : ""}</div>`;
       }).join("");
-      const originals = (row.relatedOriginalFiles || []).map((related) => `<small><code>${esc(related.kind || "file")}</code> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("");
       return `<details><summary><b>${esc(t("dialogTreeIfNode"))}</b> <a href="${esc(storyHref(row.storyKey))}"><code>${esc(row.storyKey || "?")}</code></a> <i>#${esc(row.branchNodeId || "?")}</i><span>${esc(row.conditionType || "")}</span></summary><p class="mp-native-predicate"><b>${esc(t("nativePredicate"))}</b>${condition}</p>${arms}<small><strong>${esc(t("dialogConditionalNativeProof"))}:</strong> ${nativeProof}</small><small>${(row.sourceFiles || []).map((source) => `<code>${esc(source)}</code>`).join(" ")}</small><small>${esc(t("dialogTreeIfBoundary"))}</small>${originals ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${originals}</details>` : ""}</details>`;
+    }).join("");
+    const dialogTreeStaticPortControls = (branches.dialogTreeStaticPortControls || []).map((row) => {
+      const nativeProof = (row.nativeMethods || []).map((method) => `<code>${esc(method.type || "?")}.${esc(method.method || "?")} ${esc(method.token || "")} @ ${esc(method.address || "?")}</code>`).join(" ");
+      const arms = (row.arms || []).map((arm) => {
+        const target = arm.targetNodeId
+          ? `<code>#${esc(arm.targetNodeId)}</code>${arm.targetNodeType ? ` <small>${esc(arm.targetNodeType)}</small>` : ""}`
+          : "";
+        const outcome = arm.outcomeLabel
+          ? `<b>${esc(arm.outcomeLabel)}</b>`
+          : `<i>${esc(t("dialogTreeStaticPortUnlabeled"))}</i>`;
+        const producerLabel = arm.runtimeProducerStatus === "shipped_lua_producer"
+          ? t("dialogTreeStaticPortProduced")
+          : arm.runtimeProducerStatus === "shipped_lua_dynamic_index_unbounded"
+            ? t("dialogTreeStaticPortDynamicProducer")
+            : arm.runtimeProducerStatus === "no_shipped_lua_producer_found"
+              ? t("dialogTreeStaticPortNoProducer")
+              : "";
+        const allProducerEvidence = [
+          ...(arm.runtimeProducerEvidence || []),
+          ...(arm.runtimeDynamicProducerEvidence || []),
+        ];
+        const producerEvidence = allProducerEvidence.map((producer) => `<small><code>${esc(producer.kind || "producer")}</code> <code>${esc(producer.indexExpression || "?")}</code>${producer.sourceFile ? ` <code>${esc(producer.sourceFile)}</code>` : ""}${producer.line ? `:${esc(producer.line)}` : ""}${producer.sha256 ? ` / SHA-256 <code>${esc(producer.sha256)}</code>` : ""}${producer.excerpt ? `<br><code>${esc(producer.excerpt)}</code>` : ""}</small>`).join("");
+        return `<div><b>${esc(t("dialogTreeStaticPortArm"))} ${esc(arm.connectionOrdinal ?? "?")}</b>${outcome}<code>raw ${esc(arm.connectionIndex ?? "?")}</code>${producerLabel ? `<span><b>${esc(producerLabel)}</b></span>` : ""}<span>&rarr; ${target}</span>${producerEvidence ? `<details><summary>${esc(t("dialogTreeStaticPortProducerEvidence"))} <span>${allProducerEvidence.length}</span></summary>${producerEvidence}</details>` : ""}</div>`;
+      }).join("");
+      const originals = (row.relatedOriginalFiles || []).map((related) => `<small><code>${esc(related.kind || "file")}</code> <code>${esc(related.sourceFile || "")}</code>${related.sha256 ? ` / SHA-256 <code>${esc(related.sha256)}</code>` : ""}</small>`).join("");
+      const portStatus = row.portContractStatus === "native_named_ports"
+        ? t("dialogTreeStaticPortNamed")
+        : t("dialogTreeStaticPortUnlabeled");
+      const routerStatus = row.runtimeRouterStatus === "shipped_lua_router_validated"
+        ? `<small><b>${esc(t("dialogTreeStaticPortRouter"))}</b> / ${Number(row.runtimeProducedArmCount || 0).toLocaleString()} ${esc(t("dialogTreeStaticPortProduced"))} / ${Number(row.runtimeDynamicProducerArmCount || 0).toLocaleString()} ${esc(t("dialogTreeStaticPortDynamicProducer"))} / ${Number(row.runtimeUnproducedArmCount || 0).toLocaleString()} ${esc(t("dialogTreeStaticPortNoProducer"))}</small>`
+        : "";
+      return `<details><summary><b>${esc(t("dialogTreeStaticPortControl"))}</b> <a href="${esc(storyHref(row.storyKey))}"><code>${esc(row.storyKey || "?")}</code></a> <i>#${esc(row.nodeId || "?")}</i><span><code>${esc(row.selectorName || "?")} (${esc(row.selectorValue ?? "?")})</code></span><span>${esc(portStatus)}</span></summary><p class="mp-native-predicate"><b>${esc(t("dialogConditionalNativeProof"))}</b> <code>${esc(row.selectionRule || "")}</code></p>${routerStatus}${arms}<small>${esc(t("dialogTreeStaticPortExternal"))}</small><small>${nativeProof}</small><small>${esc(t("dialogTreeStaticPortBoundary"))}</small>${originals ? `<details><summary>${esc(t("relatedOriginalFile"))} <span>${(row.relatedOriginalFiles || []).length}</span></summary>${originals}</details>` : ""}</details>`;
     }).join("");
     const offlineRows = offlineRecoveryRowsForMission();
     const offlineGaps = offlineRows.map((row) => {
@@ -5340,8 +5563,9 @@
       <summary>${esc(t("storyOrder"))} <span>${Number(summary.sceneCount || 0).toLocaleString()}</span></summary>
       <p>${esc(t("storyOrderHint"))}</p>
       ${orderCrossReferenceHtml}
-      <div class="mp-order-metrics"><span><b>${Number(summary.strongEdgeCount || 0).toLocaleString()}</b>${esc(t("strongEdges"))}</span><span><b>${Number(summary.questSucceedLifecycleEdgeCount || 0).toLocaleString()}</b>${esc(t("questSucceedLifecycleEdges"))}</span><span><b>${Number(summary.questStartActionDefinitionCount || 0).toLocaleString()}</b>${esc(t("questStartDefinitions"))}</span><span><b>${Number(summary.nativeControlPathTransitionEdgeCount || 0).toLocaleString()}</b>${esc(t("nativeStoryTransitions"))}</span><span><b>${Number(summary.nativeControlPathBranchingTransitionEdgeCount || 0).toLocaleString()}</b>${esc(t("nativeStoryTransitionBranching"))}</span>${summary.dialogConditionalBranchCount ? `<span><b>${Number(summary.dialogConditionalBranchCount).toLocaleString()}</b>${esc(t("dialogConditionalCount"))}</span>` : ""}${summary.dialogTreeBranchNodeCount ? `<span><b>${Number(summary.dialogTreeBranchNodeCount).toLocaleString()}</b>${esc(t("dialogTreeBranchCount"))}</span>` : ""}${summary.dialogTreeIfNodeCount ? `<span><b>${Number(summary.dialogTreeIfNodeCount).toLocaleString()}</b>${esc(t("dialogTreeIfCount"))}</span>` : ""}${summary.dialogLineOptionBinaryValidatedGroupCount ? `<span><b>${Number(summary.dialogLineOptionBinaryValidatedGroupCount).toLocaleString()}</b>${esc(t("dialogTimelineBinaryCount"))}</span>` : ""}${summary.nativeSerializedBranchContextCount ? `<span><b>${Number(summary.nativeSerializedBranchContextCount).toLocaleString()}</b>${esc(t("nativeSerializedBranchMissionContext"))}</span>` : ""}${summary.nativeReceiverStoryContextCount ? `<span><b>${Number(summary.nativeReceiverStoryContextCount).toLocaleString()}</b>${esc(t("nativeReceiverStoryContexts"))}</span>` : ""}${summary.nativeControlNonStoryArmCount ? `<span><b>${Number(summary.nativeControlNonStoryArmCount).toLocaleString()}</b>${esc(t("nativeNonStoryArm"))}</span>` : ""}${summary.nativeControlCrossBoundaryBranchCount ? `<span><b>${Number(summary.nativeControlCrossBoundaryBranchCount).toLocaleString()}</b>${esc(t("nativeCrossBoundaryStories"))}</span>` : ""}<span><b>${Number(summary.weakEdgeCount || 0).toLocaleString()}</b>${esc(t("weakEdges"))}</span><span><b>${Number(summary.cycleCount || 0).toLocaleString()}</b>${esc(t("orderCycles"))}</span><span><b>${Number(summary.unorderedScenePairs || 0).toLocaleString()}</b>${esc(t("unknownPairs"))}</span><span><b>${offlineRows.length.toLocaleString()}</b>${esc(t("offlineRecoveryGaps"))}</span></div>
+      <div class="mp-order-metrics"><span><b>${Number(summary.strongEdgeCount || 0).toLocaleString()}</b>${esc(t("strongEdges"))}</span><span><b>${Number(summary.questSucceedLifecycleEdgeCount || 0).toLocaleString()}</b>${esc(t("questSucceedLifecycleEdges"))}</span><span><b>${Number(summary.questStartActionDefinitionCount || 0).toLocaleString()}</b>${esc(t("questStartDefinitions"))}</span><span><b>${Number(summary.nativeControlPathTransitionEdgeCount || 0).toLocaleString()}</b>${esc(t("nativeStoryTransitions"))}</span><span><b>${Number(summary.nativeControlPathBranchingTransitionEdgeCount || 0).toLocaleString()}</b>${esc(t("nativeStoryTransitionBranching"))}</span>${summary.dialogConditionalBranchCount ? `<span><b>${Number(summary.dialogConditionalBranchCount).toLocaleString()}</b>${esc(t("dialogConditionalCount"))}</span>` : ""}${summary.dialogTreeBranchNodeCount ? `<span><b>${Number(summary.dialogTreeBranchNodeCount).toLocaleString()}</b>${esc(t("dialogTreeBranchCount"))}</span>` : ""}${summary.dialogTreeIfNodeCount ? `<span><b>${Number(summary.dialogTreeIfNodeCount).toLocaleString()}</b>${esc(t("dialogTreeIfCount"))}</span>` : ""}${summary.dialogTreeStaticPortControlCount ? `<span><b>${Number(summary.dialogTreeStaticPortControlCount).toLocaleString()}</b>${esc(t("dialogTreeStaticPortCount"))}</span>` : ""}${summary.dialogLineOptionBinaryValidatedGroupCount ? `<span><b>${Number(summary.dialogLineOptionBinaryValidatedGroupCount).toLocaleString()}</b>${esc(t("dialogTimelineBinaryCount"))}</span>` : ""}${summary.nativeSerializedBranchContextCount ? `<span><b>${Number(summary.nativeSerializedBranchContextCount).toLocaleString()}</b>${esc(t("nativeSerializedBranchMissionContext"))}</span>` : ""}${summary.nativeReceiverStoryContextCount ? `<span><b>${Number(summary.nativeReceiverStoryContextCount).toLocaleString()}</b>${esc(t("nativeReceiverStoryContexts"))}</span>` : ""}${summary.nativeControlNonStoryArmCount ? `<span><b>${Number(summary.nativeControlNonStoryArmCount).toLocaleString()}</b>${esc(t("nativeNonStoryArm"))}</span>` : ""}${summary.nativeControlCrossBoundaryBranchCount ? `<span><b>${Number(summary.nativeControlCrossBoundaryBranchCount).toLocaleString()}</b>${esc(t("nativeCrossBoundaryStories"))}</span>` : ""}<span><b>${Number(summary.weakEdgeCount || 0).toLocaleString()}</b>${esc(t("weakEdges"))}</span><span><b>${Number(summary.cycleCount || 0).toLocaleString()}</b>${esc(t("orderCycles"))}</span><span><b>${Number(summary.unorderedScenePairs || 0).toLocaleString()}</b>${esc(t("unknownPairs"))}</span><span><b>${offlineRows.length.toLocaleString()}</b>${esc(t("offlineRecoveryGaps"))}</span></div>
       ${nativeReceiverStoryContexts ? `<section><h4>${esc(t("nativeReceiverStoryContexts"))} <span>${(order.nativeReceiverStoryContexts || []).length}</span></h4><p>${esc(t("nativeReceiverStoryContextsHint"))}</p><div class="mp-order-branches">${nativeReceiverStoryContexts}</div></section>` : ""}
+      ${missionAreaLevelDataContexts ? `<section><h4>${esc(t("missionAreaLevelDataReceiverContexts"))} <span>${(order.missionAreaLevelDataReceiverContexts || []).length}</span></h4><p>${esc(t("missionAreaLevelDataReceiverContextsHint"))}</p><div class="mp-order-branches">${missionAreaLevelDataContexts}</div></section>` : ""}
       ${missionNamedLevelDataContexts ? `<section><h4>${esc(t("missionNamedLevelDataReceiverContexts"))} <span>${(order.missionNamedLevelDataReceiverContexts || []).length}</span></h4><p>${esc(t("missionNamedLevelDataReceiverContextsHint"))}</p><div class="mp-order-branches">${missionNamedLevelDataContexts}</div></section>` : ""}
       ${missionObservedContexts ? `<section><h4>${esc(t("missionObservedScriptContexts"))}</h4><p>${esc(t("missionObservedScriptContextsHint"))}</p><div class="mp-order-branches">${missionObservedContexts}</div></section>` : ""}
       ${causalEdges ? `<section><h4>${esc(t("causalEdges"))}</h4><div class="mp-order-edges">${causalEdges}</div></section>` : ""}
@@ -5352,7 +5576,7 @@
       ${containments ? `<section><h4>${esc(t("embeddedStory"))}</h4><p>${esc(t("embeddedStoryHint"))}</p><div class="mp-order-edges">${containments}</div></section>` : ""}
       ${frontiers ? `<details class="mp-order-frontiers"><summary>${esc(t("partialFrontier"))}</summary>${frontiers}</details>` : ""}
       ${cycles ? `<section class="mp-order-cycles"><h4>${esc(t("orderCycles"))}</h4><p>${esc(t("orderCycleHint"))}</p>${cycles}</section>` : ""}
-      ${questForks || questMerges || nativeBranches || nativeMerges || nativeSequences || sceneOptions || dialogConditionalBranches || dialogLocalConditionalBranches || dialogTreeBranchNodes || dialogTreeIfNodes || typedSelectors ? `<section><h4>${esc(t("forkMerge"))}</h4>${questForkAuthorityHtml}<div class="mp-order-branches">${questForks}${questMerges}${nativeBranches}${nativeMerges}${nativeSequences}${sceneOptions}${dialogConditionalBranches}${dialogLocalConditionalBranches}${dialogTreeBranchNodes}${dialogTreeIfNodes}${typedSelectors}</div></section>` : ""}
+      ${questForks || questMerges || nativeBranches || nativeMerges || nativeSequences || sceneOptions || dialogConditionalBranches || dialogLocalConditionalBranches || dialogTreeBranchNodes || dialogTreeIfNodes || dialogTreeStaticPortControls || typedSelectors ? `<section><h4>${esc(t("forkMerge"))}</h4>${questForkAuthorityHtml}<div class="mp-order-branches">${questForks}${questMerges}${nativeBranches}${nativeMerges}${nativeSequences}${sceneOptions}${dialogConditionalBranches}${dialogLocalConditionalBranches}${dialogTreeBranchNodes}${dialogTreeIfNodes}${dialogTreeStaticPortControls}${typedSelectors}</div></section>` : ""}
       ${serializedBranchInventoryHtml}
       ${typedControlFamilyHtml}
       ${relatedActionTopologies ? `<section><h4>${esc(t("nativeRelatedActionGraphs"))}</h4><p>${esc(t("nativeRelatedActionGraphsHint"))}</p><div class="mp-order-branches">${relatedActionTopologies}</div></section>` : ""}
@@ -5496,6 +5720,7 @@
       dialogFinishAuthoredTaskShellDependenciesHtml(),
       missionTimelineActivationHtml(),
       missionTimelineConfigurationHtml(),
+      missionTrackedProxyCandidateTopologyHtml(),
       missionStateDependenciesHtml(),
       envTalkContextHtml(),
     ]],
@@ -5883,6 +6108,7 @@
           ).values()];
           const activationHosts = (activation.levelDataHosts || [])
             .filter((host) => host && host.fileName);
+          const missionAreaShell = activation.missionAreaLevelDataShellContext || {};
           const modulePropertyFamilies = (activation.modulePropertyFamilies || [])
             .filter((family) => family && family.moduleId);
           const encounterContexts = (activation.encounterControllerContexts || [])
@@ -6054,6 +6280,7 @@
               ]).join("")}
               ${encounterContexts.length ? `<small>${esc(t("encounterControllerBoundary"))}</small>` : ""}
               ${activationHosts.map((host) => `<div><span>${esc(t("levelDataContainer"))}</span><i aria-hidden="true">→</i><code>${esc(host.fileName)}</code><b>${esc(host.hostMissionId || "generic")}</b><small>${esc(`${host.dictionaryEntryCount ?? "?"} LevelScripts`)}</small></div>`).join("")}
+              ${missionAreaShell.status ? `<div class="is-boundary"><span>${esc(t("missionAreaLevelDataReceiverScope"))}</span><i aria-hidden="true">&harr;</i><code>${esc((missionAreaShell.hostMissionIds || []).join(", ") || "?")}</code><b>${esc(missionAreaShell.status)}</b><small>${esc(t("missionAreaLevelDataReceiverContextsHint"))}</small></div>` : ""}
               ${nominalStoryCandidates.map((candidate) => {
                 const matchingHosts = nominalMissionHosts.filter((host) => host.missionId === candidate.nominalMissionId);
                 const excludedHosts = matchingHosts.filter((host) => host.dictionaryValidated && !host.receiverScriptPresent);

@@ -2248,6 +2248,7 @@ def decode_levelscript_native_action_topology(
             key: value
             for key, value in {
                 "localId": header.get("localId"),
+                "uid": str(header.get("uid") or ""),
                 "recordOffset": int(header.get("start") or 0),
                 "recordOffsetHex": f"0x{int(header.get('start') or 0):x}",
                 "headerName": header_name,
@@ -2364,6 +2365,7 @@ def decode_levelscript_native_action_topology(
             key: value
             for key, value in {
                 "localId": local_id,
+                "uid": str(record.get("uid") or ""),
                 "recordOffset": int(record.get("start") or 0),
                 "recordOffsetHex": f"0x{int(record.get('start') or 0):x}",
                 "actionMapRole": membership.get(int(record.get("start") or 0)),
@@ -9029,6 +9031,71 @@ def parse_leveldata_levelscript_brief_dictionary(
     )
 
 
+def resolve_levelscript_dynamic_property_string(
+    brief: dict | None,
+    binding: dict | None,
+) -> dict | None:
+    """Resolve one exact LevelScript ``Param<string>`` property reference.
+
+    ``ParamSource`` 200 is the serialized LevelScript-property source in the
+    current build.  A dynamic audio field carries the property name in its
+    ``path``; the corresponding ``LevelScriptBriefData/8.properties`` entry
+    carries the value.  The join is deliberately narrow: it requires the
+    ordinary getter shape (``idRef=-1``), one uniquely named property, and the
+    proven string property formatter (value type 7 with one atom).  Any
+    duplicate, null, multi-atom, or non-string property remains unresolved.
+
+    This helper only resolves the authored value.  It does not claim that the
+    owning action executes, nor that a resolved Event/Radio value reaches a
+    Wwise playback root.
+    """
+    if not isinstance(brief, dict) or not isinstance(binding, dict):
+        return None
+    if (
+        binding.get("bindingKind") != "dynamic"
+        or binding.get("paramSource") != 200
+        or binding.get("idRef") != -1
+        or not isinstance(binding.get("path"), str)
+        or not binding["path"]
+    ):
+        return None
+    property_name = binding["path"]
+    matches = [
+        prop
+        for prop in brief.get("properties") or []
+        if isinstance(prop, dict) and prop.get("name") == property_name
+    ]
+    if len(matches) != 1:
+        return None
+    property_value = matches[0].get("value")
+    if not isinstance(property_value, dict):
+        return None
+    atoms = property_value.get("atoms")
+    if not (
+        property_value.get("valueType") == 7
+        and property_value.get("atomCount") == 1
+        and isinstance(atoms, list)
+        and len(atoms) == 1
+        and isinstance(atoms[0], dict)
+        and isinstance(atoms[0].get("text"), str)
+        and atoms[0]["text"]
+        and isinstance(atoms[0].get("valueBit64"), int)
+    ):
+        return None
+    return {
+        "value": atoms[0]["text"],
+        "propertyName": property_name,
+        "propertyValueType": 7,
+        "propertyAtomCount": 1,
+        "propertyAtomValueBit64": atoms[0]["valueBit64"],
+        "resolutionMode": "exact_levelscript_brief_property_string",
+        "evidence": (
+            "LevelData/43.member22:LevelScriptBriefData/8.properties "
+            "+ LevelScript ParamSource=200 path"
+        ),
+    }
+
+
 def _looks_like_npc_patrol_data_start(data: bytes, offset: int) -> bool:
     if offset < 0 or offset + 28 > len(data) or data[offset] != 0x09:
         return False
@@ -11112,40 +11179,49 @@ def build_npc_proxy_segment_script_host_index(
     return out
 
 
-def _collect_typed_mission_area_parent_references() -> dict[str, list[dict]]:
-    """Return exact MissionRuntime references grouped by sub-data parent id.
+def _collect_typed_mission_area_parent_references(
+    *,
+    mission_area_table_path: Path | None = None,
+    level_basic_info_table_path: Path | None = None,
+    mission_runtime_root: Path | None = None,
+) -> dict[tuple[str, str], list[dict]]:
+    """Return exact MissionRuntime references by level and sub-data parent.
 
-    Only typed ``MissionAreaTrackingInfo`` rows participate. A duplicated
-    MissionAreaTable id with conflicting parent ids contributes a conservative
-    reference to every authored parent instead of selecting one row.
+    ``MissionAreaTable.m_areas`` is keyed by ``LevelBasicInfoTable.idNum`` and
+    area ids are not globally unique. Only a typed
+    ``MissionAreaTrackingInfo`` row whose authored ``sceneId`` selects one
+    exact level bucket participates. This deliberately fails closed instead
+    of fanning a duplicated area id out to parents from unrelated levels.
     """
-    table_path = GAMEPLAY_CONFIG_DIR / "MissionAreaTable.json"
+    table_path = (
+        mission_area_table_path
+        if mission_area_table_path is not None
+        else GAMEPLAY_CONFIG_DIR / "MissionAreaTable.json"
+    )
+    level_basic_path = (
+        level_basic_info_table_path
+        if level_basic_info_table_path is not None
+        else GAMEPLAY_CONFIG_DIR / "LevelBasicInfoTable.json"
+    )
+    mission_runtime_root = (
+        mission_runtime_root
+        if mission_runtime_root is not None
+        else MRA_DIR
+    )
     try:
         table_raw = json.loads(table_path.read_text(encoding="utf-8"))
+        level_basic_raw = json.loads(
+            level_basic_path.read_text(encoding="utf-8")
+        )
     except (OSError, json.JSONDecodeError):
         return {}
-
-    parent_ids_by_area: dict[str, set[str]] = defaultdict(set)
-
-    def collect_area_rows(value: object) -> None:
-        if isinstance(value, dict):
-            mission_area_id = str(value.get("missionAreaId") or "").strip()
-            parent_id = _exact_positive_u64_text(value.get("subDataParentId"))
-            if mission_area_id and parent_id:
-                parent_ids_by_area[mission_area_id].add(parent_id)
-            for child in value.values():
-                collect_area_rows(child)
-        elif isinstance(value, list):
-            for child in value:
-                collect_area_rows(child)
-
-    collect_area_rows(table_raw)
-    if not parent_ids_by_area or not MRA_DIR.is_dir():
+    mission_areas = _build_mission_area_index(table_raw, level_basic_raw)
+    if not mission_areas or not mission_runtime_root.is_dir():
         return {}
 
-    references_by_parent: dict[str, list[dict]] = defaultdict(list)
-    seen: set[tuple[str, str, str, str, str]] = set()
-    for path in sorted(MRA_DIR.glob("*.json")):
+    references_by_parent: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    seen: set[tuple[str, str, str, str, str, str]] = set()
+    for path in sorted(mission_runtime_root.glob("*.json")):
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -11167,27 +11243,39 @@ def _collect_typed_mission_area_parent_references() -> dict[str, list[dict]]:
                     if isinstance(raw_area_id, dict) and "constValue" in raw_area_id:
                         raw_area_id = raw_area_id.get("constValue")
                     mission_area_id = str(raw_area_id or "").strip()
-                    for parent_id in sorted(
-                        parent_ids_by_area.get(mission_area_id) or []
-                    ):
+                    level_id = str(
+                        value.get("sceneId") or value.get("scene") or ""
+                    ).strip()
+                    area = mission_areas.get((level_id, mission_area_id)) or {}
+                    parent_id = _exact_positive_u64_text(
+                        area.get("subDataParentId")
+                    )
+                    level_num = str(area.get("levelNum") or "").strip()
+                    if level_id and mission_area_id and parent_id and level_num:
                         signature = (
+                            level_id,
                             parent_id,
                             mission_id,
                             next_quest_id,
                             mission_area_id,
                             repo_rel(path),
                         )
-                        if signature in seen:
-                            continue
-                        seen.add(signature)
-                        references_by_parent[parent_id].append({
-                            "missionId": mission_id,
-                            "questId": next_quest_id,
-                            "missionAreaId": mission_area_id,
-                            "subDataParentId": parent_id,
-                            "trackingType": type_name,
-                            "sourceFile": repo_rel(path),
-                        })
+                        if signature not in seen:
+                            seen.add(signature)
+                            references_by_parent[(level_id, parent_id)].append({
+                                "missionId": mission_id,
+                                "questId": next_quest_id,
+                                "levelId": level_id,
+                                "levelNum": level_num,
+                                "missionAreaId": mission_area_id,
+                                "subDataParentId": parent_id,
+                                "trackingType": type_name,
+                                "sourceFile": repo_rel(path),
+                                "missionAreaSourceFile": repo_rel(table_path),
+                                "levelBasicInfoSourceFile": repo_rel(
+                                    level_basic_path
+                                ),
+                            })
                 for child in value.values():
                     collect_tracking_rows(child, next_quest_id)
             elif isinstance(value, list):
@@ -11197,7 +11285,7 @@ def _collect_typed_mission_area_parent_references() -> dict[str, list[dict]]:
         collect_tracking_rows(raw)
 
     return {
-        parent_id: sorted(
+        level_parent: sorted(
             references,
             key=lambda row: (
                 str(row.get("missionId") or ""),
@@ -11206,17 +11294,24 @@ def _collect_typed_mission_area_parent_references() -> dict[str, list[dict]]:
                 str(row.get("sourceFile") or ""),
             ),
         )
-        for parent_id, references in sorted(references_by_parent.items())
+        for level_parent, references in sorted(references_by_parent.items())
     }
 
 
 def build_leveldata_mission_area_script_host_index(
     script_pairs: set[tuple[str, str]],
+    *,
+    leveldata_root: Path | None = None,
+    levelscript_root: Path | None = None,
+    mission_area_table_path: Path | None = None,
+    level_basic_info_table_path: Path | None = None,
+    mission_runtime_root: Path | None = None,
 ) -> dict[tuple[str, str], dict]:
     """Resolve LevelScripts through exact typed MissionArea parent roots.
 
     The join is:
-    ``MissionRuntime MissionAreaTrackingInfo.missionAreaId`` ->
+    ``MissionRuntime MissionAreaTrackingInfo.(sceneId, missionAreaId)`` ->
+    ``LevelBasicInfoTable.idNum`` -> the level-specific
     ``MissionAreaTable.subDataParentId`` -> an identical root u64 in a fully
     validated same-file LevelData member-22 BriefData dictionary. Once that
     root scopes the LevelData asset shell, requested BriefData entries in the
@@ -11237,14 +11332,22 @@ def build_leveldata_mission_area_script_host_index(
     if not targets_by_level:
         return {}
 
-    references_by_parent = _collect_typed_mission_area_parent_references()
+    leveldata_root = leveldata_root if leveldata_root is not None else LEVELDATA_DIR
+    levelscript_root = (
+        levelscript_root if levelscript_root is not None else LEVELSCRIPT_DIR
+    )
+    references_by_parent = _collect_typed_mission_area_parent_references(
+        mission_area_table_path=mission_area_table_path,
+        level_basic_info_table_path=level_basic_info_table_path,
+        mission_runtime_root=mission_runtime_root,
+    )
     if not references_by_parent:
         return {}
 
     matches: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for level_id, target_script_ids in sorted(targets_by_level.items()):
-        leveldata_dir = LEVELDATA_DIR / level_id
-        levelscript_dir = LEVELSCRIPT_DIR / level_id
+        leveldata_dir = leveldata_root / level_id
+        levelscript_dir = levelscript_root / level_id
         if not leveldata_dir.is_dir() or not levelscript_dir.is_dir():
             continue
         all_level_script_ids = {
@@ -11267,14 +11370,14 @@ def build_leveldata_mission_area_script_host_index(
             root_script_ids = sorted(
                 str(script_id)
                 for script_id in brief_dictionary
-                if str(script_id) in references_by_parent
+                if (level_id, str(script_id)) in references_by_parent
             )
             if not root_script_ids:
                 continue
             root_references = [
                 reference
                 for root_script_id in root_script_ids
-                for reference in references_by_parent[root_script_id]
+                for reference in references_by_parent[(level_id, root_script_id)]
             ]
             host_mission_ids = sorted({
                 str(reference.get("missionId") or "")
@@ -11288,7 +11391,7 @@ def build_leveldata_mission_area_script_host_index(
                     "subDataParentId": root_script_id,
                     "briefData": brief_dictionary[int(root_script_id)],
                     "missionAreaReferences": list(
-                        references_by_parent[root_script_id]
+                        references_by_parent[(level_id, root_script_id)]
                     ),
                 }
                 for root_script_id in root_script_ids
@@ -11412,7 +11515,10 @@ def build_leveldata_authoritative_scope_script_host_index(
                         **reference,
                         "scriptId": script_id,
                     })
-                for reference in mission_area_references.get(script_id, []):
+                for reference in mission_area_references.get(
+                    (level_id, script_id),
+                    [],
+                ):
                     if not isinstance(reference, dict) or not reference.get("missionId"):
                         continue
                     authoritative_references.append({

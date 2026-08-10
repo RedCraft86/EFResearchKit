@@ -34,6 +34,10 @@ path flags override them for one run.
   material, shader, texture, and FMV edges.
 - Use `--mission-pipeline-data-only` only when generated Story bundles and
   evidence are current.
+- Mission Pipeline external-result recovery is family/schema-driven: it derives
+  the native enum/static-port contract from the installed binary and performs
+  one complete targeted installed-VFS Lua dump to validate shared result
+  defaults and producers. Do not add mission, panel, or object allowlists.
 - Reuse Timeline order and localized reference outputs only when their source
   inputs did not change; reference reuse is rejected with `--export-from-game`.
 - The default AnimeStudio type-job mode is `auto`: broad Story JSON families
@@ -107,12 +111,21 @@ High-value entry points:
   action, and control evidence.
 - `mission_recovery.py`: mission/quest relationships.
 - `build_source_story_gap_queue.py`: source-only recovery queue.
+- `dialog_tree_control_flow.py`: reusable installed-metadata/GameAssembly
+  decoder for enum-selected static port maps and serialized multi-output
+  control projection; it has no mission, Story, object, OCR, or override
+  allowlist.
 - `build_levelscript_actionbase_tag_audit.py`: hash-pinned native ActionBase
   names.
 - `build_callserver_callback_contract.py` and
   `build_callserver_callback_audit.py`: exact local callback graphs.
 - `build_cinematic_queue_runtime_audit.py`: native cinematic handle and
   producer routes.
+- `build_native_value_carrier_audit.py`: type/field-driven installed-binary
+  producer, consumer, nested-container, direct-callsite, and local-initializer
+  census for any managed value carrier. Pass `--carrier-type` and repeat
+  `--focus-field`; the code never takes mission, Story, object, OCR, or override
+  identities.
 
 For the maintained Bilibili Story-order intake:
 

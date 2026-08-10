@@ -84,11 +84,15 @@ are left unchanged.
 The current banks are Wwise bank version 150. Event traversal now uses only
 typed downward edges: Event action arrays; Action `U16 actionType` plus target
 at offset 2; reciprocal-parent-proven Children arrays for object types 5/6/7/9;
-and the Sound `AkBankSourceData` media id at offset 5. Play (`0x0400`) and
-PlayEvent (`0x2100`) are traversed, while Stop (`0x0100`) and other control
-actions are recorded but not followed. This replaced the former byte-sliding
-u32 scan, which could climb Sound parents or follow incidental property,
-playlist, and switch-map integers into sibling graphs.
+and bounded Sound/MusicTrack `AkBankSourceData` records. Those source records
+separate ordinary Codec media from runtime External Source codecs and generated
+Source plugins, while preserving buffering policy, source flags, memory size,
+and plugin identity. External/plugin sources are playback sources but are not
+promoted into fixed WEM media. Play (`0x0400`) and PlayEvent (`0x2100`) are
+traversed, while Stop (`0x0100`) and other control actions are recorded but not
+followed. This replaced the former byte-sliding u32 scan, which could climb
+Sound parents or follow incidental property, playlist, and switch-map integers
+into sibling graphs.
 
 The output calls decoded Sound leaves *possible media*, not equivalent options
 or a playback trace. Each leaf retains its Play roots and Random, Sequence,
@@ -127,6 +131,144 @@ state groups for exploration, combat/boss, missions, dialogs, cutscenes,
 factory, loading, and standalone playback. These controls remain separate from
 media and Event objects in generated labels.
 
+Current-build native mapping now closes the common playback path. Named
+requests are hashed, `AudioAdapter._PostEvent` allocates an internal playing id
+and prepares Event-owned resources asynchronously, then
+`_OnEventPreparedDoPostEvent` crosses the same native function-pointer slot as
+`AkSoundEngine.PostEvent(uint, ...)` and records the returned real Wwise playing
+id. Stop, pause, and resume use that mapping immediately or remain in
+`AudioActionQueueHelper` until the real id exists, then reach
+`ExecuteActionOnPlayingID`. Animation callbacks route through an entity audio
+object or a registered temporary position emitter; ability `PlaySoundAction`
+uses the same object/weapon/position paths and retains returned ids for seek,
+time-dilation, fade, and stop-on-end behavior. This is exact static call-chain
+evidence for the current GameAssembly, not a live execution trace or proof of
+the switch/state/RTPC values and media leaf selected by Wwise.
+The trigger-specific binary paths are now separated as well. Animation
+`AudioAnimationEventReceiver.PostAudioEvent` resolves the target
+`AudioObjectMono.audioObjectId`, hashes the authored key, and enters the same
+`AudioAdapter._PostEvent` path. `AnimatorBehaviourPlayAudio.OnStateEnter` calls
+`GameAction.PlayAudio`, stores returned ids in its playing-id list, and
+`OnStateExit` calls `StopAudio` with a 100 ms fade. Ability `PlaySoundAction`
+posts its authored `_soundEvent` (or the position/mixing overload) and
+`OnEnd` stops its tracked sound instances. These are one authored request per
+action; runtime playing-id lists are instances, not thousands of static
+options. The internal id, native Wwise id, actual callback order, and active
+container leaf remain runtime-only.
+
+Event resource preparation is now bounded more precisely. `_DoLoadEventAsync`
+first calls `AudioAssetCache.ActivateAsset(eventId)`. Its false branch calls
+the Wwise `LoadBank(uint, callback, cookie, bankType)` overload with the Event
+id, a null cookie, and bank type `0x1e`; the bank callback then submits one
+Event id to `PrepareEvent` with raw preparation type `0`. The completion path
+returns through `AudioAssetHelper`'s waiting callback queue before
+`AudioAdapter._OnEventPreparedDoPostEvent` enters Wwise. The activated-cache
+branch can bypass that load/prepare miss path. `AkCallbackManager` pumps and
+dispatches Event, Marker, Duration, playlist, music-sync, MIDI, and source-change
+payloads; callback-info accessors can expose the playing/event/media/audio-node
+ids and playlist selection. `AudioAdapter._OnEventCallback`'s exact raw
+type-1/EndOfEvent branch calls `AudioAssetCache.DeactivateAsset`: the Event
+refcount drops, while pinned Events stay out of ordinary LRU release. Named
+`AudioBankManager` `BankHandle` reference counting is a separate bank-lifetime
+surface. This proves the static cache/miss and callback topology, not which
+optional callbacks a live request registered or which streamed media Wwise
+selected.
+
+External-source playback is a separate exact path. `PostEventExternal` builds
+an `AkExternalSourceInfo` cookie, filename, and codec id, then crosses native
+PostEvent slot `0x18f361150`; ordinary Event posting uses `0x18f361158`.
+Its EndOfEvent callback removes the external mapping, disposes the temporary
+audio object, and releases its Wwise game-object id. This proves the external
+file lifecycle but does not identify a live request, filename, decoded file,
+or selected playing id.
+
+Music selection is now split into ten exact Wwise State Groups rather than one
+generic music label. Current native setters expose the group uint32, state enum
+type, method/token/VA, and the shared `AkSoundEngine.SetState(uint, uint)`
+boundary. Exact FNV-1 matches recover the authored group names `music_state`,
+`music_map`, `music_mission`, `music_cutscene`, and `music_meta`; battle phase,
+battle intensity, dialog, login, and remote-communication group names remain
+hash-only. Enum ids recover top-level modes, battle phase/intensity, map,
+login, meta/gacha, and remote-communication phases. These rows prove the state
+vocabulary and write route, not the state active at a captured frame or the
+music branch selected by Wwise.
+
+The lifecycle-to-music framework is also static-binary exact. AudioMusicSystem
+registers eighteen persistent `StateChangeAction` callbacks as nine paired
+masks with action orders 5 and 1: FMV, cutscene, transition cutscene, dialog,
+remote communication, loading, teleport loading, fight, and the combined
+factory-area/blackbox mask. `AudioStateSystem._OnAudioStateChanged` dispatches
+through `HandleStateChange` and `MaskCondition.IsMet`. Metadata-usage delegate
+resolution now names all eighteen callback targets, and the current
+`SimpleCondition.IsMet` body proves raw condition type 0 is enter and 1 is
+leave. `SwitchToDialogMusic` directly writes dialog/top-level Wwise state, and
+`_StartBattleMusic` directly writes battle intensity, battle phase, and
+top-level state; other callbacks route through recovered cue, timer, loading,
+or factory controls. This proves the static registration-to-callback route,
+not that a transition executed, its live order, or its selected Wwise branch.
+
+Object selectors and continuous parameters use separate native routes.
+`SetSwitch` always carries an explicit entity/GameObject audio-object id plus
+group/value ids; typed `AudioId` values are already uints, while the string
+overload remains distinct. RTPC setters support global target
+`0x00000000ffffffff` and entity/GameObject targets; string names are hashed by
+`AudioHashGenerator.Compute`, while typed ids are not rehashed. These default
+stock-binary paths cross distinct Wwise native function-pointer slots and may
+still be replaced by IFix. They prove setter shape, not the live object,
+group/value, RTPC value, timing, interpolation, or selected HIRC child.
+
+Wwise v150 type-6 selector tails are now typed through their full bounded
+layout: group kind (`Switch=0`, `State=1`), group/default ids, continuous
+validation, value-to-child packages, and 14-byte child associations. Each
+association carries `isFirstOnly`, `continuePlayback`, `PlayToEnd/Stop`, and
+signed fade-out/fade-in milliseconds; the earlier cross-field
+`parameterA/B/C` interpretation was incorrect and has been removed. Clean
+value packages often map to strict subsets of reciprocal Children, so a known
+runtime group value could narrow the graph. Without that live value and target
+audio object, all mapped children remain possible rather than played choices.
+
+Two type-6 groups now have exact current-native setter joins. Group
+`0x7acdacaf` is the object-scoped factory remote node-mode Switch; its resolver
+maps Normal, Liquid, Gas, mixed, and transition modes to values 1 through 64.
+Group `0xf6699cf4` is the global gamepad motion-backend State, with exact XInput
+and ScePad setter constants while two other authored values remain unnamed.
+Voice-identity, surface/material, and local/remote groups have strong corpus
+correlations but no recovered setter, so they remain labeled semantic
+inferences rather than authored Wwise names. No live value or chosen child was
+observed for any group.
+
+Wwise v150 type-5 Random/Sequence containers now expose the full bounded
+policy block and trailing playlist: loop count and modifiers, transition time
+and mode, avoid-repeat count, Standard/Shuffle and Random/Sequence modes,
+scope/reset/continuous flags, authored playlist order, and per-child weights.
+Playlist membership is distinct from reciprocal `Children` ownership: current
+banks contain repeated items, empty playlists, and strict playlist subsets,
+all with exact bounded tails and no child outside the owned set. Sequence order
+therefore comes from the playlist, while owned children omitted by it remain
+structural and are not claimed selectable. Weight rows are preserved
+independently of the raw flag bit because current banks contain non-default
+weights even when that bit is clear. These fields prove the authored selection
+policy, while the random seed, shuffle and avoid-repeat history, Sequence
+cursor, reset timing, and chosen runtime leaf remain unobserved.
+
+Music Switch and Music Random/Sequence selectors use the same ownership-versus-
+selection boundary. A decision tree or music playlist may be a strict subset
+of reciprocal Children without making the typed structure partial; selector
+leaves outside direct or recursive ownership, including absent object ids,
+still fail closed. Extra owned Music Segments remain visible but are not
+treated as playlist choices. Live music group values and the audible branch
+remain unobserved.
+
+Wwise v150 type-9 objects are Layer/Blend containers. Their bounded tail now
+preserves Layer ids, initial RTPC curves, Layer RTPC id/type, child-associated
+curve points and interpolation, and continuous validation. A non-empty Layer
+proves an authored RTPC-driven blend/crossfade policy, not one randomly chosen
+child or unconditional simultaneous playback. Zero-Layer assignments remain
+structural Children relations. Children without reciprocal parent pointers are
+traversed only when one same-bank audio-node candidate consumes the full typed
+tail uniquely, and remain visibly partial; the live RTPC value, child gains,
+audible layers, and selected media are not observed.
+
 Current IL2CPP managed string literals provide a second exact name source.
 Lowercased Wwise FNV-1 joins recover previously missing `au_*`, `bark_*`, and
 `radio_*` names only when their hash is a HIRC type-4 Event. A string literal
@@ -153,6 +295,12 @@ The strongest current authored playback joins are SkillData/BuffData audio
 references, Timeline/cutscene audio fields, and AudioDialog-to-lipsync
 `pathStem` associations. We do not yet have a complete runtime receiver,
 activation chronology, or proof of which branch was selected in a live game.
+In the current CN rebuild this conservative join yields 236 target Events,
+228 Timeline-carrier Events, 327 stored contexts, and 8 carrier gaps; the
+serialized LevelScript scan finds 348 PlayLevelSequence records, but zero of
+the current carrier names pass the exact `levelseq_*_Audio` identity join.
+Those action records remain useful authored inventory, not proof of a trigger
+for these Event rows.
 Playable skill linkage is recorded per Event instead of inheriting a whole
 group's confidence. An exact Gameplay action id joined to the same SkillData
 file proves an authored dependency; a complete length-prefixed Event reference
@@ -397,6 +545,17 @@ resolves to both its SFX and music event keys through
 `timelineEvidence.audioEventKeys`, with the originating Unity playable/path
 evidence retained. This is a strong authored cutscene-playback relation; it
 does not turn the timeline into a runtime profiler trace.
+
+Current controller and selector audits sharpen two boundaries. Unity
+`AnimatorController` state-machine membership now joins `m_AnimationClips`
+slots to authored state/state-machine paths (46,755 local state references in
+1,246 controllers), but PathID reuse across CABs and missing override joins
+mean this is authored membership, not current-controller execution. Native
+`AudioRemoteFactoryBridge.UpdateNodeMode` resolves the seven NodeMode inputs
+1/2/4/8/16/32/64 to Wwise values `normal`, `liquid`, `gas`, `gasliquid`,
+`gastrans`, `liquidtrans`, and `solidtrans` respectively; a zero resolver
+return skips `SetSwitch`. This is exact setter/value mapping, while the live
+NodeMode and selected Wwise branch remain unobserved.
 
 Next audio-recovery work should finish live-value/state capture for the now
 typed v150 switch-value mappings, Action delay/property bundles, and music

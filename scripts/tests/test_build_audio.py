@@ -15,6 +15,25 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(build_audio)
 
 
+def sound_source_data(
+    media_id: int,
+    parent_id: int = 0,
+    *,
+    plugin_id: int = 0x00040001,
+    stream_type: int = 2,
+    in_memory_size: int = 0,
+    source_bits: int = 0,
+    plugin_parameters: bytes = b"",
+) -> bytes:
+    source = pack(
+        "<IBIIB", plugin_id, stream_type, media_id,
+        in_memory_size, source_bits,
+    )
+    if plugin_id & 0x0F == 2:
+        source += pack("<I", len(plugin_parameters)) + plugin_parameters
+    return source + bytes(4) + pack("<II", 0, parent_id)
+
+
 class AudioCategoryTests(unittest.TestCase):
     def test_current_interactive_audio_union_tag_and_complete_rows(self) -> None:
         from scripts import build_data_index
@@ -57,6 +76,57 @@ class AudioCategoryTests(unittest.TestCase):
             "Core_PlaySoundAction_PlaySoundActionData",
         )
         self.assertEqual(build_data_index.BUFF_ABILITY_ACTION_TAG_MEMBER_COUNTS[0x010D], 22)
+
+    def test_play_sound_target_settings_uses_typed_memorypack_reader_when_exact(self) -> None:
+        from scripts import build_data_index
+
+        # Real CN BuffData PlaySoundActionData payloads: the 67-byte default
+        # TargetSettings and the 79-byte smart_target variant.  The latter
+        # proves the variable string slot and exact nested SelectorData end.
+        base = b"".join((
+            bytes((13, 8, 1, 0)), pack("<i", 0), bytes((0, 0xFF)), pack("<i", 0),
+            bytes((0xFF,)), pack("<i", 0),
+            pack("<I", 0), bytes((0,)), pack("<i", 0), bytes((0,)),
+            pack("<I", 0),
+            bytes((3, 0xFF)), pack("<II", 0, 0),
+            pack("<iiii", 0, 1, 0, 0), pack("<I", 0), pack("<i", 4),
+        ))
+        self.assertEqual(len(base), 67)
+        raw = base[:59] + pack("<I", 12) + b"smart_target" + base[63:]
+        decoded, end = build_data_index.read_buff_target_settings_full_or_partial(
+            raw, 0, len(raw), "fixture.targetSettings"
+        )
+
+        self.assertEqual(end, len(raw))
+        self.assertEqual(decoded["status"], "exact")
+        self.assertEqual(decoded["semanticStatus"], "exact-target-settings-selector-data")
+        self.assertEqual(decoded["targetGroupKey"], "smart_target")
+        self.assertEqual(decoded["targetSource"], 4)
+        self.assertEqual(decoded["selectorOwner"], 1)
+        self.assertEqual(decoded["selectorData"], {
+            "finderData": None,
+            "postProcessorData": [],
+            "validatorData": [],
+        })
+
+    def test_play_sound_target_settings_rejects_unknown_tail_fail_closed(self) -> None:
+        from scripts import build_data_index
+
+        raw = bytearray(b"".join((
+            bytes((13, 8, 1, 0)), pack("<i", 0), bytes((0, 0xFF)), pack("<i", 0),
+            bytes((0xFF,)), pack("<i", 0),
+            pack("<I", 0), bytes((0,)), pack("<i", 0), bytes((0,)),
+            pack("<I", 0),
+            bytes((3, 0xFF)), pack("<II", 0, 0),
+            pack("<iiii", 0, 1, 0, 0), pack("<I", 0), pack("<i", 4),
+        )))
+        self.assertEqual(len(raw), 67)
+        # Keep the byte layout valid but use an unrecognized candidate tail.
+        raw[-4:] = (99).to_bytes(4, "little")
+        with self.assertRaises(ValueError):
+            build_data_index.read_buff_target_settings_full_or_partial(
+                bytes(raw), 0, len(raw), "fixture.targetSettings"
+            )
 
     def test_collects_and_merges_decoded_buff_play_sound_actions(self) -> None:
         with tempfile.TemporaryDirectory() as raw_root:
@@ -107,7 +177,12 @@ class AudioCategoryTests(unittest.TestCase):
             self.assertEqual(rows[0]["sourcePaths"], sources[::-1])
             self.assertEqual(result["counts"]["buffPlaySoundActionOccurrences"], 1)
 
-    def test_wav_decode_defaults_to_lossless_flac_output(self) -> None:
+    def test_direct_flac_is_default_and_legacy_wav_still_converts(self) -> None:
+        self.assertEqual(build_audio.parse_args([]).format, "flac")
+        self.assertEqual(
+            build_audio.audio_output_format(argparse.Namespace(format="flac", audio_format=None)),
+            "flac",
+        )
         self.assertEqual(
             build_audio.audio_output_format(argparse.Namespace(format="wav", audio_format=None)),
             "flac",
@@ -295,13 +370,12 @@ class AudioCategoryTests(unittest.TestCase):
                 pack("<II", 99, 30),
             ])
 
-        sound = bytearray(30)
-        sound[5:9] = pack("<I", 777)
+        sound = sound_source_data(777)
         objects = {
             1: {"type": 4, "data": bytes([2]) + pack("<II", 2, 3)},
             2: {"type": 3, "data": play(4)},
             3: {"type": 3, "data": play(4)},
-            4: {"type": 2, "data": bytes(sound)},
+            4: {"type": 2, "data": sound},
         }
 
         result = build_audio.traverse_hirc_event(1, objects, {777}, bank_version=150)
@@ -333,13 +407,12 @@ class AudioCategoryTests(unittest.TestCase):
         self.assertEqual(staggered["actionDispatchEvidence"]["explicitDelayActionCount"], 1)
 
     def test_failed_action_evidence_does_not_change_target_reachability(self) -> None:
-        sound = bytearray(30)
-        sound[5:9] = pack("<I", 777)
+        sound = sound_source_data(777)
         objects = {
             1: {"type": 4, "data": bytes([1]) + pack("<I", 2)},
             # The legacy typed target prefix is valid, but the evidence bundle is truncated.
             2: {"type": 3, "data": pack("<HI", 0x0403, 3)},
-            3: {"type": 2, "data": bytes(sound)},
+            3: {"type": 2, "data": sound},
         }
 
         result = build_audio.traverse_hirc_event(1, objects, {777}, bank_version=150)
@@ -365,21 +438,19 @@ class AudioCategoryTests(unittest.TestCase):
         event_data = bytes([2]) + pack("<II", play_action, stop_action)
         play_data = pack("<HI", 0x0403, container_id)
         stop_data = pack("<HI", 0x0103, unrelated_sound)
-        container_data = bytearray(80)
+        children_offset = 40
+        container_data = bytearray(children_offset - 24)
         container_data[8:12] = pack("<I", 999)
         # Incidental object/media-looking integers are not typed child edges.
-        container_data[16:20] = pack("<I", unrelated_sound)
-        children_offset = 40
-        container_data[children_offset - 3] = 0
-        container_data[children_offset - 2] = 0
-        container_data[children_offset - 1] = 0x12
-        container_data[children_offset:children_offset + 12] = pack("<III", 2, sound_a, sound_b)
+        container_data[12:16] = pack("<I", unrelated_sound)
+        container_data.extend(pack("<HHHfffHBBBB", 1, 0, 0, 0.0, 0.0, 0.0, 1, 0, 0, 0, 0x12))
+        container_data.extend(pack("<III", 2, sound_a, sound_b))
+        container_data.extend(pack("<H", 2))
+        container_data.extend(pack("<II", sound_b, 50000))
+        container_data.extend(pack("<II", sound_a, 25000))
 
         def sound_data(media_id: int, parent_id: int) -> bytes:
-            data = bytearray(30)
-            data[5:9] = pack("<I", media_id)
-            data[22:26] = pack("<I", parent_id)
-            return bytes(data)
+            return sound_source_data(media_id, parent_id)
 
         objects = {
             event_id: {"type": 4, "data": event_data},
@@ -391,12 +462,26 @@ class AudioCategoryTests(unittest.TestCase):
             unrelated_sound: {"type": 2, "data": sound_data(499, 777)},
         }
 
-        result = build_audio.traverse_hirc_event(event_id, objects, {401, 402, 499})
+        result = build_audio.traverse_hirc_event(
+            event_id, objects, {401, 402, 499}, bank_version=150
+        )
+        self.assertTrue(objects[sound_a]["_typedParentIdParsed"])
+        self.assertEqual(objects[sound_a]["_typedParentId"], container_id)
         self.assertEqual(result["mediaIds"], [401, 402])
         self.assertEqual(result["rootPlayActionCount"], 1)
         self.assertEqual(result["rootStopActionCount"], 1)
         self.assertEqual(result["containerEvidence"][0]["childrenOffset"], children_offset)
         self.assertEqual(result["containerEvidence"][0]["modeLabel"], "random")
+        self.assertEqual(
+            result["containerEvidence"][0]["selectorParserStatus"],
+            "typedExactV150PlaylistWeights",
+        )
+        self.assertEqual(
+            result["containerEvidence"][0]["playlistChildOrder"],
+            [sound_b, sound_a],
+        )
+        self.assertFalse(result["containerEvidence"][0]["childrenOrderMatchesPlaylist"])
+        self.assertEqual(result["containerEvidence"][0]["nonDefaultWeightCount"], 1)
         self.assertEqual(result["containerEvidence"][0]["flagLabels"], [
             "resetPlaylistAtEachPlay", "global",
         ])
@@ -405,6 +490,171 @@ class AudioCategoryTests(unittest.TestCase):
             {("randomAlternative",)},
         )
         self.assertNotIn(unrelated_sound, result["visitedObjectIds"])
+
+    def test_v150_random_sequence_policy_preserves_playlist_order_weights_and_fail_closed_tail(self) -> None:
+        children_offset = 24
+        child_ids = [10, 20, 30]
+        data = bytearray()
+        data.extend(pack(
+            "<HHHfffHBBBB",
+            2, 1, 3, 125.0, 25.0, 50.0, 4, 3, 1, 1, 0x1A,
+        ))
+        data.extend(pack("<I", len(child_ids)))
+        data.extend(b"".join(pack("<I", child_id) for child_id in child_ids))
+        data.extend(pack("<H", len(child_ids)))
+        for child_id, weight in ((30, 50000), (10, 25000), (20, 75000)):
+            data.extend(pack("<II", child_id, weight))
+
+        policy = build_audio.hirc_v150_random_sequence_properties(
+            bytes(data), children_offset, child_ids, bank_version=150
+        )
+
+        self.assertEqual(policy["selectorParserStatus"], "typedExactV150PlaylistWeights")
+        self.assertEqual(policy["modeLabel"], "sequence")
+        self.assertEqual(policy["randomModeLabel"], "shuffle")
+        self.assertEqual(policy["transitionModeLabel"], "delay")
+        self.assertEqual(policy["playlistChildOrder"], [30, 10, 20])
+        self.assertEqual(policy["playlistMembershipStatus"], "playlistCoversOwnedChildren")
+        self.assertEqual(policy["duplicatePlaylistItemCount"], 0)
+        self.assertEqual(policy["ownedChildIdsNotInPlaylist"], [])
+        self.assertFalse(policy["childrenOrderMatchesPlaylist"])
+        self.assertEqual(policy["loopCount"], 2)
+        self.assertEqual(policy["avoidRepeatCount"], 4)
+        self.assertEqual(policy["nonDefaultWeightCount"], 2)
+        self.assertFalse(policy["uniformWeights"])
+        self.assertNotIn("usesWeight", policy["flagLabels"])
+
+        truncated = build_audio.hirc_v150_random_sequence_properties(
+            bytes(data[:-8]), children_offset, child_ids, bank_version=150
+        )
+        self.assertEqual(
+            truncated["selectorParserStatus"],
+            "unresolvedV150RandomSequenceTail",
+        )
+        self.assertEqual(truncated["selectorParserFailureReason"], "unexpectedPlaylistTailLength")
+        self.assertEqual(truncated["modeLabel"], "sequence")
+
+        repeated = bytearray(data[:children_offset + 4 + len(child_ids) * 4])
+        repeated.extend(pack("<H", 2))
+        repeated.extend(pack("<II", 10, 50000))
+        repeated.extend(pack("<II", 10, 25000))
+        repeated_policy = build_audio.hirc_v150_random_sequence_properties(
+            bytes(repeated), children_offset, child_ids, bank_version=150
+        )
+        self.assertEqual(
+            repeated_policy["selectorParserStatus"],
+            "typedExactV150PlaylistWeights",
+        )
+        self.assertEqual(
+            repeated_policy["playlistMembershipStatus"],
+            "playlistWithRepeatedOwnedChildren",
+        )
+        self.assertEqual(repeated_policy["duplicatePlaylistItemCount"], 1)
+        self.assertEqual(repeated_policy["ownedChildIdsNotInPlaylist"], [20, 30])
+
+        empty = bytearray(data[:children_offset + 4 + len(child_ids) * 4])
+        empty.extend(pack("<H", 0))
+        empty_policy = build_audio.hirc_v150_random_sequence_properties(
+            bytes(empty), children_offset, child_ids, bank_version=150
+        )
+        self.assertEqual(
+            empty_policy["playlistMembershipStatus"],
+            "emptyPlaylistOwnedChildrenPreserved",
+        )
+        self.assertEqual(empty_policy["ownedChildIdsNotInPlaylist"], child_ids)
+
+    def test_v150_layer_tail_preserves_rtpc_child_curves(self) -> None:
+        child_id = 0x11223344
+        tail = bytes.fromhex(
+            "01000000"
+            "ddccbbaa"
+            "0000"
+            "78563412"
+            "00"
+            "01000000"
+            "44332211"
+            "01000000"
+            "00000000"
+            "0000803f"
+            "09000000"
+            "00"
+        )
+
+        result = build_audio.hirc_v150_layer_tail(
+            tail, 0, [child_id], bank_version=150
+        )
+
+        self.assertEqual(result["layerTailParserStatus"], "typedExactV150LayerTail")
+        self.assertEqual(result["layerAssignmentStatus"], "nonEmptyCurves")
+        self.assertEqual(result["layerCount"], 1)
+        self.assertEqual(result["associationCount"], 1)
+        self.assertEqual(result["curvePointCount"], 1)
+        layer = result["layers"][0]
+        self.assertEqual(layer["layerId"], 0xAABBCCDD)
+        self.assertEqual(layer["rtpcId"], 0x12345678)
+        self.assertEqual(layer["rtpcTypeLabel"], "gameParameter")
+        self.assertEqual(layer["associations"][0]["childId"], child_id)
+        self.assertEqual(
+            layer["associations"][0]["curvePoints"][0]["interpolationLabel"],
+            "Constant",
+        )
+        self.assertFalse(result["continuousValidation"])
+
+        trailing = build_audio.hirc_v150_layer_tail(
+            tail + b"\x00", 0, [child_id], bank_version=150
+        )
+        self.assertEqual(trailing["layerTailParserStatus"], "unresolvedV150LayerTail")
+        self.assertEqual(trailing["layerTailFailureReason"], "unexpectedTrailingBytes")
+
+    def test_v150_layer_candidate_without_parent_proof_remains_partial(self) -> None:
+        event_id = 100
+        action_id = 101
+        layer_id = 200
+        sound_id = 0x11223344
+        media_id = 401
+        children_offset = 20
+        tail = bytes.fromhex(
+            "01000000ddccbbaa00007856341200010000004433221101000000"
+            "000000000000803f0900000000"
+        )
+        layer_data = bytes(children_offset) + pack("<II", 1, sound_id) + tail
+
+        sound_data = sound_source_data(media_id, 999)  # Deliberately not reciprocal.
+        objects = {
+            event_id: {"type": 4, "data": bytes([1]) + pack("<I", action_id)},
+            action_id: {"type": 3, "data": pack("<HI", 0x0403, layer_id)},
+            layer_id: {"type": 9, "data": layer_data},
+            sound_id: {"type": 2, "data": sound_data},
+        }
+
+        result = build_audio.traverse_hirc_event(
+            event_id, objects, {media_id}, bank_version=150
+        )
+
+        self.assertEqual(result["mediaIds"], [media_id])
+        self.assertEqual(result["traversalStatus"], "partial")
+        layer = result["containerEvidence"][0]
+        self.assertEqual(
+            layer["parserConfidence"],
+            "typedExactV150CandidateWithoutParentProof",
+        )
+        self.assertEqual(
+            layer["layerTailEvidence"]["layerAssignmentStatus"],
+            "nonEmptyCurves",
+        )
+        self.assertEqual(
+            result["unresolvedNodes"][0]["reason"],
+            "layerChildrenCandidateWithoutParentProof",
+        )
+
+        canonical_empty = bytes(31) + bytes.fromhex("000000000000000000")
+        candidate = build_audio.hirc_v150_layer_child_candidate(
+            canonical_empty, {}, bank_version=150
+        )
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate[0], [])
+        self.assertEqual(candidate[1], 31)
+        self.assertEqual(candidate[3], "typedExactV150CanonicalEmpty")
 
     def test_v150_switch_mapping_preserves_flat_value_packages_without_pruning(self) -> None:
         event_id = 100
@@ -417,7 +667,8 @@ class AudioCategoryTests(unittest.TestCase):
         value_id = 0xF44F784A
         children_offset = 40
 
-        switch_data = bytearray(children_offset - 9)
+        switch_data = bytearray(children_offset - 10)
+        switch_data.append(0)
         switch_data.extend(pack("<II", group_id, default_value_id))
         switch_data.append(1)
         switch_data.extend(pack("<III", 2, sound_a, sound_b))
@@ -425,14 +676,11 @@ class AudioCategoryTests(unittest.TestCase):
         switch_data.extend(pack("<III", value_id, 1, sound_a))
         switch_data.extend(pack("<II", default_value_id, 0))
         switch_data.extend(pack("<I", 2))
-        switch_data.extend(pack("<IBiiB", sound_a, 3, 500, -250, 7))
-        switch_data.extend(pack("<IBiiB", sound_b, 0, 1, 0, 0))
+        switch_data.extend(pack("<IBBii", sound_a, 3, 1, 500, -250))
+        switch_data.extend(pack("<IBBii", sound_b, 0, 0, 1, 0))
 
         def sound_data(media_id: int) -> bytes:
-            data = bytearray(30)
-            data[5:9] = pack("<I", media_id)
-            data[22:26] = pack("<I", switch_id)
-            return bytes(data)
+            return sound_source_data(media_id, switch_id)
 
         objects = {
             event_id: {"type": 4, "data": bytes([1]) + pack("<I", action_id)},
@@ -451,6 +699,8 @@ class AudioCategoryTests(unittest.TestCase):
         switch = result["containerEvidence"][0]["switchMappingEvidence"]
         self.assertEqual(switch["parserStatus"], "typedExactV150FlatPackages")
         self.assertEqual(switch["selectionStructure"], "flatValuePackages")
+        self.assertEqual(switch["groupType"], "switch")
+        self.assertEqual(switch["groupTypeRaw"], 0)
         self.assertEqual(switch["groupId"], group_id)
         self.assertEqual(switch["defaultValueId"], default_value_id)
         self.assertTrue(switch["continuousValidation"])
@@ -463,14 +713,27 @@ class AudioCategoryTests(unittest.TestCase):
         })
         self.assertTrue(switch["packages"][1]["isDefaultValue"])
         self.assertEqual(switch["unmappedChildIds"], [sound_b])
-        self.assertEqual(switch["associations"][0]["parameterARaw"], 500)
-        self.assertEqual(switch["associations"][0]["parameterBRaw"], -250)
+        self.assertTrue(switch["associations"][0]["isFirstOnly"])
+        self.assertTrue(switch["associations"][0]["continuePlayback"])
+        self.assertEqual(switch["associations"][0]["onSwitchMode"], "stop")
+        self.assertEqual(switch["associations"][0]["fadeOutTimeMs"], 500)
+        self.assertEqual(switch["associations"][0]["fadeInTimeMs"], -250)
+        self.assertEqual(switch["associations"][1]["onSwitchMode"], "playToEnd")
         self.assertEqual(
             switch["runtimeSelection"],
             "groupValueUnobservedAllChildrenRemainPossible",
         )
 
-        no_package_data = bytearray(children_offset - 9)
+        state_data = bytearray(switch_data)
+        state_data[children_offset - 10] = 1
+        state_mapping = build_audio.hirc_v150_switch_mapping(
+            bytes(state_data), children_offset, 2, bank_version=150
+        )
+        self.assertEqual(state_mapping["groupType"], "state")
+        self.assertEqual(state_mapping["groupTypeRaw"], 1)
+
+        no_package_data = bytearray(children_offset - 10)
+        no_package_data.append(1)
         no_package_data.extend(pack("<II", 0x3C9C2C56, 0x8D36849F))
         no_package_data.append(0)
         no_package_data.extend(pack("<III", 2, sound_a, sound_b))
@@ -489,21 +752,18 @@ class AudioCategoryTests(unittest.TestCase):
         sound_a = 301
         sound_b = 302
         children_offset = 40
-        switch_data = bytearray(children_offset - 9)
+        switch_data = bytearray(children_offset - 10)
         # Current distinct-layout objects do not have the flat selector header
         # at C-9; interpreting their final header byte as continuous-validation
         # yields a non-boolean value and must fail before package claims.
-        switch_data.extend(bytes.fromhex("00949cee04bb233163"))
+        switch_data.extend(bytes.fromhex("0000949cee04bb233163"))
         switch_data.extend(pack("<III", 2, sound_a, sound_b))
         switch_data.extend(pack("<I", 2))
-        switch_data.extend(pack("<IBiiB", sound_a, 0, 1, 0, 0))
-        switch_data.extend(pack("<IBiiB", sound_b, 0, 1, 0, 0))
+        switch_data.extend(pack("<IBBii", sound_a, 0, 1, 0, 0))
+        switch_data.extend(pack("<IBBii", sound_b, 0, 1, 0, 0))
 
         def sound_data(media_id: int) -> bytes:
-            data = bytearray(30)
-            data[5:9] = pack("<I", media_id)
-            data[22:26] = pack("<I", switch_id)
-            return bytes(data)
+            return sound_source_data(media_id, switch_id)
 
         objects = {
             100: {"type": 4, "data": bytes([1]) + pack("<I", 101)},
@@ -604,8 +864,72 @@ class AudioCategoryTests(unittest.TestCase):
         switch = result["musicNodeEvidence"][0]
         self.assertEqual(switch["treeDepth"], 1)
         self.assertEqual(switch["treeLeaves"][0]["audioNodeId"], ranseq_id)
+        self.assertEqual(switch["selectorValidation"], {
+            "status": "reciprocalChildrenCovered",
+            "treeLeafIds": [ranseq_id],
+            "reciprocalChildIds": [ranseq_id],
+            "treeLeafIdsOutsideReciprocalChildren": [],
+            "reciprocalChildrenWithoutTreeLeaf": [],
+            "recursiveOwnedDescendantIds": [],
+            "zeroUnboundLeafIds": [],
+            "sameBankMissingLeafIds": [],
+            "localOtherParentLeafIds": [],
+            "ownedDirectChildIdsNotInTreeLeaves": [],
+            "runtimeBranchStatus": "groupValuesAndActiveLeafNotObserved",
+        })
+        mismatched_switch = build_audio.hirc_v150_music_switch_structure(
+            switch_data,
+            1 + 12 + 7,
+            1,
+            [ranseq_id + 1],
+        )
+        self.assertEqual(
+            mismatched_switch["selectorValidation"]["status"],
+            "treeLeafOutsideReciprocalChildren",
+        )
+        self.assertEqual(
+            mismatched_switch["selectorValidation"]["treeLeafIdsOutsideReciprocalChildren"],
+            [ranseq_id],
+        )
+        subset_switch = build_audio.hirc_v150_music_switch_structure(
+            switch_data,
+            1 + 12 + 7,
+            1,
+            [ranseq_id, ranseq_id + 1],
+        )
+        self.assertEqual(
+            subset_switch["selectorValidation"]["status"],
+            "decisionTreeSubsetOfReciprocalChildren",
+        )
+        self.assertEqual(
+            subset_switch["selectorValidation"]["reciprocalChildrenWithoutTreeLeaf"],
+            [ranseq_id + 1],
+        )
         ranseq = result["musicNodeEvidence"][1]
         self.assertEqual(ranseq["selectionTypeLabels"], ["continuousSequence", "none"])
+        self.assertEqual(ranseq["selectorValidation"], {
+            "status": "reciprocalChildrenCovered",
+            "playlistTerminalSegmentIds": [segment_id],
+            "reciprocalChildIds": [segment_id],
+            "playlistTerminalSegmentIdsOutsideReciprocalChildren": [],
+            "reciprocalChildrenWithoutPlaylistTerminal": [],
+            "terminalPlaylistItemCount": 1,
+            "terminalItemsWithSentinelSegmentId": 0,
+        })
+        mismatched_ranseq = build_audio.hirc_v150_music_random_sequence_structure(
+            ranseq_data,
+            1 + 12 + 7,
+            1,
+            [segment_id, segment_id + 1],
+        )
+        self.assertEqual(
+            mismatched_ranseq["selectorValidation"]["status"],
+            "playlistSubsetOfReciprocalChildren",
+        )
+        self.assertEqual(
+            mismatched_ranseq["selectorValidation"]["reciprocalChildrenWithoutPlaylistTerminal"],
+            [segment_id + 1],
+        )
         self.assertEqual(ranseq["playlistItems"][1]["segmentId"], segment_id)
         track = result["musicNodeEvidence"][3]
         self.assertEqual(track["sources"][0]["mediaId"], media_id)
@@ -639,6 +963,88 @@ class AudioCategoryTests(unittest.TestCase):
         self.assertEqual(result["containerEvidence"][0]["childCount"], 0)
         self.assertEqual(result["containerEvidence"][0]["parserConfidence"], "typedTailExactEmpty")
 
+    def test_music_switch_leaf_ownership_distinguishes_recursive_unbound_and_missing(self) -> None:
+        def music_node(parent_id: int) -> dict[str, object]:
+            return {
+                "type": 10,
+                "data": bytes([0]) + bytes(4) + pack("<II", 0, parent_id),
+            }
+
+        switch_id = 10
+        direct_child = 20
+        recursive_leaf = 21
+        other_parent_leaf = 22
+        missing_leaf = 99
+        objects = {
+            direct_child: music_node(switch_id),
+            recursive_leaf: music_node(direct_child),
+            other_parent_leaf: music_node(777),
+        }
+        structure = {
+            "treeLeaves": [
+                {"audioNodeId": direct_child},
+                {"audioNodeId": recursive_leaf},
+                {"audioNodeId": 0},
+                {"audioNodeId": missing_leaf},
+                {"audioNodeId": other_parent_leaf},
+            ],
+            "transitionRules": [{
+                "sourceIds": [recursive_leaf],
+                "destinationIds": [0, missing_leaf],
+            }],
+            "selectorValidation": {
+                "status": "treeLeafOutsideReciprocalChildren",
+                "treeLeafIds": [0, direct_child, recursive_leaf, other_parent_leaf, missing_leaf],
+                "reciprocalChildIds": [direct_child],
+                "treeLeafIdsOutsideReciprocalChildren": [
+                    0, recursive_leaf, other_parent_leaf, missing_leaf,
+                ],
+                "reciprocalChildrenWithoutTreeLeaf": [],
+            },
+        }
+
+        refined = build_audio.refine_hirc_v150_music_switch_selector_ownership(
+            structure, switch_id, objects
+        )
+        validation = refined["selectorValidation"]
+        self.assertEqual(validation["status"], "decisionTreeLeafOwnershipUnresolved")
+        self.assertEqual(validation["recursiveOwnedDescendantIds"], [recursive_leaf])
+        self.assertEqual(validation["zeroUnboundLeafIds"], [0])
+        self.assertEqual(validation["sameBankMissingLeafIds"], [missing_leaf])
+        self.assertEqual(validation["localOtherParentLeafIds"], [other_parent_leaf])
+        by_id = {row["audioNodeId"]: row for row in refined["treeLeaves"]}
+        self.assertEqual(by_id[recursive_leaf]["ownershipParentChain"], [direct_child, switch_id])
+        self.assertEqual(
+            by_id[recursive_leaf]["transitionReferenceRoles"],
+            ["transitionSource"],
+        )
+        self.assertEqual(
+            by_id[0]["transitionReferenceRoles"],
+            ["transitionDestination"],
+        )
+
+        resolved = build_audio.refine_hirc_v150_music_switch_selector_ownership(
+            {
+                "treeLeaves": [
+                    {"audioNodeId": direct_child},
+                    {"audioNodeId": recursive_leaf},
+                    {"audioNodeId": 0},
+                ],
+                "transitionRules": [],
+                "selectorValidation": {
+                    "status": "treeLeafOutsideReciprocalChildren",
+                    "reciprocalChildIds": [direct_child],
+                    "reciprocalChildrenWithoutTreeLeaf": [],
+                },
+            },
+            switch_id,
+            objects,
+        )
+        self.assertEqual(
+            resolved["selectorValidation"]["status"],
+            "decisionTreeIndirectAndUnboundLeavesResolved",
+        )
+
     def test_typed_hirc_traversal_fails_closed_on_truncated_music_track(self) -> None:
         objects = {
             1: {"type": 4, "data": bytes([1]) + pack("<I", 2)},
@@ -662,14 +1068,13 @@ class AudioCategoryTests(unittest.TestCase):
         self.assertEqual(result["unresolvedNodes"][0]["reason"], "unsupportedMusicBankVersion")
 
     def test_play_event_follows_nested_event_actions(self) -> None:
-        sound = bytearray(30)
-        sound[5:9] = pack("<I", 99)
+        sound = sound_source_data(99)
         objects = {
             1: {"type": 4, "data": bytes([1]) + pack("<I", 2)},
             2: {"type": 3, "data": pack("<HI", 0x2103, 3)},
             3: {"type": 4, "data": bytes([1]) + pack("<I", 4)},
             4: {"type": 3, "data": pack("<HI", 0x0403, 5)},
-            5: {"type": 2, "data": bytes(sound)},
+            5: {"type": 2, "data": sound},
         }
         result = build_audio.traverse_hirc_event(1, objects, {99})
         self.assertEqual(result["mediaIds"], [99])
@@ -683,13 +1088,12 @@ class AudioCategoryTests(unittest.TestCase):
         )
 
     def test_shared_sound_keeps_every_play_root_without_duplicate_media(self) -> None:
-        sound = bytearray(30)
-        sound[5:9] = pack("<I", 99)
+        sound = sound_source_data(99)
         objects = {
             1: {"type": 4, "data": bytes([2]) + pack("<II", 2, 3)},
             2: {"type": 3, "data": pack("<HI", 0x0403, 4)},
             3: {"type": 3, "data": pack("<HI", 0x0403, 4)},
-            4: {"type": 2, "data": bytes(sound)},
+            4: {"type": 2, "data": sound},
         }
         result = build_audio.traverse_hirc_event(1, objects, {99})
         self.assertEqual(result["mediaIds"], [99])
@@ -702,7 +1106,70 @@ class AudioCategoryTests(unittest.TestCase):
             "rootActionIds": [2, 3],
             "relationTypes": ["directSound"],
             "selectionPaths": [["directSound"]],
+            "sourceKinds": ["codecMedia"],
+            "pluginIds": [0x00040001],
+            "pluginNames": ["Wwise Vorbis"],
+            "streamTypes": [{"value": 2, "label": "streamedZeroLatency"}],
+            "sourceBits": [0],
         }])
+        self.assertEqual(result["sourceObjectSummary"]["sourceReferenceCount"], 2)
+        self.assertEqual(result["sourceObjectSummary"]["uniqueSourceObjectCount"], 1)
+        self.assertEqual(result["sourceObjectSummary"]["sourceKindCounts"], {"codecMedia": 2})
+        self.assertEqual(result["nonMediaSourceEvidence"], [])
+
+    def test_v150_sound_sources_separate_codec_external_and_synthesized_audio(self) -> None:
+        codec = sound_source_data(
+            101, 900, stream_type=1, in_memory_size=4096, source_bits=0x09,
+        )
+        external = sound_source_data(
+            202, 901, plugin_id=0x00080001, stream_type=2,
+            in_memory_size=0, source_bits=0,
+        )
+        synthesized = sound_source_data(
+            303, 902, plugin_id=0x00650002, stream_type=0,
+            plugin_parameters=b"\x01\x02\x03",
+        )
+
+        codec_row = build_audio.hirc_v150_sound_source(codec)
+        self.assertEqual(codec_row["sourceKind"], "codecMedia")
+        self.assertEqual(codec_row["pluginName"], "Wwise Vorbis")
+        self.assertEqual(codec_row["streamTypeLabel"], "streamed")
+        self.assertTrue(codec_row["sourceFlags"]["isLanguageSpecific"])
+        self.assertTrue(codec_row["sourceFlags"]["nonCachable"])
+        self.assertEqual(codec_row["parentId"], 900)
+        self.assertEqual(build_audio.hirc_sound_media_id(codec), 101)
+
+        external_row = build_audio.hirc_v150_sound_source(external)
+        self.assertEqual(external_row["sourceKind"], "externalSourceCodec")
+        self.assertEqual(external_row["pluginName"], "Wwise External Source")
+        self.assertIsNone(build_audio.hirc_sound_media_id(external))
+
+        synth_row = build_audio.hirc_v150_sound_source(synthesized)
+        self.assertEqual(synth_row["sourceKind"], "synthesizedSource")
+        self.assertEqual(synth_row["pluginParameterSize"], 3)
+        self.assertEqual(synth_row["nodeBaseOffset"], 21)
+        self.assertEqual(build_audio.hirc_object_parent_id(2, synthesized), 902)
+        self.assertIsNone(build_audio.hirc_sound_media_id(synthesized))
+
+        objects = {
+            1: {"type": 4, "data": bytes([2]) + pack("<II", 2, 3)},
+            2: {"type": 3, "data": pack("<HI", 0x0403, 4)},
+            3: {"type": 3, "data": pack("<HI", 0x0403, 5)},
+            4: {"type": 2, "data": external},
+            5: {"type": 2, "data": synthesized},
+        }
+        result = build_audio.traverse_hirc_event(1, objects, {202, 303})
+        self.assertEqual(result["mediaIds"], [])
+        self.assertEqual(result["sourceMediaIds"], [])
+        self.assertEqual(result["traversalStatus"], "complete")
+        self.assertEqual(result["sourceObjectSummary"]["sourceKindCounts"], {
+            "externalSourceCodec": 1,
+            "synthesizedSource": 1,
+        })
+        self.assertEqual(
+            [row["mediaLocationStatus"] for row in result["nonMediaSourceEvidence"]],
+            ["unresolvedExternalSource", "synthesizedSource"],
+        )
 
 
 class AudioDumperTests(unittest.TestCase):
@@ -891,6 +1358,213 @@ AnimationClip:
             self.assertEqual(result["unownedEvents"]["au_ui_generic"][0]["ownerStatus"], "unresolved")
             self.assertEqual(result["counts"]["animationAudioClipsScanned"], 2)
             self.assertEqual(result["counts"]["animationAudioClipsOwnerUnresolved"], 1)
+
+    def test_animation_controller_index_is_fail_closed_and_annotates_direct_clip_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            export_root = Path(raw_root) / "export_full"
+            clip_root = export_root / "recovered/AnimeStudio-cli/StreamingAssets/convert_by_type/AnimationClip"
+            controller_root = export_root / "recovered/AnimeStudio-cli/StreamingAssets/json_by_type/AnimatorController"
+            clip_root.mkdir(parents=True)
+            controller_root.mkdir(parents=True)
+            clip_template = """%YAML 1.1
+AnimationClip:
+  m_Name: {clip_name}
+  m_Events:
+  - time: 0.25
+    functionName: PostAudioEvent
+    data: {event_id}
+"""
+            (clip_root / "A_actor_test_battle_direct_p0000000000000001.anim").write_text(
+                clip_template.format(
+                    clip_name="A_actor_test_battle_direct",
+                    event_id="au_direct_controller",
+                ),
+                encoding="utf-8",
+            )
+            (clip_root / "A_actor_test_battle_unresolved_p0000000000000002.anim").write_text(
+                clip_template.format(
+                    clip_name="A_actor_test_battle_unresolved",
+                    event_id="au_unresolved_controller",
+                ),
+                encoding="utf-8",
+            )
+            (controller_root / "AnimatorController#fixture_p0000000000000003.json").write_text(
+                json.dumps({
+                    "$animestudio": {
+                        "type": "AnimatorController",
+                        "pathId": 3,
+                        "sourceFile": "CAB-controller-fixture",
+                        "pptrReferences": [
+                            {
+                                "targetType": "AnimationClip",
+                                "targetPathId": 1,
+                                "targetSourceFile": "CAB-clip-fixture",
+                                "resolutionStatus": "resolved",
+                            },
+                            {
+                                # An unresolved PPtr must not become a name/path guess.
+                                "targetType": "AnimationClip",
+                                "targetPathId": 2,
+                                "targetSourceFile": "CAB-clip-fixture",
+                                "resolutionStatus": "unresolved",
+                            },
+                            {
+                                "targetType": "AnimatorController",
+                                "targetPathId": 2,
+                                "targetSourceFile": "CAB-clip-fixture",
+                                "resolutionStatus": "resolved",
+                            },
+                        ],
+                    },
+                    "m_Name": "AC_fixture_direct",
+                }),
+                encoding="utf-8",
+            )
+            # Missing exporter identity is fail-closed and cannot contribute an index row.
+            (controller_root / "malformed.json").write_text(
+                json.dumps({"m_Name": "AC_should_not_match"}),
+                encoding="utf-8",
+            )
+
+            result = build_audio.collect_gameplay_animation_audio(
+                export_root,
+                [{"kind": "character", "id": "chr_0001_test", "skillGroups": []}],
+                [],
+            )
+
+            owner = result["owners"][0]
+            direct = owner["events"]["au_direct_controller"][0]
+            unresolved = owner["events"]["au_unresolved_controller"][0]
+            self.assertEqual(direct["clipReachability"], "directAnimatorController")
+            self.assertEqual(direct["animatorControllerCount"], 1)
+            self.assertEqual(
+                direct["animatorControllerContexts"][0]["name"],
+                "AC_fixture_direct",
+            )
+            self.assertEqual(unresolved["clipReachability"], "unresolved")
+            self.assertEqual(unresolved["animatorControllerCount"], 0)
+            self.assertEqual(unresolved["animatorControllerContexts"], [])
+            self.assertEqual(result["counts"]["animationAudioControllerReachableClips"], 1)
+            self.assertEqual(result["counts"]["animationAudioControllerUnresolvedClips"], 1)
+            self.assertEqual(
+                result["counts"]["animationAudioControllerReachableCallbackRows"],
+                1,
+            )
+            self.assertEqual(
+                result["animationControllerIndex"]["directReferenceCount"],
+                1,
+            )
+            self.assertEqual(result["animationControllerIndex"]["status"], "partial")
+
+    def test_animator_controller_state_clip_refs_are_bounded_authored_membership(self) -> None:
+        payload = {
+            "m_AnimationClips": [
+                {"m_FileID": 2, "m_PathID": 101},
+                {"m_FileID": 2, "m_PathID": 102},
+            ],
+            "m_Controller": {
+                "m_LayerArray": [{"data": {"m_StateMachineIndex": 0}}],
+                "m_StateMachineArray": [{"data": {
+                    "m_StateConstantArray": [{"data": {
+                        "m_NameID": 11,
+                        "m_FullPathID": 22,
+                        "m_TagID": 33,
+                        "m_BlendTreeConstantArray": [{"data": {
+                            "m_NodeArray": [{"data": {
+                                "m_ClipID": 1,
+                                "m_BlendType": 0,
+                            }}],
+                        }}],
+                    }}],
+                }}],
+            },
+        }
+        refs = build_audio.animator_controller_state_clip_refs(payload)
+        self.assertEqual(list(refs), [1])
+        self.assertEqual(refs[1][0]["clipSlot"], 1)
+        self.assertEqual(refs[1][0]["stateMachineLayerIndices"], [0])
+        self.assertTrue(refs[1][0]["stateMachineReferencedByLayer"])
+        self.assertEqual(refs[1][0]["reachability"], "authoredStateMembership")
+        self.assertEqual(refs[1][0]["runtimeExecution"], "unobserved")
+
+        malformed = dict(payload)
+        malformed["m_Controller"] = {"m_LayerArray": "not-a-list"}
+        self.assertEqual(build_audio.animator_controller_state_clip_refs(malformed), {})
+
+    def test_animator_override_index_keeps_corpus_unique_mapping_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            export_root = Path(raw_root) / "export_full"
+            clip_root = export_root / "recovered/AnimeStudio-cli/StreamingAssets/convert_by_type/AnimationClip"
+            controller_root = export_root / "recovered/AnimeStudio-cli/StreamingAssets/json_by_type/AnimatorController"
+            override_root = export_root / "recovered/AnimeStudio-cli/StreamingAssets/json_by_type/AnimatorOverrideController"
+            clip_root.mkdir(parents=True)
+            controller_root.mkdir(parents=True)
+            override_root.mkdir(parents=True)
+            clip_text = """%YAML 1.1
+AnimationClip:
+  m_Name: A_actor_test_battle_override
+  m_Events:
+  - time: 0.25
+    functionName: PostAudioEvent
+    data: au_override_fixture
+"""
+            (clip_root / "A_actor_test_battle_override_p0000000000000002.anim").write_text(
+                clip_text,
+                encoding="utf-8",
+            )
+            (controller_root / "AnimatorController#fixture_p0000000000000003.json").write_text(
+                json.dumps({
+                    "$animestudio": {
+                        "type": "AnimatorController",
+                        "pathId": 3,
+                        "sourceFile": "CAB-controller-fixture",
+                    },
+                    "m_Name": "AC_fixture_override",
+                }),
+                encoding="utf-8",
+            )
+            (override_root / "AC_eny_0001_fixture_p0000000000000004.json").write_text(
+                json.dumps({
+                    "m_Controller": {"m_FileID": 0, "m_PathID": 3, "IsNull": False},
+                    "m_Clips": [{
+                        "m_OriginalClip": {"m_FileID": 0, "m_PathID": 1, "IsNull": False},
+                        "m_OverrideClip": {"m_FileID": 0, "m_PathID": 2, "IsNull": False},
+                    }],
+                }),
+                encoding="utf-8",
+            )
+
+            result = build_audio.collect_animation_override_index(export_root)
+            self.assertEqual(result["summary"]["overrideControllerCount"], 1)
+            self.assertEqual(result["summary"]["replacementReferenceCount"], 1)
+            self.assertEqual(result["summary"]["controllerPathIdCorpusUnique"], 1)
+            self.assertEqual(result["summary"]["effectiveClipCorpusUniqueReferences"], 1)
+            context = result["byClipPathId"][2][0]
+            self.assertEqual(context["mappingKind"], "replacement")
+            self.assertEqual(context["controllerJoinStatus"], "corpusUniqueControllerPathId")
+            self.assertEqual(context["clipJoinStatus"], "corpusUniqueAnimationClipPathId")
+            self.assertEqual(context["assetIdentityToken"], "eny_0001_fixture")
+            self.assertEqual(context["runtimeActivation"], "unobserved")
+
+            # A missing base controller must remain partial rather than being
+            # guessed from the override filename.
+            payload = json.loads(
+                (override_root / "AC_eny_0001_fixture_p0000000000000004.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            payload["m_Controller"]["m_PathID"] = 99
+            (override_root / "AC_eny_0001_fixture_p0000000000000004.json").write_text(
+                json.dumps(payload),
+                encoding="utf-8",
+            )
+            partial = build_audio.collect_animation_override_index(export_root)
+            self.assertEqual(partial["summary"]["status"], "partial")
+            self.assertEqual(partial["summary"]["controllerPathIdUnresolved"], 1)
+            self.assertEqual(
+                partial["byClipPathId"][2][0]["controllerJoinStatus"],
+                "missingControllerPathId",
+            )
 
     def test_collects_direct_character_and_bounded_enemy_audio(self) -> None:
         with tempfile.TemporaryDirectory() as raw_root:

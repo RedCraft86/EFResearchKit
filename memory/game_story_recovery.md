@@ -9,14 +9,14 @@ complete canonical playthrough.
 
 Current CN headline coverage from the maintained reports:
 
-- 490 pipeline missions and 5,563 unique Story files;
+- 487 source-order missions and 5,563 unique Story files;
 - 4,236 connected files (76.1%);
 - 4,457 files with at least one normalized trigger/context route (80.1%);
 - 1,327 unlinked files, including 156 with exact native playback but no
   mission/quest activation bridge;
-- 1,524 strong source-only edges across 8,877 candidate scene placements;
+- 1,529 strong source-only edges across 8,877 candidate scene placements;
 - 0 cyclic components;
-- 3,845 of 249,695 possible within-mission pairs proven comparable (1.54%).
+- 3,850 of 249,695 possible within-mission pairs proven comparable (1.54%).
 
 Counts are volatile. Use the generated coverage, partial-order, and gap-queue
 reports for the current inventory rather than copying detailed counts here.
@@ -56,6 +56,20 @@ never promotes an edge.
 - Manual option fixes live in `webui/overrides/options.json`; manual mission
   order lives in `webui/overrides/story_order.json`. Builders do not replace
   the latter with OCR output.
+- Multi-output DialogTree controls use one schema-driven native decoder for
+  managed enum/static-port families. For OpenUI nodes it derives the installed
+  `Dictionary<DialogOpenUIType,List<string>>`, selector-to-string getter,
+  explicit continuation-index path, and current IFix exclusion from original
+  binary inputs. A second schema-driven pass target-dumps all 1,290 installed
+  Lua files and fails closed over the shared phase router, default table, every
+  override-message occurrence, and every direct native `Next` call. The current
+  86 controls / 172 arms divide into 123 arms with a bounded shipped producer,
+  35 with a dynamic producer whose exact index is not statically bounded, and
+  14 with no producer in the current shipped Lua corpus; validation failures
+  are zero. Named ports remain exact authored alternatives and absent map rows
+  remain ordinal-only. Producer presence is not an observed choice, activation,
+  mission owner, or cross-file order; producer absence is not permanent
+  unreachability. Anonymous zero-edge controls remain detached definitions.
 
 ## Mission and quest conclusions
 
@@ -64,6 +78,15 @@ never promotes an edge.
 - Quest forks are authored topology. Main/auxiliary labels, guards,
   `questType`, `showMode`, and reconvergence describe configuration and
   presentation; they do not prove which successor the server selected.
+- Fork-arm source attachment is corpus-driven. Each sibling-exclusive corridor
+  identity must exist in the exact original MissionRuntime `questDic`; a shared
+  recursive walker then admits only records carrying both `sourceFile` and a
+  byte hash. The current corpus publishes 3,337 authored quest-source placements
+  and at least one original file on all 740 arms, including 395 arms with no
+  Story placement. Twenty-three arms immediately enter a shared merge and are
+  labeled direct-successor boundaries instead of being called exclusive. The
+  walker has no mission, quest, action, or object allowlist and never reads OCR
+  or manual order.
 - The installed client applies server-supplied mission/quest identities and
   states one at a time. Current validated handlers do not expose a client-side
   successor selector.
@@ -136,7 +159,19 @@ never promotes an edge.
   covering 210 configured dialogs in 82 missions. Each context carries its
   exact original source file and hash; 13 former per-dialog tracking blocks and
   the former one-proxy publication allowlist have been removed. This family
-  retains 312 authored lines, 90 validated option routes, and 68 prime-reachable
+  is now classified by one general quest-graph rule rather than mission/proxy
+  cases. Across the current 146 contexts it validates every candidate identity,
+  predecessor, cycle boundary, MissionRuntime hash, and installed
+  `GameAssembly.dll` hash; 13 contexts span sibling-exclusive fork arms or
+  touch/feed an authored merge. The binary keeps `activeCondIndex` proxy-row
+  selection separate from server-supplied quest-state identity, so the
+  classifier exposes candidate chains, antichains, partial orders, forks, and
+  merges without assigning a configured dialog to a quest or adding a branch
+  selection/Story-order edge. Twenty registered configured dialog ids lack an
+  exported Story definition; the mission-scope topology inventory retains them
+  explicitly rather than dropping them from the Story manifest. This family
+  retains 312 authored lines, 90
+  validated option routes, and 68 prime-reachable
   finish endpoints; three unresolved option-node identities remain visibly fail
   closed. One transient row without a current
   `NpcProxyTable` identity fails closed with a bounded diagnostic. Internal
@@ -149,6 +184,28 @@ never promotes an edge.
 - Exact native playback actions, event headers, predicates, and local control
   graphs are decoded from original LevelScript data with hash-pinned binary
   contracts.
+- Teleport-completion correlation is now a corpus rule rather than a
+  receiver-specific guess. Across all 4,512 current original StreamingAssets
+  LevelScripts, 117 typed `LevelEvent_OnTeleportFinish` listeners carry 116
+  distinct `actionId` filters. Exact action UID/text and raw-byte correlation
+  finds no serialized producer for any filter; the one filter that also equals
+  its own header UID is explicitly accounted as listener-owned, not a producer.
+  The installed binary proves `OnTeleportFinish.Process` compares the authored
+  filter with `TeleportParam.actionId` at runtime. This adds exact unresolved
+  context for `radio_c13m2_10` and `radio_e1m8_1`, but no activation, ownership,
+  branch, or order edge. Future candidates are discovered by the same typed
+  event/filter scan, with no Story, mission, script, or filter allowlist.
+  Producer recovery is now equally general: the installed-binary value-carrier
+  audit derives a requested managed type's runtime layout, signature methods,
+  inherited container paths, direct callsites, focused accesses, and stack-local
+  initializers without content identities. For `TeleportParam` it finds nine
+  fields, 15 signature methods, ten container paths, 13 direct callsites, and 23
+  focused accesses. Each extended identity field has one exact zero-origin write
+  plus one carrier-copy write; six direct local arguments are zeroed, three are
+  forwarding/copy lanes, and the sole unknown local is a `PerformerFactory`
+  consumer copy. `LoadFinishStep` reads `levelScriptId` and `actionId` but not
+  `missionId`. No nonzero direct AOT originator is present; indirect/interface,
+  reflection, XLua, and live-server production remain outside this bound.
 - The active LevelScript overlay (`Persistent` over the matching
   `StreamingAssets` path) contains 230 validated `CheckTalkOptionFinish`
   consumers: 42 exact nonnegative finish ids and 188 any-finish checks. All 230
@@ -253,6 +310,21 @@ never promotes an edge.
   activation geometry, local gate, task protocol, and server-applied script
   state. Those facts still do not reveal the server-side reason for activation
   or a mission/quest owner.
+- A corpus-wide typed shell join follows MissionRuntime
+  `MissionAreaTrackingInfo.(sceneId, missionAreaId)` through
+  `LevelBasicInfoTable.idNum` and the exact level-specific
+  `MissionAreaTable.subDataParentId` to a root in the same validated LevelData
+  member-22 dictionary as an unresolved receiver. Level scoping is mandatory:
+  `c13_002` exists in both `map01_lv007` and `dung01_rdg002`, so an area-id-only
+  join incorrectly attached the main `c13m2` mission to the dungeon shell.
+  Across 95 receiver scripts the corrected join finds five unique contexts:
+  `map01_lv007/2800100000` maps to `e3m6`, and four
+  `dung01_rdg002` scripts map to `c13m2d5`; `c13m2` is excluded by its authored
+  `map01_lv007` scene. Mission Pipeline publishes five shell placements with
+  hashes for MissionRuntime, LevelBasicInfo, MissionArea, LevelData,
+  LevelScript, installed binary, and metadata. This creates no ownership,
+  activation, branch, or order edge; Story-name disagreements remain visible
+  cross-context evidence rather than identity.
 - `SameWithActive`, current-context ManualStart, SubGame interaction starts,
   active-phase receiver availability, and client active/start request paths
   are recovered as corpus-wide contracts rather than per-scene exceptions.
@@ -302,7 +374,9 @@ Reject as proof:
 
 1. Recover a typed mission/quest owner for the 156 unlinked Story files that
    already have exact native playback, especially repeated LevelScript
-   receiver families.
+   receiver families. Five receiver scripts now have exact level-scoped typed
+   mission-shell context and all five unions are unique, but none supplies the
+   missing activation or Story-ownership selector.
 2. Resolve the remaining ambiguous LevelData mission shells with an independent
    typed server-selection or mission-owner carrier. The LevelData census still
    retains 11 shared and nine unresolved identities, but the NpcProxy segment
@@ -314,9 +388,21 @@ Reject as proof:
    DialogTree endpoints, and original LevelData carrier files are recovered.
 3. Find any client-visible carrier for server-side mission/quest successor
    selection or LevelScript activation policy. Current state/update packets do
-   not co-carry Story ownership.
-4. Resolve source-bounded parent-dialog and Timeline placements only when a new
-   exact producer/consumer or mission foreign key appears.
+   not co-carry Story ownership. Do not repeat LevelScript UID/name searches for
+   teleport-finish filters unless the original corpus changes: all 116 current
+   filters are listener-owned only. The remaining useful boundary is the
+   runtime producer of `TeleportParam.actionId` is now closed across the direct
+   AOT carrier/callsite surface. Continue only through an exact indirect,
+   interface, reflection, XLua, live-server, or different typed selector path
+   that co-carries mission/quest identity; do not add object-specific producer
+   exceptions.
+4. Continue external-result recovery only through exact typed producer data.
+   The shared phase router, defaults, nine override sites, nine direct native
+   calls, and current arm coverage are complete for all 1,290 shipped Lua
+   files. The next useful evidence is a bounded value source for the 35 dynamic
+   indexes or an exact indirect/interface/reflection/XLua/native producer for
+   the 14 arms with no current shipped producer. Do not infer those arm values
+   from target shapes, authoring proximity, OCR, or per-panel exceptions.
 5. Improve within-mission order through strong relations. Do not turn the
    current sparse partial order into a total order by heuristic sorting.
 6. Revisit option gaps only when new runtime route evidence appears; most

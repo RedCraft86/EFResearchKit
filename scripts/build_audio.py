@@ -58,9 +58,11 @@ GAMEPLAY_INDEX_REL = Path("data/lang/{language}/gameplay/index.json")
 GAMEPLAY_SFX_REL = Path("data/lang/{language}/gameplay/sound_effects.json")
 GAMEPLAY_SFX_ANIMATION_CATALOG_NAME = "sound_effects_animation_catalog.json"
 GAMEPLAY_SFX_ANIMATION_EVIDENCE_NAME = "sound_effects_animation_evidence.json"
+GAMEPLAY_SFX_ANIMATION_EVIDENCE_SCHEMA_VERSION = 2
 GAMEPLAY_AUDIO_EVENT_BYTES_RE = re.compile(rb"\b(?:au|bark|radio)_[A-Za-z0-9_]{2,160}\b")
 GAMEPLAY_BUFF_BYTES_RE = re.compile(rb"\bbuff_[A-Za-z0-9_]{2,160}\b")
 ANIMATION_CLIP_HASH_SUFFIX_RE = re.compile(r"_p[0-9a-f]{16}$", re.IGNORECASE)
+ANIMATION_CLIP_PATH_ID_SUFFIX_RE = re.compile(r"_p(?P<path_id>[0-9a-f]{16})$", re.IGNORECASE)
 ANIMATION_ACTOR_RE = re.compile(r"^A_(actor|monster)_([^_]+)_", re.IGNORECASE)
 ENEMY_ID_TOKEN_RE = re.compile(r"^eny_\d+_([^_]+)", re.IGNORECASE)
 CHARACTER_ID_TOKEN_RE = re.compile(r"^chr_\d+_([^_]+)", re.IGNORECASE)
@@ -71,6 +73,18 @@ ANIMATION_AUDIO_FUNCTIONS = frozenset({
     "PostAudioEventAtPosition",
     "OnCustomFootStep",
 })
+ANIMATOR_CONTROLLER_REL = Path(
+    "recovered/AnimeStudio-cli/StreamingAssets/json_by_type/AnimatorController"
+)
+ANIMATOR_OVERRIDE_CONTROLLER_REL = Path(
+    "recovered/AnimeStudio-cli/StreamingAssets/json_by_type/AnimatorOverrideController"
+)
+ANIMATION_CLIP_REL = Path(
+    "recovered/AnimeStudio-cli/StreamingAssets/convert_by_type/AnimationClip"
+)
+ANIMATOR_OVERRIDE_IDENTITY_RE = re.compile(
+    r"(?:^|_)((?:eny|chr)_\d+_[^_]+)", re.IGNORECASE
+)
 GAMEPLAY_PROFILE_VOICE_RE = re.compile(r"(?:_combat_|_mono_(?:attack|skill))", re.IGNORECASE)
 GAMEPLAY_AUDIO_LINK_FIELDS = (
     "src", "mediaId", "format", "bytes", "audioScope", "audioCategory",
@@ -153,7 +167,7 @@ EVENT_BANK_VFS_BLOCK_TYPES = (
     "audio-korean",
 )
 EVENT_BANK_FILE_REGEX = r"(^|[\\/])[^\\/]*banks\.pck$"
-EVENT_EVIDENCE_SCHEMA_VERSION = 9
+EVENT_EVIDENCE_SCHEMA_VERSION = 15
 
 # Wwise 2024.1 / bank version 150 HIRC action operations.  The serialized
 # value is a little-endian U16 whose high byte is the operation and low byte is
@@ -234,9 +248,9 @@ def normalize_posix(value: str | Path) -> str:
 
 def audio_output_format(args: argparse.Namespace) -> str:
     """Return the browser-facing format while preserving legacy WEM calls."""
-    source_format = str(getattr(args, "format", "wav") or "wav").lower()
+    source_format = str(getattr(args, "format", "flac") or "flac").lower()
     requested = str(getattr(args, "audio_format", "") or "").lower()
-    output_format = requested or ("flac" if source_format == "wav" else source_format)
+    output_format = requested or ("flac" if source_format in {"flac", "wav"} else source_format)
     if output_format not in {"flac", "wav", "wem"}:
         raise SystemExit(f"Unsupported browser audio format: {output_format}")
     if source_format == "wem" and output_format != "wem":
@@ -248,6 +262,11 @@ def audio_output_format(args: argparse.Namespace) -> str:
         raise SystemExit(
             "WEM output requires --format wem; use the default FLAC output for "
             "browser-playable audio."
+        )
+    if source_format == "flac" and output_format != "flac":
+        raise SystemExit(
+            "Direct FLAC decoding can only keep FLAC output; pass --format wav "
+            "when WAV output is required."
         )
     return output_format
 
@@ -643,6 +662,533 @@ def animation_clip_audio_events(data: bytes) -> tuple[str, list[dict[str, Any]]]
     return clip_name, events
 
 
+def animation_clip_path_id(path: Path) -> int | None:
+    """Recover the signed Unity PathID encoded in an exported clip filename."""
+
+    match = ANIMATION_CLIP_PATH_ID_SUFFIX_RE.search(path.stem)
+    if not match:
+        return None
+    try:
+        value = int(match.group("path_id"), 16)
+    except (TypeError, ValueError):
+        return None
+    return value - (1 << 64) if value >= (1 << 63) else value
+
+
+def _animator_data_node(value: Any) -> dict[str, Any] | None:
+    """Unwrap one serialized Unity ``OffsetPtr.data`` value safely."""
+
+    if not isinstance(value, dict):
+        return None
+    nested = value.get("data")
+    return nested if isinstance(nested, dict) else value
+
+
+def animator_controller_state_clip_refs(
+    payload: dict[str, Any],
+) -> dict[int, list[dict[str, Any]]]:
+    """Return authored state/blend-tree references keyed by clip slot.
+
+    Unity's serialized ``m_AnimationClips`` array is the only stable bridge
+    from an AnimatorController state to an AnimationClip in the exported
+    JSON.  This parser deliberately reports authored membership only: it does
+    not follow transitions, parameters, entry selectors, or runtime layer
+    activation.  Malformed nodes are skipped rather than guessed.
+    """
+
+    clips = payload.get("m_AnimationClips")
+    controller = _animator_data_node(payload.get("m_Controller"))
+    if not isinstance(clips, list) or not isinstance(controller, dict):
+        return {}
+    valid_slots = {
+        index
+        for index, clip in enumerate(clips)
+        if isinstance(clip, dict)
+        and isinstance(clip.get("m_PathID"), int)
+        and not isinstance(clip.get("m_PathID"), bool)
+        and int(clip.get("m_PathID") or 0) != 0
+    }
+    if not valid_slots:
+        return {}
+
+    layers = controller.get("m_LayerArray")
+    layer_roots: dict[int, list[int]] = defaultdict(list)
+    if isinstance(layers, list):
+        for layer_index, layer_value in enumerate(layers):
+            layer = _animator_data_node(layer_value)
+            if not isinstance(layer, dict):
+                continue
+            state_machine_index = layer.get("m_StateMachineIndex")
+            if isinstance(state_machine_index, int) and not isinstance(state_machine_index, bool):
+                layer_roots.setdefault(int(state_machine_index), []).append(layer_index)
+
+    state_machines = controller.get("m_StateMachineArray")
+    if not isinstance(state_machines, list):
+        return {}
+    result: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    seen: set[tuple[int, int, int, int]] = set()
+    for state_machine_index, state_machine_value in enumerate(state_machines):
+        state_machine = _animator_data_node(state_machine_value)
+        if not isinstance(state_machine, dict):
+            continue
+        states = state_machine.get("m_StateConstantArray")
+        if not isinstance(states, list):
+            continue
+        for state_index, state_value in enumerate(states):
+            state = _animator_data_node(state_value)
+            if not isinstance(state, dict):
+                continue
+            blend_trees = state.get("m_BlendTreeConstantArray")
+            if not isinstance(blend_trees, list):
+                continue
+            for tree_index, tree_value in enumerate(blend_trees):
+                tree = _animator_data_node(tree_value)
+                if not isinstance(tree, dict):
+                    continue
+                nodes = tree.get("m_NodeArray")
+                if not isinstance(nodes, list):
+                    continue
+                for node_index, node_value in enumerate(nodes):
+                    node = _animator_data_node(node_value)
+                    if not isinstance(node, dict):
+                        continue
+                    clip_slot = node.get("m_ClipID")
+                    if (
+                        not isinstance(clip_slot, int)
+                        or isinstance(clip_slot, bool)
+                        or clip_slot not in valid_slots
+                    ):
+                        continue
+                    key = (state_machine_index, state_index, tree_index, node_index)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    result[int(clip_slot)].append({
+                        "stateMachineIndex": state_machine_index,
+                        "stateIndex": state_index,
+                        "stateNameHash": state.get("m_NameID"),
+                        "statePathHash": state.get("m_FullPathID"),
+                        "stateTagHash": state.get("m_TagID"),
+                        "stateMachineLayerIndices": list(layer_roots.get(state_machine_index) or []),
+                        "stateMachineReferencedByLayer": state_machine_index in layer_roots,
+                        "blendTreeIndex": tree_index,
+                        "blendTreeNodeIndex": node_index,
+                        "blendType": node.get("m_BlendType"),
+                        "clipSlot": int(clip_slot),
+                        "reachability": "authoredStateMembership",
+                        "runtimeExecution": "unobserved",
+                    })
+    for rows in result.values():
+        rows.sort(key=lambda row: (
+            int(row.get("stateMachineIndex") or 0),
+            int(row.get("stateIndex") or 0),
+            int(row.get("blendTreeIndex") or 0),
+            int(row.get("blendTreeNodeIndex") or 0),
+        ))
+    return dict(result)
+
+
+def collect_animation_controller_index(export_root: Path) -> dict[str, Any]:
+    """Index resolved AnimatorController->AnimationClip PPtrs fail-closed.
+
+    The exported ``$animestudio.pptrReferences`` records are the only accepted
+    evidence here.  Name matching, raw controller payload guesses, and
+    AnimatorOverrideController pairs are deliberately excluded until their
+    serialized-file context can be resolved without ambiguity.
+    """
+
+    root = export_root / ANIMATOR_CONTROLLER_REL
+    by_clip_path_id: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    counts = {
+        "status": "unavailable" if not root.is_dir() else "complete",
+        "sourceRoot": normalize_posix(ANIMATOR_CONTROLLER_REL),
+        "filesScanned": 0,
+        "filesWithDirectReferences": 0,
+        "malformedFiles": 0,
+        "directReferenceCount": 0,
+        "uniqueReferencedClipPathIds": 0,
+        "controllerCount": 0,
+        "controllersWithAuthoredStateRefs": 0,
+        "authoredStateClipReferenceCount": 0,
+        "overrideControllersExcluded": True,
+    }
+    if not root.is_dir():
+        return {"byClipPathId": {}, "summary": counts}
+
+    seen_controllers: set[tuple[str, str, str]] = set()
+    seen_references: set[tuple[int, str, str, str]] = set()
+    for path in sorted(root.glob("*.json"), key=lambda value: value.name.lower()):
+        counts["filesScanned"] += 1
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError):
+            counts["malformedFiles"] += 1
+            continue
+        if not isinstance(payload, dict):
+            counts["malformedFiles"] += 1
+            continue
+        metadata = payload.get("$animestudio")
+        if not isinstance(metadata, dict) or metadata.get("type") != "AnimatorController":
+            # A valid JSON file without the exporter identity envelope is not
+            # safe to use as a direct-reference source.
+            counts["malformedFiles"] += 1
+            continue
+        references = metadata.get("pptrReferences")
+        if not isinstance(references, list):
+            counts["malformedFiles"] += 1
+            continue
+        controller_name = str(
+            payload.get("m_Name") or metadata.get("name") or path.stem
+        ).strip()
+        controller_source_file = str(metadata.get("sourceFile") or "").strip()
+        controller_path_id = metadata.get("pathId")
+        controller_key = (
+            controller_source_file,
+            str(controller_path_id) if isinstance(controller_path_id, int) else "",
+            normalize_posix(path.relative_to(export_root)),
+        )
+        state_refs_by_slot = animator_controller_state_clip_refs(payload)
+        file_contexts: dict[tuple[int, str], dict[str, Any]] = {}
+        file_state_ref_count = sum(len(rows) for rows in state_refs_by_slot.values())
+        if file_state_ref_count:
+            counts["controllersWithAuthoredStateRefs"] += 1
+            counts["authoredStateClipReferenceCount"] += file_state_ref_count
+        direct_file_reference_count = 0
+        for reference in references:
+            if not isinstance(reference, dict):
+                continue
+            target = reference.get("target")
+            target = target if isinstance(target, dict) else {}
+            target_type = str(
+                reference.get("targetType") or target.get("type") or ""
+            )
+            resolution_status = str(reference.get("resolutionStatus") or "")
+            if target_type != "AnimationClip" or not resolution_status.startswith("resolved"):
+                continue
+            target_path_id = reference.get("targetPathId")
+            if not isinstance(target_path_id, int) or isinstance(target_path_id, bool):
+                target_path_id = target.get("pathId")
+            target_source_file = str(
+                reference.get("targetSourceFile") or target.get("serializedFile") or ""
+            ).strip()
+            if (
+                not isinstance(target_path_id, int)
+                or isinstance(target_path_id, bool)
+                or not target_source_file
+            ):
+                continue
+            reference_key = (
+                target_path_id,
+                target_source_file,
+                controller_key[2],
+                controller_key[0],
+            )
+            if reference_key in seen_references:
+                continue
+            seen_references.add(reference_key)
+            if controller_key not in seen_controllers:
+                seen_controllers.add(controller_key)
+                counts["controllerCount"] += 1
+            context_key = (target_path_id, target_source_file)
+            context = file_contexts.get(context_key)
+            if context is None:
+                context = {
+                    "name": controller_name,
+                    "sourcePath": controller_key[2],
+                    "sourceFile": controller_source_file,
+                    "pathId": controller_path_id,
+                    "targetSourceFile": target_source_file,
+                    "resolutionStatus": resolution_status,
+                    "clipSlots": [],
+                    "authoredStateReferences": [],
+                }
+                file_contexts[context_key] = context
+            reference_path = str(reference.get("path") or "")
+            slot_match = re.search(r"m_AnimationClips\[(\d+)\]", reference_path)
+            if slot_match:
+                clip_slot = int(slot_match.group(1))
+                if clip_slot not in context["clipSlots"]:
+                    context["clipSlots"].append(clip_slot)
+                for state_ref in state_refs_by_slot.get(clip_slot) or []:
+                    if state_ref not in context["authoredStateReferences"]:
+                        context["authoredStateReferences"].append(dict(state_ref))
+            direct_file_reference_count += 1
+            counts["directReferenceCount"] += 1
+        for context_key, context in file_contexts.items():
+            context["clipSlots"] = sorted(context.get("clipSlots") or [])
+            context["authoredStateReferences"] = sorted(
+                context.get("authoredStateReferences") or [],
+                key=lambda row: (
+                    int(row.get("stateMachineIndex") or 0),
+                    int(row.get("stateIndex") or 0),
+                    int(row.get("blendTreeIndex") or 0),
+                    int(row.get("blendTreeNodeIndex") or 0),
+                ),
+            )
+            context["authoredStateReferenceCount"] = len(context["authoredStateReferences"])
+            by_clip_path_id[context_key[0]].append(context)
+        if direct_file_reference_count:
+            counts["filesWithDirectReferences"] += 1
+
+    for path_id, contexts in by_clip_path_id.items():
+        by_clip_path_id[path_id] = sorted(
+            contexts,
+            key=lambda row: (
+                str(row.get("name") or ""),
+                str(row.get("sourcePath") or ""),
+                str(row.get("targetSourceFile") or ""),
+            ),
+        )
+    counts["uniqueReferencedClipPathIds"] = len(by_clip_path_id)
+    if counts["malformedFiles"] and counts["filesWithDirectReferences"]:
+        counts["status"] = "partial"
+    return {"byClipPathId": dict(by_clip_path_id), "summary": counts}
+
+
+def collect_animation_override_index(export_root: Path) -> dict[str, Any]:
+    """Index serialized AnimatorOverrideController clip substitutions.
+
+    The current AnimeStudio JSON exporter writes the raw override payload but
+    does not attach its ``$animestudio`` source-file envelope.  Unity PPtrs are
+    therefore only safe to join by a PathID when that PathID is unique in the
+    exported corpus.  Keep that limitation explicit: these rows annotate an
+    effective clip substitution, but never claim an exact serialized-file
+    join or live override activation.
+    """
+
+    root = export_root / ANIMATOR_OVERRIDE_CONTROLLER_REL
+    clip_root = export_root / ANIMATION_CLIP_REL
+    controller_root = export_root / ANIMATOR_CONTROLLER_REL
+    counts = {
+        "status": "unavailable" if not root.is_dir() else "complete",
+        "sourceRoot": normalize_posix(ANIMATOR_OVERRIDE_CONTROLLER_REL),
+        "clipSourceRoot": normalize_posix(ANIMATION_CLIP_REL),
+        "filesScanned": 0,
+        "malformedFiles": 0,
+        "malformedReferences": 0,
+        "overrideControllerCount": 0,
+        "controllerPathIdReferences": 0,
+        "controllerPathIdCorpusUnique": 0,
+        "controllerPathIdUnresolved": 0,
+        "controllerPathIdAmbiguous": 0,
+        "overrideReferenceCount": 0,
+        "baseClipReferenceCount": 0,
+        "replacementReferenceCount": 0,
+        "effectiveClipReferenceCount": 0,
+        "effectiveClipCorpusUniqueReferences": 0,
+        "effectiveClipMissingReferences": 0,
+        "effectiveClipAmbiguousReferences": 0,
+        "uniqueEffectiveClipPathIds": 0,
+        "assetIdentityTokenCount": 0,
+        "assetIdentityTokenReferences": 0,
+        "sourceBoundary": (
+            "Override payloads have no exporter source-file envelope; joins are "
+            "corpus-unique PathID annotations only. They do not prove the Unity "
+            "serialized-file identity or live AnimatorOverrideController activation."
+        ),
+    }
+    if not root.is_dir():
+        return {"byClipPathId": {}, "summary": counts}
+
+    def path_id(value: Any) -> int | None:
+        if not isinstance(value, int) or isinstance(value, bool) or value == 0:
+            return None
+        return int(value)
+
+    # PathID uniqueness is measured over the actual exported AnimationClip
+    # files, not over names.  Ambiguous or missing IDs remain visible but are
+    # excluded from any stronger reachability classification.
+    clip_paths_by_id: dict[int, list[str]] = defaultdict(list)
+    if clip_root.is_dir():
+        for path in clip_root.glob("*.anim"):
+            clip_path_id = animation_clip_path_id(path)
+            if clip_path_id is None:
+                continue
+            clip_paths_by_id[clip_path_id].append(
+                normalize_posix(path.relative_to(export_root))
+            )
+    for paths in clip_paths_by_id.values():
+        paths.sort()
+
+    # Controller JSON has an identity envelope, unlike override JSON.  Use it
+    # only to label a corpus-unique target; the override's missing FileID source
+    # context is deliberately not reconstructed from names.
+    controller_paths_by_id: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    if controller_root.is_dir():
+        for path in controller_root.glob("*.json"):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, ValueError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            metadata = payload.get("$animestudio")
+            if not isinstance(metadata, dict) or metadata.get("type") != "AnimatorController":
+                continue
+            controller_path_id = path_id(metadata.get("pathId"))
+            if controller_path_id is None:
+                continue
+            controller_paths_by_id[controller_path_id].append({
+                "name": str(payload.get("m_Name") or metadata.get("name") or path.stem),
+                "sourcePath": normalize_posix(path.relative_to(export_root)),
+                "sourceFile": str(metadata.get("sourceFile") or ""),
+                "pathId": controller_path_id,
+            })
+
+    by_clip_path_id: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    identity_tokens: set[str] = set()
+    for path in sorted(root.glob("*.json"), key=lambda value: value.name.lower()):
+        counts["filesScanned"] += 1
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError):
+            counts["malformedFiles"] += 1
+            continue
+        if not isinstance(payload, dict) or not isinstance(payload.get("m_Clips"), list):
+            counts["malformedFiles"] += 1
+            continue
+        counts["overrideControllerCount"] += 1
+        override_name = str(payload.get("m_Name") or path.stem)
+        identity_match = ANIMATOR_OVERRIDE_IDENTITY_RE.search(path.stem)
+        identity_token = identity_match.group(1).lower() if identity_match else ""
+        if identity_token:
+            identity_tokens.add(identity_token)
+
+        controller_pointer = payload.get("m_Controller")
+        controller_pointer = controller_pointer if isinstance(controller_pointer, dict) else {}
+        controller_path_id = path_id(controller_pointer.get("m_PathID"))
+        counts["controllerPathIdReferences"] += 1
+        controller_matches = controller_paths_by_id.get(controller_path_id or 0) or []
+        if len(controller_matches) == 1:
+            controller_join_status = "corpusUniqueControllerPathId"
+            controller_context = controller_matches[0]
+            counts["controllerPathIdCorpusUnique"] += 1
+        elif len(controller_matches) > 1:
+            controller_join_status = "ambiguousControllerPathId"
+            controller_context = {}
+            counts["controllerPathIdAmbiguous"] += 1
+        else:
+            controller_join_status = "missingControllerPathId"
+            controller_context = {}
+            counts["controllerPathIdUnresolved"] += 1
+
+        for clip_index, row in enumerate(payload.get("m_Clips") or []):
+            if not isinstance(row, dict):
+                counts["malformedReferences"] += 1
+                continue
+            original_pointer = row.get("m_OriginalClip")
+            original_pointer = original_pointer if isinstance(original_pointer, dict) else {}
+            override_pointer = row.get("m_OverrideClip")
+            override_pointer = override_pointer if isinstance(override_pointer, dict) else {}
+            original_path_id = path_id(original_pointer.get("m_PathID"))
+            override_path_id = path_id(override_pointer.get("m_PathID"))
+            if original_path_id is None:
+                counts["malformedReferences"] += 1
+                continue
+            is_replacement = not bool(override_pointer.get("IsNull")) and override_path_id is not None
+            effective_path_id = override_path_id if is_replacement else original_path_id
+            counts["overrideReferenceCount"] += 1
+            counts["effectiveClipReferenceCount"] += 1
+            if is_replacement:
+                counts["replacementReferenceCount"] += 1
+            else:
+                counts["baseClipReferenceCount"] += 1
+            clip_matches = clip_paths_by_id.get(effective_path_id) or []
+            if len(clip_matches) == 1:
+                clip_join_status = "corpusUniqueAnimationClipPathId"
+                counts["effectiveClipCorpusUniqueReferences"] += 1
+            elif len(clip_matches) > 1:
+                clip_join_status = "ambiguousAnimationClipPathId"
+                counts["effectiveClipAmbiguousReferences"] += 1
+            else:
+                clip_join_status = "missingAnimationClipPathId"
+                counts["effectiveClipMissingReferences"] += 1
+            context = {
+                "overrideName": override_name,
+                "overrideSourcePath": normalize_posix(path.relative_to(export_root)),
+                "overrideControllerPathId": controller_path_id,
+                "controllerJoinStatus": controller_join_status,
+                "controllerName": controller_context.get("name") or "",
+                "controllerSourcePath": controller_context.get("sourcePath") or "",
+                "controllerSourceFile": controller_context.get("sourceFile") or "",
+                "originalClipPathId": original_path_id,
+                "overrideClipPathId": override_path_id,
+                "effectiveClipPathId": effective_path_id,
+                "clipIndex": clip_index,
+                "mappingKind": "replacement" if is_replacement else "baseClip",
+                "clipJoinStatus": clip_join_status,
+                "effectiveClipSourcePaths": clip_matches,
+                "assetIdentityToken": identity_token,
+                "runtimeActivation": "unobserved",
+            }
+            by_clip_path_id[effective_path_id].append(context)
+
+    counts["uniqueEffectiveClipPathIds"] = len(by_clip_path_id)
+    counts["assetIdentityTokenCount"] = len(identity_tokens)
+    counts["assetIdentityTokenReferences"] = sum(
+        1
+        for contexts in by_clip_path_id.values()
+        for context in contexts
+        if context.get("assetIdentityToken")
+    )
+    if (
+        counts["malformedFiles"]
+        or counts["malformedReferences"]
+        or counts["controllerPathIdUnresolved"]
+        or counts["controllerPathIdAmbiguous"]
+        or counts["effectiveClipMissingReferences"]
+        or counts["effectiveClipAmbiguousReferences"]
+    ):
+        counts["status"] = "partial"
+    for contexts in by_clip_path_id.values():
+        contexts.sort(
+            key=lambda row: (
+                str(row.get("overrideName") or ""),
+                int(row.get("clipIndex") or 0),
+                str(row.get("overrideSourcePath") or ""),
+            )
+        )
+    return {"byClipPathId": dict(by_clip_path_id), "summary": counts}
+
+
+def animation_controller_contexts(
+    controller_index: dict[str, Any], path: Path
+) -> list[dict[str, Any]]:
+    """Return direct controller contexts for one exported AnimationClip."""
+
+    path_id = animation_clip_path_id(path)
+    if path_id is None:
+        return []
+    contexts = controller_index.get(path_id) or {}
+    return [dict(row) for row in contexts if isinstance(row, dict)]
+
+
+def animation_override_contexts(
+    override_index: dict[str, Any], path: Path
+) -> list[dict[str, Any]]:
+    """Return corpus-unique override substitutions for one AnimationClip."""
+
+    path_id = animation_clip_path_id(path)
+    if path_id is None:
+        return []
+    contexts = override_index.get(path_id) or {}
+    return [dict(row) for row in contexts if isinstance(row, dict)]
+
+
+def animation_clip_reachability_status(
+    evidence: Iterable[dict[str, Any]],
+) -> str:
+    """Classify one Event's clip rows without promoting unresolved evidence."""
+
+    rows = [row for row in evidence if isinstance(row, dict)]
+    direct = sum(bool(row.get("animatorControllerCount")) for row in rows)
+    if not direct:
+        return "unresolved"
+    if direct == len(rows):
+        return "directAnimatorController"
+    return "mixedAnimatorControllerReachability"
+
+
 def collect_gameplay_animation_audio(
     export_root: Path,
     entries: list[dict[str, Any]],
@@ -675,6 +1221,18 @@ def collect_gameplay_animation_audio(
     )
     owners: dict[tuple[str, str], dict[str, Any]] = {}
     unowned_events: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    controller_index_data = collect_animation_controller_index(export_root)
+    controller_index = controller_index_data.get("byClipPathId") or {}
+    override_index_data = collect_animation_override_index(export_root)
+    override_index = override_index_data.get("byClipPathId") or {}
+    controller_reachable_clips = 0
+    controller_unresolved_clips = 0
+    controller_reachable_callback_rows = 0
+    controller_unresolved_callback_rows = 0
+    override_reachable_clips = 0
+    override_unresolved_clips = 0
+    override_reachable_callback_rows = 0
+    override_unresolved_callback_rows = 0
     scanned_clips = 0
     matched_clips = 0
     unowned_clips = 0
@@ -707,6 +1265,32 @@ def collect_gameplay_animation_audio(
                 continue
             clip_kind = animation_clip_action_kind(clip_name)
             clip_context = animation_clip_context(clip_name)
+            controller_contexts = animation_controller_contexts(controller_index, path)
+            clip_reachability = (
+                "directAnimatorController" if controller_contexts else "unresolved"
+            )
+            override_contexts = animation_override_contexts(override_index, path)
+            override_reachability = (
+                "corpusUniqueAnimatorOverrideMapping"
+                if any(
+                    str(row.get("clipJoinStatus") or "") == "corpusUniqueAnimationClipPathId"
+                    and str(row.get("controllerJoinStatus") or "") == "corpusUniqueControllerPathId"
+                    for row in override_contexts
+                )
+                else "unresolved"
+            )
+            if controller_contexts:
+                controller_reachable_clips += 1
+                controller_reachable_callback_rows += len(clip_events)
+            else:
+                controller_unresolved_clips += 1
+                controller_unresolved_callback_rows += len(clip_events)
+            if override_reachability == "corpusUniqueAnimatorOverrideMapping":
+                override_reachable_clips += 1
+                override_reachable_callback_rows += len(clip_events)
+            else:
+                override_unresolved_clips += 1
+                override_unresolved_callback_rows += len(clip_events)
             try:
                 clip_source = normalize_posix(path.relative_to(export_root))
             except ValueError:
@@ -717,7 +1301,12 @@ def collect_gameplay_animation_audio(
                 "clipSource": clip_source,
                 "actionKind": clip_kind,
                 "clipContext": clip_context,
-                "clipReachability": "unresolved",
+                "clipReachability": clip_reachability,
+                "animatorControllerCount": len(controller_contexts),
+                "animatorControllerContexts": controller_contexts,
+                "overrideReachability": override_reachability,
+                "animatorOverrideCount": len(override_contexts),
+                "animatorOverrideContexts": override_contexts,
             }
             if matched_owners:
                 matched_clips += 1
@@ -804,7 +1393,23 @@ def collect_gameplay_animation_audio(
             "animationAudioEventNames": len(event_names),
             "animationAudioOwnerEventRefs": sum(len(owner["events"]) for owner in owners.values()),
             "animationAudioOwnerUnresolvedEventRefs": len(unowned_events),
+            "animationAudioControllerReachableClips": controller_reachable_clips,
+            "animationAudioControllerUnresolvedClips": controller_unresolved_clips,
+            "animationAudioControllerReachableCallbackRows": controller_reachable_callback_rows,
+            "animationAudioControllerUnresolvedCallbackRows": controller_unresolved_callback_rows,
+            "animationAudioControllerReferences": int(
+                (controller_index_data.get("summary") or {}).get("directReferenceCount") or 0
+            ),
+            "animationAudioOverrideReachableClips": override_reachable_clips,
+            "animationAudioOverrideUnresolvedClips": override_unresolved_clips,
+            "animationAudioOverrideReachableCallbackRows": override_reachable_callback_rows,
+            "animationAudioOverrideUnresolvedCallbackRows": override_unresolved_callback_rows,
+            "animationAudioOverrideReferences": int(
+                (override_index_data.get("summary") or {}).get("overrideReferenceCount") or 0
+            ),
         },
+        "animationControllerIndex": controller_index_data.get("summary") or {},
+        "animationOverrideIndex": override_index_data.get("summary") or {},
     }
 
 
@@ -919,8 +1524,10 @@ def collect_buff_play_sound_actions(
     The generic string scan proves only that a BuffData dependency contains an
     event id.  The MemoryPack action decoder additionally recovers the authored
     timeline frame window and the PlaySoundActionData lifetime/routing controls.
-    TargetSettings remains a bounded opaque envelope, so these rows deliberately
-    stop short of claiming that the runtime condition or target was selected.
+    TargetSettings is decoded through the typed MemoryPack reader when its
+    self-derived envelope boundary is consumed exactly.  Unknown selector
+    subtypes retain the bounded opaque fallback; neither representation claims
+    that a runtime target or branch was actually selected.
     """
 
     if decoder is None:
@@ -1039,6 +1646,7 @@ def collect_buff_play_sound_actions(
                     "targetSettingsStatus": str(target.get("semanticStatus") or "unresolved"),
                     "targetSettingsShape": str(target.get("shape") or ""),
                     "targetSelector": str(target.get("stringSlotValue") or ""),
+                    "targetSettings": target,
                     "timeDilationFadeInDurationMs": action.get("timeDilationFadeInDurationMs"),
                     "timeDilationFadeOutDurationMs": action.get("timeDilationFadeOutDurationMs"),
                     "timeDilationPauseThreshold": action.get("timeDilationPauseThreshold"),
@@ -1322,6 +1930,7 @@ def collect_gameplay_audio_references(
             **(animation_audio.get("counts") or {}),
             **(profile_voices.get("counts") or {}),
         },
+        "animationControllerIndex": animation_audio.get("animationControllerIndex") or {},
     }
 
 
@@ -1711,6 +2320,52 @@ def link_gameplay_audio(
             clips = sorted({str(row.get("clip") or "") for row in evidence if row.get("clip")})
             functions = sorted({str(row.get("function") or "") for row in evidence if row.get("function")})
             clip_contexts = sorted({str(row.get("clipContext") or "other") for row in evidence})
+            animator_controller_contexts: list[dict[str, Any]] = []
+            animator_controller_seen: set[str] = set()
+            for row in evidence:
+                for context in row.get("animatorControllerContexts") or []:
+                    if not isinstance(context, dict):
+                        continue
+                    marker = json.dumps(context, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                    if marker in animator_controller_seen:
+                        continue
+                    animator_controller_seen.add(marker)
+                    animator_controller_contexts.append(dict(context))
+            animator_controller_contexts.sort(
+                key=lambda row: (
+                    str(row.get("name") or ""),
+                    str(row.get("sourcePath") or ""),
+                    str(row.get("targetSourceFile") or ""),
+                )
+            )
+            animator_override_contexts: list[dict[str, Any]] = []
+            animator_override_seen: set[str] = set()
+            for row in evidence:
+                for context in row.get("animatorOverrideContexts") or []:
+                    if not isinstance(context, dict):
+                        continue
+                    marker = json.dumps(context, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                    if marker in animator_override_seen:
+                        continue
+                    animator_override_seen.add(marker)
+                    animator_override_contexts.append(dict(context))
+            animator_override_contexts.sort(
+                key=lambda row: (
+                    str(row.get("overrideName") or ""),
+                    int(row.get("clipIndex") or 0),
+                    str(row.get("overrideSourcePath") or ""),
+                )
+            )
+            animator_controller_reachable_clip_count = len({
+                str(row.get("clip") or "")
+                for row in evidence
+                if row.get("clip") and row.get("animatorControllerCount")
+            })
+            animator_controller_unresolved_clip_count = len({
+                str(row.get("clip") or "")
+                for row in evidence
+                if row.get("clip") and not row.get("animatorControllerCount")
+            })
             authored_event_ids = sorted({
                 str(row.get("authoredEventId") or event_id)
                 for row in evidence
@@ -1738,7 +2393,22 @@ def link_gameplay_audio(
                 "actionKinds": action_kinds,
                 "animationFunctions": functions,
                 "animationClipContexts": clip_contexts,
-                "clipReachability": "unresolved",
+                "clipReachability": animation_clip_reachability_status(evidence),
+                "animatorControllerCount": len(animator_controller_contexts),
+                "animatorControllerContexts": animator_controller_contexts,
+                "animatorControllerReachableClipCount": animator_controller_reachable_clip_count,
+                "animatorControllerUnresolvedClipCount": animator_controller_unresolved_clip_count,
+                "overrideReachability": (
+                    "corpusUniqueAnimatorOverrideMapping"
+                    if any(
+                        str(row.get("clipJoinStatus") or "") == "corpusUniqueAnimationClipPathId"
+                        and str(row.get("controllerJoinStatus") or "") == "corpusUniqueControllerPathId"
+                        for row in animator_override_contexts
+                    )
+                    else "unresolved"
+                ),
+                "animatorOverrideCount": len(animator_override_contexts),
+                "animatorOverrideContexts": animator_override_contexts,
                 "authoredEventIds": authored_event_ids,
                 "eventAliases": [value for value in authored_event_ids if value != event_id],
                 "sourceAnimationClips": clips,
@@ -1783,6 +2453,36 @@ def link_gameplay_audio(
                 )
                 current["animationClipContexts"] = sorted(
                     set(current.get("animationClipContexts") or []).union(event.get("animationClipContexts") or [])
+                )
+                current_override_contexts = current.setdefault("animatorOverrideContexts", [])
+                override_markers = {
+                    json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                    for row in current_override_contexts
+                    if isinstance(row, dict)
+                }
+                for row in event.get("animatorOverrideContexts") or []:
+                    if not isinstance(row, dict):
+                        continue
+                    marker = json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                    if marker not in override_markers:
+                        override_markers.add(marker)
+                        current_override_contexts.append(dict(row))
+                current_override_contexts.sort(
+                    key=lambda row: (
+                        str(row.get("overrideName") or ""),
+                        int(row.get("clipIndex") or 0),
+                        str(row.get("overrideSourcePath") or ""),
+                    )
+                )
+                current["animatorOverrideCount"] = len(current_override_contexts)
+                current["overrideReachability"] = (
+                    "corpusUniqueAnimatorOverrideMapping"
+                    if any(
+                        str(row.get("clipJoinStatus") or "") == "corpusUniqueAnimationClipPathId"
+                        and str(row.get("controllerJoinStatus") or "") == "corpusUniqueControllerPathId"
+                        for row in current_override_contexts
+                    )
+                    else "unresolved"
                 )
                 current["authoredEventIds"] = sorted(
                     set(current.get("authoredEventIds") or []).union(event.get("authoredEventIds") or [])
@@ -2075,6 +2775,17 @@ def link_gameplay_audio(
                     "animationFunctions": event.get("animationFunctions") or [],
                     "animationClipContexts": event.get("animationClipContexts") or [],
                     "clipReachability": event.get("clipReachability") or "unresolved",
+                    "animatorControllerCount": int(event.get("animatorControllerCount") or 0),
+                    "animatorControllerContexts": event.get("animatorControllerContexts") or [],
+                    "animatorControllerReachableClipCount": int(
+                        event.get("animatorControllerReachableClipCount") or 0
+                    ),
+                    "animatorControllerUnresolvedClipCount": int(
+                        event.get("animatorControllerUnresolvedClipCount") or 0
+                    ),
+                    "overrideReachability": event.get("overrideReachability") or "unresolved",
+                    "animatorOverrideCount": int(event.get("animatorOverrideCount") or 0),
+                    "animatorOverrideContexts": event.get("animatorOverrideContexts") or [],
                     "sourceAnimationClips": event.get("sourceAnimationClips") or [],
                     "animationOwnerCount": event.get("animationOwnerCount"),
                     "animationOwnershipScope": event.get("animationOwnershipScope"),
@@ -2093,12 +2804,73 @@ def link_gameplay_audio(
     unresolved_animation_events: list[dict[str, Any]] = []
     for event_id, evidence in sorted((references.get("unownedAnimationEvents") or {}).items()):
         rows = [row for row in evidence or [] if isinstance(row, dict)]
+        controller_contexts: list[dict[str, Any]] = []
+        controller_context_seen: set[str] = set()
+        for row in rows:
+            for context in row.get("animatorControllerContexts") or []:
+                if not isinstance(context, dict):
+                    continue
+                marker = json.dumps(context, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                if marker in controller_context_seen:
+                    continue
+                controller_context_seen.add(marker)
+                controller_contexts.append(dict(context))
+        controller_contexts.sort(
+            key=lambda row: (
+                str(row.get("name") or ""),
+                str(row.get("sourcePath") or ""),
+                str(row.get("targetSourceFile") or ""),
+            )
+        )
+        controller_reachable_clips = len({
+            str(row.get("clip") or "")
+            for row in rows
+            if row.get("clip") and row.get("animatorControllerCount")
+        })
+        controller_unresolved_clips = len({
+            str(row.get("clip") or "")
+            for row in rows
+            if row.get("clip") and not row.get("animatorControllerCount")
+        })
+        override_contexts: list[dict[str, Any]] = []
+        override_context_seen: set[str] = set()
+        for row in rows:
+            for context in row.get("animatorOverrideContexts") or []:
+                if not isinstance(context, dict):
+                    continue
+                marker = json.dumps(context, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                if marker in override_context_seen:
+                    continue
+                override_context_seen.add(marker)
+                override_contexts.append(dict(context))
+        override_contexts.sort(
+            key=lambda row: (
+                str(row.get("overrideName") or ""),
+                int(row.get("clipIndex") or 0),
+                str(row.get("overrideSourcePath") or ""),
+            )
+        )
         unresolved_animation_events.append({
             "id": event_id,
             "actionKinds": sorted({str(row.get("actionKind") or "action") for row in rows}),
             "animationFunctions": sorted({str(row.get("function") or "") for row in rows if row.get("function")}),
             "animationClipContexts": sorted({str(row.get("clipContext") or "other") for row in rows}),
-            "clipReachability": "unresolved",
+            "clipReachability": animation_clip_reachability_status(rows),
+            "animatorControllerCount": len(controller_contexts),
+            "animatorControllerContexts": controller_contexts,
+            "animatorControllerReachableClipCount": controller_reachable_clips,
+            "animatorControllerUnresolvedClipCount": controller_unresolved_clips,
+            "overrideReachability": (
+                "corpusUniqueAnimatorOverrideMapping"
+                if any(
+                    str(row.get("clipJoinStatus") or "") == "corpusUniqueAnimationClipPathId"
+                    and str(row.get("controllerJoinStatus") or "") == "corpusUniqueControllerPathId"
+                    for row in override_contexts
+                )
+                else "unresolved"
+            ),
+            "animatorOverrideCount": len(override_contexts),
+            "animatorOverrideContexts": override_contexts,
             "sourceAnimationClips": sorted({str(row.get("clip") or "") for row in rows if row.get("clip")}),
             "authoredEventIds": sorted({
                 str(row.get("authoredEventId") or event_id)
@@ -2116,8 +2888,9 @@ def link_gameplay_audio(
         "events": animation_event_catalog,
     })
     json_dump(path.with_name(GAMEPLAY_SFX_ANIMATION_EVIDENCE_NAME), {
-        "schemaVersion": 1,
+        "schemaVersion": GAMEPLAY_SFX_ANIMATION_EVIDENCE_SCHEMA_VERSION,
         "language": language,
+        "animationControllerIndex": references.get("animationControllerIndex") or {},
         **animation_evidence,
     })
     json_dump(path, {
@@ -2131,12 +2904,13 @@ def link_gameplay_audio(
         "enemies": enemies,
         "scope": {
             "source": "SkillData/BuffData event references, decoded BuffData PlaySound actions, EnemyData ability bundles, AnimationClip audio callbacks, CharacterTable profile voices, and Wwise HIRC traversal",
-            "playSoundActionBoundary": "Current MemoryPack PlaySoundActionData yields exact event, frame window, stop/fade, routing, and time-dilation controls. TargetSettings semantics and runtime activation conditions remain unresolved.",
+            "playSoundActionBoundary": "Current MemoryPack PlaySoundActionData yields exact event, frame window, stop/fade, routing, time-dilation controls, and typed TargetSettings when the nested reader lands exactly; runtime activation conditions and selected targets remain unresolved.",
             "characterOwnership": "direct gameplay skill id",
             "characterFamilyOwnership": "longest playable skill id prefix inferred for authored child SkillData",
             "enemyOwnership": "exact SkillData identifiers recovered from enemy-template AbilitySystemData, with enemy-id prefix fallback and exact born-buff fields",
             "enemyTemplateBoundary": "AbilitySystemData containment is exact, while identifiers preserved only in partially decoded string-hint tails remain ownership-inferred.",
-            "animationOwnership": "exact AnimationClip callback, timestamp, and payload; actor ownership inferred from exact character/enemy animation tokens and recovered enemy animation-config reuse; current-controller clip reachability remains unresolved",
+            "animationOwnership": "exact AnimationClip callback, timestamp, and payload; actor ownership inferred from exact character/enemy animation tokens and recovered enemy animation-config reuse; direct resolved AnimatorController PPtrs now annotate authored state/blend-tree membership when serialized state data is valid, while AnimatorOverrideController substitutions annotate only corpus-unique PathID joins and live state selection remains unresolved",
+            "animationControllerBoundary": "A direct resolved AnimationClip PPtr in an exported AnimatorController proves authored controller membership. authoredStateReferences additionally prove the controller-local m_AnimationClips slot -> StateConstant -> BlendTree node path and whether that state machine is referenced by a layer; they do not prove transition selection or live Animator execution. AnimatorOverrideController rows now preserve original/effective clip substitutions when both controller and clip PathIDs are unique in the exported corpus, but the raw override payload has no serialized-file envelope, so these are not exact Unity-file joins and do not prove live activation. No animation callback is promoted into a skill trigger by this evidence.",
             "unownedAnimationBoundary": "Every actor/monster AnimationClip callback with a supported audio function is retained. Clips without a bounded playable-character or enemy-template token stay owner-unresolved and appear only in the debug Audio evidence surface; generic non-actor clip indexing remains a separate exporter gap.",
             "animationMediaBoundary": "An owned clip proves that its callback requests the Event. Shared playable-character Events expose a shared Wwise selector graph; its reachable leaves are not attributed to one character until switch/state values are decoded.",
             "profileVoiceOwnership": "direct CharacterTable.profileVoice ownership linked to the exact AudioDialog path stem; bark/random selection remains unresolved",
@@ -2875,18 +3649,124 @@ def hirc_v150_playback_action(data: bytes, bank_version: int | None) -> dict[str
     return evidence
 
 
-def hirc_sound_media_id(data: bytes) -> int | None:
-    """Return the v150 AkBankSourceData source ID from a Sound object.
+HIRC_PLUGIN_TYPE_LABELS = {
+    0: "none",
+    1: "codec",
+    2: "source",
+    3: "effect",
+    6: "mixer",
+    7: "sink",
+    8: "globalExtension",
+    9: "metadata",
+}
+HIRC_STREAM_TYPE_LABELS = {
+    0: "memory",
+    1: "streamed",
+    2: "streamedZeroLatency",
+}
+HIRC_SOURCE_PLUGIN_LABELS = {
+    0x00040001: "Wwise Vorbis",
+    0x00140001: "Wwise Opus",
+    0x00080001: "Wwise External Source",
+    0x00640002: "Wwise Sine",
+    0x00650002: "Wwise Silence",
+    0x01990002: "Wwise Motion Source",
+    0x00940002: "Wwise Synth One",
+}
 
-    The current banks serialize U32 plugin ID at offset 0, U8 stream type at
-    offset 4, and U32 source/media ID at offset 5.  The U32 at offset 22 in
-    current Sound objects is the parent node and must never be traversed as a
-    child reference.
+
+def _hirc_v150_source_kind(plugin_id: int, plugin_type: int) -> str:
+    if plugin_id == 0x00080001:
+        return "externalSourceCodec"
+    if plugin_type == 1:
+        return "codecMedia"
+    if plugin_type == 2:
+        return "synthesizedSource"
+    return "unsupportedPluginSource"
+
+
+def _hirc_v150_bank_source_data(
+    data: bytes,
+    offset: int = 0,
+) -> tuple[dict[str, Any], int] | None:
+    """Decode one bounded v150 AkBankSourceData record.
+
+    ``streamType`` is a Wwise buffering policy, not a physical PCK-location
+    proof.  Source plugins carry a length-prefixed parameter blob; the blob is
+    consumed but intentionally not interpreted without a plugin-specific
+    writer fingerprint.
     """
 
-    if len(data) < 9:
+    try:
+        if offset < 0 or offset + 14 > len(data):
+            raise ValueError("truncated v150 AkBankSourceData")
+        plugin_id = unpack_from("<I", data, offset)[0]
+        stream_type = data[offset + 4]
+        source_id = unpack_from("<I", data, offset + 5)[0]
+        in_memory_media_size = unpack_from("<I", data, offset + 9)[0]
+        source_bits = data[offset + 13]
+        offset += 14
+        plugin_type = plugin_id & 0x0F
+        plugin_parameter_size = 0
+        if plugin_type == 2:
+            plugin_parameter_size, offset = _hirc_v150_u32(data, offset)
+            if offset + plugin_parameter_size > len(data):
+                raise ValueError("truncated v150 source plugin parameters")
+            offset += plugin_parameter_size
+        known_source_bits = 0x01 | 0x02 | 0x08 | 0x80
+        row = {
+            "sourceParserStatus": "typedExactV150AkBankSourceData",
+            "pluginId": plugin_id,
+            "pluginIdHex": f"0x{plugin_id:08x}",
+            "pluginName": HIRC_SOURCE_PLUGIN_LABELS.get(plugin_id),
+            "pluginType": plugin_type,
+            "pluginTypeLabel": HIRC_PLUGIN_TYPE_LABELS.get(
+                plugin_type, f"pluginType{plugin_type}"
+            ),
+            "streamType": stream_type,
+            "streamTypeLabel": HIRC_STREAM_TYPE_LABELS.get(
+                stream_type, f"streamType{stream_type}"
+            ),
+            "sourceId": source_id,
+            "inMemoryMediaSize": in_memory_media_size,
+            "sourceBits": source_bits,
+            "sourceFlags": {
+                "isLanguageSpecific": bool(source_bits & 0x01),
+                "prefetch": bool(source_bits & 0x02),
+                "nonCachable": bool(source_bits & 0x08),
+                "hasSource": bool(source_bits & 0x80),
+                "unknownBits": source_bits & ~known_source_bits,
+            },
+            "pluginParameterSize": plugin_parameter_size,
+            "sourceKind": _hirc_v150_source_kind(plugin_id, plugin_type),
+            "streamTypeBoundary": "bufferingPolicyNotPhysicalMediaLocation",
+        }
+        return row, offset
+    except (ValueError, OverflowError):
         return None
-    return unpack_from("<I", data, 5)[0]
+
+
+def hirc_v150_sound_source(data: bytes) -> dict[str, Any] | None:
+    """Decode a Sound's source record and exact NodeBase parent prefix."""
+
+    parsed = _hirc_v150_bank_source_data(data, 0)
+    if not parsed:
+        return None
+    source, node_base_offset = parsed
+    try:
+        parent_id, _parent_end = _hirc_v150_node_base_parent(data, node_base_offset)
+    except (ValueError, OverflowError):
+        return None
+    return {**source, "nodeBaseOffset": node_base_offset, "parentId": parent_id}
+
+
+def hirc_sound_media_id(data: bytes) -> int | None:
+    """Return a fixed codec-media id; external/plugin sources are not media."""
+
+    source = hirc_v150_sound_source(data)
+    if not source or source.get("sourceKind") != "codecMedia":
+        return None
+    return int(source["sourceId"])
 
 
 def _hirc_v150_u32(data: bytes, offset: int) -> tuple[int, int]:
@@ -2946,29 +3826,11 @@ def hirc_v150_music_track(data: bytes) -> dict[str, Any] | None:
         source_count, offset = _hirc_v150_u32(data, 1)
         sources: list[dict[str, Any]] = []
         for _ in range(source_count):
-            plugin_id, offset = _hirc_v150_u32(data, offset)
-            if offset + 10 > len(data):
+            parsed_source = _hirc_v150_bank_source_data(data, offset)
+            if not parsed_source:
                 raise ValueError("truncated v150 MusicTrack source")
-            stream_type = data[offset]
-            media_id = unpack_from("<I", data, offset + 1)[0]
-            memory_size = unpack_from("<I", data, offset + 5)[0]
-            source_bits = data[offset + 9]
-            offset += 10
-            plugin_parameter_size = 0
-            if plugin_id & 0x0F == 2:
-                plugin_parameter_size, offset = _hirc_v150_u32(data, offset)
-                if offset + plugin_parameter_size > len(data):
-                    raise ValueError("truncated v150 MusicTrack plugin parameters")
-                offset += plugin_parameter_size
-            sources.append({
-                "mediaId": media_id,
-                "pluginId": plugin_id,
-                "pluginType": plugin_id & 0x0F,
-                "streamType": stream_type,
-                "inMemoryMediaSize": memory_size,
-                "sourceBits": source_bits,
-                "pluginParameterSize": plugin_parameter_size,
-            })
+            source, offset = parsed_source
+            sources.append({**source, "mediaId": source["sourceId"]})
 
         playlist_count, offset = _hirc_v150_u32(data, offset)
         playlist_items: list[dict[str, Any]] = []
@@ -3028,7 +3890,8 @@ def _hirc_v150_music_parent_id(data: bytes) -> int | None:
 
 def hirc_object_parent_id(object_type: int, data: bytes) -> int | None:
     if object_type == 2:
-        offset = 22
+        source = hirc_v150_sound_source(data)
+        return int(source["parentId"]) if source else None
     elif object_type == 11:
         track = hirc_v150_music_track(data)
         return int(track["parentId"]) if track else None
@@ -3062,6 +3925,19 @@ def hirc_reciprocal_child_list(
     if object_type not in HIRC_TYPED_CHILD_CONTAINER_TYPES:
         return None
     allowed_child_types = HIRC_MUSIC_CHILD_TYPES.get(object_type, HIRC_AUDIO_NODE_TYPES)
+
+    def cached_parent_id(child_id: int) -> int | None:
+        child = objects[child_id]
+        if child.get("_typedParentIdParsed"):
+            value = child.get("_typedParentId")
+            return int(value) if value is not None else None
+        value = hirc_object_parent_id(
+            int(child.get("type") or 0), child.get("data") or b""
+        )
+        child["_typedParentIdParsed"] = True
+        child["_typedParentId"] = value
+        return value
+
     for offset in range(0, max(0, len(data) - 7)):
         count = unpack_from("<I", data, offset)[0]
         if count <= 0 or count > (len(data) - offset - 4) // 4:
@@ -3074,10 +3950,7 @@ def hirc_reciprocal_child_list(
             continue
         if any(
             int(objects[child_id].get("type") or 0) not in allowed_child_types
-            or hirc_object_parent_id(
-                int(objects[child_id].get("type") or 0),
-                objects[child_id].get("data") or b"",
-            ) != object_id
+            or cached_parent_id(child_id) != object_id
             for child_id in children
         ):
             continue
@@ -3094,12 +3967,13 @@ def hirc_v150_switch_mapping(
 ) -> dict[str, Any]:
     """Decode the bounded flat mapping tail of a v150 type-6 container.
 
-    The current flat layout places ``groupId``, ``defaultValueId``, and the
-    continuous-validation byte immediately before the already-proven Children
-    array.  Children are followed by variable value packages and a fixed-size
-    14-byte association row for each serialized association.  Some current
-    type-6 objects use a distinct tail; those fail closed with offsets while
-    normal child traversal remains unchanged.
+    The current flat layout places ``groupType``, ``groupId``,
+    ``defaultValueId``, and the continuous-validation byte immediately before
+    the already-proven Children array. Children are followed by variable value
+    packages and fixed-size 14-byte association rows containing child id,
+    flags, switch mode, fade-out time, and fade-in time. Some current type-6
+    objects use a distinct tail; those fail closed with offsets while normal
+    child traversal remains unchanged.
     """
 
     tail_start = children_offset + 4 + child_count * 4
@@ -3122,11 +3996,14 @@ def hirc_v150_switch_mapping(
             "unresolvedTailByteLength": max(0, len(data) - tail_start),
             "runtimeSelection": "groupValueUnobservedAllChildrenRemainPossible",
         }
-    if children_offset < 9:
+    if children_offset < 10:
         return unresolved("selectorHeaderBeforeObjectStart", children_offset)
     if tail_start + 4 > len(data):
         return unresolved("truncatedPackageCount", tail_start)
 
+    group_type_raw = data[children_offset - 10]
+    if group_type_raw not in (0, 1):
+        return unresolved("invalidGroupType", children_offset - 10)
     group_id = unpack_from("<I", data, children_offset - 9)[0]
     default_value_id = unpack_from("<I", data, children_offset - 5)[0]
     continuous_raw = data[children_offset - 1]
@@ -3175,16 +4052,25 @@ def hirc_v150_switch_mapping(
     for association_index in range(association_count):
         child_id = unpack_from("<I", data, offset)[0]
         flags_raw = data[offset + 4]
-        parameter_a = unpack_from("<i", data, offset + 5)[0]
-        parameter_b = unpack_from("<i", data, offset + 9)[0]
-        parameter_c = data[offset + 13]
+        switch_mode_byte = data[offset + 5]
+        switch_mode_raw = switch_mode_byte & 0x07
+        fade_out_time = unpack_from("<i", data, offset + 6)[0]
+        fade_in_time = unpack_from("<i", data, offset + 10)[0]
         associations.append({
             "associationIndex": association_index,
             "childId": child_id,
             "flagsRaw": flags_raw,
-            "parameterARaw": parameter_a,
-            "parameterBRaw": parameter_b,
-            "parameterCRaw": parameter_c,
+            "isFirstOnly": bool(flags_raw & 0x01),
+            "continuePlayback": bool(flags_raw & 0x02),
+            "flagsUnknownMask": flags_raw & 0xFC,
+            "onSwitchMode": {0: "playToEnd", 1: "stop"}.get(
+                switch_mode_raw, "unknown"
+            ),
+            "onSwitchModeRaw": switch_mode_raw,
+            "onSwitchModeRawByte": switch_mode_byte,
+            "onSwitchModeUnknownMask": switch_mode_byte & 0xF8,
+            "fadeOutTimeMs": fade_out_time,
+            "fadeInTimeMs": fade_in_time,
         })
         offset += 14
 
@@ -3196,6 +4082,8 @@ def hirc_v150_switch_mapping(
     return {
         "parserStatus": "typedExactV150FlatPackages",
         "selectionStructure": "flatValuePackages",
+        "groupType": "switch" if group_type_raw == 0 else "state",
+        "groupTypeRaw": group_type_raw,
         "groupId": group_id,
         "defaultValueId": default_value_id,
         "continuousValidation": bool(continuous_raw),
@@ -3346,7 +4234,9 @@ def hirc_v150_music_switch_structure(
     data: bytes,
     children_offset: int,
     child_count: int,
+    child_ids: list[int] | None = None,
 ) -> dict[str, Any] | None:
+    """Decode a v150 MusicSwitch decision tree and check its child backlinks."""
     common = _hirc_v150_music_common_tail(data, children_offset, child_count)
     if not common:
         return None
@@ -3411,6 +4301,33 @@ def hirc_v150_music_switch_structure(
             visit(0, 0, ())
         if len(visited) != len(raw_nodes):
             raise ValueError("unreachable v150 MusicSwitch tree nodes")
+        tree_leaf_ids = [int(row["audioNodeId"]) for row in leaves]
+        if child_ids is None:
+            selector_validation = {
+                "status": "notCheckedNoReciprocalChildren",
+                "treeLeafIds": sorted(set(tree_leaf_ids)),
+                "reciprocalChildIds": None,
+                "treeLeafIdsOutsideReciprocalChildren": [],
+                "reciprocalChildrenWithoutTreeLeaf": [],
+            }
+        else:
+            tree_leaf_id_set = set(tree_leaf_ids)
+            reciprocal_child_id_set = set(int(child_id) for child_id in child_ids)
+            outside = sorted(tree_leaf_id_set - reciprocal_child_id_set)
+            missing = sorted(reciprocal_child_id_set - tree_leaf_id_set)
+            if outside:
+                status = "treeLeafOutsideReciprocalChildren"
+            elif missing:
+                status = "decisionTreeSubsetOfReciprocalChildren"
+            else:
+                status = "reciprocalChildrenCovered"
+            selector_validation = {
+                "status": status,
+                "treeLeafIds": sorted(tree_leaf_id_set),
+                "reciprocalChildIds": sorted(reciprocal_child_id_set),
+                "treeLeafIdsOutsideReciprocalChildren": outside,
+                "reciprocalChildrenWithoutTreeLeaf": missing,
+            }
         return {
             **common_row,
             **transition_row,
@@ -3424,15 +4341,132 @@ def hirc_v150_music_switch_structure(
             "treeNodeCount": len(raw_nodes),
             "treeLeafCount": len(leaves),
             "treeLeaves": leaves,
+            "selectorValidation": selector_validation,
         }
     except (ValueError, OverflowError):
         return None
+
+
+def refine_hirc_v150_music_switch_selector_ownership(
+    structure: dict[str, Any],
+    object_id: int,
+    objects: dict[int, dict[str, Any]],
+) -> dict[str, Any]:
+    """Classify decision-tree leaves without equating them to direct Children.
+
+    MusicSwitch trees may target a recursively owned descendant or an explicit
+    zero/unbound branch.  Neither case is a direct reciprocal Child, but both
+    are structurally bounded.  A nonzero object missing from this embedded bank
+    or owned by another parent remains unresolved and is never traversed here.
+    """
+
+    validation = dict(structure.get("selectorValidation") or {})
+    direct_child_ids = {
+        int(value) for value in validation.get("reciprocalChildIds") or []
+    }
+    recursive_ids: set[int] = set()
+    zero_ids: set[int] = set()
+    same_bank_missing_ids: set[int] = set()
+    local_other_parent_ids: set[int] = set()
+
+    transition_sources = {
+        int(value)
+        for rule in structure.get("transitionRules") or []
+        if isinstance(rule, dict)
+        for value in rule.get("sourceIds") or []
+    }
+    transition_destinations = {
+        int(value)
+        for rule in structure.get("transitionRules") or []
+        if isinstance(rule, dict)
+        for value in rule.get("destinationIds") or []
+    }
+
+    def parent_id(node_id: int) -> int | None:
+        node = objects.get(node_id)
+        if not isinstance(node, dict):
+            return None
+        if node.get("_typedParentIdParsed"):
+            value = node.get("_typedParentId")
+            return int(value) if value is not None else None
+        value = hirc_object_parent_id(
+            int(node.get("type") or 0), node.get("data") or b""
+        )
+        node["_typedParentIdParsed"] = True
+        node["_typedParentId"] = value
+        return value
+
+    for leaf in structure.get("treeLeaves") or []:
+        if not isinstance(leaf, dict):
+            continue
+        leaf_id = int(leaf.get("audioNodeId") or 0)
+        roles: list[str] = []
+        if leaf_id in transition_sources:
+            roles.append("transitionSource")
+        if leaf_id in transition_destinations:
+            roles.append("transitionDestination")
+        leaf["transitionReferenceRoles"] = roles
+        if leaf_id in direct_child_ids:
+            leaf["ownershipStatus"] = "directReciprocalChild"
+            leaf["ownershipParentChain"] = [object_id]
+            continue
+        if leaf_id == 0:
+            zero_ids.add(leaf_id)
+            leaf["ownershipStatus"] = "explicitUnboundLeaf"
+            leaf["ownershipParentChain"] = []
+            continue
+        if leaf_id not in objects:
+            same_bank_missing_ids.add(leaf_id)
+            leaf["ownershipStatus"] = "sameBankObjectMissing"
+            leaf["ownershipParentChain"] = []
+            continue
+
+        chain: list[int] = []
+        seen = {leaf_id}
+        cursor = leaf_id
+        recursive = False
+        for _ in range(64):
+            parent = parent_id(cursor)
+            if parent is None or parent == 0 or parent in seen:
+                break
+            chain.append(parent)
+            if parent == object_id:
+                recursive = True
+                break
+            seen.add(parent)
+            cursor = parent
+        leaf["ownershipParentChain"] = chain
+        if recursive:
+            recursive_ids.add(leaf_id)
+            leaf["ownershipStatus"] = "recursiveOwnedDescendant"
+        else:
+            local_other_parent_ids.add(leaf_id)
+            leaf["ownershipStatus"] = "sameBankOtherParent"
+
+    validation.update({
+        "recursiveOwnedDescendantIds": sorted(recursive_ids),
+        "zeroUnboundLeafIds": sorted(zero_ids),
+        "sameBankMissingLeafIds": sorted(same_bank_missing_ids),
+        "localOtherParentLeafIds": sorted(local_other_parent_ids),
+        "ownedDirectChildIdsNotInTreeLeaves": list(
+            validation.get("reciprocalChildrenWithoutTreeLeaf") or []
+        ),
+        "runtimeBranchStatus": "groupValuesAndActiveLeafNotObserved",
+    })
+    unresolved_ids = same_bank_missing_ids | local_other_parent_ids
+    if unresolved_ids:
+        validation["status"] = "decisionTreeLeafOwnershipUnresolved"
+    elif recursive_ids or zero_ids:
+        validation["status"] = "decisionTreeIndirectAndUnboundLeavesResolved"
+    structure["selectorValidation"] = validation
+    return structure
 
 
 def hirc_v150_music_random_sequence_structure(
     data: bytes,
     children_offset: int,
     child_count: int,
+    child_ids: list[int] | None = None,
 ) -> dict[str, Any] | None:
     common = _hirc_v150_music_common_tail(data, children_offset, child_count)
     if not common:
@@ -3487,12 +4521,51 @@ def hirc_v150_music_random_sequence_structure(
             read_item(0, None)
         if len(items) != playlist_count or offset != len(data):
             raise ValueError("invalid v150 MusicRanSeq playlist size")
+        terminal_items = [
+            row for row in items if int(row.get("childCount") or 0) == 0
+        ]
+        terminal_segment_ids = [
+            int(row["segmentId"])
+            for row in terminal_items
+            if int(row.get("segmentId") or 0) not in {0, 0xFFFFFFFF}
+        ]
+        if child_ids is None:
+            selector_validation = {
+                "status": "notCheckedNoReciprocalChildren",
+                "playlistTerminalSegmentIds": sorted(set(terminal_segment_ids)),
+                "reciprocalChildIds": None,
+                "playlistTerminalSegmentIdsOutsideReciprocalChildren": [],
+                "reciprocalChildrenWithoutPlaylistTerminal": [],
+                "terminalPlaylistItemCount": len(terminal_items),
+                "terminalItemsWithSentinelSegmentId": len(terminal_items) - len(terminal_segment_ids),
+            }
+        else:
+            terminal_segment_id_set = set(terminal_segment_ids)
+            reciprocal_child_id_set = set(int(child_id) for child_id in child_ids)
+            outside = sorted(terminal_segment_id_set - reciprocal_child_id_set)
+            missing = sorted(reciprocal_child_id_set - terminal_segment_id_set)
+            if outside:
+                status = "terminalSegmentOutsideReciprocalChildren"
+            elif missing:
+                status = "playlistSubsetOfReciprocalChildren"
+            else:
+                status = "reciprocalChildrenCovered"
+            selector_validation = {
+                "status": status,
+                "playlistTerminalSegmentIds": sorted(terminal_segment_id_set),
+                "reciprocalChildIds": sorted(reciprocal_child_id_set),
+                "playlistTerminalSegmentIdsOutsideReciprocalChildren": outside,
+                "reciprocalChildrenWithoutPlaylistTerminal": missing,
+                "terminalPlaylistItemCount": len(terminal_items),
+                "terminalItemsWithSentinelSegmentId": len(terminal_items) - len(terminal_segment_ids),
+            }
         return {
             **common_row,
             **transition_row,
             "playlistItemCount": playlist_count,
             "playlistItems": items,
             "selectionTypeLabels": sorted({str(row["selectionTypeLabel"]) for row in items}),
+            "selectorValidation": selector_validation,
         }
     except (ValueError, OverflowError, RecursionError):
         return None
@@ -3503,13 +4576,18 @@ def hirc_v150_music_structure(
     data: bytes,
     children_offset: int,
     child_count: int,
+    child_ids: list[int] | None = None,
 ) -> dict[str, Any] | None:
     parser = {
         10: hirc_v150_music_segment_structure,
         12: hirc_v150_music_switch_structure,
         13: hirc_v150_music_random_sequence_structure,
     }.get(object_type)
-    return parser(data, children_offset, child_count) if parser else None
+    if not parser:
+        return None
+    if object_type in {12, 13}:
+        return parser(data, children_offset, child_count, child_ids)
+    return parser(data, children_offset, child_count)
 
 
 def hirc_v150_empty_music_children(
@@ -3527,7 +4605,7 @@ def hirc_v150_empty_music_children(
     for offset in range(0, max(0, len(data) - 3)):
         if unpack_from("<I", data, offset)[0] != 0:
             continue
-        structure = hirc_v150_music_structure(object_type, data, offset, 0)
+        structure = hirc_v150_music_structure(object_type, data, offset, 0, [])
         if structure:
             matches.append(([], offset, structure))
             if len(matches) > 1:
@@ -3548,26 +4626,96 @@ def hirc_media_relation_types(path_object_types: list[int]) -> list[str]:
     return relations or ["directSound"]
 
 
-def hirc_random_sequence_properties(data: bytes, children_offset: int) -> dict[str, Any]:
-    """Decode the fixed v150 RanSeq tail immediately before Children."""
+def hirc_v150_random_sequence_properties(
+    data: bytes,
+    children_offset: int,
+    child_ids: list[int],
+    *,
+    bank_version: int | None,
+) -> dict[str, Any]:
+    """Decode a bounded v150 Random/Sequence container policy and playlist.
 
+    The fixed 24-byte policy block precedes the reciprocal Children array. A
+    U16 playlist count and ``childId, weight`` rows follow Children. Playlist
+    order is authored selection order and may differ from Children order, so
+    Sequence semantics must never be reconstructed from Children alone.
+    """
+
+    tail_start = children_offset + 4 + len(child_ids) * 4
+    policy: dict[str, Any] = {}
+
+    def unresolved(reason: str, offset: int) -> dict[str, Any]:
+        bounded_offset = max(0, min(offset, len(data)))
+        return {
+            **policy,
+            "selectorParserStatus": "unresolvedV150RandomSequenceTail",
+            "selectorParserFailureReason": reason,
+            "selectorUnresolvedOffset": bounded_offset,
+            "selectorUnresolvedByteLength": len(data) - bounded_offset,
+            "runtimeSelection": "randomHistoryOrSequenceCursorUnobservedAllChildrenRemainPossible",
+        }
+
+    if bank_version != 150:
+        return {
+            "selectorParserStatus": "unsupportedBankVersion",
+            "bankVersion": bank_version,
+            "selectorUnresolvedOffset": max(0, tail_start),
+            "selectorUnresolvedByteLength": max(0, len(data) - tail_start),
+            "runtimeSelection": "randomHistoryOrSequenceCursorUnobservedAllChildrenRemainPossible",
+        }
     if children_offset < 24:
-        return {}
-    mode = data[children_offset - 2]
-    random_mode = data[children_offset - 3]
-    flags = data[children_offset - 1]
+        return unresolved("selectorHeaderBeforeObjectStart", children_offset)
+    if tail_start + 2 > len(data):
+        return unresolved("truncatedPlaylistCount", tail_start)
+
+    loop_count, loop_min, loop_max = unpack_from("<HHH", data, children_offset - 24)
+    transition_time, transition_min, transition_max = unpack_from(
+        "<fff", data, children_offset - 18
+    )
+    avoid_repeat_count = unpack_from("<H", data, children_offset - 6)[0]
     transition_mode = data[children_offset - 4]
-    return {
+    random_mode = data[children_offset - 3]
+    mode = data[children_offset - 2]
+    flags = data[children_offset - 1]
+    if mode not in (0, 1):
+        return unresolved("invalidRandomSequenceMode", children_offset - 2)
+    if random_mode not in (0, 1):
+        return unresolved("invalidRandomMode", children_offset - 3)
+    if transition_mode not in range(6):
+        return unresolved("invalidTransitionMode", children_offset - 4)
+    transition_labels = {
+        0: "disabled",
+        1: "crossFadeAmplitude",
+        2: "crossFadePower",
+        3: "delay",
+        4: "sampleAccurate",
+        5: "triggerRate",
+    }
+    policy.update({
         "mode": mode,
-        "modeLabel": {0: "random", 1: "sequence"}.get(mode, f"mode{mode}"),
+        "modeLabel": "random" if mode == 0 else "sequence",
         "randomMode": random_mode,
-        "randomModeLabel": {0: "normal", 1: "shuffle"}.get(random_mode, f"mode{random_mode}"),
+        "randomModeLabel": "standard" if random_mode == 0 else "shuffle",
+        "loopCount": loop_count,
+        "loopModifierMin": loop_min,
+        "loopModifierMax": loop_max,
+        "transitionTime": transition_time,
+        "transitionModifierMin": transition_min,
+        "transitionModifierMax": transition_max,
+        "avoidRepeatCount": avoid_repeat_count,
         "transitionMode": transition_mode,
+        "transitionModeLabel": transition_labels[transition_mode],
         "flags": flags,
+        "weightFlagRaw": bool(flags & 0x01),
+        "resetPlaylistAtEachPlay": bool(flags & 0x02),
+        "restartBackward": bool(flags & 0x04),
+        "continuous": bool(flags & 0x08),
+        "globalScope": bool(flags & 0x10),
+        "flagsUnknownMask": flags & 0xE0,
         "flagLabels": [
             label
             for bit, label in (
-                (0, "usesWeight"),
+                (0, "weightFlagSet"),
                 (1, "resetPlaylistAtEachPlay"),
                 (2, "restartBackward"),
                 (3, "continuous"),
@@ -3575,7 +4723,334 @@ def hirc_random_sequence_properties(data: bytes, children_offset: int) -> dict[s
             )
             if flags & (1 << bit)
         ],
+    })
+
+    playlist_count = unpack_from("<H", data, tail_start)[0]
+    playlist_offset = tail_start + 2
+    playlist_bytes = playlist_count * 8
+    if playlist_offset + playlist_bytes != len(data):
+        return unresolved("unexpectedPlaylistTailLength", playlist_offset + playlist_bytes)
+    playlist_items = [
+        {
+            "playlistOrdinal": index,
+            "childId": unpack_from("<I", data, playlist_offset + index * 8)[0],
+            "weight": unpack_from("<I", data, playlist_offset + index * 8 + 4)[0],
+        }
+        for index in range(playlist_count)
+    ]
+    playlist_child_ids = [row["childId"] for row in playlist_items]
+    playlist_child_id_set = set(playlist_child_ids)
+    reciprocal_child_id_set = set(child_ids)
+    outside = sorted(playlist_child_id_set - reciprocal_child_id_set)
+    owned_not_in_playlist = sorted(reciprocal_child_id_set - playlist_child_id_set)
+    if outside:
+        return unresolved("playlistChildOutsideReciprocalChildren", playlist_offset)
+    duplicate_count = len(playlist_child_ids) - len(playlist_child_id_set)
+    if not playlist_items:
+        membership_status = "emptyPlaylistOwnedChildrenPreserved"
+    elif duplicate_count:
+        membership_status = "playlistWithRepeatedOwnedChildren"
+    elif owned_not_in_playlist:
+        membership_status = "playlistSubsetOfOwnedChildren"
+    else:
+        membership_status = "playlistCoversOwnedChildren"
+    weights = [row["weight"] for row in playlist_items]
+    return {
+        **policy,
+        "selectorParserStatus": "typedExactV150PlaylistWeights",
+        "playlistItemCount": playlist_count,
+        "playlistItems": playlist_items,
+        "playlistChildOrder": playlist_child_ids,
+        "childrenOrderMatchesPlaylist": playlist_child_ids == child_ids,
+        "playlistMembershipStatus": membership_status,
+        "playlistUniqueChildCount": len(playlist_child_id_set),
+        "duplicatePlaylistItemCount": duplicate_count,
+        "playlistChildIdsOutsideChildren": outside,
+        "ownedChildIdsNotInPlaylist": owned_not_in_playlist,
+        "nonDefaultWeightCount": sum(weight != 50000 for weight in weights),
+        "uniformWeights": len(set(weights)) <= 1,
+        "weightUsageStatus": "playlistWeightsPreservedWeightFlagNotUsedAsGate",
+        "runtimeSelection": "randomHistoryOrSequenceCursorUnobservedAllChildrenRemainPossible",
     }
+
+
+def hirc_v150_layer_tail(
+    data: bytes,
+    tail_offset: int,
+    child_ids: list[int],
+    *,
+    bank_version: int | None,
+) -> dict[str, Any]:
+    """Decode the bounded v150 CAkLayerCntr tail after Children.
+
+    A Layer container is a blend surface, not a one-child selector. Each Layer
+    binds an RTPC to child-specific curves. Static bank data therefore proves
+    possible blends/crossfades, while the live RTPC value and audible child
+    gains remain unknown.
+    """
+
+    def unresolved(reason: str, offset: int) -> dict[str, Any]:
+        bounded = max(0, min(offset, len(data)))
+        return {
+            "layerTailParserStatus": "unresolvedV150LayerTail",
+            "layerTailFailureReason": reason,
+            "layerTailUnresolvedOffset": bounded,
+            "layerTailUnresolvedByteLength": len(data) - bounded,
+            "runtimeSelection": "layerRtpcValueUnobservedAllChildrenRemainPossible",
+        }
+
+    if bank_version != 150:
+        return {
+            "layerTailParserStatus": "unsupportedBankVersion",
+            "bankVersion": bank_version,
+            "layerTailUnresolvedOffset": max(0, min(tail_offset, len(data))),
+            "layerTailUnresolvedByteLength": max(0, len(data) - tail_offset),
+            "runtimeSelection": "layerRtpcValueUnobservedAllChildrenRemainPossible",
+        }
+
+    offset = tail_offset
+
+    def take_u8(label: str) -> int:
+        nonlocal offset
+        if offset + 1 > len(data):
+            raise ValueError(f"truncated{label}")
+        value = data[offset]
+        offset += 1
+        return value
+
+    def take_u16(label: str) -> int:
+        nonlocal offset
+        if offset + 2 > len(data):
+            raise ValueError(f"truncated{label}")
+        value = unpack_from("<H", data, offset)[0]
+        offset += 2
+        return value
+
+    def take_u32(label: str) -> int:
+        nonlocal offset
+        if offset + 4 > len(data):
+            raise ValueError(f"truncated{label}")
+        value = unpack_from("<I", data, offset)[0]
+        offset += 4
+        return value
+
+    def take_f32(label: str) -> float:
+        nonlocal offset
+        if offset + 4 > len(data):
+            raise ValueError(f"truncated{label}")
+        value = unpack_from("<f", data, offset)[0]
+        offset += 4
+        return value
+
+    def take_varuint(label: str) -> int:
+        nonlocal offset
+        value = 0
+        for index in range(10):
+            byte = take_u8(label)
+            value |= (byte & 0x7F) << (index * 7)
+            if not byte & 0x80:
+                return value
+        raise ValueError(f"invalid{label}Varint")
+
+    def take_curve_points(count: int, label: str) -> list[dict[str, Any]]:
+        if count > (len(data) - offset) // 12:
+            raise ValueError(f"{label}PointCountTooLarge")
+        points: list[dict[str, Any]] = []
+        for point_index in range(count):
+            from_value = take_f32(f"{label}PointFrom")
+            to_value = take_f32(f"{label}PointTo")
+            interpolation = take_u32(f"{label}PointInterpolation")
+            points.append({
+                "pointIndex": point_index,
+                "from": from_value,
+                "to": to_value,
+                "interpolation": interpolation,
+                "interpolationLabel": HIRC_FADE_CURVE_LABELS.get(
+                    interpolation, f"curve{interpolation}"
+                ),
+            })
+        return points
+
+    rtpc_type_labels = {
+        0: "gameParameter",
+        1: "midiParameter",
+        2: "switch",
+        3: "state",
+        4: "modulator",
+    }
+    rtpc_accum_labels = {
+        0: "none",
+        1: "exclusive",
+        2: "additive",
+        3: "multiply",
+        4: "boolean",
+        5: "maximum",
+        6: "filter",
+    }
+    scaling_labels = {0: "none", 2: "decibel", 3: "log", 4: "decibelToLinear"}
+
+    try:
+        layer_count = take_u32("LayerCount")
+        if layer_count > max(0, (len(data) - offset - 1) // 15):
+            raise ValueError("layerCountTooLarge")
+        layers: list[dict[str, Any]] = []
+        association_child_ids: set[int] = set()
+        initial_curve_total = 0
+        association_total = 0
+        point_total = 0
+        for layer_index in range(layer_count):
+            layer_id = take_u32("LayerId")
+            initial_curve_count = take_u16("InitialRtpcCurveCount")
+            initial_curves: list[dict[str, Any]] = []
+            for curve_index in range(initial_curve_count):
+                rtpc_id = take_u32("InitialRtpcId")
+                rtpc_type = take_u8("InitialRtpcType")
+                rtpc_accum = take_u8("InitialRtpcAccum")
+                param_id = take_varuint("InitialParamId")
+                curve_id = take_u32("InitialRtpcCurveId")
+                scaling = take_u8("InitialRtpcScaling")
+                point_count = take_u16("InitialRtpcPointCount")
+                points = take_curve_points(point_count, "InitialRtpc")
+                initial_curves.append({
+                    "curveIndex": curve_index,
+                    "rtpcId": rtpc_id,
+                    "rtpcType": rtpc_type,
+                    "rtpcTypeLabel": rtpc_type_labels.get(rtpc_type, f"type{rtpc_type}"),
+                    "rtpcAccum": rtpc_accum,
+                    "rtpcAccumLabel": rtpc_accum_labels.get(rtpc_accum, f"mode{rtpc_accum}"),
+                    "paramId": param_id,
+                    "curveId": curve_id,
+                    "scaling": scaling,
+                    "scalingLabel": scaling_labels.get(scaling, f"scaling{scaling}"),
+                    "pointCount": point_count,
+                    "points": points,
+                })
+                point_total += point_count
+            layer_rtpc_id = take_u32("LayerRtpcId")
+            layer_rtpc_type = take_u8("LayerRtpcType")
+            association_count = take_u32("LayerAssociationCount")
+            if association_count > (len(data) - offset) // 8:
+                raise ValueError("layerAssociationCountTooLarge")
+            associations: list[dict[str, Any]] = []
+            for association_index in range(association_count):
+                child_id = take_u32("LayerAssociationChildId")
+                curve_point_count = take_u32("LayerAssociationCurvePointCount")
+                points = take_curve_points(curve_point_count, "LayerAssociation")
+                association_child_ids.add(child_id)
+                associations.append({
+                    "associationIndex": association_index,
+                    "childId": child_id,
+                    "curvePointCount": curve_point_count,
+                    "curvePoints": points,
+                })
+                point_total += curve_point_count
+            layers.append({
+                "layerIndex": layer_index,
+                "layerId": layer_id,
+                "initialRtpcCurveCount": initial_curve_count,
+                "initialRtpcCurves": initial_curves,
+                "rtpcId": layer_rtpc_id,
+                "rtpcType": layer_rtpc_type,
+                "rtpcTypeLabel": rtpc_type_labels.get(
+                    layer_rtpc_type, f"type{layer_rtpc_type}"
+                ),
+                "associationCount": association_count,
+                "associations": associations,
+            })
+            initial_curve_total += initial_curve_count
+            association_total += association_count
+        continuous_raw = take_u8("ContinuousValidation")
+        if continuous_raw not in (0, 1):
+            raise ValueError("invalidContinuousValidation")
+        if offset != len(data):
+            raise ValueError("unexpectedTrailingBytes")
+    except (ValueError, OverflowError) as exc:
+        return unresolved(str(exc), offset)
+
+    child_set = set(child_ids)
+    outside_children = sorted(association_child_ids - child_set)
+    return {
+        "layerTailParserStatus": "typedExactV150LayerTail",
+        "layerAssignmentStatus": (
+            "nonEmptyCurves" if layer_count else "zeroLayerAssignments"
+        ),
+        "layerCount": layer_count,
+        "layers": layers,
+        "initialRtpcCurveCount": initial_curve_total,
+        "associationCount": association_total,
+        "curvePointCount": point_total,
+        "associationChildIdsOutsideChildren": outside_children,
+        "continuousValidation": bool(continuous_raw),
+        "continuousValidationRaw": continuous_raw,
+        "runtimeSelection": "layerRtpcValueUnobservedAllChildrenRemainPossible",
+    }
+
+
+def hirc_v150_layer_child_candidate(
+    data: bytes,
+    objects: dict[int, dict[str, Any]],
+    *,
+    bank_version: int | None,
+) -> tuple[list[int], int, dict[str, Any], str] | None:
+    """Find one structurally exact type-9 Children+tail candidate.
+
+    This is deliberately weaker than reciprocal-parent proof. Non-empty
+    candidates require same-bank audio-node children, an exact Layer-tail
+    parse, association children within the candidate Children set, and a
+    unique matching byte offset. Canonical empty objects are accepted only at
+    the current v150 offset/length fingerprint.
+    """
+
+    if bank_version != 150:
+        return None
+    matches: list[tuple[list[int], int, dict[str, Any], str]] = []
+    for children_offset in range(0, max(0, len(data) - 7)):
+        child_count = unpack_from("<I", data, children_offset)[0]
+        if child_count <= 0 or child_count > (len(data) - children_offset - 4) // 4:
+            continue
+        child_ids = [
+            unpack_from("<I", data, children_offset + 4 + index * 4)[0]
+            for index in range(child_count)
+        ]
+        if any(child_id not in objects for child_id in child_ids):
+            continue
+        if any(
+            int(objects[child_id].get("type") or 0) not in HIRC_AUDIO_NODE_TYPES
+            for child_id in child_ids
+        ):
+            continue
+        tail_offset = children_offset + 4 + child_count * 4
+        tail = hirc_v150_layer_tail(
+            data, tail_offset, child_ids, bank_version=bank_version
+        )
+        if tail.get("layerTailParserStatus") != "typedExactV150LayerTail":
+            continue
+        if tail.get("associationChildIdsOutsideChildren"):
+            continue
+        matches.append((
+            child_ids,
+            children_offset,
+            tail,
+            "typedExactV150CandidateWithoutParentProof",
+        ))
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        return None
+
+    canonical_offset = 31
+    if len(data) == 40 and unpack_from("<I", data, canonical_offset)[0] == 0:
+        tail = hirc_v150_layer_tail(
+            data, canonical_offset + 4, [], bank_version=bank_version
+        )
+        if tail.get("layerTailParserStatus") == "typedExactV150LayerTail":
+            return (
+                [],
+                canonical_offset,
+                tail,
+                "typedExactV150CanonicalEmpty",
+            )
+    return None
 
 
 def summarize_hirc_action_dispatch(
@@ -3678,6 +5153,7 @@ def traverse_hirc_event(
     action_evidence: list[dict[str, Any]] = []
     container_evidence: list[dict[str, Any]] = []
     music_node_evidence: list[dict[str, Any]] = []
+    source_object_evidence: list[dict[str, Any]] = []
     unresolved_nodes: list[dict[str, Any]] = []
 
     def record_media(
@@ -3686,6 +5162,7 @@ def traverse_hirc_event(
         object_type: int,
         root_action_id: int,
         relations: tuple[str, ...],
+        source: dict[str, Any] | None = None,
     ) -> None:
         if media_id not in source_media_ids:
             source_media_ids.append(media_id)
@@ -3699,6 +5176,10 @@ def traverse_hirc_event(
             "rootActionIds": set(),
             "relationTypes": set(),
             "selectionPaths": set(),
+            "sourceKinds": set(),
+            "pluginIds": set(),
+            "streamTypes": set(),
+            "sourceBits": set(),
         })
         if object_type == 2:
             media_row["soundObjectIds"].add(object_id)
@@ -3707,6 +5188,44 @@ def traverse_hirc_event(
         media_row["rootActionIds"].add(root_action_id)
         media_row["relationTypes"].update(relations)
         media_row["selectionPaths"].add(relations)
+        if source:
+            media_row["sourceKinds"].add(str(source.get("sourceKind") or "unknown"))
+            media_row["pluginIds"].add(int(source.get("pluginId") or 0))
+            media_row["streamTypes"].add(int(source.get("streamType") or 0))
+            media_row["sourceBits"].add(int(source.get("sourceBits") or 0))
+
+    def record_source(
+        source: dict[str, Any],
+        object_id: int,
+        object_type: int,
+        root_action_id: int,
+        relations: tuple[str, ...],
+    ) -> None:
+        source_kind = str(source.get("sourceKind") or "unsupportedPluginSource")
+        source_id = int(source.get("sourceId") or 0)
+        decoded_match = source_kind == "codecMedia" and source_id in decoded_media_ids
+        if decoded_match:
+            location_status = "decodedMediaIndexMatch"
+        elif source_kind == "codecMedia":
+            location_status = "unresolvedCodecMedia"
+        elif source_kind == "externalSourceCodec":
+            location_status = "unresolvedExternalSource"
+        elif source_kind == "synthesizedSource":
+            location_status = "synthesizedSource"
+        else:
+            location_status = "unsupportedPluginSource"
+        source_object_evidence.append({
+            **source,
+            "objectId": object_id,
+            "objectType": object_type,
+            "rootActionId": root_action_id,
+            "relationTypes": list(relations),
+            "decodedMediaMatch": decoded_match,
+            "mediaLocationStatus": location_status,
+            "playbackBoundary": (
+                "sourceRecordProvesAuthoredWwiseSourceNotRuntimeInstantiationOrAudibility"
+            ),
+        })
 
     while queue:
         (
@@ -3794,8 +5313,8 @@ def traverse_hirc_event(
             continue
 
         if object_type == 2:
-            media_id = hirc_sound_media_id(data)
-            if media_id is None:
+            source = hirc_v150_sound_source(data)
+            if source is None:
                 unresolved_nodes.append({
                     "objectId": object_id,
                     "objectType": object_type,
@@ -3804,7 +5323,12 @@ def traverse_hirc_event(
                 })
                 continue
             relations = tuple(path_relations) or ("directSound",)
-            record_media(media_id, object_id, object_type, root_action_id, relations)
+            record_source(source, object_id, object_type, root_action_id, relations)
+            if source.get("sourceKind") == "codecMedia":
+                record_media(
+                    int(source["sourceId"]), object_id, object_type,
+                    root_action_id, relations, source,
+                )
             continue
 
         if object_type == 11:
@@ -3834,15 +5358,33 @@ def traverse_hirc_event(
             })
             relations = (*path_relations, "musicTrackSource")
             for source in track["sources"]:
-                media_id = int(source.get("mediaId") or 0)
-                if media_id:
-                    record_media(media_id, object_id, object_type, root_action_id, relations)
+                record_source(source, object_id, object_type, root_action_id, relations)
+                media_id = int(source.get("sourceId") or 0)
+                if media_id and source.get("sourceKind") == "codecMedia":
+                    record_media(
+                        media_id, object_id, object_type, root_action_id,
+                        relations, source,
+                    )
             continue
 
         if object_type in HIRC_TYPED_CHILD_CONTAINER_TYPES:
             parsed = hirc_reciprocal_child_list(object_id, object_type, data, objects)
             structure = None
             parser_confidence = "reciprocalParentExact"
+            layer_tail = None
+            layer_candidate_without_parent = False
+            if not parsed and object_type == 9:
+                layer_candidate = hirc_v150_layer_child_candidate(
+                    data,
+                    objects,
+                    bank_version=bank_version,
+                )
+                if layer_candidate:
+                    child_ids, offset, layer_tail, parser_confidence = layer_candidate
+                    parsed = (child_ids, offset)
+                    layer_candidate_without_parent = (
+                        parser_confidence == "typedExactV150CandidateWithoutParentProof"
+                    )
             if not parsed and object_type in HIRC_MUSIC_PARENT_NODE_TYPES:
                 empty_music = hirc_v150_empty_music_children(object_type, data)
                 if empty_music:
@@ -3867,7 +5409,12 @@ def traverse_hirc_event(
                 "parserConfidence": parser_confidence,
             }
             if object_type == 5:
-                container_row.update(hirc_random_sequence_properties(data, offset))
+                container_row.update(hirc_v150_random_sequence_properties(
+                    data,
+                    offset,
+                    child_ids,
+                    bank_version=bank_version,
+                ))
                 relation = "sequenceItem" if container_row.get("mode") == 1 else "randomAlternative"
             elif object_type == 6:
                 container_row["switchMappingEvidence"] = hirc_v150_switch_mapping(
@@ -3879,17 +5426,53 @@ def traverse_hirc_event(
                 relation = "switchCandidate"
             elif object_type == 9:
                 relation = "layerChild"
+                if layer_tail is None:
+                    layer_tail = hirc_v150_layer_tail(
+                        data,
+                        offset + 4 + len(child_ids) * 4,
+                        child_ids,
+                        bank_version=bank_version,
+                    )
+                container_row["layerTailEvidence"] = layer_tail
+                if layer_tail.get("layerTailParserStatus") != "typedExactV150LayerTail":
+                    unresolved_nodes.append({
+                        "objectId": object_id,
+                        "objectType": object_type,
+                        "rootActionId": root_action_id,
+                        "reason": "layerTailUnresolved",
+                        "detail": layer_tail.get("layerTailFailureReason")
+                        or layer_tail.get("layerTailParserStatus"),
+                    })
+                elif layer_candidate_without_parent:
+                    unresolved_nodes.append({
+                        "objectId": object_id,
+                        "objectType": object_type,
+                        "rootActionId": root_action_id,
+                        "reason": "layerChildrenCandidateWithoutParentProof",
+                        "childrenOffset": offset,
+                        "childCount": len(child_ids),
+                    })
             elif object_type == 10:
                 relation = "musicTrack"
-                structure = structure or hirc_v150_music_structure(object_type, data, offset, len(child_ids))
+                structure = structure or hirc_v150_music_structure(
+                    object_type, data, offset, len(child_ids), child_ids
+                )
                 node_kind = "musicSegment"
             elif object_type == 12:
                 relation = "musicSwitchCandidate"
-                structure = structure or hirc_v150_music_structure(object_type, data, offset, len(child_ids))
+                structure = structure or hirc_v150_music_structure(
+                    object_type, data, offset, len(child_ids), child_ids
+                )
+                if structure:
+                    structure = refine_hirc_v150_music_switch_selector_ownership(
+                        structure, object_id, objects
+                    )
                 node_kind = "musicSwitchContainer"
             elif object_type == 13:
                 relation = "musicPlaylistCandidate"
-                structure = structure or hirc_v150_music_structure(object_type, data, offset, len(child_ids))
+                structure = structure or hirc_v150_music_structure(
+                    object_type, data, offset, len(child_ids), child_ids
+                )
                 node_kind = "musicRandomSequenceContainer"
             else:
                 relation = "groupChild"
@@ -3903,7 +5486,33 @@ def traverse_hirc_event(
                 }
                 if structure:
                     music_row.update(structure)
-                    music_row["structureStatus"] = "typedExactV150"
+                    selector_status = (structure.get("selectorValidation") or {}).get("status")
+                    exact_selector_statuses = {
+                        None,
+                        "reciprocalChildrenCovered",
+                        "decisionTreeSubsetOfReciprocalChildren",
+                        "playlistSubsetOfReciprocalChildren",
+                        "decisionTreeIndirectAndUnboundLeavesResolved",
+                    }
+                    music_row["structureStatus"] = (
+                        "typedExactV150SelectorSubset"
+                        if selector_status in {
+                            "decisionTreeSubsetOfReciprocalChildren",
+                            "playlistSubsetOfReciprocalChildren",
+                            "decisionTreeIndirectAndUnboundLeavesResolved",
+                        }
+                        else "typedExactV150"
+                        if selector_status in exact_selector_statuses
+                        else "typedExactV150SelectorBoundaryUnresolved"
+                    )
+                    if selector_status not in exact_selector_statuses:
+                        unresolved_nodes.append({
+                            "objectId": object_id,
+                            "objectType": object_type,
+                            "rootActionId": root_action_id,
+                            "reason": "musicSelectorReciprocalMismatch",
+                            "selectorValidation": structure["selectorValidation"],
+                        })
                 else:
                     music_row["structureStatus"] = "structureTailUnresolved"
                     unresolved_nodes.append({
@@ -3953,8 +5562,64 @@ def traverse_hirc_event(
             "rootActionIds": sorted(row["rootActionIds"]),
             "relationTypes": sorted(row["relationTypes"]),
             "selectionPaths": [list(path) for path in sorted(row["selectionPaths"])],
+            "sourceKinds": sorted(row["sourceKinds"]),
+            "pluginIds": sorted(row["pluginIds"]),
+            "pluginNames": [
+                HIRC_SOURCE_PLUGIN_LABELS.get(plugin_id, f"plugin0x{plugin_id:08x}")
+                for plugin_id in sorted(row["pluginIds"])
+            ],
+            "streamTypes": [
+                {
+                    "value": stream_type,
+                    "label": HIRC_STREAM_TYPE_LABELS.get(
+                        stream_type, f"streamType{stream_type}"
+                    ),
+                }
+                for stream_type in sorted(row["streamTypes"])
+            ],
+            "sourceBits": sorted(row["sourceBits"]),
         }
         for media_id, row in sorted(media_evidence_by_id.items())
+    ]
+    source_kind_counts = Counter(
+        str(row.get("sourceKind") or "unknown") for row in source_object_evidence
+    )
+    plugin_counts = Counter(
+        f"0x{int(row.get('pluginId') or 0):08x}" for row in source_object_evidence
+    )
+    stream_type_counts = Counter(
+        str(row.get("streamTypeLabel") or "unknown") for row in source_object_evidence
+    )
+    source_flag_counts = Counter()
+    for row in source_object_evidence:
+        for flag, enabled in (row.get("sourceFlags") or {}).items():
+            if flag != "unknownBits" and enabled:
+                source_flag_counts[flag] += 1
+        if int((row.get("sourceFlags") or {}).get("unknownBits") or 0):
+            source_flag_counts["unknownBitsNonzero"] += 1
+    source_object_summary = {
+        "sourceReferenceCount": len(source_object_evidence),
+        "uniqueSourceObjectCount": len({
+            (int(row.get("objectType") or 0), int(row.get("objectId") or 0))
+            for row in source_object_evidence
+        }),
+        "sourceKindCounts": dict(sorted(source_kind_counts.items())),
+        "pluginCounts": dict(sorted(plugin_counts.items())),
+        "streamTypeCounts": dict(sorted(stream_type_counts.items())),
+        "sourceFlagCounts": dict(sorted(source_flag_counts.items())),
+        "decodedCodecSourceCount": sum(
+            row.get("sourceKind") == "codecMedia" and row.get("decodedMediaMatch")
+            for row in source_object_evidence
+        ),
+        "unresolvedCodecSourceCount": sum(
+            row.get("sourceKind") == "codecMedia" and not row.get("decodedMediaMatch")
+            for row in source_object_evidence
+        ),
+        "runtimeSelection": "sourceInstantiationAndAudibilityNotObserved",
+    }
+    non_media_source_evidence = [
+        row for row in source_object_evidence
+        if row.get("sourceKind") != "codecMedia"
     ]
     action_dispatch_evidence = summarize_hirc_action_dispatch(
         event_id, root_action_ids, action_evidence
@@ -3974,6 +5639,8 @@ def traverse_hirc_event(
         "actionDispatchEvidence": action_dispatch_evidence,
         "containerEvidence": container_evidence,
         "musicNodeEvidence": music_node_evidence,
+        "sourceObjectSummary": source_object_summary,
+        "nonMediaSourceEvidence": non_media_source_evidence,
         "unresolvedNodes": unresolved_nodes,
         "traversalStatus": "partial" if unresolved_nodes else "complete",
     }
@@ -5139,13 +6806,15 @@ def collect_event_audio_index(
                     "selectionObjectTypes": selection_object_types,
                     "containerEvidence": traversal["containerEvidence"],
                     "musicNodeEvidence": traversal["musicNodeEvidence"],
+                    "sourceObjectSummary": traversal["sourceObjectSummary"],
+                    "nonMediaSourceEvidence": traversal["nonMediaSourceEvidence"],
                     "mediaEvidence": traversal["mediaEvidence"],
                     "sourceMediaIds": traversal["sourceMediaIds"],
                     "mediaIds": media_ids,
                     "resolvedMediaCount": len(media_ids),
                     "unresolvedNodes": traversal["unresolvedNodes"],
                     "traversalStatus": traversal["traversalStatus"],
-                    "edgeParser": "wwise150TypedReciprocalChildrenSwitchMappingAndMusic",
+                    "edgeParser": "wwise150TypedReciprocalChildrenSelectorsMusicAndSources",
                     "source": "wwiseHirc",
                     "nestedReferenceConfidence": "typedExact" if not traversal["unresolvedNodes"] else "typedPartial",
                 }
@@ -5158,6 +6827,8 @@ def collect_event_audio_index(
                                 "mediaId", "soundObjectCount", "soundObjectIds",
                                 "musicTrackObjectCount", "musicTrackObjectIds",
                                 "rootActionIds", "relationTypes", "selectionPaths",
+                                "sourceKinds", "pluginIds", "pluginNames",
+                                "streamTypes", "sourceBits",
                             )
                             if row.get(key) not in (None, "", [])
                         })
@@ -5526,7 +7197,7 @@ def convert_audio_for_webui(
     output_format: str,
 ) -> dict[str, int]:
     """Convert the selected decoded storage roots to the browser format."""
-    if output_format != "flac":
+    if args.format != "wav" or output_format != "flac":
         return {"scanned": 0, "converted": 0, "skipped": 0, "planned": 0, "failed": 0}
 
     storage_names = (
@@ -6058,7 +7729,7 @@ def build_audio(args: argparse.Namespace) -> int:
     prior_source_by_rel = prior_source_metadata_by_rel(language_root, language, output_format)
     decoded_source_by_rel = run_audio_dumper(args, language, language_info)
     convert_audio_for_webui(args, language, output_format)
-    if output_format == "flac":
+    if output_format != args.format:
         decoded_source_by_rel = remap_audio_metadata_extension(
             decoded_source_by_rel,
             output_format,
@@ -6301,17 +7972,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--language", choices=sorted(LANGUAGES), default="CN")
     parser.add_argument(
         "--format",
-        choices=("wav", "wem"),
-        default="wav",
-        help="AnimeStudio decode format before WebUI conversion (default: wav).",
+        choices=("flac", "wav", "wem"),
+        default="flac",
+        help="AnimeStudio decode format (default: flac; no intermediate WAV file).",
     )
     parser.add_argument(
         "--audio-format",
         choices=("flac", "wav", "wem"),
         default=None,
         help=(
-            "Browser-facing output format. WAV decodes default to lossless FLAC; "
-            "explicit --format wem keeps legacy WEM output."
+            "Browser-facing output format. Direct FLAC is the default; explicit "
+            "--format wav or --format wem keeps those legacy outputs."
         ),
     )
     parser.add_argument(
@@ -6330,7 +8001,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--game-root", type=Path, default=DEFAULT_GAME_ROOT)
     parser.add_argument("--streaming-assets", type=Path, default=None)
     parser.add_argument("--fallback-assets", type=Path, default=None)
-    parser.add_argument("--ffmpeg", type=Path, default=None, help="Path to ffmpeg for WAV-to-FLAC conversion.")
+    parser.add_argument("--ffmpeg", type=Path, default=None, help="Path to ffmpeg for legacy WAV-to-FLAC conversion.")
     parser.add_argument(
         "--audio-conversion-jobs",
         type=int,

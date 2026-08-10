@@ -30,11 +30,82 @@ from scripts.story_builder.level_bindings import (
     parse_level_interactive_narrative_mission_context,
     parse_levelscript_interactive_narrative_maps,
     parse_levelscript_brief_data_entry,
+    resolve_levelscript_dynamic_property_string,
     match_levelscript_native_reading_popup_record,
 )
 
 
 class LevelDataScriptHostTests(unittest.TestCase):
+    def test_dynamic_audio_property_join_requires_exact_brief_string_shape(self) -> None:
+        brief = {
+            "properties": [{
+                "name": "Start_music",
+                "value": {
+                    "valueType": 7,
+                    "atomCount": 1,
+                    "atoms": [{"valueBit64": 0, "text": "au_music_race_start"}],
+                },
+            }],
+        }
+        binding = {
+            "bindingKind": "dynamic",
+            "paramSource": 200,
+            "idRef": -1,
+            "path": "Start_music",
+        }
+        resolved = resolve_levelscript_dynamic_property_string(brief, binding)
+        self.assertEqual("au_music_race_start", resolved["value"])
+        self.assertEqual(
+            "exact_levelscript_brief_property_string",
+            resolved["resolutionMode"],
+        )
+        self.assertEqual(0, resolved["propertyAtomValueBit64"])
+
+        for invalid_binding in (
+            {**binding, "paramSource": 100},
+            {**binding, "idRef": 2},
+            {**binding, "path": "Missing"},
+        ):
+            self.assertIsNone(
+                resolve_levelscript_dynamic_property_string(brief, invalid_binding)
+            )
+
+        invalid_briefs = (
+            {
+                "properties": [
+                    *brief["properties"],
+                    brief["properties"][0],
+                ],
+            },
+            {
+                "properties": [{
+                    "name": "Start_music",
+                    "value": {
+                        "valueType": 7,
+                        "atomCount": 2,
+                        "atoms": [
+                            {"valueBit64": 0, "text": "one"},
+                            {"valueBit64": 0, "text": "two"},
+                        ],
+                    },
+                }],
+            },
+            {
+                "properties": [{
+                    "name": "Start_music",
+                    "value": {
+                        "valueType": 3,
+                        "atomCount": 1,
+                        "atoms": [{"valueBit64": 0, "text": "not-a-string"}],
+                    },
+                }],
+            },
+        )
+        for invalid_brief in invalid_briefs:
+            self.assertIsNone(
+                resolve_levelscript_dynamic_property_string(invalid_brief, binding)
+            )
+
     def test_brief_dictionary_decode_is_reused_for_identical_binary_inputs(self) -> None:
         data = self._brief_dictionary([101, 202])
         level_bindings._parse_leveldata_levelscript_brief_dictionary_cached.cache_clear()
@@ -1413,20 +1484,61 @@ class LevelDataScriptHostTests(unittest.TestCase):
             for path in (mra_dir, gameplay_dir, leveldata_dir, levelscript_dir):
                 path.mkdir(parents=True)
 
-            areas = [
-                {"missionAreaId": "unique_area", "subDataParentId": 1000},
-                {"missionAreaId": "c13_area_a", "subDataParentId": 13100010000},
-                {"missionAreaId": "c13_area_b", "subDataParentId": 13100010000},
-                {"missionAreaId": "multi_a", "subDataParentId": 3000},
-                {"missionAreaId": "multi_b", "subDataParentId": 4000},
-                {"missionAreaId": "untyped_area", "subDataParentId": 5000},
-            ]
+            level_id = "map_test"
+            other_level_id = "map_other"
+            areas = {
+                "1": {
+                    "unique_area": {
+                        "missionAreaId": "unique_area",
+                        "subDataParentId": 1000,
+                    },
+                    "c13_area_a": {
+                        "missionAreaId": "c13_area_a",
+                        "subDataParentId": 13100010000,
+                    },
+                    "c13_area_b": {
+                        "missionAreaId": "c13_area_b",
+                        "subDataParentId": 13100010000,
+                    },
+                    "multi_a": {
+                        "missionAreaId": "multi_a",
+                        "subDataParentId": 3000,
+                    },
+                    "multi_b": {
+                        "missionAreaId": "multi_b",
+                        "subDataParentId": 4000,
+                    },
+                    "untyped_area": {
+                        "missionAreaId": "untyped_area",
+                        "subDataParentId": 5000,
+                    },
+                },
+                "2": {
+                    # The duplicated id must resolve only inside map_other.
+                    "c13_area_a": {
+                        "missionAreaId": "c13_area_a",
+                        "subDataParentId": 9000,
+                    },
+                },
+            }
             (gameplay_dir / "MissionAreaTable.json").write_text(
                 json.dumps({"m_areas": areas}),
                 encoding="utf-8",
             )
+            (gameplay_dir / "LevelBasicInfoTable.json").write_text(
+                json.dumps({
+                    level_id: {"id": level_id, "idNum": 1},
+                    other_level_id: {"id": other_level_id, "idNum": 2},
+                }),
+                encoding="utf-8",
+            )
 
-            def write_mra(mission_id: str, area_id: str, type_name: str) -> None:
+            def write_mra(
+                mission_id: str,
+                area_id: str,
+                type_name: str,
+                scene_id: str = level_id,
+            ) -> None:
                 payload = {
                     "missionId": mission_id,
                     "questDic": {
@@ -1435,6 +1547,7 @@ class LevelDataScriptHostTests(unittest.TestCase):
                             "trackingInfoList": [{
                                 "$type": type_name,
                                 "missionAreaId": area_id,
+                                "sceneId": scene_id,
                             }],
                         },
                     },
@@ -1450,6 +1563,12 @@ class LevelDataScriptHostTests(unittest.TestCase):
             write_mra("unique_mission", "unique_area", tracking_type)
             write_mra("c13m2", "c13_area_a", tracking_type)
             write_mra("c13m2d5", "c13_area_b", tracking_type)
+            write_mra(
+                "wrong_level_mission",
+                "c13_area_a",
+                tracking_type,
+                other_level_id,
+            )
             write_mra("multi_mission_a", "multi_a", tracking_type)
             write_mra("multi_mission_b", "multi_b", tracking_type)
             write_mra(
@@ -1458,7 +1577,6 @@ class LevelDataScriptHostTests(unittest.TestCase):
                 "Beyond.Gameplay.MissionAcceptMode+EnterAreaInfo, Gameplay.Beyond",
             )
 
-            level_id = "map_test"
             (leveldata_dir / level_id).mkdir()
             (levelscript_dir / level_id).mkdir()
             dictionaries = {

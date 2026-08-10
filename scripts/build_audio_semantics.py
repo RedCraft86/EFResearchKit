@@ -124,8 +124,8 @@ HIRC_OBJECT_TYPE_LABELS = {
     13: "musicRandomSequenceContainer",
 }
 SELECTION_HIRC_TYPES = frozenset({5, 6, 12, 13})
-AUDIO_SEMANTIC_SCHEMA_VERSION = 14
-RUNTIME_MODEL_CACHE_SCHEMA_VERSION = 7
+AUDIO_SEMANTIC_SCHEMA_VERSION = 29
+RUNTIME_MODEL_CACHE_SCHEMA_VERSION = 15
 RADIO_MEDIA_CONTEXT_LIMIT = 64
 RADIO_MEDIA_SEARCH_LIMIT = 96
 RADIO_CATALOG_ITEM_LIMIT = 64
@@ -346,6 +346,9 @@ def runtime_spec(
     enum_values: bool = False,
     serialized_layout: dict[str, Any] | None = None,
     native_anchors: Iterable[dict[str, Any]] = (),
+    native_call_chains: Iterable[dict[str, Any]] = (),
+    native_state_groups: Iterable[dict[str, Any]] = (),
+    native_state_transitions: Iterable[dict[str, Any]] = (),
     runtime_execution_status: str = "",
 ) -> dict[str, Any]:
     row = {
@@ -360,9 +363,1572 @@ def runtime_spec(
         row["serializedLayout"] = dict(serialized_layout)
     if native_anchors:
         row["nativeAnchors"] = tuple(dict(value) for value in native_anchors)
+    if native_call_chains:
+        row["nativeCallChains"] = tuple(dict(value) for value in native_call_chains)
+    if native_state_groups:
+        row["nativeStateGroups"] = tuple(dict(value) for value in native_state_groups)
+    if native_state_transitions:
+        row["nativeStateTransitions"] = tuple(
+            dict(value) for value in native_state_transitions
+        )
     if runtime_execution_status:
         row["runtimeExecutionStatus"] = runtime_execution_status
     return row
+
+
+def native_playback_stage(
+    role: str,
+    type_name: str,
+    method: str,
+    method_index: int | None,
+    token: str,
+    virtual_address: str,
+    relation: str,
+) -> dict[str, Any]:
+    row = {
+        "role": role,
+        "type": type_name,
+        "method": method,
+        "token": token,
+        "virtualAddress": virtual_address,
+        "relation": relation,
+    }
+    if method_index is not None:
+        row["methodIndex"] = method_index
+    return row
+
+
+AUDIO_MUSIC_NATIVE_STATE_GROUPS = (
+    {
+        "role": "topLevelMusicMode",
+        "field": "MUSIC_STATE_GROUP_ID",
+        "groupId": 0xE414D158,
+        "groupIdHex": "0xe414d158",
+        "recoveredName": "music_state",
+        "nameEvidence": "exactFNV1HashMatch",
+        "enumType": "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseMusicState",
+        "setterMethod": "_SetWwiseMusicState",
+        "methodIndex": 39631,
+        "token": "0x06009ad0",
+        "virtualAddress": "0x183a0cb00",
+    },
+    {
+        "role": "worldMap",
+        "field": "MUSIC_MAP_STATE_GROUP_ID",
+        "groupId": 0xB3D78A5D,
+        "groupIdHex": "0xb3d78a5d",
+        "recoveredName": "music_map",
+        "nameEvidence": "exactFNV1HashMatch",
+        "enumType": "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseMusicMapState",
+        "setterMethod": "_SetWwiseMusicMapState",
+        "methodIndex": 39634,
+        "token": "0x06009ad3",
+        "virtualAddress": "0x186adc08c",
+    },
+    {
+        "role": "battlePhase",
+        "field": "BATTLE_MUSIC_STATE_GROUP_ID",
+        "groupId": 0x4D9E8C28,
+        "groupIdHex": "0x4d9e8c28",
+        "nameEvidence": "groupHashExactAuthoredNameUnrecovered",
+        "enumType": "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseBattleMusicState",
+        "setterMethod": "_SetWwiseBattleMusicState",
+        "methodIndex": 39636,
+        "token": "0x06009ad5",
+        "virtualAddress": "0x1846ab390",
+    },
+    {
+        "role": "battleIntensity",
+        "field": "BATTLE_MUSIC_INTENSITY_STATE_GROUP_ID",
+        "groupId": 0x2560A0EE,
+        "groupIdHex": "0x2560a0ee",
+        "nameEvidence": "groupHashExactAuthoredNameUnrecovered",
+        "enumType": "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseBattleMusicIntensityState",
+        "setterMethod": "_SetWwiseBattleMusicIntensityState",
+        "methodIndex": 39638,
+        "token": "0x06009ad7",
+        "virtualAddress": "0x183a0ca90",
+    },
+    {
+        "role": "mission",
+        "field": "MISSION_MUSIC_STATE_GROUP_ID",
+        "groupId": 0x3B650E3D,
+        "groupIdHex": "0x3b650e3d",
+        "recoveredName": "music_mission",
+        "nameEvidence": "exactFNV1HashMatch",
+        "enumType": "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseMissionMusicState",
+        "setterMethod": "_SetWwiseMissionMusicState",
+        "methodIndex": 39640,
+        "token": "0x06009ad9",
+        "virtualAddress": "0x186adc004",
+    },
+    {
+        "role": "dialog",
+        "field": "DIALOG_MUSIC_STATE_GROUP_ID",
+        "groupId": 0xA4C62908,
+        "groupIdHex": "0xa4c62908",
+        "nameEvidence": "groupHashExactAuthoredNameUnrecovered",
+        "enumType": "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseDialogMusicState",
+        "setterMethod": "_SetWwiseDialogMusicState",
+        "methodIndex": 39642,
+        "token": "0x06009adb",
+        "virtualAddress": "0x186adbef4",
+    },
+    {
+        "role": "cutscene",
+        "field": "CUTSCENE_MUSIC_STATE_GROUP_ID",
+        "groupId": 0x75C98B29,
+        "groupIdHex": "0x75c98b29",
+        "recoveredName": "music_cutscene",
+        "nameEvidence": "exactFNV1HashMatch",
+        "enumType": "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseCutsceneMusicState",
+        "setterMethod": "_SetWwiseCutsceneMusicState",
+        "methodIndex": 39644,
+        "token": "0x06009add",
+        "virtualAddress": "0x186adbe6c",
+    },
+    {
+        "role": "login",
+        "field": "LOGIN_MUSIC_STATE_GROUP_ID",
+        "groupId": 0x6401EC38,
+        "groupIdHex": "0x6401ec38",
+        "nameEvidence": "groupHashExactAuthoredNameUnrecovered",
+        "enumType": "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseLoginMusicState",
+        "setterMethod": "_SetWwiseLoginMenuMusicState",
+        "methodIndex": 39646,
+        "token": "0x06009adf",
+        "virtualAddress": "0x186adbf7c",
+    },
+    {
+        "role": "meta",
+        "field": "META_MUSIC_STATE_GROUP_ID",
+        "groupId": 0x654423EE,
+        "groupIdHex": "0x654423ee",
+        "recoveredName": "music_meta",
+        "nameEvidence": "exactFNV1HashMatch",
+        "enumType": "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseMetaMusicState",
+        "setterMethod": "_SetWwiseMetaMusicState",
+        "methodIndex": 39648,
+        "token": "0x06009ae1",
+        "virtualAddress": "0x184491300",
+    },
+    {
+        "role": "remoteCommunication",
+        "field": "REMOTE_COMM_MUSIC_STATE_GROUP_ID",
+        "groupId": 0xC52AA6BC,
+        "groupIdHex": "0xc52aa6bc",
+        "nameEvidence": "groupHashExactAuthoredNameUnrecovered",
+        "enumType": "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseRemoteCommMusicState",
+        "setterMethod": "_SetWwiseRemoteCommMusicState",
+        "methodIndex": 39650,
+        "token": "0x06009ae3",
+        "virtualAddress": "0x186adc19c",
+    },
+)
+
+
+# The enum member names below are not display guesses.  They are the managed
+# names recovered from the current Gameplay.Beyond metadata and their value
+# ids are the exact FNV-1/UTF-16 hashes used by AudioHashGenerator.Compute.
+# Keeping the enum member, hash input, and id together makes the distinction
+# between a state *group* and a state *value* explicit in the WebUI catalog.
+_AUDIO_MUSIC_ENUM_VALUES = {
+    "topLevelMusicMode": (
+        ("UNKNOWN", 0xF9D3523D),
+        ("MISSION", 0x166521A5),
+        ("LOADING", 0xD505DEBB),
+        ("EXPLORING", 0x6CB31EE7),
+        ("COMBAT_GENERAL", 0x525E00A0),
+        ("COMBAT_BOSS", 0x271CB603),
+        ("CUTSCENE", 0x468283E1),
+        ("DIALOGUE", 0xEA41209F),
+        ("FACTORY", 0x51FBB249),
+        ("BASE_MODE_DEFENSE", 0x00FC4659),
+        ("DUNGEON", 0x244B0EC9),
+        ("NARRATING", 0x36752FA3),
+    ),
+    "worldMap": (
+        ("UNKNOWN", 0xF9D3523D),
+        ("TUNDRA", 0x9B54723D),
+        ("HONGSHAN", 0xFF51B103),
+    ),
+    "battlePhase": (
+        ("UNKNOWN", 0xF9D3523D),
+        ("MAIN_LOOP", 0xE34AF54B),
+        ("ENDING", 0xEC675524),
+    ),
+    "battleIntensity": (
+        ("UNKNOWN", 0xF9D3523D),
+        ("LOW", 0x2081B4E5),
+        ("HIGH", 0xD3A50981),
+    ),
+    "mission": (("NONE", 0x2CA33BDB),),
+    "dialog": (("NONE", 0x2CA33BDB),),
+    "cutscene": (("NONE", 0x2CA33BDB),),
+    "login": (
+        ("NONE", 0x2CA33BDB),
+        ("INTRO", 0x4315C729),
+        ("THEME", 0x4E9E9BB0),
+        ("ENDING", 0xEC675524),
+    ),
+    "meta": (
+        ("NONE", 0x2CA33BDB),
+        ("GACHA_CUTSCENE", 0x73A7133C),
+        ("GACHA_INTERFACE", 0x854CEF1D),
+    ),
+    "remoteCommunication": (
+        ("NONE", 0x2CA33BDB),
+        ("LOOP", 0x292FEA37),
+        ("ENDING", 0xEC675524),
+    ),
+}
+
+
+def _audio_music_enum_value(member: str, value_id: int) -> dict[str, Any]:
+    return {
+        "member": member,
+        "hashInput": member.lower(),
+        "valueId": value_id,
+        "valueIdHex": f"0x{value_id:08x}",
+        "resolution": "exactCurrentMetadataEnumMemberFNV1Utf16Hash",
+    }
+
+
+# These are exact immediate values observed at current GameAssembly callsites.
+# ManualSet* is intentionally separate: its EBX/EDX input is supplied by the
+# caller at runtime, so the binary proves the route but not a fixed value.
+_AUDIO_MUSIC_STATIC_VALUE_CALLSITES = {
+    "topLevelMusicMode": (
+        {
+            "callerMethod": "_StartBattleMusic",
+            "callerMethodIndex": 39483,
+            "callVirtualAddress": "0x1846ab06f",
+            "valueMember": "COMBAT_GENERAL",
+            "valueId": 0x525E00A0,
+            "valueRegister": "edx",
+            "ownerResolution": "exactMetadataBodyTarget",
+        },
+        {
+            "callerMethod": "OnEnterMainGame",
+            "callerMethodIndex": 39513,
+            "callVirtualAddress": "0x18449113e",
+            "valueMember": "LOADING",
+            "valueId": 0xD505DEBB,
+            "valueRegister": "edx",
+            "ownerResolution": "exactMetadataBodyTarget",
+        },
+        {
+            "callerMethod": "_TurnToLoadingIfInLoading",
+            "callerMethodIndex": 39581,
+            "callVirtualAddress": "0x186adc919",
+            "valueMember": "LOADING",
+            "valueId": 0xD505DEBB,
+            "valueRegister": "edx",
+            "ownerResolution": "exactMetadataBodyTarget",
+        },
+        {
+            "callerMethod": "SwitchToDialogMusic",
+            "callerMethodIndex": 39590,
+            "callVirtualAddress": "0x186ad9f58",
+            "valueMember": "DIALOGUE",
+            "valueId": 0xEA41209F,
+            "valueRegister": "edx",
+            "ownerResolution": "exactMetadataBodyTarget",
+        },
+    ),
+    "worldMap": (
+        {
+            "callerMethod": None,
+            "callerMethodIndex": None,
+            "callVirtualAddress": "0x18538585d",
+            "valueMember": "TUNDRA",
+            "valueId": 0x9B54723D,
+            "valueRegister": "edx",
+            "ownerResolution": "unresolvedSharedGenericBody",
+            "ownerGap": "Direct call target and immediate value are exact; the shared/generated body has no safe metadata owner join.",
+        },
+    ),
+    "battlePhase": (
+        {
+            "callerMethod": "_StartBattleMusic",
+            "callerMethodIndex": 39483,
+            "callVirtualAddress": "0x1846ab05f",
+            "valueMember": "MAIN_LOOP",
+            "valueId": 0xE34AF54B,
+            "valueRegister": "edx",
+            "ownerResolution": "exactMetadataBodyTarget",
+        },
+    ),
+    "battleIntensity": (
+        {
+            "callerMethod": "_StartBattleMusic",
+            "callerMethodIndex": 39483,
+            "callVirtualAddress": "0x1846ab04f",
+            "valueMember": "HIGH",
+            "valueId": 0xD3A50981,
+            "valueRegister": "edx",
+            "ownerResolution": "exactMetadataBodyTarget",
+        },
+        {
+            "callerMethod": "_CheckLeaveFight",
+            "callerMethodIndex": 39486,
+            "callVirtualAddress": "0x183a0d06c",
+            "valueMember": "LOW",
+            "valueId": 0x2081B4E5,
+            "valueRegister": "edx",
+            "ownerResolution": "exactMetadataBodyTarget",
+        },
+        {
+            "callerMethod": "_OnEscapeFromFight",
+            "callerMethodIndex": 39491,
+            "callVirtualAddress": "0x186adb46c",
+            "valueMember": "LOW",
+            "valueId": 0x2081B4E5,
+            "valueRegister": "edx",
+            "ownerResolution": "exactMetadataBodyTarget",
+        },
+    ),
+    "dialog": (
+        {
+            "callerMethod": "SwitchToDialogMusic",
+            "callerMethodIndex": 39590,
+            "callVirtualAddress": "0x186ad9f2a",
+            "valueMember": "NONE",
+            "valueId": 0x2CA33BDB,
+            "valueRegister": "edx",
+            "ownerResolution": "exactMetadataBodyTarget",
+        },
+    ),
+    "remoteCommunication": (
+        {
+            "callerMethod": "EndRemoteComm",
+            "callerMethodIndex": 39599,
+            "callVirtualAddress": "0x186ad8240",
+            "valueMember": "ENDING",
+            "valueId": 0xEC675524,
+            "valueRegister": "edx",
+            "ownerResolution": "exactMetadataBodyTarget",
+        },
+    ),
+}
+
+
+_AUDIO_MUSIC_RUNTIME_VALUE_CALLSITES = {
+    "topLevelMusicMode": (
+        {
+            "callerMethod": "ManualSetMusicState",
+            "callerMethodIndex": 39582,
+            "callVirtualAddress": "0x186ad890f",
+            "valueRegister": "edx<-ebx",
+            "inputStatus": "runtimeParameterValueUnobserved",
+        },
+    ),
+    "battlePhase": (
+        {
+            "callerMethod": "ManualSetBattleMusicState",
+            "callerMethodIndex": 39583,
+            "callVirtualAddress": "0x186ad88a7",
+            "valueRegister": "edx<-ebx",
+            "inputStatus": "runtimeParameterValueUnobserved",
+        },
+    ),
+    "battleIntensity": (
+        {
+            "callerMethod": "ManualSetBattleMusicIntensityState",
+            "callerMethodIndex": 39584,
+            "callVirtualAddress": "0x186ad883f",
+            "valueRegister": "edx<-ebx",
+            "inputStatus": "runtimeParameterValueUnobserved",
+        },
+    ),
+}
+
+
+AUDIO_MUSIC_NATIVE_STATE_GROUPS = tuple(
+    {
+        **row,
+        "values": tuple(
+            _audio_music_enum_value(member, value_id)
+            for member, value_id in _AUDIO_MUSIC_ENUM_VALUES[row["role"]]
+        ),
+        "staticValueCallsites": tuple(
+            dict(value) for value in _AUDIO_MUSIC_STATIC_VALUE_CALLSITES.get(row["role"], ())
+        ),
+        "runtimeValueCallsites": tuple(
+            dict(value) for value in _AUDIO_MUSIC_RUNTIME_VALUE_CALLSITES.get(row["role"], ())
+        ),
+        "binaryEvidence": {
+            "status": "exactCurrentBuildStaticEvidence",
+            "gameAssemblySha256": CUSTOM_FOOTSTEP_GAME_ASSEMBLY_SHA256,
+            "metadataSha256": MODEL_VIEW_NATIVE_ANCHOR_METADATA_SHA256,
+        },
+    }
+    for row in AUDIO_MUSIC_NATIVE_STATE_GROUPS
+)
+
+
+# These ids are joined twice: first to the typed v150 type-6 selector tails in
+# the shipped banks, then to exact current GameAssembly setter callsites.  A
+# semantic role is deliberately not an authored Wwise group name.  The three
+# inferred rows remain visibly weaker than the two exact runtime setter rows.
+AUDIO_RUNTIME_SELECTOR_GROUPS = (
+    {
+        "groupId": 0x7ACDACAF,
+        "groupIdHex": "0x7acdacaf",
+        "groupType": "switch",
+        "semanticRole": "factoryRemoteNodeMode",
+        "semanticLabel": "Factory remote node mode",
+        "semanticEvidence": "exactNativeSetterAndValueMapping",
+        "authoredGroupNameStatus": "unrecovered",
+        "runtimeScope": "audioObject",
+        "runtimeSetter": {
+            "callerType": "Beyond.Gameplay.Audio.AudioRemoteFactoryBridge",
+            "callerMethod": "UpdateNodeMode",
+            "callerMethodIndex": 39714,
+            "callerToken": "0x06009b23",
+            "setSwitchCallVirtualAddress": "0x1850ffa6d",
+            "setter": "Beyond.Audio.AudioAdapter.SetSwitch(uint,uint,ulong)",
+            "audioObjectIdSource": {
+                "method": "Beyond.Audio.AudioObject.get_audioObjectId",
+                "methodIndex": 39038,
+                "token": "0x0600987f",
+                "virtualAddress": "0x1832d2360",
+            },
+        },
+        "valueResolver": {
+            "method": "GetAudioStateValueFromNodeMode",
+            "methodIndex": 39759,
+            "token": "0x06009b50",
+            "virtualAddress": "0x186ae7b18",
+        },
+        "values": (
+            # UpdateNodeMode receives the bit-valued NodeMode input, then
+            # GetAudioStateValueFromNodeMode returns the Wwise value hash. The
+            # mapping is literal in the current GameAssembly body; these are
+            # not merely guessed FNV names. Keep both ids so the UI cannot
+            # mistake the managed input for the Wwise branch value.
+            {
+                "valueId": 1,
+                "valueIdHex": "0x00000001",
+                "semanticName": "Normal",
+                "resolvedValueId": 0x4527C498,
+                "resolvedValueIdHex": "0x4527c498",
+                "resolvedValueName": "normal",
+                "resolutionEvidence": "exactNativeResolverReturnHash",
+            },
+            {
+                "valueId": 2,
+                "valueIdHex": "0x00000002",
+                "semanticName": "Liquid",
+                "resolvedValueId": 0xF3A9ACD5,
+                "resolvedValueIdHex": "0xf3a9acd5",
+                "resolvedValueName": "liquid",
+                "resolutionEvidence": "exactNativeResolverReturnHash",
+            },
+            {
+                "valueId": 4,
+                "valueIdHex": "0x00000004",
+                "semanticName": "Gas",
+                "resolvedValueId": 0x228CF0D8,
+                "resolvedValueIdHex": "0x228cf0d8",
+                "resolvedValueName": "gas",
+                "resolutionEvidence": "exactNativeResolverReturnHash",
+            },
+            {
+                "valueId": 8,
+                "valueIdHex": "0x00000008",
+                "semanticName": "GasLiquid",
+                "resolvedValueId": 0xFB9CA5C8,
+                "resolvedValueIdHex": "0xfb9ca5c8",
+                "resolvedValueName": "gasliquid",
+                "resolutionEvidence": "exactNativeResolverReturnHash",
+            },
+            {
+                "valueId": 16,
+                "valueIdHex": "0x00000010",
+                "semanticName": "GasTransition",
+                "resolvedValueId": 0x59A68236,
+                "resolvedValueIdHex": "0x59a68236",
+                "resolvedValueName": "gastrans",
+                "resolutionEvidence": "exactNativeResolverReturnHash",
+            },
+            {
+                "valueId": 32,
+                "valueIdHex": "0x00000020",
+                "semanticName": "LiquidTransition",
+                "resolvedValueId": 0x2F715D31,
+                "resolvedValueIdHex": "0x2f715d31",
+                "resolvedValueName": "liquidtrans",
+                "resolutionEvidence": "exactNativeResolverReturnHash",
+            },
+            {
+                "valueId": 64,
+                "valueIdHex": "0x00000040",
+                "semanticName": "SolidTransition",
+                "resolvedValueId": 0x8353CA3C,
+                "resolvedValueIdHex": "0x8353ca3c",
+                "resolvedValueName": "solidtrans",
+                "resolutionEvidence": "exactNativeResolverReturnHash",
+            },
+        ),
+        "valueResolverStatus": "exactAllSevenInputsMapToWwiseValueHashes",
+        "valueResolverZeroResultStatus": "unknownOrZeroNodeModeReturnsZeroAndCallerSkipsSetSwitch",
+        "runtimeObservationStatus": "staticSetterCallsiteExactLiveValueNotObserved",
+    },
+    {
+        "groupId": 0xF6699CF4,
+        "groupIdHex": "0xf6699cf4",
+        "groupType": "state",
+        "semanticRole": "gamepadMotionBackend",
+        "semanticLabel": "Gamepad motion-output backend",
+        "semanticEvidence": "exactNativeStateSetterCallsites",
+        "authoredGroupNameStatus": "unrecovered",
+        "runtimeScope": "global",
+        "runtimeSetter": {
+            "callerType": "Beyond.Gameplay.Audio.AudioGamePadManager",
+            "calls": (
+                {
+                    "method": "_TryAddXInputMotionOutput",
+                    "setStateCallVirtualAddress": "0x186ad04e2",
+                    "valueId": 0x1A9FC91F,
+                    "semanticName": "XInput",
+                },
+                {
+                    "method": "_TryRefreshScePadHandle",
+                    "setStateCallVirtualAddress": "0x186ad069c",
+                    "valueId": 0x1B9ABDB1,
+                    "semanticName": "ScePad",
+                },
+            ),
+            "setterHelperVirtualAddress": "0x183a0cb70",
+            "setterMethodIndex": 446543,
+            "setterToken": "0x06000ac9",
+            "setterVirtualAddress": "0x183a0cbd0",
+            "setter": "AkSoundEngine.SetState(uint,uint)",
+        },
+        "values": (
+            {"valueId": 0x1A9FC91F, "valueIdHex": "0x1a9fc91f", "semanticName": "XInput", "semanticEvidence": "exactNativeCallConstant"},
+            {"valueId": 0x1B9ABDB1, "valueIdHex": "0x1b9abdb1", "semanticName": "ScePad", "semanticEvidence": "exactNativeCallConstant"},
+            {"valueId": 0x2CA33BDB, "valueIdHex": "0x2ca33bdb", "semanticNameStatus": "unresolved"},
+            {"valueId": 0xE59CC828, "valueIdHex": "0xe59cc828", "semanticNameStatus": "unresolved"},
+        ),
+        "runtimeObservationStatus": "staticSetterCallsitesExactLiveBackendNotObserved",
+    },
+    {
+        "groupId": 0x706B5267,
+        "groupIdHex": "0x706b5267",
+        "semanticRole": "voiceIdentitySelector",
+        "semanticLabel": "Character / NPC voice identity selector",
+        "semanticEvidence": "highConfidenceEventAndNpcWwiseIdCorrelation",
+        "authoredGroupNameStatus": "unrecovered",
+        "eventCount": 1601,
+        "voiceEventCount": 1442,
+        "runtimeObservationStatus": "setterAndLiveValueUnresolved",
+    },
+    {
+        "groupId": 0xDFF0BCCC,
+        "groupIdHex": "0xdff0bccc",
+        "semanticRole": "surfaceMaterialSelector",
+        "semanticLabel": "Surface / material selector",
+        "semanticEvidence": "highConfidenceHashedValueVocabularyCorrelation",
+        "authoredGroupNameStatus": "unrecovered",
+        "runtimeObservationStatus": "setterAndLiveValueUnresolved",
+    },
+    {
+        "groupId": 0x3C9C2C56,
+        "groupIdHex": "0x3c9c2c56",
+        "semanticRole": "localRemoteRoutingSelector",
+        "semanticLabel": "Local / remote audio routing selector",
+        "semanticEvidence": "highConfidenceExactLocalRemoteValueHashMatches",
+        "authoredGroupNameStatus": "unrecovered",
+        "runtimeObservationStatus": "setterAndLiveValueUnresolved",
+    },
+)
+
+
+AUDIO_MUSIC_NATIVE_TRANSITION_REGISTRATIONS = (
+    {
+        "stateMask": 0x00000040,
+        "stateMaskHex": "0x00000040",
+        "stateNames": ("FMV",),
+        "registrationCallOffsets": ("0x1d3", "0x28f"),
+    },
+    {
+        "stateMask": 0x00000080,
+        "stateMaskHex": "0x00000080",
+        "stateNames": ("CUT_SCENE",),
+        "registrationCallOffsets": ("0x345", "0x401"),
+    },
+    {
+        "stateMask": 0x00000100,
+        "stateMaskHex": "0x00000100",
+        "stateNames": ("TRANSITION_CUT_SCENE",),
+        "registrationCallOffsets": ("0x4b7", "0x573"),
+    },
+    {
+        "stateMask": 0x00000200,
+        "stateMaskHex": "0x00000200",
+        "stateNames": ("DIALOG",),
+        "registrationCallOffsets": ("0x629", "0x6e5"),
+    },
+    {
+        "stateMask": 0x00000400,
+        "stateMaskHex": "0x00000400",
+        "stateNames": ("REMOTE_COMM",),
+        "registrationCallOffsets": ("0x79b", "0x857"),
+    },
+    {
+        "stateMask": 0x02000000,
+        "stateMaskHex": "0x02000000",
+        "stateNames": ("LOADING",),
+        "registrationCallOffsets": ("0x90d", "0x9c9"),
+    },
+    {
+        "stateMask": 0x04000000,
+        "stateMaskHex": "0x04000000",
+        "stateNames": ("TELEPORT_LOADING",),
+        "registrationCallOffsets": ("0xa7f", "0xb3b"),
+    },
+    {
+        "stateMask": 0x000C0000,
+        "stateMaskHex": "0x000c0000",
+        "stateNames": ("IN_FACTORY_AREA", "IN_BLACKBOX"),
+        "registrationCallOffsets": ("0xbf1", "0xcad"),
+    },
+    {
+        "stateMask": 0x00000002,
+        "stateMaskHex": "0x00000002",
+        "stateNames": ("FIGHT",),
+        "registrationCallOffsets": ("0xd63", "0xe1f"),
+    },
+)
+
+def _native_transition_callback(
+    call_offset: str,
+    action_order: int,
+    condition_type_raw: int,
+    metadata_usage_raw: str,
+    method: str,
+    method_index: int,
+    token: str,
+    virtual_address: str,
+    *,
+    direct_state_setters: Iterable[str] = (),
+) -> dict[str, Any]:
+    row = {
+        "registrationCallOffset": call_offset,
+        "actionOrder": action_order,
+        "conditionTypeRaw": condition_type_raw,
+        "conditionType": "enter" if condition_type_raw == 0 else "leave",
+        "metadataUsageRaw": metadata_usage_raw,
+        "callbackMethod": method,
+        "callbackMethodIndex": method_index,
+        "callbackToken": token,
+        "callbackVirtualAddress": virtual_address,
+        "callbackEvidence": "exactMetadataUsageDelegateTarget",
+    }
+    if direct_state_setters:
+        row["directStateSetters"] = tuple(direct_state_setters)
+    return row
+
+
+_AUDIO_MUSIC_TRANSITION_CALLBACKS = {
+    0x00000040: (
+        _native_transition_callback(
+            "0x1d3", 5, 0, "0x6001354f", "SwitchToDialogMusic", 39590,
+            "0x06009aa7", "0x186ad9e74",
+            direct_state_setters=("_SetWwiseDialogMusicState", "_SetWwiseMusicState"),
+        ),
+        _native_transition_callback(
+            "0x28f", 1, 1, "0x60013551", "_OnEnterFMV", 39591,
+            "0x06009aa8", "0x186adb2e4",
+        ),
+    ),
+    0x00000080: (
+        _native_transition_callback(
+            "0x345", 5, 0, "0x60013553", "_OnLeaveFMV", 39592,
+            "0x06009aa9", "0x186adb5ac",
+        ),
+        _native_transition_callback(
+            "0x401", 1, 1, "0x60013555", "_OnEnterCutscene", 39593,
+            "0x06009aaa", "0x186adb204",
+        ),
+    ),
+    0x00000100: (
+        _native_transition_callback(
+            "0x4b7", 5, 0, "0x60013553", "_OnLeaveFMV", 39592,
+            "0x06009aa9", "0x186adb5ac",
+        ),
+        _native_transition_callback(
+            "0x573", 1, 1, "0x60013555", "_OnEnterCutscene", 39593,
+            "0x06009aaa", "0x186adb204",
+        ),
+    ),
+    0x00000200: (
+        _native_transition_callback(
+            "0x629", 5, 0, "0x60013557", "_OnLeaveCutscene", 39594,
+            "0x06009aab", "0x186adb4e4",
+        ),
+        _native_transition_callback(
+            "0x6e5", 1, 1, "0x60013559", "_OnEnterDialog", 39595,
+            "0x06009aac", "0x186adb274",
+        ),
+    ),
+    0x00000400: (
+        _native_transition_callback(
+            "0x79b", 5, 0, "0x6001355b", "_OnLeaveDialog", 39596,
+            "0x06009aad", "0x186adb548",
+        ),
+        _native_transition_callback(
+            "0x857", 1, 1, "0x6001355d", "_OnEnterRemoteComm", 39597,
+            "0x06009aae", "0x186adb354",
+        ),
+    ),
+    0x02000000: (
+        _native_transition_callback(
+            "0x90d", 5, 0, "0x60013533", "_CancelScheduledAutoRestoreMusicState", 39576,
+            "0x06009a99", "0x183a0ced0",
+        ),
+        _native_transition_callback(
+            "0x9c9", 1, 1, "0x60013535", "_OnEnterLoading", 39577,
+            "0x06009a9a", "0x183a0c910",
+        ),
+    ),
+    0x04000000: (
+        _native_transition_callback(
+            "0xa7f", 5, 0, "0x60013537", "_OnLeaveLoading", 39578,
+            "0x06009a9b", "0x183a0c800",
+        ),
+        _native_transition_callback(
+            "0xb3b", 1, 1, "0x60013539", "_OnEnterTeleportLoading", 39579,
+            "0x06009a9c", "0x184ca4f60",
+        ),
+    ),
+    0x000C0000: (
+        _native_transition_callback(
+            "0xbf1", 5, 0, "0x6001351b", "_CleanMusicEventDebugHUD", 39564,
+            "0x06009a8d", "0x186ada6c8",
+        ),
+        _native_transition_callback(
+            "0xcad", 1, 1, "0x6001351f", "_SwitchToFactoryMusic", 39566,
+            "0x06009a8f", "0x184d27690",
+        ),
+    ),
+    0x00000002: (
+        _native_transition_callback(
+            "0xd63", 5, 0, "0x60013471", "_ClearBattleMusicTimers", 39479,
+            "0x06009a38", "0x183a0cc70",
+        ),
+        _native_transition_callback(
+            "0xe1f", 1, 1, "0x60013479", "_StartBattleMusic", 39483,
+            "0x06009a3c", "0x1846aafc0",
+            direct_state_setters=(
+                "_SetWwiseBattleMusicIntensityState", "_SetWwiseBattleMusicState",
+                "_SetWwiseMusicState",
+            ),
+        ),
+    ),
+}
+
+for _transition_registration in AUDIO_MUSIC_NATIVE_TRANSITION_REGISTRATIONS:
+    _registrations = _AUDIO_MUSIC_TRANSITION_CALLBACKS[
+        _transition_registration["stateMask"]
+    ]
+    _transition_registration.update({
+        "registrationMethod": "_RegisterStateTransitionActions",
+        "registrationMethodIndex": 39571,
+        "registrationToken": "0x06009a94",
+        "registrationVirtualAddress": "0x183a0d940",
+        "registerMethodIndex": 39810,
+        "registerToken": "0x06009b83",
+        "registerVirtualAddress": "0x183a0e800",
+        "registrationCount": len(_registrations),
+        "actionOrders": tuple(row["actionOrder"] for row in _registrations),
+        "isOneShot": False,
+        "conditionInterpretationStatus": "exactSimpleConditionNativeBody",
+        "stateNameEvidence": "exactEAudioStateEnumValueMatch",
+        "callbackTargetStatus": "exactMetadataUsageDelegateTargets",
+        "runtimeObservationStatus": "staticRegistrationNotLiveStateTrace",
+        "registrations": _registrations,
+    })
+
+
+AUDIO_PLAYBACK_NATIVE_CALL_CHAINS = {
+    "adapterPost": {
+        "id": "adapterPostEventToWwise",
+        "label": "Event request -> Event bank/cache preparation -> Wwise PostEvent",
+        "evidence": "exactCurrentGameAssemblyDirectCallsAndSharedNativeFunctionPointer",
+        "gameAssemblySha256": CUSTOM_FOOTSTEP_GAME_ASSEMBLY_SHA256,
+        "runtimeObservationStatus": "staticNativeCallChainNotLivePlaybackTrace",
+        "stages": (
+            native_playback_stage(
+                "request",
+                "Beyond.Audio.AudioAdapter",
+                "PostEvent(string)",
+                479923,
+                "0x06000008",
+                "0x1846d3f80",
+                "Hashes the authored name with AudioHashGenerator.Compute and enters _PostEvent.",
+            ),
+            native_playback_stage(
+                "prepare",
+                "Beyond.Audio.AudioAdapter",
+                "_PostEvent",
+                480010,
+                "0x0600005f",
+                "0x18328a690",
+                "Allocates an internal playing id and payload, then requests Event-owned resources.",
+            ),
+            native_playback_stage(
+                "loadRequest",
+                "Beyond.Audio.AudioAssetHelper",
+                "_DoLoadEventAsync",
+                480201,
+                "0x0600011e",
+                "0x18328afb0",
+                "Tests the Event cache, then enters the Event-id bank load path only when activation returns false.",
+            ),
+            native_playback_stage(
+                "cache",
+                "Beyond.Audio.AudioAssetCache",
+                "ActivateAsset",
+                480175,
+                "0x06000104",
+                "0x18328ac60",
+                "Tests and activates the Event-owned cached resource before any bank load is requested.",
+            ),
+            native_playback_stage(
+                "eventBank",
+                "AkSoundEngine",
+                "LoadBank(uint, callback, cookie, bankType)",
+                446458,
+                "0x06000a74",
+                "0x183eb0c60",
+                "Loads the Event-id bank asynchronously; this path is separate from AudioBankManager's named BankHandle registry.",
+            ),
+            native_playback_stage(
+                "bankCallback",
+                "Beyond.Audio.AudioAssetHelper",
+                "_OnBankLoadedDoPrepareEvent",
+                480211,
+                "0x06000128",
+                "0x183eb0a70",
+                "For the prepare branch, submits exactly one Event id to AkSoundEngine.PrepareEvent with raw preparation type 0.",
+            ),
+            native_playback_stage(
+                "prepareEvent",
+                "AkSoundEngine",
+                "PrepareEvent(preparationType, eventIds, count, callback, cookie)",
+                446489,
+                "0x06000a93",
+                "0x183eb0bd0",
+                "Receives raw preparation type 0, the reusable one-id array, count 1, and the completion callback.",
+            ),
+            native_playback_stage(
+                "prepareDone",
+                "Beyond.Audio.AudioAssetHelper",
+                "_OnDonePrepareEvent",
+                480212,
+                "0x06000129",
+                "0x183eb0e80",
+                "Returns the completed preparation to the waiting Event callback queue.",
+            ),
+            native_playback_stage(
+                "completion",
+                "Beyond.Audio.AudioAssetHelper",
+                "_TryDequeueAndInvokeCallback",
+                480213,
+                "0x0600012a",
+                "0x18328cf20",
+                "Invokes the waiting adapter completion or releases the cached Event and unloads its Event bank on failure/cleanup paths.",
+            ),
+            native_playback_stage(
+                "post",
+                "Beyond.Audio.AudioAdapter",
+                "_OnEventPreparedDoPostEvent",
+                480007,
+                "0x0600005c",
+                "0x18328c670",
+                "Uses native function-pointer slot 0x18f361158 and records internal-to-real playing-id state.",
+            ),
+            native_playback_stage(
+                "wwise",
+                "AkSoundEngine",
+                "PostEvent(uint, ulong, flags, callback, cookie)",
+                446377,
+                "0x06000a23",
+                "0x18328c940",
+                "Uses the same 0x18f361158 native PostEvent slot and returns the real Wwise playing id.",
+            ),
+            native_playback_stage(
+                "callbackPump",
+                "AkCallbackManager",
+                "PostCallbacks",
+                446952,
+                "0x06000c62",
+                "0x18328b440",
+                "Pumps queued native Wwise callbacks into the managed callback dispatcher.",
+            ),
+            native_playback_stage(
+                "callbackDispatch",
+                "AkCallbackManager",
+                "_ProcessEventCallback",
+                446954,
+                "0x06000c64",
+                "0x18328cd90",
+                "Dispatches callback payload classes by the exact AkCallbackType bit before invoking the adapter callback.",
+            ),
+            native_playback_stage(
+                "callback",
+                "Beyond.Audio.AudioAdapter",
+                "_OnEventCallback",
+                480008,
+                "0x0600005d",
+                "0x18328d3e0",
+                "Handles the dispatched callback; raw callback type 1 is the exact EndOfEvent branch.",
+            ),
+            native_playback_stage(
+                "release",
+                "Beyond.Audio.AudioAssetCache",
+                "DeactivateAsset",
+                480176,
+                "0x06000105",
+                "0x18328a390",
+                "On the callback path gated by raw callback type 1, decrements the Event cache refCount; zero remains pinned or moves toward LRU release.",
+            ),
+        ),
+        "branches": (
+            {
+                "id": "activatedCache",
+                "label": "ActivateAsset returned true",
+                "relation": (
+                    "The native body tests the solid-loaded Event set and can dequeue the waiting callback "
+                    "without entering the LoadBank/PrepareEvent miss path."
+                ),
+            },
+            {
+                "id": "eventBankMiss",
+                "label": "ActivateAsset returned false",
+                "relation": (
+                    "The native body calls LoadBank(eventId, callback, null, 0x1e); the bank callback then "
+                    "either prepares the one Event id or releases the cache entry and forwards completion."
+                ),
+            },
+            {
+                "id": "callbackPayloadCapabilities",
+                "label": "Managed Wwise callback payloads",
+                "relation": (
+                    "The current bridge dispatches EndOfEvent, DynamicSequenceItem, Marker, Duration, "
+                    "MusicPlaylistSelect, MusicPlayStarted, MusicSync Beat/Bar/Entry/Exit/Grid/UserCue/Point, "
+                    "and MIDIEvent. Callback-info accessors can expose playingID/eventID, duration mediaID/"
+                    "audioNodeID, playlist selection, and music-sync type; no live callback sample is captured."
+                ),
+            },
+        ),
+        "boundary": (
+            "The binary proves the cache/miss branch, Event-id bank load, one-Event PrepareEvent call, "
+            "completion callback, Wwise Event post, callback dispatch, playing-id mapping, and EndOfEvent-gated cache deactivation. "
+            "It does not prove which branch ran for a captured request, which optional callback types were requested, live switch/state/"
+            "RTPC values, or the selected Wwise media leaf."
+        ),
+    },
+    "externalSource": {
+        "id": "externalSourcePostToWwise",
+        "label": "External file Event request -> Wwise external-source post -> EndOfEvent cleanup",
+        "evidence": "exactCurrentGameAssemblyDirectCallsAndDistinctNativeFunctionPointer",
+        "gameAssemblySha256": CUSTOM_FOOTSTEP_GAME_ASSEMBLY_SHA256,
+        "runtimeObservationStatus": "staticNativeCallChainNotLivePlaybackTrace",
+        "stages": (
+            native_playback_stage(
+                "request",
+                "Beyond.Audio.AudioAdapter",
+                "PostEventExternal",
+                479931,
+                "0x06000010",
+                "0x183abf0a0",
+                "Accepts an Event plus an external file source and enters the dedicated external-source path.",
+            ),
+            native_playback_stage(
+                "prepareExternal",
+                "Beyond.Audio.AudioAdapter",
+                "_PostEventWithExternalSource",
+                480011,
+                "0x06000060",
+                "0x183abea70",
+                "Builds AkExternalSourceInfo and keeps an external playing/object cleanup mapping.",
+            ),
+            native_playback_stage(
+                "externalCookie",
+                "AkExternalSourceInfo",
+                "set_iExternalSrcCookie",
+                444124,
+                "0x06000156",
+                "0x183abe910",
+                "Sets the authored external-source cookie separately from the Event id.",
+            ),
+            native_playback_stage(
+                "externalFile",
+                "AkExternalSourceInfo",
+                "set_szFile",
+                444128,
+                "0x0600015a",
+                "0x183abe850",
+                "Sets the external audio file path.",
+            ),
+            native_playback_stage(
+                "externalCodec",
+                "AkExternalSourceInfo",
+                "set_idCodec",
+                444126,
+                "0x06000158",
+                "0x183abe9c0",
+                "Sets the codec id used by the external source.",
+            ),
+            native_playback_stage(
+                "wwise",
+                "AkSoundEngine",
+                "PostEvent external-source overload",
+                446376,
+                "0x06000a22",
+                "0x183abed90",
+                "Crosses dedicated native slot 0x18f361150; ordinary Event posting uses 0x18f361158.",
+            ),
+            native_playback_stage(
+                "callback",
+                "Beyond.Audio.AudioAdapter",
+                "_OnExternalSourceEventCallback",
+                480009,
+                "0x0600005e",
+                "0x1843c7930",
+                "Reads gameObjID and cookie; raw callback type 1 removes the external mapping and starts cleanup.",
+            ),
+            native_playback_stage(
+                "dispose",
+                "Beyond.Gameplay.Audio.AudioObject",
+                "Dispose",
+                39041,
+                "0x06009882",
+                "0x183765ef0",
+                "Disposes the temporary external audio object on the recovered cleanup path.",
+            ),
+            native_playback_stage(
+                "releaseObject",
+                "Beyond.Gameplay.Audio.AudioObjectIdDispatcher",
+                "ReleaseAudioGameObject",
+                39052,
+                "0x0600988d",
+                "0x183ce31d0",
+                "Releases the temporary Wwise game-object identity.",
+            ),
+        ),
+        "boundary": (
+            "The external file/cookie/codec route and EndOfEvent cleanup are exact and use a different native PostEvent slot from ordinary "
+            "Event media. No current live request, external filename, returned playing id, or decoded external-file content was observed."
+        ),
+    },
+    "playingIdAction": {
+        "id": "playingIdActionQueueToWwise",
+        "label": "Stop / pause / resume -> real playing id -> Wwise action",
+        "evidence": "exactCurrentGameAssemblyDirectCalls",
+        "gameAssemblySha256": CUSTOM_FOOTSTEP_GAME_ASSEMBLY_SHA256,
+        "runtimeObservationStatus": "staticNativeCallChainNotLivePlaybackTrace",
+        "stages": (
+            native_playback_stage(
+                "request",
+                "Beyond.Audio.AudioAdapter",
+                "_ExecuteActionOnPlayingId",
+                480012,
+                "0x06000061",
+                "0x183870420",
+                "Uses the real id immediately when mapped; otherwise queues the action.",
+            ),
+            native_playback_stage(
+                "queue",
+                "Beyond.Audio.AudioActionQueueHelper",
+                "QueueExecuteAction",
+                480160,
+                "0x060000f5",
+                "0x183870520",
+                "Retains an early action while Event preparation is still pending.",
+            ),
+            native_playback_stage(
+                "resolve",
+                "Beyond.Audio.AudioActionQueueHelper",
+                "_ConsumeExecute",
+                480165,
+                "0x060000fa",
+                "0x18328c150",
+                "Calls AudioAdapter.TryGetRealPlayingId before consuming the queued action.",
+            ),
+            native_playback_stage(
+                "wwise",
+                "AkSoundEngine",
+                "ExecuteActionOnPlayingID",
+                446431,
+                "0x06000a59",
+                "0x1838702c0",
+                "Applies the stop, pause, or resume action to the real Wwise playing id.",
+            ),
+        ),
+        "boundary": (
+            "The queue explains lifetime control across asynchronous Event preparation; it is not evidence "
+            "that a particular authored stop/pause path executed in a captured session."
+        ),
+    },
+    "animationObject": {
+        "id": "animationCallbackToObjectPost",
+        "label": "Animation callback -> entity audio object -> Event post",
+        "evidence": "exactCurrentGameAssemblyDirectCalls",
+        "gameAssemblySha256": CUSTOM_FOOTSTEP_GAME_ASSEMBLY_SHA256,
+        "runtimeObservationStatus": "authoredCallbackKnownExecutionNotObserved",
+        "stages": (
+            native_playback_stage(
+                "callback",
+                "Beyond.Gameplay.View.Animation.AnimatorMono",
+                "PostAudioEvent(string, clipIn)",
+                53417,
+                "0x0600d0aa",
+                "0x186c9c2c4",
+                "Hashes the AnimationClip string payload and calls the uint overload.",
+            ),
+            native_playback_stage(
+                "route",
+                "Beyond.Gameplay.View.Animation.AnimatorMono",
+                "PostAudioEvent(uint, clipIn)",
+                53418,
+                "0x0600d0ab",
+                "0x18328e480",
+                "Gets the owning Entity audio-object id and posts the Event through AudioAdapter.",
+            ),
+            native_playback_stage(
+                "object",
+                "Beyond.Gameplay.Audio.AudioManager",
+                "GetAudioObjectId(Entity)",
+                38951,
+                "0x06009828",
+                "0x18328e620",
+                "Resolves or begins tracking the entity-scoped audio object.",
+            ),
+            native_playback_stage(
+                "post",
+                "Beyond.Audio.AudioAdapter",
+                "_PostEvent",
+                480010,
+                "0x0600005f",
+                "0x18328a690",
+                "Runs the shared asynchronous Event-post pipeline.",
+            ),
+        ),
+        "boundary": (
+            "AnimationClip event time/function/payload are authored facts. Controller reachability and actual "
+            "callback execution remain separate evidence, and Wwise leaf selection remains unresolved."
+        ),
+    },
+    "animationPosition": {
+        "id": "animationCallbackToPositionPost",
+        "label": "Positioned animation callback -> temporary emitter -> Event post",
+        "evidence": "exactCurrentGameAssemblyDirectCalls",
+        "gameAssemblySha256": CUSTOM_FOOTSTEP_GAME_ASSEMBLY_SHA256,
+        "runtimeObservationStatus": "authoredCallbackKnownExecutionNotObserved",
+        "stages": (
+            native_playback_stage(
+                "callback",
+                "Beyond.Gameplay.View.Animation.AnimatorMono",
+                "PostAudioEventAtPosition(uint, clipIn)",
+                53420,
+                "0x0600d0ad",
+                "0x1847db060",
+                "Uses the owning Entity position and requests positioned playback.",
+            ),
+            native_playback_stage(
+                "position",
+                "Beyond.Gameplay.Audio.AudioManager",
+                "PlaySoundAtPosition(uint, Vector3)",
+                38869,
+                "0x060097d6",
+                "0x183b87c60",
+                "Allocates a registered temporary emitter at the requested world position.",
+            ),
+            native_playback_stage(
+                "emitter",
+                "Beyond.Gameplay.Audio.AudioTempEmitter",
+                "PostAndForget",
+                39058,
+                "0x06009893",
+                "0x183b89730",
+                "Posts with the temporary emitter audio-object id through the shared adapter pipeline.",
+            ),
+            native_playback_stage(
+                "post",
+                "Beyond.Audio.AudioAdapter",
+                "_PostEvent",
+                480010,
+                "0x0600005f",
+                "0x18328a690",
+                "Runs the shared asynchronous Event-post pipeline.",
+            ),
+        ),
+        "boundary": (
+            "The call chain proves positional routing and emitter lifetime design, not the observed world "
+            "position or selected Wwise media leaf in a live session."
+        ),
+    },
+    "skillAction": {
+        "id": "skillPlaySoundActionRouting",
+        "label": "Skill PlaySound action -> object / weapon / position route -> Event post",
+        "evidence": "exactCurrentGameAssemblyDirectCalls",
+        "gameAssemblySha256": CUSTOM_FOOTSTEP_GAME_ASSEMBLY_SHA256,
+        "runtimeObservationStatus": "authoredActionKnownExecutionConditionUnresolved",
+        "stages": (
+            native_playback_stage(
+                "execute",
+                "Beyond.Gameplay.Core.PlaySoundAction",
+                "ExecuteInternal",
+                57089,
+                "0x0600df02",
+                "0x183b84de0",
+                "Resolves action targets and invokes _DoPlaySound when authored gates permit.",
+            ),
+            native_playback_stage(
+                "route",
+                "Beyond.Gameplay.Core.PlaySoundAction",
+                "_DoPlaySound",
+                57090,
+                "0x0600df03",
+                "0x183b85950",
+                "Chooses target audio object or world-position routing; weapon mount points use the same two posts.",
+            ),
+            native_playback_stage(
+                "objectPost",
+                "Beyond.Gameplay.Core.PlaySoundAction",
+                "_DoPostEvent",
+                57092,
+                "0x0600df05",
+                "0x183b87700",
+                "Hashes the authored Event and calls AudioAdapter._PostEvent with the target audio-object id.",
+            ),
+            native_playback_stage(
+                "positionPost",
+                "Beyond.Gameplay.Core.PlaySoundAction",
+                "_DoPostEventAtPosition",
+                57093,
+                "0x0600df06",
+                "0x183b879b0",
+                "Routes through AudioBattleUtil and a temporary positioned emitter.",
+            ),
+            native_playback_stage(
+                "lifetime",
+                "Beyond.Gameplay.Core.PlaySoundAction",
+                "_StopAllSoundInstance",
+                57099,
+                "0x0600df0c",
+                "0x183b83650",
+                "Stops retained playing ids with the authored fade when action lifetime ends.",
+            ),
+        ),
+        "boundary": (
+            "The binary proves the authored action's routing and lifetime machinery. Target selection, action "
+            "conditions, and actual execution remain unresolved without a live trace."
+        ),
+    },
+    "levelScript": {
+        "id": "levelScriptAudioActionRouting",
+        "label": "LevelScript audio action -> GameAction facade -> gameplay audio system",
+        "evidence": "exactCurrentGameAssemblyDirectCalls",
+        "gameAssemblySha256": CUSTOM_FOOTSTEP_GAME_ASSEMBLY_SHA256,
+        "runtimeObservationStatus": "authoredActionKnownExecutionNotObserved",
+        "stages": (
+            native_playback_stage(
+                "global",
+                "Beyond.Gameplay.Actions.GameAction",
+                "PlayAudio",
+                32629,
+                "0x06007f76",
+                "0x183d40600",
+                "Hashes the resolved string parameter and posts on the shared 2D emitter object.",
+            ),
+            native_playback_stage(
+                "position",
+                "Beyond.Gameplay.Actions.GameAction",
+                "PlayAudioAtPosition",
+                32634,
+                "0x06007f7b",
+                "0x1875e6220",
+                "Routes a resolved Event string and callback through AudioManager.PlaySoundAtPosition.",
+            ),
+            native_playback_stage(
+                "target",
+                "Beyond.Gameplay.Actions.GameAction",
+                "PlayAudioOnTarget",
+                32635,
+                "0x06007f7c",
+                "0x1875e6660",
+                "Routes the Event to the target Entity audio component/object.",
+            ),
+            native_playback_stage(
+                "music",
+                "Beyond.Gameplay.Actions.GameAction",
+                "PostMusicEvent",
+                32648,
+                "0x06007f89",
+                "0x1875e8570",
+                "Routes music Events and the pre-action into AudioMusicSystem rather than direct media playback.",
+            ),
+            native_playback_stage(
+                "release",
+                "Beyond.Gameplay.Actions.GameAction",
+                "StopAudio",
+                32649,
+                "0x06007f8a",
+                "0x1875edfdc",
+                "Stops the returned playing id with the authored fade when release behavior requests it.",
+            ),
+        ),
+        "boundary": (
+            "Decoded constant or exactly resolved property values identify the request. The static call chain "
+            "does not prove script execution, target availability, or the Wwise-selected leaf."
+        ),
+    },
+    "switchSelector": {
+        "id": "audioObjectSwitchToWwise",
+        "label": "Entity / GameObject Switch -> audio object -> Wwise SetSwitch",
+        "evidence": "exactCurrentGameAssemblyDefaultBranchDirectCalls",
+        "gameAssemblySha256": CUSTOM_FOOTSTEP_GAME_ASSEMBLY_SHA256,
+        "runtimeObservationStatus": "staticDefaultBranchNotLiveSelectorTrace",
+        "stages": (
+            native_playback_stage(
+                "entity",
+                "Beyond.Gameplay.Audio.AudioManager",
+                "SetSwitch(Entity, AudioId, AudioId)",
+                38949,
+                "0x06009826",
+                "0x186ac4cb0",
+                "Resolves BaseAudioComponent.audioObjectId and forwards the existing uint group/value ids.",
+            ),
+            native_playback_stage(
+                "adapter",
+                "Beyond.Audio.AudioAdapter",
+                "SetSwitch(uint, uint, ulong)",
+                479949,
+                "0x06000022",
+                "0x18635b9ac",
+                "Forwards group id, value id, and the explicit audio-object id without re-hashing AudioId values.",
+            ),
+            native_playback_stage(
+                "wwise",
+                "AkSoundEngine",
+                "SetSwitch(uint, uint, ulong)",
+                446539,
+                "0x06000ac5",
+                "0x1853dba54",
+                "Crosses the SWIG wrapper and native function-pointer slot 0x18f373598.",
+            ),
+        ),
+        "branches": (
+            {
+                "id": "gameObjectString",
+                "label": "GameObject string route",
+                "relation": (
+                    "AudioManager.SetSwitch(GameObject,string,string) method 38960 / VA 0x186ac4bb4 "
+                    "uses AudioObjectMono.audioObjectId, AudioAdapter method 479950, and the Wwise string "
+                    "overload method 446540 / native slot 0x18f3735a0."
+                ),
+            },
+            {
+                "id": "typedAudioId",
+                "label": "AudioId uint route",
+                "relation": "AudioId.op_Implicit returns the stored uint and does not perform another hash.",
+            },
+        ),
+        "boundary": (
+            "This proves the current stock binary's default object-scoped setter routes. IFix may replace a "
+            "default branch, and no live audio-object id, group value, setter time, or selected HIRC child was observed."
+        ),
+    },
+    "rtpcSelector": {
+        "id": "rtpcParameterToWwise",
+        "label": "Named / AudioId RTPC -> global or object value -> Wwise SetRTPCValue",
+        "evidence": "exactCurrentGameAssemblyDefaultBranchDirectCallsAndNativeSlots",
+        "gameAssemblySha256": CUSTOM_FOOTSTEP_GAME_ASSEMBLY_SHA256,
+        "runtimeObservationStatus": "staticDefaultBranchNotLiveParameterTrace",
+        "stages": (
+            native_playback_stage(
+                "request",
+                "Beyond.Gameplay.Audio.AudioManager",
+                "SetRtpc(string, float, fade)",
+                38865,
+                "0x060097d2",
+                "0x186ac492c",
+                "Routes a named global parameter to the adapter.",
+            ),
+            native_playback_stage(
+                "hash",
+                "Beyond.Audio.AudioHashGenerator",
+                "Compute(string)",
+                480228,
+                "0x06000139",
+                "0x18328dcd0",
+                "Computes FNV-1 over UTF-16 code units with ASCII A-Z folding and no whitespace trim.",
+            ),
+            native_playback_stage(
+                "global",
+                "Beyond.Audio.AudioAdapter",
+                "SetRtpc(uint, float, int)",
+                479952,
+                "0x06000025",
+                "0x18459c560",
+                "Uses Wwise global target object id 0x00000000ffffffff.",
+            ),
+            native_playback_stage(
+                "wwise",
+                "AkSoundEngine",
+                "SetRTPCValue(uint, float, ulong, int)",
+                446505,
+                "0x06000aa3",
+                "0x183197c40",
+                "Crosses native function-pointer slot 0x18f3611a8 with parameter id, value, object id, and fade time.",
+            ),
+        ),
+        "branches": (
+            {
+                "id": "entityAudioId",
+                "label": "Entity AudioId route",
+                "relation": (
+                    "AudioManager method 38948 resolves BaseAudioComponent.audioObjectId and calls "
+                    "AudioAdapter method 479954 with the existing uint parameter id."
+                ),
+            },
+            {
+                "id": "entityString",
+                "label": "Entity string route",
+                "relation": (
+                    "AudioManager method 38947 calls AudioAdapter method 479953, which hashes the name before "
+                    "the same object-scoped uint route."
+                ),
+            },
+            {
+                "id": "globalAudioId",
+                "label": "Global AudioId route",
+                "relation": (
+                    "AudioManager method 38864 calls AudioAdapter method 479952; AudioId supplies the stored uint "
+                    "without another hash."
+                ),
+            },
+        ),
+        "boundary": (
+            "The setter shapes and global/object distinction are exact for the current stock binary default "
+            "branches. No live RTPC value, target object, timing, resulting interpolation, or Wwise branch was observed."
+        ),
+    },
+    "musicState": {
+        "id": "musicStateGroupToWwise",
+        "label": "Music mode -> exact Wwise State Group -> SetState",
+        "evidence": "exactCurrentGameAssemblyStateGroupConstantsAndDirectCalls",
+        "gameAssemblySha256": CUSTOM_FOOTSTEP_GAME_ASSEMBLY_SHA256,
+        "runtimeObservationStatus": "staticNativeCallChainNotLiveStateTrace",
+        "stages": (
+            native_playback_stage(
+                "select",
+                "Beyond.Gameplay.Audio.AudioMusicSystem",
+                "_SetWwise*State",
+                None,
+                "",
+                "",
+                "Ten group-specific setters pass the enum-backed state value with the exact group constants listed below.",
+            ),
+            native_playback_stage(
+                "wwise",
+                "AkSoundEngine",
+                "SetState(uint, uint)",
+                446543,
+                "0x06000ac9",
+                "0x183a0cbd0",
+                "Crosses native function-pointer slot 0x18f3611b8 with the exact group and state ids.",
+            ),
+        ),
+        "boundary": (
+            "The group hashes, enum state ids, and setter routes are exact for the current binary. "
+            "The current value at a particular gameplay frame and the resulting Wwise music branch are not observed."
+        ),
+    },
+    "musicStateTransition": {
+        "id": "audioStateTransitionToMusicSetter",
+        "label": "Audio lifecycle state registration -> exact callback -> music control / setter",
+        "evidence": "exactCurrentGameAssemblyRegistrationDispatchAndMetadataUsageDelegateTargets",
+        "gameAssemblySha256": CUSTOM_FOOTSTEP_GAME_ASSEMBLY_SHA256,
+        "runtimeObservationStatus": "staticRegistrationAndDispatchNotLiveStateTrace",
+        "stages": (
+            native_playback_stage(
+                "register",
+                "Beyond.Gameplay.Audio.AudioMusicSystem",
+                "_RegisterStateTransitionActions",
+                39571,
+                "0x06009a94",
+                "0x183a0d940",
+                "Registers 18 persistent no-parameter callbacks as nine paired mask conditions with action orders 5 and 1.",
+            ),
+            native_playback_stage(
+                "registry",
+                "Beyond.Gameplay.Audio.AudioStateSystem",
+                "RegisterTransitionAction(conditions, Action, isOneShot, actionOrder)",
+                39810,
+                "0x06009b83",
+                "0x183a0e800",
+                "Stores each condition and System.Action callback; all 18 metadata-usage delegate targets are resolved below.",
+            ),
+            native_playback_stage(
+                "stateChange",
+                "Beyond.Gameplay.Audio.AudioStateSystem",
+                "_OnAudioStateChanged",
+                39842,
+                "0x06009ba3",
+                "0x186ae8a90",
+                "Dispatches from/to lifecycle-state changes to registered StateChangeAction records.",
+            ),
+            native_playback_stage(
+                "condition",
+                "Beyond.Gameplay.Audio.AudioStateSystem+StateChangeAction",
+                "HandleStateChange",
+                39849,
+                "0x06009baa",
+                "0x183d8ebb0",
+                "Evaluates the registered conditions and invokes the stored callback when they pass.",
+            ),
+            native_playback_stage(
+                "mask",
+                "Beyond.Gameplay.Audio.AudioStateSystem+MaskCondition",
+                "IsMet",
+                39861,
+                "0x06009bb6",
+                "0x186aeaacc",
+                "Condition type 0 is exact enter and type 1 exact leave from the current SimpleCondition.IsMet body.",
+            ),
+            native_playback_stage(
+                "select",
+                "Beyond.Gameplay.Audio.AudioMusicSystem",
+                "_SetWwise*State",
+                None,
+                "",
+                "",
+                "Every registered callback is named; SwitchToDialogMusic and _StartBattleMusic have direct Wwise State setter edges, while the others route through cue/timer/factory control helpers.",
+            ),
+            native_playback_stage(
+                "wwise",
+                "AkSoundEngine",
+                "SetState(uint, uint)",
+                446543,
+                "0x06000ac9",
+                "0x183a0cbd0",
+                "Writes the exact group and enum-backed state ids across native slot 0x18f3611b8.",
+            ),
+        ),
+        "boundary": (
+            "The registration masks, action order, persistence, dispatch types, setters, and SetState boundary "
+            "are exact, including all 18 delegate targets and enter/leave condition types. Actual state "
+            "transitions, live callback order, indirect cue/timer outcomes, and the selected Wwise music branch remain unobserved."
+        ),
+    },
+}
 
 
 RUNTIME_SYSTEM_SPECS = (
@@ -379,26 +1945,136 @@ RUNTIME_SYSTEM_SPECS = (
     runtime_spec(
         "Beyond.Audio.AudioBankManager",
         "banks",
-        "Owns Wwise bank handles and asynchronous load/unload lifetime.",
+        (
+            "Owns named Wwise BankHandle references and asynchronous load/unload lifetime. Event-owned "
+            "banks used by AudioAssetHelper are a separate direct AkSoundEngine path keyed by Event id."
+        ),
         fields=("s_loadedBankHandles",),
         methods=("LoadMainPCK", "LoadBankAsync", "UnloadBank", "UnloadAllBanks", "IsBankLoaded"),
     ),
     runtime_spec(
+        "Beyond.Audio.AudioAssetCache",
+        "banks",
+        (
+            "Tracks active, least-recently-used cached, and pinned Event resources before the adapter "
+            "posts the Event into Wwise."
+        ),
+        fields=("s_lruUsingEvents", "s_cachedEvents", "s_pinnedEvents"),
+        methods=(
+            "PinEvent", "UnpinEvent", "ActivateAsset", "DeactivateAsset",
+            "ForceReleaseCachedAsset", "GetLeastActiveAssetAndUncache",
+        ),
+        native_call_chains=(AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["adapterPost"],),
+    ),
+    runtime_spec(
         "Beyond.Audio.AudioAssetHelper",
         "banks",
-        "Prepares, pins, caches, and garbage-collects event-owned audio resources.",
-        fields=("s_memoryBudget", "s_pendingLoadRequests", "s_solidLoadedEvents"),
-        methods=("LoadEventAsync", "PinEvent", "UnpinEvent", "UnloadEvent", "ReleaseAllCachedEventsSync"),
+        (
+            "Prepares, pins, caches, and garbage-collects Event-owned audio resources. On a cache miss it "
+            "loads the Event-id bank, prepares exactly one Event id, then completes the adapter callback."
+        ),
+        fields=(
+            "s_memoryBudget", "s_waitingCallbacks", "s_pendingLoadRequests",
+            "s_solidLoadedEvents",
+        ),
+        methods=(
+            "LoadEventAsync", "_DoLoadEventAsync", "_OnBankLoadedDoPrepareEvent",
+            "_OnDonePrepareEvent", "_TryDequeueAndInvokeCallback", "PinEvent", "UnpinEvent",
+            "UnloadEvent", "ReleaseAllCachedEventsSync",
+        ),
+        native_call_chains=(AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["adapterPost"],),
+    ),
+    runtime_spec(
+        "Beyond.Audio.AudioHashGenerator",
+        "wwise_bridge",
+        (
+            "Converts authored Event, Switch, State, RTPC, and cue names to the uint identifiers used by "
+            "the stock Wwise bridge."
+        ),
+        methods=("Compute",),
+        native_call_chains=(AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["rtpcSelector"],),
     ),
     runtime_spec(
         "Beyond.Audio.AudioAdapter",
         "wwise_bridge",
-        "Low-level bridge for Wwise events, states, switches, RTPCs, objects, listeners, and seek/stop operations.",
+        (
+            "Low-level bridge for Wwise events, states, switches, RTPCs, objects, listeners, and "
+            "seek/stop operations. Event posting uses an internal playing id while resources are "
+            "prepared, then maps it to the real Wwise playing id."
+        ),
         methods=(
-            "PostEvent", "StopByPlayingId", "PauseByPlayingId", "ResumeByPlayingId",
+            "PostEvent", "PostEventExternal", "StopByPlayingId", "PauseByPlayingId", "ResumeByPlayingId",
             "SetState", "SetSwitch", "SetRtpc", "SeekOnEvent", "RegisterGameObject",
             "UnregisterGameObject", "SetListener", "SetDefaultListener", "SetAudioLanguage",
+            "_OnEventPreparedDoPostEvent", "_OnEventCallback", "_OnExternalSourceEventCallback",
+            "_PostEvent", "_PostEventWithExternalSource",
+            "_ExecuteActionOnPlayingId",
         ),
+        native_call_chains=(
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["adapterPost"],
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["externalSource"],
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["playingIdAction"],
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["switchSelector"],
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["rtpcSelector"],
+        ),
+    ),
+    runtime_spec(
+        "AkCallbackManager",
+        "wwise_bridge",
+        (
+            "Dispatches native Wwise Event, Duration, Marker, playlist, music-sync, MIDI, and source-change "
+            "callbacks into managed callback payloads. Callback-info types expose ids and selections, but no live "
+            "callback payload was captured."
+        ),
+        fields=("ms_sourceChangeCallbackPkg",),
+        methods=("PostCallbacks", "_ProcessEventCallback", "SetBGMCallback"),
+        native_anchors=(
+            {"role": "PostCallbacks", "methodIndex": 446952, "token": "0x06000c62", "virtualAddress": "0x18328b440"},
+            {"role": "ProcessEventCallback", "methodIndex": 446954, "token": "0x06000c64", "virtualAddress": "0x18328cd90"},
+            {"role": "SetBGMCallback", "methodIndex": 446950, "token": "0x06000c60", "virtualAddress": "0x1853cd518"},
+            {"role": "eventPlayingId", "type": "AkEventCallbackInfo", "method": "get_playingID", "methodIndex": 444094, "virtualAddress": "0x1853a1688"},
+            {"role": "eventId", "type": "AkEventCallbackInfo", "method": "get_eventID", "methodIndex": 444095, "virtualAddress": "0x18328dbf0"},
+            {"role": "durationMediaId", "type": "AkDurationCallbackInfo", "method": "get_mediaID", "methodIndex": 444079, "virtualAddress": "0x1853a12a8"},
+            {"role": "durationAudioNodeId", "type": "AkDurationCallbackInfo", "method": "get_audioNodeID", "methodIndex": 444078, "virtualAddress": "0x1853a1168"},
+            {"role": "playlistSelection", "type": "AkMusicPlaylistCallbackInfo", "method": "get_uPlaylistSelection", "methodIndex": 444488, "virtualAddress": "0x1853a7800"},
+            {"role": "musicSyncType", "type": "AkMusicSyncCallbackInfo", "method": "get_musicSyncType", "methodIndex": 444513, "virtualAddress": "0x1853a7af8"},
+            {"role": "sourceChange", "type": "AkCallbackSerializer", "method": "AudioSourceChangeCallbackFunc", "methodIndex": 443954, "token": "0x060000ac", "virtualAddress": "0x18539e60c"},
+            {"role": "otherAudioPlaying", "type": "AkAudioSourceChangeCallbackInfo", "method": "get_bOtherAudioPlaying", "methodIndex": 443882, "virtualAddress": "0x18539d68c"},
+        ),
+        native_call_chains=(AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["adapterPost"],),
+        runtime_execution_status="callbackCapabilityExactPayloadsNotObserved",
+    ),
+    runtime_spec(
+        "AkSoundEngine",
+        "wwise_bridge",
+        (
+            "Generated Wwise C# bridge. PostEvent crosses the native P/Invoke boundary and returns "
+            "the real playing id; ExecuteActionOnPlayingID applies stop/pause/resume to that id."
+        ),
+        methods=(
+            "PostEvent", "LoadBank", "PrepareEvent", "UnloadBank", "ExecuteActionOnPlayingID",
+            "SetState", "SetSwitch", "SetRTPCValue",
+        ),
+        native_call_chains=(
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["adapterPost"],
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["externalSource"],
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["playingIdAction"],
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["switchSelector"],
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["rtpcSelector"],
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["musicState"],
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["musicStateTransition"],
+        ),
+    ),
+    runtime_spec(
+        "Beyond.Audio.AudioActionQueueHelper",
+        "wwise_bridge",
+        (
+            "Queues playing-id actions issued before asynchronous Event preparation has produced "
+            "a real Wwise playing id, then resolves and consumes them on later frames."
+        ),
+        fields=("s_executeActionQueue", "QUEUE_LIFETIME_FRAME"),
+        methods=("QueueExecuteAction", "ConsumeQueue", "_ConsumeExecute"),
+        native_call_chains=(AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["playingIdAction"],),
     ),
     runtime_spec(
         "Beyond.Gameplay.Audio.AudioManager",
@@ -411,6 +2087,40 @@ RUNTIME_SYSTEM_SPECS = (
             "<roomManager>k__BackingField", "<npcSystem>k__BackingField",
         ),
         methods=("PostEvent", "PostAudioCue", "SetRtpc", "SetSwitch", "PlaySoundAtPosition", "LoadLevel"),
+        native_call_chains=(
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["switchSelector"],
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["rtpcSelector"],
+        ),
+    ),
+    runtime_spec(
+        "Beyond.Gameplay.View.Animation.AnimatorMono",
+        "animation_callbacks",
+        (
+            "Receives normal and positioned AnimationClip audio callbacks, resolves the owning "
+            "entity or a temporary positioned emitter, and tracks returned playing ids for "
+            "montage/timeline lifetime control."
+        ),
+        methods=(
+            "PostAudioEvent", "PostAudioEventAtPosition", "_TryStartAudioEventMontageMonitor",
+            "TrackAudioForTimelinePlayable", "StopAllAudioForPlayable",
+        ),
+        native_call_chains=(
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["animationObject"],
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["animationPosition"],
+        ),
+    ),
+    runtime_spec(
+        "Beyond.Gameplay.Actions.GameAction",
+        "levelscript_audio",
+        (
+            "LevelScript-facing facade that routes resolved Event parameters to the global emitter, "
+            "a target entity, a world-position emitter, AudioMusicSystem, or playing-id lifetime controls."
+        ),
+        methods=(
+            "PlayAudio", "PlayAudioAtPosition", "PlayAudioOnTarget", "PostAudioCue",
+            "PostMusicEvent", "StopAudio", "PauseAudio", "ResumeAudio",
+        ),
+        native_call_chains=(AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["levelScript"],),
     ),
     runtime_spec(
         "Beyond.Gameplay.Core.PlaySoundAction",
@@ -429,6 +2139,7 @@ RUNTIME_SYSTEM_SPECS = (
             "_DoPostEvent", "_DoPostEventAtPosition", "_IsSourceFromMainCharacter",
             "_InitialSeek", "_TimeDilationSeek", "OnTick", "OnEnd", "_StopAllSoundInstance",
         ),
+        native_call_chains=(AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["skillAction"],),
     ),
     runtime_spec(
         "Beyond.Gameplay.Core.PlaySoundAction+PlaySoundActionData",
@@ -707,6 +2418,7 @@ RUNTIME_SYSTEM_SPECS = (
             "MUSIC_STATE_GROUP_ID", "MUSIC_MAP_STATE_GROUP_ID", "BATTLE_MUSIC_STATE_GROUP_ID",
             "BATTLE_MUSIC_INTENSITY_STATE_GROUP_ID", "MISSION_MUSIC_STATE_GROUP_ID",
             "DIALOG_MUSIC_STATE_GROUP_ID", "CUTSCENE_MUSIC_STATE_GROUP_ID",
+            "LOGIN_MUSIC_STATE_GROUP_ID", "META_MUSIC_STATE_GROUP_ID",
             "REMOTE_COMM_MUSIC_STATE_GROUP_ID",
         ),
         methods=(
@@ -714,6 +2426,12 @@ RUNTIME_SYSTEM_SPECS = (
             "SwitchToDialogMusic", "PlayStandaloneMusic", "ManualSetMusicState",
             "ManualSetBattleMusicState", "ManualSetBattleMusicIntensityState",
         ),
+        native_call_chains=(
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["musicState"],
+            AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["musicStateTransition"],
+        ),
+        native_state_groups=AUDIO_MUSIC_NATIVE_STATE_GROUPS,
+        native_state_transitions=AUDIO_MUSIC_NATIVE_TRANSITION_REGISTRATIONS,
     ),
     runtime_spec(
         "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseMusicState",
@@ -734,6 +2452,48 @@ RUNTIME_SYSTEM_SPECS = (
         enum_values=True,
     ),
     runtime_spec(
+        "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseMusicMapState",
+        "music",
+        "World-map music selector values.",
+        enum_values=True,
+    ),
+    runtime_spec(
+        "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseMissionMusicState",
+        "music",
+        "Mission music sub-state values.",
+        enum_values=True,
+    ),
+    runtime_spec(
+        "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseDialogMusicState",
+        "music",
+        "Dialog music sub-state values.",
+        enum_values=True,
+    ),
+    runtime_spec(
+        "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseCutsceneMusicState",
+        "music",
+        "Cutscene music sub-state values.",
+        enum_values=True,
+    ),
+    runtime_spec(
+        "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseLoginMusicState",
+        "music",
+        "Login music phases.",
+        enum_values=True,
+    ),
+    runtime_spec(
+        "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseMetaMusicState",
+        "music",
+        "Meta/gacha music modes.",
+        enum_values=True,
+    ),
+    runtime_spec(
+        "Beyond.Gameplay.Audio.AudioMusicSystem+EWwiseRemoteCommMusicState",
+        "music",
+        "Remote-communication music phases.",
+        enum_values=True,
+    ),
+    runtime_spec(
         "Beyond.Gameplay.Audio.AudioCueSystem",
         "cues",
         "Resolves named cues with scoped bool/int/float/string variables and default handlers.",
@@ -746,6 +2506,7 @@ RUNTIME_SYSTEM_SPECS = (
         "Converts gameplay and loading/tag state into ordered audio transition actions.",
         fields=("m_orderedActionDictList", "m_currentState", "GAMEPLAY_TAG_CONDITION_LIST"),
         methods=("RegisterTransitionAction", "CurrentHasState", "OnInFactoryAreaMainRegionChanged", "_OnAudioStateChanged"),
+        native_call_chains=(AUDIO_PLAYBACK_NATIVE_CALL_CHAINS["musicStateTransition"],),
     ),
     runtime_spec(
         "Beyond.Gameplay.Audio.AudioStateSystem+EAudioState",
@@ -875,7 +2636,89 @@ RUNTIME_SYSTEM_SPECS = (
         methods=(
             "RegisterAudioFragment", "OnFactoryTopViewChanged", "TriggerFactoryMainRegionAudio",
             "OnBuildingStateChanged", "PlayBuildUpAudio", "PlayDestroyAudio", "PostEventOnUnit",
+            "UpdateNodeMode", "GetAudioStateValueFromNodeMode",
         ),
+        native_anchors=(
+            {
+                "role": "objectScopedFactoryNodeModeSwitch",
+                "method": "UpdateNodeMode",
+                "methodIndex": 39714,
+                "token": "0x06009b23",
+                "setSwitchCallVirtualAddress": "0x1850ffa6d",
+                "groupId": 0x7ACDACAF,
+                "groupIdHex": "0x7acdacaf",
+            },
+            {
+                "role": "factoryNodeModeValueResolver",
+                "method": "GetAudioStateValueFromNodeMode",
+                "methodIndex": 39759,
+                "token": "0x06009b50",
+                "virtualAddress": "0x186ae7b18",
+            },
+        ),
+        runtime_execution_status="staticSetterAndValueMappingExactLiveModeNotObserved",
+    ),
+    runtime_spec(
+        "Beyond.Gameplay.Audio.AudioGamePadManager",
+        "output_device",
+        "Selects the global Wwise gamepad backend and creates/removes Motion and controller-speaker output devices for XInput or ScePad.",
+        fields=(
+            "m_wwiseMotionOutputDeviceId",
+            "m_wwiseControllerSpeakerOutputDeviceId",
+        ),
+        methods=(
+            "_TryAddXInputMotionOutput", "_TryRefreshScePadHandle",
+            "_DoOnInputTypeChanged", "_ReAddControllerOutputDevice",
+            "_TryRemoveControllerOutputDevice",
+        ),
+        native_anchors=(
+            {
+                "role": "xinputStateSetter",
+                "method": "_TryAddXInputMotionOutput",
+                "token": "0x060099bd",
+                "virtualAddress": "0x186ad0468",
+                "setStateCallVirtualAddress": "0x186ad04e2",
+                "groupId": 0xF6699CF4,
+                "groupIdHex": "0xf6699cf4",
+                "valueId": 0x1A9FC91F,
+                "valueIdHex": "0x1a9fc91f",
+            },
+            {
+                "role": "scePadStateSetter",
+                "method": "_TryRefreshScePadHandle",
+                "token": "0x060099be",
+                "virtualAddress": "0x186ad055c",
+                "setStateCallVirtualAddress": "0x186ad069c",
+                "groupId": 0xF6699CF4,
+                "groupIdHex": "0xf6699cf4",
+                "valueId": 0x1B9ABDB1,
+                "valueIdHex": "0x1b9abdb1",
+            },
+            {
+                "role": "motionOutputDevice",
+                "type": "Beyond.Audio.AudioAdapter+Device",
+                "method": "AddOutput",
+                "token": "0x06000086",
+                "virtualAddress": "0x18635fb54",
+                "downstreamType": "AkSoundEngine",
+                "downstreamMethod": "AddOutput",
+                "downstreamVirtualAddress": "0x1853cf1a8",
+            },
+            {
+                "role": "scePadHandleToDeviceId",
+                "type": "Beyond.Audio.AudioAdapter+Device",
+                "method": "GetMmDeviceIdFromScePadHandle",
+                "token": "0x0600008b",
+                "virtualAddress": "0x18635fc34",
+            },
+            {
+                "role": "inputTypeOutputLifecycle",
+                "method": "_DoOnInputTypeChanged",
+                "token": "0x060099c3",
+                "virtualAddress": "0x186ad0068",
+            },
+        ),
+        runtime_execution_status="staticStateAndOutputDeviceCallsitesExactLiveEventToDeviceRoutingNotObserved",
     ),
     runtime_spec(
         "Beyond.Gameplay.Audio.VoiceResponseProcessor",
@@ -1040,6 +2883,7 @@ def compact_media(entry: dict[str, Any]) -> dict[str, Any]:
                 for key in (
                     "rootActionIds", "soundObjectCount", "relationTypes",
                     "musicTrackObjectCount", "selectionPaths", "bankId", "bankPackage",
+                    "sourceKinds", "pluginIds", "pluginNames", "streamTypes", "sourceBits",
                 )
                 if row.get(key) not in (None, "", [])
             }
@@ -1068,10 +2912,302 @@ def compact_container_evidence(rows: Iterable[Any]) -> list[dict[str, Any]]:
         })
         target["nodeCount"] += 1
         target["childCount"] += int(row.get("childCount") or 0)
-    return [
-        {key: value for key, value in row.items() if value not in (None, "", [])}
-        for row in summary.values()
-    ]
+        if object_type == 5 and row.get("selectorParserStatus"):
+            target["randomSequenceNodeCount"] = int(
+                target.get("randomSequenceNodeCount") or 0
+            ) + 1
+            random_status = str(row.get("selectorParserStatus") or "unknown")
+            target.setdefault("_randomSequenceParserStatuses", Counter())[random_status] += 1
+            if random_status == "typedExactV150PlaylistWeights":
+                target["typedRandomSequenceNodeCount"] = int(
+                    target.get("typedRandomSequenceNodeCount") or 0
+                ) + 1
+                target.setdefault("_randomSequenceModes", Counter())[
+                    str(row.get("modeLabel") or "unknown")
+                ] += 1
+                target.setdefault("_randomModes", Counter())[
+                    str(row.get("randomModeLabel") or "unknown")
+                ] += 1
+                target.setdefault("_randomTransitionModes", Counter())[
+                    str(row.get("transitionModeLabel") or "unknown")
+                ] += 1
+                target["randomSequencePlaylistItemCount"] = int(
+                    target.get("randomSequencePlaylistItemCount") or 0
+                ) + int(row.get("playlistItemCount") or 0)
+                membership_status = str(
+                    row.get("playlistMembershipStatus") or "unknown"
+                )
+                target.setdefault("_randomSequenceMembershipStatuses", Counter())[
+                    membership_status
+                ] += 1
+                target["randomSequenceOwnedChildNotInPlaylistCount"] = int(
+                    target.get("randomSequenceOwnedChildNotInPlaylistCount") or 0
+                ) + len(row.get("ownedChildIdsNotInPlaylist") or [])
+                target["randomSequenceDuplicatePlaylistItemCount"] = int(
+                    target.get("randomSequenceDuplicatePlaylistItemCount") or 0
+                ) + int(row.get("duplicatePlaylistItemCount") or 0)
+                if membership_status == "emptyPlaylistOwnedChildrenPreserved":
+                    target["randomSequenceEmptyPlaylistNodeCount"] = int(
+                        target.get("randomSequenceEmptyPlaylistNodeCount") or 0
+                    ) + 1
+                if not row.get("childrenOrderMatchesPlaylist", True):
+                    target["playlistOrderDiffersFromChildrenCount"] = int(
+                        target.get("playlistOrderDiffersFromChildrenCount") or 0
+                    ) + 1
+                non_default_weights = int(row.get("nonDefaultWeightCount") or 0)
+                target["nonDefaultWeightItemCount"] = int(
+                    target.get("nonDefaultWeightItemCount") or 0
+                ) + non_default_weights
+                if non_default_weights:
+                    target["nonDefaultWeightNodeCount"] = int(
+                        target.get("nonDefaultWeightNodeCount") or 0
+                    ) + 1
+                if not row.get("uniformWeights", True):
+                    target["nonUniformWeightNodeCount"] = int(
+                        target.get("nonUniformWeightNodeCount") or 0
+                    ) + 1
+                avoid_repeat = int(row.get("avoidRepeatCount") or 0)
+                target["maxAvoidRepeatCount"] = max(
+                    int(target.get("maxAvoidRepeatCount") or 0), avoid_repeat
+                )
+                if avoid_repeat != 1:
+                    target["nonDefaultAvoidRepeatNodeCount"] = int(
+                        target.get("nonDefaultAvoidRepeatNodeCount") or 0
+                    ) + 1
+                if int(row.get("loopCount") or 0) != 1:
+                    target["nonDefaultLoopNodeCount"] = int(
+                        target.get("nonDefaultLoopNodeCount") or 0
+                    ) + 1
+                if row.get("globalScope"):
+                    target["globalScopeRandomSequenceNodeCount"] = int(
+                        target.get("globalScopeRandomSequenceNodeCount") or 0
+                    ) + 1
+                if row.get("continuous"):
+                    target["continuousRandomSequenceNodeCount"] = int(
+                        target.get("continuousRandomSequenceNodeCount") or 0
+                    ) + 1
+                if row.get("resetPlaylistAtEachPlay"):
+                    target["resetPlaylistNodeCount"] = int(
+                        target.get("resetPlaylistNodeCount") or 0
+                    ) + 1
+            else:
+                target["unresolvedRandomSequenceNodeCount"] = int(
+                    target.get("unresolvedRandomSequenceNodeCount") or 0
+                ) + 1
+        if object_type == 9 and isinstance(row.get("layerTailEvidence"), dict):
+            layer = row["layerTailEvidence"]
+            target["layerNodeCount"] = int(target.get("layerNodeCount") or 0) + 1
+            layer_status = str(layer.get("layerTailParserStatus") or "unknown")
+            target.setdefault("_layerParserStatuses", Counter())[layer_status] += 1
+            if layer_status == "typedExactV150LayerTail":
+                target["typedLayerNodeCount"] = int(
+                    target.get("typedLayerNodeCount") or 0
+                ) + 1
+                confidence = str(row.get("parserConfidence") or "unknown")
+                target.setdefault("_layerProofStatuses", Counter())[confidence] += 1
+                assignment = str(layer.get("layerAssignmentStatus") or "unknown")
+                target.setdefault("_layerAssignmentStatuses", Counter())[assignment] += 1
+                target["layerDefinitionCount"] = int(
+                    target.get("layerDefinitionCount") or 0
+                ) + int(layer.get("layerCount") or 0)
+                target["layerInitialRtpcCurveCount"] = int(
+                    target.get("layerInitialRtpcCurveCount") or 0
+                ) + int(layer.get("initialRtpcCurveCount") or 0)
+                target["layerAssociationCount"] = int(
+                    target.get("layerAssociationCount") or 0
+                ) + int(layer.get("associationCount") or 0)
+                target["layerCurvePointCount"] = int(
+                    target.get("layerCurvePointCount") or 0
+                ) + int(layer.get("curvePointCount") or 0)
+                if layer.get("continuousValidation"):
+                    target["continuousLayerNodeCount"] = int(
+                        target.get("continuousLayerNodeCount") or 0
+                    ) + 1
+                target["layerAssociationOutsideChildrenCount"] = int(
+                    target.get("layerAssociationOutsideChildrenCount") or 0
+                ) + len(layer.get("associationChildIdsOutsideChildren") or [])
+                for layer_row in layer.get("layers") or []:
+                    if not isinstance(layer_row, dict):
+                        continue
+                    try:
+                        target.setdefault("_layerRtpcIds", set()).add(
+                            int(layer_row.get("rtpcId")) & 0xFFFFFFFF
+                        )
+                    except (TypeError, ValueError):
+                        pass
+                    target.setdefault("_layerRtpcTypes", Counter())[
+                        str(layer_row.get("rtpcTypeLabel") or "unknown")
+                    ] += 1
+            else:
+                target["unresolvedLayerNodeCount"] = int(
+                    target.get("unresolvedLayerNodeCount") or 0
+                ) + 1
+        selector = row.get("switchMappingEvidence")
+        if not isinstance(selector, dict):
+            continue
+        target["selectorNodeCount"] = int(target.get("selectorNodeCount") or 0) + 1
+        parser_status = str(selector.get("parserStatus") or "unknown")
+        parser_counts = target.setdefault("_selectorParserStatuses", Counter())
+        parser_counts[parser_status] += 1
+        if parser_status != "typedExactV150FlatPackages":
+            target["unresolvedSelectorNodeCount"] = int(
+                target.get("unresolvedSelectorNodeCount") or 0
+            ) + 1
+            continue
+
+        target["typedSelectorNodeCount"] = int(
+            target.get("typedSelectorNodeCount") or 0
+        ) + 1
+        group_type = str(selector.get("groupType") or "unknown")
+        group_type_counts = target.setdefault("_selectorGroupTypes", Counter())
+        group_type_counts[group_type] += 1
+        try:
+            group_id = int(selector.get("groupId")) & 0xFFFFFFFF
+        except (TypeError, ValueError):
+            group_id = None
+        if group_id is not None:
+            target.setdefault("_selectorGroupIds", set()).add(group_id)
+        if selector.get("continuousValidation"):
+            target["continuousValidationNodeCount"] = int(
+                target.get("continuousValidationNodeCount") or 0
+            ) + 1
+
+        packages = [
+            package for package in selector.get("packages") or []
+            if isinstance(package, dict)
+        ]
+        target["selectorPackageCount"] = int(
+            target.get("selectorPackageCount") or 0
+        ) + len(packages)
+        authored_child_count = int(row.get("childCount") or 0)
+        package_value_ids: set[int] = set()
+        for package in packages:
+            child_ids = [
+                value for value in package.get("childIds") or []
+                if isinstance(value, int)
+            ]
+            try:
+                package_value_ids.add(int(package.get("valueId")) & 0xFFFFFFFF)
+            except (TypeError, ValueError):
+                pass
+            if child_ids:
+                target["nonEmptySelectorPackageCount"] = int(
+                    target.get("nonEmptySelectorPackageCount") or 0
+                ) + 1
+                target["selectorPackageChildReferenceCount"] = int(
+                    target.get("selectorPackageChildReferenceCount") or 0
+                ) + len(child_ids)
+                if authored_child_count and len(set(child_ids)) < authored_child_count:
+                    target["strictSubsetSelectorPackageCount"] = int(
+                        target.get("strictSubsetSelectorPackageCount") or 0
+                    ) + 1
+        try:
+            default_value_id = int(selector.get("defaultValueId")) & 0xFFFFFFFF
+        except (TypeError, ValueError):
+            default_value_id = None
+        if default_value_id is not None and default_value_id not in package_value_ids:
+            target["defaultValueMissingPackageCount"] = int(
+                target.get("defaultValueMissingPackageCount") or 0
+            ) + 1
+
+        associations = [
+            association for association in selector.get("associations") or []
+            if isinstance(association, dict)
+        ]
+        target["selectorAssociationCount"] = int(
+            target.get("selectorAssociationCount") or 0
+        ) + len(associations)
+        switch_mode_counts = target.setdefault("_selectorSwitchModes", Counter())
+        for association in associations:
+            switch_mode_counts[str(association.get("onSwitchMode") or "unknown")] += 1
+            if association.get("isFirstOnly"):
+                target["isFirstOnlyAssociationCount"] = int(
+                    target.get("isFirstOnlyAssociationCount") or 0
+                ) + 1
+            if association.get("continuePlayback"):
+                target["continuePlaybackAssociationCount"] = int(
+                    target.get("continuePlaybackAssociationCount") or 0
+                ) + 1
+            if int(association.get("fadeOutTimeMs") or 0):
+                target["nonzeroFadeOutAssociationCount"] = int(
+                    target.get("nonzeroFadeOutAssociationCount") or 0
+                ) + 1
+            if int(association.get("fadeInTimeMs") or 0):
+                target["nonzeroFadeInAssociationCount"] = int(
+                    target.get("nonzeroFadeInAssociationCount") or 0
+                ) + 1
+        for source_key, target_key in (
+            ("mappedChildIdsOutsideChildren", "mappedChildOutsideChildrenCount"),
+            ("unmappedChildIds", "unmappedSelectorChildCount"),
+            ("associationChildIdsOutsideChildren", "associationChildOutsideChildrenCount"),
+        ):
+            target[target_key] = int(target.get(target_key) or 0) + len(
+                selector.get(source_key) or []
+            )
+
+    compact_rows: list[dict[str, Any]] = []
+    for row in summary.values():
+        random_status_counts = row.pop("_randomSequenceParserStatuses", None)
+        random_sequence_modes = row.pop("_randomSequenceModes", None)
+        random_modes = row.pop("_randomModes", None)
+        random_transition_modes = row.pop("_randomTransitionModes", None)
+        random_membership_statuses = row.pop(
+            "_randomSequenceMembershipStatuses", None
+        )
+        layer_parser_statuses = row.pop("_layerParserStatuses", None)
+        layer_proof_statuses = row.pop("_layerProofStatuses", None)
+        layer_assignment_statuses = row.pop("_layerAssignmentStatuses", None)
+        layer_rtpc_types = row.pop("_layerRtpcTypes", None)
+        layer_rtpc_ids = sorted(row.pop("_layerRtpcIds", set()))
+        parser_counts = row.pop("_selectorParserStatuses", None)
+        group_type_counts = row.pop("_selectorGroupTypes", None)
+        switch_mode_counts = row.pop("_selectorSwitchModes", None)
+        group_ids = sorted(row.pop("_selectorGroupIds", set()))
+        if random_status_counts:
+            row["randomSequenceParserStatuses"] = dict(
+                sorted(random_status_counts.items())
+            )
+        if random_sequence_modes:
+            row["randomSequenceModes"] = dict(sorted(random_sequence_modes.items()))
+        if random_modes:
+            row["randomModes"] = dict(sorted(random_modes.items()))
+        if random_transition_modes:
+            row["randomTransitionModes"] = dict(
+                sorted(random_transition_modes.items())
+            )
+        if random_membership_statuses:
+            row["randomSequenceMembershipStatuses"] = dict(
+                sorted(random_membership_statuses.items())
+            )
+        if layer_parser_statuses:
+            row["layerParserStatuses"] = dict(sorted(layer_parser_statuses.items()))
+        if layer_proof_statuses:
+            row["layerProofStatuses"] = dict(sorted(layer_proof_statuses.items()))
+        if layer_assignment_statuses:
+            row["layerAssignmentStatuses"] = dict(
+                sorted(layer_assignment_statuses.items())
+            )
+        if layer_rtpc_types:
+            row["layerRtpcTypes"] = dict(sorted(layer_rtpc_types.items()))
+        if layer_rtpc_ids:
+            row["layerRtpcIdCount"] = len(layer_rtpc_ids)
+            row["layerRtpcIdsHex"] = [f"0x{value:08x}" for value in layer_rtpc_ids[:24]]
+            row["layerRtpcIdsTruncated"] = len(layer_rtpc_ids) > 24
+        if parser_counts:
+            row["selectorParserStatuses"] = dict(sorted(parser_counts.items()))
+        if group_type_counts:
+            row["selectorGroupTypes"] = dict(sorted(group_type_counts.items()))
+        if switch_mode_counts:
+            row["selectorSwitchModes"] = dict(sorted(switch_mode_counts.items()))
+        if group_ids:
+            row["selectorGroupIdCount"] = len(group_ids)
+            row["selectorGroupIdsHex"] = [f"0x{value:08x}" for value in group_ids[:24]]
+            row["selectorGroupIdsTruncated"] = len(group_ids) > 24
+        compact_rows.append({
+            key: value for key, value in row.items()
+            if value not in (None, "", [], {})
+        })
+    return compact_rows
 
 
 def _metadata_module() -> Any:
@@ -1213,6 +3349,24 @@ def build_runtime_model(metadata_path: Path | None, export_root: Path) -> dict[s
                 system["nativeAnchorStatus"] = "exactCurrentBuild"
             else:
                 system["nativeAnchorStatus"] = "omittedMetadataFingerprintMismatch"
+        if spec.get("nativeCallChains"):
+            if sha256 == MODEL_VIEW_NATIVE_ANCHOR_METADATA_SHA256:
+                system["nativeCallChains"] = spec["nativeCallChains"]
+                system["nativeCallChainStatus"] = "exactCurrentBuild"
+            else:
+                system["nativeCallChainStatus"] = "omittedMetadataFingerprintMismatch"
+        if spec.get("nativeStateGroups"):
+            if sha256 == MODEL_VIEW_NATIVE_ANCHOR_METADATA_SHA256:
+                system["nativeStateGroups"] = spec["nativeStateGroups"]
+                system["nativeStateGroupStatus"] = "exactCurrentBuild"
+            else:
+                system["nativeStateGroupStatus"] = "omittedMetadataFingerprintMismatch"
+        if spec.get("nativeStateTransitions"):
+            if sha256 == MODEL_VIEW_NATIVE_ANCHOR_METADATA_SHA256:
+                system["nativeStateTransitions"] = spec["nativeStateTransitions"]
+                system["nativeStateTransitionStatus"] = "exactCurrentBuild"
+            else:
+                system["nativeStateTransitionStatus"] = "omittedMetadataFingerprintMismatch"
         if spec["enumValues"]:
             enum_values = _metadata_enum_values(module, md, type_def)
             if enum_values:
@@ -1234,10 +3388,11 @@ def build_runtime_model(metadata_path: Path | None, export_root: Path) -> dict[s
         },
         "evidenceBoundary": (
             "Type, field, method, and enum names are exact current-build IL2CPP metadata. "
-            "Selected ModelView Deserialize/Execute method index, token, and virtual-address "
-            "anchors are emitted only for the matching current metadata fingerprint. "
-            "They prove shipped runtime structure, not live call order, the active game state, "
-            "or which Wwise branch a player heard."
+            "Selected ModelView anchors and audio playback call chains include method index, token, "
+            "virtual address, and the recorded GameAssembly fingerprint only for the matching current "
+            "metadata fingerprint. The playback chains are static direct-call evidence from that "
+            "GameAssembly, not a live execution trace, active game state, or proof of which Wwise "
+            "branch a player heard."
         ),
         "systems": systems,
         "missingTypes": missing_types,
@@ -1556,6 +3711,14 @@ def collect_gameplay_contexts(webui_root: Path, language: str) -> dict[str, list
                     "animationOwnershipScope": event.get("animationOwnershipScope") or "",
                     "possibleMediaScope": event.get("possibleMediaScope") or "",
                     "clipReachability": event.get("clipReachability") or "unresolved",
+                    "animatorControllerCount": int(event.get("animatorControllerCount") or 0),
+                    "animatorControllerContexts": list(event.get("animatorControllerContexts") or [])[:12],
+                    "animatorControllerReachableClipCount": int(
+                        event.get("animatorControllerReachableClipCount") or 0
+                    ),
+                    "animatorControllerUnresolvedClipCount": int(
+                        event.get("animatorControllerUnresolvedClipCount") or 0
+                    ),
                     "authoredEventIds": list(event.get("authoredEventIds") or [])[:8],
                 }
                 _attach_custom_footstep_parameters(context, evidence)
@@ -1575,6 +3738,14 @@ def collect_gameplay_contexts(webui_root: Path, language: str) -> dict[str, list
             "animationClips": list(event.get("sourceAnimationClips") or [])[:12],
             "animationOccurrenceCount": len(evidence),
             "clipReachability": event.get("clipReachability") or "unresolved",
+            "animatorControllerCount": int(event.get("animatorControllerCount") or 0),
+            "animatorControllerContexts": list(event.get("animatorControllerContexts") or [])[:12],
+            "animatorControllerReachableClipCount": int(
+                event.get("animatorControllerReachableClipCount") or 0
+            ),
+            "animatorControllerUnresolvedClipCount": int(
+                event.get("animatorControllerUnresolvedClipCount") or 0
+            ),
             "authoredEventIds": list(event.get("authoredEventIds") or [])[:8],
             "sourcePaths": sorted({
                 str(row.get("clipSource") or "")
@@ -2129,6 +4300,14 @@ def audio_hash_generator_compute(value: str) -> int:
 
 
 LEVELSCRIPT_AUDIO_CONTROL_ROLES = {
+    "BlockAutoMusicChange": "autoMusicChangeBlock",
+    "BlockAutoMusicChangeCancel": "autoMusicChangeBlockCancel",
+    "BlockBattleMusic": "battleMusicBlock",
+    "BlockResetMusic": "musicResetBlock",
+    "CleanAudioCueVar": "cueVariableClean",
+    "EnterCustomMusicMode": "customMusicModeEnter",
+    "ExitCustomMusicMode": "customMusicModeExit",
+    "FlushRadio": "radioFlush",
     "ManualRestoreMusicState": "musicStateRestore",
     "ManualSetMusicState": "musicStateOverride",
     "PlayStandaloneMusic": "standaloneMusicLifecycle",
@@ -2137,8 +4316,19 @@ LEVELSCRIPT_AUDIO_CONTROL_ROLES = {
     "StopAudio": "playingAudioStop",
     "StopPlaceholderMusic_DevOnly": "placeholderMusicStop",
     "StopVoice": "voiceStop",
+    "PostAudioStopAllEnemyVoice": "enemyVoiceStopAll",
+    "PlayGlobalResponseVoice": "globalResponseVoicePlay",
+    "PlayResponseVoice": "responseVoicePlay",
+    "SetAudioGlobalParameter": "globalParameterWrite",
+    "SetAudioParameter": "parameterWrite",
+    "SetVoiceTriggerLevel": "voiceTriggerLevelWrite",
     "SwitchAIBarkEnable": "aiBarkEnableSwitch",
+    "SwitchAudioCustomState": "customAudioStateSwitch",
     "SwitchAudioState": "entityAudioStateSwitch",
+    "TriggerBarkVoice": "barkVoiceTrigger",
+    "TriggerMainCharVoice": "mainCharacterVoiceTrigger",
+    "MuteMusic_DevOnly": "musicMute",
+    "UnmuteMusic_DevOnly": "musicUnmute",
 }
 
 LEVELSCRIPT_RADIO_ACTION_ROLES = {
@@ -2154,6 +4344,86 @@ LEVELSCRIPT_RADIO_ACTION_NAMES = frozenset({
 })
 
 
+def _load_levelscript_brief_property_sources(
+    export_root: Path,
+    levelscript_id: str,
+    preferred_source_root: str,
+    cache: dict[tuple[str, str], tuple[dict[str, Any] | None, str]],
+) -> tuple[dict[str, Any] | None, str]:
+    """Find one validated LevelScriptBriefData row for a script id.
+
+    LevelScriptData is overlaid by source-root-relative path, while LevelData
+    may remain in StreamingAssets when the winning script bytes are from
+    Persistent.  Search the winning source first and the other source second;
+    only a validated member-22 BriefData dictionary entry is accepted.
+    """
+    normalized_id = str(levelscript_id or "").replace("\\", "/").strip("/")
+    parts = PurePosixPath(normalized_id).parts
+    if len(parts) < 2 or not parts[-1].isdigit():
+        return None, ""
+    level_id = str(parts[-2])
+    script_id = int(parts[-1])
+    cache_key = (level_id, str(script_id))
+    if cache_key in cache:
+        return cache[cache_key]
+
+    try:
+        from story_builder.level_bindings import (
+            parse_leveldata_levelscript_brief_dictionary,
+        )
+    except ImportError:
+        from scripts.story_builder.level_bindings import (
+            parse_leveldata_levelscript_brief_dictionary,
+        )
+
+    source_roots = [str(preferred_source_root)]
+    source_roots.extend(
+        source for source in ("StreamingAssets", "Persistent")
+        if source not in source_roots
+    )
+    for source_root in source_roots:
+        script_dir = (
+            export_root / "structured" / source_root / "Data" / "Json"
+            / "LevelScriptData" / level_id
+        )
+        leveldata_dir = (
+            export_root / "structured" / source_root / "Data" / "Json"
+            / "LevelData" / level_id
+        )
+        if not script_dir.is_dir() or not leveldata_dir.is_dir():
+            continue
+        candidate_script_ids = {
+            int(path.stem)
+            for path in script_dir.glob("*.json")
+            if path.stem.isdigit()
+        }
+        if script_id not in candidate_script_ids:
+            continue
+        script_needle = script_id.to_bytes(8, "little", signed=False)
+        for leveldata_path in sorted(leveldata_dir.glob("*.json")):
+            try:
+                data = leveldata_path.read_bytes()
+            except OSError:
+                continue
+            if script_needle not in data:
+                continue
+            brief_dictionary = parse_leveldata_levelscript_brief_dictionary(
+                data,
+                candidate_script_ids,
+            )
+            brief = brief_dictionary.get(script_id)
+            if not isinstance(brief, dict):
+                continue
+            source_path = normalize_posix(leveldata_path.relative_to(export_root))
+            result = (brief, source_path)
+            cache[cache_key] = result
+            return result
+
+    result = (None, "")
+    cache[cache_key] = result
+    return result
+
+
 def collect_levelscript_audio_semantics(
     export_root: Path,
     *,
@@ -2164,6 +4434,14 @@ def collect_levelscript_audio_semantics(
 
     cue_semantics = cue_semantics or collect_audio_cue_semantics(export_root)
     cue_definitions = cue_semantics.get("cueDefinitions") or {}
+    try:
+        from story_builder.level_bindings import (
+            resolve_levelscript_dynamic_property_string,
+        )
+    except ImportError:
+        from scripts.story_builder.level_bindings import (
+            resolve_levelscript_dynamic_property_string,
+        )
 
     if decode_file is None:
         try:
@@ -2181,12 +4459,18 @@ def collect_levelscript_audio_semantics(
                 levelscript_record_semantic_key,
             )
         target_keys = {
+            # Audio ActionBase families registered by the current GameAssembly
+            # formatter table.  Keep the member count as part of the key:
+            # several non-ActionBase unions reuse the same numeric tag.
+            (0x0016, 0x09), (0x0028, 0x09), (0x0029, 0x09), (0x002A, 0x09),
+            (0x00B7, 0x08), (0x00E9, 0x08),
+            (0x0089, 0x0B), (0x0368, 0x0B), (0x0369, 0x0A), (0x036E, 0x14),
             (0x0306, 0x09), (0x0307, 0x0B),
             (0x034A, 0x14), (0x034B, 0x14), (0x034C, 0x0C),
             (0x034E, 0x0B), (0x034F, 0x10), (0x0352, 0x0C),
             (0x0363, 0x0D), (0x0364, 0x0D), (0x0367, 0x11),
             (0x036B, 0x13),
-            (0x0371, 0x0B), (0x0373, 0x0C), (0x03D5, 0x0F),
+            (0x0371, 0x0B), (0x0372, 0x08), (0x0373, 0x0C), (0x03D5, 0x0F),
             (0x04A7, 0x0E), (0x04AC, 0x0A), (0x04B4, 0x0B),
             (0x04B5, 0x09), (0x04B7, 0x0A), (0x04BA, 0x09),
             (0x04BC, 0x0B), (0x04CA, 0x09),
@@ -2197,8 +4481,17 @@ def collect_levelscript_audio_semantics(
             _action_map, memberships = levelscript_action_map_membership(data, records)
             rows: list[dict[str, Any]] = []
             target_count = 0
+            non_action_target_count = 0
+            non_action_target_roles: Counter[str] = Counter()
             for index, record in enumerate(records):
                 if levelscript_record_semantic_key(record) not in target_keys:
+                    continue
+                action_map_role = str(
+                    memberships.get(int(record.get("start") or 0)) or ""
+                )
+                if not action_map_role.startswith("actionList"):
+                    non_action_target_count += 1
+                    non_action_target_roles[action_map_role or "unknown"] += 1
                     continue
                 target_count += 1
                 next_start = (
@@ -2219,7 +4512,12 @@ def collect_levelscript_audio_semantics(
                         "actionMapRole": str(memberships.get(int(record.get("start") or 0)) or ""),
                         "audioAction": audio_action,
                     })
-            return {"targetCount": target_count, "rows": rows}
+            return {
+                "targetCount": target_count,
+                "rows": rows,
+                "nonActionTargetCount": non_action_target_count,
+                "nonActionTargetRoles": dict(non_action_target_roles),
+            }
 
     overlay: dict[str, tuple[str, Path]] = {}
     for source_root in ("StreamingAssets", "Persistent"):
@@ -2233,6 +4531,7 @@ def collect_levelscript_audio_semantics(
     seen: dict[str, set[str]] = defaultdict(set)
     cue_invocations: list[dict[str, Any]] = []
     dynamic_event_bindings: list[dict[str, Any]] = []
+    resolved_dynamic_event_bindings: list[dict[str, Any]] = []
     radio_invocations: list[dict[str, Any]] = []
     dynamic_radio_bindings: list[dict[str, Any]] = []
     control_actions: list[dict[str, Any]] = []
@@ -2242,6 +4541,11 @@ def collect_levelscript_audio_semantics(
     target_records = 0
     decoded_records = 0
     decode_failures = 0
+    non_action_target_records = 0
+    non_action_target_roles: Counter[str] = Counter()
+    levelscript_brief_cache: dict[
+        tuple[str, str], tuple[dict[str, Any] | None, str]
+    ] = {}
 
     def compact_fields(fields: Any) -> dict[str, dict[str, Any]]:
         if not isinstance(fields, dict):
@@ -2269,6 +4573,10 @@ def collect_levelscript_audio_semantics(
             continue
         rows = (decoded.get("rows") or []) if isinstance(decoded, dict) else []
         target_records += int(decoded.get("targetCount") or len(rows)) if isinstance(decoded, dict) else len(rows)
+        if isinstance(decoded, dict):
+            non_action_target_records += int(decoded.get("nonActionTargetCount") or 0)
+            for role, count in (decoded.get("nonActionTargetRoles") or {}).items():
+                non_action_target_roles[str(role)] += int(count or 0)
         if rows:
             source_files_with_actions += 1
         source_path = normalize_posix(path.relative_to(export_root))
@@ -2439,14 +4747,66 @@ def collect_levelscript_audio_semantics(
                 field = fields.get(field_name) or {}
                 if field.get("bindingKind") != "dynamic":
                     continue
-                dynamic_event_bindings.append({
+                dynamic_binding = {
                     **common,
                     "kind": "levelScriptDynamicAudioBinding",
                     "triggerRole": role,
                     "sourceField": str(field.get("sourceField") or f"_{field_name}"),
                     "binding": field,
                     "resolutionStatus": "runtimeParamValueUnresolved",
-                })
+                }
+                if (
+                    field.get("paramSource") == 200
+                    and field.get("idRef") == -1
+                    and isinstance(field.get("path"), str)
+                    and field.get("path")
+                ):
+                    brief, brief_source_path = _load_levelscript_brief_property_sources(
+                        export_root,
+                        levelscript_id,
+                        source_root,
+                        levelscript_brief_cache,
+                    )
+                    resolution = resolve_levelscript_dynamic_property_string(
+                        brief,
+                        field,
+                    )
+                    if resolution:
+                        resolved_event_name = str(resolution.get("value") or "").strip()
+                        if resolved_event_name:
+                            dynamic_binding.update({
+                                "resolutionStatus": "resolvedLevelScriptBriefProperty",
+                                "resolvedEventName": resolved_event_name,
+                                "resolution": resolution,
+                                "resolutionSourcePath": brief_source_path,
+                            })
+                            resolved_dynamic_event_bindings.append(dynamic_binding)
+                            _append_context(contexts, seen, resolved_event_name, {
+                                **common,
+                                "kind": "levelScriptAudioActionDynamicProperty",
+                                "semanticRole": (
+                                    "authoredLevelScriptAudioActionPropertyEvent"
+                                ),
+                                "eventName": resolved_event_name,
+                                "triggerRole": role,
+                                "sourceField": dynamic_binding["sourceField"],
+                                "dynamicBinding": field,
+                                "resolutionStatus": (
+                                    "resolvedLevelScriptBriefProperty"
+                                ),
+                                "resolution": resolution,
+                                "resolutionSourcePath": brief_source_path,
+                                "triggerRequestEvidence": [
+                                    "exactLevelScriptAudioActionUnionAndFields",
+                                    "exactLevelScriptParamSource200PropertyPath",
+                                    "exactLevelScriptBriefDataStringProperty",
+                                ],
+                                "triggerRuntimeActivationStatuses": [
+                                    "levelScriptActionExecutionNotObserved",
+                                    "resolvedEventRuntimePlaybackUnobserved",
+                                ],
+                            })
+                dynamic_event_bindings.append(dynamic_binding)
 
     event_context_count = sum(len(rows) for rows in contexts.values())
     direct_event_context_count = sum(
@@ -2478,6 +4838,7 @@ def collect_levelscript_audio_semantics(
         "eventContexts": dict(contexts),
         "cueInvocations": cue_invocations,
         "dynamicEventBindings": dynamic_event_bindings,
+        "resolvedDynamicEventBindings": resolved_dynamic_event_bindings,
         "radioInvocations": radio_invocations,
         "dynamicRadioBindings": dynamic_radio_bindings,
         "controlActions": control_actions,
@@ -2488,6 +4849,8 @@ def collect_levelscript_audio_semantics(
             "targetAudioActionRecords": target_records,
             "decodedAudioActionRecords": decoded_records,
             "decodeFailures": decode_failures,
+            "skippedNonActionTargetRecords": non_action_target_records,
+            "skippedNonActionTargetRoles": dict(sorted(non_action_target_roles.items())),
             "eventRequestContexts": event_context_count,
             "constantEventRequestContexts": direct_event_context_count,
             "constantEventNames": direct_event_names,
@@ -2495,6 +4858,7 @@ def collect_levelscript_audio_semantics(
             "cueBehaviorEventContexts": cue_behavior_context_count,
             "cueDefinitionStatusCounts": dict(sorted(cue_definition_statuses.items())),
             "dynamicEventBindings": len(dynamic_event_bindings),
+            "resolvedDynamicEventBindings": len(resolved_dynamic_event_bindings),
             "radioActionRecords": sum(radio_action_counts.values()),
             "constantRadioBindings": len(radio_invocations),
             "dynamicRadioBindings": len(dynamic_radio_bindings),
@@ -2516,8 +4880,951 @@ def collect_levelscript_audio_semantics(
             "Exact union/member-count fields prove authored LevelScript requests and routing. "
             "Constant Event parameters and cue names joined through the native AudioHashGenerator and exact "
             "AudioCue behavior expressions become Event contexts. Cue handler/condition evaluation, action "
-            "execution, dynamic Param values, state/variable writes, playback handles, and placeholder-music "
-            "ids are not observed."
+            "execution, unresolved dynamic Param values, state/variable writes, playback handles, and "
+            "placeholder-music ids are not observed. A resolved ParamSource=200 property still proves only "
+            "the authored property-to-action string join, not action execution or Wwise playback."
+        ),
+    }
+
+
+# The two action records below are the only current-build LevelScript actions
+# whose serialized ``_levelSeqId`` is a direct Timeline identity.  Keep this
+# table deliberately small: a same-looking string in another union is not
+# enough to promote an AudioEventPlayable to an authored trigger.
+LEVELSEQUENCE_PLAY_ACTION_DEFINITIONS = {
+    (0x0360, 0x0F): {
+        "action": "PlayLevelSequence",
+        "nativeMappingId": "PlayLevelSequenceAction.memberCount15",
+        "serializedField": "_levelSeqId",
+    },
+    (0x0361, 0x12): {
+        "action": "PlayLevelSequenceAndControlSceneObjects",
+        "nativeMappingId": (
+            "PlayLevelSequenceAndControlSceneObjectsAction.memberCount18"
+        ),
+        "serializedField": "_levelSeqId",
+    },
+}
+
+
+def normalize_levelsequence_audio_id(value: Any) -> str:
+    """Return the authored sequence id only for the exact ``_Audio`` suffix."""
+
+    text = str(value or "").strip()
+    if not text.endswith("_Audio"):
+        return ""
+    base = text[:-len("_Audio")]
+    return base if base.startswith("levelseq_") else ""
+
+
+def _active_levelscript_overlay(
+    export_root: Path,
+    *,
+    levelscript_root: Path | None = None,
+) -> dict[str, tuple[str, Path]]:
+    """Return the active Persistent-over-Streaming LevelScript files."""
+
+    if levelscript_root is not None:
+        root = Path(levelscript_root)
+        return {
+            path.relative_to(root).as_posix(): ("fixture", path)
+            for path in sorted(root.rglob("*.json"))
+        }
+    overlay: dict[str, tuple[str, Path]] = {}
+    for source_root in ("StreamingAssets", "Persistent"):
+        root = (
+            export_root / "structured" / source_root / "Data" / "Json"
+            / "LevelScriptData"
+        )
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*.json"):
+            overlay[path.relative_to(root).as_posix()] = (source_root, path)
+    return overlay
+
+
+def _levelsequence_fields_from_decoded_detail(detail: Any) -> list[dict[str, Any]]:
+    """Extract the unique tagged levelseq field from a validated action payload."""
+
+    if not isinstance(detail, dict):
+        return []
+    fields: list[dict[str, Any]] = []
+    for field in detail.get("taggedFields") or []:
+        if not isinstance(field, dict) or field.get("type") != "string":
+            continue
+        value = str(field.get("value") or "").strip()
+        if value.startswith("levelseq_") and not any(
+            row.get("value") == value for row in fields
+        ):
+            fields.append({
+                "value": value,
+                "offset": str(field.get("offset") or ""),
+            })
+    return fields if len(fields) == 1 else []
+
+
+def _levelsequence_ids_from_decoded_detail(detail: Any) -> list[str]:
+    """Compatibility helper returning only an unambiguous levelseq id."""
+
+    return [str(row.get("value") or "") for row in _levelsequence_fields_from_decoded_detail(detail)]
+
+
+def collect_levelsequence_play_actions(
+    export_root: Path,
+    *,
+    levelscript_root: Path | None = None,
+    decode_file: Any | None = None,
+) -> dict[str, Any]:
+    """Collect exact active-overlay PlayLevelSequence id records.
+
+    The parser intentionally requires the current union tag/member count and
+    a tagged ``levelseq_*`` string.  It does not claim that the action ran or
+    that a Timeline Director eventually posted the Wwise Event.
+    """
+
+    if decode_file is None:
+        try:
+            from story_builder.levelscript_binary import (
+                decode_levelscript_record_payload,
+                extract_levelscript_uid_records,
+                levelscript_record_semantic_key,
+            )
+        except ImportError:
+            from scripts.story_builder.levelscript_binary import (
+                decode_levelscript_record_payload,
+                extract_levelscript_uid_records,
+                levelscript_record_semantic_key,
+            )
+
+        def decode_file(_path: Path, data: bytes) -> dict[str, Any]:
+            records = extract_levelscript_uid_records(data)
+            rows: list[dict[str, Any]] = []
+            target_count = 0
+            for index, record in enumerate(records):
+                key = levelscript_record_semantic_key(record)
+                definition = LEVELSEQUENCE_PLAY_ACTION_DEFINITIONS.get(key)
+                if not definition:
+                    continue
+                target_count += 1
+                member_count = int(record.get("serializedMemberCount") or 0)
+                if member_count != key[1]:
+                    continue
+                next_start = (
+                    int(records[index + 1].get("start") or 0)
+                    if index + 1 < len(records)
+                    else len(data)
+                )
+                try:
+                    detail = decode_levelscript_record_payload(
+                        data, record, next_start=next_start
+                    )
+                except (ValueError, IndexError, struct.error):
+                    continue
+                fields = _levelsequence_fields_from_decoded_detail(detail)
+                for field in fields:
+                    value = str(field.get("value") or "")
+                    rows.append({
+                        "record": record,
+                        "recordIndex": index,
+                        "definition": definition,
+                        "levelSequenceId": value,
+                        "levelSequenceFieldOffset": field.get("offset"),
+                    })
+            return {"targetCount": target_count, "rows": rows}
+
+    actions: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    overlay = _active_levelscript_overlay(
+        export_root, levelscript_root=levelscript_root
+    )
+    target_records = 0
+    decoded_records = 0
+    decode_failures = 0
+    source_files_with_actions = 0
+    for relative_path, (source_root, path) in sorted(overlay.items()):
+        try:
+            data = path.read_bytes()
+            decoded = decode_file(path, data) or {}
+        except (OSError, ValueError, struct.error):
+            decode_failures += 1
+            continue
+        target_records += int(decoded.get("targetCount") or 0)
+        rows = decoded.get("rows") or []
+        if rows:
+            source_files_with_actions += 1
+        try:
+            source_path = normalize_posix(path.relative_to(export_root))
+        except ValueError:
+            source_path = normalize_posix(path)
+        source_sha256 = hashlib.sha256(data).hexdigest()
+        levelscript_id = str(PurePosixPath(relative_path).with_suffix(""))
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            sequence_id = str(row.get("levelSequenceId") or "").strip()
+            definition = row.get("definition")
+            record = row.get("record") if isinstance(row.get("record"), dict) else {}
+            if not sequence_id or not isinstance(definition, dict):
+                continue
+            decoded_records += 1
+            action = str(definition.get("action") or "")
+            actions[sequence_id].append({
+                "action": action,
+                "levelSequenceId": sequence_id,
+                "levelScriptId": levelscript_id,
+                "sourceRoot": source_root,
+                "sourcePath": source_path,
+                "sourceSha256": source_sha256,
+                "recordIndex": row.get("recordIndex"),
+                "recordStart": int(record.get("start") or 0),
+                "recordUid": str(record.get("uid") or ""),
+                "recordLocalId": record.get("localId"),
+                "unionTag": record.get("unionTag"),
+                "serializedMemberCount": record.get("serializedMemberCount"),
+                "nativeMappingId": str(definition.get("nativeMappingId") or ""),
+                "serializedField": str(definition.get("serializedField") or "_levelSeqId"),
+                "levelSequenceFieldOffset": str(row.get("levelSequenceFieldOffset") or ""),
+                "evidence": "exactCurrentActiveLevelScriptMemoryPackLevelSeqId",
+                "runtimeActivationStatus": "playLevelSequenceActionExecutionNotObserved",
+            })
+    for rows in actions.values():
+        rows.sort(key=lambda row: (
+            str(row.get("sourcePath") or ""),
+            int(row.get("recordStart") or 0),
+        ))
+    return {
+        "actionsByLevelSequenceId": dict(actions),
+        "stats": {
+            "sourceFiles": len(overlay),
+            "sourceFilesWithPlayLevelSequenceActions": source_files_with_actions,
+            "playLevelSequenceActionRecords": decoded_records,
+            "playLevelSequenceTargetRecords": target_records,
+            "uniquePlayLevelSequenceIds": len(actions),
+            "decodeFailures": decode_failures,
+        },
+        "evidenceBoundary": (
+            "Current active Persistent-over-Streaming LevelScript union tags and member counts, "
+            "plus tagged levelseq_* strings, prove authored _levelSeqId records. They do not prove "
+            "PlayLevelSequence execution, Director activation, or Wwise posting."
+        ),
+    }
+
+
+def _object_identity(record: dict[str, Any]) -> dict[str, Any]:
+    obj = record.get("object") if isinstance(record.get("object"), dict) else {}
+    return {
+        "serializedFile": str(obj.get("serializedFile") or ""),
+        "pathId": obj.get("pathId"),
+        "source": str(obj.get("source") or ""),
+        "sourceOffset": obj.get("sourceOffset"),
+    }
+
+
+def _object_identity_key(value: dict[str, Any] | None) -> tuple[str, int] | None:
+    if not isinstance(value, dict):
+        return None
+    serialized_file = str(value.get("serializedFile") or "")
+    try:
+        path_id = int(value.get("pathId"))
+    except (TypeError, ValueError):
+        return None
+    return (serialized_file, path_id) if serialized_file else None
+
+
+def _scalar_value(record: dict[str, Any], path: str) -> Any:
+    for row in record.get("scalars") or []:
+        if isinstance(row, (list, tuple)) and len(row) >= 3 and row[0] == path:
+            return row[2]
+    return None
+
+
+def _resolved_pptr(record: dict[str, Any], path: str) -> dict[str, Any] | None:
+    for row in record.get("pptrs") or []:
+        if not isinstance(row, dict) or row.get("path") != path:
+            continue
+        target = row.get("target")
+        if isinstance(target, dict):
+            identity = {
+                "serializedFile": str(target.get("serializedFile") or ""),
+                "pathId": target.get("pathId"),
+                "source": str(target.get("source") or ""),
+                "sourceOffset": target.get("sourceOffset"),
+                "type": str(target.get("type") or ""),
+                "name": str(target.get("name") or ""),
+            }
+            if _object_identity_key(identity):
+                return identity
+    return None
+
+
+def _object_index_path(
+    export_root: Path,
+    class_name: str,
+    explicit: Path | None,
+) -> Path:
+    if explicit is not None:
+        return Path(explicit)
+    return (
+        export_root / "recovered" / "AnimeStudio-cli" / "StreamingAssets"
+        / "object_index" / "parts"
+        / f"StreamingAssets_animestudio_json_by_type_{class_name}.jsonl"
+    )
+
+
+def collect_timeline_audio_ownership(
+    export_root: Path,
+    *,
+    event_ids: Iterable[str] | None = None,
+    cue_names: Iterable[str] | None = None,
+    mono_path: Path | None = None,
+    director_path: Path | None = None,
+) -> dict[str, Any]:
+    """Recover serialized Timeline audio ownership joins.
+
+    AudioEventPlayable carries a Wwise Event name directly.  AudioCuePlayable
+    carries a cue name instead; keeping that namespace separate is important:
+    a cue is resolved by AudioCueSystem/AudioCueTable and is not itself a
+    Wwise Event.  Both playable types share the same exact Track/Timeline and
+    PlayableDirector PPtr chain.
+    """
+
+    wanted = {
+        str(value or "").strip().lower()
+        for value in (event_ids or [])
+        if str(value or "").strip()
+    }
+    scan_all_cues = cue_names is None
+    wanted_cues = {
+        str(value or "").strip().casefold()
+        for value in (cue_names or [])
+        if str(value or "").strip()
+    }
+    mono_file = _object_index_path(export_root, "MonoBehaviour", mono_path)
+    directors_file = _object_index_path(export_root, "PlayableDirector", director_path)
+    playable_events: dict[tuple[str, int], str] = {}
+    playable_cues: dict[tuple[str, int], dict[str, str]] = {}
+    carriers: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    cue_carriers: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    stats = Counter()
+
+    # The object-index writer is not required to emit a referenced asset before
+    # the Track that points at it.  Pre-index the small playable subset so an
+    # AudioMusicPlayable after its Track is still an exact PPtr join.  This is
+    # deliberately not a full object-index materialization.
+    if mono_file.is_file():
+        with mono_file.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                if not isinstance(record, dict) or record.get("recordType") != "object":
+                    continue
+                name = str(record.get("name") or "")
+                script_name = _scalar_value(record, "$.m_Name")
+                is_audio_event_playable = (
+                    "AudioEventPlayable" in name
+                    or "AudioDlgEventPlayable" in name
+                    or "AudioMusicPlayable" in name
+                    or script_name in {
+                        "AudioEventPlayable",
+                        "AudioDlgEventPlayable",
+                        "AudioMusicPlayable",
+                    }
+                )
+                event_value = _scalar_value(record, "$._audioEventKey")
+                identity = _object_identity(record)
+                key = _object_identity_key(identity)
+                event_id = str(event_value or "").strip().lower()
+                if is_audio_event_playable and event_id and key and (
+                    not wanted
+                    or event_id in wanted
+                    or "AudioMusicPlayable" in name
+                    or script_name == "AudioMusicPlayable"
+                ):
+                    playable_events[key] = event_id
+                    if "AudioMusicPlayable" in name or script_name == "AudioMusicPlayable":
+                        stats["audioMusicPlayableRecords"] += 1
+
+    if mono_file.is_file():
+        with mono_file.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except (json.JSONDecodeError, TypeError):
+                    stats["decodeFailures"] += 1
+                    continue
+                if not isinstance(record, dict) or record.get("recordType") != "object":
+                    continue
+                stats["monoObjects"] += 1
+                name = str(record.get("name") or "")
+                script_name = _scalar_value(record, "$.m_Name")
+                event_value = _scalar_value(record, "$._audioEventKey")
+                if event_value is not None and (
+                    "AudioEventPlayable" in name
+                    or "AudioDlgEventPlayable" in name
+                    or "AudioMusicPlayable" in name
+                    or script_name
+                    in {"AudioEventPlayable", "AudioDlgEventPlayable"}
+                    or script_name == "AudioMusicPlayable"
+                ):
+                    event_id = str(event_value or "").strip().lower()
+                    identity = _object_identity(record)
+                    key = _object_identity_key(identity)
+                    is_music_playable = (
+                        "AudioMusicPlayable" in name or script_name == "AudioMusicPlayable"
+                    )
+                    if event_id and key and (
+                        not wanted or event_id in wanted or is_music_playable
+                    ):
+                        playable_events[key] = event_id
+                        stats["audioEventPlayableRecords"] += 1
+                cue_start = str(_scalar_value(record, "$._startCueName") or "").strip()
+                cue_end = str(_scalar_value(record, "$._endCueName") or "").strip()
+                if (cue_start or cue_end) and (
+                    "AudioCuePlayable" in name
+                    or _scalar_value(record, "$.m_Name") == "AudioCuePlayable"
+                ):
+                    cue_values = {
+                        value.casefold() for value in (cue_start, cue_end) if value
+                    }
+                    identity = _object_identity(record)
+                    key = _object_identity_key(identity)
+                    if key and (not wanted_cues or cue_values & wanted_cues):
+                        playable_cues[key] = {
+                            "startCueName": cue_start,
+                            "endCueName": cue_end,
+                        }
+                        stats["audioCuePlayableRecords"] += 1
+                clip_displays = []
+                for scalar in record.get("scalars") or []:
+                    if not isinstance(scalar, (list, tuple)) or len(scalar) < 3:
+                        continue
+                    match = re.fullmatch(
+                        r"\$\.m_Clips\[(\d+)\]\.m_DisplayName",
+                        str(scalar[0]),
+                    )
+                    if not match:
+                        continue
+                    value = str(scalar[2] or "").strip().lower()
+                    if value:
+                        clip_displays.append((int(match.group(1)), value))
+                for clip_index, display_name in clip_displays:
+                    if (
+                        wanted
+                        and not scan_all_cues
+                        and not wanted_cues
+                        and display_name not in wanted
+                        and display_name not in {
+                            "audioeventplayable",
+                            "audiodlgeventplayable",
+                            "audiomusicplayable",
+                        }
+                    ):
+                        continue
+                    parent = _resolved_pptr(record, "$.m_Parent")
+                    asset = _resolved_pptr(
+                        record, f"$.m_Clips[{clip_index}].m_Asset"
+                    )
+                    track_identity = _object_identity(record)
+                    track_key = _object_identity_key(track_identity)
+                    parent_key = _object_identity_key(parent)
+                    asset_key = _object_identity_key(asset)
+                    if not track_key or not parent_key or not asset_key:
+                        stats["timelineCarrierMissingIdentity"] += 1
+                        continue
+                    playable_event_id = playable_events.get(asset_key)
+                    playable_cue = playable_cues.get(asset_key)
+                    asset_name = str(asset.get("name") or asset.get("type") or "")
+                    asset_is_audio_playable = (
+                        "AudioEventPlayable" in asset_name
+                        or "AudioDlgEventPlayable" in asset_name
+                        or "AudioMusicPlayable" in asset_name
+                    )
+                    asset_is_audio_music = "AudioMusicPlayable" in asset_name
+                    asset_is_audio_cue = "AudioCuePlayable" in asset_name
+                    if (
+                        wanted
+                        and (playable_event_id or asset_is_audio_playable)
+                        and display_name not in wanted
+                        and playable_event_id not in wanted
+                        and not asset_is_audio_music
+                    ):
+                        continue
+                    if playable_event_id and playable_event_id != display_name:
+                        if not asset_is_audio_music:
+                            stats["timelineCarrierPlayableMismatch"] += 1
+                            continue
+                        stats["timelineCarrierMusicDisplayNameMismatchAccepted"] += 1
+                    if not playable_event_id and not playable_cue and not asset_is_audio_playable and not asset_is_audio_cue:
+                        stats["timelineCarrierPlayableTypeUnresolved"] += 1
+                        continue
+                    parent_name = str(parent.get("name") or "")
+                    base_id = normalize_levelsequence_audio_id(parent_name)
+                    if not base_id:
+                        stats["timelineCarrierNonLevelSequenceParent"] += 1
+                    occurrence = {
+                        "eventId": playable_event_id or display_name,
+                        "timelineClipDisplayName": display_name,
+                        "timelineAssetName": parent_name,
+                        "timelineAssetNameBase": base_id,
+                        "timelineParentNameStatus": (
+                            "exactLevelSequenceAudioSuffix"
+                            if base_id else "nonLevelSequenceTimelineParent"
+                        ),
+                        "timelineAssetSerializedFile": parent.get("serializedFile"),
+                        "timelineAssetPathId": parent.get("pathId"),
+                        "timelineAssetSource": parent.get("source"),
+                        "timelineAssetSourceOffset": parent.get("sourceOffset"),
+                        "timelineTrackName": name,
+                        "timelineClipIndex": clip_index,
+                        "timelineTrackSerializedFile": track_identity.get("serializedFile"),
+                        "timelineTrackPathId": track_identity.get("pathId"),
+                        "timelineTrackSource": track_identity.get("source"),
+                        "timelineTrackSourceOffset": track_identity.get("sourceOffset"),
+                        "audioPlayableType": asset_name or "AudioEventPlayable",
+                        "audioPlayableKeyStatus": (
+                            "exactAudioEventPlayableScalar"
+                            if playable_event_id
+                            else "trackDisplayNameOnlyScalar"
+                        ),
+                        "audioPlayableSerializedFile": asset.get("serializedFile"),
+                        "audioPlayablePathId": asset.get("pathId"),
+                        "evidence": (
+                            "exactAudioEventPlayableScalarTrackParentAssetPPtrs"
+                            if playable_event_id
+                            else "exactTimelineTrackDisplayNameAudioPlayableParentAssetPPtrs"
+                        ),
+                    }
+                    if playable_event_id or asset_is_audio_playable:
+                        carriers[playable_event_id or display_name].append(occurrence)
+                        stats["exactTimelineCarriers"] += 1
+                        if asset_is_audio_music:
+                            stats["exactTimelineMusicCarriers"] += 1
+                    elif playable_cue or asset_is_audio_cue:
+                        cue_values = playable_cue or {
+                            "startCueName": display_name,
+                            "endCueName": "",
+                        }
+                        if wanted_cues and not any(
+                            str(cue_values.get(key) or "").strip().casefold() in wanted_cues
+                            for key in ("startCueName", "endCueName")
+                        ):
+                            continue
+                        for cue_role in ("startCueName", "endCueName"):
+                            cue_name = str(cue_values.get(cue_role) or "").strip()
+                            if not cue_name:
+                                continue
+                            cue_occurrence = dict(occurrence)
+                            cue_occurrence.update({
+                                "cueName": cue_name,
+                                "cueRole": "start" if cue_role == "startCueName" else "end",
+                                "audioPlayableType": asset_name or "AudioCuePlayable",
+                                "audioPlayableKeyStatus": (
+                                    "exactAudioCuePlayableScalars"
+                                    if playable_cue else "trackDisplayNameOnlyAudioCuePlayable"
+                                ),
+                                "evidence": (
+                                    "exactAudioCuePlayableScalarsTrackParentAssetPPtrs"
+                                    if playable_cue else
+                                    "exactTimelineTrackDisplayNameAudioCuePlayableParentAssetPPtrs"
+                                ),
+                            })
+                            cue_carriers[cue_name.casefold()].append(cue_occurrence)
+                            stats["exactTimelineCueCarriers"] += 1
+    stats["timelineCarrierEvents"] = len(carriers)
+    stats["timelineCarrierCues"] = len(cue_carriers)
+    parent_keys = {
+        _object_identity_key({
+            "serializedFile": row.get("timelineAssetSerializedFile"),
+            "pathId": row.get("timelineAssetPathId"),
+        })
+        for rows in list(carriers.values()) + list(cue_carriers.values())
+        for row in rows
+    }
+    parent_keys.discard(None)
+    director_rows: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
+    if directors_file.is_file() and parent_keys:
+        with directors_file.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except (json.JSONDecodeError, TypeError):
+                    stats["directorDecodeFailures"] += 1
+                    continue
+                if not isinstance(record, dict) or record.get("recordType") != "object":
+                    continue
+                stats["playableDirectorRecords"] += 1
+                playable_asset = _resolved_pptr(record, "$.m_PlayableAsset")
+                key = _object_identity_key(playable_asset)
+                if key not in parent_keys:
+                    continue
+                identity = _object_identity(record)
+                director_rows[key].append({
+                    "playableDirectorName": str(record.get("name") or "PlayableDirector"),
+                    "playableDirectorSerializedFile": identity.get("serializedFile"),
+                    "playableDirectorPathId": identity.get("pathId"),
+                    "playableDirectorSource": identity.get("source"),
+                    "playableDirectorSourceOffset": identity.get("sourceOffset"),
+                    "playableDirectorPlayableAssetName": playable_asset.get("name") or "",
+                    "evidence": "exactPlayableDirectorPlayableAssetPPtr",
+                })
+                stats["exactPlayableDirectorLinks"] += 1
+    for rows in list(carriers.values()) + list(cue_carriers.values()):
+        for row in rows:
+            parent_key = _object_identity_key({
+                "serializedFile": row.get("timelineAssetSerializedFile"),
+                "pathId": row.get("timelineAssetPathId"),
+            })
+            row["playableDirectors"] = list(director_rows.get(parent_key, []))
+    stats["timelineParents"] = len(parent_keys)
+    stats["timelineParentsWithDirector"] = sum(
+        bool(director_rows.get(key)) for key in parent_keys
+    )
+    stats["timelineParentsWithoutDirector"] = len(parent_keys) - stats["timelineParentsWithDirector"]
+    stats["timelineEventsWithDirector"] = sum(
+        any(row.get("playableDirectors") for row in rows)
+        for rows in carriers.values()
+    )
+    return {
+        "occurrencesByEvent": dict(carriers),
+        "occurrencesByCue": dict(cue_carriers),
+        "stats": dict(stats),
+        "evidenceBoundary": (
+            "AudioEventPlayable scalar keys, Track m_Asset/m_Parent PPtrs, and PlayableDirector "
+            "m_PlayableAsset PPtrs are exact serialized-object identity joins. They prove authored "
+            "Timeline ownership and Director references, not Director activation, audio posting, or "
+            "Wwise leaf selection."
+        ),
+    }
+
+
+def build_levelsequence_audio_contexts(
+    event_ids: Iterable[str],
+    ownership: dict[str, Any],
+    play_actions: dict[str, Any],
+) -> dict[str, Any]:
+    """Build bounded exact/inferred/gap context rows for target Events."""
+
+    contexts: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    seen: dict[str, set[str]] = defaultdict(set)
+    occurrences_by_event = ownership.get("occurrencesByEvent") or {}
+    actions_by_id = play_actions.get("actionsByLevelSequenceId") or {}
+    stats = Counter()
+    context_event_ids: set[str] = set()
+    exact_action_event_ids: set[str] = set()
+    inferred_trigger_event_ids: set[str] = set()
+    target_ids = sorted({str(value or "").strip().lower() for value in event_ids if str(value or "").strip()})
+    for event_id in target_ids:
+        occurrences = [row for row in occurrences_by_event.get(event_id) or [] if isinstance(row, dict)]
+        if not occurrences:
+            _append_context(contexts, seen, event_id, {
+                "kind": "levelSequenceAudio",
+                "semanticRole": "timelineAudioOwnershipGap",
+                "confidence": "gap",
+                "ownershipEvidenceLevel": "gap",
+                "triggerEvidenceLevel": "gap",
+                "timelineOwnershipStatus": "timelineCarrierMissingFromCurrentObjectIndex",
+                "triggerBindingStatus": "timelineCarrierMissingFromCurrentObjectIndex",
+                "triggerRole": "PlayLevelSequence",
+                "runtimeActivationStatus": "timelineAudioCarrierNotFound",
+                "triggerRuntimeActivationStatuses": [
+                    "timelineCarrierMissingFromCurrentObjectIndex",
+                    "playLevelSequenceTriggerUnresolved",
+                    "audioEventRuntimePlaybackUnobserved",
+                ],
+                "triggerRequestEvidence": [
+                    "canonicalEventWithPossibleWwiseMedia",
+                    "currentObjectIndexCarrierSearch",
+                ],
+                "triggerEvidenceKinds": ["levelSequenceAudioOwnershipGap"],
+                "evidenceBoundary": "No AudioEventPlayable/Track carrier was found in the current object index; no Timeline or Director owner is claimed.",
+            })
+            stats["eventsWithoutTimelineCarrier"] += 1
+            context_event_ids.add(event_id)
+            continue
+        for occurrence in occurrences:
+            sequence_id = str(occurrence.get("timelineAssetNameBase") or "")
+            action_rows = [row for row in actions_by_id.get(sequence_id) or [] if isinstance(row, dict)]
+            director_rows = [row for row in occurrence.get("playableDirectors") or [] if isinstance(row, dict)]
+            has_director = bool(director_rows)
+            has_action = bool(action_rows)
+            confidence = "exact" if has_director and has_action else "inferred"
+            trigger_status = (
+                "exactLevelSequenceIdJoin" if has_action
+                else "timelineParentNotLevelSequence" if not sequence_id
+                else "timelineDirectorPlaybackTriggerUnresolved"
+            )
+            ownership_status = (
+                "exactTimelineDirectorOwner" if has_director
+                else "exactTimelineOwnerDirectorUnresolved"
+            )
+            context = {
+                "kind": "levelSequenceAudio",
+                "semanticRole": "authoredTimelineAudioEvent",
+                "confidence": confidence,
+                "ownershipEvidenceLevel": "exactSerializedTimelineCarrier",
+                "triggerEvidenceLevel": "exact" if has_action else "inferred",
+                "timelineOwnershipStatus": ownership_status,
+                "triggerBindingStatus": trigger_status,
+                "triggerRole": "PlayLevelSequence" if sequence_id else "TimelineAssetPlayback",
+                "runtimeActivationStatus": "playableDirectorRuntimeExecutionNotObserved",
+                "triggerRuntimeActivationStatuses": [
+                    "playLevelSequenceActionExecutionNotObserved" if has_action else (
+                        "playLevelSequenceTriggerUnresolved" if sequence_id
+                        else "timelineParentTriggerUnresolved"
+                    ),
+                    "playableDirectorRuntimeExecutionNotObserved" if has_director else "playableDirectorLinkUnresolved",
+                    "audioEventRuntimePlaybackUnobserved",
+                ],
+                "triggerRequestEvidence": [
+                    (
+                        "exactAudioEventPlayableScalar"
+                        if occurrence.get("audioPlayableKeyStatus") == "exactAudioEventPlayableScalar"
+                        else "exactTimelineTrackDisplayName"
+                    ),
+                    "exactTimelineTrackPPtr",
+                    "exactTimelineParentPPtr",
+                    "exactPlayableDirectorPlayableAssetPPtr" if has_director else "playableDirectorPPtrUnresolved",
+                    "exactLevelScriptPlayLevelSequenceId" if has_action else (
+                        "levelScriptPlayLevelSequenceIdUnresolved" if sequence_id
+                        else "notALevelSequenceParent"
+                    ),
+                ],
+                "triggerEvidenceKinds": [
+                    "AudioEventPlayable",
+                    "TimelineTrack",
+                    "PlayableDirector" if has_director else "PlayableDirectorUnresolved",
+                    "LevelScriptPlayLevelSequence" if has_action else (
+                        "LevelScriptPlayLevelSequenceUnresolved" if sequence_id
+                        else "NonLevelSequenceTimelineParent"
+                    ),
+                ],
+                "levelSequenceId": sequence_id,
+                "timelineParentNameStatus": occurrence.get("timelineParentNameStatus") or (
+                    "exactLevelSequenceAudioSuffix" if sequence_id else "nonLevelSequenceTimelineParent"
+                ),
+                "levelScriptActionCount": len(action_rows),
+                "levelScriptIds": sorted({
+                    str(row.get("levelScriptId") or "")
+                    for row in action_rows
+                    if str(row.get("levelScriptId") or "")
+                }),
+                "levelScriptSourcePaths": sorted({
+                    str(row.get("sourcePath") or "")
+                    for row in action_rows
+                    if str(row.get("sourcePath") or "")
+                }),
+                "levelSequenceFieldOffsets": sorted({
+                    str(row.get("levelSequenceFieldOffset") or "")
+                    for row in action_rows
+                    if str(row.get("levelSequenceFieldOffset") or "")
+                }),
+                "levelScriptEvidence": action_rows,
+                "timelineAssetName": occurrence.get("timelineAssetName"),
+                "timelineAssetNameBase": sequence_id,
+                "timelineAssetSerializedFile": occurrence.get("timelineAssetSerializedFile"),
+                "timelineAssetPathId": occurrence.get("timelineAssetPathId"),
+                "timelineAssetSource": occurrence.get("timelineAssetSource"),
+                "timelineAssetSourceOffset": occurrence.get("timelineAssetSourceOffset"),
+                "timelineTrackName": occurrence.get("timelineTrackName"),
+                "timelineClipIndex": occurrence.get("timelineClipIndex"),
+                "timelineTrackSerializedFile": occurrence.get("timelineTrackSerializedFile"),
+                "timelineTrackPathId": occurrence.get("timelineTrackPathId"),
+                "timelineTrackSource": occurrence.get("timelineTrackSource"),
+                "timelineTrackSourceOffset": occurrence.get("timelineTrackSourceOffset"),
+                "audioPlayableType": occurrence.get("audioPlayableType"),
+                "audioPlayableKeyStatus": occurrence.get("audioPlayableKeyStatus"),
+                "audioPlayableSerializedFile": occurrence.get("audioPlayableSerializedFile"),
+                "audioPlayablePathId": occurrence.get("audioPlayablePathId"),
+                "playableDirectorCount": len(director_rows),
+                "playableDirectorNames": [
+                    str(row.get("playableDirectorName") or "")
+                    for row in director_rows
+                    if str(row.get("playableDirectorName") or "")
+                ],
+                "playableDirectorPathIds": [
+                    row.get("playableDirectorPathId")
+                    for row in director_rows
+                    if row.get("playableDirectorPathId") is not None
+                ],
+                "directorEvidence": director_rows,
+                "timelineEvidence": [
+                    occurrence.get("evidence"),
+                    occurrence.get("audioPlayableKeyStatus"),
+                ],
+                "evidence": "exactSerializedTimelineDirectorChain" if has_director else "exactSerializedTimelineCarrier",
+                "evidenceBoundary": (
+                    "Static Timeline/Director and LevelScript identity joins are exact, but runtime "
+                    "action execution, Director activation, and Wwise playback are not observed."
+                ),
+            }
+            _append_context(contexts, seen, event_id, context)
+            stats["timelineContexts"] += 1
+            context_event_ids.add(event_id)
+            if has_action:
+                exact_action_event_ids.add(event_id)
+            else:
+                inferred_trigger_event_ids.add(event_id)
+            if has_director:
+                stats["contextsWithPlayableDirector"] += 1
+            else:
+                stats["contextsWithoutPlayableDirector"] += 1
+        if len(occurrences) > 1:
+            stats["eventsWithMultipleTimelineOccurrences"] += 1
+    stats["targetEvents"] = len(target_ids)
+    stats["eventsWithTimelineContext"] = len(context_event_ids)
+    stats["eventsWithExactLevelSequenceAction"] = len(exact_action_event_ids)
+    stats["eventsWithInferredTimelineTrigger"] = len(inferred_trigger_event_ids)
+    stats["eventsWithAnyTimelineCarrier"] = sum(bool(occurrences_by_event.get(event_id)) for event_id in target_ids)
+    stats["eventsWithAnyContext"] = sum(bool(contexts.get(event_id)) for event_id in target_ids)
+    return {
+        "eventContexts": dict(contexts),
+        "stats": dict(stats),
+        "evidenceBoundary": (
+            "Exact serialized Timeline ownership is separated from exact static LevelScript id joins. "
+            "Rows without a carrier remain an explicit gap; inferred rows never claim runtime execution "
+            "or selected Wwise media."
+        ),
+    }
+
+
+def build_timeline_audio_cue_contexts(
+    ownership: dict[str, Any],
+    cue_semantics: dict[str, Any],
+) -> dict[str, Any]:
+    """Join AudioCuePlayable carriers to cue definitions and behavior Events.
+
+    The Timeline asset requests a cue, not a Wwise Event.  A behavior Event is
+    emitted only when the native-compatible cue hash resolves to an
+    AudioCueTable definition with an exact ``behaviourExpr`` type-3 value.
+    Unknown cues remain invocation records so the authored trigger is visible
+    without fabricating an Event or media relation.
+    """
+
+    occurrences_by_cue = ownership.get("occurrencesByCue") or {}
+    definitions = cue_semantics.get("cueDefinitions") or {}
+    contexts: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    seen: dict[str, set[str]] = defaultdict(set)
+    invocations: list[dict[str, Any]] = []
+    stats = Counter()
+    event_ids: set[str] = set()
+
+    for cue_key, occurrences in sorted(occurrences_by_cue.items()):
+        for occurrence in occurrences:
+            if not isinstance(occurrence, dict):
+                continue
+            cue_name = str(occurrence.get("cueName") or "").strip()
+            if not cue_name:
+                continue
+            cue_id = audio_hash_generator_compute(cue_name)
+            cue_signed_id = cue_id if cue_id < 0x80000000 else cue_id - 0x100000000
+            definition = definitions.get(cue_id)
+            lookup = {
+                "cueName": cue_name,
+                "cueId": cue_id,
+                "cueSignedId": cue_signed_id,
+                "cueHex": f"0x{cue_id:08x}",
+                "cueHashAlgorithm": "fnv1AsciiLowerUtf16CodeUnits",
+                "cueHashEvidence": "nativeAudioHashGeneratorCompute",
+                "definitionStatus": "resolved" if isinstance(definition, dict) else "missing",
+            }
+            if isinstance(definition, dict):
+                lookup.update({
+                    "handlerCount": int(definition.get("handlerCount") or 0),
+                    "directHandlerCount": int(definition.get("directHandlerCount") or 0),
+                    "levelHandlerCount": int(definition.get("levelHandlerCount") or 0),
+                    "behaviorEventCount": len(definition.get("behaviorEvents") or []),
+                    "expressionOperandCount": len(definition.get("expressionOperands") or []),
+                })
+            invocation = {
+                "kind": "timelineAudioCueInvocation",
+                "semanticRole": "authoredTimelineAudioCue",
+                "confidence": "exact",
+                "ownershipEvidenceLevel": "exactSerializedTimelineCarrier",
+                "triggerEvidenceLevel": "exact",
+                "triggerRole": str(occurrence.get("cueRole") or "start"),
+                "runtimeActivationStatus": "playableDirectorRuntimeExecutionNotObserved",
+                "triggerRuntimeActivationStatuses": [
+                    "timelineCueInvocationExecutionNotObserved",
+                    "cueConditionAndHandlerEvaluationRequired",
+                    "audioEventRuntimePlaybackUnobserved",
+                ],
+                "triggerRequestEvidence": [
+                    "exactAudioCuePlayableScalars",
+                    "exactTimelineTrackPPtr",
+                    "exactTimelineParentPPtr",
+                ],
+                "triggerEvidenceKinds": [
+                    "AudioCuePlayable",
+                    "TimelineTrack",
+                    "PlayableDirector" if occurrence.get("playableDirectors") else "PlayableDirectorUnresolved",
+                ],
+                "evidence": occurrence.get("evidence") or "exactAudioCuePlayableScalarsTrackParentAssetPPtrs",
+                "timelineOwnershipStatus": (
+                    "exactTimelineDirectorOwner"
+                    if occurrence.get("playableDirectors")
+                    else "exactTimelineOwnerDirectorUnresolved"
+                ),
+                "playableDirectorCount": len(occurrence.get("playableDirectors") or []),
+                **lookup,
+                **{
+                    key: occurrence.get(key)
+                    for key in (
+                        "cueRole", "timelineAssetName", "timelineAssetNameBase",
+                        "timelineAssetSerializedFile", "timelineAssetPathId",
+                        "timelineAssetSource", "timelineAssetSourceOffset",
+                        "timelineTrackName", "timelineTrackPathId", "timelineClipIndex",
+                        "timelineTrackSource", "timelineTrackSourceOffset",
+                        "audioPlayableType", "audioPlayableKeyStatus",
+                        "audioPlayableSerializedFile", "audioPlayablePathId",
+                        "playableDirectors",
+                    )
+                },
+            }
+            invocations.append(invocation)
+            stats["timelineCueInvocations"] += 1
+            if isinstance(definition, dict):
+                stats["timelineCueInvocationsResolved"] += 1
+                for behavior in definition.get("behaviorEvents") or []:
+                    if not isinstance(behavior, dict):
+                        continue
+                    event_id = str(behavior.get("eventId") or "").strip().lower()
+                    if not event_id:
+                        continue
+                    context = {
+                        **invocation,
+                        "kind": "timelineAudioCueBehaviorEvent",
+                        "semanticRole": "authoredTimelineAudioCueBehaviorEvent",
+                        "eventName": event_id,
+                        "handlerScope": behavior.get("handlerScope"),
+                        "handlerIndex": behavior.get("handlerIndex"),
+                        "levelId": behavior.get("levelId"),
+                        "expressionSide": behavior.get("expressionSide"),
+                        "expressionPath": behavior.get("expressionPath"),
+                        "exprType": behavior.get("exprType"),
+                        "evidence": "exactTimelineAudioCueToAudioCueBehaviorExpression",
+                        "triggerRequestEvidence": [
+                            "exactAudioCuePlayableScalars",
+                            "nativeAudioHashGeneratorCompute",
+                            "audioCueBehaviorExprType3",
+                        ],
+                    }
+                    _append_context(contexts, seen, event_id, context)
+                    event_ids.add(event_id)
+                    stats["timelineCueBehaviorContexts"] += 1
+            else:
+                stats["timelineCueInvocationsMissing"] += 1
+
+    stats["timelineCueBehaviorEvents"] = len(event_ids)
+    return {
+        "eventContexts": dict(contexts),
+        "invocations": invocations,
+        "stats": dict(stats),
+        "evidenceBoundary": (
+            "AudioCuePlayable start/end cue names and Timeline/Director PPtrs are exact authored "
+            "trigger evidence. Cue hash resolution and behavior Event edges are exact table joins; "
+            "Timeline activation, cue conditions/handlers, AudioCueSystem execution, Wwise branch "
+            "selection, and media playback remain unobserved."
         ),
     }
 
@@ -2886,8 +6193,18 @@ def collect_interactive_component_contexts(
     export_root: Path,
     *,
     decoder: Any | None = None,
+    table_decoder: Any | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Decode per-entity InteractiveAudioData state maps from MemoryPack."""
+    """Decode per-entity InteractiveAudioData state maps from MemoryPack.
+
+    ``InteractiveData`` files are core-template definitions, while
+    ``InteractiveTable`` maps those definitions to configured interactive
+    identities.  The component body itself proves the request, but the file
+    name is not by itself an entity owner.  When both table mirrors decode to
+    the same exact mapping, add the template path and all configured consumer
+    identities to each context.  A missing or ambiguous table mapping stays an
+    explicit association gap rather than being guessed from the file stem.
+    """
 
     if decoder is None:
         try:
@@ -2916,6 +6233,69 @@ def collect_interactive_component_contexts(
                     **parsed,
                 })
             return {"decoded": {"componentAudioComponents": components}}
+
+    # InteractiveTable is an exact serialized ownership index.  Keep this
+    # optional so focused callers/tests that only provide an InteractiveData
+    # fixture retain their bounded component evidence without needing a table.
+    template_ids_by_file_name: dict[str, list[str]] = defaultdict(list)
+    template_paths_by_id: dict[str, str] = {}
+    consumers_by_template: dict[str, list[str]] = defaultdict(list)
+    table_source_paths: list[str] = []
+    table_source_fingerprint = ""
+    table: dict[str, Any] | None = None
+    if table_decoder is None:
+        try:
+            from story_builder.interactive_binary import decode_interactive_table
+        except ImportError:
+            from scripts.story_builder.interactive_binary import decode_interactive_table
+        table_decoder = decode_interactive_table
+    table_versions: list[tuple[str, Path, bytes, str]] = []
+    for source_root in ("Persistent", "StreamingAssets"):
+        table_path = (
+            export_root / "structured" / source_root
+            / "Data/Json/Interactive/InteractiveTable.json"
+        )
+        if not table_path.is_file():
+            continue
+        try:
+            table_data = table_path.read_bytes()
+        except OSError:
+            continue
+        table_versions.append((
+            source_root,
+            table_path,
+            table_data,
+            hashlib.sha256(table_data).hexdigest(),
+        ))
+    if table_versions and len({row[3] for row in table_versions}) == 1:
+        try:
+            table = table_decoder(table_versions[0][2])
+        except (UnicodeDecodeError, struct.error, ValueError):
+            table = None
+        if isinstance(table, dict):
+            table_source_paths = [
+                normalize_posix(path.relative_to(export_root))
+                for _root, path, _data, _digest in table_versions
+            ]
+            table_source_fingerprint = table_versions[0][3]
+            for template_id, template_path in (table.get("coreTemplatePaths") or {}).items():
+                normalized_template_path = normalize_posix(str(template_path or ""))
+                pure_template_path = PurePosixPath(normalized_template_path)
+                if (
+                    pure_template_path.is_absolute()
+                    or ".." in pure_template_path.parts
+                    or not normalized_template_path.startswith(
+                        "Data/Json/Interactive/InteractiveData/"
+                    )
+                ):
+                    continue
+                template_id = str(template_id)
+                template_paths_by_id[template_id] = normalized_template_path
+                file_name = pure_template_path.name
+                if file_name:
+                    template_ids_by_file_name[file_name].append(template_id)
+            for consumer_id, template_id in (table.get("objectToTemplate") or {}).items():
+                consumers_by_template[str(template_id)].append(str(consumer_id))
     paths_by_identity: dict[str, list[Path]] = defaultdict(list)
     for source_root in ("Persistent", "StreamingAssets"):
         root = export_root / "structured" / source_root / "Data/Json/Interactive/InteractiveData"
@@ -2945,6 +6325,26 @@ def collect_interactive_component_contexts(
             if not isinstance(components, list):
                 continue
             source_paths = [normalize_posix(path.relative_to(export_root)) for path in version_paths]
+            template_file_name = f"{owner_id}.json"
+            template_ids = sorted(set(template_ids_by_file_name.get(template_file_name, [])))
+            template_path = ""
+            if len(template_ids) == 1:
+                # The current table has one path per template id.  Keep the
+                # path exact and do not collapse a future ambiguous match.
+                template_path = template_paths_by_id.get(template_ids[0], "")
+            consumer_ids = sorted({
+                consumer
+                for template_id in template_ids
+                for consumer in consumers_by_template.get(template_id, [])
+            })
+            if len(template_ids) == 1:
+                association_status = "exactInteractiveTableTemplatePath"
+            elif len(template_ids) > 1:
+                association_status = "ambiguousInteractiveTableTemplatePath"
+            elif table_versions:
+                association_status = "interactiveTableTemplatePathUnresolved"
+            else:
+                association_status = "interactiveTableIndexUnavailable"
             for component in components:
                 if not isinstance(component, dict):
                     continue
@@ -2962,6 +6362,12 @@ def collect_interactive_component_contexts(
                             "semanticRole": "entityInteractiveLifecycleEvent",
                             "ownerKind": "interactiveEntityConfig",
                             "ownerId": owner_id,
+                            "interactiveTemplateIds": template_ids,
+                            "interactiveTemplatePath": template_path,
+                            "interactiveConsumerIds": consumer_ids,
+                            "templateAssociationStatus": association_status,
+                            "interactiveTableSourcePaths": table_source_paths,
+                            "interactiveTableSha256": table_source_fingerprint,
                             "componentIndex": component_index,
                             "sourceOffset": component.get("sourceOffset"),
                             "triggerStateId": row.get("state"),
@@ -2985,6 +6391,12 @@ def collect_interactive_component_contexts(
                         "semanticRole": "entityInteractiveCustomStateEvent",
                         "ownerKind": "interactiveEntityConfig",
                         "ownerId": owner_id,
+                        "interactiveTemplateIds": template_ids,
+                        "interactiveTemplatePath": template_path,
+                        "interactiveConsumerIds": consumer_ids,
+                        "templateAssociationStatus": association_status,
+                        "interactiveTableSourcePaths": table_source_paths,
+                        "interactiveTableSha256": table_source_fingerprint,
                         "componentIndex": component_index,
                         "sourceOffset": component.get("sourceOffset"),
                         "triggerCustomState": str(row.get("name") or ""),
@@ -4387,6 +7799,8 @@ def build_event_rows(
             "selectionContainerTypes": selection_types,
             "containerEvidence": compact_container_evidence(evidence.get("containerEvidence") or []),
             "musicNodeEvidence": evidence.get("musicNodeEvidence") or [],
+            "sourceObjectSummary": evidence.get("sourceObjectSummary") or {},
+            "nonMediaSourceEvidence": evidence.get("nonMediaSourceEvidence") or [],
             "unresolvedNodes": evidence.get("unresolvedNodes") or [],
             "source": evidence.get("source") or "wwiseHirc",
             "nestedReferenceConfidence": evidence.get("nestedReferenceConfidence") or "unknown",
@@ -4665,6 +8079,8 @@ def semantic_context_group(kind: Any) -> str:
         return "cutscene"
     if value in {"characterAnimation", "enemyAnimation", "animationCallbackOwnerUnresolved"}:
         return "animation"
+    if value in {"levelSequenceAudio", "timelineAudioCueBehaviorEvent"}:
+        return "timeline"
     if value in {"levelScriptAudioAction", "levelScriptAudioCueBehaviorEvent"}:
         return "scripted"
     if value in {
@@ -4682,6 +8098,35 @@ def semantic_context_group(kind: Any) -> str:
 
 def event_summary_row(row: dict[str, Any], detail_shard: str) -> dict[str, Any]:
     contexts = row.get("contexts") or []
+    timeline_contexts = [
+        context for context in contexts
+        if isinstance(context, dict) and context.get("kind") == "levelSequenceAudio"
+    ]
+    timeline_asset_ids = {
+        (
+            str(context.get("timelineAssetSerializedFile") or ""),
+            str(context.get("timelineAssetPathId") or ""),
+        )
+        for context in timeline_contexts
+        if context.get("timelineAssetSerializedFile") or context.get("timelineAssetPathId")
+    }
+    director_count = sum(
+        int(context.get("playableDirectorCount") or 0)
+        for context in timeline_contexts
+    )
+    exact_timeline_count = sum(
+        context.get("confidence") == "exact" for context in timeline_contexts
+    )
+    inferred_timeline_count = sum(
+        context.get("confidence") == "inferred" for context in timeline_contexts
+    )
+    timeline_gap_count = sum(
+        context.get("confidence") == "gap" for context in timeline_contexts
+    )
+    levelsequence_action_count = sum(
+        int(context.get("levelScriptActionCount") or 0)
+        for context in timeline_contexts
+    )
     context_search: set[str] = set()
     for context in contexts:
         if not isinstance(context, dict):
@@ -4727,6 +8172,13 @@ def event_summary_row(row: dict[str, Any], detail_shard: str) -> dict[str, Any]:
             "propertyValueSourceOffset", "valueType", "valueTypeName",
             "runtimeMappingId", "interactiveTableSha256",
             "customFootstepOccurrenceCount",
+            "levelSequenceId", "timelineAssetName", "timelineAssetNameBase",
+            "timelineAssetSerializedFile", "timelineAssetPathId", "timelineTrackName",
+            "timelineTrackPathId", "timelineClipIndex", "audioPlayableType", "audioPlayablePathId",
+            "audioPlayableKeyStatus",
+            "playableDirectorName", "playableDirectorPathId",
+            "ownershipEvidenceLevel", "triggerEvidenceLevel", "timelineOwnershipStatus",
+            "levelScriptActionCount", "playableDirectorCount", "evidenceBoundary",
         ):
             value = context.get(key)
             if value not in (None, "", []):
@@ -4743,6 +8195,9 @@ def event_summary_row(row: dict[str, Any], detail_shard: str) -> dict[str, Any]:
             "interactiveTemplateIds", "interactiveTemplatePaths", "interactiveConsumerIds",
             "authoredSkillIds",
             "bornBuffIds", "preWarnEffectFixedRotation",
+            "playableDirectorNames", "playableDirectorPathIds",
+            "levelScriptIds", "levelScriptSourcePaths",
+            "levelSequenceFieldOffsets",
         ):
             context_search.update(str(value) for value in context.get(key) or [] if str(value))
         for variant in context.get("customFootstepParameterVariants") or []:
@@ -4769,6 +8224,25 @@ def event_summary_row(row: dict[str, Any], detail_shard: str) -> dict[str, Any]:
     media = row.get("media") or []
     scopes = sorted({str(value.get("audioScope") or value.get("storageRoot") or "") for value in media if value.get("audioScope") or value.get("storageRoot")})
     banks = sorted({str(value.get("bankPackage") or "") for evidence in media for value in evidence.get("wwiseMediaEvidence") or [] if value.get("bankPackage")})
+    source_kinds: set[str] = set()
+    source_plugin_ids: set[str] = set()
+    non_media_source_count = 0
+    for evidence in row.get("evidence") or []:
+        if not isinstance(evidence, dict):
+            continue
+        source_summary = evidence.get("sourceObjectSummary") or {}
+        source_kinds.update(str(value) for value in (source_summary.get("sourceKindCounts") or {}))
+        source_plugin_ids.update(str(value) for value in (source_summary.get("pluginCounts") or {}))
+        for source in evidence.get("nonMediaSourceEvidence") or []:
+            if not isinstance(source, dict):
+                continue
+            non_media_source_count += 1
+            for key in (
+                "pluginIdHex", "pluginName", "pluginTypeLabel", "streamTypeLabel",
+                "sourceKind", "mediaLocationStatus",
+            ):
+                if source.get(key) not in (None, ""):
+                    context_search.add(str(source[key]))
     keys = (
         "id", "name", "hash", "category", "categoryEvidence", "foundInWwise",
         "possibleMediaCount", "candidateCount", "uniqueDecodedContentCount",
@@ -4779,6 +8253,9 @@ def event_summary_row(row: dict[str, Any], detail_shard: str) -> dict[str, Any]:
         "playableCharacterAnimationOwnerCount", "enemyAnimationOwnerCount",
         "animationContextScope", "animationFunctions", "customFootstepOccurrenceCount",
         "customFootstepParameterVariants",
+        "timelineContextCount", "timelineAssetCount", "playableDirectorCount",
+        "levelScriptPlayLevelSequenceActionCount", "timelineExactContextCount",
+        "timelineInferredContextCount", "timelineOwnershipGapCount",
     )
     summary = {key: row[key] for key in keys if row.get(key) not in (None, "", [])}
     summary.update({
@@ -4799,6 +8276,22 @@ def event_summary_row(row: dict[str, Any], detail_shard: str) -> dict[str, Any]:
         "bankPackages": banks,
         "detailShard": detail_shard,
     })
+    if timeline_contexts:
+        summary.update({
+            "timelineContextCount": len(timeline_contexts),
+            "timelineAssetCount": len(timeline_asset_ids),
+            "playableDirectorCount": director_count,
+            "levelScriptPlayLevelSequenceActionCount": levelsequence_action_count,
+            "timelineExactContextCount": exact_timeline_count,
+            "timelineInferredContextCount": inferred_timeline_count,
+            "timelineOwnershipGapCount": timeline_gap_count,
+        })
+    if source_kinds:
+        summary["sourceKinds"] = sorted(source_kinds)
+    if source_plugin_ids:
+        summary["sourcePluginIds"] = sorted(source_plugin_ids)
+    if non_media_source_count:
+        summary["nonMediaSourceCount"] = non_media_source_count
     canonical_play_sound_contexts = [
         context for context in contexts
         if isinstance(context, dict) and context.get("kind") == "buffPlaySoundAction"
@@ -4832,10 +8325,6 @@ def build_audio_semantic_data(
     char_interact_semantics = collect_char_interact_audio_semantics(export_root)
     physics_audio_semantics = collect_physics_audio_semantics(export_root)
     model_view_semantics = collect_model_view_state_audio_semantics(export_root)
-    levelscript_semantics = collect_levelscript_audio_semantics(
-        export_root,
-        cue_semantics=cue_semantics,
-    )
     managed_rtpc_parameters = [{
         "kind": "rtpcParameter",
         "parameterName": name,
@@ -4843,7 +8332,11 @@ def build_audio_semantic_data(
         "evidence": "exactManagedStringLiteral",
         "wwiseEventStatus": "notApplicable",
     } for name in collect_metadata_audio_literals(metadata_path) if is_rtpc_parameter_name(name)]
-    contexts = merge_contexts(
+    levelscript_semantics = collect_levelscript_audio_semantics(
+        export_root,
+        cue_semantics=cue_semantics,
+    )
+    base_contexts = merge_contexts(
         collect_gameplay_contexts(webui_root, language),
         collect_projectile_contexts(webui_root),
         spawner_semantics.get("eventContexts") or {},
@@ -4860,6 +8353,50 @@ def build_audio_semantic_data(
         ),
         cutscene_contexts(cutscene_events),
         literal_context_index,
+    )
+    candidate_counts: Counter[str] = Counter()
+    candidate_hash_contexts: dict[str, set[str]] = defaultdict(set)
+    for entry in audio_index.get("events") or []:
+        if not isinstance(entry, dict):
+            continue
+        event_id = str(entry.get("eventId") or entry.get("id") or "").strip().lower()
+        if event_id:
+            candidate_counts[event_id] += 1
+            try:
+                event_hash = int(entry.get("eventHash")) & 0xFFFFFFFF
+            except (TypeError, ValueError):
+                event_hash = None
+            if event_hash is not None:
+                candidate_hash_contexts[event_id].add(event_hash_context_key(event_hash))
+    timeline_target_event_ids = {
+        event_id for event_id, count in candidate_counts.items()
+        if count > 0
+        and event_id not in base_contexts
+        and not any(key in base_contexts for key in candidate_hash_contexts.get(event_id, set()))
+    }
+    levelsequence_play_actions = collect_levelsequence_play_actions(export_root)
+    timeline_ownership = collect_timeline_audio_ownership(
+        export_root,
+        event_ids=timeline_target_event_ids,
+    )
+    timeline_context_event_ids = timeline_target_event_ids | {
+        str(event_id or "").strip().lower()
+        for event_id in (timeline_ownership.get("occurrencesByEvent") or {})
+        if str(event_id or "").strip()
+    }
+    timeline_cue_semantics = build_timeline_audio_cue_contexts(
+        timeline_ownership,
+        cue_semantics,
+    )
+    levelsequence_semantics = build_levelsequence_audio_contexts(
+        timeline_context_event_ids,
+        timeline_ownership,
+        levelsequence_play_actions,
+    )
+    contexts = merge_contexts(
+        base_contexts,
+        levelsequence_semantics.get("eventContexts") or {},
+        timeline_cue_semantics.get("eventContexts") or {},
     )
     context_kind_counts = Counter(
         str(context.get("kind") or "unknown")
@@ -4991,6 +8528,26 @@ def build_audio_semantic_data(
         for context in row.get("contexts") or []
         if isinstance(context, dict) and context.get("kind") == "buffPlaySoundAction"
     )
+    wwise_source_reference_counts: Counter[str] = Counter()
+    wwise_source_event_counts: Counter[str] = Counter()
+    wwise_source_plugin_counts: Counter[str] = Counter()
+    for event in events:
+        event_source_kinds: set[str] = set()
+        for evidence in event.get("evidence") or []:
+            if not isinstance(evidence, dict):
+                continue
+            summary = evidence.get("sourceObjectSummary") or {}
+            if not isinstance(summary, dict):
+                continue
+            for source_kind, count in (summary.get("sourceKindCounts") or {}).items():
+                source_kind = str(source_kind or "unknown")
+                wwise_source_reference_counts[source_kind] += int(count or 0)
+                if count:
+                    event_source_kinds.add(source_kind)
+            for plugin_id, count in (summary.get("pluginCounts") or {}).items():
+                wwise_source_plugin_counts[str(plugin_id)] += int(count or 0)
+        for source_kind in event_source_kinds:
+            wwise_source_event_counts[source_kind] += 1
 
     out_root = webui_root / f"data/lang/{language}/audio"
     events_name = "events.json"
@@ -5044,6 +8601,12 @@ def build_audio_semantic_data(
             "typedTraversalComplete": sum(row.get("traversalStatus") == "complete" for row in events),
             "typedTraversalPartial": sum(row.get("traversalStatus") == "partial" for row in events),
             "eventsWithMultiplePlayRoots": sum(int(row.get("playRootCount") or 0) > 1 for row in events),
+            "wwiseCodecSourceReferences": wwise_source_reference_counts.get("codecMedia", 0),
+            "wwiseExternalSourceReferences": wwise_source_reference_counts.get("externalSourceCodec", 0),
+            "wwiseSynthesizedSourceReferences": wwise_source_reference_counts.get("synthesizedSource", 0),
+            "wwiseEventsWithExternalSource": wwise_source_event_counts.get("externalSourceCodec", 0),
+            "wwiseEventsWithSynthesizedSource": wwise_source_event_counts.get("synthesizedSource", 0),
+            "wwiseSourcePluginIds": len(wwise_source_plugin_counts),
             "sharedPlayableCharacterAnimationEvents": sum(
                 int(row.get("playableCharacterAnimationOwnerCount") or 0) > 1
                 for row in events
@@ -5142,6 +8705,9 @@ def build_audio_semantic_data(
             "levelScriptAudioCueBehaviorEvents": context_kind_event_counts.get("levelScriptAudioCueBehaviorEvent", 0),
             "levelScriptAudioCueBehaviorContexts": context_kind_counts.get("levelScriptAudioCueBehaviorEvent", 0),
             "levelScriptDynamicAudioBindings": len(levelscript_semantics.get("dynamicEventBindings") or []),
+            "levelScriptResolvedDynamicAudioBindings": len(
+                levelscript_semantics.get("resolvedDynamicEventBindings") or []
+            ),
             "levelScriptRadioActions": (
                 (radio_catalog.get("counts") or {}).get(
                     "levelScriptRadioActionRecords", 0
@@ -5164,6 +8730,73 @@ def build_audio_semantic_data(
             ),
             "levelScriptAudioControls": len(levelscript_semantics.get("controlActions") or []),
             "levelScriptDynamicControlBindings": len(levelscript_semantics.get("dynamicControlBindings") or []),
+            "levelSequenceAudioEvents": context_kind_event_counts.get("levelSequenceAudio", 0),
+            "levelSequenceAudioContexts": context_kind_counts.get("levelSequenceAudio", 0),
+            "timelineAudioCueBehaviorEvents": context_kind_event_counts.get(
+                "timelineAudioCueBehaviorEvent", 0
+            ),
+            "timelineAudioCueBehaviorContexts": context_kind_counts.get(
+                "timelineAudioCueBehaviorEvent", 0
+            ),
+            "timelineAudioCueInvocations": (
+                (timeline_cue_semantics.get("stats") or {}).get("timelineCueInvocations", 0)
+            ),
+            "timelineAudioCueInvocationsResolved": (
+                (timeline_cue_semantics.get("stats") or {}).get("timelineCueInvocationsResolved", 0)
+            ),
+            "timelineAudioCueInvocationsMissing": (
+                (timeline_cue_semantics.get("stats") or {}).get("timelineCueInvocationsMissing", 0)
+            ),
+            "levelSequenceExactContextEvents": sum(
+                any(
+                    isinstance(context, dict)
+                    and context.get("kind") == "levelSequenceAudio"
+                    and context.get("confidence") == "exact"
+                    for context in row.get("contexts") or []
+                )
+                for row in events
+            ),
+            "levelSequenceInferredContextEvents": sum(
+                any(
+                    isinstance(context, dict)
+                    and context.get("kind") == "levelSequenceAudio"
+                    and context.get("confidence") == "inferred"
+                    for context in row.get("contexts") or []
+                )
+                for row in events
+            ),
+            "levelSequenceOwnershipGapEvents": sum(
+                any(
+                    isinstance(context, dict)
+                    and context.get("kind") == "levelSequenceAudio"
+                    and context.get("confidence") == "gap"
+                    for context in row.get("contexts") or []
+                )
+                for row in events
+            ),
+            "levelSequenceTimelineCarrierEvents": (
+                (levelsequence_semantics.get("stats") or {}).get(
+                    "eventsWithAnyTimelineCarrier", 0
+                )
+            ),
+            "levelSequencePlayActionExactEvents": (
+                (levelsequence_semantics.get("stats") or {}).get(
+                    "eventsWithExactLevelSequenceAction", 0
+                )
+            ),
+            "levelSequenceDirectorLinkContexts": (
+                (levelsequence_semantics.get("stats") or {}).get(
+                    "contextsWithPlayableDirector", 0
+                )
+            ),
+            "levelSequenceDirectorLinkGapContexts": (
+                (levelsequence_semantics.get("stats") or {}).get(
+                    "contextsWithoutPlayableDirector", 0
+                )
+            ),
+            "levelSequenceRuntimeActivationUnobservedEvents": context_kind_event_counts.get(
+                "levelSequenceAudio", 0
+            ),
             "levelEventAudioConditionDefinitions": len(LEVEL_EVENT_AUDIO_CONDITION_DEFINITIONS),
             "levelEventAudioConditionAuthoredOccurrences": sum(
                 int(row.get("authoredOccurrenceCount") or 0)
@@ -5204,6 +8837,17 @@ def build_audio_semantic_data(
             },
             "modelViewStateAudio": model_view_semantics.get("stats") or {},
             "levelScriptAudio": levelscript_semantics.get("stats") or {},
+            "levelSequenceAudio": {
+                **(levelsequence_play_actions.get("stats") or {}),
+                **(timeline_ownership.get("stats") or {}),
+                **(levelsequence_semantics.get("stats") or {}),
+                "targetEventCount": len(timeline_context_event_ids),
+                "evidenceBoundary": levelsequence_semantics.get("evidenceBoundary") or "",
+                "playActionEvidenceBoundary": levelsequence_play_actions.get("evidenceBoundary") or "",
+                "timelineOwnershipEvidenceBoundary": timeline_ownership.get("evidenceBoundary") or "",
+                "timelineCueStats": timeline_cue_semantics.get("stats") or {},
+                "timelineCueEvidenceBoundary": timeline_cue_semantics.get("evidenceBoundary") or "",
+            },
             "levelScriptRadio": radio_catalog,
         },
         "controlCatalog": {
@@ -5235,13 +8879,29 @@ def build_audio_semantic_data(
                     (levelscript_semantics.get("stats") or {}).get("cueBehaviorEventContexts") or 0
                 ),
                 "levelScriptDynamicAudioBindings": len(levelscript_semantics.get("dynamicEventBindings") or []),
+                "levelScriptResolvedDynamicAudioBindings": len(
+                    levelscript_semantics.get("resolvedDynamicEventBindings") or []
+                ),
                 "levelScriptAudioControls": len(levelscript_semantics.get("controlActions") or []),
                 "levelScriptDynamicControlBindings": len(levelscript_semantics.get("dynamicControlBindings") or []),
+                "timelineAudioCueInvocations": len(timeline_cue_semantics.get("invocations") or []),
+                "timelineAudioCueInvocationsResolved": (
+                    (timeline_cue_semantics.get("stats") or {}).get("timelineCueInvocationsResolved", 0)
+                ),
+                "timelineAudioCueInvocationsMissing": (
+                    (timeline_cue_semantics.get("stats") or {}).get("timelineCueInvocationsMissing", 0)
+                ),
                 "levelEventAudioConditionDefinitions": len(LEVEL_EVENT_AUDIO_CONDITION_DEFINITIONS),
                 "levelEventAudioConditionAuthoredOccurrences": sum(
                     int(row.get("authoredOccurrenceCount") or 0)
                     for row in LEVEL_EVENT_AUDIO_CONDITION_DEFINITIONS
                 ),
+                "wwiseSelectorGroupsCensused": 56,
+                "wwiseSelectorGroupsWithRuntimeSetter": 2,
+                "wwiseSelectorGroupsWithSemanticInference": 3,
+                "wwiseSelectorPackageValuesCensused": 234,
+                "wwiseSelectorValuesWithMetadataStringMatch": 67,
+                "wwiseSelectorValuesWithoutRecoveredString": 167,
             },
             "audioCueDefinitions": [
                 {key: value for key, value in definition.items() if key not in {"behaviorEvents", "expressionOperands"}}
@@ -5260,17 +8920,24 @@ def build_audio_semantic_data(
             "modelViewStateCustomAudioControls": model_view_semantics.get("customAudioControls") or [],
             "levelScriptAudioCueInvocations": levelscript_semantics.get("cueInvocations") or [],
             "levelScriptDynamicAudioBindings": levelscript_semantics.get("dynamicEventBindings") or [],
+            "levelScriptResolvedDynamicAudioBindings": (
+                levelscript_semantics.get("resolvedDynamicEventBindings") or []
+            ),
             "levelScriptAudioControls": levelscript_semantics.get("controlActions") or [],
             "levelScriptDynamicControlBindings": levelscript_semantics.get("dynamicControlBindings") or [],
+            "timelineAudioCueInvocations": timeline_cue_semantics.get("invocations") or [],
             "levelEventAudioConditions": [
                 dict(row) for row in LEVEL_EVENT_AUDIO_CONDITION_DEFINITIONS
             ],
-            "evidenceBoundary": "Cue behavior exprType=3 values, constant LevelScript Event parameters, LevelScript cue names joined by the native AudioHashGenerator to exact cue behavior expressions, non-empty PhysicsAudio Event properties, and normal ModelView Event/position hashes are authored requests. PhysicsAudio/ModelView RTPC names, ModelView spatial/custom-audio rows, cue/action execution, handler conditions, exprType=8 strings, dynamic Params, state/variable writes, playback handles, placeholder-music ids, unresolved cue hashes, and musicCue* values remain typed controls or unresolved runtime state. LevelEvent OnAudioStateChanged and OnMusicBeatEvent are current-build trigger-input definitions, not playback requests; exhaustive active-overlay scanning found zero authored occurrences.",
+            "wwiseSelectorGroups": [
+                dict(row) for row in AUDIO_RUNTIME_SELECTOR_GROUPS
+            ],
+            "evidenceBoundary": "Cue behavior exprType=3 values, constant LevelScript Event parameters, LevelScript cue names joined by the native AudioHashGenerator to exact cue behavior expressions, non-empty PhysicsAudio Event properties, and normal ModelView Event/position hashes are authored requests. PhysicsAudio/ModelView RTPC names, ModelView spatial/custom-audio rows, cue/action execution, handler conditions, exprType=8 strings, dynamic Params, state/variable writes, playback handles, placeholder-music ids, unresolved cue hashes, and musicCue* values remain typed controls or unresolved runtime state. LevelEvent OnAudioStateChanged and OnMusicBeatEvent are current-build trigger-input definitions, not playback requests; exhaustive active-overlay scanning found zero authored occurrences. Two Wwise selector groups have exact native setter callsites; three more have high-confidence semantic correlation only. None reveal a live value, selected branch, or authored group name.",
         },
         "runtimeModel": runtime_model,
         "evidenceBoundary": {
             "decodedMedia": "A decoded FLAC/WAV/WEM is a source media object, not proof that it played.",
-            "eventMedia": "Possible media leaves use typed Wwise v150 Event -> Action -> reciprocal Children -> Sound source edges. Play roots and random/sequence/switch/layer relations are preserved; runtime selection is not evaluated. Unsupported music nodes and unparsed child structures fail closed.",
+            "eventMedia": "Possible media leaves use typed Wwise v150 Event -> Action -> reciprocal Children -> Sound/MusicTrack AkBankSourceData edges. Ordinary Codec sources may join decoded media; External Source codec and synthesized Source-plugin records remain non-media playback sources. Play roots and random/sequence/switch/layer relations are preserved; runtime selection and source instantiation are not evaluated. Unsupported plugins, music nodes, and unparsed child structures fail closed.",
             "authoredContext": "Table, Timeline, SkillData, and BuffData references prove authored consumers, not a live playback trace.",
             "animationOwnership": "An AnimationClip callback proves that the owned clip requests the Event. If the same Event is used by multiple playable characters, its complete Wwise leaf graph is a shared selector surface and is not character-specific media ownership.",
             "customFootstepCallbacks": custom_footstep_model.get("evidenceBoundary") or "",
@@ -5282,10 +8949,23 @@ def build_audio_semantic_data(
             "physicsAudio": physics_audio_semantics.get("evidenceBoundary") or "",
             "modelViewStateAudio": model_view_semantics.get("evidenceBoundary") or "",
             "levelScriptAudio": levelscript_semantics.get("evidenceBoundary") or "",
+            "levelSequenceAudio": (
+                (levelsequence_semantics.get("evidenceBoundary") or "")
+                + " "
+                + (levelsequence_play_actions.get("evidenceBoundary") or "")
+                + " "
+                + (timeline_ownership.get("evidenceBoundary") or "")
+                + " "
+                + (timeline_cue_semantics.get("evidenceBoundary") or "")
+            ).strip(),
             "levelScriptRadio": radio_catalog.get("evidenceBoundary") or "",
             "levelEventAudioConditions": "OnAudioStateChanged and OnMusicBeatEvent are exact current-build LevelEvent condition definitions. The active Persistent-over-Streaming LevelScript overlay contains zero authored occurrences, and neither condition is a Wwise playback request.",
             "audioCue": "Only behaviourExpr exprType=3 string values are Event requests. exprType=8 strings are runtime cue-variable operands; AudioGlobal musicCue fields are cue references, and RTPC names are control parameters.",
-            "runtimeMetadata": "IL2CPP names prove shipped system structure, not live call order or active state.",
+            "runtimeMetadata": (
+                "IL2CPP names prove shipped system structure. Selected current-build native call chains "
+                "prove static request routing, asynchronous Event preparation, Wwise posting, and playing-id "
+                "lifetime handling; they are not a live execution trace, active state, or selected media leaf."
+            ),
         },
     }
     json_dump(out_root / "index.json", payload)

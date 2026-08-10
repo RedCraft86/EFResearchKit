@@ -53,6 +53,7 @@
       levelScriptControls: "LevelScript audio controls",
       levelScriptDynamicControls: "LevelScript dynamic control bindings",
       levelEventConditions: "LevelEvent audio conditions",
+      wwiseSelectorGroups: "Wwise selector runtime joins",
       levelScriptRadioCatalog: "LevelScript radio triggers",
       unresolvedRadioIds: "Unresolved radio IDs",
       unresolvedRadioLines: "Unresolved radio lines",
@@ -80,6 +81,13 @@
       contextEvidence: "Context evidence",
       contextGameplay: "Gameplay",
       contextCutscene: "Cutscene / story",
+      contextTimeline: "Timeline / LevelSequence",
+      levelSequenceAudioCatalog: "LevelSequence audio ownership",
+      levelSequenceTimelineContexts: "Timeline contexts",
+      levelSequenceExactContexts: "Exact Timeline + LevelScript joins",
+      levelSequenceInferredContexts: "Inferred trigger contexts",
+      levelSequenceGapContexts: "Ownership gaps",
+      levelSequenceRuntimeBoundary: "Timeline runtime boundary",
       contextAnimation: "Animation",
       contextSharedPlayableAnimation: "Shared playable-character animation",
       contextFootstepSystem: "Footstep / material system",
@@ -109,6 +117,7 @@
       relationRuntimeSelected: "Typed runtime-selected branches",
       relationMultipleUnknown: "Multiple possible files; relation unresolved",
       relationSingle: "Single possible file",
+      relationSingleTopology: "Single decoded leaf by complete topology (runtime branch unobserved)",
       relationNoDecodedMedia: "Wwise event; no decoded media leaf",
       relationUnresolvedEvent: "Event unresolved in Wwise",
       relationEventCandidate: "Wwise event media leaf",
@@ -125,6 +134,8 @@
       relationMusicPlaylist: "Music playlist branches",
       relationMusicTrack: "Music tracks",
       relationMusicSource: "Music track sources",
+      relationExternalSource: "Runtime external source",
+      relationSynthesizedSource: "Synthesized / plugin source",
       musicSwitchContainer: "Music Switch container",
       musicRandomSequenceContainer: "Music Random / Sequence container",
       musicSegment: "Music segment",
@@ -133,6 +144,7 @@
       playRoots: "Play roots",
       typedTraversal: "Typed traversal",
       selectorEvidence: "Selector evidence",
+      sourceEvidence: "Wwise source evidence",
       actionDispatch: "Action dispatch",
       actionOrdinal: "Action",
       serializedNoDelay: "no serialized delay",
@@ -197,6 +209,7 @@
       levelScriptControls: "LevelScript \u97f3\u9891\u63a7\u5236",
       levelScriptDynamicControls: "LevelScript \u52a8\u6001\u63a7\u5236\u7ed1\u5b9a",
       levelEventConditions: "LevelEvent \u97f3\u9891\u6761\u4ef6",
+      wwiseSelectorGroups: "Wwise \u9009\u62e9\u5668\u8fd0\u884c\u65f6\u8fde\u63a5",
       levelScriptRadioCatalog: "LevelScript \u65e0\u7ebf\u7535\u89e6\u53d1",
       unresolvedRadioIds: "\u672a\u89e3\u6790\u7684\u65e0\u7ebf\u7535 ID",
       unresolvedRadioLines: "\u672a\u89e3\u6790\u7684\u65e0\u7ebf\u7535\u53f0\u8bcd",
@@ -224,6 +237,13 @@
       contextEvidence: "\u4e0a\u4e0b\u6587\u8bc1\u636e",
       contextGameplay: "\u73a9\u6cd5",
       contextCutscene: "\u8fc7\u573a / \u5267\u60c5",
+      contextTimeline: "Timeline / LevelSequence",
+      levelSequenceAudioCatalog: "LevelSequence \u97f3\u9891\u5f52\u5c5e",
+      levelSequenceTimelineContexts: "Timeline \u4e0a\u4e0b\u6587",
+      levelSequenceExactContexts: "\u7cbe\u786e Timeline + LevelScript \u8fde接",
+      levelSequenceInferredContexts: "\u63a8断触发\u4e0a\u4e0b\u6587",
+      levelSequenceGapContexts: "\u5f52属缺口",
+      levelSequenceRuntimeBoundary: "Timeline \u8fd0行时证据边界",
       contextAnimation: "\u52a8\u753b",
       contextSharedPlayableAnimation: "\u53ef\u73a9\u89d2\u8272\u5171\u7528\u52a8\u753b",
       contextFootstepSystem: "\u811a\u6b65 / \u6750\u8d28\u7cfb\u7edf",
@@ -253,6 +273,7 @@
       relationRuntimeSelected: "\u7c7b\u578b\u5316\u8fd0\u884c\u65f6\u5206\u652f",
       relationMultipleUnknown: "\u591a\u4e2a\u53ef\u80fd\u6587\u4ef6\uff0c\u5173\u7cfb\u672a\u89e3\u6790",
       relationSingle: "\u5355\u4e00\u53ef\u80fd\u6587\u4ef6",
+      relationSingleTopology: "\u5b8c\u6574\u62d3\u6251\u4e2d\u4ec5\u6709\u4e00\u4e2a\u89e3\u7801\u53f6\uff08\u8fd0\u884c\u65f6\u5206\u652f\u4ecd\u672a\u89c2\u6d4b\uff09",
       relationNoDecodedMedia: "Wwise \u4e8b\u4ef6\uff0c\u65e0\u5df2\u89e3\u7801\u5a92\u4f53\u53f6",
       relationUnresolvedEvent: "\u4e8b\u4ef6\u672a\u5728 Wwise \u4e2d\u89e3\u6790",
       relationEventCandidate: "Wwise \u4e8b\u4ef6\u5a92\u4f53\u53f6",
@@ -269,6 +290,8 @@
       relationMusicPlaylist: "\u97f3\u4e50\u64ad\u653e\u5217\u8868\u5206\u652f",
       relationMusicTrack: "\u97f3\u4e50\u8f68\u9053",
       relationMusicSource: "\u97f3\u4e50\u8f68\u9053\u97f3\u6e90",
+      relationExternalSource: "\u8fd0\u884c\u65f6\u5916\u90e8\u97f3\u6e90",
+      relationSynthesizedSource: "\u5408\u6210 / \u63d2\u4ef6\u97f3\u6e90",
       musicSwitchContainer: "\u97f3\u4e50 Switch \u5bb9\u5668",
       musicRandomSequenceContainer: "\u97f3\u4e50\u968f\u673a / \u5e8f\u5217\u5bb9\u5668",
       musicSegment: "\u97f3\u4e50\u7247\u6bb5",
@@ -277,6 +300,7 @@
       playRoots: "Play \u6839",
       typedTraversal: "\u7c7b\u578b\u5316\u904d\u5386",
       selectorEvidence: "\u9009\u62e9\u5668\u8bc1\u636e",
+      sourceEvidence: "Wwise \u97f3\u6e90\u8bc1\u636e",
       actionDispatch: "Action \u6d3e\u53d1",
       actionOrdinal: "Action",
       serializedNoDelay: "\u672a\u5e8f\u5217\u5316\u5ef6\u8fdf",
@@ -395,6 +419,7 @@
   const CONTEXT_LABEL_KEYS = {
     gameplay: "contextGameplay",
     cutscene: "contextCutscene",
+    timeline: "contextTimeline",
     animation: "contextAnimation",
     sharedPlayableAnimation: "contextSharedPlayableAnimation",
     footstepSystem: "contextFootstepSystem",
@@ -424,6 +449,7 @@
     runtimeSelected: "relationRuntimeSelected",
     multipleUnknown: "relationMultipleUnknown",
     single: "relationSingle",
+    singleTopology: "relationSingleTopology",
     noDecodedMedia: "relationNoDecodedMedia",
     unresolvedEvent: "relationUnresolvedEvent",
     eventCandidate: "relationEventCandidate",
@@ -440,6 +466,8 @@
     musicPlaylistCandidate: "relationMusicPlaylist",
     musicTrack: "relationMusicTrack",
     musicTrackSource: "relationMusicSource",
+    externalSource: "relationExternalSource",
+    synthesizedSource: "relationSynthesizedSource",
   };
 
   function taxonomyLabel(value) {
@@ -455,6 +483,8 @@
   function contextGroup(kind) {
     if (["characterSkill", "enemySkill", "buffPlaySoundAction", "projectileSoundField"].includes(kind)) return "gameplay";
     if (kind === "cutsceneTimeline") return "cutscene";
+    if (kind === "levelSequenceAudio") return "timeline";
+    if (kind === "timelineAudioCueBehaviorEvent") return "timeline";
     if (["characterAnimation", "enemyAnimation", "animationCallbackOwnerUnresolved"].includes(kind)) return "animation";
     if (["levelScriptAudioAction", "levelScriptAudioCueBehaviorEvent", "levelScriptRadioTrigger"].includes(kind)) return "scripted";
     if (["table", "tableEventHash", "interactiveAudioTrigger", "interactiveComponentTrigger", "physicsAudioComponentEvent", "modelViewStateAudioEvent", "modelViewStatePositionAudioEvent", "audioGlobalConfigEvent", "audioGlobalConfigEventHash", "audioCueBehaviorEvent", "audioGlobalMusicCueBehaviorEvent", "spawnerPreWarnAudio", "patrolSubActionPlayAudio", "charInteractAudioEvent"].includes(kind)) return "authoredConfig";
@@ -466,12 +496,14 @@
     const tags = new Set(asArray(record?.contextGroups).filter(Boolean));
     const addContextKindTags = (contextKind) => {
       if (contextKind === "projectileSoundField") tags.add("projectileTrigger");
+      if (contextKind === "levelSequenceAudio") tags.add("timeline");
+      if (contextKind === "timelineAudioCueBehaviorEvent") tags.add("timeline");
       if (contextKind === "spawnerPreWarnAudio") tags.add("spawnerPreWarnTrigger");
       if (contextKind === "patrolSubActionPlayAudio") tags.add("npcPatrolTrigger");
       if (contextKind === "charInteractAudioEvent") tags.add("characterInteraction");
       if (contextKind === "physicsAudioComponentEvent") tags.add("physicsEnvironment");
       if (["modelViewStateAudioEvent", "modelViewStatePositionAudioEvent"].includes(contextKind)) tags.add("modelViewState");
-      if (["audioCueBehaviorEvent", "audioGlobalMusicCueBehaviorEvent", "levelScriptAudioCueBehaviorEvent"].includes(contextKind)) tags.add("audioCueTrigger");
+      if (["audioCueBehaviorEvent", "audioGlobalMusicCueBehaviorEvent", "levelScriptAudioCueBehaviorEvent", "timelineAudioCueBehaviorEvent"].includes(contextKind)) tags.add("audioCueTrigger");
       if (["interactiveAudioTrigger", "interactiveComponentTrigger"].includes(contextKind)) tags.add("interactiveTrigger");
       if (["audioGlobalConfigEvent", "audioGlobalConfigEventHash", "audioGlobalMusicCueBehaviorEvent"].includes(contextKind)) tags.add("globalLifecycle");
       if (contextKind === "animationCallbackOwnerUnresolved") tags.add("ownerUnresolvedAnimation");
@@ -511,7 +543,7 @@
     if (kind === "media") {
       if (record?.audioDialogKey || record?.audioDialogPath) tags.add("dialogMedia");
       const inheritedMediaTags = new Set([
-        "gameplay", "cutscene", "animation", "scripted", "authoredConfig", "managedRuntime",
+        "gameplay", "cutscene", "timeline", "animation", "scripted", "authoredConfig", "managedRuntime",
         "sharedPlayableAnimation", "footstepSystem", "ownerUnresolvedAnimation", "levelScriptTrigger", "radioTrigger", "projectileTrigger", "spawnerPreWarnTrigger", "npcPatrolTrigger", "characterInteraction", "physicsEnvironment", "modelViewState", "interactiveTrigger", "globalLifecycle", "audioCueTrigger",
       ]);
       for (const eventId of asArray(record?.eventIds)) {
@@ -535,10 +567,25 @@
     const candidates = Number(record?.possibleMediaCount ?? record?.candidateCount ?? record?.resolvedMediaCount ?? record?.mediaCount)
       || asArray(record?.media).length;
     if (!foundInWwise) return ["unresolvedEvent"];
-    if (!candidates) return ["noDecodedMedia"];
     const tags = [];
+    const sourceKinds = new Set([
+      ...asArray(record?.sourceKinds),
+      ...evidence.flatMap((row) => Object.keys(row?.sourceObjectSummary?.sourceKindCounts || {})),
+    ]);
+    if (sourceKinds.has("externalSourceCodec")) tags.push("externalSource");
+    if (sourceKinds.has("synthesizedSource")) tags.push("synthesizedSource");
+    if (!candidates) {
+      tags.push("noDecodedMedia");
+      return [...new Set(tags)];
+    }
     if (record?.traversalStatus === "partial") tags.push("partialGraph");
     if (Number(record?.playRootCount) > 1) tags.push("multipleRoots");
+    const hasTypedSelector = asArray(record?.selectionContainerTypes).length > 0;
+    const hasOneCompleteTopologyLeaf = hasTypedSelector
+      && candidates === 1
+      && record?.traversalStatus === "complete"
+      && Number(record?.unresolvedNodeCount || 0) === 0;
+    if (hasOneCompleteTopologyLeaf) tags.push("singleTopology");
     for (const relation of asArray(record?.mediaRelationTypes)) {
       if (RELATION_LABEL_KEYS[relation]) tags.push(relation);
     }
@@ -573,6 +620,7 @@
       ...asArray(record?.eventIds), ...asArray(record?.mediaIds), ...asArray(record?.actionIds), ...asArray(record?.visitedObjectIds),
       ...asArray(record?.contextSearch), ...asArray(record?.radioTriggerSearch), ...asArray(record?.radioTriggerActions),
       ...asArray(record?.radioTriggerRoles), ...asArray(record?.bankPackages),
+      ...asArray(record?.sourceKinds), ...asArray(record?.sourcePluginIds),
       ...asArray(taxonomy.contextTags).flatMap((value) => [value, taxonomyLabel(value)]),
       ...asArray(taxonomy.relationTags).flatMap((value) => [value, taxonomyLabel(value)]),
       ...asArray(record?.contexts).flatMap((context) => context && typeof context === "object" ? [
@@ -591,6 +639,8 @@
         context.componentOccurrenceIndex,
         context.propertyCount, context.authoredProperty, context.runtimeField,
         ...asArray(context.consumerIds), ...asArray(context.consumerAliasIds),
+        ...asArray(context.interactiveTemplateIds), context.interactiveTemplatePath,
+        ...asArray(context.interactiveConsumerIds), context.templateAssociationStatus,
         ...asArray(context.interactiveTableSourcePaths), context.interactiveTableSha256,
         context.action, context.levelScriptId, context.sourcePath, context.sourceSha256,
         context.recordUid, context.recordLocalId, context.actionMapRole, context.eventName,
@@ -1398,6 +1448,8 @@
     if (modelViewStateCatalog && typeof modelViewStateCatalog === "object") panel.appendChild(modelViewStateAudioCatalogSection(modelViewStateCatalog));
     const levelScriptRadioCatalog = state.index?.triggerCatalog?.levelScriptRadio;
     if (levelScriptRadioCatalog && typeof levelScriptRadioCatalog === "object") panel.appendChild(levelScriptRadioCatalogSection(levelScriptRadioCatalog));
+    const levelSequenceAudioCatalog = state.index?.triggerCatalog?.levelSequenceAudio;
+    if (levelSequenceAudioCatalog && typeof levelSequenceAudioCatalog === "object") panel.appendChild(levelSequenceAudioCatalogSection(levelSequenceAudioCatalog));
     const systems = asArray(runtime.systems).filter((value) => value && typeof value === "object");
     if (systems.length) panel.appendChild(runtimeSystemsSection(systems));
     const boundaryCandidate = runtime.boundary ?? state.index?.evidenceBoundary;
@@ -1478,6 +1530,16 @@
       ["levelScriptControls", asArray(catalog.levelScriptAudioControls), (row) => `${humanize(row.action || "")} / ${humanize(row.controlRole || "")} / ${row.levelScriptId || "?"} / ${formatControlFields(row)}`],
       ["levelScriptDynamicControls", asArray(catalog.levelScriptDynamicControlBindings), (row) => `${row.levelScriptId || "?"} / ${humanize(row.action || "")} / ${row.sourceField || "?"} / ${row.binding?.path || humanize(row.resolutionStatus || "")}`],
       ["levelEventConditions", asArray(catalog.levelEventAudioConditions), (row) => `${row.type || row.id || t("unknown")} / union ${row.unionTagHex || "?"} / event key ${row.eventKey ?? "?"} / ${humanize(row.relationType || "")} / ${row.predicate || "?"} / authored occurrences ${formatNumber(row.authoredOccurrenceCount || 0)} / ${humanize(row.playbackRequestStatus || "")}`],
+      ["wwiseSelectorGroups", asArray(catalog.wwiseSelectorGroups), (row) => {
+        const values = asArray(row.values).map((value) => {
+          const input = `${value.valueIdHex || value.valueId || "?"}=${value.semanticName || humanize(value.semanticNameStatus || "unresolved")}`;
+          const resolved = value.resolvedValueIdHex
+            ? ` -> ${value.resolvedValueIdHex}${value.resolvedValueName ? `=${value.resolvedValueName}` : ""}`
+            : "";
+          return `${input}${resolved}`;
+        });
+        return `${row.groupIdHex || "?"} / ${row.semanticLabel || humanize(row.semanticRole || "unknown")} / ${humanize(row.semanticEvidence || "unknown")} / ${humanize(row.groupType || "unknown")} / ${humanize(row.runtimeScope || "scope unresolved")}${values.length ? ` / values ${values.join(", ")}` : ""} / ${humanize(row.runtimeObservationStatus || "")}`;
+      }],
     ];
     for (const [labelKey, rows, formatRow] of groups) {
       if (!rows.length) continue;
@@ -1577,6 +1639,37 @@
     return section;
   }
 
+  function levelSequenceAudioCatalogSection(catalog) {
+    const section = document.createElement("div");
+    section.style.marginTop = "14px";
+    const heading = document.createElement("div");
+    heading.className = "audio-fact-label";
+    heading.textContent = t("levelSequenceAudioCatalog");
+    section.appendChild(heading);
+    const facts = [
+      [t("levelSequenceTimelineContexts"), catalog.timelineContexts],
+      [t("levelSequenceExactContexts"), catalog.eventsWithExactLevelSequenceAction],
+      [t("levelSequenceInferredContexts"), catalog.eventsWithInferredTimelineTrigger],
+      [t("levelSequenceGapContexts"), catalog.eventsWithoutTimelineCarrier],
+      ["Timeline parents", catalog.timelineParents],
+      ["PlayableDirector links", catalog.exactPlayableDirectorLinks],
+      ["LevelScript ids", catalog.uniquePlayLevelSequenceIds],
+    ].filter(([, value]) => value !== undefined && value !== null);
+    if (facts.length) {
+      const grid = document.createElement("div");
+      grid.className = "audio-stat-grid";
+      for (const [label, value] of facts) grid.appendChild(statNode(label, formatNumber(value)));
+      section.appendChild(grid);
+    }
+    const boundary = [
+      catalog.evidenceBoundary,
+      catalog.playActionEvidenceBoundary,
+      catalog.timelineOwnershipEvidenceBoundary,
+    ].filter(Boolean).join(" ");
+    if (boundary) section.appendChild(noteSection(t("levelSequenceRuntimeBoundary"), boundary));
+    return section;
+  }
+
   function levelScriptRadioCatalogSection(catalog) {
     const section = document.createElement("div");
     section.style.marginTop = "14px";
@@ -1647,7 +1740,7 @@
     heading.textContent = t("runtimeComponents");
     const list = document.createElement("div");
     list.className = "audio-runtime-systems";
-    for (const system of systems.slice(0, 40)) {
+    for (const system of systems) {
       const card = document.createElement("article");
       card.className = "audio-runtime-system";
       const type = normalize(system.type ?? system.name ?? system.id) || t("unknown");
@@ -1658,15 +1751,31 @@
       if (asArray(system.methods).length) counts.push(`${asArray(system.methods).length} methods`);
       if (system.enumValues && typeof system.enumValues === "object") counts.push(`${Object.keys(system.enumValues).length} enum values`);
       if (asArray(system.nativeAnchors).length) counts.push(`${asArray(system.nativeAnchors).length} native anchors`);
+      if (asArray(system.nativeCallChains).length) counts.push(`${asArray(system.nativeCallChains).length} native call chains`);
+      if (asArray(system.nativeStateGroups).length) counts.push(`${asArray(system.nativeStateGroups).length} Wwise state groups`);
+      if (asArray(system.nativeStateTransitions).length) counts.push(`${asArray(system.nativeStateTransitions).length} audio-state masks`);
       card.innerHTML = `<div class="audio-runtime-system-head"><code>${esc(type)}</code>${layer ? `<span>${esc(layer)}</span>` : ""}</div>${meaning ? `<p>${esc(meaning)}</p>` : ""}${counts.length ? `<small>${esc(counts.join(" · "))}</small>` : ""}`;
       const layout = system.serializedLayout && typeof system.serializedLayout === "object" ? system.serializedLayout : null;
       const anchors = asArray(system.nativeAnchors).filter((row) => row && typeof row === "object");
-      if (layout || anchors.length) {
+      const callChains = asArray(system.nativeCallChains).filter((row) => row && typeof row === "object");
+      const stateGroups = asArray(system.nativeStateGroups).filter((row) => row && typeof row === "object");
+      const stateTransitions = asArray(system.nativeStateTransitions).filter((row) => row && typeof row === "object");
+      const enumEntries = system.enumValues && typeof system.enumValues === "object"
+        ? Object.entries(system.enumValues)
+        : [];
+      if (layout || anchors.length || callChains.length || stateGroups.length || stateTransitions.length || enumEntries.length) {
         const values = document.createElement("div");
         values.className = "audio-chip-list";
         if (layout) {
           const chip = document.createElement("span");
           chip.textContent = `${layout.unionTagHex || `tag ${layout.unionTag ?? "?"}`} / mc${layout.memberCount ?? "?"} / behavior type ${layout.behaviorType ?? "?"} / ${layout.dataType || "serialized data"}`;
+          values.appendChild(chip);
+        }
+        for (const [name, value] of enumEntries) {
+          const chip = document.createElement("span");
+          const numeric = Number(value);
+          const hex = Number.isFinite(numeric) ? ` / 0x${(numeric >>> 0).toString(16).padStart(8, "0")}` : "";
+          chip.textContent = `${name} = ${value}${hex}`;
           values.appendChild(chip);
         }
         for (const anchor of anchors) {
@@ -1684,7 +1793,117 @@
           chip.textContent = `native anchors ${humanize(system.nativeAnchorStatus)}`;
           values.appendChild(chip);
         }
+        if (system.nativeCallChainStatus) {
+          const chip = document.createElement("span");
+          chip.textContent = `native call chains ${humanize(system.nativeCallChainStatus)}`;
+          values.appendChild(chip);
+        }
+        if (system.nativeStateGroupStatus) {
+          const chip = document.createElement("span");
+          chip.textContent = `native state groups ${humanize(system.nativeStateGroupStatus)}`;
+          values.appendChild(chip);
+        }
+        if (system.nativeStateTransitionStatus) {
+          const chip = document.createElement("span");
+          chip.textContent = `native state transitions ${humanize(system.nativeStateTransitionStatus)}`;
+          values.appendChild(chip);
+        }
         card.appendChild(values);
+        for (const group of stateGroups) {
+          const groupCard = document.createElement("div");
+          groupCard.className = "audio-runtime-state-group";
+          const recoveredName = normalize(group.recoveredName);
+          const identity = recoveredName || normalize(group.field) || humanize(group.role || "state group");
+          const title = document.createElement("strong");
+          title.textContent = `${humanize(group.role || "state group")} · ${identity} · ${group.groupIdHex || group.groupId || "unknown id"}`;
+          const detail = document.createElement("small");
+          detail.textContent = [
+            normalize(group.enumType),
+            normalize(group.setterMethod),
+            group.methodIndex !== undefined ? `method ${group.methodIndex}` : "",
+            normalize(group.virtualAddress) ? `VA ${group.virtualAddress}` : "",
+            humanize(group.nameEvidence || ""),
+          ].filter(Boolean).join(" · ");
+          groupCard.append(title, detail);
+          card.appendChild(groupCard);
+        }
+        for (const transition of stateTransitions) {
+          const transitionCard = document.createElement("div");
+          transitionCard.className = "audio-runtime-state-group";
+          const names = asArray(transition.stateNames).map(normalize).filter(Boolean);
+          const title = document.createElement("strong");
+          title.textContent = `${names.length ? names.join(" + ") : "audio state mask"} / ${transition.stateMaskHex || transition.stateMask || "unknown mask"}`;
+          const detail = document.createElement("small");
+          detail.textContent = [
+            `${transition.registrationCount || 0} registrations`,
+            asArray(transition.actionOrders).length ? `orders ${asArray(transition.actionOrders).join(" / ")}` : "",
+            transition.isOneShot === false ? "persistent" : "",
+            asArray(transition.registrationCallOffsets).length ? `call offsets ${asArray(transition.registrationCallOffsets).join(" / ")}` : "",
+            humanize(transition.callbackTargetStatus || ""),
+            humanize(transition.conditionInterpretationStatus || ""),
+          ].filter(Boolean).join(" / ");
+          transitionCard.append(title, detail);
+          const registrations = asArray(transition.registrations).filter((row) => row && typeof row === "object");
+          if (registrations.length) {
+            const callbackList = document.createElement("div");
+            callbackList.className = "audio-chip-list";
+            for (const registration of registrations) {
+              const chip = document.createElement("span");
+              chip.textContent = [
+                humanize(registration.conditionType || `condition ${registration.conditionTypeRaw ?? "?"}`),
+                `order ${registration.actionOrder ?? "?"}`,
+                normalize(registration.callbackMethod),
+                registration.callbackMethodIndex !== undefined ? `method ${registration.callbackMethodIndex}` : "",
+                normalize(registration.callbackVirtualAddress) ? `VA ${registration.callbackVirtualAddress}` : "",
+                asArray(registration.directStateSetters).length
+                  ? `direct setters ${asArray(registration.directStateSetters).join(" / ")}`
+                  : "",
+              ].filter(Boolean).join(" / ");
+              callbackList.appendChild(chip);
+            }
+            transitionCard.appendChild(callbackList);
+          }
+          card.appendChild(transitionCard);
+        }
+        for (const chain of callChains) {
+          const chainCard = document.createElement("div");
+          chainCard.className = "audio-runtime-call-chain";
+          const label = normalize(chain.label ?? chain.id) || "Native call chain";
+          const stages = asArray(chain.stages).filter((row) => row && typeof row === "object");
+          const branches = asArray(chain.branches).filter((row) => row && typeof row === "object");
+          const title = document.createElement("strong");
+          title.textContent = `${label}${stages.length ? ` · ${stages.length} stages` : ""}`;
+          chainCard.appendChild(title);
+          const stageList = document.createElement("div");
+          stageList.className = "audio-chip-list";
+          for (const stage of stages) {
+            const chip = document.createElement("span");
+            const identity = [normalize(stage.type), normalize(stage.method)].filter(Boolean).join(".");
+            const anchor = [
+              stage.methodIndex !== undefined ? `method ${stage.methodIndex}` : "",
+              normalize(stage.virtualAddress) ? `VA ${stage.virtualAddress}` : "",
+            ].filter(Boolean).join(" / ");
+            chip.textContent = [
+              humanize(stage.role || "stage"), identity, anchor, normalize(stage.relation),
+            ].filter(Boolean).join(" · ");
+            stageList.appendChild(chip);
+          }
+          for (const branch of branches) {
+            const chip = document.createElement("span");
+            chip.textContent = [
+              `branch ${normalize(branch.label ?? branch.id) || "unknown"}`,
+              normalize(branch.relation),
+            ].filter(Boolean).join(" / ");
+            stageList.appendChild(chip);
+          }
+          chainCard.appendChild(stageList);
+          if (chain.boundary) {
+            const boundary = document.createElement("small");
+            boundary.textContent = normalize(chain.boundary);
+            chainCard.appendChild(boundary);
+          }
+          card.appendChild(chainCard);
+        }
       }
       list.appendChild(card);
     }
@@ -1714,6 +1933,36 @@
     if (context?.sourceOffset !== undefined) parts.push(`source offset 0x${Number(context.sourceOffset).toString(16)}`);
     if (context?.stateDirection) parts.push(`${context.stateDirection} state mask ${context.audioStateMask ?? "?"}`);
     if (context?.description) parts.push(context.description);
+    if (kind === "levelSequenceAudio" || kind === "timelineAudioCueBehaviorEvent") {
+      if (context?.levelSequenceId) parts.push(`LevelSequence ${context.levelSequenceId}`);
+      if (context?.timelineAssetName) parts.push(`Timeline ${context.timelineAssetName}`);
+      if (context?.timelineParentNameStatus) parts.push(humanize(context.timelineParentNameStatus));
+      if (context?.timelineTrackName || context?.timelineClipIndex !== undefined) {
+        parts.push(`track ${context.timelineTrackName || "?"} / clip ${context.timelineClipIndex ?? "?"}`);
+      }
+      if (context?.audioPlayableType) parts.push(`playable ${context.audioPlayableType}`);
+      if (context?.audioPlayableKeyStatus) parts.push(humanize(context.audioPlayableKeyStatus));
+      if (context?.playableDirectorCount !== undefined) {
+        parts.push(`${formatNumber(context.playableDirectorCount)} PlayableDirector${Number(context.playableDirectorCount) === 1 ? "" : "s"}`);
+      }
+      const directorNames = asArray(context?.playableDirectorNames).filter(Boolean);
+      if (directorNames.length) parts.push(`Director ${directorNames.join(" / ")}`);
+      const directorIds = asArray(context?.playableDirectorPathIds).filter((value) => value !== undefined && value !== null);
+      if (directorIds.length) parts.push(`Director PathIDs ${directorIds.join(" / ")}`);
+      if (context?.levelScriptActionCount !== undefined) {
+        parts.push(`${formatNumber(context.levelScriptActionCount)} LevelScript PlayLevelSequence record${Number(context.levelScriptActionCount) === 1 ? "" : "s"}`);
+      }
+      const levelScriptIds = asArray(context?.levelScriptIds).filter(Boolean);
+      if (levelScriptIds.length) parts.push(`LevelScript ${levelScriptIds.join(" / ")}`);
+      const levelScriptSources = asArray(context?.levelScriptSourcePaths).filter(Boolean);
+      if (levelScriptSources.length) parts.push(levelScriptSources.join(" / "));
+      const levelSequenceOffsets = asArray(context?.levelSequenceFieldOffsets).filter(Boolean);
+      if (levelSequenceOffsets.length) parts.push(`_levelSeqId offset ${levelSequenceOffsets.join(" / ")}`);
+      if (context?.ownershipEvidenceLevel) parts.push(humanize(context.ownershipEvidenceLevel));
+      if (context?.triggerEvidenceLevel) parts.push(humanize(context.triggerEvidenceLevel));
+      if (context?.timelineOwnershipStatus) parts.push(humanize(context.timelineOwnershipStatus));
+      if (context?.evidenceBoundary) parts.push(context.evidenceBoundary);
+    }
     if (context?.cueHex || context?.cueId !== undefined) parts.push(`cue ${context.cueHex || context.cueId}`);
     if (context?.globalMusicCueField) parts.push(`global cue ${context.globalMusicCueField}`);
     if (context?.handlerScope) parts.push(`${context.handlerScope} handler${context.levelId ? ` / level ${context.levelId}` : ""}`);
@@ -1741,6 +1990,7 @@
     if (preWarnRotation.length) parts.push(`effect rotation ${preWarnRotation.join(", ")}`);
     if (context?.definitionOwnerId) parts.push(`physics definition ${context.definitionOwnerId}`);
     if (context?.templatePath) parts.push(context.templatePath);
+    if (context?.interactiveTemplatePath) parts.push(`InteractiveData ${context.interactiveTemplatePath}`);
     const physicsConsumers = asArray(context?.consumerIds).filter(Boolean);
     if (physicsConsumers.length) parts.push(`configured consumers ${physicsConsumers.join(", ")}`);
     if (context?.componentTagHex || context?.componentTag !== undefined) {
@@ -1751,6 +2001,13 @@
     if (context?.propertySourceOffset !== undefined) parts.push(`property offset 0x${Number(context.propertySourceOffset).toString(16)}`);
     if (context?.interactiveTableSha256) parts.push(`InteractiveTable SHA-256 ${context.interactiveTableSha256}`);
     if (context?.controllerId) parts.push(`ModelView controller ${context.controllerId}`);
+    const animatorControllers = asArray(context?.animatorControllerContexts).filter((row) => row && typeof row === "object");
+    for (const controller of animatorControllers.slice(0, 8)) {
+      const stateRefs = asArray(controller.authoredStateReferences).filter((row) => row && typeof row === "object");
+      const stateSummary = stateRefs.slice(0, 4).map((row) => `SM${row.stateMachineIndex ?? "?"}/S${row.stateIndex ?? "?"}/clip${row.clipSlot ?? "?"}`).join(", ");
+      parts.push(`AnimatorController ${controller.name || "?"} / ${humanize(controller.resolutionStatus || "unresolved")} / clips ${(asArray(controller.clipSlots)).join(", ") || "?"} / authored states ${stateSummary || controller.authoredStateReferenceCount || 0} / runtime execution unobserved`);
+    }
+    if (animatorControllers.length > 8) parts.push(`+${animatorControllers.length - 8} AnimatorControllers`);
     if (context?.modelAnimatorName) parts.push(`model animator ${context.modelAnimatorName}`);
     if (context?.layerName || context?.layerFsmIndex !== undefined) parts.push(`layer ${context.layerName || "?"} / FSM ${context.layerFsmIndex ?? "?"}`);
     if (context?.stateName || context?.stateIndex !== undefined) parts.push(`state ${context.stateName || "?"} / index ${context.stateIndex ?? "?"} / type ${context.stateType ?? "?"}`);
@@ -1893,6 +2150,31 @@
     const containers = new Map();
     const musicNodes = new Map();
     const actionDetails = [];
+    const selector = {
+      nodes: 0, exact: 0, unresolved: 0, continuous: 0,
+      packages: 0, nonEmptyPackages: 0, strictSubsetPackages: 0,
+      packageChildRefs: 0, associations: 0, continuePlayback: 0,
+      isFirstOnly: 0, nonzeroFadeOut: 0, nonzeroFadeIn: 0,
+      defaultMissing: 0, outsideChildren: 0, unmappedChildren: 0,
+      groupTypes: new Map(), switchModes: new Map(), parserStatuses: new Map(),
+      groupIds: new Set(), groupIdsTruncated: false,
+    };
+    const randomSequence = {
+      nodes: 0, exact: 0, unresolved: 0, playlistItems: 0,
+      orderDiffers: 0, nonDefaultWeightItems: 0, nonDefaultWeightNodes: 0,
+      nonUniformWeightNodes: 0, nonDefaultAvoid: 0, maxAvoid: 0,
+      nonDefaultLoop: 0, globalScope: 0, continuous: 0, resetPlaylist: 0,
+      ownedNotInPlaylist: 0, duplicateItems: 0, emptyPlaylists: 0,
+      modes: new Map(), randomModes: new Map(), transitions: new Map(), statuses: new Map(),
+      memberships: new Map(),
+    };
+    const layerBlend = {
+      nodes: 0, exact: 0, unresolved: 0, definitions: 0,
+      initialCurves: 0, associations: 0, points: 0, continuous: 0,
+      outsideChildren: 0, statuses: new Map(), proof: new Map(),
+      assignments: new Map(), rtpcTypes: new Map(), rtpcIds: new Set(),
+      rtpcIdsTruncated: false,
+    };
     let unresolved = 0;
     for (const evidence of asArray(record?.evidence)) {
       const dispatch = evidence?.actionDispatchEvidence;
@@ -1928,15 +2210,112 @@
         current.count += Number(container?.nodeCount || 1);
         current.children += Number(container?.childCount || 0);
         containers.set(relation, current);
+        selector.nodes += Number(container?.selectorNodeCount || 0);
+        selector.exact += Number(container?.typedSelectorNodeCount || 0);
+        selector.unresolved += Number(container?.unresolvedSelectorNodeCount || 0);
+        selector.continuous += Number(container?.continuousValidationNodeCount || 0);
+        selector.packages += Number(container?.selectorPackageCount || 0);
+        selector.nonEmptyPackages += Number(container?.nonEmptySelectorPackageCount || 0);
+        selector.strictSubsetPackages += Number(container?.strictSubsetSelectorPackageCount || 0);
+        selector.packageChildRefs += Number(container?.selectorPackageChildReferenceCount || 0);
+        selector.associations += Number(container?.selectorAssociationCount || 0);
+        selector.continuePlayback += Number(container?.continuePlaybackAssociationCount || 0);
+        selector.isFirstOnly += Number(container?.isFirstOnlyAssociationCount || 0);
+        selector.nonzeroFadeOut += Number(container?.nonzeroFadeOutAssociationCount || 0);
+        selector.nonzeroFadeIn += Number(container?.nonzeroFadeInAssociationCount || 0);
+        selector.defaultMissing += Number(container?.defaultValueMissingPackageCount || 0);
+        selector.outsideChildren += Number(container?.mappedChildOutsideChildrenCount || 0)
+          + Number(container?.associationChildOutsideChildrenCount || 0);
+        selector.unmappedChildren += Number(container?.unmappedSelectorChildCount || 0);
+        for (const [key, count] of Object.entries(container?.selectorGroupTypes || {})) {
+          selector.groupTypes.set(key, (selector.groupTypes.get(key) || 0) + Number(count || 0));
+        }
+        for (const [key, count] of Object.entries(container?.selectorSwitchModes || {})) {
+          selector.switchModes.set(key, (selector.switchModes.get(key) || 0) + Number(count || 0));
+        }
+        for (const [key, count] of Object.entries(container?.selectorParserStatuses || {})) {
+          selector.parserStatuses.set(key, (selector.parserStatuses.get(key) || 0) + Number(count || 0));
+        }
+        for (const groupId of asArray(container?.selectorGroupIdsHex)) selector.groupIds.add(groupId);
+        selector.groupIdsTruncated ||= !!container?.selectorGroupIdsTruncated;
+        randomSequence.nodes += Number(container?.randomSequenceNodeCount || 0);
+        randomSequence.exact += Number(container?.typedRandomSequenceNodeCount || 0);
+        randomSequence.unresolved += Number(container?.unresolvedRandomSequenceNodeCount || 0);
+        randomSequence.playlistItems += Number(container?.randomSequencePlaylistItemCount || 0);
+        randomSequence.orderDiffers += Number(container?.playlistOrderDiffersFromChildrenCount || 0);
+        randomSequence.ownedNotInPlaylist += Number(container?.randomSequenceOwnedChildNotInPlaylistCount || 0);
+        randomSequence.duplicateItems += Number(container?.randomSequenceDuplicatePlaylistItemCount || 0);
+        randomSequence.emptyPlaylists += Number(container?.randomSequenceEmptyPlaylistNodeCount || 0);
+        randomSequence.nonDefaultWeightItems += Number(container?.nonDefaultWeightItemCount || 0);
+        randomSequence.nonDefaultWeightNodes += Number(container?.nonDefaultWeightNodeCount || 0);
+        randomSequence.nonUniformWeightNodes += Number(container?.nonUniformWeightNodeCount || 0);
+        randomSequence.nonDefaultAvoid += Number(container?.nonDefaultAvoidRepeatNodeCount || 0);
+        randomSequence.maxAvoid = Math.max(randomSequence.maxAvoid, Number(container?.maxAvoidRepeatCount || 0));
+        randomSequence.nonDefaultLoop += Number(container?.nonDefaultLoopNodeCount || 0);
+        randomSequence.globalScope += Number(container?.globalScopeRandomSequenceNodeCount || 0);
+        randomSequence.continuous += Number(container?.continuousRandomSequenceNodeCount || 0);
+        randomSequence.resetPlaylist += Number(container?.resetPlaylistNodeCount || 0);
+        for (const [key, count] of Object.entries(container?.randomSequenceModes || {})) {
+          randomSequence.modes.set(key, (randomSequence.modes.get(key) || 0) + Number(count || 0));
+        }
+        for (const [key, count] of Object.entries(container?.randomModes || {})) {
+          randomSequence.randomModes.set(key, (randomSequence.randomModes.get(key) || 0) + Number(count || 0));
+        }
+        for (const [key, count] of Object.entries(container?.randomTransitionModes || {})) {
+          randomSequence.transitions.set(key, (randomSequence.transitions.get(key) || 0) + Number(count || 0));
+        }
+        for (const [key, count] of Object.entries(container?.randomSequenceParserStatuses || {})) {
+          randomSequence.statuses.set(key, (randomSequence.statuses.get(key) || 0) + Number(count || 0));
+        }
+        for (const [key, count] of Object.entries(container?.randomSequenceMembershipStatuses || {})) {
+          randomSequence.memberships.set(key, (randomSequence.memberships.get(key) || 0) + Number(count || 0));
+        }
+        layerBlend.nodes += Number(container?.layerNodeCount || 0);
+        layerBlend.exact += Number(container?.typedLayerNodeCount || 0);
+        layerBlend.unresolved += Number(container?.unresolvedLayerNodeCount || 0);
+        layerBlend.definitions += Number(container?.layerDefinitionCount || 0);
+        layerBlend.initialCurves += Number(container?.layerInitialRtpcCurveCount || 0);
+        layerBlend.associations += Number(container?.layerAssociationCount || 0);
+        layerBlend.points += Number(container?.layerCurvePointCount || 0);
+        layerBlend.continuous += Number(container?.continuousLayerNodeCount || 0);
+        layerBlend.outsideChildren += Number(container?.layerAssociationOutsideChildrenCount || 0);
+        for (const [key, count] of Object.entries(container?.layerParserStatuses || {})) {
+          layerBlend.statuses.set(key, (layerBlend.statuses.get(key) || 0) + Number(count || 0));
+        }
+        for (const [key, count] of Object.entries(container?.layerProofStatuses || {})) {
+          layerBlend.proof.set(key, (layerBlend.proof.get(key) || 0) + Number(count || 0));
+        }
+        for (const [key, count] of Object.entries(container?.layerAssignmentStatuses || {})) {
+          layerBlend.assignments.set(key, (layerBlend.assignments.get(key) || 0) + Number(count || 0));
+        }
+        for (const [key, count] of Object.entries(container?.layerRtpcTypes || {})) {
+          layerBlend.rtpcTypes.set(key, (layerBlend.rtpcTypes.get(key) || 0) + Number(count || 0));
+        }
+        for (const rtpcId of asArray(container?.layerRtpcIdsHex)) layerBlend.rtpcIds.add(rtpcId);
+        layerBlend.rtpcIdsTruncated ||= !!container?.layerRtpcIdsTruncated;
       }
       for (const node of asArray(evidence?.musicNodeEvidence)) {
         const kind = normalize(node?.nodeKind) || `musicType${node?.objectType ?? "?"}`;
         const current = musicNodes.get(kind) || {
           count: 0, children: 0, sources: 0, selectionTypes: new Set(),
+          structureStatuses: new Map(), selectorStatuses: new Map(),
+          ownedNotSelected: 0, recursiveOwned: 0, unboundLeaves: 0,
+          unresolvedLeafObjects: 0,
         };
         current.count += 1;
         current.children += Number(node?.childCount || 0);
         current.sources += Number(node?.sourceCount || 0);
+        const structureStatus = normalize(node?.structureStatus);
+        if (structureStatus) current.structureStatuses.set(structureStatus, (current.structureStatuses.get(structureStatus) || 0) + 1);
+        const selectorStatus = normalize(node?.selectorValidation?.status);
+        if (selectorStatus) current.selectorStatuses.set(selectorStatus, (current.selectorStatuses.get(selectorStatus) || 0) + 1);
+        current.ownedNotSelected += asArray(node?.selectorValidation?.reciprocalChildrenWithoutTreeLeaf).length;
+        current.ownedNotSelected += asArray(node?.selectorValidation?.reciprocalChildrenWithoutPlaylistTerminal).length;
+        current.recursiveOwned += asArray(node?.selectorValidation?.recursiveOwnedDescendantIds).length;
+        current.unboundLeaves += asArray(node?.selectorValidation?.zeroUnboundLeafIds).length;
+        current.unresolvedLeafObjects += asArray(node?.selectorValidation?.sameBankMissingLeafIds).length;
+        current.unresolvedLeafObjects += asArray(node?.selectorValidation?.localOtherParentLeafIds).length;
+        current.unresolvedLeafObjects += asArray(node?.selectorValidation?.playlistTerminalSegmentIdsOutsideReciprocalChildren).length;
         for (const label of asArray(node?.selectionTypeLabels).filter(Boolean)) current.selectionTypes.add(humanize(label));
         musicNodes.set(kind, current);
       }
@@ -1946,6 +2325,109 @@
     for (const [relation, value] of containers) {
       values.push(`${taxonomyLabel(relation)}: ${formatNumber(value.count)} nodes / ${formatNumber(value.children)} child edges`);
     }
+    if (selector.nodes) {
+      const groupTypes = [...selector.groupTypes]
+        .map(([key, count]) => `${humanize(key)} ${formatNumber(count)}`)
+        .join(" / ");
+      const statuses = [...selector.parserStatuses]
+        .map(([key, count]) => `${humanize(key)} ${formatNumber(count)}`)
+        .join(" / ");
+      const groupIds = [...selector.groupIds];
+      values.push([
+        `Wwise Switch/State selectors: ${formatNumber(selector.nodes)} nodes`,
+        `${formatNumber(selector.exact)} typed exact`,
+        selector.unresolved ? `${formatNumber(selector.unresolved)} unresolved` : "",
+        groupTypes,
+        selector.continuous ? `${formatNumber(selector.continuous)} continuous-validation` : "",
+        statuses,
+      ].filter(Boolean).join(" / "));
+      values.push([
+        `Selector packages: ${formatNumber(selector.packages)}`,
+        `${formatNumber(selector.nonEmptyPackages)} non-empty`,
+        `${formatNumber(selector.strictSubsetPackages)} strict child subsets`,
+        `${formatNumber(selector.packageChildRefs)} mapped child references`,
+        selector.defaultMissing ? `${formatNumber(selector.defaultMissing)} defaults absent from packages` : "",
+        selector.outsideChildren ? `${formatNumber(selector.outsideChildren)} references outside reciprocal Children` : "",
+        selector.unmappedChildren ? `${formatNumber(selector.unmappedChildren)} reciprocal Children unmapped` : "",
+      ].filter(Boolean).join(" / "));
+      values.push([
+        `Selector associations: ${formatNumber(selector.associations)}`,
+        [...selector.switchModes].map(([key, count]) => `${humanize(key)} ${formatNumber(count)}`).join(" / "),
+        selector.continuePlayback ? `${formatNumber(selector.continuePlayback)} continue playback` : "",
+        selector.isFirstOnly ? `${formatNumber(selector.isFirstOnly)} first-only` : "",
+        selector.nonzeroFadeOut ? `${formatNumber(selector.nonzeroFadeOut)} nonzero fade-out` : "",
+        selector.nonzeroFadeIn ? `${formatNumber(selector.nonzeroFadeIn)} nonzero fade-in` : "",
+      ].filter(Boolean).join(" / "));
+      if (groupIds.length) {
+        const runtimeGroups = new Map(asArray(state.index?.controlCatalog?.wwiseSelectorGroups)
+          .filter((row) => row && typeof row === "object" && row.groupIdHex)
+          .map((row) => [normalize(row.groupIdHex).toLowerCase(), row]));
+        const labeledGroupIds = groupIds.slice(0, 12).map((groupId) => {
+          const runtimeGroup = runtimeGroups.get(normalize(groupId).toLowerCase());
+          if (!runtimeGroup) return groupId;
+          return `${groupId} (${runtimeGroup.semanticLabel || humanize(runtimeGroup.semanticRole || "unknown")} / ${humanize(runtimeGroup.semanticEvidence || "unknown")})`;
+        });
+        values.push(`Selector group ids: ${labeledGroupIds.join(" / ")}${selector.groupIdsTruncated || groupIds.length > 12 ? " / more omitted" : ""}`);
+      }
+      values.push("Runtime selector value and audio-object state were not observed; every mapped child remains only a possible branch.");
+    }
+    if (randomSequence.nodes) {
+      const summarizeCounts = (counts) => [...counts]
+        .map(([key, count]) => `${humanize(key)} ${formatNumber(count)}`)
+        .join(" / ");
+      values.push([
+        `Wwise Random/Sequence policy: ${formatNumber(randomSequence.nodes)} nodes`,
+        `${formatNumber(randomSequence.exact)} typed exact`,
+        randomSequence.unresolved ? `${formatNumber(randomSequence.unresolved)} unresolved` : "",
+        summarizeCounts(randomSequence.modes),
+        summarizeCounts(randomSequence.randomModes),
+        summarizeCounts(randomSequence.transitions),
+        summarizeCounts(randomSequence.statuses),
+        summarizeCounts(randomSequence.memberships),
+      ].filter(Boolean).join(" / "));
+      values.push([
+        `Playlists: ${formatNumber(randomSequence.playlistItems)} weighted items`,
+        randomSequence.orderDiffers ? `${formatNumber(randomSequence.orderDiffers)} playlist orders differ from Children` : "",
+        randomSequence.duplicateItems ? `${formatNumber(randomSequence.duplicateItems)} repeated playlist items` : "",
+        randomSequence.emptyPlaylists ? `${formatNumber(randomSequence.emptyPlaylists)} empty playlists with owned Children preserved` : "",
+        randomSequence.ownedNotInPlaylist ? `${formatNumber(randomSequence.ownedNotInPlaylist)} owned Children not referenced by the playlist` : "",
+        randomSequence.nonDefaultWeightItems ? `${formatNumber(randomSequence.nonDefaultWeightItems)} non-default weights across ${formatNumber(randomSequence.nonDefaultWeightNodes)} nodes` : "",
+        randomSequence.nonUniformWeightNodes ? `${formatNumber(randomSequence.nonUniformWeightNodes)} non-uniform pools` : "",
+        randomSequence.nonDefaultAvoid ? `${formatNumber(randomSequence.nonDefaultAvoid)} non-default avoid-repeat nodes (max ${formatNumber(randomSequence.maxAvoid)})` : "",
+        randomSequence.nonDefaultLoop ? `${formatNumber(randomSequence.nonDefaultLoop)} non-default loop nodes` : "",
+        randomSequence.globalScope ? `${formatNumber(randomSequence.globalScope)} global-scope nodes` : "",
+        randomSequence.continuous ? `${formatNumber(randomSequence.continuous)} continuous nodes` : "",
+        randomSequence.resetPlaylist ? `${formatNumber(randomSequence.resetPlaylist)} reset-on-play nodes` : "",
+      ].filter(Boolean).join(" / "));
+      values.push("Reciprocal Children prove container ownership; playlist rows prove selector membership and may repeat, omit, or leave the owned set empty. Runtime random seed, shuffle history, avoid-repeat history, Sequence cursor, and reset timing were not observed; playlist rows describe policy, not a selected leaf.");
+    }
+    if (layerBlend.nodes) {
+      const summarizeCounts = (counts) => [...counts]
+        .map(([key, count]) => `${humanize(key)} ${formatNumber(count)}`)
+        .join(" / ");
+      const rtpcIds = [...layerBlend.rtpcIds];
+      values.push([
+        `Wwise Layer/Blend structure: ${formatNumber(layerBlend.nodes)} nodes`,
+        `${formatNumber(layerBlend.exact)} typed exact`,
+        layerBlend.unresolved ? `${formatNumber(layerBlend.unresolved)} unresolved` : "",
+        summarizeCounts(layerBlend.assignments),
+        summarizeCounts(layerBlend.proof),
+        summarizeCounts(layerBlend.statuses),
+      ].filter(Boolean).join(" / "));
+      values.push([
+        `Layer curves: ${formatNumber(layerBlend.definitions)} layers`,
+        `${formatNumber(layerBlend.associations)} child associations`,
+        `${formatNumber(layerBlend.points)} curve points`,
+        layerBlend.initialCurves ? `${formatNumber(layerBlend.initialCurves)} initial RTPC curves` : "",
+        layerBlend.continuous ? `${formatNumber(layerBlend.continuous)} continuous-validation nodes` : "",
+        summarizeCounts(layerBlend.rtpcTypes),
+        layerBlend.outsideChildren ? `${formatNumber(layerBlend.outsideChildren)} associations outside Children` : "",
+      ].filter(Boolean).join(" / "));
+      if (rtpcIds.length) {
+        values.push(`Layer RTPC ids: ${rtpcIds.slice(0, 12).join(" / ")}${layerBlend.rtpcIdsTruncated || rtpcIds.length > 12 ? " / more omitted" : ""}`);
+      }
+      values.push("Layer curves prove authored RTPC-driven blend/crossfade policy. The live RTPC value, per-child gain, audible layers, and selected media were not observed; zero-layer assignments remain structural child relations only.");
+    }
     for (const detail of actionDetails) values.push(detail);
     for (const [kind, value] of musicNodes) {
       const detail = [
@@ -1953,11 +2435,62 @@
         value.children ? `${formatNumber(value.children)} children` : "",
         value.sources ? `${formatNumber(value.sources)} sources` : "",
         value.selectionTypes.size ? [...value.selectionTypes].join(" / ") : "",
+        [...value.structureStatuses].map(([key, count]) => `${humanize(key)} ${formatNumber(count)}`).join(" / "),
+        [...value.selectorStatuses].map(([key, count]) => `${humanize(key)} ${formatNumber(count)}`).join(" / "),
+        value.ownedNotSelected ? `${formatNumber(value.ownedNotSelected)} owned Children outside selector membership` : "",
+        value.recursiveOwned ? `${formatNumber(value.recursiveOwned)} selector leaves are recursively owned descendants` : "",
+        value.unboundLeaves ? `${formatNumber(value.unboundLeaves)} explicit zero/unbound leaves` : "",
+        value.unresolvedLeafObjects ? `${formatNumber(value.unresolvedLeafObjects)} selector leaves have unresolved object ownership` : "",
       ].filter(Boolean).join(" / ");
       values.push(`${taxonomyLabel(kind)}: ${detail}`);
     }
     if (unresolved) values.push(`${t("relationPartialGraph")}: ${formatNumber(unresolved)} unresolved nodes`);
     return values;
+  }
+
+  function sourceEvidenceSummary(record) {
+    const sourceKinds = new Map();
+    const plugins = new Map();
+    const streamTypes = new Map();
+    const flags = new Map();
+    let references = 0;
+    let objects = 0;
+    let decoded = 0;
+    let unresolvedCodec = 0;
+    const nonMediaSources = [];
+    for (const evidence of asArray(record?.evidence)) {
+      const summary = evidence?.sourceObjectSummary;
+      if (!summary || typeof summary !== "object") continue;
+      references += Number(summary.sourceReferenceCount || 0);
+      objects += Number(summary.uniqueSourceObjectCount || 0);
+      decoded += Number(summary.decodedCodecSourceCount || 0);
+      unresolvedCodec += Number(summary.unresolvedCodecSourceCount || 0);
+      for (const [key, count] of Object.entries(summary.sourceKindCounts || {})) sourceKinds.set(key, (sourceKinds.get(key) || 0) + Number(count || 0));
+      for (const [key, count] of Object.entries(summary.pluginCounts || {})) plugins.set(key, (plugins.get(key) || 0) + Number(count || 0));
+      for (const [key, count] of Object.entries(summary.streamTypeCounts || {})) streamTypes.set(key, (streamTypes.get(key) || 0) + Number(count || 0));
+      for (const [key, count] of Object.entries(summary.sourceFlagCounts || {})) flags.set(key, (flags.get(key) || 0) + Number(count || 0));
+      for (const source of asArray(evidence?.nonMediaSourceEvidence)) if (source && typeof source === "object") nonMediaSources.push(source);
+    }
+    if (!references && !nonMediaSources.length) return [];
+    const counted = (values) => [...values].map(([key, count]) => `${humanize(key)} ${formatNumber(count)}`).join(" / ");
+    const rows = [
+      `AkBankSourceData: ${formatNumber(references)} routed references / ${formatNumber(objects)} source objects / ${counted(sourceKinds)}`,
+      `Source plugins: ${counted(plugins)} / buffering ${counted(streamTypes)}${flags.size ? ` / flags ${counted(flags)}` : ""}`,
+      `Codec resolution: ${formatNumber(decoded)} decoded-index matches / ${formatNumber(unresolvedCodec)} unresolved codec sources`,
+    ];
+    for (const source of nonMediaSources.slice(0, 16)) {
+      rows.push([
+        source.pluginName || source.pluginIdHex || "unknown plugin",
+        humanize(source.sourceKind || "unknown"),
+        `source ${source.sourceId ?? "?"}`,
+        humanize(source.streamTypeLabel || "unknown buffering"),
+        humanize(source.mediaLocationStatus || "unknown location"),
+        `object ${source.objectId ?? "?"}`,
+      ].join(" / "));
+    }
+    if (nonMediaSources.length > 16) rows.push(`${formatNumber(nonMediaSources.length - 16)} more non-media source records omitted from this compact view.`);
+    rows.push("External Source and synthesized plugin records prove a Wwise playback source, not a fixed recoverable WEM. Stream type is a buffering policy, not a physical PCK location; runtime instantiation and audibility were not observed.");
+    return rows;
   }
 
   function customFootstepParameterSummary(record) {
@@ -2031,6 +2564,8 @@
     if (record.relationTags.length) panel.appendChild(chipSection(t("relation"), record.relationTags.map(taxonomyLabel)));
     const selectorEvidence = selectorEvidenceSummary(raw);
     if (selectorEvidence.length) panel.appendChild(chipSection(t("selectorEvidence"), selectorEvidence));
+    const sourceEvidence = sourceEvidenceSummary(raw);
+    if (sourceEvidence.length) panel.appendChild(chipSection(t("sourceEvidence"), sourceEvidence));
     const customFootstepParameters = customFootstepParameterSummary(raw);
     if (customFootstepParameters.length) {
       panel.appendChild(chipSection(t("customFootstepParameters"), customFootstepParameters));
