@@ -207,7 +207,7 @@ def verify_charinfo_v2_data_path_contract(
         (
             "installed_map_path_selection.installed_ifix_target_count",
             contract_selection["installed_ifix_target_count"],
-            30,
+            32,
         ),
         (
             "audit.installed_map_path_selection.installed_ifix",
@@ -216,7 +216,7 @@ def verify_charinfo_v2_data_path_contract(
                 selection["installedIfix"]["matchingTargets"],
                 selection["installedIfix"]["currentRoute"],
             ),
-            (30, [], "all three recovered non-IFix branches"),
+            (32, [], "all three recovered non-IFix branches"),
         ),
         (
             "installed_map_path_selection.native_missing_map",
@@ -1312,6 +1312,8 @@ def verify_deferred_gbuffer_frame_report(
             "height": transport["extent"]["height"],
             "attachments": transport["attachment_signature"],
             "sourceRendererDisabled": True,
+            "resolverGBufferBindings": "t23:C,t24:B,t25:A",
+            "resolverSourceIdentifiers": "t23:_62,t24:_61,t25:_60",
             "pass0ConsumerEnabled": False,
         },
     )
@@ -1445,6 +1447,10 @@ def verify_deferred_gbuffer_frame_transport(recovery: dict[str, object]) -> None
             "command.SetRenderTarget(",
             "canonicalColorTarget,",
             "canonicalDepthTarget);",
+            "ResolverSourceTextureT23Id",
+            "ResolverSourceTextureT24Id",
+            "ResolverSourceTextureT25Id",
+            'resolverSourceIdentifiers=t23:_62,t24:_61,t25:_60',
             'pass0ConsumerEnabled=false',
         ],
     )
@@ -1865,7 +1871,7 @@ def verify_hdpls_resource_lifecycle_contract(
                 "scope": "hash-pinned files currently installed on this machine",
                 "base_ifix_file_count": 0,
                 "persistent_ifix_file_count": 1,
-                "persistent_target_count": 30,
+                "persistent_target_count": 32,
                 "checked_hdpls_signatures": [
                     {
                         "type": (
@@ -2123,9 +2129,99 @@ def verify_hgbuffer(recovery: dict[str, object]) -> None:
         record = selected[stage]
         require_hash(SOURCE_ROOT / record["path"], record["sha256"])
 
+    vertex_metadata_path = (
+        SOURCE_ROOT / "ShaderEvidence/HGRPLitHGBuffer.vertex.metadata.json"
+    )
+    if not vertex_metadata_path.is_file():
+        raise AssertionError(f"missing HGRPLit HGBuffer vertex metadata: {vertex_metadata_path}")
+    vertex_metadata = json.loads(vertex_metadata_path.read_text(encoding="utf-8"))
+    if vertex_metadata.get("SourcePassName") != "HGBuffer":
+        raise AssertionError(
+            "HGRPLit HGBuffer vertex pass mismatch: "
+            f"actual={vertex_metadata.get('SourcePassName')}"
+        )
+    if vertex_metadata.get("SourceSerializedProgramStage") != "vertex":
+        raise AssertionError(
+            "HGRPLit HGBuffer vertex stage mismatch: "
+            f"actual={vertex_metadata.get('SourceSerializedProgramStage')}"
+        )
+    if vertex_metadata.get("SourceCompiledKeywords") != [
+        "HG_ENABLE_MV",
+        "SRP_INSTANCING_ON",
+    ]:
+        raise AssertionError(
+            "HGRPLit HGBuffer vertex keyword mismatch: "
+            f"actual={vertex_metadata.get('SourceCompiledKeywords')}"
+        )
+    global_parameters = next(
+        (
+            item
+            for item in (vertex_metadata.get("ConstantBufferParameters") or [])
+            if isinstance(item, dict) and item.get("Name") == "ShaderVariablesGlobal"
+        ),
+        None,
+    )
+    if not isinstance(global_parameters, dict):
+        raise AssertionError("HGRPLit HGBuffer ShaderVariablesGlobal metadata missing")
+    history_names = {
+        str(parameter.get("Name"))
+        for parameter in (global_parameters.get("MatrixParameters") or [])
+        + (global_parameters.get("VectorParameters") or [])
+        if isinstance(parameter, dict)
+    }
+    expected_history_names = {
+        "_NonJitteredViewNoTransProjMatrix",
+        "_PrevNonJitteredViewNoTransProjMatrix",
+        "_PrevCamPosRWS_Internal",
+    }
+    if not expected_history_names.issubset(history_names):
+        raise AssertionError(
+            "HGRPLit HGBuffer history metadata mismatch: "
+            f"expected={sorted(expected_history_names)} actual={sorted(history_names)}"
+        )
+    per_draw = next(
+        (
+            item
+            for item in (vertex_metadata.get("ConstantBufferParameters") or [])
+            if isinstance(item, dict)
+            and item.get("Name") == "UnityInstancing_SRP_UnityPerDraw"
+        ),
+        None,
+    )
+    per_draw_members = {
+        str(member.get("Name"))
+        for struct in (per_draw or {}).get("StructParameters", [])
+        if isinstance(struct, dict)
+        for member in (struct.get("MatrixMembers") or [])
+        if isinstance(member, dict)
+    }
+    if "unity_MatrixPreviousM" not in per_draw_members:
+        raise AssertionError(
+            "HGRPLit HGBuffer previous-object matrix metadata missing"
+        )
+
     for stage in ("decompiled_vertex", "decompiled_fragment"):
         record = selected[stage]
         require_hash(repo_path(record["repo_path"]), record["sha256"])
+
+    vertex = repo_path(selected["decompiled_vertex"]["repo_path"])
+    require_tokens(
+        vertex,
+        [
+            # HGBuffer carries both current and previous clip positions to the
+            # fragment; a camera-only previous matrix is not the full source
+            # contract because the vertex path also resolves prior skin/object
+            # deformation before these varyings are written.
+            "float4 TEXCOORD_3 : TEXCOORD3;",
+            "float4 TEXCOORD_4_1 : TEXCOORD4;",
+            "TEXCOORD_5.x = _826;",
+            "TEXCOORD_5.y = _827;",
+            "TEXCOORD_5.z = _829;",
+            "TEXCOORD_6.x = mad(",
+            "TEXCOORD_6.y = mad(",
+            "TEXCOORD_6.z = mad(",
+        ],
+    )
 
     fragment = repo_path(selected["decompiled_fragment"]["repo_path"])
     require_tokens(
@@ -2137,7 +2233,28 @@ def verify_hgbuffer(recovery: dict[str, object]) -> None:
             "float4 SV_Target_3 : SV_Target3;",
             "float4 SV_Target_4 : SV_Target4;",
             "SV_Target.w = 0.5f;",
+            "float _116 = max(TEXCOORD_5.z, 9.9999999392252902907785028219223e-09f);",
+            "float _126 = max(TEXCOORD_6.z, 9.9999999392252902907785028219223e-09f);",
+            "float _133 = (TEXCOORD_5.x / _116) - (TEXCOORD_6.x / _126);",
+            "float _135 = _132 - _123;",
+            "SV_Target_1.x = mad(_195, 0.5f - _160, _160);",
+            "SV_Target_1.y = mad(_195, 0.5f - _161, _161);",
+            "SV_Target_1.w = _195 * 0.699999988079071044921875f;",
+            "SV_Target_1.z = (_195 > 0.0f) ? 1.0f : _26_m0[7u].x;",
+            # The material lanes are part of the source HGBuffer ABI, not
+            # optional decoration.  Keep the packed selector, porosity,
+            # normal flags, and base-colour equations pinned so a future
+            # runtime sidecar cannot silently collapse them to defaults.
+            "SV_Target_2.x = _301;",
+            "SV_Target_2.y = mad(_26_m0[1u].x, _290.z - 1.0f, 1.0f);",
+            "SV_Target_3.z = _312;",
+            "SV_Target_2.z = mad(clamp(mad(_26_m0[4u].w, _312, _301 * _26_m0[5u].y) + _26_m0[5u].x, 0.0f, 1.0f), 0.949999988079071044921875f, 0.0500000007450580596923828125f) * (1.0f - _26_m0[7u].y);",
+            "SV_Target_3.w = _71(_341 & 3u) * 0.3333333432674407958984375f;",
+            "SV_Target_2.w = _71(_341 >> 2u) * 0.3333333432674407958984375f;",
             "SV_Target_3.x = mad(",
+            "SV_Target_4.x = mad(_26_m0[4u].x, _32_m0[8u].x - _275, _275);",
+            "SV_Target_4.y = mad(_26_m0[4u].x, _32_m0[8u].y - _276, _276);",
+            "SV_Target_4.z = mad(_26_m0[4u].x, _32_m0[8u].z - _277, _277);",
             "SV_Target_4.w = 0.0f;",
         ],
     )
@@ -2475,8 +2592,8 @@ def verify_native_map(recovery: dict[str, object]) -> None:
             + [part.title() for part in key.split("_")[1:]]
         )
         assert ifix_index["summary"][index_key] == ifix_record[key]
-    assert ifix_record["block_version"] == 22764515
-    assert ifix_record["target_count"] == 30
+    assert ifix_record["block_version"] == 23167343
+    assert ifix_record["target_count"] == 32
     assert ifix_record["character_recovery_locally_replaced"] is False
     state_record = ifix_record["state_report"]
     state_path = repo_path(state_record["repo_path"])
@@ -3802,11 +3919,11 @@ def verify_selected_resolver_binding_contract() -> None:
     }
     assert settings_lifecycle["persistent_ifix_patch_overlay"] == {
         "name": "IFixPatchOut",
-        "block_version": 22764515,
+        "block_version": 23167343,
         "file_count": 1,
         "chunk_count": 1,
-        "byte_count": 82021,
-        "target_count": 30,
+        "byte_count": 86926,
+        "target_count": 32,
         "render_pipeline_settings_target_count": 0,
         "state_report": (
             "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/"
@@ -4038,7 +4155,11 @@ def verify_selected_resolver_binding_contract() -> None:
         "float zBinSlice@40",
         "float invZBinSlice@44",
     ]
-    assert "12 authored room lights are not a valid substitute" in (
+    # The authored-room subset was expanded by the refreshed source audit. Keep
+    # this gate tied to the durable open boundary rather than a superseded
+    # intermediate row count.
+    assert "runtime/custom carry-in" in light_binning_native["remaining_boundary"]
+    assert "final lightCount remain native live state" in (
         light_binning_native["remaining_boundary"]
     )
     light_cull_audit_path = repo_path(
@@ -4782,7 +4903,7 @@ def verify_selected_resolver_binding_contract() -> None:
     assert hdpls_native["installed_ifix_state"] == {
         "base_file_count": 0,
         "persistent_file_count": 1,
-        "persistent_target_count": 30,
+        "persistent_target_count": 32,
         "hdpls_target_count": 0,
         "current_route": "both recovered non-IFix branches",
         "future_patch_boundary": True,
@@ -5234,6 +5355,37 @@ def verify_selected_resolver_binding_contract() -> None:
     assert observations["sampler_count"] == 5
     assert len(contract["remaining_blockers"]) == 4
 
+    d3d11_registers = contract["selected_original_program"][
+        "installed_d3d11_selection"
+    ]["d3d11_resource_registers"]
+    assert d3d11_registers["source_path"].endswith(
+        "gacha_deferred_resolver_chain/pass0_pixel.asm.txt"
+    )
+    require_hash(
+        repo_path(d3d11_registers["source_path"]),
+        d3d11_registers["source_sha256"],
+    )
+    assert d3d11_registers["unmapped_registers_remain_open"] is True
+    assert [
+        (
+            row["register"],
+            row["role"],
+            row["set"],
+            row["binding"],
+        )
+        for row in d3d11_registers["registers"]
+    ] == [
+        ("t0", "_BinningBuffer", 3, 39),
+        ("t1", "_CameraDepthTexture", 3, 27),
+        ("t5", "_ReflectionProbeOctTextureArray", 3, 10),
+        ("t6", "_PunctualLightShadowTexV2", 3, 11),
+        ("t7", "_LowResDirectionalShadow", 3, 7),
+        ("t22", "_HDPLSScreenSpaceShadowMask", 3, 22),
+        ("t23", "_GBufferTexture[2] / GBuffer C", 3, 23),
+        ("t24", "_GBufferTexture[1] / GBuffer B", 3, 24),
+        ("t25", "_GBufferTexture[0] / GBuffer A", 3, 25),
+    ]
+
 
 def main() -> int:
     recovery = json.loads(RECOVERY_PATH.read_text(encoding="utf-8"))
@@ -5250,8 +5402,9 @@ def main() -> int:
     verify_visibility_sh_unity_replay()
     print(
         "SphereOutside deferred recovery verification passed: exact HGBuffer "
-        "stages, 4 original shader dumps, 4 serialized subshaders each with "
-        "14 resolver passes / 640 D3D11 variants, 7 native draw targets, the "
+        "stages, 4 original shader dumps, one populated serialized subshader "
+        "with 14 resolver passes / 640 D3D11 variants plus 3 empty LOD "
+        "fallback subshaders, 7 native draw targets, the "
         "installed patch-audited passes 0/1/2 plus conditional WriteAlpha route, "
         "the installed UnityPlayer fallback scorer and unique serialized pass-0 "
         "D3D11 pair 96, with both original stages executed once in a fail-closed "

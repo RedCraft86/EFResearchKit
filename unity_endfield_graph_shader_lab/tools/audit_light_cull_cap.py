@@ -32,6 +32,7 @@ SETTING_HUB_SOURCE = HGRP_ROOT / "HGRenderPipelineSettingHub.cs"
 SETTING_PARAMETERS_SOURCE = HGRP_ROOT / "HGSettingParameters.cs"
 LIGHT_CLUSTER_SOURCE = HGRP_ROOT / "LightClusteringPassConstructor.cs"
 HG_CAMERA_SOURCE = HGRP_ROOT / "HGCamera.cs"
+HG_UTILS_SOURCE = HGRP_ROOT / "HGUtils.cs"
 IFIX_STATE = (
     LAB_ROOT
     / "Assets/EndfieldGraphShaderLab/Generated/OriginalData/"
@@ -84,7 +85,7 @@ EXPECTED_HASHES = {
     "setting_parameters_source": "0ea7d61931aa014fb7ebca149380da2804fc8d5e07705e941bf6474b74a55ce9",
     "light_cluster_source": "a81ef9843339141a86c910a6915ab96e647f1f43c25631d537fe872ef4ead888",
     "hg_camera_source": "2f0e098481f25f0e77de8d203c7cae1e4d748b4521d5157af0ab1aaa1163205a",
-    "ifix_state": "b9ab981b65caa0b2a16d9603812c18236ad0aa5af255cb06614e7441cdef45d1",
+    "hg_utils_source": "001686edd13da1e8598d9b252ae0b305d0fb0d2d8c4ecee6d6f8bd1ac10cc97a",
     "hgmesh_renderer_data_source": "af62293a829675951bbc135b0ba51444f72c8b288a0043617ed0c4300c6feae0",
     "animestudio_class_id_source": "e14cbf9403b8da5c4004a9a441512ffa6b0745d52818ace6aec8bb8645ba8c17",
     "animestudio_asset_helper_source": "474c636209d2317abcc8c26ac3646cd2a9a13795fd2493e29ce26037451ee288",
@@ -3126,6 +3127,10 @@ UNITY_HGTREE_FIELD_NAMES = {
 UNITY_CULLING_SLICES = {
     "binding_to_result_wrapper": (0x1800FBD2B, "e89052f500"),
     "result_wrapper_to_candidate_core": (0x18105104A, "e8f1090000"),
+    "result_wrapper_to_visible_light_converter": (
+        0x18105104F,
+        "8b15afbcdc00488d4c2450448bf0e87e2c4fff488b8ea0090000",
+    ),
     "fallback_mode_gate_manager_9d8": (0x181051A5E, "80b9d809000000"),
     "pc_device_tier_gate": (
         0x1810520A0,
@@ -3158,6 +3163,30 @@ UNITY_CULLING_SLICES = {
     "ascending_float_sort_comparison": (
         0x181043948,
         "f30f1047084803c7f20f1033488bd366410f6ece0f2fc10f86fc010000",
+    ),
+}
+
+UNITY_CULLING_BODIES = {
+    "candidate_core": (
+        0x181051A40,
+        0x4E1,
+        "7ffa59970340779c7d6c18246b6410f49bdeaa05de19a8111c2cb69653f8b7a1",
+    ),
+}
+
+UNITY_CULLING_WRAPPER_BODIES = {
+    "result_lifetime_wrapper": (
+        0x181050FC0,
+        0x133,
+        "5172c0a4b582927e476aca280daa58bff43e47cf22c1ebbcf400a30ab3cc13a4",
+    ),
+}
+
+UNITY_VISIBLE_LIGHT_PRODUCER_BODIES = {
+    "candidate_vector_to_visible_light_rows": (
+        0x180543CE0,
+        0x1B0,
+        "6fbd65f36f7662fd2812006cb32cc77389434a45dfa76afdec25aec9b0125db5",
     ),
 }
 
@@ -3256,6 +3285,96 @@ def verified_hash(name: str, path: Path) -> str:
     actual = sha256(path)
     require(f"{name}_sha256", actual, EXPECTED_HASHES[name], path)
     return actual
+
+
+def validate_ifix_state(
+    path: Path = IFIX_STATE,
+    *,
+    expected_game_assembly_sha256: str = EXPECTED_HASHES["game_assembly"],
+) -> tuple[str, dict[str, object]]:
+    """Validate the current IFix report without pinning volatile report bytes.
+
+    The refresh tool intentionally updates recovered-at dates, VFS chunk names,
+    and target-table records when the installed game changes.  The audit still
+    pins the installed GameAssembly build, requires a self-consistent target
+    table, and rejects render/HGRP targets; it therefore does not treat a stale
+    whole-report SHA-256 as evidence of a current patch state.
+    """
+
+    require("ifix_state_exists", path.is_file(), True, path)
+    actual_report_sha256 = sha256(path)
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AssertionError(
+            "Light-cull cap audit failed: "
+            f"validator=light_cull_cap; check=ifix_state_json; source={path}; "
+            f"expected=valid JSON; actual={type(exc).__name__}: {exc}"
+        ) from exc
+    require(
+        "ifix_state_schema",
+        state.get("schema"),
+        "endfield.charinfo.installed-ifix-patch-state.v1",
+        path,
+    )
+    source_build = state.get("source_build") or {}
+    game_assembly = source_build.get("game_assembly") or {}
+    require(
+        "ifix_game_assembly_sha256",
+        game_assembly.get("sha256"),
+        expected_game_assembly_sha256,
+        path,
+    )
+    targets = state.get("targets")
+    patch_format = state.get("patch_format") or {}
+    require(
+        "ifix_targets_array",
+        isinstance(targets, list) and all(isinstance(row, dict) for row in targets),
+        True,
+        path,
+    )
+    require(
+        "ifix_target_count_matches_targets",
+        patch_format.get("target_count"),
+        len(targets),
+        path,
+    )
+    require(
+        "ifix_terminal_int32",
+        patch_format.get("terminal_int32"),
+        0,
+        path,
+    )
+    persistent = (state.get("vfs_state") or {}).get("persistent_overlay") or {}
+    patch_file = persistent.get("file") or {}
+    refresh = state.get("refresh") or {}
+    require(
+        "ifix_refresh_tool",
+        isinstance(refresh.get("tool"), str),
+        True,
+        path,
+    )
+    patch_sha256 = patch_file.get("sha256")
+    require(
+        "ifix_patch_sha256_present",
+        isinstance(patch_sha256, str) and len(patch_sha256) == 64,
+        True,
+        path,
+    )
+    require(
+        "ifix_patch_sha256_consistency",
+        refresh.get("source_patch_sha256"),
+        patch_sha256,
+        path,
+    )
+    hgrp_targets = [
+        f"{row.get('type')}.{row.get('method')}"
+        for row in targets
+        if isinstance(row, dict)
+        and str(row.get("type", "")).startswith("HG.Rendering.Runtime")
+    ]
+    require("ifix_hgrp_targets", hgrp_targets, [], path)
+    return actual_report_sha256, state
 
 
 class PEImage:
@@ -6338,6 +6457,62 @@ def validate_hgtree_renderer_list_game_assembly(
     }
 
 
+def validate_render_transition1_component75_native(body: bytes) -> dict[str, object]:
+    """Pin the Render transition-1 HLOD-level byte/table projection.
+
+    The native Render callback receives the selected component-75 storage
+    pointer, reads its byte at offset zero, and indexes the
+    HGLODStreamingSystem squared unload-distance table at state +0x474.
+    This closes the producer/use contract without inventing a stripped native
+    type name for component 75.
+    """
+
+    require(
+        "render_transition1_component75_body_size",
+        len(body),
+        0x6C4,
+        UNITY_PLAYER,
+    )
+    slices = {
+        "lod_state_pointer_and_enable_gate": (
+            0x1A7,
+            bytes.fromhex("488b4630807838000f84b7010000"),
+        ),
+        "lod_config_and_component75_byte0": (
+            0x1BE,
+            bytes.fromhex("0f10403c0fb609"),
+        ),
+        "hlod_unload_distance_index": (
+            0x1E4,
+            bytes.fromhex("f30f10bc8874040000"),
+        ),
+    }
+    validated = {}
+    for label, (offset, expected) in slices.items():
+        require(
+            f"render_transition1_{label}",
+            body[offset : offset + len(expected)],
+            expected,
+            UNITY_PLAYER,
+        )
+        validated[label] = {
+            "bodyOffset": f"0x{offset:X}",
+            "sizeBytes": len(expected),
+            "sha256": hashlib.sha256(expected).hexdigest(),
+        }
+    return {
+        "callbackVirtualAddress": "0x181154230",
+        "component75PointerField": "selected component-75 storage pointer",
+        "component75ByteOffset": "0x00",
+        "streamingStatePointerOffset": "0x30",
+        "enableLodStreamingOffset": "0x38",
+        "lodCrossFadeConfigOffset": "0x3C",
+        "hlodUnloadDistanceTableOffset": "0x474 + 4 * component75.byte0",
+        "nativeProjectionClosed": True,
+        "validatedSlices": validated,
+    }
+
+
 def validate_streaming_scene_v2_payload_census(
     unity_image: PEImage,
     game_image: PEImage,
@@ -6399,6 +6574,10 @@ def validate_streaming_scene_v2_payload_census(
                 "sha256": actual_hash,
             }
         )
+
+    component75_hlod_level = validate_render_transition1_component75_native(
+        unity_image.read(0x181154230, 0x6C4)
+    )
 
     dispatch_tables = {}
     for label, (virtual_address, expected_entries) in (
@@ -6921,6 +7100,7 @@ def validate_streaming_scene_v2_payload_census(
             **owners,
             "nativeCallbackRegistry": native_callback_registry,
         },
+        "component75HlodLevel": component75_hlod_level,
         "component67InitialData": initial_data,
         "serializedMapConfigs": configs,
         "installedVfs": vfs,
@@ -7457,6 +7637,87 @@ def validate_native_handoff(
     }
 
 
+def validate_light_clustering_consumer(
+    source: Path = LIGHT_CLUSTER_SOURCE,
+    *,
+    source_text: str | None = None,
+    verify_source_hash: bool = True,
+) -> dict[str, object]:
+    """Close the post-cull survivor-index transport from original source."""
+
+    if source_text is None:
+        if verify_source_hash:
+            verified_hash("light_cluster_source", source)
+        require("light_cluster_source_exists", source.is_file(), True, source)
+        source_text = source.read_text(encoding="utf-8-sig")
+    method_name = "public void SetupState(CullingResults cullingResults, LightCullResult lightCullResult"
+    start = source_text.find(method_name)
+    require("light_cluster_setup_state_method_present", start >= 0, True, source)
+    end = source_text.find("private static int GetDirectionalLightIndex", start)
+    require("light_cluster_setup_state_method_boundary", end > start, True, source)
+    method = source_text[start:end]
+    snippets = {
+        "light_cull_result_projection": "LightCullResult::get_visibleLights",
+        "native_result_cap": "if ( v11 > 256 )",
+        "punctual_type_filter": (
+            "if ( *(_DWORD *)m_Buffer == 2 || !*(_DWORD *)m_Buffer )"
+        ),
+        "source_row_index_write": (
+            "this.fields.m_punctualLightIndices.m_Buffer[v22] = v19"
+        ),
+        "sorted_index_copy": (
+            "this.fields.m_punctualLightIndices.m_Buffer[4 * v13] = v41"
+        ),
+        "shadow_index_consumer": (
+            "PreparePunctualLightShadowCasters("
+        ),
+        "sort_job_completion": "Unity::Jobs::JobHandle::Complete(&v50",
+    }
+    for check, snippet in snippets.items():
+        require(
+            f"light_cluster_{check}",
+            snippet in method,
+            True,
+            source,
+        )
+    return {
+        "method": "HG.Rendering.Runtime.LightClusteringPassConstructor.SetupState",
+        "sourceProjection": {
+            "from": "LightCullResult.visibleLights",
+            "maxRows": 256,
+            "rowStrideBytes": 148,
+            "subArrayStart": 0,
+        },
+        "survivorIndexTransport": {
+            "elementType": "Int32",
+            "sourceIndex": "original VisibleLight row index",
+            "sortKey": [
+                "priority descending",
+                "squared camera distance ascending",
+            ],
+            "postSortCopy": True,
+            "consumer": (
+                "HGPunctualLightShadowManagerV2.PreparePunctualLightShadowCasters"
+            ),
+        },
+        "acceptedVisibleLightTypes": [0, 2],
+        "punctualCountSettingClamp": "min(filteredCount, PunctualLightMaxCount)",
+        "evidenceBoundary": {
+            "closed": [
+                "LightCullResult NativeArray projection into a zero-based <=256 row slice",
+                "punctual type 0/2 admission",
+                "original-row index preservation through the punctual sort",
+                "sorted Int32 index-array handoff to punctual shadow preparation",
+            ],
+            "open": [
+                "target-frame LightCullResult pointer/count and row values",
+                "runtime/custom lights outside the authored source set",
+            ],
+        },
+        "sourceSha256": sha256(source) if source.is_file() else None,
+    }
+
+
 def validate_unity_native_producer(image: PEImage) -> dict[str, object]:
     require("unity_player_image_base", image.image_base, 0x180000000, image.path)
     target = image.u64(
@@ -7468,6 +7729,69 @@ def validate_unity_native_producer(image: PEImage) -> dict[str, object]:
     name = image.cstring(name_pointer)
     require("unity_cull_lights_icall_target", target, UNITY_CULL_LIGHTS_ICALL_VA, image.path)
     require("unity_cull_lights_icall_name", name, UNITY_CULL_LIGHTS_ICALL_NAME, image.path)
+
+    bodies = []
+    for label, (virtual_address, size_bytes, expected_hash) in (
+        UNITY_CULLING_BODIES.items()
+    ):
+        body = image.read(virtual_address, size_bytes)
+        actual_hash = hashlib.sha256(body).hexdigest()
+        require(
+            f"unity_culling_{label}_sha256",
+            actual_hash,
+            expected_hash,
+            image.path,
+        )
+        bodies.append(
+            {
+                "label": label,
+                "virtualAddress": f"0x{virtual_address:X}",
+                "sizeBytes": size_bytes,
+                "sha256": actual_hash,
+            }
+        )
+
+    wrapper_bodies = []
+    for label, (virtual_address, size_bytes, expected_hash) in (
+        UNITY_CULLING_WRAPPER_BODIES.items()
+    ):
+        body = image.read(virtual_address, size_bytes)
+        actual_hash = hashlib.sha256(body).hexdigest()
+        require(
+            f"unity_culling_wrapper_{label}_sha256",
+            actual_hash,
+            expected_hash,
+            image.path,
+        )
+        wrapper_bodies.append(
+            {
+                "label": label,
+                "virtualAddress": f"0x{virtual_address:X}",
+                "sizeBytes": size_bytes,
+                "sha256": actual_hash,
+            }
+        )
+
+    visible_light_producer_bodies = []
+    for label, (virtual_address, size_bytes, expected_hash) in (
+        UNITY_VISIBLE_LIGHT_PRODUCER_BODIES.items()
+    ):
+        body = image.read(virtual_address, size_bytes)
+        actual_hash = hashlib.sha256(body).hexdigest()
+        require(
+            f"unity_visible_light_producer_{label}_sha256",
+            actual_hash,
+            expected_hash,
+            image.path,
+        )
+        visible_light_producer_bodies.append(
+            {
+                "label": label,
+                "virtualAddress": f"0x{virtual_address:X}",
+                "sizeBytes": size_bytes,
+                "sha256": actual_hash,
+            }
+        )
 
     slices = []
     for label, (virtual_address, expected_hex) in UNITY_CULLING_SLICES.items():
@@ -7496,6 +7820,50 @@ def validate_unity_native_producer(image: PEImage) -> dict[str, object]:
         "candidateRecord": {
             "sizeBytes": 12,
             "fields": ["native light pointer (8 bytes)", "camera distanceSquared (4 bytes)"],
+        },
+        "candidateCoreBody": bodies,
+        "resultLifetimeWrapper": {
+            "virtualAddress": "0x181050FC0",
+            "sizeBytes": 0x133,
+            "emptyViewHandle": {
+                "input": -1,
+                "result": "16 zero bytes at the hidden sret pointer",
+            },
+            "nonEmptyFlow": [
+                "calls the candidate core with a local candidate-pointer vector at [rsp+0x50]",
+                "passes the returned candidate count to 0x180543CE0",
+                "appends the converted row-buffer pointer to manager+0x988 with size +0x998 and capacity +0x9A0",
+                "copies converted pointer/count to the hidden sret result",
+            ],
+            "localVectorCleanup": "0x180129D50 after result publication",
+            "postPublicationCall": "0x180FBF5B0 through manager+0x9B0",
+            "verifiedBodies": wrapper_bodies,
+        },
+        "visibleLightProducer": {
+            "converterVirtualAddress": "0x180543CE0",
+            "inputVector": {
+                "pointerOffset": "0x00",
+                "countOffset": "0x10",
+                "capacityOffset": "0x18",
+                "element": "native candidate/light pointer",
+            },
+            "allocationSizeEquation": "inputCount * 0x94",
+            "rowStrideBytes": 148,
+            "writtenRawFieldMappings": [
+                "row+0x00 <- source+0x0C (light type)",
+                "row+0x04 <- source+0x3C (16 bytes)",
+                "row+0x24..0x63 <- source+0x6C..0xAB (four 16-byte matrix chunks)",
+                "row+0x64 <- source+0x14 (4 bytes)",
+                "row+0x68 <- source+0x18, or source+0x138 for source type 3/4",
+                "row+0x6C <- source+0x24 (4 bytes)",
+                "row+0x70 <- source+0x8C (4 bytes)",
+                "row+0x74..0x7F <- source+0x9C/+0xA0/+0xA4",
+                "row+0x80 <- source+0x00 (4 bytes)",
+                "row+0x84 <- constant zero (converter r12d is zero throughout the loop)",
+                "row+0x88 <- source pointer (8 bytes)",
+            ],
+            "managedRangeFieldOffset": "0x68",
+            "verifiedBodies": visible_light_producer_bodies,
         },
         "closedBehavior": [
             "PC device-tier min/max gate",
@@ -7963,12 +8331,84 @@ def validate_unity_cull_view_constructor(image: PEImage) -> dict[str, object]:
             ],
             "open": [
                 "later renderer/entity screen-size threshold equation",
-                "a separate consumer, if any, for the forwarded sceneCullingMask slot",
                 "target-frame runtime overrides and final survivor rows",
             ],
         },
         "verifiedBodies": bodies,
         "verifiedInstructionSlices": slices,
+    }
+
+
+def validate_scene_culling_mask_source(
+    source: Path = HG_UTILS_SOURCE,
+    *,
+    source_text: str | None = None,
+    verify_source_hash: bool = True,
+) -> dict[str, object]:
+    """Close the ordinary managed producer boundary for sceneCullingMask.
+
+    The installed managed method is an IFix wrapper, not a camera-field
+    calculation.  Its non-zero value therefore belongs to the patch payload
+    boundary; the native cull-view validators separately pin where that value
+    is forwarded and which fields are actually consumed.
+    """
+
+    if source_text is None:
+        if verify_source_hash:
+            verified_hash("hg_utils_source", source)
+        require("scene_culling_mask_source_exists", source.is_file(), True, source)
+        source_text = source.read_text(encoding="utf-8")
+    method_name = "internal static ulong GetSceneCullingMaskFromCamera(Camera camera)"
+    start = source_text.find(method_name)
+    require(
+        "scene_culling_mask_method_present",
+        start >= 0,
+        True,
+        source,
+    )
+    end = source_text.find("\n\t\tinternal static", start + len(method_name))
+    require(
+        "scene_culling_mask_method_boundary",
+        end > start,
+        True,
+        source,
+    )
+    method = source_text[start:end]
+    require(
+        "scene_culling_mask_ifix_target",
+        method.count("GetPatch(793, 0LL)"),
+        1,
+        source,
+    )
+    require(
+        "scene_culling_mask_wrapper_call",
+        method.count("__Gen_Wrap_3"),
+        1,
+        source,
+    )
+    require(
+        "scene_culling_mask_no_camera_accessor",
+        "UnityEngine::Camera::get_" not in method,
+        True,
+        source,
+    )
+    require(
+        "scene_culling_mask_no_direct_managed_value",
+        "camera." not in method,
+        True,
+        source,
+    )
+    return {
+        "method": "HG.Rendering.Runtime.HGUtils.GetSceneCullingMaskFromCamera",
+        "returnType": "UInt64",
+        "ifixTargetId": 793,
+        "producer": "IFix wrapper target 793",
+        "ordinaryManagedCameraComputation": False,
+        "nativeValueBoundary": (
+            "The non-zero value is supplied by the IFix/future-patch payload; "
+            "the base managed method contains no camera-field computation."
+        ),
+        "sourceSha256": sha256(source) if source.is_file() else None,
     }
 
 
@@ -11367,6 +11807,7 @@ def _require_source_contracts() -> dict[str, str]:
         "setting_parameters_source": SETTING_PARAMETERS_SOURCE,
         "light_cluster_source": LIGHT_CLUSTER_SOURCE,
         "hg_camera_source": HG_CAMERA_SOURCE,
+        "hg_utils_source": HG_UTILS_SOURCE,
     }
     texts = {name: path.read_text(encoding="utf-8-sig") for name, path in paths.items()}
     snippets = {
@@ -11396,6 +11837,11 @@ def _require_source_contracts() -> dict[str, str]:
             "v31 = useOcclusionCulling ? 0x140 : 0",
             "v32 = useOcclusionCulling ? 0xA0 : 0",
             "HGCullingSystem::AddCullViewByMatrix(UnityEngine.Matrix4x4&",
+        ],
+        "hg_utils_source": [
+            "internal static ulong GetSceneCullingMaskFromCamera(Camera camera)",
+            "IFix::WrappersManagerImpl::GetPatch(793, 0LL)",
+            "IFix::ILFixDynamicMethodWrapper::__Gen_Wrap_3",
         ],
     }
     for name, required in snippets.items():
@@ -11430,7 +11876,8 @@ def build_audit(extracted_root: Path) -> dict[str, object]:
             "light_cluster_source", LIGHT_CLUSTER_SOURCE
         ),
         "hg_camera_source": verified_hash("hg_camera_source", HG_CAMERA_SOURCE),
-        "ifix_state": verified_hash("ifix_state", IFIX_STATE),
+        "hg_utils_source": verified_hash("hg_utils_source", HG_UTILS_SOURCE),
+        "ifix_state": validate_ifix_state()[0],
         "hgmesh_renderer_data_source": verified_hash(
             "hgmesh_renderer_data_source", HGMESH_RENDERER_DATA_SOURCE
         ),
@@ -11444,6 +11891,9 @@ def build_audit(extracted_root: Path) -> dict[str, object]:
     _require_source_contracts()
     asset_records, cap_definitions = validate_settings_payloads(extracted_root)
     native_handoff = validate_native_handoff(read_native_method_bodies())
+    light_clustering_consumer = validate_light_clustering_consumer(
+        verify_source_hash=False
+    )
     native_handoff["managedEcsComponentGetIdCensus"] = (
         validate_managed_ecs_get_id_census(
             GLOBAL_METADATA.read_bytes(), PEImage(GAME_ASSEMBLY)
@@ -11457,6 +11907,9 @@ def build_audit(extracted_root: Path) -> dict[str, object]:
     unity_native_producer = validate_unity_native_producer(PEImage(UNITY_PLAYER))
     unity_cull_view_constructor = validate_unity_cull_view_constructor(
         PEImage(UNITY_PLAYER)
+    )
+    scene_culling_mask_source = validate_scene_culling_mask_source(
+        verify_source_hash=False
     )
     unity_scheduled_culling_boundary = (
         validate_unity_scheduled_culling_boundary(PEImage(UNITY_PLAYER))
@@ -11490,22 +11943,11 @@ def build_audit(extracted_root: Path) -> dict[str, object]:
         )
     )
 
-    ifix = json.loads(IFIX_STATE.read_text(encoding="utf-8"))
-    require(
-        "ifix_target_count",
-        ifix["patch_format"]["target_count"],
-        30,
-        IFIX_STATE,
-    )
-    hgrp_targets = [
-        f"{row['type']}.{row['method']}"
-        for row in ifix["targets"]
-        if row["type"].startswith("HG.Rendering.Runtime")
-    ]
-    require("ifix_hgrp_targets", hgrp_targets, [], IFIX_STATE)
+    _, ifix = validate_ifix_state()
+    ifix_target_count = int(ifix["patch_format"]["target_count"])
 
     return {
-        "schema": "endfield.recovered-light-cull-cap.v45",
+        "schema": "endfield.recovered-light-cull-cap.v51",
         "status": "component67_managed_tick_host_resolved",
         "outcome": (
             "The installed Windows desktop route resolves PunctualLightMaxCount "
@@ -11514,10 +11956,19 @@ def build_audit(extracted_root: Path) -> dict[str, object]:
             "min(survivorCount, cap). Because HGCullingSystem.CullLights already "
             "receives maxCount=256, the desktop settings cap cannot further "
             "truncate that native result. The GameAssembly handoff, UnityPlayer "
-            "native candidate gates, 16-byte LightCullResult, and 148-byte "
+            "native candidate gates, LightCullResult lifetime wrapper, "
+            "candidate-pointer to VisibleLight row "
+            "conversion, 16-byte LightCullResult, and 148-byte "
             "VisibleLight capture stride are source-closed. AddCullViewByMatrix "
             "also closes the scheduled view layout and visibility-then-camera-mask "
-            "gate. DispatchBatchCullingJobs selects an exact six-plane AABB "
+            "gate. HGUtils.GetSceneCullingMaskFromCamera is an IFix-only "
+            "target-793 wrapper with no ordinary Camera-field computation, so "
+            "its non-zero patch value remains a runtime boundary. "
+            "LightClusteringPassConstructor then projects the returned rows into "
+            "a zero-based <=256 slice, preserves original row indices through "
+            "the priority/distance sort, and hands the sorted Int32 indices to "
+            "punctual shadow preparation. "
+            "DispatchBatchCullingJobs selects an exact six-plane AABB "
             "predicate, except cameraType 0x80 selects an exact sphere/distance "
             "predicate; neither reads cull-view +0x18. "
             "The complete installed CullView-named internal-call surface is now "
@@ -11811,7 +12262,7 @@ def build_audit(extracted_root: Path) -> dict[str, object]:
             "installedIfixState": {
                 "path": IFIX_STATE.relative_to(LAB_ROOT).as_posix(),
                 "sha256": hashes["ifix_state"],
-                "targetCount": 30,
+                "targetCount": ifix_target_count,
                 "hgrpSettingOrLightClusterTargets": [],
             },
             "hgmeshRendererDataSource": {
@@ -11900,11 +12351,13 @@ def build_audit(extracted_root: Path) -> dict[str, object]:
                 "maxCount": 256,
             },
             "gameAssemblyHandoff": native_handoff,
+            "lightClusteringConsumer": light_clustering_consumer,
             "gameAssemblyStreamingUpdateChain": (
                 managed_streaming_update_chain
             ),
             "unityPlayerCandidateProducer": unity_native_producer,
             "unityPlayerCullViewConstructor": unity_cull_view_constructor,
+            "sceneCullingMaskSource": scene_culling_mask_source,
             "unityPlayerScheduledCullingBoundary": (
                 unity_scheduled_culling_boundary
             ),
@@ -11937,6 +12390,7 @@ def build_audit(extracted_root: Path) -> dict[str, object]:
                 "setting_parameters_source": SETTING_PARAMETERS_SOURCE,
                 "light_cluster_source": LIGHT_CLUSTER_SOURCE,
                 "hg_camera_source": HG_CAMERA_SOURCE,
+                "hg_utils_source": HG_UTILS_SOURCE,
                 "animestudio_class_id_source": ANIMESTUDIO_CLASS_ID_SOURCE,
                 "animestudio_asset_helper_source": ANIMESTUDIO_ASSET_HELPER_SOURCE,
             }.items()
@@ -11947,8 +12401,9 @@ def build_audit(extracted_root: Path) -> dict[str, object]:
                 "type 0/2 punctual filter",
                 "priority/distance shortlist order",
                 "min survivor/cap final-count rule",
+                "LightClusteringPassConstructor zero-based <=256 row slice, original-row index preservation, post-sort Int32 index handoff, and punctual shadow-preparation consumer",
                 "desktop cap cannot truncate the upstream max-256 cull result",
-                "the unique UnityPlayer CullLightsInternal_Injected binding and native candidate gate chain",
+                "the unique UnityPlayer CullLightsInternal_Injected binding, hash-pinned result/lifetime wrapper, complete hash-pinned 0x4E1-byte native candidate core, candidate-vector to 148-byte VisibleLight producer, and native candidate gate chain",
                 "both GameAssembly DoECSCulling call sites and their exact input/result registers",
                 "the 16-byte LightCullResult pointer/count ABI and NativeArray projection",
                 "the 148-byte VisibleLight capture stride plus SetupState type, priority, and world-position offsets",
@@ -12004,6 +12459,7 @@ def build_audit(extracted_root: Path) -> dict[str, object]:
                 "the ten-name EntityTransition enum, 0x288-byte native ECS registry ABI, complete 105-call installer census, duplicate 52/53-call constructor maps, exact component-67 transitions 1/3/6/8, and disjoint Water/WaterDecal managed overrides",
                 "the component-67 resource-companion selector mask, ids 68..73 serialized capacity classes, 8-byte header plus 40-byte resource rows, and exact transition-6 versus transition-8 teardown state machine",
                 "HGLODStreamingSystem internal calls 273..291, state+0x38/+0x39/+0x3C/+0x474 controls, dirty-distance/reset/status/count API names, installed LODCrossFadeConfig and RenderObjectLODInfoComponent field offsets, and exact type-0/type-9 transition-1 LOD selection, distance gate, Material/Mesh request triplet, and 24-byte request descriptors",
+                "the Render transition-1 component-75 byte projection: selected component-75 storage +0x00 indexes the squared HLOD unload-distance table at state+0x474+4*byte0, with the native streaming gate and LODCrossFadeConfig offsets source-pinned",
                 "the component-67 outer request-batch lifecycle: callback-context +0x50/+0x58 descriptor materialization, task+0x18 batch and +0x0A count, resource states 0/1/2, completion polling, callback-context +0x60/+0x68/+0x70 projection, and transition-3 runtime Material/Mesh/shadow-proxy writeback",
                 "resource state 2 as load failure through its no-publish relation path, installed Streaming load/get asset failure diagnostics, and component-specific fallback",
                 "all four direct transition-task calls across the hash-pinned grid-load state driver and three Streaming gameplay batch-update entity-set branches",
@@ -12014,6 +12470,7 @@ def build_audit(extracted_root: Path) -> dict[str, object]:
                 "the direct all-LOD or terminal-LOD HGTree availability initializer",
                 "the retraction of the out-of-range index 10320 Animator misbinding",
                 "the correction that HGTreeRenderer is not evidence for the scheduled cull-view +0x18 equation",
+                "HGUtils.GetSceneCullingMaskFromCamera is an IFix-only target-793 wrapper with no ordinary Camera-field computation",
             ],
             "captureOnly": [
                 "target-frame LightCullResult pointer, count, and 148-byte rows",
@@ -12023,8 +12480,8 @@ def build_audit(extracted_root: Path) -> dict[str, object]:
                 "the stripped enum symbol for resource load-failure state 2",
                 "the registered native grid callback's exact lifecycle phase and executing thread identity",
                 "the virtual caller and executing thread above managed GameSceneManager.Tick",
-                "any separate consumer of the forwarded sceneCullingMask slot",
                 "future or separately delivered IFix/settings payloads",
+                "the non-zero sceneCullingMask value delivered by an IFix/future patch payload",
             ],
         },
     }

@@ -1,14 +1,16 @@
 {
-  "schema": "endfield.gacha-deferred-light-data-recovery.v6",
-  "status": "room_record0_record1w_record2z_and_obb_candidates_closed",
+  "schema": "endfield.gacha-deferred-light-data-recovery.v22",
+  "status": "room_record0_record1w_record2z_transform_point_shadow_cache_shadow_render_type_renderer_config_ecs_flags_ifix_table_lookup_and_unityplayer_obb_euler_resolver_native_sincos_order_trs_inverse_contract_closed_runtime_ifix_path_open",
   "installedInputs": {
     "gameAssemblySha256": "0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce",
     "unityPlayerSha256": "b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2",
     "globalMetadataSha256": "90c58e26e87c7227a85dda3fedf6ce5ed0b06dc1f76e0abbe75ab20750adf97e",
     "globalGameManagersSha256": "191619377ff312b785aae10faec8a75e39caf1ba60016ad08eff040b8c54f20d",
     "selectedFragmentSha256": "44dc5090af87a8f65ffca870f9e02b8525c4cfe14f84cf8feaa3ea6c49e4b9db",
-    "gachaPopulationSha256": "02e15c70197bcd96f804007fe042fcb46577c0014d956d78a28f2d96162e189a",
-    "roomHierarchySha256": "bf26b44919a7563bd6c7ee137346d7f8880bb1a32911a8972c586b2bb0c87db9"
+    "gachaPopulationSha256": "0441ec4817e23a69c1162643d05ae0c2c9abd1acdd02cc76d7646f0363b5ecc8",
+    "roomHierarchySha256": "bf26b44919a7563bd6c7ee137346d7f8880bb1a32911a8972c586b2bb0c87db9",
+    "gachaCullViewAuditSha256": "4717ddd564f0eee2e1742024660e233e09865b4a301a4b7566aaca6844011dc4",
+    "rotatehouseSha256": "3cac5172e91bb3cddf1a8c6db8e8550620abbfb0c957905f39538b8c97baded4"
   },
   "originalGlobalLightingSettings": {
     "sourcePath": "Endfield_Data/globalgamemanagers",
@@ -134,6 +136,47 @@
         }
       ]
     },
+    "record7Producer": {
+      "record": 7,
+      "destination": "_LightDataBuffer record7 float4",
+      "lanes": {
+        "x": {
+          "source": "HGSharedLightData.get_cullingBoxFalloffThreshold_Injected",
+          "consumerFormula": "record7.x * 0.5f"
+        },
+        "y": {
+          "source": "HGSharedLightData.get_softSourceRadius_Injected",
+          "consumerFormula": "record7.y * _1397"
+        },
+        "z": {
+          "source": "HGSharedLightData.get_specularIntensity_Injected",
+          "consumerFormula": "record7.z"
+        },
+        "w": {
+          "source": "precomputed cookie-slot integer carrier at stack offset -0x44",
+          "conversion": "float32(int carrier)",
+          "consumerFormula": "int(record7.w)"
+        }
+      },
+      "branchStackLanes": {
+        "Spot": {
+          "threshold": "rbp-0x10",
+          "softRadius": "rbp-0x0C",
+          "specular": "rbp-0x08",
+          "cookieSlot": "rbp-0x04"
+        },
+        "PointOrLinearExtension": {
+          "threshold": "rbp+0x0F0",
+          "softRadius": "rbp+0x0F4",
+          "specular": "rbp+0x0F8",
+          "cookieSlot": "rbp+0x0FC"
+        }
+      },
+      "spotProjectionClosed": true,
+      "pointOrLinearProjectionClosed": true,
+      "commonRecord7StoreClosed": true,
+      "nativeProjectionClosed": true
+    },
     "record0Discriminator": {
       "formula": "float(lightKind + 2 * shadowOnly)",
       "lightKind": {
@@ -153,6 +196,998 @@
       "spotSequenceOffset": "0x0DD9",
       "pointSequenceOffset": "0x1347",
       "destination": "record0.w"
+    },
+    "obbFlags": {
+      "formula": "uint(enableOBBCullingBox) | (uint(enableOverrideShadowLight) << 1)",
+      "enableObbCallOffset": "0x0A68",
+      "enableOverrideCallOffset": "0x0A77",
+      "destination": "record5.w",
+      "record5FlagsStorageOffset": "0x15C",
+      "selectedAuthoredRoomValue": {
+        "enableOBBCullingBox": true,
+        "enableOverrideShadowLight": false,
+        "record5WInteger": 1,
+        "record5WBits": "0x3F800000"
+      },
+      "nativeProjectionClosed": true
+    },
+    "pointShadowFacePack": {
+      "faceOrder": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "faceConstructors": [
+        {
+          "face": 0,
+          "constructorInstructionOffset": "0x10D4",
+          "target": "0x189B52B0C"
+        },
+        {
+          "face": 1,
+          "constructorInstructionOffset": "0x1120",
+          "target": "0x189B52B0C"
+        },
+        {
+          "face": 2,
+          "constructorInstructionOffset": "0x1163",
+          "target": "0x189B52B0C"
+        },
+        {
+          "face": 3,
+          "constructorInstructionOffset": "0x11A5",
+          "target": "0x189B52B0C"
+        },
+        {
+          "face": 4,
+          "constructorInstructionOffset": "0x11E7",
+          "target": "0x189B52B0C"
+        },
+        {
+          "face": 5,
+          "constructorInstructionOffset": "0x122A",
+          "target": "0x189B52B0C"
+        }
+      ],
+      "cacheIndexLookups": [
+        {
+          "face": 0,
+          "cacheIndexInstructionOffset": "0x10F7",
+          "target": "0x189B486D4"
+        },
+        {
+          "face": 1,
+          "cacheIndexInstructionOffset": "0x113A",
+          "target": "0x189B486D4"
+        },
+        {
+          "face": 2,
+          "cacheIndexInstructionOffset": "0x117D",
+          "target": "0x189B486D4"
+        },
+        {
+          "face": 3,
+          "cacheIndexInstructionOffset": "0x11BF",
+          "target": "0x189B486D4"
+        },
+        {
+          "face": 4,
+          "cacheIndexInstructionOffset": "0x1202",
+          "target": "0x189B486D4"
+        },
+        {
+          "face": 5,
+          "cacheIndexInstructionOffset": "0x1245",
+          "target": "0x189B486D4"
+        }
+      ],
+      "unavailableCacheIndex": -1,
+      "unavailableSentinelByte": 255,
+      "packing": {
+        "source": "six uint8 face indices",
+        "byteOrder": "face0, face1, face2, face3, face4, face5",
+        "record2W": "(face0 << 24) | (face1 << 16) | (face2 << 8) | face3",
+        "record3X": "(face4 << 8) | face5",
+        "nativeFallbackAndPackClosed": true
+      },
+      "liveValues": {
+        "closed": false,
+        "requiredCapture": "six target-frame GetShadowCacheIndexForCaster return values"
+      }
+    },
+    "pointRecordTransform": {
+      "calls": [
+        {
+          "instructionOffset": "0x073E",
+          "target": "0x189D14F34",
+          "method": "VisibleLightExtensionMethods.GetForward"
+        },
+        {
+          "instructionOffset": "0x0798",
+          "target": "0x189C0EF4C",
+          "method": "HGUtils.PackNormalOctRectEncode"
+        },
+        {
+          "instructionOffset": "0x083C",
+          "target": "0x189D15168",
+          "method": "VisibleLightExtensionMethods.GetPosition"
+        }
+      ],
+      "record1XYZ": {
+        "producer": "VisibleLightExtensionMethods.GetPosition(VisibleLight)",
+        "nativeSpace": "world-space",
+        "deferredConsumerSpace": "camera-relative via worldPosition - cameraPosition",
+        "targetFrameValues": "capture-only"
+      },
+      "record2XY": {
+        "producer": "HGUtils.PackNormalOctRectEncode(VisibleLightExtensionMethods.GetForward(VisibleLight))",
+        "encoding": "octahedral rectangle",
+        "targetFrameValues": "capture-only"
+      },
+      "helperBodies": {
+        "getForward": {
+          "method": "VisibleLightExtensionMethods.GetForward",
+          "virtualAddress": "0x189D14F34",
+          "fileOffset": "0x9D13534",
+          "sizeBytes": 304,
+          "bodySha256": "ed742d362644817a4275490ffadf42fc0843340060584150e4b8f1f017bb29d1",
+          "ifixMethodId": "0x77A",
+          "sourceField": "VisibleLight.LocalToWorldMatrix",
+          "sourceFieldOffset": "0x24",
+          "matrixColumn": 2,
+          "extraction": "Matrix4x4.GetColumn(2) then Vector4.op_Implicit(Vector3), xyz; no normalization call in this body"
+        },
+        "getPosition": {
+          "method": "VisibleLightExtensionMethods.GetPosition",
+          "virtualAddress": "0x189D15168",
+          "fileOffset": "0x9D13768",
+          "sizeBytes": 304,
+          "bodySha256": "9bf253dbd8822df91b50cc9de46c2aecce39c88fa1b4d9da361639cb02e7dba1",
+          "ifixMethodId": "0x77D",
+          "sourceField": "VisibleLight.LocalToWorldMatrix",
+          "sourceFieldOffset": "0x24",
+          "matrixColumn": 3,
+          "extraction": "Matrix4x4.GetColumn(3) then Vector4.op_Implicit(Vector3), xyz"
+        },
+        "packNormalOctRectEncode": {
+          "method": "HGUtils.PackNormalOctRectEncode",
+          "virtualAddress": "0x189C0EF4C",
+          "fileOffset": "0x9C0D54C",
+          "sizeBytes": 344,
+          "bodySha256": "9b3353f0544568e35e2bc5317515f22207c58ad3efa889e2e336f0c2670b2a2c",
+          "ifixMethodId": "0x77B",
+          "input": "float3 direction",
+          "output": "float2 octahedral rectangle encoding",
+          "methodIndex": 288324,
+          "token": "0x060014C0",
+          "formula": "n1=n/(abs(n.x)+abs(n.y)+abs(n.z)); u=CopySign(clamp(0.5+0.5*(n1.y-n1.x),0,1),n1.z,true); v=n1.x+n1.y",
+          "consumerDecodeFormula": "a=(0.5+0.5*v)-abs(u); b=v-a; c=abs(max((1-abs(a))-abs(b),0.00048828125)); normalize(float3(a,b,sign(u)*c))",
+          "constants": {
+            "oneBits": "0x3F800000",
+            "halfBits": "0x3F000000"
+          },
+          "callTargets": {
+            "abs": "0x183B0AD90",
+            "dot": "0x184D8B7C0",
+            "float3Multiply": "0x1830E7A60",
+            "clamp": "0x182EE75E0",
+            "copySign": "0x189C0C2F0"
+          }
+        }
+      },
+      "authoredRoomCandidates": {
+        "scope": "authored SceneLight6Rarity room hierarchy at pinned rotatehouse transform",
+        "sourceSpace": "world-space",
+        "positionProducerInput": "VisibleLight.LocalToWorldMatrix column 3",
+        "forwardProducerInput": "VisibleLight.LocalToWorldMatrix column 2",
+        "record2XYFormula": "PackNormalOctRectEncode(worldForward) using the hash-pinned unpatched body",
+        "record2XYCandidateClosed": true,
+        "parentTransform": {
+          "position": [
+            -1.0099999904632568,
+            0.0,
+            9.069999694824219
+          ],
+          "rotation": [
+            0.0,
+            0.01817660592496395,
+            0.0,
+            0.9998348355293274
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "count": 12,
+        "rows": [
+          {
+            "name": "Spot Light (12)",
+            "lightPathId": 3145527971969281504,
+            "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#381_p2BA729065848ADE0.json",
+            "localPosition": {
+              "values": [
+                -0.5377212762832642,
+                6.436999797821045,
+                -13.828680992126465
+              ],
+              "bits": [
+                "0xBF09A81A",
+                "0x40CDFBE7",
+                "0xC15D4247"
+              ]
+            },
+            "localRotation": {
+              "values": [
+                0.012852895073592663,
+                0.7069900035858154,
+                -0.7069900035858154,
+                0.012852895073592663
+              ],
+              "bits": [
+                "0x3C5294F3",
+                "0x3F34FD4C",
+                "0xBF34FD4C",
+                "0x3C5294F3"
+              ]
+            },
+            "worldPosition": {
+              "values": [
+                -2.049999952316284,
+                6.436999797821045,
+                -4.729998588562012
+              ],
+              "bits": [
+                "0xC0033333",
+                "0x40CDFBE7",
+                "0xC0975C26"
+              ]
+            },
+            "worldForward": {
+              "values": [
+                0.0,
+                -1.0000001192092896,
+                -1.1920928955078125e-07
+              ],
+              "bits": [
+                "0x00000000",
+                "0xBF800001",
+                "0xB4000000"
+              ]
+            },
+            "record2XYCandidate": {
+              "values": [
+                -5.960464477539063e-08,
+                -0.9999998807907104
+              ],
+              "bits": [
+                "0xB3800000",
+                "0xBF7FFFFE"
+              ]
+            }
+          },
+          {
+            "name": "Spot Light (19)",
+            "lightPathId": 6723905289426087392,
+            "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#471_p5D501C3C679CADE0.json",
+            "localPosition": {
+              "values": [
+                -0.3140000104904175,
+                3.2049999237060547,
+                -16.365999221801758
+              ],
+              "bits": [
+                "0xBEA0C49C",
+                "0x404D1EB8",
+                "0xC182ED91"
+              ]
+            },
+            "localRotation": {
+              "values": [
+                -0.7066395878791809,
+                0.02570139616727829,
+                -0.02570139616727829,
+                -0.7066395878791809
+              ],
+              "bits": [
+                "0xBF34E655",
+                "0x3CD28BBC",
+                "0xBCD28BBC",
+                "0xBF34E655"
+              ]
+            },
+            "worldPosition": {
+              "values": [
+                -1.9186508655548096,
+                3.2049999237060547,
+                -7.273771286010742
+              ],
+              "bits": [
+                "0xBFF5965A",
+                "0x404D1EB8",
+                "0xC0E8C2BC"
+              ]
+            },
+            "worldForward": {
+              "values": [
+                0.0,
+                -1.0000003576278687,
+                -3.5762786865234375e-07
+              ],
+              "bits": [
+                "0x00000000",
+                "0xBF800003",
+                "0xB4C00000"
+              ]
+            },
+            "record2XYCandidate": {
+              "values": [
+                -1.7881393432617188e-07,
+                -0.9999996423721313
+              ],
+              "bits": [
+                "0xB4400000",
+                "0xBF7FFFFA"
+              ]
+            }
+          },
+          {
+            "name": "Linear Light (12)",
+            "lightPathId": -7516039918534742560,
+            "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#40_p97B1A9840A14ADE0.json",
+            "localPosition": {
+              "values": [
+                5.829999923706055,
+                4.130000114440918,
+                -16.469999313354492
+              ],
+              "bits": [
+                "0x40BA8F5C",
+                "0x408428F6",
+                "0xC183C28F"
+              ]
+            },
+            "localRotation": {
+              "values": [
+                -0.0,
+                -0.003214555326849222,
+                -0.0,
+                0.9999948143959045
+              ],
+              "bits": [
+                "0x80000000",
+                "0xBB52AB4A",
+                "0x80000000",
+                "0x3F7FFFA9"
+              ]
+            },
+            "worldPosition": {
+              "values": [
+                4.2175092697143555,
+                4.130000114440918,
+                -7.601020812988281
+              ],
+              "bits": [
+                "0x4086F5D6",
+                "0x408428F6",
+                "0xC0F33B90"
+              ]
+            },
+            "worldForward": {
+              "values": [
+                0.029921624809503555,
+                0.0,
+                0.9995522499084473
+              ],
+              "bits": [
+                "0x3CF51E32",
+                "0x00000000",
+                "0x3F7FE2A8"
+              ]
+            },
+            "record2XYCandidate": {
+              "values": [
+                0.4854675233364105,
+                0.029064966365695
+              ],
+              "bits": [
+                "0x3EF88F33",
+                "0x3CEE19A7"
+              ]
+            }
+          },
+          {
+            "name": "Linear Light (13)",
+            "lightPathId": -6003850056218071584,
+            "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#92_pACAE0A2F0269ADE0.json",
+            "localPosition": {
+              "values": [
+                -5.56788444519043,
+                4.130000114440918,
+                -16.383203506469727
+              ],
+              "bits": [
+                "0xC0B22C1C",
+                "0x408428F6",
+                "0xC18310CD"
+              ]
+            },
+            "localRotation": {
+              "values": [
+                -0.0,
+                -0.003214555326849222,
+                -0.0,
+                0.9999948143959045
+              ],
+              "bits": [
+                "0x80000000",
+                "0xBB52AB4A",
+                "0x80000000",
+                "0x3F7FFFA9"
+              ]
+            },
+            "worldPosition": {
+              "values": [
+                -7.169689178466797,
+                4.130000114440918,
+                -7.100000381469727
+              ],
+              "bits": [
+                "0xC0E56E18",
+                "0x408428F6",
+                "0xC0E33334"
+              ]
+            },
+            "worldForward": {
+              "values": [
+                0.029921624809503555,
+                0.0,
+                0.9995522499084473
+              ],
+              "bits": [
+                "0x3CF51E32",
+                "0x00000000",
+                "0x3F7FE2A8"
+              ]
+            },
+            "record2XYCandidate": {
+              "values": [
+                0.4854675233364105,
+                0.029064966365695
+              ],
+              "bits": [
+                "0x3EF88F33",
+                "0x3CEE19A7"
+              ]
+            }
+          },
+          {
+            "name": "Linear Light (14)",
+            "lightPathId": -4966856337038791200,
+            "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#133_pBB122E7A1C67ADE0.json",
+            "localPosition": {
+              "values": [
+                3.1983699798583984,
+                9.89799976348877,
+                -15.854223251342773
+              ],
+              "bits": [
+                "0x404CB218",
+                "0x411E5E35",
+                "0xC17DAAE6"
+              ]
+            },
+            "localRotation": {
+              "values": [
+                -0.0,
+                -0.003214555326849222,
+                -0.0,
+                0.9999948143959045
+              ],
+              "bits": [
+                "0x80000000",
+                "0xBB52AB4A",
+                "0x80000000",
+                "0x3F7FFFA9"
+              ]
+            },
+            "worldPosition": {
+              "values": [
+                1.6099998950958252,
+                9.89799976348877,
+                -6.8899993896484375
+              ],
+              "bits": [
+                "0x3FCE147A",
+                "0x411E5E35",
+                "0xC0DC7AE0"
+              ]
+            },
+            "worldForward": {
+              "values": [
+                0.029921624809503555,
+                0.0,
+                0.9995522499084473
+              ],
+              "bits": [
+                "0x3CF51E32",
+                "0x00000000",
+                "0x3F7FE2A8"
+              ]
+            },
+            "record2XYCandidate": {
+              "values": [
+                0.4854675233364105,
+                0.029064966365695
+              ],
+              "bits": [
+                "0x3EF88F33",
+                "0x3CEE19A7"
+              ]
+            }
+          },
+          {
+            "name": "Spot Light (17)",
+            "lightPathId": 4336752956264328672,
+            "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#413_p3C2F3DD62CC2ADE0.json",
+            "localPosition": {
+              "values": [
+                3.5311596393585205,
+                3.4700000286102295,
+                -19.50153923034668
+              ],
+              "bits": [
+                "0x4061FE85",
+                "0x405E147B",
+                "0xC19C0327"
+              ]
+            },
+            "localRotation": {
+              "values": [
+                -0.7066395878791809,
+                0.02570139616727829,
+                -0.02570139616727829,
+                -0.7066395878791809
+              ],
+              "bits": [
+                "0xBF34E655",
+                "0x3CD28BBC",
+                "0xBCD28BBC",
+                "0xBF34E655"
+              ]
+            },
+            "worldPosition": {
+              "values": [
+                1.809999704360962,
+                3.4700000286102295,
+                -10.547000885009766
+              ],
+              "bits": [
+                "0x3FE7AE12",
+                "0x405E147B",
+                "0xC128C084"
+              ]
+            },
+            "worldForward": {
+              "values": [
+                0.0,
+                -1.0000003576278687,
+                -3.5762786865234375e-07
+              ],
+              "bits": [
+                "0x00000000",
+                "0xBF800003",
+                "0xB4C00000"
+              ]
+            },
+            "record2XYCandidate": {
+              "values": [
+                -1.7881393432617188e-07,
+                -0.9999996423721313
+              ],
+              "bits": [
+                "0xB4400000",
+                "0xBF7FFFFA"
+              ]
+            }
+          },
+          {
+            "name": "Linear Light (15)",
+            "lightPathId": -2247457476464562720,
+            "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#228_pE0CF6D552B88ADE0.json",
+            "localPosition": {
+              "values": [
+                -4.36466646194458,
+                9.779999732971191,
+                -15.90815544128418
+              ],
+              "bits": [
+                "0xC08BAB59",
+                "0x411C7AE1",
+                "0xC17E87CE"
+              ]
+            },
+            "localRotation": {
+              "values": [
+                -0.0,
+                -0.003214555326849222,
+                -0.0,
+                0.9999948143959045
+              ],
+              "bits": [
+                "0x80000000",
+                "0xBB52AB4A",
+                "0x80000000",
+                "0x3F7FFFA9"
+              ]
+            },
+            "worldPosition": {
+              "values": [
+                -5.949999809265137,
+                9.779999732971191,
+                -6.669000625610352
+              ],
+              "bits": [
+                "0xC0BE6666",
+                "0x411C7AE1",
+                "0xC0D56874"
+              ]
+            },
+            "worldForward": {
+              "values": [
+                0.029921624809503555,
+                0.0,
+                0.9995522499084473
+              ],
+              "bits": [
+                "0x3CF51E32",
+                "0x00000000",
+                "0x3F7FE2A8"
+              ]
+            },
+            "record2XYCandidate": {
+              "values": [
+                0.4854675233364105,
+                0.029064966365695
+              ],
+              "bits": [
+                "0x3EF88F33",
+                "0x3CEE19A7"
+              ]
+            }
+          },
+          {
+            "name": "Spot Light (18)",
+            "lightPathId": 1177420952804240864,
+            "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#324_p10570A1E4AFFADE0.json",
+            "localPosition": {
+              "values": [
+                -3.7510766983032227,
+                3.5,
+                -20.122638702392578
+              ],
+              "bits": [
+                "0xC07011A4",
+                "0x40600000",
+                "0xC1A0FB2A"
+              ]
+            },
+            "localRotation": {
+              "values": [
+                -0.7066395878791809,
+                0.02570139616727829,
+                -0.02570139616727829,
+                -0.7066395878791809
+              ],
+              "bits": [
+                "0xBF34E655",
+                "0x3CD28BBC",
+                "0xBCD28BBC",
+                "0xBF34E655"
+              ]
+            },
+            "worldPosition": {
+              "values": [
+                -5.489999771118164,
+                3.5,
+                -10.90300178527832
+              ],
+              "bits": [
+                "0xC0AFAE14",
+                "0x40600000",
+                "0xC12E72B2"
+              ]
+            },
+            "worldForward": {
+              "values": [
+                0.0,
+                -1.0000003576278687,
+                -3.5762786865234375e-07
+              ],
+              "bits": [
+                "0x00000000",
+                "0xBF800003",
+                "0xB4C00000"
+              ]
+            },
+            "record2XYCandidate": {
+              "values": [
+                -1.7881393432617188e-07,
+                -0.9999996423721313
+              ],
+              "bits": [
+                "0xB4400000",
+                "0xBF7FFFFA"
+              ]
+            }
+          },
+          {
+            "name": "Spot Light (9)",
+            "lightPathId": 7037844248082165216,
+            "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#486_p61AB720E3776ADE0.json",
+            "localPosition": {
+              "values": [
+                -0.09690368175506592,
+                4.550000190734863,
+                -20.996397018432617
+              ],
+              "bits": [
+                "0xBDC67570",
+                "0x4091999A",
+                "0xC1A7F89F"
+              ]
+            },
+            "localRotation": {
+              "values": [
+                -0.7066395878791809,
+                0.02570139616727829,
+                -0.02570139616727829,
+                -0.7066395878791809
+              ],
+              "bits": [
+                "0xBF34E655",
+                "0x3CD28BBC",
+                "0xBCD28BBC",
+                "0xBF34E655"
+              ]
+            },
+            "worldPosition": {
+              "values": [
+                -1.8700001239776611,
+                4.550000190734863,
+                -11.909000396728516
+              ],
+              "bits": [
+                "0xBFEF5C2A",
+                "0x4091999A",
+                "0xC13E8B44"
+              ]
+            },
+            "worldForward": {
+              "values": [
+                0.0,
+                -1.0000003576278687,
+                -3.5762786865234375e-07
+              ],
+              "bits": [
+                "0x00000000",
+                "0xBF800003",
+                "0xB4C00000"
+              ]
+            },
+            "record2XYCandidate": {
+              "values": [
+                -1.7881393432617188e-07,
+                -0.9999996423721313
+              ],
+              "bits": [
+                "0xB4400000",
+                "0xBF7FFFFA"
+              ]
+            }
+          },
+          {
+            "name": "Spot Light (20)",
+            "lightPathId": 4491921571221515744,
+            "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#418_p3E5682DEAB92ADE0.json",
+            "localPosition": {
+              "values": [
+                -0.13600000739097595,
+                11.890000343322754,
+                -21.31800079345703
+              ],
+              "bits": [
+                "0xBE0B4396",
+                "0x413E3D71",
+                "0xC1AA8B44"
+              ]
+            },
+            "localRotation": {
+              "values": [
+                -0.7066395878791809,
+                0.02570139616727829,
+                -0.02570139616727829,
+                -0.7066395878791809
+              ],
+              "bits": [
+                "0xBF34E655",
+                "0x3CD28BBC",
+                "0xBCD28BBC",
+                "0xBF34E655"
+              ]
+            },
+            "worldPosition": {
+              "values": [
+                -1.920759916305542,
+                11.890000343322754,
+                -12.228971481323242
+              ],
+              "bits": [
+                "0xBFF5DB76",
+                "0x413E3D71",
+                "0xC143A9DE"
+              ]
+            },
+            "worldForward": {
+              "values": [
+                0.0,
+                -1.0000003576278687,
+                -3.5762786865234375e-07
+              ],
+              "bits": [
+                "0x00000000",
+                "0xBF800003",
+                "0xB4C00000"
+              ]
+            },
+            "record2XYCandidate": {
+              "values": [
+                -1.7881393432617188e-07,
+                -0.9999996423721313
+              ],
+              "bits": [
+                "0xB4400000",
+                "0xBF7FFFFA"
+              ]
+            }
+          },
+          {
+            "name": "Spot Light (11)",
+            "lightPathId": 7142192322960010720,
+            "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#489_p631E2A13A78DADE0.json",
+            "localPosition": {
+              "values": [
+                0.01275026798248291,
+                4.984000205993652,
+                -24.770906448364258
+              ],
+              "bits": [
+                "0x3C50E680",
+                "0x409F7CEE",
+                "0xC1C62AD1"
+              ]
+            },
+            "localRotation": {
+              "values": [
+                -0.7069900035858154,
+                0.012852839194238186,
+                -0.012852839194238186,
+                -0.7069900035858154
+              ],
+              "bits": [
+                "0xBF34FD4C",
+                "0x3C5294B7",
+                "0xBC5294B7",
+                "0xBF34FD4C"
+              ]
+            },
+            "worldPosition": {
+              "values": [
+                -1.897611379623413,
+                4.984000205993652,
+                -15.685001373291016
+              ],
+              "bits": [
+                "0xBFF2E4EE",
+                "0x409F7CEE",
+                "0xC17AF5C4"
+              ]
+            },
+            "worldForward": {
+              "values": [
+                0.0,
+                -1.0000001192092896,
+                -1.1920928955078125e-07
+              ],
+              "bits": [
+                "0x00000000",
+                "0xBF800001",
+                "0xB4000000"
+              ]
+            },
+            "record2XYCandidate": {
+              "values": [
+                -5.960464477539063e-08,
+                -0.9999998807907104
+              ],
+              "bits": [
+                "0xB3800000",
+                "0xBF7FFFFE"
+              ]
+            }
+          },
+          {
+            "name": "Spot Light (10)",
+            "lightPathId": 7763697698425908704,
+            "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#513_p6BBE31EC4231ADE0.json",
+            "localPosition": {
+              "values": [
+                0.010024189949035645,
+                11.729999542236328,
+                -24.695955276489258
+              ],
+              "bits": [
+                "0x3C243C80",
+                "0x413BAE14",
+                "0xC1C59151"
+              ]
+            },
+            "localRotation": {
+              "values": [
+                -0.7069900035858154,
+                0.012852839194238186,
+                -0.012852839194238186,
+                -0.7069900035858154
+              ],
+              "bits": [
+                "0xBF34FD4C",
+                "0x3C5294B7",
+                "0xBC5294B7",
+                "0xBF34FD4C"
+              ]
+            },
+            "worldPosition": {
+              "values": [
+                -1.897611379623413,
+                11.729999542236328,
+                -15.610000610351562
+              ],
+              "bits": [
+                "0xBFF2E4EE",
+                "0x413BAE14",
+                "0xC179C290"
+              ]
+            },
+            "worldForward": {
+              "values": [
+                0.0,
+                -1.0000001192092896,
+                -1.1920928955078125e-07
+              ],
+              "bits": [
+                "0x00000000",
+                "0xBF800001",
+                "0xB4000000"
+              ]
+            },
+            "record2XYCandidate": {
+              "values": [
+                -5.960464477539063e-08,
+                -0.9999998807907104
+              ],
+              "bits": [
+                "0xB3800000",
+                "0xBF7FFFFE"
+              ]
+            }
+          }
+        ],
+        "targetFrameValues": "capture-only; these are authored static candidates, not a retail LightCullResult capture"
+      }
     },
     "resolvedCalls": [
       {
@@ -331,6 +1366,492 @@
         "method": "HGSharedLightData.get_specularIntensity_Injected"
       }
     ],
+    "pointShadowCacheIndex": {
+      "nativeVirtualAddress": "0x189B486D4",
+      "fileOffset": "0x9B46CD4",
+      "bodySize": 308,
+      "bodySha256": "569216d2b51545da1b7867902e78ff36f9cbcf7f893db66c581481facd9ac622",
+      "dynamicCasterListField": "this + 0x80",
+      "staticCasterListField": "this + 0x38",
+      "dynamicMatchResult": "dynamicOrdinal + 40 (0x28)",
+      "staticMatchResult": "PunctualLightCachedShadowDesc.shadowCacheSlotIndex (+0x0C)",
+      "unmatchedResult": -1,
+      "nullManagerOrCasterList": "fail-fast via 0x1800D8260",
+      "resolverOutcomeClosed": true
+    },
+    "ifixWrapperTable": {
+      "managerGlobalSlot": "0x18E28EC48",
+      "managerInitializationField": "+0xE0",
+      "managerTablePointerField": "+0xB8",
+      "tableLayout": {
+        "activeTablePointer": "+0x00 of manager[+0xB8]",
+        "entryCount": "+0x18",
+        "entryArray": "+0x20 + 8 * methodId",
+        "entrySizeBytes": 8
+      },
+      "isPatched": {
+        "virtualAddress": "0x1831068E0",
+        "fileOffset": "0x3104EE0",
+        "sizeBytes": 77,
+        "bodySha256": "48678146c1cbf1cef4ef7bed4718b73df3e74df0f9cf1c827b5dcd4e5fe85692",
+        "coldVirtualAddress": "0x184E35008",
+        "coldFileOffset": "0x4E33608",
+        "coldSizeBytes": 70,
+        "coldBodySha256": "fefa55918137436af9357f114d7eab2296608ddabc34af7ce8a79d57120493d0",
+        "input": "signed int32 methodId in ecx",
+        "outcome": "non-null table entry => true; null/out-of-range/uninitialized => false or fail-fast according to native branch"
+      },
+      "getPatch": {
+        "virtualAddress": "0x189CDC2C0",
+        "fileOffset": "0x9CDA8C0",
+        "sizeBytes": 83,
+        "bodySha256": "026cc13020ea55d8ca602768e0764e672d004b50509eea615e448b8db7fc91fd",
+        "input": "signed int32 methodId in ecx",
+        "outcome": "returns table entry pointer after unsigned count check; invalid bounds fail-fast"
+      },
+      "resolvedBranches": [
+        {
+          "name": "is_patched_init_fallback",
+          "offset": "0x17",
+          "target": "0x18310691F"
+        },
+        {
+          "name": "is_patched_null_table_fail_fast",
+          "offset": "0x26",
+          "target": "0x183106919"
+        },
+        {
+          "name": "is_patched_cold_initialized",
+          "offset": "0x7",
+          "target": "0x184E3501D"
+        },
+        {
+          "name": "is_patched_bounds_ok",
+          "offset": "0x2B",
+          "target": "0x184E3503B"
+        },
+        {
+          "name": "get_patch_initialized",
+          "offset": "0x17",
+          "target": "0x189CDC2E8"
+        },
+        {
+          "name": "get_patch_nonnull_table",
+          "offset": "0x35",
+          "target": "0x189CDC2FD"
+        },
+        {
+          "name": "get_patch_bounds_ok",
+          "offset": "0x40",
+          "target": "0x189CDC308"
+        },
+        {
+          "name": "is_patched_signed_id_gate",
+          "offset": "0x2B",
+          "target": "0x184E35008"
+        },
+        {
+          "name": "is_patched_cold_null_table_fail_fast",
+          "offset": "0x22",
+          "target": "0x183106919"
+        },
+        {
+          "name": "is_patched_entry_null",
+          "offset": "0x39",
+          "target": "0x183106911"
+        }
+      ],
+      "runtimeMembershipStillOpen": true,
+      "runtimeWrapperPointersStillOpen": true,
+      "lookupContractClosed": true
+    },
+    "shadowRenderType": {
+      "method": "HG.Rendering.Runtime.HGPunctualLightShadowManagerV2.GetShadowRenderType",
+      "methodIndex": 285595,
+      "virtualAddress": "0x189B48808",
+      "fileOffset": "0x9B46E08",
+      "sizeBytes": 260,
+      "bodySha256": "bfb6730d6907e208480291489117015ee10293e8489a3735b868ab0fde517233",
+      "patchMethodId": "0x886",
+      "resolvedCalls": [
+        {
+          "offset": "0x24",
+          "target": "0x1831068E0",
+          "method": "WrappersManagerImpl.IsPatched"
+        },
+        {
+          "offset": "0x46",
+          "target": "0x18B3BDFA4",
+          "method": "HGSharedLightData.get_isDynamicShadowCaster"
+        },
+        {
+          "offset": "0x56",
+          "target": "0x18B3BDA84",
+          "method": "HGSharedLightData.get_castStaticObjects"
+        },
+        {
+          "offset": "0x6A",
+          "target": "0x18B3BDA84",
+          "method": "HGSharedLightData.get_castStaticObjects"
+        },
+        {
+          "offset": "0x7A",
+          "target": "0x18B3BDA6C",
+          "method": "HGSharedLightData.get_castDynamicObjects"
+        },
+        {
+          "offset": "0x8A",
+          "target": "0x18B3BDA84",
+          "method": "HGSharedLightData.get_castStaticObjects"
+        },
+        {
+          "offset": "0x9A",
+          "target": "0x18B3BDA6C",
+          "method": "HGSharedLightData.get_castDynamicObjects"
+        },
+        {
+          "offset": "0xBA",
+          "target": "0x189CDC2C0",
+          "method": "WrappersManagerImpl.GetPatch"
+        },
+        {
+          "offset": "0xC7",
+          "target": "0x1800D8260",
+          "method": "fail-fast"
+        },
+        {
+          "offset": "0xED",
+          "target": "0x189CD140C",
+          "method": "ILFixDynamicMethodWrapper.__Gen_Wrap_874"
+        }
+      ],
+      "resolvedBranches": [
+        {
+          "offset": "0x3D",
+          "target": "0x189B488B3",
+          "name": "static_request_default"
+        },
+        {
+          "offset": "0x54",
+          "target": "0x189B48872",
+          "name": "dynamic_static_bit_true"
+        },
+        {
+          "offset": "0x5D",
+          "target": "0x189B488AB",
+          "name": "dynamic_static_bit_false"
+        },
+        {
+          "offset": "0x71",
+          "target": "0x189B4888B",
+          "name": "dynamic_static_fallback"
+        },
+        {
+          "offset": "0x81",
+          "target": "0x189B488B3",
+          "name": "dynamic_dynamic_bit_false"
+        },
+        {
+          "offset": "0x91",
+          "target": "0x189B48867",
+          "name": "dynamic_static_only_return"
+        },
+        {
+          "offset": "0xA1",
+          "target": "0x189B48867",
+          "name": "dynamic_dynamic_only_return"
+        },
+        {
+          "offset": "0xA9",
+          "target": "0x189B488FA",
+          "name": "dynamic_only_return"
+        },
+        {
+          "offset": "0xB1",
+          "target": "0x189B488FA",
+          "name": "static_only_return"
+        },
+        {
+          "offset": "0xC5",
+          "target": "0x189B488D5",
+          "name": "patched_wrapper_call"
+        },
+        {
+          "offset": "0x2B",
+          "target": "0x189B488BB",
+          "name": "patched_gate"
+        },
+        {
+          "offset": "0x65",
+          "target": "0x189B488FA",
+          "name": "dynamic_both_true_return"
+        }
+      ],
+      "nativeDefault": {
+        "staticRequest": {
+          "condition": "IsPatched(0x886) == false and isDynamicRequest == false",
+          "castStaticObjects": true,
+          "castDynamicObjects": false,
+          "branchTarget": "0x189B488B3"
+        },
+        "dynamicRequest": {
+          "condition": "IsPatched(0x886) == false and isDynamicRequest == true",
+          "inputs": [
+            "HGSharedLightData.get_isDynamicShadowCaster (mask 0x01)",
+            "HGSharedLightData.get_castStaticObjects (mask 0x02)",
+            "HGSharedLightData.get_castDynamicObjects (mask 0x04)"
+          ],
+          "branchLogicClosed": true
+        }
+      },
+      "runtimePatchedPath": {
+        "condition": "IsPatched(0x886) == true",
+        "patchLookup": "0x189CDC2C0",
+        "wrapper": "0x189CD140C",
+        "missingPatchFailFast": "0x1800D8260",
+        "runtimeWrapperTableEntryStillOpen": true,
+        "returnedFlagsStillOpen": true
+      },
+      "nativeDefaultStaticResultClosed": true,
+      "runtimePatchedResultStillOpen": true
+    },
+    "rendererConfig": {
+      "method": "HG.Rendering.Runtime.HGPunctualLightShadowManagerV2.GetRendererConfig",
+      "methodIndex": 285596,
+      "virtualAddress": "0x189B4861C",
+      "fileOffset": "0x9B46C1C",
+      "sizeBytes": 184,
+      "bodySha256": "07df57dc9a61647510d55da24a8cdd309fab5957d87195946a05e94b3ede4a07",
+      "patchMethodId": "0x887",
+      "resolvedCalls": [
+        {
+          "offset": "0x28",
+          "target": "0x1831068E0",
+          "method": "WrappersManagerImpl.IsPatched"
+        },
+        {
+          "offset": "0x4F",
+          "target": "0x189B48808",
+          "method": "HGPunctualLightShadowManagerV2.GetShadowRenderType"
+        },
+        {
+          "offset": "0x7F",
+          "target": "0x189CDC2C0",
+          "method": "WrappersManagerImpl.GetPatch"
+        },
+        {
+          "offset": "0x89",
+          "target": "0x1800D8260",
+          "method": "fail-fast"
+        },
+        {
+          "offset": "0xA1",
+          "target": "0x189CD1564",
+          "method": "ILFixDynamicMethodWrapper.__Gen_Wrap_875"
+        }
+      ],
+      "resolvedBranches": [
+        {
+          "offset": "0x2F",
+          "target": "0x189B48694",
+          "name": "patched_gate"
+        },
+        {
+          "offset": "0x87",
+          "target": "0x189B486AB",
+          "name": "patched_wrapper_call"
+        }
+      ],
+      "nativeDefault": {
+        "condition": "IsPatched(0x887) == false",
+        "baseFlags": "0x4800",
+        "castStaticPointer": "rsp+0x30 (r9 argument to GetShadowRenderType)",
+        "castDynamicPointer": "rsp+0x31 (fifth argument to GetShadowRenderType)",
+        "formula": "0x4800 | (castStaticObjects ? 0x1000 : 0) | (castDynamicObjects ? 0x2000 : 0)",
+        "sourceFlagsClosed": true
+      },
+      "runtimePatchedPath": {
+        "condition": "IsPatched(0x887) == true",
+        "patchLookup": "0x189CDC2C0",
+        "wrapper": "0x189CD1564",
+        "missingPatchFailFast": "0x1800D8260",
+        "runtimeWrapperTableEntryStillOpen": true,
+        "returnedFlagsStillOpen": true
+      },
+      "nativeDefaultFlagsClosed": true,
+      "runtimePatchedResultStillOpen": true
+    },
+    "ecsRenderFlags": {
+      "method": "HG.Rendering.Runtime.HGPunctualLightShadowManagerV2.GetECSRenderFlags",
+      "methodIndex": 285597,
+      "virtualAddress": "0x189B48344",
+      "fileOffset": "0x9B46944",
+      "sizeBytes": 376,
+      "bodySha256": "2ad75354fa81b3958de4783f247c8e0993a6986b4c7ff244ce8f36e04615075d",
+      "patchMethodId": "0x888",
+      "resolvedCalls": [
+        {
+          "offset": "0x38",
+          "target": "0x1831068E0",
+          "method": "WrappersManagerImpl.IsPatched"
+        },
+        {
+          "offset": "0x81",
+          "target": "0x189B48808",
+          "method": "HGPunctualLightShadowManagerV2.GetShadowRenderType"
+        },
+        {
+          "offset": "0xC1",
+          "target": "0x18B3BDD10",
+          "method": "HGSharedLightData.get_enableHDCharacterShadow_Injected"
+        },
+        {
+          "offset": "0xD5",
+          "target": "0x1800036A0",
+          "method": "helper"
+        },
+        {
+          "offset": "0xDA",
+          "target": "0x189B42908",
+          "method": "HGHDPLSCharacterShadowManager.get_isActive"
+        },
+        {
+          "offset": "0xE9",
+          "target": "0x189D08BE8",
+          "method": "HGSharedLightDataExtension.GetEntity"
+        },
+        {
+          "offset": "0xF8",
+          "target": "0x1800036A0",
+          "method": "helper"
+        },
+        {
+          "offset": "0x102",
+          "target": "0x189B46C38",
+          "method": "HGHDPLSCharacterShadowManager.IsHDPLSLight"
+        },
+        {
+          "offset": "0x115",
+          "target": "0x189CDC2C0",
+          "method": "WrappersManagerImpl.GetPatch"
+        },
+        {
+          "offset": "0x122",
+          "target": "0x1800D8260",
+          "method": "fail-fast"
+        },
+        {
+          "offset": "0x158",
+          "target": "0x189CD1664",
+          "method": "ILFixDynamicMethodWrapper.__Gen_Wrap_876"
+        }
+      ],
+      "resolvedBranches": [
+        {
+          "offset": "0x9A",
+          "target": "0x189B483F2",
+          "name": "static_false"
+        },
+        {
+          "offset": "0x9E",
+          "target": "0x189B483F0",
+          "name": "dynamic_true"
+        },
+        {
+          "offset": "0xB3",
+          "target": "0x189B483FF",
+          "name": "caster_projection_done"
+        },
+        {
+          "offset": "0xE1",
+          "target": "0x189B484A1",
+          "name": "hd_character_shadow_disabled"
+        },
+        {
+          "offset": "0x109",
+          "target": "0x189B484A1",
+          "name": "hdpls_light_false"
+        },
+        {
+          "offset": "0x120",
+          "target": "0x189B4846C",
+          "name": "patched_wrapper_call"
+        },
+        {
+          "offset": "0x3F",
+          "target": "0x189B48455",
+          "name": "patched_gate"
+        },
+        {
+          "offset": "0xC8",
+          "target": "0x189B484A1",
+          "name": "hd_character_shadow_inactive"
+        }
+      ],
+      "nativeDefault": {
+        "condition": "IsPatched(0x888) == false",
+        "argumentPointers": {
+          "objectFlags": "r9 -> [rsi]",
+          "objectFlagsMask": "fifth argument -> [rdi]",
+          "renderFlags": "sixth argument -> [r14]",
+          "renderFlagsMask": "seventh argument -> [rbx]"
+        },
+        "baseValues": {
+          "objectFlags": "0x08000002",
+          "objectFlagsMask": "0x08000002",
+          "renderFlags": "0x02080000",
+          "renderFlagsMask": "0x02080000"
+        },
+        "shadowRenderTypeInputs": {
+          "castStaticPointer": "rbp-0x0F (r9)",
+          "castDynamicPointer": "rbp-0x10 (fifth argument)"
+        },
+        "exclusiveCasterProjection": {
+          "condition": "castStaticObjects XOR castDynamicObjects",
+          "objectFlagsAndMaskOr": "0x04000000",
+          "renderFlagsAndMaskOr": "0x01000000"
+        },
+        "hdCharacterShadow": {
+          "condition": "enableHDCharacterShadow && HGHDPLSCharacterShadowManager.isActive && IsHDPLSLight(entity)",
+          "destination": "objectFlagsMask",
+          "bit": 28,
+          "orMask": "0x10000000"
+        },
+        "sourceFlagsClosed": true
+      },
+      "runtimePatchedPath": {
+        "condition": "IsPatched(0x888) == true",
+        "patchLookup": "0x189CDC2C0",
+        "wrapper": "0x189CD1664",
+        "missingPatchFailFast": "0x1800D8260",
+        "runtimeWrapperTableEntryStillOpen": true,
+        "returnedFlagsStillOpen": true
+      },
+      "nativeDefaultFlagsClosed": true,
+      "runtimePatchedResultStillOpen": true
+    },
+    "shadowCasterPropertyGetters": {
+      "packedWord": "HGSharedLightData.m_CasterProperties",
+      "fields": {
+        "isDynamicShadowCaster": {
+          "mask": "0x01",
+          "packedWord": "HGSharedLightData.m_CasterProperties",
+          "nativeBodySha256": "90ea0aae2d7409a8dc4fdc07cffdd57af60069b9e34fdbec0506ff946f615bfc"
+        },
+        "castStaticObjects": {
+          "mask": "0x02",
+          "packedWord": "HGSharedLightData.m_CasterProperties",
+          "nativeBodySha256": "512c74973a1f42fb0bdfcc029266400d3867d6b91cfb8abaec5453e45e9233e1"
+        },
+        "castDynamicObjects": {
+          "mask": "0x04",
+          "packedWord": "HGSharedLightData.m_CasterProperties",
+          "nativeBodySha256": "f71bcbf11d32cb9ce1d32c2959397575b0f3883f2593d730223c8e6c0f723558"
+        }
+      },
+      "propertyMasksClosed": true,
+      "runtimeCacheValuesStillOpen": true
+    },
     "additionalLightData": {
       "getLightNprData": {
         "method": "HG.Rendering.Runtime.HGAdditionalLightData.GetLightNPRData",
@@ -444,6 +1965,217 @@
         "disabledPath": "stores false and removes an existing runtime animation component"
       }
     },
+    "matrix4x4Inverse": {
+      "icallIndex": 2471,
+      "name": "UnityEngine.Matrix4x4::Inverse3DAffine_Injected",
+      "namePointer": "0x181CCAFD8",
+      "functionPointer": "0x1800A2020",
+      "stubVirtualAddress": "0x1800A2020",
+      "nativeVirtualAddress": "0x180569BD0",
+      "nativeFileOffset": "0x5691D0",
+      "nativeBodySizeBytes": 708,
+      "nativeBodySha256": "71e600ecd556110747f8fb572abb1ab41343b3f0b3154b7bd5187696922fd20d",
+      "determinantThreshold": 1e-25,
+      "signMaskBits": "0x80000000",
+      "arithmetic": "scalar SSE float32 determinant/cofactor/division sequence; affine translation uses cofactor rows and xorps sign flips"
+    },
+    "matrix4x4Trs": {
+      "icallIndex": 2470,
+      "name": "UnityEngine.Matrix4x4::TRS_Injected",
+      "namePointer": "0x181CCAFB0",
+      "functionPointer": "0x1800A1BB0",
+      "wrapperVirtualAddress": "0x1800A1BB0",
+      "wrapperBodySizeBytes": 69,
+      "wrapperBodySha256": "3edd178a3e30e9d27b133e50983ed473f223584eb229b1a435d45e82d006a8de",
+      "nativeVirtualAddress": "0x18056CB40",
+      "nativeFileOffset": "0x56C140",
+      "nativeBodySizeBytes": 198,
+      "nativeBodySha256": "ed2c20824bf8944a67566c874df429a53f6ca1c25f51f0eaf39259a16105b980",
+      "quaternionToMatrixHelperVirtualAddress": "0x18056B8A0",
+      "quaternionToMatrixHelperFileOffset": "0x56AEA0",
+      "quaternionToMatrixHelperBodySizeBytes": 322,
+      "quaternionToMatrixHelperBodySha256": "415e200d056300c292a580b888e8604f1f2f01a98afc830de6691461f3d3e285",
+      "arithmetic": "native quaternion-to-column-major-matrix helper, then scalar float32 column scaling and raw position copies"
+    },
+    "quaternionEuler": {
+      "managedVirtualAddress": "0x182FA5910",
+      "managedFileOffset": "0x2FA3F10",
+      "managedBodySizeBytes": 125,
+      "managedBodySha256": "f121f5fab7dc03bec3bf2bdc9397d7464ee1b5df96f87c0e00979a67e2a68c01",
+      "managedSlotVirtualAddress": "0x18F36FAC8",
+      "lazyInitVirtualAddress": "0x182FA5A07",
+      "lazyInitFileOffset": "0x2FA4007",
+      "lazyInitBodySizeBytes": 30,
+      "lazyInitBodySha256": "c8ea86dddd462e19fbd71bd70f39091be63fda0e98bbe268a6e8fb8075d533de",
+      "icallResolverVirtualAddress": "0x180059FC0",
+      "resolverStringVirtualAddress": "0x18B8C32B0",
+      "resolverStringFileOffset": "0xB8C16B0",
+      "resolverString": "UnityEngine.Quaternion::Internal_FromEulerRad_Injected(UnityEngine.Vector3&,UnityEngine.Quaternion&)",
+      "degreesToRadiansBits": "0x3C8EFA35",
+      "scaleHelperVirtualAddress": "0x184DBBC80",
+      "scaleHelperFileOffset": "0x4DBA280",
+      "scaleHelperBodySizeBytes": 36,
+      "scaleHelperBodySha256": "6d8f004cb69175ca921b4eb758db8344af753c24039c85a4a76579f838886f83",
+      "icallIndex": 2489,
+      "name": "UnityEngine.Quaternion::Internal_FromEulerRad_Injected",
+      "namePointer": "0x181CCB2F0",
+      "functionPointer": "0x1800A5010",
+      "wrapperVirtualAddress": "0x1800A5010",
+      "wrapperBodySizeBytes": 40,
+      "wrapperBodySha256": "4a07f22965618b8620cf0f5f7e5bacef4a731f3f6a7ebe656e7b9a9092f9bbff",
+      "nativeVirtualAddress": "0x180567590",
+      "nativeFileOffset": "0x566B90",
+      "nativeBodySizeBytes": 2187,
+      "nativeBodySha256": "ef6c901cf98d6c2658be06abe98eb7747837b6794fb94063c3d2a1f9804b3130",
+      "nativeOrderParameter": 4,
+      "nativeOrderCaseOffset": "0x425",
+      "nativeOrderJumpTable": [
+        {
+          "order": 0,
+          "relativeTarget": "0x00567C6E",
+          "target": "0x180567C6E",
+          "caseOffset": "0x6DE"
+        },
+        {
+          "order": 1,
+          "relativeTarget": "0x00567938",
+          "target": "0x180567938",
+          "caseOffset": "0x3A8"
+        },
+        {
+          "order": 2,
+          "relativeTarget": "0x005677D6",
+          "target": "0x1805677D6",
+          "caseOffset": "0x246"
+        },
+        {
+          "order": 3,
+          "relativeTarget": "0x00567B0C",
+          "target": "0x180567B0C",
+          "caseOffset": "0x57C"
+        },
+        {
+          "order": 4,
+          "relativeTarget": "0x005679B5",
+          "target": "0x1805679B5",
+          "caseOffset": "0x425"
+        },
+        {
+          "order": 5,
+          "relativeTarget": "0x0056767F",
+          "target": "0x18056767F",
+          "caseOffset": "0xEF"
+        }
+      ],
+      "halfAngleConstantBits": "0x3F000000",
+      "mathCalls": [
+        {
+          "offset": "0x58",
+          "target": "0x181C634F0",
+          "operation": "sin(float32 half-angle)"
+        },
+        {
+          "offset": "0x69",
+          "target": "0x181C620A0",
+          "operation": "cos(float32 half-angle)"
+        },
+        {
+          "offset": "0x7B",
+          "target": "0x181C634F0",
+          "operation": "sin(float32 half-angle)"
+        },
+        {
+          "offset": "0x8D",
+          "target": "0x181C620A0",
+          "operation": "cos(float32 half-angle)"
+        },
+        {
+          "offset": "0x9F",
+          "target": "0x181C634F0",
+          "operation": "sin(float32 half-angle)"
+        },
+        {
+          "offset": "0xB1",
+          "target": "0x181C620A0",
+          "operation": "cos(float32 half-angle)"
+        }
+      ],
+      "order": "native body receives radians, multiplies each component by 0.5f, then dispatches sin/cos pairs; the static wrapper passes order 4 into the pinned jump-table case at native offset 0x425",
+      "runtimeBoundary": "the managed lazy resolver and slot store are source-closed, but the runtime slot value/patch state may replace this native path; patched runtime output selection and retail capture are not inferred from static bytes",
+      "candidateExecution": {
+        "mode": "mapped_unityplayer_wrapper_dont_resolve_dll_references",
+        "wrapperVirtualAddress": "0x1800A5010",
+        "rowCount": 11,
+        "quaternionBitsByLightPathId": {
+          "3145527971969281504": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
+          "6723905289426087392": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
+          "-7516039918534742560": [
+            "0x00000000",
+            "0x3C7084C0",
+            "0x00000000",
+            "0x3F7FF8F0"
+          ],
+          "-6003850056218071584": [
+            "0x00000000",
+            "0x3C7084EB",
+            "0x00000000",
+            "0x3F7FF8F0"
+          ],
+          "-4966856337038791200": [
+            "0x00000000",
+            "0x3C7084B1",
+            "0x00000000",
+            "0x3F7FF8F0"
+          ],
+          "4336752956264328672": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
+          "-2247457476464562720": [
+            "0x00000000",
+            "0x3C7084EB",
+            "0x00000000",
+            "0x3F7FF8F0"
+          ],
+          "1177420952804240864": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
+          "7037844248082165216": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
+          "7142192322960010720": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
+          "7763697698425908704": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ]
+        }
+      }
+    },
     "obbHalfPacking": {
       "packTwoHalfValuesAsFloat": {
         "method": "HG.Rendering.Runtime.HGUtils.PackTwoHalfValuesAsFloat",
@@ -502,6 +2234,9 @@
     "allObbEnabled": true,
     "allUnshadowed": true,
     "allCookieFree": true,
+    "allShadowCasterProperties": 6,
+    "allPointShadowCasterFaces": -1,
+    "allLightShadowCasterMode": 0,
     "allAdditionalComponentsResolved": true,
     "allColorTemperatureDisabled": true,
     "allDistanceFalloffDisabled": true,
@@ -551,19 +2286,1489 @@
       },
       "record2ZExactCandidateCount": 11,
       "record2WExactCandidateCount": 1,
+      "record2WContractExactCandidateCount": 11,
+      "pointShadowFacePack": {
+        "faceOrder": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "faceConstructors": [
+          {
+            "face": 0,
+            "constructorInstructionOffset": "0x10D4",
+            "target": "0x189B52B0C"
+          },
+          {
+            "face": 1,
+            "constructorInstructionOffset": "0x1120",
+            "target": "0x189B52B0C"
+          },
+          {
+            "face": 2,
+            "constructorInstructionOffset": "0x1163",
+            "target": "0x189B52B0C"
+          },
+          {
+            "face": 3,
+            "constructorInstructionOffset": "0x11A5",
+            "target": "0x189B52B0C"
+          },
+          {
+            "face": 4,
+            "constructorInstructionOffset": "0x11E7",
+            "target": "0x189B52B0C"
+          },
+          {
+            "face": 5,
+            "constructorInstructionOffset": "0x122A",
+            "target": "0x189B52B0C"
+          }
+        ],
+        "cacheIndexLookups": [
+          {
+            "face": 0,
+            "cacheIndexInstructionOffset": "0x10F7",
+            "target": "0x189B486D4"
+          },
+          {
+            "face": 1,
+            "cacheIndexInstructionOffset": "0x113A",
+            "target": "0x189B486D4"
+          },
+          {
+            "face": 2,
+            "cacheIndexInstructionOffset": "0x117D",
+            "target": "0x189B486D4"
+          },
+          {
+            "face": 3,
+            "cacheIndexInstructionOffset": "0x11BF",
+            "target": "0x189B486D4"
+          },
+          {
+            "face": 4,
+            "cacheIndexInstructionOffset": "0x1202",
+            "target": "0x189B486D4"
+          },
+          {
+            "face": 5,
+            "cacheIndexInstructionOffset": "0x1245",
+            "target": "0x189B486D4"
+          }
+        ],
+        "unavailableCacheIndex": -1,
+        "unavailableSentinelByte": 255,
+        "packing": {
+          "source": "six uint8 face indices",
+          "byteOrder": "face0, face1, face2, face3, face4, face5",
+          "record2W": "(face0 << 24) | (face1 << 16) | (face2 << 8) | face3",
+          "record3X": "(face4 << 8) | face5",
+          "nativeFallbackAndPackClosed": true
+        },
+        "liveValues": {
+          "closed": false,
+          "requiredCapture": "six target-frame GetShadowCacheIndexForCaster return values"
+        }
+      },
+      "pointShadowCacheIndex": {
+        "nativeVirtualAddress": "0x189B486D4",
+        "fileOffset": "0x9B46CD4",
+        "bodySize": 308,
+        "bodySha256": "569216d2b51545da1b7867902e78ff36f9cbcf7f893db66c581481facd9ac622",
+        "dynamicCasterListField": "this + 0x80",
+        "staticCasterListField": "this + 0x38",
+        "dynamicMatchResult": "dynamicOrdinal + 40 (0x28)",
+        "staticMatchResult": "PunctualLightCachedShadowDesc.shadowCacheSlotIndex (+0x0C)",
+        "unmatchedResult": -1,
+        "nullManagerOrCasterList": "fail-fast via 0x1800D8260",
+        "resolverOutcomeClosed": true
+      },
+      "ifixWrapperTable": {
+        "managerGlobalSlot": "0x18E28EC48",
+        "managerInitializationField": "+0xE0",
+        "managerTablePointerField": "+0xB8",
+        "tableLayout": {
+          "activeTablePointer": "+0x00 of manager[+0xB8]",
+          "entryCount": "+0x18",
+          "entryArray": "+0x20 + 8 * methodId",
+          "entrySizeBytes": 8
+        },
+        "isPatched": {
+          "virtualAddress": "0x1831068E0",
+          "fileOffset": "0x3104EE0",
+          "sizeBytes": 77,
+          "bodySha256": "48678146c1cbf1cef4ef7bed4718b73df3e74df0f9cf1c827b5dcd4e5fe85692",
+          "coldVirtualAddress": "0x184E35008",
+          "coldFileOffset": "0x4E33608",
+          "coldSizeBytes": 70,
+          "coldBodySha256": "fefa55918137436af9357f114d7eab2296608ddabc34af7ce8a79d57120493d0",
+          "input": "signed int32 methodId in ecx",
+          "outcome": "non-null table entry => true; null/out-of-range/uninitialized => false or fail-fast according to native branch"
+        },
+        "getPatch": {
+          "virtualAddress": "0x189CDC2C0",
+          "fileOffset": "0x9CDA8C0",
+          "sizeBytes": 83,
+          "bodySha256": "026cc13020ea55d8ca602768e0764e672d004b50509eea615e448b8db7fc91fd",
+          "input": "signed int32 methodId in ecx",
+          "outcome": "returns table entry pointer after unsigned count check; invalid bounds fail-fast"
+        },
+        "resolvedBranches": [
+          {
+            "name": "is_patched_init_fallback",
+            "offset": "0x17",
+            "target": "0x18310691F"
+          },
+          {
+            "name": "is_patched_null_table_fail_fast",
+            "offset": "0x26",
+            "target": "0x183106919"
+          },
+          {
+            "name": "is_patched_cold_initialized",
+            "offset": "0x7",
+            "target": "0x184E3501D"
+          },
+          {
+            "name": "is_patched_bounds_ok",
+            "offset": "0x2B",
+            "target": "0x184E3503B"
+          },
+          {
+            "name": "get_patch_initialized",
+            "offset": "0x17",
+            "target": "0x189CDC2E8"
+          },
+          {
+            "name": "get_patch_nonnull_table",
+            "offset": "0x35",
+            "target": "0x189CDC2FD"
+          },
+          {
+            "name": "get_patch_bounds_ok",
+            "offset": "0x40",
+            "target": "0x189CDC308"
+          },
+          {
+            "name": "is_patched_signed_id_gate",
+            "offset": "0x2B",
+            "target": "0x184E35008"
+          },
+          {
+            "name": "is_patched_cold_null_table_fail_fast",
+            "offset": "0x22",
+            "target": "0x183106919"
+          },
+          {
+            "name": "is_patched_entry_null",
+            "offset": "0x39",
+            "target": "0x183106911"
+          }
+        ],
+        "runtimeMembershipStillOpen": true,
+        "runtimeWrapperPointersStillOpen": true,
+        "lookupContractClosed": true
+      },
+      "shadowRenderType": {
+        "method": "HG.Rendering.Runtime.HGPunctualLightShadowManagerV2.GetShadowRenderType",
+        "methodIndex": 285595,
+        "virtualAddress": "0x189B48808",
+        "fileOffset": "0x9B46E08",
+        "sizeBytes": 260,
+        "bodySha256": "bfb6730d6907e208480291489117015ee10293e8489a3735b868ab0fde517233",
+        "patchMethodId": "0x886",
+        "resolvedCalls": [
+          {
+            "offset": "0x24",
+            "target": "0x1831068E0",
+            "method": "WrappersManagerImpl.IsPatched"
+          },
+          {
+            "offset": "0x46",
+            "target": "0x18B3BDFA4",
+            "method": "HGSharedLightData.get_isDynamicShadowCaster"
+          },
+          {
+            "offset": "0x56",
+            "target": "0x18B3BDA84",
+            "method": "HGSharedLightData.get_castStaticObjects"
+          },
+          {
+            "offset": "0x6A",
+            "target": "0x18B3BDA84",
+            "method": "HGSharedLightData.get_castStaticObjects"
+          },
+          {
+            "offset": "0x7A",
+            "target": "0x18B3BDA6C",
+            "method": "HGSharedLightData.get_castDynamicObjects"
+          },
+          {
+            "offset": "0x8A",
+            "target": "0x18B3BDA84",
+            "method": "HGSharedLightData.get_castStaticObjects"
+          },
+          {
+            "offset": "0x9A",
+            "target": "0x18B3BDA6C",
+            "method": "HGSharedLightData.get_castDynamicObjects"
+          },
+          {
+            "offset": "0xBA",
+            "target": "0x189CDC2C0",
+            "method": "WrappersManagerImpl.GetPatch"
+          },
+          {
+            "offset": "0xC7",
+            "target": "0x1800D8260",
+            "method": "fail-fast"
+          },
+          {
+            "offset": "0xED",
+            "target": "0x189CD140C",
+            "method": "ILFixDynamicMethodWrapper.__Gen_Wrap_874"
+          }
+        ],
+        "resolvedBranches": [
+          {
+            "offset": "0x3D",
+            "target": "0x189B488B3",
+            "name": "static_request_default"
+          },
+          {
+            "offset": "0x54",
+            "target": "0x189B48872",
+            "name": "dynamic_static_bit_true"
+          },
+          {
+            "offset": "0x5D",
+            "target": "0x189B488AB",
+            "name": "dynamic_static_bit_false"
+          },
+          {
+            "offset": "0x71",
+            "target": "0x189B4888B",
+            "name": "dynamic_static_fallback"
+          },
+          {
+            "offset": "0x81",
+            "target": "0x189B488B3",
+            "name": "dynamic_dynamic_bit_false"
+          },
+          {
+            "offset": "0x91",
+            "target": "0x189B48867",
+            "name": "dynamic_static_only_return"
+          },
+          {
+            "offset": "0xA1",
+            "target": "0x189B48867",
+            "name": "dynamic_dynamic_only_return"
+          },
+          {
+            "offset": "0xA9",
+            "target": "0x189B488FA",
+            "name": "dynamic_only_return"
+          },
+          {
+            "offset": "0xB1",
+            "target": "0x189B488FA",
+            "name": "static_only_return"
+          },
+          {
+            "offset": "0xC5",
+            "target": "0x189B488D5",
+            "name": "patched_wrapper_call"
+          },
+          {
+            "offset": "0x2B",
+            "target": "0x189B488BB",
+            "name": "patched_gate"
+          },
+          {
+            "offset": "0x65",
+            "target": "0x189B488FA",
+            "name": "dynamic_both_true_return"
+          }
+        ],
+        "nativeDefault": {
+          "staticRequest": {
+            "condition": "IsPatched(0x886) == false and isDynamicRequest == false",
+            "castStaticObjects": true,
+            "castDynamicObjects": false,
+            "branchTarget": "0x189B488B3"
+          },
+          "dynamicRequest": {
+            "condition": "IsPatched(0x886) == false and isDynamicRequest == true",
+            "inputs": [
+              "HGSharedLightData.get_isDynamicShadowCaster (mask 0x01)",
+              "HGSharedLightData.get_castStaticObjects (mask 0x02)",
+              "HGSharedLightData.get_castDynamicObjects (mask 0x04)"
+            ],
+            "branchLogicClosed": true
+          }
+        },
+        "runtimePatchedPath": {
+          "condition": "IsPatched(0x886) == true",
+          "patchLookup": "0x189CDC2C0",
+          "wrapper": "0x189CD140C",
+          "missingPatchFailFast": "0x1800D8260",
+          "runtimeWrapperTableEntryStillOpen": true,
+          "returnedFlagsStillOpen": true
+        },
+        "nativeDefaultStaticResultClosed": true,
+        "runtimePatchedResultStillOpen": true
+      },
+      "rendererConfig": {
+        "method": "HG.Rendering.Runtime.HGPunctualLightShadowManagerV2.GetRendererConfig",
+        "methodIndex": 285596,
+        "virtualAddress": "0x189B4861C",
+        "fileOffset": "0x9B46C1C",
+        "sizeBytes": 184,
+        "bodySha256": "07df57dc9a61647510d55da24a8cdd309fab5957d87195946a05e94b3ede4a07",
+        "patchMethodId": "0x887",
+        "resolvedCalls": [
+          {
+            "offset": "0x28",
+            "target": "0x1831068E0",
+            "method": "WrappersManagerImpl.IsPatched"
+          },
+          {
+            "offset": "0x4F",
+            "target": "0x189B48808",
+            "method": "HGPunctualLightShadowManagerV2.GetShadowRenderType"
+          },
+          {
+            "offset": "0x7F",
+            "target": "0x189CDC2C0",
+            "method": "WrappersManagerImpl.GetPatch"
+          },
+          {
+            "offset": "0x89",
+            "target": "0x1800D8260",
+            "method": "fail-fast"
+          },
+          {
+            "offset": "0xA1",
+            "target": "0x189CD1564",
+            "method": "ILFixDynamicMethodWrapper.__Gen_Wrap_875"
+          }
+        ],
+        "resolvedBranches": [
+          {
+            "offset": "0x2F",
+            "target": "0x189B48694",
+            "name": "patched_gate"
+          },
+          {
+            "offset": "0x87",
+            "target": "0x189B486AB",
+            "name": "patched_wrapper_call"
+          }
+        ],
+        "nativeDefault": {
+          "condition": "IsPatched(0x887) == false",
+          "baseFlags": "0x4800",
+          "castStaticPointer": "rsp+0x30 (r9 argument to GetShadowRenderType)",
+          "castDynamicPointer": "rsp+0x31 (fifth argument to GetShadowRenderType)",
+          "formula": "0x4800 | (castStaticObjects ? 0x1000 : 0) | (castDynamicObjects ? 0x2000 : 0)",
+          "sourceFlagsClosed": true
+        },
+        "runtimePatchedPath": {
+          "condition": "IsPatched(0x887) == true",
+          "patchLookup": "0x189CDC2C0",
+          "wrapper": "0x189CD1564",
+          "missingPatchFailFast": "0x1800D8260",
+          "runtimeWrapperTableEntryStillOpen": true,
+          "returnedFlagsStillOpen": true
+        },
+        "nativeDefaultFlagsClosed": true,
+        "runtimePatchedResultStillOpen": true
+      },
+      "ecsRenderFlags": {
+        "method": "HG.Rendering.Runtime.HGPunctualLightShadowManagerV2.GetECSRenderFlags",
+        "methodIndex": 285597,
+        "virtualAddress": "0x189B48344",
+        "fileOffset": "0x9B46944",
+        "sizeBytes": 376,
+        "bodySha256": "2ad75354fa81b3958de4783f247c8e0993a6986b4c7ff244ce8f36e04615075d",
+        "patchMethodId": "0x888",
+        "resolvedCalls": [
+          {
+            "offset": "0x38",
+            "target": "0x1831068E0",
+            "method": "WrappersManagerImpl.IsPatched"
+          },
+          {
+            "offset": "0x81",
+            "target": "0x189B48808",
+            "method": "HGPunctualLightShadowManagerV2.GetShadowRenderType"
+          },
+          {
+            "offset": "0xC1",
+            "target": "0x18B3BDD10",
+            "method": "HGSharedLightData.get_enableHDCharacterShadow_Injected"
+          },
+          {
+            "offset": "0xD5",
+            "target": "0x1800036A0",
+            "method": "helper"
+          },
+          {
+            "offset": "0xDA",
+            "target": "0x189B42908",
+            "method": "HGHDPLSCharacterShadowManager.get_isActive"
+          },
+          {
+            "offset": "0xE9",
+            "target": "0x189D08BE8",
+            "method": "HGSharedLightDataExtension.GetEntity"
+          },
+          {
+            "offset": "0xF8",
+            "target": "0x1800036A0",
+            "method": "helper"
+          },
+          {
+            "offset": "0x102",
+            "target": "0x189B46C38",
+            "method": "HGHDPLSCharacterShadowManager.IsHDPLSLight"
+          },
+          {
+            "offset": "0x115",
+            "target": "0x189CDC2C0",
+            "method": "WrappersManagerImpl.GetPatch"
+          },
+          {
+            "offset": "0x122",
+            "target": "0x1800D8260",
+            "method": "fail-fast"
+          },
+          {
+            "offset": "0x158",
+            "target": "0x189CD1664",
+            "method": "ILFixDynamicMethodWrapper.__Gen_Wrap_876"
+          }
+        ],
+        "resolvedBranches": [
+          {
+            "offset": "0x9A",
+            "target": "0x189B483F2",
+            "name": "static_false"
+          },
+          {
+            "offset": "0x9E",
+            "target": "0x189B483F0",
+            "name": "dynamic_true"
+          },
+          {
+            "offset": "0xB3",
+            "target": "0x189B483FF",
+            "name": "caster_projection_done"
+          },
+          {
+            "offset": "0xE1",
+            "target": "0x189B484A1",
+            "name": "hd_character_shadow_disabled"
+          },
+          {
+            "offset": "0x109",
+            "target": "0x189B484A1",
+            "name": "hdpls_light_false"
+          },
+          {
+            "offset": "0x120",
+            "target": "0x189B4846C",
+            "name": "patched_wrapper_call"
+          },
+          {
+            "offset": "0x3F",
+            "target": "0x189B48455",
+            "name": "patched_gate"
+          },
+          {
+            "offset": "0xC8",
+            "target": "0x189B484A1",
+            "name": "hd_character_shadow_inactive"
+          }
+        ],
+        "nativeDefault": {
+          "condition": "IsPatched(0x888) == false",
+          "argumentPointers": {
+            "objectFlags": "r9 -> [rsi]",
+            "objectFlagsMask": "fifth argument -> [rdi]",
+            "renderFlags": "sixth argument -> [r14]",
+            "renderFlagsMask": "seventh argument -> [rbx]"
+          },
+          "baseValues": {
+            "objectFlags": "0x08000002",
+            "objectFlagsMask": "0x08000002",
+            "renderFlags": "0x02080000",
+            "renderFlagsMask": "0x02080000"
+          },
+          "shadowRenderTypeInputs": {
+            "castStaticPointer": "rbp-0x0F (r9)",
+            "castDynamicPointer": "rbp-0x10 (fifth argument)"
+          },
+          "exclusiveCasterProjection": {
+            "condition": "castStaticObjects XOR castDynamicObjects",
+            "objectFlagsAndMaskOr": "0x04000000",
+            "renderFlagsAndMaskOr": "0x01000000"
+          },
+          "hdCharacterShadow": {
+            "condition": "enableHDCharacterShadow && HGHDPLSCharacterShadowManager.isActive && IsHDPLSLight(entity)",
+            "destination": "objectFlagsMask",
+            "bit": 28,
+            "orMask": "0x10000000"
+          },
+          "sourceFlagsClosed": true
+        },
+        "runtimePatchedPath": {
+          "condition": "IsPatched(0x888) == true",
+          "patchLookup": "0x189CDC2C0",
+          "wrapper": "0x189CD1664",
+          "missingPatchFailFast": "0x1800D8260",
+          "runtimeWrapperTableEntryStillOpen": true,
+          "returnedFlagsStillOpen": true
+        },
+        "nativeDefaultFlagsClosed": true,
+        "runtimePatchedResultStillOpen": true
+      },
+      "shadowCasterPropertyGetters": {
+        "packedWord": "HGSharedLightData.m_CasterProperties",
+        "fields": {
+          "isDynamicShadowCaster": {
+            "mask": "0x01",
+            "packedWord": "HGSharedLightData.m_CasterProperties",
+            "nativeBodySha256": "90ea0aae2d7409a8dc4fdc07cffdd57af60069b9e34fdbec0506ff946f615bfc"
+          },
+          "castStaticObjects": {
+            "mask": "0x02",
+            "packedWord": "HGSharedLightData.m_CasterProperties",
+            "nativeBodySha256": "512c74973a1f42fb0bdfcc029266400d3867d6b91cfb8abaec5453e45e9233e1"
+          },
+          "castDynamicObjects": {
+            "mask": "0x04",
+            "packedWord": "HGSharedLightData.m_CasterProperties",
+            "nativeBodySha256": "f71bcbf11d32cb9ce1d32c2959397575b0f3883f2593d730223c8e6c0f723558"
+          }
+        },
+        "propertyMasksClosed": true,
+        "runtimeCacheValuesStillOpen": true
+      },
+      "pointRecordTransform": {
+        "calls": [
+          {
+            "instructionOffset": "0x073E",
+            "target": "0x189D14F34",
+            "method": "VisibleLightExtensionMethods.GetForward"
+          },
+          {
+            "instructionOffset": "0x0798",
+            "target": "0x189C0EF4C",
+            "method": "HGUtils.PackNormalOctRectEncode"
+          },
+          {
+            "instructionOffset": "0x083C",
+            "target": "0x189D15168",
+            "method": "VisibleLightExtensionMethods.GetPosition"
+          }
+        ],
+        "record1XYZ": {
+          "producer": "VisibleLightExtensionMethods.GetPosition(VisibleLight)",
+          "nativeSpace": "world-space",
+          "deferredConsumerSpace": "camera-relative via worldPosition - cameraPosition",
+          "targetFrameValues": "capture-only"
+        },
+        "record2XY": {
+          "producer": "HGUtils.PackNormalOctRectEncode(VisibleLightExtensionMethods.GetForward(VisibleLight))",
+          "encoding": "octahedral rectangle",
+          "targetFrameValues": "capture-only"
+        },
+        "helperBodies": {
+          "getForward": {
+            "method": "VisibleLightExtensionMethods.GetForward",
+            "virtualAddress": "0x189D14F34",
+            "fileOffset": "0x9D13534",
+            "sizeBytes": 304,
+            "bodySha256": "ed742d362644817a4275490ffadf42fc0843340060584150e4b8f1f017bb29d1",
+            "ifixMethodId": "0x77A",
+            "sourceField": "VisibleLight.LocalToWorldMatrix",
+            "sourceFieldOffset": "0x24",
+            "matrixColumn": 2,
+            "extraction": "Matrix4x4.GetColumn(2) then Vector4.op_Implicit(Vector3), xyz; no normalization call in this body"
+          },
+          "getPosition": {
+            "method": "VisibleLightExtensionMethods.GetPosition",
+            "virtualAddress": "0x189D15168",
+            "fileOffset": "0x9D13768",
+            "sizeBytes": 304,
+            "bodySha256": "9bf253dbd8822df91b50cc9de46c2aecce39c88fa1b4d9da361639cb02e7dba1",
+            "ifixMethodId": "0x77D",
+            "sourceField": "VisibleLight.LocalToWorldMatrix",
+            "sourceFieldOffset": "0x24",
+            "matrixColumn": 3,
+            "extraction": "Matrix4x4.GetColumn(3) then Vector4.op_Implicit(Vector3), xyz"
+          },
+          "packNormalOctRectEncode": {
+            "method": "HGUtils.PackNormalOctRectEncode",
+            "virtualAddress": "0x189C0EF4C",
+            "fileOffset": "0x9C0D54C",
+            "sizeBytes": 344,
+            "bodySha256": "9b3353f0544568e35e2bc5317515f22207c58ad3efa889e2e336f0c2670b2a2c",
+            "ifixMethodId": "0x77B",
+            "input": "float3 direction",
+            "output": "float2 octahedral rectangle encoding",
+            "methodIndex": 288324,
+            "token": "0x060014C0",
+            "formula": "n1=n/(abs(n.x)+abs(n.y)+abs(n.z)); u=CopySign(clamp(0.5+0.5*(n1.y-n1.x),0,1),n1.z,true); v=n1.x+n1.y",
+            "consumerDecodeFormula": "a=(0.5+0.5*v)-abs(u); b=v-a; c=abs(max((1-abs(a))-abs(b),0.00048828125)); normalize(float3(a,b,sign(u)*c))",
+            "constants": {
+              "oneBits": "0x3F800000",
+              "halfBits": "0x3F000000"
+            },
+            "callTargets": {
+              "abs": "0x183B0AD90",
+              "dot": "0x184D8B7C0",
+              "float3Multiply": "0x1830E7A60",
+              "clamp": "0x182EE75E0",
+              "copySign": "0x189C0C2F0"
+            }
+          }
+        },
+        "authoredRoomCandidates": {
+          "scope": "authored SceneLight6Rarity room hierarchy at pinned rotatehouse transform",
+          "sourceSpace": "world-space",
+          "positionProducerInput": "VisibleLight.LocalToWorldMatrix column 3",
+          "forwardProducerInput": "VisibleLight.LocalToWorldMatrix column 2",
+          "record2XYFormula": "PackNormalOctRectEncode(worldForward) using the hash-pinned unpatched body",
+          "record2XYCandidateClosed": true,
+          "parentTransform": {
+            "position": [
+              -1.0099999904632568,
+              0.0,
+              9.069999694824219
+            ],
+            "rotation": [
+              0.0,
+              0.01817660592496395,
+              0.0,
+              0.9998348355293274
+            ],
+            "scale": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "count": 12,
+          "rows": [
+            {
+              "name": "Spot Light (12)",
+              "lightPathId": 3145527971969281504,
+              "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#381_p2BA729065848ADE0.json",
+              "localPosition": {
+                "values": [
+                  -0.5377212762832642,
+                  6.436999797821045,
+                  -13.828680992126465
+                ],
+                "bits": [
+                  "0xBF09A81A",
+                  "0x40CDFBE7",
+                  "0xC15D4247"
+                ]
+              },
+              "localRotation": {
+                "values": [
+                  0.012852895073592663,
+                  0.7069900035858154,
+                  -0.7069900035858154,
+                  0.012852895073592663
+                ],
+                "bits": [
+                  "0x3C5294F3",
+                  "0x3F34FD4C",
+                  "0xBF34FD4C",
+                  "0x3C5294F3"
+                ]
+              },
+              "worldPosition": {
+                "values": [
+                  -2.049999952316284,
+                  6.436999797821045,
+                  -4.729998588562012
+                ],
+                "bits": [
+                  "0xC0033333",
+                  "0x40CDFBE7",
+                  "0xC0975C26"
+                ]
+              },
+              "worldForward": {
+                "values": [
+                  0.0,
+                  -1.0000001192092896,
+                  -1.1920928955078125e-07
+                ],
+                "bits": [
+                  "0x00000000",
+                  "0xBF800001",
+                  "0xB4000000"
+                ]
+              },
+              "record2XYCandidate": {
+                "values": [
+                  -5.960464477539063e-08,
+                  -0.9999998807907104
+                ],
+                "bits": [
+                  "0xB3800000",
+                  "0xBF7FFFFE"
+                ]
+              }
+            },
+            {
+              "name": "Spot Light (19)",
+              "lightPathId": 6723905289426087392,
+              "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#471_p5D501C3C679CADE0.json",
+              "localPosition": {
+                "values": [
+                  -0.3140000104904175,
+                  3.2049999237060547,
+                  -16.365999221801758
+                ],
+                "bits": [
+                  "0xBEA0C49C",
+                  "0x404D1EB8",
+                  "0xC182ED91"
+                ]
+              },
+              "localRotation": {
+                "values": [
+                  -0.7066395878791809,
+                  0.02570139616727829,
+                  -0.02570139616727829,
+                  -0.7066395878791809
+                ],
+                "bits": [
+                  "0xBF34E655",
+                  "0x3CD28BBC",
+                  "0xBCD28BBC",
+                  "0xBF34E655"
+                ]
+              },
+              "worldPosition": {
+                "values": [
+                  -1.9186508655548096,
+                  3.2049999237060547,
+                  -7.273771286010742
+                ],
+                "bits": [
+                  "0xBFF5965A",
+                  "0x404D1EB8",
+                  "0xC0E8C2BC"
+                ]
+              },
+              "worldForward": {
+                "values": [
+                  0.0,
+                  -1.0000003576278687,
+                  -3.5762786865234375e-07
+                ],
+                "bits": [
+                  "0x00000000",
+                  "0xBF800003",
+                  "0xB4C00000"
+                ]
+              },
+              "record2XYCandidate": {
+                "values": [
+                  -1.7881393432617188e-07,
+                  -0.9999996423721313
+                ],
+                "bits": [
+                  "0xB4400000",
+                  "0xBF7FFFFA"
+                ]
+              }
+            },
+            {
+              "name": "Linear Light (12)",
+              "lightPathId": -7516039918534742560,
+              "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#40_p97B1A9840A14ADE0.json",
+              "localPosition": {
+                "values": [
+                  5.829999923706055,
+                  4.130000114440918,
+                  -16.469999313354492
+                ],
+                "bits": [
+                  "0x40BA8F5C",
+                  "0x408428F6",
+                  "0xC183C28F"
+                ]
+              },
+              "localRotation": {
+                "values": [
+                  -0.0,
+                  -0.003214555326849222,
+                  -0.0,
+                  0.9999948143959045
+                ],
+                "bits": [
+                  "0x80000000",
+                  "0xBB52AB4A",
+                  "0x80000000",
+                  "0x3F7FFFA9"
+                ]
+              },
+              "worldPosition": {
+                "values": [
+                  4.2175092697143555,
+                  4.130000114440918,
+                  -7.601020812988281
+                ],
+                "bits": [
+                  "0x4086F5D6",
+                  "0x408428F6",
+                  "0xC0F33B90"
+                ]
+              },
+              "worldForward": {
+                "values": [
+                  0.029921624809503555,
+                  0.0,
+                  0.9995522499084473
+                ],
+                "bits": [
+                  "0x3CF51E32",
+                  "0x00000000",
+                  "0x3F7FE2A8"
+                ]
+              },
+              "record2XYCandidate": {
+                "values": [
+                  0.4854675233364105,
+                  0.029064966365695
+                ],
+                "bits": [
+                  "0x3EF88F33",
+                  "0x3CEE19A7"
+                ]
+              }
+            },
+            {
+              "name": "Linear Light (13)",
+              "lightPathId": -6003850056218071584,
+              "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#92_pACAE0A2F0269ADE0.json",
+              "localPosition": {
+                "values": [
+                  -5.56788444519043,
+                  4.130000114440918,
+                  -16.383203506469727
+                ],
+                "bits": [
+                  "0xC0B22C1C",
+                  "0x408428F6",
+                  "0xC18310CD"
+                ]
+              },
+              "localRotation": {
+                "values": [
+                  -0.0,
+                  -0.003214555326849222,
+                  -0.0,
+                  0.9999948143959045
+                ],
+                "bits": [
+                  "0x80000000",
+                  "0xBB52AB4A",
+                  "0x80000000",
+                  "0x3F7FFFA9"
+                ]
+              },
+              "worldPosition": {
+                "values": [
+                  -7.169689178466797,
+                  4.130000114440918,
+                  -7.100000381469727
+                ],
+                "bits": [
+                  "0xC0E56E18",
+                  "0x408428F6",
+                  "0xC0E33334"
+                ]
+              },
+              "worldForward": {
+                "values": [
+                  0.029921624809503555,
+                  0.0,
+                  0.9995522499084473
+                ],
+                "bits": [
+                  "0x3CF51E32",
+                  "0x00000000",
+                  "0x3F7FE2A8"
+                ]
+              },
+              "record2XYCandidate": {
+                "values": [
+                  0.4854675233364105,
+                  0.029064966365695
+                ],
+                "bits": [
+                  "0x3EF88F33",
+                  "0x3CEE19A7"
+                ]
+              }
+            },
+            {
+              "name": "Linear Light (14)",
+              "lightPathId": -4966856337038791200,
+              "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#133_pBB122E7A1C67ADE0.json",
+              "localPosition": {
+                "values": [
+                  3.1983699798583984,
+                  9.89799976348877,
+                  -15.854223251342773
+                ],
+                "bits": [
+                  "0x404CB218",
+                  "0x411E5E35",
+                  "0xC17DAAE6"
+                ]
+              },
+              "localRotation": {
+                "values": [
+                  -0.0,
+                  -0.003214555326849222,
+                  -0.0,
+                  0.9999948143959045
+                ],
+                "bits": [
+                  "0x80000000",
+                  "0xBB52AB4A",
+                  "0x80000000",
+                  "0x3F7FFFA9"
+                ]
+              },
+              "worldPosition": {
+                "values": [
+                  1.6099998950958252,
+                  9.89799976348877,
+                  -6.8899993896484375
+                ],
+                "bits": [
+                  "0x3FCE147A",
+                  "0x411E5E35",
+                  "0xC0DC7AE0"
+                ]
+              },
+              "worldForward": {
+                "values": [
+                  0.029921624809503555,
+                  0.0,
+                  0.9995522499084473
+                ],
+                "bits": [
+                  "0x3CF51E32",
+                  "0x00000000",
+                  "0x3F7FE2A8"
+                ]
+              },
+              "record2XYCandidate": {
+                "values": [
+                  0.4854675233364105,
+                  0.029064966365695
+                ],
+                "bits": [
+                  "0x3EF88F33",
+                  "0x3CEE19A7"
+                ]
+              }
+            },
+            {
+              "name": "Spot Light (17)",
+              "lightPathId": 4336752956264328672,
+              "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#413_p3C2F3DD62CC2ADE0.json",
+              "localPosition": {
+                "values": [
+                  3.5311596393585205,
+                  3.4700000286102295,
+                  -19.50153923034668
+                ],
+                "bits": [
+                  "0x4061FE85",
+                  "0x405E147B",
+                  "0xC19C0327"
+                ]
+              },
+              "localRotation": {
+                "values": [
+                  -0.7066395878791809,
+                  0.02570139616727829,
+                  -0.02570139616727829,
+                  -0.7066395878791809
+                ],
+                "bits": [
+                  "0xBF34E655",
+                  "0x3CD28BBC",
+                  "0xBCD28BBC",
+                  "0xBF34E655"
+                ]
+              },
+              "worldPosition": {
+                "values": [
+                  1.809999704360962,
+                  3.4700000286102295,
+                  -10.547000885009766
+                ],
+                "bits": [
+                  "0x3FE7AE12",
+                  "0x405E147B",
+                  "0xC128C084"
+                ]
+              },
+              "worldForward": {
+                "values": [
+                  0.0,
+                  -1.0000003576278687,
+                  -3.5762786865234375e-07
+                ],
+                "bits": [
+                  "0x00000000",
+                  "0xBF800003",
+                  "0xB4C00000"
+                ]
+              },
+              "record2XYCandidate": {
+                "values": [
+                  -1.7881393432617188e-07,
+                  -0.9999996423721313
+                ],
+                "bits": [
+                  "0xB4400000",
+                  "0xBF7FFFFA"
+                ]
+              }
+            },
+            {
+              "name": "Linear Light (15)",
+              "lightPathId": -2247457476464562720,
+              "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#228_pE0CF6D552B88ADE0.json",
+              "localPosition": {
+                "values": [
+                  -4.36466646194458,
+                  9.779999732971191,
+                  -15.90815544128418
+                ],
+                "bits": [
+                  "0xC08BAB59",
+                  "0x411C7AE1",
+                  "0xC17E87CE"
+                ]
+              },
+              "localRotation": {
+                "values": [
+                  -0.0,
+                  -0.003214555326849222,
+                  -0.0,
+                  0.9999948143959045
+                ],
+                "bits": [
+                  "0x80000000",
+                  "0xBB52AB4A",
+                  "0x80000000",
+                  "0x3F7FFFA9"
+                ]
+              },
+              "worldPosition": {
+                "values": [
+                  -5.949999809265137,
+                  9.779999732971191,
+                  -6.669000625610352
+                ],
+                "bits": [
+                  "0xC0BE6666",
+                  "0x411C7AE1",
+                  "0xC0D56874"
+                ]
+              },
+              "worldForward": {
+                "values": [
+                  0.029921624809503555,
+                  0.0,
+                  0.9995522499084473
+                ],
+                "bits": [
+                  "0x3CF51E32",
+                  "0x00000000",
+                  "0x3F7FE2A8"
+                ]
+              },
+              "record2XYCandidate": {
+                "values": [
+                  0.4854675233364105,
+                  0.029064966365695
+                ],
+                "bits": [
+                  "0x3EF88F33",
+                  "0x3CEE19A7"
+                ]
+              }
+            },
+            {
+              "name": "Spot Light (18)",
+              "lightPathId": 1177420952804240864,
+              "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#324_p10570A1E4AFFADE0.json",
+              "localPosition": {
+                "values": [
+                  -3.7510766983032227,
+                  3.5,
+                  -20.122638702392578
+                ],
+                "bits": [
+                  "0xC07011A4",
+                  "0x40600000",
+                  "0xC1A0FB2A"
+                ]
+              },
+              "localRotation": {
+                "values": [
+                  -0.7066395878791809,
+                  0.02570139616727829,
+                  -0.02570139616727829,
+                  -0.7066395878791809
+                ],
+                "bits": [
+                  "0xBF34E655",
+                  "0x3CD28BBC",
+                  "0xBCD28BBC",
+                  "0xBF34E655"
+                ]
+              },
+              "worldPosition": {
+                "values": [
+                  -5.489999771118164,
+                  3.5,
+                  -10.90300178527832
+                ],
+                "bits": [
+                  "0xC0AFAE14",
+                  "0x40600000",
+                  "0xC12E72B2"
+                ]
+              },
+              "worldForward": {
+                "values": [
+                  0.0,
+                  -1.0000003576278687,
+                  -3.5762786865234375e-07
+                ],
+                "bits": [
+                  "0x00000000",
+                  "0xBF800003",
+                  "0xB4C00000"
+                ]
+              },
+              "record2XYCandidate": {
+                "values": [
+                  -1.7881393432617188e-07,
+                  -0.9999996423721313
+                ],
+                "bits": [
+                  "0xB4400000",
+                  "0xBF7FFFFA"
+                ]
+              }
+            },
+            {
+              "name": "Spot Light (9)",
+              "lightPathId": 7037844248082165216,
+              "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#486_p61AB720E3776ADE0.json",
+              "localPosition": {
+                "values": [
+                  -0.09690368175506592,
+                  4.550000190734863,
+                  -20.996397018432617
+                ],
+                "bits": [
+                  "0xBDC67570",
+                  "0x4091999A",
+                  "0xC1A7F89F"
+                ]
+              },
+              "localRotation": {
+                "values": [
+                  -0.7066395878791809,
+                  0.02570139616727829,
+                  -0.02570139616727829,
+                  -0.7066395878791809
+                ],
+                "bits": [
+                  "0xBF34E655",
+                  "0x3CD28BBC",
+                  "0xBCD28BBC",
+                  "0xBF34E655"
+                ]
+              },
+              "worldPosition": {
+                "values": [
+                  -1.8700001239776611,
+                  4.550000190734863,
+                  -11.909000396728516
+                ],
+                "bits": [
+                  "0xBFEF5C2A",
+                  "0x4091999A",
+                  "0xC13E8B44"
+                ]
+              },
+              "worldForward": {
+                "values": [
+                  0.0,
+                  -1.0000003576278687,
+                  -3.5762786865234375e-07
+                ],
+                "bits": [
+                  "0x00000000",
+                  "0xBF800003",
+                  "0xB4C00000"
+                ]
+              },
+              "record2XYCandidate": {
+                "values": [
+                  -1.7881393432617188e-07,
+                  -0.9999996423721313
+                ],
+                "bits": [
+                  "0xB4400000",
+                  "0xBF7FFFFA"
+                ]
+              }
+            },
+            {
+              "name": "Spot Light (20)",
+              "lightPathId": 4491921571221515744,
+              "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#418_p3E5682DEAB92ADE0.json",
+              "localPosition": {
+                "values": [
+                  -0.13600000739097595,
+                  11.890000343322754,
+                  -21.31800079345703
+                ],
+                "bits": [
+                  "0xBE0B4396",
+                  "0x413E3D71",
+                  "0xC1AA8B44"
+                ]
+              },
+              "localRotation": {
+                "values": [
+                  -0.7066395878791809,
+                  0.02570139616727829,
+                  -0.02570139616727829,
+                  -0.7066395878791809
+                ],
+                "bits": [
+                  "0xBF34E655",
+                  "0x3CD28BBC",
+                  "0xBCD28BBC",
+                  "0xBF34E655"
+                ]
+              },
+              "worldPosition": {
+                "values": [
+                  -1.920759916305542,
+                  11.890000343322754,
+                  -12.228971481323242
+                ],
+                "bits": [
+                  "0xBFF5DB76",
+                  "0x413E3D71",
+                  "0xC143A9DE"
+                ]
+              },
+              "worldForward": {
+                "values": [
+                  0.0,
+                  -1.0000003576278687,
+                  -3.5762786865234375e-07
+                ],
+                "bits": [
+                  "0x00000000",
+                  "0xBF800003",
+                  "0xB4C00000"
+                ]
+              },
+              "record2XYCandidate": {
+                "values": [
+                  -1.7881393432617188e-07,
+                  -0.9999996423721313
+                ],
+                "bits": [
+                  "0xB4400000",
+                  "0xBF7FFFFA"
+                ]
+              }
+            },
+            {
+              "name": "Spot Light (11)",
+              "lightPathId": 7142192322960010720,
+              "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#489_p631E2A13A78DADE0.json",
+              "localPosition": {
+                "values": [
+                  0.01275026798248291,
+                  4.984000205993652,
+                  -24.770906448364258
+                ],
+                "bits": [
+                  "0x3C50E680",
+                  "0x409F7CEE",
+                  "0xC1C62AD1"
+                ]
+              },
+              "localRotation": {
+                "values": [
+                  -0.7069900035858154,
+                  0.012852839194238186,
+                  -0.012852839194238186,
+                  -0.7069900035858154
+                ],
+                "bits": [
+                  "0xBF34FD4C",
+                  "0x3C5294B7",
+                  "0xBC5294B7",
+                  "0xBF34FD4C"
+                ]
+              },
+              "worldPosition": {
+                "values": [
+                  -1.897611379623413,
+                  4.984000205993652,
+                  -15.685001373291016
+                ],
+                "bits": [
+                  "0xBFF2E4EE",
+                  "0x409F7CEE",
+                  "0xC17AF5C4"
+                ]
+              },
+              "worldForward": {
+                "values": [
+                  0.0,
+                  -1.0000001192092896,
+                  -1.1920928955078125e-07
+                ],
+                "bits": [
+                  "0x00000000",
+                  "0xBF800001",
+                  "0xB4000000"
+                ]
+              },
+              "record2XYCandidate": {
+                "values": [
+                  -5.960464477539063e-08,
+                  -0.9999998807907104
+                ],
+                "bits": [
+                  "0xB3800000",
+                  "0xBF7FFFFE"
+                ]
+              }
+            },
+            {
+              "name": "Spot Light (10)",
+              "lightPathId": 7763697698425908704,
+              "source": "scratch/animestudio/zhuangfy_gacha_room_lights/json/Light/Light#513_p6BBE31EC4231ADE0.json",
+              "localPosition": {
+                "values": [
+                  0.010024189949035645,
+                  11.729999542236328,
+                  -24.695955276489258
+                ],
+                "bits": [
+                  "0x3C243C80",
+                  "0x413BAE14",
+                  "0xC1C59151"
+                ]
+              },
+              "localRotation": {
+                "values": [
+                  -0.7069900035858154,
+                  0.012852839194238186,
+                  -0.012852839194238186,
+                  -0.7069900035858154
+                ],
+                "bits": [
+                  "0xBF34FD4C",
+                  "0x3C5294B7",
+                  "0xBC5294B7",
+                  "0xBF34FD4C"
+                ]
+              },
+              "worldPosition": {
+                "values": [
+                  -1.897611379623413,
+                  11.729999542236328,
+                  -15.610000610351562
+                ],
+                "bits": [
+                  "0xBFF2E4EE",
+                  "0x413BAE14",
+                  "0xC179C290"
+                ]
+              },
+              "worldForward": {
+                "values": [
+                  0.0,
+                  -1.0000001192092896,
+                  -1.1920928955078125e-07
+                ],
+                "bits": [
+                  "0x00000000",
+                  "0xBF800001",
+                  "0xB4000000"
+                ]
+              },
+              "record2XYCandidate": {
+                "values": [
+                  -5.960464477539063e-08,
+                  -0.9999998807907104
+                ],
+                "bits": [
+                  "0xB3800000",
+                  "0xBF7FFFFE"
+                ]
+              }
+            }
+          ],
+          "targetFrameValues": "capture-only; these are authored static candidates, not a retail LightCullResult capture"
+        }
+      },
       "closedLanes": [
         "record2.z for all rows",
-        "record2.w for the Spot row"
+        "record2.w for the Spot row",
+        "Point record2.w/record3.x face-index packing contract"
       ],
       "openLanes": [
-        "record2.w packed point-shadow face indices for Point rows"
+        "target-frame Point record2.w/record3.x cache-index values"
       ]
     },
     "obbHalfPackingSummary": {
       "producerFormula": "inverse TRS of authored relative position, ZXY Euler orientation, and half extents",
       "wordPlacement": "six row-major half2 words in record5.xyz then record6.xyz",
       "installedPackingMethodClosed": true,
-      "analyticCandidateCount": 11,
+      "installedMatrix4x4TrsBodyClosed": true,
+      "nativeTrsCandidateUsesQuaternionHelperAndScalarFloat32Scale": true,
+      "installedMatrix4x4InverseBodyClosed": true,
+      "nativeInverseCandidateUsesScalarFloat32Cofactors": true,
+      "nativeInverseCandidateCount": 11,
       "oneFloat32UlpSensitiveLocations": [
         {
           "name": "Spot Light (12)",
@@ -572,7 +3777,81 @@
           ]
         }
       ],
-      "signedZeroBitsCaptured": false,
+      "nativeInverseSignedZeroCandidateBits": true,
+      "nativeEulerCandidateExecution": {
+        "mode": "mapped_unityplayer_wrapper_dont_resolve_dll_references",
+        "wrapperVirtualAddress": "0x1800A5010",
+        "rowCount": 11,
+        "quaternionBitsByLightPathId": {
+          "3145527971969281504": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
+          "6723905289426087392": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
+          "-7516039918534742560": [
+            "0x00000000",
+            "0x3C7084C0",
+            "0x00000000",
+            "0x3F7FF8F0"
+          ],
+          "-6003850056218071584": [
+            "0x00000000",
+            "0x3C7084EB",
+            "0x00000000",
+            "0x3F7FF8F0"
+          ],
+          "-4966856337038791200": [
+            "0x00000000",
+            "0x3C7084B1",
+            "0x00000000",
+            "0x3F7FF8F0"
+          ],
+          "4336752956264328672": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
+          "-2247457476464562720": [
+            "0x00000000",
+            "0x3C7084EB",
+            "0x00000000",
+            "0x3F7FF8F0"
+          ],
+          "1177420952804240864": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
+          "7037844248082165216": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
+          "7142192322960010720": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
+          "7763697698425908704": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ]
+        }
+      },
+      "retailSignedZeroBitsCaptured": false,
       "maximumAuthoredCornerBoundaryError": 0.002610735595226288
     },
     "additionalLightDataSummary": {
@@ -655,6 +3934,9 @@
         "overrideShadowLight": false,
         "cookiePathId": 0,
         "shadowType": 0,
+        "shadowCasterProperties": 6,
+        "lightShadowCasterMode": 0,
+        "pointShadowCasterFaces": -1,
         "gameObjectPathId": 5984914939117874656,
         "additionalLightData": {
           "componentPathId": 131563742791577056,
@@ -740,36 +4022,55 @@
           "record2WSemantic": "inverse inner-minus-outer half-angle cosine difference",
           "record2W": 2.739075183868408,
           "record2WBits": "0x402F4D02",
-          "record2WClosed": true
+          "record2WClosed": true,
+          "record2WContractClosed": true
         },
         "obbPackedTransform": {
           "producerFormula": "inverse(TRS(relativePosition, Quaternion.Euler(ZXY degrees), halfExtents))",
+          "quaternionEulerCandidateMode": "mapped_unityplayer_wrapper",
+          "quaternionEulerInputRadiansBits": [
+            "0x80000000",
+            "0x00000000",
+            "0x00000000"
+          ],
+          "quaternionEulerCandidateBits": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
           "inverseRowsFloat32Model": [
             [
               0.15325927734375,
-              0.0,
               -0.0,
+              0.0,
               -0.11234607547521591
             ],
             [
+              -0.0,
+              1.6171146631240845,
+              -0.0,
+              10.403215408325195
+            ],
+            [
               0.0,
-              1.617114782333374,
-              0.0,
-              10.403216361999512
+              -0.0,
+              0.09122079610824585,
+              -0.05091021582484245
             ],
             [
               0.0,
               0.0,
-              0.09122080355882645,
-              -0.05091021955013275
+              0.0,
+              1.0
             ]
           ],
-          "analyticCandidateWordHex": [
-            "0x000030E8",
-            "0xAF318000",
-            "0x3E780000",
-            "0x49340000",
-            "0x00000000",
+          "nativeInverseCandidateWordHex": [
+            "0x800030E8",
+            "0xAF310000",
+            "0x3E788000",
+            "0x49348000",
+            "0x80000000",
             "0xAA842DD7"
           ],
           "signedZeroNormalizedCandidateWordHex": [
@@ -802,19 +4103,19 @@
           "decodedHalfInverseRows": [
             [
               0.1533203125,
-              0.0,
               -0.0,
+              0.0,
               -0.11236572265625
             ],
             [
-              0.0,
+              -0.0,
               1.6171875,
-              0.0,
+              -0.0,
               10.40625
             ],
             [
               0.0,
-              0.0,
+              -0.0,
               0.09124755859375,
               -0.0509033203125
             ]
@@ -824,7 +4125,8 @@
             "record5.xyz": "word 0, 1, 2",
             "record6.xyz": "word 3, 4, 5"
           },
-          "precisionBoundary": "the pack layout and analytic candidate are exact through the installed managed helpers; signed-zero bits and any one-float32-ULP-sensitive half boundary remain conditional on the opaque UnityPlayer inverse result and require its internal-call body or a retail buffer capture"
+          "nativeInverseDeterminantBits": "0x4230EDC5",
+          "precisionBoundary": "the pinned UnityPlayer Matrix4x4::Inverse body now closes the scalar float32 cofactor/division and signed-zero candidate bits; the native Matrix4x4::TRS body and quaternion-to-matrix helper now close the TRS arithmetic, and the managed Euler wrapper now closes the float32 degree-to-radian/half-angle input; the mapped UnityPlayer wrapper supplies bit-exact native sin/cos output for this binary, while runtime IFix order and retail capture remain separate boundaries"
         }
       },
       {
@@ -882,6 +4184,9 @@
         "overrideShadowLight": false,
         "cookiePathId": 0,
         "shadowType": 0,
+        "shadowCasterProperties": 6,
+        "lightShadowCasterMode": 0,
+        "pointShadowCasterFaces": -1,
         "gameObjectPathId": 7333223719365619168,
         "additionalLightData": {
           "componentPathId": -6000736473603199520,
@@ -967,36 +4272,57 @@
           "record2WSemantic": "packed point-shadow face indices",
           "record2W": null,
           "record2WBits": null,
-          "record2WClosed": false
+          "record2WClosed": false,
+          "record2WContractClosed": true,
+          "record3XSemantic": "packed point-shadow face indices 4 and 5",
+          "record3X": null
         },
         "obbPackedTransform": {
           "producerFormula": "inverse(TRS(relativePosition, Quaternion.Euler(ZXY degrees), halfExtents))",
+          "quaternionEulerCandidateMode": "mapped_unityplayer_wrapper",
+          "quaternionEulerInputRadiansBits": [
+            "0x80000000",
+            "0x00000000",
+            "0x00000000"
+          ],
+          "quaternionEulerCandidateBits": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
           "inverseRowsFloat32Model": [
             [
               0.2614278197288513,
-              0.0,
               -0.0,
+              0.0,
               0.053357139229774475
             ],
             [
+              -0.0,
+              1.1541292667388916,
+              -0.0,
+              -1.841430902481079
+            ],
+            [
               0.0,
-              1.154129147529602,
-              0.0,
-              -1.8414306640625
+              -0.0,
+              0.4615808427333832,
+              1.2873539924621582
             ],
             [
               0.0,
               0.0,
-              0.4615808427333832,
-              1.2873539924621582
+              0.0,
+              1.0
             ]
           ],
-          "analyticCandidateWordHex": [
-            "0x0000342F",
-            "0x2AD48000",
-            "0x3C9E0000",
-            "0xBF5E0000",
-            "0x00000000",
+          "nativeInverseCandidateWordHex": [
+            "0x8000342F",
+            "0x2AD40000",
+            "0x3C9E8000",
+            "0xBF5E8000",
+            "0x80000000",
             "0x3D263763"
           ],
           "signedZeroNormalizedCandidateWordHex": [
@@ -1027,19 +4353,19 @@
           "decodedHalfInverseRows": [
             [
               0.261474609375,
-              0.0,
               -0.0,
+              0.0,
               0.0533447265625
             ],
             [
-              0.0,
+              -0.0,
               1.154296875,
-              0.0,
+              -0.0,
               -1.841796875
             ],
             [
               0.0,
-              0.0,
+              -0.0,
               0.461669921875,
               1.287109375
             ]
@@ -1049,7 +4375,8 @@
             "record5.xyz": "word 0, 1, 2",
             "record6.xyz": "word 3, 4, 5"
           },
-          "precisionBoundary": "the pack layout and analytic candidate are exact through the installed managed helpers; signed-zero bits and any one-float32-ULP-sensitive half boundary remain conditional on the opaque UnityPlayer inverse result and require its internal-call body or a retail buffer capture"
+          "nativeInverseDeterminantBits": "0x40E5C57A",
+          "precisionBoundary": "the pinned UnityPlayer Matrix4x4::Inverse body now closes the scalar float32 cofactor/division and signed-zero candidate bits; the native Matrix4x4::TRS body and quaternion-to-matrix helper now close the TRS arithmetic, and the managed Euler wrapper now closes the float32 degree-to-radian/half-angle input; the mapped UnityPlayer wrapper supplies bit-exact native sin/cos output for this binary, while runtime IFix order and retail capture remain separate boundaries"
         }
       },
       {
@@ -1107,6 +4434,9 @@
         "overrideShadowLight": false,
         "cookiePathId": 0,
         "shadowType": 0,
+        "shadowCasterProperties": 6,
+        "lightShadowCasterMode": 0,
+        "pointShadowCasterFaces": -1,
         "gameObjectPathId": 6094014835465629152,
         "additionalLightData": {
           "componentPathId": -4566151076357231136,
@@ -1192,36 +4522,57 @@
           "record2WSemantic": "packed point-shadow face indices",
           "record2W": null,
           "record2WBits": null,
-          "record2WClosed": false
+          "record2WClosed": false,
+          "record2WContractClosed": true,
+          "record3XSemantic": "packed point-shadow face indices 4 and 5",
+          "record3X": null
         },
         "obbPackedTransform": {
           "producerFormula": "inverse(TRS(relativePosition, Quaternion.Euler(ZXY degrees), halfExtents))",
+          "quaternionEulerCandidateMode": "mapped_unityplayer_wrapper",
+          "quaternionEulerInputRadiansBits": [
+            "0x80000000",
+            "0x3CF086F6",
+            "0x00000000"
+          ],
+          "quaternionEulerCandidateBits": [
+            "0x00000000",
+            "0x3C7084C0",
+            "0x00000000",
+            "0x3F7FF8F0"
+          ],
           "inverseRowsFloat32Model": [
             [
-              0.9002581238746643,
-              0.0,
-              -0.02644028142094612,
-              -0.9455119371414185
+              0.9002581834793091,
+              -0.0,
+              -0.02644028328359127,
+              -0.9455119967460632
             ],
             [
-              0.0,
+              -0.0,
               0.3973386585712433,
-              0.0,
+              -0.0,
               0.8488097786903381
             ],
             [
               0.002935700584203005,
-              0.0,
+              -0.0,
               0.09995689243078232,
               -0.09067557007074356
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
             ]
           ],
-          "analyticCandidateWordHex": [
-            "0x00003B34",
+          "nativeInverseCandidateWordHex": [
+            "0x80003B34",
             "0xBB90A6C5",
-            "0x365B0000",
-            "0x3ACA0000",
-            "0x00001A03",
+            "0x365B8000",
+            "0x3ACA8000",
+            "0x80001A03",
             "0xADCE2E66"
           ],
           "signedZeroNormalizedCandidateWordHex": [
@@ -1250,19 +4601,19 @@
           "decodedHalfInverseRows": [
             [
               0.900390625,
-              0.0,
+              -0.0,
               -0.0264434814453125,
               -0.9453125
             ],
             [
-              0.0,
+              -0.0,
               0.397216796875,
-              0.0,
+              -0.0,
               0.8486328125
             ],
             [
               0.0029354095458984375,
-              0.0,
+              -0.0,
               0.0999755859375,
               -0.0906982421875
             ]
@@ -1272,7 +4623,8 @@
             "record5.xyz": "word 0, 1, 2",
             "record6.xyz": "word 3, 4, 5"
           },
-          "precisionBoundary": "the pack layout and analytic candidate are exact through the installed managed helpers; signed-zero bits and any one-float32-ULP-sensitive half boundary remain conditional on the opaque UnityPlayer inverse result and require its internal-call body or a retail buffer capture"
+          "nativeInverseDeterminantBits": "0x41DF8CD4",
+          "precisionBoundary": "the pinned UnityPlayer Matrix4x4::Inverse body now closes the scalar float32 cofactor/division and signed-zero candidate bits; the native Matrix4x4::TRS body and quaternion-to-matrix helper now close the TRS arithmetic, and the managed Euler wrapper now closes the float32 degree-to-radian/half-angle input; the mapped UnityPlayer wrapper supplies bit-exact native sin/cos output for this binary, while runtime IFix order and retail capture remain separate boundaries"
         }
       },
       {
@@ -1330,6 +4682,9 @@
         "overrideShadowLight": false,
         "cookiePathId": 0,
         "shadowType": 0,
+        "shadowCasterProperties": 6,
+        "lightShadowCasterMode": 0,
+        "pointShadowCasterFaces": -1,
         "gameObjectPathId": 6812381659781443040,
         "additionalLightData": {
           "componentPathId": -6434313692577354272,
@@ -1415,36 +4770,57 @@
           "record2WSemantic": "packed point-shadow face indices",
           "record2W": null,
           "record2WBits": null,
-          "record2WClosed": false
+          "record2WClosed": false,
+          "record2WContractClosed": true,
+          "record3XSemantic": "packed point-shadow face indices 4 and 5",
+          "record3X": null
         },
         "obbPackedTransform": {
           "producerFormula": "inverse(TRS(relativePosition, Quaternion.Euler(ZXY degrees), halfExtents))",
+          "quaternionEulerCandidateMode": "mapped_unityplayer_wrapper",
+          "quaternionEulerInputRadiansBits": [
+            "0x80000000",
+            "0x3CF08721",
+            "0x00000000"
+          ],
+          "quaternionEulerCandidateBits": [
+            "0x00000000",
+            "0x3C7084EB",
+            "0x00000000",
+            "0x3F7FF8F0"
+          ],
           "inverseRowsFloat32Model": [
             [
-              0.9002581238746643,
-              0.0,
-              -0.02644035406410694,
-              0.9935230016708374
+              0.9002581834793091,
+              -0.0,
+              -0.02644035592675209,
+              0.9935230612754822
             ],
             [
-              0.0,
+              -0.0,
               0.3973386585712433,
-              0.0,
+              -0.0,
               0.8455657362937927
             ],
             [
               0.0029357087332755327,
-              0.0,
+              -0.0,
               0.09995689243078232,
               -0.08812285959720612
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
             ]
           ],
-          "analyticCandidateWordHex": [
-            "0x00003B34",
+          "nativeInverseCandidateWordHex": [
+            "0x80003B34",
             "0x3BF3A6C5",
-            "0x365B0000",
-            "0x3AC40000",
-            "0x00001A03",
+            "0x365B8000",
+            "0x3AC48000",
+            "0x80001A03",
             "0xADA42E66"
           ],
           "signedZeroNormalizedCandidateWordHex": [
@@ -1473,19 +4849,19 @@
           "decodedHalfInverseRows": [
             [
               0.900390625,
-              0.0,
+              -0.0,
               -0.0264434814453125,
               0.99365234375
             ],
             [
-              0.0,
+              -0.0,
               0.397216796875,
-              0.0,
+              -0.0,
               0.845703125
             ],
             [
               0.0029354095458984375,
-              0.0,
+              -0.0,
               0.0999755859375,
               -0.088134765625
             ]
@@ -1495,7 +4871,8 @@
             "record5.xyz": "word 0, 1, 2",
             "record6.xyz": "word 3, 4, 5"
           },
-          "precisionBoundary": "the pack layout and analytic candidate are exact through the installed managed helpers; signed-zero bits and any one-float32-ULP-sensitive half boundary remain conditional on the opaque UnityPlayer inverse result and require its internal-call body or a retail buffer capture"
+          "nativeInverseDeterminantBits": "0x41DF8CD4",
+          "precisionBoundary": "the pinned UnityPlayer Matrix4x4::Inverse body now closes the scalar float32 cofactor/division and signed-zero candidate bits; the native Matrix4x4::TRS body and quaternion-to-matrix helper now close the TRS arithmetic, and the managed Euler wrapper now closes the float32 degree-to-radian/half-angle input; the mapped UnityPlayer wrapper supplies bit-exact native sin/cos output for this binary, while runtime IFix order and retail capture remain separate boundaries"
         }
       },
       {
@@ -1553,6 +4930,9 @@
         "overrideShadowLight": false,
         "cookiePathId": 0,
         "shadowType": 0,
+        "shadowCasterProperties": 6,
+        "lightShadowCasterMode": 0,
+        "pointShadowCasterFaces": -1,
         "gameObjectPathId": -2342457652508971552,
         "additionalLightData": {
           "componentPathId": 6449319832300531168,
@@ -1638,36 +5018,57 @@
           "record2WSemantic": "packed point-shadow face indices",
           "record2W": null,
           "record2WBits": null,
-          "record2WClosed": false
+          "record2WClosed": false,
+          "record2WContractClosed": true,
+          "record3XSemantic": "packed point-shadow face indices 4 and 5",
+          "record3X": null
         },
         "obbPackedTransform": {
           "producerFormula": "inverse(TRS(relativePosition, Quaternion.Euler(ZXY degrees), halfExtents))",
+          "quaternionEulerCandidateMode": "mapped_unityplayer_wrapper",
+          "quaternionEulerInputRadiansBits": [
+            "0x80000000",
+            "0x3CF086E7",
+            "0x00000000"
+          ],
+          "quaternionEulerCandidateBits": [
+            "0x00000000",
+            "0x3C7084B1",
+            "0x00000000",
+            "0x3F7FF8F0"
+          ],
           "inverseRowsFloat32Model": [
             [
               0.9002583622932434,
-              0.0,
+              -0.0,
               -0.026440264657139778,
               -2.7392022609710693
             ],
             [
-              0.0,
+              -0.0,
               0.3266313672065735,
-              0.0,
+              -0.0,
               0.8730475902557373
             ],
             [
               0.0029356980230659246,
-              0.0,
+              -0.0,
               0.09995689243078232,
               -0.09890300035476685
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
             ]
           ],
-          "analyticCandidateWordHex": [
-            "0x00003B34",
+          "nativeInverseCandidateWordHex": [
+            "0x80003B34",
             "0xC17AA6C5",
-            "0x353A0000",
-            "0x3AFC0000",
-            "0x00001A03",
+            "0x353A8000",
+            "0x3AFC8000",
+            "0x80001A03",
             "0xAE542E66"
           ],
           "signedZeroNormalizedCandidateWordHex": [
@@ -1696,19 +5097,19 @@
           "decodedHalfInverseRows": [
             [
               0.900390625,
-              0.0,
+              -0.0,
               -0.0264434814453125,
               -2.73828125
             ],
             [
-              0.0,
+              -0.0,
               0.32666015625,
-              0.0,
+              -0.0,
               0.873046875
             ],
             [
               0.0029354095458984375,
-              0.0,
+              -0.0,
               0.0999755859375,
               -0.098876953125
             ]
@@ -1718,7 +5119,8 @@
             "record5.xyz": "word 0, 1, 2",
             "record6.xyz": "word 3, 4, 5"
           },
-          "precisionBoundary": "the pack layout and analytic candidate are exact through the installed managed helpers; signed-zero bits and any one-float32-ULP-sensitive half boundary remain conditional on the opaque UnityPlayer inverse result and require its internal-call body or a retail buffer capture"
+          "nativeInverseDeterminantBits": "0x4207F8B1",
+          "precisionBoundary": "the pinned UnityPlayer Matrix4x4::Inverse body now closes the scalar float32 cofactor/division and signed-zero candidate bits; the native Matrix4x4::TRS body and quaternion-to-matrix helper now close the TRS arithmetic, and the managed Euler wrapper now closes the float32 degree-to-radian/half-angle input; the mapped UnityPlayer wrapper supplies bit-exact native sin/cos output for this binary, while runtime IFix order and retail capture remain separate boundaries"
         }
       },
       {
@@ -1776,6 +5178,9 @@
         "overrideShadowLight": false,
         "cookiePathId": 0,
         "shadowType": 0,
+        "shadowCasterProperties": 6,
+        "lightShadowCasterMode": 0,
+        "pointShadowCasterFaces": -1,
         "gameObjectPathId": -8277908077795955232,
         "additionalLightData": {
           "componentPathId": 7658305038908763616,
@@ -1861,36 +5266,57 @@
           "record2WSemantic": "packed point-shadow face indices",
           "record2W": null,
           "record2WBits": null,
-          "record2WClosed": false
+          "record2WClosed": false,
+          "record2WContractClosed": true,
+          "record3XSemantic": "packed point-shadow face indices 4 and 5",
+          "record3X": null
         },
         "obbPackedTransform": {
           "producerFormula": "inverse(TRS(relativePosition, Quaternion.Euler(ZXY degrees), halfExtents))",
+          "quaternionEulerCandidateMode": "mapped_unityplayer_wrapper",
+          "quaternionEulerInputRadiansBits": [
+            "0x80000000",
+            "0x00000000",
+            "0x00000000"
+          ],
+          "quaternionEulerCandidateBits": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
           "inverseRowsFloat32Model": [
             [
               0.45199549198150635,
-              0.0,
               -0.0,
+              0.0,
               0.6031197905540466
             ],
             [
+              -0.0,
+              1.1541292667388916,
+              -0.0,
+              -1.5355864763259888
+            ],
+            [
               0.0,
-              1.154129147529602,
-              0.0,
-              -1.5355863571166992
+              -0.0,
+              0.33816808462142944,
+              0.2008211612701416
             ],
             [
               0.0,
               0.0,
-              0.33816808462142944,
-              0.2008211612701416
+              0.0,
+              1.0
             ]
           ],
-          "analyticCandidateWordHex": [
-            "0x0000373B",
-            "0x38D38000",
-            "0x3C9E0000",
-            "0xBE240000",
-            "0x00000000",
+          "nativeInverseCandidateWordHex": [
+            "0x8000373B",
+            "0x38D30000",
+            "0x3C9E8000",
+            "0xBE248000",
+            "0x80000000",
             "0x326D3569"
           ],
           "signedZeroNormalizedCandidateWordHex": [
@@ -1921,19 +5347,19 @@
           "decodedHalfInverseRows": [
             [
               0.451904296875,
-              0.0,
               -0.0,
+              0.0,
               0.60302734375
             ],
             [
-              0.0,
+              -0.0,
               1.154296875,
-              0.0,
+              -0.0,
               -1.53515625
             ],
             [
               0.0,
-              0.0,
+              -0.0,
               0.338134765625,
               0.2008056640625
             ]
@@ -1943,7 +5369,8 @@
             "record5.xyz": "word 0, 1, 2",
             "record6.xyz": "word 3, 4, 5"
           },
-          "precisionBoundary": "the pack layout and analytic candidate are exact through the installed managed helpers; signed-zero bits and any one-float32-ULP-sensitive half boundary remain conditional on the opaque UnityPlayer inverse result and require its internal-call body or a retail buffer capture"
+          "nativeInverseDeterminantBits": "0x40B5657F",
+          "precisionBoundary": "the pinned UnityPlayer Matrix4x4::Inverse body now closes the scalar float32 cofactor/division and signed-zero candidate bits; the native Matrix4x4::TRS body and quaternion-to-matrix helper now close the TRS arithmetic, and the managed Euler wrapper now closes the float32 degree-to-radian/half-angle input; the mapped UnityPlayer wrapper supplies bit-exact native sin/cos output for this binary, while runtime IFix order and retail capture remain separate boundaries"
         }
       },
       {
@@ -2001,6 +5428,9 @@
         "overrideShadowLight": false,
         "cookiePathId": 0,
         "shadowType": 0,
+        "shadowCasterProperties": 6,
+        "lightShadowCasterMode": 0,
+        "pointShadowCasterFaces": -1,
         "gameObjectPathId": -5234593887898784288,
         "additionalLightData": {
           "componentPathId": 793479633833668064,
@@ -2086,36 +5516,57 @@
           "record2WSemantic": "packed point-shadow face indices",
           "record2W": null,
           "record2WBits": null,
-          "record2WClosed": false
+          "record2WClosed": false,
+          "record2WContractClosed": true,
+          "record3XSemantic": "packed point-shadow face indices 4 and 5",
+          "record3X": null
         },
         "obbPackedTransform": {
           "producerFormula": "inverse(TRS(relativePosition, Quaternion.Euler(ZXY degrees), halfExtents))",
+          "quaternionEulerCandidateMode": "mapped_unityplayer_wrapper",
+          "quaternionEulerInputRadiansBits": [
+            "0x80000000",
+            "0x3CF08721",
+            "0x00000000"
+          ],
+          "quaternionEulerCandidateBits": [
+            "0x00000000",
+            "0x3C7084EB",
+            "0x00000000",
+            "0x3F7FF8F0"
+          ],
           "inverseRowsFloat32Model": [
             [
-              0.9002580046653748,
-              0.0,
+              0.9002580642700195,
+              -0.0,
               -0.026440350338816643,
-              1.9281688928604126
+              1.9281690120697021
             ],
             [
-              0.0,
+              -0.0,
               0.36710068583488464,
-              0.0,
+              -0.0,
               0.8573184013366699
             ],
             [
               0.0029357089661061764,
+              -0.0,
+              0.09995689988136292,
+              -0.08082403987646103
+            ],
+            [
               0.0,
-              0.09995689243078232,
-              -0.08082403242588043
+              0.0,
+              0.0,
+              1.0
             ]
           ],
-          "analyticCandidateWordHex": [
-            "0x00003B34",
+          "nativeInverseCandidateWordHex": [
+            "0x80003B34",
             "0x3FB6A6C5",
-            "0x35E00000",
-            "0x3ADC0000",
-            "0x00001A03",
+            "0x35E08000",
+            "0x3ADC8000",
+            "0x80001A03",
             "0xAD2C2E66"
           ],
           "signedZeroNormalizedCandidateWordHex": [
@@ -2144,19 +5595,19 @@
           "decodedHalfInverseRows": [
             [
               0.900390625,
-              0.0,
+              -0.0,
               -0.0264434814453125,
               1.927734375
             ],
             [
-              0.0,
+              -0.0,
               0.3671875,
-              0.0,
+              -0.0,
               0.857421875
             ],
             [
               0.0029354095458984375,
-              0.0,
+              -0.0,
               0.0999755859375,
               -0.080810546875
             ]
@@ -2166,7 +5617,8 @@
             "record5.xyz": "word 0, 1, 2",
             "record6.xyz": "word 3, 4, 5"
           },
-          "precisionBoundary": "the pack layout and analytic candidate are exact through the installed managed helpers; signed-zero bits and any one-float32-ULP-sensitive half boundary remain conditional on the opaque UnityPlayer inverse result and require its internal-call body or a retail buffer capture"
+          "nativeInverseDeterminantBits": "0x41F1F6C3",
+          "precisionBoundary": "the pinned UnityPlayer Matrix4x4::Inverse body now closes the scalar float32 cofactor/division and signed-zero candidate bits; the native Matrix4x4::TRS body and quaternion-to-matrix helper now close the TRS arithmetic, and the managed Euler wrapper now closes the float32 degree-to-radian/half-angle input; the mapped UnityPlayer wrapper supplies bit-exact native sin/cos output for this binary, while runtime IFix order and retail capture remain separate boundaries"
         }
       },
       {
@@ -2224,6 +5676,9 @@
         "overrideShadowLight": false,
         "cookiePathId": 0,
         "shadowType": 0,
+        "shadowCasterProperties": 6,
+        "lightShadowCasterMode": 0,
+        "pointShadowCasterFaces": -1,
         "gameObjectPathId": -2293898799088816672,
         "additionalLightData": {
           "componentPathId": -4254896755410227744,
@@ -2309,36 +5764,57 @@
           "record2WSemantic": "packed point-shadow face indices",
           "record2W": null,
           "record2WBits": null,
-          "record2WClosed": false
+          "record2WClosed": false,
+          "record2WContractClosed": true,
+          "record3XSemantic": "packed point-shadow face indices 4 and 5",
+          "record3X": null
         },
         "obbPackedTransform": {
           "producerFormula": "inverse(TRS(relativePosition, Quaternion.Euler(ZXY degrees), halfExtents))",
+          "quaternionEulerCandidateMode": "mapped_unityplayer_wrapper",
+          "quaternionEulerInputRadiansBits": [
+            "0x80000000",
+            "0x00000000",
+            "0x00000000"
+          ],
+          "quaternionEulerCandidateBits": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
           "inverseRowsFloat32Model": [
             [
               0.4606274962425232,
-              0.0,
               -0.0,
+              0.0,
               -0.555049479007721
             ],
             [
+              -0.0,
+              1.1541292667388916,
+              -0.0,
+              -1.5009626150131226
+            ],
+            [
               0.0,
-              1.154129147529602,
-              0.0,
-              -1.500962495803833
+              -0.0,
+              0.33816808462142944,
+              0.08043334633111954
             ],
             [
               0.0,
               0.0,
-              0.33816805481910706,
-              0.08043333888053894
+              0.0,
+              1.0
             ]
           ],
-          "analyticCandidateWordHex": [
-            "0x0000375F",
-            "0xB8718000",
-            "0x3C9E0000",
-            "0xBE010000",
-            "0x00000000",
+          "nativeInverseCandidateWordHex": [
+            "0x8000375F",
+            "0xB8710000",
+            "0x3C9E8000",
+            "0xBE018000",
+            "0x80000000",
             "0x2D263569"
           ],
           "signedZeroNormalizedCandidateWordHex": [
@@ -2369,19 +5845,19 @@
           "decodedHalfInverseRows": [
             [
               0.460693359375,
-              0.0,
               -0.0,
+              0.0,
               -0.55517578125
             ],
             [
-              0.0,
+              -0.0,
               1.154296875,
-              0.0,
+              -0.0,
               -1.5009765625
             ],
             [
               0.0,
-              0.0,
+              -0.0,
               0.338134765625,
               0.0804443359375
             ]
@@ -2391,7 +5867,8 @@
             "record5.xyz": "word 0, 1, 2",
             "record6.xyz": "word 3, 4, 5"
           },
-          "precisionBoundary": "the pack layout and analytic candidate are exact through the installed managed helpers; signed-zero bits and any one-float32-ULP-sensitive half boundary remain conditional on the opaque UnityPlayer inverse result and require its internal-call body or a retail buffer capture"
+          "nativeInverseDeterminantBits": "0x40B1FF46",
+          "precisionBoundary": "the pinned UnityPlayer Matrix4x4::Inverse body now closes the scalar float32 cofactor/division and signed-zero candidate bits; the native Matrix4x4::TRS body and quaternion-to-matrix helper now close the TRS arithmetic, and the managed Euler wrapper now closes the float32 degree-to-radian/half-angle input; the mapped UnityPlayer wrapper supplies bit-exact native sin/cos output for this binary, while runtime IFix order and retail capture remain separate boundaries"
         }
       },
       {
@@ -2449,6 +5926,9 @@
         "overrideShadowLight": false,
         "cookiePathId": 0,
         "shadowType": 0,
+        "shadowCasterProperties": 6,
+        "lightShadowCasterMode": 0,
+        "pointShadowCasterFaces": -1,
         "gameObjectPathId": -3971220345318494752,
         "additionalLightData": {
           "componentPathId": -7850925599009165856,
@@ -2534,36 +6014,57 @@
           "record2WSemantic": "packed point-shadow face indices",
           "record2W": null,
           "record2WBits": null,
-          "record2WClosed": false
+          "record2WClosed": false,
+          "record2WContractClosed": true,
+          "record3XSemantic": "packed point-shadow face indices 4 and 5",
+          "record3X": null
         },
         "obbPackedTransform": {
           "producerFormula": "inverse(TRS(relativePosition, Quaternion.Euler(ZXY degrees), halfExtents))",
+          "quaternionEulerCandidateMode": "mapped_unityplayer_wrapper",
+          "quaternionEulerInputRadiansBits": [
+            "0x80000000",
+            "0x00000000",
+            "0x00000000"
+          ],
+          "quaternionEulerCandidateBits": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
           "inverseRowsFloat32Model": [
             [
-              0.14704129099845886,
+              0.14704130589962006,
+              -0.0,
+              0.0,
+              0.07262791693210602
+            ],
+            [
+              -0.0,
+              0.2760140895843506,
+              -0.0,
+              0.4401327073574066
+            ],
+            [
               0.0,
               -0.0,
-              0.07262790948152542
-            ],
-            [
-              0.0,
-              0.2760140597820282,
-              0.0,
-              0.44013267755508423
-            ],
-            [
-              0.0,
-              0.0,
-              0.2131432592868805,
+              0.2131432741880417,
               -0.15272940695285797
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
             ]
           ],
-          "analyticCandidateWordHex": [
-            "0x000030B5",
-            "0x2CA68000",
-            "0x346B0000",
-            "0x370B0000",
-            "0x00000000",
+          "nativeInverseCandidateWordHex": [
+            "0x800030B5",
+            "0x2CA60000",
+            "0x346B8000",
+            "0x370B8000",
+            "0x80000000",
             "0xB0E332D2"
           ],
           "signedZeroNormalizedCandidateWordHex": [
@@ -2594,19 +6095,19 @@
           "decodedHalfInverseRows": [
             [
               0.1470947265625,
-              0.0,
               -0.0,
+              0.0,
               0.0726318359375
             ],
             [
-              0.0,
+              -0.0,
               0.276123046875,
-              0.0,
+              -0.0,
               0.440185546875
             ],
             [
               0.0,
-              0.0,
+              -0.0,
               0.213134765625,
               -0.1527099609375
             ]
@@ -2616,7 +6117,8 @@
             "record5.xyz": "word 0, 1, 2",
             "record6.xyz": "word 3, 4, 5"
           },
-          "precisionBoundary": "the pack layout and analytic candidate are exact through the installed managed helpers; signed-zero bits and any one-float32-ULP-sensitive half boundary remain conditional on the opaque UnityPlayer inverse result and require its internal-call body or a retail buffer capture"
+          "nativeInverseDeterminantBits": "0x42E73334",
+          "precisionBoundary": "the pinned UnityPlayer Matrix4x4::Inverse body now closes the scalar float32 cofactor/division and signed-zero candidate bits; the native Matrix4x4::TRS body and quaternion-to-matrix helper now close the TRS arithmetic, and the managed Euler wrapper now closes the float32 degree-to-radian/half-angle input; the mapped UnityPlayer wrapper supplies bit-exact native sin/cos output for this binary, while runtime IFix order and retail capture remain separate boundaries"
         }
       },
       {
@@ -2674,6 +6176,9 @@
         "overrideShadowLight": false,
         "cookiePathId": 0,
         "shadowType": 0,
+        "shadowCasterProperties": 6,
+        "lightShadowCasterMode": 0,
+        "pointShadowCasterFaces": -1,
         "gameObjectPathId": 1718015503729470944,
         "additionalLightData": {
           "componentPathId": 2140963938482630112,
@@ -2759,36 +6264,57 @@
           "record2WSemantic": "packed point-shadow face indices",
           "record2W": null,
           "record2WBits": null,
-          "record2WClosed": false
+          "record2WClosed": false,
+          "record2WContractClosed": true,
+          "record3XSemantic": "packed point-shadow face indices 4 and 5",
+          "record3X": null
         },
         "obbPackedTransform": {
           "producerFormula": "inverse(TRS(relativePosition, Quaternion.Euler(ZXY degrees), halfExtents))",
+          "quaternionEulerCandidateMode": "mapped_unityplayer_wrapper",
+          "quaternionEulerInputRadiansBits": [
+            "0x80000000",
+            "0x00000000",
+            "0x00000000"
+          ],
+          "quaternionEulerCandidateBits": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
           "inverseRowsFloat32Model": [
             [
-              0.1260950118303299,
+              0.1260949969291687,
+              -0.0,
+              0.0,
+              0.11804447323083878
+            ],
+            [
+              -0.0,
+              0.47428277134895325,
+              -0.0,
+              1.2845525741577148
+            ],
+            [
               0.0,
               -0.0,
-              0.11804448813199997
-            ],
-            [
-              0.0,
-              0.474282830953598,
-              0.0,
-              1.2845526933670044
+              0.1789473444223404,
+              0.37808603048324585
             ],
             [
               0.0,
               0.0,
-              0.1789473593235016,
-              0.37808606028556824
+              0.0,
+              1.0
             ]
           ],
-          "analyticCandidateWordHex": [
-            "0x00003009",
-            "0x2F8E8000",
-            "0x37970000",
-            "0x3D230000",
-            "0x00000000",
+          "nativeInverseCandidateWordHex": [
+            "0x80003009",
+            "0x2F8E0000",
+            "0x37978000",
+            "0x3D238000",
+            "0x80000000",
             "0x360D31BA"
           ],
           "signedZeroNormalizedCandidateWordHex": [
@@ -2819,19 +6345,19 @@
           "decodedHalfInverseRows": [
             [
               0.1260986328125,
-              0.0,
               -0.0,
+              0.0,
               0.1180419921875
             ],
             [
-              0.0,
+              -0.0,
               0.474365234375,
-              0.0,
+              -0.0,
               1.2841796875
             ],
             [
               0.0,
-              0.0,
+              -0.0,
               0.178955078125,
               0.378173828125
             ]
@@ -2841,7 +6367,8 @@
             "record5.xyz": "word 0, 1, 2",
             "record6.xyz": "word 3, 4, 5"
           },
-          "precisionBoundary": "the pack layout and analytic candidate are exact through the installed managed helpers; signed-zero bits and any one-float32-ULP-sensitive half boundary remain conditional on the opaque UnityPlayer inverse result and require its internal-call body or a retail buffer capture"
+          "nativeInverseDeterminantBits": "0x42BAE203",
+          "precisionBoundary": "the pinned UnityPlayer Matrix4x4::Inverse body now closes the scalar float32 cofactor/division and signed-zero candidate bits; the native Matrix4x4::TRS body and quaternion-to-matrix helper now close the TRS arithmetic, and the managed Euler wrapper now closes the float32 degree-to-radian/half-angle input; the mapped UnityPlayer wrapper supplies bit-exact native sin/cos output for this binary, while runtime IFix order and retail capture remain separate boundaries"
         }
       },
       {
@@ -2899,6 +6426,9 @@
         "overrideShadowLight": false,
         "cookiePathId": 0,
         "shadowType": 0,
+        "shadowCasterProperties": 6,
+        "lightShadowCasterMode": 0,
+        "pointShadowCasterFaces": -1,
         "gameObjectPathId": -7274218476356522528,
         "additionalLightData": {
           "componentPathId": -7600925337055351328,
@@ -2984,36 +6514,57 @@
           "record2WSemantic": "packed point-shadow face indices",
           "record2W": null,
           "record2WBits": null,
-          "record2WClosed": false
+          "record2WClosed": false,
+          "record2WContractClosed": true,
+          "record3XSemantic": "packed point-shadow face indices 4 and 5",
+          "record3X": null
         },
         "obbPackedTransform": {
           "producerFormula": "inverse(TRS(relativePosition, Quaternion.Euler(ZXY degrees), halfExtents))",
+          "quaternionEulerCandidateMode": "mapped_unityplayer_wrapper",
+          "quaternionEulerInputRadiansBits": [
+            "0x80000000",
+            "0x00000000",
+            "0x00000000"
+          ],
+          "quaternionEulerCandidateBits": [
+            "0x00000000",
+            "0x00000000",
+            "0x00000000",
+            "0x3F800000"
+          ],
           "inverseRowsFloat32Model": [
             [
-              0.09685230255126953,
+              0.09685228765010834,
+              -0.0,
+              0.0,
+              0.09066871553659439
+            ],
+            [
+              -0.0,
+              0.318762868642807,
+              -0.0,
+              1.347553014755249
+            ],
+            [
               0.0,
               -0.0,
-              0.09066873043775558
-            ],
-            [
-              0.0,
-              0.3187628984451294,
-              0.0,
-              1.3475531339645386
+              0.17615850269794464,
+              0.7798743844032288
             ],
             [
               0.0,
               0.0,
-              0.17615851759910583,
-              0.7798744440078735
+              0.0,
+              1.0
             ]
           ],
-          "analyticCandidateWordHex": [
-            "0x00002E33",
-            "0x2DCE8000",
-            "0x351A0000",
-            "0x3D640000",
-            "0x00000000",
+          "nativeInverseCandidateWordHex": [
+            "0x80002E33",
+            "0x2DCE0000",
+            "0x351A8000",
+            "0x3D648000",
+            "0x80000000",
             "0x3A3D31A3"
           ],
           "signedZeroNormalizedCandidateWordHex": [
@@ -3044,19 +6595,19 @@
           "decodedHalfInverseRows": [
             [
               0.09686279296875,
-              0.0,
               -0.0,
+              0.0,
               0.0906982421875
             ],
             [
-              0.0,
+              -0.0,
               0.31884765625,
-              0.0,
+              -0.0,
               1.34765625
             ],
             [
               0.0,
-              0.0,
+              -0.0,
               0.1761474609375,
               0.77978515625
             ]
@@ -3066,7 +6617,8 @@
             "record5.xyz": "word 0, 1, 2",
             "record6.xyz": "word 3, 4, 5"
           },
-          "precisionBoundary": "the pack layout and analytic candidate are exact through the installed managed helpers; signed-zero bits and any one-float32-ULP-sensitive half boundary remain conditional on the opaque UnityPlayer inverse result and require its internal-call body or a retail buffer capture"
+          "nativeInverseDeterminantBits": "0x4337DF90",
+          "precisionBoundary": "the pinned UnityPlayer Matrix4x4::Inverse body now closes the scalar float32 cofactor/division and signed-zero candidate bits; the native Matrix4x4::TRS body and quaternion-to-matrix helper now close the TRS arithmetic, and the managed Euler wrapper now closes the float32 degree-to-radian/half-angle input; the mapped UnityPlayer wrapper supplies bit-exact native sin/cos output for this binary, while runtime IFix order and retail capture remain separate boundaries"
         }
       }
     ]
@@ -3083,21 +6635,45 @@
       "the corresponding producer lanes record3.yzw, record4.xyzw, and record6.w",
       "the OBB producer call chain: relative position, half extents, ZXY Euler orientation, inverse TRS, and six row-major half pairs",
       "the installed HGUtils/math.f32tof16 method bodies, x-low/y-high word layout, and record5.xyz/record6.xyz placement",
-      "six-word analytic OBB candidates for all eleven rows and every non-boundary half payload; decoded candidates return every authored corner to the unit-box boundary within 0.003",
+      "the UnityPlayer icall-table entry 2471 (Matrix4x4::Inverse3DAffine_Injected), its 0x1800A2020 stub, and hash-pinned 0x180569BD0 scalar affine-inverse body",
+      "the UnityPlayer icall-table entry 2470 (Matrix4x4::TRS_Injected), its hash-pinned 0x1800A1BB0 wrapper, 0x18056CB40 scale/translation body, and 0x18056B8A0 quaternion-to-column-major-matrix helper",
+      "the managed Quaternion.Euler wrapper/helper, lazy resolver string/call/store chain, degree-to-radian constant 0x3C8EFA35, UnityPlayer icall 2489 (Internal_FromEulerRad_Injected), its 0x1800A5010 wrapper, hash-pinned 0x180567590 half-angle body, and all six native sin/cos call targets",
+      "the mapped UnityPlayer 0x1800A5010 wrapper execution for all eleven authored Euler inputs, producing bit-exact installed native quaternion candidates without running DllMain; its explicit order-4 immediate and six-entry native jump table are source-pinned",
+      "the native inverse determinant threshold, -0 sign mask, cofactor/division order, translation cofactor rows, and exact float32 candidate half words for all eleven authored rows",
+      "the native TRS helper's quaternion matrix arithmetic, scalar column scaling order, and raw position-field copies; the managed Euler degree-to-radian and native half-angle input arithmetic is source-closed",
+      "six-word native-inverse OBB candidates for all eleven rows and every non-boundary half payload; decoded candidates return every authored corner to the unit-box boundary within 0.003",
+      "PrepareCPUData record5.w OBB/override projection is source-closed as uint(enableOBBCullingBox) | (uint(enableOverrideShadowLight) << 1); the selected authored room rows therefore use integer 1 / float bits 0x3F800000",
       "the installed PlayerSettings Linear color space and GraphicsSettings linear-light-intensity/color-temperature flags from pinned globalgamemanagers objects",
       "the UnityPlayer finalColor producer, Color.linear body, light-animation disable path, and flickerScale inactive fallback of exactly 1.0",
       "all eleven rows disable per-light color temperature, culling-distance/far-show falloff, animation, multistate, and flicker; their state tables and flicker references are empty",
       "exact UnityPlayer-derived record0.xyz IEEE-754 candidates for all eleven rows: linearized serialized RGB times intensity, with falloff and flickerScale both 1",
       "the native record0.w discriminator formula float(lightKind + 2*shadowOnly), yielding exact 0.0 for the one Spot row and 1.0 for all ten Point/linear-extension rows",
       "VisibleLight.get_range reads field +0x68 and PrepareCPUData divides exact 1.0f by it, closing record1.w for all eleven rows",
+      "the native record7 Spot and Point/linear stack-lane projections: cullingBoxFalloffThreshold -> x, softSourceRadius -> y, specularIntensity -> z, and the precomputed cookie-slot integer carrier -> w, followed by the common record7 vector store",
       "the pinned original scalar-cosine body and exact half-angle scaling close record2.z and record2.w for the one Spot row",
-      "HGSharedLightData.length closes record2.z as -1 for six ordinary Point rows and 18 for four linear-extension rows"
+      "HGSharedLightData.length closes record2.z as -1 for six ordinary Point rows and 18 for four linear-extension rows",
+      "the Point/linear native branch constructs LightCaster face requests in order 0..5, queries GetShadowCacheIndexForCaster for each, maps -1 to 255, and packs faces 0..3 into record2.w plus faces 4..5 into record3.x",
+      "GetShadowCacheIndexForCaster is source-closed: dynamic matches return ordinal + 40, static matches return shadowCacheSlotIndex, unmatched casters return -1, and null manager/list state fail-fast",
+      "the native HGSharedLightData caster-property getters are hash-pinned masks 0x01/0x02/0x04; all selected room rows serialize m_CasterProperties=6, point-shadow faces=-1, and LightShadowCasterMode=0",
+      "GetShadowRenderType method 0x886 is hash-pinned: IsPatched gates a native default path whose static request returns castStatic=true/castDynamic=false and whose dynamic path consumes the three caster-property getters",
+      "the patched GetShadowRenderType path is explicitly bounded to WrappersManagerImpl.GetPatch(0x886) and ILFixDynamicMethodWrapper.__Gen_Wrap_874, with missing-patch fail-fast; no runtime wrapper result is inferred",
+      "GetRendererConfig method 0x887 is hash-pinned: its unpatched projection is 0x4800 | (castStaticObjects ? 0x1000 : 0) | (castDynamicObjects ? 0x2000 : 0), and its patched path is bounded to __Gen_Wrap_875",
+      "GetECSRenderFlags method 0x888 is hash-pinned: it initializes object/render flags, projects exclusive caster results into 0x04000000/0x01000000, and adds objectFlagsMask bit 28 only for the enableHDCharacterShadow + active HDPLS-light path",
+      "WrappersManagerImpl.IsPatched/GetPatch are hash-pinned: the live manager table uses +0xB8 -> active table, +0x18 entry count, and +0x20 + 8*methodId entries, with exact signed/unsigned bounds and null-entry behavior closed",
+      "the Point/linear native branch calls VisibleLightExtensionMethods.GetForward, HGUtils.PackNormalOctRectEncode, and VisibleLightExtensionMethods.GetPosition for record2.xy and record1.xyz",
+      "the pinned GetForward/GetPosition helper bodies read LocalToWorldMatrix columns 2/3 through Matrix4x4.GetColumn and Vector4.op_Implicit; the PackNormalOctRectEncode body, sizes, hashes, and IFix method IDs are closed",
+      "the authored SceneLight6Rarity hierarchy recomposes all 12 world positions and directions from the pinned rotatehouse transform, bit-matching the independent cull-view audit",
+      "PackNormalOctRectEncode's unpatched abs/dot/float3-multiply/clamp/CopySign call chain and 1.0/0.5 constants close the exact float32 formula; all 12 authored record2.xy candidates are generated from it"
     ],
     "open": [
-      "camera-relative record1.xyz position and record2.xy direction values at the target frame",
-      "exact IEEE signed-zero bits in the packed OBB lanes, the UnityPlayer internal inverse result for one reciprocal at a one-float32-ULP half boundary, Point record2.w packed shadow-face indices, and other shadow/cookie cache indices",
+      "target-frame record1.xyz world positions, camera-relative subtraction input, and record2.xy encoded directions",
+      "the authored candidates do not replace a retail LightCullResult capture; runtime transform mutation and the final packed record2.xy values remain open",
+      "the IFix patched helper branches and their target-frame return values remain version/runtime-boundary evidence, even though the retail unpatched helper bodies are hash-pinned",
+      "the runtime value/patch state of the managed Euler resolver slot and its output selection, plus retail buffer capture of the packed OBB signed-zero bits; target-frame Point record2.w/record3.x shadow-face cache indices and other shadow/cookie cache indices",
+      "GetShadowRenderType's runtime IsPatched(0x886) gate, any patched return flags, and the runtime caster-list membership/culling state; serialized shadowType=0 is not treated as proof that all six Point cache lookups return -1",
+      "the active IFix table membership/pointers for 0x886/0x887/0x888 and any patched return values remain runtime-boundary evidence; static GameAssembly does not contain the live table entries",
       "the complete retail survivor array, runtime/custom carry-in, and final lightCount"
     ],
-    "decision": "Treat the eight-record native schema and the eleven serialized room inputs as source-closed, including all record0 lanes, record1.w, record2.z, the Spot record2.w, additional-light lanes, and bounded OBB transform candidates. Do not publish a byte-exact Gacha b31 fixture or enable deferred pass 0 until the remaining UnityPlayer/boundary bits, record1.xyz/record2.xy target-frame transforms, Point record2.w, and runtime list boundary are closed."
+    "decision": "Treat the eight-record native schema and the eleven serialized room inputs as source-closed, including all record0 lanes, the record1/record2 transform producer contract, record1.w, record2.z, the Spot record2.w, the Point face-index packing contract, additional-light lanes, the record5.w OBB/override projection, the record7 source-to-lane projection, the managed Euler resolver/slot chain, and the native UnityPlayer OBB Euler-input/native-sincos/order/TRS/inverse arithmetic up to the runtime IFix path/output boundary. Do not publish a byte-exact Gacha b31 fixture or enable deferred pass 0 until the remaining UnityPlayer/boundary bits, target-frame record1.xyz/record2.xy values, live Point record2.w/record3.x cache indices, and runtime list boundary are closed."
   }
 }

@@ -14,9 +14,9 @@ activation, or placement time.
 ## Refresh
 
 ```bat
-.\export.bat --export-from-game --with-assets
+.\export.bat --from-game --with-assets
 .\export_assets.bat
-.\export_assets.bat --export-from-game
+.\export_assets.bat --from-game
 python scripts\build_assets.py
 python tools\endfield_source_graph.py build
 ```
@@ -68,6 +68,11 @@ unique binding.
   files in different folders or language/shared scopes remain visible instead
   of being collapsed by filename stem.
 - Exact character post-model enumeration and baseline prefab generation.
+- `chen` and `chenpast` are now kept as separate identities: the playable
+  `chen` row owns the `P_actor_chen_*` model family, while the historical NPC
+  `chenpast` row owns the independent `S_npc_major_chenpast_*` mesh family;
+  their exported model PathIDs do not overlap. The WebUI manual merge that
+  incorrectly folded `chenpast` into `chen` has been removed.
 - Selected static world placements and gameplay/entity associations.
 
 ## Remaining gaps

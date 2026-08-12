@@ -20,6 +20,79 @@ SPEC.loader.exec_module(AUDIT)
 
 
 class LightCullCapAuditTests(unittest.TestCase):
+    def write_ifix_fixture(
+        self,
+        path: Path,
+        *,
+        target_count: int = 1,
+        target_type: str = "Beyond.Gameplay.Test",
+    ) -> None:
+        targets = [
+            {
+                "type": target_type,
+                "method": "Tick",
+                "parameters": [],
+                "implementation_index": 0,
+            }
+            for _ in range(target_count)
+        ]
+        state = {
+            "schema": "endfield.charinfo.installed-ifix-patch-state.v1",
+            "source_build": {
+                "game_assembly": {
+                    "sha256": AUDIT.EXPECTED_HASHES["game_assembly"]
+                }
+            },
+            "vfs_state": {
+                "persistent_overlay": {
+                    "file": {"sha256": "a" * 64}
+                }
+            },
+            "patch_format": {"target_count": target_count, "terminal_int32": 0},
+            "targets": targets,
+            "refresh": {
+                "tool": "refresh_installed_ifix_patch_state.py",
+                "source_patch_sha256": "a" * 64,
+            },
+        }
+        path.write_text(json.dumps(state), encoding="utf-8")
+
+    def test_ifix_state_accepts_current_self_consistent_target_count(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            path = Path(raw_root) / "ifix.json"
+            self.write_ifix_fixture(path, target_count=2)
+            report_hash, state = AUDIT.validate_ifix_state(path)
+            self.assertEqual(len(report_hash), 64)
+            self.assertEqual(state["patch_format"]["target_count"], 2)
+
+    def test_ifix_state_count_mismatch_reports_expected_and_actual(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            path = Path(raw_root) / "ifix.json"
+            self.write_ifix_fixture(path, target_count=2)
+            state = json.loads(path.read_text(encoding="utf-8"))
+            state["patch_format"]["target_count"] = 1
+            path.write_text(json.dumps(state), encoding="utf-8")
+            with self.assertRaisesRegex(
+                AssertionError,
+                r"validator=light_cull_cap; "
+                r"check=ifix_target_count_matches_targets; source=.*"
+                r"expected=2; actual=1",
+            ):
+                AUDIT.validate_ifix_state(path)
+
+    def test_ifix_state_rejects_hgrp_target(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            path = Path(raw_root) / "ifix.json"
+            self.write_ifix_fixture(
+                path,
+                target_type="HG.Rendering.Runtime.LightClusteringPassConstructor",
+            )
+            with self.assertRaisesRegex(
+                AssertionError,
+                r"validator=light_cull_cap; check=ifix_hgrp_targets; source=.*",
+            ):
+                AUDIT.validate_ifix_state(path)
+
     def test_movss_displacement_counter_covers_rex_prefixes(self) -> None:
         body = bytes.fromhex("f30f104018 f3410f104018 f30f10c0")
         self.assertEqual(AUDIT.count_legacy_movss_disp_loads(body, 0x18), 2)
@@ -130,6 +203,57 @@ class LightCullCapAuditTests(unittest.TestCase):
             result["captureRowContract"]["validatedConsumerOffsets"]["lightPriority"],
             "0x70",
         )
+
+    def test_scene_culling_mask_is_ifix_payload_producer(self) -> None:
+        result = AUDIT.validate_scene_culling_mask_source()
+        self.assertEqual(result["ifixTargetId"], 793)
+        self.assertFalse(result["ordinaryManagedCameraComputation"])
+        self.assertIn("IFix/future-patch", result["nativeValueBoundary"])
+
+    def test_changed_scene_culling_mask_ifix_target_fails_closed(self) -> None:
+        source_text = AUDIT.HG_UTILS_SOURCE.read_text(encoding="utf-8")
+        changed = source_text.replace(
+            "GetPatch(793, 0LL)", "GetPatch(794, 0LL)", 1
+        )
+        with self.assertRaisesRegex(
+            AssertionError,
+            r"validator=light_cull_cap; "
+            r"check=scene_culling_mask_ifix_target; source=.*HGUtils.cs; "
+            r"expected=1; actual=0",
+        ):
+            AUDIT.validate_scene_culling_mask_source(
+                source_text=changed, verify_source_hash=False
+            )
+
+    def test_light_clustering_preserves_sorted_original_row_indices(self) -> None:
+        result = AUDIT.validate_light_clustering_consumer()
+        self.assertEqual(result["sourceProjection"]["maxRows"], 256)
+        self.assertEqual(result["sourceProjection"]["rowStrideBytes"], 148)
+        self.assertTrue(result["survivorIndexTransport"]["postSortCopy"])
+        self.assertEqual(
+            result["survivorIndexTransport"]["elementType"], "Int32"
+        )
+        self.assertIn(
+            "PreparePunctualLightShadowCasters",
+            result["survivorIndexTransport"]["consumer"],
+        )
+
+    def test_changed_light_clustering_index_consumer_fails_closed(self) -> None:
+        source_text = AUDIT.LIGHT_CLUSTER_SOURCE.read_text(encoding="utf-8")
+        changed = source_text.replace(
+            "PreparePunctualLightShadowCasters",
+            "PreparePunctualLightShadowCastersChanged",
+            1,
+        )
+        with self.assertRaisesRegex(
+            AssertionError,
+            r"validator=light_cull_cap; "
+            r"check=light_cluster_shadow_index_consumer; "
+            r"source=.*LightClusteringPassConstructor.cs; expected=True; actual=False",
+        ):
+            AUDIT.validate_light_clustering_consumer(
+                source_text=changed, verify_source_hash=False
+            )
 
     def test_changed_visible_light_stride_fails_closed(self) -> None:
         bodies = AUDIT.read_native_method_bodies()
@@ -424,6 +548,25 @@ class LightCullCapAuditTests(unittest.TestCase):
             result["dynamicStreaming"]["fbMain"]["treeRootCompCount"],
             2828,
         )
+        component75 = result["component75HlodLevel"]
+        self.assertEqual(component75["component75ByteOffset"], "0x00")
+        self.assertEqual(
+            component75["hlodUnloadDistanceTableOffset"],
+            "0x474 + 4 * component75.byte0",
+        )
+        self.assertTrue(component75["nativeProjectionClosed"])
+
+    def test_changed_component75_hlod_level_projection_fails_closed(self) -> None:
+        image = AUDIT.PEImage(AUDIT.UNITY_PLAYER)
+        body = bytearray(image.read(0x181154230, 0x6C4))
+        body[0x1E4] ^= 1
+        with self.assertRaisesRegex(
+            AssertionError,
+            r"validator=light_cull_cap; "
+            r"check=render_transition1_hlod_unload_distance_index; "
+            r"source=.*UnityPlayer.dll; expected=.*actual=",
+        ):
+            AUDIT.validate_render_transition1_component75_native(bytes(body))
 
     def test_native_ecs_callback_registry_contract(self) -> None:
         transitions = AUDIT.validate_streaming_byte_enum_fields(
@@ -635,6 +778,28 @@ class LightCullCapAuditTests(unittest.TestCase):
         result = AUDIT.validate_unity_native_producer(AUDIT.PEImage(AUDIT.UNITY_PLAYER))
         self.assertEqual(result["internalCall"]["index"], 3320)
         self.assertEqual(result["candidateRecord"]["sizeBytes"], 12)
+        self.assertEqual(result["candidateCoreBody"][0]["sizeBytes"], 0x4E1)
+        self.assertEqual(
+            result["resultLifetimeWrapper"]["emptyViewHandle"]["input"],
+            -1,
+        )
+        self.assertIn(
+            "copies converted pointer/count to the hidden sret result",
+            result["resultLifetimeWrapper"]["nonEmptyFlow"],
+        )
+        self.assertEqual(
+            result["visibleLightProducer"]["allocationSizeEquation"],
+            "inputCount * 0x94",
+        )
+        self.assertEqual(result["visibleLightProducer"]["rowStrideBytes"], 148)
+        self.assertIn(
+            "row+0x68 <- source+0x18, or source+0x138 for source type 3/4",
+            result["visibleLightProducer"]["writtenRawFieldMappings"],
+        )
+        self.assertIn(
+            "row+0x84 <- constant zero (converter r12d is zero throughout the loop)",
+            result["visibleLightProducer"]["writtenRawFieldMappings"],
+        )
         self.assertIn("maxCount output cap", result["closedBehavior"])
 
     def test_changed_unity_native_cap_fails_closed(self) -> None:
@@ -655,6 +820,63 @@ class LightCullCapAuditTests(unittest.TestCase):
             ):
                 AUDIT.validate_unity_native_producer(image)
 
+    def test_changed_unity_native_candidate_core_fails_closed(self) -> None:
+        image = AUDIT.PEImage(AUDIT.UNITY_PLAYER)
+        original_read = image.read
+
+        def changed_read(virtual_address: int, size: int) -> bytes:
+            data = bytearray(original_read(virtual_address, size))
+            if virtual_address == 0x181051A40 and size == 0x4E1:
+                data[0x200] ^= 1
+            return bytes(data)
+
+        with mock.patch.object(image, "read", changed_read):
+            with self.assertRaisesRegex(
+                AssertionError,
+                r"validator=light_cull_cap; "
+                r"check=unity_culling_candidate_core_sha256; "
+                r"source=.*UnityPlayer.dll; expected=.*actual=",
+            ):
+                AUDIT.validate_unity_native_producer(image)
+
+    def test_changed_visible_light_producer_fails_closed(self) -> None:
+        image = AUDIT.PEImage(AUDIT.UNITY_PLAYER)
+        original_read = image.read
+
+        def changed_read(virtual_address: int, size: int) -> bytes:
+            data = bytearray(original_read(virtual_address, size))
+            if virtual_address == 0x180543CE0 and size == 0x1B0:
+                data[0x80] ^= 1
+            return bytes(data)
+
+        with mock.patch.object(image, "read", changed_read):
+            with self.assertRaisesRegex(
+                AssertionError,
+                r"validator=light_cull_cap; "
+                r"check=unity_visible_light_producer_candidate_vector_to_visible_light_rows_sha256; "
+                r"source=.*UnityPlayer.dll; expected=.*actual=",
+            ):
+                AUDIT.validate_unity_native_producer(image)
+
+    def test_changed_unity_native_result_wrapper_fails_closed(self) -> None:
+        image = AUDIT.PEImage(AUDIT.UNITY_PLAYER)
+        original_read = image.read
+
+        def changed_read(virtual_address: int, size: int) -> bytes:
+            data = bytearray(original_read(virtual_address, size))
+            if virtual_address == 0x181050FC0 and size == 0x133:
+                data[0x50] ^= 1
+            return bytes(data)
+
+        with mock.patch.object(image, "read", changed_read):
+            with self.assertRaisesRegex(
+                AssertionError,
+                r"validator=light_cull_cap; "
+                r"check=unity_culling_wrapper_result_lifetime_wrapper_sha256; "
+                r"source=.*UnityPlayer.dll; expected=.*actual=",
+            ):
+                AUDIT.validate_unity_native_producer(image)
+
     def test_unity_scheduled_cull_view_constructor(self) -> None:
         result = AUDIT.validate_unity_cull_view_constructor(
             AUDIT.PEImage(AUDIT.UNITY_PLAYER)
@@ -666,6 +888,10 @@ class LightCullCapAuditTests(unittest.TestCase):
         )
         self.assertFalse(
             result["managedInputContract"]["sceneCullingMask"]["constructorRead"]
+        )
+        self.assertNotIn(
+            "a separate consumer, if any, for the forwarded sceneCullingMask slot",
+            result["evidenceBoundary"]["open"],
         )
         self.assertEqual(result["viewRecord"]["planeCount"], 6)
         self.assertEqual(
@@ -733,6 +959,10 @@ class LightCullCapAuditTests(unittest.TestCase):
         )
         self.assertIn("manager+0x58", census["childViewSeparation"])
         self.assertIn("manager+0x158", census["uniqueIdRegistry"])
+        self.assertNotIn(
+            "any separate consumer of the forwarded sceneCullingMask slot",
+            result["evidenceBoundary"]["open"],
+        )
 
     def test_changed_cull_view_consumer_loop_fails_closed(self) -> None:
         image = AUDIT.PEImage(AUDIT.UNITY_PLAYER)

@@ -31,7 +31,7 @@ Or directly:
 ## All Canonical Character Models
 
 The source-derived superset contains 33 canonical character-container
-identities: the existing 30 playables plus Liino, Si/Jsspsi, and Chenpast.
+identities: 31 playables including Liino, plus Si/Jsspsi and Chenpast.
 It selects only exact
 `postmodels/characters/chr_<id>_<token>_postmodel.prefab` Animator roots.
 The duplicate `postmodels/npc` mirrors and Zhuang Fangyi's `_ult` variant are
@@ -45,7 +45,7 @@ Refresh the 33-character catalog without extracting assets:
 D:\fluffy-dump\unity_endfield_graph_shader_lab\import_all_character_models.bat
 ```
 
-Recover the three nonplayable character models from exact hierarchy
+Recover the two nonplayable character models from exact hierarchy
 Mesh/Material PPtrs and decode only their source-owned preview animation when
 one exists:
 
@@ -53,8 +53,9 @@ one exists:
 D:\fluffy-dump\unity_endfield_graph_shader_lab\import_all_character_models.bat --execute --unity
 ```
 
-Liino and Jsspsi each expose their exact `A_actor_*_t_pose`; Chenpast remains
-static because no token-owned preview clip is shipped. Use
+Jsspsi exposes its exact `A_actor_*_t_pose`; Chenpast remains static because no
+token-owned preview clip is shipped. Liino uses the full playable UI pipeline.
+Use
 `CharacterRecoveryViewer.unity` as the maintained viewer; the separate
 all-character resident scene is no longer retained.
 
@@ -128,7 +129,7 @@ D:\fluffy-dump\unity_endfield_graph_shader_lab\validate_all_generic_actor_galler
 The maintained all-roster path derives its character list from the exported
 game `CharacterTable` and keeps only rows that join to an exact Animator under
 the shipped `postmodels/characters/<charId>_postmodel.prefab` container. On the
-current export that produces 30 concrete playable post-models. The abstract
+current patch-aware export that produces 31 concrete playable post-models. The abstract
 `chr_9000_endmin` selector row is excluded because it has no concrete playable
 post-model; both actual Endministrator variants remain included.
 
@@ -169,16 +170,16 @@ The profile recovery first exports only `CharacterDisplayConfig` with its raw
 sidecar. This is intentional: the current serialized TypeTree leaves its
 managed-reference records heuristic-only, so the maintained decoder reads the
 exact aligned camera/light strings, height enum, and overview-offset floats
-from each bounded raw record before exporting the 30 camera/light/portrait
+from each bounded raw record before exporting the 31 camera/light/portrait
 dependencies.
 
-The second command writes all 30 prefab/profile references into
+The second command writes all 31 prefab/profile references into
 `CharacterRecoveryViewer.unity`. In Play Mode, use the top-left **Model**
 dropdown to instantiate and switch characters on demand.
 
 The canonical scope is now `all-ui`: it imports source-owned actor UI, team,
 relax, equipment, skill, weapon, and gacha body families plus exact private
-item/deco families for all 30 playable characters. Narrower scopes remain
+item/deco families for all 31 playable characters. Narrower scopes remain
 available for diagnostics:
 
 ```bat
@@ -187,7 +188,7 @@ import_playable_characters_ui.bat --clip-scope all-ui
 import_playable_characters_ui.bat --actor wulfa
 ```
 
-For an actor-scoped Wulfa diagnostic without rebuilding the other 29 actors,
+For an actor-scoped Wulfa diagnostic without rebuilding the other 30 actors,
 run:
 
 ```bat
@@ -199,7 +200,7 @@ update_character_recovery_viewer.bat
 verify_wulfa_apple_animation_recovery.bat
 ```
 
-Audit source Mesh identity across all 30 manifests, including exact private
+Audit source Mesh identity across all 31 manifests, including exact private
 item/deco hierarchy, clip-binding, recovered-state visibility, and Overview
 widget paths, without reading or launching Unity:
 
@@ -227,8 +228,8 @@ result to match a fresh ACL sample transform-for-transform. It refuses to start
 a second Unity editor while the project is open.
 
 The same sparse-clip ownership fix applies to the complete playable roster.
-Regenerate all 30 prefabs, require compact MuscleClip track mappings and one
-Awake-time reference-pose provider per prefab, then sample every one of the 754
+Regenerate all 31 prefabs, require compact MuscleClip track mappings and one
+Awake-time reference-pose provider per prefab, then sample every one of the 779
 body clips with the runtime validator using:
 
 ```bat
@@ -278,7 +279,7 @@ Its durable output is
 
 The actor-scoped import deliberately builds a one-actor validation viewer.
 Refresh the canonical `all-ui` catalog and update the shared viewer afterward,
-as shown above, to restore all 30 selectable actors.
+as shown above, to restore all 31 selectable actors.
 
 Generic companion names are admitted only when an exact shipped
 `chr_<id>_<token>_deco_<slot>_controller.controller` contains an animation in
@@ -1047,7 +1048,7 @@ Assets/EndfieldGraphShaderLab/Generated/Characters/Scenes/CharacterRecoveryViewe
 After the playable UI import, the top-left runtime UI can switch among every
 catalog character whose manifest was generated. The catalog and canonical
 `Playable/` manifests are required; there is no ordinary legacy-folder fallback.
-The full viewer embeds all 30 prefabs in one horizontal, alphabetically ordered
+The full viewer embeds all 31 prefabs in one horizontal, alphabetically ordered
 lineup and keeps them resident. The **Model** dropdown moves the recovered
 camera framing to the selected actor without loading or destroying a model.
 Selection also swaps the exact recovered actor profile:
@@ -1069,7 +1070,7 @@ later targeted character-prefab rebuild cannot revert one resident actor to a
 legacy inactive prefab root. Generated playable prefab templates also keep an
 active root, and the Zhuang gacha builder automatically rebinds and validates
 the resident scene after regenerating prefab-local file IDs. The current
-validation passes all 30 active instances, preserves every instance while
+validation passes all 31 active instances, preserves every instance while
 switching, and performs no runtime model load on selection.
 
 The compact right-edge **Recovered state connections** panel derives a button only
@@ -1079,7 +1080,7 @@ with outgoing connections highlighted from the current settled state. Clicking
 one plays the transition once and then hands off to the destination loop; for
 example, Da Pan exposes Overview -> Weapon and Weapon -> Overview alongside
 Equip, Skill, and Upgrade connections. The current all-roster catalog exposes
-268 complete connections across all 30 playable actors. This is a source-clip
+the complete source connections across all 31 playable actors. This is a source-clip
 pairing boundary: it does not invent a connection when either clip is missing.
 
 Private item/deco visibility is refreshed from the active body clip, helper,
@@ -1109,7 +1110,7 @@ CharacterRecoveryViewerRoot
   Backdrop/
     ReferenceBackdrop
   Characters/ (has CharacterRecoveryActorCatalog)
-    <30 active resident actors, horizontal>
+    <31 active resident actors, horizontal>
   Lighting/
     KeyLight
   MainCamera
@@ -1146,9 +1147,21 @@ value 36 maps to ref 4. Run
 binary, Shader/material evidence, and lab schedule. Same-queue ordering inside
 the custom UnityPlayer command and possible runtime IFix replacement remain
 open.
+Run `python tools\verify_overlay_runtime_inputs.py` for the separate
+hash-pinned OverlayShadow DXBC, Halton jitter, TAA pass-order, and clustered
+light-input contract. It does not claim IFix history constants or a settled
+retail TAA frame. Run `python tools\audit_taau_history_contract.py` for the
+source-backed TAAU history/resource ABI: the history-validity gate, 192-byte
+constants, persistent dilated depth/motion-vector textures, and
+quality-dependent Dilation→MaskDilation→Resolve scheduling. It also verifies
+that `HGRenderPathScene` passes its persistent `historySceneColor` into TAAU
+and preserves the current output back under that name (or retains the old
+history on a skipped frame). Its report is deliberately marked
+`source_closed_live_handles_open`; live TextureHandle identities, settled
+weights/internal extent, and IFix replacements remain unclaimed.
 
 The selected overlay local-volume term is also active for the isolated
-CharInfo rigs. The recovered type-4 Fog consumer joins all 30 source profiles,
+CharInfo rigs. The recovered type-4 Fog consumer joins all 31 source profiles,
 266 serialized lights, 40 supported Fog rows, and the exact clustered
 membership plus `LightCharacterOnly`/scene-additional-light gates; missing
 producer state returns neutral zero occlusion. Run
@@ -1156,7 +1169,7 @@ producer state returns neutral zero occlusion. Run
 Arbitrary gameplay light culling and unsupported OBB/cookie/flicker/culling-
 distance states remain outside this bounded presentation path.
 
-The playable UI builder embeds all 30 actors as active resident instances in
+The playable UI builder embeds all 31 actors as active resident instances in
 one horizontal lineup. Model selection moves the camera and swaps the recovered
 profile; it does not load, instantiate, destroy, or reactivate another model.
 Use the fast render-style scene for ordinary visual iteration.
@@ -1524,10 +1537,25 @@ closes the installed Windows desktop `PunctualLightMaxCount` at 256; native
 ascending before taking `min(survivors, cap)`. The equal upstream/settings
 caps prove that the settings layer cannot truncate this result a second time.
 The maintained audit now verifies the current GameAssembly call registers and
-return copies plus the UnityPlayer candidate gates directly. It closes the
-16-byte `LightCullResult` layout and the consumer's 148-byte `VisibleLight`
-stride, including type `+0x00`, priority `+0x70`, and world position `+0x74`;
-future capture can therefore reject truncated rows deterministically. It now
+return copies plus the UnityPlayer candidate gates directly. It also hash-pins
+the candidate-pointer vector conversion at `0x180543CE0`: allocation is
+`inputCount * 0x94`, and the exact source-to-row projection is recorded for
+the 148-byte `VisibleLight` rows. The enclosing `CullLightsInternal` wrapper
+is hash-pinned as well, including the `viewHandle == -1` zero-result path,
+hidden-sret pointer/count publication, manager retention-vector append, and
+local-vector cleanup. It closes the 16-byte `LightCullResult`
+layout and the consumer's `VisibleLight` stride, including type `+0x00`,
+priority `+0x70`, and world position `+0x74`; future capture can therefore
+reject truncated rows deterministically. It now
+accepts a detached, build-pinned JSON artifact through
+`python tools/decode_light_cull_capture.py capture.json --output decoded.json`;
+the decoder validates the pointer/null rule, count cap, exact raw-row length,
+the converter-written zero at `VisibleLight+0x84`, and decodes the source-closed
+`finalColor`, `specularIntensity`, and `localToWorldMatrix` fields without
+attaching to the retail process. Matrix columns 2 and 3 are also emitted for
+the source-backed `GetForward`/`GetPosition` b31 inputs. Converter-unwritten
+fields such as ScreenRect are intentionally not inferred.
+It now
 also pins internal call 3304 from the 16-argument `AddCullViewByMatrix` binding
 through six-plane extraction and the scheduled view constructor. The physical
 camera's `cullingMask` lands at view `+0x4`; the squared
@@ -1830,9 +1858,13 @@ squared parent bias and both 256-entry ArtTag encodings. Nonzero view
 offset to the selected index and clamps it to `[0,lodCount-1]`. The
 former index-10320 and `0x180175A10 -> 0x180A5E320`
 virtual-slot interpretation is retracted because it crossed the HG table
-boundary into unrelated Animator code. The component-67 native type name, any
-separate `sceneCullingMask` consumer, and target-frame survivor
-rows remain explicit boundaries.
+boundary into unrelated Animator code. The complete `0x4E1`-byte UnityPlayer
+candidate core is hash-pinned by the maintained audit, including the native
+gate/sort/output-cap surface. The component-67 native type name and target-frame
+survivor rows remain explicit boundaries. The complete installed CullView
+census found no separate `sceneCullingMask` consumer: the field is forwarded by
+the constructor but not read by the scheduled loop, either selected predicate,
+fence/reset lifecycle, child-view path, or a post-dispatch packet copy.
 Run `python tools\audit_light_cull_cap.py --check` to validate the pinned
 binary, settings, IFix, route, cap, and ordering evidence. Closing the retail
 value still requires an explicitly authorized target-frame capture of that
@@ -1869,6 +1901,53 @@ gate with:
 ```bat
 python tools\verify_body_skin_forward_recovery.py
 ```
+
+After an installed-game refresh, verify the current AnimeStudio source
+boundary separately with:
+
+```bat
+python tools\verify_current_character_npr_skin_export.py
+python tools\verify_current_screen_shadow_binding_boundary.py
+python tools\verify_current_screen_shadow_resolve_export.py
+```
+
+This current-export audit requires the targeted `CharacterNPR_Skin` shader
+export under `scratch/animestudio/body_skin_sidecar_refresh/`. It validates
+the current shader/material identities and ForwardLit keyword census without
+reusing the older no-screen sidecars or claiming retail frame parity.
+The screen-shadow binding audit is independent of that scratch export: it
+records that the current binary Skin consumer reads retail `_ScreenSpaceShadowMask`
+R/G, while the lab producer remains content-invalid and Skin stays on the
+source-shaped retail branch with its keyword disabled until canonical
+publication is recovered; the diagnostic branch remains available for
+comparison.
+The Skin export audit also pins the current binary equations: the directional
+R selector honors `DirectionalShadowParams.x` and `CharacterParams1.z`, while
+G feeds the character-shadow alpha product and minimum-shadow path.
+
+The resolve export audit is the producer-side complement. It pins the original
+`HGRP/ScreenSpaceShadowResolve` AssetMap identity and its
+`ScreenSpaceShadowResolve_Character` pass: packed GBuffer0 selects one of 15
+character shadow records, the projected point uses the original light-facing
+bias, and `_CharacterShadowmapTex` is filtered with 16 `GatherRed` depth
+comparisons before the result is written to mask G. This is source-backed
+producer semantics only; the lab keeps the runtime publication fail-closed
+until the character atlas upload and target-frame state are validated.
+
+The lab resolve now carries that source shape into its default-off attachment:
+it binds the same-frame PreGBuffer selector/normal lanes, chooses the scalar or
+15-slot character atlas transform, applies light-facing bias, and executes the
+ 16-tap `GatherRed` depth filter for mask G. The producer checks camera, atlas,
+and GBuffer ownership before drawing. Its scene and character passes retain
+the original stencil split (`Ref 4`, `ReadMask 7`, `NotEqual`/`Equal`), while
+`contentValid=false` still keeps
+the retail consumers disabled until complete scene-R and deferred-GBuffer
+ownership are recovered.
+The directional CSM bridge also publishes the installed CharInfo environment's
+serialized `csmIntensity=1.0` gate (the source of
+`DirectionalShadowParams.x`) and applies it after CSM composition, matching
+the original final blend. Unity `Light.shadowStrength` is a separate field;
+this remains diagnostic-only.
 
 In the corrected 3840x2160 controlled A/B, the only change is the exact body
 selector. On pixels changing by more than 1/255, reference MAE moves
@@ -2135,8 +2214,9 @@ See
 
 The recovered PreGBuffer producer boundary has a separately named, default-off
 sidecar diagnostic. It allocates the source-backed `D32_SFloat_S8_UInt`
-depth/stencil target, exact `A2B10G10R10_UNormPack32` A/B targets, and an
-`R32_SFloat` depth copy; it then draws the recovered character PreGBuffer
+depth/stencil target, exact `A2B10G10R10_UNormPack32` A/B targets, an
+`R8G8B8A8_SRGB` material/color C target, and an `R32_SFloat` depth copy; it
+then draws the recovered character PreGBuffer
 passes after a conservative opaque-scene depth helper. This approximates the
 shipped CharInfo `DefaultDeferred` order: generic ECS/ordinary opaque PreZ in
 the earlier DepthPrepass, then character ECS/outline/SRP PreG in GBuffer on the
@@ -2160,6 +2240,55 @@ sidecar does not define, enable, or feed the screen-space shadow mask and is not
 a render-style parity claim. Current source evidence, GPU results, and blocked
 coverage are recorded in
 `memory/character_render_and_animation_recovery.md`.
+
+The current Skin DXBC `PreGBuffer` fragment has also been re-decompiled from
+the refreshed AnimeStudio sidecar. The original pass writes five MRT lanes:
+zero/unused `Target0`, motion-vector payload `Target1`, packed 10-bit
+selector `Target2`, octahedral normal `Target3`, and material/color payload
+`Target4`; it uses `DepthCharacterOnly` with stencil `Ref 36 / Always /
+Replace`. The maintained diagnostic binds selector/normal A/B and now writes
+the source-shaped material/color payload to diagnostic C, with a byte readback
+gate. The paired source vertex DXBC is also pinned: `TEXCOORD_3` carries
+current clip x/y/w, `TEXCOORD_4_1` carries previous skinned/object clip x/y/w,
+and the source binds both non-jittered current/previous camera matrices,
+previous camera position, and `unity_MatrixPreviousM`. Because previous skin
+deformation is a separate input, motion vectors remain unpublished rather than
+being replaced with a camera-only approximation. C is not yet consumed by
+retail deferred lighting, so this evidence closes one producer input without
+claiming a complete retail GBuffer.
+
+The independent source `HGRP/Lit` `HGBuffer` audit now pins the same history
+shape in the deferred character path: current clip x/y/w is carried through
+`TEXCOORD_5`, previous clip x/y/w through `TEXCOORD_6`, and `Target1.xy` uses
+the signed fourth-root delta blended by the source motion-validity mask in
+`Target1.z/w`. The current SphereOutside frame sidecar intentionally keeps a
+neutral SceneMV and remains non-presented until previous deformation and
+target-frame state are recovered.
+The audit also pins the remaining source MRT payload: MRO/porosity and
+packed-flag equations in `Target2`, sampled mask and packed flags in `Target3`,
+and tint-blended base colour with zero alpha in `Target4`. This closes the
+source equations only; the runtime sidecar still does not publish those lanes
+through the retail deferred resolver.
+
+The Eye `PreGBuffer` vertex variant confirms the same 6044-byte DXBC and
+decompiled vertex program as Skin (Eye uses source pass index 1; Skin uses 3),
+so the previous-deformation ABI is shared across these two CharacterNPR
+families. Its fragment preserves the same five MRT lanes while setting the
+oct-normal alpha lane to `0.7` (Skin uses `0.4`).
+
+The current `CharacterNPR_Hair` export confirms the same 6044-byte vertex
+program at source pass index 3. Hair is not a fragment alias: its five-MRT
+fragment sets oct-normal alpha to `1.0` and writes sampled hair color scaled by
+the serialized per-material tint words. The source identity and these anchors
+are included in `verify_current_character_npr_skin_export.py`.
+
+The current generic `HGRP/CharacterNPR` export is pinned separately as well.
+Its base `HG_ENABLE_PER_OBJECT_MV` + `SRP_INSTANCING_ON` PreGBuffer vertex is
+byte/text-identical to Skin/Eye/Hair, but its fragment keeps the sampled-color
+× tint `Target4` lane while writing `Target3.w = 0.0`; it must not be replaced
+with Hair's `Target3.w = 1.0` variant. The AssetMap row is PathID
+`-7822190029627442914` at offset `185104054` in the current `19F0903A...`
+source chunk. These anchors are covered by the same verifier.
 
 The separate canonical-depth owner is also default-off. Unlike the sidecar, it
 binds two exact `A2B10G10R10_UNormPack32` PreG colors together with the same
@@ -2389,11 +2518,18 @@ Resource recovery now distinguishes the request-gated `2S x S` D16
 `_HDPLSScreenSpaceShadowMask` consumed by deferred binding 22. Their
 RenderGraph dependencies and global publication are closed; inactive frames
 clear all selectors and bind white to both slots, so stale resources cannot
-escape. The hash-pinned installed Persistent IFix table has 30 targets and
-replaces neither `0x877` nor `0x890` owner method, closing the current on-disk
-branch choice; future/network patches remain a version boundary. Live
+escape. The generated CharInfo IFix report is refreshed with
+`tools/refresh_installed_ifix_patch_state.py` from the installed Persistent
+`DAFE52C9` overlay. The current overlay decodes to 32 targets (86,926-byte
+`Gameplay.Beyond.patch.bytes`) and still replaces neither `0x877` nor `0x890`
+owner method, closing the current on-disk branch choice; future/network
+patches remain a version boundary. Run
+`tools/verify_installed_ifix_patch_state.py` after refresh. Live
 bounds/light/settings values, resulting active rows/selectors, unused
 persistent rows, atlas texels, and resolved RGBA pixels remain capture-only.
+Run `tools/refresh_ifix_deferred_reports.py --check` to verify that the two
+deferred-render contracts project the same current IFix summary; its refresh
+mode changes only those projection fields and preserves report formatting.
 The remaining
 16 texture names are now pinned from their original sampling behavior and the
 hash/offset-pinned installed IL2CPP shader-property table: low-resolution
@@ -2522,6 +2658,20 @@ binning/reflection/b33 prerequisites produce no draw or readback. This does not
 claim the original render graph's physical identity, lifetime, or presentation.
 The original pass-0 consumer remains deliberately disabled.
 
+The next deferred boundary is validated with
+`ENDFIELD_RECOVERED_DEFERRED_RESOLVER_INPUT_PROBE=1`. The GBuffer sidecar
+stamps camera, frame, extent, and publication serial; the resolver probe
+rejects stale or cross-camera C/B/A inputs and records the source order
+`t23:_62,t24:_61,t25:_60`. Use the existing D3D12 frame command, then run:
+
+```bat
+verify_recovered_deferred_gbuffer_frame.bat --resolver-input-d3d12
+python tools\verify_deferred_resolver_input_probe.py --log scratch\character_recovery\deferred_gbuffer_frame\unity_resolver_input_d3d12.log --report scratch\character_recovery\deferred_gbuffer_frame\resolver_input_validation_d3d12.json
+```
+
+This is same-frame input-order evidence only: the probe is non-presented and
+retail deferred pass 0 remains disabled.
+
 The selected original pass-0 `_TransformVariables` b30 reads are now closed for
 the physical camera's view matrix, inverse view, inverse GPU view-projection,
 and world-space position. A default-off same-frame publisher exposes the full
@@ -2553,9 +2703,27 @@ CharacterOnly, use falloff `-1`, and split volumetric intensity 2/5/4 across
 The pinned producer also builds the authored OBB as inverse TRS and writes six
 row-major half2 words to record5.xyz/6.xyz. Its installed pack and `f32tof16`
 bodies now yield bounded candidates for all 11 rows; decoded corners miss the
-unit-box boundary by at most `0.002611`. Signed-zero bits and one
-`Spot Light (12)` one-ULP half boundary still require the exact UnityPlayer
-matrix-inverse output or retail capture. Pinned original `globalgamemanagers`
+unit-box boundary by at most `0.002611`. UnityPlayer icall 2471
+(`Matrix4x4::Inverse3DAffine_Injected`) resolves through stub `0x1800A2020`
+to the hash-pinned `0x180569BD0` scalar determinant/cofactor body; its exact
+float32 order and `-0` sign-mask candidates are now replayed, including the
+`Spot Light (12)` one-ULP boundary. Retail packed-word capture and the
+runtime Quaternion.Euler order remain open. The adjacent UnityPlayer icall
+2470 (`Matrix4x4::TRS_Injected`) is also source-closed: its `0x1800A1BB0`
+wrapper, `0x18056CB40` scalar column-scale/position-copy body, and
+`0x18056B8A0` quaternion-to-column-major helper are hash-pinned and replayed.
+The managed `Quaternion.Euler` wrapper and exact float32 degree-to-radian /
+half-angle input are source-closed as well; UnityPlayer icall 2489,
+`0x180567590`, and all six native sin/cos call targets are pinned. The
+GameAssembly lazy resolver string, `0x180059FC0` call, and slot
+`0x18F36FAC8` load/store are hash-pinned as well. The audit maps the installed
+UnityPlayer image with `DONT_RESOLVE_DLL_REFERENCES` and
+calls the pinned `0x1800A5010` wrapper, producing bit-exact native quaternion
+outputs for all eleven authored rows. The wrapper's explicit order-4 immediate
+and six-entry native jump table are pinned (selected case offset `0x425`). A
+runtime slot/patch state, patched IFix path/output selection, and retail
+capture remain open. Pinned
+original `globalgamemanagers`
 objects set Linear color space and linear light intensity, while all 11 rows
 disable color temperature, distance/far-show falloff, animation, multistate,
 and flicker. Hash-pinned UnityPlayer `finalColor`, `Color.linear`, animation-
@@ -3339,8 +3507,8 @@ folder. The all-character viewer scene is
 rebuilt from the manifest-driven importer and generated catalog. Lower mesh
 LODs are skipped during import; rerunning the preview command also prunes older
 generated scenes to `lod0` only. Complete catalog builds instantiate the
-existing 30 playable prefabs without rebuilding their assets, then build the
-three nonplayable additions and restore all 33 resident scene instances. The
+existing 31 playable prefabs without rebuilding their assets, then builds the
+two nonplayable additions and restores all 33 resident scene instances. The
 rebuild also
 renders a quick preview to:
 
@@ -3575,14 +3743,14 @@ lineup root. This closes one Avatar/clip pair, not Motion placement, runtime IK,
 blending, constraints, secondary simulation, or general humanoid playback.
 
 Original serialized data and `GameAssembly.dll` also narrow the IK contract.
-Exact Grounder exports for all 30 current actors prove that the
+Exact Grounder exports for all 31 current actors prove that the
 `GrounderBipedIK.solver.IKFootBoneL/R` PPtrs equal the authored
 `IK_Foot_L/R_001` Transform PPtrs. They are sampled Grounding references, not
 BipedIK limb targets. `CharacterAnimationBlackboard._UpdateFootIK` at RVA
 `0x3413830` reads `FOOT_IK_WEIGHT`, `FOOT_IK_FOOT_WEIGHT`, and
 `FOOT_IK_ADSORB_WEIGHT`; RVA `0x326CF60` transfers the live block to Grounding.
-The complete current UI audit covers 754 unique clips and recovers only
-`FootIKWeight` (`0x2B797234`): 23 exact 60 Hz ACL arrays, always scalar track
+The complete current UI audit covers 779 unique clips and recovers only
+`FootIKWeight` (`0x2B797234`): 24 exact 60 Hz ACL arrays, always scalar track
 15 and constant one. `FootIKFootWeight` (`0xCF74E25B`) and
 `FootIKAdsorbWeight` (`0x7E3D4086`) occur in zero UI clips. Their missing-key
 lookup is nevertheless source-closed: `TryGetCurveValue` returns false/raw
@@ -3610,8 +3778,8 @@ missing ground produces a height-continuous synthetic plane rather than a zero
 hit. `SetLegIK` at RVA `0x326CB90` requests
 `lerp(authoredFoot, terrainFoot, clamp(weight*maintianPelvisFootWeight,0,1))`
 and assigns `footAdsorbWeight` to the limb position weight. The manifest records
-this contract. Twenty-eight actors select this ordinary family; Chen Qianyu and
-Li Zhiyan set `rotateSolver` at `Grounding+0x9C` and use the recovered
+this contract. Twenty-eight actors select this ordinary family; Chen Qianyu,
+Li Zhiyan, and Liino set `rotateSolver` at `Grounding+0x9C` and use the recovered
 root-aligned frame (`root.up`, root-forward/right, and root-local Y); Camille is
 ordinary. `Grounding+0x3D` is `isAccelerating`, not the rotate gate, and the
 rotated blocks rejoin the same `FinalSetIKPosition` and `SetLegIK` stages. The
@@ -3626,7 +3794,7 @@ remains disabled because the lab still lacks a source-compatible terrain
 provider, live controller values and callback order, Unity
 runtime profile consumption, the retail pelvis-aware solver surface, and
 numeric original-frame fixtures. Exact per-actor serialized profiles are now
-embedded in all 30 manifests and in
+embedded in all 31 manifests and in
 `playable_character_grounder_profiles.json`; none is runtime-enabled.
 Alternate-quality, overstep-disabled, full predictive-step, and exact capsule
 no-hit modes remain unrecovered; tilted-root numeric fixtures are also absent.
@@ -3656,13 +3824,10 @@ validate_resident_character_lineup.bat
 validate_roster_animation_switch_runtime.bat
 ```
 
-The current Unity validation passes all 30 fail-closed IK pose checks, all 23
-exact `FootIKWeight` arrays, the 30-instance resident lineup, and the complete
-754-body-clip roster switch sweep. The source-backed Python suite passes all
-57 character-import tests; its audits cover 875 ACL clips with zero canonical
-order/provenance gaps, 338 selected body meshes with zero skin-tuple gaps, and
-98 owner-qualified item renderers with zero binding gaps. The switch sweep
-confirms 43 Overview start-to-loop handoffs and zero post-reset pose mismatches.
+The current validation scope covers all 31 fail-closed IK pose checks, all 24
+exact `FootIKWeight` arrays, the 31-instance resident lineup, and the complete
+779-body-clip roster switch sweep. Source-backed audits retain fail-closed
+canonical-order, skin-tuple, item-owner, and post-reset pose checks.
 
 ## Current Fidelity Limits
 

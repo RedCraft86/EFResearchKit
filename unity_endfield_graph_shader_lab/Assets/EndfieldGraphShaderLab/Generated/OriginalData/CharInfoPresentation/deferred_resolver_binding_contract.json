@@ -11,6 +11,10 @@
     "published": false,
     "pass0_consumer_enabled": false,
     "source_renderer_disabled": true,
+    "resolver_binding_aliases": {
+      "backend_registers": {"t23": "GBufferC", "t24": "GBufferB", "t25": "GBufferA"},
+      "source_identifiers": {"t23": "_62", "t24": "_61", "t25": "_60"}
+    },
     "selector": "ENDFIELD_RECOVERED_DEFERRED_GBUFFER_FRAME",
     "source_camera": {
       "name": "MainCamera",
@@ -45,22 +49,50 @@
       "GBufferC": {"format": "R8G8B8A8_SRGB", "nonzero_bytes": 1382400, "sha256": "b6ffa8536d9c20724bbd90c514cde0a80e0cb3e95911bd5a3293b8d320bbfa56"}
     },
     "sources": {
-      "producer": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredDeferredGBufferFrame.cs", "sha256": "93b63fa4508c56d2c232c78997224532d1b76b716bbcc23cdf12467bb1996013"},
+      "producer": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredDeferredGBufferFrame.cs", "sha256": "c5549f31b8fc01a89d498523f4ace248102d21ec323bc6826bfe22c9520df56f"},
       "shader": {"path": "Assets/EndfieldGraphShaderLab/Shaders/Recovered/EndfieldCharInfoHGRPLitUnavailable.shader", "sha256": "e957bcb140a066a452423f32efc5bd3195f410094943562c96376cff44d2d23e"},
-      "pipeline": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/HGCompatRenderPipeline.cs", "sha256": "60fb6e49cfbfb6b23764688e7b38ca0748b7ab182171896ceb33790400ad6d06"},
+      "pipeline": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/HGCompatRenderPipeline.cs", "sha256": "f921ffa65a753cd95ea401794ef6d63db1539a77e8c4729246a0e1cd79a0b4c1"},
       "material_source": {"path": "Assets/EndfieldGraphShaderLab/Generated/OriginalData/CharInfoPresentation/Materials/M_CharInfo_outside.raw.json", "sha256": "45b4e36ddf66010b838abdbad0e7bf8906d5cf2ec2ea9997771bd14c75ecfaf7"}
     },
     "validation": {
       "gpu_reports": {
-        "d3d11": {"path": "scratch/character_recovery/deferred_gbuffer_frame/gpu_validation_d3d11.json", "sha256": "f5f14320f64e8387648828d19e106aa412425a2ff5c95a1ffa1772a24b4211d4", "log_path": "scratch/character_recovery/deferred_gbuffer_frame/unity_validation_d3d11.log", "log_sha256": "4821aadfdf3f8304ee89cb93caf34fc3a74eee792840a4f73f494c7a03f8ab0e"},
-        "d3d12": {"path": "scratch/character_recovery/deferred_gbuffer_frame/gpu_validation_d3d12.json", "sha256": "24a9988304588899757fac6ca553f8deb9d5165389e9923ce47457f9384a1d01", "log_path": "scratch/character_recovery/deferred_gbuffer_frame/unity_validation_d3d12.log", "log_sha256": "5b8ba8cc9b920b1a655b6701332ee17ef4d57780885c3d5e7737191c5981c81b"}
+        "d3d11": {"path": "scratch/character_recovery/deferred_gbuffer_frame/gpu_validation_d3d11.json", "sha256": "7f477c37e0d7c60b9a1cabf4aae31d85267e4333f00ad0974f2bb067da039cb2", "log_path": "scratch/character_recovery/deferred_gbuffer_frame/unity_validation_d3d11.log", "log_sha256": "4821aadfdf3f8304ee89cb93caf34fc3a74eee792840a4f73f494c7a03f8ab0e"},
+        "d3d12": {"path": "scratch/character_recovery/deferred_gbuffer_frame/gpu_validation_d3d12.json", "sha256": "d84dc96262c8da36abbfea1ad1ca84c60fe317056f353d317968f62c034374e9", "log_path": "scratch/character_recovery/deferred_gbuffer_frame/unity_validation_d3d12.log", "log_sha256": "5b8ba8cc9b920b1a655b6701332ee17ef4d57780885c3d5e7737191c5981c81b"}
       },
-      "fail_closed_d3d12": {"path": "scratch/character_recovery/deferred_gbuffer_frame/gpu_fail_closed_d3d12.json", "sha256": "5f746e4f14b7b6933d5dcae2b58548ed00569171d74e3643561fa1a3a6517396", "log_path": "scratch/character_recovery/deferred_gbuffer_frame/unity_fail_closed_d3d12.log", "log_sha256": "612e6ac2371cfd98922fa823972cbda80950c8f0bc57285b89ce867c85a80309"},
-      "validator": {"path": "tools/verify_deferred_gbuffer_frame_log.py", "sha256": "5a68cc17709d480f900bca388f1f4dabedafd47e02f0aa8048eed9fe90a1b253"},
-      "tests": {"path": "tools/test_verify_deferred_gbuffer_frame_log.py", "sha256": "941e3500ce24e0f552e07c8b14fa99d3e3eb5e35495004515293b96c200f4823"},
+      "fail_closed_d3d12": {"path": "scratch/character_recovery/deferred_gbuffer_frame/gpu_fail_closed_d3d12.json", "sha256": "e211ff901d1654e4894023be49fc47e73241e177a9c1569c8ee614dba033eb74", "log_path": "scratch/character_recovery/deferred_gbuffer_frame/unity_fail_closed_d3d12.log", "log_sha256": "612e6ac2371cfd98922fa823972cbda80950c8f0bc57285b89ce867c85a80309"},
+      "validator": {"path": "tools/verify_deferred_gbuffer_frame_log.py", "sha256": "aaea923780e84583c393724fef7718126a5db75ad3295d445360c154ff63da29"},
+      "tests": {"path": "tools/test_verify_deferred_gbuffer_frame_log.py", "sha256": "c37d1511acdc5b2f834328f28531856ef0d9cf0c7fafccab25f2e27a57447fdb"},
       "wrapper": {"path": "verify_recovered_deferred_gbuffer_frame.bat", "sha256": "c1ecdcd3ae4433be02498b9da8cc2620d7c331a9385058da7fe4f57f00336921"},
       "beauty_unchanged": true,
       "cross_api_readbacks_bit_exact": true
+    }
+  },
+  "deferred_resolver_input_probe": {
+    "status": "default-off non-presented source-identifier consumer probe; retail pass 0 remains disabled",
+    "selector": "ENDFIELD_RECOVERED_DEFERRED_RESOLVER_INPUT_PROBE",
+    "requires": ["b30", "b35", "b31", "b34", "GBufferFrame"],
+    "register_bridges": {
+      "b0": "EndfieldCB0",
+      "b1": "EndfieldCB1",
+      "b2": "EndfieldCB2",
+      "b3": "EndfieldCB3",
+      "b4": "EndfieldCB4",
+      "b5": "EndfieldCB5",
+      "b6": "zero-fallback",
+      "b7": "EndfieldCB7",
+      "b8": "EndfieldCB8"
+    },
+    "source_gbuffer_reads": {"t23": "_62/GBufferC", "t24": "_61/GBufferB", "t25": "_60/GBufferA"},
+    "presented": false,
+    "retail_pass0_enabled": false,
+    "sources": {
+      "policy": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredDeferredResolverBindingPolicy.cs", "sha256": "093cd5e82db67fee3bf8c910f344f3117893478fa413b726de0f578181a8da2f"},
+      "consumer": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredDeferredResolverInputProbe.cs", "sha256": "9c2d628aa6862bd521e80e649a965b904b5346cf95bb2fddb77bbf23f38f023c"},
+      "shader": {"path": "Assets/EndfieldGraphShaderLab/Shaders/Recovered/EndfieldDeferredResolverInputProbe.shader", "sha256": "6ecaedad32ac0c1c88b6d86f97df178b15348166a305341e19e3e107c96ab946"},
+      "pipeline": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/HGCompatRenderPipeline.cs", "sha256": "f921ffa65a753cd95ea401794ef6d63db1539a77e8c4729246a0e1cd79a0b4c1"},
+      "gbuffer": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredDeferredGBufferFrame.cs", "sha256": "c5549f31b8fc01a89d498523f4ace248102d21ec323bc6826bfe22c9520df56f"},
+      "b3_b7_owner": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredLightBinning.cs", "sha256": "2dbaa1a1f000043979a66e5ac5311947984d84c10e01020c1db7082a1b2fab0c"},
+      "b8_owner": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredVisibilitySHConstants.cs", "sha256": "74d2376fd24056d044bebf725c359ab5f406899c1e70ea46ce51063e29ab3209"}
     }
   },
   "selected_deferred_transform_variables_transport": {
@@ -96,8 +128,8 @@
     "source_audit": {"path": "scratch/character_recovery/deferred_transform_variables/audit.json", "sha256": "402a8ddb90b1555a78f5e9fd7c7456c1fa5658bb9f55fd1acae9abd2ae516e3b"},
     "sources": {
       "contract": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredDeferredTransformVariablesContract.cs", "sha256": "152fb8b7c6c63bd7e6c5f0fb0e8222b37e92e431bcb35557acdd60d062d44089"},
-      "owner": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredDeferredTransformVariables.cs", "sha256": "db67e00e21b11e6e426864e5ce5099ab5b8bb5dfcd8184b4dc0ec01305541ba0"},
-      "pipeline": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/HGCompatRenderPipeline.cs", "sha256": "60fb6e49cfbfb6b23764688e7b38ca0748b7ab182171896ceb33790400ad6d06"},
+      "owner": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredDeferredTransformVariables.cs", "sha256": "90d6cb5816f280503406501b7e89aa2cf190e1b99cbe0819ece2642fe9cc434b"},
+      "pipeline": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/HGCompatRenderPipeline.cs", "sha256": "f921ffa65a753cd95ea401794ef6d63db1539a77e8c4729246a0e1cd79a0b4c1"},
       "probe": {"path": "Assets/EndfieldGraphShaderLab/Resources/EndfieldRecoveredDeferredTransformVariablesProbe.compute", "sha256": "8d88e212bddfa13a5985db7a5e392ec3a0e5df40411dbb848b8a7e7ee2486910"},
       "batch_verifier": {"path": "Assets/EndfieldGraphShaderLab/Editor/CharacterRecovery/EndfieldRecoveredDeferredTransformVariablesBatchVerifier.cs", "sha256": "b27b97ae89ee90800268cf4d77fab41a291c03035627d607cb7723feaceb8f9f"},
       "source_auditor": {"path": "tools/audit_deferred_transform_variables.py", "sha256": "248de36524cd21fff287ecdae71a302d65b40ac756aa19ef3ee5364361fee163"},
@@ -106,7 +138,7 @@
       "wrapper": {"path": "verify_recovered_deferred_transform_variables.bat", "sha256": "907e279fadf7a80402b66f2a78297d6e188f236a40afb57c0be3237154d45353"}
     },
     "validation": {
-      "frame_report": {"path": "scratch/character_recovery/deferred_transform_variables/frame_validation.json", "sha256": "d41e48ddf7dc994104a2e2279f5a9fb82bc3513c7d027eb76bdc801d85704ba4"},
+      "frame_report": {"path": "scratch/character_recovery/deferred_transform_variables/frame_validation.json", "sha256": "0b61b6e30b215b619824821913afcec1e8df212a1653c7c268a9725adb65a1c8"},
       "gpu_reports": {
         "d3d11": {"path": "scratch/character_recovery/deferred_transform_variables/gpu_validation_d3d11.json", "sha256": "34f195862a761240644c6bd4a41d9699be53d652381db75023e4812f43f63ca3", "log_path": "scratch/character_recovery/deferred_transform_variables/unity_frame_d3d11.log", "log_sha256": "d0270e239c71e8f48e1747f544788270335bbbc2c96ab1992f0b69bd7d937067", "beauty_sha256": "1753e0bd900dfc068e2604632122136a4abf047af0ef5ba9607f17abc8a27ec7"},
         "d3d12": {"path": "scratch/character_recovery/deferred_transform_variables/gpu_validation_d3d12.json", "sha256": "e3de8d0a02bc647034094c4ad02297bee13478f1e8f1d2d6d43c2fc41842d155", "log_path": "scratch/character_recovery/deferred_transform_variables/unity_frame_d3d12.log", "log_sha256": "56eee9315d7a0d0828de94eade5e1ebef56b9627bff3e078ee790519772f9622", "beauty_sha256": "59902c424de630a496364d57e404a5a72bcbcc42712bf7ef6935900d7500cac3"}
@@ -150,7 +182,7 @@
     "selected_span": "punctual matrices c64..c287, params c288..c343, params2 c344..c399, texel size c400",
     "isolated_rows": {"Wulfa": "spot slot 40", "Zhuangfy": "point slots 40..45"},
     "atlas": "6144x4096 D16 at T=1024",
-    "source_audit": {"path": "scratch/character_recovery/deferred_shadow_data/audit.json", "sha256": "2f9ba6db602f533ba13515bc97eb55a0a6f289dd5ece94565edad30c379926df"},
+    "source_audit": {"path": "scratch/character_recovery/deferred_shadow_data/audit.json", "sha256": "bb2d68e2e58344ee4d590a08b4e9fe629f90b46fa27744525dfa082083b50ef1"},
     "validation": {"d3d11_named_and_cb5_exact": true, "d3d12_named_and_cb5_exact": true, "unowned_sections_zero": true, "same_frame_spot_and_point_activation": true, "fail_closed": true, "wulfa_active_control_beauty_unchanged": true},
     "remaining_boundary": "general-scene/static-cache rows, non-punctual sections, retail physical identity and settled atlas pixels, runtime IFix/setting overrides, and pass 0 remain open"
   },
@@ -180,8 +212,8 @@
     "transport": {"canonical_words": 800, "d3d11_bridge_words": 628, "selected_vectors": 32, "unselected_vectors_zero": true, "c28_packing": "raw int32 bit patterns", "same_frame_prerequisites": "canonical binning/reflection/VisibilitySHConstData plus deferred TransformVariables"},
     "sources": {
       "contract": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredShaderVariablesGlobalContract.cs", "sha256": "6a9dba4552546da194db1d582c1a6232bd7026fa326aeb2aee1ee642eb1032bf"},
-      "owner": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredShaderVariablesGlobal.cs", "sha256": "d71b4c74f908397e35969c67eab2f38bb292612efe30de57e5cdf43fc327fdd8"},
-      "pipeline": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/HGCompatRenderPipeline.cs", "sha256": "2028e29eb90afc3b61c22b3534204edfec88e6d63a352e16aecbf8c112d2d9ac"},
+      "owner": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredShaderVariablesGlobal.cs", "sha256": "cb76a2eca9030f16e2899ff72b078edf8b58c1c868392e1d84fd7947a13353d9"},
+      "pipeline": {"path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/HGCompatRenderPipeline.cs", "sha256": "f921ffa65a753cd95ea401794ef6d63db1539a77e8c4729246a0e1cd79a0b4c1"},
       "probe": {"path": "Assets/EndfieldGraphShaderLab/Resources/EndfieldRecoveredShaderVariablesGlobalProbe.compute", "sha256": "48c22703ef2f4cb3f90550b96517a04d99d4ba35471a3770873391aca54d9a1f"},
       "batch_verifier": {"path": "Assets/EndfieldGraphShaderLab/Editor/CharacterRecovery/EndfieldRecoveredShaderVariablesGlobalBatchVerifier.cs", "sha256": "bbfbd5f1780a8d73eac2c82ae8e034b91f9b5c2d65faef633705241722180a08"},
       "validator": {"path": "tools/verify_shader_variables_global.py", "sha256": "dc737db2e8765230d9c2c0211bd72ef9ee35dc40f5db3baba11c952342ca4c2a"},
@@ -292,9 +324,9 @@
     "retail_shortlist_contract": {
       "status": "installed Windows desktop cap and SetupState shortlist source-closed",
       "audit_path": "Assets/EndfieldGraphShaderLab/Generated/OriginalData/CharInfoPresentation/light_cull_cap_recovery.json",
-      "audit_sha256": "14abfa9b65902792ed63a8bdfc5ac58fb6d8334a64d9ed942310f3ffeffc4f4b",
+      "audit_sha256": "c6c80b9e88ce40012df19eb7a6bbefc3c9da2679bf5c5f889039ea47883790bd",
       "auditor_path": "tools/audit_light_cull_cap.py",
-      "auditor_sha256": "e8410538037a503a387cd0563ad69e5be00b37002c884054a5521ef633fc4ecc",
+      "auditor_sha256": "bf2668f1d12c0c89dbe5075ff7427187ce5330881a35691399a2a51554250b30",
       "upstream_cull_max_count": 256,
       "desktop_punctual_light_max_count": 256,
       "accepted_visible_light_types": [0, 2],
@@ -305,9 +337,9 @@
     "gacha_authored_population_contract": {
       "status": "installed Lua/layers, decoded prefab population, ACL follower poses, and selected 16:9 authored geometry source-closed",
       "audit_path": "Assets/EndfieldGraphShaderLab/Generated/OriginalData/CharInfoPresentation/gacha_light_population_recovery.json",
-      "audit_sha256": "02e15c70197bcd96f804007fe042fcb46577c0014d956d78a28f2d96162e189a",
+      "audit_sha256": "0441ec4817e23a69c1162643d05ae0c2c9abd1acdd02cc76d7646f0363b5ecc8",
       "auditor_path": "tools/audit_gacha_light_population.py",
-      "auditor_sha256": "ba7cf8f631ddd4d601f6f1ad6d45ef5ec56b1f7aa7b0f242700fad0f10272f57",
+      "auditor_sha256": "52bd3354a33c83e99ac8c2b31f07ec7575846dc2eb17a5b04a2e1a7c482024e7",
       "character_id": "chr_0030_zhuangfy",
       "character_group": "light_overview",
       "room_group": "SceneLight6Rarity",
@@ -353,7 +385,7 @@
       "compute_path": "Assets/EndfieldGraphShaderLab/Resources/EndfieldRecoveredLightBinning.compute",
       "compute_sha256": "ae0e9953831cca53115ee2b4ab4d607b8983ecd3fe72ad1fd1e07a6cbd27778d",
       "owner_path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredLightBinning.cs",
-      "owner_sha256": "268e3dc02c4c7f19a8fbee2cf6dfc96f8fbc7297a647c146ff6a53a608f857fd",
+      "owner_sha256": "2dbaa1a1f000043979a66e5ac5311947984d84c10e01020c1db7082a1b2fab0c",
       "canonicalCombinedPublication": false
     },
     "canonical_combined_transport": {
@@ -406,7 +438,7 @@
         "source_cubemap_asset_path": "Assets/EndfieldGraphShaderLab/Generated/Environment/T_hdri_env_char_01.asset",
         "source_payload_sha256": "948f8d8dfb77e1b29171c4b04caaa679202e06624ab7be2203719e11ca6ee7b7",
         "runtime_pipeline_path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/HGCompatRenderPipeline.cs",
-        "runtime_pipeline_sha256": "60fb6e49cfbfb6b23764688e7b38ca0748b7ab182171896ceb33790400ad6d06",
+        "runtime_pipeline_sha256": "f921ffa65a753cd95ea401794ef6d63db1539a77e8c4729246a0e1cd79a0b4c1",
         "reflection_owner_path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredReflectionProbeFallback.cs",
         "reflection_owner_sha256": "1b7891f411de104ce6ad4bbeef5e89b4062fe9bc5278eed9fe59e6da1f723f5b",
         "lighting_volume_path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldHGRPCharacterLightingVolume.cs",
@@ -414,7 +446,7 @@
         "presentation_controller_path": "Assets/EndfieldGraphShaderLab/Runtime/Viewer/CharacterRecoveryPresentationController.cs",
         "presentation_controller_sha256": "84dcd78d29a0ec950470d362512cd235a41930f9d761691dcbb0c73785eccc99",
         "scene_setup_path": "Assets/EndfieldGraphShaderLab/Editor/CharacterRecovery/EndfieldManifestCharacterSetup.cs",
-        "scene_setup_sha256": "6cdb8a547c16e9587805690973bfa3f513a5f6fa666a5f3ac8f649912d824253",
+        "scene_setup_sha256": "125f66a1ecca1574735a4916d7753652ebfb9a6e694f3e0475c02cf7b9cfd2c6",
         "cubemap_importer_path": "Assets/EndfieldGraphShaderLab/Editor/CharacterRecovery/EndfieldRecoveredCharCubemapImporter.cs",
         "cubemap_importer_sha256": "f16c7179baba3acfa26705c7171419df7cda6534c29bce2ff66ae09984803369",
         "probe_path": "Assets/EndfieldGraphShaderLab/Resources/EndfieldRecoveredReflectionFrameProbe.compute",
@@ -568,7 +600,7 @@
     "status": "binary-source-closed for the selected disabled wetness and volumetric-fog texture paths; pass-0 publication remains default-off",
     "published": false,
     "audit_path": "scratch/character_recovery/charinfo_pass0_resources/deferred_resource_layouts.json",
-    "audit_sha256": "1a66d75359f48f065b5a891ca22b60dac0f2bb4ac5470f72f66891adfea461e6",
+    "audit_sha256": "0bad1e041d81c63a311ce65f6a97146ba61c38b313be9af5f76ec7cf91fd2836",
     "auditor_path": "scratch/character_recovery/charinfo_pass0_resources/audit_deferred_resource_bindings.py",
     "auditor_sha256": "7fcbb52cb45edb0a62e9cdd3ca1cb3f424d50f8be74d0a52f953c9a810be6f4e",
     "water_wetness_mask": {
@@ -647,9 +679,9 @@
       "contract_path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredVisibilitySHConstantsContract.cs",
       "contract_sha256": "0a7284c74ced96f88c37346d277aaebb0b5313b8b81a61e3d1f0d46b47696354",
       "owner_path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredVisibilitySHConstants.cs",
-      "owner_sha256": "5ef73bd512b9e4a7ad51af7b15565bb45962da8123280d44caca5754b987e597",
+      "owner_sha256": "74d2376fd24056d044bebf725c359ab5f406899c1e70ea46ce51063e29ab3209",
       "pipeline_path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/HGCompatRenderPipeline.cs",
-      "pipeline_sha256": "60fb6e49cfbfb6b23764688e7b38ca0748b7ab182171896ceb33790400ad6d06",
+      "pipeline_sha256": "f921ffa65a753cd95ea401794ef6d63db1539a77e8c4729246a0e1cd79a0b4c1",
       "probe_path": "Assets/EndfieldGraphShaderLab/Resources/EndfieldRecoveredVisibilitySHConstantsProbe.compute",
       "probe_sha256": "dbc1f765472cf60a4943cb921ef46c040d3682bad28b30604a60626e37ca1861",
       "verifier_path": "Assets/EndfieldGraphShaderLab/Editor/CharacterRecovery/EndfieldRecoveredVisibilitySHConstantsBatchVerifier.cs",
@@ -694,13 +726,13 @@
       "producer_path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredVisibilitySHProducer.cs",
       "producer_sha256": "c4d477dc95f02a7e09c5fdf09d06df1caed4eb448dafa02580dad36f4483a31a",
       "pipeline_path": "Assets/EndfieldGraphShaderLab/Runtime/Rendering/HGCompatRenderPipeline.cs",
-      "pipeline_sha256": "60fb6e49cfbfb6b23764688e7b38ca0748b7ab182171896ceb33790400ad6d06",
+      "pipeline_sha256": "f921ffa65a753cd95ea401794ef6d63db1539a77e8c4729246a0e1cd79a0b4c1",
       "shader_path": "Assets/EndfieldGraphShaderLab/Resources/EndfieldRecoveredVisibilitySH.shader",
       "shader_sha256": "5df7633dd265cef8b80257ec655f8e3211e78c45a2ac70e6024a752dd486fd45",
       "payload_path": "Assets/EndfieldGraphShaderLab/Resources/EndfieldRecoveredVisibilitySH/visibility_sh_runtime.json",
       "payload_sha256": "4665b740470dd19c514e37041accc951621370869d48a8a3d21d5d072ae2ae53",
       "native_audit_path": "scratch/character_recovery/visibility_capsule_runtime/visibility_capsule_runtime.json",
-      "native_audit_sha256": "2a68681336b4a83f350b19e7385aefe069021ae0d1303967677dfe34df9574ab",
+      "native_audit_sha256": "9238fa249b664c95e99c8bb560e657197038c489391ea20fcd1b9a3b9be8ff54",
       "validator_path": "tools/verify_visibility_sh_frame_log.py",
       "validator_sha256": "4a41bca62a0d6ba0e1cf756807d009098228f0679ba4ec28039bf6abf9106c89",
       "validator_test_path": "tools/test_verify_visibility_sh_frame_log.py",
@@ -721,7 +753,7 @@
       "gpu_reports": {
         "d3d11": {
           "path": "scratch/character_recovery/visibility_sh_frame/gpu_validation_d3d11.json",
-          "sha256": "8a8734463018da89fbb5f9f6e3ba04b65e135dba5de8be1f06cd1e5bba4d0695",
+          "sha256": "b67ddf5fe838fe1cfae5c08992a3b737df9ee86a3793979125859ff70b2d6f14",
           "log_path": "scratch/character_recovery/visibility_sh_frame/unity_validation_d3d11.log",
           "log_sha256": "f6744d9eb0174d22ad00c10dc578d7d854b8a7a160aacbec5b861c06695f942a",
           "beauty_path": "scratch/character_recovery/visibility_sh_frame/wulfa_beauty_d3d11.png",
@@ -729,7 +761,7 @@
         },
         "d3d12": {
           "path": "scratch/character_recovery/visibility_sh_frame/gpu_validation_d3d12.json",
-          "sha256": "5f2e3e9c5cb022218c408812e9e1e7b0c23b25c25235dc2340562118690d8164",
+          "sha256": "04f91f6af841ab6153f06ee70c5391bd2057030c68fabb0793505d3456232dd3",
           "log_path": "scratch/character_recovery/visibility_sh_frame/unity_validation_d3d12.log",
           "log_sha256": "d792e98801a092a08e98b5bdfb49b3a140b08b4ab60d72bfa23de7ba9228e678",
           "beauty_path": "scratch/character_recovery/visibility_sh_frame/wulfa_beauty_d3d12.png",
@@ -738,7 +770,7 @@
       },
       "fail_closed_report": {
         "path": "scratch/character_recovery/visibility_sh_frame/gpu_fail_closed_d3d12.json",
-        "sha256": "4258aa2ce670837e67c76499388351c3fb0f3753d723b98a2ed05ee55aae4ebe",
+        "sha256": "4480ad328015f094f82aac11f73fe114a9cfa41392e00f8bc4a1c372a75262a0",
         "log_path": "scratch/character_recovery/visibility_sh_frame/unity_fail_closed_d3d12.log",
         "log_sha256": "9319cbde1aaffb99f98e876c6d03bef23a7cc759a1ad866617526657bfa886e1",
         "gate": "canonical binning selector absent",
@@ -747,7 +779,7 @@
       }
     },
     "audit_path": "scratch/character_recovery/charinfo_pass0_resources/deferred_resource_layouts.json",
-    "audit_sha256": "1a66d75359f48f065b5a891ca22b60dac0f2bb4ac5470f72f66891adfea461e6",
+    "audit_sha256": "0bad1e041d81c63a311ce65f6a97146ba61c38b313be9af5f76ec7cf91fd2836",
     "properties": {
       "logSHLut": {
         "property": "_LogSHLutTex",
@@ -913,7 +945,7 @@
       }
     },
     "capsule_runtime_audit_path": "scratch/character_recovery/visibility_capsule_runtime/visibility_capsule_runtime.json",
-    "capsule_runtime_audit_sha256": "2a68681336b4a83f350b19e7385aefe069021ae0d1303967677dfe34df9574ab",
+    "capsule_runtime_audit_sha256": "9238fa249b664c95e99c8bb560e657197038c489391ea20fcd1b9a3b9be8ff54",
     "capsule_runtime_auditor_path": "scratch/character_recovery/visibility_capsule_runtime/audit_visibility_capsule_runtime.py",
     "capsule_runtime_auditor_sha256": "1b93f79236d28f42d3261c837fa40613706231a3dc7b2c562840b15eeeacd604",
     "capsule_runtime": {
@@ -2213,11 +2245,11 @@
           },
           "persistent_ifix_patch_overlay": {
             "name": "IFixPatchOut",
-            "block_version": 22764515,
+            "block_version": 23167343,
             "file_count": 1,
             "chunk_count": 1,
-            "byte_count": 82021,
-            "target_count": 30,
+            "byte_count": 86926,
+            "target_count": 32,
             "render_pipeline_settings_target_count": 0,
             "state_report": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Generated/OriginalData/CharInfoPresentation/installed_ifix_patch_state.json"
           }
@@ -2243,7 +2275,7 @@
         "The active render function selects HGRP/VisibilitySH pass 2, and its exact D3D11 vertex/fragment payloads and binding metadata are pinned.",
         "The pass-2 render state, constant-buffer layouts, fixed SH constants, and scale clamps are pinned.",
         "RenderScene's settings-object chain is pinned; retail defaults are enabled, interval 0.8, range 5.0, half-resolution enabled, tiled rendering disabled, and tile size 32.",
-        "The current installed route constructs the settings object once, has no direct caller of its replacement setter, and registers no VisibilitySH setting-hub callback. Its base IFixPatchOut block is empty; the active Persistent overlay has 30 exact Gameplay.Beyond targets, all disjoint from HG render-pipeline settings, so the constructor values are effective for this snapshot.",
+        "The current installed route constructs the settings object once, has no direct caller of its replacement setter, and registers no VisibilitySH setting-hub callback. Its base IFixPatchOut block is empty; the active Persistent overlay has 32 exact Gameplay.Beyond targets, all disjoint from HG render-pipeline settings, so the constructor values are effective for this snapshot.",
         "The half-resolution branch uses shader pass 0 to write min(Gather2x2(source depth)) into a fresh half-size depth attachment before pass 2 writes R16G16B16A16_SFloat."
       ],
       "still_open": [
@@ -2312,7 +2344,7 @@
         "StreamingInNewMapV2": [],
         "HGIrradianceVolumeManagerV2": []
       },
-      "installed_ifix_target_count": 30,
+      "installed_ifix_target_count": 32,
       "matching_installed_ifix_targets": [],
       "reload_escape_hatch": "ReloadIndexFileV2(rootPath) directly calls SetMap on m_defaultIV; its only absolute function-pointer occurrence is the IL2CPP method table, but generic reflection/external invocation remains an explicit runtime boundary",
       "native_missing_map": {
@@ -2562,7 +2594,7 @@
     "auditor_path": "scratch/character_recovery/charinfo_pass0_resources/audit_charinfo_irradiance_owner.py",
     "auditor_sha256": "e55b9642fcfab974239f72647e0733e6298b39a40e3790e967f36388299c3ac9",
     "v2_audit_path": "scratch/character_recovery/charinfo_pass0_resources/charinfo_v2_irradiance.json",
-    "v2_audit_sha256": "1f77756f536c394efcbfcd1d6d00fca9ed4b40e86f7cdad9c14cf7379af5a5b3",
+    "v2_audit_sha256": "6b6586d64a3c194c123168b7c47d7f88d00d9271d877102fff76c93f439b339c",
     "v2_auditor_path": "scratch/character_recovery/charinfo_pass0_resources/audit_charinfo_v2_irradiance.py",
     "v2_auditor_sha256": "fe9b1800b53b249ac67753af7eb3988aa701fa6c2469de2314ceaf884016ef08",
     "lua_index": {
@@ -2732,7 +2764,87 @@
       "isolated_execution_audit_sha256": "9ca5b321e0a31fb058d9043e328d222b492188f09e298167fc2df807620fa6a6",
       "isolated_execution_scope": "standalone_d3d11_isolated_diagnostic",
       "resource_binding_compatible": true,
-      "numeric_render_fidelity_proven": false
+      "numeric_render_fidelity_proven": false,
+      "d3d11_resource_registers": {
+        "source_path": "scratch/reverse_engineering/gacha_deferred_resolver_chain/pass0_pixel.asm.txt",
+        "source_sha256": "9c009a516031d1f5a35f39102bcef22ebc54b46e6359b41a4d644a904e9850ee",
+        "mapping_basis": "The exact selected pass-0 DXBC declaration/use sites are joined to the source-closed SPIR-V role table. Backend-local decompiler symbols are not treated as identities; only direct register/use semantics are admitted here.",
+        "registers": [
+          {
+            "register": "t0",
+            "kind": "StructuredBuffer",
+            "role": "_BinningBuffer",
+            "set": 3,
+            "binding": 39,
+            "confidence": "source-closed exact DXBC structured declaration and light-list consumer"
+          },
+          {
+            "register": "t1",
+            "kind": "Texture2D",
+            "role": "_CameraDepthTexture",
+            "set": 3,
+            "binding": 27,
+            "confidence": "source-closed depth reconstruction sample"
+          },
+          {
+            "register": "t5",
+            "kind": "Texture2DArray",
+            "role": "_ReflectionProbeOctTextureArray",
+            "set": 3,
+            "binding": 10,
+            "confidence": "source-closed array lookup with probe-slice selection"
+          },
+          {
+            "register": "t6",
+            "kind": "Texture2D",
+            "role": "_PunctualLightShadowTexV2",
+            "set": 3,
+            "binding": 11,
+            "confidence": "source-closed comparison-sampler PCF samples"
+          },
+          {
+            "register": "t7",
+            "kind": "Texture2D",
+            "role": "_LowResDirectionalShadow",
+            "set": 3,
+            "binding": 7,
+            "confidence": "source-closed integer Load used by directional-shadow response"
+          },
+          {
+            "register": "t22",
+            "kind": "Texture2D",
+            "role": "_HDPLSScreenSpaceShadowMask",
+            "set": 3,
+            "binding": 22,
+            "confidence": "source-closed screen-space character-shadow sample"
+          },
+          {
+            "register": "t23",
+            "kind": "Texture2D",
+            "role": "_GBufferTexture[2] / GBuffer C",
+            "set": 3,
+            "binding": 23,
+            "confidence": "source-closed base-color Load at the first GBuffer decode"
+          },
+          {
+            "register": "t24",
+            "kind": "Texture2D",
+            "role": "_GBufferTexture[1] / GBuffer B",
+            "set": 3,
+            "binding": 24,
+            "confidence": "source-closed octahedral-normal Load at the first GBuffer decode"
+          },
+          {
+            "register": "t25",
+            "kind": "Texture2D",
+            "role": "_GBufferTexture[0] / GBuffer A",
+            "set": 3,
+            "binding": 25,
+            "confidence": "source-closed metallic/occlusion/roughness Load at the first GBuffer decode"
+          }
+        ],
+        "unmapped_registers_remain_open": true
+      }
     }
   },
   "named_constant_buffers": [
@@ -2863,7 +2975,7 @@
         "contract_path": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredLightBinningConstantsContract.cs",
         "contract_sha256": "3aa329efd8fee08ed2db58f876043add5ca7a6a25c252871adf478cb88f2ba5b",
         "runtime_path": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredLightBinning.cs",
-        "runtime_sha256": "268e3dc02c4c7f19a8fbee2cf6dfc96f8fbc7297a647c146ff6a53a608f857fd",
+        "runtime_sha256": "2dbaa1a1f000043979a66e5ac5311947984d84c10e01020c1db7082a1b2fab0c",
         "probe_path": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Resources/EndfieldRecoveredLightBinningConstantsProbe.compute",
         "probe_sha256": "248d993c03bcb352b8d5c58349c9dc5810d94cd7ac582a52166e60c86b4fc755",
         "verifier_path": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Editor/CharacterRecovery/EndfieldRecoveredLightBinningConstantsBatchVerifier.cs",
@@ -3041,7 +3153,7 @@
         "contract_path": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredLightCookieDataContract.cs",
         "contract_sha256": "370d74f8042650a631e840e8a79eaad06b0c1436dd31002330b097668f930c3d",
         "runtime_path": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredLightBinning.cs",
-        "runtime_sha256": "268e3dc02c4c7f19a8fbee2cf6dfc96f8fbc7297a647c146ff6a53a608f857fd",
+        "runtime_sha256": "2dbaa1a1f000043979a66e5ac5311947984d84c10e01020c1db7082a1b2fab0c",
         "probe_path": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Resources/EndfieldRecoveredLightCookieDataProbe.compute",
         "probe_sha256": "43d59fd42711932d0bfc1061c82619f93a5da54fc23160606c625de87e775cbb",
         "verifier_path": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Editor/CharacterRecovery/EndfieldRecoveredLightCookieDataBatchVerifier.cs",
@@ -3092,9 +3204,9 @@
       ],
       "native_producer": {
         "audit_path": "scratch/reverse_engineering/hdpunctual_character_shadow_data/audit.json",
-        "audit_sha256": "8ae6250c6791bec8a5fd5b6ab5e31caeeebe00203cb3de30f0fe31e733ca7217",
+        "audit_sha256": "8bad5f4f977a52e7773342cfcaefd0666e550100a1a3cfe8a0acbd4544bed1c8",
         "auditor_path": "scratch/reverse_engineering/hdpunctual_character_shadow_data/audit_hdpls_character_shadow_data.py",
-        "auditor_sha256": "04f83381f55f63ce44334c15238e5563b27cb3fb1bce19060d0e5bf99ea98a39",
+        "auditor_sha256": "aa8528c58a9c98d2fe6eaff53d06c07fad8363bf6aa7f8d103a95097b2d937d1",
         "disassembler_path": "scratch/reverse_engineering/hdpunctual_character_shadow_data/disassemble_hdpls_manager.py",
         "disassembler_sha256": "8b086639d2b5231f2d33bd0aabd00d843bc148888e1ab3ebe0baec8e5ff6c75b",
         "native_disassembly_path": "scratch/reverse_engineering/hdpunctual_character_shadow_data/native_disassembly.json",
@@ -3142,11 +3254,11 @@
           "deferred_binding_22": "_HDPLSScreenSpaceShadowMask"
         },
         "installed_ifix_state_path": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Generated/OriginalData/CharInfoPresentation/installed_ifix_patch_state.json",
-        "installed_ifix_state_sha256": "b9ab981b65caa0b2a16d9603812c18236ad0aa5af255cb06614e7441cdef45d1",
+        "installed_ifix_state_sha256": "ca4e750748a6d0664a0b0abbed5f246116d239fb5a44aada67ab98521cc2cbe9",
         "installed_ifix_state": {
           "base_file_count": 0,
           "persistent_file_count": 1,
-          "persistent_target_count": 30,
+          "persistent_target_count": 32,
           "hdpls_target_count": 0,
           "current_route": "both recovered non-IFix branches",
           "future_patch_boundary": true

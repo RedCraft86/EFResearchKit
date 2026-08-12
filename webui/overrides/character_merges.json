@@ -16,7 +16,6 @@
     "panda": "dapan",
     "wisdom": "lifeng",
     "broomchck": "animal_broomchck",
-    "chenpast": "chen",
     "npc_chr_0002_endminm": "endmin",
     "npc_chr_0003_endminf": "endmin",
     "spl": "fiona",
@@ -43,7 +42,8 @@
     "deliverya": "jiefuli",
     "truckdriver": "feilipu",
     "knightchild3": "c28m1knightchild2_map01_v1d0d0_001",
-    "knightchild4": "c28m1knighchild4_map01_v1d0d0_001"
+    "knightchild4": "c28m1knighchild4_map01_v1d0d0_001",
+    "boynpc": "boy"
   },
   "flagged": [
     "talula"

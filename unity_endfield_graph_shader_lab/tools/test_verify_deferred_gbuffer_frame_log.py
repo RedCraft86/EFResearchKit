@@ -22,7 +22,10 @@ def ready_log() -> str:
             "camera=MainCamera, size=640x720, "
             "attachments=B10G11R11/A2B10G10R10/A2B10G10R10/"
             "A2B10G10R10/R8G8B8A8_SRGB+D32S8, "
-            "sourceRendererDisabled=True, pass0ConsumerEnabled=false."
+            "sourceRendererDisabled=True, "
+            "resolverGBufferBindings=t23:C,t24:B,t25:A, "
+            "resolverSourceIdentifiers=t23:_62,t24:_61,t25:_60, "
+            "pass0ConsumerEnabled=false."
         ),
     ]
     for role, expected in MODULE.EXPECTED_READBACKS.items():
@@ -38,6 +41,38 @@ def ready_log() -> str:
 
 
 class DeferredGBufferFrameLogTests(unittest.TestCase):
+    def test_producer_publishes_source_closed_resolver_gbuffer_aliases(self):
+        producer = (
+            Path(__file__).resolve().parents[1]
+            / "Assets/EndfieldGraphShaderLab/Runtime/Rendering/"
+            "EndfieldRecoveredDeferredGBufferFrame.cs"
+        )
+        source = producer.read_text(encoding="utf-8")
+        self.assertIn(
+            "command.SetGlobalTexture(ResolverGBufferT23Id, gBufferC)",
+            source,
+        )
+        self.assertIn(
+            "command.SetGlobalTexture(ResolverGBufferT24Id, gBufferB)",
+            source,
+        )
+        self.assertIn(
+            "command.SetGlobalTexture(ResolverGBufferT25Id, gBufferA)",
+            source,
+        )
+        self.assertIn(
+            "command.SetGlobalTexture(ResolverSourceTextureT23Id, gBufferC)",
+            source,
+        )
+        self.assertIn(
+            "command.SetGlobalTexture(ResolverSourceTextureT24Id, gBufferB)",
+            source,
+        )
+        self.assertIn(
+            "command.SetGlobalTexture(ResolverSourceTextureT25Id, gBufferA)",
+            source,
+        )
+
     def test_ready_frame_passes(self):
         report = MODULE.validate_log(
             ready_log(), "d3d12", Path("ready.log")

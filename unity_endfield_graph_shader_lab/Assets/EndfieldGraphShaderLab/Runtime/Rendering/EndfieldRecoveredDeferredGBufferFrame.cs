@@ -39,6 +39,27 @@ namespace EndfieldGraphShaderLab
             Shader.PropertyToID("_EndfieldRecoveredDeferredGBufferB");
         internal static readonly int GBufferCId =
             Shader.PropertyToID("_EndfieldRecoveredDeferredGBufferC");
+        // The selected original D3D11 resolver consumes the GBuffer in its
+        // backend register order C/B/A (t23/t24/t25), not the producer's
+        // logical A/B/C naming. Keep these aliases explicit so a future
+        // resolver consumer cannot silently swap the base-color and MRO
+        // attachments while the production pass remains disabled.
+        internal static readonly int ResolverGBufferT23Id =
+            Shader.PropertyToID("_EndfieldRecoveredDeferredResolverT23");
+        internal static readonly int ResolverGBufferT24Id =
+            Shader.PropertyToID("_EndfieldRecoveredDeferredResolverT24");
+        internal static readonly int ResolverGBufferT25Id =
+            Shader.PropertyToID("_EndfieldRecoveredDeferredResolverT25");
+        // The selected original SPIR-V/HLSL resolver names the same source
+        // textures _62 (t23/C), _61 (t24/B), and _60 (t25/A). Publish these
+        // exact identifiers alongside the lab-prefixed aliases so a future
+        // binding-compatible resolver can consume the source names directly.
+        internal static readonly int ResolverSourceTextureT23Id =
+            Shader.PropertyToID("_62");
+        internal static readonly int ResolverSourceTextureT24Id =
+            Shader.PropertyToID("_61");
+        internal static readonly int ResolverSourceTextureT25Id =
+            Shader.PropertyToID("_60");
         private static readonly int GpuViewProjectionId =
             Shader.PropertyToID(
                 "_EndfieldRecoveredDeferredGpuViewProjection");
@@ -60,6 +81,16 @@ namespace EndfieldGraphShaderLab
         private bool activationLogged;
         private bool failureLogged;
         private bool readbackRequested;
+        // Resolver inputs are a same-camera-frame publication.  Keeping the
+        // stamp beside the textures prevents a later camera (or a reused
+        // RenderTexture allocation) from being mistaken for the current
+        // target frame by the deferred consumer probe.
+        private bool publicationValid;
+        private int publishedFrame = -1;
+        private int publishedCameraInstanceId;
+        private int publishedWidth;
+        private int publishedHeight;
+        private uint publicationSerial;
 
         internal bool Requested => requested;
 
@@ -67,13 +98,16 @@ namespace EndfieldGraphShaderLab
         {
             requested =
                 ReadBooleanEnvironment(EnvironmentVariable) ||
-                HasCommandLineArgument(CommandLineArgument);
+                HasCommandLineArgument(CommandLineArgument) ||
+                EndfieldRecoveredDeferredResolverBindingPolicy.IsRequested;
             Shader.SetGlobalFloat(ReadyId, 0.0f);
+            InvalidatePublication();
             PublishBlackFallbacks();
         }
 
         public void Dispose()
         {
+            InvalidatePublication();
             ReleaseResources();
             Shader.SetGlobalFloat(ReadyId, 0.0f);
             PublishBlackFallbacks();
@@ -162,6 +196,15 @@ namespace EndfieldGraphShaderLab
                 command.SetGlobalTexture(GBufferAId, gBufferA);
                 command.SetGlobalTexture(GBufferBId, gBufferB);
                 command.SetGlobalTexture(GBufferCId, gBufferC);
+                // Source-closed selected pass-0 bridge: t23=C, t24=B,
+                // t25=A. These are diagnostic aliases only; no production
+                // resolver draw is enabled by this publication.
+                command.SetGlobalTexture(ResolverGBufferT23Id, gBufferC);
+                command.SetGlobalTexture(ResolverGBufferT24Id, gBufferB);
+                command.SetGlobalTexture(ResolverGBufferT25Id, gBufferA);
+                command.SetGlobalTexture(ResolverSourceTextureT23Id, gBufferC);
+                command.SetGlobalTexture(ResolverSourceTextureT24Id, gBufferB);
+                command.SetGlobalTexture(ResolverSourceTextureT25Id, gBufferA);
                 command.SetGlobalFloat(ReadyId, 1.0f);
                 RequestReadbacks(command, camera.name);
                 // This producer is a non-presented sidecar. Restore the exact
@@ -172,6 +215,7 @@ namespace EndfieldGraphShaderLab
                     canonicalDepthTarget);
                 command.SetViewport(new Rect(0.0f, 0.0f, width, height));
                 context.ExecuteCommandBuffer(command);
+                PublishFrame(camera, width, height);
             }
             finally
             {
@@ -186,6 +230,8 @@ namespace EndfieldGraphShaderLab
                     "attachments=B10G11R11/A2B10G10R10/A2B10G10R10/" +
                     "A2B10G10R10/R8G8B8A8_SRGB+D32S8, " +
                     "sourceRendererDisabled=" + (!renderer.enabled) + ", " +
+                    "resolverGBufferBindings=t23:C,t24:B,t25:A, " +
+                    "resolverSourceIdentifiers=t23:_62,t24:_61,t25:_60, " +
                     "pass0ConsumerEnabled=false.");
                 activationLogged = true;
             }
@@ -193,10 +239,70 @@ namespace EndfieldGraphShaderLab
             return true;
         }
 
+        internal bool TryGetResolverInputs(
+            Camera camera,
+            int width,
+            int height,
+            out RenderTexture resolverT23,
+            out RenderTexture resolverT24,
+            out RenderTexture resolverT25,
+            out uint resolverPublicationSerial,
+            out string failure)
+        {
+            resolverT23 = gBufferC;
+            resolverT24 = gBufferB;
+            resolverT25 = gBufferA;
+            resolverPublicationSerial = publicationSerial;
+            failure = string.Empty;
+            if (!requested)
+            {
+                failure = "deferred GBuffer sidecar selector is disabled";
+                return false;
+            }
+            if (camera == null)
+            {
+                failure = "resolver requested without a camera";
+                return false;
+            }
+            if (!publicationValid)
+            {
+                failure =
+                    "same-frame deferred GBuffer has not published resolver inputs";
+                return false;
+            }
+            int actualCameraInstanceId = camera.GetInstanceID();
+            int actualFrame = Time.frameCount;
+            if (publishedFrame != actualFrame ||
+                publishedCameraInstanceId != actualCameraInstanceId ||
+                publishedWidth != width ||
+                publishedHeight != height)
+            {
+                failure =
+                    "resolver input publication stamp mismatch: " +
+                    $"expected frame={actualFrame},camera={actualCameraInstanceId}," +
+                    $"size={width}x{height}; " +
+                    $"actual frame={publishedFrame},camera={publishedCameraInstanceId}," +
+                    $"size={publishedWidth}x{publishedHeight}," +
+                    $"serial={publicationSerial}";
+                return false;
+            }
+            if (resolverT23 == null || !resolverT23.IsCreated() ||
+                resolverT24 == null || !resolverT24.IsCreated() ||
+                resolverT25 == null || !resolverT25.IsCreated())
+            {
+                failure =
+                    "same-frame C/B/A resolver textures are unavailable " +
+                    $"for publication serial {publicationSerial}";
+                return false;
+            }
+            return true;
+        }
+
         private void FailClosed(
             ScriptableRenderContext context,
             string failure)
         {
+            InvalidatePublication();
             var command = new CommandBuffer
             {
                 name = "Fail-closed recovered deferred HGBuffer sidecar"
@@ -207,6 +313,12 @@ namespace EndfieldGraphShaderLab
             command.SetGlobalTexture(GBufferAId, Texture2D.blackTexture);
             command.SetGlobalTexture(GBufferBId, Texture2D.blackTexture);
             command.SetGlobalTexture(GBufferCId, Texture2D.blackTexture);
+            command.SetGlobalTexture(ResolverGBufferT23Id, Texture2D.blackTexture);
+            command.SetGlobalTexture(ResolverGBufferT24Id, Texture2D.blackTexture);
+            command.SetGlobalTexture(ResolverGBufferT25Id, Texture2D.blackTexture);
+            command.SetGlobalTexture(ResolverSourceTextureT23Id, Texture2D.blackTexture);
+            command.SetGlobalTexture(ResolverSourceTextureT24Id, Texture2D.blackTexture);
+            command.SetGlobalTexture(ResolverSourceTextureT25Id, Texture2D.blackTexture);
             context.ExecuteCommandBuffer(command);
             command.Release();
             if (!failureLogged)
@@ -517,6 +629,7 @@ namespace EndfieldGraphShaderLab
 
         private void ReleaseResources()
         {
+            InvalidatePublication();
             ReleaseTexture(sceneColor);
             ReleaseTexture(sceneMV);
             ReleaseTexture(gBufferA);
@@ -531,6 +644,29 @@ namespace EndfieldGraphShaderLab
             depthStencil = null;
             allocatedWidth = 0;
             allocatedHeight = 0;
+        }
+
+        private void PublishFrame(Camera camera, int width, int height)
+        {
+            publicationSerial = publicationSerial == uint.MaxValue
+                ? 1u
+                : publicationSerial + 1u;
+            publicationValid = true;
+            publishedFrame = Time.frameCount;
+            publishedCameraInstanceId = camera != null
+                ? camera.GetInstanceID()
+                : 0;
+            publishedWidth = width;
+            publishedHeight = height;
+        }
+
+        private void InvalidatePublication()
+        {
+            publicationValid = false;
+            publishedFrame = -1;
+            publishedCameraInstanceId = 0;
+            publishedWidth = 0;
+            publishedHeight = 0;
         }
 
         private static void ReleaseTexture(RenderTexture texture)
@@ -552,6 +688,12 @@ namespace EndfieldGraphShaderLab
             Shader.SetGlobalTexture(GBufferAId, Texture2D.blackTexture);
             Shader.SetGlobalTexture(GBufferBId, Texture2D.blackTexture);
             Shader.SetGlobalTexture(GBufferCId, Texture2D.blackTexture);
+            Shader.SetGlobalTexture(ResolverGBufferT23Id, Texture2D.blackTexture);
+            Shader.SetGlobalTexture(ResolverGBufferT24Id, Texture2D.blackTexture);
+            Shader.SetGlobalTexture(ResolverGBufferT25Id, Texture2D.blackTexture);
+            Shader.SetGlobalTexture(ResolverSourceTextureT23Id, Texture2D.blackTexture);
+            Shader.SetGlobalTexture(ResolverSourceTextureT24Id, Texture2D.blackTexture);
+            Shader.SetGlobalTexture(ResolverSourceTextureT25Id, Texture2D.blackTexture);
         }
 
         private static bool Approximately(float actual, float expected)
