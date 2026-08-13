@@ -3,8 +3,8 @@
 
 This is a source-contract gate, not a retail-parity claim.  It checks the
 selected fragment's five original MRT lanes against the source-shaped Unity
-sidecar and records the deliberately open runtime boundary (neutral motion,
-neutral packed flags, and no pass-0 presentation).
+sidecar and records the deliberately open runtime boundary (skinned/deformed
+motion history, packed flags, and no pass-0 presentation).
 """
 
 from __future__ import annotations
@@ -184,6 +184,16 @@ def validate_payload_contract(
             "float4 gBufferA : SV_Target2;",
             "float4 gBufferB : SV_Target3;",
             "float4 gBufferC : SV_Target4;",
+            "float4x4 _EndfieldRecoveredDeferredPreviousGpuViewProjection;",
+            "float4x4 _EndfieldRecoveredDeferredPreviousObjectToWorld;",
+            "float4 _EndfieldRecoveredDeferredMotionVectorsParams;",
+            "float4 previousPositionWS = mul(",
+            "cameraOnlyMotion =",
+            "output.currentClipXYW = currentClip.xyw;",
+            "output.previousClipXYW = previousClip.xyw;",
+            "float hasDeformation = step(",
+            "float allowMotion = step(",
+            "float motionValid = saturate(",
         ),
     )
     _check_count(
@@ -219,12 +229,23 @@ def validate_payload_contract(
         source=runtime_path,
         text=runtime_text,
         tokens=(
-            "command.SetGlobalTexture(ResolverGBufferT23Id, gBufferC)",
+            "command.SetGlobalTexture(ResolverGBufferT23Id, gBufferA)",
             "command.SetGlobalTexture(ResolverGBufferT24Id, gBufferB)",
-            "command.SetGlobalTexture(ResolverGBufferT25Id, gBufferA)",
-            "command.SetGlobalTexture(ResolverSourceTextureT23Id, gBufferC)",
+            "command.SetGlobalTexture(ResolverGBufferT25Id, gBufferC)",
+            "command.SetGlobalTexture(ResolverSourceTextureT23Id, gBufferA)",
             "command.SetGlobalTexture(ResolverSourceTextureT24Id, gBufferB)",
-            "command.SetGlobalTexture(ResolverSourceTextureT25Id, gBufferA)",
+            "command.SetGlobalTexture(ResolverSourceTextureT25Id, gBufferC)",
+            "PreviousGpuViewProjectionId,",
+            "PreviousObjectToWorldId,",
+            "MotionValidId,",
+            "MotionVectorsParamsId,",
+            "GetMotionVectorsParams(renderer)",
+            "MotionVectorGenerationMode.ForceNoMotion",
+            "MotionVectorGenerationMode.Camera",
+            "MotionVectorGenerationMode.Object",
+            "previousCameraInstanceId == camera.GetInstanceID()",
+            "previousRendererInstanceId == renderer.GetInstanceID()",
+            "previousFrame == Time.frameCount - 1",
             "pass0ConsumerEnabled=false",
         ),
     )
@@ -247,9 +268,9 @@ def validate_payload_contract(
     known_gaps = [
         {
             "check": "sidecar.scene_motion",
-            "status": "open",
-            "evidence": "sidecar uses neutral float4(0.5, 0.5, 0.0, 0.0)",
-            "meaning": "source motion equation is pinned, but live camera/deformation history is not",
+            "status": "partial",
+            "evidence": "sidecar transports previous camera/object clip history, derives Unity's managed MeshRenderer motion-vector mode, and evaluates the source signed fourth-root equation; first samples and discontinuities remain neutral",
+            "meaning": "the static MeshRenderer/Object validity path is closed for this source fixture, but native carry-in and skinned/deformed previous-position history remain open",
         },
         {
             "check": "sidecar.packed_flags",

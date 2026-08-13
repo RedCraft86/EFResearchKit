@@ -1222,7 +1222,7 @@ def match_levelscript_native_reading_popup_record(
         return None
     reading_popup_id = reading_popup_ids[0]
     try:
-        reading_rows = json.loads(reading_popup_path.read_text(encoding="utf-8"))
+        reading_rows = read_json_cached(reading_popup_path)
     except (OSError, json.JSONDecodeError):
         return None
     if not isinstance(reading_rows, dict):
@@ -1271,7 +1271,7 @@ def build_levelscript_unhosted_reading_popup_receiver_index(
     if not targets or not levelscript_root.is_dir():
         return {}
     try:
-        reading_rows = json.loads(reading_popup_path.read_text(encoding="utf-8"))
+        reading_rows = read_json_cached(reading_popup_path)
     except (OSError, json.JSONDecodeError):
         return {}
     if not isinstance(reading_rows, dict):
@@ -6854,7 +6854,7 @@ def build_entity_tracking_world_interactive_dialog_contexts(
                     })
 
     try:
-        registry = json.loads(world_entity_registry_path.read_text(encoding="utf-8"))
+        registry = read_json_cached(world_entity_registry_path)
     except (OSError, json.JSONDecodeError):
         return []
     raw_briefs = (
@@ -7705,7 +7705,7 @@ def build_levelscript_interactive_narrative_story_contexts(
     ):
         return list(_LEVELSCRIPT_INTERACTIVE_NARRATIVE_CACHE[cache_key])
     try:
-        reading_rows = json.loads(reading_popup_path.read_text(encoding="utf-8"))
+        reading_rows = read_json_cached(reading_popup_path)
     except (OSError, json.JSONDecodeError):
         reading_rows = {}
     if not isinstance(reading_rows, dict):
@@ -8211,7 +8211,7 @@ def build_leveldata_interactive_narrative_story_contexts(
     ):
         return list(_LEVELDATA_INTERACTIVE_NARRATIVE_CACHE[cache_key])
     try:
-        reading_rows = json.loads(reading_popup_path.read_text(encoding="utf-8"))
+        reading_rows = read_json_cached(reading_popup_path)
     except (OSError, json.JSONDecodeError):
         reading_rows = {}
     if not isinstance(reading_rows, dict):
@@ -9013,7 +9013,7 @@ def build_level_interactive_narrative_mission_story_contexts(
     Story ownership, quest causality, or chronology.
     """
     try:
-        reading_popup_rows = json.loads(reading_popup_path.read_text(encoding="utf-8"))
+        reading_popup_rows = read_json_cached(reading_popup_path)
     except (OSError, json.JSONDecodeError):
         return []
     if not isinstance(reading_popup_rows, dict):
@@ -9403,6 +9403,72 @@ def resolve_levelscript_dynamic_property_string(
         "evidence": (
             "LevelData/43.member22:LevelScriptBriefData/8.properties "
             "+ LevelScript ParamSource=200 path"
+        ),
+    }
+
+
+def resolve_levelscript_dynamic_property_string_list(
+    brief: dict | None,
+    binding: dict | None,
+) -> dict | None:
+    """Resolve one exact ``Param<List<string>>`` LevelScript property.
+
+    This is the list-valued counterpart of
+    :func:`resolve_levelscript_dynamic_property_string`.  It is intentionally
+    restricted to the current LevelScript property source, one uniquely named
+    value-type-8 property, and a non-empty sequence of text atoms.  The result
+    is an authored candidate set; a runtime list index still has to select one
+    member.
+    """
+    if not isinstance(brief, dict) or not isinstance(binding, dict):
+        return None
+    if (
+        binding.get("bindingKind") != "dynamic"
+        or binding.get("paramSource") != 200
+        or binding.get("idRef") != -1
+        or not isinstance(binding.get("path"), str)
+        or not binding["path"]
+    ):
+        return None
+    property_name = binding["path"]
+    matches = [
+        prop
+        for prop in brief.get("properties") or []
+        if isinstance(prop, dict) and prop.get("name") == property_name
+    ]
+    if len(matches) != 1:
+        return None
+    property_value = matches[0].get("value")
+    if not isinstance(property_value, dict):
+        return None
+    atoms = property_value.get("atoms")
+    if not (
+        property_value.get("valueType") == 8
+        and isinstance(property_value.get("atomCount"), int)
+        and property_value["atomCount"] > 0
+        and isinstance(atoms, list)
+        and len(atoms) == property_value["atomCount"]
+        and all(
+            isinstance(atom, dict)
+            and isinstance(atom.get("text"), str)
+            and bool(atom["text"])
+            and isinstance(atom.get("valueBit64"), int)
+            for atom in atoms
+        )
+    ):
+        return None
+    values = [atom["text"] for atom in atoms]
+    return {
+        "values": values,
+        "propertyName": property_name,
+        "propertyValueType": 8,
+        "propertyAtomCount": len(atoms),
+        "propertyAtomValueBit64s": [atom["valueBit64"] for atom in atoms],
+        "resolutionMode": "exact_levelscript_brief_property_string_list",
+        "selectionStatus": "runtimeListIndexUnobserved",
+        "evidence": (
+            "LevelData/43.member22:LevelScriptBriefData/8.properties "
+            "+ LevelScript ListGetValueString ParamSource=200 path"
         ),
     }
 
@@ -10003,7 +10069,7 @@ def build_npc_patrol_checkpoint_mission_contexts(
     producers remain visible as evidence rather than activation claims.
     """
     try:
-        registry_raw = json.loads(registry_path.read_text(encoding="utf-8"))
+        registry_raw = read_json_cached(registry_path)
     except (OSError, json.JSONDecodeError):
         return []
     registry_briefs = (
@@ -10495,7 +10561,7 @@ def build_mission_tracked_world_entity_levelscript_contexts(
     if receiver_family not in {"leader", "stage"}:
         return []
     try:
-        registry_raw = json.loads(registry_path.read_text(encoding="utf-8"))
+        registry_raw = read_json_cached(registry_path)
     except (OSError, json.JSONDecodeError):
         return []
     registry_briefs = (
@@ -11363,7 +11429,7 @@ def build_npc_proxy_segment_script_host_index(
 
     registry_path = GAMEPLAY_CONFIG_DIR / "WorldEntityRegistry.json"
     try:
-        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        registry = read_json_cached(registry_path)
     except (OSError, json.JSONDecodeError):
         return {}
     brief_infos = (

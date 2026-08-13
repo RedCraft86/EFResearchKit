@@ -805,6 +805,9 @@ LEVELSCRIPT_NATIVE_FMV_ACTION_MAPPING_ID = (
 LEVELSCRIPT_NATIVE_AUDIO_ACTION_MAPPING_ID = (
     "gameassembly-2026-08-09-memorypack-audio-action-fields"
 )
+LEVELSCRIPT_NATIVE_LIST_GET_VALUE_STRING_MAPPING_ID = (
+    "gameassembly-2026-08-11-memorypack-list-get-value-string-fields"
+)
 NOISY_PROPERTY_PREFIXES = (
     "$",
     "#",
@@ -6399,6 +6402,62 @@ def _decode_audio_entity_param(payload: bytes, cursor: int) -> tuple[dict[str, A
     return detail, end
 
 
+def _decode_list_get_value_string(payload: bytes) -> dict[str, Any]:
+    """Decode the installed ``ListGetValueString`` getter fields.
+
+    The generated formatter writes the inherited getter fields first, then
+    ``_index`` and ``_list``.  Current direct native setter mapping proves the
+    final two fields and the complete active overlay contains two instances of
+    this union.  Their index getter starts with the same zero marker followed
+    by the shared idRef/source/path tail; the list is the ordinary
+    ``Param<List<string>>`` wire shape.
+    """
+    if not payload or payload[0] != 0:
+        return {}
+    index_tail = _decode_audio_param_tail(payload, 1)
+    if index_tail is None:
+        return {}
+    index_binding, cursor = index_tail
+    list_decoded = _decode_string_collection_param(payload, cursor)
+    if list_decoded is None:
+        return {}
+    list_binding, end = list_decoded
+    if end != len(payload):
+        return {}
+
+    if (
+        isinstance(index_binding.get("idRef"), int)
+        and index_binding["idRef"] >= 0
+        and index_binding.get("paramSource") == -1
+        and index_binding.get("path") is None
+    ):
+        index_binding = {
+            **index_binding,
+            "bindingKind": "localGetterRef",
+            "getterLocalId": index_binding["idRef"],
+        }
+    else:
+        index_binding = {**index_binding, "bindingKind": "dynamic"}
+
+    list_binding = {
+        **list_binding,
+        "bindingKind": (
+            "constant"
+            if list_binding.get("idRef") == -1
+            and list_binding.get("paramSource") == 0
+            and list_binding.get("path") is None
+            else "dynamic"
+        ),
+    }
+    return {
+        "index": index_binding,
+        "list": list_binding,
+        "consumedBytes": end,
+        "payloadShape": "list-get-value-string-exact-current-build-memorypack-fields",
+        "nativeMappingId": LEVELSCRIPT_NATIVE_LIST_GET_VALUE_STRING_MAPPING_ID,
+    }
+
+
 def _decode_announce_audio_target_param(
     payload: bytes,
     cursor: int,
@@ -6880,8 +6939,6 @@ def _decode_audio_action(
             ("startEvent", "standaloneStart"),
             ("stopEvent", "standaloneStop"),
         ),
-        "PlayVoice": (("voId", "voice"),),
-        "PlayVoiceNarrative": (("voId", "voiceNarrative"),),
         "PostAudioStatusEvent": (
             ("statusEnterEvent", "statusEnter"),
             ("statusExitEvent", "statusExit"),
@@ -6904,6 +6961,25 @@ def _decode_audio_action(
                 "eventName": value,
                 "role": role,
                 "sourceField": field["sourceField"],
+            })
+    voice_bindings = []
+    for field_name, role in {
+        "PlayVoice": (("voId", "voice"),),
+        "PlayVoiceNarrative": (("voId", "voiceNarrative"),),
+    }.get(action_name, ()):
+        field = fields[field_name]
+        value = field.get("value")
+        if (
+            field.get("bindingKind") == "constant"
+            and isinstance(value, str)
+            and value
+        ):
+            voice_bindings.append({
+                "voiceId": value,
+                "role": role,
+                "sourceField": field["sourceField"],
+                "identityKind": "AudioDialogPathStem",
+                "wwiseEventStatus": "notApplicable",
             })
     cue_bindings = []
     if action_name.startswith("PostAudioCue"):
@@ -6938,6 +7014,7 @@ def _decode_audio_action(
         "action": action_name,
         "fields": fields,
         "eventBindings": event_bindings,
+        "voiceBindings": voice_bindings,
         "cueBindings": cue_bindings,
         "radioBindings": radio_bindings,
     }))
@@ -7215,6 +7292,10 @@ def decode_levelscript_record_payload(
         switch_string = _decode_switch_string_action(payload)
         if switch_string:
             out.update(switch_string)
+    if getter_role and semantic_key == (0x0347, 0x09):
+        list_get_value_string = _decode_list_get_value_string(payload)
+        if list_get_value_string:
+            out["listGetValueString"] = list_get_value_string
     if semantic_key == (0x04F9, 0x0E):
         wait_trigger_volume = _decode_wait_for_seconds_in_trigger_volume_action(
             payload

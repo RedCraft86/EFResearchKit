@@ -197,42 +197,46 @@ NPC archetypes are imported as labeled source kits.
   retail target-frame resource ownership and numeric parity remain open.
   This proves exact bytecode execution in the disposable D3D11 fixture only,
   not retail resolver activation or frame parity.
-- The deferred resolver input boundary is now exercised by the actual
-  same-camera D3D11/D3D12 compatibility frames, not only by source gates. The GBuffer
-  producer stamps camera instance, `Time.frameCount`, extent, and a monotonic
-  publication serial; the consumer rejects stale or cross-camera resources
-  with an actionable fail-closed reason. Both backend runs reached the recovered
-  punctual shadow producer (D16 atlas `6144x4096`, 23 caster draws), published
-  b34, consumed `_62/_61/_60` as `t23/t24/t25`, and read back `7,372,800`
-  bytes with `5,524,150` nonzero bytes (`publicationSerial=1`) and matching
-  resolver payload counts. This remains
-  input-order evidence only: the probe is non-presented and retail pass 0 is
-  disabled; full numeric lighting parity and retail survivor ownership remain
-  open. The run's legacy beauty-image hash check drifted independently and is
-  not used as resolver evidence.
-- The selected pass-0 contract now carries a high-confidence D3D11 register
-  bridge for the core frame resources: `t0` binning, `t1` camera depth, `t5`
-  reflection-probe array, `t6` punctual shadow comparison, `t7` low-res
-  directional shadow, `t22` HDPLS screen shadow, and `t23/t24/t25` GBuffer
-  C/B/A, joined to their source-closed set-3 bindings. Backend-local
-  decompiler symbol names are deliberately not used as identity; unmapped
-  registers remain open. This removes a binding guess from the next resolver
-  integration step, but does not enable pass 0 or claim live-frame parity.
-- The same-frame SphereOutside GBuffer sidecar now publishes explicit resolver
-  aliases `t23=C`, `t24=B`, `t25=A` and the exact selected source identifiers
-  `_62`/`_61`/`_60` for `t23`/`t24`/`t25`; the log validator locks both
-  orderings and fail-closed paths clear every alias to black. This is only a
-  resource bridge for the next consumer integration step, so the sidecar
-  remains non-presented and pass 0 remains disabled.
-- The next consumer boundary is now executable under the explicit
-  `ENDFIELD_RECOVERED_DEFERRED_RESOLVER_INPUT_PROBE` selector. It opts the
-  source-closed b30/b35/b31/b34 publishers into one frame, publishes exact
-  D3D11 bridge aliases b3 (`EndfieldCB3`), b7 (`EndfieldCB7`), and b8
-  (`EndfieldCB8`), supplies a zero/fail-closed b6 fallback, and reads the
-  private output in the original `_62(t23=C)` / `_61(t24=B)` / `_60(t25=A)`
-  order. The probe restores the camera target and never presents or enables
-  retail pass 0; target-frame survivor bindings, nonzero HDPLS/cookie data,
-  and the full lighting consumer remain open.
+- The deferred resolver input boundary is exercised by actual same-camera
+  D3D11/D3D12 compatibility frames. The producer stamps camera, frame, extent,
+  and publication serial; stale or cross-camera inputs fail closed. The exact
+  D3D11 compact register audit now covers all `t0..t25`: `t11` is the source
+  screen-space shadow mask, `t22` is wetness, and `t23/t24/t25` are GBuffer
+  A/B/C (`_60/_61/_62`). This corrects the former C/B/A and t22-HDPLS guess;
+  source set-3 binding numbers are not D3D11 register numbers.
+- The same-frame SphereOutside sidecar publishes resolver aliases `t23=A`,
+  `t24=B`, `t25=C` and source identifiers `_60/_61/_62`; validators and the
+  generated binding contract lock this order. The sidecar remains non-presented
+  and retail pass 0 remains disabled.
+- `ENDFIELD_RECOVERED_DEFERRED_EXACT_CONSUMER=1` now submits the exact selected
+  resolver DXBC against the corrected same-frame slots into a private D3D11
+  output. Two runs reproduce `resourceMask=0x3ffffff`,
+  `resourceFailureMask=0`, `constantBufferMask=0x1ff`, all 1,843,200 floats
+  finite, and the corrected stable RGBA-float SHA-256
+  `b93a4b5a38c96133bf6f0fa95e7ecb5b6fee9a0c46b48b7a85d3dfbf8b34d8c2`
+  (`nonzeroBytes=6,441,402`, min `0.3043011`, max `1`). This proves exact
+  shader execution and corrected resource transport only; numerical lighting
+  comparison, settled retail pixels, and pass-0 presentation remain open.
+- The exact consumer now feeds the source-backed Multiscattering LUT at t10,
+  zero-cookie LightCookie black at t12, disabled-volumetric-fog 1x1x1 ASTC
+  black at t13, same-frame screen-shadow at t11, and the VisibilitySH
+  producer's exact LogSH LUT and half-resolution output at t14/t15. Missing
+  t14/t15 still fails closed instead of silently selecting a neutral fallback.
+  The latest D3D11 runs log the nine source-backed/closed slots plus the six
+  inactive-V2 zero-result slots t16–t21 and produce stable hash
+  `04f18f095e02b9d2dfcb2263bd6051e988594b4cf82eb264f402482d9be9eae2`.
+  It also uses the source-closed inactive HDPLS white fallback at t8, the
+  null-CharInfo black CSM ramp at t9, and the disabled-wetness white fallback
+  at t22. Only t2/t3/t4 remain generic fallback slots. The current
+  `EndfieldRecoveredDeferredExactConsumer` labels t16–t21 as
+  `IrradianceV2:zero-inactive-fallback`: this mirrors the source-closed
+  missing-map result's shared 1×1×1 zero texel for the inactive fixture, but
+  does not claim a live atlas. A direct AnimeStudio `stream --block-type iv`
+  probe re-read the shipped Gacha V3 index (1,008 bytes) and payload
+  (1,399,240 bytes, SHA-256
+  `ccba259839d3b91cf9d32c2edce1d672eb82f489c7aae33014982aa310b351b4`); the
+  complete IV inventory still contains zero `/aiTest/index.bytes` files, so
+  that legacy Gacha payload remains explicitly barred from CharInfo V2.
 - A default-off SphereOutside sidecar now uses the source CharInfo camera and
   transform to produce the exact logical 640x720 SceneColor/SceneMV/GBuffer
   A/B/C formats plus D32S8. All five readbacks are bit-identical on D3D11 and
@@ -244,9 +248,20 @@ NPC archetypes are imported as labeled source kits.
   the Skin PreGBuffer audit: vertex `TEXCOORD_5` carries current clip x/y/w and
   `TEXCOORD_6` carries the separately generated previous clip x/y/w; the
   fragment computes the same signed fourth-root deltas, then blends them with
-  the source motion-validity mask (`Target1.z/w`). The current SphereOutside
-  sidecar still emits neutral SceneMV and remains non-presented; publishing
-  motion requires the original previous deformation/target-frame state.
+  the source motion-validity mask (`Target1.z/w`). The default-off
+  SphereOutside sidecar now transports the preceding camera VP and
+  object-to-world matrices and emits this source-shaped SceneMV for settled
+  adjacent same-camera/same-renderer samples using the source non-jittered
+  projection; first samples and discontinuities remain neutral. Reflection
+  metadata still exposes native
+  `unity_MatrixPreviousM`, `_PrevNonJitteredViewNoTransProjMatrix`, and
+  `unity_MotionVectorsParamsInternal`. The recovered MeshRenderer now derives
+  Unity's managed motion-vector tuple explicitly: SphereOutside's serialized
+  `MotionVectorGenerationMode.Object` maps to `(x,y,z,w)=(0,1,0,1)`, while
+  Camera and ForceNoMotion are fail-closed alternatives. The shader selects
+  current object history for camera-only mode and suppresses unsupported
+  deformed-position history, so the static Object producer is closed without
+  claiming native previous-history carry-in or skinned/deformed parity.
   The verifier also pins the remaining source MRT payload: `Target2.x/y/z/w`
   carry the sampled MRO/porosity/packed-flag lanes, `Target3.z/w` carry the
   sampled mask and low packed flags beside octahedral normal xy, and
@@ -254,9 +269,571 @@ NPC archetypes are imported as labeled source kits.
   source equations are now evidence-closed. The maintained
   `verify_deferred_gbuffer_payload_contract.py` gate passes all nine producer,
   sidecar, alias, and material checks and reports the remaining three open
-  boundaries explicitly: live motion history, packed-flag inputs, and retail
-  pass-0 publication. The runtime sidecar still does not publish these lanes
-  through the retail deferred resolver.
+  boundaries explicitly: native history/deformation inputs, packed-flag
+  inputs, and retail pass-0 publication. The runtime sidecar still
+  does not publish these lanes through the retail deferred resolver.
+- The packed-flag consumer remains closed against the refreshed installed
+  GameAssembly/metadata (metadata SHA-256
+  `90c58e26e87c7227a85dda3fedf6ce5ed0b06dc1f76e0abbe75ab20750adf97e`). The
+  original fragment and generated DXBC read an independent `register(b3)`
+  one-vector buffer (`cb3[0].w`), then split its integer bits into `Target2.w`
+  and `Target3.w`. The earlier producer census was incomplete: native
+  `Beyond.Rendering.CustomPerDrawDataChannelUtils.SetPerDrawData_CharacterParams`
+  copies a Vector4 unchanged into renderer custom-per-draw channel
+  `CHARACTER_PARAMS_INDEX=2`, and `EntityRenderHelperMaterialController` has
+  matching `TrySetCharacterPerDrawData`/controller forwarding. The recovered
+  Unity API contract is `Renderer.SetCustomPerDrawData(int, Vector4)`, with a
+  logical typed index; native producer disassembly independently confirms
+  character params and lit emissive use index 2, emissive-albedo/dissolve and
+  VFX alpha use index 4, and Houdini/UV/trail scan use index 3. This recovers a
+  source-backed character per-draw producer and proves the runtime slot ABI.
+  A current GameAssembly body audit tightens that producer contract:
+  `SetPerDrawData_CharacterParams` at `0x18323af00` copies the incoming
+  Vector4 to a 16-byte stack temporary, passes `edx=2`, `rcx=affectRenderer`,
+  and `r8=&temporary` to a lazy indirect renderer setter slot (`0x18f36f578`).
+  That slot is the same one read by the generated
+  `Renderer.SetCustomPerDrawData_Injected` wrapper (`0x183e6e280`), which
+  forwards `rcx/edx/r8` to UnityPlayer's registered internal call.
+  The body has no compute dispatch, buffer bind, or resource `+0xd0` access;
+  it ends at the renderer custom-per-draw API. This confirms the channel-2
+  producer boundary while leaving the resource-to-GPU upload edge open.
+  The original DXBC has no RDEF and the shipped fragment metadata is a
+  stale vertex copy. A refreshed targeted AnimeStudio export with bytecode
+  sidecars now closes the shader-side half independently: the raw Vulkan
+  HGBuffer fragment declares the equivalent uniform at descriptor set 0,
+  binding 33 as a four-float block and accesses member index 3 (`w`) before
+  the packed-bit extraction. The D3D11 fragment sidecar is stage-confirmed
+  but still RDEF-less; the binary Vulkan descriptor/access chain is the
+  authoritative cross-platform reflection. The remaining gap is channel 2
+  into Unity's resource binding, not the cb3 component itself. The durable audit is
+  `Generated/OriginalData/CharInfoPresentation/packed_flags_producer_recovery.json`.
+  Installed metadata also closes the producer's packed layout: controller type
+  values 8/16/24/32 (rain, wet, wet-global, snow) quantize into byte lanes at
+  bits 8/16/24/32 (`CHANNELS_PER_PARAM=4`, bias 8), while type 1 and type 3
+  write `customPerDrawData0.y/w`; type >=4 writes the reinterpreted packed word
+  to `customPerDrawData0.x` before forwarding channel 2. Native offsets are
+  controller field `m_characterEnvironmentEffectPackedValue +0x18` and
+  renderer-info `customPerDrawData0 +0x48`, with quantizer `0x182f3ea70`.
+  UnityPlayer now closes the native setter/getter storage ABI independently.
+  Its internal-call registration pair maps
+  `UnityEngine.Renderer::SetCustomPerDrawData_Injected` to native
+  `0x1800fe590` (UnityPlayer SHA-256
+  `b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2`).
+  That registration target is a lazy/error-handling stub whose successful path
+  calls implementation body `0x180430680`. The body accepts only indices
+  `0..4`, writes the Vector4 to
+  `nativeRenderer + 0x140 + 0x10*index` (channel 2 therefore `+0x160`), then
+  conditionally mirrors it to the returned per-draw resource at
+  `+0xb0 + 0x10*index` (channel 2 `+0xd0`). `GetCustomPerDrawData_Injected`
+  `GetCustomPerDrawData_Injected` implementation `0x18042db70` reads the same
+  five-slot renderer formula, and `GetCustomPerDrawDataPtr` returns the
+  `+0x140` base on its successful path. This proves the channel-2 native
+  storage/resource layout rather than merely the managed forwarding path. An
+  independent UnityPlayer refresh path at `0x18042f750` resolves the same
+  resource and copies all five renderer vectors (`renderer +0x140..+0x180`) to
+  its contiguous five-vector array (`resource +0xb0..+0xf0`); its callers at
+  `0x18042c947` and `0x18042d692` cover renderer registration and create/rebuild
+  paths. This closes the shared five-slot resource layout and reconfirms channel
+  2 at `resource +0xd0`, but the resource-to-descriptor upload remains open. Do
+  not treat the sidecar
+  metadata label `_TerrainSubsurfaceConstants` as a recovered source name: it
+  is inherited from the serialized parameter record, while raw Vulkan binding
+  33/member 3 is the stable fact. Keep this channel-to-resource edge fail
+  closed.
+  An exhaustive direct-call census for UnityPlayer resolver `0x1804255f0`
+  (26 call sites) found only the setter and refresh paths as confirmed writers
+  of the custom five-slot array. The related renderer-list helpers
+  `0x1810ccd20` and `0x1810d2fc4/0x1810d2fd9` copy generic 0x80-byte resource
+  blocks between records but expose no custom-channel or descriptor identity.
+  A follow-up sample of the remaining resolver callers separates more false
+  positives: `0x18051304f/0x18051c938/0x18051d3e0` only update renderer-list
+  metadata (`+0x4c/+0x50/+0x54`), `0x1810417fa` and its sibling constructors
+  initialize fixed four-vector records, and
+  `0x180bcb760/0x180bccb60/0x180bcd7ab/0x1810d00aa` prepare ordinary
+  lighting/material records. None of the inspected bodies reads resource
+  `+0xd0` or calls a descriptor/constant-buffer upload primitive. The explicit
+  `MaterialPropertyBlock` routes (`0x1800be830 -> 0x1805d5280`,
+  `0x1800befb0 -> 0x1805d5870`, `0x1800bf780 -> 0x1805d5850`) and global
+  buffer routes (`0x18011ba30 -> 0x1804b5960`,
+  `0x18011c7c0 -> 0x1804b59a0`) likewise have no call edge from
+  `SetCustomPerDrawData_Injected`, its refresh path, or resolver
+  `0x1804255f0`. This closes additional false-positive writers; the structured
+  details are in `packed_flags_producer_recovery.json` under
+  `secondary_callsite_followup`.
+  A broader fixed-offset scan also found `0x1810d26bf` writing a generic
+  destination record at `+0xb0..+0xf0`, including `+0xd0`. Its source is a
+  separate `0x8c`-stride component array with flags at `+0x70`; the body only
+  stages paired generic records and has no custom-per-draw setter/refresh,
+  resource identity, or descriptor/constant-buffer edge. The equal
+  displacement is therefore a negative audit result, not a newly recovered
+  channel-2 binding.
+  The same function RVA appears only as paired 32-bit function/metadata records
+  (`0x10d26bf` / `0x204a398`) in the installed `.rdata` and matching `.tvm0`
+  tables (`0x18204a3d8/0x18204a3e8` and `0x1824d1058/0x1824d1060`); no direct
+  UnityPlayer `.text` call or RIP reference targets it or those records. This
+  is consistent with table-driven Burst/job dispatch, but adds no
+  custom-resource or GPU descriptor identity. The durable details are recorded
+  in `packed_flags_producer_recovery.json` under `burst_table_followup`.
+  No inspected UnityPlayer path reads `resource +0xd0` (or an equivalent vector
+  lane) into a constant-buffer/descriptor binding, and no direct call edge names
+  Vulkan set 0/binding 33. Keep the channel-to-resource-to-GPU edge open.
+  The installed UnityPlayer GPU-driven internal-call table is now mapped as a
+  separate negative audit. V1 frame/buffer entrypoints are
+  `0x1801e9200/0x1801e9280/0x1801e9360/0x1801e93a0/0x1801e9480`, and V2 uses
+  `0x1801e98f0/0x1801e9970/0x1801e9a50/0x1801e9a90/0x1801e9b70`. The most
+  tempting V2 candidate, `0x1810fb5a0`, enumerates
+  `[gpuDrivenState +0xa0..+0xd0]` where `gpuDrivenState = [this+0x68]`, then
+  passes each lane to generic indexed binder `0x1805f84a0`; that helper checks
+  command-context capacity at its own `+0xd0`. No edge aliases this array to
+  the `0x1804255f0` custom-per-draw resource, so it is GPU-driven buffer/property
+  binding rather than the missing channel-2 descriptor consumer. The durable
+  entrypoint/candidate audit is recorded in
+  `Generated/OriginalData/CharInfoPresentation/packed_flags_producer_recovery.json`;
+  the resource-to-descriptor edge remains fail-closed.
+  The current installed `HGRenderPipelineRuntimeResources.shaders`
+  serialization now closes the positive object edge for the GPU carrier:
+  `gpuSceneDirtyUpdateCS` (field index `173512`, token `0x040017f7`) resolves to
+  ComputeShader PathID `9129651272751059356`, explicitly named
+  `GpuSceneDirtyUpdateCS`, from the current Persistent chunk
+  `36243F039A1BFD05676B5D323B50D4AA.chk` at offset `4105822`. Its only
+  renderer-21/level-0 variant contains eight kernels; `UploadPerDrawParams` is
+  kernel index 7. That kernel reads `_UploadBuffer` records with an 84-byte
+  stride (a leading index plus five 16-byte lanes) and writes the five lanes to
+  `_DstPerDrawParamsBuffer` with an 80-byte stride, using
+  `GpuSceneUploadConstants._UploadBufferOffset` and `_EntryCount` and a
+  `[64,1,1]` dispatch. The raw ComputeShader hash remains
+  `0202830400d56f224dd45c43f2ff1cdfe848272509ae8663cccfa1abd0351f36`, so the
+  earlier byte-level contract is current rather than a stale object path.
+  This closes the serialized resource-to-object-to-kernel identity, but not the
+  native dispatch selection: the native bridge still does not prove that a
+  particular call supplies this object and kernel 7, and the shader has no
+  renderer/resource identity, custom channel index, resource `+0xd0`, or
+  binding-33 label. No native edge from `SetCustomPerDrawData_Injected` or
+  `0x18042f750` to the upload-buffer producer has been recovered. Details are
+  recorded under `gpu_scene_upload_kernel_evidence` in the packed-flag audit;
+  keep channel 2 to GPU descriptor binding fail-closed.
+  The managed/native initialization chain for that GPU carrier is now also
+  closed. Installed metadata identifies the public static
+  `HGShadingStateSystem.SetupGpuSceneUploadCs(ComputeShader)` method (index
+  477986); its IL2CPP wrapper is `GameAssembly!0x1839454d0`, and the
+  `HGRenderPipeline` constructor (native `0x183947230`, callsite
+  `0x183948786`) loads a ComputeShader from the object chain
+  `[returned+0x18]+0x638` before calling it. UnityPlayer internal-call
+  implementation `0x1801ee4c0` uses four calls to the IL2CPP GC write-barrier
+  slot `0x1821be708` (resolved at `0x18077c055` from the literal
+  `il2cpp_gc_wbarrier_set_field`) to maintain managed pointer locals, then
+  consults the RuntimeInitializeOnLoadManager pointer table and conditionally
+  reads the wrapper's native handle at `+0x10`. `HGRayTracingScene.SetupGpuSceneUploadCs`
+  shares that native implementation. These calls are not CFG dispatch calls and
+  do not identify a ComputeShader kernel or upload producer. The native
+  compute-dispatch bridge is independently closed for
+  GPUDriven V1/V2: their four dispatch wrappers reach cores
+  `0x1810f1890/0x1810f17e0` and `0x1810fe040/0x1810fdf90`; each uses
+  `0x1805e7e10` for immediate context/vtable dispatch or `0x1804c74d0` to
+  record CommandBuffer opcode `0x11`. This proves the Unity dispatch
+  mechanism. The only non-wrapper native callers (`0x181280530` for the
+  meshlet pair and `0x18127c730` for the bucket pair) explicitly pass `r9d=0`,
+  so those internal GPUDriven paths select kernel index 0, not the identified
+  `GpuSceneDirtyUpdateCS` kernel `UploadPerDrawParams` (index 7). The managed
+  wrappers still accept a caller-supplied kernel index; therefore this is
+  negative evidence for the known internal paths, not a proof that no managed
+  caller can select index 7. Dispatch selection and the upload-buffer producer
+  remain unresolved, and no edge from custom-per-draw channel 2/resource `+0xd0`
+  has been recovered. Structured hashes, addresses, caller census, resource
+  field identity, and the fail-closed boundary are recorded under
+  `gpu_scene_setup_wiring`, `gpu_scene_upload_kernel_evidence`, and
+  `gpu_dispatch_bridge_evidence` in the packed-flag audit.
+  The current UnityPlayer binding path is now bounded as a separate edge:
+  V1 `BindBuffersForCulling` (`0x1810eece0`) and V2
+  `BindBuffersForCulling` (`0x1810fb5a0`) preserve the managed caller's
+  `kernelIdx` from `r9d`, then pass it as `edx` to the per-kernel binding-record
+  helper `0x1805f84a0` (immediate path) or record command opcode `0xd` through
+  `0x1804cb1a0`. The corresponding GameAssembly internal-call wrappers preserve
+  `r8d` unchanged; no wrapper-side kernel constant is present. V1/V2 native
+  GPUDriven callers `0x18127c730` and `0x181280530` pass zero for this index,
+  so their known culling/binding routes still select kernel 0. The global
+  Shader.PropertyToID registry initializes `_RTPerDrawParamsBuffer` at field
+  `+0x130c` of the table rooted at `0x1821ed7b0`; the binding cores consume
+  per-shader property IDs and fixed payload offsets, but no static edge ties
+  that property to the character resource `+0xd0` or to `UploadPerDrawParams`
+  kernel 7. This closes the kernel-index/binding-record ABI while keeping the
+  channel-2 resource-to-descriptor and upload-dispatch edges fail-closed;
+  details are recorded under `gpu_driven_binding_path_evidence`. A full current
+  UnityPlayer image census tightens that boundary: the only
+  `_RTPerDrawParamsBuffer` string is the registry entry at file offset
+  `0x1e2d280`, referenced by the initializer at `0x18121f467` (file offset
+  `0x121ea67`) and interned through `0x180627040`. The image has zero
+  `_UploadBuffer`, `GpuSceneDirtyUpdateCS`, or `UploadPerDrawParams` strings
+  and no direct text reference to the property outside that registry site.
+  This is positive evidence for property registration only, not for a runtime
+  producer or dispatch; keep the shared-payload-to-GPU edge fail-closed. The helper's
+  valid-index path is now explicit: `0x1805f84a0` gates
+  `kernelIdx < [bindingState+0xd0]`, takes the selected metadata slot's first
+  dword as a binding-record key, and updates
+  `[bindingState+0xc0]+0x818+kernelIdx*0x880` through `0x1805f8630`; this is
+  cache/command metadata, not yet a named `SetBuffer` edge. A complete current
+  UnityPlayer E8 census finds exactly one native caller for each V1/V2 dispatch
+  core (`0x18127c7b4`, `0x181280849`, `0x18127c814`, `0x1812808ac`) plus the
+  managed wrappers, and all four native callers zero `r9d`. Thus no additional
+  direct dispatch producer selects kernel 7 in the installed binary, while a
+  managed caller could still do so dynamically.
+  The RenderGraph GPUDriven culling producer is now mapped at the managed
+  callback `GPUDrivenCullingPassConstructor+<>c.<.cctor>b__10_0`,
+  `GameAssembly 0x189bb558c` (metadata method `287367`). Its V1 and V2
+  branches each run `Valid`, `PopulatePerFrameData` (thread-group size `0x40`),
+  then `BindFrameConstantsBuffer`, `BindBuffersForCulling`, and one of the
+  bucket/meshlet dispatch wrappers twice for shader values at callback-data
+  offsets `+0x10` and `+0x18`. The callback explicitly clears the wrapper
+  `kernelIdx` argument (`r8d=0`) for every bind/dispatch call; the wrappers
+  preserve it as native `r9d`, so this live culling route selects kernel 0 in
+  both renderer versions. This is the first closed managed RenderGraph
+  producer for the known GPUDriven dispatch cores, and is negative evidence
+  against `GpuSceneDirtyUpdateCS.UploadPerDrawParams` kernel 7 on this route;
+  it still does not connect channel 2/resource `+0xd0` to `_UploadBuffer` or
+  binding 33. Details are recorded under
+  `gpu_driven_culling_pass_callback` in the packed-flag audit.
+  `HGConstantBufferPool.ApplyPendingUpload` is a separate generic upload
+  candidate: `GameAssembly 0x189b6a7c0` updates `this+0x10` through
+  `ComputeBuffer.SetData` (`0x187af05e0`), but its visible body has no
+  ComputeShader dispatch, `SetBuffer`, named `GpuSceneDirtyUpdateCS`, or edge
+  from the factory shared-payload producer. It therefore remains an unresolved
+  generic buffer path, not evidence for `_UploadBuffer` or channel 2/resource
+  `+0xd0`; its constructor is a count-`0x80000`, stride-1 byte pool and its
+  only SetData caller is the pool's own upload loop, so it cannot satisfy the
+  84-byte `_UploadBuffer` source contract. Details are under
+  `constant_buffer_pool_cross_check`.
+  The remaining eleven direct callers of UnityPlayer immediate dispatch
+  `0x1805e7e10` are now classified rather than left as a generic unknown set:
+  two are terrain (`UpdateSubdivision`, `PingPongSubdAndCull`), three are SSR
+  passes, and six are ray-tracing passes selecting
+  `RTRColorResolveIndirect0/1`, `RTRFillLow/LowOnlyRayTracing`,
+  `RTRRayMarchingLow`, or `RTRTraceRayLow0` through the shader-property
+  registry. Together with the four already-mapped GPUDriven callers this
+  accounts for all 15 direct calls and provides no `_UploadBuffer`,
+  `GpuSceneDirtyUpdateCS`, or factory-record edge. This closes the bounded
+  native immediate-dispatch negative branch; a dynamically registered kernel-7
+  producer and the channel-2 descriptor edge remain unresolved. The structured
+  census is recorded under `native_immediate_dispatch_census` in the packed
+  shader audit.
+  The managed dispatch boundary is now explicit as well. UnityPlayer's primary
+  internal-call table maps `ComputeShader::Dispatch` to `0x180119af0`, which
+  resolves the shader handle and forwards kernel/x/y/z through `0x1804b2940`
+  to immediate context dispatch `0x1805e7a10`; `CommandBuffer::Internal_DispatchCompute`
+  maps to `0x180119fc0` and records opcode `0x11` through `0x1804c73e0`.
+  `Internal_SetComputeBufferParam` is `0x180116180`, but no factory dirty-record
+  or staging call reaches it in the bounded census. A nine-row `0x100`/lane
+  heuristic was then rechecked with exact immediates and base registers: six
+  rows were actually `0x1001` multipliers, two used stack temporaries, and the
+  one genuine `+0x100` row read only an object `+0xf0` field while recording
+  graphics commands. None is a five-lane staging consumer. Details are under
+  `managed_dispatch_entrypoint_census`; the post-staging `_UploadBuffer`,
+  kernel-7, and channel-2/resource `+0xd0` edges remain fail-closed.
+  The direct-call boundary is now expanded beyond the focused GPU catalog:
+  a PData-bounded `E8 rel32` scan of the current GameAssembly maps 110 calls
+  to `CommandBuffer.Internal_DispatchCompute` across 37 unique managed
+  functions. They are all named post-processing, HZB/depth, particles, cloth,
+  terrain, water, atmosphere/fog, light-culling, reflection-probe,
+  virtual-texture, or utility passes; none is a factory dirty-record consumer
+  or `GpuSceneDirtyUpdateCS` owner. The same census finds 47
+  `Internal_SetComputeBufferParam` calls in 8 callers and 38 constant-buffer
+  binds in 22 callers, again with no factory shared-record/staging caller. The
+  sole direct `InternalSetComputeBufferData` edge is the CommandBuffer wrapper
+  itself. This closes the direct managed command-buffer graph while preserving
+  the unresolved indirect/vtable and post-staging upload boundaries. Details
+  are under `full_gameassembly_direct_call_census` in the packed-flag audit.
+  A cross-DLL endpoint check found no direct GameAssembly `E8` caller for
+  UnityPlayer `ComputeShader::Dispatch` (`0x180119af0`),
+  `Internal_DispatchCompute` (`0x180119fc0`), or the related buffer endpoints;
+  the few raw endpoint pointers belong to internal-call registration data.
+  This confirms that the remaining ComputeShader producer search must include
+  resolver/indirect paths and must not treat the direct E8 census as exhaustive
+  for Unity internal calls.
+  The next bounded indirect search scanned every UnityPlayer PData function for
+  the graphics-context vtable call at displacement `+0xab8`. Ten bodies were
+  found: the two already-known immediate-dispatch wrappers, three generic or
+  unresolved context paths, four resource/descriptor-oriented paths, and the
+  existing D3D11 backend path. Their visible contracts contain temporary
+  descriptor/list data, native resource setup, or backend context work, but no
+  manager `+0x38` plus `index*0x8c` record, five-vector 84-byte source, or
+  `_UploadBuffer`/`UploadPerDrawParams`/channel-2 `+0xd0` edge. This closes the
+  obvious UnityPlayer indirect-dispatch candidates as a bounded negative result;
+  resolver-driven/table-dispatched kernel-7 selection and the staging-array
+  upload remain open and must stay fail-closed. Details are recorded under
+  `indirect_vtable_dispatch_census` in the packed-flag audit.
+  The managed ComputeShader/ComputeBuffer API boundary is now separately
+  bounded. A PData-owned E8 census across GameAssembly `.text` and `il2cpp`
+  finds one direct `ComputeShader.Dispatch` caller (MagicaCloth), cloth-only
+  `HGSetBuffer`/string-`SetBuffer` callers, volumetric/probe/interaction
+  `ComputeBuffer.SetData` callers, and a generic `ConstantBuffer<T>.Set` body
+  whose seven concrete instantiations are probe-volume, particle, or Hammersley
+  buffers. The only generic `ComputeBuffer.SetData<PerInstanceData>` upload is
+  an instance-data layout with padding fields, not the factory's five-Vector4
+  84-byte source. The direct graph has no factory or GPU-scene caller for
+  `Internal_SetBuffer`, `HGSetBuffer`, or the named dispatch body; resolver
+  wrappers remain indirect by design. The render-pipeline constructor is the
+  sole direct caller of both `SetupGpuSceneUploadCs` wrappers, and both load the
+  same default-resource shader field (`+0x18 +0x638`); their UnityPlayer endpoint
+  only performs managed-root/write-barrier work. This ties the named shader
+  resource to initialization but still does not prove kernel-7 selection or the
+  staging-to-`_UploadBuffer` edge. Details are under
+  `compute_shader_api_and_setup_census` in the packed-flag audit.
+  A follow-up RIP-relative cache-slot scan makes that negative result stronger:
+  each checked `ComputeShader`/`ComputeBuffer` internal-call slot has exactly two
+  image references—the wrapper's lazy-slot load and its first-call cache write—
+  with no second static caller surface elsewhere in GameAssembly. This does not
+  exclude copied function pointers or native resolver/table calls, but it rules
+  out another ordinary slot-backed managed producer for the visible API set.
+  The slot details are recorded under `lazy_slot_reference_census`.
+  Generic-instantiation mapping now recovers the strongest CPU-side factory
+  producer that the ordinary method table hid: concrete
+  `HGFactoryRendererBinderComponent.SetCustomPerDrawData<Vector4>` at
+  `GameAssembly 0x1834a3d60` (`MethodSpec 515702`). Its body guards
+  `offset + 16 <= 0x50`, copies one Vector4, takes `sharedDataIndex` from
+  `this+0x8`, and calls the same lazy `0x18f370720` slot as
+  `HGFactoryRenderManager.SetEntitySharedDataPartial` (`0x183d689c0`) with
+  `(index, data, offset, 16)`, then marks `HGFactoryDirtyFlags.PerDrawData`
+  (`1`). The 80-byte guarded payload matches the five-lane width consumed by
+  `UploadPerDrawParams`, so the generic binder/shared-payload producer boundary
+  is now closed. The native partial-update body is still dynamic: no installed
+  file edge yet proves this payload reaches `_UploadBuffer`, kernel 7, or
+  channel 2/resource `+0xd0`; keep the GPU edge fail-closed. Details are in
+  `packed_flags_producer_recovery.json` under
+  `factory_per_draw_shared_payload_evidence`.
+  The previously hidden dynamic/Burst path is now partially closed as well:
+  `Beyond.Gameplay.Factory.UnsafeJobFuncPointers.ApplyPerDrawRender` preserves
+  `(binderPtr, perDrawConfigs, length)` through the Burst stub at
+  `0x1869d3434`, whose embedded body `0x1869d5d30` loops 60-byte (`0x3c`)
+  configuration entries. `GlobalSharedData.PerDrawGlobalSetting.Apply`
+  (`0x1869d5e18`) is a concrete caller; its fallback path indexes a `0x284`-
+  byte table entry and enters that loop. The loop's `0x1869f3654` branch sends
+  type 1/3 entries through `0x1876aaefc -> 0x1876aacd0 ->
+  HGFactoryRenderManager.SetEntitySharedDataPartial (0x183d689c0)`, forwarding
+  one 16-byte Vector4 and then setting `PerDrawData` dirty; type 2 uses the
+  existing float writer. This is positive CPU-side evidence from dynamic
+  per-draw configuration into the native shared record, but it still does not
+  identify the post-dirty 84-byte `_UploadBuffer` packer, kernel-7 dispatch, or
+  channel-2/resource `+0xd0` bind. The feature-enabled branch
+  (`0x186a33f58`) remains a separate next target; keep the GPU edge fail-closed.
+  The first concrete native consumer after that dirty flag is now identified:
+  UnityPlayer `0x1810d25c0..0x1810d3198` walks the manager's entity-index list,
+  resolves the same `manager[+0x38] + index*0x8c` records, tests dirty bits at
+  `record+0x70`, and copies the five 16-byte shared-data lanes from
+  `record+0x00..0x40` into a render-side structure at `entry*0x100+0xb0..0xf0`.
+  It also updates derived visibility/material arrays and writes a reduced dirty
+  byte back to the source record. This is a positive post-dirty staging boundary
+  and explains why a broad `0x8c` record scan alone missed the path; however the
+  body has no explicit GPU upload, immediate dispatch, kernel-7 call, or 84-byte
+  source stride, and no direct/raw code-pointer caller was found. The staging
+  array is therefore not yet proven to be `_UploadBuffer` or channel-2 resource
+  `+0xd0`. The feature-enabled branch `GameAssembly 0x186a33f58` was checked
+  separately and contains temporary-data/serialization work without a direct
+  partial-writer or GPU call. Details are recorded under
+  `dirty_record_staging_consumer` in the packed-flag audit.
+  A bounded literal-stride search then found 81 UnityPlayer functions that
+  mention `0x54` (84 bytes) alongside record-like `0x50/0x8c/0x100` or lane
+  accesses. Only four unique functions (five register/lane hits) actually
+  touch at least four of the five 16-byte lanes. The strongest match,
+  `0x18036ed60`, is a generic dynamic-array resize helper that zeroes an
+  element as five Vector4 lanes plus a dword at `+0x50`; `0x1804b69b9` is its
+  generic copy family. The other matches are unrelated native data/math paths,
+  and none directly reaches the checked GPU dispatch/upload boundary. This
+  confirms that 84-byte records exist in UnityPlayer but does not identify the
+  staging-array packer or `_UploadBuffer`; the GPU edge remains fail-closed.
+  A current-build slot cross-check removes the remaining endpoint ambiguity:
+  the Vector4 binder body loads the runtime function pointer from
+  `0x18f370720` at `0x1834a3dc9`, and `SetEntitySharedDataPartial` loads the
+  same slot at `0x183d689d4`; the float wrapper at `0x183d68850` reaches that
+  partial wrapper directly. The primary AddInternalCall mapping resolves the
+  slot's endpoint to UnityPlayer `0x1801eb9a0`, whose body is the
+  `manager[+0x38] + index*0x8c + offset` CPU memcpy path. The old
+  `0x180155300` value is only the alternate pointer-table surface, not the
+  current registered endpoint. The payload-to-GPU edge remains fail-closed.
+  A focused current-build census explains the lazy-slot population rather than
+  treating those addresses as static GPU pointers. GameAssembly has 24 true
+  PData-scoped functions touching slots `0x18f370720` (partial update),
+  `0x18f370728` (dirty get), and `0x18f370730` (dirty set); the partial slot
+  has 13 reads and 13 cache writes, while each dirty slot has four reads and
+  four writes. The cache writers call resolver `0x180059fc0` with the exact
+  managed name `HGFactoryRenderManager::SetEntitySharedDataPartial(...)`,
+  which searches the internal-call name table and returns the matching record's
+  function pointer. The name maps to primary UnityPlayer entry 206 at
+  `0x1801eb9a0`; no slot-population body directly calls a checked GPU upload,
+  shader bind, command recorder, or compute dispatch. This closes runtime
+  endpoint resolution as a CPU-side internal-call edge, not the later
+  record-array-to-`_UploadBuffer` edge; details are under
+  `dynamic_slot_population_census` in the packed-flag audit.
+  The factory producer is broader than the Vector4 path alone. Static
+  GameAssembly bodies show `SetPosition` (`0x1834a3ce0`, offset `0x50`, 12
+  bytes), `SetRotation` (`0x183e21230`, offset `0x60`, 16 bytes), and the
+  float `SetCustomPerDrawData` instantiation (`0x1840f30e0`, 4 bytes) using
+  the same 80-byte shared record and dirty-state mechanism; the Vector4
+  writer remains `0x1834a3d60` with the caller-supplied offset plus 16-byte
+  guard. This closes a coherent CPU-side writer family, while all paths still
+  terminate at the dynamically dispatched factory service rather than a
+  statically named `_UploadBuffer`, shader bind, or compute dispatch.
+  A generated factory job at `GameAssembly 0x1869fe53c`
+  (`0x1869fe53c..0x1869fe73d`) broadens the CPU-side boundary: it forwards
+  scalar updates at offsets `0x48/0x4c` and conditional updates at
+  `0x7c/0x80/0x84/0x88` through the unbounded shared-data helpers
+  `0x183d68850`/`0x1876aad78`, then reads and sets dirty flags through
+  `0x1834a4030`/`0x1834a4070`. The latter offsets exceed the five-lane
+  80-byte `UploadPerDrawParams` record, so they are explicitly kept out of
+  channel-2 evidence; all these helpers still terminate at the dynamic
+  partial service and do not expose a GPU upload or dispatch.
+  A direct GameAssembly bridge now closes the caller-side entry into that
+  factory path. The generated/native range `0x180471cd8..0x180471d27` calls
+  `ApplyPerDrawRender` at `0x1869d8488` (`rsi`/`rdi`/`ebx` preserve
+  `binderPtr`/`perDrawConfigs`/`length`, while `r9d` is cleared). The Burst
+  path reaches `PerDrawGlobalSetting.Apply` at `0x1869d5d30`, loops the
+  configs, and calls `PerDrawConfig.Apply` at `0x1869f3654`, which ends at
+  the concrete `SetCustomPerDrawData<Vector4>` writer `0x1834a3d60`. The
+  bridge range has no ordinary IL2CPP method-pointer owner, so its managed
+  name remains intentionally unresolved. This closes native entry through
+  binder Vector4 production, not the GPU edge: `_UploadBuffer`, kernel 7,
+  and channel-2/resource `+0xd0` consumption remain fail-closed. The durable
+  details are under `apply_per_draw_render_bridge` in the packed-flag audit.
+  Updated primary registration conclusion (the legacy surface is noted below):
+  the current
+  `AddInternalCall` table at `0x1820e8560` maps entry 206
+  `SetEntitySharedDataPartial` to `0x1801eb9a0` (PData
+  `0x1801eb9a0..0x1801eb9ed`). Its wrapper resolves the manager through
+  `0x1810d8c30`, then calls `0x1810d91f0` with the original
+  `(sharedDataIndex, data, offset, size)` ABI. That helper computes
+  `manager[+0x38] + index * 0x8c + offset` and jumps to optimized memcpy
+  `0x181c9f9a0`; sibling full-set entry `0x1801eb970` writes the complete
+  0x8c-byte record through `0x1810d9170`. This closes the primary endpoint as
+  a CPU-side per-entity shared-record copy, but not shared payload to
+  `_UploadBuffer`, kernel 7, channel 2, or resource `+0xd0`; keep the GPU
+  upload edge fail-closed. The corrected registration/body evidence is under
+  `native_partial_endpoint_evidence`.
+  The earlier `0x180155300`/`0x180155870` values are from a separate pointer
+  array at `0x1820e0670`, not the current `AddInternalCall` function table.
+  The dynamic service/registry observations from the legacy surface remain
+  alternate negative evidence and must not replace the primary mapping.
+  The native factory update consumers are now bounded as CPU-only: current
+  `UpdateRegularEntity_Injected` (`0x1801eaa50`) calls `0x1810d93a0`, obsolete
+  update (`0x1801ec340`) calls `0x1810d97f0`, and additive-material update
+  (`0x1801eaeb0`) reaches `0x1810d9690`. The first two read/write the same
+  `manager[+0x38] + index*0x8c` records; their direct child calls are record
+  parsing, allocation, metadata/flag handling, and memcpy only. A bounded
+  census against the installed ComputeBuffer, ComputeShader, CommandBuffer,
+  and GPUDriven entrypoints finds no direct GPU edge. This strengthens the
+  CPU-record boundary but does not exclude a later indirect render-stage
+  consumer; the shared-record-to-GPU edge remains fail-closed. Details are in
+  `native_factory_update_consumption_census`.
+  A broader full-UnityPlayer PData scan found 113,390 function ranges, with 39
+  functions matching both an immediate `0x8c`/140 record-shape operand and a
+  `+0x38` field access; none directly reaches the checked ComputeBuffer,
+  ComputeShader, CommandBuffer, or GPUDriven entrypoints. Six candidates call
+  optimized memcpy, including the adjacent factory record helpers. This is
+  stronger static CPU-record negative evidence, not proof against an indirect
+  or dynamically registered render-stage consumer; details are under
+  `native_unityplayer_record_shape_scan`.
+  The adjacent native factory/VAT surface is also bounded: the registered
+  `HGFactoryRenderManager::BatchSetFactoryVATParams_Internal` entry is
+  `UnityPlayer 0x180155870` (`0x180155870..0x1801558ed`), which calls
+  `0x180a37780`. That body allocates an object of size `0x128` (`ecx=0x128`;
+  `r8d=0x3c` is a type/tag), initializes it through `0x180a34960`, performs
+  hash/handle registration in `0x180319450`, and tail-jumps through the
+  statically initialized vtable `0x181dd6c30` slot `+0x28` to `0x180a38ea0`.
+  The final target only clears handle/table state; the visible chain contains
+  no `_RTPerDrawParamsBuffer`, `GpuSceneDirtyUpdateCS`/`UploadPerDrawParams`,
+  buffer/property bind, or compute dispatch. This closes the VAT entry as
+  negative evidence rather than a GPU upload path; the independent 80-byte
+  factory per-draw edge remains open and fail-closed. Details are recorded
+  under `native_factory_batch_vat_evidence` in the packed-flag audit.
+  The managed `HGFactoryRenderManager.FrameUpdateEntities` entry is an
+  additional bounded negative: metadata method `477917` resolves through the
+  current code-registration pair to `GameAssembly 0x1841e1670`, whose body is
+  exactly one byte (`ret`). A static census finds five callers, but this
+  installed build contains no frame-update instructions at that entry, so it
+  cannot be credited as the shared-payload to `_UploadBuffer` or GPU-dispatch
+  producer. This does not rule out a dynamically initialized factory service,
+  IFix-patched code, or unrelated GPU-driven ECS work; the channel-2 upload edge
+  remains fail-closed. Details are recorded under
+  `managed_frame_update_evidence` in the packed-flag audit.
+  A follow-up call-graph audit covered all 21 resolver call sites that had
+  recorded memory accesses, plus their direct and one-level child calls. The
+  renderer registration/rebuild path (`0x18042c910..0x18042cb01`) reaches
+  virtual lifecycle slots `+0x128`/`+0x130`, refreshes the resolved resource,
+  invokes `+0x120`/`+0xf0`, and prepares the ordinary renderer record through
+  `0x18042a130`; teardown (`0x18042f3d0..0x18042f4ed`) uses `+0x128`/`+0x80`
+  /`+0xe8`/`+0xf8` and clears the component record. None of these visible
+  bodies reads `resource +0xd0`, calls an explicit buffer/property API, or
+  reaches the mapped GPU-driven entrypoints. The virtual implementations are
+  still a dynamic boundary, so this is a bounded negative audit rather than
+  proof that the upload does not exist; keep the channel-2 resource-to-GPU
+  edge fail-closed. Structured details are in
+  `packed_flags_producer_recovery.json` under `indirect_lifecycle_followup`.
+  The renderer constructor (`0x18042bf10..0x18042c0b8`) now resolves the
+  visible virtual boundary: it writes main vtable `0x181d664e8` and embedded
+  vtable `0x181d66658` at `+0`/`+0x38`. Main `+0x80` is the generic
+  property/material metadata route (`0x180433300` -> `0x1804262a0`),
+  `+0xe8`/`+0xf0`/`+0xf8` are generic flag/manager paths,
+  `+0x120` is generic index output, `+0x128` is an always-false stub, and
+  `+0x130` checks embedded record count. Embedded `+0x30`/`+0x38` access
+  ordinary record state, while `+0x80`/`+0x88` read component18 validity/key
+  at main `+0x268`/`+0x26c`. A PData-scoped Capstone scan of these roots and
+  direct callees found zero literal `resource +0xd0` reads, zero direct calls
+  to mapped GPU-driven entrypoints, and no explicit buffer/property API. This
+  closes the visible vtable indirection but remains a bounded negative result;
+  an indirect or table-dispatched upload consumer is still open. Details are
+  in `packed_flags_producer_recovery.json` under `concrete_vtable_followup`.
+  An exact inlined component18 lookup scan found only three sites: the
+  canonical resolver (`0x1804256db`), a generic allocation/copy path
+  (`0x180ba0d40`), and a generic component-initialization writer
+  (`0x1811497c1`). The last reads its separate source record at
+  `+0xd0/+0xe0/+0xf0/+0x100` and writes four vectors to the resolved
+  component; it does not read the custom resource or call a descriptor/
+  constant-buffer upload primitive. This closes another equal-displacement
+  false positive while leaving the channel-2 resource-to-GPU edge open. The
+  structured result is recorded under `inlined_lookup_followup`.
+  The refresh body also has a separate five-slot override path: after the
+  `+0x140..+0x180` to `+0xb0..+0xf0` copy, `0x18042f750` interns five fixed
+  keys through `0x180627040`, binary-searches the optional manager table at
+  `+0xc0` with `0x18042ba20`, and writes any found `Vector4` to the matching
+  renderer/resource slot. This is still a named per-draw override writer,
+  not a read of resource `+0xd0` or a descriptor/constant-buffer upload.
+  The apparent `0x180fc5e60` service lookup on these paths is now identified
+  as registry index 20 (`RuntimeInitializeOnLoadManager`) through
+  `0x18030f100`, so its `+0x38`/`+0xf0` fields are not custom-resource lanes.
+  Both boundaries are recorded under `override_refresh_followup` and
+  `runtime_initialize_service_identity` in the packed-flag audit.
+  The upstream `HG.Rendering.Runtime.HGCharacterVolume.GetPackedEnvironmentEffectIntensity`
+  body is also recovered at native `0x183523ad0`: it quantizes two
+  environment getter results (from `this+0x180` and `this+0x178`) together with
+  fixed `255` and `0` lanes, then returns the reinterpreted four-byte word.
+  This is a source-backed packed-word producer, but no direct call edge to the
+  character renderer upload was recovered, so it remains upstream evidence.
+  A separate global-CB production path is now source-closed: installed
+  `HGRenderPathScene.UpdateShaderVariablesGlobal` calls
+  `UpdateShaderVariablesGlobalCharacter`, whose native body calls
+  `HGCharacterVolume.GetPackedEnvironmentEffectIntensity` and writes its
+  result to `cb + 0x754`, exactly `ShaderVariablesGlobal` c117.y. The
+  `ShaderVariablesGlobal` metadata names `_CharacterParams10`, and the
+  CharacterNPR source consumes c117.y as the global packed-word override when
+  c117.x is enabled (otherwise it uses UnityPerDraw Param2.x). This proves a
+  second real producer/carrier, but it is not the HGRP/Lit HGBuffer `b3[0].w`
+  binding; keep that register/component boundary fail-closed in the audit.
+  A cross-variant CharacterNPR forward source closes the ordinary UnityPerDraw
+  carrier independently: `UnityPerDrawArray` `Param2` is at byte offset `+208`
+  (`_m7`), with `_m7.x` carrying the packed environment word and `_m7.y` the
+  wet world-space height. That narrows the standard channel-2 layout, but does
+  not establish the HGRP/Lit HGBuffer `register(b3)` `cb3[0].w` component remap.
+  The durable audit records both additions in
+  `Generated/OriginalData/CharInfoPresentation/packed_flags_producer_recovery.json`.
+  The native history/deformation census is narrowed as well: `GpuClothManager._SetPerDrawData`
+  (`0x189c6cbec`) walks ECS cloth data and enters a dynamic IFix wrapper without a
+  statically resolved custom-per-draw call; `_SetCharacterProxyMesh`
+  (`0x1847a53c0`) only updates proxy bounds/cloth constants; and
+  `SkinnedMeshCaptureManager.SetCaptureDataForPropertyBlock`
+  (`0x183d438b0`) allocates/copies/binds `BAKE_SKIN_MATRICES_CB` through a
+  property block. These routes do not identify the missing HGRP packed scalar or
+  previous-deformed-position upload. The IFix cloth wrapper and renderer-side
+  history state remain open and are recorded as such in the same audit.
+  Do not substitute `_ShadingModel`, UnityPerDraw, channel 2, or zero/default
+  values; the sidecar remains neutral and fail-closed until that binding or an
+  authorized target-frame upload is recovered.
 - Deferred binding 32 now has its exact native 48-byte
   `_LightBinningConstants` layout/upload and a default-off isolated-count
   publisher verified bit-for-bit on D3D11/D3D12. Its unique native

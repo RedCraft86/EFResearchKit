@@ -14,7 +14,6 @@ import base64
 import binascii
 import hashlib
 import json
-import os
 import re
 import sys
 from collections import Counter, defaultdict
@@ -35,7 +34,9 @@ from common import (  # noqa: E402
     md_escape,
     non_mission_content_keys,
     read_json,
+    resolve_installed_native_inputs,
     safe_key,
+    sha256_file,
     write_report_json,
     write_text_if_changed,
 )
@@ -193,7 +194,7 @@ DIALOG_TREE_TRUNK_NATIVE_CONSUMERS = (
     },
 )
 OFFLINE_EXHAUSTION_MAPPING_ID = (
-    "current-build-offline-story-carrier-exhaustion-v92"
+    "current-build-offline-story-carrier-exhaustion-v93"
 )
 OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256 = (
     "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE"
@@ -1294,7 +1295,7 @@ OFFLINE_EXHAUSTION_DIALOG_ID_INDEX_SHA256 = (
     "3FC412F637063386E7BE4934099A546E24858836FD6C221AA1C2F6BC4092B083"
 )
 OFFLINE_EXHAUSTION_TIMELINE_LINE_ORDERS_SHA256 = (
-    "4AA11A64FFAAA3654CD483424D8F319D8E94BFD0496280B5E4CA56734E3BA79D"
+    "E85864F1A45827408073D83C45F9966E5AB7F6CD665F5E349A3078E557242CEA"
 )
 QUEST_ATTACHMENT_DIAGNOSTIC_MAPPING_ID = (
     "current-build-quest-story-attachment-negative-v3"
@@ -10474,13 +10475,7 @@ def _string_list(values: Any) -> list[str]:
 
 
 def _sha256_file(path: Path) -> str:
-    if not path.is_file():
-        return ""
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest().upper()
+    return sha256_file(path).upper()
 
 
 def load_story_trigger_manifest_evidence(
@@ -11916,33 +11911,11 @@ def build_general_quest_attachment_boundary_index(
 
 
 def _configured_game_assembly_path() -> Path | None:
-    game_root = os.environ.get("ENDFIELD_GAME_ROOT", "").strip()
-    if not game_root:
-        config_path = ROOT / "endfield_paths.bat"
-        if config_path.is_file():
-            match = re.search(
-                r'(?im)^\s*set\s+"ENDFIELD_GAME_ROOT=([^"]+)"\s*$',
-                config_path.read_text(encoding="utf-8", errors="replace"),
-            )
-            if match:
-                game_root = match.group(1).strip()
-    if not game_root:
-        return None
-    root = Path(game_root)
-    return root.parent / "GameAssembly.dll" if root.name == "Endfield_Data" else root / "GameAssembly.dll"
+    return resolve_installed_native_inputs()[0]
 
 
 def _configured_global_metadata_path() -> Path | None:
-    game_assembly_path = _configured_game_assembly_path()
-    if game_assembly_path is None:
-        return None
-    return (
-        game_assembly_path.parent
-        / "Endfield_Data"
-        / "il2cpp_data"
-        / "Metadata"
-        / "global-metadata.dat"
-    )
+    return resolve_installed_native_inputs()[1]
 
 
 def _core_isolated_target_missions(

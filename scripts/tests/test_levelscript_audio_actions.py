@@ -112,6 +112,48 @@ def decode_audio(
 
 
 class LevelScriptAudioActionTests(unittest.TestCase):
+    def test_list_get_value_string_preserves_index_and_property_list_bindings(self) -> None:
+        path = b"RandomLines"
+        payload = b"".join((
+            b"\x00",
+            struct.pack("<iii", 0, -1, -1),
+            b"\x04",
+            struct.pack("<i", -1),
+            struct.pack("<iii", -1, 200, len(path)),
+            path,
+        ))
+        record = {
+            "start": 0,
+            "payloadStart": 0,
+            "code": 0x0347,
+            "kind": 0x09,
+            "unionTag": 0x0347,
+            "serializedMemberCount": 0x09,
+        }
+        detail = decode_levelscript_record_payload(
+            payload,
+            record,
+            next_start=len(payload),
+            action_map_role="getterList#1",
+        )["listGetValueString"]
+
+        self.assertEqual("localGetterRef", detail["index"]["bindingKind"])
+        self.assertEqual(0, detail["index"]["getterLocalId"])
+        self.assertEqual("dynamic", detail["list"]["bindingKind"])
+        self.assertEqual(200, detail["list"]["paramSource"])
+        self.assertEqual("RandomLines", detail["list"]["path"])
+        self.assertEqual(len(payload), detail["consumedBytes"])
+
+        self.assertNotIn(
+            "listGetValueString",
+            decode_levelscript_record_payload(
+                payload,
+                record,
+                next_start=len(payload),
+                action_map_role="actionList#1 root",
+            ),
+        )
+
     def test_audio_formatter_tag_collision_requires_action_list_membership(self) -> None:
         valid = (
             bytes.fromhex("ff ff 00 00 00 00 ff ff ff ff")
@@ -200,7 +242,10 @@ class LevelScriptAudioActionTests(unittest.TestCase):
         )
         self.assertEqual("PlayVoice", voice["action"])
         self.assertEqual(40001, voice["fields"]["target"]["slotId"])
-        self.assertEqual("voice", voice["eventBindings"][0]["role"])
+        self.assertNotIn("eventBindings", voice)
+        self.assertEqual("voice", voice["voiceBindings"][0]["role"])
+        self.assertEqual("au_prts_tape0003_stem_broken", voice["voiceBindings"][0]["voiceId"])
+        self.assertEqual("AudioDialogPathStem", voice["voiceBindings"][0]["identityKind"])
 
         narrative = decode_audio(
             output_param("$41@_voiceHandle")
@@ -209,7 +254,8 @@ class LevelScriptAudioActionTests(unittest.TestCase):
             0x0A,
         )
         self.assertEqual("PlayVoiceNarrative", narrative["action"])
-        self.assertEqual("voiceNarrative", narrative["eventBindings"][0]["role"])
+        self.assertNotIn("eventBindings", narrative)
+        self.assertEqual("voiceNarrative", narrative["voiceBindings"][0]["role"])
 
         cue_release = decode_audio(
             b"".join((

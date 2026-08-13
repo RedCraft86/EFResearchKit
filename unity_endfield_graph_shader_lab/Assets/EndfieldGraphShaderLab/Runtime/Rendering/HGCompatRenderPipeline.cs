@@ -431,6 +431,8 @@ namespace EndfieldGraphShaderLab
             recoveredDeferredGBufferFrame;
         private readonly EndfieldRecoveredDeferredResolverInputProbe
             recoveredDeferredResolverInputProbe;
+        private readonly EndfieldRecoveredDeferredExactConsumer
+            recoveredDeferredExactConsumer;
         private readonly EndfieldRecoveredDirectionalCSMProducer
             recoveredDirectionalCSMProducer;
         private readonly EndfieldRecoveredContactShadowProducer
@@ -541,6 +543,8 @@ namespace EndfieldGraphShaderLab
                 new EndfieldRecoveredDeferredGBufferFrame();
             recoveredDeferredResolverInputProbe =
                 new EndfieldRecoveredDeferredResolverInputProbe();
+            recoveredDeferredExactConsumer =
+                new EndfieldRecoveredDeferredExactConsumer();
             recoveredContactShadowProducer =
                 new EndfieldRecoveredContactShadowProducer();
             recoveredLowResDirectionalShadowProducer =
@@ -618,6 +622,7 @@ namespace EndfieldGraphShaderLab
             recoveredPreGBufferDiagnostic?.Dispose();
             recoveredDeferredGBufferFrame?.Dispose();
             recoveredDeferredResolverInputProbe?.Dispose();
+            recoveredDeferredExactConsumer?.Dispose();
             recoveredVisibilitySHProducer?.Dispose();
             recoveredPunctualShadowProducer?.Dispose();
             recoveredDeferredShadowData?.Dispose();
@@ -1359,19 +1364,6 @@ namespace EndfieldGraphShaderLab
                     recoveredCanonicalFrameResourcesReady,
                     canonicalColorTarget,
                     canonicalDepthTarget);
-            recoveredDeferredResolverInputProbe.Render(
-                context,
-                camera,
-                renderWidth,
-                renderHeight,
-                recoveredDeferredGBufferFrame,
-                recoveredDeferredGBufferFrameReady,
-                recoveredDeferredTransformsReady,
-                recoveredShaderVariablesGlobalReady,
-                recoveredDeferredLightDataReady,
-                recoveredDeferredShadowDataReady,
-                canonicalColorTarget,
-                canonicalDepthTarget);
             EndfieldRecoveredContactShadowProducer.Frame
                 recoveredContactShadowFrame =
                     recoveredContactShadowProducer.Render(
@@ -1444,8 +1436,57 @@ namespace EndfieldGraphShaderLab
                 canonicalColorTarget,
                 canonicalDepthTarget,
                 preGBufferFrame,
+                characterShadowFrame,
                 recoveredLowResDirectionalShadowReady,
                 recoveredContactShadowFrame.ready);
+
+            EndfieldRecoveredDeferredResolverInputProbe.ResourceFrame
+                recoveredDeferredResolverResources =
+                    EndfieldRecoveredDeferredResolverInputProbe.CaptureResources(
+                        camera,
+                        renderWidth,
+                        renderHeight,
+                        useRecoveredCameraDepth,
+                        recoveredLightBinning,
+                        recoveredReflectionProbeFallback,
+                        recoveredPunctualShadowProducer,
+                        recoveredLowResDirectionalShadowProducer,
+                        recoveredScreenShadowMaskProducer,
+                        recoveredVisibilitySHProducer);
+            recoveredDeferredResolverInputProbe.Render(
+                context,
+                camera,
+                renderWidth,
+                renderHeight,
+                recoveredDeferredGBufferFrame,
+                recoveredDeferredGBufferFrameReady,
+                recoveredDeferredTransformsReady,
+                recoveredShaderVariablesGlobalReady,
+                recoveredDeferredLightDataReady,
+                recoveredDeferredShadowDataReady,
+                recoveredDeferredResolverResources,
+                canonicalColorTarget,
+                canonicalDepthTarget);
+            recoveredDeferredExactConsumer.Render(
+                context,
+                camera,
+                renderWidth,
+                renderHeight,
+                recoveredDeferredGBufferFrame,
+                recoveredDeferredResolverResources,
+                recoveredDeferredTransformVariables,
+                recoveredShaderVariablesGlobal,
+                recoveredReflectionProbeFallback,
+                recoveredLightBinning,
+                recoveredVisibilitySHConstants,
+                recoveredDeferredLightData,
+                recoveredDeferredShadowData,
+                recoveredDeferredTransformsReady,
+                recoveredShaderVariablesGlobalReady,
+                recoveredDeferredLightDataReady,
+                recoveredDeferredShadowDataReady,
+                canonicalColorTarget,
+                canonicalDepthTarget);
 
             recoveredScreenDirectAudit.BeginForward(
                 context,
@@ -3349,6 +3390,13 @@ namespace EndfieldGraphShaderLab
             commandBuffer.SetGlobalVector(
                 CharacterShadowMultiAtlasParamsId,
                 Vector4.zero);
+            commandBuffer.SetGlobalVector(
+                CharacterShadowAtlasTexelSizeId,
+                new Vector4(
+                    1.0f / resolution,
+                    1.0f / resolution,
+                    resolution,
+                    resolution));
             commandBuffer.SetGlobalTexture(
                 CharacterShadowMapId,
                 new RenderTargetIdentifier(CharacterShadowMapId));

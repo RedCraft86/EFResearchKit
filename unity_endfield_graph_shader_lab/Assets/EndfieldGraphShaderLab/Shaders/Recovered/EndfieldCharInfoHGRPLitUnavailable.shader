@@ -223,6 +223,13 @@ Shader "Hidden/Endfield/Recovered/CharInfo/HGRPLitUnavailable"
             float _PorosityFactorZ;
             float _EnableSubsurface;
             float4x4 _EndfieldRecoveredDeferredGpuViewProjection;
+            float4x4 _EndfieldRecoveredDeferredPreviousGpuViewProjection;
+            float4x4 _EndfieldRecoveredDeferredPreviousObjectToWorld;
+            float _EndfieldRecoveredDeferredMotionValid;
+            // Unity HDRP's UnityPerDraw motion-vector contract:
+            // x=previous/deformed positions, y=allow motion, z=clip-space
+            // depth bias, w=object-history (1) versus camera-only (0).
+            float4 _EndfieldRecoveredDeferredMotionVectorsParams;
 
             struct SphereOutsideAttributes
             {
@@ -238,6 +245,10 @@ Shader "Hidden/Endfield/Recovered/CharInfo/HGRPLitUnavailable"
                 float2 uv0 : TEXCOORD0;
                 float3 normalWS : TEXCOORD1;
                 float4 tangentWS : TEXCOORD2;
+                // The source vertex writes current and previous clip x/y/w
+                // into TEXCOORD5/TEXCOORD6 for HGRP/Lit's motion encoder.
+                float3 currentClipXYW : TEXCOORD3;
+                float3 previousClipXYW : TEXCOORD4;
             };
 
             struct SphereOutsideHGBufferOutput
@@ -269,9 +280,22 @@ Shader "Hidden/Endfield/Recovered/CharInfo/HGRPLitUnavailable"
             {
                 SphereOutsideVaryings output;
                 float4 positionWS = mul(unity_ObjectToWorld, input.positionOS);
-                output.positionCS = mul(
+                float4 currentClip = mul(
                     _EndfieldRecoveredDeferredGpuViewProjection,
                     positionWS);
+                bool cameraOnlyMotion =
+                    _EndfieldRecoveredDeferredMotionVectorsParams.w <= 0.0;
+                float4 previousPositionWS = mul(
+                    cameraOnlyMotion
+                        ? unity_ObjectToWorld
+                        : _EndfieldRecoveredDeferredPreviousObjectToWorld,
+                    input.positionOS);
+                float4 previousClip = mul(
+                    _EndfieldRecoveredDeferredPreviousGpuViewProjection,
+                    previousPositionWS);
+                output.positionCS = currentClip;
+                output.currentClipXYW = currentClip.xyw;
+                output.previousClipXYW = previousClip.xyw;
                 output.uv0 = TRANSFORM_TEX(input.uv0, _MROMap);
                 output.normalWS = UnityObjectToWorldNormal(input.normalOS);
                 output.tangentWS = float4(
@@ -285,7 +309,46 @@ Shader "Hidden/Endfield/Recovered/CharInfo/HGRPLitUnavailable"
             {
                 SphereOutsideHGBufferOutput output;
                 output.sceneColor = float4(0.0, 0.0, 0.0, 0.5);
-                output.sceneMotion = float4(0.5, 0.5, 0.0, 0.0);
+
+                // This is the selected source fragment's signed fourth-root
+                // motion encoding, using the same current/previous clip
+                // x/y/w lanes produced by the source vertex. The validity
+                // scalar is supplied by the C# history owner: the first
+                // sample (or a camera/extent discontinuity) is neutral, and
+                // subsequent settled samples carry the source valid endpoint.
+                float currentW = max(input.currentClipXYW.z, 1e-8);
+                float previousW = max(input.previousClipXYW.z, 1e-8);
+                float currentX = input.currentClipXYW.x / currentW;
+                float currentY = input.currentClipXYW.y / currentW;
+                float previousX = input.previousClipXYW.x / previousW;
+                float previousY = input.previousClipXYW.y / previousW;
+                float deltaX = currentX - previousX;
+                float deltaY = previousY - currentY;
+                float encodedMotionX =
+                    (deltaX > 0.0 ? 1.0 : (deltaX < 0.0 ? -1.0 : 0.0)) *
+                    sqrt(sqrt(abs(deltaX * 0.5))) + 0.5;
+                float encodedMotionY =
+                    (deltaY > 0.0 ? 1.0 : (deltaY < 0.0 ? -1.0 : 0.0)) *
+                    sqrt(sqrt(abs(deltaY * 0.5))) + 0.5;
+                // SphereOutside is a static MeshRenderer, so x=0 is the
+                // source-closed non-deformed path. If a future caller sends
+                // x>0 without a previous skinned-position stream, fail
+                // closed instead of turning object history into a false
+                // deformation vector. y=0 is Unity's ForceNoMotion mode.
+                float hasDeformation = step(
+                    0.5,
+                    _EndfieldRecoveredDeferredMotionVectorsParams.x);
+                float allowMotion = step(
+                    0.5,
+                    _EndfieldRecoveredDeferredMotionVectorsParams.y);
+                float motionValid = saturate(
+                    _EndfieldRecoveredDeferredMotionValid) *
+                    allowMotion * (1.0 - hasDeformation);
+                output.sceneMotion = float4(
+                    mad(motionValid, 0.5 - encodedMotionX, encodedMotionX),
+                    mad(motionValid, 0.5 - encodedMotionY, encodedMotionY),
+                    motionValid > 0.0 ? 1.0 : 0.0,
+                    motionValid * 0.699999988079071);
 
                 float3 mro = tex2D(_MROMap, input.uv0).rgb;
                 float metallic = lerp(_Metallic, mro.r, 1.0);

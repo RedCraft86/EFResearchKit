@@ -35,6 +35,13 @@ class DeferredGBufferPayloadContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass", report["failures"])
         self.assertEqual(report["failedCount"], 0)
         self.assertEqual(len(report["knownGaps"]), 3)
+        motion_gap = next(
+            item for item in report["knownGaps"]
+            if item["check"] == "sidecar.scene_motion"
+        )
+        self.assertEqual(motion_gap["status"], "partial")
+        self.assertIn("previous camera/object clip history", motion_gap["evidence"])
+        self.assertIn("MeshRenderer motion-vector mode", motion_gap["evidence"])
 
     def test_missing_porosity_term_reports_bounded_failure(self) -> None:
         inputs = current_inputs()

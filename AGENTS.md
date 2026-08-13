@@ -42,6 +42,10 @@ python serve.py
 python serve.py 9000
 ```
 
+Export and rebuild commands are generally long-running. Give them an
+appropriately long timeout and wait patiently for completion; do not poll or
+check their results frequently while they are still running.
+
 Before starting a WebUI server, check whether the default
 `http://127.0.0.1:8765/` server is already running. Reuse the existing default
 server instead of starting another `serve.py` process on `8765` or a custom
@@ -68,11 +72,12 @@ breaks their argument loops.
 
 `setup_first_time.bat` is the user-facing all-in-one first-time setup path. It
 initializes `tools/AnimeStudio`, builds the AnimeStudio CLI, verifies the
-integrated AnimeStudio VFS/audio commands, runs `export.bat --from-game`,
+integrated AnimeStudio VFS/audio commands, runs `export.bat --from-game
+--story-only --animestudio-story-monobehaviour-names`,
 prints optional `export_assets.bat --from-game` and
-`build_updates.bat --first-time` follow-up commands, then starts or reuses the
-default WebUI server. Pass `--no-serve` when setup should finish without
-starting `serve.py`.
+`build_updates.bat --first-time` follow-up commands plus plain `export.bat` for
+the remaining semantic views, then starts or reuses the default WebUI server.
+Pass `--no-serve` when setup should finish without starting `serve.py`.
 
 `export.bat` is the canonical Story/Text Tables and curated semantic-view WebUI rebuild from an existing
 `export_full/`. It verifies that `export_full/` matches the current installed
@@ -199,6 +204,22 @@ report actionable diagnostics:
 
 Improve a validator's diagnostics before another full rebuild when its current
 result is only a generic status such as `validation_failed`.
+
+Steps that read the installed IL2CPP binaries gate on
+`common.check_installed_native_inputs`, which resolves `GameAssembly.dll` and
+`global-metadata.dat` from `ENDFIELD_GAME_ROOT`, then `endfield_paths.bat`,
+then the export summary's `game_root`. Recorded native facts (method virtual
+addresses, body hashes, field offsets) describe one specific client build, so
+the gate reports `missing`, `mismatched`, or `validated`:
+
+- an absent or different build skips only that step, with a one-line reason on
+  stderr, and leaves its published report untouched; the rest of the pipeline
+  is build-independent and still builds;
+- a skipped step never emits unvalidated classifications, and each report's own
+  source hashes still decide whether its recorded rows describe current data,
+  so consumers stay fail-closed;
+- set `ENDFIELD_REQUIRE_NATIVE_EVIDENCE=1` to restore hard failure when
+  auditing the pinned build.
 
 Useful direct commands:
 

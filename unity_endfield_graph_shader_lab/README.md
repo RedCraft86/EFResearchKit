@@ -2661,8 +2661,8 @@ The original pass-0 consumer remains deliberately disabled.
 The next deferred boundary is validated with
 `ENDFIELD_RECOVERED_DEFERRED_RESOLVER_INPUT_PROBE=1`. The GBuffer sidecar
 stamps camera, frame, extent, and publication serial; the resolver probe
-rejects stale or cross-camera C/B/A inputs and records the source order
-`t23:_62,t24:_61,t25:_60`. Use the existing D3D12 frame command, then run:
+rejects stale or cross-camera A/B/C inputs and records the source order
+`t23:_60,t24:_61,t25:_62`. Use the existing D3D12 frame command, then run:
 
 ```bat
 verify_recovered_deferred_gbuffer_frame.bat --resolver-input-d3d12
@@ -2671,6 +2671,30 @@ python tools\verify_deferred_resolver_input_probe.py --log scratch\character_rec
 
 This is same-frame input-order evidence only: the probe is non-presented and
 retail deferred pass 0 remains disabled.
+
+The probe also audits the target resource registers `t0/t1/t5/t6/t7/t11`.
+Use the strict resource command when checking the shadow ownership boundary:
+
+```bat
+verify_recovered_deferred_gbuffer_frame.bat --resolver-resource-d3d12
+verify_recovered_deferred_gbuffer_frame.bat --resolver-resource-d3d11
+```
+
+Both backends now report all six resources physical and same-frame. The
+PreGBuffer material lane retains `R8G8B8A8_SRGB`; low-resolution shadow is
+`160x180 R8_UNorm`, and screen-shadow is `640x720 RG8`. Screen-shadow content
+remains explicitly invalid and pass 0 stays disabled.
+
+For an isolated D3D11 exact-consumer attempt, use
+`verify_recovered_deferred_gbuffer_frame.bat --exact-consumer-d3d11`. This
+submits the selected original DXBC into a private target and never presents it.
+The current MainCamera frame proves exact execution (`exactBound=1`) and a
+complete `t0..t25` SRV mask (`0x3ffffff`, no resource failures); the readback
+contains 7,372,800 bytes with 6,430,845 nonzero bytes. The exact b0–b8 bridge
+also reports `constantBufferMask=0x1ff`; the current RGBA-float oracle hash is
+`b0130f5a0f67f714181847413757e81fbeebe59af0428abecdc9b33e67d2cb83`. The
+output remains private and non-presented, so this command does not enable
+retail pass 0 or claim numeric lighting parity.
 
 The selected original pass-0 `_TransformVariables` b30 reads are now closed for
 the physical camera's view matrix, inverse view, inverse GPU view-projection,
