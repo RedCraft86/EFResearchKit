@@ -1,14 +1,67 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import copy
 import hashlib
+import itertools
+import json
+import re
+from bisect import bisect_left
+from collections import Counter, defaultdict, deque
 from functools import lru_cache
+from pathlib import Path
 
-from .context import *
+if __package__ == "story_builder":
+    from common import (
+        fast_glob_files,
+        is_present,
+        path_id_export_base_stem,
+        path_id_export_path_id,
+        read_bytes_cached,
+        rel_path as repo_rel,
+        unique_preserve as _unique_preserve,
+        unique_strings,
+        walk_const_values as _walk_const_values,
+        walk_field_values as _walk_field_values,
+    )
+elif __package__ == "scripts.story_builder":
+    from ..common import (
+        fast_glob_files,
+        is_present,
+        path_id_export_base_stem,
+        path_id_export_path_id,
+        read_bytes_cached,
+        rel_path as repo_rel,
+        unique_preserve as _unique_preserve,
+        unique_strings,
+        walk_const_values as _walk_const_values,
+        walk_field_values as _walk_field_values,
+    )
+else:  # pragma: no cover - direct file execution is intentionally unsupported
+    raise ImportError("import this module as scripts.story_builder.anime_assets")
+
+from .context import (
+    ANIME_RESOURCE_DIRS,
+    EXPORT_ROOT,
+    GAMEPLAY_CONFIG_DIR,
+    LEVELDATA_DIR,
+    NARRATIVE_VIDEO_EXTENSIONS,
+    NPC_PROXY_TABLE_PATH,
+    PERSISTENT_ASSETS_DIR,
+    STREAMING_ASSETS_DIR,
+    VIDEO_BINDINGS_PATH,
+    _CUTSCENE_REF_FIELDS,
+    _DIALOG_REF_FIELDS,
+    _RADIO_REF_FIELDS,
+    _REMOTECOMM_REF_FIELDS,
+)
 from .dialog_tree_routes import (
     DIALOG_TREE_RUNTIME_DEFAULTS,
     recover_dialog_tree_finish_endpoints,
     recover_dialog_tree_option_routes,
 )
+from .mission_recovery import canonical_cutscene_key as mission_canonical_cutscene_key
 
 
 _DIALOG_TREE_TYPE = "Beyond.Gameplay.DialogTree"
@@ -55,6 +108,33 @@ _ANIME_TREE_COMPLETE_MONO_PREFIXES = tuple(
 )
 _ANIME_TREE_PATH_INDEX: dict[str, Path] | None = None
 _ANIME_TREE_SORTED_STEMS: list[str] | None = None
+_CUTSCENE_ASSET_CACHE: dict[str, dict] | None = None
+_CUTSCENE_SUBTITLE_TRACK_CACHE: dict[str, list[dict]] | None = None
+_LEVELDATA_QUEST_STORY_REF_CACHE: dict[str, dict[str, list[dict]]] | None = None
+_MISSION_AREA_CACHE: dict[tuple[str, str], dict] | None = None
+_NARRATIVE_VIDEO_CACHE: list[dict] | None = None
+_NPC_PROXY_TABLE_CACHE: dict[str, dict] | None = None
+_VIDEO_BINDINGS_CACHE: dict[str, dict] | None = None
+_VIDEO_DEFINITIONS_CACHE: dict[str, dict] | None = None
+
+
+def _shortest_directed_path(
+    start_id: str,
+    target_id: str,
+    targets_by_source: dict[str, list[str]],
+) -> list[str]:
+    paths: dict[str, list[str]] = {start_id: [start_id]}
+    pending = deque([start_id])
+    while pending:
+        source_id = pending.popleft()
+        if source_id == target_id:
+            return paths[source_id]
+        for next_id in targets_by_source.get(source_id) or []:
+            if next_id in paths:
+                continue
+            paths[next_id] = [*paths[source_id], next_id]
+            pending.append(next_id)
+    return []
 
 
 def _anime_tree_logical_stem(path: Path) -> str:
@@ -402,8 +482,6 @@ def extract_dialog_tree_definition_evidence(
             "does not create a cross-file mission chronology edge"
         ),
     }
-
-
 @lru_cache(maxsize=8192)
 def _recover_dialog_tree_definition_evidence(dialog_key: str) -> dict | None:
     path = _find_anime_tree_path(f"{dialog_key}.json")
@@ -586,22 +664,6 @@ def _dialog_tree_immediate_trunk_contexts(payload: dict) -> dict[str, dict]:
         for row in edge_rows
     }
 
-    def shortest_prime_path(target_id: str) -> list[str]:
-        paths: dict[str, list[str]] = {
-            prime_node_id: [prime_node_id],
-        }
-        pending = deque([prime_node_id])
-        while pending:
-            source_id = pending.popleft()
-            if source_id == target_id:
-                return paths[source_id]
-            for next_id in targets_by_source.get(source_id) or []:
-                if next_id in paths:
-                    continue
-                paths[next_id] = [*paths[source_id], next_id]
-                pending.append(next_id)
-        return []
-
     def trunk_id(node_id: str) -> str:
         node = node_by_id.get(node_id)
         if not isinstance(node, dict) or node.get("$type") != _DIALOG_TREE_TRUNK_NODE_TYPE:
@@ -632,7 +694,11 @@ def _dialog_tree_immediate_trunk_contexts(payload: dict) -> dict[str, dict]:
             for adjacent_id in outgoing_ids
             if (value := trunk_id(adjacent_id))
         ]
-        node_path = shortest_prime_path(node_id)
+        node_path = _shortest_directed_path(
+            prime_node_id,
+            node_id,
+            targets_by_source,
+        )
         predecessor_is_entry_path_tail = (
             len(incoming_ids) == 1
             and len(node_path) >= 2
@@ -1731,20 +1797,6 @@ def _extract_dialog_tree_prime_reachable_story_playback_carriers(
             row,
         )
 
-    def shortest_prime_path(target_id: str) -> list[str]:
-        paths: dict[str, list[str]] = {prime_node_id: [prime_node_id]}
-        pending = deque([prime_node_id])
-        while pending:
-            source_id = pending.popleft()
-            if source_id == target_id:
-                return paths[source_id]
-            for next_id in targets_by_source.get(source_id) or []:
-                if next_id in paths:
-                    continue
-                paths[next_id] = [*paths[source_id], next_id]
-                pending.append(next_id)
-        return []
-
     accepted_story_keys = set(story_keys)
     out: list[dict] = []
     for node_id, (node_index, node) in sorted(
@@ -1787,7 +1839,11 @@ def _extract_dialog_tree_prime_reachable_story_playback_carriers(
             continue
         if story_key == dialog_key or story_key not in accepted_story_keys:
             continue
-        node_path = shortest_prime_path(node_id)
+        node_path = _shortest_directed_path(
+            prime_node_id,
+            node_id,
+            targets_by_source,
+        )
         if not node_path:
             continue
         out.append({
@@ -3889,4 +3945,3 @@ def _tracking_hint_pin(hint: dict) -> dict | None:
     }
 
 
-__all__ = [name for name in globals() if not name.startswith("__")]

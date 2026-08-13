@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -18,11 +17,12 @@ from typing import Any, Iterable
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS_DIR = ROOT / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-from common import fast_glob_files
+if __package__ == "story_builder":
+    from common import fast_glob_files
+elif __package__ == "scripts.story_builder":
+    from scripts.common import fast_glob_files
+else:  # pragma: no cover - direct file execution is intentionally unsupported
+    raise ImportError("run this module with python -m scripts.story_builder.timeline_action_evidence")
 
 EXPORT_ROOT = ROOT / "export_full"
 DEFAULT_RECOVERY_ROOT = EXPORT_ROOT / "recovered" / "AnimeStudio-cli"

@@ -11,26 +11,34 @@ This is the builder-owned carrier stage used by ``audit_story_objects.py``.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-import gzip
 import hashlib
 import json
 from pathlib import Path
 import re
-import sys
 from typing import Any, Iterable
 
 
 ROOT = Path(__file__).resolve().parents[3]
-SCRIPTS_ROOT = ROOT / "scripts"
-if str(SCRIPTS_ROOT) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_ROOT))
+if __package__ == "story_builder.animestudio_story_objects":
+    from animestudio_object_index import MergeError, validate_identity
+    from common import md_escape, read_json
+    from export_full_from_game import (
+        animestudio_object_index_dir,
+        load_animestudio_object_index_summary,
+    )
+elif __package__ == "scripts.story_builder.animestudio_story_objects":
+    from scripts.animestudio_object_index import MergeError, validate_identity
+    from scripts.common import md_escape, read_json
+    from scripts.export_full_from_game import (
+        animestudio_object_index_dir,
+        load_animestudio_object_index_summary,
+    )
+else:  # pragma: no cover - direct file execution is intentionally unsupported
+    raise ImportError(
+        "import this module as scripts.story_builder.animestudio_story_objects.carrier"
+    )
 
-from animestudio_object_index import MergeError, validate_identity  # noqa: E402
-from common import md_escape, read_json  # noqa: E402
-from export_full_from_game import (  # noqa: E402
-    animestudio_object_index_dir,
-    load_animestudio_object_index_summary,
-)
+from ..object_index_io import iter_gzip_jsonl_objects
 SCHEMA = "animestudioStoryCarrierAudit.v3"
 DEFAULT_GAP_QUEUE = (
     ROOT / "reports" / "mission_order" / "source_story_gap_queue_CN.json"
@@ -421,17 +429,7 @@ def audit_object_rows(
 
 
 def iter_gzip_jsonl(path: Path) -> Iterable[dict[str, Any]]:
-    try:
-        with gzip.open(path, "rt", encoding="utf-8") as stream:
-            for line_number, line in enumerate(stream, 1):
-                if not line.strip():
-                    continue
-                value = json.loads(line)
-                if not isinstance(value, dict):
-                    raise AuditError(f"{path}:{line_number}: row is not an object")
-                yield value
-    except (OSError, json.JSONDecodeError) as exc:
-        raise AuditError(f"{path}: cannot read merged object index: {exc}") from exc
+    yield from iter_gzip_jsonl_objects(path, error_type=AuditError)
 
 
 def scan_published_source(

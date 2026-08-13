@@ -11,18 +11,18 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-SCRIPTS_DIR = Path(__file__).resolve().parents[1]
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-from common import EXPORT_ROOT, ROOT, STORY_REPORTS_DIR, rel_path as slash
-from story_builder.mission_assets import select_complete_mission_runtime_root
+if __package__ == "story_builder":
+    from common import EXPORT_ROOT, ROOT, STORY_REPORTS_DIR, rel_path as slash
+elif __package__ == "scripts.story_builder":
+    from scripts.common import EXPORT_ROOT, ROOT, STORY_REPORTS_DIR, rel_path as slash
+else:  # pragma: no cover - direct file execution is intentionally unsupported
+    raise ImportError("run this module with python -m scripts.story_builder.source_links")
+from .mission_assets import select_complete_mission_runtime_root
 
 DATA_JSON_DIR = EXPORT_ROOT / "structured" / "StreamingAssets" / "Data" / "Json"
 PERSISTENT_DATA_JSON_DIR = (
@@ -72,6 +72,86 @@ CONTEXT_FIELDS = (
     "snsDialogId",
     "type",
 )
+
+
+def compact_story_source_link(link: dict) -> dict:
+    """Project one source-link row into the compact Story payload shape."""
+    source = str(link.get("source") or "")
+    file_ref = str(link.get("file") or "")
+    path_ref = str(link.get("path") or "")
+    raw = str(link.get("raw") or "")
+    context = link.get("context") if isinstance(link.get("context"), dict) else {}
+    compact = {
+        "source": source,
+        "file": file_ref,
+        "path": path_ref,
+        "raw": raw,
+        "kind": str(link.get("kind") or ""),
+        "context": context,
+        "_debug": {
+            "source": {
+                "source": source,
+                "file": file_ref,
+                "path": path_ref,
+                "raw": raw,
+                "kind": str(link.get("kind") or ""),
+                "matchKind": str(link.get("matchKind") or ""),
+                "context": context,
+            },
+        },
+    }
+    for optional in (
+        "sourceKey",
+        "mission",
+        "levelId",
+        "scriptId",
+        "templateGroup",
+        "templateId",
+    ):
+        if link.get(optional):
+            compact[optional] = link[optional]
+            compact["_debug"]["source"][optional] = link[optional]
+    return compact
+
+
+def story_source_link_search_text(links: list[dict]) -> str:
+    """Return the searchable source and owner text for a link collection."""
+    parts: list[str] = []
+    for link in links:
+        for field in (
+            "raw",
+            "source",
+            "file",
+            "path",
+            "mission",
+            "levelId",
+            "scriptId",
+            "templateId",
+        ):
+            value = link.get(field)
+            if value:
+                parts.append(str(value))
+        context = link.get("context") if isinstance(link.get("context"), dict) else {}
+        owner = context.get("owner") if isinstance(context.get("owner"), dict) else {}
+        parts.extend(str(value) for value in owner.values() if value)
+    return " ".join(parts)
+
+
+def story_source_link_index_summary(links: list[dict]) -> dict:
+    """Summarize source kinds and the first unique files for Story indexes."""
+    source_counts = Counter(str(link.get("source") or "") for link in links)
+    files = list(
+        dict.fromkeys(str(link.get("file") or "") for link in links if link.get("file"))
+    )
+    return {
+        "n": len(links),
+        "sources": {
+            key: source_counts[key]
+            for key in sorted(source_counts)
+            if key
+        },
+        "files": files[:5],
+    }
 
 
 def normalize_dialog_id(raw: str) -> str:

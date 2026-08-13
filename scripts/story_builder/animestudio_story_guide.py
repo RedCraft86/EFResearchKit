@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter, defaultdict
-import gzip
 import json
 from pathlib import Path
 import re
@@ -25,26 +24,44 @@ from typing import Any, Iterable
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS_ROOT = ROOT / "scripts"
-if str(SCRIPTS_ROOT) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_ROOT))
+if __package__ == "story_builder":
+    from common import (
+        NativeEvidenceUnavailable,
+        check_installed_native_inputs,
+        md_escape,
+        native_evidence_required,
+        native_evidence_skip_message,
+        read_json,
+        safe_key,
+        sha256_file,
+        write_report_json,
+        write_text_if_changed,
+    )
+    from export_full_from_game import (
+        animestudio_object_index_dir,
+        load_animestudio_object_index_summary,
+    )
+elif __package__ == "scripts.story_builder":
+    from scripts.common import (
+        NativeEvidenceUnavailable,
+        check_installed_native_inputs,
+        md_escape,
+        native_evidence_required,
+        native_evidence_skip_message,
+        read_json,
+        safe_key,
+        sha256_file,
+        write_report_json,
+        write_text_if_changed,
+    )
+    from scripts.export_full_from_game import (
+        animestudio_object_index_dir,
+        load_animestudio_object_index_summary,
+    )
+else:  # pragma: no cover - direct file execution is intentionally unsupported
+    raise ImportError("run this module with python -m scripts.story_builder.animestudio_story_guide")
 
-from common import (  # noqa: E402
-    NativeEvidenceUnavailable,
-    check_installed_native_inputs,
-    md_escape,
-    native_evidence_required,
-    native_evidence_skip_message,
-    read_json,
-    safe_key,
-    sha256_file,
-    write_report_json,
-    write_text_if_changed,
-)
-from export_full_from_game import (  # noqa: E402
-    animestudio_object_index_dir,
-    load_animestudio_object_index_summary,
-)
+from .object_index_io import iter_gzip_jsonl_objects
 
 
 SCHEMA = "animestudioStoryGuideConsumerAudit.v1"
@@ -228,20 +245,6 @@ def audit_object_row(row: dict[str, Any], source: str) -> list[dict[str, Any]]:
     return actions
 
 
-def iter_gzip_jsonl(path: Path) -> Iterable[dict[str, Any]]:
-    try:
-        with gzip.open(path, "rt", encoding="utf-8") as stream:
-            for line_number, line in enumerate(stream, 1):
-                if not line.strip():
-                    continue
-                value = json.loads(line)
-                if not isinstance(value, dict):
-                    raise AuditError(f"{path}:{line_number}: row is not an object")
-                yield value
-    except (OSError, json.JSONDecodeError) as exc:
-        raise AuditError(f"{path}: cannot read merged object index: {exc}") from exc
-
-
 def _source_fingerprint(
     export_summary: dict[str, Any],
     source: str,
@@ -289,7 +292,7 @@ def scan_source(
     object_path = index_dir / relative_name
     actions: list[dict[str, Any]] = []
     object_count = 0
-    for row in iter_gzip_jsonl(object_path):
+    for row in iter_gzip_jsonl_objects(object_path, error_type=AuditError):
         if row.get("recordType") != "object":
             continue
         object_count += 1

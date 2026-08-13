@@ -4,20 +4,22 @@ import json
 import re
 from collections import defaultdict
 
-try:
-    from ..common import (
-        ROOT,
-        read_bytes_cached,
-        unique_preserve as _unique_preserve,
-        walk_field_values as _walk_field_values,
-    )
-except ImportError:
+if __package__ == "story_builder":
     from common import (
         ROOT,
         read_bytes_cached,
         unique_preserve as _unique_preserve,
         walk_field_values as _walk_field_values,
     )
+elif __package__ == "scripts.story_builder":
+    from ..common import (
+        ROOT,
+        read_bytes_cached,
+        unique_preserve as _unique_preserve,
+        walk_field_values as _walk_field_values,
+    )
+else:  # pragma: no cover - direct file execution is intentionally unsupported
+    raise ImportError("import this module as scripts.story_builder.mission_flow")
 
 from .anime_assets import (
     _canonical_cutscene_key,
@@ -74,6 +76,100 @@ _QUEST_ACTION_CONNECTIONS = {
     2: ("client_action_succeed", "succeed"),
     4: ("client_action_failed", "failed"),
 }
+
+
+def parse_level_ref_name(name: str) -> dict | None:
+    if not name.endswith(".json"):
+        return None
+    stem = name[:-5]
+    marker = "_lv_data_sub_"
+    if marker not in stem:
+        return None
+    level_id, rest = stem.split(marker, 1)
+    kind = "plain"
+    if rest.startswith("mission_"):
+        kind = "mission"
+        rest = rest[len("mission_") :]
+    rest = rest.lstrip("_")
+    if not level_id or not rest:
+        return None
+    token = re.sub(r"_v[0-9A-Za-z]+$", "", rest)
+    return {
+        "level": level_id,
+        "kind": kind,
+        "token": token,
+    }
+
+
+def level_host_type(level_id: str) -> str:
+    if level_id.startswith(("map", "base")):
+        return "map"
+    if level_id.startswith("dung"):
+        return "dungeon"
+    if level_id.startswith("indie"):
+        return "indie"
+    if level_id.startswith("blackbox"):
+        return "blackbox"
+    return "other"
+
+
+def build_mission_map_pins(flow: dict | None) -> list[dict]:
+    """Merge identical quest map pins into one stable mission-level list."""
+    if not flow:
+        return []
+    merged: dict[tuple, dict] = {}
+    for quest in flow.get("quests") or []:
+        for pin in quest.get("pins") or []:
+            position = pin.get("position") or {}
+            key = (
+                pin.get("scene") or "",
+                pin.get("sourceType") or "",
+                pin.get("trackingType") or "",
+                pin.get("missionAreaId") or "",
+                pin.get("npcProxyId") or "",
+                round(float(position.get("x", 0.0)), 3),
+                round(float(position.get("y", 0.0)), 3),
+                round(float(position.get("z", 0.0)), 3),
+            )
+            row = merged.get(key)
+            if row is None:
+                row = {
+                    "scene": pin.get("scene") or "",
+                    "sourceType": pin.get("sourceType") or "",
+                    "trackingType": pin.get("trackingType") or "",
+                    "position": {
+                        "x": float(position.get("x", 0.0)),
+                        "y": float(position.get("y", 0.0)),
+                        "z": float(position.get("z", 0.0)),
+                    },
+                    "questIds": [],
+                    "flowIndices": [],
+                }
+                if pin.get("missionAreaId"):
+                    row["missionAreaId"] = pin["missionAreaId"]
+                if pin.get("npcProxyId"):
+                    row["npcProxyId"] = pin["npcProxyId"]
+                if pin.get("radius") is not None:
+                    row["radius"] = pin["radius"]
+                if pin.get("routePointCount") is not None:
+                    row["routePointCount"] = pin["routePointCount"]
+                merged[key] = row
+            quest_id = quest.get("id") or ""
+            if quest_id and quest_id not in row["questIds"]:
+                row["questIds"].append(quest_id)
+            flow_index = quest.get("flowIndex")
+            if flow_index is not None and flow_index not in row["flowIndices"]:
+                row["flowIndices"].append(flow_index)
+    return sorted(
+        merged.values(),
+        key=lambda row: (
+            min(row.get("flowIndices") or [10**9]),
+            row.get("scene") or "",
+            row.get("sourceType") or "",
+            row["position"]["x"],
+            row["position"]["z"],
+        ),
+    )
 
 # Current installed MemoryPack formatter evidence maps the compact ActionHeader
 # tag 0x85 with 0x13 subtype members to LevelEvent_OnQuestStateChanged. Only
@@ -1089,4 +1185,4 @@ def load_mission_flow(mission_id: str) -> dict | None:
     return payload
 
 
-__all__ = ["load_mission_flow"]
+__all__ = ["build_mission_map_pins", "load_mission_flow"]

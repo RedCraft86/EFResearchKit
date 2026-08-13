@@ -20,7 +20,6 @@ import json
 import math
 import re
 import struct
-import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -28,11 +27,14 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS_DIR = ROOT / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-from common import read_bytes_cached
-from story_builder.mission_assets import select_complete_mission_runtime_root
+if __package__ == "story_builder":
+    from common import read_bytes_cached
+elif __package__ == "scripts.story_builder":
+    from ..common import read_bytes_cached
+else:  # pragma: no cover - direct file execution is intentionally unsupported
+    raise ImportError("import this module as scripts.story_builder.mission_recovery")
+
+from .mission_assets import select_complete_mission_runtime_root
 
 EXPORT_ROOT = ROOT / "export_full"
 DEFAULT_MRA_DIR = select_complete_mission_runtime_root(
@@ -771,7 +773,7 @@ def attach_timeline_evidence(
         # Import after story_builder.context has finished initializing.  That
         # module imports mission_recovery while defining the shared AnimeStudio
         # roots, so a module-level import here would observe a partial context.
-        from story_builder.anime_assets import recover_dialog_tree_definition_evidence
+        from .anime_assets import recover_dialog_tree_definition_evidence
 
         dialog_tree_loader = recover_dialog_tree_definition_evidence
     evidence: dict[str, list[dict]] = {}
@@ -1363,6 +1365,21 @@ def _unwrap_const(value: Any) -> Any:
     return value
 
 
+def _logic_id_from_entity_ptr(value: Any) -> int | None:
+    value = _unwrap_const(value)
+    if not isinstance(value, dict) or value.get("useSlotId") is not False:
+        return None
+    logic_id = value.get("logicId")
+    if (
+        not isinstance(logic_id, int)
+        or isinstance(logic_id, bool)
+        or logic_id <= 0
+        or logic_id > 0xFFFFFFFFFFFFFFFF
+    ):
+        return None
+    return logic_id
+
+
 def _safe_key(value: Any) -> str:
     return str(value if value is not None else "").strip()
 
@@ -1498,20 +1515,6 @@ def decode_mission_world_entity_condition_refs(raw: dict) -> list[dict]:
     out: list[dict] = []
     seen: set[tuple[str, str, str, int, str]] = set()
 
-    def logic_id_from_ptr(value: Any) -> int | None:
-        value = _unwrap_const(value)
-        if not isinstance(value, dict) or value.get("useSlotId") is not False:
-            return None
-        logic_id = value.get("logicId")
-        if (
-            not isinstance(logic_id, int)
-            or isinstance(logic_id, bool)
-            or logic_id <= 0
-            or logic_id > 0xFFFFFFFFFFFFFFFF
-        ):
-            return None
-        return logic_id
-
     def walk(value: Any, quest_id: str = "", path: str = "$") -> None:
         if isinstance(value, dict):
             next_quest_id = quest_id
@@ -1531,13 +1534,13 @@ def decode_mission_world_entity_condition_refs(raw: dict) -> list[dict]:
                 )
             )
             candidates: list[tuple[str, int]] = []
-            direct_logic_id = logic_id_from_ptr(value.get("_entityId"))
+            direct_logic_id = _logic_id_from_entity_ptr(value.get("_entityId"))
             if direct_logic_id is not None:
                 candidates.append(("_entityId", direct_logic_id))
             raw_enemy_ids = _unwrap_const(value.get("_enemyIds"))
             if isinstance(raw_enemy_ids, list):
                 for index, raw_entity in enumerate(raw_enemy_ids):
-                    logic_id = logic_id_from_ptr(raw_entity)
+                    logic_id = _logic_id_from_entity_ptr(raw_entity)
                     if logic_id is not None:
                         candidates.append((f"_enemyIds[{index}]", logic_id))
             if short_name and next_quest_id and map_id:
@@ -1592,20 +1595,6 @@ def decode_mission_world_entity_condition_groups(raw: dict) -> list[dict]:
     out: list[dict] = []
     seen: set[tuple[str, str, str, tuple[int, ...]]] = set()
 
-    def logic_id_from_ptr(value: Any) -> int | None:
-        value = _unwrap_const(value)
-        if not isinstance(value, dict) or value.get("useSlotId") is not False:
-            return None
-        logic_id = value.get("logicId")
-        if (
-            not isinstance(logic_id, int)
-            or isinstance(logic_id, bool)
-            or logic_id <= 0
-            or logic_id > 0xFFFFFFFFFFFFFFFF
-        ):
-            return None
-        return logic_id
-
     def emit(
         *,
         quest_id: str,
@@ -1657,7 +1646,7 @@ def decode_mission_world_entity_condition_groups(raw: dict) -> list[dict]:
                 valid = isinstance(raw_enemy_ids, list) and bool(raw_enemy_ids)
                 if valid:
                     for raw_entity in raw_enemy_ids:
-                        logic_id = logic_id_from_ptr(raw_entity)
+                        logic_id = _logic_id_from_entity_ptr(raw_entity)
                         if logic_id is None:
                             valid = False
                             break
@@ -1695,7 +1684,7 @@ def decode_mission_world_entity_condition_groups(raw: dict) -> list[dict]:
                                 )
                             )
                         )
-                        logic_id = logic_id_from_ptr(child.get("_entityId"))
+                        logic_id = _logic_id_from_entity_ptr(child.get("_entityId"))
                         if not map_id or logic_id is None:
                             valid = False
                             break
@@ -3947,6 +3936,43 @@ def summarize(
         "clientActionsByType": dict(action_counter.most_common()),
         "conditionTypes": dict(condition_counter.most_common()),
         "trackingTypes": dict(tracking_counter.most_common()),
+    }
+
+
+def build_mission_timeline_recovery_report(
+    scene_graphs: dict[str, dict],
+    mission_flows: dict[str, dict] | None = None,
+    *,
+    timeline_orders: Path = DEFAULT_TIMELINE_ORDERS,
+    mission_runtime_root: Path = DEFAULT_MRA_DIR,
+) -> dict:
+    """Build the source-only mission timeline report used by Story output."""
+    timeline_index, timeline_meta = load_timeline_index(timeline_orders)
+    files = mission_files(mission_runtime_root, set()) if mission_runtime_root.is_dir() else []
+    script_condition_ownership = build_script_condition_ownership(files)
+    mission_flows = mission_flows or {}
+    recovered = [
+        recover_mission(
+            path,
+            timeline_index,
+            None,
+            source_backed_scene_edges_from_scene_graph(scene_graphs.get(path.stem)),
+            source_backed_story_call_contexts_from_scene_graph(scene_graphs.get(path.stem)),
+            source_backed_hash_terminals_from_scene_graph(scene_graphs.get(path.stem)),
+            source_backed_call_server_callbacks_from_scene_graph(scene_graphs.get(path.stem)),
+            script_condition_ownership=script_condition_ownership,
+            mission_flow=mission_flows.get(path.stem),
+        )
+        for path in files
+    ]
+    return {
+        "evidencePolicy": EVIDENCE_POLICY,
+        "summary": summarize(
+            recovered,
+            timeline_meta,
+            generated_by="scripts/story_builder/build.py",
+        ),
+        "missions": recovered,
     }
 
 

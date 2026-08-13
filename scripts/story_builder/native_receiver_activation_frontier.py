@@ -21,7 +21,6 @@ import argparse
 import hashlib
 import json
 import re
-import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,39 +28,55 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
-for search_path in (ROOT / "scripts",):
-    if str(search_path) not in sys.path:
-        sys.path.insert(0, str(search_path))
+if __package__ == "story_builder":
+    from common import (
+        STORY_RECOVERY_REPORTS_DIR,
+        md_escape,
+        read_bytes_cached,
+        read_json,
+        rel_path,
+        write_json,
+        write_report_json,
+        write_text_if_changed,
+    )
+elif __package__ == "scripts.story_builder":
+    from ..common import (
+        STORY_RECOVERY_REPORTS_DIR,
+        md_escape,
+        read_bytes_cached,
+        read_json,
+        rel_path,
+        write_json,
+        write_report_json,
+        write_text_if_changed,
+    )
+else:  # pragma: no cover - direct file execution is intentionally unsupported
+    raise ImportError(
+        "run this module with python -m scripts.story_builder.native_receiver_activation_frontier"
+    )
 
-from common import (  # noqa: E402
-    STORY_RECOVERY_REPORTS_DIR,
-    md_escape,
-    read_bytes_cached,
-    read_json,
-    rel_path,
-    write_json,
-    write_report_json,
-    write_text_if_changed,
-)
-from story_builder.context import (  # noqa: E402
+from .context import (
     GAMEPLAY_CONFIG_DIR,
     LEVELDATA_DIR,
     LEVELSCRIPT_DIR,
     MRA_DIR,
     SPAWNER_CONFIG_DIR,
 )
-from story_builder.level_bindings import (  # noqa: E402
+from .level_bindings import (
     _native_vector_close,
     _parse_leveldata_mission_host_name,
     build_leveldata_mission_area_script_host_index,
     decode_levelscript_native_action_topology,
     parse_leveldata_levelscript_brief_dictionary,
 )
-from story_builder.levelscript_binary import (  # noqa: E402
+from .levelscript_binary import (
     decode_levelscript_task_conditions,
     decode_levelscript_binary_file,
 )
-from story_builder.mission_recovery import (  # noqa: E402
+from .levelscript_manual_control import (
+    build_manual_control_index,
+)
+from .mission_recovery import (
     decode_mission_script_conditions,
     decode_mission_world_entity_condition_refs,
 )
@@ -154,9 +169,6 @@ ENCOUNTER_METADATA_SHA256 = (
 DEFAULT_PIPELINE_INDEX = ROOT / "webui" / "data" / "mission_pipeline" / "index.json"
 DEFAULT_PIPELINE_MISSION_ROOT = (
     ROOT / "webui" / "data" / "mission_pipeline" / "missions"
-)
-DEFAULT_MANUAL_CONTROL_AUDIT = (
-    ROOT / "reports" / "mission_order" / "levelscript_manual_control_audit.json"
 )
 DEFAULT_JSON = STORY_RECOVERY_REPORTS_DIR / "native_receiver_activation_frontier.json"
 DEFAULT_MARKDOWN = STORY_RECOVERY_REPORTS_DIR / "native_receiver_activation_frontier.md"
@@ -1657,78 +1669,6 @@ def receiver_script_rows(index_payload: dict[str, Any]) -> list[dict[str, Any]]:
         )
     rows.sort(key=lambda row: (row["levelId"], int(row["scriptId"])))
     return rows
-
-
-def manual_control_targets(
-    payload: dict[str, Any],
-    self_control_contract: dict[str, Any] | None = None,
-) -> dict[tuple[str, str], list[dict[str, Any]]]:
-    """Index literal and binary-validated current-context manual targets."""
-    targets: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
-    contract = self_control_contract or {}
-    operand_contract = contract.get("serializedOperandContract") or {}
-    self_contract_validated = (
-        (contract.get("validation") or {}).get("status") == "validated"
-        and safe_text(contract.get("classification"))
-        == "current_context_manual_start_self_target"
-        and (contract.get("discoveryPattern") or {}).get(
-            "serializedObjectInputs"
-        )
-        == []
-        and operand_contract.get("levelIdParamSource") is not None
-        and operand_contract.get("scriptIdParamSource") is not None
-    )
-    for row in payload.get("rows") or []:
-        if not isinstance(row, dict):
-            continue
-        source_level = safe_text(row.get("levelId"))
-        source_script = safe_text(row.get("scriptId"))
-        manual_control = row.get("manualControl") or {}
-        parameter_sources = manual_control.get("parameterSources") or {}
-        if (
-            self_contract_validated
-            and safe_text(row.get("action")) == "ManualStartLevelScript"
-            and bool(row.get("activationPair"))
-            and parameter_sources
-            == {
-                "levelId": operand_contract.get("levelIdParamSource"),
-                "scriptId": operand_contract.get("scriptIdParamSource"),
-            }
-            and source_level
-            and source_script
-        ):
-            targets[(source_level, source_script)].append({
-                "sourceLevelId": source_level,
-                "sourceScriptId": source_script,
-                "localId": row.get("localId"),
-                "action": "ManualStartLevelScript",
-                "selfTarget": True,
-                "targetResolution": "current_context_self",
-                "parameterSources": parameter_sources,
-                "headerLinkedEvent": row.get("linkedEvent") or {},
-                "sourceFile": safe_text(row.get("file")),
-            })
-        for target in row.get("literalTargets") or []:
-            if not isinstance(target, dict):
-                continue
-            level_id = safe_text(target.get("levelId"))
-            script_id = safe_text(target.get("scriptId"))
-            if not level_id or not script_id:
-                continue
-            targets[(level_id, script_id)].append(
-                {
-                    "sourceLevelId": source_level,
-                    "sourceScriptId": source_script,
-                    "localId": row.get("localId"),
-                    "action": safe_text(row.get("action")),
-                    "selfTarget": (
-                        source_level == level_id and source_script == script_id
-                    ),
-                    "targetResolution": "literal_serialized_identity",
-                    "sourceFile": safe_text(row.get("file")),
-                }
-            )
-    return targets
 
 
 def subgame_script_bindings(
@@ -3593,7 +3533,6 @@ def exact_client_active_request_contract(
 
 def build_report(
     index_payload: dict[str, Any],
-    manual_control_payload: dict[str, Any],
     *,
     leveldata_root: Path = LEVELDATA_DIR,
     levelscript_root: Path = LEVELSCRIPT_DIR,
@@ -3671,10 +3610,11 @@ def build_report(
             "SubGameInstanceData.bindScriptId",
         ]
     )
-    incoming_by_target = manual_control_targets(
-        manual_control_payload,
-        manual_self_control,
+    manual_control_index = build_manual_control_index(
+        levelscript_root=levelscript_root,
+        self_control_contract=manual_self_control,
     )
+    incoming_by_target = manual_control_index.targets
     subgames_by_script = subgame_script_bindings(index_payload)
     consumers_by_script = mission_runtime_script_consumers(mission_root)
     task_extra_info = script_task_extra_info_rows(
@@ -4159,7 +4099,12 @@ def build_report(
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "sources": {
             "missionPipelineIndex": rel_path(DEFAULT_PIPELINE_INDEX),
-            "manualControlAudit": rel_path(DEFAULT_MANUAL_CONTROL_AUDIT),
+            "manualControlIndex": {
+                "sourceRoot": manual_control_index.source_root,
+                "mappingId": manual_control_index.mapping_id,
+                "validation": manual_control_index.validation,
+                "evidenceBoundary": manual_control_index.evidence_boundary,
+            },
             "levelDataRoot": rel_path(leveldata_root),
             "levelScriptRoot": rel_path(levelscript_root),
             "missionPipelineMissionRoot": rel_path(mission_root),
@@ -4926,7 +4871,7 @@ def build_report(
             ),
             "validation": mission_area_shell_validation,
         },
-        "manualControlAuditSummary": manual_control_payload.get("summary") or {},
+        "manualControlIndexSummary": manual_control_index.summary,
         "rows": rows,
     }
 
@@ -6192,11 +6137,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pipeline-index", type=Path, default=DEFAULT_PIPELINE_INDEX)
     parser.add_argument(
-        "--manual-control-audit",
-        type=Path,
-        default=DEFAULT_MANUAL_CONTROL_AUDIT,
-    )
-    parser.add_argument(
         "--mission-root",
         type=Path,
         default=DEFAULT_PIPELINE_MISSION_ROOT,
@@ -6215,12 +6155,10 @@ def main() -> None:
     args = parse_args()
     payload = build_report(
         read_json(args.pipeline_index) or {},
-        read_json(args.manual_control_audit) or {},
         mission_root=args.mission_root,
         structured_json_root=args.structured_json_root,
     )
     payload["sources"]["missionPipelineIndex"] = rel_path(args.pipeline_index)
-    payload["sources"]["manualControlAudit"] = rel_path(args.manual_control_audit)
     payload["sources"]["missionPipelineMissionRoot"] = rel_path(args.mission_root)
     payload["sources"]["structuredJsonRoot"] = rel_path(
         args.structured_json_root

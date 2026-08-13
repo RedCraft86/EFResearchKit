@@ -19,33 +19,44 @@ import json
 import os
 import shutil
 import sqlite3
-import sys
 import time
 from collections import Counter
 from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-from common import (
-    EXPORT_ROOT,
-    OUT_DIR,
-    UPDATES_REPORTS_DIR,
-    ROOT,
-    display_extension,
-    normalize_posix,
-    path_id_export_base_stem,
-    read_json,
-    rel_requires_path_id_export_name,
-    write_json,
-)
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
-
-from asset_builder.index import ASSET_KIND_BY_EXT, VIDEO_EXTENSIONS
-from source_paths import resolve_asset_source_roots
-from updates_builder.scanner import ScanConfig, scan_export_changes
+if __package__:
+    from .common import (
+        EXPORT_ROOT,
+        OUT_DIR,
+        UPDATES_REPORTS_DIR,
+        ROOT,
+        display_extension,
+        normalize_posix,
+        path_id_export_base_stem,
+        read_json,
+        rel_requires_path_id_export_name,
+        write_json,
+    )
+    from .asset_builder.index import ASSET_KIND_BY_EXT, VIDEO_EXTENSIONS
+    from .source_paths import resolve_asset_source_roots
+    from .updates_builder.scanner import ScanConfig, scan_export_changes
+else:
+    from common import (
+        EXPORT_ROOT,
+        OUT_DIR,
+        UPDATES_REPORTS_DIR,
+        ROOT,
+        display_extension,
+        normalize_posix,
+        path_id_export_base_stem,
+        read_json,
+        rel_requires_path_id_export_name,
+        write_json,
+    )
+    from asset_builder.index import ASSET_KIND_BY_EXT, VIDEO_EXTENSIONS
+    from source_paths import resolve_asset_source_roots
+    from updates_builder.scanner import ScanConfig, scan_export_changes
 
 DEFAULT_STATE_DIR = ROOT / ".game-data-tracker"
 DEFAULT_EXPORT_ROOT = EXPORT_ROOT

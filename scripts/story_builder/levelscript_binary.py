@@ -3,17 +3,32 @@ from __future__ import annotations
 import re
 import struct
 import math
-import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+from .codecs.levelscript import exit_custom_performance as levelscript_exit_performance
+from .codecs.levelscript import fmv as levelscript_fmv
+from .codecs.levelscript import manual_control as levelscript_manual_control
+from .codecs.levelscript import npc_patrol_start as levelscript_npc_patrol_start
+from .codecs.levelscript import play3d_radio as levelscript_play3d_radio
+from .codecs.levelscript import raise_custom_script_event as levelscript_custom_event
+from .codecs.levelscript import switch_actions as levelscript_switch_actions
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS_DIR = ROOT / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-from common import read_bytes_cached
+if __package__ == "story_builder":
+    from common import (
+        RECORDED_NATIVE_GAMEASSEMBLY_SHA256,
+        RECORDED_NATIVE_METADATA_SHA256,
+        read_bytes_cached,
+    )
+elif __package__ == "scripts.story_builder":
+    from ..common import (
+        RECORDED_NATIVE_GAMEASSEMBLY_SHA256,
+        RECORDED_NATIVE_METADATA_SHA256,
+        read_bytes_cached,
+    )
+else:  # pragma: no cover - direct file execution is intentionally unsupported
+    raise ImportError("import this module as scripts.story_builder.levelscript_binary")
 
 
 LEVELSCRIPT_START_TYPE_NAMES = {
@@ -75,6 +90,7 @@ SCRIPT_POINTER_REF_RECORDS = {
 LEVELSCRIPT_NATIVE_HEADER_MAPPING_ID = (
     "gameassembly-2026-07-11-cr-0x18b9217d0-actionheader"
 )
+LEVELSCRIPT_NATIVE_HEADER_CONTRACT_SCHEMA = "levelScriptNativeHeaderContract.v1"
 LEVELSCRIPT_NATIVE_HEADER_NAMES: dict[tuple[int, int], str] = {
     (0x1052, 0x00): "LevelEvent_OnCustomEvent",
     (0x1054, 0x00): "LevelEvent_OnDialogEnter",
@@ -338,6 +354,85 @@ LEVELSCRIPT_NATIVE_HEADER_UNION_TAG_NAMES: dict[int, str] = {
     0x00E4: "OnTianshizhuangActivate",
     0x00E5: "OnTianshizhuangFinish",
 }
+
+
+def levelscript_native_header_contract(
+    gameassembly_sha256: str,
+    metadata_sha256: str,
+) -> dict[str, Any]:
+    """Gate the recorded ActionHeader union registry to its exact build."""
+    gameassembly_sha256 = str(gameassembly_sha256 or "").upper()
+    metadata_sha256 = str(metadata_sha256 or "").upper()
+    missing = [
+        label
+        for label, value in (
+            ("GameAssembly.dll", gameassembly_sha256),
+            ("global-metadata.dat", metadata_sha256),
+        )
+        if not value
+    ]
+    mismatches = [
+        {
+            "source": label,
+            "expected": expected,
+            "actual": actual,
+        }
+        for label, actual, expected in (
+            (
+                "GameAssembly.dll",
+                gameassembly_sha256,
+                RECORDED_NATIVE_GAMEASSEMBLY_SHA256,
+            ),
+            (
+                "global-metadata.dat",
+                metadata_sha256,
+                RECORDED_NATIVE_METADATA_SHA256,
+            ),
+        )
+        if actual and actual != expected
+    ]
+    status = "missing" if missing else "mismatched" if mismatches else "validated"
+    return {
+        "schema": LEVELSCRIPT_NATIVE_HEADER_CONTRACT_SCHEMA,
+        "mappingId": LEVELSCRIPT_NATIVE_HEADER_MAPPING_ID,
+        "status": status,
+        "sources": {
+            "gameAssemblySha256": gameassembly_sha256,
+            "globalMetadataSha256": metadata_sha256,
+        },
+        "missing": missing,
+        "mismatches": mismatches,
+    }
+
+
+def summarize_levelscript_native_header_records(
+    records: list[dict[str, Any]],
+    memberships: dict[int, str],
+    *,
+    names: set[str],
+) -> list[dict[str, Any]]:
+    """Summarize exact header-list records selected by the native registry."""
+    counts: Counter[tuple[int, int, str]] = Counter()
+    for record in records:
+        role = str(memberships.get(_record_start(record)) or "")
+        if not role.startswith("headerList"):
+            continue
+        union_tag, member_count = levelscript_record_semantic_key(record)
+        header_name = LEVELSCRIPT_NATIVE_HEADER_UNION_TAG_NAMES.get(union_tag, "")
+        if header_name in names:
+            counts[(union_tag, member_count, header_name)] += 1
+    return [
+        {
+            "headerTagHex": f"0x{union_tag:04x}",
+            "serializedMemberCount": member_count,
+            "headerName": header_name,
+            "count": count,
+            "headerListCount": count,
+            "headerTable": "Beyond_Gameplay_Actions_ActionHeader",
+            "nativeHeaderMappingId": LEVELSCRIPT_NATIVE_HEADER_MAPPING_ID,
+        }
+        for (union_tag, member_count, header_name), count in sorted(counts.items())
+    ]
 
 
 def levelscript_record_semantic_key(record: dict[str, Any]) -> tuple[int, int]:
@@ -798,9 +893,6 @@ PROPERTY_OUTPUT_RE = re.compile(
 
 LEVELSCRIPT_NATIVE_EVENT_PAYLOAD_MAPPING_ID = (
     "gameassembly-2026-07-17-memorypack-native-event-fields"
-)
-LEVELSCRIPT_NATIVE_FMV_ACTION_MAPPING_ID = (
-    "gameassembly-2026-07-11-memorypack-play-fmv-action-fields"
 )
 LEVELSCRIPT_NATIVE_AUDIO_ACTION_MAPPING_ID = (
     "gameassembly-2026-08-09-memorypack-audio-action-fields"
@@ -5128,205 +5220,6 @@ def _decode_while_action(payload: bytes) -> dict[str, Any]:
     return out
 
 
-def _decode_switch_int_action(
-    payload: bytes,
-    *,
-    field_prefix: str = "switch",
-    action_name: str = "SwitchInt",
-    branch_role: str | None = None,
-) -> dict[str, Any]:
-    """Decode a serialized integer switch family using its shared shape.
-
-    The current ``SwitchInt`` and ``SwitchIntLarger`` formatters both read, in
-    setter order, ``_caseIDList``, ``_caseValueList``, ``_defaultID``, then a
-    typed ``PureGetter<int> _value`` object.  Both lists use a u32 count
-    followed by signed i32 values.  Keeping the parser parameterized by the
-    family prefix prevents per-object recovery rules while retaining explicit
-    family names in the emitted evidence.
-    """
-    if branch_role is None:
-        family_token = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", action_name)
-        family_token = family_token.replace("-Action", "").lower()
-        branch_role = f"typed-{family_token}-actions"
-    cursor = 0
-
-    def read_i32_list() -> list[int] | None:
-        nonlocal cursor
-        if cursor + 4 > len(payload):
-            return None
-        count = struct.unpack_from("<I", payload, cursor)[0]
-        cursor += 4
-        if count > 64 or cursor + count * 4 > len(payload):
-            return None
-        values = [
-            struct.unpack_from("<i", payload, cursor + index * 4)[0]
-            for index in range(count)
-        ]
-        cursor += count * 4
-        return values
-
-    case_ids = read_i32_list()
-    case_values = read_i32_list()
-    if case_ids is None or case_values is None or len(case_ids) != len(case_values):
-        return {}
-    if cursor + 4 > len(payload):
-        return {}
-    default_id = struct.unpack_from("<i", payload, cursor)[0]
-    cursor += 4
-    value_getter = payload[cursor:]
-
-    # The installed formatter writes a polymorphic PureGetter<int> object
-    # here.  Every current integer-switch record has the object-present tag 0x04
-    # and at least the 14-byte compact object shell.  Requiring it consumes the
-    # complete record tail and prevents a matching scalar prefix from being
-    # promoted into control flow.
-    if len(value_getter) < 14 or value_getter[0] != 0x04:
-        return {}
-    if any(ref < -1 or ref > 0x10000 for ref in [*case_ids, default_id]):
-        return {}
-
-    branch_refs = list(dict.fromkeys(
-        ref for ref in [*case_ids, default_id] if ref > 0
-    ))
-    case_ids_field = f"{field_prefix}CaseActionLocalIds"
-    case_values_field = f"{field_prefix}CaseValues"
-    cases_field = f"{field_prefix}Cases"
-    default_field = f"{field_prefix}DefaultActionLocalId"
-    value_length_field = f"{field_prefix}ValueGetterPayloadLength"
-    value_prefix_field = f"{field_prefix}ValueGetterHexPrefix"
-    out: dict[str, Any] = {
-        case_ids_field: case_ids,
-        case_values_field: case_values,
-        cases_field: [
-            {"value": value, "actionLocalId": action_id}
-            for value, action_id in zip(case_values, case_ids)
-        ],
-        default_field: default_id,
-        value_length_field: len(value_getter),
-        value_prefix_field: value_getter[:32].hex(" "),
-        "branchLocalRefs": branch_refs,
-        "branchRole": branch_role,
-    }
-    # Common property-output/local-getter form used by the e3m4 radio chain:
-    # object-present + zero subtype header + local getter id + null sentinel.
-    if (
-        len(value_getter) == 17
-        and value_getter[:5] == b"\x04\x00\x00\x00\x00"
-        and value_getter[9:] == b"\xff" * 8
-    ):
-        getter_id = struct.unpack_from("<i", value_getter, 5)[0]
-        if 0 <= getter_id <= 0x10000:
-            out[f"{field_prefix}ValueGetterLocalId"] = getter_id
-    if f"{field_prefix}ValueGetterLocalId" not in out:
-        inline_value = _decode_i32_param(value_getter, 0)
-        if inline_value is not None and inline_value[1] == len(value_getter):
-            out[f"{field_prefix}ValueParam"] = inline_value[0]
-    return out
-
-
-def _decode_switch_string_action(payload: bytes) -> dict[str, Any]:
-    """Decode the current-build ``SwitchString`` branch table exactly."""
-    cursor = 0
-
-    def read_i32_list() -> list[int] | None:
-        nonlocal cursor
-        if cursor + 4 > len(payload):
-            return None
-        count = struct.unpack_from("<I", payload, cursor)[0]
-        cursor += 4
-        if count > 64 or cursor + count * 4 > len(payload):
-            return None
-        values = [
-            struct.unpack_from("<i", payload, cursor + index * 4)[0]
-            for index in range(count)
-        ]
-        cursor += count * 4
-        return values
-
-    def read_string_list() -> list[str | None] | None:
-        nonlocal cursor
-        if cursor + 4 > len(payload):
-            return None
-        count = struct.unpack_from("<I", payload, cursor)[0]
-        cursor += 4
-        if count > 64:
-            return None
-        values: list[str | None] = []
-        for _ in range(count):
-            if cursor + 4 > len(payload):
-                return None
-            size = struct.unpack_from("<i", payload, cursor)[0]
-            cursor += 4
-            if size == -1:
-                values.append(None)
-                continue
-            if size < 0 or size > 1024 or cursor + size > len(payload):
-                return None
-            try:
-                value = payload[cursor : cursor + size].decode("utf-8")
-            except UnicodeDecodeError:
-                return None
-            if any(ord(char) < 0x20 or ord(char) == 0x7F for char in value):
-                return None
-            values.append(value)
-            cursor += size
-        return values
-
-    case_ids = read_i32_list()
-    case_values = read_string_list()
-    if case_ids is None or case_values is None or len(case_ids) != len(case_values):
-        return {}
-    if cursor + 4 > len(payload):
-        return {}
-    default_id = struct.unpack_from("<i", payload, cursor)[0]
-    cursor += 4
-    if any(ref < -1 or ref > 0x10000 for ref in [*case_ids, default_id]):
-        return {}
-
-    value_param = _decode_string_param(payload, cursor)
-    value_getter_local_id: int | None = None
-    if value_param is not None and value_param[1] == len(payload):
-        value_detail = value_param[0]
-    elif (
-        cursor + 17 == len(payload)
-        and payload[cursor] == 0x04
-        and payload[cursor + 1 : cursor + 5] == b"\xff" * 4
-        and payload[cursor + 9 : cursor + 17] == b"\xff" * 8
-    ):
-        value_getter_local_id = struct.unpack_from("<i", payload, cursor + 5)[0]
-        if value_getter_local_id <= 0 or value_getter_local_id > 0x10000:
-            return {}
-        value_detail = {
-            "value": None,
-            "idRef": value_getter_local_id,
-            "paramSource": -1,
-            "path": None,
-        }
-    else:
-        return {}
-
-    branch_refs = list(dict.fromkeys(
-        ref for ref in [*case_ids, default_id] if ref > 0
-    ))
-    out: dict[str, Any] = {
-        "switchStringCaseActionLocalIds": case_ids,
-        "switchStringCaseValues": case_values,
-        "switchStringCases": [
-            {"value": value, "actionLocalId": action_id}
-            for value, action_id in zip(case_values, case_ids)
-        ],
-        "switchStringDefaultActionLocalId": default_id,
-        "switchStringValueParam": value_detail,
-        "branchLocalRefs": branch_refs,
-        "branchRole": "typed-switch-string-actions",
-        "payloadShape": "switch-string-four-fields-exact-eof",
-        "consumedBytes": len(payload),
-    }
-    if value_getter_local_id is not None:
-        out["switchStringValueGetterLocalId"] = value_getter_local_id
-    return out
-
-
 def _decode_wait_for_seconds_in_trigger_volume_action(
     payload: bytes,
 ) -> dict[str, Any]:
@@ -5359,224 +5252,6 @@ def _decode_wait_for_seconds_in_trigger_volume_action(
         )),
         "branchRole": "typed-wait-trigger-volume-outcomes",
         "payloadShape": "wait-trigger-volume-five-inherited-fields-exact-eof",
-        "consumedBytes": len(payload),
-    }
-
-
-def _decode_play3d_radio_action(payload: bytes) -> dict[str, Any]:
-    """Decode the exact current-build ``Play3DRadio`` field sequence.
-
-    The generated native deserializer sets the 12 subtype fields in the order
-    replayed below.  This decoder intentionally requires the action payload to
-    end at the twelfth field; a minority of records have additional serialized
-    list framing after the action and remain unsupported until that outer
-    framing is independently decoded.
-    """
-    sentinel = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
-    cursor = 0
-    values: dict[str, Any] = {}
-    offsets: dict[str, str] = {}
-    encodings: dict[str, str] = {}
-
-    class DecodeError(ValueError):
-        pass
-
-    def expect_tag(name: str) -> None:
-        nonlocal cursor
-        if cursor >= len(payload) or payload[cursor] != 0x04:
-            raise DecodeError(f"{name}: missing object-present tag")
-        offsets[name] = _offset_hex(cursor)
-        cursor += 1
-
-    def expect_sentinel(name: str) -> None:
-        nonlocal cursor
-        if payload[cursor : cursor + 12] != sentinel:
-            raise DecodeError(f"{name}: invalid Param tail")
-        cursor += 12
-
-    def scalar(name: str, fmt: str, size: int) -> None:
-        nonlocal cursor
-        expect_tag(name)
-        if cursor + size > len(payload):
-            raise DecodeError(f"{name}: truncated scalar")
-        values[name] = struct.unpack_from(fmt, payload, cursor)[0]
-        cursor += size
-        expect_sentinel(name)
-
-    def boolean(name: str) -> None:
-        nonlocal cursor
-        expect_tag(name)
-        if cursor >= len(payload) or payload[cursor] not in (0, 1):
-            raise DecodeError(f"{name}: invalid bool")
-        values[name] = bool(payload[cursor])
-        cursor += 1
-        expect_sentinel(name)
-
-    def string(name: str, *, nullable: bool = False) -> None:
-        nonlocal cursor
-        offsets[name] = _offset_hex(cursor)
-        if nullable and payload[cursor : cursor + 1] == b"\xff":
-            values[name] = ""
-            encodings[name] = "bare-null"
-            cursor += 1
-            return
-        expect_tag(name)
-        if cursor + 4 > len(payload):
-            raise DecodeError(f"{name}: truncated length")
-        size = struct.unpack_from("<I", payload, cursor)[0]
-        cursor += 4
-        if nullable and size == 0xFFFFFFFF:
-            values[name] = ""
-            encodings[name] = "tagged-null"
-            expect_sentinel(name)
-            return
-        if size > 512 or cursor + size > len(payload):
-            raise DecodeError(f"{name}: invalid length")
-        try:
-            values[name] = payload[cursor : cursor + size].decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise DecodeError(f"{name}: invalid UTF-8") from exc
-        cursor += size
-        encodings[name] = "tagged-string"
-        expect_sentinel(name)
-
-    try:
-        scalar("attenuationType", "<I", 4)
-        boolean("enableAdvancedOptions")
-        expect_tag("entityPtr")
-        entity_raw = payload[cursor : cursor + 26]
-        if len(entity_raw) != 26:
-            raise DecodeError("entityPtr: truncated")
-        if entity_raw[14:26] == sentinel:
-            encodings["entityPtr"] = "default14+sentinel12"
-        elif entity_raw[18:26] == b"\xff" * 8:
-            encodings["entityPtr"] = "bound18+null8"
-        else:
-            raise DecodeError("entityPtr: unsupported shape")
-        cursor += 26
-        boolean("fromBegin")
-        scalar("index", "<i", 4)
-        boolean("noFlushAfterLoading")
-        string("npcProxyId", nullable=True)
-        boolean("onlyOnce")
-        string("radioId")
-        scalar("reverbOffset", "<f", 4)
-        boolean("useNpcProxy")
-        scalar("voOffset", "<f", 4)
-    except (DecodeError, struct.error):
-        return {}
-    if cursor != len(payload):
-        return {}
-    return {
-        "payloadShape": "play3d-radio-native-12-field-exact-eof",
-        "radioId": str(values.get("radioId") or ""),
-        "npcProxyId": str(values.get("npcProxyId") or ""),
-        "useNpcProxy": bool(values.get("useNpcProxy")),
-        "fields": values,
-        "fieldOffsets": offsets,
-        "fieldEncodings": encodings,
-        "consumedBytes": cursor,
-    }
-
-
-def _decode_npc_patrol_start_action(payload: bytes) -> dict[str, Any]:
-    """Decode the current four-field ``NpcPatrolStart`` action exactly."""
-    param_tail = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
-    cursor = 0
-
-    def read_bool_param() -> bool | None:
-        nonlocal cursor
-        if (
-            cursor + 14 > len(payload)
-            or payload[cursor] != 0x04
-            or payload[cursor + 1] not in (0, 1)
-            or payload[cursor + 2 : cursor + 14] != param_tail
-        ):
-            return None
-        value = bool(payload[cursor + 1])
-        cursor += 14
-        return value
-
-    def read_i32_param() -> int | None:
-        nonlocal cursor
-        if (
-            cursor + 17 > len(payload)
-            or payload[cursor] != 0x04
-            or payload[cursor + 5 : cursor + 17] != param_tail
-        ):
-            return None
-        value = struct.unpack_from("<i", payload, cursor + 1)[0]
-        cursor += 17
-        return value
-
-    start_from_beginning = read_bool_param()
-    patrol_id = read_i32_param()
-    force_idle = read_bool_param()
-    if (
-        start_from_beginning is None
-        or patrol_id is None
-        or force_idle is None
-        or patrol_id <= 0
-        or cursor + 27 > len(payload)
-        or payload[cursor : cursor + 2] != b"\x04\x03"
-    ):
-        return {}
-    logic_id = struct.unpack_from("<Q", payload, cursor + 2)[0]
-    slot_id = struct.unpack_from("<I", payload, cursor + 10)[0]
-    use_slot_id = payload[cursor + 14]
-    id_ref = struct.unpack_from("<i", payload, cursor + 15)[0]
-    param_source = struct.unpack_from("<i", payload, cursor + 19)[0]
-    path_size = struct.unpack_from("<i", payload, cursor + 23)[0]
-    cursor += 27
-    if (
-        use_slot_id not in (0, 1)
-        or path_size <= 0
-        or path_size > 256
-        or cursor + path_size != len(payload)
-    ):
-        return {}
-    try:
-        target_path = payload[cursor : cursor + path_size].decode("utf-8")
-    except UnicodeDecodeError:
-        return {}
-    if not target_path or any(ord(char) < 0x20 for char in target_path):
-        return {}
-    return {
-        "action": "NpcPatrolStart",
-        "startFromBeginning": start_from_beginning,
-        "patrolId": patrol_id,
-        "forceIdle": force_idle,
-        "targetNpc": {
-            "logicId": logic_id,
-            "slotId": slot_id,
-            "useSlotId": bool(use_slot_id),
-            "idRef": id_ref,
-            "paramSource": param_source,
-            "path": target_path,
-        },
-        "payloadShape": "npc-patrol-start-four-field-exact-eof",
-        "consumedBytes": len(payload),
-    }
-
-
-def _decode_exit_level_custom_performance_action(
-    payload: bytes,
-) -> dict[str, Any]:
-    """Decode the current action's sole authored ``Param<uint>`` handle."""
-    if (
-        len(payload) != 17
-        or payload[0] != 0x04
-        or payload[5:17] != b"\xff" * 12
-    ):
-        return {}
-    return {
-        "payloadShape": "uint-handle-with-unset-param-tail-exact-eof",
-        "handle": {
-            "serializedConstValue": struct.unpack_from("<I", payload, 1)[0],
-            "idRef": -1,
-            "paramSource": -1,
-            "path": None,
-        },
         "consumedBytes": len(payload),
     }
 
@@ -5855,57 +5530,6 @@ def _decode_compact_property_gate(payload: bytes) -> dict[str, Any]:
         _append_small_i32_tail(payload, 41, out)
         return _drop_empty(out)
 
-    return _drop_empty(out)
-
-
-def _decode_manual_levelscript_control(payload: bytes, role: str) -> dict[str, Any]:
-    """Decode stable diagnostics for ManualStart/ManualEnd action payloads."""
-    if len(payload) < 46:
-        return {}
-    script_id_candidate: int | None = None
-    if payload[17] == 0x04 and len(payload) >= 26:
-        raw_script_id = struct.unpack_from("<Q", payload, 18)[0]
-        if _is_plausible_levelscript_id(raw_script_id):
-            script_id_candidate = raw_script_id
-    marker_values: list[int] = []
-    for offset in range(0, len(payload) - 3):
-        value = struct.unpack_from("<I", payload, offset)[0]
-        if 900 <= value <= 1100 and value not in marker_values:
-            marker_values.append(value)
-    canonical_prefix = (
-        payload[0] == 0x04
-        and payload[1:9] == b"\xff" * 8
-        and payload[13:17] == b"\xff" * 4
-        and payload[17] == 0x04
-        and payload[18:34] == b"\x00" * 16
-        and payload[34:38] == b"\xff" * 4
-        and payload[42:46] == b"\xff" * 4
-    )
-    out = {
-        "action": "ManualStartLevelScript" if role == "manual-start" else "ManualEndLevelScript",
-        "role": role,
-        "payloadShape": "manual-levelscript-default-operands" if canonical_prefix else "manual-levelscript-unknown",
-        "memberCountByte": payload[0],
-        "markerU32s": marker_values,
-        "hasLiteralLevelId": False,
-        "hasLiteralScriptId": script_id_candidate is not None,
-        "scriptIdCandidate": str(script_id_candidate) if script_id_candidate is not None else "",
-        "constantTargetStatus": "script-id-only" if script_id_candidate is not None else "absent",
-    }
-    if canonical_prefix:
-        # Both operands are serialized Param<T> values.  Current MemoryPack
-        # metadata and generated Deserialize bodies establish the member order
-        # as constValue, idRef, paramSource, path.  Keep the numeric sources
-        # here; their build-specific enum names are supplied by the validated
-        # original-binary contract rather than hardcoded into this parser.
-        out["parameterSources"] = {
-            "levelId": struct.unpack_from("<i", payload, 9)[0],
-            "scriptId": struct.unpack_from("<i", payload, 38)[0],
-        }
-    if script_id_candidate is not None:
-        out["payloadShape"] = "manual-levelscript-script-id-operand"
-    if len(payload) > 46 and canonical_prefix:
-        out["trailingBytesAfterCanonicalPrefix"] = payload[46:].hex(" ")
     return _drop_empty(out)
 
 
@@ -6352,90 +5976,6 @@ def _decode_list_add_value_entity_ptr(payload: bytes) -> dict[str, Any]:
     }
 
 
-def _decode_raise_custom_script_event(
-    payload: bytes,
-    texts: list[str],
-) -> dict[str, Any]:
-    """Decode the exact current-build ``RaiseCustomScriptEvent`` payload.
-
-    GameAssembly and MemoryPack metadata establish the field order as
-    ``eventArgsPtr``, ``eventKey``, and ``receiver``.  The current serialized
-    receiver is a four-member ``Param<LevelScriptPtr>`` whose constant storage
-    carries an explicit script id, or whose ``ParamSource`` value 1002 denotes
-    the currently executing LevelScript.  Fail closed for every other shape so
-    this diagnostic can never turn an arbitrary string into a script route.
-    """
-    event_key_offset = 18
-    param_tail_size = 12
-    receiver_size = 29
-    minimum_size = event_key_offset + 5 + param_tail_size + receiver_size
-    if len(payload) < minimum_size or payload[event_key_offset] != 0x04:
-        return {}
-    event_key_size = struct.unpack_from("<I", payload, event_key_offset + 1)[0]
-    if not 0 < event_key_size <= 512:
-        return {}
-    event_key_start = event_key_offset + 5
-    event_key_end = event_key_start + event_key_size
-    receiver_start = event_key_end + param_tail_size
-    if receiver_start + receiver_size > len(payload):
-        return {}
-    try:
-        event_key = payload[event_key_start:event_key_end].decode("utf-8")
-    except UnicodeDecodeError:
-        return {}
-    if (
-        not event_key
-        or event_key.startswith("$")
-        or event_key not in texts
-        or any(ord(char) < 0x20 or ord(char) == 0x7F for char in event_key)
-    ):
-        return {}
-    receiver = payload[receiver_start : receiver_start + receiver_size]
-    if receiver[0] != 0x04 or receiver[1] not in (0, 1):
-        return {}
-    has_const_value = bool(receiver[1])
-    const_script_id = struct.unpack_from("<Q", receiver, 2)[0]
-    id_ref = struct.unpack_from("<i", receiver, 17)[0]
-    param_source = struct.unpack_from("<i", receiver, 21)[0]
-    path_length = struct.unpack_from("<i", receiver, 25)[0]
-    receiver_mode = "dynamic_or_unresolved"
-    target_script_id: int | None = None
-    if (
-        not has_const_value
-        and const_script_id == 0
-        and id_ref == -1
-        and param_source == 1002
-        and path_length == -1
-    ):
-        receiver_mode = "current_script"
-    elif (
-        has_const_value
-        and _is_plausible_levelscript_id(const_script_id)
-        and id_ref == -1
-        and param_source == 0
-        and path_length == -1
-    ):
-        receiver_mode = "constant_script"
-        target_script_id = const_script_id
-    return _drop_empty(
-        {
-            "action": "RaiseCustomScriptEvent",
-            "eventKey": event_key,
-            "receiverMode": receiver_mode,
-            "targetScriptId": target_script_id,
-            "receiver": {
-                "hasConstValue": has_const_value,
-                "constScriptId": const_script_id,
-                "idRef": id_ref,
-                "paramSource": param_source,
-                "pathLength": path_length,
-                "payloadOffset": _offset_hex(receiver_start),
-            },
-            "payloadShape": "raise-custom-script-event-exact-current-build",
-        }
-    )
-
-
 def _record_payload_window(
     data: bytes,
     record: dict[str, Any] | None,
@@ -6449,37 +5989,6 @@ def _record_payload_window(
     if next_start is None or next_start <= payload_start or next_start > len(data):
         next_start = min(len(data), payload_start + 160)
     return payload_start, data[payload_start:next_start]
-
-
-def _decode_tagged_string_parameter_at(
-    payload: bytes,
-    offset: int,
-) -> tuple[str, int] | None:
-    """Decode one exact constant-string ActionParam at ``offset``.
-
-    Current LevelScript ActionParam constants use a one-byte constant tag,
-    UTF-8 byte length, payload, then the shared 12-byte reference/source tail.
-    Returning the consumed end lets callers prove whether a field is the final
-    serialized member instead of selecting an arbitrary printable token.
-    """
-    param_tail = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
-    if offset < 0 or offset + 5 > len(payload) or payload[offset] != 0x04:
-        return None
-    size = struct.unpack_from("<I", payload, offset + 1)[0]
-    text_start = offset + 5
-    text_end = text_start + size
-    field_end = text_end + len(param_tail)
-    if size <= 0 or field_end > len(payload):
-        return None
-    if payload[text_end:field_end] != param_tail:
-        return None
-    try:
-        text = payload[text_start:text_end].decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-    if not text or any(ord(char) < 0x20 or ord(char) == 0x7F for char in text):
-        return None
-    return text, field_end
 
 
 def _decode_audio_param_tail(
@@ -7202,71 +6711,6 @@ def _decode_audio_action(
     }))
 
 
-def _decode_fmv_action(
-    payload: bytes,
-    payload_start: int,
-    record: dict[str, Any],
-) -> dict[str, Any]:
-    """Decode exact authored FMV ids from the two current native actions.
-
-    IL2CPP metadata and the generated MemoryPack setters prove that
-    ``PlayFmvAction._moviePath`` is the first derived field, while
-    ``StartFmvAndTeleportAction._fmvId`` is the final derived field.  The
-    member counts are part of the union identity, so a tag collision or a
-    future payload shape fails closed.
-    """
-    semantic_key = levelscript_record_semantic_key(record)
-    tagged_strings = sorted(
-        (
-            hit
-            for hit in record.get("strings") or []
-            if isinstance(hit, dict)
-            and isinstance(hit.get("offset"), int)
-            and isinstance(hit.get("text"), str)
-        ),
-        key=lambda hit: int(hit["offset"]),
-    )
-    if semantic_key == (0x035E, 0x0E):
-        if len(tagged_strings) != 1:
-            return {}
-        hit = tagged_strings[0]
-        relative_offset = int(hit["offset"]) - payload_start
-        if relative_offset != 0:
-            return {}
-        decoded = _decode_tagged_string_parameter_at(payload, relative_offset)
-        if not decoded or decoded[0] != hit["text"]:
-            return {}
-        return {
-            "action": "PlayFmvAction",
-            "fmvId": decoded[0],
-            "sourceField": "_moviePath",
-            "fieldOffset": _offset_hex(int(hit["offset"])),
-            "payloadShape": "play-fmv-movie-path-first-derived-field",
-            "nativeMappingId": LEVELSCRIPT_NATIVE_FMV_ACTION_MAPPING_ID,
-        }
-    if semantic_key == (0x04A1, 0x10):
-        if not tagged_strings:
-            return {}
-        hit = tagged_strings[-1]
-        relative_offset = int(hit["offset"]) - payload_start
-        decoded = _decode_tagged_string_parameter_at(payload, relative_offset)
-        if (
-            not decoded
-            or decoded[0] != hit["text"]
-            or decoded[1] != len(payload)
-        ):
-            return {}
-        return {
-            "action": "StartFmvAndTeleportAction",
-            "fmvId": decoded[0],
-            "sourceField": "_fmvId",
-            "fieldOffset": _offset_hex(int(hit["offset"])),
-            "payloadShape": "start-fmv-teleport-fmv-id-final-derived-field",
-            "nativeMappingId": LEVELSCRIPT_NATIVE_FMV_ACTION_MAPPING_ID,
-        }
-    return {}
-
-
 def decode_levelscript_record_payload(
     data: bytes,
     record: dict[str, Any] | None,
@@ -7453,27 +6897,16 @@ def decode_levelscript_record_payload(
             out.update(while_action)
             out["branchLocalRefs"] = [while_action["whileDoActionLocalId"]]
             out["branchRole"] = "typed-while-action-body"
-    if semantic_key == (0x04BD, 0x0C):
-        switch_int = _decode_switch_int_action(payload)
-        if switch_int:
-            out.update(switch_int)
-    if semantic_key == (0x04BE, 0x0C):
-        switch_int_larger = _decode_switch_int_action(
-            payload,
-            field_prefix="switchIntLarger",
-            action_name="SwitchIntLarger",
-            branch_role="typed-switch-int-larger-actions",
-        )
-        if switch_int_larger:
-            out.update(switch_int_larger)
+    switch_action = levelscript_switch_actions.decode_switch_action(
+        payload,
+        semantic_key,
+    )
+    if switch_action:
+        out.update(switch_action)
     if semantic_key == (0x049E, 0x0F):
         start_dialog = _decode_start_dialog_action(payload)
         if start_dialog:
             out["startDialogAction"] = start_dialog
-    if semantic_key == (0x04BF, 0x0C):
-        switch_string = _decode_switch_string_action(payload)
-        if switch_string:
-            out.update(switch_string)
     if getter_role and semantic_key == (0x0347, 0x09):
         list_get_value_string = _decode_list_get_value_string(payload)
         if list_get_value_string:
@@ -7484,12 +6917,19 @@ def decode_levelscript_record_payload(
         )
         if wait_trigger_volume:
             out.update(wait_trigger_volume)
-    if semantic_key == (0x034A, 0x14):
-        play3d_radio = _decode_play3d_radio_action(payload)
-        if play3d_radio:
-            out["play3DRadio"] = play3d_radio
+    play3d_radio = levelscript_play3d_radio.decode_play3d_radio_action(
+        payload,
+        semantic_key,
+    )
+    if play3d_radio:
+        out["play3DRadio"] = play3d_radio
     if semantic_key in {(0x035E, 0x0E), (0x04A1, 0x10)}:
-        fmv_action = _decode_fmv_action(payload, payload_start, record)
+        fmv_action = levelscript_fmv.decode_fmv_action(
+            payload,
+            payload_start,
+            semantic_key,
+            record.get("strings") or [],
+        )
         if fmv_action:
             out["fmvAction"] = fmv_action
     if semantic_key in {
@@ -7536,16 +6976,20 @@ def decode_levelscript_record_payload(
             audio_action = _decode_audio_action(payload, semantic_key)
             if audio_action:
                 out["audioAction"] = audio_action
-    if semantic_key == (0x031E, 0x0C):
-        npc_patrol_start = _decode_npc_patrol_start_action(payload)
-        if npc_patrol_start:
-            out["npcPatrolStart"] = npc_patrol_start
-    if semantic_key == (0x00B9, 0x09):
-        exit_custom_performance = _decode_exit_level_custom_performance_action(
-            payload
+    npc_patrol_start = levelscript_npc_patrol_start.decode_npc_patrol_start_action(
+        payload,
+        semantic_key,
+    )
+    if npc_patrol_start:
+        out["npcPatrolStart"] = npc_patrol_start
+    exit_custom_performance = (
+        levelscript_exit_performance.decode_exit_level_custom_performance_action(
+            payload,
+            semantic_key,
         )
-        if exit_custom_performance:
-            out["exitLevelCustomPerformance"] = exit_custom_performance
+    )
+    if exit_custom_performance:
+        out["exitLevelCustomPerformance"] = exit_custom_performance
     if semantic_key == (0x04CA, 0x09):
         toggle_clear_screen = _decode_toggle_clear_screen_but_radio_action(
             payload
@@ -7577,10 +7021,15 @@ def decode_levelscript_record_payload(
         list_add = _decode_list_add_value_entity_ptr(payload)
         if list_add:
             out["listAddValueEntityPtr"] = list_add
-    if semantic_key == (0x0380, 0x0B):
-        raise_custom_script_event = _decode_raise_custom_script_event(payload, texts)
-        if raise_custom_script_event:
-            out["raiseCustomScriptEvent"] = raise_custom_script_event
+    raise_custom_script_event = (
+        levelscript_custom_event.decode_raise_custom_script_event_action(
+            payload,
+            semantic_key,
+            texts,
+        )
+    )
+    if raise_custom_script_event:
+        out["raiseCustomScriptEvent"] = raise_custom_script_event
     if semantic_key == (0x0028, 0x0A):
         entity_compare = _decode_entity_compare_getter(payload, property_outputs)
         if entity_compare:
@@ -7722,9 +7171,11 @@ def decode_levelscript_record_payload(
             gender = _decode_is_endmin_gender_getter(getter_payload)
             if gender:
                 out["isEndminGender"] = gender
-    if key in {(0x0308, 0x0A), (0x0302, 0x0A)}:
-        role = str(hint.get("levelScriptControlRole") or "")
-        manual_control = _decode_manual_levelscript_control(payload, role)
+    if key in levelscript_manual_control.MANUAL_CONTROL_ACTIONS:
+        manual_control = levelscript_manual_control.decode_manual_levelscript_control(
+            payload,
+            key,
+        )
         if manual_control:
             out["manualControl"] = manual_control
 

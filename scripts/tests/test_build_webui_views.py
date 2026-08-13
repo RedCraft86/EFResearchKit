@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+import inspect
 import json
 import tempfile
 import unittest
@@ -29,6 +31,22 @@ def commands_for(
 
 
 class WebuiViewPlanTests(unittest.TestCase):
+    def test_gameplay_base_builder_uses_scripts_package_identity(self) -> None:
+        from scripts import common
+        from scripts.gameplay_builder import base_data
+
+        self.assertIs(base_data.write_json, common.write_json)
+        tree = ast.parse(inspect.getsource(base_data))
+        self.assertFalse(
+            any(
+                isinstance(node, ast.Attribute)
+                and node.attr == "path"
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "sys"
+                for node in ast.walk(tree)
+            )
+        )
+
     def test_default_plan_keeps_graph_after_every_producer(self) -> None:
         args = build_webui_views.parse_args([])
         phases = build_webui_views.build_phases(args)
@@ -49,6 +67,8 @@ class WebuiViewPlanTests(unittest.TestCase):
         )
         self.assertIn("--relevant-asset-maps", commands_for(phases, "source_graph")[0])
         self.assertNotIn("audio", [name for phase in task_names(phases) for name in phase])
+        for task_name in ("mission_pipeline", "characters", "gameplay", "projectiles"):
+            self.assertEqual(commands_for(phases, task_name)[-1][1], "-m")
 
     def test_asset_plan_joins_character_and_refs_after_fresh_asset_index(self) -> None:
         args = build_webui_views.parse_args(
@@ -72,6 +92,11 @@ class WebuiViewPlanTests(unittest.TestCase):
         phases = build_webui_views.build_phases(args)
 
         self.assertEqual(task_names(phases), [["mission_pipeline"]])
+        protocol_command = commands_for(phases, "mission_pipeline")[0]
+        self.assertEqual(
+            protocol_command[1:3],
+            ("-m", "scripts.story_builder.protocol_registry"),
+        )
 
     def test_full_graph_omits_relevant_scope_filters(self) -> None:
         args = build_webui_views.parse_args(["--full-source-graph"])

@@ -6,7 +6,16 @@ from pathlib import Path
 from unittest import mock
 
 
-from scripts.story_builder import mission_flow
+from scripts.story_builder import callserver_callbacks, mission_flow
+from scripts.story_builder.codecs.levelscript.raise_custom_script_event import (
+    decode_raise_custom_script_event_action,
+)
+from scripts.story_builder.codecs.levelscript.switch_actions import (
+    decode_switch_action,
+)
+from scripts.story_builder.codecs.levelscript.exit_custom_performance import (
+    decode_exit_level_custom_performance_action,
+)
 from scripts.story_builder.level_bindings import (
     LEVELSCRIPT_MISSIONISH_RE,
     _decode_uid_record,
@@ -44,6 +53,33 @@ from scripts.story_builder.callserver_callbacks import (
 
 
 class MissionFlowLevelScriptEventTests(unittest.TestCase):
+    def test_callserver_audit_carries_native_contract_failure(self):
+        failed_contract = {
+            "status": "mismatched",
+            "sourceFile": "scripts/story_builder/native_contracts/callserver_callback.json",
+            "sourceSha256": "test",
+            "nativeContract": {},
+            "validationFailures": [{
+                "validator": "callServerCallbackNativeContract",
+                "gate": "installed_native_inputs",
+            }],
+        }
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.dict(
+            callserver_callbacks.CALLSERVER_CALLBACK_CONTRACT_AUDIT,
+            failed_contract,
+            clear=True,
+        ):
+            report = callserver_callbacks.build_report(
+                level_script_root=Path(temporary)
+            )
+
+        self.assertEqual("validation_failed", report["status"])
+        self.assertEqual(1, report["summary"]["validationFailures"])
+        self.assertEqual(
+            "installed_native_inputs",
+            report["validationFailures"][0]["gate"],
+        )
+
     def test_sns_objective_tracking_is_typed_attachment_not_playback(self):
         hints = mission_flow._extract_tracking_hints({
             "objectiveList": [{
@@ -275,6 +311,22 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
         self.assertEqual("current_script", decoded["receiverMode"])
         self.assertNotIn("targetScriptId", decoded)
         self.assertEqual(1002, decoded["receiver"]["paramSource"])
+        self.assertEqual(
+            decoded,
+            decode_raise_custom_script_event_action(
+                payload,
+                (0x0380, 0x0B),
+                [event_key],
+            ),
+        )
+        self.assertEqual(
+            {},
+            decode_raise_custom_script_event_action(
+                payload,
+                (0x0380, 0x0A),
+                [event_key],
+            ),
+        )
 
     def test_raise_custom_script_event_decodes_constant_script_receiver(self):
         event_key = "StageFailAction"
@@ -1139,6 +1191,13 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
             },
             detail["exitLevelCustomPerformance"],
         )
+        self.assertEqual(
+            {},
+            decode_exit_level_custom_performance_action(
+                bytes(data[30:47]),
+                (0x00B9, 0x08),
+            ),
+        )
 
     def test_dialog_teleport_followups_are_exact_presentation_actions(self):
         toggle_payload = bytes.fromhex(
@@ -1808,6 +1867,11 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
         self.assertEqual(0, decoded["switchDefaultActionLocalId"])
         self.assertEqual(6, decoded["switchValueGetterLocalId"])
         self.assertEqual([8], decoded["branchLocalRefs"])
+        self.assertEqual(
+            decoded["switchCases"],
+            decode_switch_action(payload, (0x04BD, 0x0C))["switchCases"],
+        )
+        self.assertEqual({}, decode_switch_action(payload, (0x04BD, 0x0B)))
 
         inline_value = (
             struct.pack("<Ii", 1, 8)

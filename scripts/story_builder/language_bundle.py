@@ -1,32 +1,275 @@
 ﻿from __future__ import annotations
+import copy
+import json
 import json as _radio_cont_json
 import hashlib as _reference_hashlib
+import re
 import re as _radio_cont_re
+import shutil
+import sys
+import time
+import unicodedata
+from collections import Counter, defaultdict
+from difflib import SequenceMatcher
 from functools import lru_cache as _radio_cont_lru_cache
+from pathlib import Path
 from pathlib import Path as _RadioContPath
-from .context import *
-from common import write_report_json, write_text_if_changed
-from .anime_assets import *
-from .scene_graph import *
-from .level_bindings import *
-from .mission_flow import *
-from .dialog_tree import *
-from .bundle_support import *
-from .language_helpers import *
+from .context import (
+    ADMIN_ACTOR_IDS,
+    ATMOS_CLUSTER_TABLE_PATH,
+    BLACK_RE,
+    BUILD_PROFILES,
+    CORRECTED_DIALOG_OPTION_IDS,
+    CUTSCENE_TEXT_ROW_RE,
+    DEFAULT_BUILD_PROFILE,
+    DIALOG_OPTION_GROUP_POSITION_OVERRIDES,
+    DIALOG_OPTION_ID_CORRECTIONS,
+    DLG_RE,
+    FOCUS_MODE_INSTANCE_TABLE_PATH,
+    GAMEPLAY_CONFIG_DIR,
+    I18N_HOTFIX_LANGUAGE_TYPES,
+    I18N_HOTFIX_TABLE,
+    LEVELDATA_DIR,
+    LT_BINDING_RE,
+    MISSION_SCENE_ENTRY_KINDS,
+    MISSION_STORY_TYPES,
+    MISSION_TIMELINE_EVIDENCE_POLICY,
+    MRA_DIR,
+    NPC_PROXY_EX_PATH,
+    NPC_PROXY_TABLE_PATH,
+    OPTION_RE,
+    PERSISTENT_TABLE_DIR,
+    RADIO_RE,
+    REMOTECOMM_RE,
+    REPORTS_DIR,
+    ROOT,
+    SCENE_BINDING_TARGET_KINDS,
+    SCENE_TOK,
+    SNS_RE,
+    STORY_SOURCE_LINKS_PATH,
+    STREAMING_TABLE_DIR,
+    SUMMARY_RE,
+    VIDEO_BINDINGS_PATH,
+    _unique_preserve,
+    build_mission_scene_order_candidate_kinds,
+    build_mission_scene_order_info,
+    is_present,
+    recover_black_timeline_attachments,
+    render_mission_timeline_markdown,
+    repo_rel,
+    shared_analyze_scene_order_disorder,
+    shared_build_runtime_registry_debug,
+    shared_build_scene_placement_index_from_timelines,
+    shared_collect_scene_order_gap_rows_from_payloads,
+    shared_load_dialog_id_registry,
+    write_json,
+    write_mission_timeline_recovery_json,
+)
+
+if __package__ == "story_builder":
+    from common import write_report_json, write_text_if_changed
+elif __package__ == "scripts.story_builder":
+    from scripts.common import write_report_json, write_text_if_changed
+else:  # pragma: no cover - direct file execution is intentionally unsupported
+    raise ImportError("import this module as scripts.story_builder.language_bundle")
+from .anime_assets import (
+    _canonical_cutscene_key,
+    _cutscene_component_summary,
+    _infer_cutscene_mission_and_scene,
+    _load_cutscene_assets,
+    _load_cutscene_subtitle_tracks,
+    _load_narrative_video_assets,
+    _quest_area_story_refs,
+    _scene_ref_alias_candidates,
+    recover_dialog_tree_left_subtitle_actions,
+    recover_dialog_tree_narrative_mask_actions,
+    recover_dialog_tree_open_ui_actions,
+    recover_dialog_tree_prime_reachable_story_playback_carriers,
+    recover_dialog_tree_quest_state_dependencies,
+    recover_dialog_tree_story_playback_carriers,
+)
+from .scene_graph import (
+    _compact_scene_graph_sequence,
+    _compact_scene_graph_sequence_steps,
+    _detect_scene_graph_entries,
+    _is_story_scene_graph_key,
+    _is_story_scene_graph_kind,
+    _refine_scene_graph_order,
+    _scene_graph_node_kind,
+    _scene_graph_runtime_payload_key,
+    graph_fragments_text,
+    scene_link_option_payload,
+    scene_links_text,
+)
+from .level_bindings import (
+    GLOBAL_SCRIPT_ID_SCALE,
+    _build_level_binding_groups,
+    _build_levelscript_cross_file_scene_pairs,
+    _build_levelscript_dialog_exit_scene_pairs,
+    _build_levelscript_file_order_scene_sequences,
+    _build_levelscript_scene_chain_map,
+    _load_leveldata_named_entries,
+    _load_levelscript_binding_data,
+    _load_npc_proxy_ex,
+    _scene_binding_search_text,
+    build_entity_tracking_native_event_story_context,
+    build_entity_tracking_world_interactive_dialog_contexts,
+    build_level_function_area_radio_trigger_story_contexts,
+    build_level_interactive_narrative_mission_story_contexts,
+    build_leveldata_airwall_mission_radio_contexts,
+    build_leveldata_authoritative_scope_script_host_index,
+    build_leveldata_interactive_narrative_story_contexts,
+    build_leveldata_mission_area_script_host_index,
+    build_leveldata_mission_script_host_index,
+    build_leveldata_npc_patrol_radio_story_contexts,
+    build_leveldata_world_entity_quest_script_context,
+    build_levelscript_action_story_occurrences,
+    build_levelscript_custom_event_story_producer_routes,
+    build_levelscript_interactive_narrative_story_contexts,
+    build_levelscript_manual_guide_group_story_routes,
+    build_levelscript_mission_state_story_routes,
+    build_levelscript_native_black_action_index,
+    build_levelscript_native_story_playback_index,
+    build_levelscript_task_mission_state_story_dependencies,
+    build_levelscript_travel_pole_custom_event_story_routes,
+    build_mission_scene_file_order,
+    build_mission_tracked_world_entity_levelscript_contexts,
+    build_npc_patrol_checkpoint_mission_contexts,
+    build_npc_proxy_segment_script_host_index,
+    build_quest_progress_locked_interactive_story_contexts,
+    build_spawner_config_mission_index,
+    classify_world_entity_story_receiver_owner,
+    extract_tracked_interactive_story_targets,
+    infer_mission_dialog_order,
+    match_entity_tracking_native_entity_event_context,
+    match_mission_area_leader_trigger_context,
+    match_pos_tracking_leader_trigger_context,
+    resolve_dynamic_hp_spawner_context,
+    resolve_entity_tracking_script,
+    resolve_interactive_condition_script_entity,
+    select_leveldata_native_event_story_context,
+)
+from .mission_flow import (
+    build_mission_map_pins,
+    level_host_type,
+    load_mission_flow,
+    parse_level_ref_name,
+)
+from .dialog_tree import (
+    _dialog_tree_option_prefix,
+    _load_dialog_tree_source,
+    _nearest_visible_timeline_anchor,
+    _option_id_group_parts,
+    _option_text_signature,
+    build_dialog_tree_fragment_payload,
+    build_dialog_tree_line_graph_payload,
+    build_dialog_tree_scene_link_payload,
+    collect_line_timings,
+    collect_option_position_anchors,
+    collect_related_scenes,
+    load_dialog_timeline_line_orders,
+    load_dialog_tree,
+    load_dialog_tree_scene_links,
+    load_exact_dialog_tree_root_payload_alias,
+    recover_foreign_dialog_timeline_containments,
+    resolve_scene_line_order,
+)
+from .bundle_support import (
+    load,
+    load_json_path,
+    load_optional_table_json,
+    load_story_source_links,
+    parse_mission,
+    preview,
+    safe_mission_data_filename,
+    scene_sort_value,
+    slot_misc,
+)
+from .bundle_media import (
+    collect_payload_media_tags,
+    media_id_looks_like_media,
+    sns_media_text_from_params,
+)
+from .bundle_primitives import (
+    brace_text,
+    env_group,
+    env_story_mission,
+    format_webui_timeline_seconds,
+    icon_basename,
+    inline_image_tag,
+    line_haystack,
+    line_identity_haystack,
+    line_option_haystack,
+    merge_search_text,
+    norm_id,
+    norm_template_id,
+    normalize_blackbox_id,
+    pick_fields,
+    sns_raw_title,
+    source_ref,
+    text_sequence_fingerprint,
+    written_path_key,
+)
+from .story_issue_labels import (
+    dialog_option_issue_targets,
+    dialog_story_issue_codes,
+)
 from .option_timeline_continuation import (
     classify_runtime_jump_option_routes,
     classify_timeline_clip_option_index_routes,
     classify_zero_index_timeline_continuation,
+)
+from .option_projection import apply_source_hub_option_groups
+from .radio_continuation import build_radio_continuation_candidates
+from .reference_projection import (
+    append_reference_line,
+    collection_bucket,
+    collection_bucket_from_key,
+    collection_bucket_token,
+    collection_display_name,
+    collection_hint_from_path,
+    collection_map_ref_from_identifiers,
+    collection_row_title,
+    collection_scene_suffix,
+    collection_scene_value,
+    collection_slug,
+    collection_source_label,
+    collection_story_ref_from_bucket,
+    collection_story_ref_from_identifiers,
+    collection_summary_rows,
+    collection_table_name_tokens,
+    collection_tags,
+    collection_text_fingerprint,
+    normalized_duplicate_line_texts,
+    normalized_reference_tags,
+    prts_archive_category_from_collection_ids,
+    prts_archive_category_from_identifier,
+    prts_archive_category_from_row,
+    prts_attachment_aliases,
+    reference_kind_from_tags,
+    reference_row_texts,
+    responsive_preview_values,
+    responsive_sort_values,
+    responsive_summary_rows,
+    sim_duplicate_actor_from_key,
 )
 from .timeline_action_evidence import build_conversation_action_debug
 from .option_anchor_reports import (
     inferred_option_anchor_row,
     write_inferred_option_anchors_report,
 )
-from scene_order_gap_shared import write_scene_order_gap_reports
+if __package__ == "story_builder":
+    from scene_order_gap_shared import write_scene_order_gap_reports
+else:
+    from scripts.scene_order_gap_shared import write_scene_order_gap_reports
 from .cutscene_semantics import (
+    _line_id_list_equal,
     cutscene_semantic_shape,
     cutscene_subtitle_evidence,
+    cutscene_line_text_groups,
+    cutscene_pair_normalize,
+    merge_duplicate_cutscene_rows,
+    normalize_cutscene_text_group,
     select_subtitle_text_group_from_display_names,
 )
 from .ability_binary import (
@@ -34,6 +277,7 @@ from .ability_binary import (
     match_battle_signal_story_producers,
 )
 from .mission_recovery import (
+    build_mission_timeline_recovery_report,
     decode_mission_interactive_script_entity_conditions,
     decode_mission_script_conditions,
     decode_mission_world_entity_condition_groups,
@@ -48,11 +292,25 @@ from .source_provenance import (
     enrich_story_connection_original_files,
     render_story_connection_original_files_markdown,
 )
-
-_RADIO_CONTINUATION_REPORT_PATH = (
-    _RadioContPath(__file__).resolve().parents[2]
-    / "reports" / "mission_order" / "radio_continuation_CN.json"
+from .source_links import (
+    compact_story_source_link,
+    story_source_link_index_summary,
+    story_source_link_search_text,
 )
+from .video_bindings import (
+    compact_narrative_video_ref,
+    narrative_video_index_summary,
+    narrative_video_search_text,
+    narrative_video_sort_key,
+)
+from .narrative_video_overrides import (
+    NarrativeVideoOverrideValidationError,
+    load_narrative_video_overrides,
+    normalize_video_override_stem,
+    validate_narrative_video_override_application,
+    validate_narrative_video_override_inputs,
+)
+
 _FMV_CLIP_BINDINGS_PATH = VIDEO_BINDINGS_PATH
 _NARRATIVE_VIDEO_OVERRIDES_PATH = (
     _RadioContPath(__file__).resolve().parents[2]
@@ -1369,110 +1627,6 @@ def _load_story_order_overrides(path_str: str) -> dict[str, list[str]]:
                 out[str(mission_id)] = [str(key) for key in order if key]
     return out
 
-def _normalize_video_override_stem(value: object) -> str:
-    text = str(value or "").strip().replace("\\", "/")
-    if not text:
-        return ""
-    text = text.rsplit("/", 1)[-1]
-    return _radio_cont_re.sub(r"\.[^.]+$", "", text, flags=_radio_cont_re.IGNORECASE).lower()
-
-@_radio_cont_lru_cache(maxsize=2)
-def _load_narrative_video_overrides(path_str: str) -> dict[str, dict[str, list[dict]]]:
-    path = _RadioContPath(path_str)
-    if not path.is_file():
-        return {"suppressInline": {}, "attachInline": {}}
-    try:
-        payload = _radio_cont_json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, _radio_cont_json.JSONDecodeError):
-        return {"suppressInline": {}, "attachInline": {}}
-    if not isinstance(payload, dict):
-        return {"suppressInline": {}, "attachInline": {}}
-    out: dict[str, dict[str, list[dict]]] = {
-        "suppressInline": {},
-        "attachInline": {},
-    }
-    def add_rule(bucket: dict[str, list[dict]], target_key: object, raw_rule: object) -> None:
-        key = str(target_key or "").strip()
-        if not key:
-            return
-        note = ""
-        raw_stems: object = []
-        if isinstance(raw_rule, dict):
-            note = str(raw_rule.get("note") or "")
-            raw_stems = (
-                raw_rule.get("stems")
-                or raw_rule.get("videoStems")
-                or raw_rule.get("stem")
-                or raw_rule.get("videoStem")
-                or []
-            )
-        elif isinstance(raw_rule, list):
-            raw_stems = raw_rule
-        elif raw_rule:
-            raw_stems = [raw_rule]
-        if isinstance(raw_stems, (str, int, float)):
-            raw_stems = [raw_stems]
-        stems = sorted({
-            normalized
-            for normalized in (_normalize_video_override_stem(value) for value in (raw_stems or []))
-            if normalized
-        })
-        bucket.setdefault(key, []).append({
-            "targetKey": key,
-            "stems": stems,
-            "note": note,
-            "source": path,
-        })
-    def add_rules(bucket_name: str, raw_rules: object) -> None:
-        bucket = out[bucket_name]
-        if isinstance(raw_rules, dict):
-            for target_key, raw_rule in raw_rules.items():
-                add_rule(bucket, target_key, raw_rule)
-        elif isinstance(raw_rules, list):
-            for raw_rule in raw_rules:
-                if not isinstance(raw_rule, dict):
-                    continue
-                target_key = (
-                    raw_rule.get("targetKey")
-                    or raw_rule.get("key")
-                    or raw_rule.get("resolvedKey")
-                    or raw_rule.get("attachTo")
-                )
-                add_rule(bucket, target_key, raw_rule)
-    add_rules("suppressInline", payload.get("suppressInline"))
-    add_rules("attachInline", payload.get("attachInline") or payload.get("attachTo"))
-    return out
-
-def _manual_option_group_override(conv_key: str, group_id: int) -> dict:
-    # Runtime WebUI overrides now live in webui/overrides/options.json
-    # and are applied by webui/app.js so users can edit them without rebuilding
-    # generated conversation JSON.
-    return {}
-
-@_radio_cont_lru_cache(maxsize=2)
-def _load_radio_continuation_candidates_by_mission(
-    path_str: str,
-) -> dict[str, list[dict]]:
-    """Load the radio-continuation audit report keyed by mission id.
-    Each value is a list of `(predecessor, radio, match, levelId, file)` dicts.
-    Returns an empty dict when the report has not been generated yet, so the
-    builder degrades to its prior behavior cleanly.
-    """
-    path = _RadioContPath(path_str)
-    if not path.is_file():
-        return {}
-    try:
-        payload = _radio_cont_json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, _radio_cont_json.JSONDecodeError):
-        return {}
-    out: dict[str, list[dict]] = {}
-    for result in payload.get("results") or []:
-        mission = result.get("mission") or ""
-        if not mission:
-            continue
-        out.setdefault(mission, []).extend(result.get("candidates") or [])
-    return out
-
 @_radio_cont_lru_cache(maxsize=2)
 def _load_fmv_clips_by_webui_key(path_str: str) -> dict[str, list[dict]]:
     """Load builder-owned authored FMV clip windows from video bindings.
@@ -1695,9 +1849,36 @@ def build_language_bundle(
         if dialog_key:
             dialog_tree_open_ui_actions_by_key[dialog_key].append(row)
     narrative_video_assets = _load_narrative_video_assets()
-    narrative_video_overrides = _load_narrative_video_overrides(str(_NARRATIVE_VIDEO_OVERRIDES_PATH))
-    narrative_video_suppress_overrides = narrative_video_overrides.get("suppressInline") or {}
-    narrative_video_attach_overrides = narrative_video_overrides.get("attachInline") or {}
+    narrative_video_report_path = (
+        REPORTS_DIR / f"narrative_videos_{language_code}.json"
+    )
+
+    def fail_narrative_video_override_validation(
+        error: NarrativeVideoOverrideValidationError,
+    ) -> None:
+        failure_report = error.report(language=language_code)
+        failure_report["generated"] = int(time.time())
+        write_json(
+            narrative_video_report_path,
+            failure_report,
+            indent=2,
+            compact=False,
+        )
+        print(str(error), file=sys.stderr)
+        raise error
+
+    try:
+        narrative_video_overrides = load_narrative_video_overrides(
+            _NARRATIVE_VIDEO_OVERRIDES_PATH
+        )
+    except NarrativeVideoOverrideValidationError as error:
+        fail_narrative_video_override_validation(error)
+    narrative_video_suppress_overrides = narrative_video_overrides.rules_for(
+        "suppressInline"
+    )
+    narrative_video_attach_overrides = narrative_video_overrides.rules_for(
+        "attachInline"
+    )
     fmv_clips_by_key = _load_fmv_clips_by_webui_key(
         str(_FMV_CLIP_BINDINGS_PATH)
     )
@@ -1709,146 +1890,6 @@ def build_language_bundle(
     scene_order_analysis_by_payload_id: dict[int, dict] = {}
     scene_order_gap_sources: dict[str, tuple[Path, dict, dict | None]] = {}
     inferred_option_anchor_rows_by_key: dict[str, dict] = {}
-    inline_image_tag_re = re.compile(
-        r"<image\b(?!\s*=)[^>]*>[\s\S]*?</image>"
-        r"|<image\s*=[^>]+>"
-        r"|<image\b(?=[^>]*(?:src|source|path|name|id)\s*=)[^>]*>",
-        flags=re.IGNORECASE,
-    )
-
-    def normalize_media_id(value: object) -> str:
-        trimmed = clean_media_id_value(value).replace("\\", "/")
-        if not trimmed:
-            return ""
-        without_prefix = re.sub(r"^SNS/Emoji/", "", trimmed, flags=re.IGNORECASE)
-        last_segment = without_prefix.split("/")[-1] or without_prefix
-        return re.sub(r"\.[^.]+$", "", last_segment, flags=re.IGNORECASE).lower()
-    def inline_image_id_from_tag(raw_tag: str) -> str:
-        raw = str(raw_tag or "").strip()
-        if not raw:
-            return ""
-        body_match = re.match(r"^<image\b(?!\s*=)[^>]*>([\s\S]*?)</image>$", raw, flags=re.IGNORECASE)
-        if body_match:
-            return clean_media_id_value(body_match.group(1))
-        quoted_direct = re.match(r"""^<image\s*=\s*(["'])([\s\S]*?)\1""", raw, flags=re.IGNORECASE)
-        if quoted_direct:
-            return clean_media_id_value(quoted_direct.group(2))
-        loose_direct = re.match(r"^<image\s*=\s*([^>\s]+)", raw, flags=re.IGNORECASE)
-        if loose_direct:
-            return clean_media_id_value(loose_direct.group(1))
-        quoted_attr = re.search(
-            r"""\b(?:src|source|path|name|id)\s*=\s*(["'])([\s\S]*?)\1""",
-            raw,
-            flags=re.IGNORECASE,
-        )
-        if quoted_attr:
-            return clean_media_id_value(quoted_attr.group(2))
-        loose_attr = re.search(r"\b(?:src|source|path|name|id)\s*=\s*([^>\s]+)", raw, flags=re.IGNORECASE)
-        return clean_media_id_value(loose_attr.group(1)) if loose_attr else ""
-    def image_ids_from_text(text: object) -> list[str]:
-        source = str(text or "")
-        if "<image" not in source.lower():
-            return []
-        return [
-            image_id
-            for image_id in (inline_image_id_from_tag(match.group(0)) for match in inline_image_tag_re.finditer(source))
-            if image_id
-        ]
-    def media_id_is_emoji(value: object) -> bool:
-        normalized = normalize_media_id(value)
-        return "emoji" in normalized or "emoiji" in normalized
-    def media_id_is_sticker(value: object) -> bool:
-        normalized = normalize_media_id(value)
-        if not normalized or media_id_is_emoji(normalized):
-            return False
-        return normalized.startswith("sns_sticker_") or "sticker" in normalized
-    def media_id_looks_like_media(value: object) -> bool:
-        normalized = normalize_media_id(value)
-        if not normalized:
-            return False
-        if normalized.isdigit():
-            return False
-        mission_type, _mission_act = parse_mission(normalized)
-        if mission_type in MISSION_STORY_TYPES:
-            return False
-        return True
-
-    def collect_payload_media_tags(payload: dict) -> set[str]:
-        tags: set[str] = set()
-        def add_media_id(value: object) -> None:
-            if not media_id_looks_like_media(value):
-                return
-            normalized = normalize_media_id(value)
-            if media_id_is_emoji(normalized):
-                tags.add("mediaEmoji")
-                return
-            tags.add("mediaSticker" if media_id_is_sticker(normalized) else "mediaImage")
-        def add_text_images(value: object) -> None:
-            for image_id in image_ids_from_text(value):
-                add_media_id(image_id)
-        def source_from_debug(debug: object) -> dict:
-            if not isinstance(debug, dict):
-                return {}
-            source = debug.get("source") or {}
-            if isinstance(source, dict) and isinstance(source.get("source"), dict):
-                return source["source"]
-            return source if isinstance(source, dict) else {}
-        def add_media_from_source(source: dict) -> None:
-            if not isinstance(source, dict):
-                return
-            for field in ("image", "emoji", "emojiResPath", "optionResPath"):
-                add_media_id(source.get(field))
-            for image_id in source.get("contentParam") or []:
-                add_media_id(image_id)
-            raw_content_params = source.get("contentParams")
-            if not isinstance(raw_content_params, str) or not raw_content_params.strip():
-                return
-            try:
-                content_params = json.loads(raw_content_params)
-            except json.JSONDecodeError:
-                return
-            def visit_content_param(node: object) -> None:
-                if isinstance(node, dict):
-                    for key, value in node.items():
-                        if key in {"image", "imageResPath", "emoji", "emojiResPath", "optionResPath"}:
-                            add_media_id(value)
-                        elif isinstance(value, (dict, list)):
-                            visit_content_param(value)
-                elif isinstance(node, list):
-                    for item in node:
-                        visit_content_param(item)
-            visit_content_param(content_params)
-        def visit_line(line: object) -> None:
-            if not isinstance(line, dict):
-                return
-            add_text_images(line.get("text"))
-            add_media_id(line.get("image"))
-            add_media_id(line.get("emoji"))
-            for image_id in line.get("images") or []:
-                add_media_id(image_id)
-            source = source_from_debug(line.get("_debug"))
-            add_media_from_source(source)
-            if source.get("video"):
-                tags.add("mediaVideo")
-            for option in line.get("options") or []:
-                if not isinstance(option, dict):
-                    continue
-                add_text_images(option.get("text"))
-                add_media_id(option.get("image"))
-                add_media_id(option.get("emoji"))
-                add_media_from_source(source_from_debug(option.get("_debug")))
-        for line in payload.get("lines") or []:
-            visit_line(line)
-        for row in payload.get("summary") or []:
-            if isinstance(row, dict):
-                add_text_images(row.get("text"))
-        if payload.get("narrativeVideos"):
-            tags.add("mediaVideo")
-        cutscene = payload.get("cutscene")
-        if isinstance(cutscene, dict) and cutscene.get("videoRefs"):
-            tags.add("mediaVideo")
-        return tags
-
     def remember_written(path: Path, bucket: set[str]) -> Path:
         bucket.add(written_path_key(path))
         return path
@@ -1871,7 +1912,11 @@ def build_language_bundle(
                 payload,
                 scene_order_analysis_by_payload_id.get(id(payload)),
             )
-        media_tags = collect_payload_media_tags(payload)
+        media_tags = collect_payload_media_tags(
+            payload,
+            parse_mission=parse_mission,
+            mission_story_types=MISSION_STORY_TYPES,
+        )
         if media_tags:
             conv_media_tags_by_key[out_key].update(media_tags)
         return remember_written(path, written_conv_paths)
@@ -2155,34 +2200,16 @@ def build_language_bundle(
             })
         return out
 
-    def sns_media_text_from_params(params) -> str:
-        image_ids = [
-            str(value or "").strip()
-            for value in (params or [])
-            if media_id_looks_like_media(value)
-        ]
-        if not image_ids:
-            return ""
-        if len(image_ids) == 2:
-            by_gender: dict[str, str] = {}
-            for image_id in image_ids:
-                lower = image_id.lower()
-                if lower.endswith("_m"):
-                    by_gender["M"] = image_id
-                elif lower.endswith("_f"):
-                    by_gender["F"] = image_id
-            if by_gender.get("M") and by_gender.get("F"):
-                return (
-                    f'{{M}}{inline_image_tag(by_gender["M"])}'
-                    f'{{F}}{inline_image_tag(by_gender["F"])}'
-                )
-        return " ".join(inline_image_tag(image_id) for image_id in image_ids)
     def sns_content_text(node: dict) -> str:
         text = t(node.get("content", {}).get("id"))
         if text:
             return text
         if node.get("contentType") == 2:
-            return sns_media_text_from_params(node.get("contentParam"))
+            return sns_media_text_from_params(
+                node.get("contentParam"),
+                parse_mission=parse_mission,
+                mission_story_types=MISSION_STORY_TYPES,
+            )
         return ""
     def sns_option_display_text(opt: dict) -> str:
         text = t(opt.get("optionDesc", {}).get("id"))
@@ -4147,7 +4174,6 @@ def build_language_bundle(
         fallback_group_labels: list[str] = []
         group_details: list[dict] = []
         option_response_risks: list[dict] = []
-        manual_option_response_overrides: list[dict] = []
         def preferred_timeline_option_row(opt_id: str) -> dict:
             rows = timeline_option_rows.get(opt_id) or []
             if not rows:
@@ -5074,7 +5100,6 @@ def build_language_bundle(
             opts = sorted(groups_map[g], key=lambda o: o["i"])
             group_opt_ids = group_option_ids_by_group.get(g, [])
             placement_override = DIALOG_OPTION_GROUP_POSITION_OVERRIDES.get((conv_key or "", g), "")
-            manual_override = _manual_option_group_override(conv_key or "", g)
             cinematic_after_candidate = cinematic_after_by_group.get(g, "")
             cinematic_group_sources = cinematic_sources_by_group.get(g, [])
             text_alias_after_candidate = text_alias_after_by_group.get(g, "")
@@ -5223,36 +5248,6 @@ def build_language_bundle(
                 group["after"] = fallback_anchor_id
             elif used_group_fallback and fallback_anchor_id:
                 group["after"] = fallback_anchor_id
-            layout_override = (
-                manual_override.get("layout")
-                if isinstance(manual_override.get("layout"), dict)
-                else {}
-            )
-            manual_layout_applied = False
-            if layout_override:
-                override_after = str(layout_override.get("after") or "").strip()
-                override_position = str(layout_override.get("position") or "").strip()
-                can_apply_layout_override = (
-                    (after_is_authored or group_status in {"fallbackAfter", "keyedAfter", "unanchored"})
-                    and (
-                        override_position == "pre"
-                        or (override_after and override_after in valid_line_ids)
-                    )
-                )
-                if can_apply_layout_override:
-                    if override_position == "pre":
-                        group.pop("after", None)
-                        group["position"] = "pre"
-                    else:
-                        group.pop("position", None)
-                        group["after"] = override_after
-                        fallback_anchor_id = override_after
-                    manual_layout_applied = True
-                    group["manualOverride"] = {
-                        "kind": "optionLayout",
-                        "source": repo_rel(_MANUAL_OPTION_OVERRIDES_PATH),
-                        "note": str(manual_override.get("note") or layout_override.get("note") or ""),
-                    }
             timeline_route_branch = timeline_route_branch_for_group(group_opt_ids, group.get("after") or "")
             route_branch_lines_by_option = timeline_route_branch.get("branchLineIdsByOption") or {}
             sibling_text_branch = {}
@@ -5274,7 +5269,7 @@ def build_language_bundle(
                     group_opt_ids,
                     group.get("after") or "",
                     sibling_anchor_record
-                    if not manual_layout_applied and inferred_anchor_mode == "siblingTimelinePosition"
+                    if inferred_anchor_mode == "siblingTimelinePosition"
                     else None,
                     g,
                 )
@@ -5356,65 +5351,6 @@ def build_language_bundle(
                 or dialog_tree_node_layout
                 or following_line_risk_for_group(group_opt_ids, group.get("after") or "")
             )
-            original_following_line_risk = dict(following_line_risk) if following_line_risk else {}
-            response_override = (
-                manual_override.get("responses")
-                if isinstance(manual_override.get("responses"), dict)
-                else {}
-            )
-            manual_response_applied = False
-            if response_override:
-                option_set = {opt_id for opt_id in group_opt_ids if opt_id}
-                branch_line_ids_by_option: dict[str, list[str]] = {}
-                for raw_opt_id, raw_response in response_override.items():
-                    opt_id = str(raw_opt_id or "")
-                    if opt_id not in option_set or not isinstance(raw_response, dict):
-                        continue
-                    raw_lines = raw_response.get("branchLines")
-                    if raw_lines is None:
-                        raw_lines = raw_response.get("lineIds")
-                    if raw_lines is None:
-                        raw_lines = [raw_response.get("lineId")]
-                    if not isinstance(raw_lines, list):
-                        raw_lines = [raw_lines]
-                    line_ids = [
-                        str(line_id)
-                        for line_id in raw_lines
-                        if str(line_id or "") in valid_line_ids
-                    ]
-                    if line_ids:
-                        branch_line_ids_by_option[opt_id] = _unique_preserve(line_ids)
-                if branch_line_ids_by_option:
-                    override_detail = (
-                        "Manual WebUI-only override supplies option response "
-                        "line mapping for this group."
-                    )
-                    if following_line_risk.get("code") == "inferredFollowingLines":
-                        override_detail = (
-                            "Manual WebUI-only override supplies option response "
-                            "line mapping for a group that otherwise used inferred "
-                            "Timeline-order candidates."
-                        )
-                    following_line_risk = {
-                        **following_line_risk,
-                        "code": "manualOptionResponseOverride",
-                        "reason": "manualOverride",
-                        "detail": override_detail,
-                        "branchLineIdsByOption": branch_line_ids_by_option,
-                        "candidateLineIdsByOption": branch_line_ids_by_option,
-                        "manualOverride": {
-                            "kind": "optionResponse",
-                            "source": repo_rel(_MANUAL_OPTION_OVERRIDES_PATH),
-                            "note": str(manual_override.get("note") or ""),
-                        },
-                    }
-                    if original_following_line_risk:
-                        following_line_risk["overriddenRisk"] = original_following_line_risk
-                    for opt in opts:
-                        opt_id = opt.get("id") or ""
-                        if opt_id in branch_line_ids_by_option:
-                            opt["branchLines"] = branch_line_ids_by_option[opt_id]
-                    manual_response_applied = True
             if following_line_risk.get("code") == "siblingSceneTextBranches":
                 if used_group_fallback:
                     used_group_fallback = False
@@ -5470,45 +5406,6 @@ def build_language_bundle(
                         if strong_raw_index_mapping:
                             tag["candidateMapping"] = following_line_risk.get("candidateMapping") or ""
                         opt.setdefault("riskTags", []).append(tag)
-                elif following_line_risk.get("code") == "manualOptionResponseOverride":
-                    manual_option_response_overrides.append({
-                        "group": g,
-                        **following_line_risk,
-                    })
-                    if original_following_line_risk.get("code") == "inferredFollowingLines":
-                        strong_raw_index_mapping = (
-                            original_following_line_risk.get("candidateMapping") == "trunkClipOptionIndex"
-                            and bool(original_following_line_risk.get("branchLineIdsByOption"))
-                        )
-                        if not strong_raw_index_mapping:
-                            option_response_risks.append({
-                                "group": g,
-                                **original_following_line_risk,
-                            })
-                        tag_code = "rawOptionIndexMatchedLine" if strong_raw_index_mapping else "inferredFollowingLine"
-                        for opt, line_id in zip(opts, option_risk_line_ids(original_following_line_risk, len(opts))):
-                            tag = {
-                                "code": tag_code,
-                                "lineId": line_id,
-                                "reason": original_following_line_risk["reason"],
-                                "branchRiskCode": original_following_line_risk.get("code") or "",
-                                "source": original_following_line_risk.get("source") or "",
-                            }
-                            if strong_raw_index_mapping:
-                                tag["candidateMapping"] = original_following_line_risk.get("candidateMapping") or ""
-                            opt.setdefault("riskTags", []).append(tag)
-                    for opt in opts:
-                        opt_id = opt.get("id") or ""
-                        line_ids = (following_line_risk.get("branchLineIdsByOption") or {}).get(opt_id) or []
-                        if not line_ids:
-                            continue
-                        opt.setdefault("riskTags", []).append({
-                            "code": "manualOptionResponseOverride",
-                            "lineId": line_ids[0],
-                            "reason": "manualOverride",
-                            "branchRiskCode": following_line_risk.get("code") or "",
-                            "source": repo_rel(_MANUAL_OPTION_OVERRIDES_PATH),
-                        })
             if sibling_anchor_record and sibling_anchor_record.get("siblingScenes"):
                 group["branchHint"] = {
                     "scenes": sibling_anchor_record["siblingScenes"],
@@ -5537,15 +5434,6 @@ def build_language_bundle(
                 "cinematicSources": cinematic_group_sources,
                 "textAliasSources": text_alias_group_sources,
             }
-            group_manual_override = group.get("manualOverride") or (
-                following_line_risk.get("manualOverride") if manual_response_applied else {}
-            )
-            if group_manual_override:
-                group_detail["manualOverride"] = group_manual_override
-            if manual_layout_applied:
-                group_detail["manualLayoutOverride"] = True
-            if manual_response_applied:
-                group_detail["manualResponseOverride"] = True
             if authored_group_option_ids and unauthored_group_option_ids:
                 group.setdefault("_debug", {})[
                     "partialAuthoredOptionCoverage"
@@ -5637,28 +5525,6 @@ def build_language_bundle(
                 "lineIds": _unique_preserve([
                     line_id
                     for risk in option_response_risks
-                    for line_id in all_option_response_risk_line_ids(risk)
-                    if line_id
-                ]),
-            })
-        if manual_option_response_overrides:
-            warnings.append({
-                "code": "manualOptionResponseOverride",
-                "reason": "manualOverride",
-                "detail": (
-                    "manual WebUI-only overrides supply option response line "
-                    "mappings for these groups"
-                ),
-                "groups": manual_option_response_overrides,
-                "optionIds": _unique_preserve([
-                    option_id
-                    for risk in manual_option_response_overrides
-                    for option_id in (risk.get("optionIds") or [])
-                    if option_id
-                ]),
-                "lineIds": _unique_preserve([
-                    line_id
-                    for risk in manual_option_response_overrides
                     for line_id in all_option_response_risk_line_ids(risk)
                     if line_id
                 ]),
@@ -5912,231 +5778,6 @@ def build_language_bundle(
                     targets.append(target)
                 if targets:
                     opt["submenuTargets"] = targets
-    def clone_dialog_option_for_hub(option_id: str, hub_index: int, target_scene_key: str = "") -> dict | None:
-        option_id = str(option_id or "").strip()
-        if not option_id:
-            return None
-        base = dialog_option_payload_by_id.get(option_id)
-        if base:
-            option = copy.deepcopy(base)
-        else:
-            text, icon = dialog_option_signature_by_id.get(option_id, ("", ""))
-            option = {
-                "id": option_id,
-                "i": hub_index,
-                "text": text,
-                "icon": icon or "",
-                "_debug": {
-                    "table": "DialogOptionTable",
-                    "rowId": option_id,
-                    "source": {},
-                    "hubOnly": True,
-                },
-            }
-        option["i"] = hub_index
-        if target_scene_key:
-            option["targetSceneKey"] = target_scene_key
-            option.setdefault("_debug", {})["hubTargetSceneKey"] = target_scene_key
-        return option
-
-    def source_hub_option_groups(conv_key: str, valid_line_ids: set[str]) -> tuple[list[dict], list[dict]]:
-        source = _load_dialog_tree_source(conv_key)
-        if not source:
-            return [], []
-        raw_links = [
-            link
-            for link in (source.get("sceneLinks") or [])
-            if isinstance(link, dict)
-            and (link.get("sourceKey") or "") == conv_key
-        ]
-        if not raw_links:
-            return [], []
-        nodes_by_id = {
-            str(node.get("id") or ""): node
-            for node in ((source.get("lineGraph") or {}).get("nodes") or [])
-            if isinstance(node, dict) and node.get("id") is not None
-        }
-        by_source_node: dict[str, list[dict]] = defaultdict(list)
-        for link in raw_links:
-            link_debug = link.get("_debug") if isinstance(link.get("_debug"), dict) else {}
-            source_node_id = str(link_debug.get("sourceOptionNodeId") or "").strip()
-            group_scene_keys = [
-                str(scene_key)
-                for scene_key in (link_debug.get("groupSceneKeys") or [])
-                if str(scene_key or "").strip()
-            ]
-            if source_node_id and conv_key in group_scene_keys and len(set(group_scene_keys)) > 1:
-                by_source_node[source_node_id].append(link)
-        hub_groups: list[dict] = []
-        hub_scene_links: list[dict] = []
-        for source_node_id, links in sorted(by_source_node.items()):
-            local_after = next(
-                (
-                    str(link.get("after") or "")
-                    for link in links
-                    if (link.get("sceneKey") or "") == conv_key
-                    and str(link.get("after") or "") in valid_line_ids
-                ),
-                "",
-            )
-            if not local_after:
-                continue
-            node_option_ids = [
-                str(option_id)
-                for option_id in (nodes_by_id.get(source_node_id, {}).get("optionIds") or [])
-                if str(option_id or "").strip()
-            ]
-            if len(node_option_ids) < 2:
-                continue
-            raw_option_by_id: dict[str, dict] = {}
-            target_scene_by_option: dict[str, str] = {}
-            group_scene_keys: list[str] = []
-            target_scene_keys: list[str] = []
-            for link in links:
-                link_debug = link.get("_debug") if isinstance(link.get("_debug"), dict) else {}
-                group_scene_keys.extend(
-                    str(scene_key)
-                    for scene_key in (link_debug.get("groupSceneKeys") or [])
-                    if str(scene_key or "").strip()
-                )
-                target_scene_keys.extend(
-                    str(scene_key)
-                    for scene_key in (link_debug.get("targetSceneKeys") or [])
-                    if str(scene_key or "").strip()
-                )
-                scene_key = str(link.get("sceneKey") or "")
-                for raw_option in link.get("options") or []:
-                    if not isinstance(raw_option, dict):
-                        continue
-                    option_id = str(raw_option.get("optionId") or "").strip()
-                    if not option_id:
-                        continue
-                    raw_option_by_id.setdefault(option_id, raw_option)
-                    if scene_key:
-                        target_scene_by_option.setdefault(option_id, scene_key)
-            ordered_option_ids = [
-                option_id
-                for option_id in node_option_ids
-                if option_id in raw_option_by_id or option_id in dialog_option_payload_by_id
-            ]
-            if len(ordered_option_ids) < 2:
-                continue
-            group_ids = [
-                parts[1]
-                for option_id in ordered_option_ids
-                if (parts := _option_id_group_parts(option_id))
-            ]
-            group_id = group_ids[0] if group_ids else 1
-            options = [
-                option
-                for option in (
-                    clone_dialog_option_for_hub(
-                        option_id,
-                        hub_index,
-                        target_scene_by_option.get(option_id, ""),
-                    )
-                    for hub_index, option_id in enumerate(ordered_option_ids, start=1)
-                )
-                if option is not None
-            ]
-            if len(options) < 2:
-                continue
-            hub_groups.append({
-                "g": group_id,
-                "after": local_after,
-                "options": options,
-                "hubMenu": {
-                    "sourceKey": conv_key,
-                    "sourceOptionNodeId": source_node_id,
-                    "sourceFile": source.get("file") or "",
-                    "sceneKeys": _unique_preserve(group_scene_keys),
-                },
-            })
-            hub_scene_links.append({
-                "sourceKey": conv_key,
-                "file": source.get("file") or "",
-                "after": local_after,
-                "options": [
-                    scene_link_option_payload(raw_option_by_id[option_id])
-                    for option_id in ordered_option_ids
-                    if option_id in raw_option_by_id
-                ],
-                "sceneSpan": True,
-                "sourceSceneKeys": source.get("sourceSceneKeys") or sorted(set(group_scene_keys)),
-                "_debug": {
-                    "source": {
-                        "targetKey": conv_key,
-                        "sourceKey": conv_key,
-                        "file": source.get("file") or "",
-                    },
-                    "link": {
-                        "sourceOptionNodeId": source_node_id,
-                        "groupSceneKeys": _unique_preserve(group_scene_keys),
-                        "targetSceneKeys": _unique_preserve(target_scene_keys),
-                        "sourceHubMenu": True,
-                    },
-                },
-            })
-        return hub_groups, hub_scene_links
-    def apply_source_hub_option_groups(payload: dict, scene_graph_links: list[dict]) -> list[dict]:
-        def group_after_suffix(group: dict) -> int:
-            match = re.search(r"_(\d+)$", str(group.get("after") or ""))
-            return int(match.group(1)) if match else -1
-        def link_source_node_id(link: dict) -> str:
-            debug = link.get("_debug") if isinstance(link.get("_debug"), dict) else {}
-            link_debug = debug.get("link") if isinstance(debug.get("link"), dict) else {}
-            return str(link_debug.get("sourceOptionNodeId") or "")
-        def link_option_ids(link: dict) -> set[str]:
-            return {
-                str(option.get("optionId") or "")
-                for option in (link.get("options") or [])
-                if isinstance(option, dict) and str(option.get("optionId") or "")
-            }
-        conv_key = str(payload.get("key") or "")
-        valid_line_ids = {
-            str(line.get("id") or "")
-            for line in (payload.get("lines") or [])
-            if isinstance(line, dict) and str(line.get("id") or "")
-        }
-        hub_groups, hub_links = source_hub_option_groups(conv_key, valid_line_ids)
-        if not hub_groups:
-            return scene_graph_links
-        groups = [
-            group
-            for group in (payload.get("optionGroups") or [])
-            if isinstance(group, dict)
-        ]
-        for hub_group in hub_groups:
-            hub_g = hub_group.get("g")
-            replaced = False
-            for idx, existing_group in enumerate(groups):
-                if existing_group.get("g") == hub_g and existing_group.get("after") == hub_group.get("after"):
-                    groups[idx] = hub_group
-                    replaced = True
-                    break
-            if not replaced:
-                groups.append(hub_group)
-        groups.sort(key=lambda group: (group_after_suffix(group), group.get("g") or 0))
-        payload["optionGroups"] = groups
-        for hub_link in hub_links:
-            if hub_link.get("options"):
-                hub_debug = hub_link.get("_debug") if isinstance(hub_link.get("_debug"), dict) else {}
-                hub_link_debug = hub_debug.get("link") if isinstance(hub_debug.get("link"), dict) else {}
-                hub_source_node_id = str(hub_link_debug.get("sourceOptionNodeId") or "")
-                hub_after = str(hub_link.get("after") or "")
-                hub_option_ids = link_option_ids(hub_link)
-                scene_graph_links[:] = [
-                    existing
-                    for existing in scene_graph_links
-                    if not (
-                        str(existing.get("after") or "") == hub_after
-                        and link_source_node_id(existing) == hub_source_node_id
-                        and link_option_ids(existing).issubset(hub_option_ids)
-                    )
-                ]
-                scene_graph_links.append(hub_link)
-        return scene_graph_links
-
     def dialog_recovery_methods(payload: dict) -> list[str]:
         methods: list[str] = []
         def add(method: str) -> None:
@@ -6183,7 +5824,7 @@ def build_language_bundle(
             group_details = [
                 detail
                 for detail in (layout_warning.get("groupDetails") or [])
-                if isinstance(detail, dict) and not detail.get("manualLayoutOverride")
+                if isinstance(detail, dict)
             ]
             modes = {
                 str(detail.get("inferredAnchorMode") or "")
@@ -6248,21 +5889,12 @@ def build_language_bundle(
                     add("optionBranch:rawIndexMatched")
                 elif branch_risk.get("code") == "inferredFollowingLines":
                     add("optionBranch:timelineAdjacent")
-                elif branch_risk.get("code") == "manualOptionResponseOverride":
-                    add("optionBranch:manualOverride")
                 elif branch_risk.get("code") == "sharedTimelineContinuation":
                     add("optionBranch:commonContinuation")
                 if branch_risk.get("commonContinuationLineId"):
                     add("optionBranch:commonContinuation")
                 if branch_risk.get("continuationOptionIds"):
                     add("optionBranch:continuationOption")
-            overridden_risk = (
-                risk.get("overriddenRisk")
-                if isinstance(risk.get("overriddenRisk"), dict)
-                else {}
-            )
-            if overridden_risk:
-                add_option_branch_methods(overridden_risk)
             add_option_branch_methods(risk)
         return methods
     print(
@@ -6395,7 +6027,16 @@ def build_language_bundle(
         if graph_fragments:
             payload["graphFragments"] = graph_fragments
         scene_graph_links = build_dialog_tree_scene_link_payload(out_key)
-        scene_graph_links = apply_source_hub_option_groups(payload, scene_graph_links)
+        scene_graph_links = apply_source_hub_option_groups(
+            payload,
+            scene_graph_links,
+            _load_dialog_tree_source(out_key),
+            option_payload_by_id=dialog_option_payload_by_id,
+            option_signature_by_id=dialog_option_signature_by_id,
+            option_group_parts=_option_id_group_parts,
+            unique_preserve=_unique_preserve,
+            scene_link_option_projector=scene_link_option_payload,
+        )
         if scene_graph_links:
             attach_submenu_targets(scene_graph_links)
             payload["sceneGraphLinks"] = scene_graph_links
@@ -6586,7 +6227,11 @@ def build_language_bundle(
                 image_ids = [
                     str(value or "").strip()
                     for value in (node.get("contentParam") or [])
-                    if media_id_looks_like_media(value)
+                    if media_id_looks_like_media(
+                        value,
+                        parse_mission=parse_mission,
+                        mission_story_types=MISSION_STORY_TYPES,
+                    )
                 ]
                 if image_ids:
                     line_entry["images"] = image_ids
@@ -9000,53 +8645,6 @@ def build_language_bundle(
             or char_id
         )
 
-    def collection_hint_from_path(path: str) -> str:
-        tokens: list[str] = []
-        raw = str(path or "")
-        if raw.startswith("$."):
-            raw = raw[2:]
-        elif raw == "$":
-            raw = ""
-        for piece in [part for part in raw.split(".") if part]:
-            base = re.sub(r"\[\d+\]", "", piece)
-            idx_matches = [int(match) + 1 for match in re.findall(r"\[(\d+)\]", piece)]
-            label = collection_display_name(base)
-            if idx_matches:
-                label = f"{label} {idx_matches[-1]}"
-            if label:
-                tokens.append(label)
-        return " / ".join(tokens[-2:])
-
-    def collection_bucket(table_name: str, row_id: str, row: dict | None) -> str:
-        if table_name == "CommonDeathTips.json":
-            return "common_death_tips"
-        if table_name == "DisplayEnemyTypeTable.json":
-            return "display_enemy_type"
-        if table_name == "TextTable.json":
-            return collection_bucket_from_key(row_id)
-        if isinstance(row, dict):
-            for field in (
-                "groupId",
-                "categoryId",
-                "formulaGroupId",
-                "gameCategory",
-                "machineId",
-                "owner",
-                "charId",
-                "charTypeId",
-                "profession",
-                "weaponType",
-                "roomType",
-                "pageType",
-                "tagType",
-                "type",
-            ):
-                value = row.get(field)
-                if isinstance(value, str) and value and len(value) <= 48:
-                    return value
-                if isinstance(value, int | float) and field in {"roomType", "pageType", "tagType"}:
-                    return f"{field}_{int(value)}"
-        return collection_bucket_from_key(row_id)
     def collection_reading_story_ref(
         table_name: str,
         row_id: str,
@@ -9076,120 +8674,13 @@ def build_language_bundle(
                 candidates.append(title_text)
         candidates.append(str(row_id or ""))
         return (
-            collection_story_ref_from_identifiers(*candidates)
+            collection_story_ref_from_identifiers(
+                *candidates,
+                parse_mission_id=parse_mission,
+                mission_story_types=MISSION_STORY_TYPES,
+            )
             or collection_map_ref_from_identifiers(*candidates)
         )
-    collection_story_mission_pattern = re.compile(
-        r"(?<![a-z0-9])((?:gm|sm|db|dm|[acefm])\d+(?:[a-z]\d+)*(?:d\d+)?)(?![a-z0-9])",
-        re.IGNORECASE,
-    )
-    collection_map_pattern = re.compile(r"map\d+_lv\d+", re.IGNORECASE)
-
-    def collection_story_ref_from_identifiers(*values: str) -> tuple[str, int, str] | None:
-        for raw_value in values:
-            value = str(raw_value or "").strip()
-            if not value:
-                continue
-            lowered = value.lower()
-            if lowered.startswith("topic_"):
-                return (value, 0, "topic")
-            if lowered.startswith("sr_"):
-                return (value, 0, "f")
-            if match := collection_story_mission_pattern.findall(lowered):
-                mission_id = match[-1]
-                type_key, _act = parse_mission(mission_id)
-                if type_key in MISSION_STORY_TYPES:
-                    return (mission_id, collection_scene_suffix(value), type_key)
-        return None
-    def collection_map_ref_from_identifiers(*values: str) -> tuple[str, int, str] | None:
-        for raw_value in values:
-            value = str(raw_value or "").strip()
-            if not value:
-                continue
-            lowered = value.lower()
-            if match := collection_map_pattern.findall(lowered):
-                return (match[-1], collection_scene_suffix(value), "map")
-        return None
-    def collection_story_ref_from_bucket(bucket: str) -> tuple[str, int, str] | None:
-        candidates: set[str] = set()
-        for match in collection_story_mission_pattern.finditer(str(bucket or "").lower()):
-            mission_id = match.group(1)
-            type_key, _act = parse_mission(mission_id)
-            if type_key in MISSION_STORY_TYPES:
-                candidates.add(mission_id)
-        if len(candidates) != 1:
-            return None
-        mission_id = next(iter(candidates))
-        type_key, _act = parse_mission(mission_id)
-        return (mission_id, 0, type_key)
-    def collection_bucket_token(bucket: str) -> str:
-        slug = collection_slug(bucket)
-        checksum = sum((idx + 1) * ord(ch) for idx, ch in enumerate(str(bucket or ""))) % 104729
-        return f"{slug}_{checksum:x}" if checksum else slug
-
-
-    prts_archive_categories = ("collection", "digital", "document", "media", "paper", "report")
-    def prts_archive_category_from_identifier(value) -> str:
-        raw = re.sub(r"[^0-9A-Za-z]+", "_", str(value or "")).strip("_").lower()
-        if not raw:
-            return ""
-        if raw.startswith("nar_"):
-            raw = raw[4:]
-        if raw.startswith("multi_media"):
-            return "media"
-        for category_key in prts_archive_categories:
-            if raw == category_key or raw.startswith(f"{category_key}_"):
-                return category_key
-        return ""
-    def prts_archive_category_from_collection_ids(collection_ids) -> str:
-        counts: dict[str, int] = {}
-        first_seen: dict[str, int] = {}
-        for idx, raw_id in enumerate(collection_ids or []):
-            category_key = prts_archive_category_from_identifier(raw_id)
-            if not category_key:
-                continue
-            counts[category_key] = counts.get(category_key, 0) + 1
-            first_seen.setdefault(category_key, idx)
-        if not counts:
-            return ""
-        return min(
-            counts,
-            key=lambda category_key: (-counts[category_key], first_seen.get(category_key, 0), category_key),
-        )
-    def prts_archive_category_from_row(
-        table_name: str,
-        row_id: str,
-        row: dict | None,
-    ) -> str:
-        if table_name == "PrtsCategory.json":
-            if isinstance(row, dict):
-                return prts_archive_category_from_identifier(row.get("categoryId"))
-            return prts_archive_category_from_identifier(row_id)
-        if isinstance(row, dict):
-            for field in ("categoryId", "firstLvId", "id", "type"):
-                category_key = prts_archive_category_from_identifier(row.get(field))
-                if category_key:
-                    return category_key
-            if table_name in {"PrtsInvestigate.json", "PrtsInvestigateCategory.json"}:
-                collection_ids: list[str] = []
-                for field in ("collectionIdList",):
-                    values = row.get(field) or []
-                    if isinstance(values, list):
-                        collection_ids.extend(str(value) for value in values if str(value))
-                for field in ("categoryDataList", "list"):
-                    groups = row.get(field) or []
-                    if not isinstance(groups, list):
-                        continue
-                    for group_row in groups:
-                        if not isinstance(group_row, dict):
-                            continue
-                        values = group_row.get("collectionIdList") or []
-                        if isinstance(values, list):
-                            collection_ids.extend(str(value) for value in values if str(value))
-                category_key = prts_archive_category_from_collection_ids(collection_ids)
-                if category_key:
-                    return category_key
-        return prts_archive_category_from_identifier(row_id)
     def prts_category_display_name(category_key: str) -> str:
         row = prts_categories.get(category_key) if isinstance(prts_categories.get(category_key), dict) else {}
         return (
@@ -9244,65 +8735,6 @@ def build_language_bundle(
             "title": research_name,
             "desc": research_desc,
         })
-    def collection_tags(
-        table_name: str,
-        row_id: str,
-        bucket: str,
-        row: dict | None = None,
-        *,
-        table_source: str = "streaming",
-        variant: bool = False,
-    ) -> list[str]:
-        stem = table_name.removesuffix(".json")
-        tags = [
-            "wiki",
-            "collection",
-            f"table_{collection_slug(stem)}",
-            f"source_{collection_slug(table_source)}",
-        ]
-        lower = stem.lower()
-        for needle, tag in (
-            ("activity", "activity"),
-            ("achievement", "achievement"),
-            ("battlepass", "battlePass"),
-            ("char", "character"),
-            ("dungeon", "dungeon"),
-            ("enemy", "enemy"),
-            ("factory", "factory"),
-            ("item", "item"),
-            ("jump", "systemJump"),
-            ("mail", "mail"),
-            ("money", "money"),
-            ("picture", "picture"),
-            ("radio", "radio"),
-            ("skill", "skill"),
-            ("system", "system"),
-            ("task", "other"),
-            ("tip", "other"),
-            ("weapon", "weapon"),
-        ):
-            if tag == "system" and lower.startswith("systemjump"):
-                continue
-            if needle in lower and tag not in tags:
-                tags.append(tag)
-        if variant:
-            tags.append("variant")
-        bucket_slug = collection_slug(bucket)
-        if bucket_slug and bucket_slug != "misc":
-            tags.append(f"group_{bucket_slug}")
-        if isinstance(row, dict):
-            if isinstance(row.get("groupId"), str) and row.get("groupId"):
-                tags.append(f"group_{collection_slug(row['groupId'])}")
-            if isinstance(row.get("categoryId"), str) and row.get("categoryId"):
-                tags.append(f"category_{collection_slug(row['categoryId'])}")
-        prts_category_key = prts_archive_category_from_row(table_name, row_id, row)
-        if prts_category_key:
-            tags.append(f"category_{collection_slug(prts_category_key)}")
-        deduped: list[str] = []
-        for tag in tags:
-            if tag not in deduped:
-                deduped.append(tag)
-        return deduped
     def collect_reference_text_nodes(
         table_name: str,
         row_id: str,
@@ -9349,67 +8781,6 @@ def build_language_bundle(
                     out=out,
                 )
         return out
-    def collection_row_title(
-        table_name: str,
-        row_id: str,
-        text_nodes: list[dict],
-        *,
-        preferred_source: str = "streaming",
-    ) -> str:
-        preferred_fields = {
-            "name",
-            "title",
-            "talentName",
-            "gameName",
-            "dungeonName",
-            "tipsTitle",
-            "topicName",
-            "recordTitle",
-            "voiceTitle",
-            "iconDesc",
-            "effectTitle",
-        }
-        for node in text_nodes:
-            if node.get("field") in preferred_fields:
-                return brace_text(node.get("text") or "") or (node.get("text") or "")
-        if table_name == "TextTable.json":
-            return row_id
-        return row_id
-    def collection_summary_rows(
-        table_name: str,
-        row_id: str,
-        row: dict | None,
-        bucket: str,
-        *,
-        table_source: str = "streaming",
-        variant: bool = False,
-    ) -> list[dict]:
-        rows = [
-            {"text": f"Table: {collection_display_name(table_name.removesuffix('.json'))}"},
-            {"text": f"Row: {row_id}"},
-        ]
-        if table_source != "streaming":
-            rows.append({"text": f"Source: {collection_source_label(table_source)}"})
-        if variant:
-            rows.append({"text": "Variant: differs from StreamingAssets row"})
-        bucket_label = collection_display_name(bucket)
-        if bucket_label and bucket_label != "Misc":
-            rows.append({"text": f"Group: {bucket_label}"})
-        if isinstance(row, dict):
-            for field in ("groupId", "categoryId", "type", "gameCategory", "profession", "weaponType", "machineId", "roomType", "unlockMissionId"):
-                value = row.get(field)
-                if value in (None, "", [], {}):
-                    continue
-                if isinstance(value, list):
-                    preview_value = ", ".join(str(item) for item in value[:4])
-                    if len(value) > 4:
-                        preview_value += ", ..."
-                else:
-                    preview_value = str(value)
-                rows.append({"text": f"{collection_display_name(field)}: {preview_value}"})
-                if len(rows) >= 6:
-                    break
-        return rows
     def collect_exported_texttable_row_ids() -> set[str]:
         referenced = set(referenced_texttable_row_ids)
         def visit(value) -> None:
@@ -9450,7 +8821,11 @@ def build_language_bundle(
         for bucket, entries in sorted(chunks_by_bucket.items()):
             total_rows += len(entries)
             bucket_token = collection_bucket_token(bucket)
-            story_ref = collection_story_ref_from_bucket(bucket)
+            story_ref = collection_story_ref_from_bucket(
+                bucket,
+                parse_mission_id=parse_mission,
+                mission_story_types=MISSION_STORY_TYPES,
+            )
             if story_ref:
                 mission_id, _forced_scene_value, forced_type_key = story_ref
                 extra_mission_names.setdefault(mission_id, collection_display_name(mission_id))
@@ -10841,7 +10216,11 @@ def build_language_bundle(
                     table_name,
                     row_key,
                     row if isinstance(row, dict) else None,
-                ) or collection_story_ref_from_bucket(bucket)
+                ) or collection_story_ref_from_bucket(
+                    bucket,
+                    parse_mission_id=parse_mission,
+                    mission_story_types=MISSION_STORY_TYPES,
+                )
                 if story_ref:
                     mission_id, forced_scene_value, forced_type_key = story_ref
                     if not forced_scene_value:
@@ -11189,6 +10568,8 @@ def build_language_bundle(
             content_id,
             row_id,
             first_lv_id,
+            parse_mission_id=parse_mission,
+            mission_story_types=MISSION_STORY_TYPES,
         )
         if not story_ref:
             for alias in prts_row_attachment_aliases(row_id, content_id, first_lv_id, first_lv_row):
@@ -12062,13 +11443,35 @@ def build_language_bundle(
         lines.append("")
         return "\n".join(lines)
     def attach_narrative_videos_to_outputs() -> dict:
-        if not narrative_video_assets:
-            return {}
         available_keys = {
             str(entry.get("k") or "")
             for entry in index_entries
             if entry.get("k")
         }
+        try:
+            override_input_validation = (
+                validate_narrative_video_override_inputs(
+                    narrative_video_overrides,
+                    story_keys=available_keys,
+                    video_refs=narrative_video_assets,
+                )
+            )
+        except NarrativeVideoOverrideValidationError as error:
+            fail_narrative_video_override_validation(error)
+        applied_attach_overrides: set[tuple[str, str]] = set()
+        applied_suppress_overrides: set[tuple[str, str]] = set()
+
+        def ref_override_stems(ref: dict) -> set[str]:
+            return {
+                normalized
+                for normalized in (
+                    normalize_video_override_stem(ref.get("stem")),
+                    normalize_video_override_stem(ref.get("baseStem")),
+                    normalize_video_override_stem(ref.get("name")),
+                )
+                if normalized
+            }
+
         def resolve_video_key(ref: dict) -> str:
             authoritative_keys = list(ref.get("authoritativeKeys") or [])
             candidate_list = list(ref.get("keyCandidates") or [])
@@ -12106,15 +11509,7 @@ def build_language_bundle(
             rules = rules_by_key.get(target_key) or []
             if not rules:
                 return {}
-            ref_stems = {
-                normalized
-                for normalized in (
-                    _normalize_video_override_stem(ref.get("stem")),
-                    _normalize_video_override_stem(ref.get("baseStem")),
-                    _normalize_video_override_stem(ref.get("name")),
-                )
-                if normalized
-            }
+            ref_stems = ref_override_stems(ref)
             for rule in rules:
                 rule_stems = set(rule.get("stems") or [])
                 if require_stem and not rule_stems:
@@ -12358,10 +11753,31 @@ def build_language_bundle(
             standalone_videos[standalone_video_key(ref)].append(standalone_ref)
             if suppress_override:
                 suppressed_inline_videos.append(standalone_ref)
+                applied_suppress_overrides.update(
+                    (str(suppress_override.get("targetKey") or ""), stem)
+                    for stem in set(suppress_override.get("stems") or [])
+                    & ref_override_stems(ref)
+                )
             elif attach_override:
                 manual_attached_inline_videos.append(standalone_ref)
+                applied_attach_overrides.update(
+                    (str(attach_override.get("targetKey") or ""), stem)
+                    for stem in set(attach_override.get("stems") or [])
+                    & ref_override_stems(ref)
+                )
             elif not resolved_key:
                 unresolved_videos.append(ref)
+        try:
+            override_validation = (
+                validate_narrative_video_override_application(
+                    narrative_video_overrides,
+                    applied_attach=applied_attach_overrides,
+                    applied_suppress=applied_suppress_overrides,
+                    input_validation=override_input_validation,
+                )
+            )
+        except NarrativeVideoOverrideValidationError as error:
+            fail_narrative_video_override_validation(error)
         authoritative_evidence: list[dict] = []
         def authoritative_video_evidence_rows(
             key: str,
@@ -12840,6 +12256,7 @@ def build_language_bundle(
         report = {
             "generated": int(time.time()),
             "language": language_code,
+            "overrideValidation": override_validation,
             "summary": {
                 "scannedVideos": len(narrative_video_assets),
                 "attachedKeys": len(attached_rows),
@@ -12892,7 +12309,7 @@ def build_language_bundle(
                 for ref in suppressed_inline_videos[:500]
             ],
         }
-        report_json = REPORTS_DIR / f"narrative_videos_{language_code}.json"
+        report_json = narrative_video_report_path
         report_md = REPORTS_DIR / f"narrative_videos_{language_code}.md"
         REPORTS_DIR.mkdir(parents=True, exist_ok=True)
         evidence_payload = {
@@ -14213,13 +13630,16 @@ def build_language_bundle(
                     edge.setdefault("positions", [])
                     if pos not in edge["positions"]:
                         edge["positions"].append(pos)
-        # Radio-continuation edges (authored continueAfterDialog/Radio flags
-        # combined with LevelScript file-offset adjacency, audited offline by
-        # the focused radio-continuation recovery audit). Silent
-        # no-op when the audit report has not been generated yet.
-        radio_cont_candidates = _load_radio_continuation_candidates_by_mission(
-            str(_RADIO_CONTINUATION_REPORT_PATH)
-        ).get(mission) or []
+        # Radio-continuation edges combine the authored RadioTable flag with
+        # same-file serialized LevelScript occurrence order. Build this
+        # directly from current source evidence; no recovery report is an
+        # input to the production Story graph.
+        radio_cont_candidates = build_radio_continuation_candidates(
+            mission,
+            flow_level_ids,
+            radios,
+            lambda text: resolve_scene_ref_out_key(text, available),
+        )
         for cand in radio_cont_candidates:
             predecessor = cand.get("predecessor") or ""
             radio = cand.get("radio") or ""
@@ -23434,10 +22854,3 @@ def build_language_bundle(
         "narrativeVideoKeys": int((narrative_video_report.get("summary") or {}).get("attachedKeys", 0)),
         "narrativeVideoRefs": int((narrative_video_report.get("summary") or {}).get("attachedVideos", 0)),
     }
-
-__all__ = [name for name in globals() if not name.startswith("__")]
-
-
-
-
-

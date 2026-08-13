@@ -11,7 +11,13 @@ from unittest.mock import patch
 
 
 from scripts import build_mission_pipeline_data as pipeline
-from scripts.story_builder import level_bindings, mission_flow, source_links
+from scripts.mission_pipeline import (
+    quest_scope_projection,
+    runtime_trace_projection,
+    story_order_projection,
+)
+from scripts.story_builder import dynamic_scene, level_bindings, mission_flow, source_links
+from scripts.story_builder.native_contracts import callserver_callback
 
 
 class NativeEvidenceSkipWiringTests(unittest.TestCase):
@@ -41,6 +47,60 @@ class NativeEvidenceSkipWiringTests(unittest.TestCase):
                 # same-named class that is not identical.
                 audit = sys.modules[report_builder.__module__]
                 self.assertTrue(issubclass(getattr(audit, raised), caught))
+
+
+class StoryOrderProjectionTests(unittest.TestCase):
+    def test_summary_projection_is_owned_outside_the_pipeline_entrypoint(self) -> None:
+        self.assertFalse(hasattr(pipeline, "_update_story_order_summary"))
+        summary: dict[str, object] = {}
+        story_order_projection.update_story_order_summary(summary, {
+            "summary": {"sceneCount": 3, "strongEdgeCount": 2},
+            "crossReference": {
+                "strictEdgeCount": 2,
+                "override": {"disagrees": 1},
+                "ocr": {"disagrees": 0},
+                "conflictCount": 1,
+            },
+        })
+        self.assertEqual(summary["storyOrderSceneCount"], 3)
+        self.assertEqual(summary["storyOrderStrongEdgeCount"], 2)
+        self.assertEqual(summary["storyOrderCycleCount"], 0)
+        self.assertEqual(summary["storyOrderCrossReferenceStrictEdgeCount"], 2)
+        self.assertEqual(
+            summary["storyOrderCrossReferenceOverrideDisagreeCount"],
+            1,
+        )
+        self.assertEqual(summary["storyOrderCrossReferenceConflictCount"], 1)
+
+    def test_cross_reference_projection_preserves_evidence_boundary(self) -> None:
+        projected = story_order_projection.compact_story_order_cross_reference(
+            {
+                "strictEdgeCount": 1,
+                "counts": {
+                    "override_disagrees": 1,
+                    "ocr_agrees": 1,
+                },
+                "edges": [{
+                    "from": "story_b",
+                    "to": "story_a",
+                    "kind": "questPrev",
+                    "override": {"status": "disagrees", "missing": ["story_a"]},
+                    "ocr": {"status": "agrees"},
+                    "crossReferenceConflict": True,
+                }],
+            },
+            {
+                "_schema": "sourceStoryOrderCrossReference.v1",
+                "reportJson": "reports/order.json",
+                "reportMarkdown": "reports/order.md",
+            },
+        )
+        self.assertEqual(projected["status"], "cross_reference_only")
+        self.assertEqual(projected["override"]["disagrees"], 1)
+        self.assertEqual(projected["ocr"]["agrees"], 1)
+        self.assertEqual(projected["conflictCount"], 1)
+        self.assertFalse(projected["orderEvidence"])
+        self.assertFalse(projected["disagreementEdges"][0]["orderEvidence"])
 
 
 class LevelScriptSourceEvidenceTests(unittest.TestCase):
@@ -1776,6 +1836,48 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             message,
         )
 
+    def test_gap_queue_refresh_prefers_structured_failure_details(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            queue_path = Path(temporary) / "source_story_gap_queue_CN.json"
+            queued_report = {
+                "_schema": pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA,
+                "language": "CN",
+                "questAttachmentDiagnosticEvidence": {
+                    "status": "inactive_generated_shape_validation_failed",
+                    "validationFailures": ["e2m8_q#5"],
+                    "validationFailureDetails": [{
+                        "validator": "questAttachmentDiagnostic",
+                        "gate": "property_getter_without_story_chain",
+                        "questId": "e2m8_q#5",
+                        "missionId": "e2m8",
+                        "sourcePath": "export_full/mission/e2m8.json",
+                        "expected": {"relations": ["context"]},
+                        "actual": {"relations": ["typed"]},
+                    }],
+                },
+            }
+            queue_path.write_text(
+                json.dumps(queued_report),
+                encoding="utf-8",
+            )
+            with patch.object(
+                pipeline,
+                "build_source_gap_queue",
+                return_value=SimpleNamespace(report=queued_report),
+            ):
+                with self.assertRaises(RuntimeError) as raised:
+                    pipeline.refresh_source_story_gap_queue(
+                        "CN",
+                        queue_path,
+                    )
+
+        message = str(raised.exception)
+        self.assertIn("mission=e2m8", message)
+        self.assertIn("story=e2m8_q#5", message)
+        self.assertIn("expected={'relations': ['context']}", message)
+        self.assertIn("actual={'relations': ['typed']}", message)
+        self.assertIn("source=export_full/mission/e2m8.json", message)
+
     def test_offline_story_recovery_annotates_without_creating_graph_evidence(self):
         with tempfile.TemporaryDirectory() as temporary:
             queue_path = Path(temporary) / "gap_queue.json"
@@ -3262,280 +3364,32 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                     require_complete_branch_publication=True,
                 )
 
-    def test_dynamic_scene_cross_references_remain_non_owning(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            audit_path = Path(temporary) / "dynamic_scene.json"
-            audit_path.write_text(
-                json.dumps({
-                    "schemaVersion": 1,
-                    "nativeIdentityBoundary": {
-                        "classification":
-                            "exact_cross_reference_not_runtime_owner",
-                        "directBridgeFound": False,
-                        "missionGraphAction": "none",
-                        "promotionRequirement": "typed runtime bridge required",
-                    },
-                    "storyIdentityCandidates": [{
-                        "scene": "map01",
-                        "logicId": "2100060003",
-                        "sourceFile": "DynamicStreaming/map01/fb_main.bytes",
-                        "missionControls": [{
-                            "compareType": 0,
-                            "toBeTrue": True,
-                            "conditions": [{
-                                "identifier": "e1m2_q#5",
-                                "isQuest": True,
-                                "state": 3,
-                                "isSame": True,
-                            }],
-                        }],
-                        "storyOccurrences": [{
-                            "storyKey": "cutscene_e1m3_1",
-                            "levelId": "map01_lv001",
-                            "scriptId": "2100060003",
-                            "recordOffset": 368,
-                            "actionName": "PlayFmvAction",
-                            "sourceFile":
-                                "LevelScriptData/map01_lv001/2100060003.json",
-                            "nativeEventOwnerStatus":
-                                "exact_serialized_control_path",
-                        }],
-                    }],
-                }),
-                encoding="utf-8",
-            )
+    def test_dynamic_scene_context_comes_from_the_owner(self):
+        expected = dynamic_scene.load_dynamic_scene_context()
+        published = pipeline.load_dynamic_scene_identity_cross_references()
 
-            published = pipeline.load_dynamic_scene_identity_cross_references(
-                audit_path
-            )
-
-        self.assertIsNotNone(published)
-        self.assertEqual(published["missionGraphAction"], "none")
+        self.assertEqual(published, expected)
+        self.assertEqual(published["counts"], dynamic_scene.EXPECTED_COUNTS)
         self.assertFalse(published["directBridgeFound"])
-        self.assertEqual(published["counts"]["candidateRoots"], 1)
-        row = published["rows"][0]
-        self.assertEqual(row["logicId"], row["scriptId"])
-        self.assertEqual(row["missionOwnerStatus"], "unresolved")
-        self.assertFalse(row["storyBinding"])
-        self.assertFalse(row["orderEvidence"])
+        self.assertFalse(published["missionActivationBridgeFound"])
+        self.assertEqual(published["missionGraphAction"], "none")
+        self.assertTrue(all(
+            row["missionOwnerStatus"] == "unresolved"
+            and row["storyBinding"] is False
+            and row["orderEvidence"] is False
+            and row["missionGraphAction"] == "none"
+            for row in published["rows"]
+        ))
 
-    def test_dynamic_scene_cross_references_fail_closed_on_positive_bridge(self):
+    def test_dynamic_scene_context_fails_closed_on_artifact_drift(self):
+        artifact = json.loads(dynamic_scene.DEFAULT_ARTIFACT.read_text("utf-8"))
+        artifact["context"]["directBridgeFound"] = True
         with tempfile.TemporaryDirectory() as temporary:
-            audit_path = Path(temporary) / "dynamic_scene.json"
-            audit_path.write_text(
-                json.dumps({
-                    "schemaVersion": 1,
-                    "nativeIdentityBoundary": {
-                        "classification":
-                            "exact_cross_reference_not_runtime_owner",
-                        "directBridgeFound": True,
-                        "missionGraphAction": "none",
-                    },
-                    "storyIdentityCandidates": [],
-                }),
-                encoding="utf-8",
-            )
-
-            published = pipeline.load_dynamic_scene_identity_cross_references(
-                audit_path
-            )
+            path = Path(temporary) / "dynamic_scene.json"
+            path.write_text(json.dumps(artifact), encoding="utf-8")
+            published = pipeline.load_dynamic_scene_identity_cross_references(path)
 
         self.assertIsNone(published)
-
-    def test_dynamic_scene_typed_target_bridge_stays_local_context(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            audit_path = root / "dynamic_scene.json"
-            bridge_path = root / "dynamic_scene_bridge.json"
-            audit = {
-                "schemaVersion": 1,
-                "nativeIdentityBoundary": {
-                    "classification":
-                        "exact_cross_reference_not_runtime_owner",
-                    "directBridgeFound": False,
-                    "missionActivationBridgeFound": False,
-                    "missionGraphAction": "none",
-                    "promotionRequirement":
-                        "mission condition activation edge required",
-                },
-                "storyIdentityCandidates": [{
-                    "scene": "map02",
-                    "logicId": "10100282001",
-                    "sourceFile": "DynamicStreaming/map02/fb_main.bytes",
-                    "missionControls": [{
-                        "conditions": [{
-                            "identifier": "c27m3_q#3",
-                            "isQuest": True,
-                            "state": 3,
-                            "isSame": True,
-                        }],
-                    }],
-                    "storyOccurrences": [{
-                        "storyKey": "dlg_c27m3_6",
-                        "levelId": "map02_lv001",
-                        "scriptId": "10100282001",
-                        "recordOffset": 7,
-                        "actionName": "StartDialogAndTeleportAction",
-                    }],
-                }],
-            }
-            audit_path.write_text(json.dumps(audit), encoding="utf-8")
-            bridge_path.write_text(
-                json.dumps({
-                    "schemaVersion": 1,
-                    "sources": {
-                        "identityAudit": {
-                            "sha256": hashlib.sha256(
-                                audit_path.read_bytes()
-                            ).hexdigest(),
-                        },
-                    },
-                    "boundary": {
-                        "classification":
-                            "exact_local_context_without_mission_activation_edge",
-                        "missionActivationBridgeFound": False,
-                        "missionGraphAction": "none",
-                        "levelScriptTriggerVolumeBoundary": {
-                            "classification":
-                                "exact_local_trigger_geometry_without_dynamic_scene_or_mission_foreign_key",
-                            "foreignKeyBridgeFound": False,
-                            "schemaMappingId":
-                                "current-global-metadata-levelscript-trigger-volume-data-fields",
-                            "leaderDeclaredFieldCount": 0,
-                        },
-                    },
-                    "bridgeRows": [{
-                        "logicId": "10100282001",
-                        "missionOwnerStatus": "unresolved",
-                        "storyBinding": False,
-                        "orderEvidence": False,
-                        "missionGraphAction": "none",
-                        "classification":
-                            "exact_dynamic_scene_target_and_shared_levelscript_control_path",
-                        "exactTargetActions": [{
-                            "actionName": "ShowSceneDecorationNew",
-                            "unionTag": "0x0485",
-                            "serializedMemberCount": 10,
-                            "recordOffset": 284,
-                            "localId": 6,
-                            "targetDynamicEntityLogicId": "10100282001",
-                            "visible": False,
-                            "payloadFullyConsumed": True,
-                            "targetParam": {
-                                "idRef": -1,
-                                "paramSource": 0,
-                                "path": None,
-                            },
-                            "visibleParam": {
-                                "idRef": -1,
-                                "paramSource": 0,
-                                "path": None,
-                            },
-                            "localTriggerVolumeContext": {
-                                "status":
-                                    "exact_local_levelscript_trigger_volume_without_foreign_identity",
-                                "selectorSlotIds": [80001],
-                                "matchedSlotIds": [80001],
-                                "missingSlotIds": [],
-                                "scriptIdVerified": True,
-                                "triggerVolumesStatus": "present",
-                                "triggerVolumesParseStatus": "decoded",
-                                "dynamicSceneIdentityFieldPresent": False,
-                                "missionOrQuestIdentityFieldPresent": False,
-                                "foreignKeyBridgeFound": False,
-                                "missionGraphAction": "none",
-                                "schema": {
-                                    "baseDeclaredFieldCount": 8,
-                                    "leaderDeclaredFieldCount": 0,
-                                    "serializedMemberCount": 8,
-                                    "mappingId":
-                                        "current-global-metadata-levelscript-trigger-volume-data-fields",
-                                },
-                                "triggerVolumes": [{
-                                    "keySlotId": 80001,
-                                    "slotId": 80001,
-                                    "triggerVolumeType": "Leader",
-                                    "memberCount": 8,
-                                    "triggerCountLimit": 1,
-                                    "enterCheckOnGround": False,
-                                    "isImportant": False,
-                                    "triggerOnPole": False,
-                                    "waitSrvRes": False,
-                                    "shapeList": {
-                                        "parseStatus": "decoded",
-                                        "shapes": [{
-                                            "shapeType": "Sphere",
-                                            "position": {
-                                                "x": -757.75,
-                                                "y": 234.828,
-                                                "z": -1185.85,
-                                            },
-                                            "radius": 59.0,
-                                        }],
-                                    },
-                                }],
-                            },
-                            "storyControlPathLinks": [{
-                                "storyKey": "dlg_c27m3_6",
-                                "storyRecordOffset": 7,
-                                "storyActionName":
-                                    "StartDialogAndTeleportAction",
-                                "sharedControlPaths": [{
-                                    "status":
-                                        "exact_serialized_shared_control_path",
-                                    "relation":
-                                        "decoration_follows_story_on_same_path",
-                                    "headerName":
-                                        "ScriptEvent_OnLeaderEnterTriggerVolume",
-                                    "headerLocalId": 4,
-                                    "eventDetail": {
-                                        "summary":
-                                            "leader enters trigger slot 80001",
-                                        "triggerSlotIdFilter": 80001,
-                                    },
-                                    "storyPathLocalIds": [5],
-                                    "decorationPathLocalIds": [5, 6],
-                                }],
-                            }],
-                        }],
-                    }],
-                }),
-                encoding="utf-8",
-            )
-
-            published = pipeline.load_dynamic_scene_identity_cross_references(
-                audit_path,
-                bridge_path,
-            )
-
-        self.assertIsNotNone(published)
-        self.assertEqual(published["counts"]["exactTargetBridgeRoots"], 1)
-        self.assertEqual(
-            published["counts"]["sharedControlPathStoryOccurrences"],
-            1,
-        )
-        row = published["rows"][0]
-        bridge = row["localContextBridge"]
-        self.assertFalse(bridge["storyBinding"])
-        self.assertFalse(bridge["orderEvidence"])
-        self.assertEqual(bridge["missionGraphAction"], "none")
-        path = bridge["exactTargetActions"][0][
-            "storyControlPathLinks"
-        ][0]["sharedControlPaths"][0]
-        self.assertEqual(path["triggerSlotId"], 80001)
-        self.assertEqual(path["decorationPathLocalIds"], [5, 6])
-        context = bridge["exactTargetActions"][0][
-            "localTriggerVolumeContext"
-        ]
-        self.assertFalse(context["foreignKeyBridgeFound"])
-        self.assertEqual(
-            context["triggerVolumes"][0]["shapes"][0]["shapeType"],
-            "Sphere",
-        )
-        self.assertEqual(
-            published["counts"]["exactLocalTriggerVolumeContexts"],
-            1,
-        )
 
     def test_trigger_route_reads_exact_levelscript_occurrence_paths(self):
         row = {
@@ -4389,7 +4243,10 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "missions": [{"id": "testm1", "file": "missions/testm1.json"}],
             }
 
-            report = pipeline.publish_quest_objective_story_scope(
+            self.assertFalse(
+                hasattr(pipeline, "publish_quest_objective_story_scope")
+            )
+            report = quest_scope_projection.publish_quest_objective_story_scope(
                 index,
                 output_root,
                 root / "lang",
@@ -4428,6 +4285,8 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             self.assertTrue((report_root / "node_attachment_coverage.json").is_file())
 
     def test_publish_runtime_trace_attaches_observation_without_promoting_ownership(self):
+        self.assertFalse(hasattr(pipeline, "publish_mission_runtime_trace"))
+        self.assertEqual(runtime_trace_projection.SCHEMA, "missionRuntimeTrace.v1")
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             output_root = root / "mission_pipeline"
@@ -4468,7 +4327,11 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "observedMerges": [],
             })
 
-            pipeline.publish_mission_runtime_trace(index, output_root, bundle_path)
+            runtime_trace_projection.publish_mission_runtime_trace(
+                index,
+                output_root,
+                bundle_path,
+            )
 
             payload = json.loads((mission_root / "e11m1.json").read_text(encoding="utf-8"))
             attached = payload["nodes"][0]["runtimeStoryObservations"]
@@ -4780,84 +4643,46 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             level_bindings.LEVELSCRIPT_NATIVE_ACTION_NAMES[(0x02FA, 0x09)],
         )
 
-    def test_actionbase_formatter_loader_recovers_every_tag_and_fails_closed(self):
-        rows = [
-            {
-                "tag": tag,
-                "tagHex": f"0x{tag:04x}",
-                "actionName": f"GenericAction{tag}",
-            }
-            for tag in range(1313)
-        ]
-        payload = {
-            "metadata": {
-                "gameAssemblySha256":
-                    level_bindings.ACTIONBASE_FORMATTER_GAMEASSEMBLY_SHA256,
-                "metadataSha256":
-                    level_bindings.ACTIONBASE_FORMATTER_METADATA_SHA256,
-                "codeRegistration": "0x18b9217d0",
-            },
-            "targetMethod": {
-                "typeToken": "0x02000c1c",
-                "methodToken": "0x0600488f",
-                "methodPointerVa": "0x183998700",
-            },
-            "summary": {
-                "tagCount": 1313,
-                "minTag": 0,
-                "maxTag": 1312,
-                "duplicateTagCount": 0,
-                "missingTagCountInsideRange": 0,
-                "unknownInstructionCount": 0,
-            },
-            "actionNames": [row["actionName"] for row in rows],
-        }
-        with tempfile.TemporaryDirectory() as temporary:
-            valid_path = Path(temporary) / "valid.json"
-            valid_path.write_text(json.dumps(payload), encoding="utf-8")
-            names, audit = level_bindings.load_actionbase_formatter_names(
-                valid_path
-            )
-            payload["actionNames"][42] = ""
-            invalid_path = Path(temporary) / "invalid.json"
-            invalid_path.write_text(json.dumps(payload), encoding="utf-8")
-            invalid_names, invalid_audit = (
-                level_bindings.load_actionbase_formatter_names(invalid_path)
-            )
-
-        self.assertEqual(1313, len(names))
-        self.assertEqual("GenericAction42", names[42])
-        self.assertEqual("validated", audit["status"])
-        self.assertEqual({}, invalid_names)
-        self.assertEqual("validation_failed", invalid_audit["status"])
-        self.assertEqual(
-            "nonempty_action_name",
-            invalid_audit["validationFailures"][0]["gate"],
-        )
-
     def test_callserver_callback_contract_loader_fails_closed(self):
         canonical = json.loads(
-            level_bindings.DEFAULT_CALLSERVER_CALLBACK_CONTRACT.read_text(
-                encoding="utf-8"
-            )
+            callserver_callback.DEFAULT_CONTRACT.read_text(encoding="utf-8")
+        )
+        validated_native = SimpleNamespace(status="validated", detail="")
+        mismatched_native = SimpleNamespace(
+            status="mismatched",
+            detail="GameAssembly.dll hash differs",
         )
         with tempfile.TemporaryDirectory() as temporary:
-            valid_path = Path(temporary) / "valid.json"
-            valid_path.write_text(json.dumps(canonical), encoding="utf-8")
-            valid = level_bindings.load_callserver_callback_contract(valid_path)
-
+            missing_path = Path(temporary) / "missing.json"
             canonical["callServer"]["outputFieldOffset"] = "this+0x00"
             invalid_path = Path(temporary) / "invalid.json"
             invalid_path.write_text(json.dumps(canonical), encoding="utf-8")
-            invalid = level_bindings.load_callserver_callback_contract(
-                invalid_path
-            )
+            missing = level_bindings.load_callserver_callback_contract(missing_path)
+            with patch.object(
+                callserver_callback,
+                "check_installed_native_inputs",
+                return_value=validated_native,
+            ):
+                valid = level_bindings.load_callserver_callback_contract()
+                invalid = level_bindings.load_callserver_callback_contract(invalid_path)
+            with patch.object(
+                callserver_callback,
+                "check_installed_native_inputs",
+                return_value=mismatched_native,
+            ):
+                mismatched = level_bindings.load_callserver_callback_contract()
 
+        self.assertEqual("missing", missing["status"])
         self.assertEqual("validated", valid["status"])
-        self.assertEqual("validation_failed", invalid["status"])
+        self.assertEqual("mismatched", invalid["status"])
         self.assertEqual(
             "output_field_offset",
             invalid["validationFailures"][0]["gate"],
+        )
+        self.assertEqual("mismatched", mismatched["status"])
+        self.assertEqual(
+            "installed_native_inputs",
+            mismatched["validationFailures"][0]["gate"],
         )
 
     def test_callserver_callback_successor_requires_exact_header_contract(self):
@@ -6081,7 +5906,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertIn("separate native inbound handler", trigger_done["effect"])
 
     def test_teleport_param_contract_rejects_unused_mission_script_carrier(self):
-        contract = pipeline.load_native_teleport_param_carrier_contract()
+        contract = pipeline.load_teleport_param_contract()
         self.assertEqual(contract["type"], "Beyond.Gameplay.TeleportParam")
         self.assertEqual(contract["size"], "0x38")
         self.assertEqual(contract["layout"]["missionId"], "0x18")
@@ -6183,244 +6008,6 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             if "CharacterPositionCorrection" in row["symbol"]
         )
         self.assertIn("zero mission/quest + LevelScript/Story", native["finding"])
-
-    def test_mission_option_carrier_is_alternate_action_not_dialog_bridge(self):
-        audit = pipeline.RUNTIME_CONTRACT["missionOptionCarrierAudit"]
-        fields = {
-            row["name"]: row
-            for row in audit["managedCarrier"]["fields"]
-        }
-        self.assertEqual(fields["missionId"]["offset"], "0x68")
-        self.assertEqual(fields["callDialogId"]["offset"], "0x70")
-        self.assertEqual(
-            audit["managedCarrier"]["handlerType"]["name"],
-            "Mission",
-        )
-        consumer = audit["nativeConsumer"]
-        self.assertEqual(consumer["token"], "0x0600fa1a")
-        self.assertIn("then jump to end", consumer["callDialogBranch"])
-        self.assertIn(
-            "only when callDialogId is empty",
-            consumer["missionBranch"],
-        )
-        search = audit["authoredInstanceSearch"]
-        self.assertEqual(search["monoBehaviourRows"], 1325026)
-        self.assertEqual(search["textAssets"], 8195)
-        self.assertEqual(search["structuredJsonFiles"], 179925)
-        self.assertEqual(search["installedLuaFiles"], 1291)
-        self.assertEqual(search["matches"], 0)
-        self.assertEqual(audit["installedPatch"]["matchedMethods"], 0)
-        self.assertIn("mutually exclusive", audit["finding"])
-        self.assertEqual(audit["storyBindingsAdded"], 0)
-        self.assertEqual(
-            audit["classification"],
-            "schema_only_current_export_absent",
-        )
-
-    def test_mission_property_script_pointer_is_runtime_subscription_context(self):
-        audit = pipeline.RUNTIME_CONTRACT["missionPropertyScriptPtrAudit"]
-        layout = audit["managedLayout"]
-        self.assertEqual(
-            layout["MissionRuntimeAsset"]["properties"]["offset"],
-            "0xe0",
-        )
-        self.assertEqual(
-            layout["MissionRuntimeAsset"]["propertyDic"]["offset"],
-            "0xf8",
-        )
-        self.assertEqual(
-            layout["MissionSystem+MissionData"]["propertyDict"]["offset"],
-            "0x20",
-        )
-        self.assertEqual(
-            layout["ParamVariable"]["m_scriptPtr"]["offset"],
-            "0x70",
-        )
-        authored = audit["authoredMissionProperties"]
-        self.assertEqual(authored["missionFiles"], 490)
-        self.assertEqual(authored["missionsWithProperties"], 71)
-        self.assertEqual(authored["propertyRows"], 217)
-        self.assertEqual(authored["levelScriptPointerFieldRows"], 0)
-        tracking = audit["trackingPropertyFilterRuntime"]
-        self.assertEqual(tracking["authoredRows"], 204)
-        self.assertEqual(tracking["authoredMissions"], 46)
-        self.assertEqual(tracking["authoredVariables"], 110)
-        self.assertEqual(
-            tracking["evaluator"]["token"],
-            "0x06004b72",
-        )
-        self.assertEqual(
-            tracking["serverUpdate"]["message"],
-            "SC_UPDATE_MISSION_PROPERTY (124)",
-        )
-        self.assertEqual(tracking["storyBindingsAdded"], 0)
-        self.assertEqual(tracking["missionOrderEdgesAdded"], 0)
-        self.assertEqual(len(audit["missionPropertyWriters"]), 3)
-        self.assertEqual(
-            audit["directCallCensus"]["missionSystemScriptPointerSetterCalls"],
-            0,
-        )
-        self.assertEqual(audit["installedPatch"]["matchedMethods"], 0)
-        self.assertIn("not a mission-to-LevelScript", audit["finding"])
-        self.assertEqual(audit["storyBindingsAdded"], 0)
-        self.assertEqual(
-            audit["classification"],
-            "runtime_context_only_no_mission_levelscript_edge",
-        )
-
-    def test_current_mission_param_source_has_no_levelscript_story_use(self):
-        audit = pipeline.RUNTIME_CONTRACT["paramSourceMissionContextAudit"]
-        managed = audit["managedContract"]
-        self.assertEqual(managed["currentMissionId"], 1004)
-        self.assertEqual(managed["paramSourceFieldToken"], "0x04006c3d")
-        self.assertEqual(managed["currentMissionGetterToken"], "0x060091d6")
-        mission = audit["authoredMissionRuntime"]
-        self.assertEqual(mission["missionFiles"], 490)
-        self.assertEqual(mission["currentMissionIdOccurrences"], 18)
-        self.assertEqual(mission["missions"], 6)
-        self.assertEqual(mission["storyPlaybackOperands"], 0)
-        self.assertEqual(
-            mission["actionTypes"]["CheckMissionIntProperty"],
-            17,
-        )
-        levelscript = audit["authoredLevelScripts"]
-        self.assertEqual(levelscript["levelScriptFiles"], 4512)
-        self.assertEqual(levelscript["uidRecords"], 74839)
-        self.assertEqual(levelscript["rawCurrentMissionIdValues"], 0)
-        self.assertEqual(levelscript["validatedParamTails"], 0)
-        self.assertEqual(
-            levelscript["embeddedJsonCurrentMissionIdValues"],
-            0,
-        )
-        self.assertEqual(audit["installedPatch"]["matchedMethods"], 0)
-        self.assertEqual(audit["storyBindingsAdded"], 0)
-        self.assertEqual(audit["missionOrderEdgesAdded"], 0)
-        self.assertEqual(
-            audit["classification"],
-            "implicit_context_only_missionruntime_no_levelscript_story_edge",
-        )
-
-    def test_direct_managed_identity_carrier_census_has_no_open_candidate(self):
-        audit = pipeline.RUNTIME_CONTRACT["managedIdentityCarrierCensus"]
-        metadata = audit["metadata"]
-        self.assertEqual(metadata["managedTypeCount"], 63987)
-        self.assertEqual(metadata["directCandidateTypes"], 10)
-        self.assertEqual(metadata["runtimeObjectCandidates"], 8)
-        self.assertEqual(metadata["unreviewedCandidates"], 0)
-        authored = audit["authored"]
-        self.assertEqual(authored["focusModeMissionRadioRows"], 13)
-        self.assertEqual(authored["focusModeUniqueRadios"], 10)
-        self.assertEqual(authored["npcProxyExMissionDialogRows"], 453)
-        self.assertEqual(authored["subGameMissionScriptRows"], 20)
-        tracking = audit["trackingClosure"]
-        self.assertEqual(
-            tracking["classification"],
-            "closed_tracking_ui_context",
-        )
-        self.assertEqual(
-            tracking["commonTrackingFields"]["missionId"]["offset"],
-            "0x20",
-        )
-        self.assertEqual(
-            tracking["commonTrackingFields"]["sceneId"]["offset"],
-            "0x30",
-        )
-        self.assertEqual(len(tracking["nativeConsumers"]), 3)
-        self.assertEqual(audit["storyBindingsAdded"], 0)
-        self.assertEqual(audit["missionOrderEdgesAdded"], 0)
-        self.assertEqual(
-            audit["classification"],
-            "all_direct_managed_identity_carriers_reviewed",
-        )
-
-    def test_nested_managed_identity_carrier_census_has_no_open_candidate(self):
-        audit = pipeline.RUNTIME_CONTRACT["nestedManagedIdentityCarrierCensus"]
-        metadata = audit["metadata"]
-        self.assertEqual(metadata["managedTypeRecords"], 63987)
-        self.assertEqual(metadata["runtimeTypeEntries"], 272743)
-        self.assertEqual(
-            metadata["traversalMode"],
-            "cycle_safe_shortest_path_fixed_point",
-        )
-        self.assertEqual(metadata["maximumShortestPathDepth"], 10)
-        self.assertEqual(metadata["maximumTraversedDepth"], 10)
-        self.assertEqual(metadata["candidateTypes"], 112)
-        self.assertEqual(metadata["directExactCandidateTypes"], 11)
-        self.assertEqual(metadata["nestedDependentCandidateTypes"], 101)
-        self.assertEqual(metadata["reviewedCandidateTypes"], 112)
-        self.assertEqual(metadata["unreviewedCandidateTypes"], 0)
-        entity_hub = audit["runtimeEntityHubClosure"]
-        self.assertEqual(entity_hub["candidateTypes"], 86)
-        self.assertEqual(entity_hub["exactIndexedTypeLabels"], 0)
-        self.assertEqual(entity_hub["indexedOriginalObjects"], 1335450)
-        self.assertEqual(entity_hub["objectsWithTruncatedScalars"], 1384)
-        self.assertIn("no exact Entity/component script", entity_hub["finding"])
-        shared_aggregate = audit["sharedRuntimeAggregateClosure"]
-        self.assertEqual(shared_aggregate["candidateTypes"], 1)
-        self.assertEqual(len(audit["relatedOriginalFiles"]), 4)
-        submitter = audit["pendingItemSubmitterClosure"]
-        self.assertEqual(
-            submitter["classification"],
-            "active_shipped_xlua_producer_with_exact_submission_context_without_ui_join",
-        )
-        self.assertEqual(
-            submitter["fields"]["DialogManager.m_pendingItemSubmitter"]["offset"],
-            "0x200",
-        )
-        self.assertEqual(
-            submitter["fields"]["InventoryItemSubmitter.questId"]["offset"],
-            "0x20",
-        )
-        caller_counts = {
-            row["symbol"]: row["nativeDirectCallerCount"]
-            for row in submitter["methods"]
-        }
-        self.assertEqual(caller_counts["InventoryItemSubmitter..ctor"], 0)
-        self.assertEqual(
-            caller_counts["InventoryItemSubmitter.TryGetSubmitMsg"],
-            1,
-        )
-        self.assertEqual(
-            caller_counts["DialogManager.RegisterPendingSubmission"],
-            0,
-        )
-        self.assertEqual(
-            submitter["nativeOpenUiBridge"]["callee"][
-                "nativeDirectCallerCount"
-            ],
-            2,
-        )
-        self.assertEqual(
-            submitter["shippedLuaProducer"][
-                "constructorAndRegistrationCalls"
-            ],
-            1,
-        )
-        authored = submitter["authoredOpenUiActions"]
-        self.assertEqual(authored["typedTerminalActions"], 95)
-        self.assertEqual(authored["submitItemPanelType"], 9)
-        self.assertEqual(authored["submitItemActions"], 13)
-        self.assertEqual(authored["placeholderSubmitItemActions"], 3)
-        self.assertEqual(authored["emptyParamSubmitItemActions"], 10)
-        self.assertEqual(authored["concreteQuestIdActions"], 0)
-        objectives = submitter["authoredMissionObjectives"]
-        self.assertEqual(objectives["conditionCount"], 3)
-        self.assertEqual(objectives["questCount"], 3)
-        self.assertEqual(objectives["missionCount"], 3)
-        self.assertEqual(objectives["tableDefinedCount"], 3)
-        self.assertEqual(objectives["dialogCoGateCount"], 2)
-        self.assertEqual(objectives["dialogCoGateOpenUiOverlap"], 0)
-        self.assertIn(
-            "no quest lookup",
-            submitter["fallbackParamFlow"]["finding"],
-        )
-        self.assertEqual(submitter["installedPatchMatches"], 0)
-        self.assertEqual(audit["storyBindingsAdded"], 0)
-        self.assertEqual(audit["missionOrderEdgesAdded"], 0)
-        self.assertEqual(
-            audit["classification"],
-            "all_nested_managed_identity_carriers_reviewed",
-        )
 
     def test_airwall_contract_is_state_gated_context_not_transition_owner(self):
         audit = pipeline.RUNTIME_CONTRACT["airWallMissionRadioContext"]
@@ -7080,7 +6667,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "StartDialog",
             )
             self.assertIn(
-                "reports/story/recovery/cinematic_queue_runtime_audit.json",
+                "scripts/story_builder/native_contracts/cinematic_queue.json",
                 connected_route["sourceFiles"],
             )
             self.assertEqual(
@@ -7423,7 +7010,6 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
 
             evidence = pipeline.load_lua_story_playback_evidence(
                 audit_path,
-                (),
             )
 
         self.assertEqual(
@@ -7477,7 +7063,6 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
 
             evidence = pipeline.load_lua_story_playback_evidence(
                 audit_path,
-                (),
             )
 
         row = evidence["acceptedExactPlaybackCalls"][0]
@@ -7507,7 +7092,7 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
                 RuntimeError,
                 r"validator.*gate=row_provenance.*sourceSha256:sha256",
             ):
-                pipeline.load_lua_story_playback_evidence(audit_path, ())
+                pipeline.load_lua_story_playback_evidence(audit_path)
 
     def test_rejected_candidate_is_published_without_a_trigger_route(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -8130,62 +7715,6 @@ class MissionDialogTreeDefinitionPublisherTests(unittest.TestCase):
                         story_root,
                         "CN",
                     )
-
-    def test_native_cross_system_contract_loads_generic_closure(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            audit_path = Path(temporary) / "census.json"
-            audit_path.write_text(json.dumps({
-                "schemaVersion": "nativeCrossSystemConsumerCensus.v4",
-                "source": {
-                    "gameAssembly": "GameAssembly.dll",
-                    "gameAssemblySha256": "a" * 64,
-                    "globalMetadata": "global-metadata.dat",
-                    "globalMetadataSha256": "b" * 64,
-                },
-                "method": {"selection": "all direct calls", "mappedMethodPointers": 9},
-                "summary": {
-                    "crossSystemCallers": 4,
-                    "classificationCounts": {
-                        "mission_state_controls_dynamic_component_availability": 4,
-                    },
-                },
-                "directConsumerClosure": {
-                    "method": "fixed point",
-                    "counts": {"reachableMethods": 23, "directEdges": 30},
-                },
-                "deferredRefreshClosure": {
-                    "pendingField": {"name": "pending", "offset": "0x48"},
-                    "chain": ["state", "refresh"],
-                    "classification": "availability_refresh",
-                },
-                "missionRuntimeSurface": {
-                    "counts": {"missionIdentityTypes": 174},
-                    "finding": "no broad activation bridge",
-                },
-                "managedCallableSurface": {
-                    "counts": {"callableFields": 13, "directBindingCalls": 5},
-                    "finding": "no callable activation bridge",
-                },
-                "finding": "binary finding",
-                "boundary": "binary boundary",
-                "validation": {"status": "passed", "failures": []},
-            }), encoding="utf-8")
-
-            contract = pipeline.load_native_cross_system_consumer_contract(audit_path)
-
-            self.assertEqual(contract["counts"]["closureReachableMethods"], 23)
-            self.assertEqual(contract["counts"]["closureDirectEdges"], 30)
-            self.assertEqual(contract["deferredRefreshClosure"]["chain"], ["state", "refresh"])
-            self.assertEqual(
-                contract["missionRuntimeSurface"]["counts"]["missionIdentityTypes"],
-                174,
-            )
-            self.assertEqual(
-                contract["managedCallableSurface"]["counts"]["callableFields"],
-                13,
-            )
-            self.assertEqual(contract["classification"], "availability_refresh")
-
 
 if __name__ == "__main__":
     unittest.main()

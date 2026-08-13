@@ -4,10 +4,12 @@ import json
 import re
 from pathlib import Path
 
-try:
-    from ..source_paths import _existing_unique_paths
-except ImportError:
+if __package__ == "story_builder":
     from source_paths import _existing_unique_paths
+elif __package__ == "scripts.story_builder":
+    from ..source_paths import _existing_unique_paths
+else:  # pragma: no cover - direct file execution is intentionally unsupported
+    raise ImportError("import this module as scripts.story_builder.bundle_support")
 
 from .context import (
     DEFAULT_LANGUAGE,
@@ -188,6 +190,24 @@ def preview(text: str, n: int = 60) -> str:
     return text[:n]
 
 
+def safe_mission_data_filename(mission_id: str, used_names: set[str]) -> str:
+    """Allocate a stable, filesystem-safe mission JSON filename."""
+    stem = re.sub(r"[^0-9A-Za-z_.-]+", "_", str(mission_id or "")).strip("._")
+    if not stem:
+        stem = "mission"
+    name = f"{stem}.json"
+    if name.lower() not in used_names:
+        used_names.add(name.lower())
+        return name
+    index = 2
+    while True:
+        candidate = f"{stem}_{index}.json"
+        if candidate.lower() not in used_names:
+            used_names.add(candidate.lower())
+            return candidate
+        index += 1
+
+
 __all__ = [
     "discover_languages",
     "normalize_language_selection",
@@ -201,4 +221,5 @@ __all__ = [
     "scene_sort_value",
     "slot_misc",
     "preview",
+    "safe_mission_data_filename",
 ]

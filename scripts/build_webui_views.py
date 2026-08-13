@@ -45,6 +45,14 @@ def python_command(
     return CommandSpec((sys.executable, str(ROOT / path), *args), environment)
 
 
+def python_module(
+    module: str,
+    *args: str,
+    environment: tuple[tuple[str, str], ...] = (),
+) -> CommandSpec:
+    return CommandSpec((sys.executable, "-m", module, *args), environment)
+
+
 def build_environment(args: argparse.Namespace) -> tuple[tuple[str, str], ...]:
     values = {}
     if args.export_root:
@@ -60,15 +68,19 @@ def build_phases(args: argparse.Namespace) -> list[tuple[str, list[TaskSpec]]]:
     def command(path: str, *command_args: str) -> CommandSpec:
         return python_command(path, *command_args, environment=environment)
 
+    def module(name: str, *command_args: str) -> CommandSpec:
+        return python_module(name, *command_args, environment=environment)
+
     mission = TaskSpec(
         "mission_pipeline",
         (
-            command(
-                "scripts/story_builder/protocol_registry.py",
+            python_module(
+                "scripts.story_builder.protocol_registry",
                 "--ensure-current",
+                environment=environment,
             ),
-            command(
-                "scripts/build_mission_pipeline_data.py",
+            module(
+                "scripts.build_mission_pipeline_data",
                 "--refresh-source-story-gap-queue",
             ),
         ),
@@ -76,8 +88,8 @@ def build_phases(args: argparse.Namespace) -> list[tuple[str, list[TaskSpec]]]:
     character = TaskSpec(
         "characters",
         (
-            command(
-                "scripts/build_character_data.py",
+            module(
+                "scripts.build_character_data",
                 "--languages",
                 "CN",
                 "--default-language",
@@ -92,8 +104,8 @@ def build_phases(args: argparse.Namespace) -> list[tuple[str, list[TaskSpec]]]:
     gameplay = TaskSpec(
         "gameplay",
         (
-            command(
-                "scripts/build_gameplay.py",
+            module(
+                "scripts.build_gameplay",
                 "--stage",
                 "base",
                 "--languages",
@@ -105,7 +117,7 @@ def build_phases(args: argparse.Namespace) -> list[tuple[str, list[TaskSpec]]]:
     )
     projectile = TaskSpec(
         "projectiles",
-        (command("scripts/build_gameplay.py", "--stage", "projectiles"),),
+        (module("scripts.build_gameplay", "--stage", "projectiles"),),
     )
 
     phase_one = [mission]
@@ -114,8 +126,8 @@ def build_phases(args: argparse.Namespace) -> list[tuple[str, list[TaskSpec]]]:
             TaskSpec(
                 "assets",
                 (
-                    command(
-                        "scripts/build_assets.py",
+                    module(
+                        "scripts.build_assets",
                         "--mode",
                         args.asset_mode,
                     ),
@@ -129,8 +141,8 @@ def build_phases(args: argparse.Namespace) -> list[tuple[str, list[TaskSpec]]]:
     gameplay_refs = TaskSpec(
         "gameplay_asset_refs",
         (
-            command(
-                "scripts/build_gameplay.py",
+            module(
+                "scripts.build_gameplay",
                 "--stage",
                 "asset-refs",
                 "--default-language",
@@ -152,7 +164,7 @@ def build_phases(args: argparse.Namespace) -> list[tuple[str, list[TaskSpec]]]:
             gameplay_refs,
             TaskSpec(
                 "audio",
-                (command("scripts/build_audio.py", *audio_args),),
+                (module("scripts.build_audio", *audio_args),),
             ),
         ]
 
@@ -169,8 +181,8 @@ def build_phases(args: argparse.Namespace) -> list[tuple[str, list[TaskSpec]]]:
         TaskSpec(
             "combat_relationships",
             (
-                command(
-                    "scripts/build_gameplay.py",
+                module(
+                    "scripts.build_gameplay",
                     "--stage",
                     "combat",
                     "--languages",

@@ -1,4 +1,11 @@
-from ._support import *
+from ._support import (
+    Path,
+    SourceGapTestCase,
+    copy,
+    gap_queue,
+    mission_payload,
+    partial_mission,
+)
 
 class SourceGapAttachmentTests(SourceGapTestCase):
     def test_current_quest_attachment_diagnostics_are_exact(self) -> None:
@@ -279,10 +286,23 @@ class SourceGapAttachmentTests(SourceGapTestCase):
         )
         self.assertEqual(
             detail["actual"]["connectionRelations"],
-            ["typed_property_route"],
+            ["levelscript_condition_scope", "typed_property_route"],
         )
-        self.assertEqual(detail["expected"]["connectionRelations"], [])
-        self.assertEqual(detail["expected"]["connectionStoryKeys"], [])
+        self.assertEqual(
+            detail["expected"]["connectionRelations"],
+            ["levelscript_condition_scope"],
+        )
+        self.assertEqual(
+            detail["expected"]["connectionStoryKeys"],
+            ["dlg_e2m8_1", "radio_e2m8_1d5"],
+        )
+        self.assertEqual(
+            detail["actual"]["connectionRows"][-1],
+            {
+                "key": "dlg_typed_fixture",
+                "relation": "typed_property_route",
+            },
+        )
 
     def test_mission_bound_proxy_diagnostic_fails_closed_on_proxy_change(
         self,

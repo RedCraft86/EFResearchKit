@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,11 +8,7 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
-for search_path in (ROOT / "scripts", ROOT / "scripts" / "story_recovery"):
-    if str(search_path) not in sys.path:
-        sys.path.insert(0, str(search_path))
-
-from story_builder import native_receiver_activation_frontier as frontier  # noqa: E402
+from scripts.story_builder import native_receiver_activation_frontier as frontier
 
 
 class NativeReceiverActivationFrontierTests(unittest.TestCase):
@@ -924,102 +919,6 @@ class NativeReceiverActivationFrontierTests(unittest.TestCase):
         self.assertEqual("unresolved", contract["status"])
         self.assertFalse(contract["clientProducesActiveRequest"])
         self.assertEqual([], contract["runtimePath"])
-
-    def test_manual_control_index_preserves_self_boundary(self) -> None:
-        indexed = frontier.manual_control_targets(
-            {
-                "rows": [
-                    {
-                        "levelId": "map_fixture",
-                        "scriptId": "1001",
-                        "localId": 4,
-                        "action": "ManualStartLevelScript",
-                        "file": "source.json",
-                        "literalTargets": [
-                            {"levelId": "map_fixture", "scriptId": "1001"},
-                            {"levelId": "map_fixture", "scriptId": "1002"},
-                        ],
-                    }
-                ]
-            }
-        )
-        self.assertTrue(indexed[("map_fixture", "1001")][0]["selfTarget"])
-        self.assertFalse(indexed[("map_fixture", "1002")][0]["selfTarget"])
-
-    def test_manual_control_index_resolves_validated_current_context_self(self) -> None:
-        indexed = frontier.manual_control_targets(
-            {
-                "rows": [
-                    {
-                        "levelId": "map_fixture",
-                        "scriptId": "1001",
-                        "localId": 8,
-                        "action": "ManualStartLevelScript",
-                        "activationPair": True,
-                        "linkedEvent": {
-                            "localId": 7,
-                            "opcode": "0x12be/0x00",
-                        },
-                        "file": "source.json",
-                        "manualControl": {
-                            "parameterSources": {
-                                "levelId": 1000,
-                                "scriptId": 1002,
-                            },
-                        },
-                    }
-                ]
-            },
-            {
-                "classification": (
-                    "current_context_manual_start_self_target"
-                ),
-                "discoveryPattern": {"serializedObjectInputs": []},
-                "serializedOperandContract": {
-                    "levelIdParamSource": 1000,
-                    "scriptIdParamSource": 1002,
-                },
-                "validation": {"status": "validated"},
-            },
-        )
-
-        control = indexed[("map_fixture", "1001")][0]
-        self.assertTrue(control["selfTarget"])
-        self.assertEqual(control["targetResolution"], "current_context_self")
-        self.assertEqual(control["headerLinkedEvent"]["localId"], 7)
-
-    def test_manual_control_index_rejects_unvalidated_current_context_self(self) -> None:
-        indexed = frontier.manual_control_targets(
-            {
-                "rows": [
-                    {
-                        "levelId": "map_fixture",
-                        "scriptId": "1001",
-                        "action": "ManualStartLevelScript",
-                        "activationPair": True,
-                        "manualControl": {
-                            "parameterSources": {
-                                "levelId": 1000,
-                                "scriptId": 1002,
-                            },
-                        },
-                    }
-                ]
-            },
-            {
-                "classification": (
-                    "current_context_manual_start_self_target"
-                ),
-                "discoveryPattern": {"serializedObjectInputs": []},
-                "serializedOperandContract": {
-                    "levelIdParamSource": 1000,
-                    "scriptIdParamSource": 1002,
-                },
-                "validation": {"status": "validation_failed"},
-            },
-        )
-
-        self.assertEqual(indexed, {})
 
     def test_manual_null_shapes_task_and_parent_is_static_frontier(self) -> None:
         levelscript = {

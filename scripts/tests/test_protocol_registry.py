@@ -1,21 +1,91 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS_ROOT = ROOT / "scripts"
-if str(SCRIPTS_ROOT) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_ROOT))
-
-from story_builder import protocol_registry as audit  # noqa: E402
+from scripts.story_builder import levelscript_binary
+from scripts.story_builder import protocol_registry as audit
+from scripts.story_builder.native_protocol import il2cpp
 
 
 class ProtocolRegistryAuditTests(unittest.TestCase):
+    def test_levelscript_native_header_contract_fails_closed_by_build(self):
+        missing = levelscript_binary.levelscript_native_header_contract("", "")
+        self.assertEqual(missing["status"], "missing")
+        mismatched = levelscript_binary.levelscript_native_header_contract(
+            "wrong",
+            "also-wrong",
+        )
+        self.assertEqual(mismatched["status"], "mismatched")
+        validated = levelscript_binary.levelscript_native_header_contract(
+            levelscript_binary.RECORDED_NATIVE_GAMEASSEMBLY_SHA256,
+            levelscript_binary.RECORDED_NATIVE_METADATA_SHA256,
+        )
+        self.assertEqual(validated["status"], "validated")
+        self.assertEqual(
+            validated["schema"],
+            levelscript_binary.LEVELSCRIPT_NATIVE_HEADER_CONTRACT_SCHEMA,
+        )
+
+    def test_protocol_uses_builder_owned_native_header_registry(self):
+        records = [
+            {
+                "start": 10,
+                "unionTag": 0x00B6,
+                "serializedMemberCount": 7,
+            },
+            {
+                "start": 20,
+                "unionTag": 0x00B8,
+                "serializedMemberCount": 5,
+            },
+            {
+                "start": 30,
+                "unionTag": 0x00B6,
+                "serializedMemberCount": 7,
+            },
+        ]
+        rows = levelscript_binary.summarize_levelscript_native_header_records(
+            records,
+            {10: "headerList#1", 20: "headerList#2", 30: "actionList#1 root"},
+            names={
+                "MissionEvent_OnCustomEventForMission",
+                "MissionEventHeader",
+            },
+        )
+        self.assertEqual(
+            [(row["headerTagHex"], row["headerName"], row["count"]) for row in rows],
+            [
+                ("0x00b6", "MissionEvent_OnCustomEventForMission", 1),
+                ("0x00b8", "MissionEventHeader", 1),
+            ],
+        )
+
+    def test_mission_event_coverage_gates_native_header_contract_status(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for contract in (
+                levelscript_binary.levelscript_native_header_contract("", ""),
+                levelscript_binary.levelscript_native_header_contract(
+                    "wrong", "also-wrong"
+                ),
+            ):
+                with self.subTest(status=contract["status"]):
+                    with self.assertRaisesRegex(
+                        RuntimeError, "not valid for this build"
+                    ):
+                        audit.mission_event_asset_coverage(root, (), contract)
+            validated = levelscript_binary.levelscript_native_header_contract(
+                levelscript_binary.RECORDED_NATIVE_GAMEASSEMBLY_SHA256,
+                levelscript_binary.RECORDED_NATIVE_METADATA_SHA256,
+            )
+            result = audit.mission_event_asset_coverage(root, (), validated)
+            self.assertEqual(result["levelScriptNativeHeaderContract"], validated)
+            self.assertEqual(result["levelScriptCustomMissionEventRecords"], 0)
+
     def test_current_report_status_requires_validated_matching_original_inputs(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -806,16 +876,16 @@ class ProtocolRegistryAuditTests(unittest.TestCase):
         )
 
     def test_compressed_signed_integer_decoding(self):
-        self.assertEqual(audit.read_compressed_int32(bytes([0x00]), 0), (0, 1))
-        self.assertEqual(audit.read_compressed_int32(bytes([0x02]), 0), (1, 1))
-        self.assertEqual(audit.read_compressed_int32(bytes([0x01]), 0), (-1, 1))
-        self.assertEqual(audit.read_compressed_int32(bytes([0x80, 0x80]), 0), (64, 2))
+        self.assertEqual(il2cpp.read_compressed_int32(bytes([0x00]), 0), (0, 1))
+        self.assertEqual(il2cpp.read_compressed_int32(bytes([0x02]), 0), (1, 1))
+        self.assertEqual(il2cpp.read_compressed_int32(bytes([0x01]), 0), (-1, 1))
+        self.assertEqual(il2cpp.read_compressed_int32(bytes([0x80, 0x80]), 0), (64, 2))
 
     def test_field_names_join_constants_to_protobuf_storage(self):
-        self.assertEqual(audit.normalized_field_name("SceneNumIdFieldNumber"), "scenenumid")
-        self.assertEqual(audit.normalized_field_name("sceneNumId_"), "scenenumid")
-        self.assertEqual(audit.normalized_field_name("TaskIdFieldNumber"), "taskid")
-        self.assertEqual(audit.normalized_field_name("taskId_"), "taskid")
+        self.assertEqual(il2cpp.normalized_field_name("SceneNumIdFieldNumber"), "scenenumid")
+        self.assertEqual(il2cpp.normalized_field_name("sceneNumId_"), "scenenumid")
+        self.assertEqual(il2cpp.normalized_field_name("TaskIdFieldNumber"), "taskid")
+        self.assertEqual(il2cpp.normalized_field_name("taskId_"), "taskid")
 
     def test_quest_start_observation_accepts_single_object_initialization(self):
         result = audit.validate_quest_start_application_observation(
