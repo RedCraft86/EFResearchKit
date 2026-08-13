@@ -14,7 +14,7 @@ import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -71,6 +71,10 @@ ORDER_STATUS_RANK = {
 }
 ACTION_TIMELINE_FILENAME_RE = re.compile(r"^(?:[fm]_)?dlg_.*timeline.*\.json$", re.IGNORECASE)
 
+LEVEL_EVENT_MARKER_SCRIPT = "Beyond.Gameplay.Core.RaiseLevelEventMarker"
+LEVEL_EVENT_MARKER_TRACK_SCRIPT = "UnityEngine.Timeline.MarkerTrack"
+TIMELINE_ASSET_SCRIPT = "UnityEngine.Timeline.TimelineAsset"
+
 _ACTION_EVIDENCE_CACHE: dict[str, list[dict]] | None = None
 _ACTION_EVIDENCE_CACHE_PATH: Path | None = None
 
@@ -89,6 +93,210 @@ def log(message: str) -> None:
 def read_json(path: Path) -> Any:
     with path.open(encoding="utf-8-sig") as f:
         return json.load(f)
+
+
+def object_identity(row: dict[str, Any]) -> tuple[str, int]:
+    obj = row.get("object") or {}
+    return str(obj.get("serializedFile") or ""), int(obj.get("pathId") or 0)
+
+
+def pointer_target_identity(pointer: dict[str, Any]) -> tuple[str, int]:
+    target = pointer.get("target") or {}
+    expected = pointer.get("expected") or {}
+    path_id = target.get("pathId")
+    return (
+        str(target.get("serializedFile") or expected.get("serializedFile") or ""),
+        int(path_id if path_id is not None else pointer.get("pathId") or 0),
+    )
+
+
+def object_scalar_map(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        str(item[0]): item[2]
+        for item in row.get("scalars") or []
+        if isinstance(item, list) and len(item) >= 3
+    }
+
+
+def collect_level_event_object_roles(
+    lines: Iterable[str],
+) -> tuple[dict[tuple[str, int], dict], list[dict], dict[tuple[str, int], dict], int]:
+    """Collect exact marker, MarkerTrack, and TimelineAsset index rows."""
+    markers: dict[tuple[str, int], dict] = {}
+    tracks: list[dict] = []
+    timelines: dict[tuple[str, int], dict] = {}
+    object_count = 0
+    for line in lines:
+        row = json.loads(line)
+        if row.get("recordType") != "object":
+            continue
+        object_count += 1
+        script = str((row.get("script") or {}).get("fullName") or "")
+        if script == LEVEL_EVENT_MARKER_SCRIPT:
+            markers[object_identity(row)] = row
+        elif script == LEVEL_EVENT_MARKER_TRACK_SCRIPT:
+            tracks.append(row)
+        elif script == TIMELINE_ASSET_SCRIPT:
+            timelines[object_identity(row)] = row
+    return markers, tracks, timelines, object_count
+
+
+def join_level_event_markers(
+    markers: dict[tuple[str, int], dict],
+    tracks: list[dict],
+    timelines: dict[tuple[str, int], dict],
+    source: str,
+) -> list[dict[str, Any]]:
+    """Join markers to tracks and Timelines only through exact PPtr identity."""
+    joined: list[dict[str, Any]] = []
+    joined_marker_ids: set[tuple[str, int]] = set()
+    for track in tracks:
+        parent = None
+        for pointer in track.get("pptrs") or []:
+            if pointer.get("path") == "$.m_Parent":
+                parent = timelines.get(pointer_target_identity(pointer))
+                break
+        for pointer in track.get("pptrs") or []:
+            if not str(pointer.get("path") or "").startswith(
+                "$.m_Markers.m_Objects["
+            ):
+                continue
+            marker_id = pointer_target_identity(pointer)
+            marker = markers.get(marker_id)
+            if marker is None:
+                continue
+            joined_marker_ids.add(marker_id)
+            joined.append(
+                _level_event_marker_row(marker, track, parent, source)
+            )
+    for marker_id, marker in markers.items():
+        if marker_id not in joined_marker_ids:
+            joined.append(_level_event_marker_row(marker, None, None, source))
+    return joined
+
+
+def _level_event_marker_row(
+    marker: dict[str, Any],
+    track: dict[str, Any] | None,
+    timeline: dict[str, Any] | None,
+    source: str,
+) -> dict[str, Any]:
+    scalars = object_scalar_map(marker)
+    marker_obj = marker.get("object") or {}
+    track_obj = (track or {}).get("object") or {}
+    timeline_obj = (timeline or {}).get("object") or {}
+    return {
+        "source": source,
+        "eventName": str(scalars.get("$.eventName") or ""),
+        "parameters": [
+            {"path": path, "value": value}
+            for path, value in sorted(scalars.items())
+            if path.startswith("$.paramList")
+        ],
+        "marker": {
+            "serializedFile": marker_obj.get("serializedFile"),
+            "pathId": marker_obj.get("pathId"),
+            "name": marker.get("name"),
+        },
+        "markerTrack": (
+            {
+                "serializedFile": track_obj.get("serializedFile"),
+                "pathId": track_obj.get("pathId"),
+                "name": track.get("name"),
+            }
+            if track else None
+        ),
+        "timeline": (
+            {
+                "serializedFile": timeline_obj.get("serializedFile"),
+                "pathId": timeline_obj.get("pathId"),
+                "name": timeline.get("name"),
+            }
+            if timeline else None
+        ),
+    }
+
+
+def enrich_level_event_marker_payload(
+    row: dict[str, Any],
+    index_root: Path,
+) -> None:
+    """Attach exact authored marker timing from its exported object JSON."""
+    marker = row.get("marker") or {}
+    name = str(marker.get("name") or "")
+    path_id = int(marker.get("pathId") or 0)
+    filename = f"{name}_p{path_id & ((1 << 64) - 1):016X}.json"
+    object_path = (
+        index_root
+        / str(row.get("source") or "")
+        / "json_by_type"
+        / "MonoBehaviour"
+        / filename
+    )
+    row["markerObjectJson"] = rel_path(object_path) if object_path.is_file() else None
+    row["timelineTimeSeconds"] = None
+    row["retroactive"] = None
+    row["emitOnce"] = None
+    if not object_path.is_file():
+        return
+    payload = read_json(object_path)
+    row["timelineTimeSeconds"] = payload.get("m_Time")
+    row["retroactive"] = payload.get("_Retroactive")
+    row["emitOnce"] = payload.get("_EmitOnce")
+    row["parameters"] = payload.get("paramList") or []
+
+
+def collect_level_event_story_routes(
+    pipeline: dict[str, Any],
+) -> dict[str, list[dict[str, Any]]]:
+    """Index exact Mission Pipeline receiver routes by event key."""
+    by_event: dict[str, list[dict[str, Any]]] = {}
+    manifest = (
+        (pipeline.get("storyCoverage") or {}).get("storyTriggerManifest") or {}
+    )
+    for story_key, story in manifest.items():
+        stack = list((story or {}).get("routes") or [])
+        while stack:
+            value = stack.pop()
+            if isinstance(value, list):
+                stack.extend(value)
+                continue
+            if not isinstance(value, dict):
+                continue
+            selector = value.get("selector") or {}
+            event_key = str(selector.get("eventKey") or "")
+            if event_key and value.get("sourceFile"):
+                route = {
+                    "storyKey": story_key,
+                    "eventKey": event_key,
+                    "levelId": value.get("levelId") or selector.get("levelId"),
+                    "scriptId": (
+                        value.get("scriptId") or selector.get("listenerScriptId")
+                    ),
+                    "listenerHeaderLocalId": (
+                        selector.get("listenerHeaderLocalId")
+                        or value.get("headerLocalId")
+                    ),
+                    "sourceFile": value.get("sourceFile"),
+                    "steps": value.get("steps") or [],
+                }
+                bucket = by_event.setdefault(event_key, [])
+                signature = json.dumps(route, ensure_ascii=False, sort_keys=True)
+                if all(
+                    json.dumps(item, ensure_ascii=False, sort_keys=True)
+                    != signature
+                    for item in bucket
+                ):
+                    bucket.append(route)
+            stack.extend(value.values())
+    for routes in by_event.values():
+        routes.sort(
+            key=lambda row: (
+                str(row.get("storyKey")),
+                str(row.get("sourceFile")),
+            )
+        )
+    return by_event
 
 
 def write_json(path: Path, payload: Any) -> None:
@@ -602,6 +810,30 @@ def attach_line_order_comparisons(by_dialog: dict[str, list[dict]], line_orders_
     return dict(sorted(status_counts.items()))
 
 
+def action_evidence_availability(scan_meta: dict) -> dict[str, str]:
+    if not scan_meta.get("monoDirCount"):
+        return {
+            "status": "unavailable",
+            "reason": "monobehaviour_export_roots_missing",
+        }
+    if not scan_meta.get("candidateMonoFileCount"):
+        return {
+            "status": "unavailable",
+            "reason": "timeline_action_carriers_missing",
+        }
+    if not scan_meta.get("managedReferenceCount"):
+        return {
+            "status": "unavailable",
+            "reason": "managed_reference_recovery_missing",
+        }
+    if not scan_meta.get("mainFlowCount"):
+        return {
+            "status": "unavailable",
+            "reason": "dialog_main_flows_missing",
+        }
+    return {"status": "available", "reason": "decoded_dialog_main_flows"}
+
+
 def build_timeline_action_evidence(
     *,
     mono_roots: list[Path] | None = None,
@@ -612,6 +844,7 @@ def build_timeline_action_evidence(
     roots = mono_roots or iter_default_mono_roots(out_path.parents[0] if out_path.name else DEFAULT_RECOVERY_ROOT)
     t0 = time.time()
     by_dialog, scan_meta = scan_action_entries(roots)
+    availability = action_evidence_availability(scan_meta)
     comparison_counts = attach_line_order_comparisons(by_dialog, line_orders_path)
     by_dialog = {
         key: sorted(entries, key=lambda item: (item.get("timeline") or "", item.get("file") or ""))
@@ -626,6 +859,8 @@ def build_timeline_action_evidence(
             "dialogKeyCount": len(by_dialog),
             "timelineEntryCount": sum(len(entries) for entries in by_dialog.values()),
             "lineOrderComparisonCounts": comparison_counts,
+            "evidenceStatus": availability["status"],
+            "evidenceStatusReason": availability["reason"],
             **scan_meta,
         },
         "byDialogKey": by_dialog,
@@ -637,6 +872,15 @@ def build_timeline_action_evidence(
             f"({payload['_meta']['dialogKeyCount']} dialog key(s), "
             f"{payload['_meta']['mainFlowCount']} action flow(s))"
         )
+        if availability["status"] != "available":
+            log(
+                "warning: action evidence unavailable: "
+                f"{availability['reason']} "
+                f"(MonoBehaviour roots={scan_meta['monoDirCount']}, "
+                f"matching carriers={scan_meta['candidateMonoFileCount']}, "
+                f"managed refs={scan_meta['managedReferenceCount']}, "
+                f"main flows={scan_meta['mainFlowCount']})"
+            )
     return payload
 
 

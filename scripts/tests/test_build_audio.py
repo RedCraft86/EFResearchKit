@@ -615,7 +615,7 @@ class AudioCategoryTests(unittest.TestCase):
             self.assertEqual({Path(name).name for name, _ in payloads}, {"default_banks.pck", "hotfix_main.pck"})
 
     def test_current_interactive_audio_union_tag_and_complete_rows(self) -> None:
-        from scripts import build_data_index
+        from scripts.game_data.memorypack import interactive as memorypack_interactive
 
         def string(value: str) -> bytes:
             raw = value.encode("utf-8")
@@ -635,29 +635,120 @@ class AudioCategoryTests(unittest.TestCase):
             bytes([1] + [0] * 10),
         ])
 
-        self.assertEqual(build_data_index.INTERACTIVE_AUDIO_COMPONENT_TAG, 0x005D)
+        self.assertEqual(memorypack_interactive.INTERACTIVE_AUDIO_COMPONENT_TAG, 0x005D)
         self.assertEqual(
-            build_data_index.BASE_COMPONENT_UNION_TAGS[0x005D],
+            memorypack_interactive.BASE_COMPONENT_UNION_TAGS[0x005D],
             "Core_InteractiveAudioData",
         )
-        decoded, end = build_data_index.parse_interactive_audio_component(body, 0, 2)
+        decoded, end = memorypack_interactive.parse_interactive_audio_component(body, 0, 2)
         self.assertEqual(end, len(body))
         self.assertEqual(decoded["audioRows"][0]["stateName"], "Destroy")
         self.assertEqual(decoded["audioRows"][0]["events"], ["au_int_fixture_break"])
         self.assertEqual(decoded["customRows"][0]["name"], "panel_open")
 
-    def test_current_play_sound_union_tag_matches_binary_formatter_audit(self) -> None:
-        from scripts import build_data_index
+    def test_current_interactive_model_union_tag_is_0x0126(self) -> None:
+        from scripts.game_data.memorypack import interactive as memorypack_interactive
 
-        self.assertEqual(build_data_index.BUFF_PLAY_SOUND_ACTION_TAG, 0x010D)
         self.assertEqual(
-            build_data_index.BUFF_ABILITY_ACTION_TAG_NAMES[0x010D],
+            memorypack_interactive.BASE_COMPONENT_UNION_TAGS[0x0126],
+            "View_InteractiveModelComponentData",
+        )
+
+    def test_current_interactive_trigger_zone_audio_property_map_is_exact(self) -> None:
+        from scripts.game_data.memorypack import interactive as memorypack_interactive
+
+        def string(value: str) -> bytes:
+            raw = value.encode("utf-8")
+            return pack("<I", len(raw)) + raw
+
+        event_id = "au_int_fixture_start"
+        property_map = b"".join((
+            pack("<I", 1),
+            bytes((2,)),
+            string("audio_key_start"),
+            bytes((2,)),
+            pack("<iI", 7, 1),
+            bytes((2,)),
+            pack("<q", 0),
+            string(event_id),
+        ))
+        body = b"".join((
+            pack("<I", 0xFFFFFFFF),
+            pack("<I", 1),
+            bytes((20,)),
+            bytes(60),
+            property_map,
+            bytes((0, 0)),
+        ))
+
+        decoded, end = memorypack_interactive.parse_interactive_trigger_zone_audio_property_component(
+            body,
+            0,
+            3,
+        )
+
+        self.assertEqual(end, len(body) - 2)
+        self.assertEqual(decoded["tag"], "0x00f5")
+        self.assertEqual(decoded["type"], "Core_TriggerZoneComponentForIntData")
+        self.assertEqual(decoded["audioPropertyRows"], [{
+            "key": "audio_key_start",
+            "events": [event_id],
+            "valueType": 7,
+            "identityKind": "wwiseEvent",
+        }])
+        self.assertEqual(decoded["runtimePropertyConsumerStatus"], "unresolved")
+        self.assertEqual(decoded["runtimeEventPostingStatus"], "notObserved")
+
+        found = memorypack_interactive.find_interactive_audio_property_maps(body)
+        self.assertEqual(found[0]["audioPropertyRows"][0]["events"], [event_id])
+        self.assertEqual(found[0]["componentResolutionStatus"], "containingComponentUnresolved")
+
+    def test_interactive_template_config_audio_property_has_exact_field_boundary(self) -> None:
+        from scripts.game_data.memorypack import interactive as memorypack_interactive
+
+        def string(value: str) -> bytes:
+            raw = value.encode("utf-8")
+            return pack("<I", len(raw)) + raw
+
+        event_id = "au_int_fixture_escape"
+        config_map = b"".join((
+            pack("<I", 2),
+            bytes((2,)), string("audio_escape"),
+            bytes((2,)), pack("<iI", 7, 1), bytes((2,)), pack("<q", 0), string(event_id),
+            bytes((2,)), string("label"),
+            bytes((2,)), pack("<iI", 28, 1), bytes((2,)), pack("<q", 0), string("lang_fixture"),
+        ))
+        tail = b"".join((
+            pack("<ff", 0.0, 0.0), bytes((0,)), pack("<f", 1.0), bytes((0,)),
+            pack("<I", 0), pack("<I", 0), pack("<i", 0), config_map,
+        ))
+
+        decoded, end = memorypack_interactive.parse_interactive_template_config_properties(
+            tail, 0
+        )
+
+        self.assertEqual(end, len(tail))
+        self.assertEqual(decoded["configPropertyCount"], 2)
+        self.assertEqual(decoded["audioPropertyRows"], [{
+            "key": "audio_escape",
+            "events": [event_id],
+            "valueType": 7,
+            "identityKind": "wwiseEvent",
+        }])
+        self.assertEqual(decoded["configPropertiesOffset"], "0x1a")
+
+    def test_current_play_sound_union_tag_matches_binary_formatter_audit(self) -> None:
+        from scripts.game_data.memorypack import buff as memorypack_buff
+
+        self.assertEqual(memorypack_buff.BUFF_PLAY_SOUND_ACTION_TAG, 0x010D)
+        self.assertEqual(
+            memorypack_buff.BUFF_ABILITY_ACTION_TAG_NAMES[0x010D],
             "Core_PlaySoundAction_PlaySoundActionData",
         )
-        self.assertEqual(build_data_index.BUFF_ABILITY_ACTION_TAG_MEMBER_COUNTS[0x010D], 22)
+        self.assertEqual(memorypack_buff.BUFF_ABILITY_ACTION_TAG_MEMBER_COUNTS[0x010D], 22)
 
     def test_play_sound_target_settings_uses_typed_memorypack_reader_when_exact(self) -> None:
-        from scripts import build_data_index
+        from scripts.game_data.memorypack import buff as memorypack_buff
 
         # Real CN BuffData PlaySoundActionData payloads: the 67-byte default
         # TargetSettings and the 79-byte smart_target variant.  The latter
@@ -672,7 +763,7 @@ class AudioCategoryTests(unittest.TestCase):
         ))
         self.assertEqual(len(base), 67)
         raw = base[:59] + pack("<I", 12) + b"smart_target" + base[63:]
-        decoded, end = build_data_index.read_buff_target_settings_full_or_partial(
+        decoded, end = memorypack_buff.read_buff_target_settings_full_or_partial(
             raw, 0, len(raw), "fixture.targetSettings"
         )
 
@@ -689,7 +780,7 @@ class AudioCategoryTests(unittest.TestCase):
         })
 
     def test_play_sound_target_settings_rejects_unknown_tail_fail_closed(self) -> None:
-        from scripts import build_data_index
+        from scripts.game_data.memorypack import buff as memorypack_buff
 
         raw = bytearray(b"".join((
             bytes((13, 8, 1, 0)), pack("<i", 0), bytes((0, 0xFF)), pack("<i", 0),
@@ -703,7 +794,7 @@ class AudioCategoryTests(unittest.TestCase):
         # Keep the byte layout valid but use an unrecognized candidate tail.
         raw[-4:] = (99).to_bytes(4, "little")
         with self.assertRaises(ValueError):
-            build_data_index.read_buff_target_settings_full_or_partial(
+            memorypack_buff.read_buff_target_settings_full_or_partial(
                 bytes(raw), 0, len(raw), "fixture.targetSettings"
             )
 
@@ -756,26 +847,22 @@ class AudioCategoryTests(unittest.TestCase):
             self.assertEqual(rows[0]["sourcePaths"], sources[::-1])
             self.assertEqual(result["counts"]["buffPlaySoundActionOccurrences"], 1)
 
-    def test_direct_flac_is_default_and_legacy_wav_still_converts(self) -> None:
-        self.assertEqual(build_audio.parse_args([]).format, "flac")
-        self.assertEqual(
-            build_audio.audio_output_format(argparse.Namespace(format="flac", audio_format=None)),
-            "flac",
-        )
-        self.assertEqual(
-            build_audio.audio_output_format(argparse.Namespace(format="wav", audio_format=None)),
-            "flac",
-        )
-        self.assertEqual(
-            build_audio.audio_output_format(argparse.Namespace(format="wem", audio_format=None)),
-            "wem",
-        )
-
-    def test_wem_decode_cannot_claim_browser_flac_output(self) -> None:
-        with self.assertRaises(SystemExit):
-            build_audio.audio_output_format(
-                argparse.Namespace(format="wem", audio_format="flac")
-            )
+    def test_audio_cli_has_one_flac_output_contract(self) -> None:
+        args = build_audio.parse_args([])
+        for removed_option in (
+            "format", "audio_format", "ffmpeg", "audio_conversion_jobs",
+        ):
+            self.assertFalse(hasattr(args, removed_option))
+        self.assertEqual(build_audio.AUDIO_OUTPUT_FORMAT, "flac")
+        for option, value in (
+            ("--format", "wav"),
+            ("--audio-format", "wem"),
+            ("--ffmpeg", "ffmpeg.exe"),
+            ("--fluffy", "fluffy.exe"),
+            ("--audio-conversion-jobs", "4"),
+        ):
+            with self.subTest(option=option), mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+                build_audio.parse_args([option, value])
 
     def test_dialog_path_uses_requested_browser_extension(self) -> None:
         self.assertEqual(
@@ -1805,7 +1892,6 @@ class AudioDumperTests(unittest.TestCase):
                 fallback_assets=persistent,
                 audio_root=audio_root,
                 block="all",
-                format="wav",
             )
 
             with mock.patch.object(build_audio.subprocess, "run") as run:
@@ -1815,6 +1901,7 @@ class AudioDumperTests(unittest.TestCase):
             primary = run.call_args_list[0].args[0]
             hotfix = run.call_args_list[1].args[0]
             self.assertEqual(primary[primary.index("--block") + 1], "all")
+            self.assertEqual(primary[primary.index("--format") + 1], "flac")
             self.assertEqual(Path(primary[primary.index("--streaming-assets") + 1]), streaming)
             self.assertIn("--shared-output", primary)
             self.assertEqual(hotfix[hotfix.index("--block") + 1], "hotfix-audio")
@@ -1837,7 +1924,6 @@ class AudioDumperTests(unittest.TestCase):
                 fallback_assets=persistent,
                 audio_root=root / "Audio",
                 block="hotfix-audio",
-                format="flac",
             )
 
             with mock.patch.object(build_audio.subprocess, "run") as run:
@@ -1846,6 +1932,7 @@ class AudioDumperTests(unittest.TestCase):
             self.assertEqual(run.call_count, 1)
             command = run.call_args.args[0]
             self.assertEqual(command[command.index("--block") + 1], "hotfix-audio")
+            self.assertEqual(command[command.index("--format") + 1], "flac")
             self.assertEqual(Path(command[command.index("--streaming-assets") + 1]), persistent)
             self.assertEqual(Path(command[command.index("--fallback-assets") + 1]), streaming)
 
@@ -1921,27 +2008,28 @@ class AudioDumperTests(unittest.TestCase):
 
 
 class ProjectileAudioLinkTests(unittest.TestCase):
-    def test_links_signed_projectile_hash_to_playable_hirc_candidates(self) -> None:
+    def test_writes_projectile_audio_sidecar_without_mutating_behavior(self) -> None:
         with tempfile.TemporaryDirectory() as raw_root:
             webui_root = Path(raw_root)
             projectile_path = webui_root / "data" / "gameplay" / "projectiles.json"
             projectile_path.parent.mkdir(parents=True)
-            projectile_path.write_text(
-                json.dumps({
-                    "entries": [{
-                        "id": "projectile_test",
-                        "sounds": {"launchSound": {"value": -1, "hex": "0xffffffff"}},
-                    }],
-                }),
-                encoding="utf-8",
-            )
+            projectile_payload = {
+                "schemaVersion": 3,
+                "entries": [{
+                    "id": "projectile_test",
+                    "sounds": {"launchSound": {"value": -1, "hex": "0xffffffff"}},
+                }],
+            }
+            projectile_path.write_text(json.dumps(projectile_payload), encoding="utf-8")
+            original_projectile_bytes = projectile_path.read_bytes()
             key = "au_projectile_named_event"
-            stats = build_audio.link_projectile_audio(
+            stats = build_audio.write_projectile_audio_sidecar(
                 webui_root,
+                "CN",
                 {key: [{
-                    "src": "/export_full/structured/Audio/shared/wwise/sfx/7.wav",
+                    "src": "/export_full/structured/Audio/shared/wwise/sfx/7.flac",
                     "mediaId": 7,
-                    "format": "wav",
+                    "format": "flac",
                     "bytes": 120,
                     "audioScope": "shared",
                     "bankId": 9,
@@ -1949,9 +2037,15 @@ class ProjectileAudioLinkTests(unittest.TestCase):
                 [{"eventId": key, "eventHash": 0xFFFFFFFF, "source": "wwiseHirc"}],
             )
 
-            payload = json.loads(projectile_path.read_text(encoding="utf-8"))
-            launch = payload["entries"][0]["sounds"]["launchSound"]
+            self.assertEqual(projectile_path.read_bytes(), original_projectile_bytes)
+            sidecar_path = webui_root / "data/lang/CN/gameplay/projectile_audio.json"
+            payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            launch = payload["links"][0]
             self.assertEqual(stats["projectileSoundRefsLinked"], 1)
+            self.assertEqual(payload["schemaVersion"], 1)
+            self.assertEqual(launch["projectileId"], "projectile_test")
+            self.assertEqual(launch["field"], "launchSound")
+            self.assertEqual(launch["eventHash"], 0xFFFFFFFF)
             self.assertTrue(launch["event"]["foundInWwise"])
             self.assertEqual(launch["event"]["runtimeSelection"], "singleCandidate")
             self.assertEqual(launch["event"]["canonicalEventIds"], [key])
@@ -2375,6 +2469,50 @@ AnimationClip:
             self.assertEqual(enemy_spawn["confidence"], "direct")
             self.assertEqual(set(enemy_spawn["events"]), {"au_enemy_spawn"})
 
+    def test_collects_owner_unresolved_exact_gameplay_config_audio_references(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            root = Path(raw_root)
+            webui_root = root / "webui"
+            export_root = root / "export_full"
+            gameplay_path = webui_root / "data/lang/CN/gameplay/index.json"
+            gameplay_path.parent.mkdir(parents=True)
+            gameplay_path.write_text(json.dumps({"entries": []}), encoding="utf-8")
+            skill_root = export_root / "structured/StreamingAssets/Data/Json/SkillData"
+            buff_root = export_root / "structured/Persistent/Data/Json/BuffData"
+            skill_root.mkdir(parents=True)
+            buff_root.mkdir(parents=True)
+            (skill_root / "skill_orphan.json").write_bytes(
+                self.memorypack_strings(47, "au_skill_orphan_exact")
+            )
+            (buff_root / "buff_orphan.json").write_bytes(
+                self.memorypack_strings(30, "au_buff_orphan_exact")
+            )
+
+            result = build_audio.collect_gameplay_audio_references(
+                webui_root,
+                export_root,
+                "CN",
+            )
+
+            references = {
+                row["eventId"]: row
+                for row in result["authoredConfigEventReferences"]
+            }
+            self.assertEqual(
+                set(references),
+                {"au_skill_orphan_exact", "au_buff_orphan_exact"},
+            )
+            self.assertEqual(references["au_skill_orphan_exact"]["configKind"], "SkillData")
+            self.assertEqual(references["au_skill_orphan_exact"]["configId"], "skill_orphan")
+            self.assertEqual(references["au_buff_orphan_exact"]["configKind"], "BuffData")
+            self.assertEqual(references["au_buff_orphan_exact"]["ownerLinkStatus"], "unresolved")
+            self.assertEqual(
+                references["au_buff_orphan_exact"]["evidence"],
+                "exactMemoryPackLengthPrefixedAudioEventString",
+            )
+            self.assertEqual(result["counts"]["authoredConfigEventReferences"], 2)
+            self.assertEqual(result["counts"]["authoredConfigEventReferenceEvents"], 2)
+
     def test_exact_play_sound_event_seeds_buff_traversal_and_keeps_owner_gap(self) -> None:
         with tempfile.TemporaryDirectory() as raw_root:
             root = Path(raw_root)
@@ -2465,6 +2603,64 @@ AnimationClip:
                 1,
             )
             self.assertEqual(result["counts"]["buffPlaySoundActionsOwnerUnresolved"], 1)
+
+    def test_exact_skill_play_sound_event_seeds_direct_skill_owner(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            root = Path(raw_root)
+            webui_root = root / "webui"
+            export_root = root / "export_full"
+            gameplay_path = webui_root / "data/lang/CN/gameplay/index.json"
+            gameplay_path.parent.mkdir(parents=True)
+            gameplay_path.write_text(json.dumps({"entries": [{
+                "kind": "character",
+                "id": "chr_test",
+                "skillGroups": [{"id": "normal", "skills": [{"id": "chr_test_normal"}]}],
+            }]}), encoding="utf-8")
+            skill_path = (
+                export_root
+                / "structured/StreamingAssets/Data/Json/SkillData/chr_test_normal.json"
+            )
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_bytes(b"fixture-without-generic-au-prefix")
+            skill_action = {
+                "buffId": "chr_test_normal",
+                "eventId": "eny_fixture_direct_event",
+                "timelineActionIndex": 0,
+                "actionDataIndex": 0,
+                "startFrame": 4,
+                "endFrame": 9,
+                "serverActionIndex": 2,
+                "runtimeConditionStatus": "unresolved",
+            }
+            skill_decoded = {
+                "byBuffEvent": {
+                    "chr_test_normal": {"eny_fixture_direct_event": [skill_action]},
+                },
+                "counts": {
+                    "buffPlaySoundActionOccurrences": 1,
+                    "buffPlaySoundUniqueEvents": 1,
+                },
+            }
+            empty_decoded = {"byBuffEvent": {}, "counts": {}}
+
+            with mock.patch.object(
+                build_audio,
+                "collect_buff_play_sound_actions",
+                side_effect=[skill_decoded, empty_decoded],
+            ):
+                result = build_audio.collect_gameplay_audio_references(
+                    webui_root,
+                    export_root,
+                    "CN",
+                )
+
+            owner = next(row for row in result["owners"] if row["ownerKind"] == "character")
+            evidence = owner["events"]["eny_fixture_direct_event"][0]
+            self.assertEqual(evidence["kind"], "skillData")
+            self.assertEqual(evidence["playSoundActions"][0]["skillId"], "chr_test_normal")
+            self.assertNotIn("buffId", evidence["playSoundActions"][0])
+            self.assertEqual(result["counts"]["skillPlaySoundSeededEventRefs"], 1)
+            self.assertEqual(result["counts"]["skillPlaySoundActionOccurrences"], 1)
 
     def test_collects_enemy_template_skill_authored_under_another_enemy(self) -> None:
         with tempfile.TemporaryDirectory() as raw_root:
@@ -2839,7 +3035,7 @@ AnimationClip:
                 "randomAlternative": {"nodeCount": 1, "childEdgeCount": 12},
                 "switchCandidate": {"nodeCount": 1, "childEdgeCount": 4},
             })
-            self.assertEqual(payload["schemaVersion"], 4)
+            self.assertEqual(payload["schemaVersion"], 5)
             dispatch = event_a["actionDispatchEvidence"][0]
             self.assertEqual(dispatch["bankId"], 100)
             self.assertEqual(dispatch["bankVersion"], 150)
@@ -3011,7 +3207,7 @@ AnimationClip:
             payload = json.loads(
                 (webui_root / "data/lang/CN/gameplay/sound_effects.json").read_text(encoding="utf-8")
             )
-            self.assertEqual(payload["schemaVersion"], 4)
+            self.assertEqual(payload["schemaVersion"], 5)
             self.assertEqual(payload["authoredPlaySoundActions"][0]["startFrame"], 17)
             event = payload["characters"]["chr_test"]["groups"]["normal"]["events"][0]
             binding = event["triggerBindings"][0]

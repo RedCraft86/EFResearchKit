@@ -13,7 +13,22 @@ from .mission_flow import *
 from .dialog_tree import *
 from .bundle_support import *
 from .language_helpers import *
+from .option_timeline_continuation import (
+    classify_runtime_jump_option_routes,
+    classify_timeline_clip_option_index_routes,
+    classify_zero_index_timeline_continuation,
+)
 from .timeline_action_evidence import build_conversation_action_debug
+from .option_anchor_reports import (
+    inferred_option_anchor_row,
+    write_inferred_option_anchors_report,
+)
+from scene_order_gap_shared import write_scene_order_gap_reports
+from .cutscene_semantics import (
+    cutscene_semantic_shape,
+    cutscene_subtitle_evidence,
+    select_subtitle_text_group_from_display_names,
+)
 from .ability_binary import (
     build_battle_signal_producer_index,
     match_battle_signal_story_producers,
@@ -38,10 +53,7 @@ _RADIO_CONTINUATION_REPORT_PATH = (
     _RadioContPath(__file__).resolve().parents[2]
     / "reports" / "mission_order" / "radio_continuation_CN.json"
 )
-_FMV_CLIP_BY_KEY_REPORT_PATH = (
-    _RadioContPath(__file__).resolve().parents[2]
-    / "reports" / "playable_director" / "fmv_clip_by_webui_key.json"
-)
+_FMV_CLIP_BINDINGS_PATH = VIDEO_BINDINGS_PATH
 _NARRATIVE_VIDEO_OVERRIDES_PATH = (
     _RadioContPath(__file__).resolve().parents[2]
     / "webui" / "overrides" / "narrative_videos.json"
@@ -1463,7 +1475,7 @@ def _load_radio_continuation_candidates_by_mission(
 
 @_radio_cont_lru_cache(maxsize=2)
 def _load_fmv_clips_by_webui_key(path_str: str) -> dict[str, list[dict]]:
-    """Load `reports/playable_director/fmv_clip_by_webui_key.json`.
+    """Load builder-owned authored FMV clip windows from video bindings.
     Returns `{webui_key: [{fmvId, clipStart, clipDuration, ...}, ...]}` or
     an empty dict when the report has not been generated yet. The builder
     surfaces these as per-conv `fmvClips` meta so the WebUI can display
@@ -1477,7 +1489,7 @@ def _load_fmv_clips_by_webui_key(path_str: str) -> dict[str, list[dict]]:
         payload = _radio_cont_json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, _radio_cont_json.JSONDecodeError):
         return {}
-    mappings = payload.get("mappings")
+    mappings = payload.get("fmvClipsByStory")
     return mappings if isinstance(mappings, dict) else {}
 
 def load_reused_reference_stats(reference_dir: Path, language_code: str) -> dict:
@@ -1686,7 +1698,9 @@ def build_language_bundle(
     narrative_video_overrides = _load_narrative_video_overrides(str(_NARRATIVE_VIDEO_OVERRIDES_PATH))
     narrative_video_suppress_overrides = narrative_video_overrides.get("suppressInline") or {}
     narrative_video_attach_overrides = narrative_video_overrides.get("attachInline") or {}
-    fmv_clips_by_key = _load_fmv_clips_by_webui_key(str(_FMV_CLIP_BY_KEY_REPORT_PATH))
+    fmv_clips_by_key = _load_fmv_clips_by_webui_key(
+        str(_FMV_CLIP_BINDINGS_PATH)
+    )
     written_conv_paths: set[str] = set()
     written_reference_paths: set[str] = set()
     written_mission_paths: set[str] = set()
@@ -1841,7 +1855,7 @@ def build_language_bundle(
     def write_conv_payload(out_key: str, payload: dict) -> Path:
         path = conv_dir / f"{out_key}.json"
         write_json(path, payload)
-        inferred_anchor_row = shared_inferred_option_anchor_row(payload, out_key)
+        inferred_anchor_row = inferred_option_anchor_row(payload, out_key)
         if inferred_anchor_row is None:
             inferred_option_anchor_rows_by_key.pop(out_key, None)
         else:
@@ -7572,6 +7586,53 @@ def build_language_bundle(
         merged_by_key: dict[str, list[dict]] = {}
         for cutscene_key, subtitle_tracks in subtitle_tracks_by_key.items():
             subtitle_tracks = subtitle_tracks_for_language(cutscene_key, subtitle_tracks)
+            if subtitle_tracks and not any(
+                str(ref.get("textId") or "").strip()
+                for track in subtitle_tracks
+                for ref in (track.get("lines") or [])
+                if isinstance(ref, dict)
+            ):
+                candidate_groups: dict[str, list[dict]] = defaultdict(list)
+                for _sort_key, line in grouped.get(cutscene_key) or []:
+                    if not isinstance(line, dict):
+                        continue
+                    raw_group = str(line.get("textGroup") or cutscene_key)
+                    candidate_groups[raw_group].append(line)
+                selected_group = select_subtitle_text_group_from_display_names(
+                    candidate_groups,
+                    subtitle_tracks,
+                )
+                if selected_group:
+                    selected_lines = [
+                        copy.deepcopy(line)
+                        for line in candidate_groups[selected_group]
+                    ]
+                    unselected_groups = sorted(
+                        group for group in candidate_groups
+                        if group != selected_group
+                    )
+                    track_rows = [
+                        {
+                            "file": track.get("file"),
+                            "parent": track.get("parentName"),
+                            "gender": track.get("gender"),
+                            "clipCount": len(track.get("lines") or []),
+                        }
+                        for track in subtitle_tracks
+                    ]
+                    for line in selected_lines:
+                        line.setdefault("_debug", {})[
+                            "subtitleTrackDisplayFallback"
+                        ] = {
+                            "source": "animeSubtitleTrackDisplayAlignment",
+                            "reason": "SubtitlePlayableAsset text IDs unavailable",
+                            "selectedTextGroup": selected_group,
+                            "unselectedTextGroups": unselected_groups,
+                            "tracks": track_rows,
+                        }
+                        remember_cutscene_line_usage(line)
+                    merged_by_key[cutscene_key] = selected_lines
+                    continue
             slot_candidates: dict[tuple[float, float, int], list[dict]] = defaultdict(list)
             for track in subtitle_tracks:
                 timing_counts: dict[tuple[float, float], int] = defaultdict(int)
@@ -8144,6 +8205,12 @@ def build_language_bundle(
                 },
             },
         }
+        payload["cutscene"]["semanticShape"] = cutscene_semantic_shape(
+            payload["cutscene"]
+        )
+        payload["cutscene"]["subtitleEvidence"] = (
+            cutscene_subtitle_evidence(payload["cutscene"], lines)
+        )
         if fmv_clips_by_key.get(cutscene_key):
             payload["fmvClips"] = fmv_clips_by_key[cutscene_key]
         write_conv_payload(cutscene_key, payload)
@@ -14148,7 +14215,7 @@ def build_language_bundle(
                         edge["positions"].append(pos)
         # Radio-continuation edges (authored continueAfterDialog/Radio flags
         # combined with LevelScript file-offset adjacency, audited offline by
-        # scripts/story_recovery/build_radio_continuation_audit.py). Silent
+        # the focused radio-continuation recovery audit). Silent
         # no-op when the audit report has not been generated yet.
         radio_cont_candidates = _load_radio_continuation_candidates_by_mission(
             str(_RADIO_CONTINUATION_REPORT_PATH)
@@ -23286,14 +23353,14 @@ def build_language_bundle(
         scene_placement_index=scene_placement_index,
         dialog_id_registry=dialog_id_registry,
     )
-    scene_order_report = shared_write_scene_order_gap_reports(
+    scene_order_report = write_scene_order_gap_reports(
         ROOT,
         REPORTS_DIR,
         language_code,
         conv_dir,
         rows=scene_order_rows,
     )
-    inferred_anchor_report = shared_write_inferred_option_anchors_report(
+    inferred_anchor_report = write_inferred_option_anchors_report(
         REPORTS_DIR,
         language_code,
         conv_dir,

@@ -2,19 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from asset_builder import media_resolver
 from common import ASSET_DIR, OUT_DIR, write_json
-from pack_webui import (
-    build_inline_image_lookup,
-    build_video_lookup,
-    collect_inline_image_ids,
-    collect_wiki_media_image_ids,
-    collect_wiki_video_refs,
-    media_lookup_stem,
-    resolve_exact_image_assets,
-    resolve_exact_video_asset,
-    resolve_inline_image_assets,
-    score_inline_image_asset,
-)
 
 
 STORY_FILE_IMAGE_PREFIXES = ("cg_image_", "dlg_biglogo_", "remotecomm_image_")
@@ -28,7 +17,7 @@ def collect_story_file_images(entries: list[dict]) -> dict[str, dict]:
         if not isinstance(raw, dict) or raw.get("k") != "image" or not raw.get("r"):
             continue
         rel = str(raw.get("r") or "").replace("\\", "/").strip("/")
-        stem_info = media_lookup_stem(rel)
+        stem_info = media_resolver.media_lookup_stem(rel)
         if not stem_info or not stem_info[0].startswith(STORY_FILE_IMAGE_PREFIXES):
             continue
         stem = stem_info[0]
@@ -37,49 +26,33 @@ def collect_story_file_images(entries: list[dict]) -> dict[str, dict]:
         entry = dict(raw)
         entry["k"] = "image"
         entry["r"] = rel
-        rank = score_inline_image_asset(rel, stem)
+        rank = media_resolver.score_inline_image_asset(rel, stem)
         current = selected_by_stem.get(stem)
         if current is None or rank > current[0] or (rank == current[0] and rel < current[1]):
             selected_by_stem[stem] = (rank, rel, entry)
     return {rel: entry for _rank, rel, entry in selected_by_stem.values()}
 
 
-def collect_cg_story_images(entries: list[dict]) -> dict[str, dict]:
-    """Compatibility wrapper for callers/tests covering Story image import."""
-    return collect_story_file_images(entries)
-
-
 def source_roots_for_entries(
     payloads: list[dict],
-    entries: list[dict],
-    *,
-    include_all_sources: bool = False,
 ) -> dict:
-    roots: dict[str, str] = {}
     available: dict[str, str] = {}
     for payload in payloads:
         source_roots = payload.get("sourceRoots") if isinstance(payload.get("sourceRoots"), dict) else {}
         for key, value in source_roots.items():
             available[str(key)] = str(value)
-    if include_all_sources:
-        return {key: available[key] for key in sorted(available)}
-    for entry in entries:
-        rel = str(entry.get("r") or "").replace("\\", "/").strip("/")
-        source = rel.split("/", 1)[0] if rel else ""
-        if source and source in available:
-            roots[source] = available[source]
-    return {key: roots[key] for key in sorted(roots)}
+    return {key: available[key] for key in sorted(available)}
 
 
 def build_story_media_payload(asset_payload: dict, video_payload: dict) -> dict:
     webui_root = OUT_DIR.parent
 
-    inline_image_ids = collect_inline_image_ids(webui_root)
-    wiki_image_ids = collect_wiki_media_image_ids(webui_root)
-    video_refs = collect_wiki_video_refs(webui_root)
+    inline_image_ids = media_resolver.collect_inline_image_ids(webui_root)
+    wiki_image_ids = media_resolver.collect_wiki_media_image_ids(webui_root)
+    video_refs = media_resolver.collect_wiki_video_refs(webui_root)
 
-    by_stem, by_number = build_inline_image_lookup(asset_payload.get("entries") or [])
-    video_by_stem = build_video_lookup(video_payload.get("entries") or [])
+    by_stem, by_number = media_resolver.build_inline_image_lookup(asset_payload.get("entries") or [])
+    video_by_stem = media_resolver.build_video_lookup(video_payload.get("entries") or [])
 
     selected_images: dict[str, dict] = {}
     selected_videos: dict[str, dict] = {}
@@ -89,24 +62,24 @@ def build_story_media_payload(asset_payload: dict, video_payload: dict) -> dict:
     # direct cg_image_* references can resolve and packaging copies the files.
     story_file_images = collect_story_file_images(asset_payload.get("entries") or [])
     selected_images.update(story_file_images)
-    story_file_stems = [media_lookup_stem(rel)[0] for rel in story_file_images]
+    story_file_stems = [media_resolver.media_lookup_stem(rel)[0] for rel in story_file_images]
 
     for image_id in sorted(inline_image_ids):
-        for candidate in resolve_inline_image_assets(image_id, by_stem, by_number):
+        for candidate in media_resolver.resolve_inline_image_assets(image_id, by_stem, by_number):
             entry = dict(candidate.entry)
             entry["k"] = "image"
             entry["r"] = candidate.rel
             selected_images[candidate.rel] = entry
 
     for image_id in sorted(wiki_image_ids):
-        for candidate in resolve_exact_image_assets(image_id, by_stem):
+        for candidate in media_resolver.resolve_exact_image_assets(image_id, by_stem):
             entry = dict(candidate.entry)
             entry["k"] = "image"
             entry["r"] = candidate.rel
             selected_images[candidate.rel] = entry
 
     for video_id, device_type in sorted(video_refs):
-        candidate = resolve_exact_video_asset(video_id, device_type, video_by_stem)
+        candidate = media_resolver.resolve_exact_video_asset(video_id, device_type, video_by_stem)
         if not candidate:
             continue
         entry = dict(candidate.entry)
@@ -121,11 +94,7 @@ def build_story_media_payload(asset_payload: dict, video_payload: dict) -> dict:
     payload = {
         "generated": asset_payload.get("generated") or video_payload.get("generated"),
         "root": asset_payload.get("root") or video_payload.get("root") or "export_full",
-        "sourceRoots": source_roots_for_entries(
-            [asset_payload, video_payload],
-            entries,
-            include_all_sources=True,
-        ),
+        "sourceRoots": source_roots_for_entries([asset_payload, video_payload]),
         "counts": {
             "total": len(entries),
             "image": len(images),

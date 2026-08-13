@@ -86,11 +86,6 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 from source_paths import _existing_unique_paths, _resolve_recovered_dir, _resolve_structured_source_dir
 from story_builder.mission_assets import select_complete_mission_runtime_root
-from .reports import (
-    inferred_option_anchor_row as shared_inferred_option_anchor_row,
-    write_inferred_option_anchors_report as shared_write_inferred_option_anchors_report,
-    write_scene_order_gap_reports as shared_write_scene_order_gap_reports,
-)
 from .source_links import build_source_links
 from .timeline_recovery import (
     TimelineRecoveryConfig,
@@ -158,7 +153,6 @@ ANIME_RESOURCE_DIRS = _existing_unique_paths([
 DEFAULT_LANGUAGE = "CN"
 BUILD_PROFILES = ("lean", "full")
 DEFAULT_BUILD_PROFILE = "lean"
-TIMELINE_RECOVERY_MODES = ("auto", "always", "never")
 I18N_FILE_RE = re.compile(r"^I18nTextTable_([A-Z]+)\.json$")
 I18N_HOTFIX_TABLE = "I18nHotFix.json"
 I18N_HOTFIX_LANGUAGE_TYPES = {
@@ -318,7 +312,6 @@ _DIALOG_TREE_FRAGMENT_TARGETS_CACHE: dict[str, list[dict]] | None = None
 _DIALOG_TREE_SCENE_LINKS_CACHE: dict[str, list[dict]] | None = None
 _DIALOG_TREE_ROOT_PAYLOAD_ALIAS_CACHE: dict[str, dict | None] = {}
 _DIALOG_TREE_EXTRA_CONFIG_CACHE: dict[str, dict | None] = {}
-_DIALOG_TIMELINE_LINE_ORDER_CACHE: dict[str, list[dict]] | None = None
 _NPC_PROXY_EX_CACHE: dict | None = None
 _MISSION_LEVELSCRIPT_CACHE: dict[tuple[str, tuple[str, ...]], list[dict]] = {}
 _LEVELSCRIPT_BINDING_CACHE: dict[str, dict] = {}

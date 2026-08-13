@@ -190,7 +190,18 @@
               "function": "0x1810d26bf",
               "extent": "0x1810d26bf..0x1810d3189",
               "observed": "The function RVA 0x10d26bf is present only as a paired 32-bit RVA record with metadata RVA 0x204a398 in the installed .rdata table at 0x18204a3d8/0x18204a3e8 and the matching .tvm0 table at 0x1824d1058/0x1824d1060. The records are adjacent to neighboring generic job/function RVAs; no direct call or RIP reference to the function or either table record was found in UnityPlayer .text. This is consistent with table-driven Burst/job dispatch, but it does not identify the custom-per-draw resource or a GPU descriptor consumer.",
-              "negative_result": "The table-dispatched function remains a generic component-record staging path. Its paired RVA metadata provides no channel-2, resource +0xd0, constant-buffer, or descriptor binding edge."
+              "negative_result": "The table-dispatched function remains a generic component-record staging path. Its paired RVA metadata provides no channel-2, resource +0xd0, constant-buffer, or descriptor binding edge.",
+              "tvm0_header_and_table_boundary": {
+                "section_va": "0x1823c6000",
+                "raw_header": "!mdb header, version/seed fields, and Debug\\UnityPlayer.dll.private_dbg0 marker before the code/data region",
+                "table_region_raw_offset": "0x10b000",
+                "table_entry_shape": "12-byte [start RVA, end RVA, metadata RVA] entries observed at raw offset 0x10b054 and adjacent records",
+                "text_reference_scan": {
+                  "unityplayer_pdata_functions": 113390,
+                  "metadata_or_tvm0_rip_reference_hits": 0
+                },
+                "interpretation": "The section contains a Burst metadata header plus embedded table/data; it is not a flat record table beginning at offset 0. The table is section/runtime-driven, which explains why ordinary E8/RIP scans miss the invocation, but it supplies no GPU upload or dispatch identity."
+              }
             },
             "explicit_api_separation": {
               "material_property_block": {
@@ -317,6 +328,136 @@
             "classification": "generic-gpu-driven-buffer-binding-not-custom-per-draw-consumer"
           },
           "negative_result": "The mapped V1/V2 GPU-driven entrypoints expose frame/buffer binding helpers, but the inspected call paths do not alias their +0xd0 fields to the custom resource returned by 0x1804255f0. Keep resource +0xd0 to descriptor upload unresolved."
+        },
+        "gpu_driven_service_object_census": {
+          "status": "service-registry-backed-v1-v2-gpu-path-bounded-no-factory-staging-edge",
+          "source": "Current installed UnityPlayer.dll internal-call wrappers and PData-bounded native disassembly; UnityPlayer sha256 b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2.",
+          "service_resolution": {
+            "registry_service": "0x1810f1980/0x1810fe120 call 0x180fc5e60 (RuntimeInitializeOnLoadManager service slot 20), load service +0xe8, then call 0x1810e6310 with mode dl=0/1.",
+            "mode_zero": "V1 wrappers receive the state selected from the service pointer table; 0x1810e6310 indexes the table by the root mode byte at +0x180 and returns the selected state object or a fail-closed sentinel.",
+            "mode_one": "V2 wrappers use the same table resolver with dl=1; this is a separate state mode, not an alias to the factory manager or the custom-per-draw resource."
+          },
+          "binding_core": {
+            "frame_constants": {
+              "entry": "0x1801e9280 -> 0x1810ef350",
+              "observed": "The native core reads state +0x68 metadata, computes an indexed lane from metadata (+0x20/+0x28, +0x48, and state +0x80), and records a 0x40-byte binding payload from state metadata +0x94 through 0x1805f85e0 -> command-context +0x308 -> 0x1805d5700."
+            },
+            "frame_constants_global": {
+              "entry": "0x1801e9360 -> 0x1810ef3f0",
+              "observed": "The sibling path uses state metadata +0x20 and the same 0x40-byte generic binding writer; it has no manager +0x38/index*0x8c or five-vector staging access."
+            },
+            "culling_and_rendering": {
+              "entries": ["0x1810eece0", "0x1810ef150"],
+              "observed": "These paths enumerate GPU-driven buffer/property metadata rooted at state +0x68 and call generic resource-binding helpers (0x1805f84a0/0x1804cb730). The V2 +0xd0 lane is one member of that GPU-driven metadata array, not the custom resource +0xd0 proven by 0x1804255f0."
+            }
+          },
+          "dispatch_core": {
+            "native_functions": ["0x1810f17e0", "0x1810f1890", "0x1810fdf90", "0x1810fe040"],
+            "observed": "The four GPU-driven dispatch cores derive dimensions from state metadata and invoke 0x1805e7e10, whose successful path resolves the shader/kernel and calls the graphics-context vtable slot +0xab0. The internal native callers select kernel index 0; managed wrappers still accept a caller-supplied index.",
+            "negative_result": "The service-object and GPU-driven dispatch bodies never read the factory manager records at 0x1810d25c0 + index*0x8c, the HyperGryph ECS 0x100-stride staging lanes, _UploadBuffer, or resource +0xd0/channel 2."
+          },
+          "boundary": "This closes a concrete UnityPlayer GPUDriven service/binding/dispatch path while separating it from the factory ECS staging producer. It does not recover the UploadPerDrawParams kernel-7 selector, the 84-byte upload-buffer producer, or the channel-2 descriptor binding; those edges remain fail-closed."
+        },
+        "gpu_driven_rendering_binding_lane_census": {
+          "status": "v1-v2-rendering-binding-lanes-bounded-generic-command-path-no-perdraw-upload-edge",
+          "source": "Current UnityPlayer.dll internal-call mapping, PData-bounded disassembly, and exact E8 caller census; UnityPlayer sha256 b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2.",
+          "native_entrypoints": {
+            "V1": {
+              "managed_internal_call": "UnityEngine.HyperGryph.GPUDrivenRendererV1::BindBuffersForRendering(CommandBuffer)",
+              "internal_call": "0x1801e9480",
+              "native_core": "0x1810ef150",
+              "immediate_lanes": [
+                {
+                  "metadata_offset": "+0x88",
+                  "resource_id_source": "metadata[+0x10]->(+0x78 or +0x8)+0x30",
+                  "helper": "0x180fd96c0"
+                },
+                {
+                  "metadata_offset": "+0x9c",
+                  "resource_id_source": "metadata[+0x30]+0x38+0x30",
+                  "helper": "0x180fd96c0"
+                },
+                {
+                  "metadata_offset": "+0xa8",
+                  "resource_id_source": "metadata[+0x50]+0x24",
+                  "helper": "0x180fd96c0"
+                }
+              ],
+              "command_path": {
+                "helper": "0x1804cb730",
+                "opcode": "0x2b",
+                "lanes": ["+0x88", "+0x9c", "+0xa8"]
+              }
+            },
+            "V2": {
+              "managed_internal_call": "UnityEngine.HyperGryph.GPUDrivenRendererV2::BindBuffersForRendering(CommandBuffer)",
+              "internal_call": "0x1801e9b70",
+              "native_core": "0x1810fbb00",
+              "immediate_lanes": [
+                {
+                  "metadata_offset": "+0xa0",
+                  "resource_id_source": "metadata[+0x10]->(+0x78 or +0x8)+0x30",
+                  "helper": "0x180fd96c0"
+                },
+                {
+                  "metadata_offset": "+0xb8",
+                  "resource_id_source": "metadata[+0x40]+0x38+0x30",
+                  "helper": "0x180fd96c0"
+                },
+                {
+                  "metadata_offset": "+0xac",
+                  "resource_id_source": "metadata[+0x28]->(+0x78 or +0x8)+0x30",
+                  "helper": "0x180fd96c0"
+                },
+                {
+                  "metadata_offset": "+0xbc",
+                  "resource_id_source": "metadata[+0x48]+0x38+0x30",
+                  "helper": "0x180fd96c0"
+                },
+                {
+                  "metadata_offset": "+0xc8",
+                  "resource_id_source": "metadata[+0x68]+0x24",
+                  "helper": "0x180fd94d0_or_0x180fd96c0"
+                }
+              ],
+              "command_path": {
+                "helper": "0x1804cb730",
+                "opcode": "0x2b",
+                "lanes": ["+0xa0", "+0xb8", "+0xac", "+0xbc", "+0xc8"]
+              }
+            }
+          },
+          "generic_binding_helper": {
+            "immediate_helper": "0x180fd96c0",
+            "direct_caller_count": 3,
+            "direct_callers": ["0x1810ef150", "0x1810ef240", "0x1810fbb00"],
+            "observed": "Resolves property/metadata IDs into compact binder arrays, grows cache storage, appends a 16-byte binding tuple, and calls generic helper 0x1805d5520; no ComputeShader/ComputeBuffer/SetBuffer/Dispatch, factory +0x38/index*0x8c, or custom resource +0xd0 access.",
+            "command_record_helper": "0x1804cb730",
+            "command_record_observed": "Appends opcode 0x2b and an 8-byte payload (dword [rdx], r8d) to a CommandBuffer stream.",
+            "deferred_packer": "0x180fe4d50",
+            "deferred_packer_observed": "Packs five variable-length binder arrays from +0x30/+0x50/+0x70/+0x90/+0xb0 using count fields +0x28/+0x48/+0x68/+0x88/+0xa8, resets counts, then invokes graphics-context vtable slot +0xea0; no factory/per-draw/upload identity.",
+            "direct_caller_scan": "UnityPlayer PData-scoped E8 scan found only the three V1/V2 rendering helper bodies for 0x180fd96c0; 0x180fe4d50 additionally has generic post-processing/renderer callers and tail-jump callers from the binder helpers."
+          },
+          "negative_result": "This closes the bounded native V1/V2 rendering-binding command path as generic property/buffer metadata and excludes it as a static source of _UploadBuffer, UploadPerDrawParams kernel 7, _RTPerDrawParamsBuffer, or channel-2/resource +0xd0. The 84-byte staging-to-GPU edge and dynamic/table-driven paths remain unresolved."
+        },
+        "populate_per_frame_command_bridge": {
+          "status": "v1-populate-per-frame-command-bridge-closed-no-factory-upload-edge",
+          "source": "Current GameAssembly.dll managed wrapper and PData-bounded UnityPlayer.dll disassembly; UnityPlayer sha256 b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2.",
+          "managed_call": {
+            "rendergraph_callback": "HG.Rendering.Runtime.GPUDrivenCullingPassConstructor+<>c.<.cctor>b__10_0 at GameAssembly 0x189bb558c (metadata method 287367)",
+            "v1_wrapper": "GPUDrivenRendererV1.PopulatePerFrameData at GameAssembly 0x18b3f80b4",
+            "internal_call": "UnityEngine.HyperGryph.GPUDrivenRendererV1::PopulatePerFrameData(UnityEngine.Rendering.CommandBuffer,System.UInt32,System.UInt32,System.UInt32,System.Boolean)",
+            "internal_call_entry": "UnityPlayer 0x1801e9200",
+            "resolver": "GameAssembly 0x180059ea0"
+          },
+          "native_core": {
+            "entry": "UnityPlayer 0x1810f2ab0",
+            "command_record_helper": "0x1804cd7d0",
+            "command_opcode": "0x57",
+            "observed": "The core resolves the V1 service state through 0x1810f1980, updates frame metadata/counters rooted at state +0x68, and uses the non-null command-buffer branch to record the 0x57 frame-data command through 0x1804cd7d0. When the native command-buffer pointer is null, it obtains the graphics context through 0x180725dc0 and invokes context vtable slot +0xea0 instead."
+          },
+          "negative_result": "The inspected body never reads factory records at 0x1810d25c0 + index*0x8c, the HyperGryph ECS 0x100-stride staging lanes, _UploadBuffer, UploadPerDrawParams kernel 7, _RTPerDrawParamsBuffer, or resource +0xd0/channel 2.",
+          "boundary": "This closes a positive GPUDriven V1 per-frame command/CPU bridge and separates it from the factory dirty-record consumer and the unresolved 84-byte upload-buffer producer. Dynamic/table-driven scheduling and the channel-2 descriptor edge remain open."
         },
         "gpu_scene_upload_kernel_evidence": {
           "status": "per-draw-gpu-buffer-consumer-and-resource-identity-closed-native-edge-open",
@@ -521,15 +662,128 @@
           "boundary": "This closes Unity's native compute-dispatch mechanism and distinguishes command-buffer recording from immediate context dispatch. The managed resource identity now separately proves that GpuSceneDirtyUpdateCS::UploadPerDrawParams exists at kernel index 7, but the native core census does not prove that a particular dispatch call supplies this object and index 7. It also does not expose the upload-buffer producer or connect channel 2/resource +0xd0 to the five-vector destination. Keep dispatch selection and carrier mapping fail-closed."
         },
         "native_immediate_dispatch_census": {
-          "status": "non-gpudriven-immediate-callers-classified-no-gpu-scene-edge",
+          "status": "dispatch-abi-corrected-kernel-index-dynamically-classified-no-gpu-scene-edge",
           "source": "Current UnityPlayer.dll PData-scoped direct-call census for immediate dispatch 0x1805e7e10; UnityPlayer sha256 b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2.",
           "dispatch_function": "0x1805e7e10",
           "direct_call_count": 15,
+          "abi_contract": {
+            "kernel_index_argument": "edx",
+            "group_dimension_arguments": {
+              "x": "r8d",
+              "y": "r9d",
+              "z": "dword ptr [rsp+0x20]"
+            },
+            "argument_flow": "The bridge saves incoming r9d/r8d/edx separately, then calls 0x1805e8100 with edx as the ComputeShader kernel index and forwards r8d/r9d plus the stack z dimension to the graphics-context vtable dispatch slot +0xab0.",
+            "kernel_validation": "0x1805e8100 copies edx to r14d and gates r14d < qword ptr [shader+0xd0] before resolving the per-kernel dispatch record. Therefore r9d at the final immediate-dispatch call is a group dimension, not the kernel index."
+          },
+          "kernel_resolver": {
+            "function": "0x1805f6ce0",
+            "pdata_range": "0x1805f6ce0..0x1805f6df5",
+            "role": "FindKernel-style registry resolver",
+            "abi": "rcx points to the shader metadata object; rdx points to a 32-bit kernel/property registry id; eax returns the zero-based matching entry index or -1.",
+            "table_shape": "The body scans qword ptr [rcx+0x58] entries, uses the count at +0x18, advances entries by 0x68, and compares each entry's first dword with [rdx]."
+          },
           "gpu_driven_call_sites": [
             "0x1810f1837",
             "0x1810f18eb",
             "0x1810fdfe7",
             "0x1810fe09b"
+          ],
+          "kernel_argument_census": [
+            {
+              "site": "0x1810f1837",
+              "function": "0x1810f17e0",
+              "family": "GPUDriven",
+              "kernel_source": "incoming core r9d is saved to ebx and copied to edx",
+              "known_native_upstream": "0x18127c730 zeros r9d before entering this core; managed callers remain dynamic"
+            },
+            {
+              "site": "0x1810f18eb",
+              "function": "0x1810f1890",
+              "family": "GPUDriven",
+              "kernel_source": "incoming core r9d is saved to ebx and copied to edx",
+              "known_native_upstream": "0x181280530 zeros r9d before entering this core; managed callers remain dynamic"
+            },
+            {
+              "site": "0x1810fdfe7",
+              "function": "0x1810fdf90",
+              "family": "GPUDriven",
+              "kernel_source": "incoming core r9d is saved to ebx and copied to edx",
+              "known_native_upstream": "0x18127c730 zeros r9d before entering this core; managed callers remain dynamic"
+            },
+            {
+              "site": "0x1810fe09b",
+              "function": "0x1810fe040",
+              "family": "GPUDriven",
+              "kernel_source": "incoming core r9d is saved to ebx and copied to edx",
+              "known_native_upstream": "0x181280530 zeros r9d before entering this core; managed callers remain dynamic"
+            },
+            {
+              "site": "0x1811eb94a",
+              "function": "0x1811eb6b0",
+              "family": "terrain",
+              "kernel_source": "eax from FindKernel 0x1811eb6f6 -> r14d -> edx"
+            },
+            {
+              "site": "0x1811ec336",
+              "function": "0x1811ebdf0",
+              "family": "terrain",
+              "kernel_source": "eax from FindKernel 0x1811ec0be -> r15d -> edx"
+            },
+            {
+              "site": "0x18124be98",
+              "function": "0x18124ba10",
+              "family": "screen_space_reflections",
+              "kernel_source": "eax from FindKernel 0x18124bb2d -> r15d -> edx"
+            },
+            {
+              "site": "0x18124c79c",
+              "function": "0x18124c360",
+              "family": "screen_space_reflections",
+              "kernel_source": "eax from FindKernel 0x18124c47d -> r15d -> edx"
+            },
+            {
+              "site": "0x18124cac2",
+              "function": "0x18124c7c0",
+              "family": "screen_space_reflections",
+              "kernel_source": "eax from FindKernel 0x18124c835 -> r14d -> edx"
+            },
+            {
+              "site": "0x1812b9d7f",
+              "function": "0x1812b9bb0",
+              "family": "ray_tracing",
+              "kernel_source": "eax from FindKernel 0x1812b9be3 -> ebp -> edx"
+            },
+            {
+              "site": "0x1812ba69f",
+              "function": "0x1812ba430",
+              "family": "ray_tracing",
+              "kernel_source": "eax from FindKernel 0x1812ba463 -> ebp -> edx"
+            },
+            {
+              "site": "0x1812baecb",
+              "function": "0x1812bac10",
+              "family": "ray_tracing",
+              "kernel_source": "eax from FindKernel 0x1812bac43 -> ebp -> edx"
+            },
+            {
+              "site": "0x1812bb2e7",
+              "function": "0x1812baef0",
+              "family": "ray_tracing",
+              "kernel_source": "eax from FindKernel 0x1812baf23 -> ebp -> edx"
+            },
+            {
+              "site": "0x1812bb76b",
+              "function": "0x1812bb550",
+              "family": "ray_tracing",
+              "kernel_source": "eax from FindKernel 0x1812bb583 -> ebp -> edx"
+            },
+            {
+              "site": "0x1812bba37",
+              "function": "0x1812bb790",
+              "family": "ray_tracing",
+              "kernel_source": "eax from FindKernel 0x1812bb7d5 -> esi -> edx"
+            }
           ],
           "classified_non_gpu_scene_callers": {
             "terrain": {
@@ -554,8 +808,8 @@
               "evidence": "The registry initializer at 0x181217db0 maps these fields to the named RTR kernels; the pass bodies bind ray-tracing resources and dispatch those kernels."
             }
           },
-          "observed": "All eleven remaining direct callers are attributable to terrain, SSR, or ray-tracing render-graph passes. None selects GpuSceneDirtyUpdateCS.UploadPerDrawParams, references _UploadBuffer, or reads the factory 80-byte shared record/channel-2 resource.",
-          "boundary": "This closes the bounded native immediate-dispatch negative branch, but does not exclude a dynamically registered or indirect producer for kernel 7; the shared-record-to-_UploadBuffer edge and channel-2 descriptor binding remain fail-closed."
+          "observed": "All eleven remaining direct callers are attributable to terrain, SSR, or ray-tracing render-graph passes. Their edx kernel arguments are dynamic FindKernel results; the final r9d values are dispatch dimensions. None statically selects GpuSceneDirtyUpdateCS.UploadPerDrawParams, references _UploadBuffer, or reads the factory 80-byte shared record/channel-2 resource.",
+          "boundary": "This corrects the immediate-dispatch ABI and closes the bounded direct-call negative branch. It does not exclude a dynamically registered or indirect producer for kernel 7; the shared-record-to-_UploadBuffer edge and channel-2 descriptor binding remain fail-closed."
         },
         "managed_dispatch_entrypoint_census": {
           "status": "managed-native-dispatch-bridges-closed-upload-producer-open",
@@ -783,6 +1037,41 @@
             },
             "boundary": "This closes the obvious UnityPlayer indirect +0xab8 dispatch candidates as generic graphics/resource/D3D11 paths or already-known immediate wrappers. It is bounded negative evidence only: resolver-driven or table-dispatched kernel-7 selection and the staging-array-to-buffer upload remain unresolved and must stay fail-closed."
           },
+          "command_buffer_indirect_dispatch_census": {
+            "status": "registered-indirect-dispatch-endpoint-bounded-no-factory-caller",
+            "source": "Current UnityPlayer.dll primary internal-call registration, PData-scoped disassembly, and direct-call census; UnityPlayer sha256 b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2.",
+            "internal_call_registration": {
+              "managed_names": [
+                "UnityEngine.Rendering.CommandBuffer::Internal_DispatchComputeIndirect",
+                "UnityEngine.Rendering.CommandBuffer::Internal_DispatchComputeIndirectGraphicsBuffer"
+              ],
+              "unityplayer_entry": "0x18011a850",
+              "registration_table": "0x18012e2f0",
+              "registration_indices": [3432, 3433],
+              "record_helper": "0x1804c74d0"
+            },
+            "entry_contract": {
+              "observed": "The internal-call body resolves the managed command buffer, ComputeShader/native shader handle, and indirect-argument resource; it forwards the caller kernel index and argument metadata to 0x1804c74d0. The helper resolves or creates the command-stream shader record, copies the indirect-dispatch payload, then invokes the backend record function through a resolved function pointer.",
+              "command_stream": "This is an indirect command-buffer recording path, distinct from immediate context dispatch and from the direct Internal_DispatchCompute opcode-0x11 path.",
+              "gpu_scene_fields": "The visible body has no manager +0x38/index*0x8c record, five-vector 84-byte source, _UploadBuffer, GpuSceneDirtyUpdateCS, UploadPerDrawParams, or resource +0xd0/channel-2 access."
+            },
+            "direct_call_census": {
+              "unityplayer_record_helper": {
+                "function": "0x1804c74d0",
+                "direct_call_sites": [
+                  "0x18011a9f6",
+                  "0x1810f1870",
+                  "0x1810f1920",
+                  "0x1810fe020",
+                  "0x1810fe0d0"
+                ],
+                "classification": "The first site is the generic internal-call body; the remaining four are the known GPUDriven V1/V2 indirect cores."
+              },
+              "gameassembly_direct_e8_call_count": 0,
+              "raw_unityplayer_pointer_occurrences": 0
+            },
+            "boundary": "The indirect CommandBuffer endpoint and its current native callers are now explicitly bounded. No static factory dirty-record/staging consumer or kernel-7 UploadPerDrawParams producer reaches this path. This does not exclude resolver/table-driven invocation or a separate backend function-pointer route; the staging-array-to-_UploadBuffer pack, kernel-7 selection, and channel-2/resource +0xd0 binding remain fail-closed."
+          },
           "boundary": "The managed ComputeShader and CommandBuffer dispatch entrypoints, their native bridges, and the bounded immediate-call census are now explicit. They do not identify a live kernel-7 producer or the post-staging upload; keep channel 2/resource +0xd0 binding fail-closed."
         },
         "getter_cross_check": {
@@ -955,6 +1244,82 @@
         ],
         "boundary": "This closes an independent ShaderVariablesGlobal CharacterParams10 producer and its c117.y layout, but HGRP/Lit HGBuffer consumes a separate register(b3) cb3[0].w vector; no evidence yet maps this global c117.y or custom channel 2 onto that b3 component."
       },
+      "global_constant_buffer_production_boundary": {
+        "status": "global-constant-buffer-producer-closed-separate-from-gpu-scene-upload",
+        "source": "Current GameAssembly.dll PData-scoped render-path mapping and disassembly; source image hash is pinned to the installed build.",
+        "gameassembly_sha256": "0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce",
+        "type": "HG.Rendering.Runtime.HGRenderPathBase",
+        "method": "UpdateShaderVariablesGlobalCB",
+        "metadata_method_index": 287938,
+        "token": "0x0600133e",
+        "native_pointer": "0x189bddeb4",
+        "ifix_gate": {
+          "patch_id": "0x49e",
+          "static_body": "The body is the current fallback when the IFix gate is not patched; the dynamic wrapper remains a separate runtime boundary."
+        },
+        "producer_contract": {
+          "camera_update": "Calls HGCamera.UpdateShaderVariablesGlobalCB at 0x1832de2d0 with the render-path camera state at this+0x580.",
+          "global_state_copies": "Copies the render-path global blocks at this+0x60..0xd0 and this+0x1200..0x1230 into temporary constant-buffer payloads.",
+          "allocated_constant_buffers": [
+            {"size_bytes": 784, "size_hex": "0x310", "allocate_callsite": "0x189bde0e2 -> 0x183a7f530"},
+            {"size_bytes": 1312, "size_hex": "0x520", "allocate_callsite": "0x189bde2e4 -> 0x183a7f530"},
+            {"size_bytes": 3200, "size_hex": "0xc80", "allocate_callsite": "0x189bde318 -> 0x183a7f530"}
+          ],
+          "global_bind_calls": [
+            "0x189bde2c7 -> ScriptableRenderContext/CommandBuffer.SetGlobalConstantBufferInternal0 at 0x183a7f620",
+            "0x189bde3d0 -> SetGlobalConstantBufferInternal0 at 0x183a7f620",
+            "0x189bde404 -> SetGlobalConstantBufferInternal0 at 0x183a7f620"
+          ]
+        },
+        "negative_gpu_scene_checks": {
+          "absent": [
+            "ComputeShader.SetBuffer/SetConstantComputeBuffer",
+            "ComputeShader.Dispatch or CommandBuffer.Internal_DispatchCompute",
+            "GpuSceneDirtyUpdateCS.UploadPerDrawParams kernel 7",
+            "_UploadBuffer or 84-byte source-stride pack",
+            "factory 0x8c record/0x100 staging lanes",
+            "custom channel 2 or resolved resource +0xd0"
+          ],
+          "interpretation": "This method is a positive producer/binder for global constant buffers only. Its three global CB bindings must not be treated as the missing per-draw upload or as evidence that channel 2 reaches binding 33."
+        },
+        "boundary": "The global ShaderVariablesGlobal path is now explicitly separated from the unresolved GPU Scene upload schedule. The dynamic IFix/render-graph subroute remains open, while staging-to-_UploadBuffer, kernel-7 dispatch selection, and channel-2/resource +0xd0 binding stay fail-closed."
+      },
+      "render_request_native_boundary": {
+        "status": "render-request-initialization-no-static-upload-edge",
+        "source": "Current GameAssembly.dll PData-scoped HGRenderPipeline mapping and native disassembly; source image hash is pinned to the installed build.",
+        "gameassembly_sha256": "0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce",
+        "type": "HG.Rendering.Runtime.HGRenderPipeline",
+        "method": "ExecuteRenderRequestCPP",
+        "metadata_method_index": 284111,
+        "token": "0x0600044b",
+        "native_pointer": "0x183106970",
+        "parameters": ["renderRequest", "renderContext", "cmd"],
+        "observed_contract": {
+          "entry_initialization": [
+            "Allocates/copies render-request state blocks through 0x18033b9d0 with sizes 0xc80, 0x520, and 0x170.",
+            "Calls HGRenderPipeline.CheckAndInitializeRenderPathCPP at 0x183c64900 before filling the request-side records.",
+            "Writes repeated 16-byte lanes into request-owned records through offsets +0x00..+0x530; these are CPU request-state copies, not the five-lane 84-byte upload record."
+          ],
+          "direct_call_scan": {
+            "body_direct_call_count": 868,
+            "known_gpu_targets_checked": [
+              "ComputeBuffer.SetData/InternalSetData",
+              "ComputeShader.SetBuffer/SetConstantComputeBuffer",
+              "ComputeShader.Dispatch",
+              "CommandBuffer.Internal_DispatchCompute",
+              "GpuSceneDirtyUpdateCS.UploadPerDrawParams",
+              "factory 0x8c record/0x100 staging consumers"
+            ],
+            "hits": 0
+          }
+        },
+        "negative_checks": [
+          "No direct ComputeShader/ComputeBuffer bind or compute dispatch target occurs in the mapped body target scan.",
+          "No _UploadBuffer, UploadPerDrawParams kernel 7, factory 0x8c/0x100 staging, or custom channel 2/resource +0xd0 identity is present in the static call surface.",
+          "The render-context/CommandBuffer arguments and CheckAndInitializeRenderPathCPP call identify render-request orchestration, not the missing post-dirty upload schedule."
+        ],
+        "boundary": "ExecuteRenderRequestCPP is now a bounded CPU render-request initialization boundary. Its dynamic render-graph/IFix subroutes remain open, but this static entry must not be credited as the channel-2-to-_UploadBuffer or kernel-7 producer."
+      },
       "upstream_packed_word_producer": {
         "source": "Installed GameAssembly.dll native HGCharacterVolume body recovered from the current metadata/code-registration pair.",
         "type": "HG.Rendering.Runtime.HGCharacterVolume",
@@ -1121,6 +1486,21 @@
         "dirty_record_staging_consumer": {
           "status": "native-dirty-record-consumer-staging-boundary-identified-upload-edge-open",
           "source": "Installed UnityPlayer.dll PData-scoped disassembly; current UnityPlayer binary was checked directly rather than inferred from the managed resolver.",
+          "ecs_staging_dispatch_boundary": {
+            "status": "hypergryph-ecs-table-dispatch-classified-no-gpu-edge",
+            "native_functions": [
+              "0x1810d25c0..0x1810d3198",
+              "0x1810d26bf (table-referenced entry)"
+            ],
+            "rva_table_evidence": [
+              "UnityPlayer .rdata VA 0x182048fd4 (RVA 0x10d25c0)",
+              "UnityPlayer .rdata VA 0x182225368 (RVA 0x10d26bf)",
+              "UnityPlayer .rdata VA 0x1823d4254 (metadata RVA 0x204a398)",
+              "UnityPlayer .tvm0 VA 0x1824d1058/0x1824d1060"
+            ],
+            "classification_evidence": "The body emits the assertion `entityTypeData.memory == nullptr` and operates on HyperGryph ECS entity-type/record arrays. Its five-lane copy into the 0x100-stride staging entry is CPU-side ECS work; no ComputeShader, CommandBuffer, buffer upload, or dispatch target is present.",
+            "boundary": "No direct E8 caller or raw code-pointer xref reaches the table entry, so invocation remains an indirect Burst/job scheduler boundary. Do not equate this ECS staging table with the 84-byte _UploadBuffer source until an explicit pack and UploadPerDrawParams kernel-7 consumer is recovered."
+          },
           "native_pointer": "0x1810d25c0",
           "function_range": "0x1810d25c0..0x1810d3198",
           "record_contract": {
@@ -1164,6 +1544,149 @@
             },
             "interpretation": "0x18036ed60 is a generic dynamic-array resize/zero helper whose element stride is 0x54 and whose zeroed layout is five Vector4 lanes plus a dword at +0x50; 0x1804b69b9 is a generic element-copy helper. The remaining precise candidates consume the same stride for unrelated native data and only call math/formatting helpers. None directly calls GpuSceneDirtyUpdateCS, UploadPerDrawParams, the checked immediate-dispatch boundary, a GPU buffer upload, or the factory record consumer.",
             "negative_gpu_edge": "The 0x54 literal is therefore a real generic 84-byte layout clue, but this bounded census does not identify it as the staging array's packer or as _UploadBuffer. Keep the shader-to-native edge fail-closed."
+          },
+          "factory_prefix_layout_followup": {
+            "status": "factory-range-prefix-store-census-no-upload-edge",
+            "source": "Installed UnityPlayer.dll PData-scoped Capstone scan over 0x181000000..0x1812fffff; candidate stores required one non-stack base register to receive the byte-prefix offsets +0x04/+0x14/+0x24/+0x34/+0x44, alongside the index slot at +0x00.",
+            "unityplayer_sha256": "b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2",
+            "scan_result": {
+              "pdata_scope": "0x181000000..0x1812fffff",
+              "matching_functions": 6,
+              "matching_ranges": [
+                "0x1812029f0..0x1812032f3",
+                "0x181216e30..0x181217bee",
+                "0x181221c50..0x181222063",
+                "0x181265dc0..0x18126721c",
+                "0x1812b4d00..0x1812b5645",
+                "0x1812fdef0..0x1812fdfef"
+              ],
+              "factory_range_matches": 0,
+              "checked_gpu_edges": 0
+            },
+            "factory_copy_helpers": {
+              "full_record": "0x1810d9170 writes manager[+0x38] + index*0x8c from +0x00..+0x88; it is a CPU 0x8c-record copy, not a +0x04-prefixed 0x54 pack.",
+              "partial_record": "0x1810d91f0 computes manager[+0x38] + index*0x8c + offset and tail-jumps 0x181c9f9a0; it is an optimized CPU partial memcpy with no GPU API or dispatch edge.",
+              "generic_memcpy": "0x181c9f9a0 advances source/destination by 0x100 in its loop and copies record-shaped fields; it has no shader, buffer, descriptor, or command-buffer identity."
+            },
+            "interpretation": "The strict factory-range scan finds no native function that materializes the shader's index-plus-five-lane prefix. The nearby full/partial record helpers remain CPU-only, so the staging-to-_UploadBuffer pack, kernel-7 dispatch, and channel-2/resource +0xd0 upload edge remain fail-closed."
+          },
+          "unrelated_0x100_stride_writer_followup": {
+            "status": "unrelated-0x100-writer-no-factory-or-gpu-edge",
+            "source": "Current installed UnityPlayer.dll PData-scoped disassembly; binary SHA-256 b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2.",
+            "function": "0x18037feb7..0x180380235",
+            "record_shape": {
+              "output_stride": "The loop advances the output base by +0x100 at 0x18037ffc7 and writes a byte mask plus fields at +0x04/+0x14/+0x18/+0x1c/+0x20, +0x30 via a helper, and +0xf0.",
+              "source_stride": "The source pointer advances by +0x16c per element, distinct from the factory +0x8c record and the shader's 0x54-byte source contract.",
+              "callees": [
+                "0x18037d790 (matrix/transform math helper)",
+                "0x181c9f9a0 (generic CPU copy helper)",
+                "0x1804154e0 (local CPU output helper)"
+              ]
+            },
+            "gpu_boundary_checks": {
+              "factory_shared_lanes_plus_b0_through_f0": false,
+              "compute_buffer_upload": false,
+              "set_buffer_or_shader_property": false,
+              "command_buffer_record_or_execute": false,
+              "immediate_or_gpu_driven_dispatch": false,
+              "upload_per_draw_params_kernel_7": false,
+              "resource_plus_0xd0_or_channel_2": false
+            },
+            "interpretation": "This is a genuine 0x100-stride CPU record writer, but its +0x16c input layout, unrelated fields, and math/copy callees do not match the factory staging lanes at +0xb0..+0xf0. It is a bounded generic false positive, not the missing 0x100-to-0x54 pack or _UploadBuffer producer."
+          },
+          "post_staging_direct_call_census": {
+            "status": "whole-image-direct-call-negative-upload-consumer-open",
+            "source": "Current installed GameAssembly.dll SHA-256 0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce and UnityPlayer.dll SHA-256 b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2; raw E8 rel32 scan over GameAssembly .text/il2cpp plus PData range attribution.",
+            "checked_targets": {
+              "HGConstantBufferPool.ApplyPendingUpload": "0x189b6a7c0",
+              "ComputeBuffer.SetData<byte>": "0x187af05e0",
+              "factory_staging_entry": "0x1810d25c0",
+              "factory_staging_loop_entry": "0x1810d26bf"
+            },
+            "scan_result": {
+              "direct_e8_callers_to_apply_pending_upload": 0,
+              "direct_e8_callers_to_compute_buffer_set_data": 1,
+              "set_data_only_caller": "0x189b6a7c0 (the pool's own ApplyPendingUpload loop)",
+              "direct_e8_callers_to_unityplayer_staging_entries": 0,
+              "raw_little_endian_code_pointer_xrefs_to_staging_entries": 0
+            },
+            "pool_buffer_contract": {
+              "type": "HG.Rendering.Runtime.HGConstantBufferPool",
+              "constructor": "0x189b6aa28",
+              "compute_buffer_constructor": "0x18b3d7374",
+              "buffer_count": "0x80000",
+              "buffer_stride_bytes": 8,
+              "set_data_call": "0x187af05e0 (ComputeBuffer.SetData<byte>)",
+              "interpretation": "ApplyPendingUpload uses a generic count-0x80000, stride-8 ComputeBuffer and is not the 84-byte _UploadBuffer path; its sole SetData caller is the pool's own loop."
+            },
+            "tvm0_partition": {
+              "entry": "0x1810d25c0..0x1810d26bf",
+              "loop_entry": "0x1810d26bf..0x1810d3189",
+              "metadata_rvas": ["0x204a398", "0x204a3ac"],
+              "interpretation": "The UnityPlayer .tvm0 records encode adjacent Burst/native function ranges and metadata RVAs; they explain why ordinary E8/raw-pointer caller scans miss invocation, but expose no GPU upload or dispatch edge by themselves."
+            },
+            "interpretation": "The generic constant-buffer pool is not a statically reachable consumer of the factory staging path: its only direct SetData edge is self-contained and its ApplyPendingUpload entry has no direct callers in the current GameAssembly image. The staging functions likewise remain table/job-dispatched boundaries, not proven _UploadBuffer producers. Keep resolver, scheduler, and indirect consumer work open and fail-closed."
+          },
+          "frame_update_step2_record_maintenance_followup": {
+            "status": "step2-8c-record-maintenance-no-upload-edge",
+            "source": "Current installed UnityPlayer.dll PData-bounded disassembly captured in scratch/reverse_engineering/gpu_scene_upload_next/frame_step2_native_current.txt; binary SHA-256 b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2.",
+            "function": "0x1810d36b0..0x1810d4006",
+            "record_shape": {
+              "record_pointer_formation": "At 0x1810d3c7e..0x1810d3c8a the body forms manager-like +0x38 + entityIndex * 0x8c pointers while walking a separate index/list array.",
+              "observed_record_fields": ["+0x10", "+0x20", "+0x2c", "+0x30", "+0x3e", "+0x50", "+0x58", "+0x74"],
+              "role": "The loop decrements component/list counts, copies or compacts typed component arrays, and records small handle lists; it does not copy the shared Vector4 prefix at +0x00..+0x40 into the 0x100-stride render staging lanes."
+            },
+            "direct_callees": [
+              "0x1810ca4a0 (typed component/list cleanup)",
+              "0x181c9f9a0 (bounded native copy helper)",
+              "0x1810d4020 (component lookup/creation maintenance)",
+              "0x1810d8d40 (typed component field copy)",
+              "0x1810c7a30 (typed component/list cleanup)",
+              "0x1801fa2d0/0x180303e70/0x180129d50 (generic allocation/lifecycle helpers)"
+            ],
+            "gpu_boundary_checks": {
+              "compute_buffer_upload": false,
+              "set_buffer_or_shader_property": false,
+              "command_buffer_record_or_execute": false,
+              "immediate_or_gpu_driven_dispatch": false,
+              "upload_per_draw_params_kernel_7": false,
+              "resource_plus_0xd0_or_channel_2": false,
+              "indirect_call_instruction_in_body": false
+            },
+            "unity_jobs_scheduler_bridge": {
+              "status": "scheduler-record-transport-closed-gpu-consumer-open",
+              "source": "Installed UnityPlayer.dll JobsUtility internal-call registration and PData-scoped native disassembly; current UnityPlayer sha256 b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2.",
+              "entrypoint_chain": [
+                {
+                  "managed_internal_call": "Unity.Jobs.LowLevel.Unsafe.JobsUtility::ScheduleParallelFor_Injected",
+                  "registration_index": 151,
+                  "unityplayer_wrapper": "0x1800ac0d0",
+                  "wrapper_contract": "Receives JobScheduleParameters*, arrayLength, innerloopBatchCount, and JobHandle*; rearranges the first three values and calls 0x18055c720."
+                },
+                {
+                  "native_bridge": "0x18055c720",
+                  "observed": "Preserves the return handle pointer, forwards JobScheduleParameters* as the scheduler input, and forwards arrayLength/batch count before calling 0x18055d110."
+                },
+                {
+                  "scheduler_core": "0x18055d110",
+                  "observed": "Builds the native schedule/job record, computes range metadata, and enters the common record builder 0x180555e50; the direct body has no ComputeBuffer, ComputeShader, CommandBuffer, or dispatch call."
+                }
+              ],
+              "record_transport": {
+                "common_record_builder": "0x180555e50",
+                "record_backend_a": "0x1805572f0",
+                "record_backend_b": "0x180557c30",
+                "callback_glue": "0x18055bac0",
+                "callback_glue_role": "The scheduler stores this Unity worker/range callback in the job record; it is not the Burst function identity and must not be mistaken for 0x1810d25c0/0x1810d26bf.",
+                "record_writes": [
+                  "0x1805572f0 writes record[0] = callback_glue and record[0x10] = scheduler-owned job payload before enqueueing.",
+                  "0x180557c30 writes the same callback/payload prefix for the alternate scheduling backend.",
+                  "0x1805592b0 copies the callback/payload metadata into the queue node and submits it through the worker queue."
+                ]
+              },
+              "boundary": "This closes the runtime transport that can invoke a Burst/job callback without a static E8 caller: JobScheduleParameters and the callback/payload record cross UnityPlayer's scheduler queue. It does not identify which schedule record carries 0x1810d25c0/0x1810d26bf, does not recover the 0x100-stride-to-84-byte pack, and does not prove UploadPerDrawParams kernel 7, _UploadBuffer, or resource +0xd0/channel 2. Keep the GPU edge fail-closed."
+            },
+            "interpretation": "Step2 is a second CPU-side factory/ECS maintenance pass that happens to form the same 0x8c record address. Its component compaction and typed-copy callees provide no post-staging pack, 84-byte prefix, shader dispatch, or resource binding edge. The scheduler/consumer boundary therefore remains indirect and the staging-to-_UploadBuffer edge stays fail-closed."
           },
           "next_gap": "Recover the indirect caller and the consumer of the 0x100-stride staging array; specifically search for a pack step that prefixes an entity/index dword and yields the shader's 84-byte source stride, then tie that upload to UploadPerDrawParams kernel 7 and resource +0xd0."
         }
@@ -1323,6 +1846,87 @@
           "shared_payload_endpoint": "HGFactoryRendererBinderComponent.SetCustomPerDrawData<Vector4> at 0x1834a3d60"
         },
         "boundary": "This closes a concrete native/GameAssembly entry into the Burst per-draw configuration path and its binder Vector4 writer. It still ends at the generic factory shared-data/dirty-flag producer: no static edge from this bridge proves _UploadBuffer population, UploadPerDrawParams kernel 7 selection, or channel-2 resource +0xd0 consumption."
+      },
+      "per_draw_apply_callsite_census": {
+        "status": "factory-perdraw-config-callers-cpu-only-upload-edge-open",
+        "source": "Installed GameAssembly.dll PData-scoped E8 caller census for the concrete PerDrawGlobalSetting Apply/ApplyPass bodies; current GameAssembly SHA-256 0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce.",
+        "targets": {
+          "apply": {
+            "native_pointer": "0x1869d5e18",
+            "embedded_burst_loop": "0x1869d5d30",
+            "config_stride": "0x3c",
+            "branch_call": "0x186a33f58",
+            "unique_pdata_callers": 21,
+            "named_caller_examples": [
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_BlueprintProcessInternal$BurstManaged#395639",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_ContinuationStart$BurstManaged#395645",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_HighLightProcess$BurstManaged#395622",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_HighLightStart$BurstManaged#395620",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_InvalidOverlapPlaceStart$BurstManaged#395651",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_OverloadInvalidStart$BurstManaged#395632",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_PowerInteractionStart$BurstManaged#395649",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_PreSelectStart$BurstManaged#395642",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_SocialSharingStart$BurstManaged#395648",
+              "GlobalSharedData+PerDrawGlobalSetting::Apply#395344",
+              "UnitPreviewRenderJob::Execute#396282",
+              "GridRendererProcessor::_UpdateGridBinder#26702"
+            ]
+          },
+          "apply_pass": {
+            "native_pointer": "0x1869d5b78",
+            "embedded_burst_loop": "0x1869d5cac",
+            "config_stride": "0x40",
+            "branch_call": "0x186a54f28",
+            "unique_pdata_callers": 19,
+            "named_caller_examples": [
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_BlueprintProcessInternal$BurstManaged#395639",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_ContinuationStart$BurstManaged#395645",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_HighLightProcess$BurstManaged#395622",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_HighLightStart$BurstManaged#395620",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_InvalidOverlapPlaceStart$BurstManaged#395651",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_OverloadInvalidStart$BurstManaged#395632",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_PowerInteractionStart$BurstManaged#395649",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_PreSelectStart$BurstManaged#395642",
+              "Beyond.Gameplay.Factory.AdditiveEffectRenderJob::_SocialSharingStart$BurstManaged#395648",
+              "GlobalSharedData+PerDrawGlobalSetting::ApplyPass#395347"
+            ]
+          },
+          "wrappers": {
+            "apply_wrapper": {
+              "native_pointer": "0x1869d5db0",
+              "unique_pdata_callers": 4,
+              "named_caller_examples": [
+                "AdditiveEffectRenderJob::ResetMaterial#395605",
+                "ConveyorRendererJob::_UpdateCachedConveyor#396167",
+                "PipeRendererJob::_UpdateCachedPipe#396248",
+                "PipeTrackRendererJob::_UpdateCachedTrack#396252"
+              ]
+            },
+            "apply_pass_wrapper": {
+              "native_pointer": "0x1869d5c3c",
+              "unique_pdata_callers": 3,
+              "named_caller_examples": [
+                "AdditiveEffectRenderJob::ResetMaterial#395605",
+                "ConveyorRendererJob::_UpdateCachedConveyor#396167",
+                "PipeRendererJob::_UpdateCachedPipe#396248"
+              ]
+            }
+          }
+        },
+        "body_contract": "Apply resolves a per-draw table and iterates 0x3c-byte CPU config entries before calling PerDrawConfig.Apply at 0x1869f3654. ApplyPass iterates 0x40-byte CPU entries before calling 0x1869f394c. The feature branches are large config/serialization/resource paths.",
+        "negative_gpu_edge": {
+          "checked_callers": "All 21 Apply and 19 ApplyPass PData-attributed caller bodies, plus the wrapper caller sets",
+          "checked_targets": [
+            "_UploadBuffer / UploadPerDrawParams",
+            "GpuSceneDirtyUpdateCS kernel 7",
+            "ComputeBuffer.SetData",
+            "ComputeShader.SetBuffer/SetConstantBuffer/Dispatch",
+            "CommandBuffer GPU-driven recording",
+            "factory resource +0xd0/channel 2"
+          ],
+          "result": "No checked caller directly reaches a GPU upload, shader bind, command recording, or compute dispatch. These callsites broaden the CPU-side per-draw configuration surface but do not identify the later native factory staging or kernel-7 consumer."
+        },
+        "boundary": "Keep the per-draw config caller family separate from the positive SetCustomPerDrawData<Vector4> producer. The CPU Apply/ApplyPass branches are now bounded, while the staging-to-_UploadBuffer pack, kernel-7 dispatch, and channel-2/resource +0xd0 edge remain fail-closed."
       },
       "native_partial_endpoint_evidence": {
         "status": "primary-native-record-copy-closed-gpu-upload-open",
@@ -1486,6 +2090,118 @@
         ],
         "bounded_result": "The current, additive-material, and obsolete factory update entries plus their concrete record helpers contain no direct ComputeBuffer upload, shader buffer/property bind, CommandBuffer GPUDriven recording, or compute dispatch edge. This is positive CPU-record-consumer evidence, not proof that an indirect/dynamically registered render stage cannot consume the array later; keep the shared-record-to-GPU edge fail-closed."
       },
+      "native_frame_update_step_census": {
+        "status": "native-frame-update-steps-cpu-output-gpu-edge-open",
+        "source": "Installed UnityPlayer.dll PData-scoped x64 disassembly, exact HGFactoryRenderManager FrameUpdateStep1/2 log-literal cross-references, and direct-call census.",
+        "unityplayer_sha256": "b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2",
+        "log_literal_cross_references": [
+          {
+            "literal": "HGFactoryRenderManager::FrameUpdateStep1: Frame update outputs is not cleared correctly.",
+            "rdata_raw_offset": "0x1e1e980",
+            "xref_instruction": "0x1810d3211",
+            "native_range": "0x1810d31a0..0x1810d36af"
+          },
+          {
+            "literal": "HGFactoryRenderManager::FrameUpdateStep2: Expecting data from frame update outputs but received null. FrameUpdateStep1 is possibly not executed.",
+            "rdata_raw_offset": "0x1e1e9e0",
+            "xref_instruction": "0x1810d3738",
+            "native_range": "0x1810d36b0..0x1810d4006"
+          }
+        ],
+        "unique_native_entry_adapters": [
+          {
+            "adapter": "0x180fc5ea0..0x180fc5ebb",
+            "operation": "service slot 0x14 getter; calls 0x18106f370, then tail-jumps to FrameUpdateStep1 at 0x1810d31a0",
+            "direct_callers_to_step": 1
+          },
+          {
+            "adapter": "0x180fc5ec0..0x180fc5eeb",
+            "operation": "service slot 0x14 getter; calls FrameUpdateStep2 at 0x1810d36b0, then tail-jumps through [service+0x200] to 0x180e75000",
+            "direct_callers_to_step": 1,
+            "continuation": "0x180e75000 -> 0x180e566d0 -> 0x180e58cb0; no checked GPU entrypoint in this continuation"
+          }
+        ],
+        "step1_cpu_shape": "Checks manager[+0x60], records the FrameUpdateStep1 output-clear diagnostic when manager[+0x58] is still populated, initializes/allocates CPU vectors and metadata, and transitions the state field from 0 to 1.",
+        "step2_cpu_shape": "Requires manager[+0x60] == 1, transitions it to 2, consumes/reallocates the manager[+0x58] output container, and uses only vector/memory/diagnostic helpers including 0x181c9f9a0; no graphics API is present in the composite PData body.",
+        "checked_gpu_edges": {
+          "direct_compute_buffer_upload": [],
+          "direct_shader_buffer_or_property_bind": [],
+          "direct_command_buffer_gpu_driven_recording": [],
+          "direct_compute_dispatch": []
+        },
+        "bounded_result": "The exact native FrameUpdateStep1/2 implementations are now positively identified as CPU output-container stages. Their only recovered adapters and their post-Step2 continuation have no direct GPU upload/dispatch edge. This strengthens the negative boundary around the factory frame-update producer, but does not prove that a separate resolver/table-dispatched render-stage consumer cannot later read the CPU outputs; keep the shared-record-to-_UploadBuffer and channel-2/resource +0xd0 edges fail-closed."
+      },
+      "native_frame_update_post_step2_lifecycle_census": {
+        "status": "post-step2-continuation-lifecycle-only-no-upload-edge",
+        "source": "Installed UnityPlayer.dll x64 disassembly for the recovered FrameUpdateStep2 adapter continuation; body inspected through the terminating return where the PData fragment was insufficient.",
+        "unityplayer_sha256": "b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2",
+        "adapter": "0x180fc5ec0",
+        "sequence": [
+          "service slot 0x14 +0x110 -> FrameUpdateStep2 0x1810d36b0",
+          "service slot 0x14 +0x200 -> 0x180e75000",
+          "0x180e75000 -> 0x180e566d0 -> 0x180e58cb0"
+        ],
+        "post_step2": {
+          "0x180e58cb0": "Gates on the lifecycle object at +0xca0 using 0x1810c2e00 and 0x1800a8c70, calls 0x180e58970, drains four callback/resource slots at +0xcb0 with per-slot function pointers at +0x8, then builds CPU metadata through 0x180e53750.",
+          "0x180e53750": "Builds a dynamic CPU descriptor structure, allocating and zeroing 0xd0-byte entries through 0x181ca0040 and filling metadata/arrays; no ComputeBuffer, ComputeShader, shader buffer/property bind, CommandBuffer, or compute dispatch edge is present."
+        },
+        "size_boundary": {
+          "gpu_scene_upload_source": "GpuSceneDirtyUpdateCS UploadPerDrawParams _UploadBuffer = 84 bytes (index plus five float4 lanes)",
+          "post_step2_descriptor_entry": "0xd0 bytes",
+          "interpretation": "The post-Step2 descriptor allocation is a distinct CPU lifecycle structure, not the missing 84-byte per-draw upload producer."
+        },
+        "bounded_result": "The FrameUpdateStep2 continuation is now positively bounded as lifecycle cleanup and CPU descriptor construction. It does not close the shared-record-to-_UploadBuffer producer or channel-2/resource +0xd0 GPU edge; both remain fail-closed."
+      },
+      "remote_factory_frame_update_dynamic_boundary": {
+        "status": "remote-factory-frame-update-flag-only-static-fallback-dynamic-ifix-open",
+        "source": "Current GameAssembly.dll method-body mapping/disassembly, full-image direct E8 caller census, and the current installed Gameplay.Beyond IFix patch target table.",
+        "gameassembly_sha256": "0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce",
+        "persistent_ifix_patch_sha256": "79ad16be86e488eca829ce60b133f1c3c6d3d4c3d180e04621713e57f8c3bbea",
+        "persistent_ifix_target_count": 18,
+        "persistent_ifix_matching_targets": [],
+        "hg_render_pipeline_render_boundary": {
+          "native_pointer": "0x183455030",
+          "method": "HG.Rendering.Runtime.HGRenderPipeline.Render",
+          "patch_id": "0x23d",
+          "dynamic_gate": "WrappersManagerImpl.GetPatch(0x23d) -> ILFix dynamic wrapper 0x189cb3b10 -> VirtualMachine.Execute 0x189e124c4",
+          "static_body_scan": {
+            "direct_call_count": 361,
+            "unresolved_direct_call_count": 237,
+            "command_buffer_calls": [
+              "CommandBufferPool.Get 0x183339460",
+              "ScriptableRenderContext.ExecuteCommandBuffer 0x183339850",
+              "CommandBufferPool.Release 0x183339790"
+            ],
+            "direct_gpu_scene_or_factory_calls": [],
+            "direct_compute_buffer_or_shader_bind_calls": [],
+            "direct_compute_dispatch_calls": []
+          },
+          "bounded_result": "The current static Render body records/executes ordinary command-buffer work and calls named render passes, but has no direct GpuSceneDirtyUpdateCS, UploadPerDrawParams, _UploadBuffer, factory FrameUpdate, 0x8c record staging, ComputeBuffer bind, or compute-dispatch edge. The command-buffer and dynamic IFix subroutes remain open and are not evidence that kernel 7 consumes channel 2/resource +0xd0."
+        },
+        "methods": {
+          "FrameUpdateEntitiesJobForward": {
+            "type": "Beyond.Gameplay.RemoteFactory.RemoteFactoryGameWorldController",
+            "metadata_method_index": 29077,
+            "token": "0x06007196",
+            "native_pointer": "0x1875316ac",
+            "patch_id": "0x7301",
+            "static_fallback": "writes the boolean argument to this+0x38 and returns",
+            "dynamic_gate": "WrappersManagerImpl.IsPatched(0x7301) -> GetPatch(0x7301) -> ILFix dynamic wrapper 0x1866c2b40",
+            "direct_e8_callers": 0
+          },
+          "SetGarbageCollectDirty": {
+            "type": "Beyond.Gameplay.RemoteFactory.RemoteFactoryGameWorldController",
+            "metadata_method_index": 29078,
+            "token": "0x06007197",
+            "native_pointer": "0x18477d8e0",
+            "patch_id": "0x7302",
+            "static_fallback": "writes byte 1 to this+0x50 and returns",
+            "dynamic_gate": "WrappersManagerImpl.IsPatched(0x7302) -> GetPatch(0x7302) -> ILFix dynamic wrapper 0x1863633b4",
+            "direct_e8_callers": 0
+          }
+        },
+        "bounded_result": "Both recovered RemoteFactory methods are IFix-gated control-flag wrappers only in the static image. Neither reaches HGFactoryRenderManager FrameUpdateEntities, the native 0x8c record staging family, the 0x100-stride CPU lanes, _UploadBuffer, UploadPerDrawParams kernel 7, or channel-2/resource +0xd0. The current persistent IFix table has no RemoteFactory, HGRenderPipeline, GpuScene, or PerDraw target identity; the dynamic patch route remains runtime-only and cannot be credited as the missing producer."
+      },
       "native_unityplayer_record_shape_scan": {
         "status": "bounded-0x8c-record-shape-census-no-direct-gpu-edge",
         "source": "Full installed UnityPlayer.dll PData-scoped x64 scan; candidate functions required both an immediate 0x8c/140 record-shape operand and a +0x38 memory-field access, then their direct calls were checked against the installed ComputeBuffer, ComputeShader, CommandBuffer, and GPUDriven entrypoints.",
@@ -1514,7 +2230,100 @@
           "0x1810d97f0 obsolete UpdateRegularEntity helper",
           "0x1810ce0be..0x1810cf261 adjacent factory record helpers"
         ],
-        "bounded_result": "Across the complete decoded UnityPlayer PData set, no function matching the 0x8c/+0x38 factory-record shape directly calls a checked GPU upload, shader-buffer/property bind, CommandBuffer GPUDriven recorder, or compute dispatch. This broadens the static CPU-record negative evidence beyond the three registered update entries, but cannot exclude an indirect function-pointer or dynamically registered render-stage consumer; keep the shared-record-to-GPU edge fail-closed."
+        "bounded_result": "Across the complete decoded UnityPlayer PData set, no function matching the 0x8c/+0x38 factory-record shape directly calls a checked GPU upload, shader-buffer/property bind, CommandBuffer GPUDriven recorder, or compute dispatch. This broadens the static CPU-record negative evidence beyond the three registered update entries, but cannot exclude an indirect function-pointer or dynamically registered render-stage consumer; keep the shared-record-to-GPU edge fail-closed.",
+        "indirect_call_followup": {
+          "status": "record-shape-indirect-census-factory-subset-negative",
+          "source": "Capstone re-disassembly of all 39 previously identified UnityPlayer 0x8c/+0x38 candidates in the installed binary.",
+          "candidate_count": 39,
+          "candidates_with_indirect_call_instructions": 12,
+          "factory_adjacent_candidates": [
+            "0x1810ce0be",
+            "0x1810ce131",
+            "0x1810ce510",
+            "0x1810cebc0",
+            "0x1810d1ec2",
+            "0x1810d1fb0",
+            "0x1810d2336",
+            "0x1810d26bf",
+            "0x1810d39b3",
+            "0x1810d93a0",
+            "0x1810d97c7",
+            "0x1810d97f0",
+            "0x1810eece0"
+          ],
+          "factory_adjacent_candidates_with_indirect_calls": [],
+          "known_gpu_targets_checked": [
+            "0x1800906c0",
+            "0x180091050",
+            "0x180091d70",
+            "0x1801153f0",
+            "0x180116c10",
+            "0x180117130",
+            "0x180119af0",
+            "0x1801e9200..0x1801e9c90"
+          ],
+          "selected_non_factory_indirect_candidates": [
+            {
+              "function": "0x1811ad8b0/0x1811b08fe",
+              "indirect_call": "qword ptr [r9 + 0xf58]",
+              "observed": "Both have one indirect callback and generic property/graphics helpers, but only local stack/vector metadata around 0xb0/0xd0/0xf0; no manager +0x38 plus index*0x8c contract or custom resource identity."
+            },
+            {
+              "function": "0x1815d8d60",
+              "indirect_call": "qword ptr [rbx + 0x360/0x378/0x380] and register calls",
+              "observed": "Large table-dispatched native subsystem; its +0xd0 and 0x8c operands are local object fields, not the factory manager record; fallback is selected through caller function pointer [rsi+0x3e0]."
+            },
+            {
+              "function": "0x18174cd00/0x1817bb9d6",
+              "indirect_call": "PhysX metadata/PVD vtable calls",
+              "observed": "Referenced strings identify PhysX vehicle reflection/PVD metadata; unrelated to factory rendering."
+            }
+          ],
+          "negative_result": "The only indirect-call candidates in the 39-shape set are non-factory or generic table/property paths. The factory-adjacent functions, including the 0x1810d25c0/0x1810d26bf staging family and GPUDriven binding entry 0x1810eece0, contain no indirect call and no checked GPU target. This closes the obvious indirect-call surface for the recovered CPU record while leaving resolver/table-dispatched kernel-7 selection and the resource +0xd0 upload edge fail-closed."
+        }
+      },
+      "installed_ifix_gpu_identity_census": {
+        "status": "installed-ifix-payload-gpu-name-census-negative-dynamic-table-open",
+        "source": "Current extracted Gameplay.Beyond IFix patch payload parsed from the FileVirtualMachineBuilder binary format; raw byte-name scan cross-checked the structured tables.",
+        "patch_path": "unity_endfield_graph_shader_lab/scratch/character_recovery/ifix_patch_state/dump/Data/IFixPatchOut/Windows/Gameplay.Beyond.patch.bytes",
+        "patch_size_bytes": 86926,
+        "patch_sha256": "baa28ae497e64d94e152886622bbe5fb391199bcbf8366e2df91591c9a9f172c",
+        "format_boundary": {
+          "bridge_string_offset": "0x88",
+          "type_count": 296,
+          "method_count": 73,
+          "extern_method_count": 330,
+          "intern_string_count": 102,
+          "field_info_count": 171,
+          "fix_target_count": 32,
+          "target_table_offset": "0x14eb8",
+          "target_table_end": "0x1538a",
+          "terminal_int32": 0
+        },
+        "raw_name_scan": {
+          "terms": [
+            "HGRenderPipeline",
+            "HGShadingStateSystem",
+            "GpuSceneDirtyUpdateCS",
+            "UploadPerDrawParams",
+            "ComputeShader.Dispatch",
+            "CommandBuffer.Internal_DispatchCompute",
+            "_RTPerDrawParamsBuffer",
+            "SetCustomPerDrawData",
+            "SetEntitySharedDataPartial",
+            "_UploadBuffer"
+          ],
+          "byte_occurrences": 0
+        },
+        "structured_identity_scan": {
+          "gpu_target_name_matches": [],
+          "relevant_non_gpu_external_methods": [
+            "UnityEngine.HyperGryph.HGFactoryRenderManager::SetFactoryLodTier",
+            "Beyond.Gameplay.Factory.FacQuality::Apply"
+          ],
+          "active_target_gpu_matches": []
+        },
+        "interpretation": "The installed local IFix payload contains no serialized identity for the render-pipeline, GpuSceneDirtyUpdateCS/UploadPerDrawParams, custom-per-draw setter/partial-update endpoint, or explicit ComputeShader/CommandBuffer upload names. Its relevant factory references are quality/Lod configuration only. This rules out treating the current static IFix payload as the missing kernel-7 producer, but built-in registration, another loaded payload, and runtime WrappersManager slot contents remain outside the file; keep the staging-to-_UploadBuffer and channel-2/resource +0xd0 edges fail-closed."
       },
       "native_factory_batch_vat_evidence": {
         "status": "native-batch-vat-registry-finalizer-negative-upload-edge-open",
@@ -1586,7 +2395,7 @@
           "flags": "0x0096",
           "iflags": "0x0000"
         },
-        "gameassembly_body": {
+              "gameassembly_body": {
           "gameassembly_sha256": "0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce",
           "code_registration": "0x18b9217d0",
           "native_pointer": "0x1841e1670",
@@ -1601,7 +2410,293 @@
           "0x1841cb3c0",
           "0x189ea513e"
         ],
-        "interpretation": "This specific managed factory per-frame entry cannot be credited as a shared-payload to _UploadBuffer or GPU-dispatch producer in the current build. The result does not disprove a dynamically initialized native factory service, IFix-patched code, or unrelated GPU-driven ECS work; those remain separate boundaries and the channel-2 upload edge stays fail-closed."
+        "interpretation": "This specific managed factory per-frame entry cannot be credited as a shared-payload to _UploadBuffer or GPU-dispatch producer in the current build. The result does not disprove a dynamically initialized native factory service, IFix-patched code, or unrelated GPU-driven ECS work; those remain separate boundaries and the channel-2 upload edge stays fail-closed.",
+        "job_forward_dynamic_patch_surface": {
+          "status": "ifx-patch-body-open",
+          "source": "Current global-metadata catalog plus GameAssembly.dll body mapping/disassembly for the RemoteFactory controller frame-forward method.",
+          "managed_method": {
+            "type": "Beyond.Gameplay.RemoteFactory.RemoteFactoryGameWorldController",
+            "method": "FrameUpdateEntitiesJobForward",
+            "metadata_method_index": 29077,
+            "token": "0x06007196",
+            "parameter": "forward: System.Boolean"
+          },
+          "gameassembly_body": {
+            "gameassembly_sha256": "0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce",
+            "native_pointer": "0x1875316ac",
+            "range": "0x1875316ac..0x187531704",
+            "patch_key": "0x7301",
+            "unpatched_path": "writes controller +0x38 from the bool and returns",
+            "patched_path": "IFix.WrappersManagerImpl.GetPatch(0x7301) -> __Gen_Wrap_* at 0x1866c2b40 with (patchObject, controller, forward, r9d=0)",
+                "direct_calls": [
+                  "0x182efe6c0 IFix.WrappersManagerImpl.IsPatched",
+                  "0x1871c7e18 IFix.WrappersManagerImpl.GetPatch",
+                  "0x1866c2b40 IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_*"
+                ],
+                "code_registration_wrapper_aliases": [
+                  {
+                    "method_index": 386925,
+                    "method": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_144"
+                  },
+                  {
+                    "method_index": 311111,
+                    "method": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_16"
+                  },
+                  {
+                    "method_index": 443633,
+                    "method": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_33"
+                  },
+                  {
+                    "method_index": 88350,
+                    "method": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_35"
+                  },
+                  {
+                    "method_index": 290892,
+                    "method": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_51"
+                  },
+                  {
+                    "method_index": 482204,
+                    "method": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_8"
+                  },
+                  {
+                    "method_index": 464668,
+                    "method": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_5"
+                  },
+                  {
+                    "method_index": 467946,
+                    "method": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_3"
+                  },
+                  {
+                    "method_index": 455895,
+                    "method": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_5"
+                  },
+                  {
+                    "method_index": 478952,
+                    "method": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_29"
+                  },
+                  {
+                    "method_index": 401399,
+                    "method": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_79"
+                  },
+                  {
+                    "method_index": 426774,
+                    "method": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_8"
+                  }
+                ],
+                "code_registration_wrapper_alias_note": "The current code-registration map resolves the shared native target 0x1866c2b40 to twelve generated wrapper metadata aliases; the native body is a signature-shared IFix frame bridge, while the wrapper signature is selected by the generated method metadata.",
+                "code_registration_method_pointer_table": {
+                  "status": "gameplay-beyond-method-pointer-entries-closed",
+                  "source": "Current GameAssembly.dll codegen module table and PData/body mapping; GameAssembly sha256 0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce.",
+                  "codegen_module_index": 32,
+                  "method_pointers_va": "0x18e9e6580",
+                  "method_pointer_count": 98319,
+                  "entry_rule_for_rows": "Gameplay.Beyond method index N resolves to methodPointersVa + N*8 in this module table.",
+                  "entries": [
+                    {
+                      "method_index": 29077,
+                      "method": "Beyond.Gameplay.RemoteFactory.RemoteFactoryGameWorldController.FrameUpdateEntitiesJobForward",
+                      "table_entry_va": "0x18ea1f228",
+                      "native_pointer": "0x1875316ac"
+                    },
+                    {
+                      "method_index": 29078,
+                      "method": "Beyond.Gameplay.RemoteFactory.RemoteFactoryGameWorldController.SetGarbageCollectDirty",
+                      "table_entry_va": "0x18ea1f230",
+                      "native_pointer": "0x18477d8e0"
+                    },
+                    {
+                      "method_index": 88314,
+                      "method": "IFix.ILFixDynamicMethodWrapper..ctor",
+                      "table_entry_va": "0x18ea92d50",
+                      "native_pointer": "0x1832b2c30"
+                    },
+                    {
+                      "method_index": 88315,
+                      "method": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_0",
+                      "table_entry_va": "0x18ea92d58",
+                      "native_pointer": "0x1863633b4"
+                    },
+                    {
+                      "method_index": 88350,
+                      "method": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_35",
+                      "table_entry_va": "0x18ea92e70",
+                      "native_pointer": "0x1866c2b40"
+                    },
+                    {
+                      "method_index": 98313,
+                      "method": "IFix.WrappersManagerImpl.GetPatch",
+                      "table_entry_va": "0x18eaa65c8",
+                      "native_pointer": "0x1871c7e18"
+                    },
+                    {
+                      "method_index": 98314,
+                      "method": "IFix.WrappersManagerImpl.IsPatched",
+                      "table_entry_va": "0x18eaa65d0",
+                      "native_pointer": "0x182efe6c0"
+                    },
+                    {
+                      "method_index": 98315,
+                      "method": "IFix.WrappersManagerImpl.CreateDelegate",
+                      "table_entry_va": "0x18eaa65d8",
+                      "native_pointer": "0x1871c7cd4"
+                    },
+                    {
+                      "method_index": 98316,
+                      "method": "IFix.WrappersManagerImpl.CreateWrapper",
+                      "table_entry_va": "0x18eaa65e0",
+                      "native_pointer": "0x1871c7da0"
+                    },
+                    {
+                      "method_index": 98317,
+                      "method": "IFix.WrappersManagerImpl.InitWrapperArray",
+                      "table_entry_va": "0x18eaa65e8",
+                      "native_pointer": "0x1871c7e7c"
+                    },
+                    {
+                      "method_index": 98318,
+                      "method": "IFix.WrappersManagerImpl.CreateBridge",
+                      "table_entry_va": "0x18eaa65f0",
+                      "native_pointer": "0x1871c7c30"
+                    }
+                  ],
+                  "interpretation": "The static code-registration table confirms the exact Gameplay.Beyond method-pointer entries for the two RemoteFactory gates, the shared object-only/bool-capable IFix wrappers, and the manager table ABI. It does not contain the runtime wrapper-array slot contents or on-disk patch implementation bodies."
+                },
+                "dynamic_wrapper_range": "0x1866c2b40..0x1866c2c1b",
+                "dynamic_wrapper_contract": {
+                  "wrapper_object_fields": {
+                    "+0x10": "dynamic method-table/interpreter object used by final invocation",
+                    "+0x18": "dynamic method index loaded into interpreter call",
+                    "+0x20": "optional patch context/table pointer"
+                  },
+                  "interpreter_helpers": [
+                    "0x189e07448 initializes an IFix call frame from the wrapper object",
+                    "0x189e077cc writes argument-frame metadata/length",
+                    "0x189e076a8 writes the bool argument into the frame",
+                    "0x189e124c4 selects the dynamic method table entry and calls 0x189dfaad8"
+                  ],
+                  "gpu_edge_scan": "The visible wrapper/interpreter bridge performs IFix frame construction and dynamic method dispatch only; it contains no direct ComputeBuffer, CommandBuffer, GPUDriven, or factory-record copy call. The actual patch bytecode/method body is still outside the static native call graph.",
+                  "interpreter_entrypoint_census": {
+                    "native_pointer": "0x189dfaad8",
+                    "range": "0x189dfaad8..0x189e0661f",
+                    "native_body_size_bytes": 47943,
+                    "direct_call_count": 2490,
+                    "unique_direct_call_count": 145,
+                    "known_gameassembly_gpu_targets_absent": [
+                      "0x18323af00 SetPerDrawData_CharacterParams",
+                      "0x1839454d0 HGShadingStateSystem.SetupGpuSceneUploadCs",
+                      "0x18b3d74a8 ComputeShader.Dispatch",
+                      "0x18b3f7d94 GPUDrivenRendererV1.BindBuffersForCulling",
+                      "0x18b3f83d0 GPUDrivenRendererV2.BindBuffersForCulling"
+                    ],
+                    "known_unityplayer_gpu_targets_absent": [
+                      "0x1810d25c0/0x1810d26bf factory staging consumers",
+                      "0x1805e7a10 immediate ComputeShader dispatch",
+                      "0x1804c73e0 CommandBuffer dispatch recording"
+                    ],
+                    "interpretation": "The installed IFix interpreter entrypoint is a large bytecode/object interpreter, not a direct factory or GPU upload routine. Its bounded direct-call census contains no checked character channel-2, GPUDriven, factory-staging, ComputeShader, or CommandBuffer target. Dynamic method-table execution can still reach arbitrary managed/native bridges, so this is a negative static edge only; the patch payload and its runtime method table remain open."
+                  },
+                  "wrapper_static_registration_followup": {
+                    "status": "wrapper-cctor-registers-runtime-state-only",
+                    "native_pointer": "0x184d37480",
+                    "range": "0x184d37480..0x184d374dd",
+                    "source": "Current GameAssembly.dll PData-bounded x64 disassembly for the Gameplay.Beyond IFix wrapper type's generated static constructor; GameAssembly sha256 0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce.",
+                    "observed_operations": [
+                      "one-time guard byte at 0x18f367a77",
+                      "two calls to 0x180035ed0 over wrapper static-state addresses 0x18e25e3e0 and 0x18e25e3e8",
+                      "allocates/initializes a runtime object through 0x18002c190 and stores the result at static object +0xb8",
+                      "tail-jumps to 0x18002d1b0 after static-state initialization"
+                    ],
+                    "gate_constants_absent": [
+                      "0x7301",
+                      "0x7302"
+                    ],
+                    "gpu_edge_scan": "The static constructor has no per-method patch key, wrapper method index, factory-record copy, ComputeBuffer/ComputeShader, GPUDriven, CommandBuffer, or dispatch reference. It establishes shared IFix wrapper/runtime state only; it does not resolve the runtime WrappersManager slot or identify the bytecode body behind 0x7301/0x7302.",
+                    "boundary": "Static wrapper registration is now closed as a non-source of the two gate values. The dynamic method table, built-in/loaded patch registration, and live slot contents remain runtime evidence boundaries."
+                  },
+                  "wrappers_manager_runtime_table_abi": {
+                    "status": "runtime-array-index-abi-closed-slot-values-open",
+                    "source": "Current IFix catalog3 metadata plus PData-bounded GameAssembly.dll disassembly for the Gameplay.Beyond.dll IFix.WrappersManagerImpl methods.",
+                    "type": "IFix.WrappersManagerImpl",
+                    "image": "Gameplay.Beyond.dll",
+                    "method_pointers": {
+                      "GetPatch": "0x1871c7e18",
+                      "IsPatched": "0x182efe6c0",
+                      "InitWrapperArray": "0x1871c7e7c",
+                      "CreateWrapper": "0x1871c7da0",
+                      "CreateDelegate": "0x1871c7cd4"
+                    },
+                    "array_object_layout": {
+                      "+0x18": "wrapper count used for bounds checks",
+                      "+0x20 + id*8": "wrapper object slot returned by GetPatch and tested by IsPatched"
+                    },
+                    "observed_contract": [
+                      "GetPatch(id) loads the manager's static wrapper-array object, checks id < array +0x18, and returns array +0x20 + id*8.",
+                      "IsPatched(id) performs the same null/negative/range checks and returns whether that slot is non-null; its shared continuation is 0x184e17e9e.",
+                      "InitWrapperArray(len) allocates the runtime array through 0x18002c190 with edx=len and stores it in the manager's static wrapper-array holder.",
+                      "CreateWrapper(id) and CreateDelegate(type,id,anon) construct wrapper/delegate objects through the IFix wrapper constructor, but the static body does not expose a literal 0x7301/0x7302 slot value."
+                    ],
+                    "gate_constants_absent": [
+                      "0x7301",
+                      "0x7302"
+                    ],
+                    "direct_e8_callsite_census": {
+                      "scan": "Full current GameAssembly.dll direct E8 target scan, PData-owner mapped; GameAssembly sha256 0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce.",
+                      "InitWrapperArray": 0,
+                      "CreateWrapper": 0,
+                      "CreateDelegate": {
+                        "count": 1,
+                        "callsite": "0x189dfa821 (IFix interpreter body)"
+                      },
+                      "GetPatch": 60011,
+                      "IsPatched": 58670,
+                      "interpretation": "The generated runtime has no direct static caller for array allocation or wrapper construction in this census; those operations remain indirect/registration-driven. The large GetPatch/IsPatched counts are shared wrapper-gate calls, not distinct patch implementations."
+                    },
+                    "gpu_edge_scan": "The manager table methods only initialize, bounds-check, construct, or read IFix wrapper slots. They contain no factory-record copy, ComputeBuffer/ComputeShader, GPUDriven, CommandBuffer, or dispatch edge.",
+                    "boundary": "This closes the native array indexing and count ABI for the runtime IFix table, but not the contents of slots 0x7301/0x7302. Those values still require runtime capture, loaded-payload registration recovery, or the relevant wrapper construction caller."
+                  }
+                }
+              },
+          "paired_flag_method": {
+            "method": "SetGarbageCollectDirty",
+            "metadata_method_index": 29078,
+            "native_pointer": "0x18477d8e0",
+            "range": "0x18477d8e0..0x18477d910",
+            "patch_key": "0x7302",
+            "observed": "The unpatched path writes controller +0x50=true; the patched branch is an IFix jump and is not statically recoverable from this body.",
+            "dynamic_wrapper": {
+              "native_pointer": "0x1863633b4",
+              "range": "0x1863633b4..0x186363473",
+              "direct_calls": [
+                "0x189e07448 IFix frame initializer",
+                "0x189e077cc IFix argument-frame writer (twice)",
+                "0x189e124c4 IFix dynamic method-table dispatch"
+              ],
+              "interpreter_target": "0x189dfaad8",
+              "gpu_edge_scan": "The visible 0x7302 wrapper is the same frame-building/dynamic-dispatch shape as the 0x7301 wrapper and contains no direct ComputeBuffer, CommandBuffer, GPUDriven, factory-staging, or record-copy call."
+            }
+          },
+          "installed_patch_target_crosscheck": {
+            "report": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Generated/OriginalData/CharInfoPresentation/installed_ifix_patch_state.json",
+            "patch_sha256": "baa28ae497e64d94e152886622bbe5fb391199bcbf8366e2df91591c9a9f172c",
+            "patch_size_bytes": 86926,
+            "target_table_offset": "0x14eb8",
+            "target_count": 32,
+            "matching_targets": [],
+            "target_identity": "declaring type + method name + parameter-type signature; wrapper gate constants are not on-disk target-table keys",
+            "binary_immediate_reference_census": {
+              "0x7301": [
+                "0x1875316bd/0x1875316d2 FrameUpdateEntitiesJobForward"
+              ],
+              "0x7302": [
+                "0x18477d8eb SetGarbageCollectDirty",
+                "0x184780140/0x184780156 GameplayMemoryUtility+<ShirkMemory>d__4.MoveNext"
+              ],
+              "note": "The same 0x7302 gate constant appears in an unrelated memory-utility state-machine body and both sites use the object-only IFix wrapper shape at 0x1863633b4; the constant is therefore not a unique source-method identity by itself."
+            },
+            "observed": "The current installed Gameplay.Beyond patch target table contains no RemoteFactoryGameWorldController.FrameUpdateEntitiesJobForward or SetGarbageCollectDirty record. This excludes those signatures from the current on-disk overlay, but does not prove the runtime WrappersManager slot for 0x7301/0x7302 is null: built-in registration, another loaded payload, or runtime state remains outside this static patch file."
+          },
+          "boundary": "The HGFactoryRenderManager.FrameUpdateEntities method pointer remains a one-byte ret, but the adjacent RemoteFactory controller frame-forward path is explicitly IFix-patchable. Static UnityPlayer/GPUDriven evidence therefore cannot close or exclude factory per-frame dirty production until the patch body or dynamic method table for key 0x7301 is recovered. Keep the shared-record-to-_UploadBuffer and channel-2/resource +0xd0 edges fail-closed; do not treat the managed ret stub as proof that no frame producer exists."
+        }
       },
       "gpu_driven_binding_path_evidence": {
         "status": "kernel-index-and-binding-record-abi-closed-upload-dispatch-edge-open",
@@ -1772,6 +2867,329 @@
           "additional_stage": "Both branches also record SetComputeTextureParam for the RenderGraph texture handle before the second shader sequence.",
           "boundary": "This closes the known RenderGraph GPUDriven culling producer and gives negative evidence against kernel 7 on this route. It does not identify a producer for GpuSceneDirtyUpdateCS.UploadPerDrawParams, nor connect channel 2/resource +0xd0 to _UploadBuffer or binding 33."
         },
+        "render_graph_cpp_bridge_followup": {
+          "status": "rendergraph-native-registration-and-vtable-closed-upload-edge-open",
+          "source": "Current global-metadata.dat body-target catalog plus GameAssembly.dll and UnityPlayer.dll x64 disassembly, internal-call resolver strings, and UnityPlayer registration-table recovery.",
+          "gameassembly_sha256": "0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce",
+          "unityplayer_sha256": "b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2",
+          "managed_bridge_methods": [
+            {
+              "method": "HGRenderPath_Create",
+              "metadata_method_index": 483565,
+              "wrapper": "0x183c648a0",
+              "resolver_name": "UnityEngine.HyperGryphEngineCode.HGRenderGraphCPP::HGRenderPath_Create(UnityEngine.HyperGryphEngineCode.HGRenderPathInternalCPP,UnityEngine.HyperGryphEngineCode.HGRenderPipelineRuntimeResourcesCPP*,UnityEngine.HyperGryphEngineCode.HGRenderPipelineDebugResourcesCPP*)",
+              "lazy_slot": "0x18f370620"
+            },
+            {
+              "method": "HGRenderPath_BeforeCulling",
+              "metadata_method_index": 483566,
+              "wrapper": "0x183e16180",
+              "resolver_name": "UnityEngine.HyperGryphEngineCode.HGRenderGraphCPP::HGRenderPath_BeforeCulling(System.Int64,UnityEngine.HyperGryphEngineCode.HGRenderPathBeforeCullingParamsCPP*,System.IntPtr,System.IntPtr,System.IntPtr)",
+              "lazy_slot": "0x18f370628"
+            },
+            {
+              "method": "HGRenderPath_Render",
+              "metadata_method_index": 483567,
+              "wrapper": "0x183df2de0",
+              "resolver_name": "UnityEngine.HyperGryphEngineCode.HGRenderGraphCPP::HGRenderPath_Render(System.Int64,UnityEngine.HyperGryphEngineCode.HGRenderPathParamsCPP*,UnityEngine.HyperGryphEngineCode.HGRenderPathBeforeCullingParamsCPP*,System.IntPtr,System.IntPtr,System.IntPtr)",
+              "lazy_slot": "0x18f370630"
+            }
+          ],
+          "unityplayer_internal_call_registration": {
+            "name_pointer_array_file_offset": "0x20ee090",
+            "function_pointer_array_file_offset": "0x20ee1b0",
+            "rows": [
+              {
+                "index": 17,
+                "method": "HGRenderPath_Create",
+                "name_file_offset": "0x20ee118",
+                "function_pointer": "0x1802516a0"
+              },
+              {
+                "index": 18,
+                "method": "HGRenderPath_BeforeCulling",
+                "name_file_offset": "0x20ee120",
+                "function_pointer": "0x1802516b0"
+              },
+              {
+                "index": 19,
+                "method": "HGRenderPath_Render",
+                "name_file_offset": "0x20ee128",
+                "function_pointer": "0x1802516c0"
+              },
+              {
+                "index": 20,
+                "method": "HGRenderPath_Destroy",
+                "name_file_offset": "0x20ee130",
+                "function_pointer": "0x1802516d0"
+              }
+            ]
+          },
+          "native_vtable_chain": {
+            "create_registration": "0x1802516a0 -> 0x1813036d0",
+            "create_kind_3": "0x1813036d0 allocates the 0x20-byte wrapper, initializes the native path through 0x1812fe410, and writes wrapper +0x8=0x1812fdb20, +0x10=0x1812fdd80, +0x18=0x1812fddc0",
+            "before_culling_registration": "0x1802516b0 -> 0x1813036c0 -> [wrapper+0x8] -> 0x1812fdb20 -> tail 0x1813022d0",
+            "render_registration": "0x1802516c0 -> 0x181303870 -> [wrapper+0x10] -> 0x1812fdd80 -> 0x1813018c0",
+            "destroy_registration": "0x1802516d0 -> 0x181303830 -> [wrapper+0x18] -> 0x1812fddc0 -> 0x181300ab0",
+            "role_assignment_evidence": {
+              "source": "UnityPlayer.dll .pdata-scoped disassembly plus the Create body RIP-relative LEA targets; the earlier role labels were reversed because the three stored function pointers are not laid out in semantic-name order.",
+              "wrapper_slots": {
+                "+0x8": "0x1812fdb20 (BeforeCulling setup; chained tail reaches 0x1813022d0)",
+                "+0x10": "0x1812fdd80 (Render forwarding wrapper; calls 0x1813018c0)",
+                "+0x18": "0x1812fddc0 (Destroy; calls cleanup 0x181300ab0)"
+              },
+              "pdata_ranges": {
+                "0x1812fdb20": "0x1812fdb20..0x1812fdc71 with chained continuation blocks 0x1812fdc71..0x1812fdd06",
+                "0x1812fdd80": "0x1812fdd80..0x1812fddbb",
+                "0x1812fddc0": "0x1812fddc0..0x1812fde2b",
+                "0x1813018c0": "0x1813018c0..0x181301d71",
+                "0x1813022d0": "0x1813022d0..0x18130260a"
+              }
+            }
+          },
+          "before_culling_setup": {
+            "function": "0x1813022d0",
+            "body_range": "0x1813022d0..0x18130260a",
+            "direct_call_count": 5,
+            "zero_direct_calls": {
+              "factory_staging": ["0x1810d25c0", "0x1810d26bf"],
+              "gpu_driven_dispatch_cores": ["0x1810f1890", "0x1810f17e0", "0x1810fe040", "0x1810fdf90"],
+              "immediate_compute_dispatch_helpers": ["0x1805e7e10", "0x1804c74d0"]
+            },
+            "observed": "Builds the before-culling camera/visibility state and forwards it to one native state helper; the bounded body has no factory staging write, ComputeShader/CommandBuffer upload, GPUDriven dispatch core, or UploadPerDrawParams kernel-7 edge."
+          },
+          "render_core": {
+            "function": "0x1813018c0",
+            "body_range": "0x1813018c0..0x181301d70",
+            "render_helper": "0x1813042d0",
+            "direct_call_count": 25,
+            "observed": "Initializes the native render-state and graph allocations, then enters the large RenderGraph helper; the static body is orchestration/resource setup rather than a proven per-draw upload producer."
+          },
+          "render_core_followup": {
+            "status": "rendergraph-context-slots-separated-from-immediate-compute",
+            "source": "UnityPlayer.dll PData-scoped disassembly of 0x1813018c0, 0x1813042d0, 0x180fc51e0, and the shared graphics-context getter 0x180725dc0.",
+            "graphics_context_getter": "0x180725dc0",
+            "immediate_compute_slot_control": {
+              "slot": "+0xab8",
+              "positive_callers": [
+                "0x1805e7a10 (immediate compute helper)",
+                "0x1805e7c60 (immediate compute helper)"
+              ],
+              "argument_shape": "Forwards the resolved resource handle plus x/y/z dimensions and is reached only from the immediate ComputeShader dispatch helper family in the checked UnityPlayer body census."
+            },
+            "rendergraph_record_slots": {
+              "+0xcd0": {
+                "call_sites": ["0x180fc572e", "0x180fc58d0"],
+                "argument_shape": "The graph-state initializer calls this slot with dl=1 before per-record construction and dl=0 after the record loop."
+              },
+              "+0xea0": {
+                "call_sites": ["0x180fc575c", "0x180fc58b5"],
+                "argument_shape": "Receives the graph context, a small record descriptor, and the per-record callback payload while the initializer registers graph records."
+              },
+              "+0xeb0": {
+                "call_sites": ["0x180fc57bb"],
+                "argument_shape": "Called on the same graphics-context singleton only after the optional graph-state callback; no shader/kernel or dispatch dimensions are present."
+              }
+            },
+            "render_path_negative": {
+              "checked_bodies": ["0x1813018c0..0x181301d71", "0x1813042d0..0x18130640e", "0x180fc51e0..0x180fc58fb"],
+              "zero_direct_targets": ["0x1805e7e10", "0x1804c74d0", "0x1810d25c0", "0x1810d26bf", "0x1810f1890", "0x1810f17e0", "0x1810fe040", "0x1810fdf90"],
+              "indirect_context_result": "The HGRenderPath Render/RenderGraph bodies contain no +0xab8 immediate-compute call; their +0xcd0/+0xea0/+0xeb0 calls are bounded graph-record lifecycle slots, so the factory-record-to-UploadPerDrawParams kernel-7 edge remains unproven."
+            },
+            "graphics_context_dispatch_census": {
+              "status": "ten-ab8-call-sites-catalogued-no-static-kernel7-producer",
+              "slot": "+0xab8",
+              "getter": "0x180725dc0",
+              "call_sites": [
+                {"body": "0x1805e7a10", "site": "0x1805e7a8b", "kernel": "dynamic caller argument", "role": "immediate ComputeShader dispatch helper"},
+                {"body": "0x1805e7c60", "site": "0x1805e7cdb", "kernel": "dynamic caller argument", "role": "immediate ComputeShader dispatch helper"},
+                {"body": "0x1805f3170", "site": "0x1805f31be", "kernel": "dynamic stack value", "role": "generic graphics-device dispatch helper"},
+                {"body": "0x18092bfd2", "site": "0x18092c10e", "kernel": "dynamic stack value", "role": "resource-processing dispatch helper"},
+                {"body": "0x180f02630", "site": "0x180f0275e", "kernel": "dynamic argument ebp", "role": "bind-resource/dispatch helper; prepares +0xaa8/+0xa98/+0xaa0"},
+                {"body": "0x180f0491f", "site": "0x180f04f40", "kernel": "1", "role": "resource-processing pass"},
+                {"body": "0x1810cb920", "site": "0x1810cbb79", "kernel": "1", "role": "resource/texture processing pass"},
+                {"body": "0x1810cbc00", "site": "0x1810cbe64", "kernel": "1", "role": "resource/texture processing pass"},
+                {"body": "0x1811950a5", "site": "0x181195629", "kernel": "1", "role": "dimension-derived processing pass"},
+                {"body": "0x1813aee90..0x1813bb9bc", "site": "0x1813b819f", "kernel": "command-stream table value", "role": "generic command-buffer execution sink"}
+              ],
+              "checked_rendergraph_bodies": ["0x1813018c0..0x181301d71", "0x1813042d0..0x181313eb4", "0x180fc51e0..0x180fc58fb"],
+              "result": "The full UnityPlayer body census finds no fixed kernel 7 at a +0xab8 call site and no direct +0xab8 call in the HGRenderPath RenderGraph bodies. Dynamic kernel values remain in generic helpers and the command-stream interpreter, but their source command/resource records are not statically tied to factory channel-2/resource +0xd0 or UploadPerDrawParams; keep the upload edge fail-closed."
+            },
+            "managed_dispatch_census": {
+              "status": "managed-dispatch-producers-catalogued-no-factory-perdraw-route",
+              "source": "PData-scoped raw E8 target scan across all GameAssembly.dll code sections, using the current global-metadata.dat method-pointer index; target wrappers are CommandBuffer.Internal_DispatchCompute 0x18b3e6868 and ComputeShader.Dispatch 0x18b3d74a8.",
+              "commandbuffer_internal_dispatch_compute": {
+                "target": "0x18b3e6868",
+                "direct_call_count": 110,
+                "unique_caller_method_count": 37,
+                "name_filter_patterns": ["upload", "perdraw", "factory", "character"],
+                "name_filter_hits": [],
+                "caller_scope": "All recovered callers are named built-in rendering/compute passes such as DepthPyramid, GTAO, GPU particles/cloth, motion blur, SSR, fog, atmosphere, terrain, reflection-probe binning, virtual texture, water, and texture utility paths; no Beyond.Gameplay.Factory or per-draw producer method calls this wrapper directly.",
+                "result": "The managed CommandBuffer dispatch route contains no direct factory/per-draw/UploadPerDrawParams producer. Kernel indices at these sites remain pass-local dynamic values or pass-specific constants and are not a static kernel-7 bridge."
+              },
+              "computeshader_dispatch": {
+                "target": "0x18b3d74a8",
+                "direct_call_count": 1,
+                "caller": "MagicaCloth.PhysicsManagerMeshData::DispatchWriting (method index 431943)",
+                "result": "The only direct ComputeShader.Dispatch caller is an unrelated physics writer; no factory, per-draw, or HGRenderPath caller reaches this wrapper."
+              },
+              "native_commandbuffer_recording": {
+                "dispatch_internal_call": {
+                  "function_table_row": 1383,
+                  "name_table_row": 3431,
+                  "name_pointer": "0x1820da8e8",
+                  "native_entry": "0x180119fc0",
+                  "body_range": "0x180119fc0..0x18011a184",
+                  "record_writer": "0x1804c73e0",
+                  "record_opcode": "0x11",
+                  "record_shape": "The native CommandBuffer dispatch entry resolves the shader/resource object, forwards the kernel and dispatch values to 0x1804c73e0, and that writer appends a 0x11 record with a 28-byte payload to the high-level command buffer."
+                },
+                "buffer_binding_internal_call": {
+                  "function_table_row": 1377,
+                  "name_table_row": 3425,
+                  "name_pointer": "0x1820da8b8",
+                  "native_entry": "0x180116180",
+                  "record_writer": "0x1804cb1a0",
+                  "record_opcode": "0x0d",
+                  "record_shape": "The native SetComputeBufferParam entry resolves the shader/resource and buffer metadata, then appends a 0x0d record with a 24-byte payload; it has no direct graphics-context +0xab8 call."
+                },
+                "pointer_table_mapping": "UnityPlayer pointer table 0x1820d0000 plus the internal-call name table at 0x1820d3db0 with the observed +0x800 row offset maps the native entries to their UnityEngine.Rendering.CommandBuffer names."
+              },
+              "managed_binding_census": {
+                "source": "PData-scoped raw E8 target scan across all GameAssembly.dll code sections using the current method-pointer index.",
+                "internal_set_compute_buffer_param": {
+                  "target": "0x18b3e6d80",
+                  "direct_call_count": 47,
+                  "unique_named_body_count": 8,
+                  "named_bodies": [
+                    "HG.Rendering.Runtime.UberPostPassUtils+<>c::<.cctor>b__104_0",
+                    "HG.Rendering.Runtime.GPUParticleSimulationPassConstructor::ProcessParticles",
+                    "HG.Rendering.Runtime.DepthPyramidLDSRenderingPass+<>c::<Render>b__6_0",
+                    "HG.Rendering.Runtime.ParticleLightingPassConstructor+<>c::<.cctor>b__21_0",
+                    "HG.Rendering.Runtime.VirtualTextureRenderer::Render",
+                    "HG.Rendering.Runtime.LightCullingGPU::PrepareGPUData",
+                    "HG.Rendering.Runtime.ReflectionProbeBinningPassConstructor+<>c::<.cctor>b__35_0",
+                    "UnityEngine.Rendering.CommandBuffer::SetComputeBufferParam"
+                  ],
+                  "factory_name_filter_hits": []
+                },
+                "internal_set_compute_texture_param": {
+                  "target": "0x18b3e6eac",
+                  "direct_call_count": 35,
+                  "unique_named_body_count": 8,
+                  "named_bodies": [
+                    "HG.Rendering.Runtime.GTAOPassConstructor+<>c::<.cctor>b__24_0",
+                    "HG.Rendering.Runtime.VirtualTextureRenderer::Render",
+                    "UnityEngine.Rendering.CommandBuffer::SetComputeTextureParam (6 overload bodies)"
+                  ],
+                  "factory_name_filter_hits": []
+                },
+                "result": "The recovered managed CommandBuffer binding records are confined to built-in render passes and CommandBuffer overload wrappers; no factory, per-draw, character, or UploadPerDrawParams producer reaches the buffer/texture binding internals."
+              },
+              "native_commandbuffer_interpreter": {
+                "status": "high-level-opcode-consumer-reaches-immediate-compute-sink",
+                "execution_chain": [
+                  "0x1800b6f40 ExecuteCommandBuffer_Internal_Injected",
+                  "0x18052d730",
+                  "0x1804cdf70",
+                  "0x1804ce0a0 high-level command-buffer interpreter"
+                ],
+                "interpreter": {
+                  "opcode_range": "0..0x6f",
+                  "jump_table": "0x180000000 + signed_dword[0x180000000+0x4d19c8 + opcode*4]",
+                  "resource_resolver": "0x1802f3c40 resolves the record's first dword handle to a native resource; missing entries fall back through 0x18031a570",
+                  "low_level_stream_calls": [],
+                  "direct_graphics_context_calls": [],
+                  "boundary": "The checked high-level interpreter body dispatches through opcode handlers and does not directly call the native 0x27ef writer or 0x1813aee90 interpreter."
+                },
+                "opcode_0x0d": {
+                  "handler": "0x1804cf350",
+                  "payload_bytes": 24,
+                  "consumer": "0x1805f84a0",
+                  "observed_shape": "Consumes record fields at +0x04/+0x08/+0x0c/+0x10/+0x14; the consumer bounds-checks the index against resource state +0xd0 and updates an indexed resource-state record through 0x1805f8630.",
+                  "graphics_context_slot": null
+                },
+                "opcode_0x11": {
+                  "handler": "0x1804cf455",
+                  "payload_bytes": 28,
+                  "branch_field": "record +0x14",
+                  "normal_branch": {
+                    "consumer": "0x1805e7a10",
+                    "dispatch_fields": "kernel=+0x04, x=+0x08, y=+0x0c, z=+0x10",
+                    "graphics_context_slot": "+0xab8",
+                    "call_site": "0x1805e7a8b"
+                  },
+                  "indirect_branch": {
+                    "consumer": "0x1805e7bc0",
+                    "dispatch_fields": "kernel=+0x04, x=+0x14, y=+0x18",
+                    "graphics_context_slot": "+0xab0",
+                    "call_site": "0x1805e7c14"
+                  },
+                  "result": "High-level CommandBuffer dispatch records do reach the same generic immediate-compute graphics-context family used by other Unity passes, but no factory/per-draw/character producer is present in the managed caller census."
+                },
+                "factory_name_filter_hits": [],
+                "relation_to_native_27ef": "The high-level opcode-0x11 route is proven to reach +0xab8, while the low-level 0x27ef record has its own writer/interpreter pair. No direct cross-call or factory channel-2/resource +0xd0 binding was found between the two streams."
+              },
+              "boundary": "This closes the direct managed CommandBuffer/ComputeShader dispatch candidates and the high-level native opcode consumer for the factory upload producer. Opcode 0x11 reaches the generic immediate-compute sink through 0x1805e7a10, but the separate native 0x27ef stream and high-level resource records are not tied to factory channel-2/resource +0xd0 or UploadPerDrawParams kernel 7; keep the character upload edge open and fail-closed."
+            },
+            "native_command_stream_dispatch_opcode": {
+              "status": "opcode-27ef-writer-and-interpreter-sink-identified",
+              "interpreter": "0x1813aee90..0x1813bb9bc",
+              "opcode_decode": {
+                "base_opcode": "0x2711",
+                "case_count": 274,
+                "jump_table": "0x180000000 + signed_dword[0x180000000+0x13bb574 + (opcode-0x2711)*4]",
+                "dispatch_case": "0x27ef -> 0x1813b805b",
+                "next_case": "0x27f0 -> 0x1813b81ab"
+              },
+              "dispatch_sink": {
+                "call_site": "0x1813b819f",
+                "slot": "+0xab8",
+                "payload_shape": "The 0x27ef handler reads an 8-byte stream value at the aligned payload offset, then three 32-bit values; it forwards [resource][0] as rdx, the first two dwords as r8d/r9d, and the third dword as the stack argument before calling graphics-context slot +0xab8.",
+                "kernel_source": "No literal kernel index is present at the sink; the resource/handle and command-record fields are dynamic."
+              },
+              "upstream_writer": {
+                "function": "0x18092bed0..0x18092c123 (split PData body)",
+                "opcode_store": "0x18092bf54 writes dword 0x27ef to the command stream",
+                "payload_stores": [
+                  "0x18092bfb6 writes the resource/handle qword from rbx",
+                  "0x18092c00a writes ebp",
+                  "0x18092c05d writes r14d",
+                  "0x18092c0aa writes the third dword from [rsp+0x70]"
+                ],
+                "immediate_fallback": "When the command context flag at [command+0x2711] is clear, the same writer directly calls +0xab8 at 0x18092c10e; otherwise it records the 0x27ef command."
+              },
+              "result": "The native command-stream producer/consumer pair is now bounded: writer 0x18092bed0 records opcode 0x27ef and its four-field dispatch payload, while interpreter case 0x1813b805b consumes it and reaches +0xab8. The record is still not tied to factory channel-2/resource +0xd0 or UploadPerDrawParams kernel 7, so the character upload edge remains open and fail-closed."
+            }
+          },
+          "render_helper_census": {
+            "function": "0x1813042d0",
+            "body_range": "0x1813042d0..0x181313eb4",
+            "body_bytes": 64484,
+            "direct_call_count": 753,
+            "gpu_driven_setup_calls": [
+              "0x1810f34f0",
+              "0x1810f34e0",
+              "0x1810eebf0",
+              "0x1810f10d0",
+              "0x1810fb260",
+              "0x1810fd7d0",
+              "0x1810fe160",
+              "0x1810fe0f0",
+              "0x1810fe110",
+              "0x1810f19e0",
+              "0x1810fe140"
+            ],
+            "zero_direct_calls": {
+              "factory_staging": ["0x1810d25c0", "0x1810d26bf"],
+              "gpu_driven_dispatch_cores": ["0x1810f1890", "0x1810f17e0", "0x1810fe040", "0x1810fdf90"],
+              "immediate_compute_dispatch_helpers": ["0x1805e7e10", "0x1804c74d0"]
+            },
+            "call_semantics": "0x1810f10d0 and 0x1810fd7d0 are V1/V2 CreateRendererListWithPreZ calls, not kernel dispatch; the managed GPUDriven culling callback remains the known kernel-0 dispatch producer."
+          },
+          "wrapper_contract": "The managed bodies still lazy-resolve through 0x180059fc0 and cache slots 0x18f370620/628/630, but UnityPlayer's static internal-call table supplies the registration wrappers and their native vtable chain, so a live process is not required to attribute this layer.",
+          "boundary": "The native HGRenderPath registration, Create/BeforeCulling/Render/Destroy vtable chain, and large RenderGraph orchestration helper are now statically closed. The helper has no direct factory 0x8c/0x100 staging call, no direct GPUDriven dispatch core, and no direct ComputeShader upload edge; no evidence yet connects channel-2/resource +0xd0 to _UploadBuffer, UploadPerDrawParams kernel 7, or binding 33. Keep the missing factory-record-to-GPU upload edge fail-closed."
+        },
         "shader_property_registry": {
           "initializer": "0x181217db0",
           "table_root": "0x1821ed7b0",
@@ -1797,6 +3215,34 @@
               "outside_registry_initializer": 0
             },
             "boundary": "The native image contains only the property-name registration for _RTPerDrawParamsBuffer. No additional text reference or named upload/compute literal identifies a runtime producer, shader bind, _UploadBuffer population, or UploadPerDrawParams kernel-7 dispatch; keep the factory shared-payload-to-GPU edge fail-closed."
+          },
+          "native_rt_resource_record_consumer": {
+            "status": "native-rt-resource-config-consumer-no-gpu-upload-edge",
+            "unityplayer_sha256": "b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2",
+            "entry_chain": [
+              "0x180cdf820 -> 0x180ce2d70",
+              "0x180ce30c1 copies +0x1308/+0x130c/+0x1310 into +0x1c4/+0x1c8/+0x1cc",
+              "0x180ce30f7 -> 0x180cf6a50"
+            ],
+            "property_copy": {
+              "source_field": "+0x130c (_RTPerDrawParamsBuffer PropertyToID slot)",
+              "destination_field": "+0x1c8 in the native RT/resource state record",
+              "neighboring_fields": {
+                "+0x1c4": "+0x1308 (_RTMaterialLevelBuffer)",
+                "+0x1cc": "+0x1310 (_RayTracingGeomInstDataBuffer)"
+              },
+              "copy_instructions": [
+                "0x180ce30db mov eax,[rbx+0x130c]",
+                "0x180ce30e5 mov [rbx+0x1c8],eax"
+              ]
+            },
+            "resource_initializer": {
+              "function": "0x180cf6a50",
+              "observed": "Copies six scalar values from rdx into rcx+0xb8..0xcc, copies five 0x28-byte vector/string-like records into rcx+0xd0..0x198 through 0x1801332e0, grows a 0x50-byte entry list, then calls 0x180cfb120/0x180ccb130 for each entry and an optional callback through 0x180557940.",
+              "direct_callers": ["0x180ce30f7"],
+              "helper_0x1801332e0": "small-string/byte-range copy helper; no ComputeShader, SetBuffer, or Dispatch call"
+            },
+            "boundary": "This is positive evidence that the registered _RTPerDrawParamsBuffer ID participates in native ray-tracing/resource-state configuration. The recovered chain has no ComputeShader dispatch, SetBuffer, _UploadBuffer write, factory shared-record input, character resource +0xd0 read, or Vulkan set-0/binding-33 edge; it must not be promoted to the missing UploadPerDrawParams producer."
           }
         },
         "compute_shader_api_and_setup_census": {
@@ -1933,6 +3379,40 @@
             "native_endpoint": {
               "function": "0x1801ee4c0",
               "observed": "The UnityPlayer endpoint performs managed-root/write-barrier handling and calls 0x180fc5e60; the visible body contains no shader bind, buffer upload, command recording, or compute dispatch."
+            }
+          },
+          "service_state_constructor_followup": {
+            "status": "runtime-service-constructor-not-gpudriven-bridge",
+            "source": "Current UnityPlayer.dll PData-scoped disassembly of the suspected large state initializer and its local wrapper.",
+            "unityplayer_sha256": "b47728ba10f09c46e8a107b4c7055e48cfe402d3d8c88a4529074981f9672aa2",
+            "initializer": {
+              "function_range": "0x1813018c0..0x181301d71",
+              "wrapper_range": "0x1812fdd80..0x1812fddbb",
+              "wrapper_call": "0x1812fddb1 -> 0x1813018c0",
+              "direct_call_count": 24,
+              "relevant_calls": [
+                "0x181301959 -> 0x180fc5e60",
+                "0x181301ad8/0x181301aed -> 0x1810e6310 (mode 0/1)",
+                "0x181301cef/0x181301d31 -> 0x180725dc0 (vtable slots +0xf68/+0xf70)"
+              ]
+            },
+            "service_identity": {
+              "accessor": "0x180fc5e60",
+              "registry_index": 20,
+              "registry_lookup": "0x18030f100",
+              "service_name": "RuntimeInitializeOnLoadManager",
+              "observed": "The initializer stores the slot-20 service in r14, copies its fields into a generic output state, and derives two mode-dependent values through 0x1810e6310. The copied offsets overlap generic engine-state layouts but do not identify the character resource returned by 0x1804255f0."
+            },
+            "gpu_edge_scan": {
+              "excluded_operations": [
+                "ComputeShader/ComputeBuffer API",
+                "CommandBuffer recording",
+                "0x1805e7e10/0x1804c74d0 dispatch cores",
+                "GpuSceneDirtyUpdateCS.UploadPerDrawParams",
+                "factory staging tables 0x1810d25c0/0x1810d26bf",
+                "custom resource +0xd0 read"
+              ],
+              "negative_result": "The initializer and its wrapper contain no GPU upload, dispatch, factory-record staging, or resource +0xd0 consumer edge. Do not alias service +0xd0 (or any copied service field) with the channel-2 resolved resource slot."
             }
           },
           "boundary": "The direct managed ComputeShader/ComputeBuffer API census closes the visible non-factory callers and ties the named GpuSceneDirtyUpdateCS resource to one shared setup field used by the render-pipeline constructor. Internal-call resolver paths and native GPU-scene code remain indirect, so this is not proof that kernel 7 is never dispatched; the factory staging-to-_UploadBuffer and channel-2/resource +0xd0 edges remain fail-closed."
