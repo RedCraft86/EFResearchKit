@@ -873,60 +873,6 @@ def total_reported_changes(payload: dict[str, Any]) -> int:
     return int(totals.get("changed") or 0)
 
 
-def total_game_changes(payload: dict[str, Any]) -> int:
-    totals = payload.get("gameTotals") or {}
-    return int(totals.get("changed") or 0)
-
-
-def find_latest_changed_history(
-    *,
-    state_dir: Path,
-    game_root: Path,
-    sample_limit: int,
-    scan_scope: str,
-    include_relative_paths: list[str],
-) -> tuple[dict[str, Any], Path] | None:
-    history_dir = state_dir / "history"
-    if not history_dir.exists():
-        return None
-    candidates = sorted(
-        history_dir.glob("export-change-summary-*.json"),
-        key=lambda path: (path.stat().st_mtime, path.name),
-        reverse=True,
-    )
-    for path in candidates:
-        raw_payload = read_json(path, default={})
-        if not isinstance(raw_payload, dict):
-            continue
-        candidate = build_update_payload(
-            raw_payload,
-            game_root=game_root,
-            baseline_initialized=False,
-            sample_limit=sample_limit,
-            scan_scope=scan_scope,
-            include_relative_paths=include_relative_paths,
-        )
-        if total_game_changes(candidate) > 0:
-            return raw_payload, path
-    return None
-
-
-def find_latest_update_feed_history(state_dir: Path) -> tuple[dict[str, Any], Path] | None:
-    history_dir = state_dir / "history"
-    if not history_dir.exists():
-        return None
-    candidates = sorted(
-        history_dir.glob("update-feed-*.json"),
-        key=lambda path: (path.stat().st_mtime, path.name),
-        reverse=True,
-    )
-    for path in candidates:
-        payload = read_json(path, default={})
-        if isinstance(payload, dict) and total_reported_changes(payload) > 0:
-            return payload, path
-    return None
-
-
 def write_update_feed_history(payload: dict[str, Any], state_dir: Path) -> Path | None:
     if total_reported_changes(payload) <= 0:
         return None
@@ -935,66 +881,6 @@ def write_update_feed_history(payload: dict[str, Any], state_dir: Path) -> Path 
     history_path = history_dir / f"update-feed-{stamp}.json"
     write_json(history_path, payload, indent=2, compact=False)
     return history_path
-
-
-def restore_zero_change_feed(
-    *,
-    current_payload: dict[str, Any],
-    out_path: Path,
-    state_dir: Path,
-    game_root: Path,
-    export_root: Path,
-    sample_limit: int,
-    scan_scope: str,
-    include_relative_paths: list[str],
-) -> tuple[dict[str, Any], str] | None:
-    existing_payload = read_json(out_path, default={})
-    if isinstance(existing_payload, dict) and total_reported_changes(existing_payload) > 0:
-        return existing_payload, "preserved_existing_feed"
-
-    latest_feed = find_latest_update_feed_history(state_dir)
-    if latest_feed is not None:
-        payload, history_path = latest_feed
-        payload["restoredAfterZeroChangeScan"] = {
-            "source": "update_feed_history",
-            "historyPath": str(history_path),
-            "zeroChangeTracker": current_payload.get("tracker") or {},
-        }
-        return payload, "restored_from_feed_history"
-
-    latest_history = find_latest_changed_history(
-        state_dir=state_dir,
-        game_root=game_root,
-        sample_limit=sample_limit,
-        scan_scope=scan_scope,
-        include_relative_paths=include_relative_paths,
-    )
-    if latest_history is None:
-        return None
-
-    raw_payload, history_path = latest_history
-    restored_payload = build_update_payload(
-        raw_payload,
-        game_root=game_root,
-        baseline_initialized=False,
-        sample_limit=sample_limit,
-        scan_scope=scan_scope,
-        include_relative_paths=include_relative_paths,
-    )
-    attach_asset_updates(
-        restored_payload,
-        export_root=export_root,
-        state_dir=state_dir,
-        sample_limit=sample_limit,
-        skip_asset_updates=True,
-        hash_asset_updates=False,
-    )
-    restored_payload["restoredAfterZeroChangeScan"] = {
-        "source": "tracker_history",
-        "historyPath": str(history_path),
-        "zeroChangeTracker": current_payload.get("tracker") or {},
-    }
-    return restored_payload, "restored_from_history"
 
 
 def combine_totals(*totals_list: dict[str, Any]) -> dict[str, int]:

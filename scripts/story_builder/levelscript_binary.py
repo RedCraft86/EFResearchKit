@@ -7,13 +7,35 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+from .codecs.levelscript import active_shapes as levelscript_active_shapes
+from .codecs.levelscript import boolean_getters as levelscript_boolean_getters
+from .codecs.levelscript import call_server as levelscript_call_server
+from .codecs.levelscript import compact_property_gate as levelscript_property_gate
+from .codecs.levelscript import control_flow_actions as levelscript_control_flow
+from .codecs.levelscript import entity_hp_changed as levelscript_entity_hp_changed
+from .codecs.levelscript import entity_event_scope as levelscript_entity_event_scope
+from .codecs.levelscript import entity_cast_and_death_events as levelscript_entity_events
 from .codecs.levelscript import exit_custom_performance as levelscript_exit_performance
 from .codecs.levelscript import fmv as levelscript_fmv
 from .codecs.levelscript import manual_control as levelscript_manual_control
 from .codecs.levelscript import npc_patrol_start as levelscript_npc_patrol_start
+from .codecs.levelscript import params as levelscript_params
+from .codecs.levelscript.params import (
+    DEFAULT_PARAM_TAIL as _DEFAULT_PARAM_TAIL,
+    decode_constant_string_param as _decode_constant_string_param,
+    decode_bool_param as _decode_bool_param,
+    decode_i32_param as _decode_i32_param,
+    decode_param_tail as _decode_param_tail,
+)
 from .codecs.levelscript import play3d_radio as levelscript_play3d_radio
 from .codecs.levelscript import raise_custom_script_event as levelscript_custom_event
+from .codecs.levelscript import scalar_value_getters as levelscript_scalar_getters
+from .codecs.levelscript import script_event_scope as levelscript_script_event_scope
+from .codecs.levelscript import script_stage_changed as levelscript_script_stage_changed
+from .codecs.levelscript import spawner_events as levelscript_spawner_events
 from .codecs.levelscript import switch_actions as levelscript_switch_actions
+from .codecs.levelscript import top_level_tail as levelscript_top_level_tail
+from .codecs.levelscript import trigger_volumes as levelscript_trigger_volumes
 
 if __package__ == "story_builder":
     from common import (
@@ -30,54 +52,6 @@ elif __package__ == "scripts.story_builder":
 else:  # pragma: no cover - direct file execution is intentionally unsupported
     raise ImportError("import this module as scripts.story_builder.levelscript_binary")
 
-
-LEVELSCRIPT_START_TYPE_NAMES = {
-    0: "ByEnterStartShape",
-    1: "Manual",
-    2: "SameWithActive",
-    3: "Never",
-}
-
-LEVELSCRIPT_END_TYPE_NAMES = {
-    0: "Auto",
-    1: "ByExitStartShape",
-    2: "Manual",
-    3: "SameWithDeactive",
-    4: "Never",
-}
-
-# ``LevelScriptTriggerVolumeData`` is a MemoryPack union.  The current
-# installed formatter assigns tag 1 to the no-extra-field Leader subtype; its
-# payload then serializes the eight base members in generated setter order.
-# Other subtype bodies are intentionally not decoded until their derived
-# formatter layouts are proven from current blobs.
-LEVELSCRIPT_TRIGGER_VOLUME_UNION_TAG_NAMES = {
-    1: "Leader",
-}
-
-LEVELSCRIPT_TRIGGER_VOLUME_SCHEMA_MAPPING_ID = (
-    "current-global-metadata-levelscript-trigger-volume-data-fields"
-)
-LEVELSCRIPT_TRIGGER_VOLUME_BASE_FIELDS = [
-    "isImportant",
-    "waitSrvRes",
-    "enterCheckOnGround",
-    "triggerOnPole",
-    "slotId",
-    "triggerCountLimit",
-    "exitShapeStartIndex",
-    "shapeList",
-]
-LEVELSCRIPT_TRIGGER_VOLUME_SERIALIZED_FIELDS = [
-    "enterCheckOnGround",
-    "exitShapeStartIndex",
-    "isImportant",
-    "shapeList",
-    "slotId",
-    "triggerCountLimit",
-    "triggerOnPole",
-    "waitSrvRes",
-]
 
 SCRIPT_POINTER_REF_RECORDS = {
     (0x045D, 0x0A),
@@ -881,16 +855,6 @@ LEVELSCRIPT_RECORD_TAG_HINTS = {
     (0x00ED, 0x0B): LEVELSCRIPT_RECORD_HINTS[(0x0BED, 0x00)],
 }
 
-PROPERTY_OUTPUT_RE = re.compile(
-    r"^\$(?P<local>\d+)@_(?P<name>"
-    r"oldValue|value|result|floatValue|entityOutput|instKeyOutput|"
-    r"eventArgsPtr|triggerSlotIdOutput|guideId|groupKeyOutput|"
-    r"spawnerOutput|waveKeyOutput|dialogId|finishId|isSkipped|newStageOutput|"
-    r"optionIndex|npcPosition|entity|entityTemplateId|firstTargetId|skillId|"
-    r"lsvPtrOutput|keyOutput|patrolIdOutput|inFight"
-    r")$"
-)
-
 LEVELSCRIPT_NATIVE_EVENT_PAYLOAD_MAPPING_ID = (
     "gameassembly-2026-07-17-memorypack-native-event-fields"
 )
@@ -932,20 +896,6 @@ TRIGGER_VOLUME_RECORD_KEYS.update({(0x12BE, 0x00), (0x12C0, 0x00)})
 
 COMPACT_NULL_SENTINEL = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
 
-LEVELSCRIPT_SHAPE_TYPE_NAMES = {
-    0: "None",
-    1: "BOX",
-    2: "SPHERE",
-}
-
-LEVELSCRIPT_TRIGGER_VOLUME_SHAPE_TYPE_NAMES = {
-    0: "None",
-    1: "Box",
-    2: "Sphere",
-    3: "PolyLine",
-    4: "Infinite",
-}
-
 ACTION_SERIALIZED_MAP_LIST_ORDER = ("actionList", "getterList", "headerList")
 ACTION_SERIALIZED_MAP_ORDER_EVIDENCE = (
     "GameAssembly ActionSerializedMapForMemoryPack.Deserialize dispatches "
@@ -970,12 +920,6 @@ def _i32(data: bytes, offset: int) -> int | None:
     if offset < 0 or offset + 4 > len(data):
         return None
     return struct.unpack_from("<i", data, offset)[0]
-
-
-def _f32(data: bytes, offset: int) -> float | None:
-    if offset < 0 or offset + 4 > len(data):
-        return None
-    return struct.unpack_from("<f", data, offset)[0]
 
 
 def _u64_offsets(data: bytes, value: int) -> list[int]:
@@ -1403,188 +1347,6 @@ def levelscript_action_map_membership(
     return action_map, memberships
 
 
-def _read_vector2(data: bytes, offset: int) -> tuple[dict[str, float] | None, int | None]:
-    if offset < 0 or offset + 8 > len(data):
-        return None, None
-    return (
-        {
-            "x": _round_float(_f32(data, offset)),
-            "y": _round_float(_f32(data, offset + 4)),
-        },
-        offset + 8,
-    )
-
-
-def _read_vector3(data: bytes, offset: int) -> tuple[dict[str, float] | None, int | None]:
-    if offset < 0 or offset + 12 > len(data):
-        return None, None
-    return (
-        {
-            "x": _round_float(_f32(data, offset)),
-            "y": _round_float(_f32(data, offset + 4)),
-            "z": _round_float(_f32(data, offset + 8)),
-        },
-        offset + 12,
-    )
-
-
-def _decode_levelscript_shape(data: bytes, offset: int) -> tuple[dict[str, Any] | None, int | None]:
-    """Decode `Beyond.Gameplay.Core.LevelScriptShape`.
-
-    The field order is verified from the MemoryPack setter order:
-    eulerAngles, offset, radius, size, type. The object starts with a compact
-    one-byte member count in these exported blobs.
-    """
-    if offset < 0 or offset + 45 > len(data):
-        return None, None
-    member_count = data[offset]
-    cursor = offset + 1
-    euler_angles, cursor = _read_vector3(data, cursor)
-    if cursor is None:
-        return None, None
-    shape_offset, cursor = _read_vector3(data, cursor)
-    if cursor is None:
-        return None, None
-    radius = _f32(data, cursor)
-    cursor += 4
-    size, cursor = _read_vector3(data, cursor)
-    if cursor is None:
-        return None, None
-    shape_type_raw = _u32(data, cursor)
-    cursor += 4
-    return (
-        _drop_empty(
-            {
-                "offset": _offset_hex(offset),
-                "memberCount": member_count,
-                "typeRaw": shape_type_raw,
-                "type": LEVELSCRIPT_SHAPE_TYPE_NAMES.get(
-                    shape_type_raw if shape_type_raw is not None else -1,
-                    "",
-                ),
-                "position": shape_offset,
-                "eulerAngles": euler_angles,
-                "size": size,
-                "radius": _round_float(radius),
-            }
-        ),
-        cursor,
-    )
-
-
-def _decode_levelscript_shape_list(
-    data: bytes,
-    offset: int,
-    *,
-    max_count: int = 64,
-) -> tuple[dict[str, Any], int | None]:
-    raw_count = _u32(data, offset)
-    status, count = _list_status(raw_count)
-    cursor = offset + 4
-    out: dict[str, Any] = {
-        "offset": _offset_hex(offset),
-        "status": status,
-        "count": count,
-    }
-    if status != "present" or count is None or count == 0:
-        out["endOffset"] = _offset_hex(cursor)
-        return _drop_empty(out), cursor
-    if count > max_count:
-        out["parseStatus"] = "count-too-large"
-        return _drop_empty(out), None
-
-    shapes: list[dict[str, Any]] = []
-    for _ in range(count):
-        shape, cursor = _decode_levelscript_shape(data, cursor)
-        if shape is None or cursor is None:
-            out["parseStatus"] = "truncated"
-            out["shapes"] = shapes
-            return _drop_empty(out), None
-        shapes.append(shape)
-    out["parseStatus"] = "decoded"
-    out["shapes"] = shapes
-    out["endOffset"] = _offset_hex(cursor)
-    return _drop_empty(out), cursor
-
-
-def _valid_levelscript_active_shape(shape: dict[str, Any]) -> bool:
-    """Validate one current MemoryPack ``LevelScriptShape`` structurally."""
-    if (
-        shape.get("memberCount") != 5
-        or shape.get("typeRaw") not in LEVELSCRIPT_SHAPE_TYPE_NAMES
-        or shape.get("typeRaw") == 0
-    ):
-        return False
-    values: list[Any] = [shape.get("radius")]
-    for field_name in ("position", "eulerAngles", "size"):
-        field = shape.get(field_name)
-        if not isinstance(field, dict) or set(field) != {"x", "y", "z"}:
-            return False
-        values.extend(field.values())
-    return all(
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(value)
-        and abs(value) < 10_000_000
-        for value in values
-    )
-
-
-def find_levelscript_active_shape_candidates(
-    data: bytes,
-    search_start: int,
-    search_end: int,
-) -> list[dict[str, Any]]:
-    """Find exact active-shape members by their generated neighbor fields.
-
-    Current metadata fixes the top-level MemoryPack order as ``actionMap``,
-    ``activeShapeList``, three booleans, then ``endType``.  The scan remains
-    fail-closed: a candidate must decode every shape with the exact five-member
-    schema and must be followed by all four typed scalar neighbors.
-    """
-    lower = max(0, int(search_start))
-    upper = min(len(data), max(lower, int(search_end)))
-    candidates: list[dict[str, Any]] = []
-    for offset in range(lower, upper):
-        shape_list, cursor = _decode_levelscript_shape_list(data, offset)
-        if (
-            cursor is None
-            or shape_list.get("status") != "present"
-            or not isinstance(shape_list.get("count"), int)
-            or int(shape_list["count"]) <= 0
-            or shape_list.get("parseStatus") != "decoded"
-            or not all(
-                isinstance(shape, dict) and _valid_levelscript_active_shape(shape)
-                for shape in shape_list.get("shapes") or []
-            )
-            or len(shape_list.get("shapes") or []) != int(shape_list["count"])
-            or cursor + 7 > upper
-        ):
-            continue
-        scalar_flags = list(data[cursor : cursor + 3])
-        end_type_raw = _u32(data, cursor + 3)
-        if (
-            any(value not in (0, 1) for value in scalar_flags)
-            or end_type_raw not in LEVELSCRIPT_END_TYPE_NAMES
-        ):
-            continue
-        candidates.append({
-            "offset": offset,
-            "offsetHex": _offset_hex(offset),
-            "endOffset": cursor,
-            "endOffsetHex": _offset_hex(cursor),
-            "shapeList": shape_list,
-            "followingFields": {
-                "allowStartOnTravelPole": bool(scalar_flags[0]),
-                "allowTick": bool(scalar_flags[1]),
-                "enablePreload": bool(scalar_flags[2]),
-                "endTypeRaw": end_type_raw,
-                "endTypeName": LEVELSCRIPT_END_TYPE_NAMES[end_type_raw],
-            },
-        })
-    return candidates
-
-
 def decode_levelscript_active_shape_list(
     data: bytes,
     script_id: int,
@@ -1617,7 +1379,10 @@ def decode_levelscript_active_shape_list(
         out["diagnostic"] = "completeActionMapBoundaryMissing"
         return out
 
-    tail_rows = [_tail_candidate(data, offset) for offset in _u64_offsets(data, script_id)]
+    tail_rows = [
+        levelscript_top_level_tail.decode_tail_candidate(data, offset)
+        for offset in _u64_offsets(data, script_id)
+    ]
     if not tail_rows:
         out["diagnostic"] = "verifiedTopLevelScriptIdMissing"
         return out
@@ -1633,7 +1398,7 @@ def decode_levelscript_active_shape_list(
     final_record = sorted_records[final_record_index - 1]
     search_start = int(final_record.get("payloadStart") or final_record.get("start") or 0)
     search_end = int(best_tails[0].get("scriptIdOffset") or 0)
-    candidates = find_levelscript_active_shape_candidates(
+    candidates = levelscript_active_shapes.find_active_shape_candidates(
         data,
         search_start,
         search_end,
@@ -1678,338 +1443,6 @@ def decode_levelscript_active_shape_list(
         ),
     })
     return out
-
-
-def _decode_vector2_list(
-    data: bytes,
-    offset: int,
-    *,
-    max_count: int = 128,
-) -> tuple[dict[str, Any], int | None]:
-    raw_count = _u32(data, offset)
-    status, count = _list_status(raw_count)
-    cursor = offset + 4
-    out: dict[str, Any] = {
-        "offset": _offset_hex(offset),
-        "status": status,
-        "count": count,
-    }
-    if status != "present" or count is None or count == 0:
-        out["endOffset"] = _offset_hex(cursor)
-        return _drop_empty(out), cursor
-    if count > max_count:
-        out["parseStatus"] = "count-too-large"
-        return _drop_empty(out), None
-
-    points: list[dict[str, float]] = []
-    for _ in range(count):
-        point, cursor = _read_vector2(data, cursor)
-        if point is None or cursor is None:
-            out["parseStatus"] = "truncated"
-            out["points"] = points
-            return _drop_empty(out), None
-        points.append(point)
-    out["parseStatus"] = "decoded"
-    out["points"] = points
-    out["endOffset"] = _offset_hex(cursor)
-    return _drop_empty(out), cursor
-
-
-def _decode_vector3_list(
-    data: bytes,
-    offset: int,
-    *,
-    max_count: int = 128,
-) -> tuple[dict[str, Any], int | None]:
-    raw_count = _u32(data, offset)
-    status, count = _list_status(raw_count)
-    cursor = offset + 4
-    out: dict[str, Any] = {
-        "offset": _offset_hex(offset),
-        "status": status,
-        "count": count,
-    }
-    if status != "present" or count is None or count == 0:
-        out["endOffset"] = _offset_hex(cursor)
-        return _drop_empty(out), cursor
-    if count > max_count:
-        out["parseStatus"] = "count-too-large"
-        return _drop_empty(out), None
-
-    points: list[dict[str, float]] = []
-    for _ in range(count):
-        point, cursor = _read_vector3(data, cursor)
-        if point is None or cursor is None:
-            out["parseStatus"] = "truncated"
-            out["points"] = points
-            return _drop_empty(out), None
-        points.append(point)
-    out["parseStatus"] = "decoded"
-    out["points"] = points
-    out["endOffset"] = _offset_hex(cursor)
-    return _drop_empty(out), cursor
-
-
-def _decode_trigger_volume_shape(data: bytes, offset: int) -> tuple[dict[str, Any] | None, int | None]:
-    """Decode `Beyond.Gameplay.LevelScriptTriggerVolumeShapeData`."""
-    if offset < 0 or offset + 1 > len(data):
-        return None, None
-    member_count = data[offset]
-    cursor = offset + 1
-    poly_line_points, cursor = _decode_vector2_list(data, cursor)
-    if cursor is None:
-        return None, None
-    position, cursor = _read_vector3(data, cursor)
-    if position is None or cursor is None:
-        return None, None
-    radius = _f32(data, cursor)
-    cursor += 4
-    rotation, cursor = _read_vector3(data, cursor)
-    if rotation is None or cursor is None:
-        return None, None
-    shape_type_raw = _u32(data, cursor)
-    cursor += 4
-    size, cursor = _read_vector3(data, cursor)
-    if size is None or cursor is None:
-        return None, None
-    return (
-        _drop_empty(
-            {
-                "offset": _offset_hex(offset),
-                "memberCount": member_count,
-                "shapeTypeRaw": shape_type_raw,
-                "shapeType": LEVELSCRIPT_TRIGGER_VOLUME_SHAPE_TYPE_NAMES.get(
-                    shape_type_raw if shape_type_raw is not None else -1,
-                    "",
-                ),
-                "position": position,
-                "radius": _round_float(radius),
-                "rotation": rotation,
-                "size": size,
-                "polyLinePoints": poly_line_points,
-            }
-        ),
-        cursor,
-    )
-
-
-def _decode_trigger_volume_shape_list(
-    data: bytes,
-    offset: int,
-    *,
-    max_count: int = 128,
-) -> tuple[dict[str, Any], int | None]:
-    raw_count = _u32(data, offset)
-    status, count = _list_status(raw_count)
-    cursor = offset + 4
-    out: dict[str, Any] = {
-        "offset": _offset_hex(offset),
-        "status": status,
-        "count": count,
-    }
-    if status != "present" or count is None or count == 0:
-        out["endOffset"] = _offset_hex(cursor)
-        return _drop_empty(out), cursor
-    if count > max_count:
-        out["parseStatus"] = "count-too-large"
-        return _drop_empty(out), None
-
-    shapes: list[dict[str, Any]] = []
-    for _ in range(count):
-        shape, cursor = _decode_trigger_volume_shape(data, cursor)
-        if shape is None or cursor is None:
-            out["parseStatus"] = "truncated"
-            out["shapes"] = shapes
-            return _drop_empty(out), None
-        shapes.append(shape)
-    out["parseStatus"] = "decoded"
-    out["shapes"] = shapes
-    out["endOffset"] = _offset_hex(cursor)
-    return _drop_empty(out), cursor
-
-
-def _decode_trigger_volume_entry(data: bytes, offset: int) -> tuple[dict[str, Any] | None, int | None]:
-    """Decode one keyed `LevelScriptTriggerVolumeData` map entry."""
-    if offset < 0 or offset + 6 > len(data):
-        return None, None
-    key_slot_id = _u32(data, offset)
-    union_tag = data[offset + 4]
-    member_count = data[offset + 5]
-    if (
-        union_tag not in LEVELSCRIPT_TRIGGER_VOLUME_UNION_TAG_NAMES
-        or member_count != 8
-    ):
-        return None, None
-    cursor = offset + 6
-    if cursor + 6 > len(data):
-        return None, None
-    enter_check_on_ground = bool(data[cursor])
-    cursor += 1
-    exit_shape_start_index = _i32(data, cursor)
-    cursor += 4
-    is_important = bool(data[cursor])
-    cursor += 1
-    shape_list, cursor = _decode_trigger_volume_shape_list(data, cursor)
-    if cursor is None or cursor + 10 > len(data):
-        return None, None
-    slot_id = _u32(data, cursor)
-    cursor += 4
-    trigger_count_limit = _i32(data, cursor)
-    cursor += 4
-    trigger_on_pole = bool(data[cursor])
-    cursor += 1
-    wait_srv_res = bool(data[cursor])
-    cursor += 1
-    if (
-        key_slot_id != slot_id
-        or key_slot_id is None
-        or not 80_000 <= key_slot_id <= 89_999
-        or trigger_count_limit is None
-        or trigger_count_limit < -1
-    ):
-        return None, None
-    return (
-        _drop_empty(
-            {
-                "offset": _offset_hex(offset),
-                "keySlotId": key_slot_id,
-                "unionTag": union_tag,
-                "triggerVolumeType": LEVELSCRIPT_TRIGGER_VOLUME_UNION_TAG_NAMES.get(
-                    union_tag,
-                    "",
-                ),
-                "memberCount": member_count,
-                "enterCheckOnGround": enter_check_on_ground,
-                "exitShapeStartIndex": exit_shape_start_index,
-                "isImportant": is_important,
-                "shapeList": shape_list,
-                "slotId": slot_id,
-                "triggerCountLimit": trigger_count_limit,
-                "triggerOnPole": trigger_on_pole,
-                "waitSrvRes": wait_srv_res,
-            }
-        ),
-        cursor,
-    )
-
-
-
-TRIGGER_VOLUME_WRAPPER_PROLOGUE = bytes.fromhex(
-    "00 00 00 00 00 00 00 00 00 00 00 00 00 "
-    "ff ff ff ff ea 03 00 00 ff ff ff ff "
-    "01 00 00 00 00 00 00 00 00 00"
-)
-
-
-def _decode_trigger_volume_map(
-    data: bytes,
-    offset: int,
-    *,
-    max_count: int = 128,
-) -> tuple[dict[str, Any], int | None]:
-    raw_count = _u32(data, offset)
-    status, count = _list_status(raw_count)
-    cursor = offset + 4
-    out: dict[str, Any] = {
-        "offset": _offset_hex(offset),
-        "status": status,
-        "count": count,
-    }
-    wrapper_end = offset + 4 + len(TRIGGER_VOLUME_WRAPPER_PROLOGUE)
-    if (
-        raw_count == 4
-        and wrapper_end + 4 <= len(data)
-        and data[offset + 4:wrapper_end] == TRIGGER_VOLUME_WRAPPER_PROLOGUE
-    ):
-        inner, inner_cursor = _decode_trigger_volume_map(data, wrapper_end, max_count=max_count)
-        if inner_cursor == len(data) and inner.get("status") == "present":
-            wrapped = dict(inner)
-            wrapped.update({
-                "offset": _offset_hex(offset),
-                "encoding": "wrapped-trigger-volume-map",
-                "wrapperOffset": _offset_hex(offset),
-                "wrapperBytes": 4 + len(TRIGGER_VOLUME_WRAPPER_PROLOGUE),
-                "wrapperOuterCount": raw_count,
-                "wrapperPrologueBytes": len(TRIGGER_VOLUME_WRAPPER_PROLOGUE),
-                "innerMapOffset": _offset_hex(wrapper_end),
-                "endOffset": _offset_hex(inner_cursor),
-            })
-            wrapped.setdefault("parseStatus", "decoded")
-            return _drop_empty(wrapped), inner_cursor
-
-    if status != "present" or count is None or count == 0:
-        out["endOffset"] = _offset_hex(cursor)
-        return _drop_empty(out), cursor
-    if count > max_count:
-        out["parseStatus"] = "count-too-large"
-        return _drop_empty(out), None
-    min_entry_bytes = 25
-    minimum_bytes_required = count * min_entry_bytes
-    remaining_bytes = max(0, len(data) - cursor)
-    if minimum_bytes_required > remaining_bytes:
-        out["parseStatus"] = "count-exceeds-remaining"
-        out["remainingBytes"] = remaining_bytes
-        out["minimumBytesRequired"] = minimum_bytes_required
-        return _drop_empty(out), None
-
-    volumes: list[dict[str, Any]] = []
-    for _ in range(count):
-        volume, cursor = _decode_trigger_volume_entry(data, cursor)
-        if volume is None or cursor is None:
-            out["parseStatus"] = "truncated"
-            out["volumes"] = volumes
-            return _drop_empty(out), None
-        volumes.append(volume)
-    out["parseStatus"] = "decoded"
-    out["slotIds"] = [row.get("slotId") for row in volumes if row.get("slotId") is not None]
-    out["volumes"] = volumes
-    out["endOffset"] = _offset_hex(cursor)
-    return _drop_empty(out), cursor
-
-
-def _find_final_trigger_volume_map(
-    data: bytes,
-    *,
-    search_start: int,
-    max_scan_bytes: int = 1_048_576,
-) -> tuple[int | None, dict[str, Any], int | None]:
-    """Find the final exact trigger-volume dictionary after a non-empty task map.
-
-    ``triggerVolumes`` is the final generated MemoryPack member of
-    ``LevelScriptData``.  Fully decoding every polymorphic condition nested in
-    the preceding ``taskMap`` is unnecessary for locating it: scan the bounded
-    file tail and accept either the exact null/empty dictionary at EOF or a
-    strict current-build Leader map whose decoded cursor lands exactly at EOF.
-    Key/slot equality, subtype tag, member count, shape bodies, and field
-    ranges are all validated by the entry decoder.
-    """
-    if not data:
-        return None, {}, None
-    lower = max(0, int(search_start), len(data) - max_scan_bytes)
-    for offset in range(len(data) - 4, lower - 1, -1):
-        raw_count = _u32(data, offset)
-        if raw_count is None or not 1 <= raw_count <= 128:
-            continue
-        decoded, cursor = _decode_trigger_volume_map(data, offset)
-        if (
-            cursor == len(data)
-            and decoded.get("status") == "present"
-            and decoded.get("parseStatus") == "decoded"
-            and len(decoded.get("volumes") or []) == raw_count
-        ):
-            return offset, decoded, cursor
-    empty_offset = len(data) - 4
-    if empty_offset >= lower:
-        decoded, cursor = _decode_trigger_volume_map(data, empty_offset)
-        if (
-            cursor == len(data)
-            and decoded.get("status") in {"null", "present"}
-            and not decoded.get("volumes")
-            and decoded.get("count") in {None, 0}
-        ):
-            decoded["parseStatus"] = "decoded"
-            return empty_offset, decoded, cursor
-    return None, {}, None
 
 
 def decode_levelscript_encounter_module_target(
@@ -2176,12 +1609,15 @@ def decode_levelscript_encounter_module_target(
             if cursor.count() is not None:
                 raise ValueError("unsupported start shape list")
             start_type = cursor.i32()
-            if start_type not in LEVELSCRIPT_START_TYPE_NAMES:
+            if start_type not in levelscript_top_level_tail.START_TYPE_NAMES:
                 raise ValueError("invalid start type")
             if cursor.count() is not None:
                 raise ValueError("unsupported task map")
             trigger_offset = cursor.offset
-            trigger_map, trigger_end = _decode_trigger_volume_map(data, trigger_offset)
+            trigger_map, trigger_end = levelscript_trigger_volumes.decode_trigger_volume_map(
+                data,
+                trigger_offset,
+            )
             if trigger_end != len(data):
                 raise ValueError("top-level tail does not end at EOF")
 
@@ -2223,7 +1659,7 @@ def decode_levelscript_encounter_module_target(
                 "tailPartMode": tail_part_mode,
                 "resetModeWhenActive": reset_mode_when_active,
                 "resetModeWhenEnd": reset_mode_when_end,
-                "startType": LEVELSCRIPT_START_TYPE_NAMES[start_type],
+                "startType": levelscript_top_level_tail.START_TYPE_NAMES[start_type],
                 "triggerVolumeCount": trigger_map.get("count"),
                 "serializedMissionOrQuestId": False,
                 "clientRequest": False,
@@ -2847,7 +2283,7 @@ def _looks_like_property_key(text: str) -> bool:
 def _extract_property_output_refs(texts: list[str]) -> list[dict[str, Any]]:
     refs: list[dict[str, Any]] = []
     for text in texts:
-        match = PROPERTY_OUTPUT_RE.match(text)
+        match = levelscript_params.PROPERTY_OUTPUT_PATH_RE.match(text)
         if not match:
             continue
         refs.append({
@@ -2865,344 +2301,6 @@ def _extract_trigger_slot_ids(payload: bytes) -> list[int]:
         if 80000 <= value <= 89999 and value not in slots:
             slots.append(value)
     return slots
-
-
-def _decode_script_event_header_scope(payload: bytes) -> dict[str, Any]:
-    """Replay the inherited validate/targetScript/triggerTarget fields.
-
-    Bytes 17 onward begin with ``ActionHeader._validate: Param<bool>``; values
-    in that object are validation-node references, not script ids.  Only after
-    the variable-length Param comes ``ScriptEventHeader._targetScript`` and
-    ``_triggerTarget``.  The latter is SELF=0 or SPECIFY_SCRIPT=1.  A specified
-    target can serialize a LevelScriptPtr ``scriptId`` but never a mission or
-    quest id.
-    """
-    cursor = 17
-
-    def read_string() -> tuple[str | None, int] | None:
-        nonlocal cursor
-        if cursor + 4 > len(payload):
-            return None
-        size = struct.unpack_from("<i", payload, cursor)[0]
-        cursor += 4
-        if size == -1:
-            return None, cursor
-        if size < 0 or size > 512 or cursor + size > len(payload):
-            return None
-        raw = payload[cursor : cursor + size]
-        cursor += size
-        try:
-            return raw.decode("utf-8"), cursor
-        except UnicodeDecodeError:
-            return None
-
-    if cursor >= len(payload) or payload[cursor] != 0x04:
-        return {}
-    cursor += 1
-    if cursor + 9 > len(payload) or payload[cursor] not in (0, 1):
-        return {}
-    validate_value = bool(payload[cursor])
-    cursor += 1
-    validate_id_ref = struct.unpack_from("<i", payload, cursor)[0]
-    cursor += 4
-    validate_source = struct.unpack_from("<i", payload, cursor)[0]
-    cursor += 4
-    validate_path_result = read_string()
-    if validate_path_result is None:
-        return {}
-    validate_path = validate_path_result[0]
-
-    target_script: dict[str, Any] | None = None
-    if cursor >= len(payload):
-        return {}
-    if payload[cursor] == 0xFF:
-        cursor += 1
-    else:
-        if payload[cursor] != 0x04:
-            return {}
-        cursor += 1
-        if cursor >= len(payload) or payload[cursor] != 0x01:
-            return {}
-        cursor += 1
-        if cursor + 16 > len(payload):
-            return {}
-        script_id = struct.unpack_from("<Q", payload, cursor)[0]
-        cursor += 8
-        target_id_ref = struct.unpack_from("<i", payload, cursor)[0]
-        cursor += 4
-        target_source = struct.unpack_from("<i", payload, cursor)[0]
-        cursor += 4
-        target_path_result = read_string()
-        if target_path_result is None:
-            return {}
-        target_script = {
-            "scriptId": script_id,
-            "idRef": target_id_ref,
-            "paramSource": target_source,
-            "path": target_path_result[0],
-        }
-
-    if cursor + 4 > len(payload):
-        return {}
-    trigger_target = struct.unpack_from("<i", payload, cursor)[0]
-    cursor += 4
-    if trigger_target not in (0, 1):
-        return {}
-
-    out: dict[str, Any] = {
-        "scriptEventScope": (
-            "owning-level-script" if trigger_target == 0 else "specified-level-script"
-        ),
-        "triggerTarget": "SELF" if trigger_target == 0 else "SPECIFY_SCRIPT",
-        "targetScriptPresent": target_script is not None,
-        "validateParam": {
-            "constValue": validate_value,
-            "idRef": validate_id_ref,
-            "paramSource": validate_source,
-            "path": validate_path,
-        },
-        "_subtypeOffset": cursor,
-    }
-    if target_script is not None:
-        out["targetScriptParam"] = target_script
-        if (
-            trigger_target == 1
-            and target_script["scriptId"]
-            and target_script["idRef"] == -1
-            and target_script["paramSource"] == 0
-            and not target_script["path"]
-        ):
-            out["specifiedTargetScriptId"] = target_script["scriptId"]
-    return out
-
-
-_DEFAULT_PARAM_TAIL = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
-
-
-def _decode_param_output_ref(
-    payload: bytes,
-    cursor: int,
-) -> tuple[str, int] | None:
-    """Decode the current MemoryPack ``ParamOutput`` property-reference form."""
-    decoded = _decode_param_output(payload, cursor)
-    if decoded is None:
-        return None
-    detail, cursor = decoded
-    value = detail.get("path")
-    if detail.get("paramSource") != 0 or not isinstance(value, str):
-        return None
-    if not PROPERTY_OUTPUT_RE.match(value):
-        return None
-    return value, cursor
-
-
-def _decode_param_output(
-    payload: bytes,
-    cursor: int,
-) -> tuple[dict[str, Any], int] | None:
-    """Decode a present ``ParamOutput`` including a null property path.
-
-    Most authored outputs point at ``$<localId>@_<field>`` with source zero.
-    Current trigger-volume records also use source 100 with a null path.  That
-    is still an exact serialized output parameter, but it is not a local
-    property reference and must not be promoted to one.
-    """
-    if cursor + 9 > len(payload) or payload[cursor] != 0x02:
-        return None
-    source = struct.unpack_from("<i", payload, cursor + 1)[0]
-    size = struct.unpack_from("<i", payload, cursor + 5)[0]
-    cursor += 9
-    if source < 0 or source > 0x10000:
-        return None
-    if size == -1:
-        return {"paramSource": source, "path": None}, cursor
-    if size <= 0 or size > 256 or cursor + size > len(payload):
-        return None
-    try:
-        value = payload[cursor : cursor + size].decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-    return {"paramSource": source, "path": value}, cursor + size
-
-
-def _decode_constant_string_param(
-    payload: bytes,
-    cursor: int,
-) -> tuple[str, int] | None:
-    """Decode one constant ``Param<string>`` with the installed default tail."""
-    if cursor + 5 > len(payload) or payload[cursor] != 0x04:
-        return None
-    size = struct.unpack_from("<i", payload, cursor + 1)[0]
-    cursor += 5
-    if size <= 0 or size > 256 or cursor + size + 12 > len(payload):
-        return None
-    try:
-        value = payload[cursor : cursor + size].decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-    cursor += size
-    if payload[cursor : cursor + 12] != _DEFAULT_PARAM_TAIL:
-        return None
-    return value, cursor + 12
-
-
-def _decode_constant_i32_param(
-    payload: bytes,
-    cursor: int,
-) -> tuple[int, int] | None:
-    """Decode one constant ``Param<int>`` with the installed default tail."""
-    if (
-        cursor + 17 > len(payload)
-        or payload[cursor] != 0x04
-        or payload[cursor + 5 : cursor + 17] != _DEFAULT_PARAM_TAIL
-    ):
-        return None
-    return struct.unpack_from("<i", payload, cursor + 1)[0], cursor + 17
-
-
-def _decode_constant_bool_param(
-    payload: bytes,
-    cursor: int,
-) -> tuple[bool, int] | None:
-    """Decode one constant ``Param<bool>`` with the installed default tail."""
-    if (
-        cursor + 14 > len(payload)
-        or payload[cursor] != 0x04
-        or payload[cursor + 1] not in (0, 1)
-        or payload[cursor + 2 : cursor + 14] != _DEFAULT_PARAM_TAIL
-    ):
-        return None
-    return bool(payload[cursor + 1]), cursor + 14
-
-
-def _decode_param_tail(payload: bytes, cursor: int) -> tuple[dict[str, Any], int] | None:
-    """Decode the shared idRef/source/path tail of an authored Param value."""
-    if cursor + 12 > len(payload):
-        return None
-    id_ref, param_source, path_size = struct.unpack_from("<iii", payload, cursor)
-    cursor += 12
-    if id_ref < -1 or param_source < 0 or param_source > 0x10000:
-        return None
-    if path_size == -1:
-        path = None
-    elif 0 <= path_size <= 1024 and cursor + path_size <= len(payload):
-        try:
-            path = payload[cursor : cursor + path_size].decode("utf-8")
-        except UnicodeDecodeError:
-            return None
-        cursor += path_size
-    else:
-        return None
-    return {"idRef": id_ref, "paramSource": param_source, "path": path}, cursor
-
-
-def _decode_i32_param(payload: bytes, cursor: int) -> tuple[dict[str, Any], int] | None:
-    if cursor + 5 > len(payload) or payload[cursor] != 0x04:
-        return None
-    value = struct.unpack_from("<i", payload, cursor + 1)[0]
-    tail = _decode_param_tail(payload, cursor + 5)
-    if tail is None:
-        return None
-    detail, end = tail
-    return {"value": value, **detail}, end
-
-
-def _decode_bool_param(payload: bytes, cursor: int) -> tuple[dict[str, Any], int] | None:
-    if (
-        cursor + 2 > len(payload)
-        or payload[cursor] != 0x04
-        or payload[cursor + 1] not in (0, 1)
-    ):
-        return None
-    tail = _decode_param_tail(payload, cursor + 2)
-    if tail is None:
-        return None
-    detail, end = tail
-    return {"value": bool(payload[cursor + 1]), **detail}, end
-
-
-def _decode_float_param(payload: bytes, cursor: int) -> tuple[dict[str, Any], int] | None:
-    if cursor + 5 > len(payload) or payload[cursor] != 0x04:
-        return None
-    value = _round_float(struct.unpack_from("<f", payload, cursor + 1)[0])
-    tail = _decode_param_tail(payload, cursor + 5)
-    if tail is None:
-        return None
-    detail, end = tail
-    return {"value": value, **detail}, end
-
-
-def _decode_local_getter_ref(payload: bytes, cursor: int) -> tuple[int, int] | None:
-    if (
-        cursor + 17 > len(payload)
-        or payload[cursor : cursor + 5] != b"\x04\x00\x00\x00\x00"
-        or payload[cursor + 9 : cursor + 17] != b"\xff" * 8
-    ):
-        return None
-    local_id = struct.unpack_from("<i", payload, cursor + 5)[0]
-    if local_id < 0 or local_id > 0x10000:
-        return None
-    return local_id, cursor + 17
-
-
-def _decode_pure_bool_getter_ref(
-    payload: bytes,
-    cursor: int,
-) -> tuple[dict[str, Any], int] | None:
-    """Decode one exact ``PureGetter<bool>`` local-reference envelope.
-
-    Boolean getter combinators serialize their child nodes directly rather
-    than through the 17-byte ``Param<T>`` reference used by integer operands.
-    The installed formatter writes tag 04/00, the local getter id, and two
-    null i32 sentinels.  Constants remain distinguishable because their
-    ``idRef`` is -1.
-    """
-    if (
-        cursor + 14 > len(payload)
-        or payload[cursor : cursor + 2] != b"\x04\x00"
-        or payload[cursor + 6 : cursor + 14] != b"\xff" * 8
-    ):
-        return None
-    local_id = struct.unpack_from("<i", payload, cursor + 2)[0]
-    if local_id < 0 or local_id > 0x10000:
-        return None
-    return {
-        "operandKind": "localGetterRef",
-        "getterLocalId": local_id,
-    }, cursor + 14
-
-
-def _decode_bool_operand(
-    payload: bytes,
-    cursor: int,
-) -> tuple[dict[str, Any], int] | None:
-    """Decode a polymorphic boolean constant/path or local getter operand."""
-    getter_ref = _decode_pure_bool_getter_ref(payload, cursor)
-    if getter_ref is not None:
-        return getter_ref
-    return _decode_bool_param(payload, cursor)
-
-
-def _finish_getter_fields(
-    payload: bytes,
-    end: int,
-    detail: dict[str, Any],
-) -> dict[str, Any]:
-    """Accept exact subtype EOF or one proven outer-list u32 trailer.
-
-    Some final getter rows are followed by the next serialized ActionMap list
-    count before the next UID record begins.  The four bytes are not a getter
-    field; retaining the value explicitly keeps the field decoder exact while
-    allowing those terminal rows to be used.
-    """
-    if end == len(payload):
-        return detail
-    if end + 4 != len(payload):
-        return {}
-    return {
-        **detail,
-        "trailingActionMapFramingU32": struct.unpack_from("<I", payload, end)[0],
-    }
 
 
 def _decode_levelscript_ptr_param(
@@ -3263,100 +2361,19 @@ def _decode_levelscript_task_ptr_param(
     }, end
 
 
-def _decode_boolean_compare_getter(payload: bytes) -> dict[str, Any]:
-    comparer = _decode_i32_param(payload, 0)
-    if comparer is None:
-        return {}
-    value_a = _decode_bool_operand(payload, comparer[1])
-    if value_a is None:
-        return {}
-    value_b = _decode_bool_operand(payload, value_a[1])
-    if value_b is None:
-        return {}
-    comparer_raw = comparer[0]["value"]
-    return _finish_getter_fields(payload, value_b[1], {
-        "comparerRaw": comparer_raw,
-        "comparerName": {0: "Equal", 1: "NotEqual"}.get(comparer_raw, ""),
-        "valueA": value_a[0],
-        "valueB": value_b[0],
-        "payloadShape": "bool-comparer-two-polymorphic-bool-operands-exact-fields",
-    })
-
-
-def _decode_bool_binary_getter(
-    payload: bytes,
-    *,
-    operation: str,
-) -> dict[str, Any]:
-    value_a = _decode_pure_bool_getter_ref(payload, 0)
-    if value_a is None:
-        return {}
-    value_b = _decode_pure_bool_getter_ref(payload, value_a[1])
-    if value_b is None:
-        return {}
-    return _finish_getter_fields(payload, value_b[1], {
-        "operation": operation,
-        "valueA": value_a[0],
-        "valueB": value_b[0],
-        "payloadShape": "two-pure-bool-getter-refs-exact-fields",
-    })
-
-
-def _decode_bool_invert_getter(payload: bytes) -> dict[str, Any]:
-    value = _decode_pure_bool_getter_ref(payload, 0)
-    if value is None:
-        return {}
-    return _finish_getter_fields(payload, value[1], {
-        "operation": "Not",
-        "value": value[0],
-        "payloadShape": "one-pure-bool-getter-ref-exact-fields",
-    })
-
-
-def _decode_bool_multi_and_getter(payload: bytes) -> dict[str, Any]:
-    if len(payload) < 4:
-        return {}
-    count = struct.unpack_from("<I", payload, 0)[0]
-    if count == 0 or count > 256:
-        return {}
-    cursor = 4
-    values: list[dict[str, Any]] = []
-    for _index in range(count):
-        value = _decode_pure_bool_getter_ref(payload, cursor)
-        if value is None:
-            return {}
-        values.append(value[0])
-        cursor = value[1]
-    return _finish_getter_fields(payload, cursor, {
-        "operation": "All",
-        "values": values,
-        "payloadShape": "counted-pure-bool-getter-refs-exact-fields",
-    })
-
-
-def _decode_getter_bool(payload: bytes) -> dict[str, Any]:
-    value = _decode_bool_param(payload, 0)
-    if value is None:
-        return {}
-    return _finish_getter_fields(payload, value[1], {
-        "value": value[0],
-        "payloadShape": "one-bool-param-exact-fields",
-    })
-
-
 def _decode_interactive_check_state_getter(payload: bytes) -> dict[str, Any]:
     """Decode comparer, ScriptEntityPtr target, and expected state exactly."""
     comparer = _decode_i32_param(payload, 0)
     if comparer is None:
         return {}
-    target = _decode_constant_entity_ptr_param(payload, comparer[1])
+    target = levelscript_params.decode_constant_entity_ptr_param(payload, comparer[1])
     if target is None:
         return {}
     value = _decode_i32_param(payload, target[1])
     if value is None:
         return {}
     comparer_raw = comparer[0]["value"]
-    return _finish_getter_fields(payload, value[1], {
+    return levelscript_params.finish_getter_fields(payload, value[1], {
         "type": "InteractiveCheckState",
         "comparer": comparer[0],
         "comparerName": {
@@ -3390,7 +2407,7 @@ def _decode_get_lsm_is_completed_getter(payload: bytes) -> dict[str, Any]:
     script_ptr = _decode_levelscript_ptr_param(payload, 21)
     if script_ptr is None:
         return {}
-    return _finish_getter_fields(payload, script_ptr[1], {
+    return levelscript_params.finish_getter_fields(payload, script_ptr[1], {
         "type": "GetLsmIsCompleted",
         "lsmPtr": {
             "rawValueHex": payload[1:9].hex(),
@@ -3403,157 +2420,16 @@ def _decode_get_lsm_is_completed_getter(payload: bytes) -> dict[str, Any]:
     })
 
 
-def _decode_int_equal_getter(payload: bytes) -> dict[str, Any]:
-    value_a = _decode_i32_operand(payload, 0)
-    if value_a is None:
-        return {}
-    value_b = _decode_i32_operand(payload, value_a[1])
-    if value_b is None:
-        return {}
-    has_getter_ref = any(
-        operand.get("operandKind") == "localGetterRef"
-        for operand in (value_a[0], value_b[0])
-    )
-    detail = {
-        "operation": "Equal",
-        "valueA": value_a[0],
-        "valueB": value_b[0],
-        "payloadShape": (
-            "two-int-operands-exact-eof"
-            if has_getter_ref
-            else "two-int-params-exact-eof"
-        ),
-    }
-    for label, operand in (("valueA", value_a[0]), ("valueB", value_b[0])):
-        getter_local_id = operand.get("getterLocalId")
-        if isinstance(getter_local_id, int):
-            detail[f"{label}GetterLocalId"] = getter_local_id
-    return _finish_getter_fields(payload, value_b[1], detail)
-
-
-def _decode_i32_operand(
-    payload: bytes,
-    cursor: int,
-) -> tuple[dict[str, Any], int] | None:
-    """Decode one polymorphic ``Param<int>`` operand exactly.
-
-    The installed serializer uses the same field for authored constants and
-    local getter references.  A getter reference has a distinct 17-byte
-    envelope, so keep its identity instead of interpreting its local id as a
-    constant value.
-    """
-    getter_ref = _decode_local_getter_ref(payload, cursor)
-    if getter_ref is not None:
-        return {
-            "operandKind": "localGetterRef",
-            "getterLocalId": getter_ref[0],
-        }, getter_ref[1]
-    value = _decode_i32_param(payload, cursor)
-    if value is None:
-        return None
-    return value
-
-
 def _decode_get_condition_result_getter(payload: bytes) -> dict[str, Any]:
     """Decode the embedded root ``GameCondition`` union used by this getter."""
     decoded = _decode_levelscript_task_condition(payload, 0, len(payload))
     if decoded is None:
         return {}
     condition, end = decoded
-    return _finish_getter_fields(payload, end, {
+    return levelscript_params.finish_getter_fields(payload, end, {
         "condition": condition,
         "payloadShape": "root-game-condition-union-exact-fields",
     })
-
-
-def _decode_int_random_getter(payload: bytes) -> dict[str, Any]:
-    # Generated setter order is _max, then _min (confirmed by the current
-    # IntGetterRandomForMemoryPack metadata and the installed payloads).
-    maximum = _decode_i32_param(payload, 0)
-    if maximum is None:
-        return {}
-    minimum = _decode_i32_param(payload, maximum[1])
-    if minimum is None:
-        return {}
-    return _finish_getter_fields(payload, minimum[1], {
-        "minimum": minimum[0],
-        "maximum": maximum[0],
-        "payloadShape": "max-then-min-int-params-exact-fields",
-    })
-
-
-def _decode_number_compare_getter(payload: bytes, *, floating: bool) -> dict[str, Any]:
-    comparer = _decode_i32_param(payload, 0)
-    if comparer is None:
-        return {}
-    value_a = _decode_local_getter_ref(payload, comparer[1])
-    if value_a is None:
-        return {}
-    value_decoder = _decode_float_param if floating else _decode_i32_param
-    value_b = value_decoder(payload, value_a[1])
-    if value_b is None:
-        return {}
-    comparer_raw = comparer[0]["value"]
-    return _finish_getter_fields(payload, value_b[1], {
-        "comparerRaw": comparer_raw,
-        "comparerName": {
-            0: "Equal",
-            1: "NotEqual",
-            2: "GreaterThan",
-            3: "GreaterEqual",
-            4: "LessThan",
-            5: "LessEqual",
-        }.get(comparer_raw, ""),
-        "valueAGetterLocalId": value_a[0],
-        "valueB": value_b[0],
-        "valueType": "float" if floating else "int",
-        "payloadShape": "number-comparer-getter-ref-constant-exact-eof",
-    })
-
-
-def _decode_getter_int(payload: bytes) -> dict[str, Any]:
-    value = _decode_i32_param(payload, 0)
-    if value is None:
-        return {}
-    return _finish_getter_fields(payload, value[1], {
-        "value": value[0],
-        "payloadShape": "one-int-param-exact-eof",
-    })
-
-
-def _decode_getter_string(payload: bytes) -> dict[str, Any]:
-    """Decode the installed ``GetterString`` property-path payload.
-
-    The leading byte is the nullable/default string marker, followed by the
-    shared id/source/path fields.  Requiring exact EOF keeps arbitrary strings
-    in neighboring records from being promoted to authored property getters.
-    """
-    if len(payload) < 17 or payload[0] != 0x04:
-        return {}
-    value_size, id_ref, param_source, path_size = struct.unpack_from(
-        "<iiii", payload, 1
-    )
-    if (
-        value_size != -1
-        or id_ref != -1
-        or param_source < 0
-        or param_source > 0x10000
-        or path_size <= 0
-        or path_size > 1024
-        or 17 + path_size != len(payload)
-    ):
-        return {}
-    try:
-        path = payload[17:].decode("utf-8")
-    except UnicodeDecodeError:
-        return {}
-    return {
-        "value": None,
-        "idRef": id_ref,
-        "paramSource": param_source,
-        "path": path,
-        "payloadShape": "nullable-string-property-path-exact-eof",
-    }
 
 
 def _decode_start_dialog_action(payload: bytes) -> dict[str, Any]:
@@ -3583,21 +2459,9 @@ def _decode_get_levelscript_stage_getter(payload: bytes) -> dict[str, Any]:
     script_ptr = _decode_levelscript_ptr_param(payload, 0)
     if script_ptr is None:
         return {}
-    return _finish_getter_fields(payload, script_ptr[1], {
+    return levelscript_params.finish_getter_fields(payload, script_ptr[1], {
         "scriptPtr": script_ptr[0],
         "payloadShape": "level-script-ptr-param-exact-fields",
-    })
-
-
-def _decode_is_endmin_gender_getter(payload: bytes) -> dict[str, Any]:
-    gender = _decode_i32_param(payload, 0)
-    if gender is None:
-        return {}
-    raw = gender[0]["value"]
-    return _finish_getter_fields(payload, gender[1], {
-        "gender": gender[0],
-        "genderName": {0: "Male", 1: "Female"}.get(raw, ""),
-        "payloadShape": "gender-param-exact-fields",
     })
 
 
@@ -3608,47 +2472,11 @@ def _decode_levelscript_property_bool_getter(payload: bytes) -> dict[str, Any]:
     target = _decode_levelscript_ptr_param(payload, property_key[1])
     if target is None:
         return {}
-    return _finish_getter_fields(payload, target[1], {
+    return levelscript_params.finish_getter_fields(payload, target[1], {
         "propertyKey": property_key[0],
         "targetScript": target[0],
         "payloadShape": "property-key-and-level-script-target-exact-fields",
     })
-
-
-def _decode_constant_entity_ptr_param(
-    payload: bytes,
-    cursor: int,
-) -> tuple[dict[str, Any], int] | None:
-    """Decode the installed constant ``Param<ScriptEntityPtr>`` representation."""
-    if cursor + 27 > len(payload) or payload[cursor : cursor + 2] != b"\x04\x03":
-        return None
-    logic_id = struct.unpack_from("<Q", payload, cursor + 2)[0]
-    slot_id = struct.unpack_from("<I", payload, cursor + 10)[0]
-    use_slot_id = payload[cursor + 14]
-    if use_slot_id not in (0, 1):
-        return None
-    id_ref = struct.unpack_from("<i", payload, cursor + 15)[0]
-    param_source = struct.unpack_from("<i", payload, cursor + 19)[0]
-    path_size = struct.unpack_from("<i", payload, cursor + 23)[0]
-    cursor += 27
-    if path_size == -1:
-        path = None
-    elif 0 <= path_size <= 256 and cursor + path_size <= len(payload):
-        try:
-            path = payload[cursor : cursor + path_size].decode("utf-8")
-        except UnicodeDecodeError:
-            return None
-        cursor += path_size
-    else:
-        return None
-    return {
-        "logicId": logic_id,
-        "slotId": slot_id,
-        "useSlotId": bool(use_slot_id),
-        "idRef": id_ref,
-        "paramSource": param_source,
-        "path": path,
-    }, cursor
 
 
 def _decode_get_mission_state_getter(payload: bytes) -> dict[str, Any]:
@@ -3678,8 +2506,8 @@ def _decode_compare_mission_state_getter(payload: bytes) -> dict[str, Any]:
     """Decode exact comparer/getter/state operands for ``CompareMissionState``."""
     if len(payload) != 51:
         return {}
-    comparer = _decode_constant_i32_param(payload, 0)
-    expected_state = _decode_constant_i32_param(payload, 34)
+    comparer = levelscript_params.decode_constant_i32_param(payload, 0)
+    expected_state = levelscript_params.decode_constant_i32_param(payload, 34)
     if comparer is None or comparer[1] != 17 or expected_state is None:
         return {}
     if expected_state[1] != len(payload):
@@ -3737,7 +2565,7 @@ def _decode_check_levelscript_stage_getter(payload: bytes) -> dict[str, Any]:
     if expected_stage is None:
         return {}
     comparer_raw = comparer[0]["value"]
-    return _finish_getter_fields(payload, expected_stage[1], {
+    return levelscript_params.finish_getter_fields(payload, expected_stage[1], {
         "type": "CheckLevelScriptStage",
         "scriptPtr": script_ptr[0],
         "comparer": comparer[0],
@@ -3779,7 +2607,7 @@ def _decode_check_mission_or_quest_complete_getter(
     if not re.fullmatch(r"[A-Za-z0-9_#-]+", mission_or_quest_id):
         return {}
     target_kind = "quest" if is_quest[0]["value"] else "mission"
-    return _finish_getter_fields(payload, identity[1], {
+    return levelscript_params.finish_getter_fields(payload, identity[1], {
         "type": "CheckMissionOrQuestIsComplete",
         "isQuest": is_quest[0],
         "targetKind": target_kind,
@@ -3822,7 +2650,7 @@ def _decode_script_variable_changed_fields(
     value`` for LevelScript properties.  Requiring exact EOF prevents strings
     in later action records from being mistaken for listener keys.
     """
-    scope = _decode_script_event_header_scope(payload)
+    scope = levelscript_script_event_scope.decode_script_event_header_scope(payload)
     cursor = scope.pop("_subtypeOffset", None)
     if not scope or not isinstance(cursor, int):
         return {}
@@ -3832,12 +2660,12 @@ def _decode_script_variable_changed_fields(
         if key_param is None:
             return {}
         key, cursor = key_param
-        old_output = _decode_param_output_ref(payload, cursor)
+        old_output = levelscript_params.decode_param_output_ref(payload, cursor)
         if old_output is None:
             return {}
         old_ref, cursor = old_output
     else:
-        old_output = _decode_param_output_ref(payload, cursor)
+        old_output = levelscript_params.decode_param_output_ref(payload, cursor)
         if old_output is None:
             return {}
         old_ref, cursor = old_output
@@ -3846,7 +2674,7 @@ def _decode_script_variable_changed_fields(
             return {}
         key, cursor = key_param
 
-    value_output = _decode_param_output_ref(payload, cursor)
+    value_output = levelscript_params.decode_param_output_ref(payload, cursor)
     if value_output is None:
         return {}
     value_ref, cursor = value_output
@@ -3873,12 +2701,12 @@ def _decode_leader_trigger_volume_fields(payload: bytes) -> dict[str, Any]:
     belong to the receiver, so this intentionally validates that prefix rather
     than scanning every integer in the wider record window.
     """
-    scope = _decode_script_event_header_scope(payload)
+    scope = levelscript_script_event_scope.decode_script_event_header_scope(payload)
     cursor = scope.pop("_subtypeOffset", None)
     if not scope or not isinstance(cursor, int):
         return {}
     subtype_offset = cursor
-    slot_param = _decode_constant_i32_param(payload, cursor)
+    slot_param = levelscript_params.decode_constant_i32_param(payload, cursor)
     if slot_param is None:
         return {}
     slot_id, cursor = slot_param
@@ -3887,7 +2715,7 @@ def _decode_leader_trigger_volume_fields(payload: bytes) -> dict[str, Any]:
     if cursor < len(payload) and payload[cursor] == 0xFF:
         cursor += 1
     else:
-        output = _decode_param_output(payload, cursor)
+        output = levelscript_params.decode_param_output(payload, cursor)
         if output is None:
             return {}
         output_param, cursor = output
@@ -3895,7 +2723,7 @@ def _decode_leader_trigger_volume_fields(payload: bytes) -> dict[str, Any]:
         if (
             output_param.get("paramSource") == 0
             and isinstance(candidate_ref, str)
-            and PROPERTY_OUTPUT_RE.match(candidate_ref)
+            and levelscript_params.PROPERTY_OUTPUT_PATH_RE.match(candidate_ref)
         ):
             output_ref = candidate_ref
     return {
@@ -3905,120 +2733,6 @@ def _decode_leader_trigger_volume_fields(payload: bytes) -> dict[str, Any]:
         "triggerSlotIdOutputParam": output_param,
         "subtypeConsumedBytes": cursor - subtype_offset,
         "payloadShape": "constant-trigger-slot-selector-prefix",
-    }
-
-
-def _decode_entity_cast_skill_fields(payload: bytes) -> dict[str, Any]:
-    """Decode the installed OnEntityCastSkill outputs and optional filters."""
-    if len(payload) < 31 or payload[17:31] != b"\x04\x01" + _DEFAULT_PARAM_TAIL:
-        return {}
-    cursor = 31
-    outputs: dict[str, str] = {}
-    for field in ("entity", "entityTemplateId", "firstTargetId"):
-        output = _decode_param_output_ref(payload, cursor)
-        if output is None:
-            return {}
-        outputs[field], cursor = output
-    character_filter = _decode_constant_bool_param(payload, cursor)
-    if character_filter is None:
-        return {}
-    is_character, cursor = character_filter
-    skill_output = _decode_param_output_ref(payload, cursor)
-    if skill_output is None:
-        return {}
-    outputs["skillId"], cursor = skill_output
-    skill_filter = _decode_constant_i32_param(payload, cursor)
-    if skill_filter is None:
-        return {}
-    skill_type, cursor = skill_filter
-    trailing_container_bytes = len(payload) - cursor
-    return {
-        "entityOutputRef": outputs["entity"],
-        "entityTemplateIdOutputRef": outputs["entityTemplateId"],
-        "firstTargetIdOutputRef": outputs["firstTargetId"],
-        "skillIdOutputRef": outputs["skillId"],
-        "isCharacterFilter": is_character,
-        "skillTypeFilter": skill_type,
-        "filterModeEnabled": bool(payload[4]),
-        "subtypeConsumedBytes": cursor,
-        "trailingContainerBytes": trailing_container_bytes,
-        "payloadShape": (
-            "cast-skill-outputs-and-filter-operands-exact-eof"
-            if not trailing_container_bytes
-            else "cast-skill-outputs-and-filter-operands-exact-prefix"
-        ),
-    }
-
-
-def _decode_specific_entity_die_fields(payload: bytes) -> dict[str, Any]:
-    """Decode the exact entity output plus constant entity selector."""
-    if len(payload) < 31 or payload[17:31] != b"\x04\x01" + _DEFAULT_PARAM_TAIL:
-        return {}
-    output = _decode_param_output_ref(payload, 31)
-    if output is None:
-        return {}
-    output_ref, cursor = output
-    entity_param = _decode_constant_entity_ptr_param(payload, cursor)
-    if entity_param is None:
-        return {}
-    entity_filter, cursor = entity_param
-    if cursor != len(payload):
-        return {}
-    return {
-        "entityOutputRef": output_ref,
-        "entityFilter": entity_filter,
-        "payloadShape": "entity-output-and-constant-entity-filter-exact-eof",
-    }
-
-
-def _decode_any_entity_die_fields(payload: bytes) -> dict[str, Any]:
-    """Decode the exact entity-list, monster, and list-filter operands."""
-    if len(payload) < 31 or payload[17:31] != b"\x04\x01" + _DEFAULT_PARAM_TAIL:
-        return {}
-    output = _decode_param_output_ref(payload, 31)
-    if output is None:
-        return {}
-    output_ref, cursor = output
-    if cursor + 5 > len(payload) or payload[cursor] != 0x04:
-        return {}
-    count = struct.unpack_from("<I", payload, cursor + 1)[0]
-    cursor += 5
-    if count > 64:
-        return {}
-    entity_filters: list[dict[str, Any]] = []
-    for _ in range(count):
-        # ScriptEntityPtr values inside this current list are union tag 0x03,
-        # uint64 logic id, uint32 slot id, then the use-slot boolean.
-        if cursor + 14 > len(payload) or payload[cursor] != 0x03:
-            return {}
-        use_slot_id = payload[cursor + 13]
-        if use_slot_id not in (0, 1):
-            return {}
-        entity_filters.append({
-            "logicId": struct.unpack_from("<Q", payload, cursor + 1)[0],
-            "slotId": struct.unpack_from("<I", payload, cursor + 9)[0],
-            "useSlotId": bool(use_slot_id),
-        })
-        cursor += 14
-    if payload[cursor : cursor + 12] != _DEFAULT_PARAM_TAIL:
-        return {}
-    cursor += 12
-    is_monster_param = _decode_constant_bool_param(payload, cursor)
-    if is_monster_param is None:
-        return {}
-    is_monster, cursor = is_monster_param
-    filter_by_list_param = _decode_constant_bool_param(payload, cursor)
-    if filter_by_list_param is None:
-        return {}
-    filter_by_list, cursor = filter_by_list_param
-    if cursor != len(payload):
-        return {}
-    return {
-        "entityOutputRef": output_ref,
-        "entityListFilter": entity_filters,
-        "isMonsterFilter": is_monster,
-        "filterByList": filter_by_list,
-        "payloadShape": "constant-entity-list-and-bool-filters-exact-eof",
     }
 
 
@@ -4046,7 +2760,7 @@ def _decode_scripted_char_patrol_fields(payload: bytes) -> dict[str, Any]:
     """Decode the exact patrol-event key selector and output references."""
     if len(payload) < 31 or payload[17:31] != b"\x04\x01" + _DEFAULT_PARAM_TAIL:
         return {}
-    entity_output = _decode_param_output_ref(payload, 31)
+    entity_output = levelscript_params.decode_param_output_ref(payload, 31)
     if entity_output is None:
         return {}
     entity_ref, cursor = entity_output
@@ -4057,7 +2771,7 @@ def _decode_scripted_char_patrol_fields(payload: bytes) -> dict[str, Any]:
     if cursor >= len(payload) or payload[cursor] != 0xFF:
         return {}
     cursor += 1
-    patrol_output = _decode_param_output_ref(payload, cursor)
+    patrol_output = levelscript_params.decode_param_output_ref(payload, cursor)
     if patrol_output is None:
         return {}
     patrol_ref, cursor = patrol_output
@@ -4069,465 +2783,6 @@ def _decode_scripted_char_patrol_fields(payload: bytes) -> dict[str, Any]:
         "entityOutputRef": entity_ref,
         "patrolIdOutputRef": patrol_ref,
         "payloadShape": "constant-patrol-key-and-output-refs-exact-eof",
-    }
-
-
-def _decode_entity_event_header_scope(payload: bytes) -> dict[str, Any]:
-    """Decode the exact current single-entity EntityEventHeader scope.
-
-    The installed ``Param<ScriptEntityPtr>`` formatter serializes the pointer
-    value followed by the ordinary ``Param`` id/source/path fields.  Accept
-    both the constant pointer form and an authored dynamic property path, then
-    require a null target-list input/output and ``SPECIFY_ENTITY``.  This
-    exposes the serialized receiver selector; it never infers mission
-    ownership from an entity, slot, or property name.
-    """
-    cursor = 17
-    if cursor + 14 > len(payload) or payload[cursor] != 0x04:
-        return {}
-    validate_value = payload[cursor + 1]
-    if validate_value not in (0, 1):
-        return {}
-    validate_id_ref = struct.unpack_from("<i", payload, cursor + 2)[0]
-    validate_source = struct.unpack_from("<i", payload, cursor + 6)[0]
-    validate_path_size = struct.unpack_from("<i", payload, cursor + 10)[0]
-    cursor += 14
-    if validate_path_size == -1:
-        validate_path = None
-    elif 0 <= validate_path_size <= 512 and cursor + validate_path_size <= len(payload):
-        try:
-            validate_path = payload[cursor : cursor + validate_path_size].decode("utf-8")
-        except UnicodeDecodeError:
-            return {}
-        cursor += validate_path_size
-    else:
-        return {}
-    if cursor + 27 > len(payload) or payload[cursor : cursor + 2] != b"\x04\x03":
-        return {}
-    logic_id = struct.unpack_from("<Q", payload, cursor + 2)[0]
-    slot_id = struct.unpack_from("<I", payload, cursor + 10)[0]
-    use_slot_id = payload[cursor + 14]
-    if use_slot_id not in (0, 1):
-        return {}
-    cursor += 15
-    if cursor + 12 > len(payload):
-        return {}
-    target_id_ref = struct.unpack_from("<i", payload, cursor)[0]
-    target_source = struct.unpack_from("<i", payload, cursor + 4)[0]
-    target_path_size = struct.unpack_from("<i", payload, cursor + 8)[0]
-    cursor += 12
-    if target_path_size == -1:
-        target_path = None
-    elif 0 <= target_path_size <= 512 and cursor + target_path_size <= len(payload):
-        try:
-            target_path = payload[cursor : cursor + target_path_size].decode("utf-8")
-        except UnicodeDecodeError:
-            return {}
-        cursor += target_path_size
-    else:
-        return {}
-    if payload[cursor : cursor + 17] != b"\x04" + b"\xff" * 8 + b"\x00" * 4 + b"\xff" * 4:
-        return {}
-    cursor += 17
-    target_list_output_present = False
-    target_list_output_encoding = "omitted-null"
-    if cursor < len(payload) and payload[cursor] == 0xFF:
-        # Older/current records may write an explicit null ParamOutput for the
-        # target list.  Other current member-count layouts omit that trailing
-        # null and place triggerTarget immediately after targetEntityList.
-        cursor += 1
-        target_list_output_encoding = "explicit-null"
-    if cursor + 4 > len(payload):
-        return {}
-    trigger_target = struct.unpack_from("<i", payload, cursor)[0]
-    cursor += 4
-    if trigger_target != 1:
-        return {}
-    return {
-        "validateParam": {
-            "constValue": bool(validate_value),
-            "idRef": validate_id_ref,
-            "paramSource": validate_source,
-            "path": validate_path,
-        },
-        "entityEventScope": "specified-entity",
-        "triggerTarget": "SPECIFY_ENTITY",
-        "targetEntity": {
-            "logicId": logic_id,
-            "slotId": slot_id,
-            "useSlotId": bool(use_slot_id),
-        },
-        "targetEntityParam": {
-            "idRef": target_id_ref,
-            "paramSource": target_source,
-            "path": target_path,
-        },
-        "targetEntityListPresent": False,
-        "targetEntityListOutputPresent": target_list_output_present,
-        "targetEntityListOutputEncoding": target_list_output_encoding,
-        "_subtypeOffset": cursor,
-    }
-
-
-def _decode_script_stage_changed_fields(payload: bytes) -> dict[str, Any]:
-    """Decode the current OnScriptStageChanged subtype prefix.
-
-    Native setter order proves ``_newStageFilter`` precedes
-    ``_newStageOutput``.  A present Param<int> is encoded at offset 36 as an
-    object tag, i32 constant, and the exact three-part default source/path
-    tail.  A null filter is one byte.  The record window may include later
-    outer action-map bytes, so only this guarded subtype prefix is consumed.
-    """
-    scope = _decode_script_event_header_scope(payload)
-    cursor = scope.pop("_subtypeOffset", None)
-    if not scope or not isinstance(cursor, int) or cursor >= len(payload):
-        return {}
-    out = dict(scope)
-    filter_offset = cursor
-    if payload[cursor] == 0xFF:
-        cursor += 1
-        out["newStageFilterPresent"] = False
-        out["newStageFilterOffset"] = _offset_hex(filter_offset)
-    elif payload[cursor] == 0x04 and cursor + 13 <= len(payload):
-        cursor += 1
-        stage_value = struct.unpack_from("<i", payload, cursor)[0]
-        cursor += 4
-        stage_id_ref = struct.unpack_from("<i", payload, cursor)[0]
-        cursor += 4
-        stage_source = struct.unpack_from("<i", payload, cursor)[0]
-        cursor += 4
-        if cursor + 4 > len(payload):
-            return {}
-        path_size = struct.unpack_from("<i", payload, cursor)[0]
-        cursor += 4
-        if path_size == -1:
-            stage_path = None
-        elif 0 <= path_size <= 512 and cursor + path_size <= len(payload):
-            try:
-                stage_path = payload[cursor : cursor + path_size].decode("utf-8")
-            except UnicodeDecodeError:
-                return {}
-            cursor += path_size
-        else:
-            return {}
-        out.update({
-            "newStageFilterPresent": True,
-            "newStageFilter": stage_value,
-            "newStageFilterParam": {
-                "constValue": stage_value,
-                "idRef": stage_id_ref,
-                "paramSource": stage_source,
-                "path": stage_path,
-            },
-            "newStageFilterOffset": _offset_hex(filter_offset),
-        })
-    else:
-        return {}
-
-    output_offset = cursor
-    if cursor >= len(payload):
-        return {}
-    if payload[cursor] == 0xFF:
-        cursor += 1
-        out["newStageOutputPresent"] = False
-    elif payload[cursor] == 0x02 and cursor + 9 <= len(payload):
-        cursor += 1
-        output_source = struct.unpack_from("<i", payload, cursor)[0]
-        cursor += 4
-        output_size = struct.unpack_from("<i", payload, cursor)[0]
-        cursor += 4
-        if output_size < 0 or output_size > 512 or cursor + output_size > len(payload):
-            return {}
-        try:
-            output_path = payload[cursor : cursor + output_size].decode("utf-8")
-        except UnicodeDecodeError:
-            return {}
-        cursor += output_size
-        out.update({
-            "newStageOutputPresent": True,
-            "newStageOutputParam": {
-                "paramSource": output_source,
-                "path": output_path,
-            },
-        })
-    else:
-        return {}
-    out["newStageOutputOffset"] = _offset_hex(output_offset)
-    out["subtypeConsumedBytes"] = cursor - filter_offset
-    return out
-
-
-def _decode_spawner_begin_fields(payload: bytes, *, wave: bool) -> dict[str, Any]:
-    """Decode the current exact SpawnerGroup/WaveBegin consumer shapes.
-
-    Both event types serialize one inherited Param<bool> before their subtype
-    fields.  The current residual Story consumers use constant strings,
-    constant SpawnerPtr ids, null outputs, and end exactly after the final
-    output marker.  Other parameter/output variants intentionally fail closed.
-    """
-    param_tail = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
-    inherited_filter = b"\x04\x01" + param_tail
-    if len(payload) < 31 or payload[17:31] != inherited_filter:
-        return {}
-
-    cursor = 31
-
-    def read_string_param() -> str | None:
-        nonlocal cursor
-        if cursor + 5 > len(payload) or payload[cursor] != 0x04:
-            return None
-        size = struct.unpack_from("<I", payload, cursor + 1)[0]
-        cursor += 5
-        if size > 256 or cursor + size + 12 > len(payload):
-            return None
-        raw = payload[cursor : cursor + size]
-        cursor += size
-        if payload[cursor : cursor + 12] != param_tail:
-            return None
-        cursor += 12
-        try:
-            return raw.decode("utf-8")
-        except UnicodeDecodeError:
-            return None
-
-    def read_spawner_param() -> int | None:
-        nonlocal cursor
-        if cursor + 21 > len(payload) or payload[cursor] != 0x04:
-            return None
-        value = struct.unpack_from("<Q", payload, cursor + 1)[0]
-        cursor += 9
-        if payload[cursor : cursor + 12] != param_tail:
-            return None
-        cursor += 12
-        return value
-
-    if wave:
-        spawner_id = read_spawner_param()
-        if spawner_id is None or cursor >= len(payload) or payload[cursor] != 0xFF:
-            return {}
-        cursor += 1
-        key = read_string_param()
-        if key is None or cursor >= len(payload) or payload[cursor] != 0xFF:
-            return {}
-        cursor += 1
-        if cursor != len(payload):
-            return {}
-        return {
-            "spawnerFilterId": spawner_id,
-            "spawnerOutputPresent": False,
-            "waveKeyFilter": key,
-            "waveKeyOutputPresent": False,
-            "payloadShape": "constant-spawner-and-wave-key-null-outputs-exact-eof",
-        }
-
-    key = read_string_param()
-    if key is None or cursor >= len(payload) or payload[cursor] != 0xFF:
-        return {}
-    cursor += 1
-    spawner_id = read_spawner_param()
-    if spawner_id is None or cursor >= len(payload) or payload[cursor] != 0xFF:
-        return {}
-    cursor += 1
-    if cursor != len(payload):
-        return {}
-    return {
-        "groupKeyFilter": key,
-        "groupKeyOutputPresent": False,
-        "spawnerFilterId": spawner_id,
-        "spawnerOutputPresent": False,
-        "payloadShape": "constant-group-key-and-spawner-null-outputs-exact-eof",
-    }
-
-
-def _decode_spawner_complete_fields(payload: bytes) -> dict[str, Any]:
-    """Decode the exact current ``OnSpawnerComplete`` consumer shape.
-
-    The installed formatter appends ``_spawnerFilter: Param<SpawnerPtr>`` and
-    ``_spawnerOutput: ParamOutput<SpawnerPtr>`` after the inherited
-    ``ActionHeader._validate`` parameter.  The current residual Story consumer
-    uses one constant uint64 spawner id, a null output, and exact EOF.
-    """
-    param_tail = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
-    inherited_filter = b"\x04\x01" + param_tail
-    if (
-        len(payload) != 53
-        or payload[17:31] != inherited_filter
-        or payload[31] != 0x04
-        or payload[40:52] != param_tail
-        or payload[52] != 0xFF
-    ):
-        return {}
-    return {
-        "spawnerFilterId": struct.unpack_from("<Q", payload, 32)[0],
-        "spawnerOutputPresent": False,
-        "payloadShape": "constant-spawner-null-output-exact-eof",
-    }
-
-
-def _decode_spawner_entity_spawn_fields(payload: bytes) -> dict[str, Any]:
-    """Decode the exact current OnSpawnerEntitySpawn selector/output shape."""
-    param_tail = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
-    if len(payload) < 90 or payload[17:31] != b"\x04\x01" + param_tail:
-        return {}
-    cursor = 31
-
-    def read_output() -> str | None:
-        nonlocal cursor
-        if cursor + 9 > len(payload) or payload[cursor] != 0x02:
-            return None
-        source = struct.unpack_from("<i", payload, cursor + 1)[0]
-        size = struct.unpack_from("<i", payload, cursor + 5)[0]
-        cursor += 9
-        if source != 0 or size <= 0 or size > 256 or cursor + size > len(payload):
-            return None
-        try:
-            value = payload[cursor : cursor + size].decode("utf-8")
-        except UnicodeDecodeError:
-            return None
-        cursor += size
-        return value
-
-    def read_i32_param() -> int | None:
-        nonlocal cursor
-        if cursor + 17 > len(payload) or payload[cursor] != 0x04:
-            return None
-        value = struct.unpack_from("<i", payload, cursor + 1)[0]
-        if payload[cursor + 5 : cursor + 17] != param_tail:
-            return None
-        cursor += 17
-        return value
-
-    def read_string_param() -> str | None:
-        nonlocal cursor
-        if cursor + 5 > len(payload) or payload[cursor] != 0x04:
-            return None
-        size = struct.unpack_from("<i", payload, cursor + 1)[0]
-        cursor += 5
-        if size <= 0 or size > 256 or cursor + size + 12 > len(payload):
-            return None
-        try:
-            value = payload[cursor : cursor + size].decode("utf-8")
-        except UnicodeDecodeError:
-            return None
-        cursor += size
-        if payload[cursor : cursor + 12] != param_tail:
-            return None
-        cursor += 12
-        return value
-
-    def read_u64_param() -> int | None:
-        nonlocal cursor
-        if cursor + 21 > len(payload) or payload[cursor] != 0x04:
-            return None
-        value = struct.unpack_from("<Q", payload, cursor + 1)[0]
-        if payload[cursor + 9 : cursor + 21] != param_tail:
-            return None
-        cursor += 21
-        return value
-
-    entity_output = read_output()
-    entity_template_filter = read_i32_param()
-    group_key = read_string_param()
-    group_output = read_output()
-    spawner_id = read_u64_param()
-    if (
-        not entity_output
-        or entity_template_filter is None
-        or not group_key
-        or not group_output
-        or spawner_id is None
-        or cursor >= len(payload)
-        or payload[cursor] != 0xFF
-    ):
-        return {}
-    cursor += 1
-    wave_output = read_output()
-    if not wave_output or cursor != len(payload):
-        return {}
-    return {
-        "entityOutputRef": entity_output,
-        "entityTemplateIdFilter": entity_template_filter,
-        "groupKeyFilter": group_key,
-        "groupKeyOutputRef": group_output,
-        "spawnerFilterId": spawner_id,
-        "spawnerOutputPresent": False,
-        "waveKeyOutputRef": wave_output,
-        "payloadShape": "constant-spawner-group-and-template-exact-eof",
-    }
-
-
-def _decode_spawner_entity_lifecycle_fields(payload: bytes) -> dict[str, Any]:
-    """Decode current spawn-entity die/start/end filters and outputs.
-
-    Installed MemoryPack setter order is entity output, filter type, group
-    filter/output, spawner filter, then wave filter/output.  Nullable group and
-    wave filters are retained as nulls; they are not inferred from filterType.
-    """
-    if len(payload) < 31 or payload[17:31] != b"\x04\x01" + _DEFAULT_PARAM_TAIL:
-        return {}
-    cursor = 31
-
-    entity_output = _decode_param_output(payload, cursor)
-    if entity_output is None:
-        return {}
-    entity_output_detail, cursor = entity_output
-
-    filter_type = _decode_i32_param(payload, cursor)
-    if filter_type is None:
-        return {}
-    filter_type_detail, cursor = filter_type
-
-    def read_optional_string() -> tuple[str | None, int] | None:
-        nonlocal cursor
-        if cursor >= len(payload):
-            return None
-        if payload[cursor] == 0xFF:
-            cursor += 1
-            return None, cursor
-        decoded = _decode_constant_string_param(payload, cursor)
-        if decoded is None:
-            return None
-        value, cursor = decoded
-        return value, cursor
-
-    group_filter = read_optional_string()
-    if group_filter is None:
-        return {}
-    group_key, _ = group_filter
-
-    group_output = _decode_param_output(payload, cursor)
-    if group_output is None:
-        return {}
-    group_output_detail, cursor = group_output
-
-    if cursor + 21 > len(payload) or payload[cursor] != 0x04:
-        return {}
-    spawner_id = struct.unpack_from("<Q", payload, cursor + 1)[0]
-    if payload[cursor + 9 : cursor + 21] != _DEFAULT_PARAM_TAIL:
-        return {}
-    cursor += 21
-
-    wave_filter = read_optional_string()
-    if wave_filter is None:
-        return {}
-    wave_key, _ = wave_filter
-
-    wave_output = _decode_param_output(payload, cursor)
-    if wave_output is None:
-        return {}
-    wave_output_detail, cursor = wave_output
-    if cursor != len(payload):
-        return {}
-
-    return {
-        "entityOutputParam": entity_output_detail,
-        "filterType": filter_type_detail,
-        "groupKeyFilter": group_key,
-        "groupKeyOutputParam": group_output_detail,
-        "spawnerFilterId": spawner_id,
-        "waveKeyFilter": wave_key,
-        "waveKeyOutputParam": wave_output_detail,
-        "payloadShape": "spawner-entity-lifecycle-filters-and-outputs-exact-eof",
     }
 
 
@@ -4607,7 +2862,7 @@ def _decode_named_native_event_detail(
 
     detail: dict[str, Any] = {}
     if native_header_name == "ScriptEvent_OnScriptActive":
-        scope = _decode_script_event_header_scope(payload)
+        scope = levelscript_script_event_scope.decode_script_event_header_scope(payload)
         scope.pop("_subtypeOffset", None)
         if scope:
             detail = {
@@ -4620,7 +2875,7 @@ def _decode_named_native_event_detail(
                 "summary": "local LevelScript runtime becomes active",
             }
     elif native_header_name == "ScriptEvent_OnScriptComplete":
-        scope = _decode_script_event_header_scope(payload)
+        scope = levelscript_script_event_scope.decode_script_event_header_scope(payload)
         subtype_offset = scope.pop("_subtypeOffset", None)
         if scope and isinstance(subtype_offset, int):
             trailing_container_bytes = len(payload) - subtype_offset
@@ -4667,7 +2922,10 @@ def _decode_named_native_event_detail(
                 ),
             }
     elif native_header_name == "ScriptEvent_OnScriptStageChanged":
-        stage_fields = _decode_script_stage_changed_fields(payload)
+        stage_fields = levelscript_script_stage_changed.decode_script_stage_changed_fields(
+            payload,
+            native_header_name,
+        )
         stage_filter = stage_fields.get("newStageFilter")
         if stage_fields:
             detail = {
@@ -4703,7 +2961,7 @@ def _decode_named_native_event_detail(
     } and literal_texts:
         entity_scope: dict[str, Any] = {}
         if native_header_name.startswith("EntityEvent_"):
-            entity_scope = _decode_entity_event_header_scope(payload)
+            entity_scope = levelscript_entity_event_scope.decode_entity_event_header_scope(payload)
             entity_scope.pop("_subtypeOffset", None)
         detail = {
             "type": native_header_name,
@@ -4747,7 +3005,10 @@ def _decode_named_native_event_detail(
             "summary": f"local dialog exit {literal_texts[0]}",
         }
     elif native_header_name == "LevelEvent_OnSpawnerGroupBegin":
-        spawner_fields = _decode_spawner_begin_fields(payload, wave=False)
+        spawner_fields = levelscript_spawner_events.decode_spawner_event_fields(
+            payload,
+            native_header_name,
+        )
         detail = {
             "type": native_header_name,
             **spawner_fields,
@@ -4763,7 +3024,10 @@ def _decode_named_native_event_detail(
             ),
         }
     elif native_header_name == "LevelEvent_OnSpawnerWaveBegin":
-        spawner_fields = _decode_spawner_begin_fields(payload, wave=True)
+        spawner_fields = levelscript_spawner_events.decode_spawner_event_fields(
+            payload,
+            native_header_name,
+        )
         detail = {
             "type": native_header_name,
             **spawner_fields,
@@ -4775,7 +3039,10 @@ def _decode_named_native_event_detail(
             ),
         }
     elif native_header_name == "LevelEvent_OnSpawnerComplete":
-        spawner_fields = _decode_spawner_complete_fields(payload)
+        spawner_fields = levelscript_spawner_events.decode_spawner_event_fields(
+            payload,
+            native_header_name,
+        )
         if spawner_fields:
             detail = {
                 "type": native_header_name,
@@ -4793,7 +3060,10 @@ def _decode_named_native_event_detail(
                 ),
             }
     elif native_header_name == "LevelEvent_OnSpawnerEntitySpawn":
-        spawner_fields = _decode_spawner_entity_spawn_fields(payload)
+        spawner_fields = levelscript_spawner_events.decode_spawner_event_fields(
+            payload,
+            native_header_name,
+        )
         if spawner_fields:
             detail = {
                 "type": native_header_name,
@@ -4811,7 +3081,10 @@ def _decode_named_native_event_detail(
         "LevelEvent_OnSpawnerEntityDieStart",
         "LevelEvent_OnSpawnerEntityDieEnd",
     }:
-        spawner_fields = _decode_spawner_entity_lifecycle_fields(payload)
+        spawner_fields = levelscript_spawner_events.decode_spawner_event_fields(
+            payload,
+            native_header_name,
+        )
         if spawner_fields:
             phase = {
                 "LevelEvent_OnSpawnerEntityDie": "dies",
@@ -4868,8 +3141,11 @@ def _decode_named_native_event_detail(
             "serializedMissionOrQuestId": False,
             "summary": "skip-battle popup is confirmed",
         }
-    elif native_header_name == "LevelEvent_OnEntityCastSkill":
-        skill_fields = _decode_entity_cast_skill_fields(payload)
+    elif native_header_name == levelscript_entity_events.ENTITY_CAST_SKILL:
+        skill_fields = levelscript_entity_events.decode_entity_event_fields(
+            payload,
+            native_header_name,
+        )
         if skill_fields:
             detail = {
                 "type": native_header_name,
@@ -4887,8 +3163,11 @@ def _decode_named_native_event_detail(
                     else "any entity casts a skill (filter mode disabled)"
                 ),
             }
-    elif native_header_name == "LevelEvent_OnAnyEntityDie":
-        any_die_fields = _decode_any_entity_die_fields(payload)
+    elif native_header_name == levelscript_entity_events.ANY_ENTITY_DIE:
+        any_die_fields = levelscript_entity_events.decode_entity_event_fields(
+            payload,
+            native_header_name,
+        )
         if any_die_fields:
             detail = {
                 "type": native_header_name,
@@ -4903,8 +3182,11 @@ def _decode_named_native_event_detail(
                     "list dies"
                 ),
             }
-    elif native_header_name == "LevelEvent_OnSpecificEntityDie":
-        entity_fields = _decode_specific_entity_die_fields(payload)
+    elif native_header_name == levelscript_entity_events.SPECIFIC_ENTITY_DIE:
+        entity_fields = levelscript_entity_events.decode_entity_event_fields(
+            payload,
+            native_header_name,
+        )
         if entity_fields:
             target = entity_fields["entityFilter"]
             if target.get("useSlotId"):
@@ -4958,7 +3240,7 @@ def _decode_named_native_event_detail(
                 ),
             }
     elif native_header_name == "EntityEvent_OnSavePropertyChanged":
-        entity_scope = _decode_entity_event_header_scope(payload)
+        entity_scope = levelscript_entity_event_scope.decode_entity_event_header_scope(payload)
         entity_scope.pop("_subtypeOffset", None)
         if entity_scope and literal_texts:
             target = entity_scope["targetEntity"]
@@ -4985,7 +3267,7 @@ def _decode_named_native_event_detail(
                 ),
             }
     elif native_header_name == "EntityEvent_OnInteractiveStateChanged":
-        entity_scope = _decode_entity_event_header_scope(payload)
+        entity_scope = levelscript_entity_event_scope.decode_entity_event_header_scope(payload)
         entity_scope.pop("_subtypeOffset", None)
         if entity_scope:
             target = entity_scope["targetEntity"]
@@ -5009,7 +3291,7 @@ def _decode_named_native_event_detail(
                 "summary": f"{receiver} interactive state changes",
             }
     elif native_header_name == "EntityEvent_OnUIInteract":
-        entity_scope = _decode_entity_event_header_scope(payload)
+        entity_scope = levelscript_entity_event_scope.decode_entity_event_header_scope(payload)
         subtype_offset = entity_scope.pop("_subtypeOffset", None)
         if entity_scope and isinstance(subtype_offset, int):
             # Current fields are ``_optionIndex`` output followed by the
@@ -5048,7 +3330,7 @@ def _decode_named_native_event_detail(
                 ),
             }
     elif native_header_name == "EntityEvent_OnLeaderEnterTrigger":
-        entity_scope = _decode_entity_event_header_scope(payload)
+        entity_scope = levelscript_entity_event_scope.decode_entity_event_header_scope(payload)
         entity_scope.pop("_subtypeOffset", None)
         if entity_scope:
             target = entity_scope["targetEntity"]
@@ -5104,122 +3386,6 @@ def _extract_tail_local_refs(payload: bytes) -> list[int]:
     return refs
 
 
-def _decode_split_action_refs(payload: bytes) -> list[int]:
-    """Decode the exact current-build ``Split.actions`` local-id list.
-
-    The installed ``SplitForMemoryPack`` formatter serializes one list.  Its
-    payload is therefore a u32 count followed by that many signed local action
-    ids.  Requiring the payload length to match exactly prevents arbitrary
-    scalar tails from being promoted into control-flow edges.
-    """
-    if len(payload) < 4:
-        return []
-    count = struct.unpack_from("<I", payload, 0)[0]
-    if count > 64 or len(payload) != 4 + count * 4:
-        return []
-    refs = [
-        struct.unpack_from("<i", payload, 4 + index * 4)[0]
-        for index in range(count)
-    ]
-    if any(ref < 0 or ref > 0x10000 for ref in refs):
-        return []
-    return refs
-
-
-def _decode_branch_sequence_action_refs(payload: bytes) -> list[int]:
-    """Decode the exact current-build ``Branch._idList`` action sequence.
-
-    The installed formatter serializes ``_idList`` as a u32 count followed by
-    signed local action ids. Original ``GameAssembly.dll`` method
-    ``Beyond.Gameplay.Actions.Branch.Execute`` schedules the entry at
-    ``m_index``, reserves the Branch action between non-final entries,
-    increments the index, and resets it after the final entry. The list is
-    therefore ordered continuation, not mutually exclusive branch arms.
-    """
-    refs = _decode_split_action_refs(payload)
-    if any(ref <= 0 for ref in refs):
-        return []
-    return refs
-
-
-def _decode_if_else_action_refs(payload: bytes) -> dict[str, Any]:
-    """Decode exact ``IfElseAction`` true/false action ids from its tail.
-
-    Current native setter order places the condition first, followed by the
-    false and true action ids.  Those final two signed ints are accepted only
-    when both are plausible same-file local ids; resolution still requires a
-    unique actionList row at the consumer.
-    """
-    if len(payload) < 8:
-        return {}
-    false_id, true_id = struct.unpack_from("<ii", payload, len(payload) - 8)
-    if any(ref < 0 or ref > 0x10000 for ref in (true_id, false_id)):
-        return {}
-    out = {
-        "trueActionLocalId": true_id,
-        "falseActionLocalId": false_id,
-    }
-    condition = payload[:-8]
-    if (
-        len(condition) == 14
-        and condition[:2] == b"\x04\x01"
-        and condition[6:] == b"\xff" * 8
-    ):
-        getter_id = struct.unpack_from("<i", condition, 2)[0]
-        if 0 <= getter_id <= 0x10000:
-            out["conditionGetterLocalId"] = getter_id
-    else:
-        inline_condition = _decode_bool_param(condition, 0)
-        if inline_condition is not None and inline_condition[1] == len(condition):
-            out["conditionParam"] = inline_condition[0]
-    return out
-
-
-def _decode_while_action(payload: bytes) -> dict[str, Any]:
-    """Decode exact ``WhileAction`` condition and loop-body action id.
-
-    The installed ``WhileActionForMemoryPack`` exposes generated setters for
-    ``_condition`` followed by ``_doID``. The first field is one authored
-    ``Param<bool>`` and the final field is the signed local action id.
-    """
-    condition = _decode_bool_param(payload, 0)
-    condition_action_local_id: int | None = None
-    if condition is not None:
-        condition_detail, cursor = condition
-    elif (
-        len(payload) >= 14
-        and payload[0] == 0x04
-        and payload[1] in (0, 1)
-        and payload[6:14] == b"\xff" * 8
-    ):
-        # Action-output parameters use the producing action id followed by
-        # source/path sentinels, as in `$27@result` conditions.
-        condition_action_local_id = struct.unpack_from("<i", payload, 2)[0]
-        if condition_action_local_id <= 0 or condition_action_local_id > 0x10000:
-            return {}
-        condition_detail = {
-            "value": bool(payload[1]),
-            "idRef": condition_action_local_id,
-            "paramSource": -1,
-            "path": None,
-        }
-        cursor = 14
-    else:
-        return {}
-    if cursor + 4 != len(payload):
-        return {}
-    do_action_local_id = struct.unpack_from("<i", payload, cursor)[0]
-    if do_action_local_id <= 0 or do_action_local_id > 0x10000:
-        return {}
-    out = {
-        "whileConditionParam": condition_detail,
-        "whileDoActionLocalId": do_action_local_id,
-    }
-    if condition_action_local_id is not None:
-        out["whileConditionActionLocalId"] = condition_action_local_id
-    return out
-
-
 def _decode_wait_for_seconds_in_trigger_volume_action(
     payload: bytes,
 ) -> dict[str, Any]:
@@ -5227,7 +3393,7 @@ def _decode_wait_for_seconds_in_trigger_volume_action(
     if len(payload) < 10 or payload[0] != 0xFF:
         return {}
     fail_id = struct.unpack_from("<i", payload, 1)[0]
-    seconds = _decode_float_param(payload, 5)
+    seconds = levelscript_params.decode_float_param(payload, 5)
     if seconds is None or seconds[1] + 4 > len(payload):
         return {}
     success_id = struct.unpack_from("<i", payload, seconds[1])[0]
@@ -5294,79 +3460,6 @@ def _decode_main_char_move_to_action(payload: bytes) -> dict[str, Any]:
     }
 
 
-def _decode_call_server_action(payload: bytes) -> dict[str, Any]:
-    """Decode the six generated fields in the current ``CallServer`` prefix."""
-    if len(payload) < 4:
-        return {}
-
-    # MemoryPack writes ``_callClientOutputUIDs`` first.  Most current rows
-    # serialize a null list (-1), which made the former fixed-prefix decoder
-    # look complete.  Non-null lists are the server-callback header UIDs and
-    # must be consumed before the remaining five fields.
-    output_count = struct.unpack_from("<i", payload, 0)[0]
-    if output_count < -1 or output_count > 4096:
-        return {}
-    cursor = 4
-    call_client_output_uids: list[str] | None = None
-    if output_count >= 0:
-        call_client_output_uids = []
-        for _index in range(output_count):
-            if cursor + 4 > len(payload):
-                return {}
-            value_size = struct.unpack_from("<i", payload, cursor)[0]
-            cursor += 4
-            if value_size < 0 or cursor + value_size > len(payload):
-                return {}
-            try:
-                value = payload[cursor : cursor + value_size].decode("utf-8")
-            except UnicodeDecodeError:
-                return {}
-            cursor += value_size
-            call_client_output_uids.append(value)
-
-    if cursor + 6 > len(payload) or payload[cursor : cursor + 2] != b"\x04\x01":
-        return {}
-    event_args_size = struct.unpack_from("<i", payload, cursor + 2)[0]
-    cursor += 6
-    if event_args_size <= 0 or cursor + event_args_size > len(payload):
-        return {}
-    try:
-        event_args_path = payload[cursor : cursor + event_args_size].decode("utf-8")
-    except UnicodeDecodeError:
-        return {}
-    event_args_tail = _decode_param_tail(payload, cursor + event_args_size)
-    if event_args_tail is None:
-        return {}
-    event_args_detail, cursor = event_args_tail
-    event_name = _decode_constant_string_param(payload, cursor)
-    if event_name is None:
-        return {}
-    event_name_value, cursor = event_name
-    if cursor + 3 > len(payload) or any(
-        value not in (0, 1)
-        for value in payload[cursor : cursor + 3]
-    ):
-        return {}
-    use_custom_event, wait_for_callback, with_event_args = (
-        bool(value) for value in payload[cursor:cursor + 3]
-    )
-    cursor += 3
-    return {
-        "payloadShape": "six-call-server-fields-exact-prefix",
-        "callClientOutputUIDs": call_client_output_uids,
-        "eventArgsPtr": {
-            "pathValue": event_args_path,
-            **event_args_detail,
-        },
-        "eventName": event_name_value,
-        "useCustomEvent": use_custom_event,
-        "waitForCallback": wait_for_callback,
-        "withEventArgs": with_event_args,
-        "consumedBytes": cursor,
-        "trailingBytes": len(payload) - cursor,
-    }
-
-
 CALLSERVER_SERIALIZED_CONTRACT_FIELDS = (
     "payloadShape",
     "callClientOutputUIDs",
@@ -5423,6 +3516,7 @@ def _decode_entity_compare_getter(payload: bytes, property_outputs: list[dict]) 
 
 
 def _read_compact_string(payload: bytes, offset: int) -> tuple[str | None, int | None]:
+    """Read a compact ASCII string shared by task-map schemas."""
     if offset < 0 or offset + 4 > len(payload):
         return None, None
     size = struct.unpack_from("<I", payload, offset)[0]
@@ -5432,105 +3526,6 @@ def _read_compact_string(payload: bytes, offset: int) -> tuple[str | None, int |
     if not _is_printable_ascii(raw):
         return None, None
     return raw.decode("ascii", errors="replace"), offset + 4 + size
-
-
-def _append_small_i32_tail(payload: bytes, cursor: int, out: dict[str, Any]) -> None:
-    if cursor < 0 or cursor >= len(payload):
-        return
-    remaining = len(payload) - cursor
-    if remaining != 4:
-        if 0 < remaining <= 16:
-            out["tailBytes"] = payload[cursor:].hex(" ")
-        return
-    value = struct.unpack_from("<i", payload, cursor)[0]
-    out["tailLocalRef"] = value
-    if 0 <= value <= 0x1000:
-        out["gateLocalRefs"] = [value]
-
-
-def _decode_post_flag_and_tail(payload: bytes, cursor: int, out: dict[str, Any]) -> None:
-    if cursor + 14 > len(payload) or payload[cursor] != 0x04:
-        _append_small_i32_tail(payload, cursor, out)
-        return
-    out["postFlag"] = payload[cursor + 1]
-    out["postFlagOffset"] = _offset_hex(cursor + 1)
-    out["postSentinel"] = payload[cursor + 2 : cursor + 14] == COMPACT_NULL_SENTINEL
-    cursor += 14
-    _append_small_i32_tail(payload, cursor, out)
-
-
-def _decode_compact_property_gate(payload: bytes) -> dict[str, Any]:
-    """Decode the compact 0x0a03 condition/gate payload shape.
-
-    The runtime class is still unnamed. The stable exported shape is a
-    sentinel-headed compact condition with one or two operand slots, an
-    authored property/key string in many rows, a post-key 0/1 flag, and
-    sometimes a trailing small int that resolves to a local action id.
-    """
-    if len(payload) < 15:
-        return {}
-    out: dict[str, Any] = {
-        "payloadShape": "compact-condition-gate",
-        "headByte": payload[0],
-        "headSentinel": payload[1:13] == COMPACT_NULL_SENTINEL,
-        "firstTag": payload[13],
-        "firstFlag": payload[14],
-    }
-    if not out["headSentinel"] or payload[13] != 0x04:
-        return _drop_empty(out)
-
-    # Common key form:
-    #   00 <sentinel> 04 00 ff ff ff ff <typeCode> <len> <key>
-    if len(payload) >= 27 and payload[15:19] == b"\xff\xff\xff\xff":
-        type_code = struct.unpack_from("<I", payload, 19)[0]
-        key_text, cursor = _read_compact_string(payload, 23)
-        if key_text is not None and cursor is not None:
-            out.update(
-                {
-                    "schema": "single-key",
-                    "typeCode": type_code,
-                    "propertyKey": key_text,
-                    "propertyKeyOffset": _offset_hex(27),
-                }
-            )
-            _decode_post_flag_and_tail(payload, cursor, out)
-            return _drop_empty(out)
-
-    # Two-slot key form:
-    #   00 <sentinel> 04 01 <sentinel> 04 00 ff ff ff ff <typeCode> <len> <key>
-    if len(payload) >= 41 and payload[15:27] == COMPACT_NULL_SENTINEL and payload[27] == 0x04:
-        type_code = struct.unpack_from("<I", payload, 33)[0]
-        key_text, cursor = _read_compact_string(payload, 37)
-        if key_text is not None and cursor is not None:
-            out.update(
-                {
-                    "schema": "two-slot-key",
-                    "secondTag": payload[27],
-                    "secondFlag": payload[28],
-                    "typeCode": type_code,
-                    "propertyKey": key_text,
-                    "propertyKeyOffset": _offset_hex(41),
-                }
-            )
-            _decode_post_flag_and_tail(payload, cursor, out)
-            return _drop_empty(out)
-
-    # No-key local-ref form. These rows compare a local/scalar slot and do not
-    # carry a property name in the action payload.
-    if len(payload) >= 41 and payload[19:27] == b"\xff\xff\xff\xff\xff\xff\xff\xff" and payload[27] == 0x04:
-        out.update(
-            {
-                "schema": "local-ref",
-                "firstLocalRef": struct.unpack_from("<i", payload, 15)[0],
-                "secondTag": payload[27],
-                "secondFlag": payload[28],
-                "secondSentinel": payload[29:41] == COMPACT_NULL_SENTINEL,
-            }
-        )
-        _append_small_i32_tail(payload, 41, out)
-        return _drop_empty(out)
-
-    return _drop_empty(out)
 
 
 def _decode_action_header_prefix(payload: bytes) -> dict[str, Any]:
@@ -5814,110 +3809,6 @@ def decode_levelscript_action_header_validation(
     }
 
 
-def _decode_entity_hp_changed_event(payload: bytes) -> dict[str, Any]:
-    """Decode the current exact single-entity OnEntityHpChanged shape.
-
-    This intentionally accepts only the fully replayed 84-byte form used by
-    the current e11 Story trigger. Other list/path/output variants remain raw.
-    """
-    if len(payload) != 84:
-        # The current dynamic-list form stores a LevelScript property path in
-        # ``_entityFilter`` and a null ``_entityOutput`` before ``_hpRatio``.
-        if len(payload) < 70 or payload[35] != 0x04 or payload[36:44] != b"\xff" * 8:
-            return {}
-        direction = struct.unpack_from("<i", payload, 31)[0]
-        source = struct.unpack_from("<i", payload, 44)[0]
-        path_size = struct.unpack_from("<i", payload, 48)[0]
-        path_start = 52
-        path_end = path_start + path_size
-        if (
-            direction not in (0, 1, 2)
-            or path_size <= 0
-            or path_size > 256
-            or path_end + 18 != len(payload)
-            or payload[path_end] != 0xFF
-            or payload[path_end + 1] != 0x04
-            or payload[path_end + 6 : path_end + 18]
-            != b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
-        ):
-            return {}
-        try:
-            path = payload[path_start:path_end].decode("utf-8")
-        except UnicodeDecodeError:
-            return {}
-        hp_ratio = struct.unpack_from("<f", payload, path_end + 2)[0]
-        if not math.isfinite(hp_ratio) or not 0 <= hp_ratio <= 1:
-            return {}
-        direction_name = ("Down", "Up", "UpAndDown")[direction]
-        direction_phrase = ("falls", "rises", "crosses")[direction]
-        return {
-            "type": "LevelEvent_OnEntityHpChanged",
-            "changedDirection": direction,
-            "changedDirectionName": direction_name,
-            "entityListFilter": {
-                "paramSource": source,
-                "path": path,
-            },
-            "entityOutputPresent": False,
-            "hpRatio": round(hp_ratio, 6),
-            "transport": "local-entity-hp-runtime-event",
-            "serverExchange": False,
-            "serializedMissionOrQuestId": False,
-            "summary": (
-                f"entity list {path} HP {direction_phrase} through "
-                f"{round(hp_ratio * 100, 3):g}%"
-            ),
-            "payloadShape": "dynamic-entity-list-hp-ratio-event",
-        }
-    if not (
-        payload[17] == 4
-        and payload[18] in (0, 1)
-        and struct.unpack_from("<i", payload, 19)[0] == -1
-        and struct.unpack_from("<i", payload, 23)[0] == 0
-        and struct.unpack_from("<i", payload, 27)[0] == -1
-        and payload[35] == 4
-        and struct.unpack_from("<i", payload, 36)[0] == 1
-        and payload[40] == 3
-        and payload[53] in (0, 1)
-        and struct.unpack_from("<i", payload, 54)[0] == -1
-        and struct.unpack_from("<i", payload, 58)[0] == 0
-        and struct.unpack_from("<i", payload, 62)[0] == -1
-        and payload[66] == 0xFF
-        and payload[67] == 4
-        and struct.unpack_from("<i", payload, 72)[0] == -1
-        and struct.unpack_from("<i", payload, 76)[0] == 0
-        and struct.unpack_from("<i", payload, 80)[0] == -1
-    ):
-        return {}
-    direction = struct.unpack_from("<i", payload, 31)[0]
-    logic_id = struct.unpack_from("<Q", payload, 41)[0]
-    slot_id = struct.unpack_from("<I", payload, 49)[0]
-    hp_ratio = struct.unpack_from("<f", payload, 68)[0]
-    if direction not in (0, 1, 2) or not math.isfinite(hp_ratio) or not 0 <= hp_ratio <= 1:
-        return {}
-    direction_name = ("Down", "Up", "UpAndDown")[direction]
-    direction_phrase = ("falls", "rises", "crosses")[direction]
-    return {
-        "type": "LevelEvent_OnEntityHpChanged",
-        "changedDirection": direction,
-        "changedDirectionName": direction_name,
-        "entityFilter": [{
-            "logicId": logic_id,
-            "slotId": slot_id,
-            "useSlotId": bool(payload[53]),
-        }],
-        "hpRatio": round(hp_ratio, 6),
-        "transport": "local-entity-hp-runtime-event",
-        "serverExchange": False,
-        "serializedMissionOrQuestId": False,
-        "summary": (
-            f"entity slot {slot_id} HP {direction_phrase} through "
-            f"{round(hp_ratio * 100, 3):g}%"
-        ),
-        "payloadShape": "single-entity-hp-ratio-event",
-    }
-
-
 def _decode_list_add_value_entity_ptr(payload: bytes) -> dict[str, Any]:
     """Decode one exact ListAddValueEntityPtr property/output chain."""
     if len(payload) < 50 or payload[0] != 0x04 or payload[1:9] != b"\xff" * 8:
@@ -5954,7 +3845,7 @@ def _decode_list_add_value_entity_ptr(payload: bytes) -> dict[str, Any]:
         value_path = payload[value_path_start:value_path_end].decode("utf-8")
     except UnicodeDecodeError:
         return {}
-    output_match = PROPERTY_OUTPUT_RE.match(value_path)
+    output_match = levelscript_params.PROPERTY_OUTPUT_PATH_RE.match(value_path)
     if not output_match or output_match.group("name") != "entityOutput":
         return {}
     return {
@@ -6082,7 +3973,7 @@ def _decode_audio_float_param(payload: bytes, cursor: int) -> tuple[dict[str, An
 
 
 def _decode_audio_entity_param(payload: bytes, cursor: int) -> tuple[dict[str, Any], int] | None:
-    decoded = _decode_constant_entity_ptr_param(payload, cursor)
+    decoded = levelscript_params.decode_constant_entity_ptr_param(payload, cursor)
     if decoded is None:
         return None
     detail, end = decoded
@@ -6325,7 +4216,7 @@ def _decode_audio_action(
         ),
         (0x0028, 0x09): (
             "BlockAutoMusicChange",
-            (("blockHandle", _decode_param_output),),
+            (("blockHandle", levelscript_params.decode_param_output),),
         ),
         (0x0029, 0x09): (
             "BlockAutoMusicChangeCancel",
@@ -6360,7 +4251,7 @@ def _decode_audio_action(
         (0x034C, 0x0C): (
             "PlayAudiAtPosition",
             (
-                ("audioPlayingId", _decode_param_output),
+                ("audioPlayingId", levelscript_params.decode_param_output),
                 ("key", _decode_audio_string_param),
                 ("position", _decode_vector3_param),
                 ("stopOnRelease", _decode_audio_bool_param),
@@ -6369,7 +4260,7 @@ def _decode_audio_action(
         (0x034E, 0x0B): (
             "PlayAudio",
             (
-                ("audioPlayingId", _decode_param_output),
+                ("audioPlayingId", levelscript_params.decode_param_output),
                 ("key", _decode_audio_string_param),
                 ("stopOnRelease", _decode_audio_bool_param),
             ),
@@ -6379,7 +4270,7 @@ def _decode_audio_action(
             (
                 ("eventName", _decode_audio_string_param),
                 ("playCompleteThreshold", _decode_audio_float_param),
-                ("playingId", _decode_param_output),
+                ("playingId", levelscript_params.decode_param_output),
                 ("playType", _decode_audio_i32_param),
                 ("position", _decode_vector3_param),
                 ("stopAudioOnRelease", _decode_audio_bool_param),
@@ -6425,7 +4316,7 @@ def _decode_audio_action(
             "PlayAudioOnTarget",
             (
                 ("audioKey", _decode_audio_string_param),
-                ("audioPlayingId", _decode_param_output),
+                ("audioPlayingId", levelscript_params.decode_param_output),
                 ("stopOnRelease", _decode_audio_bool_param),
                 ("target", _decode_audio_entity_param),
             ),
@@ -6433,7 +4324,7 @@ def _decode_audio_action(
         (0x0367, 0x11): (
             "PlayStandaloneMusic",
             (
-                ("handleId", _decode_param_output),
+                ("handleId", levelscript_params.decode_param_output),
                 ("playKey", _decode_audio_i32_param),
                 ("playType", _decode_audio_i32_param),
                 ("position", _decode_vector3_param),
@@ -6448,14 +4339,14 @@ def _decode_audio_action(
             "PlayVoice",
             (
                 ("target", _decode_audio_entity_param),
-                ("voiceHandle", _decode_param_output),
+                ("voiceHandle", levelscript_params.decode_param_output),
                 ("voId", _decode_audio_string_param),
             ),
         ),
         (0x0369, 0x0A): (
             "PlayVoiceNarrative",
             (
-                ("voiceHandle", _decode_param_output),
+                ("voiceHandle", levelscript_params.decode_param_output),
                 ("voId", _decode_audio_string_param),
             ),
         ),
@@ -6486,7 +4377,7 @@ def _decode_audio_action(
                 ("boolParam", _decode_audio_bool_param),
                 ("boolParam1", _decode_audio_bool_param),
                 ("boolParam2", _decode_audio_bool_param),
-                ("cueHandlerId", _decode_param_output),
+                ("cueHandlerId", levelscript_params.decode_param_output),
                 ("floatParam", _decode_audio_float_param),
                 ("intParam", _decode_audio_i32_param),
                 ("name", _decode_audio_string_param),
@@ -6502,7 +4393,7 @@ def _decode_audio_action(
                 ("boolParam", _decode_audio_bool_param),
                 ("boolParam1", _decode_audio_bool_param),
                 ("boolParam2", _decode_audio_bool_param),
-                ("cueHandlerId", _decode_param_output),
+                ("cueHandlerId", levelscript_params.decode_param_output),
                 ("floatParam", _decode_audio_float_param),
                 ("intParam", _decode_audio_i32_param),
                 ("name", _decode_audio_string_param),
@@ -6526,7 +4417,7 @@ def _decode_audio_action(
                 ("musicEvent", _decode_audio_string_param),
                 ("musicEventOnRelease", _decode_audio_string_param),
                 ("musicEventType", _decode_audio_i32_param),
-                ("playingId", _decode_param_output),
+                ("playingId", levelscript_params.decode_param_output),
             ),
         ),
         (0x03D5, 0x0F): (
@@ -6782,7 +4673,8 @@ def decode_levelscript_record_payload(
     property_keys = [
         text
         for text in texts
-        if _looks_like_property_key(text) and not PROPERTY_OUTPUT_RE.match(text)
+        if _looks_like_property_key(text)
+        and not levelscript_params.PROPERTY_OUTPUT_PATH_RE.match(text)
     ]
     trigger_slot_ids = (
         _extract_trigger_slot_ids(payload)
@@ -6817,16 +4709,19 @@ def decode_levelscript_record_payload(
                 action_header["filterLevel"] = filter_level
                 action_header["filterLevelSource"] = "record-fixed-field"
             out["actionHeader"] = action_header
-    if header_role and semantic_key == (0x006A, 0x12):
-        event_detail = _decode_entity_hp_changed_event(payload)
-        if event_detail:
-            event_detail["payloadSchemaStatus"] = (
-                "exact_current_build_memorypack_fields"
-            )
-            event_detail["payloadSchemaMappingId"] = (
-                LEVELSCRIPT_NATIVE_EVENT_PAYLOAD_MAPPING_ID
-            )
-            out["nativeEventDetail"] = event_detail
+    event_detail = levelscript_entity_hp_changed.decode_entity_hp_changed_event(
+        payload,
+        semantic_key,
+        header_role=header_role,
+    )
+    if event_detail:
+        event_detail["payloadSchemaStatus"] = (
+            "exact_current_build_memorypack_fields"
+        )
+        event_detail["payloadSchemaMappingId"] = (
+            LEVELSCRIPT_NATIVE_EVENT_PAYLOAD_MAPPING_ID
+        )
+        out["nativeEventDetail"] = event_detail
     if property_outputs:
         out["propertyOutputRefs"] = property_outputs
     if header_role and "nativeEventDetail" not in out:
@@ -6850,7 +4745,7 @@ def decode_levelscript_record_payload(
     if trigger_slot_ids:
         out["triggerSlotIds"] = trigger_slot_ids
     if semantic_key == (0x0003, 0x0A):
-        gate = _decode_compact_property_gate(payload)
+        gate = levelscript_property_gate.decode_compact_property_gate(payload)
         if gate:
             out["compactGate"] = gate
             gate_key = gate.get("propertyKey")
@@ -6868,35 +4763,12 @@ def decode_levelscript_record_payload(
         if branch_refs:
             out["branchLocalRefs"] = branch_refs
             out["branchRole"] = "conditional-terminal-local-refs"
-    if semantic_key == (0x0495, 0x09):
-        split_refs = _decode_split_action_refs(payload)
-        if split_refs:
-            out["splitActionLocalIds"] = split_refs
-            out["branchLocalRefs"] = split_refs
-            out["branchRole"] = "typed-split-action-list"
-    if semantic_key == (0x002D, 0x09):
-        sequence_refs = _decode_branch_sequence_action_refs(payload)
-        if sequence_refs:
-            out["branchSequenceActionLocalIds"] = sequence_refs
-            out["sequenceLocalRefs"] = sequence_refs
-            out["sequenceRole"] = "typed-branch-ordered-action-list"
-    if semantic_key == (0x00FF, 0x0B):
-        if_else_refs = _decode_if_else_action_refs(payload)
-        if if_else_refs:
-            out.update(if_else_refs)
-            out["branchLocalRefs"] = list(dict.fromkeys(
-                ref
-                for field in ("trueActionLocalId", "falseActionLocalId")
-                for ref in [if_else_refs.get(field)]
-                if isinstance(ref, int)
-            ))
-            out["branchRole"] = "typed-if-else-actions"
-    if semantic_key == (0x0501, 0x0A):
-        while_action = _decode_while_action(payload)
-        if while_action:
-            out.update(while_action)
-            out["branchLocalRefs"] = [while_action["whileDoActionLocalId"]]
-            out["branchRole"] = "typed-while-action-body"
+    control_flow = levelscript_control_flow.decode_control_flow_action(
+        payload,
+        semantic_key,
+    )
+    if control_flow:
+        out.update(control_flow)
     switch_action = levelscript_switch_actions.decode_switch_action(
         payload,
         semantic_key,
@@ -7001,7 +4873,7 @@ def decode_levelscript_record_payload(
         if main_char_move_to:
             out["mainCharMoveTo"] = main_char_move_to
     if semantic_key == (0x0034, 0x0E):
-        call_server = _decode_call_server_action(payload)
+        call_server = levelscript_call_server.decode_call_server_action(payload)
         if call_server:
             record_uid = str(record.get("uid") or "").strip()
             event_name = str(call_server.get("eventName") or "").strip()
@@ -7059,7 +4931,15 @@ def decode_levelscript_record_payload(
         (0x01C2, 0x08),
     }:
         getter_payload = _getter_subtype_payload(data, record, next_start)
-        if semantic_key == (0x013A, 0x08):
+        scalar_field, scalar_detail = (
+            levelscript_scalar_getters.decode_scalar_value_getter(
+                getter_payload,
+                semantic_key,
+            )
+        )
+        if scalar_field and scalar_detail:
+            out[scalar_field] = scalar_detail
+        elif semantic_key == (0x013A, 0x08):
             mission_state_getter = _decode_get_mission_state_getter(getter_payload)
             if mission_state_getter:
                 out["getMissionState"] = mission_state_getter
@@ -7079,45 +4959,27 @@ def decode_levelscript_record_payload(
             )
             if mission_state_compare:
                 out["compareMissionState"] = mission_state_compare
-        elif semantic_key == (0x0004, 0x0A):
-            boolean_compare = _decode_boolean_compare_getter(getter_payload)
-            if boolean_compare:
-                out["booleanCompare"] = boolean_compare
-        elif semantic_key == (0x0006, 0x09):
-            boolean_and = _decode_bool_binary_getter(
-                getter_payload,
-                operation="And",
+        elif semantic_key in {
+            (0x0004, 0x0A),
+            (0x0006, 0x09),
+            (0x000A, 0x08),
+            (0x000B, 0x08),
+            (0x000D, 0x09),
+        }:
+            field_name, boolean_detail = (
+                levelscript_boolean_getters.decode_boolean_getter_fields(
+                    getter_payload,
+                    semantic_key,
+                )
             )
-            if boolean_and:
-                out["boolGetterAnd"] = boolean_and
-        elif semantic_key == (0x000A, 0x08):
-            boolean_invert = _decode_bool_invert_getter(getter_payload)
-            if boolean_invert:
-                out["boolGetterInvert"] = boolean_invert
-        elif semantic_key == (0x000B, 0x08):
-            boolean_all = _decode_bool_multi_and_getter(getter_payload)
-            if boolean_all:
-                out["boolGetterMultiAnd"] = boolean_all
-        elif semantic_key == (0x000D, 0x09):
-            boolean_or = _decode_bool_binary_getter(
-                getter_payload,
-                operation="Or",
-            )
-            if boolean_or:
-                out["boolGetterOr"] = boolean_or
+            if field_name and boolean_detail:
+                out[field_name] = boolean_detail
         elif semantic_key == (0x004E, 0x08):
             condition_result = _decode_get_condition_result_getter(
                 getter_payload
             )
             if condition_result:
                 out["getConditionResult"] = condition_result
-        elif semantic_key == (0x0049, 0x0A):
-            float_compare = _decode_number_compare_getter(
-                getter_payload,
-                floating=True,
-            )
-            if float_compare:
-                out["floatNewCompare"] = float_compare
         elif semantic_key == (0x0100, 0x09):
             property_bool = _decode_levelscript_property_bool_getter(
                 getter_payload
@@ -7135,42 +4997,20 @@ def decode_levelscript_record_payload(
             if lsm_completed:
                 out["getLsmIsCompleted"] = lsm_completed
         elif semantic_key == (0x017C, 0x08):
-            getter_bool = _decode_getter_bool(getter_payload)
-            if getter_bool:
-                out["getterBool"] = getter_bool
-        elif semantic_key == (0x0184, 0x08):
-            getter_int = _decode_getter_int(getter_payload)
-            if getter_int:
-                out["getterInt"] = getter_int
-        elif semantic_key == (0x01A5, 0x08):
-            getter_string = _decode_getter_string(getter_payload)
-            if getter_string:
-                out["getterString"] = getter_string
-        elif semantic_key == (0x01AA, 0x0A):
-            int_compare = _decode_number_compare_getter(
-                getter_payload,
-                floating=False,
+            field_name, boolean_detail = (
+                levelscript_boolean_getters.decode_boolean_getter_fields(
+                    getter_payload,
+                    semantic_key,
+                )
             )
-            if int_compare:
-                out["intCompare"] = int_compare
-        elif semantic_key == (0x01AC, 0x09):
-            int_equal = _decode_int_equal_getter(getter_payload)
-            if int_equal:
-                out["intEqual"] = int_equal
+            if field_name and boolean_detail:
+                out[field_name] = boolean_detail
         elif semantic_key == (0x01AD, 0x0A):
             interactive_state = _decode_interactive_check_state_getter(
                 getter_payload
             )
             if interactive_state:
                 out["interactiveCheckState"] = interactive_state
-        elif semantic_key == (0x01BA, 0x09):
-            int_random = _decode_int_random_getter(getter_payload)
-            if int_random:
-                out["intRandom"] = int_random
-        elif semantic_key == (0x01C2, 0x08):
-            gender = _decode_is_endmin_gender_getter(getter_payload)
-            if gender:
-                out["isEndminGender"] = gender
     if key in levelscript_manual_control.MANUAL_CONTROL_ACTIONS:
         manual_control = levelscript_manual_control.decode_manual_levelscript_control(
             payload,
@@ -7219,95 +5059,6 @@ def decode_levelscript_record_payload(
         if texts:
             out["signalKeys"] = texts[:4]
     return _drop_empty(out)
-
-
-def _tail_candidate(data: bytes, offset: int) -> dict[str, Any]:
-    start_shape_offset = offset + 8
-    start_shape, start_shape_end = _decode_levelscript_shape_list(data, start_shape_offset)
-    start_shape_status = str(start_shape.get("status") or "missing")
-    start_shape_count = start_shape.get("count")
-    start_type_offset: int | None = None
-    if start_shape_status in {"null", "present"} and start_shape_end is not None:
-        start_type_offset = start_shape_end
-
-    start_type_raw = _u32(data, start_type_offset) if start_type_offset is not None else None
-    start_type_valid = start_type_raw in LEVELSCRIPT_START_TYPE_NAMES
-    task_map_offset = start_type_offset + 4 if start_type_valid and start_type_offset is not None else None
-    task_map_raw = _u32(data, task_map_offset) if task_map_offset is not None else None
-    task_map_status, task_map_count = _list_status(task_map_raw)
-    task_map_end: int | None = None
-    if task_map_offset is not None and task_map_status == "null":
-        task_map_end = task_map_offset + 4
-    elif (
-        task_map_offset is not None
-        and task_map_status == "present"
-        and task_map_count == 0
-    ):
-        # An empty dictionary has no records.  Its end is exact, so the next
-        # top-level member must begin immediately after the count.  Searching
-        # forward to the final trigger-volume-shaped bytes can otherwise make
-        # an embedded logic ID look like the repeated top-level script ID.
-        task_map_end = task_map_offset + 4
-    trigger_volume_offset = task_map_end
-    trigger_volume: dict[str, Any] = {}
-    trigger_volume_end: int | None = None
-    if trigger_volume_offset is not None:
-        trigger_volume, trigger_volume_end = _decode_trigger_volume_map(data, trigger_volume_offset)
-    elif task_map_offset is not None and task_map_status == "present":
-        (
-            trigger_volume_offset,
-            trigger_volume,
-            trigger_volume_end,
-        ) = _find_final_trigger_volume_map(
-            data,
-            search_start=task_map_offset + 4,
-        )
-    trigger_volume_status = str(trigger_volume.get("status") or "missing")
-    trigger_volume_count = trigger_volume.get("count")
-
-    score = offset
-    if start_type_valid:
-        score += 1_000_000
-    if start_shape_status == "null":
-        score += 100_000
-    elif start_shape_count == 0:
-        score += 50_000
-    if task_map_status in {"null", "present"}:
-        score += 10_000
-    if (
-        trigger_volume_status in {"null", "present"}
-        and trigger_volume.get("parseStatus") != "truncated"
-        and trigger_volume_end == len(data)
-    ):
-        # A completely decoded final top-level member is stronger evidence
-        # than a locally plausible embedded ID and shape/list header.
-        score += 250_000
-
-    return {
-        "scriptIdOffset": offset,
-        "scriptIdOffsetHex": f"0x{offset:x}",
-        "startShapeListOffset": start_shape_offset,
-        "startShapeListStatus": start_shape_status,
-        "startShapeListCount": start_shape_count,
-        "startShapeList": start_shape,
-        "startTypeOffset": start_type_offset,
-        "startTypeOffsetHex": _offset_hex(start_type_offset),
-        "startTypeRaw": start_type_raw if start_type_valid else None,
-        "startTypeName": LEVELSCRIPT_START_TYPE_NAMES.get(
-            start_type_raw if start_type_raw is not None else -1,
-            "",
-        ),
-        "taskMapOffset": task_map_offset,
-        "taskMapOffsetHex": _offset_hex(task_map_offset),
-        "taskMapStatus": task_map_status,
-        "taskMapCount": task_map_count,
-        "triggerVolumesOffset": trigger_volume_offset,
-        "triggerVolumesOffsetHex": _offset_hex(trigger_volume_offset),
-        "triggerVolumesStatus": trigger_volume_status,
-        "triggerVolumesCount": trigger_volume_count,
-        "triggerVolumes": trigger_volume,
-        "score": score,
-    }
 
 
 LEVELSCRIPT_TASK_MISSION_STATE_MAPPING_ID = (
@@ -7625,7 +5376,7 @@ def _decode_generic_task_condition_fields(
         ("param-string", _decode_string_param),
         ("param-string-collection", _decode_string_collection_param),
         ("param-bool", _decode_bool_param),
-        ("param-entity-ptr", _decode_constant_entity_ptr_param),
+        ("param-entity-ptr", levelscript_params.decode_constant_entity_ptr_param),
         ("param-entity-ptr-list", _decode_entity_ptr_list_param),
         ("param-levelscript-ptr", _decode_levelscript_ptr_param),
         ("param-levelscript-task-ptr", _decode_levelscript_task_ptr_param),
@@ -7947,7 +5698,7 @@ def _decode_levelscript_task_condition(
         )
     elif condition_type == "CheckInteractiveDestroyed":
         if not (
-            read_param("entity", _decode_constant_entity_ptr_param)
+            read_param("entity", levelscript_params.decode_constant_entity_ptr_param)
             and read_param("mapId", _decode_string_param)
         ):
             return None
@@ -8015,7 +5766,10 @@ def _decode_levelscript_task_condition(
     elif condition_type == "InteractiveCheckBool":
         if not (
             read_param("compareValue", _decode_bool_param)
-            and read_param("entityId", _decode_constant_entity_ptr_param)
+            and read_param(
+                "entityId",
+                levelscript_params.decode_constant_entity_ptr_param,
+            )
             and read_param("key", _decode_string_param)
             and read_param("levelId", _decode_string_param)
         ):
@@ -8024,7 +5778,10 @@ def _decode_levelscript_task_condition(
         if not (
             read_param("comparer", _decode_i32_param)
             and read_param("compareValue", _decode_i32_param)
-            and read_param("entityId", _decode_constant_entity_ptr_param)
+            and read_param(
+                "entityId",
+                levelscript_params.decode_constant_entity_ptr_param,
+            )
             and read_param("key", _decode_string_param)
             and read_param("levelId", _decode_string_param)
         ):
@@ -8125,7 +5882,7 @@ def _decode_levelscript_check_mission_state_condition(
     use_current_scope = bool(data[cursor])
     use_graph_scope = bool(data[cursor + 1])
     cursor += 2
-    comparer = _decode_constant_i32_param(data, cursor)
+    comparer = levelscript_params.decode_constant_i32_param(data, cursor)
     if comparer is None or comparer[1] > limit:
         return None
     comparer_raw, cursor = comparer
@@ -8133,7 +5890,7 @@ def _decode_levelscript_check_mission_state_condition(
     if mission is None or mission[1] > limit:
         return None
     mission_id, cursor = mission
-    target_state = _decode_constant_i32_param(data, cursor)
+    target_state = levelscript_params.decode_constant_i32_param(data, cursor)
     if target_state is None or target_state[1] > limit:
         return None
     target_state_raw, cursor = target_state
@@ -8449,7 +6206,7 @@ def decode_levelscript_task_conditions(
 
     parsed_hosts: list[dict[str, Any]] = []
     for script_id_offset in _u64_offsets(data, numeric_script_id):
-        host = _tail_candidate(data, script_id_offset)
+        host = levelscript_top_level_tail.decode_tail_candidate(data, script_id_offset)
         task_count = host.get("taskMapCount")
         task_map_offset = host.get("taskMapOffset")
         if (
@@ -8569,7 +6326,7 @@ def scan_levelscript_task_condition_fragments(
 
     hosts: dict[tuple[int, int, int], dict[str, Any]] = {}
     for script_id_offset in _u64_offsets(data, numeric_script_id):
-        host = _tail_candidate(data, script_id_offset)
+        host = levelscript_top_level_tail.decode_tail_candidate(data, script_id_offset)
         task_count = host.get("taskMapCount")
         task_map_offset = host.get("taskMapOffset")
         if (
@@ -8688,7 +6445,7 @@ def decode_levelscript_task_mission_state_dependencies(
     ):
         return []
     tail_candidates = [
-        _tail_candidate(data, offset)
+        levelscript_top_level_tail.decode_tail_candidate(data, offset)
         for offset in _u64_offsets(data, numeric_script_id)
     ]
     task_hosts = [
@@ -8768,7 +6525,10 @@ def decode_levelscript_binary_summary(data: bytes, script_id: int) -> dict[str, 
         return {}
     action_map = decode_levelscript_action_map_header(data)
     offsets = _u64_offsets(data, script_id)
-    candidates = [_tail_candidate(data, offset) for offset in offsets]
+    candidates = [
+        levelscript_top_level_tail.decode_tail_candidate(data, offset)
+        for offset in offsets
+    ]
     best = max(candidates, key=lambda item: int(item.get("score") or 0), default={})
     active_shapes = decode_levelscript_active_shape_list(data, script_id)
     return {
@@ -8850,7 +6610,7 @@ def classify_local_trigger_volume_context(
     volumes = details.get("volumes") or []
     expected_union_tags = {
         union_tag
-        for union_tag, name in LEVELSCRIPT_TRIGGER_VOLUME_UNION_TAG_NAMES.items()
+        for union_tag, name in levelscript_trigger_volumes.UNION_TAG_NAMES.items()
         if name == trigger_volume_type
     }
     matches: list[dict[str, Any]] = []
@@ -8865,7 +6625,7 @@ def classify_local_trigger_volume_context(
             and volume.get("triggerVolumeType") == trigger_volume_type
             and volume.get("unionTag") in expected_union_tags
             and volume.get("memberCount")
-            == len(LEVELSCRIPT_TRIGGER_VOLUME_SERIALIZED_FIELDS)
+            == len(levelscript_trigger_volumes.SERIALIZED_FIELDS)
             and isinstance(volume.get("shapeList"), dict)
             and volume["shapeList"].get("status") == "present"
             and volume["shapeList"].get("parseStatus") == "decoded"
@@ -8904,8 +6664,8 @@ def classify_local_trigger_volume_context(
         "triggerVolumes": matches,
         "schema": {
             "baseType": "Beyond.Gameplay.LevelScriptTriggerVolumeData",
-            "baseDeclaredFieldCount": len(LEVELSCRIPT_TRIGGER_VOLUME_BASE_FIELDS),
-            "baseDeclaredFields": LEVELSCRIPT_TRIGGER_VOLUME_BASE_FIELDS,
+            "baseDeclaredFieldCount": len(levelscript_trigger_volumes.BASE_FIELDS),
+            "baseDeclaredFields": levelscript_trigger_volumes.BASE_FIELDS,
             "leaderType": (
                 "Beyond.Gameplay.LevelScriptTriggerVolumeDataForLeader"
                 if trigger_volume_type == "Leader"
@@ -8913,10 +6673,10 @@ def classify_local_trigger_volume_context(
             ),
             "leaderDeclaredFieldCount": 0 if trigger_volume_type == "Leader" else None,
             "serializedMemberCount": len(
-                LEVELSCRIPT_TRIGGER_VOLUME_SERIALIZED_FIELDS
+                levelscript_trigger_volumes.SERIALIZED_FIELDS
             ),
-            "serializedFields": LEVELSCRIPT_TRIGGER_VOLUME_SERIALIZED_FIELDS,
-            "mappingId": LEVELSCRIPT_TRIGGER_VOLUME_SCHEMA_MAPPING_ID,
+            "serializedFields": levelscript_trigger_volumes.SERIALIZED_FIELDS,
+            "mappingId": levelscript_trigger_volumes.SCHEMA_MAPPING_ID,
         },
         "dynamicSceneIdentityFieldPresent": False,
         "missionOrQuestIdentityFieldPresent": False,

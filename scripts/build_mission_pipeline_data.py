@@ -55,14 +55,13 @@ if not __package__:
     from story_builder.lua_consumer_references import (
         DEFAULT_INDEX as DEFAULT_LUA_CONSUMER_REFERENCE_INDEX,
         SCHEMA_VERSION as LUA_CONSUMER_REFERENCE_SCHEMA,
-        read_index as read_lua_consumer_reference_index,
-    )
-    from story_builder.native_contracts.cutscene_case_resolution import (
-        load_cutscene_case_resolution_contract,
-        matches_reviewed_lua_playback,
     )
     from story_builder.native_contracts.identity_carrier_boundaries import (
         load_identity_carrier_boundaries_contract,
+    )
+    from story_builder.native_contracts.ifix_patch import (
+        fixed_method_prefix_matches,
+        load_ifix_patch_contract,
     )
     from story_builder.native_contracts.cross_system_consumers import (
         load_cross_system_consumers_contract,
@@ -101,14 +100,6 @@ if not __package__:
         build_report as build_native_receiver_activation_frontier_report,
         markdown_report as render_native_receiver_activation_frontier_markdown,
         publish_to_pipeline_index as publish_native_receiver_activation_frontier,
-    )
-    from story_builder.source_story_partial_order import (
-        build_report as build_source_story_partial_order_report,
-        render_markdown as render_source_story_partial_order_markdown,
-    )
-    from story_builder.source_story_order_cross_reference import (
-        build_report as build_source_story_order_cross_reference_report,
-        render_markdown as render_source_story_order_cross_reference_markdown,
     )
     from story_builder.source_gap import build_source_gap_queue
     from story_builder.timeline_embedded_story_runtime import (
@@ -151,14 +142,13 @@ else:
     from scripts.story_builder.lua_consumer_references import (
         DEFAULT_INDEX as DEFAULT_LUA_CONSUMER_REFERENCE_INDEX,
         SCHEMA_VERSION as LUA_CONSUMER_REFERENCE_SCHEMA,
-        read_index as read_lua_consumer_reference_index,
-    )
-    from scripts.story_builder.native_contracts.cutscene_case_resolution import (
-        load_cutscene_case_resolution_contract,
-        matches_reviewed_lua_playback,
     )
     from scripts.story_builder.native_contracts.identity_carrier_boundaries import (
         load_identity_carrier_boundaries_contract,
+    )
+    from scripts.story_builder.native_contracts.ifix_patch import (
+        fixed_method_prefix_matches,
+        load_ifix_patch_contract,
     )
     from scripts.story_builder.native_contracts.cross_system_consumers import (
         load_cross_system_consumers_contract,
@@ -198,14 +188,6 @@ else:
         markdown_report as render_native_receiver_activation_frontier_markdown,
         publish_to_pipeline_index as publish_native_receiver_activation_frontier,
     )
-    from scripts.story_builder.source_story_partial_order import (
-        build_report as build_source_story_partial_order_report,
-        render_markdown as render_source_story_partial_order_markdown,
-    )
-    from scripts.story_builder.source_story_order_cross_reference import (
-        build_report as build_source_story_order_cross_reference_report,
-        render_markdown as render_source_story_order_cross_reference_markdown,
-    )
     from scripts.story_builder.source_gap import build_source_gap_queue
     from scripts.story_builder.timeline_embedded_story_runtime import (
         DEFAULT_JSON as TIMELINE_EMBEDDED_RUNTIME_JSON,
@@ -220,14 +202,42 @@ ROOT = Path(__file__).resolve().parents[1]
 EXPORT_ROOT = Path(os.environ.get("ENDFIELD_EXPORT_ROOT") or ROOT / "export_full")
 if __package__:
     from .common import sha256_file as sha256_path
+    from .mission_pipeline import dialog_tree_projection
+    from .mission_pipeline import lua_story_projection
+    from .mission_pipeline import mission_context_projection
+    from .mission_pipeline import mission_payload_projection
+    from .mission_pipeline import offline_shell_projection
+    from .mission_pipeline import offline_recovery_projection
+    from .mission_pipeline import post_playback_projection
+    from .mission_pipeline import post_playback_enrichment
+    from .mission_pipeline import quest_fork_arm_projection
+    from .mission_pipeline import quest_payload_projection
     from .mission_pipeline import quest_scope_projection
     from .mission_pipeline import runtime_trace_projection
+    from .mission_pipeline import source_order_publication
     from .mission_pipeline import story_order_projection
+    from .mission_pipeline import story_binding_coverage_projection
+    from .mission_pipeline import story_binding_coverage_publisher
+    from .mission_pipeline import story_trigger_route_projection
 else:
     from common import sha256_file as sha256_path
+    from mission_pipeline import dialog_tree_projection
+    from mission_pipeline import lua_story_projection
+    from mission_pipeline import mission_context_projection
+    from mission_pipeline import mission_payload_projection
+    from mission_pipeline import offline_shell_projection
+    from mission_pipeline import offline_recovery_projection
+    from mission_pipeline import post_playback_projection
+    from mission_pipeline import post_playback_enrichment
+    from mission_pipeline import quest_fork_arm_projection
+    from mission_pipeline import quest_payload_projection
     from mission_pipeline import quest_scope_projection
     from mission_pipeline import runtime_trace_projection
+    from mission_pipeline import source_order_publication
     from mission_pipeline import story_order_projection
+    from mission_pipeline import story_binding_coverage_projection
+    from mission_pipeline import story_binding_coverage_publisher
+    from mission_pipeline import story_trigger_route_projection
 
 DEFAULT_GAME_ROOT = resolve_installed_game_data_root()
 DEFAULT_GAME_ASSEMBLY = DEFAULT_GAME_ROOT.parent / "GameAssembly.dll"
@@ -279,7 +289,6 @@ DEFAULT_LEVEL_SCRIPT_DATA_ROOTS = (
 DEFAULT_PROTOCOL_REGISTRY_AUDIT = (
     ROOT / "reports" / "story" / "recovery" / "protocol_registry_audit.json"
 )
-NATIVE_GAME_ACTION_TYPE = "Beyond.Gameplay.Actions.GameAction"
 DEFAULT_ACTIVITY_STAGE_TABLE = DEFAULT_TABLE_ROOT / "ActivityConditionalMultiStageTable.json"
 DEFAULT_ACTIVITY_DUNGEON_FIGHTING_STAGE_TABLE = (
     DEFAULT_TABLE_ROOT / "ActivityDungeonFightingStageTable.json"
@@ -454,21 +463,6 @@ RUNTIME_CONTRACT = {
             "matches none of patch ids 0x5605, 0x54d1, or 0x54d2. Future patches can "
             "change that result, so rebuild-scoped audits must still fail closed."
         ),
-        "installedPatch": {
-            "source": "Persistent VFS: Data/IFixPatchOut/Windows/Gameplay.Beyond.patch.bytes",
-            "size": 82021,
-            "sha256": "737134081e06371f13c073988547e887037fccf2f57e1052be35dd255d27bc21",
-            "signatureTargetCount": 30,
-            "relevantPatchIds": ["0x5605", "0x54d1", "0x54d2"],
-            "matchedRelevantPatchIds": [],
-            "taskCompletionTargetMatches": 0,
-            "taskCompletionExplicitReferenceMatches": 0,
-            "receiverOwnershipTargetMatches": 0,
-            "receiverOwnershipExplicitReferenceMatches": 0,
-            "missionHudTargets": 2,
-            "dialogCinematicTargets": 7,
-            "auditReport": "reports/story/recovery/current_ifix_mission_graph_audit.json",
-        },
         "confidence": "native_proven",
     },
     "levelScriptCtxTokenAudit": {
@@ -578,12 +572,6 @@ RUNTIME_CONTRACT = {
                 "host and creates no Story ownership or order edge."
             ),
         },
-        "installedPatch": {
-            "sha256": "737134081e06371f13c073988547e887037fccf2f57e1052be35dd255d27bc21",
-            "signatureTargetCount": 30,
-            "relevantPatchIds": ["0x5ec5", "0x5ebe", "0x5ea7"],
-            "matchedMethods": 0,
-        },
         "finding": (
             "Recursive typed-field traversal across every current enum-backed CS/SC "
             "message found no mission/quest + LevelScript/Story identity co-carrier. "
@@ -677,11 +665,6 @@ RUNTIME_CONTRACT = {
                 "effect": "plays pushBackRadioId after local AirWall contact",
             },
         ],
-        "installedPatch": {
-            "sha256": "737134081e06371f13c073988547e887037fccf2f57e1052be35dd255d27bc21",
-            "signatureTargetCount": 30,
-            "matchedAirWallMethods": 0,
-        },
         "finding": (
             "This is an exact state-gated playback context: synchronized mission/quest "
             "state controls an authored AirWall, and later player contact can play its "
@@ -2429,6 +2412,88 @@ RUNTIME_CONTRACT = {
 }
 
 
+def project_ifix_runtime_contract(
+    runtime_contract: dict[str, Any],
+    ifix_audit: dict[str, Any],
+) -> dict[str, Any]:
+    """Attach shared IFix facts without publishing stale negative conclusions."""
+    projected = copy.deepcopy(runtime_contract)
+    status = str(ifix_audit.get("status") or "missing")
+    if status != "validated":
+        unavailable = {
+            "status": status,
+            "contract": ifix_audit.get("sourceFile") or "",
+            "contractSha256": str(ifix_audit.get("sourceSha256") or "").lower(),
+            "validationFailures": ifix_audit.get("validationFailures") or [],
+        }
+        projected["serverPlaceholder"]["installedPatch"] = copy.deepcopy(unavailable)
+        projected["protobufIdentityCarrierAudit"]["installedPatch"] = copy.deepcopy(
+            unavailable
+        )
+        projected["airWallMissionRadioContext"]["installedPatch"] = copy.deepcopy(
+            unavailable
+        )
+        return projected
+
+    source = ifix_audit["source"]
+    signatures = ifix_audit["fixedMethodSignatures"]
+    classifications = ifix_audit["classifications"]
+    projected["serverPlaceholder"]["installedPatch"] = {
+        "source": source["label"],
+        "size": source["patchBytes"],
+        "sha256": str(source["patchSha256"]).lower(),
+        "signatureTargetCount": len(signatures),
+        "relevantPatchIds": ["0x5605", "0x54d1", "0x54d2"],
+        "matchedRelevantPatchIds": [],
+        "taskCompletionTargetMatches": len(
+            classifications["taskCompletionFixMatches"]
+        ),
+        "taskCompletionExplicitReferenceMatches": len(
+            classifications["taskCompletionReferenceMatches"]
+        ),
+        "receiverOwnershipTargetMatches": len(
+            classifications["receiverOwnershipFixMatches"]
+        ),
+        "receiverOwnershipExplicitReferenceMatches": len(
+            classifications["receiverOwnershipReferenceMatches"]
+        ),
+        "missionHudTargets": len(classifications["missionHudFixSignatures"]),
+        "dialogCinematicTargets": len(
+            classifications["dialogCinematicFixSignatures"]
+        ),
+        "auditReport": ifix_audit["sourceFile"],
+    }
+    protobuf_prefixes = (
+        "Beyond.Gameplay.MissionSystem::Handle_MissionStateUpdate(",
+        "Beyond.Gameplay.MissionSystem::Handle_QuestStateUpdate(",
+        "Beyond.Gameplay.MissionSystem::CharacterPositionCorrection(",
+    )
+    projected["protobufIdentityCarrierAudit"]["installedPatch"] = {
+        "sha256": str(source["patchSha256"]).lower(),
+        "signatureTargetCount": len(signatures),
+        "relevantPatchIds": ["0x5ec5", "0x5ebe", "0x5ea7"],
+        "matchedMethods": len(
+            fixed_method_prefix_matches(ifix_audit, protobuf_prefixes)
+        ),
+    }
+    air_wall_prefixes = (
+        "Beyond.Gameplay.AirWallManager::_InitMissionListener(",
+        "Beyond.Gameplay.AirWallManager::_OnMissionStateChanged(",
+        "Beyond.Gameplay.AirWallManager::_OnQuestStateChanged(",
+        "Beyond.Gameplay.AirWallGroupAgent::OnMissionStateChanged(",
+        "Beyond.Gameplay.AirWallGroupAgent::OnQuestStateChanged(",
+        "Beyond.Gameplay.AirWallManager::TriggerMainCharGoBack(",
+    )
+    projected["airWallMissionRadioContext"]["installedPatch"] = {
+        "sha256": str(source["patchSha256"]).lower(),
+        "signatureTargetCount": len(signatures),
+        "matchedAirWallMethods": len(
+            fixed_method_prefix_matches(ifix_audit, air_wall_prefixes)
+        ),
+    }
+    return projected
+
+
 CASE_STUDIES: dict[str, dict[str, Any]] = {
     "e7m3": {
         "title": "Parallel fork and AND join",
@@ -2737,895 +2802,6 @@ def repo_path(path: Path) -> str:
 
 
 
-def _lua_phase(module: str) -> str:
-    parts = Path(module).as_posix().split("/")
-    if len(parts) >= 2 and parts[0].casefold() == "phase":
-        return re.sub(r"(?<!^)(?=[A-Z])", "_", parts[1]).lower()
-    scope = parts[-2] if len(parts) >= 2 else Path(module).stem
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", scope).lower()
-
-
-def load_lua_story_playback_evidence(
-    lua_audit_path: Path = DEFAULT_LUA_CONSUMER_REFERENCE_INDEX,
-    *,
-    case_resolution_contract_audit: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Validate and normalize corpus-scanned shipped-Lua Story playback.
-
-    This is deliberately data-driven: every accepted/rejected row comes from
-    the complete Lua audit. Exact spelling is admitted; a spelling mismatch is
-    rejected only when the reviewed native contract matches that exact call and
-    the installed binaries plus IFix source still match its build boundary.
-    """
-    validator = "lua_story_playback_evidence"
-    lua_audit_path = lua_audit_path.resolve()
-    if not lua_audit_path.is_file():
-        raise RuntimeError(
-            f"validator={validator} failed: gate=audit_exists expected=file "
-            f"actual=missing source={repo_path(lua_audit_path)}"
-        )
-    audit_sha = sha256_path(lua_audit_path)
-    audit = read_lua_consumer_reference_index(lua_audit_path)
-    schema = str(audit.get("schemaVersion") or "")
-    if schema != LUA_CONSUMER_REFERENCE_SCHEMA:
-        raise RuntimeError(
-            f"validator={validator} failed: gate=schema expected={LUA_CONSUMER_REFERENCE_SCHEMA} "
-            f"actual={schema or '<missing>'} source={repo_path(lua_audit_path)}"
-        )
-    summary = audit.get("summary") or {}
-    if int(summary.get("readErrorCount") or 0):
-        raise RuntimeError(
-            f"validator={validator} failed: gate=complete_scan expected=readErrorCount:0 "
-            f"actual={summary.get('readErrorCount')} source={repo_path(lua_audit_path)}"
-        )
-
-    calls = list((audit.get("gameActionAudit") or {}).get("storyPlaybackCalls") or [])
-    malformed: list[str] = []
-    for index, row in enumerate(calls):
-        required = {
-            "module": row.get("module"),
-            "sourcePath": row.get("sourcePath"),
-            "sourceSha256": row.get("sourceSha256"),
-            "line": row.get("line"),
-            "method": row.get("method"),
-            "argumentSemantics": row.get("argumentSemantics"),
-            "registryStatus": row.get("registryStatus"),
-        }
-        missing = [key for key, value in required.items() if value in (None, "")]
-        source_sha = str(row.get("sourceSha256") or "")
-        if not re.fullmatch(r"[0-9a-fA-F]{64}", source_sha):
-            missing.append("sourceSha256:sha256")
-        if missing:
-            malformed.append(f"row={index} missing={','.join(missing)}")
-            continue
-        source_path = ROOT / str(row["sourcePath"])
-        if source_path.is_file():
-            actual_sha = sha256_path(source_path)
-            if actual_sha.casefold() != source_sha.casefold():
-                malformed.append(
-                    f"row={index} sourceHash expected={source_sha} actual={actual_sha} "
-                    f"source={repo_path(source_path)}"
-                )
-        table_resolution = row.get("tableFieldResolution")
-        if isinstance(table_resolution, dict):
-            table_required = {
-                "table": table_resolution.get("table"),
-                "tableSourcePath": table_resolution.get("tableSourcePath"),
-                "tableSourceSha256": table_resolution.get("tableSourceSha256"),
-                "field": table_resolution.get("field"),
-            }
-            table_missing = [
-                key for key, value in table_required.items()
-                if value in (None, "")
-            ]
-            table_sha = str(table_resolution.get("tableSourceSha256") or "")
-            if not re.fullmatch(r"[0-9a-fA-F]{64}", table_sha):
-                table_missing.append("tableSourceSha256:sha256")
-            candidates = table_resolution.get("candidateRows") or []
-            if row.get("literalResolution") == "table_field_singleton":
-                if len(candidates) != 1 or not table_resolution.get("exactSingleton"):
-                    table_missing.append("candidateRows:exact_singleton")
-            if table_missing:
-                malformed.append(
-                    f"row={index} tableResolution={','.join(table_missing)}"
-                )
-                continue
-            table_source = ROOT / str(table_resolution["tableSourcePath"])
-            if table_source.is_file():
-                actual_table_sha = sha256_path(table_source)
-                if actual_table_sha.casefold() != table_sha.casefold():
-                    malformed.append(
-                        f"row={index} tableSourceHash expected={table_sha} "
-                        f"actual={actual_table_sha} source={repo_path(table_source)}"
-                    )
-    if malformed:
-        raise RuntimeError(
-            f"validator={validator} failed: gate=row_provenance expected=complete_exact_rows "
-            f"actual={malformed[0]} source={repo_path(lua_audit_path)}"
-        )
-
-    mismatch_calls = [
-        row for row in calls
-        if row.get("registryStatus") == "case_mismatch_registry_match"
-    ]
-    if mismatch_calls and case_resolution_contract_audit is None:
-        case_resolution_contract_audit = (
-            load_cutscene_case_resolution_contract()
-        )
-    case_resolution_contract_audit = case_resolution_contract_audit or {
-        "status": "not_required",
-        "sourceFile": "",
-        "sourceSha256": "",
-        "nativeContract": {},
-        "validationFailures": [],
-    }
-
-    accepted: list[dict[str, Any]] = []
-    rejected: list[dict[str, Any]] = []
-    for row in calls:
-        status = str(row.get("registryStatus") or "")
-        method = str(row.get("method") or "")
-        native_entry = f"{NATIVE_GAME_ACTION_TYPE}::{method}"
-        if status == "exact_registry_match":
-            story_key = str(row.get("canonicalStoryKey") or "")
-            if (
-                not story_key
-                or row.get("argumentSemantics") != "story_id"
-                or row.get("resolvedLiteral") != story_key
-            ):
-                continue
-            module = str(row["module"])
-            virtual_lua_file = f"Lua/Data/LuaScripts/{module}"
-            table_resolution = row.get("tableFieldResolution") or {}
-            table_candidates = table_resolution.get("candidateRows") or []
-            table_candidate = (
-                table_candidates[0]
-                if len(table_candidates) == 1
-                and row.get("literalResolution") == "table_field_singleton"
-                else {}
-            )
-            row_fields = table_candidate.get("rowFields") or {}
-            mission_id = str(row_fields.get("missionId") or "") or None
-            quest_id = str(row_fields.get("questId") or "") or None
-            table_source_path = str(
-                table_resolution.get("tableSourcePath") or ""
-            )
-            is_table_carrier = bool(table_candidate)
-            accepted.append({
-                "storyKey": story_key,
-                "luaFile": virtual_lua_file,
-                "luaSourcePath": str(row["sourcePath"]),
-                "luaSourceSha256": str(row["sourceSha256"]).lower(),
-                "luaLine": int(row["line"]),
-                "luaSymbol": str(row.get("firstArgument") or ""),
-                "luaCall": f"GameAction.{method}",
-                "nativeEntry": native_entry,
-                "phase": _lua_phase(module),
-                "playbackKind": row.get("playbackKind"),
-                "literalResolution": str(row.get("literalResolution") or ""),
-                "missionId": mission_id,
-                "questId": quest_id,
-                "table": str(table_resolution.get("table") or ""),
-                "tableKey": str(table_candidate.get("tableKey") or ""),
-                "tableField": str(table_resolution.get("field") or ""),
-                "tableLookupKeyExpression": str(
-                    table_resolution.get("lookupKeyExpression") or ""
-                ),
-                "tableSourcePath": table_source_path,
-                "tableSourceSha256": str(
-                    table_resolution.get("tableSourceSha256") or ""
-                ).lower(),
-                "auditReport": repo_path(lua_audit_path),
-                "auditSha256": audit_sha,
-                "note": (
-                    (
-                        "The complete shipped-Lua census traced this typed GameAction "
-                        "call through one exact current-table row. That same row "
-                        "co-carries the published mission/quest identity."
-                    )
-                    if is_table_carrier and (mission_id or quest_id)
-                    else (
-                        "The complete shipped-Lua census found an exact-case literal at "
-                        "this typed GameAction playback call. The Lua controller owns "
-                        "playback; no mission or quest identity is serialized."
-                    )
-                ),
-            })
-            continue
-        if status != "case_mismatch_registry_match":
-            continue
-        if not matches_reviewed_lua_playback(
-            row,
-            case_resolution_contract_audit,
-        ):
-            continue
-        contract = case_resolution_contract_audit["nativeContract"]
-        source = contract["sources"]
-        rejected.append({
-            "storyKey": str(row.get("canonicalStoryKey") or ""),
-            "luaLiteral": str(row.get("resolvedLiteral") or ""),
-            "luaFile": f"Lua/Data/LuaScripts/{row['module']}",
-            "luaSourcePath": str(row["sourcePath"]),
-            "luaSourceSha256": str(row["sourceSha256"]).lower(),
-            "luaLine": int(row["line"]),
-            "luaSymbol": str(row.get("firstArgument") or ""),
-            "luaCall": f"GameAction.{method}",
-            "nativeEntry": native_entry,
-            "reason": "case_sensitive_native_resource_lookup",
-            "confidence": "binary_proven_rejection",
-            "auditReport": str(case_resolution_contract_audit["sourceFile"]),
-            "auditSha256": str(
-                case_resolution_contract_audit["sourceSha256"]
-            ).lower(),
-            "gameAssemblySha256": str(source["gameAssemblySha256"]).lower(),
-            "metadataSha256": str(source["metadataSha256"]).lower(),
-            "note": (
-                "The installed binary preserves this mismatched literal through "
-                "StringPathHash lookup, so it cannot prove playback of the "
-                "differently-cased Story registry key."
-            ),
-        })
-
-    accepted.sort(key=lambda row: (natural_quest_key(row["storyKey"]), row["luaFile"], row["luaLine"]))
-    rejected.sort(key=lambda row: (natural_quest_key(row["storyKey"]), row["luaFile"], row["luaLine"]))
-    runtime_dispatchers = [
-        row for row in calls
-        if row.get("playbackRole") == "runtime_queue_dispatcher"
-    ]
-    runtime_contract = (audit.get("gameActionAudit") or {}).get(
-        "runtimeHandleContract"
-    ) or {}
-    action_producer_routes = runtime_contract.get("actionProducerRoutes") or []
-    if runtime_dispatchers and (
-        not runtime_contract.get("report")
-        or not re.fullmatch(
-            r"[0-9a-fA-F]{64}",
-            str(runtime_contract.get("sha256") or ""),
-        )
-        or not {
-            str(row.get("method") or "") for row in runtime_dispatchers
-        }.issubset(set(runtime_contract.get("dispatcherMethods") or []))
-        or not action_producer_routes
-        or any(
-            not row.get("actionType")
-            or not row.get("producerMethod")
-            or not row.get("actionToken")
-            for row in action_producer_routes
-        )
-    ):
-        raise RuntimeError(
-            f"validator={validator} failed: gate=runtime_handle_contract "
-            f"expected=complete_binary_dispatch_family actual=invalid "
-            f"source={repo_path(lua_audit_path)}"
-        )
-    return {
-        "validator": validator,
-        "status": "validated",
-        "schemaVersion": LUA_CONSUMER_REFERENCE_SCHEMA,
-        "auditReport": repo_path(lua_audit_path),
-        "auditSha256": audit_sha,
-        "scannedPlaybackCalls": len(calls),
-        "acceptedExactPlaybackCalls": accepted,
-        "rejectedCaseMismatchCalls": rejected,
-        "runtimeHandleDispatcherCalls": runtime_dispatchers,
-        "runtimeHandleDispatcherCallCount": len(runtime_dispatchers),
-        "runtimeHandleDispatcherFamilyCount": 1 if runtime_dispatchers else 0,
-        "runtimeHandleContract": runtime_contract,
-        "unresolvedPlaybackCalls": (
-            len(calls) - len(accepted) - len(rejected) - len(runtime_dispatchers)
-        ),
-        "acceptedTableCarrierCalls": sum(
-            1 for row in accepted if row.get("literalResolution") == "table_field_singleton"
-        ),
-        "caseResolutionContract": {
-            field: case_resolution_contract_audit.get(field)
-            for field in (
-                "schema",
-                "status",
-                "sourceFile",
-                "sourceSha256",
-                "validationFailures",
-            )
-            if case_resolution_contract_audit.get(field) not in (None, "")
-        },
-        "evidenceBoundary": (
-            "Exact shipped-Lua bytes and typed GameAction calls prove controller "
-            "playback. A mission/quest attachment is admitted only when the same "
-            "resolved original table row co-carries that identity; otherwise Lua "
-            "does not supply mission ownership or Story order. "
-            "Binary-proven cinematic-handle calls are one polymorphic runtime "
-            "dispatcher family and are not counted as unresolved authored references. "
-            "A binary-discovered typed action-to-producer route can annotate an exact "
-            "LevelScript playback route and attach its audit file, but cannot supply "
-            "mission ownership or order by itself. "
-            "Case-folded matches create no route without matching installed-binary proof."
-        ),
-    }
-
-
-def offline_story_kind(story_key: str) -> str:
-    """Preserve the Story kind for denominator-neutral recovery overlays."""
-    if story_key.startswith("radio_"):
-        return "radio"
-    if story_key.startswith("cutscene_"):
-        return "cutscene"
-    if story_key.startswith("sns_"):
-        return "sns"
-    if story_key.startswith("black_"):
-        return "black"
-    if story_key.startswith(("dlg_", "misc_dlg_")):
-        return "dlg"
-    return "text"
-
-
-def publish_offline_story_recovery(
-    story_trigger_manifest: dict[str, dict[str, Any]],
-    gap_queue_path: Path | None,
-) -> dict[str, Any]:
-    """Attach fail-closed offline recovery boundaries without adding routes.
-
-    The source-story gap queue is a recovery worklist, not graph evidence.
-    Only its exact current schema and active, graph-neutral evidence block are
-    accepted. Published rows annotate existing manifest records. Story kinds
-    outside the coverage denominator are emitted in a separate overlay with an
-    explicit denominator-neutral status. Neither path changes an existing
-    ``attachmentStatus`` nor adds trigger routes.
-    """
-    inactive = {
-        "status": "unavailable",
-        "schema": "",
-        "mappingId": "",
-        "graphEffect": "none",
-        "publishedStoryKeys": 0,
-        "publishedRuntimeContextStoryKeys": 0,
-        "publishedProjectAuthoredStoryKeys": 0,
-        "outsidePipelineCoverageStoryKeys": 0,
-        "storyTriggerManifestOverlay": {},
-        "questAttachmentDiagnosticStatus": "unavailable",
-        "questAttachmentDiagnosticMappingId": "",
-        "questAttachmentDiagnostics": {},
-        "source": repo_path(gap_queue_path) if gap_queue_path else "",
-    }
-    if gap_queue_path is None or not gap_queue_path.is_file():
-        return inactive
-    payload = read_json(gap_queue_path)
-    if not isinstance(payload, dict):
-        return inactive
-    schema = str(payload.get("_schema") or "")
-    status = payload.get("offlineExhaustionEvidence")
-    if (
-        schema != SOURCE_STORY_GAP_QUEUE_SCHEMA
-        or not isinstance(status, dict)
-        or status.get("status") != "active"
-        or status.get("graphEffect") != "none"
-        or status.get("sourceHashMismatches")
-    ):
-        return {
-            **inactive,
-            "schema": schema,
-            "status": "rejected_stale_or_incompatible",
-        }
-
-    published = 0
-    published_keys: set[str] = set()
-    published_partial_keys: set[str] = set()
-    published_runtime_context_keys: set[str] = set()
-    published_project_authored_keys: set[str] = set()
-    manifest_overlay: dict[str, dict[str, Any]] = {}
-    diagnostic_status = payload.get("questAttachmentDiagnosticEvidence")
-    diagnostic_active = (
-        isinstance(diagnostic_status, dict)
-        and diagnostic_status.get("status") == "active"
-        and diagnostic_status.get("graphEffect") == "none"
-        and not diagnostic_status.get("sourceHashMismatches")
-        and not diagnostic_status.get("validationFailures")
-    )
-    quest_attachment_diagnostics: dict[str, dict[str, Any]] = {}
-    project_status = payload.get("projectAuthoredStoryEvidence")
-    project_active = (
-        isinstance(project_status, dict)
-        and project_status.get("status") == "validated"
-        and project_status.get("graphEffect") == "none"
-        and not project_status.get("validationFailures")
-    )
-    for mission in payload.get("missions") or []:
-        if not isinstance(mission, dict):
-            continue
-        if diagnostic_active:
-            for row in mission.get("closedQuestAttachmentDiagnostics") or []:
-                if not isinstance(row, dict) or row.get("graphEffect") != "none":
-                    continue
-                quest_id = str(row.get("questId") or "")
-                if not quest_id:
-                    continue
-                quest_attachment_diagnostics[quest_id] = {
-                    key: value
-                    for key, value in row.items()
-                    if key not in {"sourceHashes", "expectedSourceHashes"}
-                }
-        for row in mission.get("deferredOfflineExhaustedIsolatedScenes") or []:
-            if not isinstance(row, dict) or row.get("graphEffect") != "none":
-                continue
-            story_key = str(row.get("sceneKey") or "")
-            if not story_key:
-                continue
-            # Keep the exact negative-evidence boundary useful in the static UI
-            # while dropping bulk source hashes and internal queue metrics.
-            recovery = {
-                key: value
-                for key, value in row.items()
-                if key not in {"sceneKey", "gameAssemblySha256"}
-            }
-            manifest_row = story_trigger_manifest.get(story_key)
-            if isinstance(manifest_row, dict):
-                manifest_row["offlineRecovery"] = recovery
-                published += 1
-                published_keys.add(story_key)
-            else:
-                manifest_overlay[story_key] = {
-                    "key": story_key,
-                    "kind": str(row.get("storyKind") or "")
-                        or offline_story_kind(story_key),
-                    "nominalMissionId": str(row.get("missionId") or ""),
-                    "attachmentStatus":
-                        "offline_exhausted_outside_pipeline_coverage_denominator",
-                    "routes": [],
-                    "offlineRecovery": recovery,
-                }
-
-        for row in mission.get("partialRegisteredDialogTreeCarriers") or []:
-            if (
-                not isinstance(row, dict)
-                or row.get("graphEffect") != "none"
-                or row.get("recoveryStatus")
-                != "actionable_partial_registered_dialog_tree_partition"
-            ):
-                continue
-            story_key = str(row.get("sceneKey") or "")
-            if not story_key:
-                continue
-            recovery = {
-                key: value
-                for key, value in row.items()
-                if key not in {"sceneKey", "gameAssemblySha256"}
-            }
-            manifest_row = story_trigger_manifest.get(story_key)
-            if isinstance(manifest_row, dict):
-                manifest_row["partialRecovery"] = recovery
-            else:
-                overlay = manifest_overlay.setdefault(story_key, {
-                    "key": story_key,
-                    "kind": offline_story_kind(story_key),
-                    "nominalMissionId": str(row.get("missionId") or ""),
-                    "attachmentStatus":
-                        "partial_carrier_outside_pipeline_coverage_denominator",
-                    "routes": [],
-                })
-                overlay["partialRecovery"] = recovery
-            published_partial_keys.add(story_key)
-
-        if project_active:
-            for row in mission.get(
-                "closedNonMissionContentIsolatedScenes"
-            ) or []:
-                if (
-                    not isinstance(row, dict)
-                    or row.get("evidenceKind")
-                    != "project_authored_story_content"
-                    or row.get("recoveryStatus")
-                    != "excluded_project_authored_story_content"
-                    or row.get("graphEffect") != "none"
-                    or row.get("gameDataEvidence") is not False
-                ):
-                    continue
-                story_key = str(row.get("sceneKey") or "")
-                if not story_key:
-                    continue
-                recovery = {
-                    key: value
-                    for key, value in row.items()
-                    if key != "sceneKey"
-                }
-                manifest_row = story_trigger_manifest.get(story_key)
-                if isinstance(manifest_row, dict):
-                    manifest_row["contentProvenance"] = recovery
-                else:
-                    overlay = manifest_overlay.setdefault(story_key, {
-                        "key": story_key,
-                        "kind": str(row.get("storyKind") or "")
-                            or offline_story_kind(story_key),
-                        "nominalMissionId": str(mission.get("mission") or ""),
-                        "attachmentStatus":
-                            "project_authored_outside_game_coverage_denominator",
-                        "routes": [],
-                    })
-                    overlay["contentProvenance"] = recovery
-                published_project_authored_keys.add(story_key)
-
-        approved_runtime_contexts = {
-            (
-                "objective_tracking_story_reference",
-                "closed_exact_mission_tracking_context_no_relative_order",
-            ),
-            (
-                "dialog_tree_prime_reachable_story_playback_dependency",
-                "closed_exact_parent_dialog_dependency_no_relative_order",
-            ),
-            (
-                "mission_accept_dialog",
-                "closed_exact_mission_accept_dialog_no_relative_order",
-            ),
-            (
-                "sns_authored_mission_link",
-                "closed_exact_authored_sns_mission_link_no_relative_order",
-            ),
-            (
-                "airwall_mission_state_radio_playback_context",
-                "closed_exact_native_playback_context_no_relative_order",
-            ),
-            (
-                "npc_proxy_tracking_dialog_navigation_context",
-                "closed_exact_non_owning_dialog_context_no_relative_order",
-            ),
-            (
-                "npc_proxy_lazy_destroy_dialog_context",
-                "closed_exact_non_owning_dialog_context_no_relative_order",
-            ),
-            (
-                "unique_mission_tracked_npc_proxy_dialog_context",
-                "closed_exact_runtime_config_no_relative_order",
-            ),
-            (
-                "unique_mission_tracked_npc_proxy_dialog_context",
-                "closed_exact_cross_mission_runtime_config_no_relative_order",
-            ),
-            (
-                "npc_proxy_ex_mission_context",
-                "closed_exact_runtime_config_no_relative_order",
-            ),
-            (
-                "npc_proxy_ex_mission_context",
-                "closed_exact_cross_mission_runtime_config_no_relative_order",
-            ),
-            (
-                "npc_proxy_ex_mission_context",
-                "closed_exact_multi_mission_runtime_config_no_relative_order",
-            ),
-        }
-        for row in mission.get(
-            "closedExactRuntimeConfigIsolatedScenes"
-        ) or []:
-            if not isinstance(row, dict):
-                continue
-            if (
-                str(row.get("relation") or ""),
-                str(row.get("recoveryStatus") or ""),
-            ) not in approved_runtime_contexts:
-                continue
-            story_key = str(row.get("sceneKey") or "")
-            if not story_key:
-                continue
-            recovery = {
-                key: value
-                for key, value in row.items()
-                if key != "sceneKey"
-            }
-            recovery["graphEffect"] = "none"
-            manifest_row = story_trigger_manifest.get(story_key)
-            if isinstance(manifest_row, dict):
-                manifest_row["runtimeContextRecovery"] = recovery
-                published_runtime_context_keys.add(story_key)
-            else:
-                overlay = manifest_overlay.setdefault(story_key, {
-                    "key": story_key,
-                    "kind": offline_story_kind(story_key),
-                    "nominalMissionId": str(
-                        row.get("missionId")
-                        or mission.get("mission")
-                        or ""
-                    ),
-                    "attachmentStatus":
-                        "runtime_context_outside_pipeline_coverage_denominator",
-                    "routes": [],
-                })
-                overlay["runtimeContextRecovery"] = recovery
-                published_runtime_context_keys.add(story_key)
-
-        approved_native_contexts = {
-            (
-                "",
-                "exact_current_build_interaction_trigger_recovered",
-            ),
-            (
-                "authoritative_scope_leveldata_mission_context",
-                "closed_exact_cross_mission_leveldata_shell_playback_context_no_relative_order",
-            ),
-            (
-                "cutscene_root_playback_alias_composed",
-                "closed_exact_composed_root_playback_context_no_relative_order",
-            ),
-            (
-                "lua_controller_playback",
-                "closed_exact_lua_controller_playback_no_mission_owner_or_relative_order",
-            ),
-            (
-                "timeline_dialog_contains_black",
-                "closed_exact_timeline_black_carrier_context_owner_or_order_unresolved",
-            ),
-            (
-                "dialog_tree_narrative_action",
-                "closed_exact_dialog_tree_black_carrier_context_no_file_order",
-            ),
-            (
-                "leveldata_levelscript_mission_context",
-                "closed_exact_cross_mission_leveldata_playback_context_no_relative_order",
-            ),
-            (
-                "leveldata_levelscript_mission_context",
-                "closed_exact_same_mission_leveldata_playback_context_no_relative_order",
-            ),
-            (
-                "cross_owner_levelscript_quest_playback_context",
-                "closed_exact_cross_mission_quest_playback_context_no_relative_order",
-            ),
-            (
-                "dialog_tree_reachable_story_playback",
-                "closed_exact_connected_dialog_tree_playback_context_no_relative_order",
-            ),
-            (
-                "levelscript_quest_state_gate",
-                "closed_exact_quest_state_gated_playback_context_no_relative_order",
-            ),
-        }
-        for row in mission.get("closedExactNativeIsolatedScenes") or []:
-            if not isinstance(row, dict):
-                continue
-            if (
-                str(row.get("relation") or ""),
-                str(row.get("recoveryStatus") or ""),
-            ) not in approved_native_contexts:
-                continue
-            story_key = str(row.get("sceneKey") or "")
-            if not story_key:
-                continue
-            recovery = {
-                key: value
-                for key, value in row.items()
-                if key != "sceneKey"
-            }
-            recovery["graphEffect"] = "none"
-            manifest_row = story_trigger_manifest.get(story_key)
-            if isinstance(manifest_row, dict):
-                manifest_row["runtimeContextRecovery"] = recovery
-                published_runtime_context_keys.add(story_key)
-            else:
-                overlay = manifest_overlay.setdefault(story_key, {
-                    "key": story_key,
-                    "kind": offline_story_kind(story_key),
-                    "nominalMissionId": str(
-                        row.get("nominalStoryMissionId")
-                        or mission.get("mission")
-                        or ""
-                    ),
-                    "attachmentStatus":
-                        "runtime_context_outside_pipeline_coverage_denominator",
-                    "routes": [],
-                })
-                overlay["runtimeContextRecovery"] = recovery
-                published_runtime_context_keys.add(story_key)
-
-    for story_key, entry in manifest_overlay.items():
-        story_trigger_manifest.setdefault(story_key, entry)
-
-    return {
-        "status": "active",
-        "schema": schema,
-        "mappingId": str(status.get("mappingId") or ""),
-        "graphEffect": "none",
-        "publishedStoryKeys": len(published_keys),
-        "publishedRows": published,
-        "publishedPartialStoryKeys": len(published_partial_keys),
-        "publishedRuntimeContextStoryKeys": len(
-            published_runtime_context_keys
-        ),
-        "publishedProjectAuthoredStoryKeys": len(
-            published_project_authored_keys
-        ),
-        "outsidePipelineCoverageStoryKeys": len(manifest_overlay),
-        "storyTriggerManifestOverlay": manifest_overlay,
-        "questAttachmentDiagnosticStatus": (
-            "active" if diagnostic_active else "unavailable"
-        ),
-        "questAttachmentDiagnosticMappingId": (
-            str(diagnostic_status.get("mappingId") or "")
-            if diagnostic_active
-            else ""
-        ),
-        "questAttachmentDiagnostics": quest_attachment_diagnostics,
-        "source": repo_path(gap_queue_path),
-    }
-
-
-def publish_offline_recovery_mission_shells(
-    index: dict[str, Any],
-    output_root: Path,
-    offline_recovery: dict[str, Any],
-    gap_queue_path: Path,
-) -> list[str]:
-    """Publish navigable graph-neutral shells for exhausted non-runtime missions.
-
-    A Story mission can exist in authored tables without a MissionRuntimeAsset.
-    Its exact-build recovery boundary still belongs in Mission Pipeline, but a
-    shell must never imply quests, ownership, playback, or order edges.
-    """
-    if offline_recovery.get("status") != "active":
-        return []
-    queue = read_json(gap_queue_path)
-    if not isinstance(queue, dict):
-        return []
-    queue_rows = {
-        str(row.get("mission") or ""): row
-        for row in queue.get("missions") or []
-        if isinstance(row, dict) and row.get("mission")
-    }
-    existing = {
-        str(row.get("id") or "")
-        for row in index.get("missions") or []
-        if isinstance(row, dict) and row.get("id")
-    }
-    overlay = offline_recovery.get("storyTriggerManifestOverlay") or {}
-    keys_by_mission: dict[str, list[str]] = defaultdict(list)
-    kind_by_key: dict[str, str] = {}
-    for story_key, entry in overlay.items():
-        recovery = (
-            entry.get("offlineRecovery") or entry.get("contentProvenance")
-        ) if isinstance(entry, dict) else None
-        mission_id = str(
-            (recovery or {}).get("missionId")
-            or (entry or {}).get("nominalMissionId")
-            or ""
-        )
-        if mission_id and mission_id not in existing:
-            keys_by_mission[mission_id].append(str(story_key))
-            kind_by_key[str(story_key)] = str(entry.get("kind") or "")
-
-    published: list[str] = []
-    mission_output = output_root / "missions"
-    mission_output.mkdir(parents=True, exist_ok=True)
-    for mission_id in sorted(keys_by_mission, key=natural_quest_key):
-        order_row = queue_rows.get(mission_id)
-        if not isinstance(order_row, dict):
-            continue
-        story_keys = sorted(keys_by_mission[mission_id], key=natural_quest_key)
-        metrics = order_row.get("metrics") or {}
-        components = [
-            {
-                "id": f"p{index}",
-                "sceneKeys": [story_key],
-                "cyclic": False,
-                "internalEdgeIndexes": [],
-            }
-            for index, story_key in enumerate(story_keys, start=1)
-        ]
-        story_order = {
-            "mission": mission_id,
-            "summary": {
-                "sceneCount": int(metrics.get("sceneCount") or len(story_keys)),
-                "strongEdgeCount": 0,
-                "weakEdgeCount": 0,
-                "cycleCount": 0,
-                "unorderedScenePairs": int(metrics.get("totalScenePairs") or 0),
-                "isolatedSceneCount": int(
-                    metrics.get("isolatedScenes") or len(story_keys)
-                ),
-                "weakOnlySceneCount": 0,
-            },
-            "nodes": [
-                {
-                    "key": story_key,
-                    "kind": kind_by_key.get(story_key)
-                        or offline_story_kind(story_key),
-                    "membership": "index",
-                    "component": component["id"],
-                    "relationStatus": "isolated",
-                }
-                for story_key, component in zip(story_keys, components)
-            ],
-            "components": components,
-            "componentEdges": [],
-            "reducedComponentEdges": [],
-            "topologicalLayers": [[row["id"] for row in components]],
-            "directEdges": [],
-            "containments": [],
-            "cycles": [],
-            "branches": {
-                "sceneGraphOptions": [],
-                "nativeControlBranches": [],
-                "nativeControlMerges": [],
-                "nativeOrderedSequences": [],
-                "nativeRelatedActionTopologies": [],
-                "dialogLineOptions": [],
-                "questForks": [],
-                "questMerges": [],
-            },
-            "isolatedSceneKeys": story_keys,
-            "weakOnlySceneKeys": [],
-            "unknownSceneKeys": story_keys,
-            "unresolvedSourceNodes": [],
-            "sourceGapQueue": order_row,
-        }
-        payload = {
-            "schemaVersion": SCHEMA_VERSION,
-            "mission": {
-                "id": mission_id,
-                "nameKey": "",
-                "descriptionKey": "",
-                "levelId": "",
-                "missionType": None,
-                "rewardId": "",
-                "mainPath": [],
-                "entryQuestIds": [],
-                "nativeRuntimeBindings": [],
-                "source": repo_path(gap_queue_path),
-                "offlineRecoveryShell": True,
-                "sourceBoundary": (
-                    "No MissionRuntimeAsset exists in the current export; this "
-                    "shell exposes exact graph-neutral Story recovery only."
-                ),
-            },
-            "nodes": [],
-            "edges": [],
-            "caseStudy": None,
-            "missionGraph": {"upstream": {}, "downstream": {}},
-            "envTalkContext": [],
-            "storyOrder": story_order,
-        }
-        write_json(mission_output / f"{mission_id}.json", payload)
-        summary = {
-            "id": mission_id,
-            "nameKey": "",
-            "levelId": "",
-            "questCount": 0,
-            "mainPathCount": 0,
-            "entryCount": 0,
-            "fanoutCount": 0,
-            "multiPrevJoinCount": 0,
-            "activeJoinCount": 0,
-            "exactFinishCount": 0,
-            "serverPlaceholderCount": 0,
-            "serverPlaceholderQuestCount": 0,
-            "failureConditionCount": 0,
-            "externalDependencyCount": 0,
-            "submitItemConditionCount": 0,
-            "submitItemQuestCount": 0,
-            "submitItemDialogCoGateCount": 0,
-            "submitItemLevelScriptCoGateCount": 0,
-            "nativeRuntimeBindingCount": 0,
-            "activityStageHostCount": 0,
-            "activityStageHostedQuestCount": 0,
-            "trackingInfoCount": 0,
-            "trackingObjectiveCount": 0,
-            "missionPropertyCount": 0,
-            "conditionTypes": [],
-            "caseStudy": False,
-            "file": f"missions/{mission_id}.json",
-            "offlineRecoveryShell": True,
-            "offlineRecoveryStoryCount": len(story_keys),
-            "storyOrderSceneCount": int(metrics.get("sceneCount") or 0),
-            "storyOrderStrongEdgeCount": int(
-                metrics.get("strongEdgeCount") or 0
-            ),
-            "storyOrderCycleCount": int(metrics.get("sourceCycles") or 0),
-        }
-        index.setdefault("missions", []).append(summary)
-        published.append(mission_id)
-        existing.add(mission_id)
-    index["missions"].sort(key=lambda row: natural_quest_key(row["id"]))
-    index.setdefault("counts", {})["missions"] = len(index["missions"])
-    index["counts"]["offlineRecoveryMissionShells"] = len(published)
-    return published
-
-
 def classify_definition_only_current_build_consumers(
     story_keys: Iterable[str],
     text_vo_id_table_path: Path | None,
@@ -3724,203 +2900,6 @@ def classify_definition_only_current_build_consumers(
     }
 
 
-def load_activity_quest_level_hosts(
-    table_paths: Iterable[Path | None],
-) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
-    """Load typed activity-stage ``questId -> levelId`` host rows.
-
-    These rows enrich a quest's authored level context.  They deliberately do
-    not create a Story edge: neither table contains a Story or LevelScript
-    identity.
-    """
-    rows_by_quest: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    sources: list[str] = []
-    seen: set[tuple[str, str, str, str]] = set()
-    for path in table_paths:
-        if path is None or not path.is_file():
-            continue
-        source = repo_path(path)
-        sources.append(source)
-        payload = read_json(path)
-        if not isinstance(payload, dict):
-            continue
-        table_name = path.stem
-        for stage_id, raw in sorted(payload.items()):
-            if not isinstance(raw, dict):
-                continue
-            quest_id = str(raw.get("questId") or "").strip()
-            level_id = str(raw.get("levelId") or "").strip()
-            if not quest_id or not level_id:
-                continue
-            signature = (table_name, str(stage_id), quest_id, level_id)
-            if signature in seen:
-                continue
-            seen.add(signature)
-            rows_by_quest[quest_id].append({
-                "relation": "activity_stage_quest_level_host",
-                "table": table_name,
-                "stageId": str(stage_id),
-                "questId": quest_id,
-                "levelId": level_id,
-                "storyBinding": False,
-                "source": source,
-                "confidence": "typed_original_data_and_native_accessors",
-            })
-    for rows in rows_by_quest.values():
-        rows.sort(key=lambda row: (row["table"], row["stageId"], row["levelId"]))
-    return dict(rows_by_quest), {
-        "sources": sorted(set(sources)),
-        "rowCount": sum(len(rows) for rows in rows_by_quest.values()),
-        "questCount": len(rows_by_quest),
-        "distinctLevelCount": len({
-            row["levelId"]
-            for rows in rows_by_quest.values()
-            for row in rows
-        }),
-        "storyBindingsAdded": 0,
-        "evidence": RUNTIME_CONTRACT["activityQuestLevelHosts"],
-    }
-
-
-def load_subgame_mission_bindings(
-    table_path: Path | None,
-) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
-    """Load exact mission/script identities co-authored in typed SubGame rows.
-
-    The relation is deliberately mission-shell context. Authored task lanes are
-    retained so later generic recovery can require an exact script/task carrier.
-    It never attaches a quest or Story file merely because the script is bound.
-    """
-    if table_path is None or not table_path.is_file():
-        return {}, {
-            "available": False,
-            "source": repo_path(table_path) if table_path is not None else "",
-            "rowCount": 0,
-            "rowsWithBindScriptId": 0,
-            "rowsWithDungeonMissionId": 0,
-            "missionBindingCount": 0,
-            "boundMissionCount": 0,
-            "distinctScriptCount": 0,
-            "storyBindingsAdded": 0,
-        }
-    payload = read_json(table_path)
-    data_table = payload.get("dataTable") if isinstance(payload, dict) else None
-    if not isinstance(data_table, dict):
-        raise ValueError(f"SubGameInstanceData table has no dataTable map: {table_path}")
-    bindings: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    seen: set[tuple[str, str, int]] = set()
-    rows_with_bind_script_id = 0
-    rows_with_dungeon_mission_id = 0
-    for subgame_id, raw in sorted(data_table.items()):
-        if not isinstance(raw, dict):
-            continue
-        mission_id = raw.get("dungeonMissionId")
-        script_id = raw.get("bindScriptId")
-        if isinstance(script_id, int) and script_id > 0:
-            rows_with_bind_script_id += 1
-        if isinstance(mission_id, str) and mission_id:
-            rows_with_dungeon_mission_id += 1
-        if not isinstance(mission_id, str) or not mission_id or not isinstance(script_id, int) or script_id <= 0:
-            continue
-        identity = (mission_id, str(subgame_id), script_id)
-        if identity in seen:
-            continue
-        seen.add(identity)
-        runtime_type = str(raw.get("$type") or "")
-        if "," in runtime_type:
-            runtime_type = runtime_type.split(",", 1)[0]
-        task_lanes: dict[str, list[dict[str, Any]]] = {}
-        for source_field, lane in (
-            ("mainTasks", "main"),
-            ("extraTasks", "extra"),
-            ("failTasks", "fail"),
-        ):
-            values = raw.get(source_field)
-            if not isinstance(values, list):
-                raise ValueError(
-                    "SubGame task lane is not an array: "
-                    f"source={table_path} subGameId={subgame_id} "
-                    f"lane={source_field} actual={type(values).__name__}"
-                )
-            task_lanes[lane] = [
-                {
-                    key: value
-                    for key, value in task.items()
-                    if key in {"taskId", "levelScriptId", "failInfo"}
-                }
-                for task in values
-                if isinstance(task, dict) and str(task.get("taskId") or "")
-            ]
-        bindings[mission_id].append({
-            "subGameId": str(subgame_id),
-            "bindScriptId": str(script_id),
-            "dungeonMissionId": mission_id,
-            "subDataParentId": str(raw.get("subDataParentId") or ""),
-            "runtimeType": runtime_type,
-            "modeId": str(raw.get("modeId") or ""),
-            "modeType": raw.get("modeType"),
-            "gameMechanicsType": raw.get("gameMechanicsType"),
-            "relation": "subgame_bind_script_runtime",
-            "confidence": "typed_original_data",
-            "source": repo_path(table_path),
-            "storyBinding": False,
-            "taskLanes": task_lanes,
-            "networkIdentity": {
-                "authoredKeyField": "gameId",
-                "authoredKeyValue": str(subgame_id),
-                "startRequest": "CS_GAME_MECHANICS_REQ_START",
-                "enterPush": "SC_GAME_MECHANICS_SYNC_ENTER_GAME_INST",
-                "challengeStartPush": "SC_GAME_MECHANICS_SYNC_CHALLENGE_START",
-                "challengeCompletePush": "SC_GAME_MECHANICS_SYNC_CHALLENGE_COMPLETE",
-                "completionRewardPush": "SC_GAME_MECHANICS_SYNC_COMPLETION_REWARD",
-                "stopRequest": "CS_GAME_MECHANICS_REQ_STOP",
-                "leavePush": "SC_GAME_MECHANICS_SYNC_LEAVE_GAME_INST",
-            },
-        })
-    for rows in bindings.values():
-        rows.sort(key=lambda row: (row["subGameId"], row["bindScriptId"]))
-    return dict(bindings), {
-        "available": True,
-        "source": repo_path(table_path),
-        "rowCount": len(data_table),
-        "rowsWithBindScriptId": rows_with_bind_script_id,
-        "rowsWithDungeonMissionId": rows_with_dungeon_mission_id,
-        "missionBindingCount": len(seen),
-        "boundMissionCount": len(bindings),
-        "distinctScriptCount": len({script_id for _, _, script_id in seen}),
-        "storyBindingsAdded": 0,
-        "packetIdentity": {
-            "authoredRowKey": "gameId",
-            "runtimeOnlyFields": ["gameInstId", "gameUniqueId", "isReenter"],
-            "missingOwnershipFields": ["missionId", "questId", "sceneNumId", "bindScriptId"],
-        },
-        "bindScriptNativeEvidence": {
-            "serializedFieldOffset": "0x50",
-            "startConsumer": "InteractiveLogicChallengeStartPoint._OnInteract",
-            "startConsumerToken": "0x0600231a",
-            "startConsumerAddress": "0x18713e548",
-            "startEffect": (
-                "SubGame table lookup -> bindScriptId read -> "
-                "LevelScriptManager.TryGetLevelScript -> LevelScriptRuntime.ManualStart"
-            ),
-            "stopConsumer": "WorldChallengeGame.SendQuit",
-            "stopConsumerAddress": "0x186f60cc8",
-            "stopEffect": (
-                "LevelScriptManager.TryGetLevelScript -> "
-                "LevelScriptRuntime.ManualEnd -> send stop request"
-            ),
-            "auditedOnStartConsumerFound": True,
-        },
-        "evidenceBoundary": (
-            "Exact typed mission-to-SubGame-to-LevelScript shell and authored task "
-            "lanes only; the binary proves the generic interaction ManualStart "
-            "carrier but not that it fired. No quest or Story attachment is inferred "
-            "from co-membership. OCR, manual, and gameplay cross-references cannot "
-            "promote this relation."
-        ),
-    }
-
-
 def _connection_rows(flow: dict[str, Any]) -> Iterable[dict[str, Any]]:
     quests = flow.get("quests") or []
     if isinstance(quests, dict):
@@ -3954,524 +2933,6 @@ def _scoped_connection_rows(
             yield row, "", "mission"
 
 
-def _unique_route_strings(*values: Any) -> list[str]:
-    result: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        items = value if isinstance(value, (list, tuple, set)) else [value]
-        for item in items:
-            text = str(item or "").strip()
-            if text and text not in seen:
-                seen.add(text)
-                result.append(text)
-    return result
-
-
-NATIVE_OCCURRENCE_FIELDS = (
-    "occurrences",
-    "levelScriptOccurrences",
-    "nativeOccurrences",
-    "nativeBlackActionOccurrences",
-    "parentDialogNativeOccurrences",
-    "preloadOccurrences",
-    "worldEntityLevelScriptEvidence",
-)
-
-
-def _native_occurrence_rows(row: dict[str, Any]) -> list[dict[str, Any]]:
-    occurrences: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for field in NATIVE_OCCURRENCE_FIELDS:
-        for occurrence in row.get(field) or []:
-            if not isinstance(occurrence, dict):
-                continue
-            if (
-                field == "worldEntityLevelScriptEvidence"
-                and isinstance(occurrence.get("listener"), dict)
-            ):
-                occurrence = {
-                    **occurrence,
-                    "actionName": (
-                        occurrence.get("actionName")
-                        or occurrence.get("nativeAction")
-                    ),
-                    "nativeEventOwners": [occurrence["listener"]],
-                }
-            signature = json.dumps(
-                occurrence,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            )
-            if signature not in seen:
-                seen.add(signature)
-                occurrences.append(occurrence)
-    return occurrences
-
-
-def _compact_native_trigger_paths(row: dict[str, Any]) -> list[dict[str, Any]]:
-    occurrences = _native_occurrence_rows(row)
-    if not occurrences and isinstance(row.get("nativeEventOwners"), list):
-        occurrences = [{
-            "levelId": next(iter(row.get("levelIds") or []), ""),
-            "scriptId": next(iter(row.get("scriptIds") or []), ""),
-            "sourceFile": next(iter(row.get("sourceFiles") or []), ""),
-            "nativeEventOwners": row.get("nativeEventOwners") or [],
-        }]
-
-    paths: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for occurrence in occurrences:
-        level_id = str(occurrence.get("levelId") or "")
-        script_id = str(occurrence.get("scriptId") or "")
-        source_file = str(occurrence.get("sourceFile") or "")
-        for owner in occurrence.get("nativeEventOwners") or []:
-            if not isinstance(owner, dict):
-                continue
-            event_name = str(owner.get("headerName") or "").strip()
-            event_detail = (
-                owner.get("eventDetail")
-                if isinstance(owner.get("eventDetail"), dict)
-                else {}
-            )
-            header_local_id = (
-                int(owner["headerLocalId"])
-                if isinstance(owner.get("headerLocalId"), int)
-                else None
-            )
-            selector = exact_native_runtime_selector(
-                event_name,
-                event_detail,
-                level_id=level_id,
-                script_id=script_id,
-                header_local_id=header_local_id,
-            )
-            steps = []
-            for step in owner.get("path") or []:
-                if not isinstance(step, dict):
-                    continue
-                compact_step = {
-                    key: step[key]
-                    for key in (
-                        "edge",
-                        "localId",
-                        "actionName",
-                        "recordClass",
-                        "unionTag",
-                    )
-                    if step.get(key) is not None
-                }
-                if compact_step:
-                    steps.append(compact_step)
-            path = {
-                "eventName": event_name,
-                "eventSummary": str(event_detail.get("summary") or ""),
-                "transport": str(event_detail.get("transport") or ""),
-                "serverExchange": event_detail.get("serverExchange"),
-                "levelId": level_id,
-                "scriptId": script_id,
-                "sourceFile": source_file,
-                "headerLocalId": header_local_id,
-                "selector": selector or None,
-                "steps": steps,
-            }
-            signature = json.dumps(
-                path,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            )
-            if signature not in seen:
-                seen.add(signature)
-                paths.append(path)
-    return paths
-
-
-def build_story_trigger_route(
-    row: dict[str, Any],
-    *,
-    mission_id: str,
-    quest_id: str = "",
-    scope: str = "mission",
-    owner_status: str = "connected",
-) -> dict[str, Any] | None:
-    """Normalize one Story relation into a compact, evidence-typed route."""
-    key = str(row.get("key") or "")
-    if not key:
-        return None
-    relation = str(row.get("relation") or "unknown")
-    direction = str(row.get("direction") or "context")
-    owner_unresolved = owner_status in {
-        "unresolved",
-        "unresolved_playback",
-    }
-    if relation == "original_text_definition_without_consumer":
-        causality = "definition_only"
-    elif owner_status == "unresolved_playback":
-        causality = "playback_owner_unresolved"
-    elif owner_unresolved:
-        causality = "context_owner_unresolved"
-    elif direction == "quest_to_story":
-        causality = "playback"
-    elif direction == "story_to_quest":
-        causality = "condition"
-    elif row.get("dependencyOnly") is True or row.get("ownership") is False:
-        causality = "dependency"
-    else:
-        causality = "context"
-
-    native_paths = _compact_native_trigger_paths(row)
-    native_occurrences = _native_occurrence_rows(row)
-    event_names = _unique_route_strings(
-        row.get("event"),
-        row.get("nativeEventNames"),
-        [path.get("eventName") for path in native_paths],
-    )
-    event_summaries = _unique_route_strings(
-        row.get("nativeEventSummaries"),
-        [path.get("eventSummary") for path in native_paths],
-    )
-    action_names = _unique_route_strings(
-        row.get("actionType"),
-        row.get("actionName"),
-        row.get("nativeAction"),
-        row.get("nativeActions"),
-        [occurrence.get("actionName") for occurrence in native_occurrences],
-        [
-            step.get("actionName")
-            for path in native_paths
-            for step in path.get("steps") or []
-            if str(step.get("recordClass") or "").startswith("play_")
-        ],
-    )
-    script_ids = _unique_route_strings(
-        row.get("scriptId"),
-        row.get("scriptIds"),
-        [path.get("scriptId") for path in native_paths],
-    )
-    source_files = _unique_route_strings(
-        row.get("sourceFile"),
-        row.get("sourceFiles"),
-        row.get("assetPaths"),
-        row.get("trackPaths"),
-        row.get("rootPaths"),
-        [path.get("sourceFile") for path in native_paths],
-    )
-    timeline_dialog_containments = [
-        containment
-        for containment in row.get("timelineDialogContainments") or []
-        if isinstance(containment, dict)
-    ]
-    parent_story_key = str(row.get("parentStoryKey") or "")
-    timeline_ids = _unique_route_strings(
-        row.get("timelines"),
-        [
-            containment.get("timeline")
-            for containment in timeline_dialog_containments
-        ],
-    )
-    embedded_line_ids = _unique_route_strings(
-        row.get("textIds"),
-        [
-            line_id
-            for containment in timeline_dialog_containments
-            for line_id in containment.get("lineIds") or []
-        ],
-    )
-    embedded_option_ids = _unique_route_strings(
-        row.get("optionIds"),
-        [
-            option_id
-            for containment in timeline_dialog_containments
-            for option_id in containment.get("optionIds") or []
-        ],
-    )
-    before_parent_line_ids = _unique_route_strings([
-        containment.get("beforeParentLineId")
-        for containment in timeline_dialog_containments
-    ])
-    after_parent_line_ids = _unique_route_strings([
-        containment.get("afterParentLineId")
-        for containment in timeline_dialog_containments
-    ])
-
-    owner_step = {
-        "kind": "ownership_gap" if owner_unresolved else scope,
-        "id": quest_id if scope == "quest" and quest_id else mission_id,
-        "phase": str(row.get("phase") or ""),
-    }
-    story_step = {
-        "kind": (
-            "dialog_definition"
-            if row.get("dialogDefinitionOnly") is True
-            else "story"
-        ),
-        "id": key,
-    }
-    middle_steps: list[dict[str, Any]] = []
-    if row.get("serverMessage"):
-        middle_steps.append({
-            "kind": "server_message",
-            "id": str(row["serverMessage"]),
-            "fields": _unique_route_strings(row.get("serverFields")),
-        })
-    if event_names:
-        middle_steps.append({
-            "kind": "native_event",
-            "ids": event_names,
-            "summaries": event_summaries,
-        })
-    if script_ids:
-        middle_steps.append({"kind": "levelscript", "ids": script_ids})
-    if relation == "leveldata_interactive_narrative_config":
-        leveldata_assets = _unique_route_strings(row.get("levelDataAssets"))
-        if leveldata_assets:
-            middle_steps.append({
-                "kind": "leveldata",
-                "ids": leveldata_assets,
-            })
-        progress_conditions = [
-            dict(condition)
-            for condition in row.get("progressLockConditions") or []
-            if isinstance(condition, dict)
-        ]
-        if (
-            row.get("progressLockConditionStatus") == "decoded"
-            and progress_conditions
-        ):
-            condition_summaries: list[str] = []
-
-            def summarize_condition(node: object, depth: int = 0) -> None:
-                if not isinstance(node, dict):
-                    return
-                if node.get("conditionType") == "CombinedConditionRuntime":
-                    condition_summaries.append(
-                        (
-                            f"{'nested ' if depth else ''}combined operator "
-                            f"{node.get('conditionOperator')} runtime flag "
-                            f"{str(node.get('serializedRuntimeFlag')).lower()}"
-                        )
-                    )
-                    for child in node.get("conditions") or []:
-                        summarize_condition(child, depth + 1)
-                    return
-                condition_summaries.append(
-                    (
-                        f"{node.get('ownerKind')} "
-                        f"{node.get('ownerId')} state "
-                        f"{node.get('compareTarget')} "
-                        f"(compare {node.get('compareOperator')})"
-                    )
-                )
-
-            tree = row.get("progressLockConditionTree")
-            if isinstance(tree, dict):
-                summarize_condition(tree)
-            else:
-                for condition in progress_conditions:
-                    summarize_condition(condition)
-            middle_steps.append({
-                "kind": "availability_condition",
-                "id": str(row.get("progressLockConditionType") or ""),
-                "summaries": condition_summaries,
-            })
-    if (
-        relation in {
-            "levelscript_interactive_narrative_config",
-            "leveldata_interactive_narrative_config",
-        }
-        and (
-            row.get("localInteractiveId") is not None
-            or row.get("entityLogicId") is not None
-        )
-    ):
-        interactive_summaries = _unique_route_strings(
-            row.get("rawTypeId"),
-            row.get("entityTemplateIds"),
-        )
-        middle_steps.append({
-            "kind": "narrative_interactive",
-            "id": str(
-                row.get("localInteractiveId")
-                if row.get("localInteractiveId") is not None
-                else row.get("entityLogicId")
-            ),
-            "summaries": interactive_summaries,
-        })
-    if action_names:
-        middle_steps.append({"kind": "native_action", "ids": action_names})
-    if relation == "timeline_dialog_contains_foreign_dialog":
-        if parent_story_key:
-            middle_steps.append({
-                "kind": "parent_story",
-                "id": parent_story_key,
-            })
-        if timeline_ids:
-            middle_steps.append({
-                "kind": "dialog_timeline",
-                "ids": timeline_ids,
-                "beforeParentLineIds": before_parent_line_ids,
-                "afterParentLineIds": after_parent_line_ids,
-            })
-    if direction == "story_to_quest":
-        steps = [story_step, *middle_steps, owner_step]
-    else:
-        steps = [owner_step, *middle_steps, story_step]
-
-    return {
-        "storyKey": key,
-        "missionId": mission_id,
-        "questId": quest_id or None,
-        "scope": scope,
-        "ownerStatus": "unresolved" if owner_unresolved else owner_status,
-        "relation": relation,
-        "direction": direction,
-        "phase": str(row.get("phase") or ""),
-        "causality": causality,
-        "confidence": str(row.get("confidence") or ""),
-        "evidenceTier": str(row.get("evidenceTier") or ""),
-        "nativeMappingId": str(row.get("nativeMappingId") or ""),
-        "certainty": str(row.get("certainty") or ""),
-        "eventNames": event_names,
-        "eventSummaries": event_summaries,
-        "actionNames": action_names,
-        "scriptIds": script_ids,
-        "levelId": str(row.get("levelId") or ""),
-        "sourcePathIds": _unique_route_strings(row.get("sourcePathIds")),
-        "parentScopeRelations": _unique_route_strings(
-            row.get("parentScopeRelations")
-        ),
-        "carrierKinds": _unique_route_strings(row.get("carrierKinds")),
-        "occurrenceCount": row.get("occurrenceCount"),
-        "runtimeReplacementPossible": row.get("runtimeReplacementPossible"),
-        "headerLocalId": row.get("headerLocalId"),
-        "gateActionLocalId": row.get("gateActionLocalId"),
-        "conditionType": str(row.get("conditionType") or ""),
-        "conditionComparer": str(row.get("conditionComparer") or ""),
-        "conditionQuestState": row.get("conditionQuestState"),
-        "actionLocalId": row.get("actionLocalId"),
-        "actionCode": str(row.get("actionCode") or ""),
-        "actionKind": str(row.get("actionKind") or ""),
-        "levelDataAssets":
-            _unique_route_strings(row.get("levelDataAssets")),
-        "localInteractiveId": row.get("localInteractiveId"),
-        "entityLogicId": row.get("entityLogicId"),
-        "interactiveRecordIndex": row.get("interactiveRecordIndex"),
-        "interactiveRecordBoundarySource":
-            str(row.get("interactiveRecordBoundarySource") or ""),
-        "narrativeConsumerKind":
-            str(row.get("narrativeConsumerKind") or ""),
-        "dialogDefinitionOnly":
-            row.get("dialogDefinitionOnly") is True,
-        "dialogDefinitionBinding":
-            row.get("dialogDefinitionBinding") is True,
-        "dialogDefinitionConsumerMission":
-            str(row.get("dialogDefinitionConsumerMission") or ""),
-        "dialogDefinitionConsumerQuestId":
-            str(row.get("dialogDefinitionConsumerQuestId") or ""),
-        "dialogIdEntryOffset": row.get("dialogIdEntryOffset"),
-        "interactiveHornTemplateSha256":
-            str(row.get("interactiveHornTemplateSha256") or ""),
-        "interactiveHornNativeMappingId":
-            str(row.get("interactiveHornNativeMappingId") or ""),
-        "levelDataMember21Offset": row.get("levelDataMember21Offset"),
-        "levelIdNum": row.get("levelIdNum"),
-        "levelScriptBriefDictionaryCountOffset":
-            row.get("levelScriptBriefDictionaryCountOffset"),
-        "levelScriptBriefDictionaryCount":
-            row.get("levelScriptBriefDictionaryCount"),
-        "levelScriptDataPathDictionaryCountOffset":
-            row.get("levelScriptDataPathDictionaryCountOffset"),
-        "levelScriptDataPathDictionaryCount":
-            row.get("levelScriptDataPathDictionaryCount"),
-        "levelDataSafeZoneOffset": row.get("levelDataSafeZoneOffset"),
-        "levelDataSceneId": str(row.get("levelDataSceneId") or ""),
-        "levelDataSpecificDataOffset":
-            row.get("levelDataSpecificDataOffset"),
-        "levelDataEmptySuffixEndOffset":
-            row.get("levelDataEmptySuffixEndOffset"),
-        "levelDataFinalBoundaryValidation":
-            str(row.get("levelDataFinalBoundaryValidation") or ""),
-        "progressLockConditionStatus":
-            str(row.get("progressLockConditionStatus") or ""),
-        "progressLockConditionUnionTag":
-            row.get("progressLockConditionUnionTag"),
-        "progressLockConditionSerializedMemberCount":
-            row.get("progressLockConditionSerializedMemberCount"),
-        "progressLockConditionType":
-            str(row.get("progressLockConditionType") or ""),
-        "progressLockConditionOperator":
-            row.get("progressLockConditionOperator"),
-        "progressLockSerializedRuntimeFlag":
-            row.get("progressLockSerializedRuntimeFlag"),
-        "progressLockConditionTree":
-            row.get("progressLockConditionTree"),
-        "progressLockConditions": [
-            dict(condition)
-            for condition in row.get("progressLockConditions") or []
-            if isinstance(condition, dict)
-        ],
-        "rawTypeId": str(row.get("rawTypeId") or ""),
-        "entityDetailIds": _unique_route_strings(row.get("entityDetailIds")),
-        "entityTemplateIds": _unique_route_strings(row.get("entityTemplateIds")),
-        "parentStoryKey": parent_story_key,
-        "timelineIds": timeline_ids,
-        "embeddedLineIds": embedded_line_ids,
-        "embeddedOptionIds": embedded_option_ids,
-        "beforeParentLineIds": before_parent_line_ids,
-        "afterParentLineIds": after_parent_line_ids,
-        "placementBoundary": str(row.get("placementBoundary") or ""),
-        "graphEffect": str(row.get("graphEffect") or ""),
-        "controlPathCount": int(row.get("nativeControlPathCount") or len(native_paths)),
-        "nativePaths": native_paths,
-        "sourceFiles": source_files,
-        "serverMessage": str(row.get("serverMessage") or ""),
-        "serverFields": _unique_route_strings(row.get("serverFields")),
-        "upstreamServerStateSources": _unique_route_strings(
-            row.get("upstreamServerStateSources")
-        ),
-        "serverExchange": row.get("serverExchange"),
-        "clientRequest": row.get("clientRequest"),
-        "expectedClientReply": row.get("expectedClientReply"),
-        "npcProxyId": str(row.get("npcProxyId") or ""),
-        "candidateQuestIds": _unique_route_strings(
-            row.get("candidateQuestIds")
-        ),
-        "activeRowIndex": row.get("activeRowIndex"),
-        "configuredDialogIds": _unique_route_strings(
-            row.get("configuredDialogIds")
-        ),
-        "selectionOrderStatus": str(
-            row.get("selectionOrderStatus") or ""
-        ),
-        "questTriggerStatus": str(row.get("questTriggerStatus") or ""),
-        "candidateQuestTopology": (
-            copy.deepcopy(row.get("candidateQuestTopology"))
-            if isinstance(row.get("candidateQuestTopology"), dict)
-            else None
-        ),
-        "steps": steps,
-    }
-
-
-def story_trigger_route_sort_key(route: dict[str, Any]) -> tuple:
-    """Keep direct playback/condition routes ahead of context diagnostics."""
-    causality = str(route.get("causality") or "")
-    causality_rank = {
-        "playback": 0,
-        "condition": 1,
-        "dependency": 2,
-        "context": 3,
-        "playback_owner_unresolved": 4,
-        "context_owner_unresolved": 5,
-        "definition_only": 6,
-    }.get(causality, 7)
-    return (
-        causality_rank,
-        natural_quest_key(str(route.get("missionId") or "")),
-        natural_quest_key(str(route.get("questId") or "")),
-        str(route.get("relation") or ""),
-    )
 
 
 def build_composed_root_playback_alias_route(
@@ -4536,7 +2997,7 @@ def build_composed_root_playback_alias_route(
         "aliasRelation": str(alias.get("relation") or ""),
         "nativeMappingId": str(alias.get("nativeMappingId") or ""),
         "auditReport": str(alias.get("evidenceReport") or ""),
-        "sourceFiles": _unique_route_strings(
+        "sourceFiles": story_trigger_route_projection.unique_route_strings(
             root_route.get("sourceFiles"),
             (alias.get("directorObject") or {}).get("source"),
             alias.get("evidenceReport"),
@@ -5272,390 +3733,6 @@ def exact_native_receiver_post_playback_control(
     }
 
 
-def attach_post_playback_callserver_contracts(
-    runtime_nodes: list[dict[str, Any]],
-    callback_audit: dict[str, Any],
-) -> dict[str, Any]:
-    """Attach complete-corpus CallServer rows by exact source/local identity.
-
-    The join is intentionally generic across all missions, maps, and Story
-    actions. It fails closed on duplicate or disagreeing rows and never treats
-    an event name or argument path as a mission/quest foreign key.
-    """
-    audit_rows: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
-    for row in callback_audit.get("rows") or []:
-        source_file = str(row.get("sourceFile") or "").replace("\\", "/")
-        local_id = row.get("callServerLocalId")
-        if source_file and isinstance(local_id, int):
-            audit_rows[(source_file, local_id)].append(row)
-
-    counts: Counter[str] = Counter()
-    event_identities: Counter[str] = Counter()
-    argument_paths: Counter[str] = Counter()
-    flag_combinations: Counter[str] = Counter()
-    failures: list[dict[str, Any]] = []
-    for node in runtime_nodes:
-        for control in node.get("postPlaybackControls") or []:
-            source_file = str(control.get("sourceFile") or "").replace("\\", "/")
-            for handoff in control.get("serverHandoffs") or []:
-                counts["handoffs"] += 1
-                local_id = handoff.get("localId")
-                candidates = audit_rows.get((source_file, local_id), [])
-                if len(candidates) != 1:
-                    counts["unresolvedContracts"] += 1
-                    failures.append({
-                        "gate": "post_playback_callserver_exact_identity",
-                        "source": source_file,
-                        "localId": local_id,
-                        "expectedCandidateCount": 1,
-                        "actualCandidateCount": len(candidates),
-                    })
-                    continue
-                audit_contract = compact_callserver_serialized_contract(
-                    candidates[0].get("serializedContract") or {}
-                )
-                path_contract = compact_callserver_serialized_contract(
-                    handoff.get("serializedContract") or {}
-                )
-                if path_contract and path_contract != audit_contract:
-                    counts["contractMismatches"] += 1
-                    failures.append({
-                        "gate": "post_playback_callserver_contract_match",
-                        "source": source_file,
-                        "localId": local_id,
-                        "expected": audit_contract,
-                        "actual": path_contract,
-                    })
-                    continue
-                handoff["serializedContract"] = audit_contract
-                handoff["contractStatus"] = "exact_source_local_id_match"
-                handoff["missionOwnershipEvidence"] = False
-                counts["exactContracts"] += 1
-                event_identities[
-                    str(audit_contract.get("eventNameIdentity") or "other")
-                ] += 1
-                event_args = audit_contract.get("eventArgsPtr") or {}
-                argument_paths[
-                    str(event_args.get("path") or "<null>")
-                ] += 1
-                flag_combinations[
-                    "custom={custom},wait={wait},args={args}".format(
-                        custom=int(bool(audit_contract.get("useCustomEvent"))),
-                        wait=int(bool(audit_contract.get("waitForCallback"))),
-                        args=int(bool(audit_contract.get("withEventArgs"))),
-                    )
-                ] += 1
-    return {
-        "status": "validated" if not failures else "validation_failed",
-        "summary": {
-            **dict(sorted(counts.items())),
-            "eventNameIdentityDistribution": dict(sorted(event_identities.items())),
-            "eventArgsParamPathDistribution": dict(sorted(argument_paths.items())),
-            "flagDistribution": dict(sorted(flag_combinations.items())),
-        },
-        "validationFailures": failures,
-        "missionOwnershipEvidence": False,
-        "evidenceBoundary": (
-            "Every post-playback CallServer is joined to the complete original-data "
-            "action audit by exact source file and local action id. Serialized event "
-            "names, argument parameters, flags, and callback UIDs describe the client "
-            "handoff contract; absent an independent original-data foreign key, they "
-            "do not identify a mission/quest owner or order another Story file."
-        ),
-    }
-
-
-def build_level_sequence_textasset_index(
-    root: Path = DEFAULT_LEVEL_SEQUENCE_TEXTASSET_ROOT,
-) -> dict[str, Any]:
-    """Index original LevelSequence TextAssets by three-way exact identity.
-
-    A filename is only an enumeration aid. A row is eligible for a join when
-    the exported Unity ``m_Name`` and ``Name`` fields and the decoded payload's
-    ``cutsceneName`` all agree. This keeps the resolver reusable across maps,
-    missions, and sequence ids while failing closed on malformed or ambiguous
-    exports.
-    """
-    assets_by_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    failures: list[dict[str, Any]] = []
-    source_files = sorted(root.glob("levelseq_*.json")) if root.is_dir() else []
-    for source_path in source_files:
-        try:
-            raw = source_path.read_bytes()
-            outer = json.loads(raw.decode("utf-8-sig"))
-            if not isinstance(outer, dict):
-                raise ValueError("outer JSON is not an object")
-            unity_name = str(outer.get("m_Name") or "")
-            exported_name = str(outer.get("Name") or "")
-            encoded_payload = outer.get("m_Script")
-            if not unity_name or unity_name != exported_name:
-                raise ValueError(
-                    f"outer identity mismatch m_Name={unity_name!r} Name={exported_name!r}"
-                )
-            if not isinstance(encoded_payload, str) or not encoded_payload:
-                raise ValueError("m_Script is not a non-empty base64 string")
-            decoded = base64.b64decode(encoded_payload, validate=True)
-            payload = json.loads(decoded.decode("utf-8-sig"))
-            if not isinstance(payload, dict):
-                raise ValueError("decoded m_Script JSON is not an object")
-            payload_name = str(payload.get("cutsceneName") or "")
-            if payload_name != unity_name:
-                raise ValueError(
-                    f"payload identity mismatch cutsceneName={payload_name!r} m_Name={unity_name!r}"
-                )
-            path_id_match = re.search(r"_p([0-9A-Fa-f]+)\.json$", source_path.name)
-            assets_by_id[unity_name].append(compact_dict({
-                "levelSequenceId": unity_name,
-                "sourceFile": repo_path(source_path),
-                "pathId": (
-                    f"0x{path_id_match.group(1).upper()}"
-                    if path_id_match
-                    else ""
-                ),
-                "sha256": hashlib.sha256(raw).hexdigest(),
-                "payloadPath": str(payload.get("path") or ""),
-                "payloadVersion": payload.get("version"),
-                "targetFrameRate": payload.get("targetFrameRate"),
-                "identityStatus": "exact_m_name_name_cutscene_name_match",
-            }))
-        except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
-            failures.append({
-                "validator": "levelSequenceTextAssetIdentity",
-                "gate": "m_Name_equals_Name_equals_decoded_cutsceneName",
-                "sourceFile": repo_path(source_path),
-                "actual": str(error)[:400],
-            })
-
-    ambiguous_ids = sorted(
-        sequence_id
-        for sequence_id, rows in assets_by_id.items()
-        if len(rows) != 1
-    )
-    exact_assets = {
-        sequence_id: rows[0]
-        for sequence_id, rows in sorted(assets_by_id.items())
-        if len(rows) == 1
-    }
-    return {
-        "schema": "exactLevelSequenceTextAssetIndex.v1",
-        "root": repo_path(root),
-        "status": (
-            "exact_complete"
-            if source_files and not failures and not ambiguous_ids
-            else "degraded_fail_closed"
-        ),
-        "assetsById": exact_assets,
-        "summary": {
-            "sourceFilesScanned": len(source_files),
-            "exactUniqueIdentities": len(exact_assets),
-            "validationFailures": len(failures),
-            "ambiguousIdentities": len(ambiguous_ids),
-        },
-        "validationFailures": failures,
-        "ambiguousLevelSequenceIds": ambiguous_ids,
-    }
-
-
-def attach_exact_level_sequence_assets(
-    runtime_nodes: list[dict[str, Any]],
-    asset_index: dict[str, Any],
-) -> dict[str, Any]:
-    """Attach exact original files to typed LevelSequence control actions.
-
-    Action classes come from the installed ActionBase formatter table. The
-    family test is intentionally type-based (``LevelSeq`` in that recovered
-    class name); no mission, map, object, or sequence identifier is hardcoded.
-    """
-    assets_by_id = asset_index.get("assetsById") or {}
-    action_placements = 0
-    exact_placements = 0
-    serialized_ids: set[str] = set()
-    exact_ids: set[str] = set()
-    unresolved_ids: set[str] = set()
-    related_files: set[str] = set()
-    for node in runtime_nodes:
-        for control in node.get("postPlaybackControls") or []:
-            for action in control.get("actions") or []:
-                action_name = str(action.get("actionName") or "")
-                if "LevelSeq" not in action_name:
-                    continue
-                sequence_ids = sorted({
-                    str(value)
-                    for value in action.get("texts") or []
-                    if str(value).startswith("levelseq_")
-                })
-                if not sequence_ids:
-                    continue
-                action_placements += 1
-                references = []
-                for sequence_id in sequence_ids:
-                    serialized_ids.add(sequence_id)
-                    asset = assets_by_id.get(sequence_id)
-                    if isinstance(asset, dict):
-                        exact_placements += 1
-                        exact_ids.add(sequence_id)
-                        related_files.add(str(asset.get("sourceFile") or ""))
-                        references.append({
-                            **asset,
-                            "relation": "exact_serialized_action_id_to_textasset_identity",
-                            "missionOwnershipEvidence": False,
-                            "crossStoryOrderEvidence": False,
-                        })
-                    else:
-                        unresolved_ids.add(sequence_id)
-                        references.append({
-                            "levelSequenceId": sequence_id,
-                            "identityStatus": "no_exact_validated_textasset",
-                            "missionOwnershipEvidence": False,
-                            "crossStoryOrderEvidence": False,
-                        })
-                action["levelSequenceReferences"] = references
-
-    return {
-        "schema": "postPlaybackLevelSequenceAssetAudit.v1",
-        "status": (
-            "exact_matches_with_unresolved_ids"
-            if unresolved_ids
-            else "all_serialized_ids_resolved"
-        ),
-        "sourceIndex": {
-            key: asset_index.get(key)
-            for key in (
-                "schema", "root", "status", "summary",
-                "validationFailures", "ambiguousLevelSequenceIds",
-            )
-        },
-        "summary": {
-            "typedActionPlacements": action_placements,
-            "serializedLevelSequenceIds": len(serialized_ids),
-            "exactAssetPlacements": exact_placements,
-            "exactResolvedLevelSequenceIds": len(exact_ids),
-            "unresolvedLevelSequenceIds": len(unresolved_ids),
-            "relatedOriginalFiles": len({value for value in related_files if value}),
-        },
-        "unresolvedLevelSequenceIds": sorted(unresolved_ids),
-        "usesOcrOrManualOrder": False,
-        "missionOwnershipEvidence": False,
-        "crossStoryOrderEvidence": False,
-        "evidenceBoundary": (
-            "The installed formatter type and serialized action id identify a local "
-            "LevelSequence reference; the original TextAsset is attached only after "
-            "m_Name, Name, and decoded cutsceneName agree. This does not identify a "
-            "mission owner or order separate Story files."
-        ),
-    }
-
-
-def build_post_playback_action_name_audit(
-    runtime_nodes: list[dict[str, Any]],
-    *,
-    formatter_names: dict[int, str] | None = None,
-    formatter_audit: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Measure binary formatter naming across the complete control surface."""
-    formatter_names = (
-        ACTIONBASE_FORMATTER_ACTION_NAMES
-        if formatter_names is None
-        else formatter_names
-    )
-    formatter_audit = (
-        ACTIONBASE_FORMATTER_NAME_AUDIT
-        if formatter_audit is None
-        else formatter_audit
-    )
-    shape_counts: Counter[tuple[str, str]] = Counter()
-    formatter_named_actions = 0
-    fallback_named_actions = 0
-    unresolved_actions = 0
-    mismatches: list[dict[str, Any]] = []
-    opcode_pattern = re.compile(r"^0x([0-9a-f]+)/0x([0-9a-f]+)$", re.IGNORECASE)
-    for node in runtime_nodes:
-        for control in node.get("postPlaybackControls") or []:
-            for action in control.get("actions") or []:
-                opcode = str(action.get("opcode") or "")
-                action_name = str(action.get("actionName") or "")
-                shape_counts[(opcode, action_name)] += 1
-                match = opcode_pattern.match(opcode)
-                union_tag_text = str(action.get("unionTag") or "")
-                try:
-                    union_tag = int(union_tag_text, 16)
-                except ValueError:
-                    union_tag = int(match.group(1), 16) if match else -1
-                serialized_member_count = action.get("serializedMemberCount")
-                if not isinstance(serialized_member_count, int):
-                    serialized_member_count = (
-                        int(match.group(2), 16) if match else 0
-                    )
-                if union_tag < 0:
-                    unresolved_actions += 1
-                    continue
-                formatter_name = (
-                    str(formatter_names.get(union_tag) or "")
-                    if serialized_member_count > 0
-                    else ""
-                )
-                if formatter_name:
-                    if action_name == formatter_name:
-                        formatter_named_actions += 1
-                    else:
-                        mismatches.append({
-                            "validator": "postPlaybackActionFormatterName",
-                            "gate": "action_name_equals_formatter_tag",
-                            "sourceFile": str(control.get("sourceFile") or ""),
-                            "storyKey": str(control.get("storyKey") or ""),
-                            "actionLocalId": action.get("localId"),
-                            "expected": {
-                                "opcode": opcode,
-                                "unionTag": f"0x{union_tag:04x}",
-                                "serializedMemberCount": serialized_member_count,
-                                "actionName": formatter_name,
-                            },
-                            "actual": {"actionName": action_name},
-                        })
-                elif action_name:
-                    fallback_named_actions += 1
-                else:
-                    unresolved_actions += 1
-    total_actions = sum(shape_counts.values())
-    unresolved_shapes = [
-        {"opcode": opcode, "count": count}
-        for (opcode, action_name), count in sorted(shape_counts.items())
-        if not action_name
-    ]
-    source_failures = list(formatter_audit.get("validationFailures") or [])
-    failures = source_failures + mismatches
-    return {
-        "schema": "postPlaybackActionNameAudit.v1",
-        "status": (
-            "validated_complete_actionbase_surface"
-            if not failures and not unresolved_actions
-            else "validated_actionbase_complete_outside_families_retained"
-            if not failures
-            else "validation_failed"
-        ),
-        "formatterTable": formatter_audit,
-        "summary": {
-            "actionPlacements": total_actions,
-            "formatterNamedActionPlacements": formatter_named_actions,
-            "fallbackNamedActionPlacements": fallback_named_actions,
-            "unresolvedOutsideActionBasePlacements": unresolved_actions,
-            "distinctActionShapes": len(shape_counts),
-            "unresolvedOutsideActionBaseShapes": len(unresolved_shapes),
-            "validationFailures": len(failures),
-        },
-        "unresolvedActionShapes": unresolved_shapes,
-        "validationFailures": failures,
-        "usesOcrOrManualOrder": False,
-        "missionOwnershipEvidence": False,
-        "crossStoryOrderEvidence": False,
-        "evidenceBoundary": (
-            "The installed ActionBase MemoryPack formatter names action classes "
-            "from the compact unionTag plus serializedMemberCount. Legacy combined "
-            "raw opcodes remain display provenance and are never used as the tag. "
-            "A class name does not identify a mission owner, select a branch, or "
-            "order separate Story files."
-        ),
-    }
 
 
 POST_PLAYBACK_VARIABLE_SETTER_ACTIONS = {
@@ -6636,194 +4713,6 @@ POST_PLAYBACK_VARIABLE_LISTENER_FIELDS = {
 }
 
 
-def build_post_playback_variable_bridge_audit(
-    native_story_playback_index: dict[str, list[dict[str, Any]]],
-) -> dict[str, Any]:
-    """Census exact Story setter-to-listener candidates without promoting them.
-
-    The installed ActionBase formatter identifies the three setter classes and
-    their MemoryPack runtime shape carries a key/value pair. Exact native event
-    payloads independently identify property and blackboard listener keys. A
-    candidate requires the same level, same LevelScript, and exact key; class
-    names, file order, Story names, and numeric ids never participate.
-
-    Even a candidate remains context-only until the installed generic
-    ``Set<T>.Execute`` body proves which notification family it emits. The
-    current build has no candidate, which closes this route more strongly: no
-    execution-semantics assumption could create a Story-to-Story edge.
-    """
-    listeners: dict[tuple[str, str, str], dict[tuple[Any, ...], dict[str, Any]]] = (
-        defaultdict(dict)
-    )
-    setters: dict[tuple[Any, ...], dict[str, Any]] = {}
-    occurrence_count = 0
-    for story_key, occurrences in sorted(native_story_playback_index.items()):
-        for occurrence in occurrences:
-            occurrence_count += 1
-            level_id = str(occurrence.get("levelId") or "")
-            script_id = str(occurrence.get("scriptId") or "")
-            source_file = str(occurrence.get("sourceFile") or "")
-            playback_local_id = occurrence.get("localId")
-            if not level_id or not script_id or not source_file:
-                continue
-            for owner in occurrence.get("nativeEventOwners") or []:
-                if not isinstance(owner, dict):
-                    continue
-                detail = owner.get("eventDetail") or {}
-                if (
-                    owner.get("status") not in {
-                        "exact_serialized_control_path",
-                        "exact_serialized_control_path_equivalent_duplicates",
-                        "exact_serialized_control_path_runtime_shadowing",
-                    }
-                    or detail.get("payloadSchemaStatus")
-                    != "exact_current_build_memorypack_fields"
-                ):
-                    continue
-                for field, listener_kind in (
-                    POST_PLAYBACK_VARIABLE_LISTENER_FIELDS.items()
-                ):
-                    variable_key = str(detail.get(field) or "")
-                    if not variable_key:
-                        continue
-                    listener = compact_dict({
-                        "storyKey": story_key,
-                        "listenerKind": listener_kind,
-                        "eventName": str(owner.get("headerName") or ""),
-                        "headerLocalId": owner.get("headerLocalId"),
-                        "levelId": level_id,
-                        "scriptId": script_id,
-                        "variableKey": variable_key,
-                        "sourceFile": source_file,
-                    })
-                    signature = (
-                        story_key,
-                        listener_kind,
-                        listener.get("eventName"),
-                        listener.get("headerLocalId"),
-                        source_file,
-                    )
-                    listeners[(level_id, script_id, variable_key)][signature] = (
-                        listener
-                    )
-                if not isinstance(playback_local_id, int):
-                    continue
-                control = exact_native_receiver_post_playback_control(
-                    owner,
-                    story_key=story_key,
-                    playback_local_id=playback_local_id,
-                    source_file=source_file,
-                )
-                for action in control.get("actions") or []:
-                    action_name = str(action.get("actionName") or "")
-                    if action_name not in POST_PLAYBACK_VARIABLE_SETTER_ACTIONS:
-                        continue
-                    keys = sorted({
-                        str(value)
-                        for value in action.get("texts") or []
-                        if str(value) and not str(value).startswith(("$", "#"))
-                    })
-                    if len(keys) != 1:
-                        continue
-                    variable_key = keys[0]
-                    setter = {
-                        "storyKey": story_key,
-                        "levelId": level_id,
-                        "scriptId": script_id,
-                        "playbackLocalId": playback_local_id,
-                        "setterLocalId": action.get("localId"),
-                        "setterAction": action_name,
-                        "variableKey": variable_key,
-                        "sourceFile": source_file,
-                    }
-                    signature = (
-                        story_key,
-                        level_id,
-                        script_id,
-                        playback_local_id,
-                        action.get("localId"),
-                        action_name,
-                        variable_key,
-                        source_file,
-                    )
-                    setters[signature] = setter
-
-    setter_rows: list[dict[str, Any]] = []
-    exact_match_count = 0
-    cross_story_match_count = 0
-    for setter in setters.values():
-        matches = sorted(
-            listeners.get((
-                setter["levelId"],
-                setter["scriptId"],
-                setter["variableKey"],
-            ), {}).values(),
-            key=lambda row: (
-                str(row.get("storyKey") or ""),
-                str(row.get("listenerKind") or ""),
-                int(row.get("headerLocalId") or -1),
-            ),
-        )
-        exact_match_count += len(matches)
-        cross_story_matches = [
-            match
-            for match in matches
-            if match.get("storyKey") != setter.get("storyKey")
-        ]
-        cross_story_match_count += len(cross_story_matches)
-        setter_rows.append({
-            **setter,
-            "exactListenerMatches": matches,
-            "crossStoryListenerMatchCount": len(cross_story_matches),
-            "orderEvidence": False,
-            "missionOwnershipEvidence": False,
-        })
-    setter_rows.sort(key=lambda row: (
-        str(row.get("levelId") or ""),
-        str(row.get("scriptId") or ""),
-        int(row.get("setterLocalId") or -1),
-        str(row.get("storyKey") or ""),
-    ))
-    listener_rows = [
-        row
-        for bucket in listeners.values()
-        for row in bucket.values()
-    ]
-    return {
-        "schema": "postPlaybackVariableBridgeAudit.v1",
-        "summary": {
-            "nativeStoryKeys": len(native_story_playback_index),
-            "nativePlaybackOccurrences": occurrence_count,
-            "exactVariableListenerSelectors": len(listeners),
-            "exactVariableListenerRows": len(listener_rows),
-            "postPlaybackVariableSetters": len(setter_rows),
-            "exactSetterListenerMatches": exact_match_count,
-            "crossStorySetterListenerMatches": cross_story_match_count,
-            "setterActions": dict(sorted(Counter(
-                row["setterAction"] for row in setter_rows
-            ).items())),
-            "listenerKinds": dict(sorted(Counter(
-                row["listenerKind"] for row in listener_rows
-            ).items())),
-        },
-        "status": (
-            "closed_no_exact_same_script_key_match"
-            if exact_match_count == 0
-            else "context_only_execute_notification_family_unproven"
-        ),
-        "setters": setter_rows,
-        "evidenceBoundary": (
-            "The installed formatter and exact MemoryPack payloads prove the "
-            "setter classes, serialized keys, listener classes, and listener "
-            "keys. They do not prove that generic Set<T>.Execute emits the "
-            "property or blackboard notification family. No current setter "
-            "matches any exact same-level, same-script, same-key Story listener, "
-            "so this route creates no ownership, branch, or order edge."
-        ),
-        "usesOcrOrManualOrder": False,
-    }
-
-
 def build_story_binding_coverage(
     pipeline_index: dict[str, Any],
     pipeline_index_path: Path,
@@ -6946,8 +4835,10 @@ def build_story_binding_coverage(
     context_only_trigger_route_keys: set[str] = set()
     definition_only_interactive_config_keys: set[str] = set()
     sidecars_read = 0
-    lua_playback_evidence = load_lua_story_playback_evidence(
+    lua_playback_evidence = lua_story_projection.load_lua_story_playback_evidence(
         lua_consumer_audit_path,
+        lua_consumer_reference_schema=LUA_CONSUMER_REFERENCE_SCHEMA,
+        native_game_action_type="Beyond.Gameplay.Actions.GameAction",
     )
     cinematic_contract = lua_playback_evidence.get("runtimeHandleContract") or {}
     cinematic_report = str(cinematic_contract.get("report") or "")
@@ -6988,7 +4879,7 @@ def build_story_binding_coverage(
                     matched_producers.append(compact)
         if matched_producers:
             route["nativeCinematicProducerRoutes"] = matched_producers
-            route["sourceFiles"] = _unique_route_strings(
+            route["sourceFiles"] = story_trigger_route_projection.unique_route_strings(
                 route.get("sourceFiles"),
                 cinematic_report,
             )
@@ -7165,11 +5056,14 @@ def build_story_binding_coverage(
                 **row,
                 "missionId": mission_id,
             })
-            add_trigger_route(build_story_trigger_route(
-                row,
-                mission_id=mission_id,
-                scope="mission",
-            ))
+            add_trigger_route(
+                story_trigger_route_projection.build_story_trigger_route(
+                    row,
+                    runtime_selector=exact_native_runtime_selector,
+                    mission_id=mission_id,
+                    scope="mission",
+                )
+            )
         for row, quest_id, scope in _scoped_connection_rows(flow):
             if str(row.get("relation") or "") == (
                 "unique_mission_tracked_npc_proxy_dialog_context"
@@ -7204,12 +5098,15 @@ def build_story_binding_coverage(
                     definition_only_interactive_config_keys.add(key)
                 if key not in all_story_rows:
                     context_only_trigger_route_keys.add(key)
-                add_trigger_route(build_story_trigger_route(
-                    row,
-                    mission_id=mission_id,
-                    quest_id=quest_id,
-                    scope=scope,
-                ))
+                add_trigger_route(
+                    story_trigger_route_projection.build_story_trigger_route(
+                        row,
+                        runtime_selector=exact_native_runtime_selector,
+                        mission_id=mission_id,
+                        quest_id=quest_id,
+                        scope=scope,
+                    )
+                )
             if key not in story_rows and key in all_story_rows:
                 story_rows[key] = {
                     **all_story_rows[key],
@@ -7226,22 +5123,28 @@ def build_story_binding_coverage(
                 evidence_tier_counts[evidence_tier] += 1
                 connected_keys_by_evidence_tier[evidence_tier].add(key)
             evidence_row_count += 1
-            add_trigger_route(build_story_trigger_route(
-                row,
-                mission_id=mission_id,
-                quest_id=quest_id,
-                scope=scope,
-            ))
+            add_trigger_route(
+                story_trigger_route_projection.build_story_trigger_route(
+                    row,
+                    runtime_selector=exact_native_runtime_selector,
+                    mission_id=mission_id,
+                    quest_id=quest_id,
+                    scope=scope,
+                )
+            )
         for row in flow.get("unlinkedNativePlayback") or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 key = str(row["key"])
                 native_playback_unscoped.add(key)
-                add_trigger_route(build_story_trigger_route(
-                    row,
-                    mission_id=mission_id,
-                    scope="mission",
-                    owner_status="unresolved_playback",
-                ))
+                add_trigger_route(
+                    story_trigger_route_projection.build_story_trigger_route(
+                        row,
+                        runtime_selector=exact_native_runtime_selector,
+                        mission_id=mission_id,
+                        scope="mission",
+                        owner_status="unresolved_playback",
+                    )
+                )
                 event_names = {
                     str(value).strip()
                     for value in row.get("nativeEventNames") or []
@@ -7506,12 +5409,15 @@ def build_story_binding_coverage(
         for row in flow.get("unlinkedTimelineContainment") or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 unresolved_timeline_containment.add(str(row["key"]))
-                add_trigger_route(build_story_trigger_route(
-                    row,
-                    mission_id=mission_id,
-                    scope="mission",
-                    owner_status="unresolved",
-                ))
+                add_trigger_route(
+                    story_trigger_route_projection.build_story_trigger_route(
+                        row,
+                        runtime_selector=exact_native_runtime_selector,
+                        mission_id=mission_id,
+                        scope="mission",
+                        owner_status="unresolved",
+                    )
+                )
         unresolved_dialog_rows = (
             flow.get("unresolvedDialogTreeNarrativeActions")
             if "unresolvedDialogTreeNarrativeActions" in flow
@@ -7520,12 +5426,15 @@ def build_story_binding_coverage(
         for row in unresolved_dialog_rows or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 unresolved_dialog_tree_containment.add(str(row["key"]))
-                add_trigger_route(build_story_trigger_route(
-                    row,
-                    mission_id=mission_id,
-                    scope="mission",
-                    owner_status="unresolved",
-                ))
+                add_trigger_route(
+                    story_trigger_route_projection.build_story_trigger_route(
+                        row,
+                        runtime_selector=exact_native_runtime_selector,
+                        mission_id=mission_id,
+                        scope="mission",
+                        owner_status="unresolved",
+                    )
+                )
         for row in flow.get("unlinkedDialogTreeNarrativeActions") or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 unlinked_dialog_tree_containment.add(str(row["key"]))
@@ -7537,24 +5446,30 @@ def build_story_binding_coverage(
         for row in unresolved_left_subtitle_rows or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 unresolved_dialog_tree_left_subtitle.add(str(row["key"]))
-                add_trigger_route(build_story_trigger_route(
-                    row,
-                    mission_id=mission_id,
-                    scope="mission",
-                    owner_status="unresolved",
-                ))
+                add_trigger_route(
+                    story_trigger_route_projection.build_story_trigger_route(
+                        row,
+                        runtime_selector=exact_native_runtime_selector,
+                        mission_id=mission_id,
+                        scope="mission",
+                        owner_status="unresolved",
+                    )
+                )
         for row in flow.get("unlinkedDialogTreeLeftSubtitleActions") or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 unlinked_dialog_tree_left_subtitle.add(str(row["key"]))
         for row in flow.get("unresolvedDialogTreeStoryPlaybackCarriers") or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 unresolved_dialog_tree_story_playback.add(str(row["key"]))
-                add_trigger_route(build_story_trigger_route(
-                    row,
-                    mission_id=mission_id,
-                    scope="mission",
-                    owner_status="unresolved",
-                ))
+                add_trigger_route(
+                    story_trigger_route_projection.build_story_trigger_route(
+                        row,
+                        runtime_selector=exact_native_runtime_selector,
+                        mission_id=mission_id,
+                        scope="mission",
+                        owner_status="unresolved",
+                    )
+                )
         for row in flow.get("unlinkedDefinitionOnly") or []:
             if isinstance(row, dict) and str(row.get("key") or "") in story_rows:
                 key = str(row["key"])
@@ -7564,12 +5479,15 @@ def build_story_binding_coverage(
                     "relation": "original_text_definition_without_consumer",
                     "direction": "context",
                 }
-                add_trigger_route(build_story_trigger_route(
-                    definition_row,
-                    mission_id=mission_id,
-                    scope="mission",
-                    owner_status="unresolved",
-                ))
+                add_trigger_route(
+                    story_trigger_route_projection.build_story_trigger_route(
+                        definition_row,
+                        runtime_selector=exact_native_runtime_selector,
+                        mission_id=mission_id,
+                        scope="mission",
+                        owner_status="unresolved",
+                    )
+                )
 
     composed_root_playback_alias_rows: list[dict[str, Any]] = []
     composed_route_signatures: set[str] = set()
@@ -7640,7 +5558,9 @@ def build_story_binding_coverage(
     context_only_trigger_route_count = 0
     for key, story in sorted(story_rows.items(), key=lambda item: natural_quest_key(item[0])):
         routes = list(story_trigger_routes.get(key, {}).values())
-        routes.sort(key=story_trigger_route_sort_key)
+        routes.sort(
+            key=story_trigger_route_projection.story_trigger_route_sort_key
+        )
         if key in connected_keys:
             attachment_status = "connected"
         elif key in native_playback_unscoped:
@@ -7699,7 +5619,9 @@ def build_story_binding_coverage(
         if not story:
             continue
         routes = list(story_trigger_routes[key].values())
-        routes.sort(key=story_trigger_route_sort_key)
+        routes.sort(
+            key=story_trigger_route_projection.story_trigger_route_sort_key
+        )
         if not routes:
             continue
         context_only_trigger_route_files += 1
@@ -7801,9 +5723,19 @@ def build_story_binding_coverage(
         )
     )
 
-    level_sequence_textasset_index = build_level_sequence_textasset_index()
-    post_playback_action_name_audit = build_post_playback_action_name_audit(
-        missionless_runtime_nodes
+    level_sequence_textasset_index = (
+        post_playback_enrichment.build_level_sequence_textasset_index(
+            DEFAULT_LEVEL_SEQUENCE_TEXTASSET_ROOT,
+            compact_projector=compact_dict,
+            repo_path_projector=repo_path,
+        )
+    )
+    post_playback_action_name_audit = (
+        post_playback_enrichment.build_post_playback_action_name_audit(
+            missionless_runtime_nodes,
+            formatter_names=ACTIONBASE_FORMATTER_ACTION_NAMES,
+            formatter_audit=ACTIONBASE_FORMATTER_NAME_AUDIT,
+        )
     )
     action_name_summary = post_playback_action_name_audit.get("summary") or {}
     callback_audit = (
@@ -7813,9 +5745,10 @@ def build_story_binding_coverage(
     )
     callback_audit_summary = callback_audit.get("summary") or {}
     post_playback_callserver_contract_audit = (
-        attach_post_playback_callserver_contracts(
+        post_playback_enrichment.attach_post_playback_callserver_contracts(
             missionless_runtime_nodes,
             callback_audit,
+            contract_projector=compact_callserver_serialized_contract,
         )
     )
     post_playback_callserver_summary = (
@@ -7875,18 +5808,25 @@ def build_story_binding_coverage(
         "missionOwnershipEvidence": False,
         "usesOcrOrManualOrder": False,
     }
-    post_playback_level_sequence_asset_audit = attach_exact_level_sequence_assets(
-        missionless_runtime_nodes,
-        level_sequence_textasset_index,
+    post_playback_level_sequence_asset_audit = (
+        post_playback_enrichment.attach_exact_level_sequence_assets(
+            missionless_runtime_nodes,
+            level_sequence_textasset_index,
+        )
     )
     level_sequence_asset_summary = (
         post_playback_level_sequence_asset_audit.get("summary") or {}
     )
     post_playback_variable_bridge_audit = (
-        build_post_playback_variable_bridge_audit(
+        post_playback_projection.build_post_playback_variable_bridge_audit(
             native_story_playback_index
             if native_story_playback_index is not None
-            else build_levelscript_native_story_playback_index()
+            else build_levelscript_native_story_playback_index(),
+            setter_actions=POST_PLAYBACK_VARIABLE_SETTER_ACTIONS,
+            listener_fields=POST_PLAYBACK_VARIABLE_LISTENER_FIELDS,
+            post_playback_control_projector=(
+                exact_native_receiver_post_playback_control
+            ),
         )
     )
     variable_bridge_summary = (
@@ -7909,596 +5849,95 @@ def build_story_binding_coverage(
         or bool(row.get("intersectsAuthoredMerge"))
         for row in tracked_proxy_topology_rows
     )
-    report = {
-        "schemaVersion": 19,
-        "generated": int(time.time()),
-        "language": language,
-        "policy": (
-            "Original exported game data and current-build native serialization only; "
-            "OCR, manual overrides, and gameplay observations do not promote a connection. "
-            "Story rows whose nominal owner is not a pipeline mission enter the denominator "
-            "only when an accepted generated pipeline edge connects them."
-        ),
-        "sources": {
-            "pipelineIndex": repo_path(pipeline_index_path),
-            "storyIndex": repo_path(story_index_path),
-            "missionSidecars": repo_path(mission_sidecar_root),
-            "definitionOnlyAudioMetadata": definition_only_classification["source"],
-            "luaPlaybackAudit": lua_playback_evidence["auditReport"],
-            "luaPlaybackAuditSha256": lua_playback_evidence["auditSha256"],
-            "cinematicQueueRuntimeAudit": cinematic_report,
-            "levelSequenceTextAssets": repo_path(
-                DEFAULT_LEVEL_SEQUENCE_TEXTASSET_ROOT
-            ),
-            "actionBaseFormatterTable": str(
-                ACTIONBASE_FORMATTER_NAME_AUDIT.get("sourceFile") or ""
-            ),
-            "callServerCallbackAudit": repo_path(
-                CALLSERVER_CALLBACK_AUDIT_JSON
-            ),
-        },
-        "counts": {
-            "pipelineMissions": len(mission_ids),
-            "missionSidecarsRead": sidecars_read,
-            "uniqueStoryFiles": len(story_rows),
-            "connectedUniqueStoryFiles": len(connected_keys),
-            "connectedCrossOwnerStoryFiles": len(connected_cross_owner_keys),
-            "unlinkedUniqueStoryFiles": len(unlinked),
-            "connectedMissionPlacements": sum(len(keys) for keys in connected_by_mission.values()),
-            "connectionEvidenceRows": evidence_row_count,
-            "storyTriggerRoutes": trigger_route_count,
-            "storyFilesWithTriggerRoutes": story_files_with_trigger_routes,
-            "trackedProxyCandidateTopologyContexts": len(
-                tracked_proxy_topology_rows
-            ),
-            "trackedProxyCandidateTopologyRoutes": (
-                tracked_proxy_topology_route_count
-            ),
-            "trackedProxyCandidateTopologyBranchContexts": (
-                tracked_proxy_branch_context_count
-            ),
-            "trackedProxyCandidateTopologyForkSpanningContexts": sum(
-                bool(row.get("spansAuthoredForkArms"))
-                for row in tracked_proxy_topology_rows
-            ),
-            "trackedProxyCandidateTopologyMergeContexts": sum(
-                bool(row.get("intersectsAuthoredMerge"))
-                for row in tracked_proxy_topology_rows
-            ),
-            "trackedProxyCandidateTopologyFailures": len(
-                tracked_proxy_topology_failures
-            ),
-            "nativeCinematicProducerStoryFiles": sum(
-                any(route.get("nativeCinematicProducerRoutes") for route in row.get("routes") or [])
-                for row in story_trigger_manifest.values()
-            ),
-            "nativeCinematicProducerRouteAttachments": sum(
-                len(route.get("nativeCinematicProducerRoutes") or [])
-                for row in story_trigger_manifest.values()
-                for route in row.get("routes") or []
-            ),
-            "contextOnlyTriggerRouteFiles":
-                context_only_trigger_route_files,
-            "contextOnlyTriggerRoutes": context_only_trigger_route_count,
-            "definitionOnlyInteractiveConfigFiles": len({
-                key
-                for key in definition_only_interactive_config_keys
-                if key in story_trigger_manifest
-            }),
-            "definitionOnlyInteractiveConfigRoutes": sum(
-                len(story_trigger_manifest[key].get("routes") or [])
-                for key in definition_only_interactive_config_keys
-                if key in story_trigger_manifest
-            ),
-            "unlinkedStoryFilesWithTriggerRoutes": unlinked_files_with_trigger_routes,
-            "rootPlaybackAliasFiles": len({
-                row["playableAssetStoryKey"]
-                for row in root_playback_alias_rows
-            }),
-            "rootPlaybackAliasRows": len(root_playback_alias_rows),
-            "composedRootPlaybackAliasFiles": len({
-                row["playableAssetStoryKey"]
-                for row in composed_root_playback_alias_rows
-            }),
-            "composedRootPlaybackAliasRows":
-                len(composed_root_playback_alias_rows),
-            "rejectedStoryPlaybackCandidates": sum(
-                len(rows)
-                for key, rows in rejected_playback_by_key.items()
-                if key in story_rows
-            ),
-            "scannedLuaStoryPlaybackCalls":
-                lua_playback_evidence["scannedPlaybackCalls"],
-            "acceptedLuaExactPlaybackCalls": len(
-                lua_playback_evidence["acceptedExactPlaybackCalls"]
-            ),
-            "acceptedLuaTableCarrierCalls":
-                lua_playback_evidence["acceptedTableCarrierCalls"],
-            "rejectedLuaCaseMismatchCalls": len(
-                lua_playback_evidence["rejectedCaseMismatchCalls"]
-            ),
-            "runtimeLuaHandleDispatcherCalls":
-                lua_playback_evidence["runtimeHandleDispatcherCallCount"],
-            "runtimeLuaHandleDispatcherFamilies":
-                lua_playback_evidence["runtimeHandleDispatcherFamilyCount"],
-            "unresolvedLuaAuthoredPlaybackCalls":
-                lua_playback_evidence["unresolvedPlaybackCalls"],
-            "missionStateDependencyStoryFiles": len(
-                mission_state_dependency_keys
-            ),
-            "missionStateDependencyCrossOwnerStoryFiles": len(
-                mission_state_dependency_cross_owner_keys
-            ),
-            "missionStateDependencyPlacements": len(
-                mission_state_dependency_placements
-            ),
-            "unlinkedNativePlaybackFiles": len(native_playback_unscoped),
-            "unlinkedNativePlaybackWithoutNamedEvent": len(native_playback_without_named_event),
-            "unresolvedTimelineContainmentFiles": len(unresolved_timeline_containment),
-            "unresolvedDialogTreeNarrativeFiles": len(unresolved_dialog_tree_containment),
-            "unlinkedDialogTreeNarrativeFiles": len(unlinked_dialog_tree_containment),
-            "unresolvedDialogTreeLeftSubtitleFiles": len(
-                unresolved_dialog_tree_left_subtitle
-            ),
-            "unlinkedDialogTreeLeftSubtitleFiles": len(
-                unlinked_dialog_tree_left_subtitle
-            ),
-            "unresolvedDialogTreeStoryPlaybackFiles": len(
-                unresolved_dialog_tree_story_playback
-            ),
-            "unlinkedDefinitionOnlyFiles": len(unlinked_definition_only),
-            "nonMissionContentFiles": len(unlinked_non_mission_content),
-            "unlinkedDefinitionOnlyAudioMetadataFiles": definition_only_class_counts.get(
-                "original_audio_metadata_without_playback_consumer",
-                0,
-            ),
-            "unlinkedDefinitionOnlyEmptyAudioLikelyLegacyFiles": definition_only_class_counts.get(
-                "explicit_empty_audio_metadata_likely_legacy_definition",
-                0,
-            ),
-            "unlinkedDefinitionOnlyWithoutAudioMetadataFiles": definition_only_class_counts.get(
-                "no_audio_metadata_or_playback_consumer_recovered",
-                0,
-            ),
-            "missionlessSubGameRows": len(missionless_nodes),
-            "missionlessSubGameStoryFiles": len(missionless_story_keys),
-            "missionlessSubGameStoryPlacements": missionless_story_placements,
-            "missionlessNativeRuntimeRows": len(missionless_runtime_nodes),
-            "missionlessNativeRuntimeStoryFiles": len(missionless_runtime_story_keys),
-            "missionlessNativeRuntimeStoryPlacements": missionless_runtime_story_placements,
-            "missionlessNativeRuntimeProducerRoutes": sum(
-                len(node.get("localProducerRoutes") or [])
-                for node in missionless_runtime_nodes
-            ),
-            "missionlessNativeRuntimePlaybackGates": sum(
-                len(node.get("playbackGates") or [])
-                for node in missionless_runtime_nodes
-            ),
-            "missionlessNativeRuntimePlaybackGateStoryFiles": len({
-                story["key"]
-                for node in missionless_runtime_nodes
-                if node.get("playbackGates")
-                for story in node.get("storyFiles") or []
-            }),
-            "missionlessNativeRuntimePostPlaybackControls": sum(
-                len(node.get("postPlaybackControls") or [])
-                for node in missionless_runtime_nodes
-            ),
-            "missionlessNativeRuntimePostPlaybackBranchPoints": sum(
-                len(control.get("branchPointLocalIds") or [])
-                for node in missionless_runtime_nodes
-                for control in node.get("postPlaybackControls") or []
-            ),
-            "missionlessNativeRuntimePostPlaybackServerHandoffs": sum(
-                len(control.get("serverHandoffs") or [])
-                for node in missionless_runtime_nodes
-                for control in node.get("postPlaybackControls") or []
-            ),
-            "missionlessNativeRuntimePostPlaybackCallbackHeaderUids": sum(
-                len(handoff.get("possibleCallbackHeaderUIDs") or [])
-                for node in missionless_runtime_nodes
-                for control in node.get("postPlaybackControls") or []
-                for handoff in control.get("serverHandoffs") or []
-            ),
-            "callServerActions": callback_audit_summary.get(
-                "callServerActions", 0
-            ),
-            "callServerCallbackOutputUids": callback_audit_summary.get(
-                "callbackOutputUids", 0
-            ),
-            "callServerExactCallbackHeaders": callback_audit_summary.get(
-                "exactCallbackHeaders", 0
-            ),
-            "callServerCallbackHeadersReachingStory": callback_audit_summary.get(
-                "callbackHeadersReachingStory", 0
-            ),
-            "callServerUnresolvedCallbackOutputs": callback_audit_summary.get(
-                "unresolvedCallbackOutputs", 0
-            ),
-            "postPlaybackCallServerExactContracts": (
-                post_playback_callserver_summary.get("exactContracts", 0)
-            ),
-            "postPlaybackCallServerUnresolvedContracts": (
-                post_playback_callserver_summary.get("unresolvedContracts", 0)
-            ),
-            "postPlaybackLevelSequenceActions": level_sequence_asset_summary.get(
-                "typedActionPlacements", 0
-            ),
-            "postPlaybackLevelSequenceIds": level_sequence_asset_summary.get(
-                "serializedLevelSequenceIds", 0
-            ),
-            "postPlaybackLevelSequenceExactAssets": level_sequence_asset_summary.get(
-                "exactResolvedLevelSequenceIds", 0
-            ),
-            "postPlaybackLevelSequenceUnresolvedIds": level_sequence_asset_summary.get(
-                "unresolvedLevelSequenceIds", 0
-            ),
-            "postPlaybackLevelSequenceRelatedOriginalFiles": (
-                level_sequence_asset_summary.get("relatedOriginalFiles", 0)
-            ),
-            "postPlaybackActionPlacements": action_name_summary.get(
-                "actionPlacements", 0
-            ),
-            "postPlaybackFormatterNamedActions": action_name_summary.get(
-                "formatterNamedActionPlacements", 0
-            ),
-            "postPlaybackFallbackNamedActions": action_name_summary.get(
-                "fallbackNamedActionPlacements", 0
-            ),
-            "postPlaybackUnresolvedActionShapes": action_name_summary.get(
-                "unresolvedOutsideActionBaseShapes", 0
-            ),
-            "postPlaybackVariableSetters": variable_bridge_summary.get(
-                "postPlaybackVariableSetters", 0
-            ),
-            "postPlaybackVariableExactListenerMatches": (
-                variable_bridge_summary.get("exactSetterListenerMatches", 0)
-            ),
-            "postPlaybackVariableCrossStoryListenerMatches": (
-                variable_bridge_summary.get(
-                    "crossStorySetterListenerMatches", 0
-                )
-            ),
-            "partiallyConnectedDialogTreeNarrativeFiles": len(
-                unresolved_dialog_tree_containment & connected_keys
-            ),
-        },
-        "byKind": kind_counts,
-        "relationEvidenceRows": dict(sorted(relation_counts.items())),
-        "evidenceTierRows": dict(sorted(evidence_tier_counts.items())),
-        "evidenceTierUniqueStoryFiles": {
-            tier: len(keys)
-            for tier, keys in sorted(connected_keys_by_evidence_tier.items())
-        },
-        "missionStateStoryDependencies": sorted(
-            mission_state_dependency_rows,
-            key=lambda row: (
-                natural_quest_key(str(row.get("missionId") or "")),
-                natural_quest_key(str(row.get("key") or "")),
-            ),
-        ),
-        "storyTriggerManifest": story_trigger_manifest,
-        "trackedProxyCandidateTopology": {
-            "schema": "trackedProxyCandidateQuestTopologyAudit.v1",
-            "status": (
-                "validation_failed"
-                if tracked_proxy_topology_failures
-                else "validated"
-            ),
-            "counts": {
-                "contexts": len(tracked_proxy_topology_rows),
-                "routes": tracked_proxy_topology_route_count,
-                "branchContexts": tracked_proxy_branch_context_count,
-                "forkSpanningContexts": sum(
-                    bool(row.get("spansAuthoredForkArms"))
-                    for row in tracked_proxy_topology_rows
-                ),
-                "mergeContexts": sum(
-                    bool(row.get("intersectsAuthoredMerge"))
-                    for row in tracked_proxy_topology_rows
-                ),
-                "topologyClasses": dict(sorted(
-                    tracked_proxy_topology_class_counts.items()
-                )),
-                "validationFailures": len(
-                    tracked_proxy_topology_failures
-                ),
-            },
-            "rows": tracked_proxy_topology_rows,
-            "validationFailures": tracked_proxy_topology_failures[:100],
-            "evidenceBoundary": (
-                "This audit classifies candidate quests in original "
-                "MissionRuntime topology. The original binary keeps proxy "
-                "active-row selection and quest state application separate, "
-                "so no dialog is assigned to a quest arm and no Story order "
-                "edge is added."
-            ),
-        },
-        "postPlaybackActionNameAudit": post_playback_action_name_audit,
-        "callServerCallbackAudit": compact_callback_audit,
-        "postPlaybackLevelSequenceAssetAudit": (
-            post_playback_level_sequence_asset_audit
-        ),
-        "luaStoryPlaybackEvidence": lua_playback_evidence,
-        "rootPlaybackAliases": root_playback_alias_rows,
-        "composedRootPlaybackAliases":
-            composed_root_playback_alias_rows,
-        "missionStateDependencyCrossOwnerStoryKeys": sorted(
-            mission_state_dependency_cross_owner_keys,
-            key=natural_quest_key,
-        ),
-        "nativePlaybackEventFamilies": {
-            event_name: len(keys)
-            for event_name, keys in sorted(native_playback_event_keys.items())
-        },
-        "nativePlaybackEventFamilyKeys": {
-            event_name: sorted(keys, key=natural_quest_key)
-            for event_name, keys in sorted(native_playback_event_keys.items())
-        },
-        "unlinkedNativePlaybackWithoutNamedEventKeys": sorted(
-            native_playback_without_named_event,
-            key=natural_quest_key,
-        ),
-        "unlinked": unlinked,
-        "connectedCrossOwnerStoryKeys": sorted(
-            connected_cross_owner_keys,
-            key=natural_quest_key,
-        ),
-        "unlinkedNativePlaybackKeys": sorted(native_playback_unscoped, key=natural_quest_key),
-        "unresolvedTimelineContainmentKeys": sorted(unresolved_timeline_containment, key=natural_quest_key),
-        "unresolvedDialogTreeNarrativeKeys": sorted(
-            unresolved_dialog_tree_containment,
-            key=natural_quest_key,
-        ),
-        "unlinkedDialogTreeNarrativeKeys": sorted(
-            unlinked_dialog_tree_containment,
-            key=natural_quest_key,
-        ),
-        "unresolvedDialogTreeLeftSubtitleKeys": sorted(
-            unresolved_dialog_tree_left_subtitle,
-            key=natural_quest_key,
-        ),
-        "unlinkedDialogTreeLeftSubtitleKeys": sorted(
-            unlinked_dialog_tree_left_subtitle,
-            key=natural_quest_key,
-        ),
-        "unresolvedDialogTreeStoryPlaybackKeys": sorted(
-            unresolved_dialog_tree_story_playback,
-            key=natural_quest_key,
-        ),
-        "unlinkedDefinitionOnlyKeys": sorted(
-            unlinked_definition_only,
-            key=natural_quest_key,
-        ),
-        "definitionOnlyNegativeConsumerClassification": definition_only_classification,
-        "nonMissionContentKeys": [
-            {"key": key, **unlinked_non_mission_content[key]}
-            for key in sorted(unlinked_non_mission_content, key=natural_quest_key)
-        ],
-        "missionlessSubGamePlaybackNodes": missionless_nodes,
-        "missionlessNativeRuntimeNodes": missionless_runtime_nodes,
-        "postPlaybackVariableBridgeAudit": (
-            post_playback_variable_bridge_audit
-        ),
-        "dynamicSceneIdentityCrossReferences": dynamic_scene_identity,
-        "partiallyConnectedDialogTreeNarrativeKeys": sorted(
-            unresolved_dialog_tree_containment & connected_keys,
-            key=natural_quest_key,
-        ),
-    }
-    report_root.mkdir(parents=True, exist_ok=True)
-    stem = f"mission_pipeline_story_binding_coverage_{language}"
-    write_json(report_root / f"{stem}.json", report)
-    counts = report["counts"]
-    lines = [
-        f"# Mission Pipeline Story Binding Coverage ({language})",
-        "",
-        report["policy"],
-        "",
-        "## Summary",
-        "",
-        f"- Pipeline missions: `{counts['pipelineMissions']}`",
-        f"- Unique Story files: `{counts['uniqueStoryFiles']}`",
-        f"- Connected unique Story files: `{counts['connectedUniqueStoryFiles']}`",
-        f"- Connected cross-owner Story files admitted by exact pipeline edges: `{counts['connectedCrossOwnerStoryFiles']}`",
-        f"- Unlinked unique Story files: `{counts['unlinkedUniqueStoryFiles']}`",
-        f"- Connected mission placements: `{counts['connectedMissionPlacements']}`",
-        f"- Connection evidence rows: `{counts['connectionEvidenceRows']}`",
-        f"- Normalized Story trigger/context routes: `{counts['storyTriggerRoutes']}`",
-        f"- Validated tracked-proxy candidate topology contexts: `{counts['trackedProxyCandidateTopologyContexts']}` across `{counts['trackedProxyCandidateTopologyRoutes']}` dialog routes",
-        f"- Those intersecting authored fork/merge structure: `{counts['trackedProxyCandidateTopologyBranchContexts']}` (fork-spanning `{counts['trackedProxyCandidateTopologyForkSpanningContexts']}`, merge `{counts['trackedProxyCandidateTopologyMergeContexts']}`)",
-        f"- Tracked-proxy topology validation failures: `{counts['trackedProxyCandidateTopologyFailures']}`",
-        f"- Story files with at least one normalized route: `{counts['storyFilesWithTriggerRoutes']}`",
-        f"- Unlinked Story files with a known trigger/context route: `{counts['unlinkedStoryFilesWithTriggerRoutes']}`",
-        f"- Shipped-Lua Story playback calls scanned: `{counts['scannedLuaStoryPlaybackCalls']}`",
-        f"- Exact-case Lua playback calls admitted: `{counts['acceptedLuaExactPlaybackCalls']}`",
-        f"- Case-mismatched Lua calls rejected by installed-binary proof: `{counts['rejectedLuaCaseMismatchCalls']}`",
-        f"- Runtime Lua handle dispatcher branches: `{counts['runtimeLuaHandleDispatcherCalls']}` in `{counts['runtimeLuaHandleDispatcherFamilies']}` polymorphic queue family",
-        f"- Unresolved authored Lua playback references: `{counts['unresolvedLuaAuthoredPlaybackCalls']}`",
-        f"- Exact root playback alias rows: `{counts['rootPlaybackAliasRows']}`",
-        f"- TimelineAsset Story files reached by those aliases: `{counts['rootPlaybackAliasFiles']}`",
-        f"- Alias rows composed with an independently connected root playback route: `{counts['composedRootPlaybackAliasRows']}`",
-        f"- Story files connected by that composition: `{counts['composedRootPlaybackAliasFiles']}`",
-        f"- Non-owning mission-state dependency Story files: `{counts['missionStateDependencyStoryFiles']}`",
-        f"- Dependency-only Story files whose nominal owner is outside the pipeline: `{counts['missionStateDependencyCrossOwnerStoryFiles']}`",
-        f"- Non-owning mission-state dependency placements: `{counts['missionStateDependencyPlacements']}`",
-        f"- Unlinked files with exact native playback: `{counts['unlinkedNativePlaybackFiles']}`",
-        f"- Exact native playbacks without a named event owner: `{counts['unlinkedNativePlaybackWithoutNamedEvent']}`",
-        f"- Unresolved serialized Timeline containment: `{counts['unresolvedTimelineContainmentFiles']}`",
-        f"- Unresolved typed DialogTree narrative containment: `{counts['unresolvedDialogTreeNarrativeFiles']}`",
-        f"- Unlinked typed DialogTree narrative files: `{counts['unlinkedDialogTreeNarrativeFiles']}`",
-        f"- Unresolved typed DialogTree left-subtitle containment: `{counts['unresolvedDialogTreeLeftSubtitleFiles']}`",
-        f"- Unlinked typed DialogTree left-subtitle files: `{counts['unlinkedDialogTreeLeftSubtitleFiles']}`",
-        f"- Unresolved typed DialogTree Story playback carriers: `{counts['unresolvedDialogTreeStoryPlaybackFiles']}`",
-        f"- Definition-only black-screen files with no current-build playback consumer: `{counts['unlinkedDefinitionOnlyFiles']}`",
-        f"- Those with non-empty original audio metadata only: `{counts['unlinkedDefinitionOnlyAudioMetadataFiles']}`",
-        f"- Those with explicit empty audio mappings (likely legacy definitions): `{counts['unlinkedDefinitionOnlyEmptyAudioLikelyLegacyFiles']}`",
-        f"- Those with no original audio metadata row: `{counts['unlinkedDefinitionOnlyWithoutAudioMetadataFiles']}`",
-        f"- Exact non-mission authored content (speaker radio continuation, character SNS topics, factory guides): `{counts['nonMissionContentFiles']}`",
-        f"- Missionless SubGame runtime nodes with exact playback: `{counts['missionlessSubGameRows']}`",
-        f"- Unique Story files attached to those missionless nodes: `{counts['missionlessSubGameStoryFiles']}`",
-        f"- Missionless SubGame-to-Story placements: `{counts['missionlessSubGameStoryPlacements']}`",
-        f"- Exact missionless native runtime receiver nodes: `{counts['missionlessNativeRuntimeRows']}`",
-        f"- Unique Story files attached to exact runtime receivers: `{counts['missionlessNativeRuntimeStoryFiles']}`",
-        f"- Exact runtime-receiver-to-Story placements: `{counts['missionlessNativeRuntimeStoryPlacements']}`",
-        f"- Exact receiver playback gates: `{counts['missionlessNativeRuntimePlaybackGates']}`",
-        f"- Story files controlled by those exact gates: `{counts['missionlessNativeRuntimePlaybackGateStoryFiles']}`",
-        f"- Exact post-playback control graphs: `{counts['missionlessNativeRuntimePostPlaybackControls']}`",
-        f"- Typed branch points in those graphs: `{counts['missionlessNativeRuntimePostPlaybackBranchPoints']}`",
-        f"- Server handoffs with unresolved handler identity: `{counts['missionlessNativeRuntimePostPlaybackServerHandoffs']}`",
-        f"- Post-playback ActionBase placements named by the complete binary formatter: `{counts['postPlaybackFormatterNamedActions']}` / `{counts['postPlaybackActionPlacements']}`",
-        f"- Remaining action shapes outside ActionBase: `{counts['postPlaybackUnresolvedActionShapes']}`",
-        f"- Typed post-playback LevelSequence action placements: `{counts['postPlaybackLevelSequenceActions']}`",
-        f"- Unique serialized LevelSequence ids: `{counts['postPlaybackLevelSequenceIds']}`",
-        f"- Exact internally validated original LevelSequence TextAssets: `{counts['postPlaybackLevelSequenceExactAssets']}`",
-        f"- Unresolved serialized LevelSequence ids: `{counts['postPlaybackLevelSequenceUnresolvedIds']}`",
-        f"- Typed variable setters after any native Story playback: `{counts['postPlaybackVariableSetters']}`",
-        f"- Exact same-level/script/key Story listener matches: `{counts['postPlaybackVariableExactListenerMatches']}`",
-        f"- Cross-Story matches eligible for a future execution-semantics bridge: `{counts['postPlaybackVariableCrossStoryListenerMatches']}`",
-        f"- Connected files with another unresolved DialogTree parent use: `{counts['partiallyConnectedDialogTreeNarrativeFiles']}`",
-        "",
-        "## By kind",
-        "",
-        "| kind | total | connected | unlinked |",
-        "| --- | ---: | ---: | ---: |",
-    ]
-    for kind, values in kind_counts.items():
-        lines.append(f"| `{kind}` | {values['total']} | {values['connected']} | {values['unlinked']} |")
-    lines.extend([
-        "",
-        "## Shipped-Lua playback census",
-        "",
-        f"Validator: `{lua_playback_evidence['validator']}` / "
-        f"`{lua_playback_evidence['status']}`.",
-        "",
-        lua_playback_evidence["evidenceBoundary"],
-        "",
-        f"Audit: `{lua_playback_evidence['auditReport']}` "
-        f"SHA-256 `{lua_playback_evidence['auditSha256']}`.",
-    ])
-    case_contract_status = lua_playback_evidence.get(
-        "caseResolutionContract"
-    ) or {}
-    lines.append(
-        "Case-resolution native contract: "
-        f"`{case_contract_status.get('status') or 'not_required'}` "
-        f"from `{case_contract_status.get('sourceFile') or '-'}`."
+    report = story_binding_coverage_projection.build_report(
+        ACTIONBASE_FORMATTER_NAME_AUDIT=ACTIONBASE_FORMATTER_NAME_AUDIT,
+        CALLSERVER_CALLBACK_AUDIT_JSON=CALLSERVER_CALLBACK_AUDIT_JSON,
+        DEFAULT_LEVEL_SEQUENCE_TEXTASSET_ROOT=DEFAULT_LEVEL_SEQUENCE_TEXTASSET_ROOT,
+        action_name_summary=action_name_summary,
+        callback_audit_summary=callback_audit_summary,
+        cinematic_report=cinematic_report,
+        compact_callback_audit=compact_callback_audit,
+        composed_root_playback_alias_rows=composed_root_playback_alias_rows,
+        connected_by_mission=connected_by_mission,
+        connected_cross_owner_keys=connected_cross_owner_keys,
+        connected_keys=connected_keys,
+        connected_keys_by_evidence_tier=connected_keys_by_evidence_tier,
+        context_only_trigger_route_count=context_only_trigger_route_count,
+        context_only_trigger_route_files=context_only_trigger_route_files,
+        definition_only_class_counts=definition_only_class_counts,
+        definition_only_classification=definition_only_classification,
+        definition_only_interactive_config_keys=definition_only_interactive_config_keys,
+        dynamic_scene_identity=dynamic_scene_identity,
+        evidence_row_count=evidence_row_count,
+        evidence_tier_counts=evidence_tier_counts,
+        kind_counts=kind_counts,
+        language=language,
+        level_sequence_asset_summary=level_sequence_asset_summary,
+        lua_playback_evidence=lua_playback_evidence,
+        mission_ids=mission_ids,
+        mission_sidecar_root=mission_sidecar_root,
+        mission_state_dependency_cross_owner_keys=mission_state_dependency_cross_owner_keys,
+        mission_state_dependency_keys=mission_state_dependency_keys,
+        mission_state_dependency_placements=mission_state_dependency_placements,
+        mission_state_dependency_rows=mission_state_dependency_rows,
+        missionless_nodes=missionless_nodes,
+        missionless_runtime_nodes=missionless_runtime_nodes,
+        missionless_runtime_story_keys=missionless_runtime_story_keys,
+        missionless_runtime_story_placements=missionless_runtime_story_placements,
+        missionless_story_keys=missionless_story_keys,
+        missionless_story_placements=missionless_story_placements,
+        native_playback_event_keys=native_playback_event_keys,
+        native_playback_unscoped=native_playback_unscoped,
+        native_playback_without_named_event=native_playback_without_named_event,
+        natural_quest_key=natural_quest_key,
+        pipeline_index_path=pipeline_index_path,
+        post_playback_action_name_audit=post_playback_action_name_audit,
+        post_playback_callserver_summary=post_playback_callserver_summary,
+        post_playback_level_sequence_asset_audit=post_playback_level_sequence_asset_audit,
+        post_playback_variable_bridge_audit=post_playback_variable_bridge_audit,
+        rejected_playback_by_key=rejected_playback_by_key,
+        relation_counts=relation_counts,
+        repo_path=repo_path,
+        root_playback_alias_rows=root_playback_alias_rows,
+        sidecars_read=sidecars_read,
+        story_files_with_trigger_routes=story_files_with_trigger_routes,
+        story_index_path=story_index_path,
+        story_rows=story_rows,
+        story_trigger_manifest=story_trigger_manifest,
+        time=time,
+        tracked_proxy_branch_context_count=tracked_proxy_branch_context_count,
+        tracked_proxy_topology_class_counts=tracked_proxy_topology_class_counts,
+        tracked_proxy_topology_failures=tracked_proxy_topology_failures,
+        tracked_proxy_topology_route_count=tracked_proxy_topology_route_count,
+        tracked_proxy_topology_rows=tracked_proxy_topology_rows,
+        trigger_route_count=trigger_route_count,
+        unlinked=unlinked,
+        unlinked_definition_only=unlinked_definition_only,
+        unlinked_dialog_tree_containment=unlinked_dialog_tree_containment,
+        unlinked_dialog_tree_left_subtitle=unlinked_dialog_tree_left_subtitle,
+        unlinked_files_with_trigger_routes=unlinked_files_with_trigger_routes,
+        unlinked_non_mission_content=unlinked_non_mission_content,
+        unresolved_dialog_tree_containment=unresolved_dialog_tree_containment,
+        unresolved_dialog_tree_left_subtitle=unresolved_dialog_tree_left_subtitle,
+        unresolved_dialog_tree_story_playback=unresolved_dialog_tree_story_playback,
+        unresolved_timeline_containment=unresolved_timeline_containment,
+        variable_bridge_summary=variable_bridge_summary,
     )
-    case_contract_failures = case_contract_status.get("validationFailures") or []
-    if case_contract_failures:
-        failure = case_contract_failures[0]
-        lines.append(
-            "- first case-resolution failure: "
-            f"validator=`{failure.get('validator') or '-'}`, "
-            f"gate=`{failure.get('gate') or '-'}`, "
-            f"expected=`{failure.get('expected')!r}`, "
-            f"actual=`{failure.get('actual')!r}`, "
-            f"source=`{failure.get('sourceFile') or '-'}`"
-        )
-    for row in lua_playback_evidence["acceptedExactPlaybackCalls"]:
-        lines.append(
-            f"- admitted `{row['storyKey']}` from `{row['luaFile']}:{row['luaLine']}` "
-            f"(source SHA-256 `{row['luaSourceSha256']}`)"
-        )
-    for row in lua_playback_evidence["rejectedCaseMismatchCalls"]:
-        lines.append(
-            f"- rejected literal `{row['luaLiteral']}` for `{row['storyKey']}` "
-            f"via `{row['auditReport']}`"
-        )
-    if root_playback_alias_rows:
-        lines.extend([
-            "",
-            "## Exact CutsceneRoot playback aliases",
-            "",
-            "These rows prove root-to-TimelineAsset playback, not mission "
-            "ownership or relative Story order.",
-            "",
-            "| root Story key | played TimelineAsset Story key | native mapping |",
-            "| --- | --- | --- |",
-        ])
-        for row in root_playback_alias_rows:
-            lines.append(
-                f"| `{row['rootStoryKey']}` | "
-                f"`{row['playableAssetStoryKey']}` | "
-                f"`{row['nativeMappingId']}` |"
-            )
-    if native_playback_event_keys:
-        lines.extend([
-            "",
-            "## Unlinked exact-native playback event families",
-            "",
-            "One Story file can occur under more than one decoded native event family.",
-            "",
-            "| native event | unique unlinked Story files |",
-            "| --- | ---: |",
-        ])
-        for event_name, keys in sorted(
-            native_playback_event_keys.items(),
-            key=lambda item: (-len(item[1]), item[0]),
-        ):
-            lines.append(f"| `{event_name}` | {len(keys)} |")
-    if missionless_nodes:
-        lines.extend([
-            "",
-            "## Missionless original-data SubGame playback nodes",
-            "",
-            "These are exact SubGame/script/playback attachments, not mission-owned Story bindings.",
-            "",
-            "| SubGame | bound script | task ids | exact Story files | non-owning cross-references |",
-            "| --- | ---: | --- | --- | --- |",
-        ])
-        for node in missionless_nodes:
-            story_keys = ", ".join(f"`{row['key']}`" for row in node["storyFiles"])
-            task_ids = ", ".join(f"`{value}`" for value in node["mainTaskIds"]) or "-"
-            associations = ", ".join(
-                f"`{row['relation']} -> {row['targetId']}`"
-                for row in node.get("associations") or []
-            ) or "-"
-            lines.append(
-                f"| `{node['subGameId']}` | `{node['bindScriptId']}` | {task_ids} | "
-                f"{story_keys} | {associations} |"
-            )
-    if evidence_tier_counts:
-        lines.extend([
-            "",
-            "## Explicit evidence tiers",
-            "",
-            "| tier | evidence rows | unique Story files |",
-            "| --- | ---: | ---: |",
-        ])
-        for tier, row_count in sorted(evidence_tier_counts.items()):
-            lines.append(
-                f"| `{tier}` | {row_count} | {len(connected_keys_by_evidence_tier[tier])} |"
-            )
-    definition_classes = definition_only_classification["keysByClassification"]
-    if definition_classes:
-        lines.extend([
-            "",
-            "## Definition-only negative consumer classification",
-            "",
-            definition_only_classification["policy"],
-            "",
-            "| classification | files |",
-            "| --- | ---: |",
-        ])
-        for classification, keys in definition_classes.items():
-            lines.append(f"| `{classification}` | {len(keys)} |")
-    lines.extend([
-        "",
-        "The JSON report contains the complete unlinked inventory and unresolved native-evidence keys.",
-        "",
-    ])
-    (report_root / f"{stem}.md").write_text("\n".join(lines), encoding="utf-8", newline="\n")
-    if tracked_proxy_topology_failures:
-        first = tracked_proxy_topology_failures[0]
-        raise RuntimeError(
-            f"validator={first['validator']} gate={first['gate']} "
-            f"mission={first['mission']} story={first['storyKey']} "
-            f"expected={first['expected']!r} actual={first['actual']!r} "
-            f"source={first['sourceFile']} "
-            f"sourceHashes={first['sourceHashes']!r} "
-            f"failures={len(tracked_proxy_topology_failures)}"
-        )
+    return story_binding_coverage_publisher.publish_report(
+        report,
+        report_root=report_root,
+        language=language,
+        kind_counts=kind_counts,
+        lua_playback_evidence=lua_playback_evidence,
+        root_playback_alias_rows=root_playback_alias_rows,
+        native_playback_event_keys=native_playback_event_keys,
+        missionless_nodes=missionless_nodes,
+        evidence_tier_counts=evidence_tier_counts,
+        connected_keys_by_evidence_tier=connected_keys_by_evidence_tier,
+        definition_only_classification=definition_only_classification,
+        tracked_proxy_topology_failures=tracked_proxy_topology_failures,
+        json_writer=write_json,
+    )
     return report
 
 
@@ -8531,162 +5970,6 @@ def natural_quest_key(value: str) -> tuple[str, int, str]:
     except ValueError:
         number = 10**9
     return mission, number, suffix
-
-
-def _serialized_branch_story_keys(value: Any) -> set[str]:
-    """Collect only Story keys carried by serialized Branch playback records.
-
-    The native Branch inventory is deliberately a typed, corpus-wide census.  A
-    mission projection may use it only when the exact Story key is present on a
-    playback arm (including nested typed controls); arbitrary strings such as
-    action names, level ids, and file paths are not candidates.
-    """
-    keys: set[str] = set()
-
-    def visit(node: Any) -> None:
-        if isinstance(node, dict):
-            for field in ("playbackStoryKeys", "storyKeys"):
-                values = node.get(field)
-                if isinstance(values, str) and values:
-                    keys.add(values)
-                elif isinstance(values, list):
-                    keys.update(
-                        str(item) for item in values
-                        if isinstance(item, str) and item
-                    )
-            for child in node.values():
-                visit(child)
-        elif isinstance(node, list):
-            for child in node:
-                visit(child)
-
-    visit(value)
-    return keys
-
-
-def _serialized_branch_controls(value: Any) -> list[dict[str, Any]]:
-    """Return nested typed controls without relying on a control-name allowlist."""
-    controls: list[dict[str, Any]] = []
-
-    def visit(node: Any) -> None:
-        if isinstance(node, dict):
-            if (
-                isinstance(node.get("arms"), list)
-                and ("controlKind" in node or "controlRuntimeMappingId" in node)
-            ):
-                controls.append(node)
-            for child in node.values():
-                visit(child)
-        elif isinstance(node, list):
-            for child in node:
-                visit(child)
-
-    visit(value)
-    return controls
-
-
-def attach_serialized_branch_story_contexts(
-    order_row: dict[str, Any],
-    inventory_rows: Iterable[dict[str, Any]],
-) -> dict[str, Any]:
-    """Project exact serialized Branch/Story intersections into one mission row.
-
-    This is intentionally a projection, not an ownership or chronology rule:
-    the only admission gate is an exact Story key shared by the mission's
-    serialized Story nodes and the original LevelScript Branch census.  The
-    complete typed row and its original-file evidence remain attached so the
-    WebUI can show the unresolved native context without inventing a route.
-    """
-    projected = copy.deepcopy(order_row)
-    inventory_rows = [
-        row for row in inventory_rows
-        if isinstance(row, dict)
-    ]
-    if not inventory_rows:
-        return projected
-    mission_story_keys = {
-        str(node if isinstance(node, str) else node.get("key") or "")
-        for node in order_row.get("nodes") or []
-        if (isinstance(node, str) and node) or (isinstance(node, dict) and node.get("key"))
-    }
-    contexts: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, tuple[str, ...]]] = set()
-    context_story_keys: set[str] = set()
-    related_source_files: set[str] = set()
-    multi_playback_count = 0
-
-    for source_row in inventory_rows:
-        serialized_story_keys = _serialized_branch_story_keys(source_row)
-        mission_keys = serialized_story_keys & mission_story_keys
-        if not mission_keys:
-            continue
-        dedupe_hash = str(source_row.get("sha256") or "")
-        if not dedupe_hash:
-            dedupe_hash = "|".join(
-                sorted(
-                    str(value).replace("\\", "/")
-                    for value in source_row.get("sourceFiles") or []
-                    if value
-                )
-            )
-        dedupe_key = (
-            dedupe_hash,
-            str(source_row.get("branchLocalId") or ""),
-            tuple(sorted(mission_keys)),
-        )
-        if dedupe_key in seen:
-            continue
-        seen.add(dedupe_key)
-        context = copy.deepcopy(source_row)
-        context["relation"] = "serialized_branch_story_context"
-        context["missionStoryKeys"] = sorted(mission_keys)
-        context["externalStoryKeys"] = sorted(serialized_story_keys - mission_story_keys)
-        context["ownership"] = False
-        context["orderEvidence"] = False
-        context["contextEvidenceBoundary"] = (
-            "Exact serialized Branch playback keys intersect this mission's Story "
-            "nodes. The original LevelScript, GameAssembly, and metadata files are "
-            "attached for inspection; this context does not prove mission ownership, "
-            "activation, arm exclusivity, or Story file order."
-        )
-        contexts.append(context)
-        context_story_keys.update(mission_keys)
-        related_source_files.update(
-            str(related.get("sourceFile") or "")
-            for related in source_row.get("relatedOriginalFiles") or []
-            if isinstance(related, dict) and related.get("sourceFile")
-        )
-        multi_playback_count += int(
-            int(source_row.get("playbackArmCount") or 0) > 1
-        )
-        multi_playback_count += sum(
-            1
-            for control in _serialized_branch_controls(source_row)
-            if control.get("branchingStatus") == "multi_playback_arms"
-        )
-
-    contexts.sort(
-        key=lambda row: (
-            str(row.get("levelId") or ""),
-            str(row.get("scriptId") or ""),
-            str(row.get("branchLocalId") or ""),
-            str(row.get("sha256") or ""),
-            tuple(row.get("missionStoryKeys") or []),
-        )
-    )
-    branches = projected.setdefault("branches", {})
-    branches["nativeSerializedBranchContexts"] = contexts
-    branches["nativeSerializedBranchContextEvidenceBoundary"] = (
-        "These rows are exact serialized Branch playback contexts projected by Story "
-        "key intersection. They retain original-file hashes but are not mission "
-        "ownership, activation, arm exclusivity, or chronology evidence."
-    )
-    summary = projected.setdefault("summary", {})
-    summary["nativeSerializedBranchContextCount"] = len(contexts)
-    summary["nativeSerializedBranchContextStoryCount"] = len(context_story_keys)
-    summary["nativeSerializedBranchContextMultiPlaybackCount"] = multi_playback_count
-    summary["nativeSerializedBranchContextRelatedFileCount"] = len(related_source_files)
-    return projected
 
 
 def compact_scalar(value: Any) -> Any:
@@ -8745,156 +6028,6 @@ FACT_KEYS = (
     "needAllKill",
 )
 
-_SUBMIT_ITEM_ROWS_CACHE: dict[str, Any] | None = None
-
-
-def submit_item_requirements(submission_id: str) -> dict[str, Any]:
-    """Return exact authored SubmitItem requirements for one submission id."""
-    global _SUBMIT_ITEM_ROWS_CACHE
-    if _SUBMIT_ITEM_ROWS_CACHE is None:
-        payload = read_json(DEFAULT_SUBMIT_ITEM_TABLE)
-        _SUBMIT_ITEM_ROWS_CACHE = payload if isinstance(payload, dict) else {}
-    row = _SUBMIT_ITEM_ROWS_CACHE.get(submission_id)
-    if not isinstance(row, dict):
-        return {
-            "submissionId": submission_id,
-            "tableDefined": False,
-            "requirementGroups": [],
-        }
-    groups: list[dict[str, Any]] = []
-    for group_index, group in enumerate(row.get("paramData") or []):
-        if not isinstance(group, dict):
-            continue
-        params = group.get("paramList") or []
-        item_param = params[0] if len(params) > 0 and isinstance(params[0], dict) else {}
-        count_param = params[1] if len(params) > 1 and isinstance(params[1], dict) else {}
-        item_ids = [
-            str(value)
-            for value in item_param.get("valueStringList") or []
-            if value not in (None, "")
-        ]
-        counts = [
-            int(value)
-            for value in count_param.get("valueIntList") or []
-            if isinstance(value, (int, float))
-        ]
-        items = [{
-            "itemId": item_id,
-            "count": counts[index] if index < len(counts) else (
-                counts[0] if counts else None
-            ),
-        } for index, item_id in enumerate(item_ids)]
-        groups.append({
-            "index": group_index + 1,
-            "type": group.get("type"),
-            "items": items,
-        })
-    return {
-        "submissionId": submission_id,
-        "tableDefined": True,
-        "requirementGroups": groups,
-    }
-
-
-def submission_dialog_co_gates(condition: Any) -> list[dict[str, Any]]:
-    """Find direct SubmitItem + dialog-finish siblings under authored AND groups."""
-    output: list[dict[str, Any]] = []
-
-    def walk(value: Any) -> None:
-        if not isinstance(value, dict):
-            return
-        children = [
-            child
-            for child in value.get("subConditions") or []
-            if isinstance(child, dict)
-        ]
-        expression = str(value.get("conditionEvalString") or "").lower()
-        if children and "and" in expression:
-            submissions = []
-            dialogs = []
-            for child in children:
-                child_type = type_name(child.get("$type"))
-                if child_type == "CheckQuestSubmitItem":
-                    submission_id = get_const(
-                        child, "_submissionId", "submissionId"
-                    )
-                    if isinstance(submission_id, str) and submission_id:
-                        submissions.append(submission_id)
-                elif child_type == "CheckTalkOptionFinish":
-                    dialog_id = get_const(child, "_dialogId", "dialogId")
-                    finish_id = get_const(child, "_finishId", "finishId")
-                    if isinstance(dialog_id, str) and dialog_id:
-                        dialogs.append((dialog_id, finish_id))
-            for submission_id in submissions:
-                for dialog_id, finish_id in dialogs:
-                    output.append({
-                        "submissionId": submission_id,
-                        "dialogId": dialog_id,
-                        "finishId": finish_id,
-                        "combineConditionId": str(
-                            value.get("uniqueId") or ""
-                        ),
-                        "relation": "same_authored_and_objective",
-                    })
-        for child in children:
-            walk(child)
-
-    walk(condition)
-    return output
-
-
-def submission_level_script_co_gates(condition: Any) -> list[dict[str, Any]]:
-    """Find direct SubmitItem + LevelScript-stage siblings under authored AND groups."""
-    output: list[dict[str, Any]] = []
-
-    def walk(value: Any) -> None:
-        if not isinstance(value, dict):
-            return
-        children = [
-            child
-            for child in value.get("subConditions") or []
-            if isinstance(child, dict)
-        ]
-        expression = str(value.get("conditionEvalString") or "").lower()
-        if children and "and" in expression:
-            submissions: list[str] = []
-            level_scripts: list[tuple[str, str, str]] = []
-            for child in children:
-                child_type = type_name(child.get("$type"))
-                if child_type == "CheckQuestSubmitItem":
-                    submission_id = get_const(
-                        child, "_submissionId", "submissionId"
-                    )
-                    if isinstance(submission_id, str) and submission_id:
-                        submissions.append(submission_id)
-                elif child_type == "CheckLevelScriptStageReachMax":
-                    level_id = get_const(child, "_levelId", "levelId")
-                    script_id = get_const(child, "_scriptId", "scriptId")
-                    if isinstance(script_id, dict):
-                        script_id = script_id.get("scriptId")
-                    if isinstance(script_id, (str, int)) and str(script_id):
-                        level_scripts.append((
-                            str(level_id or ""),
-                            str(script_id),
-                            str(child.get("uniqueId") or ""),
-                        ))
-            for submission_id in submissions:
-                for level_id, script_id, condition_id in level_scripts:
-                    output.append({
-                        "submissionId": submission_id,
-                        "levelId": level_id,
-                        "scriptId": script_id,
-                        "conditionId": condition_id,
-                        "combineConditionId": str(
-                            value.get("uniqueId") or ""
-                        ),
-                        "relation": "same_authored_and_objective",
-                    })
-        for child in children:
-            walk(child)
-
-    walk(condition)
-    return output
 
 
 def condition_tree(condition: Any) -> dict[str, Any] | None:
@@ -9466,7 +6599,9 @@ def build_tracked_proxy_candidate_quest_topology(
     validator = "tracked_proxy_candidate_quest_topology"
     story_key = str(row.get("key") or "")
     proxy_id = str(row.get("npcProxyId") or "")
-    source_files = _unique_route_strings(row.get("sourceFiles"))
+    source_files = story_trigger_route_projection.unique_route_strings(
+        row.get("sourceFiles")
+    )
     mission_runtime_sources = [
         source
         for source in source_files
@@ -9558,7 +6693,9 @@ def build_tracked_proxy_candidate_quest_topology(
         fail("uniqueQuestIdentities", [], sorted(set(duplicates), key=natural_quest_key))
 
     predecessors = {
-        quest_id: _unique_route_strings(node.get("prev"), node.get("prevQuestIdList"))
+        quest_id: story_trigger_route_projection.unique_route_strings(
+            node.get("prev"), node.get("prevQuestIdList")
+        )
         for quest_id, node in nodes_by_id.items()
     }
     dangling = sorted({
@@ -9601,7 +6738,9 @@ def build_tracked_proxy_candidate_quest_topology(
     if cycle_path:
         fail("acyclicQuestGraph", [], cycle_path)
 
-    candidate_ids = _unique_route_strings(row.get("candidateQuestIds"))
+    candidate_ids = story_trigger_route_projection.unique_route_strings(
+        row.get("candidateQuestIds")
+    )
     if not candidate_ids:
         fail("candidateQuestIdentities", "non_empty", [])
     missing_candidates = [
@@ -9769,189 +6908,17 @@ def record_tracked_proxy_candidate_topology(
         "missionId": mission_id,
         "npcProxyId": str(row.get("npcProxyId") or ""),
         "storyKeys": [],
-        "configuredDialogIds": _unique_route_strings(
+        "configuredDialogIds": story_trigger_route_projection.unique_route_strings(
             row.get("configuredDialogIds")
         ),
         **copy.deepcopy(topology),
     })
-    context["storyKeys"] = _unique_route_strings(
+    context["storyKeys"] = story_trigger_route_projection.unique_route_strings(
         context.get("storyKeys"),
         row.get("key"),
     )
 
 
-def objective_row(
-    objective: dict[str, Any],
-    index: int,
-    *,
-    include_level_script_source_evidence: bool = True,
-) -> dict[str, Any]:
-    condition = objective.get("condition")
-    objects = condition_objects(condition)
-    types = sorted({type_name(row.get("$type")) for row in objects if type_name(row.get("$type"))})
-    dialog_finishes: list[dict[str, Any]] = []
-    quest_state_refs: list[dict[str, Any]] = []
-    level_scripts: set[str] = set()
-    properties: set[str] = set()
-    server_placeholder_condition_ids: set[str] = set()
-    submission_checks: list[dict[str, Any]] = []
-    for row in objects:
-        name = type_name(row.get("$type"))
-        if name == "GameConditionServerPlaceHolder":
-            condition_id = row.get("uniqueId")
-            if condition_id not in (None, ""):
-                server_placeholder_condition_ids.add(str(condition_id))
-        if name == "CheckTalkOptionFinish":
-            dialog = get_const(row, "_dialogId", "dialogId")
-            finish = get_const(row, "_finishId", "finishId")
-            if isinstance(dialog, str):
-                dialog_finishes.append({"dialogId": dialog, "finishId": finish})
-        if name == "CheckQuestSubmitItem":
-            submission_id = get_const(row, "_submissionId", "submissionId")
-            if isinstance(submission_id, str) and submission_id:
-                submission_check = submit_item_requirements(submission_id)
-                submission_check["conditionId"] = str(row.get("uniqueId") or "")
-                submission_checks.append(submission_check)
-        if name in {"CheckQuestState", "SimpleConditionCheckQuestState"}:
-            quest_id = get_const(row, "_questId", "questId", "_targetQuestId", "targetQuestId")
-            state = get_const(row, "_targetQuestState", "targetQuestState", "compareTarget")
-            if isinstance(quest_id, str):
-                quest_state_refs.append({"questId": quest_id, "state": state})
-        script = get_const(row, "_scriptId", "scriptId")
-        if isinstance(script, dict):
-            script = script.get("scriptId")
-        if isinstance(script, (str, int)):
-            level_scripts.add(str(script))
-        prop = get_const(row, "_propertyKey", "propertyKey", "_key", "key")
-        if isinstance(prop, str):
-            properties.add(prop)
-    description = objective.get("description") or {}
-    tracking = [
-        normalized
-        for tracking_index, info in enumerate(
-            objective.get("trackingInfoList") or []
-        )
-        if (
-            normalized := tracking_info_row(info, tracking_index)
-        ) is not None
-    ]
-    return {
-        "index": index,
-        "conditionId": condition.get("uniqueId") if isinstance(condition, dict) else "",
-        "descriptionKey": description.get("key") if isinstance(description, dict) else "",
-        "multiple": bool(objective.get("multiple")),
-        "condition": condition_tree(condition),
-        "conditionTypes": types,
-        "authority": classify_authority(types),
-        "serverPlaceholderConditionIds": sorted(server_placeholder_condition_ids),
-        "dialogFinishes": dialog_finishes,
-        "submissionChecks": submission_checks,
-        "submissionDialogCoGates": submission_dialog_co_gates(condition),
-        "submissionLevelScriptCoGates": submission_level_script_co_gates(
-            condition
-        ),
-        "questStateRefs": quest_state_refs,
-        "levelScriptIds": sorted(level_scripts),
-        "levelScriptSources": (
-            level_script_source_evidence(condition)
-            if include_level_script_source_evidence
-            else []
-        ),
-        "levelScriptTaskDependencies": level_script_task_dependencies(condition),
-        "propertyKeys": sorted(properties),
-        "tracking": tracking,
-    }
-
-
-def action_rows(mission: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
-    action_by_id: dict[Any, dict[str, Any]] = {}
-    next_action_by_id: dict[Any, Any] = {}
-    data_map = ((mission.get("actionMapRaw") or {}).get("dataMap") or {})
-    for action in data_map.get("actionList") or []:
-        if not isinstance(action, dict):
-            continue
-        action_id = action.get("_ID")
-        facts = {
-            key.lstrip("_"): compact_scalar(value)
-            for key, value in action.items()
-            if key not in {"$type", "_ID", "_uid"} and value not in (None, "", [], {})
-        }
-        action_by_id[action_id] = {
-            "id": action_id,
-            "type": type_name(action.get("$type")) or "UnknownAction",
-            "facts": facts,
-        }
-        next_action_by_id[action_id] = action.get("_nextID")
-    keys = mission.get("clientActionMapKey") or []
-    values = mission.get("clientActionMapValue") or []
-    output: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for index, key in enumerate(keys):
-        if not isinstance(key, dict):
-            continue
-        quest_id = key.get("questId")
-        if not isinstance(quest_id, str):
-            continue
-        root_action_id = values[index] if index < len(values) else None
-        action_id = root_action_id
-        seen_action_ids: set[Any] = set()
-        chain_index = 0
-        while action_id not in seen_action_ids:
-            seen_action_ids.add(action_id)
-            action = dict(action_by_id.get(action_id) or {"id": action_id, "type": "UnknownAction"})
-            action["trigger"] = key.get("action")
-            action["triggerName"] = QUEST_ACTION_TRIGGERS.get(key.get("action"), "UnknownQuestAction")
-            action["rootActionId"] = root_action_id
-            action["chainIndex"] = chain_index
-            output[quest_id].append(action)
-            next_action_id = next_action_by_id.get(action_id)
-            if not isinstance(next_action_id, int) or next_action_id < 0:
-                break
-            action_id = next_action_id
-            chain_index += 1
-    return dict(output)
-
-
-def annotate_quest_action_dispatch(
-    payload: dict[str, Any],
-    contract: dict[str, Any],
-) -> Counter[str]:
-    """Apply the corpus-wide binary dispatcher census to authored action rows."""
-    dispatched = {
-        int(row["questActionValue"]): row
-        for row in contract.get("safeRunDirectCallers") or []
-        if isinstance(row, dict) and isinstance(row.get("questActionValue"), int)
-    }
-    start_value = int(
-        (contract.get("questActionEnum") or {}).get("OnStartClientAction", 1)
-    )
-    start_dispatchers = contract.get("startActionDispatchers") or []
-    counts: Counter[str] = Counter()
-    for node in payload.get("nodes") or []:
-        if not isinstance(node, dict):
-            continue
-        for action in node.get("clientActions") or []:
-            if not isinstance(action, dict):
-                continue
-            value = action.get("trigger")
-            if value in dispatched:
-                caller = dispatched[value]
-                status = (
-                    "binary_proven_server_success_dispatch"
-                    if value == 2
-                    else "binary_proven_server_failure_dispatch"
-                )
-                action["runtimeDispatchHandler"] = caller.get("symbol") or ""
-            elif value == start_value and not start_dispatchers:
-                status = "authored_definition_no_current_aot_dispatch"
-            else:
-                status = "runtime_dispatch_unresolved"
-            action["runtimeDispatchStatus"] = status
-            action["runtimeDispatchSource"] = contract.get("source") or ""
-            action["runtimeDispatchBoundary"] = contract.get("boundary") or ""
-            counts[f"rows:{status}"] += 1
-            if action.get("chainIndex") == 0:
-                counts[f"roots:{status}"] += 1
-    return counts
 
 
 def annotate_quest_fork_state_application(
@@ -10342,293 +7309,6 @@ def build_quest_fork_semantics(
     }
 
 
-def build_mission(
-    mission: dict[str, Any],
-    source_path: Path,
-    native_runtime_bindings: list[dict[str, Any]] | None = None,
-    activity_quest_level_hosts: dict[str, list[dict[str, Any]]] | None = None,
-    mission_graph_entry: dict[str, Any] | None = None,
-    env_talk_contexts: list[dict[str, Any]] | None = None,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    mission_id = str(mission.get("missionId") or source_path.stem)
-    quest_map = mission.get("questDic") or {}
-    main_path = [str(value) for value in mission.get("mainPathQuests") or []]
-    main_index = {quest_id: index for index, quest_id in enumerate(main_path)}
-    actions = action_rows(mission)
-    successors: dict[str, list[str]] = defaultdict(list)
-    for raw in quest_map.values():
-        if not isinstance(raw, dict):
-            continue
-        quest_id = str(raw.get("questId") or "")
-        for parent in raw.get("prevQuestIdList") or []:
-            if isinstance(parent, str) and quest_id:
-                successors[parent].append(quest_id)
-
-    nodes: list[dict[str, Any]] = []
-    edges: list[dict[str, Any]] = []
-    condition_counts: Counter[str] = Counter()
-    exact_finish_count = 0
-    server_placeholder_count = 0
-    server_placeholder_quest_count = 0
-    active_join_count = 0
-    failure_count = 0
-    external_dependency_count = 0
-    submit_item_count = 0
-    submit_item_quest_count = 0
-    submit_item_dialog_co_gate_count = 0
-    submit_item_level_script_co_gate_count = 0
-    level_script_task_dependency_count = 0
-    annotations = (CASE_STUDIES.get(mission_id) or {}).get("nodes") or {}
-
-    ordered_quests = sorted(
-        (row for row in quest_map.values() if isinstance(row, dict)),
-        key=lambda row: (
-            main_index.get(str(row.get("questId") or ""), 10**6),
-            int(row.get("flowIndex") or 0),
-            natural_quest_key(str(row.get("questId") or "")),
-        ),
-    )
-    for raw in ordered_quests:
-        quest_id = str(raw.get("questId") or "")
-        objectives = [
-            objective_row(objective, index + 1)
-            for index, objective in enumerate(raw.get("objectiveList") or [])
-            if isinstance(objective, dict)
-        ]
-        condition_types = sorted({item for objective in objectives for item in objective["conditionTypes"]})
-        condition_counts.update(condition_types)
-        dialog_finishes = [item for objective in objectives for item in objective["dialogFinishes"]]
-        submission_checks = [
-            item
-            for objective in objectives
-            for item in objective["submissionChecks"]
-        ]
-        for objective in objectives:
-            objective["levelScriptTaskDependencies"] = [
-                validate_level_script_task_dependency(
-                    dependency,
-                    mission_id=mission_id,
-                    quest_id=quest_id,
-                    mission_source=source_path,
-                )
-                for dependency in objective.get("levelScriptTaskDependencies") or []
-            ]
-        level_script_task_dependencies_for_quest = [
-            dependency
-            for objective in objectives
-            for dependency in objective.get("levelScriptTaskDependencies") or []
-        ]
-        level_script_task_dependency_count += len(
-            level_script_task_dependencies_for_quest
-        )
-        submission_dialog_co_gates = [
-            item
-            for objective in objectives
-            for item in objective["submissionDialogCoGates"]
-        ]
-        submission_level_script_co_gates = [
-            item
-            for objective in objectives
-            for item in objective["submissionLevelScriptCoGates"]
-        ]
-        submit_item_count += len(submission_checks)
-        if submission_checks:
-            submit_item_quest_count += 1
-        submit_item_dialog_co_gate_count += len(submission_dialog_co_gates)
-        submit_item_level_script_co_gate_count += len(
-            submission_level_script_co_gates
-        )
-        exact_finish_count += sum(1 for item in dialog_finishes if isinstance(item.get("finishId"), int) and item["finishId"] >= 0)
-        placeholder_condition_ids = [
-            condition_id
-            for objective in objectives
-            for condition_id in objective["serverPlaceholderConditionIds"]
-        ]
-        server_placeholder_count += len(placeholder_condition_ids)
-        if placeholder_condition_ids:
-            server_placeholder_quest_count += 1
-        quest_state_refs = [item for objective in objectives for item in objective["questStateRefs"]]
-        if len({item["questId"] for item in quest_state_refs}) >= 2:
-            active_join_count += 1
-        failed_condition = condition_tree(raw.get("failedCondition"))
-        if failed_condition:
-            failure_count += 1
-        prev = [str(value) for value in raw.get("prevQuestIdList") or [] if isinstance(value, str)]
-        authority = classify_authority(condition_types)
-        node = {
-            "id": quest_id,
-            "flowIndex": raw.get("flowIndex", 0),
-            "showMode": raw.get("showMode"),
-            "questType": raw.get("questType"),
-            "mainPath": quest_id in main_index,
-            "mainPathOrder": main_index.get(quest_id),
-            "prev": prev,
-            "successors": sorted(successors.get(quest_id, []), key=natural_quest_key),
-            "objectives": objectives,
-            "submissionChecks": submission_checks,
-            "submissionDialogCoGates": submission_dialog_co_gates,
-            "submissionLevelScriptCoGates": submission_level_script_co_gates,
-            "levelScriptTaskDependencies": level_script_task_dependencies_for_quest,
-            "serverPlaceholderKeys": [
-                {"questId": quest_id, "conditionId": condition_id}
-                for condition_id in placeholder_condition_ids
-            ],
-            "conditionTypes": condition_types,
-            "authority": authority,
-            "clientActions": actions.get(quest_id, []),
-            "activityStageHosts": list(
-                (activity_quest_level_hosts or {}).get(quest_id, [])
-            ),
-            "failedCondition": failed_condition,
-            "network": {
-                "outbound": "dialog_finish" if dialog_finishes else (
-                    "server_owned" if authority == "server" else (
-                        "objective_progress" if objectives else "unresolved"
-                    )
-                ),
-                "inbound": ["quest_start", "quest_succeed"] + (["quest_fail"] if failed_condition else []),
-            },
-        }
-        if quest_id in annotations:
-            node["annotation"] = annotations[quest_id]
-        nodes.append(node)
-        for parent in prev:
-            edges.append({
-                "source": parent,
-                "target": quest_id,
-                "type": "predecessor",
-                "confidence": "asset_direct",
-                "serverDecision": True,
-            })
-        for objective_index, objective in enumerate(objectives, 1):
-            for ref in objective["questStateRefs"]:
-                external_source = ref["questId"] not in quest_map
-                if external_source:
-                    external_dependency_count += 1
-                edge = {
-                    "source": ref["questId"],
-                    "target": quest_id,
-                    "type": "condition_dependency",
-                    "targetState": ref.get("state"),
-                    "objectiveIndex": objective_index,
-                    "confidence": "asset_direct",
-                }
-                if external_source:
-                    edge["externalSource"] = True
-                edges.append(edge)
-
-    quest_topology = build_quest_fork_semantics(nodes, source_path)
-    if quest_topology["validation"]["status"] != "validated":
-        first = quest_topology["validation"]["failures"][0]
-        raise RuntimeError(
-            "validator=quest_fork_semantics "
-            f"gate={first['gate']} mission={first['mission']} "
-            f"quest={first.get('questId') or '-'} "
-            f"expected={first['expected']!r} actual={first['actual']!r} "
-            f"source={first['sourceFile']} "
-            f"sourceHashes={first['sourceHashes']!r}"
-        )
-    roots = [node["id"] for node in nodes if not node["prev"]]
-    fanouts = [node["id"] for node in nodes if len(node["successors"]) > 1]
-    multi_prev = [node["id"] for node in nodes if len(node["prev"]) > 1]
-    mission_name = mission.get("missionName") or {}
-    mission_desc = mission.get("missionDescription") or {}
-    mission_task_dependencies = [
-        {**dependency, "questId": node["id"], "objectiveIndex": objective["index"]}
-        for node in nodes
-        for objective in node.get("objectives") or []
-        for dependency in objective.get("levelScriptTaskDependencies") or []
-    ]
-    payload = {
-        "schemaVersion": SCHEMA_VERSION,
-        "mission": {
-            "id": mission_id,
-            "nameKey": mission_name.get("key") if isinstance(mission_name, dict) else "",
-            "descriptionKey": mission_desc.get("key") if isinstance(mission_desc, dict) else "",
-            "levelId": mission.get("levelId") or "",
-            "missionType": mission.get("missionType"),
-            "rewardId": mission.get("rewardId") or "",
-            "mainPath": main_path,
-            "entryQuestIds": roots,
-            "onMissionAcceptId": mission.get("onMissionAcceptId"),
-            "onMissionCompletedId": mission.get("onMissionCompletedId"),
-            "onMissionFailedId": mission.get("onMissionFailedId"),
-            "nativeRuntimeBindings": list(native_runtime_bindings or []),
-            "levelScriptTaskDependencies": mission_task_dependencies,
-            "source": source_path.relative_to(ROOT).as_posix() if source_path.is_relative_to(ROOT) else source_path.as_posix(),
-        },
-        "nodes": nodes,
-        "edges": sorted(edges, key=lambda row: (row["type"], natural_quest_key(row["source"]), natural_quest_key(row["target"]))),
-        "caseStudy": CASE_STUDIES.get(mission_id),
-        # Cross-mission relations recovered from authored mission/quest state
-        # conditions. Only ``requiresCompleted`` carries precedence; the other
-        # relations are co-active or mutually exclusive and must not be read as
-        # ordering. See story_builder/mission_dependency_graph.py.
-        "missionGraph": mission_graph_entry or {"upstream": {}, "downstream": {}},
-        "questTopology": quest_topology,
-        # Ambient envTalk lines configured on an NPC proxy that a quest of this
-        # mission tracks. Navigation/configuration context only -- never
-        # playback ownership. See story_builder/envtalk_attachment.py.
-        "envTalkContext": sorted(
-            env_talk_contexts or [],
-            key=lambda row: (natural_quest_key(row.get("questId") or ""), row.get("storyKey") or ""),
-        ),
-    }
-    properties = mission_property_rows(mission)
-    if properties:
-        payload["mission"]["properties"] = properties
-    summary = {
-        "id": mission_id,
-        "nameKey": payload["mission"]["nameKey"],
-        "levelId": payload["mission"]["levelId"],
-        "questCount": len(nodes),
-        "mainPathCount": len(main_path),
-        "entryCount": len(roots),
-        "fanoutCount": len(fanouts),
-        "multiPrevJoinCount": len(multi_prev),
-        "activeJoinCount": active_join_count,
-        "exactFinishCount": exact_finish_count,
-        "serverPlaceholderCount": server_placeholder_count,
-        "serverPlaceholderQuestCount": server_placeholder_quest_count,
-        "failureConditionCount": failure_count,
-        "questForkSemanticCount": quest_topology["counts"]["forks"],
-        "questForkGuardedCount": quest_topology["counts"]["guardedForks"],
-        "questForkStructureCounts": quest_topology["counts"]["structures"],
-        "questForkOutcomeCounts": quest_topology["counts"]["outcomes"],
-        "externalDependencyCount": external_dependency_count,
-        "submitItemConditionCount": submit_item_count,
-        "submitItemQuestCount": submit_item_quest_count,
-        "submitItemDialogCoGateCount": submit_item_dialog_co_gate_count,
-        "submitItemLevelScriptCoGateCount": (
-            submit_item_level_script_co_gate_count
-        ),
-        "levelScriptTaskDependencyCount": level_script_task_dependency_count,
-        "nativeRuntimeBindingCount": len(native_runtime_bindings or []),
-        "activityStageHostCount": sum(
-            len(node.get("activityStageHosts") or []) for node in nodes
-        ),
-        "activityStageHostedQuestCount": sum(
-            1 for node in nodes if node.get("activityStageHosts")
-        ),
-        "trackingInfoCount": sum(
-            len(objective.get("tracking") or [])
-            for node in nodes
-            for objective in node.get("objectives") or []
-        ),
-        "trackingObjectiveCount": sum(
-            1
-            for node in nodes
-            for objective in node.get("objectives") or []
-            if objective.get("tracking")
-        ),
-        "missionPropertyCount": len(properties),
-        "conditionTypes": sorted(condition_counts),
-        "caseStudy": mission_id in CASE_STUDIES,
-        "file": f"missions/{mission_id}.json",
-    }
-    return payload, summary
-
-
 def env_talk_contexts_by_mission(report: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     """Regroup exact envTalk navigation/state context by mission.
 
@@ -10769,11 +7449,20 @@ def build_all(
     produced: set[str] = set()
     condition_counts: Counter[str] = Counter()
     placeholder_condition_counts: Counter[str] = Counter()
-    subgame_bindings, subgame_registry = load_subgame_mission_bindings(subgame_table)
-    activity_hosts, activity_host_registry = load_activity_quest_level_hosts((
-        activity_dungeon_fighting_stage_table,
-        activity_snapshot_stage_table,
-    ))
+    subgame_bindings, subgame_registry = (
+        mission_context_projection.load_subgame_mission_bindings(subgame_table)
+    )
+    activity_hosts, activity_host_registry = (
+        mission_context_projection.load_activity_quest_level_hosts(
+            (
+                activity_dungeon_fighting_stage_table,
+                activity_snapshot_stage_table,
+            ),
+            activity_quest_level_hosts_contract=(
+                RUNTIME_CONTRACT["activityQuestLevelHosts"]
+            ),
+        )
+    )
     mission_graph = build_mission_dependency_graph_report(mission_root)
     mission_graph_index = mission_graph.get("missions") or {}
     env_talk = build_envtalk_attachment_report(
@@ -10805,13 +7494,47 @@ def build_all(
         if not isinstance(mission, dict) or not isinstance(mission.get("questDic"), dict):
             continue
         mission_id = str(mission.get("missionId") or path.stem)
-        payload, summary = build_mission(
+        payload, summary = mission_payload_projection.build_mission(
             mission,
             path,
             subgame_bindings.get(mission_id, []),
             activity_hosts,
             mission_graph_index.get(mission_id),
             env_talk_by_mission.get(mission_id),
+            schema_version=SCHEMA_VERSION,
+            repo_root=ROOT,
+            case_studies=CASE_STUDIES,
+            action_projector=lambda value: quest_payload_projection.action_rows(
+                value,
+                compact_scalar_projector=compact_scalar,
+                quest_action_triggers=QUEST_ACTION_TRIGGERS,
+                type_name_projector=type_name,
+            ),
+            objective_projector=lambda value, index: (
+                quest_payload_projection.objective_row(
+                    value,
+                    index,
+                    authority_classifier=classify_authority,
+                    condition_objects_projector=condition_objects,
+                    condition_tree_projector=condition_tree,
+                    get_const_projector=get_const,
+                    level_script_source_projector=level_script_source_evidence,
+                    level_script_dependency_projector=(
+                        level_script_task_dependencies
+                    ),
+                    json_loader=read_json,
+                    submit_item_table=DEFAULT_SUBMIT_ITEM_TABLE,
+                    tracking_info_projector=tracking_info_row,
+                    type_name_projector=type_name,
+                )
+            ),
+            task_dependency_validator=(
+                validate_level_script_task_dependency
+            ),
+            condition_projector=condition_tree,
+            authority_classifier=classify_authority,
+            quest_fork_builder=build_quest_fork_semantics,
+            mission_property_projector=mission_property_rows,
         )
         target = mission_output / f"{summary['id']}.json"
         write_json(target, payload)
@@ -10860,8 +7583,9 @@ def build_all(
     activation_control_contract = (
         load_levelscript_activation_control_contract()
     )
+    ifix_patch_contract = load_ifix_patch_contract()
     runtime_contract = {
-        **RUNTIME_CONTRACT,
+        **project_ifix_runtime_contract(RUNTIME_CONTRACT, ifix_patch_contract),
         "identityCarrierBoundaries": (
             load_identity_carrier_boundaries_contract()
         ),
@@ -10897,7 +7621,10 @@ def build_all(
         if not isinstance(payload, dict):
             continue
         quest_action_dispatch_counts.update(
-            annotate_quest_action_dispatch(payload, quest_action_dispatch)
+            quest_payload_projection.annotate_quest_action_dispatch(
+                payload,
+                quest_action_dispatch,
+            )
         )
         quest_state_application_counts.update(
             annotate_quest_fork_state_application(
@@ -11151,2009 +7878,9 @@ def build_all(
     return index
 
 
-def publish_source_story_partial_order(
-    index: dict[str, Any],
-    output_root: Path,
-    story_data_root: Path,
-    language: str,
-    report_root: Path = DEFAULT_ORDER_REPORT_ROOT,
-) -> dict[str, Any] | None:
-    """Publish strict Story ordering evidence into lazy mission payloads."""
-    story_index = story_data_root / language / "index.json"
-    if not story_index.is_file():
-        return None
-    state_contract = (
-        (index.get("runtimeContract") or {}).get("stateUpdateApplicationAudit")
-        or {}
-    )
-    quest_succeed_contract = dict(
-        state_contract.get("questSucceedActionApplication") or {}
-    )
-    quest_succeed_contract["relatedOriginalFiles"] = (
-        state_contract.get("relatedOriginalFiles") or []
-    )
-    extra_thread_contract = (
-        (index.get("runtimeContract") or {}).get(
-            "actionExtraThreadSchedulerAudit"
-        )
-        or {}
-    )
-    report = build_source_story_partial_order_report(
-        language,
-        story_data_root=story_data_root,
-        quest_succeed_lifecycle_contract=quest_succeed_contract,
-        extra_thread_scheduler_contract=extra_thread_contract,
-    )
-    quest_start = state_contract.get("questStartApplication") or {}
-    topology_consumers = state_contract.get("questTopologyFieldConsumers") or {}
-    quest_fork_authority = {
-        "classification": "server_selected_start_topology_only",
-        "questInfoType": quest_start.get("questInfoType"),
-        "questInfoFieldOffsets": quest_start.get("questInfoFieldOffsets") or {},
-        "fieldReadCounts": quest_start.get("fieldReadCounts") or {},
-        "topologyTraversalCalls": quest_start.get("topologyTraversalCalls") or [],
-        "startQuest": quest_start.get("startQuest") or {},
-        "sourceMessages": quest_start.get("sourceMessages") or [],
-        "topologyFieldConsumers": topology_consumers,
-        "finding": quest_start.get("finding") or "",
-        "boundary": quest_start.get("boundary") or "",
-        "relatedOriginalFiles": state_contract.get("relatedOriginalFiles") or [],
-        "validation": quest_start.get("validation") or {},
-    }
-    semantic_forks_by_id: dict[str, dict[str, Any]] = {}
-    for mission_summary in index.get("missions") or []:
-        if not isinstance(mission_summary, dict):
-            continue
-        semantic_path = output_root / str(mission_summary.get("file") or "")
-        semantic_payload = (
-            read_json(semantic_path) if semantic_path.is_file() else {}
-        )
-        for fork in (
-            (semantic_payload.get("questTopology") or {}).get("forks") or []
-        ):
-            if not isinstance(fork, dict) or not fork.get("questId"):
-                continue
-            quest_id = str(fork["questId"])
-            existing = semantic_forks_by_id.get(quest_id)
-            if existing and existing != fork:
-                raise RuntimeError(
-                    "validator=quest_fork_semantics_publication "
-                    "gate=globallyUniqueQuestForkId "
-                    f"quest={quest_id} expected=unique actual=duplicate "
-                    f"source={semantic_path}"
-                )
-            semantic_forks_by_id[quest_id] = fork
-    for row in report.get("missions") or []:
-        if not isinstance(row, dict):
-            continue
-        branches = row.get("branches") or {}
-        if branches.get("questForks"):
-            branches["questForkAuthority"] = quest_fork_authority
-            missing_semantics = [
-                str(fork.get("questId") or "")
-                for fork in branches["questForks"]
-                if isinstance(fork, dict)
-                and str(fork.get("questId") or "") not in semantic_forks_by_id
-            ]
-            if missing_semantics:
-                raise RuntimeError(
-                    "validator=quest_fork_semantics_publication "
-                    "gate=allStoryOrderForksHaveSemantics "
-                    f"mission={row.get('mission') or '-'} "
-                    "expected=[] "
-                    f"actual={missing_semantics!r} "
-                    f"source={output_root / 'missions'}"
-                )
-            branches["questForks"] = [
-                semantic_forks_by_id[str(fork.get("questId") or "")]
-                for fork in branches["questForks"]
-                if isinstance(fork, dict)
-            ]
-    report_root.mkdir(parents=True, exist_ok=True)
-    report_json = report_root / f"source_story_partial_order_{language}.json"
-    report_markdown = report_root / f"source_story_partial_order_{language}.md"
-    write_report_json(report_json, report)
-    write_text_if_changed(
-        report_markdown,
-        render_source_story_partial_order_markdown(report),
-    )
-
-    order_cross_reference = build_source_story_order_cross_reference_report(
-        report,
-        read_json(DEFAULT_STORY_ORDER_OVERRIDE)
-        if DEFAULT_STORY_ORDER_OVERRIDE.is_file()
-        else {},
-        read_json(DEFAULT_STORY_ORDER_OCR)
-        if DEFAULT_STORY_ORDER_OCR.is_file()
-        else {},
-    )
-    cross_reference_json = (
-        report_root / f"source_story_order_cross_reference_{language}.json"
-    )
-    cross_reference_markdown = (
-        report_root / f"source_story_order_cross_reference_{language}.md"
-    )
-    order_cross_reference["reportJson"] = repo_path(cross_reference_json)
-    order_cross_reference["reportMarkdown"] = repo_path(cross_reference_markdown)
-    write_report_json(cross_reference_json, order_cross_reference)
-    write_text_if_changed(
-        cross_reference_markdown,
-        render_source_story_order_cross_reference_markdown(order_cross_reference),
-    )
-
-    publication = attach_source_story_partial_order(
-        index,
-        output_root,
-        report,
-        create_variant_aggregate_shells=False,
-        require_complete_branch_publication=False,
-        order_cross_reference=order_cross_reference,
-    )
-
-    order_summary = report.get("summary") or {}
-    index["storyOrder"] = {
-        "schema": report.get("_schema"),
-        "language": language,
-        "summary": order_summary,
-        "nativeSerializedBranchInventory": copy.deepcopy(
-            report.get("nativeSerializedBranchInventory") or {}
-        ),
-        "evidencePolicy": report.get("evidencePolicy") or {},
-        "reportJson": repo_path(report_json),
-        "reportMarkdown": repo_path(report_markdown),
-        "publication": publication,
-        "crossReference": (
-            story_order_projection.compact_story_order_cross_reference_index(
-                order_cross_reference
-            )
-        ),
-    }
-    write_json(output_root / "index.json", index)
-    return report
-
-
 def _resolve_report_source_path(source: str) -> Path:
     path = Path(source)
     return path if path.is_absolute() else ROOT / path
-
-
-def _source_order_shell_related_files(
-    order_row: dict[str, Any],
-    *,
-    hash_cache: dict[Path, str] | None = None,
-    additional_files: list[Any] | None = None,
-) -> list[dict[str, Any]]:
-    """Collect and hash original files for a strict source-order shell.
-
-    The collector walks the generated evidence shape instead of naming a
-    LevelScript class, mission, or action family.  Every listed original file
-    must still exist and match its report hash before a shell is published.
-    """
-    validator = "source_story_order_shell"
-    related: dict[tuple[str, str], dict[str, Any]] = {}
-    resolved_hash_cache = hash_cache if hash_cache is not None else {}
-
-    def add_file(raw: Any, *, fallback_kind: str, fallback_relationship: str) -> None:
-        if isinstance(raw, str):
-            raw = {"sourceFile": raw}
-        if not isinstance(raw, dict):
-            return
-        source = str(raw.get("sourceFile") or "")
-        if not source:
-            return
-        normalized_source = source.replace("\\", "/").casefold()
-        if normalized_source.startswith((
-            "installed persistent vfs/",
-            "installed streamingassets vfs/",
-        )):
-            # Exact logical payloads inspected by targeted VFS dumps carry
-            # their own content hash but are not standalone filesystem files.
-            # Keep them on the branch record; do not misrepresent the VFS
-            # label as a materialized source-order attachment.
-            return
-        path = _resolve_report_source_path(source)
-        if not path.is_file():
-            raise RuntimeError(
-                f"validator={validator} gate=relatedOriginalFile "
-                f"mission={order_row.get('mission') or '-'} expected=file "
-                f"actual=missing source={source}"
-            )
-        actual_hash = resolved_hash_cache.get(path)
-        if actual_hash is None:
-            actual_hash = sha256_path(path)
-            resolved_hash_cache[path] = actual_hash
-        expected_hash = str(raw.get("sha256") or "")
-        if expected_hash and expected_hash.casefold() != actual_hash.casefold():
-            raise RuntimeError(
-                f"validator={validator} gate=relatedOriginalFileHash "
-                f"mission={order_row.get('mission') or '-'} "
-                f"expected={expected_hash.upper()} actual={actual_hash.upper()} "
-                f"source={source}"
-            )
-        normalized = dict(raw)
-        normalized["sourceFile"] = repo_path(path)
-        normalized["sha256"] = actual_hash
-        normalized.setdefault("kind", fallback_kind)
-        normalized.setdefault("relationship", fallback_relationship)
-        key = (
-            str(normalized["sourceFile"]),
-            str(normalized.get("relationship") or ""),
-        )
-        related[key] = normalized
-
-    def walk(value: Any) -> None:
-        if isinstance(value, dict):
-            rows = value.get("relatedOriginalFiles")
-            if isinstance(rows, list):
-                for row in rows:
-                    add_file(
-                        row,
-                        fallback_kind="original_authored_source",
-                        fallback_relationship="strict_source_story_order_context",
-                    )
-            for child in value.values():
-                walk(child)
-        elif isinstance(value, list):
-            for child in value:
-                walk(child)
-
-    strong_edges = [
-        edge
-        for edge in order_row.get("directEdges") or []
-        if isinstance(edge, dict) and str(edge.get("tier") or "") == "strong"
-    ]
-    for edge in strong_edges:
-        for source in edge.get("sourceFiles") or []:
-            source_text = str(source or "")
-            normalized_source = source_text.replace("\\", "/")
-            if "LevelScriptData/" in normalized_source:
-                kind = "original_level_script"
-            elif "MissionRuntimeAsset/" in normalized_source:
-                kind = "original_mission_runtime"
-            elif normalized_source.casefold().endswith("gameassembly.dll"):
-                kind = "original_game_binary"
-            elif normalized_source.casefold().endswith("global-metadata.dat"):
-                kind = "original_game_metadata"
-            else:
-                kind = "original_authored_source"
-            add_file(
-                source_text,
-                fallback_kind=kind,
-                fallback_relationship="strict_source_story_order_edge",
-            )
-    for raw in additional_files or []:
-        add_file(
-            raw,
-            fallback_kind="original_mission_runtime",
-            fallback_relationship="source_order_mission_runtime_context",
-        )
-    walk(order_row.get("branches") or {})
-    return sorted(
-        related.values(),
-        key=lambda row: (
-            str(row.get("sourceFile") or ""),
-            str(row.get("relationship") or ""),
-        ),
-    )
-
-
-def _story_branch_related_original_files(
-    order_row: dict[str, Any],
-    *,
-    hash_cache: dict[Path, str] | None = None,
-) -> list[dict[str, Any]]:
-    """Hash exact original files cited by authored Story branch records.
-
-    Dialog-line/Tree branch projections often cite the recovered TextAsset that
-    contains the branch while having no LevelScript source-order edge.  Bounded
-    DialogTree validation warnings also identify original files for malformed
-    or non-promotable branch carriers.  Keep all of those files in a separate
-    catalog: they are useful original-data context, but they are not chronology
-    or mission-ownership evidence.  The walk is intentionally shape-driven and
-    ignores generated WebUI paths.
-    """
-    validator = "story_branch_original_files"
-    related: dict[str, dict[str, Any]] = {}
-    resolved_hash_cache = hash_cache if hash_cache is not None else {}
-
-    def classify(path: Path) -> str:
-        normalized = path.as_posix().casefold()
-        if "levelscriptdata/" in normalized:
-            return "original_level_script"
-        if "missionruntimeasset/" in normalized:
-            return "original_mission_runtime"
-        if normalized.endswith("gameassembly.dll"):
-            return "original_game_binary"
-        if normalized.endswith("global-metadata.dat"):
-            return "original_game_metadata"
-        if "/textasset/" in normalized or "json_by_type/textasset/" in normalized:
-            return "original_dialog_tree_source"
-        return "original_authored_source"
-
-    def add_source(
-        raw: Any,
-        *,
-        relationship: str = "authored_story_branch_source_file",
-        expected_hash: str = "",
-    ) -> None:
-        source = str(raw or "")
-        if not source:
-            return
-        normalized = source.replace("\\", "/").casefold()
-        # Branch projections also carry generated conversation paths.  Only
-        # original export/game paths are eligible for this hash-validated list.
-        if normalized.startswith((
-            "webui/",
-            "reports/",
-            "scratch/",
-            "tmp/",
-        )) or "/webui/data/" in normalized:
-            return
-        # The Story branch report may cite bytes that were inspected directly
-        # in the installed VFS. Production WebUI dumps intentionally omit
-        # patch-byte payloads, so this label is provenance rather than a local
-        # filesystem path. Keep real missing paths fail-closed below.
-        if normalized.startswith((
-            "installed persistent vfs/",
-            "installed streamingassets vfs/",
-        )):
-            return
-        path = _resolve_report_source_path(source)
-        if not path.is_file():
-            raise RuntimeError(
-                f"validator={validator} gate=sourceFile "
-                f"mission={order_row.get('mission') or '-'} expected=file "
-                f"actual=missing source={source}"
-            )
-        actual_hash = resolved_hash_cache.get(path)
-        if actual_hash is None:
-            actual_hash = sha256_path(path)
-            resolved_hash_cache[path] = actual_hash
-        if expected_hash and actual_hash.casefold() != expected_hash.casefold():
-            raise RuntimeError(
-                f"validator={validator} gate=sourceHash "
-                f"mission={order_row.get('mission') or '-'} "
-                f"expected={expected_hash!r} actual={actual_hash!r} "
-                f"source={source}"
-            )
-        related.setdefault(repo_path(path), {
-            "kind": classify(path),
-            "sourceFile": repo_path(path),
-            "sha256": actual_hash,
-            "relationship": relationship,
-        })
-
-    def source_hashes(value: Any) -> dict[str, str]:
-        if not isinstance(value, dict):
-            return {}
-        hashes: dict[str, str] = {}
-        for raw_path, raw_hash in value.items():
-            path_text = str(raw_path or "").replace("\\", "/")
-            hash_text = str(raw_hash or "")
-            if not path_text or not hash_text:
-                continue
-            hashes[path_text.casefold()] = hash_text
-            hashes[Path(path_text).name.casefold()] = hash_text
-        return hashes
-
-    def source_values(value: Any) -> list[str]:
-        if isinstance(value, str):
-            return [value]
-        if isinstance(value, (list, tuple)):
-            return [str(item) for item in value if str(item or "")]
-        return []
-
-    def walk(value: Any) -> None:
-        if isinstance(value, dict):
-            # Branch projections may already carry a normalized
-            # ``relatedOriginalFiles`` row (for example the exact
-            # GameAssembly file used to validate a DialogTree selector).
-            # Preserve that relationship and hash instead of requiring every
-            # producer to duplicate it under ``sourceFiles``.  This remains
-            # shape-driven: no mission, Story key, or concrete branch class is
-            # special-cased here.
-            related_rows = value.get("relatedOriginalFiles")
-            if isinstance(related_rows, list):
-                for row in related_rows:
-                    if isinstance(row, dict):
-                        add_source(
-                            row.get("sourceFile"),
-                            relationship=(
-                                str(row.get("relationship") or "")
-                                or "authored_story_branch_related_original_file"
-                            ),
-                            expected_hash=str(row.get("sha256") or ""),
-                        )
-                    elif isinstance(row, str):
-                        add_source(row)
-            for source in source_values(value.get("sourceFiles")):
-                add_source(source)
-            # Authored branch projections use both plural ``sourceFiles`` and
-            # singular ``sourceFile`` fields.  Walk the singular shape as
-            # well; this keeps the collector corpus-driven instead of
-            # requiring each branch producer (dialog options, tree nodes,
-            # native controls, and validation records) to be named here.
-            singular_source = value.get("sourceFile")
-            expected_singular_hash = str(
-                value.get("sourceSha256") or value.get("sha256") or ""
-            )
-            for source in source_values(singular_source):
-                add_source(
-                    source,
-                    expected_hash=expected_singular_hash,
-                )
-            for child in value.values():
-                walk(child)
-        elif isinstance(value, list):
-            for child in value:
-                walk(child)
-
-    walk(order_row.get("branches") or {})
-    for warning in order_row.get("warnings") or []:
-        if not isinstance(warning, dict):
-            continue
-        # Validation diagnostics are evidence-bearing only when they identify
-        # their validator and an original source path.  This keeps unrelated
-        # UI/report warnings out of the branch-file catalog without naming a
-        # mission, scene, or concrete branch object.
-        if not str(warning.get("validator") or ""):
-            continue
-        expected_hashes = source_hashes(warning.get("sourceSha256"))
-        warning_sources = [
-            *source_values(warning.get("sourcePaths")),
-            *source_values(warning.get("sourceFiles")),
-            *source_values(warning.get("sourceFile")),
-        ]
-        for source in warning_sources:
-            normalized = source.replace("\\", "/").casefold()
-            expected = expected_hashes.get(normalized)
-            if not expected:
-                expected = expected_hashes.get(Path(normalized).name.casefold(), "")
-            add_source(
-                source,
-                relationship="authored_story_branch_validation_source_file",
-                expected_hash=expected,
-            )
-    return sorted(related.values(), key=lambda row: str(row["sourceFile"]))
-
-
-def _source_order_shell_candidate(
-    order_row: dict[str, Any],
-    *,
-    hash_cache: dict[Path, str] | None = None,
-) -> bool:
-    """Return whether a missing pipeline mission has strict source evidence."""
-    if not str(order_row.get("mission") or ""):
-        return False
-    if not any(
-        isinstance(edge, dict) and str(edge.get("tier") or "") == "strong"
-        for edge in order_row.get("directEdges") or []
-    ):
-        return False
-    mission_data = str(order_row.get("missionData") or "")
-    if not mission_data or not _resolve_report_source_path(mission_data).is_file():
-        return False
-    return bool(_source_order_shell_related_files(order_row, hash_cache=hash_cache))
-
-
-def _story_branch_shell_candidate(
-    order_row: dict[str, Any],
-    *,
-    hash_cache: dict[Path, str] | None = None,
-) -> bool:
-    """Return whether a missing pipeline mission has branch-source context."""
-    if not str(order_row.get("mission") or ""):
-        return False
-    mission_data = str(order_row.get("missionData") or "")
-    if not mission_data or not _resolve_report_source_path(mission_data).is_file():
-        return False
-    return bool(_story_branch_related_original_files(order_row, hash_cache=hash_cache))
-
-
-def _create_story_branch_shell(
-    index: dict[str, Any],
-    output_root: Path,
-    order_row: dict[str, Any],
-    *,
-    hash_cache: dict[Path, str] | None = None,
-) -> dict[str, Any]:
-    """Publish a graph-neutral shell for branch context without a mission owner."""
-    mission_id = str(order_row.get("mission") or "")
-    mission_data = str(order_row.get("missionData") or "")
-    mission_data_path = _resolve_report_source_path(mission_data)
-    branch_related_files = _story_branch_related_original_files(
-        order_row,
-        hash_cache=hash_cache,
-    )
-    if not mission_id or not mission_data_path.is_file() or not branch_related_files:
-        raise RuntimeError(
-            "validator=story_branch_shell gate=eligibleSourceMission "
-            f"mission={mission_id or '-'} expected=localized-sidecar-and-branch-files "
-            f"actual=missionData={mission_data or '-'} "
-            f"branchFiles={len(branch_related_files)}"
-        )
-    level_ids = sorted({
-        str(level_id)
-        for edge in order_row.get("directEdges") or []
-        if isinstance(edge, dict)
-        for level_id in edge.get("levelIds") or []
-        if level_id
-    }, key=natural_quest_key)
-    boundary = (
-        "These hash-validated original files are cited by authored Story branch "
-        "or bounded branch-validation records. They provide branch-definition "
-        "context only; they do not establish mission ownership, activation, or "
-        "cross-file chronology."
-    )
-    story_order = copy.deepcopy(order_row)
-    story_order["storyBranchShell"] = True
-    story_order["storyBranchShellBoundary"] = (
-        "This graph-neutral shell exposes authored Story branch and validation "
-        "context for a Story namespace without a MissionRuntimeAsset owner. It "
-        "does not establish mission ownership, activation, or Story-file order."
-    )
-    story_order["storyBranchRelatedOriginalFiles"] = copy.deepcopy(
-        branch_related_files
-    )
-    story_order["storyBranchRelatedFilesBoundary"] = boundary
-    payload = {
-        "schemaVersion": SCHEMA_VERSION,
-        "mission": {
-            "id": mission_id,
-            "nameKey": "",
-            "descriptionKey": "",
-            "levelId": level_ids[0] if len(level_ids) == 1 else "",
-            "missionType": None,
-            "rewardId": "",
-            "mainPath": [],
-            "entryQuestIds": [],
-            "nativeRuntimeBindings": [],
-            "source": repo_path(mission_data_path),
-            "storyBranchShell": True,
-            "storyBranchShellBoundary": story_order["storyBranchShellBoundary"],
-            "storyBranchRelatedOriginalFiles": copy.deepcopy(branch_related_files),
-            "storyBranchRelatedFilesBoundary": boundary,
-            "relatedOriginalFiles": [],
-            "sourceBoundary": (
-                "No MissionRuntimeAsset payload exists for this Story namespace. "
-                "The page exposes authored branch/validation context only; it is "
-                "not a mission or quest owner and does not establish Story order."
-            ),
-        },
-        "nodes": [],
-        "edges": [],
-        "caseStudy": None,
-        "missionGraph": {"upstream": {}, "downstream": {}},
-        "envTalkContext": [],
-        "storyOrder": story_order,
-    }
-    mission_output = output_root / "missions"
-    mission_output.mkdir(parents=True, exist_ok=True)
-    write_json(mission_output / f"{mission_id}.json", payload)
-    summary = {
-        "id": mission_id,
-        "nameKey": "",
-        "levelId": payload["mission"]["levelId"],
-        "questCount": 0,
-        "mainPathCount": 0,
-        "entryCount": 0,
-        "fanoutCount": 0,
-        "multiPrevJoinCount": 0,
-        "activeJoinCount": 0,
-        "exactFinishCount": 0,
-        "serverPlaceholderCount": 0,
-        "serverPlaceholderQuestCount": 0,
-        "failureConditionCount": 0,
-        "externalDependencyCount": 0,
-        "submitItemConditionCount": 0,
-        "submitItemQuestCount": 0,
-        "submitItemDialogCoGateCount": 0,
-        "submitItemLevelScriptCoGateCount": 0,
-        "nativeRuntimeBindingCount": 0,
-        "activityStageHostCount": 0,
-        "activityStageHostedQuestCount": 0,
-        "trackingInfoCount": 0,
-        "trackingObjectiveCount": 0,
-        "missionPropertyCount": 0,
-        "conditionTypes": [],
-        "caseStudy": False,
-        "file": f"missions/{mission_id}.json",
-        "storyBranchShell": True,
-        "storyBranchRelatedFileCount": len(branch_related_files),
-    }
-    story_order_projection.update_story_order_summary(summary, story_order)
-    index.setdefault("missions", []).append(summary)
-    return summary
-
-
-def _create_source_order_shell(
-    index: dict[str, Any],
-    output_root: Path,
-    order_row: dict[str, Any],
-    *,
-    hash_cache: dict[Path, str] | None = None,
-) -> dict[str, Any]:
-    """Publish a graph-neutral shell for strict original-data Story order."""
-    mission_id = str(order_row.get("mission") or "")
-    mission_data = str(order_row.get("missionData") or "")
-    mission_data_path = _resolve_report_source_path(mission_data)
-    related_files = _source_order_shell_related_files(
-        order_row,
-        hash_cache=hash_cache,
-    )
-    branch_related_files = _story_branch_related_original_files(
-        order_row,
-        hash_cache=hash_cache,
-    )
-    if not mission_id or not mission_data_path.is_file() or not related_files:
-        raise RuntimeError(
-            "validator=source_story_order_shell gate=eligibleSourceMission "
-            f"mission={mission_id or '-'} expected=localized-sidecar-and-original-files "
-            f"actual=missionData={mission_data or '-'} relatedFiles={len(related_files)}"
-        )
-    level_ids = sorted({
-        str(level_id)
-        for edge in order_row.get("directEdges") or []
-        if isinstance(edge, dict)
-        for level_id in edge.get("levelIds") or []
-        if level_id
-    }, key=natural_quest_key)
-    story_order = copy.deepcopy(order_row)
-    story_order["sourceOrderShell"] = True
-    story_order["sourceOrderShellBoundary"] = (
-        "This graph-neutral shell publishes strict original-data Story order and "
-        "its hashed related files without claiming MissionRuntime, quest, playback "
-        "ownership, activation, branch selection, or additional chronology."
-    )
-    story_order["sourceOrderRelatedOriginalFiles"] = copy.deepcopy(related_files)
-    story_order["sourceOrderRelatedFilesBoundary"] = (
-        "These original files are attached to the strict source-order report for "
-        "auditability only. They do not establish mission ownership, activation, "
-        "branch selection, or a total Story-file order."
-    )
-    story_order["storyBranchRelatedOriginalFiles"] = copy.deepcopy(
-        branch_related_files
-    )
-    story_order["storyBranchRelatedFilesBoundary"] = (
-        "These hash-validated original files are cited by authored Story branch "
-        "or bounded branch-validation records. They provide branch-definition "
-        "context only; they do not establish mission ownership, activation, or "
-        "cross-file chronology."
-    )
-    payload = {
-        "schemaVersion": SCHEMA_VERSION,
-        "mission": {
-            "id": mission_id,
-            "nameKey": "",
-            "descriptionKey": "",
-            "levelId": level_ids[0] if len(level_ids) == 1 else "",
-            "missionType": None,
-            "rewardId": "",
-            "mainPath": [],
-            "entryQuestIds": [],
-            "nativeRuntimeBindings": [],
-            "source": repo_path(mission_data_path),
-            "sourceOrderShell": True,
-            "sourceOrderRelatedOriginalFiles": copy.deepcopy(related_files),
-            "sourceOrderRelatedFilesBoundary": (
-                "These original files are attached to the strict source-order "
-                "report for auditability only. They do not establish mission "
-                "ownership, activation, branch selection, or a total Story-file "
-                "order."
-            ),
-            "storyBranchRelatedOriginalFiles": copy.deepcopy(
-                branch_related_files
-            ),
-            "storyBranchRelatedFilesBoundary": (
-                "These hash-validated original files are cited by authored Story "
-                "branch or bounded branch-validation records. They provide "
-                "branch-definition context only; they do not establish mission "
-                "ownership, activation, or cross-file chronology."
-            ),
-            "relatedOriginalFiles": related_files,
-            "sourceBoundary": (
-                "No MissionRuntimeAsset payload exists for this Story namespace. "
-                "The page exposes exact strict source-order evidence and hashed "
-                "original files only; it is not a mission or quest owner."
-            ),
-        },
-        "nodes": [],
-        "edges": [],
-        "caseStudy": None,
-        "missionGraph": {"upstream": {}, "downstream": {}},
-        "envTalkContext": [],
-        "storyOrder": story_order,
-    }
-    mission_output = output_root / "missions"
-    mission_output.mkdir(parents=True, exist_ok=True)
-    write_json(mission_output / f"{mission_id}.json", payload)
-    summary = {
-        "id": mission_id,
-        "nameKey": "",
-        "levelId": payload["mission"]["levelId"],
-        "questCount": 0,
-        "mainPathCount": 0,
-        "entryCount": 0,
-        "fanoutCount": 0,
-        "multiPrevJoinCount": 0,
-        "activeJoinCount": 0,
-        "exactFinishCount": 0,
-        "serverPlaceholderCount": 0,
-        "serverPlaceholderQuestCount": 0,
-        "failureConditionCount": 0,
-        "externalDependencyCount": 0,
-        "submitItemConditionCount": 0,
-        "submitItemQuestCount": 0,
-        "submitItemDialogCoGateCount": 0,
-        "submitItemLevelScriptCoGateCount": 0,
-        "nativeRuntimeBindingCount": 0,
-        "activityStageHostCount": 0,
-        "activityStageHostedQuestCount": 0,
-        "trackingInfoCount": 0,
-        "trackingObjectiveCount": 0,
-        "missionPropertyCount": 0,
-        "conditionTypes": [],
-        "caseStudy": False,
-        "file": f"missions/{mission_id}.json",
-        "sourceOrderShell": True,
-        "sourceOrderRelatedFileCount": len(related_files),
-        "storyBranchRelatedFileCount": len(branch_related_files),
-    }
-    story_order_projection.update_story_order_summary(summary, story_order)
-    index.setdefault("missions", []).append(summary)
-    return summary
-
-
-def _create_story_variant_aggregate_shell(
-    index: dict[str, Any],
-    output_root: Path,
-    order_row: dict[str, Any],
-) -> dict[str, Any]:
-    """Create a non-owning shell from declared, validated Story variants.
-
-    The rule is corpus-driven: a missing Story namespace is eligible only when
-    its generated mission bundle declares variant mission bundles, every bundle
-    identifies itself exactly, and every variant already has a Mission Pipeline
-    payload backed by an original MissionRuntimeAsset.
-    """
-    mission_id = str(order_row.get("mission") or "")
-    variant_sources = [
-        str(value) for value in order_row.get("missionDataVariants") or [] if value
-    ]
-    validator = "source_story_order_publication"
-    if not mission_id or not variant_sources:
-        raise RuntimeError(
-            f"validator={validator} gate=aggregateHasDeclaredVariants "
-            f"mission={mission_id or '-'} expected=nonempty actual={variant_sources!r} "
-            f"source={order_row.get('missionData') or '-'}"
-        )
-    summaries = {
-        str(row.get("id") or ""): row
-        for row in index.get("missions") or []
-        if isinstance(row, dict) and row.get("id")
-    }
-    variant_ids: list[str] = []
-    related_files: list[dict[str, Any]] = []
-    level_ids: set[str] = set()
-    for variant_source in variant_sources:
-        generated_path = _resolve_report_source_path(variant_source)
-        generated = read_json(generated_path) if generated_path.is_file() else None
-        variant_id = str((generated or {}).get("mission") or "")
-        if not variant_id:
-            raise RuntimeError(
-                f"validator={validator} gate=variantBundleIdentifiesMission "
-                f"mission={mission_id} expected=mission-id actual={variant_id or '-'} "
-                f"source={generated_path}"
-            )
-        variant_summary = summaries.get(variant_id)
-        if not variant_summary:
-            raise RuntimeError(
-                f"validator={validator} gate=declaredVariantHasPipelineMission "
-                f"mission={mission_id} expected={variant_id!r} actual=missing "
-                f"source={generated_path}"
-            )
-        pipeline_path = output_root / str(variant_summary.get("file") or "")
-        pipeline_payload = read_json(pipeline_path) if pipeline_path.is_file() else None
-        original_source = str(((pipeline_payload or {}).get("mission") or {}).get("source") or "")
-        original_path = _resolve_report_source_path(original_source) if original_source else Path()
-        if not original_source or not original_path.is_file():
-            raise RuntimeError(
-                f"validator={validator} gate=variantHasOriginalMissionRuntime "
-                f"mission={mission_id} variant={variant_id} expected=file actual={original_source or '-'} "
-                f"source={pipeline_path}"
-            )
-        related_files.append({
-            "kind": "original_mission_runtime",
-            "sourceFile": repo_path(original_path),
-            "sha256": sha256_path(original_path),
-            "relationship": "declared_story_graph_variant_context",
-            "variantMissionId": variant_id,
-        })
-        variant_ids.append(variant_id)
-        if variant_summary.get("levelId"):
-            level_ids.add(str(variant_summary["levelId"]))
-
-    variant_ids = sorted(set(variant_ids), key=natural_quest_key)
-    related_files.sort(key=lambda row: (natural_quest_key(row["variantMissionId"]), row["sourceFile"]))
-    mission_output = output_root / "missions"
-    mission_output.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "schemaVersion": SCHEMA_VERSION,
-        "mission": {
-            "id": mission_id,
-            "nameKey": "",
-            "descriptionKey": "",
-            "levelId": next(iter(level_ids)) if len(level_ids) == 1 else "",
-            "missionType": None,
-            "rewardId": "",
-            "mainPath": [],
-            "entryQuestIds": [],
-            "nativeRuntimeBindings": [],
-            "source": str(order_row.get("missionData") or ""),
-            "storyAggregateShell": True,
-            "variantMissionIds": variant_ids,
-            "relatedOriginalFiles": related_files,
-            "sourceBoundary": (
-                "This Story namespace aggregates exact serialized Story and LevelScript "
-                "evidence across its declared mission variants. It is not itself a "
-                "MissionRuntimeAsset and does not prove mission ownership, quest ownership, "
-                "branch selection, or chronology beyond the attached typed evidence."
-            ),
-        },
-        "nodes": [],
-        "edges": [],
-        "caseStudy": None,
-        "missionGraph": {"upstream": {}, "downstream": {}},
-        "envTalkContext": [],
-        "storyOrder": copy.deepcopy(order_row),
-    }
-    write_json(mission_output / f"{mission_id}.json", payload)
-    summary = {
-        "id": mission_id,
-        "nameKey": "",
-        "levelId": payload["mission"]["levelId"],
-        "questCount": 0,
-        "mainPathCount": 0,
-        "entryCount": 0,
-        "fanoutCount": 0,
-        "multiPrevJoinCount": 0,
-        "activeJoinCount": 0,
-        "exactFinishCount": 0,
-        "serverPlaceholderCount": 0,
-        "serverPlaceholderQuestCount": 0,
-        "failureConditionCount": 0,
-        "externalDependencyCount": 0,
-        "submitItemConditionCount": 0,
-        "submitItemQuestCount": 0,
-        "submitItemDialogCoGateCount": 0,
-        "submitItemLevelScriptCoGateCount": 0,
-        "nativeRuntimeBindingCount": 0,
-        "activityStageHostCount": 0,
-        "activityStageHostedQuestCount": 0,
-        "trackingInfoCount": 0,
-        "trackingObjectiveCount": 0,
-        "missionPropertyCount": 0,
-        "conditionTypes": [],
-        "caseStudy": False,
-        "file": f"missions/{mission_id}.json",
-        "storyAggregateShell": True,
-        "storyAggregateVariantCount": len(variant_ids),
-    }
-    story_order_projection.update_story_order_summary(summary, order_row)
-    index.setdefault("missions", []).append(summary)
-    return summary
-
-
-def _compact_source_story_gap_queue_row(
-    row: dict[str, Any],
-    source: str,
-) -> dict[str, Any]:
-    """Publish review classifications without turning the queue into evidence."""
-    scene_key_lists = (
-        "coreIsolatedSceneKeys",
-        "actionableCoreIsolatedSceneKeys",
-        "actionableWeakOnlySceneKeys",
-        "nonActionableWeakOnlySceneKeys",
-    )
-    closed_row_lists = (
-        "closedExactNativeIsolatedScenes",
-        "closedExactSystemSelectorIsolatedScenes",
-        "closedExactRuntimeConfigIsolatedScenes",
-        "closedDefinitionOnlyIsolatedScenes",
-        "closedNonMissionContentIsolatedScenes",
-        "deferredOfflineExhaustedIsolatedScenes",
-    )
-    compact: dict[str, Any] = {
-        "mission": str(row.get("mission") or ""),
-        "status": "recovery_queue_only",
-        "graphEffect": "none",
-        "source": source,
-        "metrics": {
-            key: value
-            for key, value in (row.get("metrics") or {}).items()
-            if key in {
-                "sceneCount",
-                "isolatedScenes",
-                "coreIsolatedScenes",
-                "actionableCoreIsolatedScenes",
-                "weakOnlyScenes",
-                "actionableWeakOnlyScenes",
-            }
-        },
-        "evidenceBoundary": (
-            "This compact row is a recovery-priority classification only. It "
-            "does not add mission ownership, activation, playback, or Story-order "
-            "edges."
-        ),
-    }
-    for key in scene_key_lists:
-        compact[key] = [str(value) for value in row.get(key) or [] if value]
-    for key in closed_row_lists:
-        compact[key] = [
-            {
-                field: value
-                for field, value in item.items()
-                if field in {
-                    "sceneKey",
-                    "recoveryStatus",
-                    "relation",
-                    "evidenceKind",
-                }
-            }
-            for item in row.get(key) or []
-            if isinstance(item, dict) and item.get("sceneKey")
-        ]
-    return compact
-
-
-def attach_source_story_partial_order(
-    index: dict[str, Any],
-    output_root: Path,
-    report: dict[str, Any],
-    *,
-    create_variant_aggregate_shells: bool,
-    require_complete_branch_publication: bool,
-    order_cross_reference: dict[str, Any] | None = None,
-    source_gap_queue: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Attach every recovered row that has a validated pipeline destination."""
-    rows_by_mission = {
-        str(row.get("mission") or ""): row
-        for row in report.get("missions") or []
-        if isinstance(row, dict) and row.get("mission")
-    }
-    existing_ids = {
-        str(row.get("id") or "")
-        for row in index.get("missions") or []
-        if isinstance(row, dict)
-    }
-    aggregate_shells: list[str] = []
-    source_order_shells: list[str] = []
-    story_branch_shells: list[str] = []
-    source_order_hash_cache: dict[Path, str] = {}
-    if create_variant_aggregate_shells:
-        for mission_id, order_row in sorted(rows_by_mission.items()):
-            branch_count = len(
-                ((order_row.get("branches") or {}).get("nativeControlBranches") or [])
-            )
-            if mission_id in existing_ids:
-                continue
-            if order_row.get("missionDataVariants") and branch_count:
-                _create_story_variant_aggregate_shell(index, output_root, order_row)
-                existing_ids.add(mission_id)
-                aggregate_shells.append(mission_id)
-                continue
-            if _source_order_shell_candidate(
-                order_row,
-                hash_cache=source_order_hash_cache,
-            ):
-                _create_source_order_shell(
-                    index,
-                    output_root,
-                    order_row,
-                    hash_cache=source_order_hash_cache,
-                )
-                existing_ids.add(mission_id)
-                source_order_shells.append(mission_id)
-                continue
-            if _story_branch_shell_candidate(
-                order_row,
-                hash_cache=source_order_hash_cache,
-            ):
-                _create_story_branch_shell(
-                    index,
-                    output_root,
-                    order_row,
-                    hash_cache=source_order_hash_cache,
-                )
-                existing_ids.add(mission_id)
-                story_branch_shells.append(mission_id)
-
-    published_missions: list[str] = []
-    published_branches = 0
-    source_order_related_file_missions: list[str] = []
-    source_order_related_file_rows = 0
-    source_order_related_distinct_files: set[str] = set()
-    story_branch_related_file_missions: list[str] = []
-    story_branch_related_file_rows = 0
-    story_branch_related_distinct_files: set[str] = set()
-    cross_reference_by_mission = {
-        str(row.get("mission") or ""): row
-        for row in (order_cross_reference or {}).get("missions") or []
-        if isinstance(row, dict) and row.get("mission")
-    }
-    source_gap_by_mission = {
-        str(row.get("mission") or ""): row
-        for row in (source_gap_queue or {}).get("missions") or []
-        if isinstance(row, dict) and row.get("mission")
-    }
-    for summary in index.get("missions") or []:
-        if not isinstance(summary, dict):
-            continue
-        mission_id = str(summary.get("id") or "")
-        order_row = rows_by_mission.get(mission_id)
-        mission_path = output_root / str(summary.get("file") or "")
-        if not order_row or not mission_path.is_file():
-            continue
-        payload = read_json(mission_path)
-        if not isinstance(payload, dict):
-            continue
-        inventory_rows = (
-            (report.get("nativeSerializedBranchInventory") or {}).get("rows") or []
-        )
-        published_order = attach_serialized_branch_story_contexts(
-            order_row,
-            inventory_rows,
-        )
-        previous_order = payload.get("storyOrder") or {}
-        source_gap_row = source_gap_by_mission.get(mission_id)
-        if source_gap_row:
-            published_order["sourceGapQueue"] = (
-                _compact_source_story_gap_queue_row(
-                    source_gap_row,
-                    str((source_gap_queue or {}).get("reportJson") or ""),
-                )
-            )
-        elif previous_order.get("sourceGapQueue"):
-            published_order["sourceGapQueue"] = previous_order["sourceGapQueue"]
-        if previous_order.get("sourceOrderShell"):
-            published_order["sourceOrderShell"] = True
-            published_order["sourceOrderShellBoundary"] = str(
-                previous_order.get("sourceOrderShellBoundary") or ""
-            )
-        if previous_order.get("storyBranchShell"):
-            published_order["storyBranchShell"] = True
-            published_order["storyBranchShellBoundary"] = str(
-                previous_order.get("storyBranchShellBoundary") or ""
-            )
-        mission_source = str(
-            (payload.get("mission") or {}).get("source") or ""
-        )
-        additional_source_files = (
-            [mission_source]
-            if "MissionRuntimeAsset/" in mission_source.replace("\\", "/")
-            else []
-        )
-        related_files = _source_order_shell_related_files(
-            order_row,
-            hash_cache=source_order_hash_cache,
-            additional_files=additional_source_files,
-        )
-        branch_related_files = _story_branch_related_original_files(
-            order_row,
-            hash_cache=source_order_hash_cache,
-        )
-        if related_files:
-            related_boundary = (
-                "These original files are attached to the strict source-order "
-                "report for auditability only. They do not establish mission "
-                "ownership, activation, branch selection, or a total Story-file "
-                "order."
-            )
-            published_order["sourceOrderRelatedOriginalFiles"] = copy.deepcopy(
-                related_files
-            )
-            published_order["sourceOrderRelatedFilesBoundary"] = related_boundary
-            mission_data = payload.setdefault("mission", {})
-            mission_data["sourceOrderRelatedOriginalFiles"] = copy.deepcopy(
-                related_files
-            )
-            mission_data["sourceOrderRelatedFilesBoundary"] = related_boundary
-            summary["sourceOrderRelatedFileCount"] = len(related_files)
-            source_order_related_file_missions.append(mission_id)
-            source_order_related_file_rows += len(related_files)
-            source_order_related_distinct_files.update(
-                str(row.get("sourceFile") or "")
-                for row in related_files
-                if row.get("sourceFile")
-            )
-        if branch_related_files:
-            branch_related_boundary = (
-                "These hash-validated original files are cited by authored Story "
-                "branch or bounded branch-validation records. They provide "
-                "branch-definition context only; they do not establish mission "
-                "ownership, activation, or cross-file chronology."
-            )
-            published_order["storyBranchRelatedOriginalFiles"] = copy.deepcopy(
-                branch_related_files
-            )
-            published_order["storyBranchRelatedFilesBoundary"] = (
-                branch_related_boundary
-            )
-            mission_data = payload.setdefault("mission", {})
-            mission_data["storyBranchRelatedOriginalFiles"] = copy.deepcopy(
-                branch_related_files
-            )
-            mission_data["storyBranchRelatedFilesBoundary"] = (
-                branch_related_boundary
-            )
-            summary["storyBranchRelatedFileCount"] = len(branch_related_files)
-            story_branch_related_file_missions.append(mission_id)
-            story_branch_related_file_rows += len(branch_related_files)
-            story_branch_related_distinct_files.update(
-                str(row.get("sourceFile") or "")
-                for row in branch_related_files
-                if row.get("sourceFile")
-            )
-        cross_reference_row = cross_reference_by_mission.get(mission_id)
-        if cross_reference_row is not None:
-            cross_reference_payload = (
-                story_order_projection.compact_story_order_cross_reference(
-                    cross_reference_row,
-                    order_cross_reference or {},
-                )
-            )
-            published_order["crossReference"] = cross_reference_payload
-            order_summary = published_order.setdefault("summary", {})
-            order_summary["crossReferenceStrictEdgeCount"] = int(
-                cross_reference_payload.get("strictEdgeCount") or 0
-            )
-            order_summary["crossReferenceOverrideDisagreeCount"] = int(
-                (cross_reference_payload.get("override") or {}).get(
-                    "disagrees"
-                )
-                or 0
-            )
-            order_summary["crossReferenceOcrDisagreeCount"] = int(
-                (cross_reference_payload.get("ocr") or {}).get("disagrees")
-                or 0
-            )
-            order_summary["crossReferenceConflictCount"] = int(
-                cross_reference_payload.get("conflictCount") or 0
-            )
-        elif isinstance(previous_order.get("crossReference"), dict):
-            # The canonical builder publishes the order once before coverage
-            # attachment and once after it. Preserve the full per-mission
-            # diagnostic comparison on the second pass; it is deliberately
-            # not reconstructed from the compact global index summary.
-            published_order["crossReference"] = copy.deepcopy(
-                previous_order["crossReference"]
-            )
-        payload["storyOrder"] = published_order
-        write_json(mission_path, payload)
-        story_order_projection.update_story_order_summary(
-            summary,
-            published_order,
-        )
-        published_missions.append(mission_id)
-        published_branches += len(
-            ((order_row.get("branches") or {}).get("nativeControlBranches") or [])
-        )
-
-    expected_branches = sum(
-        len(((row.get("branches") or {}).get("nativeControlBranches") or []))
-        for row in rows_by_mission.values()
-    )
-    missing_branch_missions = [
-        mission_id
-        for mission_id, row in sorted(rows_by_mission.items())
-        if ((row.get("branches") or {}).get("nativeControlBranches") or [])
-        and mission_id not in published_missions
-    ]
-    publication = {
-        "validator": "source_story_order_publication",
-        "status": "validated" if not missing_branch_missions else "incomplete",
-        "expectedNativeBranchPlacements": expected_branches,
-        "publishedNativeBranchPlacements": published_branches,
-        "unpublishedNativeBranchPlacements": expected_branches - published_branches,
-        "publishedMissionRows": len(published_missions),
-        "variantAggregateShells": aggregate_shells,
-        "sourceOrderShells": source_order_shells,
-        "storyBranchShells": story_branch_shells,
-        "sourceOrderRelatedFileMissions": source_order_related_file_missions,
-        "sourceOrderRelatedFileRows": source_order_related_file_rows,
-        "sourceOrderRelatedDistinctFiles": len(source_order_related_distinct_files),
-        "storyBranchRelatedFileMissions": story_branch_related_file_missions,
-        "storyBranchRelatedFileRows": story_branch_related_file_rows,
-        "storyBranchRelatedDistinctFiles": len(story_branch_related_distinct_files),
-        "missingBranchMissions": missing_branch_missions,
-    }
-    index.setdefault("counts", {})["missions"] = len(index.get("missions") or [])
-    index["counts"]["sourceOrderMissionShells"] = len(source_order_shells)
-    index["counts"]["storyBranchMissionShells"] = len(story_branch_shells)
-    index["counts"]["sourceOrderRelatedFileMissions"] = len(
-        source_order_related_file_missions
-    )
-    index["counts"]["sourceOrderRelatedFileRows"] = source_order_related_file_rows
-    index["counts"]["sourceOrderRelatedDistinctFiles"] = len(
-        source_order_related_distinct_files
-    )
-    index["counts"]["storyBranchRelatedFileMissions"] = len(
-        story_branch_related_file_missions
-    )
-    index["counts"]["storyBranchRelatedFileRows"] = story_branch_related_file_rows
-    index["counts"]["storyBranchRelatedDistinctFiles"] = len(
-        story_branch_related_distinct_files
-    )
-    index.setdefault("storyOrder", {})["publication"] = publication
-    index.setdefault("counts", {})["storyVariantAggregateShells"] = len(
-        [row for row in index.get("missions") or [] if row.get("storyAggregateShell")]
-    )
-    index["counts"]["missions"] = len(index.get("missions") or [])
-    index["missions"].sort(key=lambda row: natural_quest_key(str(row.get("id") or "")))
-    if require_complete_branch_publication and missing_branch_missions:
-        first = missing_branch_missions[0]
-        row = rows_by_mission[first]
-        actual = len(
-            ((row.get("branches") or {}).get("nativeControlBranches") or [])
-        )
-        raise RuntimeError(
-            "validator=source_story_order_publication "
-            "gate=allRecoveredNativeBranchesPublished "
-            f"mission={first} expected={actual} actual=0 "
-            f"source={row.get('missionData') or '-'}"
-        )
-    write_json(output_root / "index.json", index)
-    return publication
-
-
-def publish_quest_dialog_tree_definitions(
-    index: dict[str, Any],
-    output_root: Path,
-    story_data_root: Path,
-    language: str,
-) -> dict[str, Any]:
-    """Attach hash-verified DialogTree definitions to exact quest observers.
-
-    MissionRuntime ``CheckTalkOptionFinish`` and
-    ``CheckRepeatableTalkFinish`` prove that a quest observes a DialogTree
-    root. The recovered TextAsset proves that root's internal graph; it does
-    not prove which client action starts the dialog or add cross-file
-    chronology.
-    """
-    sidecar_root = story_data_root / language.upper() / "mission"
-    unique_story_keys: set[str] = set()
-    placements = 0
-    missions = 0
-    quests = 0
-    if not sidecar_root.is_dir():
-        result = {
-            "schema": "missionPipelineDialogTreeDefinitions.v1",
-            "published": {
-                "missions": 0,
-                "quests": 0,
-                "placements": 0,
-                "uniqueStoryKeys": 0,
-            },
-        }
-        index["dialogTreeDefinitions"] = result
-        return result
-
-    for summary in index.get("missions") or []:
-        if not isinstance(summary, dict):
-            continue
-        mission_id = str(summary.get("id") or "")
-        sidecar_path = sidecar_root / f"{mission_id}.json"
-        mission_path = output_root / str(summary.get("file") or "")
-        if not sidecar_path.is_file() or not mission_path.is_file():
-            continue
-        sidecar = read_json(sidecar_path)
-        timeline_recovery = (
-            sidecar.get("timelineRecovery")
-            if isinstance(sidecar, dict)
-            else None
-        )
-        raw_definitions = (
-            timeline_recovery.get("sceneDialogTreeEvidence")
-            if isinstance(timeline_recovery, dict)
-            else None
-        )
-        if not isinstance(raw_definitions, dict) or not raw_definitions:
-            continue
-
-        definitions: dict[str, dict[str, Any]] = {}
-        for scene_key, raw in raw_definitions.items():
-            if not isinstance(raw, dict):
-                raise ValueError(
-                    f"DialogTree evidence is not an object: {sidecar_path} {scene_key}"
-                )
-            source_file = str(raw.get("sourceFile") or "")
-            source_sha256 = str(raw.get("sourceSha256") or "").upper()
-            if (
-                str(raw.get("sceneKey") or "") != str(scene_key)
-                or raw.get("assetType") != "Beyond.Gameplay.DialogTree"
-                or raw.get("evidenceKind") != "exact_dialog_tree_definition"
-                or not re.fullmatch(r"[0-9A-F]{64}", source_sha256)
-                or not source_file
-            ):
-                raise ValueError(
-                    f"DialogTree evidence failed shape validation: "
-                    f"{sidecar_path} {scene_key}"
-                )
-            source_path = (ROOT / source_file).resolve()
-            if not source_path.is_relative_to(ROOT) or not source_path.is_file():
-                raise ValueError(
-                    f"DialogTree evidence source is missing/outside repo: "
-                    f"{sidecar_path} {scene_key} {source_file}"
-                )
-            actual_sha256 = hashlib.sha256(source_path.read_bytes()).hexdigest().upper()
-            if actual_sha256 != source_sha256:
-                raise ValueError(
-                    f"DialogTree evidence source hash mismatch: {sidecar_path} "
-                    f"{scene_key} expected={source_sha256} actual={actual_sha256}"
-                )
-            definitions[str(scene_key)] = raw
-
-        payload = read_json(mission_path)
-        if not isinstance(payload, dict):
-            continue
-        mission_placements = 0
-        mission_quests: set[str] = set()
-        mission_observed_dialogs: set[str] = set()
-        for node in payload.get("nodes") or []:
-            if not isinstance(node, dict):
-                continue
-            observers_by_dialog: dict[str, list[dict[str, Any]]] = defaultdict(list)
-
-            def collect_observers(
-                condition: Any,
-                relation: str,
-                objective_index: int | None = None,
-            ) -> None:
-                if isinstance(condition, list):
-                    for child in condition:
-                        collect_observers(child, relation, objective_index)
-                    return
-                if not isinstance(condition, dict):
-                    return
-                condition_type = str(condition.get("type") or "")
-                facts = condition.get("facts")
-                if (
-                    condition_type in {
-                        "CheckTalkOptionFinish",
-                        "CheckRepeatableTalkFinish",
-                    }
-                    and isinstance(facts, dict)
-                    and facts.get("dialogId")
-                ):
-                    dialog_id = str(facts["dialogId"])
-                    observer = {
-                        "relation": relation,
-                        "conditionType": condition_type,
-                    }
-                    if objective_index is not None:
-                        observer["objectiveIndex"] = objective_index
-                    if "finishId" in facts:
-                        observer["finishId"] = facts["finishId"]
-                    if observer not in observers_by_dialog[dialog_id]:
-                        observers_by_dialog[dialog_id].append(observer)
-                for value in condition.values():
-                    if isinstance(value, (dict, list)):
-                        collect_observers(value, relation, objective_index)
-
-            for objective in node.get("objectives") or []:
-                if isinstance(objective, dict):
-                    collect_observers(
-                        objective.get("condition"),
-                        "objective_condition",
-                        objective.get("index"),
-                    )
-            collect_observers(node.get("failedCondition"), "failed_condition")
-            observed_dialogs = set(observers_by_dialog)
-            mission_observed_dialogs.update(observed_dialogs)
-            rows = [
-                {
-                    **definitions[dialog_id],
-                    "missionObservers": observers_by_dialog[dialog_id],
-                }
-                for dialog_id in sorted(observed_dialogs, key=natural_quest_key)
-                if dialog_id in definitions
-            ]
-            if not rows:
-                continue
-            node["dialogTreeDefinitions"] = rows
-            mission_placements += len(rows)
-            mission_quests.add(str(node.get("id") or ""))
-            unique_story_keys.update(
-                str(row.get("sceneKey") or "") for row in rows
-            )
-        unplaced = sorted(
-            set(definitions) - mission_observed_dialogs,
-            key=natural_quest_key,
-        )
-        if unplaced:
-            raise ValueError(
-                "DialogTree definitions have no supported MissionRuntime "
-                f"observer: mission={mission_id} source={sidecar_path} "
-                f"expected={unplaced[:8]} "
-                f"actual={sorted(mission_observed_dialogs, key=natural_quest_key)[:16]}"
-            )
-        if not mission_placements:
-            continue
-        summary["dialogTreeDefinitionCount"] = mission_placements
-        summary["dialogTreeDefinitionQuestCount"] = len(mission_quests)
-        write_json(mission_path, payload)
-        placements += mission_placements
-        quests += len(mission_quests)
-        missions += 1
-
-    result = {
-        "schema": "missionPipelineDialogTreeDefinitions.v1",
-        "evidencePolicy": (
-            "Exact MissionRuntime CheckTalkOptionFinish or "
-            "CheckRepeatableTalkFinish observer plus a typed, hash-verified "
-            "current-game DialogTree TextAsset. Definition/internal branch "
-            "evidence only; no activation or cross-file order promotion."
-        ),
-        "sourceRoot": repo_path(sidecar_root),
-        "published": {
-            "missions": missions,
-            "quests": quests,
-            "placements": placements,
-            "uniqueStoryKeys": len(unique_story_keys),
-        },
-    }
-    index["dialogTreeDefinitions"] = result
-    write_json(output_root / "index.json", index)
-    return result
-
-
-def iter_hashed_source_references(
-    value: Any,
-    path: tuple[str, ...] = (),
-) -> Iterable[dict[str, Any]]:
-    """Yield source references that carry their own byte-identity proof.
-
-    Recovery publishers use several evidence schemas, but their durable source
-    boundary is uniform: an object names ``sourceFile`` and carries either
-    ``sha256``, ``sourceSha256``, or ``rawDataSha256``.  Walking that shape keeps
-    branch attachment independent of particular action, condition, dialog, or
-    mission ids while excluding unverified path-like diagnostic strings.
-    """
-    if isinstance(value, dict):
-        source_file = value.get("sourceFile")
-        source_hash = (
-            value.get("sha256")
-            or value.get("sourceSha256")
-            or value.get("rawDataSha256")
-        )
-        if isinstance(source_file, str) and source_file and source_hash:
-            yield {
-                "sourceFile": source_file,
-                "sha256": str(source_hash),
-                "kind": str(
-                    value.get("kind")
-                    or value.get("evidenceKind")
-                    or value.get("sourceType")
-                    or "hashed_source_reference"
-                ),
-                "relationship": str(
-                    value.get("relationship")
-                    or value.get("evidenceKind")
-                    or "arm_hashed_source_reference"
-                ),
-                "evidencePath": ".".join(path),
-            }
-        for key, child in value.items():
-            yield from iter_hashed_source_references(child, (*path, str(key)))
-    elif isinstance(value, list):
-        for child in value:
-            yield from iter_hashed_source_references(child, path)
-
-
-def publish_quest_fork_arm_evidence(
-    index: dict[str, Any],
-    output_root: Path,
-    story_data_root: Path,
-    language: str,
-) -> dict[str, Any]:
-    """Attach exact Story evidence to sibling-exclusive authored fork arms.
-
-    The corridor membership comes only from MissionRuntime predecessor topology.
-    Story rows come from the generated typed mission sidecar, whose action names
-    are backed by the complete installed-binary ActionBase formatter audit. The
-    exact MissionRuntime questDic and every nested, hash-bearing source reference
-    on a corridor quest are validated and attached by their shared data shape.
-    OCR and manual order are deliberately absent.
-    """
-    validator = "quest_fork_arm_evidence"
-    validation_scope = {"missionId": "", "questId": ""}
-
-    def validation_failure(
-        gate: str,
-        expected: Any,
-        actual: Any,
-        source: str,
-        source_hashes: dict[str, str] | None = None,
-    ) -> RuntimeError:
-        failure = compact_dict({
-            "validator": validator,
-            "gate": gate,
-            **validation_scope,
-            "expected": expected,
-            "actual": actual,
-            "sourceFile": str(source),
-            "sourceHashes": source_hashes or {},
-        })
-        index["questForkArmEvidence"] = {
-            "schema": "missionQuestForkArmEvidence.v2",
-            "validation": {
-                "status": "validation_failed",
-                "failures": [failure],
-            },
-        }
-        write_json(output_root / "index.json", index)
-        return RuntimeError(
-            f"validator={validator} gate={gate} "
-            f"mission={validation_scope['missionId'] or '-'} "
-            f"quest={validation_scope['questId'] or '-'} "
-            f"expected={expected!r} actual={actual!r} source={source} "
-            f"sourceHashes={source_hashes or {}}"
-        )
-
-    audit = ACTIONBASE_FORMATTER_NAME_AUDIT
-    audit_source = str(audit.get("sourceFile") or "")
-    if audit.get("status") != "validated" or not audit_source:
-        raise validation_failure(
-            "binaryActionNameAudit",
-            {"status": "validated", "sourceFile": "nonempty"},
-            {"status": audit.get("status"), "sourceFile": audit_source},
-            "scripts/story_builder/level_bindings.py",
-        )
-    audit_path = (ROOT / audit_source).resolve()
-    expected_audit_hash = str(audit.get("sourceSha256") or "").upper()
-    if not audit_path.is_relative_to(ROOT) or not audit_path.is_file():
-        raise validation_failure(
-            "binaryActionNameAuditSource",
-            "fileWithinRepo",
-            str(audit_path),
-            audit_source,
-        )
-    actual_audit_hash = sha256_path(audit_path).upper()
-    if actual_audit_hash != expected_audit_hash:
-        raise validation_failure(
-            "binaryActionNameAuditHash",
-            expected_audit_hash,
-            actual_audit_hash,
-            audit_source,
-            {"actualSha256": actual_audit_hash},
-        )
-    audit_payload = read_json(audit_path)
-    audit_metadata = (
-        audit_payload.get("metadata")
-        if isinstance(audit_payload, dict)
-        and isinstance(audit_payload.get("metadata"), dict)
-        else {}
-    )
-
-    sidecar_root = story_data_root / language.upper() / "mission"
-    file_cache: dict[str, dict[str, Any]] = {}
-
-    def related_original_file(
-        source_file: str,
-        relationship: str,
-        expected_hash: str = "",
-        kind: str = "original_authored_source",
-    ) -> dict[str, Any]:
-        normalized = str(source_file or "").replace("\\", "/")
-        cache_key = f"{normalized}\0{relationship}\0{kind}"
-        cached = file_cache.get(cache_key)
-        if cached is not None:
-            return cached
-        source_path = Path(normalized)
-        if not source_path.is_absolute():
-            source_path = ROOT / source_path
-        source_path = source_path.resolve()
-        if not source_path.is_relative_to(ROOT) and not expected_hash:
-            raise validation_failure(
-                "relatedOriginalFileBoundary",
-                "fileWithinRepoOrPrehashedAbsolute",
-                str(source_path),
-                normalized,
-            )
-        if not source_path.is_file():
-            raise validation_failure(
-                "relatedOriginalFile",
-                "file",
-                str(source_path),
-                normalized,
-            )
-        actual_hash = sha256_path(source_path)
-        if expected_hash and actual_hash.upper() != expected_hash.upper():
-            raise validation_failure(
-                "relatedOriginalFileHash",
-                expected_hash.upper(),
-                actual_hash.upper(),
-                normalized,
-                {"actualSha256": actual_hash},
-            )
-        row = {
-            "kind": kind,
-            "sourceFile": repo_path(source_path),
-            "relationship": relationship,
-            "sha256": actual_hash,
-        }
-        file_cache[cache_key] = row
-        return row
-
-    missions = 0
-    forks = 0
-    arms = 0
-    arms_with_story = 0
-    story_placements = 0
-    binary_named_action_placements = 0
-    authored_source_placements = 0
-    arms_with_related_files = 0
-    non_story_arms_with_related_files = 0
-    story_keys: set[str] = set()
-    distinct_original_files: set[str] = set()
-    for summary in index.get("missions") or []:
-        if not isinstance(summary, dict):
-            continue
-        mission_id = str(summary.get("id") or "")
-        validation_scope["missionId"] = mission_id
-        validation_scope["questId"] = ""
-        mission_path = output_root / str(summary.get("file") or "")
-        if not mission_path.is_file():
-            continue
-        payload = read_json(mission_path)
-        topology = payload.get("questTopology") if isinstance(payload, dict) else None
-        mission_forks = topology.get("forks") if isinstance(topology, dict) else None
-        if not mission_forks:
-            continue
-        sidecar_path = sidecar_root / f"{mission_id}.json"
-        if not sidecar_path.is_file():
-            raise validation_failure(
-                "missionSidecar", "file", "missing", str(sidecar_path)
-            )
-        sidecar = read_json(sidecar_path)
-        flow = sidecar.get("flow") if isinstance(sidecar, dict) else None
-        quest_rows = flow.get("quests") if isinstance(flow, dict) else None
-        if isinstance(quest_rows, dict):
-            quest_rows = list(quest_rows.values())
-        if not isinstance(quest_rows, list):
-            raise validation_failure(
-                "missionSidecarQuests",
-                "list",
-                type(quest_rows).__name__,
-                str(sidecar_path),
-            )
-        sidecar_quests = {
-            str(row.get("id") or row.get("questId") or ""): row
-            for row in quest_rows
-            if isinstance(row, dict) and (row.get("id") or row.get("questId"))
-        }
-        nodes = {
-            str(row.get("id") or ""): row
-            for row in payload.get("nodes") or []
-            if isinstance(row, dict) and row.get("id")
-        }
-        mission = payload.get("mission") if isinstance(payload, dict) else None
-        mission_source = str(mission.get("source") or "") if isinstance(mission, dict) else ""
-        if not mission_source:
-            raise validation_failure(
-                "missionRuntimeSource", "nonempty", mission_source, str(mission_path)
-            )
-        mission_source_path = Path(mission_source)
-        if not mission_source_path.is_absolute():
-            mission_source_path = ROOT / mission_source_path
-        mission_source_path = mission_source_path.resolve()
-        if not mission_source_path.is_file():
-            raise validation_failure(
-                "missionRuntimeSourceFile",
-                "file",
-                str(mission_source_path),
-                mission_source,
-            )
-        mission_source_hash = sha256_path(mission_source_path)
-        mission_runtime = read_json(mission_source_path)
-        authored_quest_dic = (
-            mission_runtime.get("questDic")
-            if isinstance(mission_runtime, dict)
-            else None
-        )
-        if (
-            not isinstance(authored_quest_dic, dict)
-            or str(mission_runtime.get("missionId") or "") != mission_id
-        ):
-            raise validation_failure(
-                "missionRuntimeQuestDictionary",
-                {"missionId": mission_id, "questDic": "dict"},
-                {
-                    "missionId": (
-                        mission_runtime.get("missionId")
-                        if isinstance(mission_runtime, dict) else None
-                    ),
-                    "questDic": type(authored_quest_dic).__name__,
-                },
-                mission_source,
-                {"missionRuntimeSha256": mission_source_hash},
-            )
-        mission_story_placements = 0
-        for fork in mission_forks:
-            if not isinstance(fork, dict):
-                continue
-            forks += 1
-            for arm in fork.get("arms") or []:
-                if not isinstance(arm, dict):
-                    continue
-                arms += 1
-                validation_scope["questId"] = str(fork.get("questId") or "")
-                corridor = arm.get("siblingExclusiveQuestIds")
-                if not isinstance(corridor, list):
-                    raise validation_failure(
-                        "siblingExclusiveCorridor",
-                        "list",
-                        "missing",
-                        str(mission_path),
-                    )
-                arm_quest_id = str(arm.get("questId") or "")
-                source_quest_ids = corridor or ([arm_quest_id] if arm_quest_id else [])
-                missing_quests = [
-                    quest_id for quest_id in source_quest_ids
-                    if quest_id not in sidecar_quests or quest_id not in nodes
-                ]
-                if missing_quests:
-                    raise validation_failure(
-                        "corridorQuestsResolve",
-                        [],
-                        missing_quests[:16],
-                        str(sidecar_path),
-                    )
-                missing_authored_quests = [
-                    quest_id for quest_id in source_quest_ids
-                    if quest_id not in authored_quest_dic
-                ]
-                if missing_authored_quests:
-                    raise validation_failure(
-                        "corridorQuestsInOriginalQuestDic",
-                        [],
-                        missing_authored_quests[:16],
-                        mission_source,
-                        {"missionRuntimeSha256": mission_source_hash},
-                    )
-                evidence_by_signature: dict[tuple[str, ...], dict[str, Any]] = {}
-                related_by_file: dict[str, dict[str, Any]] = {}
-                authored_source_evidence: list[dict[str, Any]] = []
-                for quest_id in source_quest_ids:
-                    sidecar_quest = sidecar_quests[quest_id]
-                    node = nodes[quest_id]
-                    quest_related_by_file: dict[str, dict[str, Any]] = {}
-                    authored_mission_file = related_original_file(
-                        mission_source,
-                        "exact_fork_arm_quest_definition",
-                        mission_source_hash,
-                        "mission_runtime",
-                    )
-                    quest_related_by_file[authored_mission_file["sourceFile"]] = (
-                        authored_mission_file
-                    )
-                    related_by_file[authored_mission_file["sourceFile"]] = (
-                        authored_mission_file
-                    )
-                    evidence_kinds = {"mission_runtime_quest_definition"}
-                    for source_reference in iter_hashed_source_references(node):
-                        related = related_original_file(
-                            str(source_reference["sourceFile"]),
-                            str(source_reference["relationship"]),
-                            str(source_reference["sha256"]),
-                            str(source_reference["kind"]),
-                        )
-                        quest_related_by_file[related["sourceFile"]] = related
-                        related_by_file[related["sourceFile"]] = related
-                        evidence_kinds.add(str(source_reference["relationship"]))
-                    raw_rows: list[dict[str, Any]] = []
-                    if quest_id in corridor:
-                        raw_rows = [
-                            row for row in sidecar_quest.get("storyConnections") or []
-                            if isinstance(row, dict) and row.get("key")
-                        ]
-                        raw_rows.extend(
-                            row for row in node.get("storyScopeContexts") or []
-                            if isinstance(row, dict) and row.get("key")
-                        )
-                    for raw in raw_rows:
-                        raw_source_files = raw.get("sourceFiles")
-                        if not isinstance(raw_source_files, list):
-                            raw_source_files = []
-                        source_files = sorted({
-                            str(value).replace("\\", "/")
-                            for value in [
-                                raw.get("file"),
-                                raw.get("sourceFile"),
-                                *raw_source_files,
-                            ]
-                            if isinstance(value, str) and value
-                        })
-                        evidence = compact_dict({
-                            "questId": quest_id,
-                            "key": str(raw.get("key") or ""),
-                            "kind": raw.get("kind") or "",
-                            "relation": raw.get("relation") or "",
-                            "direction": raw.get("direction") or "",
-                            "phase": raw.get("phase") or "",
-                            "confidence": raw.get("confidence") or "",
-                            "actionType": raw.get("actionType") or raw.get("actionName") or "",
-                            "conditionType": raw.get("conditionType") or "",
-                            "finishId": raw.get("finishId"),
-                            "evidenceTier": raw.get("evidenceTier") or "",
-                            "ownership": raw.get("ownership") or raw.get("ownershipStatus") or "",
-                            "questTriggerStatus": raw.get("questTriggerStatus") or "",
-                            "nativeMappingId": raw.get("nativeMappingId") or "",
-                            "source": raw.get("source") or "",
-                            "sourceFiles": source_files,
-                        })
-                        signature = tuple(str(evidence.get(key) or "") for key in (
-                            "questId", "key", "relation", "direction", "phase",
-                            "confidence", "source",
-                        ))
-                        evidence_by_signature[signature] = evidence
-                        for source_file in source_files:
-                            related = related_original_file(
-                                source_file,
-                                "fork_arm_typed_story_relation",
-                            )
-                            related_by_file[related["sourceFile"]] = related
-                            quest_related_by_file[related["sourceFile"]] = related
-                            evidence_kinds.add("fork_arm_typed_story_relation")
-                    evidence_keys = {
-                        str(row.get("key") or "")
-                        for row in raw_rows
-                    }
-                    for definition in node.get("dialogTreeDefinitions") or []:
-                        if not isinstance(definition, dict):
-                            continue
-                        scene_key = str(definition.get("sceneKey") or "")
-                        if scene_key not in evidence_keys:
-                            continue
-                        source_file = str(definition.get("sourceFile") or "")
-                        if not source_file:
-                            continue
-                        related = related_original_file(
-                            source_file,
-                            "fork_arm_observed_dialog_tree_definition",
-                            str(definition.get("sourceSha256") or ""),
-                        )
-                        related_by_file[related["sourceFile"]] = related
-                        quest_related_by_file[related["sourceFile"]] = related
-                    tracking_types = sorted({
-                        str(tracking.get("type") or "")
-                        for objective in node.get("objectives") or []
-                        if isinstance(objective, dict)
-                        for tracking in objective.get("tracking") or []
-                        if isinstance(tracking, dict) and tracking.get("type")
-                    })
-                    authored_source_evidence.append(compact_dict({
-                        "questId": quest_id,
-                        "armMembership": (
-                            "sibling_exclusive_corridor"
-                            if quest_id in corridor
-                            else "direct_successor_boundary"
-                        ),
-                        "evidenceKinds": sorted(evidence_kinds),
-                        "conditionTypes": sorted({
-                            str(value) for value in node.get("conditionTypes") or []
-                            if value
-                        }),
-                        "clientActionTypes": sorted({
-                            str(action.get("type") or "")
-                            for action in node.get("clientActions") or []
-                            if isinstance(action, dict) and action.get("type")
-                        }),
-                        "trackingTypes": tracking_types,
-                        "relatedOriginalFiles": sorted(
-                            quest_related_by_file.values(),
-                            key=lambda row: (row["sourceFile"], row["relationship"]),
-                        ),
-                    }))
-                evidence_rows = sorted(
-                    evidence_by_signature.values(),
-                    key=lambda row: (
-                        natural_quest_key(str(row.get("questId") or "")),
-                        str(row.get("key") or ""),
-                        str(row.get("relation") or ""),
-                        str(row.get("source") or ""),
-                    ),
-                )
-                arm["storyEvidence"] = evidence_rows
-                arm["authoredSourceEvidence"] = authored_source_evidence
-                arm["relatedOriginalFiles"] = sorted(
-                    related_by_file.values(),
-                    key=lambda row: (row["sourceFile"], row["relationship"]),
-                )
-                arm["storyEvidenceBoundary"] = (
-                    "Every corridor quest is validated against the exact original "
-                    "MissionRuntime questDic. Additional files are admitted only from "
-                    "nested hash-bearing source records. Story context remains non-owning; "
-                    "even direct playback or completion does not prove server arm "
-                    "selection, exclusivity, or a total order."
-                )
-                authored_source_placements += len(authored_source_evidence)
-                story_placements += len(evidence_rows)
-                binary_named_action_placements += sum(
-                    bool(row.get("actionType")) for row in evidence_rows
-                )
-                mission_story_placements += len(evidence_rows)
-                if evidence_rows:
-                    arms_with_story += 1
-                    story_keys.update(str(row.get("key") or "") for row in evidence_rows)
-                if related_by_file:
-                    arms_with_related_files += 1
-                    if not evidence_rows:
-                        non_story_arms_with_related_files += 1
-                distinct_original_files.update(related_by_file)
-        order_branches = (
-            (payload.get("storyOrder") or {}).get("branches")
-            if isinstance(payload.get("storyOrder"), dict)
-            else None
-        )
-        if isinstance(order_branches, dict) and order_branches.get("questForks"):
-            forks_by_id = {
-                str(row.get("questId") or ""): row
-                for row in mission_forks
-                if isinstance(row, dict) and row.get("questId")
-            }
-            order_branches["questForks"] = [
-                forks_by_id[str(row.get("questId") or "")]
-                for row in order_branches["questForks"]
-                if isinstance(row, dict)
-                and str(row.get("questId") or "") in forks_by_id
-            ]
-        summary["questForkArmStoryEvidenceCount"] = mission_story_placements
-        write_json(mission_path, payload)
-        missions += 1
-
-    result = {
-        "schema": "missionQuestForkArmEvidence.v2",
-        "validation": {"status": "validated", "failures": []},
-        "language": language.upper(),
-        "binaryActionTypeAuthority": {
-            **audit,
-            "gameAssemblySha256": audit_metadata.get("gameAssemblySha256"),
-            "metadataSha256": audit_metadata.get("metadataSha256"),
-        },
-        "counts": {
-            "missions": missions,
-            "forks": forks,
-            "arms": arms,
-            "armsWithStoryEvidence": arms_with_story,
-            "armsWithRelatedOriginalFiles": arms_with_related_files,
-            "nonStoryArmsWithRelatedOriginalFiles": non_story_arms_with_related_files,
-            "authoredQuestSourcePlacements": authored_source_placements,
-            "storyEvidencePlacements": story_placements,
-            "uniqueStoryKeys": len(story_keys),
-            "binaryNamedActionPlacements": binary_named_action_placements,
-            "distinctRelatedOriginalFiles": len(distinct_original_files),
-        },
-        "evidencePolicy": {
-            "classification": "typed_sibling_relative_fork_arm_context",
-            "ownershipPromotion": False,
-            "orderPromotion": False,
-            "usesOcrOrManualOrder": False,
-            "boundary": (
-                "MissionRuntime predecessor reachability defines each corridor. "
-                "Every corridor identity must also exist in the exact original questDic. "
-                "The MissionRuntime file and nested hash-bearing source records are "
-                "attached generically. Empty exclusive corridors retain only their direct "
-                "successor boundary identity. Arms with no Story placement remain visible "
-                "without "
-                "claiming server selection, exclusivity, or a total order."
-            ),
-        },
-    }
-    index["questForkArmEvidence"] = result
-    write_json(output_root / "index.json", index)
-    return result
 
 
 def main() -> int:
@@ -13174,11 +7901,13 @@ def main() -> int:
             DEFAULT_ACTIVITY_SNAPSHOT_STAGE_TABLE,
         ).resolve(),
     )
-    dialog_tree_definitions = publish_quest_dialog_tree_definitions(
-        index,
-        output_root,
-        args.story_data_root.resolve(),
-        args.story_language,
+    dialog_tree_definitions = (
+        dialog_tree_projection.publish_quest_dialog_tree_definitions(
+            index,
+            output_root,
+            args.story_data_root.resolve(),
+            args.story_language,
+        )
     )
     dialog_finish_branch_audit: dict[str, Any] = {}
     if output_root == DEFAULT_OUTPUT_ROOT.resolve():
@@ -13220,11 +7949,15 @@ def main() -> int:
                 output_root,
             )
             write_json(output_root / "index.json", index)
-    order_report = publish_source_story_partial_order(
+    order_report = source_order_publication.publish_source_story_partial_order(
         index,
         output_root,
         args.story_data_root.resolve(),
         args.story_language,
+        DEFAULT_ORDER_REPORT_ROOT,
+        schema_version=SCHEMA_VERSION,
+        story_order_override_path=DEFAULT_STORY_ORDER_OVERRIDE,
+        story_order_ocr_path=DEFAULT_STORY_ORDER_OCR,
     )
     # The complete-corpus callback audit is generated once for the canonical
     # pipeline. Reduced fixture outputs never overwrite or silently consume it.
@@ -13296,9 +8029,10 @@ def main() -> int:
                 args.story_language,
                 source_story_gap_queue,
             )
-        offline_recovery = publish_offline_story_recovery(
+        offline_recovery = offline_recovery_projection.publish_offline_story_recovery(
             coverage["storyTriggerManifest"],
             source_story_gap_queue,
+            source_story_gap_queue_schema=SOURCE_STORY_GAP_QUEUE_SCHEMA,
         )
         source_gap_queue_payload = None
         if offline_recovery.get("status") == "active":
@@ -13309,11 +8043,12 @@ def main() -> int:
                     source_story_gap_queue
                 )
         offline_recovery["missionShells"] = (
-            publish_offline_recovery_mission_shells(
+            offline_shell_projection.publish_offline_recovery_mission_shells(
                 index,
                 output_root,
                 offline_recovery,
                 source_story_gap_queue,
+                schema_version=SCHEMA_VERSION,
             ) if output_root == DEFAULT_OUTPUT_ROOT.resolve() else []
         )
         if order_report:
@@ -13328,7 +8063,7 @@ def main() -> int:
                 )
                 if cross_reference_path.is_file():
                     order_cross_reference = read_json(cross_reference_path)
-            attach_source_story_partial_order(
+            source_order_publication.attach_source_story_partial_order(
                 index,
                 output_root,
                 order_report,
@@ -13336,6 +8071,7 @@ def main() -> int:
                 require_complete_branch_publication=True,
                 order_cross_reference=order_cross_reference,
                 source_gap_queue=source_gap_queue_payload,
+                schema_version=SCHEMA_VERSION,
             )
         report_stem = f"mission_pipeline_story_binding_coverage_{coverage['language']}"
         coverage_report = args.report_root.resolve() / f"{report_stem}.json"
@@ -13457,11 +8193,12 @@ def main() -> int:
             coverage["language"],
             coverage_report,
         )
-        fork_arm_evidence = publish_quest_fork_arm_evidence(
+        fork_arm_evidence = quest_fork_arm_projection.publish_quest_fork_arm_evidence(
             index,
             output_root,
             args.story_data_root.resolve(),
             coverage["language"],
+            actionbase_formatter_name_audit=ACTIONBASE_FORMATTER_NAME_AUDIT,
         )
         write_json(output_root / "index.json", index)
     runtime_trace = None

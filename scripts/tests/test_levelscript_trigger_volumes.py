@@ -4,11 +4,18 @@ import struct
 import unittest
 
 from scripts.story_builder.levelscript_binary import (
-    _decode_trigger_volume_map,
-    _find_final_trigger_volume_map,
     decode_levelscript_binary_summary,
     decode_levelscript_encounter_module_target,
-    find_levelscript_active_shape_candidates,
+)
+from scripts.story_builder.codecs.levelscript.active_shapes import (
+    find_active_shape_candidates,
+)
+from scripts.story_builder.codecs.levelscript.trigger_volumes import (
+    decode_trigger_volume_map,
+    find_final_trigger_volume_map,
+)
+from scripts.story_builder.codecs.levelscript.top_level_tail import (
+    decode_tail_candidate,
 )
 
 
@@ -108,7 +115,7 @@ class LevelScriptTriggerVolumeTests(unittest.TestCase):
             (1).to_bytes(4, "little", signed=True)
             + self._leader_volume(80001)
         )
-        decoded, cursor = _decode_trigger_volume_map(map_payload, 0)
+        decoded, cursor = decode_trigger_volume_map(map_payload, 0)
         self.assertEqual(len(map_payload), cursor)
         self.assertEqual([80001], decoded["slotIds"])
         volume = decoded["volumes"][0]
@@ -118,7 +125,7 @@ class LevelScriptTriggerVolumeTests(unittest.TestCase):
         self.assertEqual(8.0, volume["shapeList"]["shapes"][0]["radius"])
 
         wrapped = b"task-prefix" + map_payload
-        offset, tail, cursor = _find_final_trigger_volume_map(
+        offset, tail, cursor = find_final_trigger_volume_map(
             wrapped,
             search_start=0,
         )
@@ -129,7 +136,7 @@ class LevelScriptTriggerVolumeTests(unittest.TestCase):
     def test_active_shape_candidate_uses_schema_and_adjacent_typed_fields(self) -> None:
         encoded = self._active_shape_list()
         payload = b"action-tail" + encoded + b"later-members"
-        candidates = find_levelscript_active_shape_candidates(
+        candidates = find_active_shape_candidates(
             payload,
             len(b"action-tail"),
             len(payload),
@@ -143,19 +150,35 @@ class LevelScriptTriggerVolumeTests(unittest.TestCase):
         invalid[4] = 4
         self.assertEqual(
             [],
-            find_levelscript_active_shape_candidates(bytes(invalid), 0, len(invalid)),
+            find_active_shape_candidates(bytes(invalid), 0, len(invalid)),
         )
 
         encoded = self._active_shape_list()
         ambiguous = encoded + b"separator" + encoded
         self.assertEqual(
             2,
-            len(find_levelscript_active_shape_candidates(
+            len(find_active_shape_candidates(
                 ambiguous,
                 0,
                 len(ambiguous),
             )),
         )
+
+    def test_top_level_tail_decodes_exact_nullable_members_to_eof(self) -> None:
+        payload = (
+            struct.pack("<Q", 70000000001)
+            + struct.pack("<i", -1)
+            + struct.pack("<I", 1)
+            + struct.pack("<i", -1)
+            + struct.pack("<i", -1)
+        )
+        decoded = decode_tail_candidate(payload, 0)
+        self.assertEqual("null", decoded["startShapeListStatus"])
+        self.assertEqual("Manual", decoded["startTypeName"])
+        self.assertEqual("null", decoded["taskMapStatus"])
+        self.assertEqual("null", decoded["triggerVolumesStatus"])
+        self.assertEqual("0x18", decoded["triggerVolumes"]["endOffset"])
+        self.assertEqual(1_360_000, decoded["score"])
 
     def test_finds_exact_empty_or_null_map_at_eof(self) -> None:
         for encoded_count, expected_status, expected_count in (
@@ -167,7 +190,7 @@ class LevelScriptTriggerVolumeTests(unittest.TestCase):
                     b"task-prefix"
                     + encoded_count.to_bytes(4, "little", signed=True)
                 )
-                offset, tail, cursor = _find_final_trigger_volume_map(
+                offset, tail, cursor = find_final_trigger_volume_map(
                     payload,
                     search_start=0,
                 )
@@ -206,7 +229,7 @@ class LevelScriptTriggerVolumeTests(unittest.TestCase):
     def test_rejects_missing_union_tag_and_key_slot_mismatch(self) -> None:
         valid = self._leader_volume(80001)
         missing_tag = valid[:4] + valid[5:]
-        decoded, cursor = _decode_trigger_volume_map(
+        decoded, cursor = decode_trigger_volume_map(
             (1).to_bytes(4, "little", signed=True) + missing_tag,
             0,
         )
@@ -215,7 +238,7 @@ class LevelScriptTriggerVolumeTests(unittest.TestCase):
 
         mismatched = bytearray(valid)
         mismatched[-10:-6] = (80002).to_bytes(4, "little", signed=False)
-        decoded, cursor = _decode_trigger_volume_map(
+        decoded, cursor = decode_trigger_volume_map(
             (1).to_bytes(4, "little", signed=True) + bytes(mismatched),
             0,
         )

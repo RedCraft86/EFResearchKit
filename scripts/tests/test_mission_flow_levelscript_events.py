@@ -7,8 +7,20 @@ from unittest import mock
 
 
 from scripts.story_builder import callserver_callbacks, mission_flow
+from scripts.story_builder.codecs.levelscript.entity_hp_changed import (
+    decode_entity_hp_changed_event,
+)
+from scripts.story_builder.codecs.levelscript.entity_event_scope import (
+    decode_entity_event_header_scope,
+)
 from scripts.story_builder.codecs.levelscript.raise_custom_script_event import (
     decode_raise_custom_script_event_action,
+)
+from scripts.story_builder.codecs.levelscript.script_event_scope import (
+    decode_script_event_header_scope,
+)
+from scripts.story_builder.codecs.levelscript.spawner_events import (
+    decode_spawner_event_fields,
 )
 from scripts.story_builder.codecs.levelscript.switch_actions import (
     decode_switch_action,
@@ -523,6 +535,19 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
         self.assertEqual(0, complete["subtypeFieldCount"])
         self.assertEqual("owning-level-script", complete["scriptEventScope"])
 
+        target_script_id = 228_001_100_08
+        specified_scope = decode_script_event_header_scope(
+            common
+            + b"\x04\x01"
+            + target_script_id.to_bytes(8, "little")
+            + (-1).to_bytes(4, "little", signed=True)
+            + (0).to_bytes(4, "little", signed=True)
+            + (-1).to_bytes(4, "little", signed=True)
+            + (1).to_bytes(4, "little", signed=True)
+        )
+        self.assertEqual("SPECIFY_SCRIPT", specified_scope["triggerTarget"])
+        self.assertEqual(target_script_id, specified_scope["specifiedTargetScriptId"])
+
         cast = decode(
             0x69,
             20,
@@ -697,6 +722,10 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
         self.assertFalse(detail["targetScriptPresent"])
         self.assertFalse(detail["serializedMissionOrQuestId"])
         self.assertFalse(detail["serverExchange"])
+        owner_scope = decode_script_event_header_scope(bytes(data))
+        self.assertEqual("owning-level-script", owner_scope["scriptEventScope"])
+        self.assertEqual("SELF", owner_scope["triggerTarget"])
+        self.assertEqual(36, owner_scope["_subtypeOffset"])
 
     def test_script_complete_accepts_exact_zero_subtype_before_outer_container(self):
         data = bytearray(36)
@@ -755,6 +784,17 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
         self.assertEqual(10200260004, detail["spawnerFilterId"])
         self.assertFalse(detail["groupKeyOutputPresent"])
         self.assertFalse(detail["spawnerOutputPresent"])
+        self.assertEqual(
+            "701",
+            decode_spawner_event_fields(
+                bytes(data),
+                "LevelEvent_OnSpawnerGroupBegin",
+            )["groupKeyFilter"],
+        )
+        self.assertEqual(
+            {},
+            decode_spawner_event_fields(bytes(data), "LevelEvent_OnSpawnerGroupEnd"),
+        )
 
     def test_spawner_wave_begin_decodes_exact_constant_filters(self):
         tail = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
@@ -932,6 +972,10 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
         self.assertEqual("state", detail["propertyKeyFilter"])
         self.assertEqual(5, detail["validateParam"]["idRef"])
         self.assertEqual(-1, detail["validateParam"]["paramSource"])
+        scope = decode_entity_event_header_scope(bytes(data))
+        self.assertEqual("specified-entity", scope["entityEventScope"])
+        self.assertEqual(40002, scope["targetEntity"]["slotId"])
+        self.assertEqual("omitted-null", scope["targetEntityListOutputEncoding"])
 
     def test_interactive_state_event_exposes_exact_entity_slot_receiver(self):
         tail = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
@@ -2271,6 +2315,27 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
         self.assertEqual("Down", event["changedDirectionName"])
         self.assertEqual(40021, event["entityFilter"][0]["slotId"])
         self.assertEqual(0.1, event["hpRatio"])
+        owner_event = decode_entity_hp_changed_event(
+            bytes(payload),
+            (0x006A, 0x12),
+            header_role=True,
+        )
+        self.assertEqual(
+            {
+                key: value
+                for key, value in event.items()
+                if key not in {"payloadSchemaStatus", "payloadSchemaMappingId"}
+            },
+            owner_event,
+        )
+        self.assertEqual(
+            {},
+            decode_entity_hp_changed_event(
+                bytes(payload),
+                (0x006A, 0x11),
+                header_role=True,
+            ),
+        )
 
     def test_dynamic_hp_list_and_exact_spawner_writer_fields_decode(self):
         tail = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"

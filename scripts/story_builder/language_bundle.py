@@ -8,7 +8,6 @@ import re as _radio_cont_re
 import shutil
 import sys
 import time
-import unicodedata
 from collections import Counter, defaultdict
 from difflib import SequenceMatcher
 from functools import lru_cache as _radio_cont_lru_cache
@@ -33,7 +32,6 @@ from .context import (
     LT_BINDING_RE,
     MISSION_SCENE_ENTRY_KINDS,
     MISSION_STORY_TYPES,
-    MISSION_TIMELINE_EVIDENCE_POLICY,
     MRA_DIR,
     NPC_PROXY_EX_PATH,
     NPC_PROXY_TABLE_PATH,
@@ -51,11 +49,8 @@ from .context import (
     SUMMARY_RE,
     VIDEO_BINDINGS_PATH,
     _unique_preserve,
-    build_mission_scene_order_candidate_kinds,
-    build_mission_scene_order_info,
     is_present,
     recover_black_timeline_attachments,
-    render_mission_timeline_markdown,
     repo_rel,
     shared_analyze_scene_order_disorder,
     shared_build_runtime_registry_debug,
@@ -63,7 +58,6 @@ from .context import (
     shared_collect_scene_order_gap_rows_from_payloads,
     shared_load_dialog_id_registry,
     write_json,
-    write_mission_timeline_recovery_json,
 )
 
 if __package__ == "story_builder":
@@ -87,6 +81,13 @@ from .anime_assets import (
     recover_dialog_tree_prime_reachable_story_playback_carriers,
     recover_dialog_tree_quest_state_dependencies,
     recover_dialog_tree_story_playback_carriers,
+)
+from .mission_recovery import (
+    EVIDENCE_POLICY as MISSION_TIMELINE_EVIDENCE_POLICY,
+    build_scene_order_candidate_kinds as build_mission_scene_order_candidate_kinds,
+    build_scene_order_info as build_mission_scene_order_info,
+    render_markdown as render_mission_timeline_markdown,
+    write_json as write_mission_timeline_recovery_json,
 )
 from .scene_graph import (
     _compact_scene_graph_sequence,
@@ -155,6 +156,10 @@ from .mission_flow import (
     load_mission_flow,
     parse_level_ref_name,
 )
+from .dialog_tree_connection_projection import (
+    dialog_tree_narrative_connection,
+    dialog_tree_story_playback_connection,
+)
 from .dialog_tree import (
     _dialog_tree_option_prefix,
     _load_dialog_tree_source,
@@ -190,6 +195,28 @@ from .bundle_media import (
     media_id_looks_like_media,
     sns_media_text_from_params,
 )
+from .dialog_timeline_projection import (
+    attach_duplicate_timestamp_warning,
+    attach_timeline_action_evidence,
+    attach_timeline_timestamp_regression_warning,
+)
+from .cutscene_subtitle_projection import (
+    build_cutscene_texttable_line,
+    build_fallback_track_line,
+    line_has_explicit_gender_switch,
+    normalize_subtitle_variant_text,
+    subtitle_alternate_line_debug,
+    subtitle_candidate_rank,
+    subtitle_clip_debug,
+    subtitle_slot_key,
+    subtitle_start_key,
+    subtitle_tracks_for_language,
+)
+from .cutscene_text_projection import (
+    CutsceneTextCallbacks,
+    CutsceneTextInputs,
+    project_cutscene_text_lines,
+)
 from .bundle_primitives import (
     brace_text,
     env_group,
@@ -219,7 +246,29 @@ from .option_timeline_continuation import (
     classify_timeline_clip_option_index_routes,
     classify_zero_index_timeline_continuation,
 )
-from .option_projection import apply_source_hub_option_groups
+from .option_branch_projection import (
+    all_option_response_risk_line_ids,
+    collect_local_scene_link_options,
+    expand_transparent_single_option_branch,
+    normalize_group_branch_convergence,
+    option_risk_line_ids,
+)
+from .option_projection import apply_source_hub_option_groups, attach_submenu_targets, dialog_recovery_methods
+from .option_following_line_projection import following_line_risk_for_group
+from .option_route_projection import (
+    dialog_tree_option_node_layout_for_group,
+    preferred_timeline_option_route,
+    preferred_timeline_option_row,
+    timeline_route_branch_for_group,
+)
+from .linked_reading_projection import append_linked_reading_content_lines
+from .sibling_scene_projection import sibling_scene_template_branch_for_group
+from .option_sibling_timeline_projection import (
+    dialog_line_text_signature,
+    foreign_timeline_option_definition_for_group,
+    option_signature_sequence,
+    sibling_scene_text_branch_for_group,
+)
 from .radio_continuation import build_radio_continuation_candidates
 from .reference_projection import (
     append_reference_line,
@@ -303,6 +352,7 @@ from .video_bindings import (
     narrative_video_search_text,
     narrative_video_sort_key,
 )
+from .standalone_video_projection import emit_standalone_video_outputs
 from .narrative_video_overrides import (
     NarrativeVideoOverrideValidationError,
     load_narrative_video_overrides,
@@ -326,55 +376,6 @@ _STORY_TEXT_KEY_RE = re.compile(
     r"map\d+_(?:lv|research)\d+))(?:_(?P<scene>.+))?$",
     re.IGNORECASE,
 )
-
-
-def dialog_tree_option_prompt_sequence(
-    group_option_ids: list[str],
-    layouts_by_option: dict[str, list[dict]],
-) -> list[str]:
-    """Order separate option nodes by exact reachability from the tree prime."""
-    return sorted(
-        group_option_ids,
-        key=lambda option_id: min(
-            (
-                int(layout["distanceFromPrime"])
-                for layout in layouts_by_option.get(option_id, [])
-                if layout.get("reachableFromPrime")
-                and isinstance(layout.get("distanceFromPrime"), int)
-            ),
-            default=10**9,
-        ),
-    )
-
-
-def dialog_tree_option_nodes_form_sequence(
-    prompt_sequence: list[str],
-    layouts_by_option: dict[str, list[dict]],
-) -> bool:
-    """Require each separate option node to reach the next authored prompt."""
-    if len(prompt_sequence) < 2:
-        return False
-    for source_option_id, target_option_id in zip(
-        prompt_sequence,
-        prompt_sequence[1:],
-    ):
-        source_layouts = layouts_by_option.get(source_option_id, [])
-        target_layouts = layouts_by_option.get(target_option_id, [])
-        if not any(
-            str(target_layout.get("nodeId") or "")
-            in {
-                str(node_id)
-                for node_id in (source_layout.get("reachableNodeIds") or [])
-            }
-            for source_layout in source_layouts
-            for target_layout in target_layouts
-            if (
-                source_layout.get("sourceKey") == target_layout.get("sourceKey")
-                and source_layout.get("file") == target_layout.get("file")
-            )
-        ):
-            return False
-    return True
 
 
 def story_text_key_parts(text_key: str) -> tuple[str, str] | None:
@@ -3427,6 +3428,14 @@ def build_language_bundle(
         gaps where choices happen, and option groups `g=1`, `g=2`, `g=3`
         attach to those gaps in order.
         """
+        def current_dialog_line_text_signature(line_id: str) -> str:
+            return dialog_line_text_signature(
+                line_id,
+                dialog_rows=dialogs,
+                translate=t,
+                option_text_signature=_option_text_signature,
+            )
+
         tree_meta: dict = {}
         tree_after: dict[str, str] = {}
         tree_after_sources: dict[str, list[str]] = {}
@@ -3664,416 +3673,6 @@ def build_language_bundle(
         # explicit option UI placement. Keep them out of authored option
         # anchoring unless an extracted option clip/node names the current
         # option ids directly.
-        def option_signature_sequence(option_ids: list[str]) -> list[tuple[str, str]]:
-            signatures: list[tuple[str, str]] = []
-            for opt_id in option_ids:
-                signature = dialog_option_signature_by_id.get(opt_id)
-                if not signature or not signature[0]:
-                    return []
-                signatures.append(signature)
-            return signatures
-        def option_signatures_compatible(left_ids: list[str], right_ids: list[str]) -> bool:
-            if len(left_ids) != len(right_ids) or not left_ids:
-                return False
-            for left_id, right_id in zip(left_ids, right_ids):
-                left_text, left_icon = dialog_option_signature_by_id.get(left_id, ("", ""))
-                right_text, right_icon = dialog_option_signature_by_id.get(right_id, ("", ""))
-                if not left_text or not right_text:
-                    return False
-                if left_icon and right_icon and left_icon != right_icon:
-                    return False
-                if left_text == right_text:
-                    continue
-                if left_text in right_text or right_text in left_text:
-                    continue
-                if not _sequence_similarity_at_least(left_text, right_text, 0.92):
-                    return False
-            return True
-        def dialog_line_text_signature(line_id: str) -> str:
-            row = dialogs.get(line_id)
-            if not isinstance(row, dict):
-                return ""
-            text_value = t((row.get("dialogText") or {}).get("id"))
-            return _option_text_signature(text_value)
-        def sibling_scene_text_branch_for_group(
-            group_opt_ids: list[str],
-            after_id: str,
-            sibling_anchor_record: dict | None,
-            group_id: int,
-        ) -> dict:
-            if (
-                not group_opt_ids
-                or len(group_opt_ids) < 2
-                or not after_id
-                or not sibling_anchor_record
-            ):
-                return {}
-            sibling_scenes = [
-                str(scene_key)
-                for scene_key in (sibling_anchor_record.get("siblingScenes") or [])
-                if str(scene_key or "").strip() and str(scene_key) != conv_key
-            ]
-            if not sibling_scenes:
-                return {}
-            local_line_ids = [line_id for _idx, line_id in line_idxs if line_id in valid_line_ids]
-            if after_id in local_line_ids:
-                local_candidate_line_ids = local_line_ids[local_line_ids.index(after_id) + 1:]
-            else:
-                local_candidate_line_ids = local_line_ids
-            if not local_candidate_line_ids:
-                return {}
-            local_signature_by_line_id = {
-                line_id: _option_text_signature(str(line.get("text") or ""))
-                for line in (lines or [])
-                if (line_id := str(line.get("id") or "")) in valid_line_ids
-            }
-            if not local_signature_by_line_id:
-                return {}
-            for sibling_scene in sibling_scenes:
-                sibling_opt_ids = dialog_option_group_ids_by_key.get((sibling_scene, group_id)) or []
-                if not option_signatures_compatible(group_opt_ids, sibling_opt_ids):
-                    continue
-                sibling_tree = load_dialog_tree(sibling_scene) or {}
-                sibling_branches = sibling_tree.get("branches") or {}
-                branch_line_ids_by_option: dict[str, list[str]] = {}
-                sibling_line_ids_by_option: dict[str, list[str]] = {}
-                used_local_line_ids: set[str] = set()
-                for local_opt_id, sibling_opt_id in zip(group_opt_ids, sibling_opt_ids):
-                    sibling_branch_line_ids = [
-                        str(line_id)
-                        for line_id in (sibling_branches.get(sibling_opt_id) or [])
-                        if str(line_id or "").strip()
-                    ]
-                    if not sibling_branch_line_ids:
-                        branch_line_ids_by_option = {}
-                        break
-                    mapped_line_ids: list[str] = []
-                    for sibling_line_id in sibling_branch_line_ids:
-                        sibling_signature = dialog_line_text_signature(sibling_line_id)
-                        if not sibling_signature:
-                            mapped_line_ids = []
-                            break
-                        matches = [
-                            local_line_id
-                            for local_line_id in local_candidate_line_ids
-                            if local_line_id not in used_local_line_ids
-                            and local_signature_by_line_id.get(local_line_id) == sibling_signature
-                        ]
-                        if len(matches) != 1:
-                            mapped_line_ids = []
-                            break
-                        mapped_line_id = matches[0]
-                        used_local_line_ids.add(mapped_line_id)
-                        mapped_line_ids.append(mapped_line_id)
-                    if not mapped_line_ids:
-                        branch_line_ids_by_option = {}
-                        break
-                    branch_line_ids_by_option[local_opt_id] = mapped_line_ids
-                    sibling_line_ids_by_option[local_opt_id] = sibling_branch_line_ids
-                if len(branch_line_ids_by_option) != len(group_opt_ids):
-                    continue
-                if len({tuple(line_ids) for line_ids in branch_line_ids_by_option.values()}) < 2:
-                    continue
-                sibling_option_ids_by_option = {
-                    local_opt_id: sibling_opt_id
-                    for local_opt_id, sibling_opt_id in zip(group_opt_ids, sibling_opt_ids)
-                }
-                source_bits = _unique_preserve([
-                    str(value)
-                    for value in (
-                        sibling_scene,
-                        sibling_tree.get("sourceKey") or "",
-                        sibling_tree.get("file") or "",
-                        sibling_anchor_record.get("timeline") or "",
-                    )
-                    if str(value or "").strip()
-                ])
-                return {
-                    "code": "siblingSceneTextBranches",
-                    "reason": "siblingSceneTextMatch",
-                    "detail": (
-                        "A sibling scene on the same dialog Timeline has authored "
-                        "SceneGraph option branches whose branch texts exactly "
-                        "match local lines after this fallback option anchor."
-                    ),
-                    "after": after_id,
-                    "optionIds": group_opt_ids,
-                    "branchLineIdsByOption": branch_line_ids_by_option,
-                    "siblingScene": sibling_scene,
-                    "siblingOptionIdsByOption": sibling_option_ids_by_option,
-                    "siblingBranchLineIdsByOption": sibling_line_ids_by_option,
-                    "source": "siblingSceneGraphText",
-                    "sources": source_bits,
-                }
-            return {}
-        def foreign_timeline_option_definition_for_group(
-            group_opt_ids: list[str],
-            sibling_text_risk: dict,
-        ) -> dict:
-            """Close local table-only options when the cinematic consumes foreign ids."""
-            if sibling_text_risk.get("code") != "siblingSceneTextBranches":
-                return {}
-            if any(opt_id in authored_option_ids for opt_id in group_opt_ids):
-                return {}
-            sibling_mapping = sibling_text_risk.get("siblingOptionIdsByOption") or {}
-            foreign_option_ids = [
-                str(sibling_mapping.get(opt_id) or "")
-                for opt_id in group_opt_ids
-            ]
-            if (
-                not all(foreign_option_ids)
-                or any(
-                    _dialog_tree_option_prefix(option_id) == conv_key
-                    for option_id in foreign_option_ids
-                )
-            ):
-                return {}
-            for finish_group in cinematic_finish_groups:
-                timeline_name = str(finish_group.get("timeline") or "")
-                finish_nums = [
-                    value
-                    for value in (finish_group.get("finishNums") or [])
-                    if isinstance(value, int) and not isinstance(value, bool)
-                ]
-                if not timeline_name or len(finish_nums) < 2:
-                    continue
-                for timeline in timeline_entries:
-                    entry_name = str(
-                        timeline.get("timeline")
-                        or timeline.get("sourceKey")
-                        or ""
-                    )
-                    if entry_name != timeline_name:
-                        continue
-                    rows_by_id = {
-                        str(row.get("id") or ""): row
-                        for row in (timeline.get("optionRows") or [])
-                        if isinstance(row, dict) and str(row.get("id") or "")
-                    }
-                    if any(opt_id in rows_by_id for opt_id in group_opt_ids):
-                        continue
-                    foreign_rows = [
-                        rows_by_id.get(option_id) or {}
-                        for option_id in foreign_option_ids
-                    ]
-                    if not all(foreign_rows):
-                        continue
-                    if not all(row.get("changeFinishNum") == 1 for row in foreign_rows):
-                        continue
-                    target_finish_nums = [
-                        row.get("targetFinishNum")
-                        for row in foreign_rows
-                    ]
-                    if set(target_finish_nums) != set(finish_nums):
-                        continue
-                    return {
-                        "code": "foreignTimelineOptionDefinitions",
-                        "reason": "cinematicConsumesForeignOptionIds",
-                        "detail": (
-                            "The local DialogTree launches this exact cinematic "
-                            "Timeline, but the Timeline consumes only sibling-scene "
-                            "option ids and maps them completely onto its authored "
-                            "finish numbers. The same-text local option rows are "
-                            "unconsumed table definitions, not missing local routes."
-                        ),
-                        "after": sibling_text_risk.get("after") or "",
-                        "optionIds": group_opt_ids,
-                        "foreignOptionIds": foreign_option_ids,
-                        "timeline": timeline_name,
-                        "finishNums": finish_nums,
-                        "targetFinishNums": target_finish_nums,
-                        "source": "dialogTimeline",
-                        "sources": _unique_preserve([
-                            str(finish_group.get("file") or ""),
-                            str(timeline.get("file") or ""),
-                            *[
-                                str(value)
-                                for value in (sibling_text_risk.get("sources") or [])
-                            ],
-                        ]),
-                    }
-            return {}
-        def sibling_scene_template_branch_for_group(
-            group_opt_ids: list[str],
-            after_id: str,
-            group_id: int,
-        ) -> dict:
-            if not group_opt_ids or len(group_opt_ids) < 2:
-                return {}
-            local_line_ids = [line_id for _idx, line_id in line_idxs if line_id in valid_line_ids]
-            if len(local_line_ids) < 3:
-                return {}
-            local_signature_by_line_id = {
-                line_id: _option_text_signature(str(line.get("text") or ""))
-                for line in (lines or [])
-                if (line_id := str(line.get("id") or "")) in valid_line_ids
-            }
-            if not local_signature_by_line_id:
-                return {}
-            local_option_signatures = option_signature_sequence(group_opt_ids)
-            if not local_option_signatures:
-                return {}
-            sibling_group_keys = [
-                key
-                for key in dialog_option_group_keys_by_group_and_count.get(
-                    (group_id, len(group_opt_ids)),
-                    [],
-                )
-                if key[0] != conv_key
-            ]
-            for sibling_scene, _sibling_group_id in sibling_group_keys:
-                sibling_opt_ids = dialog_option_group_ids_by_key.get((sibling_scene, group_id)) or []
-                sibling_signatures = option_signature_sequence(sibling_opt_ids)
-                if not sibling_signatures:
-                    continue
-                compatible_positions = 0
-                icons_compatible = True
-                for (local_text, local_icon), (sibling_text, sibling_icon) in zip(local_option_signatures, sibling_signatures):
-                    if local_icon and sibling_icon and local_icon != sibling_icon:
-                        icons_compatible = False
-                        break
-                    if local_text == sibling_text or local_text in sibling_text or sibling_text in local_text:
-                        compatible_positions += 1
-                    elif _sequence_similarity_at_least(local_text, sibling_text, 0.92):
-                        compatible_positions += 1
-                if not icons_compatible or compatible_positions < max(2, len(group_opt_ids) - 1):
-                    continue
-                sibling_tree = load_dialog_tree(sibling_scene) or {}
-                sibling_branches = sibling_tree.get("branches") or {}
-                sibling_after = sibling_tree.get("after") or {}
-                if not sibling_branches:
-                    continue
-                sibling_after_ids = [
-                    str(sibling_after.get(opt_id) or "")
-                    for opt_id in sibling_opt_ids
-                    if str(sibling_after.get(opt_id) or "").strip()
-                ]
-                if len(set(sibling_after_ids)) != 1:
-                    continue
-                sibling_after_id = sibling_after_ids[0]
-                sibling_after_text = dialog_line_text_signature(sibling_after_id)
-                if not sibling_after_text:
-                    continue
-                local_after_candidates = [
-                    local_line_id
-                    for local_line_id in local_line_ids
-                    if (
-                        local_signature_by_line_id.get(local_line_id) == sibling_after_text
-                        or _sequence_similarity_at_least(
-                            local_signature_by_line_id.get(local_line_id) or "",
-                            sibling_after_text,
-                            0.80,
-                        )
-                    )
-                ]
-                if not local_after_candidates:
-                    continue
-                branch_line_ids_by_option: dict[str, list[str]] = {}
-                sibling_line_ids_by_option: dict[str, list[str]] = {}
-                used_local_line_ids: set[str] = set()
-                missing_options: list[tuple[str, str, list[str]]] = []
-                for local_opt_id, sibling_opt_id in zip(group_opt_ids, sibling_opt_ids):
-                    sibling_branch_line_ids = [
-                        str(line_id)
-                        for line_id in (sibling_branches.get(sibling_opt_id) or [])
-                        if str(line_id or "").strip()
-                    ]
-                    if not sibling_branch_line_ids:
-                        branch_line_ids_by_option = {}
-                        break
-                    mapped_line_ids: list[str] = []
-                    for sibling_line_id in sibling_branch_line_ids:
-                        sibling_signature = dialog_line_text_signature(sibling_line_id)
-                        if not sibling_signature:
-                            mapped_line_ids = []
-                            break
-                        matches = [
-                            local_line_id
-                            for local_line_id in local_line_ids
-                            if local_line_id not in used_local_line_ids
-                            and local_signature_by_line_id.get(local_line_id) == sibling_signature
-                        ]
-                        if len(matches) != 1:
-                            mapped_line_ids = []
-                            break
-                        mapped_line_id = matches[0]
-                        used_local_line_ids.add(mapped_line_id)
-                        mapped_line_ids.append(mapped_line_id)
-                    if mapped_line_ids:
-                        branch_line_ids_by_option[local_opt_id] = mapped_line_ids
-                        sibling_line_ids_by_option[local_opt_id] = sibling_branch_line_ids
-                    else:
-                        missing_options.append((local_opt_id, sibling_opt_id, sibling_branch_line_ids))
-                if not branch_line_ids_by_option or len(missing_options) > 1:
-                    continue
-                mapped_indices = [
-                    local_line_ids.index(line_id)
-                    for mapped_lines in branch_line_ids_by_option.values()
-                    for line_id in mapped_lines
-                    if line_id in local_line_ids
-                ]
-                if not mapped_indices:
-                    continue
-                earliest_mapped_index = min(mapped_indices)
-                local_after_id = ""
-                for candidate in reversed(local_after_candidates):
-                    candidate_index = local_line_ids.index(candidate)
-                    if candidate_index < earliest_mapped_index:
-                        local_after_id = candidate
-                        break
-                if not local_after_id:
-                    continue
-                after_index = local_line_ids.index(local_after_id)
-                if after_id and after_id in local_line_ids and local_line_ids.index(after_id) > after_index:
-                    continue
-                if missing_options:
-                    local_opt_id, sibling_opt_id, sibling_branch_line_ids = missing_options[0]
-                    inferred_lines = [
-                        line_id
-                        for line_id in local_line_ids[after_index + 1:earliest_mapped_index]
-                        if line_id not in used_local_line_ids
-                    ]
-                    if not inferred_lines:
-                        continue
-                    branch_line_ids_by_option[local_opt_id] = inferred_lines
-                    sibling_line_ids_by_option[local_opt_id] = sibling_branch_line_ids
-                if len(branch_line_ids_by_option) != len(group_opt_ids):
-                    continue
-                if len({tuple(line_ids) for line_ids in branch_line_ids_by_option.values()}) < 2:
-                    continue
-                sibling_option_ids_by_option = {
-                    local_opt_id: sibling_opt_id
-                    for local_opt_id, sibling_opt_id in zip(group_opt_ids, sibling_opt_ids)
-                }
-                source_bits = _unique_preserve([
-                    str(value)
-                    for value in (
-                        sibling_scene,
-                        sibling_tree.get("sourceKey") or "",
-                        sibling_tree.get("file") or "",
-                    )
-                    if str(value or "").strip()
-                ])
-                return {
-                    "code": "siblingSceneTextBranches",
-                    "reason": "siblingSceneTemplate",
-                    "detail": (
-                        "A sibling scene has authored SceneGraph option branches "
-                        "with matching option layout and repeated local branch text; "
-                        "unmatched local lines between the sibling-matched anchor and "
-                        "the first matched branch are assigned to the remaining option."
-                    ),
-                    "after": local_after_id,
-                    "previousAfter": after_id,
-                    "optionIds": group_opt_ids,
-                    "branchLineIdsByOption": branch_line_ids_by_option,
-                    "siblingScene": sibling_scene,
-                    "siblingOptionIdsByOption": sibling_option_ids_by_option,
-                    "siblingBranchLineIdsByOption": sibling_line_ids_by_option,
-                    "source": "siblingSceneGraphText",
-                    "sources": source_bits,
-                }
-            return {}
         def source_bits_for_options(option_ids: list[str], source_map: dict[str, object]) -> list[str]:
             source_bits: list[str] = []
             for opt_id in option_ids:
@@ -4120,7 +3719,10 @@ def build_language_bundle(
                 continue
             foreign_pre_groups[(scene_key, foreign_group_id)].append((foreign_index, foreign_opt_id))
         for group_id, group_opt_ids in group_option_ids_by_group.items():
-            local_signature = option_signature_sequence(group_opt_ids)
+            local_signature = option_signature_sequence(
+                group_opt_ids,
+                option_signatures_by_id=dialog_option_signature_by_id,
+            )
             if not local_signature:
                 continue
             after_matches: list[tuple[str, list[str], list[str]]] = []
@@ -4135,7 +3737,10 @@ def build_language_bundle(
                 anchors = {after for _idx, _opt_id, after in ordered_entries}
                 if len(anchors) != 1:
                     continue
-                if option_signature_sequence(foreign_ids) != local_signature:
+                if option_signature_sequence(
+                    foreign_ids,
+                    option_signatures_by_id=dialog_option_signature_by_id,
+                ) != local_signature:
                     continue
                 source_bits = source_bits_for_options(foreign_ids, tree_after_sources)
                 after_matches.append((next(iter(anchors)), foreign_ids, source_bits))
@@ -4149,7 +3754,10 @@ def build_language_bundle(
                 foreign_ids = complete_foreign_option_group(foreign_group_key, raw_entries)
                 if len(foreign_ids) != len(group_opt_ids):
                     continue
-                if option_signature_sequence(foreign_ids) != local_signature:
+                if option_signature_sequence(
+                    foreign_ids,
+                    option_signatures_by_id=dialog_option_signature_by_id,
+                ) != local_signature:
                     continue
                 source_bits = source_bits_for_options(foreign_ids, tree_pre_sources)
                 pre_matches.append((foreign_ids, source_bits))
@@ -4174,687 +3782,6 @@ def build_language_bundle(
         fallback_group_labels: list[str] = []
         group_details: list[dict] = []
         option_response_risks: list[dict] = []
-        def preferred_timeline_option_row(opt_id: str) -> dict:
-            rows = timeline_option_rows.get(opt_id) or []
-            if not rows:
-                return {}
-            return min(
-                rows,
-                key=lambda row: (
-                    0 if row.get("anchorMode") == "trunkBinding" else 1,
-                    float(row.get("start") or 0.0),
-                    row.get("optionIndex") if row.get("optionIndex") is not None else 10**9,
-                    row.get("assetTrack") or "",
-                ),
-            )
-        def preferred_timeline_option_route(opt_id: str) -> dict:
-            routes = timeline_option_routes.get(opt_id) or []
-            if not routes:
-                return {}
-            return max(
-                routes,
-                key=lambda route: (
-                    len(route.get("pathLineIds") or []),
-                    -float(route.get("start") or 0.0),
-                    str(route.get("source") or ""),
-                ),
-            )
-        def dialog_tree_option_node_layout_for_group(
-            group_opt_ids: list[str],
-            after_id: str,
-        ) -> dict:
-            if len(group_opt_ids) < 2:
-                return {}
-            layouts_by_option = {
-                option_id: [
-                    layout
-                    for layout in (
-                        tree_option_node_layouts.get(option_id) or []
-                    )
-                    if isinstance(layout, dict)
-                    and layout.get("nodeId") is not None
-                ]
-                for option_id in group_opt_ids
-            }
-            if any(
-                not layouts_by_option.get(option_id)
-                for option_id in group_opt_ids
-            ):
-                return {}
-            node_ids_by_option = {
-                option_id: {
-                    (
-                        str(layout.get("sourceKey") or ""),
-                        str(layout.get("file") or ""),
-                        str(layout.get("nodeId") or ""),
-                    )
-                    for layout in layouts
-                }
-                for option_id, layouts in layouts_by_option.items()
-            }
-            shared_node_ids = set.intersection(
-                *node_ids_by_option.values()
-            )
-            if not shared_node_ids:
-                prompt_sequence = dialog_tree_option_prompt_sequence(
-                    group_opt_ids,
-                    layouts_by_option,
-                )
-                is_prompt_sequence = dialog_tree_option_nodes_form_sequence(
-                    prompt_sequence,
-                    layouts_by_option,
-                )
-                return {
-                    "code": (
-                        "sequentialDialogTreeOptionNodes"
-                        if is_prompt_sequence
-                        else "separateDialogTreeOptionNodes"
-                    ),
-                    "reason": (
-                        "reachableAuthoredOptionNodeSequence"
-                        if is_prompt_sequence
-                        else "distinctAuthoredOptionNodes"
-                    ),
-                    "detail": (
-                        "The same-prefix table ids are authored on distinct "
-                        "DialogTree option nodes connected by a directed path. "
-                        "They are consecutive single-option prompts, not arms "
-                        "of one runtime choice fork."
-                        if is_prompt_sequence
-                        else
-                        "The same-prefix table ids are authored on distinct "
-                        "DialogTree option nodes without a complete directed "
-                        "prompt chain. They are not proven arms of one runtime "
-                        "choice fork or one sequential prompt list."
-                    ),
-                    "after": after_id,
-                    "optionIds": group_opt_ids,
-                    "source": "dialogTree",
-                    "promptSequenceOptionIds": prompt_sequence,
-                    "optionNodeLayouts": layouts_by_option,
-                }
-            shared_layouts = [
-                layout
-                for layouts in layouts_by_option.values()
-                for layout in layouts
-                if (
-                    str(layout.get("sourceKey") or ""),
-                    str(layout.get("file") or ""),
-                    str(layout.get("nodeId") or ""),
-                )
-                in shared_node_ids
-            ]
-            if shared_layouts and all(
-                not layout.get("outgoingNodeIds")
-                for layout in shared_layouts
-            ):
-                return {
-                    "code": "orphanDialogTreeOptionDefinitions",
-                    "reason": "optionNodeHasNoOutgoingConnection",
-                    "detail": (
-                        "The registered DialogTree serializes these option ids "
-                        "on a disconnected option node with no outgoing "
-                        "connection. The rows are authored definitions but do "
-                        "not form a playable route in this tree."
-                    ),
-                    "after": after_id,
-                    "optionIds": group_opt_ids,
-                    "source": "dialogTree",
-                    "optionNodeLayouts": layouts_by_option,
-                }
-            return {}
-        def timeline_route_branch_for_group(group_opt_ids: list[str], after_id: str) -> dict:
-            if len(group_opt_ids) < 2:
-                return {}
-            if any(
-                any(line_id in valid_line_ids for line_id in (tree_branches.get(opt_id) or []))
-                for opt_id in group_opt_ids
-            ):
-                return {}
-            if after_id:
-                anchors = [timeline_after.get(opt_id) or "" for opt_id in group_opt_ids]
-                if not all(anchor == after_id for anchor in anchors):
-                    return {}
-            elif not all(opt_id in timeline_pre for opt_id in group_opt_ids):
-                return {}
-            routes = [preferred_timeline_option_route(opt_id) for opt_id in group_opt_ids]
-            # A route is acceptable when either it lists per-option lines OR it
-            # flags `terminatesSlot` 鈥?the latter means the option's Runtime
-            # Jump skip range covers the whole post-anchor window so no in-slot
-            # lines play.
-            if not all(
-                route.get("pathLineIds") or route.get("terminatesSlot")
-                for route in routes
-            ):
-                return {}
-            route_classification = classify_runtime_jump_option_routes(
-                group_opt_ids,
-                routes,
-                local_ordered_line_ids,
-                after_line_id=after_id,
-            )
-            if route_classification.get("status") != "branched":
-                return {}
-            branch_line_ids_by_option = route_classification[
-                "branchLineIdsByOption"
-            ]
-            skipped_line_ids_by_option: dict[str, list[str]] = {}
-            reverse_range_line_ids_by_option: dict[str, list[str]] = {}
-            for opt_id, route in zip(group_opt_ids, routes):
-                skipped_line_ids_by_option[opt_id] = [
-                    str(line_id)
-                    for line_id in (route.get("skippedLineIds") or [])
-                    if line_id in valid_line_ids
-                ]
-                reverse_range_line_ids_by_option[opt_id] = [
-                    str(line_id)
-                    for line_id in (route.get("reverseRangeLineIds") or [])
-                    if line_id in valid_line_ids
-                ]
-            continuation_option_ids = _unique_preserve([
-                str(option_id)
-                for route in routes
-                for option_id in (route.get("continuationOptionIds") or [])
-                if str(option_id or "").strip()
-            ])
-            payload = {
-                "code": "timelineRouteBranches",
-                "reason": "runtimeJumpTrack",
-                "detail": (
-                    "Runtime Jump Track clips in the dialog Timeline mark "
-                    "which time ranges each selected optionIndex skips or "
-                    "re-enters; branch lines are recovered from those "
-                    "directional route windows."
-                ),
-                "after": after_id,
-                "optionIds": group_opt_ids,
-                "branchLineIdsByOption": branch_line_ids_by_option,
-                "skippedLineIdsByOption": skipped_line_ids_by_option,
-                "reverseRangeLineIdsByOption": {
-                    opt_id: line_ids
-                    for opt_id, line_ids in reverse_range_line_ids_by_option.items()
-                    if line_ids
-                },
-                "directContinuationOptionIds": route_classification.get(
-                    "directContinuationOptionIds"
-                ) or [],
-                "commonContinuationLineId": route_classification.get(
-                    "commonContinuationLineId"
-                ) or "",
-                "commonContinuationLineIds": route_classification.get(
-                    "commonContinuationLineIds"
-                ) or [],
-                "continuationOptionIds": continuation_option_ids,
-                "source": "dialogTimeline",
-                "optionIndex": [
-                    route.get("optionIndex")
-                    for route in routes
-                ],
-                "assetTracks": _unique_preserve([
-                    str(raw_range.get("track") or raw_range.get("assetTrack") or "")
-                    for route in routes
-                    for raw_range in ((route.get("skipRanges") or []) + (route.get("reverseRanges") or []))
-                    if str(raw_range.get("track") or raw_range.get("assetTrack") or "").strip()
-                ]),
-            }
-            terminating_option_ids = route_classification.get(
-                "terminatingOptionIds"
-            ) or []
-            if terminating_option_ids:
-                payload["terminatingOptionIds"] = terminating_option_ids
-            return payload
-        def following_line_risk_for_group(group_opt_ids: list[str], after_id: str) -> dict:
-            if len(group_opt_ids) < 2:
-                return {}
-            if any(
-                any(line_id in valid_line_ids for line_id in (tree_branches.get(opt_id) or []))
-                for opt_id in group_opt_ids
-            ):
-                return {}
-            # Dialog tree shows all options converge to the same response trunk.
-            # This is complete authored route evidence on its own: every
-            # serialized option edge reaches the same visible trunk.
-            if all(opt_id in tree_converge for opt_id in group_opt_ids):
-                trunk_ids = {tree_converge[opt_id] for opt_id in group_opt_ids}
-                if len(trunk_ids) == 1:
-                    common_trunk = next(iter(trunk_ids))
-                    if common_trunk in valid_line_ids:
-                        return {
-                            "code": "cosmeticChoice",
-                            "reason": "treeSourcedConvergence",
-                            "detail": (
-                                "Dialog tree shows all options in this group lead to the "
-                                "same response trunk; the choice affects only the player's "
-                                "displayed text, not which line plays next."
-                            ),
-                            "after": after_id,
-                            "optionIds": group_opt_ids,
-                            "candidateLineIds": [],
-                            "commonContinuationLineId": common_trunk,
-                            "source": "dialogTree",
-                        }
-            preferred_rows = [preferred_timeline_option_row(opt_id) for opt_id in group_opt_ids]
-            option_indices = [
-                row.get("optionIndex") if isinstance(row.get("optionIndex"), int) else None
-                for row in preferred_rows
-            ]
-            option_starts = [
-                float(row.get("start"))
-                if isinstance(row.get("start"), (int, float))
-                else None
-                for row in preferred_rows
-            ]
-            authored_after_anchors = [
-                timeline_after.get(opt_id) or ""
-                for opt_id in group_opt_ids
-            ]
-            if (
-                all(option_index == 0 for option_index in option_indices)
-                and all(start is not None for start in option_starts)
-                and len({round(start, 6) for start in option_starts}) == len(group_opt_ids)
-                and all(authored_after_anchors)
-                and len(set(authored_after_anchors)) == len(group_opt_ids)
-            ):
-                return {
-                    "code": "sequentialTimelineOptionPrompts",
-                    "reason": "distinctZeroIndexTimelineSlots",
-                    "detail": (
-                        "These option ids share a text-table group but occur in "
-                        "distinct authored Timeline slots, each with raw "
-                        "optionIndex 0 and a different preceding line. They are "
-                        "sequential single-option prompts, not one choice fork."
-                    ),
-                    "after": after_id,
-                    "optionIds": group_opt_ids,
-                    "candidateLineIds": [],
-                    "source": "dialogTimeline",
-                    "optionIndex": option_indices,
-                    "optionStartTimes": option_starts,
-                    "optionAnchors": authored_after_anchors,
-                }
-            if after_id:
-                anchors = authored_after_anchors
-                if not all(anchor == after_id for anchor in anchors):
-                    return {}
-            elif not all(opt_id in timeline_pre for opt_id in group_opt_ids):
-                return {}
-            timeline_line_ids: list[str] = []
-            timeline_line_timing_by_id: dict[str, dict] = {}
-            for opt_id in group_opt_ids:
-                candidate_order = timeline_after_line_ids.get(opt_id) or []
-                visible_candidate_order = [
-                    line_id
-                    for line_id in candidate_order
-                    if line_id in valid_line_ids
-                ]
-                if (
-                    (after_id and after_id in visible_candidate_order)
-                    or (not after_id and visible_candidate_order)
-                ):
-                    timeline_line_ids = visible_candidate_order
-                    timeline_line_timing_by_id = timeline_after_line_timings.get(opt_id) or {}
-                    break
-            if not timeline_line_ids or (after_id and after_id not in timeline_line_ids):
-                return {}
-            after_index = timeline_line_ids.index(after_id) if after_id else -1
-            candidate_line_ids = [
-                line_id
-                for line_id in timeline_line_ids[after_index + 1 : after_index + 1 + len(group_opt_ids)]
-                if line_id in valid_line_ids
-            ]
-            runtime_jump_clips = (
-                timeline_after_runtime_jump_clips.get(group_opt_ids[0])
-                if group_opt_ids
-                else None
-            )
-            if not candidate_line_ids:
-                positive_jumps_after_option = []
-                if isinstance(runtime_jump_clips, list) and all(
-                    start is not None for start in option_starts
-                ):
-                    option_start = min(option_starts)
-                    positive_jumps_after_option = [
-                        clip
-                        for clip in runtime_jump_clips
-                        if (
-                            isinstance(clip, dict)
-                            and isinstance(clip.get("optionIndex"), int)
-                            and clip.get("optionIndex") > 0
-                            and isinstance(clip.get("start"), (int, float))
-                            and float(clip["start"]) >= option_start - 1e-6
-                        )
-                    ]
-                if (
-                    after_id
-                    and after_index == len(timeline_line_ids) - 1
-                    and all(start is not None for start in option_starts)
-                    and len({round(start, 6) for start in option_starts}) == 1
-                    and isinstance(runtime_jump_clips, list)
-                    and not positive_jumps_after_option
-                    and not any(
-                        preferred_timeline_option_route(opt_id)
-                        for opt_id in group_opt_ids
-                    )
-                ):
-                    return {
-                        "code": "terminalTimelineOptionSlot",
-                        "reason": "afterLastLocalTimelineLine",
-                        "detail": (
-                            "The authored option slot follows the final local "
-                            "dialog line, and the decoded Timeline contains no "
-                            "later local line or positive option-index Runtime "
-                            "Jump. It has no intra-dialog line route; this does "
-                            "not claim that an external scene cannot follow."
-                        ),
-                        "after": after_id,
-                        "optionIds": group_opt_ids,
-                        "candidateLineIds": [],
-                        "source": "dialogTimeline",
-                        "optionIndex": option_indices,
-                        "optionStartTimes": option_starts,
-                    }
-                return {}
-            common_continuation_id = ""
-            for line_id in timeline_line_ids[after_index + 1 + len(group_opt_ids) :]:
-                if line_id in valid_line_ids:
-                    common_continuation_id = line_id
-                    break
-            candidate_clip_indices = [
-                (timeline_line_timing_by_id.get(line_id) or {}).get("clipOptionIndex")
-                for line_id in candidate_line_ids
-            ]
-            candidate_timing_rows = [
-                timeline_line_timing_by_id.get(line_id) or {}
-                for line_id in candidate_line_ids
-            ]
-            candidate_starts = [
-                float(row.get("start"))
-                for row in candidate_timing_rows
-                if isinstance(row.get("start"), (int, float))
-            ]
-            candidate_ends = [
-                float(row.get("start")) + float(row.get("duration") or 0.0)
-                for row in candidate_timing_rows
-                if isinstance(row.get("start"), (int, float))
-            ]
-            continuation_classification = classify_zero_index_timeline_continuation(
-                option_indices,
-                candidate_clip_indices,
-                candidate_window_start=min(candidate_starts) if candidate_starts else None,
-                candidate_window_end=max(candidate_ends) if candidate_ends else None,
-                runtime_jump_clips=runtime_jump_clips,
-            )
-            if continuation_classification.get("status") == "shared":
-                reason = str(
-                    continuation_classification.get("reason")
-                    or "defaultTrunkClipContinuation"
-                )
-                detail = (
-                    "The current game runtime only activates option-bound trunk "
-                    "clips whose runtime option field is positive. Every adjacent "
-                    "candidate trunk clip carries clipOptionIndex 0, and no raw "
-                    "Runtime Jump overlaps this window, so these lines are a shared "
-                    "Timeline continuation rather than per-option replies."
-                )
-                if reason == "rawOptionIndexConverges":
-                    detail = (
-                        "Both the UI option rows and adjacent trunk clips resolve to "
-                        "raw optionIndex 0. The current game runtime treats this as "
-                        "shared Timeline continuation rather than option-specific "
-                        "branch replies."
-                    )
-                if reason == "defaultTrunkClipContinuationWithRuntimeJump":
-                    detail = (
-                        "Every adjacent candidate trunk clip carries "
-                        "clipOptionIndex 0, so the window is shared immediate "
-                        "continuation rather than one reply per option. Raw "
-                        "Runtime Jump clips overlap the window but do not form "
-                        "a complete per-option route; they remain attached as "
-                        "later-route uncertainty instead of being converted "
-                        "into adjacent reply targets."
-                    )
-                result = {
-                    "code": "sharedTimelineContinuation",
-                    "reason": reason,
-                    "detail": detail,
-                    "after": after_id,
-                    **({"position": "pre"} if not after_id else {}),
-                    "optionIds": group_opt_ids,
-                    "candidateLineIds": [],
-                    "candidateWindowLineIds": candidate_line_ids,
-                    "commonContinuationLineId": candidate_line_ids[0],
-                    "commonContinuationLineIds": candidate_line_ids,
-                    "source": "dialogTimeline",
-                    "optionIndex": option_indices,
-                    "candidateLineClipOptionIndex": candidate_clip_indices,
-                    "optionIndexPattern": continuation_classification.get("optionIndexPattern"),
-                    "candidateLineClipOptionIndexPattern": continuation_classification.get(
-                        "candidateLineClipOptionIndexPattern"
-                    ),
-                }
-                if continuation_classification.get("runtimeJumpRouteStatus"):
-                    result["runtimeJumpRouteStatus"] = continuation_classification[
-                        "runtimeJumpRouteStatus"
-                    ]
-                if continuation_classification.get("overlappingRuntimeJumpClips"):
-                    result["overlappingRuntimeJumpClips"] = continuation_classification[
-                        "overlappingRuntimeJumpClips"
-                    ]
-                return result
-            candidate_mapping = ""
-            branch_line_ids_by_option: dict[str, list[str]] = {}
-            branch_clip_indices_by_option: dict[str, list[int]] = {}
-            if (
-                len(candidate_clip_indices) == len(candidate_line_ids) == len(option_indices)
-                and all(isinstance(value, int) for value in candidate_clip_indices)
-                and all(isinstance(value, int) for value in option_indices)
-                and len(set(candidate_clip_indices)) == len(candidate_clip_indices)
-                and set(candidate_clip_indices) == set(option_indices)
-            ):
-                line_id_by_clip_index = {
-                    clip_index: line_id
-                    for line_id, clip_index in zip(candidate_line_ids, candidate_clip_indices)
-                }
-                reordered_candidate_line_ids = [
-                    line_id_by_clip_index.get(option_index)
-                    for option_index in option_indices
-                ]
-                if (
-                    len(reordered_candidate_line_ids) == len(candidate_line_ids)
-                    and all(line_id in valid_line_ids for line_id in reordered_candidate_line_ids)
-                ):
-                    candidate_line_ids = [str(line_id) for line_id in reordered_candidate_line_ids]
-                    candidate_mapping = "trunkClipOptionIndex"
-                    candidate_clip_indices = [
-                        (timeline_line_timing_by_id.get(line_id) or {}).get("clipOptionIndex")
-                        for line_id in candidate_line_ids
-                    ]
-                    option_index_set = {value for value in option_indices if isinstance(value, int) and value != 0}
-                    branch_line_ids_by_index: dict[int, list[str]] = {value: [] for value in option_index_set}
-                    branch_clip_indices_by_index: dict[int, list[int]] = {value: [] for value in option_index_set}
-                    branch_window_end_index = after_index + len(candidate_line_ids)
-                    for index, line_id in enumerate(timeline_line_ids[after_index + 1 :], start=after_index + 1):
-                        if line_id not in valid_line_ids:
-                            continue
-                        clip_index = (timeline_line_timing_by_id.get(line_id) or {}).get("clipOptionIndex")
-                        if isinstance(clip_index, int) and clip_index in option_index_set:
-                            branch_line_ids_by_index.setdefault(clip_index, []).append(line_id)
-                            branch_clip_indices_by_index.setdefault(clip_index, []).append(clip_index)
-                            branch_window_end_index = index
-                            continue
-                        break
-                    for opt_id, option_index in zip(group_opt_ids, option_indices):
-                        if not isinstance(option_index, int):
-                            continue
-                        branch_lines = [
-                            line_id
-                            for line_id in (branch_line_ids_by_index.get(option_index) or [])
-                            if line_id in valid_line_ids
-                        ]
-                        if not branch_lines:
-                            branch_lines = [
-                                line_id
-                                for line_id in [line_id_by_clip_index.get(option_index)]
-                                if line_id in valid_line_ids
-                            ]
-                        if branch_lines:
-                            branch_line_ids_by_option[opt_id] = branch_lines
-                            branch_clip_indices_by_option[opt_id] = [
-                                int(value)
-                                for value in (branch_clip_indices_by_index.get(option_index) or [option_index])
-                                if isinstance(value, int)
-                            ]
-                    for line_id in timeline_line_ids[branch_window_end_index + 1 :]:
-                        if line_id in valid_line_ids:
-                            common_continuation_id = line_id
-                            break
-            clip_route_classification = {}
-            if candidate_mapping:
-                clip_route_classification = (
-                    classify_timeline_clip_option_index_routes(
-                        group_opt_ids,
-                        option_indices,
-                        branch_line_ids_by_option,
-                        branch_clip_indices_by_option,
-                        timeline_line_timing_by_id,
-                        runtime_jump_clips,
-                        common_continuation_id,
-                    )
-                )
-            if clip_route_classification.get("status") == "exact":
-                return {
-                    "code": "timelineClipOptionIndexBranches",
-                    "reason": "runtimeClipOptionIndex",
-                    "detail": (
-                        "The authored Timeline option rows use distinct positive "
-                        "optionIndex values, and every response trunk clip carries "
-                        "the matching runtime optionIndex. Any Runtime Jump inside "
-                        "the branch window occurs only after that option's final "
-                        "response clip and converges forward to the shared "
-                        "continuation."
-                    ),
-                    "after": after_id,
-                    "optionIds": group_opt_ids,
-                    "branchLineIdsByOption": branch_line_ids_by_option,
-                    "branchLineClipOptionIndexByOption":
-                        branch_clip_indices_by_option,
-                    "commonContinuationLineId": common_continuation_id,
-                    "source": "dialogTimeline",
-                    "optionIndex": option_indices,
-                    "candidateMapping": candidate_mapping,
-                    "candidateLineClipOptionIndex": candidate_clip_indices,
-                    "assetTracks": _unique_preserve([
-                        str(row.get("assetTrack") or "")
-                        for row in preferred_rows
-                        if row.get("assetTrack")
-                    ]),
-                    "convergenceRuntimeJumps": (
-                        clip_route_classification.get(
-                            "convergenceRuntimeJumps"
-                        )
-                        or []
-                    ),
-                }
-            detail = (
-                "Timeline option metadata anchors this group to a trunk line, "
-                "but the option entries do not name explicit target trunk ids; "
-                "the following line candidates are inferred from Timeline order."
-            )
-            if candidate_mapping:
-                detail = (
-                    "Timeline option metadata anchors this group to a trunk line, "
-                    "but the option entries do not name explicit target trunk ids; "
-                    "candidate response lines and same-index branch continuations "
-                    "are matched to options by the raw trunk clip optionIndex values."
-                )
-            risk = {
-                "code": "inferredFollowingLines",
-                "reason": "optionTargetsMissing",
-                "detail": detail,
-                "after": after_id,
-                "optionIds": group_opt_ids,
-                "candidateLineIds": candidate_line_ids,
-                "commonContinuationLineId": common_continuation_id,
-                "source": "dialogTimeline",
-                "optionIndex": [
-                    row.get("optionIndex")
-                    for row in preferred_rows
-                ],
-                "assetTracks": _unique_preserve([
-                    str(row.get("assetTrack") or "")
-                    for row in preferred_rows
-                    if row.get("assetTrack")
-                ]),
-            }
-            if continuation_classification.get("status") in {"blocked", "unverified"}:
-                risk["runtimeContinuationClassification"] = continuation_classification
-            if candidate_mapping:
-                risk["candidateMapping"] = candidate_mapping
-                risk["candidateLineIdsByOption"] = {
-                    opt_id: branch_line_ids_by_option.get(opt_id) or [line_id]
-                    for opt_id, line_id in zip(group_opt_ids, candidate_line_ids)
-                }
-                risk["candidateLineClipOptionIndex"] = candidate_clip_indices
-                if branch_line_ids_by_option:
-                    risk["branchLineIdsByOption"] = branch_line_ids_by_option
-                if branch_clip_indices_by_option:
-                    risk["branchLineClipOptionIndexByOption"] = branch_clip_indices_by_option
-            return risk
-        def option_risk_line_ids(following_line_risk: dict, option_count: int) -> list[str]:
-            option_ids = [
-                str(option_id)
-                for option_id in (following_line_risk.get("optionIds") or [])
-                if str(option_id or "").strip()
-            ]
-            candidate_lines_by_option = following_line_risk.get("candidateLineIdsByOption")
-            if isinstance(candidate_lines_by_option, dict) and len(option_ids) == option_count:
-                mapped_line_ids: list[str] = []
-                for option_id in option_ids:
-                    mapped_value = candidate_lines_by_option.get(option_id)
-                    if isinstance(mapped_value, list):
-                        line_id = next(
-                            (
-                                str(value)
-                                for value in mapped_value
-                                if str(value or "") in valid_line_ids
-                            ),
-                            "",
-                        )
-                    else:
-                        line_id = str(mapped_value or "")
-                    if line_id not in valid_line_ids:
-                        break
-                    mapped_line_ids.append(line_id)
-                if len(mapped_line_ids) == option_count:
-                    return mapped_line_ids
-            candidate_line_ids = [
-                str(line_id)
-                for line_id in (following_line_risk.get("candidateLineIds") or [])
-                if line_id in valid_line_ids
-            ]
-            if len(candidate_line_ids) == option_count:
-                return candidate_line_ids
-            common_line_id = str(following_line_risk.get("commonContinuationLineId") or "")
-            if common_line_id in valid_line_ids:
-                return [common_line_id for _ in range(option_count)]
-            return []
-        def all_option_response_risk_line_ids(following_line_risk: dict) -> list[str]:
-            out: list[str] = []
-            def push(line_id: object) -> None:
-                value = str(line_id or "")
-                if value and value in valid_line_ids and value not in out:
-                    out.append(value)
-            for line_id in following_line_risk.get("candidateLineIds") or []:
-                push(line_id)
-            branch_lines_by_option = following_line_risk.get("branchLineIdsByOption")
-            if isinstance(branch_lines_by_option, dict):
-                for line_ids in branch_lines_by_option.values():
-                    if isinstance(line_ids, list):
-                        for line_id in line_ids:
-                            push(line_id)
-                    else:
-                        push(line_ids)
-            return out
         sorted_group_ids = sorted(groups_map)
         sorted_group_index = {group_id: idx for idx, group_id in enumerate(sorted_group_ids)}
         local_ordered_line_ids = [line_id for _idx, line_id in line_idxs if line_id in valid_line_ids]
@@ -4869,128 +3796,10 @@ def build_language_bundle(
         rendered_line_order_index = {
             line_id: idx for idx, line_id in enumerate(rendered_ordered_line_ids)
         }
-        local_scene_link_options_by_after: dict[str, list[dict]] = defaultdict(list)
-        seen_local_scene_link_options: set[tuple[str, str, tuple[str, ...]]] = set()
-        for link in build_dialog_tree_scene_link_payload(conv_key) or []:
-            after_id = str(link.get("after") or "")
-            if after_id not in valid_line_ids:
-                continue
-            for option in link.get("options") or []:
-                if not isinstance(option, dict):
-                    continue
-                path_line_ids = tuple(
-                    str(line_id)
-                    for line_id in (option.get("pathLineIds") or [])
-                    if str(line_id or "") in valid_line_ids
-                )
-                if not path_line_ids:
-                    continue
-                option_id = str(option.get("optionId") or "")
-                identity = (after_id, option_id, path_line_ids)
-                if identity in seen_local_scene_link_options:
-                    continue
-                seen_local_scene_link_options.add(identity)
-                local_scene_link_options_by_after[after_id].append(option)
-        def option_has_visible_table_text(option_id: str) -> bool:
-            text_value, _icon_value = dialog_option_signature_by_id.get(option_id, ("", ""))
-            return bool(text_value)
-        def hidden_single_option_path_after(after_id: str) -> tuple[str, list[str]]:
-            options_after = [
-                option
-                for option in local_scene_link_options_by_after.get(after_id, [])
-                if _dialog_tree_option_prefix(str(option.get("optionId") or "")) == conv_key
-            ]
-            if len(options_after) != 1:
-                return "", []
-            option = options_after[0]
-            option_id = str(option.get("optionId") or "")
-            if not option_id or option_has_visible_table_text(option_id):
-                return "", []
-            path_line_ids = [
-                str(line_id)
-                for line_id in (option.get("pathLineIds") or [])
-                if str(line_id or "") in valid_line_ids
-            ]
-            return option_id, path_line_ids
-        def expand_transparent_single_option_branch(branch_lines: list[str]) -> list[str]:
-            expanded: list[str] = []
-            expanded_after_ids: set[str] = set()
-            def append_line(line_id: str) -> None:
-                if line_id in valid_line_ids and line_id not in expanded:
-                    expanded.append(line_id)
-            for line_id in branch_lines:
-                append_line(line_id)
-            while expanded:
-                after_id = expanded[-1]
-                if after_id in expanded_after_ids:
-                    break
-                expanded_after_ids.add(after_id)
-                _option_id, next_path = hidden_single_option_path_after(after_id)
-                if not next_path:
-                    break
-                first_next = next_path[0]
-                start_index = rendered_line_order_index.get(after_id)
-                end_index = rendered_line_order_index.get(first_next)
-                if start_index is not None and end_index is not None and start_index < end_index:
-                    for line_id in rendered_ordered_line_ids[start_index + 1:end_index]:
-                        append_line(line_id)
-                before_count = len(expanded)
-                for line_id in next_path:
-                    append_line(line_id)
-                if len(expanded) == before_count:
-                    break
-            return expanded
-        def normalize_group_branch_convergence(group: dict, opts: list[dict], group_opt_ids: list[str]) -> dict:
-            if len(opts) < 2 or len(group_opt_ids) != len(opts):
-                return {}
-            paths: list[list[str]] = []
-            for opt in opts:
-                branch_lines = [
-                    str(line_id)
-                    for line_id in (opt.get("branchLines") or [])
-                    if str(line_id or "") in valid_line_ids
-                ]
-                if not branch_lines:
-                    return {}
-                paths.append(branch_lines)
-            min_length = min(len(path) for path in paths)
-            suffix_length = 0
-            while suffix_length < min_length:
-                candidate = paths[0][len(paths[0]) - suffix_length - 1]
-                if not all(path[len(path) - suffix_length - 1] == candidate for path in paths):
-                    break
-                suffix_length += 1
-            if suffix_length <= 0:
-                return {}
-            if any(len(path) <= suffix_length for path in paths):
-                return {}
-            common_suffix = paths[0][len(paths[0]) - suffix_length:]
-            branch_line_ids_by_option: dict[str, list[str]] = {}
-            for opt, opt_id, path in zip(opts, group_opt_ids, paths):
-                branch_specific_lines = path[:len(path) - suffix_length]
-                if not branch_specific_lines:
-                    return {}
-                opt["branchLines"] = branch_specific_lines
-                branch_line_ids_by_option[opt_id] = branch_specific_lines
-                opt.setdefault("_debug", {})["branchConvergence"] = {
-                    "mode": "commonSuffix",
-                    "commonLineIds": common_suffix,
-                }
-            return {
-                "code": "dialogTreeBranchConvergence",
-                "reason": "commonBranchSuffix",
-                "detail": (
-                    "Authored same-scene branch paths share a trailing line sequence; "
-                    "branchLines are trimmed to branch-specific lines and rendered as "
-                    "converging at the shared continuation."
-                ),
-                "after": group.get("after") or "",
-                "optionIds": group_opt_ids,
-                "branchLineIdsByOption": branch_line_ids_by_option,
-                "commonContinuationLineId": common_suffix[0],
-                "commonContinuationLineIds": common_suffix,
-                "source": "dialogTree",
-            }
+        local_scene_link_options_by_after = collect_local_scene_link_options(
+            build_dialog_tree_scene_link_payload(conv_key) or [],
+            valid_line_ids=valid_line_ids,
+        )
         trusted_group_after_cache: dict[int, tuple[str, dict]] = {}
         recovered_single_option_line_ids: set[str] = set()
         def previous_visible_line_id(line_id: str) -> str:
@@ -5008,6 +3817,20 @@ def build_language_bundle(
                     group_ids,
                     fallback_group_line_ids.get(group_id, ""),
                     group_id,
+                    conversation_key=conv_key,
+                    line_indices=line_idxs,
+                    lines=lines,
+                    valid_line_ids=valid_line_ids,
+                    option_group_keys_by_group_and_count=(
+                        dialog_option_group_keys_by_group_and_count
+                    ),
+                    option_group_ids_by_key=dialog_option_group_ids_by_key,
+                    option_signatures_by_id=dialog_option_signature_by_id,
+                    dialog_line_text_signature=current_dialog_line_text_signature,
+                    load_dialog_tree=load_dialog_tree,
+                    option_text_signature=_option_text_signature,
+                    sequence_similarity_at_least=_sequence_similarity_at_least,
+                    unique_preserve=_unique_preserve,
                 )
                 candidate_after = str(candidate.get("after") or "")
                 if candidate_after in valid_line_ids:
@@ -5168,7 +3991,18 @@ def build_language_bundle(
                     if lid in valid_line_ids
                 ]
                 if branch_lines:
-                    opt["branchLines"] = expand_transparent_single_option_branch(branch_lines)
+                    opt["branchLines"] = expand_transparent_single_option_branch(
+                        branch_lines,
+                        valid_line_ids=valid_line_ids,
+                        rendered_ordered_line_ids=rendered_ordered_line_ids,
+                        rendered_line_order_index=rendered_line_order_index,
+                        local_scene_link_options_by_after=(
+                            local_scene_link_options_by_after
+                        ),
+                        conversation_key=conv_key,
+                        dialog_option_signature_by_id=dialog_option_signature_by_id,
+                        dialog_tree_option_prefix=_dialog_tree_option_prefix,
+                    )
                     sources = [
                         source
                         for source in (tree_branch_sources.get(opt_id) or [])
@@ -5248,7 +4082,18 @@ def build_language_bundle(
                 group["after"] = fallback_anchor_id
             elif used_group_fallback and fallback_anchor_id:
                 group["after"] = fallback_anchor_id
-            timeline_route_branch = timeline_route_branch_for_group(group_opt_ids, group.get("after") or "")
+            timeline_route_branch = timeline_route_branch_for_group(
+                group_opt_ids,
+                group.get("after") or "",
+                valid_line_ids=valid_line_ids,
+                tree_branches=tree_branches,
+                timeline_after=timeline_after,
+                timeline_pre=timeline_pre,
+                timeline_option_routes=timeline_option_routes,
+                local_ordered_line_ids=local_ordered_line_ids,
+                classify_runtime_jump_option_routes=classify_runtime_jump_option_routes,
+                unique_preserve=_unique_preserve,
+            )
             route_branch_lines_by_option = timeline_route_branch.get("branchLineIdsByOption") or {}
             sibling_text_branch = {}
             if timeline_route_branch.get("continuationOptionIds"):
@@ -5272,12 +4117,38 @@ def build_language_bundle(
                     if inferred_anchor_mode == "siblingTimelinePosition"
                     else None,
                     g,
+                    conversation_key=conv_key,
+                    line_indices=line_idxs,
+                    valid_line_ids=valid_line_ids,
+                    lines=lines,
+                    option_group_ids_by_key=dialog_option_group_ids_by_key,
+                    option_signatures_by_id=dialog_option_signature_by_id,
+                    dialog_rows=dialogs,
+                    translate=t,
+                    load_dialog_tree=load_dialog_tree,
+                    option_text_signature=_option_text_signature,
+                    sequence_similarity_at_least=_sequence_similarity_at_least,
+                    unique_preserve=_unique_preserve,
                 )
                 if not sibling_text_branch:
                     sibling_text_branch = sibling_scene_template_branch_for_group(
                         group_opt_ids,
                         group.get("after") or "",
                         g,
+                        conversation_key=conv_key,
+                        line_indices=line_idxs,
+                        lines=lines,
+                        valid_line_ids=valid_line_ids,
+                        option_group_keys_by_group_and_count=(
+                            dialog_option_group_keys_by_group_and_count
+                        ),
+                        option_group_ids_by_key=dialog_option_group_ids_by_key,
+                        option_signatures_by_id=dialog_option_signature_by_id,
+                        dialog_line_text_signature=current_dialog_line_text_signature,
+                        load_dialog_tree=load_dialog_tree,
+                        option_text_signature=_option_text_signature,
+                        sequence_similarity_at_least=_sequence_similarity_at_least,
+                        unique_preserve=_unique_preserve,
                     )
                 if not sibling_text_branch:
                     sibling_text_branch = single_option_span_before_recovered_anchor(
@@ -5290,6 +4161,12 @@ def build_language_bundle(
                         foreign_timeline_option_definition_for_group(
                             group_opt_ids,
                             sibling_text_branch,
+                            authored_option_ids=authored_option_ids,
+                            conversation_key=conv_key,
+                            cinematic_finish_groups=cinematic_finish_groups,
+                            timeline_entries=timeline_entries,
+                            dialog_tree_option_prefix=_dialog_tree_option_prefix,
+                            unique_preserve=_unique_preserve,
                         )
                         or sibling_text_branch
                     )
@@ -5335,13 +4212,19 @@ def build_language_bundle(
                             "reason": "The corrected pre-scene option uses the only line span not covered by authored DialogTree branches.",
                             "lineIds": remaining_line_ids,
                         }
-            branch_convergence_risk = normalize_group_branch_convergence(group, opts, group_opt_ids)
+            branch_convergence_risk = normalize_group_branch_convergence(
+                group,
+                opts,
+                group_opt_ids,
+                valid_line_ids=valid_line_ids,
+            )
             dialog_tree_node_layout = {}
             if not any(opt.get("branchLines") for opt in opts):
                 dialog_tree_node_layout = (
                     dialog_tree_option_node_layout_for_group(
                         group_opt_ids,
                         group.get("after") or "",
+                        tree_option_node_layouts=tree_option_node_layouts,
                     )
                 )
             following_line_risk = (
@@ -5349,7 +4232,31 @@ def build_language_bundle(
                 or sibling_text_branch
                 or branch_convergence_risk
                 or dialog_tree_node_layout
-                or following_line_risk_for_group(group_opt_ids, group.get("after") or "")
+                or following_line_risk_for_group(
+                    group_opt_ids,
+                    group.get("after") or "",
+                    valid_line_ids=valid_line_ids,
+                    tree_branches=tree_branches,
+                    tree_converge=tree_converge,
+                    timeline_option_rows=timeline_option_rows,
+                    timeline_after=timeline_after,
+                    timeline_pre=timeline_pre,
+                    timeline_after_line_ids=timeline_after_line_ids,
+                    timeline_after_line_timings=timeline_after_line_timings,
+                    timeline_after_runtime_jump_clips=(
+                        timeline_after_runtime_jump_clips
+                    ),
+                    timeline_option_routes=timeline_option_routes,
+                    preferred_timeline_option_row=preferred_timeline_option_row,
+                    preferred_timeline_option_route=preferred_timeline_option_route,
+                    classify_zero_index_timeline_continuation=(
+                        classify_zero_index_timeline_continuation
+                    ),
+                    classify_timeline_clip_option_index_routes=(
+                        classify_timeline_clip_option_index_routes
+                    ),
+                    unique_preserve=_unique_preserve,
+                )
             )
             if following_line_risk.get("code") == "siblingSceneTextBranches":
                 if used_group_fallback:
@@ -5395,7 +4302,14 @@ def build_language_bundle(
                             **following_line_risk,
                         })
                     tag_code = "rawOptionIndexMatchedLine" if strong_raw_index_mapping else "inferredFollowingLine"
-                    for opt, line_id in zip(opts, option_risk_line_ids(following_line_risk, len(opts))):
+                    for opt, line_id in zip(
+                        opts,
+                        option_risk_line_ids(
+                            following_line_risk,
+                            len(opts),
+                            valid_line_ids=valid_line_ids,
+                        ),
+                    ):
                         tag = {
                             "code": tag_code,
                             "lineId": line_id,
@@ -5525,7 +4439,10 @@ def build_language_bundle(
                 "lineIds": _unique_preserve([
                     line_id
                     for risk in option_response_risks
-                    for line_id in all_option_response_risk_line_ids(risk)
+                    for line_id in all_option_response_risk_line_ids(
+                        risk,
+                        valid_line_ids=valid_line_ids,
+                    )
                     if line_id
                 ]),
             })
@@ -5560,164 +4477,6 @@ def build_language_bundle(
         ]
         payload["warnings"] = [warning, *existing_warnings]
 
-    def build_duplicate_timestamp_warning(payload: dict) -> dict | None:
-        buckets: dict[tuple[str, str], list[dict]] = defaultdict(list)
-        for line in payload.get("lines") or []:
-            if not isinstance(line, dict):
-                continue
-            ts = line.get("ts")
-            if not isinstance(ts, (int, float)):
-                continue
-            debug = line.get("_debug") if isinstance(line.get("_debug"), dict) else {}
-            timing_debug = debug.get("timelineTiming") if isinstance(debug, dict) else {}
-            timeline = str(timing_debug.get("timeline") or "") if isinstance(timing_debug, dict) else ""
-            buckets[(timeline, format_webui_timeline_seconds(ts))].append(line)
-        groups: list[dict] = []
-        for (timeline, label), lines_for_ts in sorted(
-            buckets.items(),
-            key=lambda item: min(float(line.get("ts") or 0.0) for line in item[1]),
-        ):
-            if len(lines_for_ts) < 2:
-                continue
-            group = {
-                "timestamp": label,
-                "lineIds": [str(line.get("id") or "") for line in lines_for_ts if line.get("id")],
-                "lines": [
-                    {
-                        "id": str(line.get("id") or ""),
-                        "actor": str(line.get("actor") or line.get("aid") or ""),
-                        "ts": line.get("ts"),
-                        "dur": line.get("dur"),
-                    }
-                    for line in lines_for_ts
-                    if line.get("id")
-                ],
-            }
-            if timeline:
-                group["timeline"] = timeline
-            groups.append(group)
-        if not groups:
-            return None
-        line_ids: list[str] = []
-        for group in groups:
-            for line_id in group["lineIds"]:
-                if line_id not in line_ids:
-                    line_ids.append(line_id)
-        return {
-            "code": "duplicateTimestamps",
-            "reason": "duplicateDisplayTimestamp",
-            "detail": "two or more lines share the same WebUI timeline timestamp label within one timeline segment",
-            "groups": groups,
-            "lineIds": line_ids,
-        }
-    def attach_duplicate_timestamp_warning(payload: dict) -> None:
-        warning = build_duplicate_timestamp_warning(payload)
-        existing_warnings = [
-            existing
-            for existing in (payload.get("warnings") or [])
-            if isinstance(existing, dict) and existing.get("code") != "duplicateTimestamps"
-        ]
-        if warning is None:
-            if existing_warnings:
-                payload["warnings"] = existing_warnings
-            else:
-                payload.pop("warnings", None)
-            return
-        payload["warnings"] = [*existing_warnings, warning]
-
-    def build_timeline_timestamp_regression_warning(payload: dict) -> dict | None:
-        timed_lines: list[dict] = []
-        for idx, line in enumerate(payload.get("lines") or []):
-            if not isinstance(line, dict):
-                continue
-            ts = line.get("ts")
-            if not isinstance(ts, (int, float)):
-                continue
-            debug = line.get("_debug") if isinstance(line.get("_debug"), dict) else {}
-            timing_debug = debug.get("timelineTiming") if isinstance(debug, dict) else {}
-            timeline = str(timing_debug.get("timeline") or "") if isinstance(timing_debug, dict) else ""
-            timed_lines.append({
-                "index": idx,
-                "id": str(line.get("id") or ""),
-                "ts": float(ts),
-                "timeline": timeline,
-            })
-        regressions: list[dict] = []
-        for prev, cur in zip(timed_lines, timed_lines[1:]):
-            if cur["ts"] + 1e-6 >= prev["ts"]:
-                continue
-            regressions.append({
-                "prevLineId": prev["id"],
-                "prevTimestamp": format_webui_timeline_seconds(prev["ts"]),
-                "prevTimeline": prev["timeline"],
-                "lineId": cur["id"],
-                "timestamp": format_webui_timeline_seconds(cur["ts"]),
-                "timeline": cur["timeline"],
-            })
-        if not regressions:
-            return None
-        line_ids: list[str] = []
-        for row in regressions:
-            for line_id in (row.get("prevLineId"), row.get("lineId")):
-                if line_id and line_id not in line_ids:
-                    line_ids.append(line_id)
-        timelines = sorted({row["timeline"] for row in timed_lines if row.get("timeline")})
-        return {
-            "code": "timelineTimestampRegression",
-            "reason": "timelineTimestampsMoveBackward",
-            "detail": "recovered Timeline timestamps move backward in rendered line order; secondary timelines may be local stitch evidence rather than absolute scene time",
-            "lineIds": line_ids,
-            "regressions": regressions,
-            "timelines": timelines,
-        }
-
-    def attach_timeline_timestamp_regression_warning(payload: dict) -> None:
-        warning = build_timeline_timestamp_regression_warning(payload)
-        existing_warnings = [
-            existing
-            for existing in (payload.get("warnings") or [])
-            if isinstance(existing, dict) and existing.get("code") != "timelineTimestampRegression"
-        ]
-        if warning is None:
-            if existing_warnings:
-                payload["warnings"] = existing_warnings
-            else:
-                payload.pop("warnings", None)
-            return
-        payload["warnings"] = [*existing_warnings, warning]
-    def attach_timeline_action_evidence(
-        payload: dict,
-        evidence_key: str,
-        original_line_ids: list[str],
-        current_line_ids: list[str],
-    ) -> None:
-        action_debug = build_conversation_action_debug(
-            evidence_key,
-            original_line_ids,
-            current_line_ids,
-        )
-        if not action_debug:
-            return
-        debug = payload.setdefault("_debug", {})
-        if not isinstance(debug, dict):
-            debug = {}
-            payload["_debug"] = debug
-        debug["timelineActions"] = action_debug
-        line_actions_by_id = {
-            str(row.get("lineId") or ""): row
-            for row in (action_debug.get("lineActions") or [])
-            if isinstance(row, dict) and row.get("lineId")
-        }
-        if not line_actions_by_id:
-            return
-        for line in payload.get("lines") or []:
-            if not isinstance(line, dict):
-                continue
-            line_id = str(line.get("id") or "")
-            line_actions = line_actions_by_id.get(line_id)
-            if not line_actions:
-                continue
-            line.setdefault("_debug", {})["timelineActions"] = line_actions
     def extras_text(out_key: str) -> str:
         """Concatenate all extras text for an out_key so the index entry's
         search haystack covers summaries / dialog options."""
@@ -5734,169 +4493,6 @@ def build_language_bundle(
                         parts.append(o["text"])
         return " ".join(parts)
 
-    def attach_submenu_targets(links: list[dict]) -> None:
-        for link in links or []:
-            for opt in link.get("options") or []:
-                if not isinstance(opt, dict):
-                    continue
-                submenu_scene_keys = [
-                    str(scene_key)
-                    for scene_key in (opt.get("submenuSceneKeys") or [])
-                    if str(scene_key).strip()
-                ]
-                if not submenu_scene_keys:
-                    continue
-                debug = opt.get("_debug") if isinstance(opt.get("_debug"), dict) else {}
-                return_option_ids = [
-                    str(option_id)
-                    for option_id in (debug.get("returnOptionIds") or [])
-                    if str(option_id).strip()
-                ]
-                targets: list[dict] = []
-                seen_targets: set[tuple[str, str]] = set()
-                for idx, option_id in enumerate(return_option_ids):
-                    scene_key = _dialog_tree_option_prefix(option_id) or ""
-                    if not scene_key and idx < len(submenu_scene_keys):
-                        scene_key = submenu_scene_keys[idx]
-                    if not scene_key:
-                        continue
-                    key = (scene_key, option_id)
-                    if key in seen_targets:
-                        continue
-                    seen_targets.add(key)
-                    target = {
-                        "sceneKey": scene_key,
-                        "optionId": option_id,
-                    }
-                    if text := dialog_option_text_by_id.get(option_id):
-                        target["text"] = text
-                    targets.append(target)
-                for scene_key in submenu_scene_keys:
-                    if any(target.get("sceneKey") == scene_key for target in targets):
-                        continue
-                    target = {"sceneKey": scene_key}
-                    targets.append(target)
-                if targets:
-                    opt["submenuTargets"] = targets
-    def dialog_recovery_methods(payload: dict) -> list[str]:
-        methods: list[str] = []
-        def add(method: str) -> None:
-            if method and method not in methods:
-                methods.append(method)
-        debug = payload.get("_debug") if isinstance(payload.get("_debug"), dict) else {}
-        runtime_registry = (
-            debug.get("runtimeRegistry")
-            if isinstance(debug.get("runtimeRegistry"), dict)
-            else {}
-        )
-        line_order = debug.get("lineOrder") if isinstance(debug.get("lineOrder"), dict) else {}
-        line_order_mode = str(line_order.get("mode") or "")
-        if line_order_mode == "lineIdSuffix":
-            registry = debug.get("runtimeRegistry") if isinstance(debug.get("runtimeRegistry"), dict) else {}
-            original_line_ids = line_order.get("originalLineIds") or []
-            ordered_line_ids = line_order.get("orderedLineIds") or []
-            if registry.get("registered") is True and _line_id_list_equal(original_line_ids, ordered_line_ids):
-                add("lineOrder:runtimeRowIteration")
-            elif registry.get("registered") is False:
-                add("lineOrder:unregisteredScene")
-            else:
-                add("lineOrder:lineIdSuffix")
-        elif line_order_mode:
-            add(f"lineOrder:{line_order_mode}")
-        elif len(payload.get("lines") or []) > 1:
-            add("lineOrder:missing")
-        option_groups = [
-            group
-            for group in (payload.get("optionGroups") or [])
-            if isinstance(group, dict)
-        ]
-        warnings = [
-            warning
-            for warning in (payload.get("warnings") or [])
-            if isinstance(warning, dict)
-        ]
-        layout_warning = next(
-            (warning for warning in warnings if warning.get("code") == "inferredOptionLayout"),
-            None,
-        )
-        if layout_warning:
-            reason = str(layout_warning.get("reason") or "")
-            group_details = [
-                detail
-                for detail in (layout_warning.get("groupDetails") or [])
-                if isinstance(detail, dict)
-            ]
-            modes = {
-                str(detail.get("inferredAnchorMode") or "")
-                for detail in group_details
-            }
-            statuses = {str(detail.get("status") or "") for detail in group_details}
-            if runtime_registry.get("registered") is False:
-                add("optionLayout:tableOnlyCutContent")
-            else:
-                if "lineNumber" in modes:
-                    add("optionLayout:keyMatched")
-                if "sparseGap" in modes:
-                    add("optionLayout:sparseGap")
-                if "siblingTimelinePosition" in modes:
-                    add("optionLayout:siblingTimelinePosition")
-                if "lastLine" in modes:
-                    add("optionLayout:lastLine")
-                if "unanchored" in statuses:
-                    add("optionLayout:unanchored")
-            if not group_details:
-                if reason == "partialAuthoredCoverage":
-                    add("optionLayout:partialAuthoredCoverage")
-                elif reason == "noAuthoredGroupAnchor":
-                    add("optionLayout:noAuthoredGroupAnchor")
-                else:
-                    add("optionLayout:fallback")
-        elif option_groups:
-            add("optionLayout:authored")
-        if payload.get("sceneGraphLinks"):
-            add("optionBranch:sceneGraph")
-        if payload.get("graphFragments"):
-            add("optionBranch:dialogTreeFragment")
-        for group in option_groups:
-            if group.get("continuationOptionIds"):
-                add("optionBranch:continuationOption")
-            if group.get("branchHint"):
-                add("optionBranch:siblingSceneHint")
-            risk = group.get("optionBranchRisk") if isinstance(group.get("optionBranchRisk"), dict) else {}
-            if not risk:
-                continue
-            def add_option_branch_methods(branch_risk: dict) -> None:
-                if branch_risk.get("code") == "timelineRouteBranches":
-                    add("optionBranch:runtimeJump")
-                elif (
-                    branch_risk.get("code")
-                    == "timelineClipOptionIndexBranches"
-                ):
-                    add("optionBranch:runtimeClipOptionIndex")
-                elif branch_risk.get("code") == "siblingSceneTextBranches":
-                    add("optionBranch:siblingSceneText")
-                elif branch_risk.get("code") in {
-                    "separateDialogTreeOptionNodes",
-                    "sequentialDialogTreeOptionNodes",
-                }:
-                    add(f"optionBranch:{branch_risk['code']}")
-                elif (
-                    branch_risk.get("code")
-                    == "orphanDialogTreeOptionDefinitions"
-                ):
-                    add("optionBranch:orphanDialogTreeOptionDefinitions")
-                elif branch_risk.get("candidateMapping") == "trunkClipOptionIndex":
-                    add("optionBranch:rawIndexMatched")
-                elif branch_risk.get("code") == "inferredFollowingLines":
-                    add("optionBranch:timelineAdjacent")
-                elif branch_risk.get("code") == "sharedTimelineContinuation":
-                    add("optionBranch:commonContinuation")
-                if branch_risk.get("commonContinuationLineId"):
-                    add("optionBranch:commonContinuation")
-                if branch_risk.get("continuationOptionIds"):
-                    add("optionBranch:continuationOption")
-            add_option_branch_methods(risk)
-        return methods
     print(
         f"Extras: summary={len(summary_by_key)} scenes ({summary_orphans} orphans), "
         f"options={len(options_by_key)} scenes ({option_orphans} orphans), "
@@ -6038,7 +4634,11 @@ def build_language_bundle(
             scene_link_option_projector=scene_link_option_payload,
         )
         if scene_graph_links:
-            attach_submenu_targets(scene_graph_links)
+            attach_submenu_targets(
+                scene_graph_links,
+                option_text_by_id=dialog_option_text_by_id,
+                option_scene_key=_dialog_tree_option_prefix,
+            )
             payload["sceneGraphLinks"] = scene_graph_links
             scene_graph_links_by_key[out_key] = scene_graph_links
         attach_runtime_registry_debug(payload)
@@ -6047,13 +4647,17 @@ def build_language_bundle(
             out_key,
             original_line_ids,
             [line.get("id") or "" for line in lines],
+            build_conversation_action_debug,
         )
         attach_scene_order_warning(payload)
-        attach_duplicate_timestamp_warning(payload)
-        attach_timeline_timestamp_regression_warning(payload)
+        attach_duplicate_timestamp_warning(payload, format_webui_timeline_seconds)
+        attach_timeline_timestamp_regression_warning(payload, format_webui_timeline_seconds)
         story_issue_codes = dialog_story_issue_codes(payload)
         option_issue_targets = dialog_option_issue_targets(payload)
-        recovery_methods = dialog_recovery_methods(payload)
+        recovery_methods = dialog_recovery_methods(
+            payload,
+            line_id_list_equal=_line_id_list_equal,
+        )
         if fmv_clips_by_key.get(out_key):
             payload["fmvClips"] = fmv_clips_by_key[out_key]
         write_conv_payload(out_key, payload)
@@ -6963,38 +5567,6 @@ def build_language_bundle(
             if rest and re.fullmatch(r"d\d+(?:_.*)?", rest):
                 return candidate
         return normalized
-    def subtitle_locale_tokens(code: str) -> tuple[str, ...]:
-        return {
-            "CN": ("CHI", "CN"),
-            "EN": ("ENG", "EN"),
-            "JP": ("JP",),
-            "KR": ("KR", "KO"),
-            "TC": ("CHT", "TC"),
-            "MX": ("MX", "ES"),
-            "BR": ("BR", "PT"),
-        }.get(str(code or "").upper(), (str(code or "").upper(),))
-    def subtitle_track_language_score(track: dict) -> int:
-        name = str(track.get("parentName") or "").upper()
-        desired = subtitle_locale_tokens(language_code)
-        def first_desired_index(tokens: list[str]) -> int | None:
-            matches = [
-                desired.index(token)
-                for token in tokens
-                if token in desired
-            ]
-            return min(matches) if matches else None
-        env_tokens = re.findall(r"_ENV_([A-Z]+)", name)
-        audio_tokens = re.findall(r"_AU_([A-Z]+)", name)
-        if env_tokens:
-            env_index = first_desired_index(env_tokens)
-            if env_index is None:
-                return 100
-            audio_index = first_desired_index(audio_tokens)
-            return env_index if audio_index is not None else 10 + env_index
-        if audio_tokens:
-            audio_index = first_desired_index(audio_tokens)
-            return 20 + audio_index if audio_index is not None else 80
-        return 50
     # The CN e0m0_2 playable has two Chinese-looking subtitle families. The
     # untagged F/M tracks match observed playback; the AU_CHI_ENV_CHI tracks are
     # a different localized/audio variant with incompatible mid-scene lines.
@@ -7006,481 +5578,6 @@ def build_language_bundle(
             },
         },
     }
-    def subtitle_tracks_for_language(cutscene_key: str, tracks: list[dict]) -> list[dict]:
-        parent_override = (
-            cutscene_subtitle_parent_overrides
-            .get(str(language_code or "").upper(), {})
-            .get(cutscene_key)
-        )
-        if parent_override:
-            selected = [
-                track for track in tracks
-                if str(track.get("parentName") or "") in parent_override
-            ]
-            if selected:
-                return selected
-        scored = [
-            (subtitle_track_language_score(track), track)
-            for track in tracks
-            if isinstance(track, dict)
-        ]
-        if not scored:
-            return []
-        best_score = min(score for score, _track in scored)
-        return [
-            track for score, track in scored
-            if score == best_score
-        ]
-    def cutscene_text_lines(
-        asset_keys: set[str],
-        subtitle_tracks_by_key: dict[str, list[dict]],
-    ) -> dict[str, list[dict]]:
-        split_asset_children_by_parent: dict[str, list[str]] = defaultdict(list)
-        for asset_key in asset_keys:
-            parent_key = split_cutscene_parent_key(asset_key)
-            if parent_key and parent_key not in asset_keys:
-                split_asset_children_by_parent[parent_key].append(asset_key)
-        for children in split_asset_children_by_parent.values():
-            children.sort(key=split_cutscene_child_sort_key)
-        raw_groups: set[str] = set()
-        matched_rows: list[tuple[str, dict, re.Match[str]]] = []
-        for row_id, text_entry in text_table.items():
-            row_key = str(row_id or "")
-            if not row_key.startswith("cutscene_"):
-                continue
-            match = CUTSCENE_TEXT_ROW_RE.match(row_key)
-            if not match:
-                continue
-            raw_groups.add(match.group("group"))
-            matched_rows.append((row_key, text_entry, match))
-        grouped: dict[str, list[tuple[tuple[int, int, int, str, str], dict]]] = defaultdict(list)
-        lines_by_row_id: dict[str, dict] = {}
-        def build_cutscene_texttable_line(
-            row_key: str,
-            text_entry,
-            match: re.Match[str],
-            cutscene_key: str,
-            raw_group: str,
-        ) -> dict:
-            line_num = int(match.group("line"))
-            sub = match.group("sub") or ""
-            gender = (match.group("gender") or "").strip("_").upper()
-            cid = f"{match.group('line')}{sub}{('_' + gender.lower()) if gender else ''}"
-            text = t(text_entry.get("id") if isinstance(text_entry, dict) else text_entry)
-            line = {
-                "id": row_key,
-                "cid": cid,
-                "text": text,
-                "_debug": {
-                    **source_ref(
-                        "TextTable",
-                        row_key,
-                        pick_fields(text_entry, "id", "text") if isinstance(text_entry, dict) else {"value": text_entry},
-                        cutsceneKey=cutscene_key,
-                        textGroup=raw_group,
-                        line=line_num,
-                    ),
-                    "fields": {
-                        "text": text_trace("TextTable", row_key, "id", text_entry),
-                    },
-                },
-            }
-            if raw_group != cutscene_key:
-                line["textGroup"] = raw_group
-            if sub:
-                line["sub"] = sub
-                line["_debug"]["source"]["sub"] = sub
-            if gender:
-                line["gender"] = gender
-                line["_debug"]["source"]["gender"] = gender
-            return line
-        def remember_cutscene_line_usage(line: dict) -> None:
-            remember_texttable_row_usage(line.get("id"))
-            for duplicate in line.get("mergedDuplicateRows") or []:
-                if isinstance(duplicate, dict):
-                    remember_texttable_row_usage(duplicate.get("id"))
-        def subtitle_start_key(value) -> float:
-            return round(float(value), 6) if isinstance(value, (int, float)) else 0.0
-        def subtitle_slot_key(ref: dict, timing_index: int) -> tuple[float, float, int]:
-            duration = ref.get("duration")
-            return (
-                subtitle_start_key(ref.get("start")),
-                round(float(duration), 6) if isinstance(duration, (int, float)) else 0.0,
-                timing_index,
-            )
-        def subtitle_clip_debug(track: dict, ref: dict) -> dict:
-            debug = {
-                "source": "animeSubtitleTrack",
-                "file": track.get("file"),
-                "parent": track.get("parentName"),
-                "parentFile": track.get("parentFile"),
-                "textId": ref.get("textId"),
-                "start": ref.get("start"),
-                "duration": ref.get("duration"),
-                "clipIndex": ref.get("clipIndex"),
-                "assetPathId": ref.get("assetPathId"),
-            }
-            if ref.get("displayName"):
-                debug["displayName"] = ref.get("displayName")
-            if track.get("gender"):
-                debug["assetGender"] = track["gender"]
-            if track.get("pathId") not in (None, ""):
-                debug["trackPathId"] = track["pathId"]
-            if track.get("parentPathId") not in (None, ""):
-                debug["parentPathId"] = track["parentPathId"]
-            return debug
-        def line_matches_cutscene_key(line: dict, cutscene_key: str) -> bool:
-            row_id = str(line.get("id") or "")
-            if row_id.startswith(f"{cutscene_key}_"):
-                return True
-            if str(line.get("textGroup") or "") == cutscene_key:
-                return True
-            debug = line.get("_debug") if isinstance(line.get("_debug"), dict) else {}
-            if str(debug.get("cutsceneKey") or "") == cutscene_key:
-                return True
-            source = debug.get("source") if isinstance(debug.get("source"), dict) else {}
-            return str(source.get("textGroup") or "") == cutscene_key
-        def subtitle_gender_rank(gender: str) -> int:
-            return {"": 0, "F": 1, "M": 2}.get(str(gender or "").upper(), 3)
-        def line_has_explicit_gender_switch(line: dict) -> bool:
-            text = str(line.get("text") or "")
-            return "{F}" in text or "{M}" in text
-        def normalize_subtitle_variant_text(text: object) -> str:
-            source = str(text or "")
-            source = re.sub(r"\{[FM]\}", "", source)
-            return "".join(
-                ch.casefold()
-                for ch in source
-                if not ch.isspace() and not unicodedata.category(ch).startswith("P")
-            )
-        def subtitle_candidate_rank(cutscene_key: str, candidate: dict) -> tuple[int, int, int, int, str]:
-            line = candidate.get("line") if isinstance(candidate.get("line"), dict) else {}
-            return (
-                0 if line_has_explicit_gender_switch(line) else 1,
-                0 if line_matches_cutscene_key(line, cutscene_key) else 1,
-                subtitle_gender_rank(candidate.get("gender") or ""),
-                int(candidate.get("clipIndex") or 0),
-                str(candidate.get("rowKey") or ""),
-            )
-        def subtitle_alternate_line_debug(candidate: dict) -> dict:
-            line = candidate.get("line") if isinstance(candidate.get("line"), dict) else {}
-            out = {
-                "id": line.get("id"),
-                "cid": line.get("cid"),
-                "text": line.get("text"),
-                "track": candidate.get("trackDebug"),
-            }
-            if line.get("textGroup"):
-                out["textGroup"] = line.get("textGroup")
-            if candidate.get("gender"):
-                out["assetGender"] = candidate.get("gender")
-            return out
-        def build_fallback_track_line(cutscene_key: str, row_key: str, ref: dict) -> dict:
-            match = CUTSCENE_TEXT_ROW_RE.match(row_key)
-            text_entry = text_table.get(row_key)
-            text = t(text_entry.get("id") if isinstance(text_entry, dict) else text_entry) if text_entry else ""
-            source = source_ref(
-                "AnimeStudioSubtitleTrack",
-                row_key,
-                {"textId": row_key},
-                cutsceneKey=cutscene_key,
-            )
-            if match:
-                raw_group = match.group("group")
-                line_num = int(match.group("line"))
-                sub = match.group("sub") or ""
-                gender = (match.group("gender") or "").strip("_").upper()
-                source["source"]["textGroup"] = raw_group
-                source["source"]["line"] = line_num
-                if sub:
-                    source["source"]["sub"] = sub
-                if gender:
-                    source["source"]["gender"] = gender
-                cid = f"{match.group('line')}{sub}{('_' + gender.lower()) if gender else ''}"
-            else:
-                cid = str(ref.get("clipIndex") or "")
-            return {
-                "id": row_key,
-                "cid": cid,
-                "text": text,
-                "_debug": {
-                    **source,
-                    "fields": {
-                        "text": text_trace("TextTable", row_key, "id", text_entry) if text_entry else {
-                            "table": "TextTable",
-                            "rowId": row_key,
-                            "field": "id",
-                            "raw": None,
-                            "lookup": [],
-                            "text": "",
-                        },
-                    },
-                },
-            }
-        for row_key, text_entry, match in matched_rows:
-            raw_group = match.group("group")
-            cutscene_key = resolve_cutscene_text_group(raw_group, asset_keys, raw_groups)
-            line_num = int(match.group("line"))
-            sub = match.group("sub") or ""
-            gender = (match.group("gender") or "").strip("_").upper()
-            line = build_cutscene_texttable_line(row_key, text_entry, match, cutscene_key, raw_group)
-            lines_by_row_id[row_key] = line
-            sub_order = int(sub[1:]) if sub else -1
-            alias_order = 1 if raw_group != cutscene_key else 0
-            grouped[cutscene_key].append(((line_num, sub_order, alias_order, gender, row_key), line))
-        merged_by_key: dict[str, list[dict]] = {}
-        for cutscene_key, subtitle_tracks in subtitle_tracks_by_key.items():
-            subtitle_tracks = subtitle_tracks_for_language(cutscene_key, subtitle_tracks)
-            if subtitle_tracks and not any(
-                str(ref.get("textId") or "").strip()
-                for track in subtitle_tracks
-                for ref in (track.get("lines") or [])
-                if isinstance(ref, dict)
-            ):
-                candidate_groups: dict[str, list[dict]] = defaultdict(list)
-                for _sort_key, line in grouped.get(cutscene_key) or []:
-                    if not isinstance(line, dict):
-                        continue
-                    raw_group = str(line.get("textGroup") or cutscene_key)
-                    candidate_groups[raw_group].append(line)
-                selected_group = select_subtitle_text_group_from_display_names(
-                    candidate_groups,
-                    subtitle_tracks,
-                )
-                if selected_group:
-                    selected_lines = [
-                        copy.deepcopy(line)
-                        for line in candidate_groups[selected_group]
-                    ]
-                    unselected_groups = sorted(
-                        group for group in candidate_groups
-                        if group != selected_group
-                    )
-                    track_rows = [
-                        {
-                            "file": track.get("file"),
-                            "parent": track.get("parentName"),
-                            "gender": track.get("gender"),
-                            "clipCount": len(track.get("lines") or []),
-                        }
-                        for track in subtitle_tracks
-                    ]
-                    for line in selected_lines:
-                        line.setdefault("_debug", {})[
-                            "subtitleTrackDisplayFallback"
-                        ] = {
-                            "source": "animeSubtitleTrackDisplayAlignment",
-                            "reason": "SubtitlePlayableAsset text IDs unavailable",
-                            "selectedTextGroup": selected_group,
-                            "unselectedTextGroups": unselected_groups,
-                            "tracks": track_rows,
-                        }
-                        remember_cutscene_line_usage(line)
-                    merged_by_key[cutscene_key] = selected_lines
-                    continue
-            slot_candidates: dict[tuple[float, float, int], list[dict]] = defaultdict(list)
-            for track in subtitle_tracks:
-                timing_counts: dict[tuple[float, float], int] = defaultdict(int)
-                for ref in track.get("lines") or []:
-                    row_key = str(ref.get("textId") or "").strip()
-                    if not row_key:
-                        continue
-                    start = subtitle_start_key(ref.get("start"))
-                    duration = ref.get("duration")
-                    timing_key = (
-                        start,
-                        round(float(duration), 6) if isinstance(duration, (int, float)) else 0.0,
-                    )
-                    timing_index = timing_counts[timing_key]
-                    timing_counts[timing_key] += 1
-                    slot_key = subtitle_slot_key(ref, timing_index)
-                    track_debug = subtitle_clip_debug(track, ref)
-                    line = copy.deepcopy(lines_by_row_id.get(row_key))
-                    if line is None:
-                        line = build_fallback_track_line(cutscene_key, row_key, ref)
-                    line_debug = line.setdefault("_debug", {})
-                    line_debug["subtitleTrack"] = track_debug
-                    line_debug.setdefault("subtitleTracks", []).append(track_debug)
-                    line_debug.setdefault("source", {})["subtitleTrackFile"] = track.get("file")
-                    if track.get("gender"):
-                        line_debug["source"]["subtitleAssetGender"] = track["gender"]
-                    remember_cutscene_line_usage(line)
-                    slot_candidates[slot_key].append({
-                        "rowKey": row_key,
-                        "slotKey": slot_key,
-                        "gender": str(track.get("gender") or "").upper(),
-                        "clipIndex": int(ref.get("clipIndex") or 0),
-                        "sortKey": (slot_key[0], timing_index, int(ref.get("clipIndex") or 0), row_key),
-                        "line": line,
-                        "trackDebug": track_debug,
-                    })
-            ordered_lines: list[tuple[tuple[float, int, int, str], dict]] = []
-            for slot_key, candidates in slot_candidates.items():
-                genders = {candidate["gender"] for candidate in candidates if candidate.get("gender")}
-                if len(genders) > 1 and all(candidate.get("gender") for candidate in candidates):
-                    ranked = sorted(
-                        candidates,
-                        key=lambda candidate: subtitle_candidate_rank(cutscene_key, candidate),
-                    )
-                    chosen = ranked[0]
-                    chosen_line = chosen["line"]
-                    chosen_debug = chosen_line.setdefault("_debug", {})
-                    chosen_tracks = chosen_debug.setdefault("subtitleTracks", [])
-                    alternates: list[dict] = []
-                    by_gender: dict[str, dict] = {}
-                    chosen_text = chosen_line.get("text")
-                    chosen_id = chosen_line.get("id")
-                    explicit_switch = line_has_explicit_gender_switch(chosen_line)
-                    if chosen.get("gender"):
-                        by_gender.setdefault(chosen["gender"], chosen)
-                    for candidate in ranked[1:]:
-                        if candidate.get("gender"):
-                            by_gender.setdefault(candidate["gender"], candidate)
-                        candidate_track = candidate.get("trackDebug")
-                        if candidate_track:
-                            chosen_tracks.append(candidate_track)
-                        candidate_line = candidate.get("line") if isinstance(candidate.get("line"), dict) else {}
-                        if candidate_line.get("id") != chosen_id or candidate_line.get("text") != chosen_text:
-                            alternates.append(subtitle_alternate_line_debug(candidate))
-                    if not explicit_switch and "F" in by_gender and "M" in by_gender:
-                        f_line = by_gender["F"].get("line") if isinstance(by_gender["F"].get("line"), dict) else {}
-                        m_line = by_gender["M"].get("line") if isinstance(by_gender["M"].get("line"), dict) else {}
-                        f_text = str(f_line.get("text") or "")
-                        m_text = str(m_line.get("text") or "")
-                        if (
-                            f_text != m_text
-                            and normalize_subtitle_variant_text(f_text)
-                            != normalize_subtitle_variant_text(m_text)
-                        ):
-                            chosen_line["text"] = f"{{F}}{f_text}{{M}}{m_text}"
-                            chosen_debug["subtitleGenderSwitch"] = {
-                                "source": "animeSubtitleTrackAlignment",
-                                "F": {"id": f_line.get("id"), "text": f_text},
-                                "M": {"id": m_line.get("id"), "text": m_text},
-                            }
-                    if alternates:
-                        chosen_debug["subtitleAlternateLines"] = alternates
-                    ordered_lines.append((chosen["sortKey"], chosen_line))
-                    continue
-                by_row_key: dict[str, dict] = {}
-                for candidate in sorted(candidates, key=lambda c: (c["sortKey"], c["rowKey"])):
-                    existing = by_row_key.get(candidate["rowKey"])
-                    if existing is not None:
-                        existing_line = existing["line"]
-                        existing_debug = existing_line.setdefault("_debug", {})
-                        candidate_track = candidate.get("trackDebug")
-                        if candidate_track:
-                            existing_debug.setdefault("subtitleTracks", []).append(candidate_track)
-                        continue
-                    by_row_key[candidate["rowKey"]] = candidate
-                    ordered_lines.append((candidate["sortKey"], candidate["line"]))
-            if ordered_lines:
-                subtitle_lines = [
-                    line for _sort_key, line in sorted(ordered_lines, key=lambda item: item[0])
-                ]
-                text_rows = grouped.get(cutscene_key) or []
-                text_rows_have_text = any(
-                    str(line.get("text") or "").strip()
-                    for _sort_key, line in text_rows
-                    if isinstance(line, dict)
-                )
-                subtitle_lines_have_text = any(
-                    str(line.get("text") or "").strip()
-                    for line in subtitle_lines
-                    if isinstance(line, dict)
-                )
-                if text_rows_have_text and not subtitle_lines_have_text:
-                    subtitle_lines = merge_duplicate_cutscene_rows(text_rows)
-                    track_ids = [
-                        str(line.get("id") or "")
-                        for line in (
-                            candidate.get("line")
-                            for candidates in slot_candidates.values()
-                            for candidate in candidates
-                        )
-                        if isinstance(line, dict) and line.get("id")
-                    ]
-                    for line in subtitle_lines:
-                        line_debug = line.setdefault("_debug", {})
-                        line_debug["subtitleTrackTextTableFallback"] = {
-                            "source": "animeSubtitleTrack",
-                            "reason": "subtitle track textIds did not resolve to localized TextTable text",
-                            "trackTextIds": sorted(set(track_ids)),
-                        }
-                        remember_cutscene_line_usage(line)
-                merged_by_key[cutscene_key] = subtitle_lines
-        def lines_for_cutscene_key(cutscene_key: str) -> list[dict]:
-            if cutscene_key in merged_by_key:
-                return merged_by_key[cutscene_key]
-            return [
-                line
-                for _sort_key, line in grouped.get(cutscene_key, [])
-                if isinstance(line, dict)
-            ]
-        def matching_split_child_line(parent_key: str, parent_line: dict) -> dict | None:
-            cid = str(parent_line.get("cid") or "")
-            normalized_text = cutscene_pair_normalize(str(parent_line.get("text") or ""))
-            if not cid or not normalized_text:
-                return None
-            for child_key in split_asset_children_by_parent.get(parent_key) or []:
-                for child_line in lines_for_cutscene_key(child_key):
-                    if str(child_line.get("cid") or "") != cid:
-                        continue
-                    child_text = cutscene_pair_normalize(str(child_line.get("text") or ""))
-                    if child_text and child_text == normalized_text:
-                        return child_line
-            return None
-        def attach_text_only_parent_duplicate(parent_key: str, parent_line: dict, child_line: dict) -> None:
-            duplicate = {
-                "id": parent_line.get("id") or "",
-                "textGroup": parent_key,
-            }
-            if parent_line.get("text"):
-                duplicate["text"] = parent_line["text"]
-            if parent_line.get("sub"):
-                duplicate["sub"] = parent_line["sub"]
-            if parent_line.get("gender"):
-                duplicate["gender"] = parent_line["gender"]
-            child_line.setdefault("mergedDuplicateRows", []).append(duplicate)
-            child_debug = child_line.setdefault("_debug", {})
-            child_debug.setdefault("mergedDuplicateRows", []).append(duplicate)
-            child_source = child_debug.setdefault("source", {})
-            row_ids = child_source.setdefault("mergedDuplicateRowIds", [])
-            if duplicate["id"] and duplicate["id"] not in row_ids:
-                row_ids.append(duplicate["id"])
-            groups = child_source.setdefault("mergedDuplicateTextGroups", [])
-            if parent_key and parent_key not in groups:
-                groups.append(parent_key)
-            suppressed = child_source.setdefault("suppressedTextOnlyParentGroups", [])
-            if parent_key and parent_key not in suppressed:
-                suppressed.append(parent_key)
-            remember_cutscene_line_usage(child_line)
-        def suppress_text_only_split_parent(cutscene_key: str, rows: list[tuple[tuple[int, int, int, str, str], dict]]) -> bool:
-            if cutscene_key in asset_keys:
-                return False
-            if not split_asset_children_by_parent.get(cutscene_key):
-                return False
-            matches: list[tuple[dict, dict]] = []
-            for _sort_key, line in rows:
-                if not isinstance(line, dict):
-                    return False
-                child_line = matching_split_child_line(cutscene_key, line)
-                if child_line is None:
-                    return False
-                matches.append((line, child_line))
-            for parent_line, child_line in matches:
-                attach_text_only_parent_duplicate(cutscene_key, parent_line, child_line)
-            return bool(matches)
-        for cutscene_key, rows in grouped.items():
-            if cutscene_key in merged_by_key:
-                continue
-            if suppress_text_only_split_parent(cutscene_key, rows):
-                continue
-            lines = merge_duplicate_cutscene_rows(rows)
-            for line in lines:
-                remember_cutscene_line_usage(line)
-            merged_by_key[cutscene_key] = lines
-        return merged_by_key
     def ensure_cutscene_asset(cutscene_key: str) -> dict:
         return cutscene_assets.setdefault(
             cutscene_key,
@@ -7667,7 +5764,39 @@ def build_language_bundle(
                 row["videos"].append(video)
             if "levelscript-fmv" not in cutscene["tags"]:
                 cutscene["tags"].append("levelscript-fmv")
-    cutscene_text_by_key = cutscene_text_lines(set(cutscene_assets), _load_cutscene_subtitle_tracks())
+    cutscene_text_by_key = project_cutscene_text_lines(
+        set(cutscene_assets),
+        _load_cutscene_subtitle_tracks(),
+        inputs=CutsceneTextInputs(
+            text_table=text_table,
+            language_code=language_code,
+            subtitle_parent_overrides=cutscene_subtitle_parent_overrides,
+            cutscene_text_row_re=CUTSCENE_TEXT_ROW_RE,
+        ),
+        callbacks=CutsceneTextCallbacks(
+            split_parent_key=split_cutscene_parent_key,
+            split_child_sort_key=split_cutscene_child_sort_key,
+            resolve_text_group=resolve_cutscene_text_group,
+            translate=t,
+            remember_texttable_row_usage=remember_texttable_row_usage,
+            source_ref=source_ref,
+            pick_fields=pick_fields,
+            text_trace=text_trace,
+            build_texttable_line=build_cutscene_texttable_line,
+            select_display_text_group=select_subtitle_text_group_from_display_names,
+            select_tracks_for_language=subtitle_tracks_for_language,
+            subtitle_start_key=subtitle_start_key,
+            subtitle_slot_key=subtitle_slot_key,
+            subtitle_clip_debug=subtitle_clip_debug,
+            build_fallback_track_line=build_fallback_track_line,
+            subtitle_candidate_rank=subtitle_candidate_rank,
+            line_has_explicit_gender_switch=line_has_explicit_gender_switch,
+            subtitle_alternate_line_debug=subtitle_alternate_line_debug,
+            normalize_subtitle_variant_text=normalize_subtitle_variant_text,
+            merge_duplicate_rows=merge_duplicate_cutscene_rows,
+            pair_normalize=cutscene_pair_normalize,
+        ),
+    )
     source_backed_cutscene_keys = story_source_backed_cutscene_keys()
     video_backed_cutscene_keys = narrative_video_backed_cutscene_keys()
     retained_text_only_cutscene_keys = source_backed_cutscene_keys | video_backed_cutscene_keys
@@ -9955,195 +8084,6 @@ def build_language_bundle(
             }
         ai_bark_reference_cache[table_source] = refs
         return refs
-    def rich_content_row_for_source(content_id: str, table_source: str) -> dict:
-        content_key = str(content_id or "").strip()
-        if not content_key:
-            return {}
-        payload = collection_table_payload(table_source, "RichContentTable.json")
-        row = payload.get(content_key) if isinstance(payload, dict) else None
-        if not isinstance(row, dict) and table_source != "streaming":
-            row = rich_content.get(content_key)
-        return row if isinstance(row, dict) else {}
-    def rich_content_title_text_for_source(content_id: str, table_source: str) -> str:
-        row = rich_content_row_for_source(content_id, table_source)
-        return t((row.get("title") or {}).get("id"), preferred_source=table_source) if row else ""
-    def rich_content_lines_for_source(content_id: str, table_source: str) -> list[dict]:
-        row = rich_content_row_for_source(content_id, table_source)
-        if not row:
-            return []
-        out: list[dict] = []
-        for idx, item in enumerate(row.get("contentList") or [], start=1):
-            if not isinstance(item, dict):
-                continue
-            content = item.get("content") or {}
-            text = t(content.get("id"), preferred_source=table_source)
-            out.append({
-                "id": f"{content_id}_{idx}",
-                "text": text,
-                "_debug": {
-                    **source_ref(
-                        "RichContentTable.contentList",
-                        str(content_id),
-                        pick_fields(item, "content"),
-                        nodeId=idx,
-                        tableSource=collection_source_label(table_source),
-                    ),
-                    "fields": {
-                        "text": text_trace(
-                            "RichContentTable",
-                            str(content_id),
-                            "content",
-                            content,
-                            preferred_source=table_source,
-                        ),
-                    },
-                },
-            })
-        return out
-    def reading_content_refs(table_name: str, row_id: str, row: dict | None, *, table_source: str) -> list[dict]:
-        if not isinstance(row, dict):
-            return []
-        refs: list[dict] = []
-        if table_name == "PrtsReading.json":
-            items = row.get("list") or {}
-            if not isinstance(items, dict):
-                return []
-            sorted_items = sorted(
-                ((node_id, node) for node_id, node in items.items() if isinstance(node, dict)),
-                key=lambda item: (int((item[1] or {}).get("order") or 0), str(item[0])),
-            )
-            for node_id, node in sorted_items:
-                content_id = str(node.get("contentId") or "").strip()
-                if not content_id:
-                    continue
-                name = brace_text(t((node.get("name") or {}).get("id"), preferred_source=table_source))
-                subtitle = brace_text(t((node.get("subtitle") or {}).get("id"), preferred_source=table_source))
-                refs.append({
-                    "contentId": content_id,
-                    "label": name or subtitle or content_id,
-                    "subtitle": subtitle,
-                    "path": f"$.list.{node_id}.contentId",
-                    "nodeId": node_id,
-                    "source": pick_fields(node, "contentId", "name", "order", "subtitle", "uniqId"),
-                })
-        elif table_name == "ReadingPopUpTable.json":
-            content_id = str(row.get("contentId") or "").strip()
-            if content_id:
-                refs.append({
-                    "contentId": content_id,
-                    "label": brace_text(t((row.get("title") or {}).get("id"), preferred_source=table_source)) or content_id,
-                    "path": "$.contentId",
-                    "nodeId": 1,
-                    "source": pick_fields(row, "bgType", "contentId", "iconType", "id", "title"),
-                })
-        return refs
-    def append_linked_reading_content_lines(
-        table_name: str,
-        row_id: str,
-        row: dict | None,
-        *,
-        table_source: str,
-        lines: list[dict],
-        seen_texts: set[tuple[str, str, str]],
-    ) -> tuple[list[dict], str]:
-        linked_refs: list[dict] = []
-        preview_text = ""
-        for ref_index, ref in enumerate(
-            reading_content_refs(table_name, row_id, row, table_source=table_source),
-            start=1,
-        ):
-            content_id = str(ref.get("contentId") or "").strip()
-            if not content_id:
-                continue
-            label = str(ref.get("label") or content_id)
-            linked_from = source_ref(
-                table_name.removesuffix(".json"),
-                row_id,
-                {
-                    "path": ref.get("path") or "$.contentId",
-                    "contentId": content_id,
-                    **(ref.get("source") or {}),
-                },
-                nodeId=ref.get("nodeId"),
-                tableSource=collection_source_label(table_source),
-            )
-            rich_title = rich_content_title_text_for_source(content_id, table_source)
-            rich_lines = rich_content_lines_for_source(content_id, table_source)
-            if rich_title and rich_title != label:
-                append_reference_line(
-                    lines,
-                    seen_texts,
-                    f"{row_id}_linked_{ref_index}_title",
-                    rich_title,
-                    hint=f"{label} / Title",
-                    debug={
-                        **source_ref(
-                            "RichContentTable",
-                            content_id,
-                            {"title": (rich_content_row_for_source(content_id, table_source).get("title") or {})},
-                            tableSource=collection_source_label(table_source),
-                        ),
-                        "linkedFrom": linked_from,
-                        "fields": {
-                            "text": text_trace(
-                                "RichContentTable",
-                                content_id,
-                                "title",
-                                (rich_content_row_for_source(content_id, table_source).get("title") or {}),
-                                preferred_source=table_source,
-                            ),
-                        },
-                    },
-                )
-                preview_text = preview_text or rich_title
-            if rich_lines:
-                linked_refs.append({
-                    "contentId": content_id,
-                    "source": "RichContentTable",
-                    "lineCount": len(rich_lines),
-                    "label": label,
-                })
-                for content_index, content_line in enumerate(rich_lines, start=1):
-                    text = str(content_line.get("text") or "")
-                    debug = dict(content_line.get("_debug") or {})
-                    debug["linkedFrom"] = linked_from
-                    append_reference_line(
-                        lines,
-                        seen_texts,
-                        f"{row_id}_linked_{ref_index}_{content_index}",
-                        text,
-                        hint=rich_title or label,
-                        debug=debug,
-                    )
-                    if text:
-                        preview_text = preview_text or text
-                continue
-            radio_row = radio_row_lookup.get(content_id)
-            if radio_row:
-                radio_lines = [line for line in (radio_row.get("lines") or []) if isinstance(line, dict)]
-                linked_refs.append({
-                    "contentId": content_id,
-                    "source": "RadioTable",
-                    "lineCount": len(radio_lines),
-                    "label": label,
-                })
-                for content_index, radio_line in enumerate(radio_lines, start=1):
-                    text = str(radio_line.get("text") or "")
-                    debug = dict(radio_line.get("_debug") or {})
-                    debug["linkedFrom"] = linked_from
-                    append_reference_line(
-                        lines,
-                        seen_texts,
-                        f"{row_id}_linked_{ref_index}_{content_index}",
-                        text,
-                        hint=label,
-                        actor=str(radio_line.get("actor") or ""),
-                        aid=str(radio_line.get("aid") or ""),
-                        debug=debug,
-                    )
-                    if text:
-                        preview_text = preview_text or text
-        return linked_refs, preview_text
     def write_generic_collection_pages(
         table_source: str,
         *,
@@ -10277,6 +8217,16 @@ def build_language_bundle(
                     table_source=table_source,
                     lines=lines,
                     seen_texts=seen_texts,
+                    collection_table_payload=collection_table_payload,
+                    fallback_rich_content=rich_content,
+                    radio_row_lookup=radio_row_lookup,
+                    translate=t,
+                    source_ref=source_ref,
+                    pick_fields=pick_fields,
+                    text_trace=text_trace,
+                    collection_source_label=collection_source_label,
+                    brace_text=brace_text,
+                    append_reference_line=append_reference_line,
                 )
                 if not lines:
                     continue
@@ -11106,12 +9056,16 @@ def build_language_bundle(
                 key,
                 original_line_ids,
                 [line.get("id") or "" for line in lines],
+                build_conversation_action_debug,
             )
             attach_scene_order_warning(payload)
-            attach_timeline_timestamp_regression_warning(payload)
+            attach_timeline_timestamp_regression_warning(payload, format_webui_timeline_seconds)
             story_issue_codes = dialog_story_issue_codes(payload)
             option_issue_targets = dialog_option_issue_targets(payload)
-            recovery_methods = dialog_recovery_methods(payload)
+            recovery_methods = dialog_recovery_methods(
+                payload,
+                line_id_list_equal=_line_id_list_equal,
+            )
             write_conv_payload(out_key, payload)
             entry = {
                 "k": out_key, "d": "dlg", "m": mission, "s": scene,
@@ -11631,93 +9585,6 @@ def build_language_bundle(
             for row in summary:
                 if isinstance(row, dict) and row.get("text") == stale_note:
                     row["text"] = refreshed_note
-        def strip_video_gender_prefix(stem: str) -> tuple[str, str]:
-            match = re.match(r"^(?P<gender>f|m|fm)_(?P<rest>cs_video_.+)$", stem or "", flags=re.IGNORECASE)
-            if not match:
-                return "", stem or ""
-            return match.group("gender").lower(), match.group("rest")
-        def video_scene_hint(refs: list[dict]) -> str:
-            for ref in refs:
-                override = ref.get("_videoAttachmentAttachOverride")
-                if not isinstance(override, dict):
-                    continue
-                target = str(override.get("targetKey") or ref.get("_resolvedKey") or "").strip()
-                if target:
-                    return strip_video_scene_prefix(target)
-            for ref in refs:
-                binding = ref.get("binding") if isinstance(ref.get("binding"), dict) else {}
-                scene = str(binding.get("scene") or "").strip()
-                if scene and not binding.get("isHint"):
-                    return strip_video_scene_prefix(scene)
-            for ref in refs:
-                _gender, base = strip_video_gender_prefix(str(ref.get("baseStem") or ref.get("stem") or ""))
-                for prefix in ("cs_video_dlg_", "cs_video_cutscene_", "cs_video_remotecomm_", "cs_video_"):
-                    if base.startswith(prefix):
-                        return strip_video_scene_prefix(base[len(prefix):])
-                if base:
-                    return strip_video_scene_prefix(base)
-            return ""
-        def strip_video_scene_prefix(scene: str) -> str:
-            value = str(scene or "")
-            for prefix in ("dlg_", "cutscene_", "remotecomm_", "radio_", "black_"):
-                if value.startswith(prefix):
-                    return value[len(prefix):]
-            return value
-        def video_mission_scene(refs: list[dict]) -> tuple[str, int]:
-            scene_hint = video_scene_hint(refs)
-            match = re.match(
-                r"^(?P<mission>[a-z]+\d+m\d+(?:d\d+)?)(?:_(?P<scene>\d+).*)?$",
-                scene_hint,
-                flags=re.IGNORECASE,
-            )
-            if not match:
-                return (scene_hint.split("_", 1)[0].lower() if scene_hint else "video", 0)
-            return match.group("mission").lower(), int(match.group("scene") or 0)
-        def video_title(refs: list[dict]) -> str:
-            base_names = _unique_preserve(
-                str(ref.get("baseStem") or ref.get("stem") or "")
-                for ref in refs
-                if ref.get("baseStem") or ref.get("stem")
-            )
-            if base_names:
-                return base_names[0]
-            names = _unique_preserve(str(ref.get("name") or "") for ref in refs if ref.get("name"))
-            return names[0] if names else "Narrative video"
-        def video_text_candidate_rows(video_stem: str) -> list[dict]:
-            prefix = f"{video_stem}_"
-            rows: list[tuple[tuple[int, int, str], dict]] = []
-            for row_id, text_entry in text_table.items():
-                row_key = str(row_id or "")
-                if not row_key.startswith(prefix):
-                    continue
-                suffix = row_key[len(prefix):]
-                match = re.fullmatch(r"(?P<line>\d+)(?P<sub>d\d+)?(?:_[fm])?", suffix, flags=re.IGNORECASE)
-                if not match:
-                    continue
-                sub = match.group("sub") or ""
-                sub_order = int(sub[1:]) if sub else -1
-                text = t(text_entry.get("id") if isinstance(text_entry, dict) else text_entry)
-                line = {
-                    "id": row_key,
-                    "cid": f"{match.group('line')}{sub}",
-                    "text": text,
-                    "_debug": {
-                        **source_ref(
-                            "TextTable",
-                            row_key,
-                            pick_fields(text_entry, "id", "text") if isinstance(text_entry, dict) else {"value": text_entry},
-                            videoStem=video_stem,
-                            evidence="name-matched-video-text-candidate",
-                        ),
-                        "fields": {
-                            "text": text_trace("TextTable", row_key, "id", text_entry),
-                        },
-                    },
-                }
-                if sub:
-                    line["sub"] = sub
-                rows.append(((int(match.group("line")), sub_order, row_key), line))
-            return [line for _sort_key, line in sorted(rows, key=lambda item: item[0])]
         for ref in narrative_video_assets:
             original_resolved_key = resolve_video_key(ref)
             suppress_override = suppression_override_for(original_resolved_key, ref)
@@ -11851,269 +9718,6 @@ def build_language_bundle(
                     },
                 })
             return rows
-        def standalone_binding_summary(refs: list[dict]) -> tuple[str, str]:
-            for ref in refs:
-                override = ref.get("_videoAttachmentOverride")
-                if not isinstance(override, dict):
-                    continue
-                target = str(override.get("targetKey") or ref.get("_suppressedResolvedKey") or "")
-                target_note = f" to `{target}`" if target else ""
-                return (
-                    f"Attachment status: manual override suppresses inline attachment{target_note}; kept standalone in WebUI",
-                    "standaloneVideoManualOverrideSuppressedInline",
-                )
-            for ref in refs:
-                override = ref.get("_videoAttachmentAttachOverride")
-                if not isinstance(override, dict):
-                    continue
-                target = str(override.get("targetKey") or ref.get("_resolvedKey") or "")
-                if not target:
-                    continue
-                resolved_kind = str(ref.get("_resolvedKind") or "")
-                label = {
-                    "cutscene": "cutscene",
-                    "dlg": "dialog",
-                    "remotecomm": "remotecomm",
-                }.get(resolved_kind, "story file")
-                return (
-                    f"Attachment status: manual override attaches inline to {label} `{target}`; kept standalone in WebUI",
-                    "standaloneVideoManualOverrideAttachedInline",
-                )
-            for ref in refs:
-                binding = ref.get("binding") if isinstance(ref.get("binding"), dict) else {}
-                if not binding or binding.get("isHint"):
-                    continue
-                scene = str(binding.get("scene") or "")
-                if not scene:
-                    continue
-                resolved_kind = str(ref.get("_resolvedKind") or "")
-                resolved_key = str(ref.get("_resolvedKey") or "")
-                if resolved_kind == "cutscene":
-                    label, target = "cutscene", resolved_key or scene
-                elif resolved_kind == "dlg":
-                    label, target = "dialog", resolved_key or scene
-                elif resolved_kind == "remotecomm":
-                    label, target = "remotecomm", resolved_key or scene
-                elif scene.startswith("cutscene_"):
-                    label, target = "cutscene", scene
-                elif scene.startswith("dlg_"):
-                    label, target = "dialog", scene
-                elif scene.startswith("remotecomm_"):
-                    label, target = "remotecomm", scene
-                else:
-                    label, target = "scene", scene
-                attached_note = " (also embedded inline)" if resolved_kind else ""
-                source_kinds = set(binding.get("sourceKinds") or [])
-                if "timelinePlayable" in source_kinds:
-                    binding_label = "timeline-bound"
-                elif "levelscriptFmvAction" in source_kinds:
-                    binding_label = "LevelScript FMV-action-bound"
-                else:
-                    binding_label = "authoritatively bound"
-                return (
-                    f"Attachment status: {binding_label} to {label} `{target}`{attached_note}; kept standalone in WebUI",
-                    "standaloneVideoBoundButKeptSeparate",
-                )
-            resolved_key = next(
-                (
-                    str(ref.get("_resolvedKey") or "")
-                    for ref in refs
-                    if ref.get("_resolvedKey")
-                ),
-                "",
-            )
-            resolved_kind = next(
-                (
-                    str(ref.get("_resolvedKind") or "")
-                    for ref in refs
-                    if ref.get("_resolvedKind")
-                ),
-                "",
-            )
-            if resolved_key:
-                label = {
-                    "cutscene": "cutscene",
-                    "dlg": "dialog",
-                    "remotecomm": "remotecomm",
-                }.get(resolved_kind, "story file")
-                return (
-                    f"Attachment status: filename-mapped to {label} `{resolved_key}` (also embedded inline); kept standalone in WebUI",
-                    "standaloneVideoFilenameMapped",
-                )
-            return (
-                "Attachment status: no non-name binding found for a dialog or cutscene",
-                "standaloneVideoNoAuthoritativeStoryBinding",
-            )
-        def emit_standalone_video_outputs() -> list[dict]:
-            entries: list[dict] = []
-            for key, raw_refs in sorted(standalone_videos.items()):
-                refs = sorted(raw_refs, key=narrative_video_name_sort_key)
-                if not refs:
-                    continue
-                compact_refs = [compact_narrative_video_ref(ref) for ref in refs[:16]]
-                omitted = max(0, len(refs) - len(compact_refs))
-                mission, scene = video_mission_scene(refs)
-                type_, act = parse_mission(mission)
-                title = video_title(refs)
-                names = _unique_preserve(str(ref.get("name") or "") for ref in refs if ref.get("name"))
-                source_counts = Counter(str(ref.get("source") or "") for ref in refs)
-                format_counts = Counter(str(ref.get("format") or "") for ref in refs)
-                attachment_text, attachment_reason = standalone_binding_summary(refs)
-                attached_story_key = next(
-                    (
-                        str(ref.get("_resolvedKey") or "")
-                        for ref in refs
-                        if ref.get("_resolvedKey")
-                    ),
-                    "",
-                )
-                text_candidates = video_text_candidate_rows(title)
-                # `title` is the asset baseStem (e.g. cs_video_e0m0_3); the game
-                # ships no localized title for FMVs. Keep it as a search hint
-                # and as the lead summary label, but don't expose it as a
-                # `title` field 鈥?that would mislead the WebUI into treating
-                # the stem as a human-readable name. cutscene/dlg/radio bundles
-                # also omit the field.
-                #
-                # We do NOT promote `cs_video_<scene>_NN` TextTable rows to
-                # playable lines. They share a name with the FMV, but no
-                # decoded subtitle track carries those keys. Keep them as
-                # explicit candidates so the evidence level stays visible.
-                summary_rows = [
-                    {"text": f"Standalone narrative video: {title}"},
-                    {"text": f"Mission: {mission}"},
-                    {"text": f"Files: {len(refs)} exported variant(s)"},
-                    {"text": attachment_text},
-                ]
-                definition = next(
-                    (
-                        ref.get("definition")
-                        for ref in refs
-                        if isinstance(ref.get("definition"), dict)
-                    ),
-                    None,
-                )
-                if isinstance(definition, dict):
-                    numeric_ids = [
-                        str(value)
-                        for value in (
-                            definition.get("numericIds") or []
-                        )
-                    ]
-                    numeric_note = (
-                        f"; fmv_id={','.join(numeric_ids)}"
-                        if numeric_ids
-                        else ""
-                    )
-                    summary_rows.append({
-                        "text": (
-                            "Definition status: exported FMV config exists"
-                            f"{numeric_note}; definition is not playback or "
-                            "mission-placement evidence."
-                        ),
-                    })
-                    timeline_evidence = (
-                        definition.get("timelineEvidence")
-                        if isinstance(
-                            definition.get("timelineEvidence"), dict
-                        )
-                        else {}
-                    )
-                    if timeline_evidence:
-                        summary_rows.append({
-                            "text": (
-                                "Definition timeline: "
-                                f"{timeline_evidence.get('trackCount', 0)} "
-                                "track(s), "
-                                f"{timeline_evidence.get('clipCount', 0)} "
-                                "clip(s), "
-                                f"{timeline_evidence.get('subtitleClipCount', 0)} "
-                                "subtitle clip(s), "
-                                f"{len(timeline_evidence.get('audioEventKeys') or [])} "
-                                "audio event(s)."
-                            ),
-                        })
-                if text_candidates:
-                    candidate_preview = " / ".join(
-                        str(row.get("text") or "")
-                        for row in text_candidates[:4]
-                        if row.get("text")
-                    )
-                    summary_rows.append({
-                        "text": (
-                            "Name-matched TextTable candidates: "
-                            + (candidate_preview or f"{len(text_candidates)} row(s)")
-                        ),
-                    })
-                    summary_rows.append({
-                        "text": "Video text note: these rows share the FMV stem but are not tied by a decoded subtitle track.",
-                    })
-                payload = {
-                    "key": key,
-                    "kind": "video",
-                    "mission": mission,
-                    "scene": scene,
-                    "lines": [],
-                    "summary": summary_rows,
-                    "narrativeVideos": compact_refs,
-                    "_debug": {
-                        "title": mission_name_trace(mission),
-                        "narrativeVideos": {
-                            "source": {
-                                "key": key,
-                                "count": len(refs),
-                                "shown": len(compact_refs),
-                                "omitted": omitted,
-                                "reason": attachment_reason,
-                            },
-                        },
-                    },
-                }
-                if text_candidates:
-                    payload["videoTextCandidates"] = text_candidates[:16]
-                if omitted:
-                    payload["narrativeVideosOmitted"] = omitted
-                write_conv_payload(key, payload)
-                entry = {
-                    "k": key,
-                    "d": "video",
-                    "m": mission,
-                    "s": scene,
-                    "t": type_ if type_ != "?" else "other",
-                    "a": act,
-                    "c": [],
-                    "n": 0,
-                    "p": preview(", ".join(names) or title),
-                    "tags": ["narrativeVideo"],
-                    "vid": narrative_video_index_summary(refs),
-                    "x": merge_search_text(
-                        " ".join([
-                            key,
-                            title,
-                            mission,
-                            " ".join(names),
-                            " ".join(str(ref.get("rel") or "") for ref in refs),
-                            " ".join(str(ref.get("stem") or "") for ref in refs),
-                        ]),
-                        mission_context_text(mission),
-                    ),
-                }
-                if attached_story_key:
-                    entry["attachTo"] = attached_story_key
-                entry["videoSources"] = {
-                    source: source_counts[source]
-                    for source in sorted(source_counts)
-                    if source
-                }
-                entry["videoFormats"] = {
-                    fmt: format_counts[fmt]
-                    for fmt in sorted(format_counts)
-                    if fmt
-                }
-                if not entry["x"]:
-                    entry.pop("x", None)
-                entries.append(entry)
-            return entries
         attached_rows: list[dict] = []
         attached_refs = 0
         for entry in index_entries:
@@ -12240,7 +9844,24 @@ def build_language_bundle(
                     if ref.get("name")
                 )[:12],
             })
-        standalone_entries = emit_standalone_video_outputs()
+        standalone_entries = emit_standalone_video_outputs(
+            standalone_videos,
+            narrative_video_name_sort_key=narrative_video_name_sort_key,
+            compact_narrative_video_ref=compact_narrative_video_ref,
+            parse_mission=parse_mission,
+            unique_preserve=_unique_preserve,
+            mission_name_trace=mission_name_trace,
+            write_conv_payload=write_conv_payload,
+            narrative_video_index_summary=narrative_video_index_summary,
+            preview=preview,
+            merge_search_text=merge_search_text,
+            mission_context_text=mission_context_text,
+            text_table=text_table,
+            translate=t,
+            source_ref=source_ref,
+            pick_fields=pick_fields,
+            text_trace=text_trace,
+        )
         for entry in standalone_entries:
             index_entries.append(entry)
             conv_media_tags_by_key[str(entry.get("k") or "")].add("mediaVideo")
@@ -20261,229 +17882,6 @@ def build_language_bundle(
                         (context_mission, quest_id)
                     ].append(row)
 
-    def dialog_tree_story_playback_connection(
-        story_key: str,
-        dialog_key: str,
-        occurrence_rows: list[dict],
-        *,
-        scope: dict,
-        parent_scope_key: str,
-    ) -> dict:
-        carrier_quest_state_context = scope.get("carrierQuestStateContext")
-        quest_evidence = str(scope.get("questEvidence") or "none")
-        scope_kind = str(scope.get("scopeKind") or "mission")
-        if carrier_quest_state_context:
-            confidence = "native_exact_cross_story_quest_state_context"
-            evidence_tier = "native_exact_context"
-            quest_trigger_status = (
-                "exact_multi_quest_branch_dependency_not_unique_trigger"
-            )
-        elif scope_kind == "quest" and quest_evidence == "direct":
-            confidence = "native_exact_parent_quest"
-            evidence_tier = "native_direct"
-            quest_trigger_status = "exact_parent_quest_context_not_independent_trigger"
-        elif scope_kind == "quest":
-            confidence = "native_derived_exact_parent_quest"
-            evidence_tier = "derived_exact_quest"
-            quest_trigger_status = "exact_parent_quest_context_not_playback_trigger"
-        elif quest_evidence == "derived" and not scope.get("missionContextRows"):
-            confidence = "native_derived_exact_parent_shell"
-            evidence_tier = "derived_exact_shell"
-            quest_trigger_status = "unresolved_derived_exact_mission_shell"
-        else:
-            confidence = "native_exact_parent_mission_context"
-            evidence_tier = "native_direct_mission_context"
-            quest_trigger_status = "unresolved_parent_has_no_unique_quest"
-        scope_rows = [
-            *list(scope.get("questRows") or []),
-            *list(scope.get("missionContextRows") or []),
-        ]
-        carrier_kinds = sorted({
-            str(row.get("carrierKind") or "")
-            for row in occurrence_rows
-            if row.get("carrierKind")
-        })
-        has_trunk_carrier = "trunk" in carrier_kinds
-        has_dialog_carrier = "dialog" in carrier_kinds
-        native_consumers = []
-        if has_trunk_carrier:
-            native_consumers.extend([
-                {
-                    "method": "DTTrunkNodeData.get_trunkId",
-                    "token": "0x06003977",
-                    "address": "0x187292f78",
-                },
-                {
-                    "method": "DialogPlayTrunkActionData.get_trunkId",
-                    "token": "0x06003945",
-                    "address": "0x18729799c",
-                },
-                {
-                    "method": "DialogTreeTrunkNode.DoExecute",
-                    "token": "0x06003bb4",
-                    "address": "0x1872a74b4",
-                },
-                {
-                    "method": "DialogTreeTrunkNode.FindTrunkIdForReplacement",
-                    "token": "0x06003bb3",
-                    "address": "0x1872a76f8",
-                },
-                {
-                    "method": "DialogTreeTrunkNode._DoPlayTrunk",
-                    "token": "0x06003bb6",
-                    "address": "0x1872a80b8",
-                },
-                {
-                    "method": "DialogPlayTrunkActionData.SetOverrideTrunkId",
-                    "token": "0x06003955",
-                    "address": "0x187297578",
-                },
-                {
-                    "method": "DialogManager.PlayTrunkNode",
-                    "token": "0x0600f785",
-                    "address": "0x186e16cc8",
-                },
-            ])
-        if has_dialog_carrier:
-            native_consumers.extend([
-                {
-                    "method": "DialogTreeDialogNode.DoExecute",
-                    "token": "0x06003b6e",
-                    "address": "0x1872a3770",
-                },
-                {
-                    "method": "DialogManager.PlayNextDialog",
-                    "token": "0x0600f78e",
-                    "address": "0x186e168e8",
-                },
-            ])
-        connection = {
-            "key": story_key,
-            "kind": story_kind_by_key.get(story_key, "dialog"),
-            "relation": "dialog_tree_reachable_story_playback",
-            "direction": "context",
-            "phase": "dialog_tree_story_playback",
-            "confidence": confidence,
-            "evidenceTier": evidence_tier,
-            "source": (
-                "registered installed-game DialogTree TextAsset contains an exact "
-                "typed playback carrier in the directed ancestor/descendant "
-                "closure of a current-parent trunk; the current binary executes "
-                "that carrier locally, while registered parent scope comes from "
-                "separate original mission data"
-            ),
-            "storyOwnerMission": story_owner_by_key.get(story_key) or "",
-            "parentStoryKey": dialog_key,
-            "questTriggerStatus": quest_trigger_status,
-            "storyBinding": True,
-            "ownership": False,
-            "possibleAuthoredRoute": True,
-            "certainty": "authored_reachable",
-            "carrierKinds": carrier_kinds,
-            "executionSide": "client",
-            "networkRole": "local_dialog_tree_story_playback",
-            "serverExchange": False,
-            "clientRequest": False,
-            "expectedClientReply": False,
-            "serverEvidenceStatus": (
-                "the recovered typed carrier paths end in local DialogManager "
-                "playback and contain no network request"
-            ),
-            "occurrenceCount": len(occurrence_rows),
-            "trunkIds": sorted({
-                str(row.get("trunkId") or "")
-                for row in occurrence_rows
-                if row.get("trunkId")
-            }),
-            "dialogIds": sorted({
-                str(row.get("dialogId") or "")
-                for row in occurrence_rows
-                if row.get("dialogId")
-            }),
-            "sourceFiles": sorted({
-                str(row.get("sourceFile") or "")
-                for row in occurrence_rows
-                if row.get("sourceFile")
-            }),
-            "sourcePathIds": sorted({
-                str(row.get("sourcePathId") or "")
-                for row in occurrence_rows
-                if row.get("sourcePathId")
-            }),
-            "parentScopeRelations": sorted({
-                str(row.get("relation") or "")
-                for row in scope_rows
-                if isinstance(row, dict) and row.get("relation")
-            }),
-            "dialogTreeStoryPlaybackCarriers": occurrence_rows,
-            "runtimeReplacementPossible": has_trunk_carrier,
-            "runtimeReplacementNote": (
-                "authored trunk ids may be replaced at runtime through "
-                "FindTrunkIdForReplacement/SetOverrideTrunkId"
-                if has_trunk_carrier
-                else ""
-            ),
-            "nativeConsumers": native_consumers,
-            "nativeMappingId": "dialog-tree-reachable-story-playback-native-v1",
-        }
-        if carrier_quest_state_context:
-            connection.update({
-                "source": (
-                    "registered installed-game DialogTree contains exact typed "
-                    "cross-Story playback carriers behind an all-leaf "
-                    "CheckQuestState/CombineCondition gate that dominates every "
-                    "serialized root-to-carrier path; all quest ids resolve to "
-                    "one MissionRuntime"
-                ),
-                "dependencyOnly": True,
-                "carrierQuestStateContext": carrier_quest_state_context,
-                "missionStateGateRoles": ["DialogTree CheckQuestState"],
-                "missionStateGatePredicates": [
-                    (
-                        f"{row.get('conditionPath')}._questId="
-                        f"{row.get('questId')}; _comparer="
-                        f"{row.get('comparer')}; _targetQuestState="
-                        f"{row.get('targetQuestState')}"
-                    )
-                    for context in carrier_quest_state_context.get(
-                        "questStateBranchContexts"
-                    ) or []
-                    for row in context.get("conditions") or []
-                    if isinstance(row, dict)
-                ],
-                "upstreamServerStateSources": [
-                    "SC_SYNC_ALL_MISSION",
-                    "SC_QUEST_STATE_UPDATE",
-                ],
-                "nativeMappingId": (
-                    "dialog-tree-cross-story-quest-state-carrier-native-v1"
-                ),
-            })
-        npc_navigation_contexts = [
-            row
-            for row in scope_rows
-            if isinstance(row, dict)
-            and row.get("relation")
-            == "npc_proxy_tracking_dialog_navigation_context"
-        ]
-        if npc_navigation_contexts:
-            connection.update({
-                "questTriggerStatus": (
-                    "tracked_proxy_navigation_context_not_quest_playback"
-                ),
-                "npcProxyTrackingDialogContexts": npc_navigation_contexts,
-                "questPlayback": False,
-                "questCompletion": False,
-                "trackingVisibilityRole": (
-                    "navigation_marker_visibility_only_not_dialog_activation"
-                ),
-            })
-        if parent_scope_key != dialog_key:
-            connection["parentStoryOutKey"] = parent_scope_key
-        candidate_quest_ids = list(scope.get("candidateQuestIds") or [])
-        if candidate_quest_ids:
-            connection["candidateQuestIds"] = candidate_quest_ids
-        return connection
 
     # Freeze all accepted parent indexes above this point. The new connection
     # relation is intentionally absent from those sets, making inheritance
@@ -20583,6 +17981,8 @@ def build_language_bundle(
             occurrence_rows,
             scope=scope,
             parent_scope_key=parent_scope_key,
+            story_kind_by_key=story_kind_by_key,
+            story_owner_by_key=story_owner_by_key,
         )
         if scope.get("scopeKind") == "quest":
             target = (target_mission, str(scope.get("questId") or ""))
@@ -20837,168 +18237,6 @@ def build_language_bundle(
             "dialogTreeStoryPlaybackCarriers": occurrences,
         })
 
-    def dialog_tree_narrative_connection(
-        black_key: str,
-        dialog_key: str,
-        occurrence_rows: list[dict],
-        *,
-        confidence: str,
-        quest_trigger_status: str,
-        evidence_tier: str,
-    ) -> dict:
-        left_subtitle_only = bool(occurrence_rows) and all(
-            str(row.get("actionKind") or "") == "left_subtitle"
-            for row in occurrence_rows
-        )
-        connection = {
-            "key": black_key,
-            "kind": story_kind_by_key.get(black_key, "black"),
-            "relation": (
-                "dialog_tree_left_subtitle_action"
-                if left_subtitle_only
-                else "dialog_tree_narrative_action"
-            ),
-            "direction": "context",
-            "phase": (
-                "dialog_left_subtitle"
-                if left_subtitle_only
-                else "dialog_narrative_mask"
-            ),
-            "confidence": confidence,
-            "source": (
-                (
-                    "installed-game DialogTree TextAsset m_Script + exact native "
-                    "DialogLeftSubtitleActionData text1..text4 LangKey fields + "
-                    "separately classified original-data parent dialog scope"
-                )
-                if left_subtitle_only
-                else (
-                    "installed-game DialogTree TextAsset m_Script + exact native "
-                    "DialogNarrativeMaskActionData/"
-                    "DialogComplexNarrativeMaskActionData type and LangKey field + "
-                    "separately classified original-data parent dialog scope"
-                )
-            ),
-            "storyOwnerMission": story_owner_by_key.get(black_key) or "",
-            "parentStoryKey": dialog_key,
-            "questTriggerStatus": quest_trigger_status,
-            "evidenceTier": evidence_tier,
-            "clientPresentationOnly": True,
-            "executionSide": "client",
-            "networkRole": (
-                "local_dialog_ui_left_subtitle"
-                if left_subtitle_only
-                else "local_dialog_narrative_presentation"
-            ),
-            "serverExchange": False,
-            "clientRequest": False,
-            "expectedClientReply": False,
-            "occurrenceCount": len(occurrence_rows),
-            "textIds": sorted({
-                str(row.get("textId") or "")
-                for row in occurrence_rows
-                if row.get("textId")
-            }),
-            "actionKinds": sorted({
-                str(row.get("actionKind") or "")
-                for row in occurrence_rows
-                if row.get("actionKind")
-            }),
-            "actionTypes": sorted({
-                str(row.get("actionType") or "")
-                for row in occurrence_rows
-                if row.get("actionType")
-            }),
-            "actionPaths": sorted({
-                str(row.get("actionPath") or "")
-                for row in occurrence_rows
-                if row.get("actionPath")
-            }),
-            "sourceFiles": sorted({
-                str(row.get("sourceFile") or "")
-                for row in occurrence_rows
-                if row.get("sourceFile")
-            }),
-            "sourcePathIds": sorted({
-                str(row.get("sourcePathId") or "")
-                for row in occurrence_rows
-                if row.get("sourcePathId")
-            }),
-        }
-        if left_subtitle_only:
-            connection["textFields"] = sorted({
-                str(row.get("textField") or "")
-                for row in occurrence_rows
-                if row.get("textField")
-            })
-            connection["dialogTreeLeftSubtitleActions"] = occurrence_rows
-            connection["nativeConsumers"] = [
-                {
-                    "method": "DialogLeftSubtitleAction.OnPlay",
-                    "token": "0x0600f682",
-                    "address": "0x186e37bc8",
-                },
-                {
-                    "method": "LangKey.GetText",
-                    "token": "0x0600047e",
-                    "address": "0x183036af0",
-                },
-                {
-                    "method": "UILeftSubtitle.SetLeftSubTitle",
-                    "token": "0x06000751",
-                    "address": "0x18b0de1f4",
-                },
-            ]
-            connection["serverEvidenceStatus"] = (
-                "DialogLeftSubtitleAction.OnPlay sends a local global UI event; "
-                "the shipped dialog Lua resolves each nonempty LangKey and the "
-                "native subtitle widget renders it without a network request"
-            )
-        else:
-            connection["dialogTreeNarrativeActions"] = occurrence_rows
-            placement_statuses = sorted({
-                str(row.get("dialogTreeConnectionPlacementStatus") or "")
-                for row in occurrence_rows
-                if row.get("dialogTreeConnectionPlacementStatus")
-            })
-            connection["dialogTreeConnectionPlacementStatuses"] = (
-                placement_statuses
-            )
-            connection["embeddedAfterLineIds"] = sorted({
-                str(line_id)
-                for row in occurrence_rows
-                for line_id in row.get("embeddedAfterLineIds") or []
-                if line_id
-            })
-            connection["embeddedBeforeLineIds"] = sorted({
-                str(line_id)
-                for row in occurrence_rows
-                for line_id in row.get("embeddedBeforeLineIds") or []
-                if line_id
-            })
-            exact_embedded_placement = bool(occurrence_rows) and all(
-                str(row.get("dialogTreeConnectionPlacementStatus") or "")
-                == "exact_unique_adjacent_parent_trunks"
-                and str(row.get("dialogKey") or "") == dialog_key
-                and bool(row.get("embeddedAfterLineIds"))
-                and bool(row.get("embeddedBeforeLineIds"))
-                for row in occurrence_rows
-            )
-            connection["embeddedLinePlacementStatus"] = (
-                "exact_complete_connection_neighbors"
-                if exact_embedded_placement
-                else "not_exact_complete_connection_neighbors"
-            )
-            connection["nativeMappingId"] = (
-                "dialog-tree-narrative-mask-connection-native-v1"
-            )
-            connection["orderBoundary"] = (
-                "the serialized DialogTree connections place the nested text "
-                "between parent line nodes; because the parent Story file has "
-                "content on both sides, this is line-level containment and "
-                "does not establish a Story-file edge"
-            )
-        return connection
 
     dialog_tree_parents_by_black: dict[str, set[str]] = defaultdict(set)
     for black_key, dialog_key in dialog_tree_narrative_groups:
@@ -21028,6 +18266,8 @@ def build_language_bundle(
                 confidence="native_exact_parent_quest",
                 quest_trigger_status="exact_unique_parent_quest",
                 evidence_tier="native_direct",
+                story_kind_by_key=story_kind_by_key,
+                story_owner_by_key=story_owner_by_key,
             )
             if parent_scope_key != dialog_key:
                 connection["parentStoryOutKey"] = parent_scope_key
@@ -21089,6 +18329,8 @@ def build_language_bundle(
                 confidence="native_derived_exact_parent_quest",
                 quest_trigger_status="exact_parent_quest_context_not_playback",
                 evidence_tier="derived_exact_quest",
+                story_kind_by_key=story_kind_by_key,
+                story_owner_by_key=story_owner_by_key,
             )
             if parent_scope_key != dialog_key:
                 connection["parentStoryOutKey"] = parent_scope_key
@@ -21170,6 +18412,8 @@ def build_language_bundle(
                 ),
                 quest_trigger_status="unresolved_derived_exact_mission_shell",
                 evidence_tier="derived_exact_shell",
+                story_kind_by_key=story_kind_by_key,
+                story_owner_by_key=story_owner_by_key,
             )
             if parent_scope_key != dialog_key:
                 connection["parentStoryOutKey"] = parent_scope_key
@@ -21265,6 +18509,8 @@ def build_language_bundle(
             confidence=confidence,
             quest_trigger_status=quest_trigger_status,
             evidence_tier=evidence_tier,
+            story_kind_by_key=story_kind_by_key,
+            story_owner_by_key=story_owner_by_key,
         )
         if parent_scope_key != dialog_key:
             connection["parentStoryOutKey"] = parent_scope_key

@@ -7,7 +7,7 @@ import math
 import re
 import struct
 from collections import Counter, defaultdict
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 
 if __package__ == "story_builder":
@@ -88,10 +88,24 @@ from .native_contracts.callserver_callback import (
 from .native_contracts.actionbase_formatter import (
     load_actionbase_formatter_names as _load_actionbase_formatter_names,
 )
+from .codecs.leveldata.memorypack import (
+    read_bool as _read_leveldata_bool,
+    read_count as _read_leveldata_count,
+    read_f32 as _read_leveldata_f32,
+    read_f64 as _read_leveldata_f64,
+    read_i32 as _read_leveldata_i32,
+    read_string as _read_leveldata_memorypack_string,
+    read_u32 as _read_leveldata_u32,
+    read_u64 as _read_leveldata_u64,
+    skip_bytes as _skip_leveldata_bytes,
+    skip_string as _skip_leveldata_memorypack_string,
+)
+from .codecs.leveldata.radio_contexts import (
+    parse_airwall_groups,
+    parse_function_area_radio_trigger,
+)
+from .codecs.leveldata import interactive_layout
 
-_LEVELDATA_NAMED_TABLES_CACHE: dict[str, list[list[dict]]] = {}
-_LEVELSCRIPT_UID_OCCURRENCE_CACHE: dict[tuple[str, ...], dict[str, list[dict]]] = {}
-_LEVELTIMELINE_MARKER_CACHE: dict[tuple[tuple[str, ...], tuple[str, ...]], list[dict]] = {}
 _LEVELSCRIPT_DIALOG_EXIT_TEXT_PAIR_CACHE: dict[str, list[dict]] = {}
 _LEVELSCRIPT_ACTION_STORY_OCCURRENCES_CACHE: dict[str, list[dict]] | None = None
 _LEVELSCRIPT_NATIVE_STORY_PLAYBACK_CACHE: dict[str, list[dict]] | None = None
@@ -151,82 +165,6 @@ LEVELDATA_HORN_PROPERTY_SHAPES = {
     "max_count": (3, 1, False),
     "state": (3, 1, False),
 }
-
-
-def _topo_sort_quests(quests_out: list[dict]) -> list[dict]:
-    by_id = {q["id"]: q for q in quests_out if q.get("id")}
-    indegree = {qid: 0 for qid in by_id}
-    succs: dict[str, set[str]] = defaultdict(set)
-
-    def has_path(src: str, dst: str) -> bool:
-        if src == dst:
-            return True
-        seen: set[str] = set()
-        stack = list(succs.get(src) or [])
-        while stack:
-            cur = stack.pop()
-            if cur == dst:
-                return True
-            if cur in seen:
-                continue
-            seen.add(cur)
-            stack.extend(succs.get(cur) or [])
-        return False
-
-    def add_edge(src: str, dst: str) -> None:
-        if not src or not dst or src == dst:
-            return
-        if src not in by_id or dst not in by_id or dst in succs[src]:
-            return
-        succs[src].add(dst)
-        indegree[dst] += 1
-
-    for q in by_id.values():
-        for prev in q.get("prev") or []:
-            add_edge(prev, q["id"])
-
-    story_ref_owners: dict[str, list[str]] = defaultdict(list)
-    for q in by_id.values():
-        qid = q["id"]
-        for field_name in ("dialogs", "cutscenes", "remotecomms", "radios"):
-            for ref in q.get(field_name) or []:
-                if ref and qid not in story_ref_owners[ref]:
-                    story_ref_owners[ref].append(qid)
-
-    # A failedCondition story ref is an authored "this branch closes when that
-    # scene happens" guard. Use it as a weak chronology edge when it does not
-    # contradict the explicit prevQuestIdList graph.
-    for q in by_id.values():
-        qid = q["id"]
-        for ref in q.get("failStoryRefs") or []:
-            for owner_id in story_ref_owners.get(ref) or []:
-                if owner_id == qid or has_path(owner_id, qid):
-                    continue
-                add_edge(qid, owner_id)
-
-    ready = [by_id[qid] for qid, deg in indegree.items() if deg == 0]
-    ready.sort(key=_quest_sort_key)
-
-    out: list[dict] = []
-    emitted: set[str] = set()
-    while ready:
-        cur = ready.pop(0)
-        qid = cur["id"]
-        if qid in emitted:
-            continue
-        emitted.add(qid)
-        out.append(cur)
-        for nxt in sorted(succs.get(qid, []), key=lambda next_id: _quest_sort_key(by_id[next_id])):
-            indegree[nxt] -= 1
-            if indegree[nxt] == 0:
-                ready.append(by_id[nxt])
-        ready.sort(key=_quest_sort_key)
-
-    if len(out) < len(by_id):
-        for q in sorted(by_id.values(), key=_quest_sort_key):
-            if q["id"] not in emitted:
-                out.append(q)
-    return out
 
 
 def _load_npc_proxy_ex() -> dict:
@@ -1316,6 +1254,25 @@ def build_levelscript_unhosted_reading_popup_receiver_index(
     }
 
 
+def _decode_levelscript_record_cached(
+    record: dict,
+    *,
+    data: bytes,
+    next_starts: dict[int, int],
+    membership: dict[int, str],
+    decoded_cache: dict[int, dict],
+) -> dict:
+    start = int(record.get("start") or 0)
+    if start not in decoded_cache:
+        decoded_cache[start] = decode_levelscript_record_payload(
+            data,
+            record,
+            next_start=next_starts.get(start),
+            action_map_role=str(membership.get(start) or ""),
+        )
+    return decoded_cache[start]
+
+
 def _prepare_levelscript_native_control_context(
     data: bytes,
     records: list[dict],
@@ -1345,16 +1302,13 @@ def _prepare_levelscript_native_control_context(
             header_buckets[local_id].append(record)
     decoded_cache: dict[int, dict] = {}
 
-    def decoded(record: dict) -> dict:
-        start = int(record.get("start") or 0)
-        if start not in decoded_cache:
-            decoded_cache[start] = decode_levelscript_record_payload(
-                data,
-                record,
-                next_start=next_starts.get(start),
-                action_map_role=str(membership.get(start) or ""),
-            )
-        return decoded_cache[start]
+    decoded = partial(
+        _decode_levelscript_record_cached,
+        data=data,
+        next_starts=next_starts,
+        membership=membership,
+        decoded_cache=decoded_cache,
+    )
 
     def control_signature(record: dict) -> tuple:
         """Return only binary-decoded fields that affect static traversal."""
@@ -1638,16 +1592,13 @@ def _levelscript_native_control_paths_to_record(
     ):
         return []
 
-    def decoded(record: dict) -> dict:
-        start = int(record.get("start") or 0)
-        if start not in decoded_cache:
-            decoded_cache[start] = decode_levelscript_record_payload(
-                data,
-                record,
-                next_start=next_starts.get(start),
-                action_map_role=str(membership.get(start) or ""),
-            )
-        return decoded_cache[start]
+    decoded = partial(
+        _decode_levelscript_record_cached,
+        data=data,
+        next_starts=next_starts,
+        membership=membership,
+        decoded_cache=decoded_cache,
+    )
 
     records_by_uid: dict[str, list[dict]] = defaultdict(list)
     for candidate in ordered:
@@ -2155,16 +2106,13 @@ def decode_levelscript_native_action_topology(
     decoded_cache = context.get("decodedByStart")
     if not isinstance(decoded_cache, dict):
         decoded_cache = {}
-    def decoded(record: dict) -> dict:
-        start = int(record.get("start") or 0)
-        if start not in decoded_cache:
-            decoded_cache[start] = decode_levelscript_record_payload(
-                data,
-                record,
-                next_start=next_starts.get(start),
-                action_map_role=str(membership.get(start) or ""),
-            )
-        return decoded_cache[start]
+    decoded = partial(
+        _decode_levelscript_record_cached,
+        data=data,
+        next_starts=next_starts,
+        membership=membership,
+        decoded_cache=decoded_cache,
+    )
 
     failures: list[dict] = []
     if action_map.get("status") != "present":
@@ -3205,22 +3153,6 @@ def _load_leveldata_named_entries(path: Path) -> list[dict]:
 
     _LEVELDATA_NAMED_TABLE_CACHE[cache_key] = entries
     return entries
-
-
-def _load_leveldata_named_tables(path: Path) -> list[list[dict]]:
-    cache_key = str(path)
-    if cache_key in _LEVELDATA_NAMED_TABLES_CACHE:
-        return _LEVELDATA_NAMED_TABLES_CACHE[cache_key]
-
-    try:
-        data = read_bytes_cached(path)
-    except OSError:
-        tables: list[list[dict]] = []
-    else:
-        tables = _extract_named_entry_tables(data)
-
-    _LEVELDATA_NAMED_TABLES_CACHE[cache_key] = tables
-    return tables
 
 
 def _load_levelscript_binding_data(
@@ -5960,318 +5892,6 @@ def _find_exact_bytes_offsets(data: bytes, needle: bytes) -> list[int]:
     return offsets
 
 
-def _read_leveldata_i32(data: bytes, offset: int) -> tuple[int, int] | None:
-    if offset < 0 or offset + 4 > len(data):
-        return None
-    return int.from_bytes(data[offset : offset + 4], "little", signed=True), offset + 4
-
-
-def _read_leveldata_u32(data: bytes, offset: int) -> tuple[int, int] | None:
-    if offset < 0 or offset + 4 > len(data):
-        return None
-    return int.from_bytes(data[offset : offset + 4], "little", signed=False), offset + 4
-
-
-def _read_leveldata_u64(data: bytes, offset: int) -> tuple[int, int] | None:
-    if offset < 0 or offset + 8 > len(data):
-        return None
-    return int.from_bytes(data[offset : offset + 8], "little", signed=False), offset + 8
-
-
-def _skip_leveldata_memorypack_string(data: bytes, offset: int) -> int | None:
-    decoded = _read_leveldata_i32(data, offset)
-    if decoded is None:
-        return None
-    length, offset = decoded
-    if length == -1:
-        return offset
-    if length < 0 or offset + length > len(data):
-        return None
-    try:
-        data[offset : offset + length].decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-    return offset + length
-
-
-def _read_leveldata_count(
-    data: bytes,
-    offset: int,
-    *,
-    max_count: int = 100_000,
-) -> tuple[int, int] | None:
-    decoded = _read_leveldata_i32(data, offset)
-    if decoded is None:
-        return None
-    count, offset = decoded
-    if count < -1 or count > max_count:
-        return None
-    return count, offset
-
-
-def _read_leveldata_memorypack_string(
-    data: bytes,
-    offset: int,
-    *,
-    max_length: int = 512,
-) -> tuple[str, int] | None:
-    decoded = _read_leveldata_i32(data, offset)
-    if decoded is None:
-        return None
-    length, offset = decoded
-    if length == -1:
-        return "", offset
-    if length < 0 or length > max_length or offset + length > len(data):
-        return None
-    try:
-        value = data[offset : offset + length].decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-    return value, offset + length
-
-
-def _read_leveldata_bool(data: bytes, offset: int) -> tuple[bool, int] | None:
-    if offset < 0 or offset >= len(data) or data[offset] not in (0, 1):
-        return None
-    return bool(data[offset]), offset + 1
-
-
-def _read_leveldata_f32(data: bytes, offset: int) -> tuple[float, int] | None:
-    if offset < 0 or offset + 4 > len(data):
-        return None
-    value = struct.unpack_from("<f", data, offset)[0]
-    if not math.isfinite(value):
-        return None
-    return value, offset + 4
-
-
-def _read_leveldata_f64(data: bytes, offset: int) -> tuple[float, int] | None:
-    if offset < 0 or offset + 8 > len(data):
-        return None
-    value = struct.unpack_from("<d", data, offset)[0]
-    if not math.isfinite(value):
-        return None
-    return value, offset + 8
-
-
-def _skip_leveldata_bytes(data: bytes, offset: int, size: int) -> int | None:
-    if offset < 0 or size < 0 or offset + size > len(data):
-        return None
-    return offset + size
-
-
-def parse_leveldata_airwall_groups(data: bytes) -> list[dict]:
-    """Decode exact ``LevelData.airWalls`` MemoryPack rows.
-
-    ``airWalls`` is member 0 of the current 43-member LevelData object, so its
-    collection frame begins at byte 1. Generated ForMemoryPack setters order
-    object members alphabetically. Every nested member count and collection
-    boundary is validated before a row is admitted.
-    """
-    if not data or data[0] != 43:
-        return []
-    count_decoded = _read_leveldata_count(data, 1, max_count=4096)
-    if count_decoded is None or count_decoded[0] < 0:
-        return []
-    group_count, cursor = count_decoded
-
-    def object_header(offset: int, expected: int) -> int | None:
-        if offset >= len(data) or data[offset] != expected:
-            return None
-        return offset + 1
-
-    def skip_three_dim_range(offset: int) -> int | None:
-        if offset < len(data) and data[offset] == 0xFF:
-            return offset + 1
-        offset = object_header(offset, 2)
-        return None if offset is None else _skip_leveldata_bytes(data, offset, 24)
-
-    def parse_mission_check(offset: int) -> tuple[dict, int] | None:
-        start = offset
-        offset = object_header(offset, 4)
-        if offset is None:
-            return None
-        detail_decoded = _read_leveldata_i32(data, offset)
-        if detail_decoded is None:
-            return None
-        detail_state, offset = detail_decoded
-        id_decoded = _read_leveldata_memorypack_string(data, offset)
-        if id_decoded is None:
-            return None
-        check_id, offset = id_decoded
-        quest_decoded = _read_leveldata_bool(data, offset)
-        if quest_decoded is None:
-            return None
-        is_quest, offset = quest_decoded
-        same_decoded = _read_leveldata_bool(data, offset)
-        if same_decoded is None:
-            return None
-        is_same, offset = same_decoded
-        return {
-            "id": check_id,
-            "isQuest": is_quest,
-            "detailState": detail_state,
-            "isSame": is_same,
-            "recordOffset": start,
-            "recordEndOffset": offset,
-        }, offset
-
-    def parse_mission_check_list(offset: int) -> tuple[list[dict], int] | None:
-        decoded = _read_leveldata_count(data, offset, max_count=4096)
-        if decoded is None:
-            return None
-        count, offset = decoded
-        if count == -1:
-            return [], offset
-        rows: list[dict] = []
-        for _index in range(count):
-            parsed = parse_mission_check(offset)
-            if parsed is None:
-                return None
-            row, offset = parsed
-            rows.append(row)
-        return rows, offset
-
-    def parse_mission_total(offset: int) -> tuple[dict | None, int] | None:
-        if offset < len(data) and data[offset] == 0xFF:
-            return None, offset + 1
-        offset = object_header(offset, 4)
-        if offset is None:
-            return None
-        down_decoded = parse_mission_check_list(offset)
-        if down_decoded is None:
-            return None
-        down_reason, offset = down_decoded
-        down_any_decoded = _read_leveldata_bool(data, offset)
-        if down_any_decoded is None:
-            return None
-        is_down_any, offset = down_any_decoded
-        rise_any_decoded = _read_leveldata_bool(data, offset)
-        if rise_any_decoded is None:
-            return None
-        is_rise_any, offset = rise_any_decoded
-        rise_decoded = parse_mission_check_list(offset)
-        if rise_decoded is None:
-            return None
-        rise_reason, offset = rise_decoded
-        return {
-            "downReason": down_reason,
-            "isDownAny": is_down_any,
-            "isRiseAny": is_rise_any,
-            "riseReason": rise_reason,
-        }, offset
-
-    def parse_airwall_check(offset: int) -> tuple[dict | None, int] | None:
-        if offset < len(data) and data[offset] == 0xFF:
-            return None, offset + 1
-        offset = object_header(offset, 2)
-        if offset is None:
-            return None
-        type_decoded = _read_leveldata_i32(data, offset)
-        if type_decoded is None:
-            return None
-        check_type, offset = type_decoded
-        total_decoded = parse_mission_total(offset)
-        if total_decoded is None:
-            return None
-        mission_data, offset = total_decoded
-        return {
-            "checkType": check_type,
-            "missionData": mission_data,
-        }, offset
-
-    def skip_poly_line_wall(offset: int) -> int | None:
-        offset = object_header(offset, 10)
-        if offset is None:
-            return None
-        offset = skip_three_dim_range(offset)
-        if offset is None:
-            return None
-        for _field in ("disableDefaultEffect", "enableNavObstacle"):
-            decoded = _read_leveldata_bool(data, offset)
-            if decoded is None:
-                return None
-            _value, offset = decoded
-        offset = _skip_leveldata_bytes(data, offset, 8)
-        if offset is None:
-            return None
-        offset = _skip_leveldata_memorypack_string(data, offset)
-        if offset is None:
-            return None
-        positions_decoded = _read_leveldata_count(data, offset, max_count=65536)
-        if positions_decoded is None:
-            return None
-        position_count, offset = positions_decoded
-        if position_count >= 0:
-            offset = _skip_leveldata_bytes(data, offset, position_count * 8)
-            if offset is None:
-                return None
-        # pushDis + pushWarnDis + usage + visualHeightRange
-        return _skip_leveldata_bytes(data, offset, 20)
-
-    def skip_poly_line_wall_list(offset: int) -> int | None:
-        decoded = _read_leveldata_count(data, offset, max_count=65536)
-        if decoded is None:
-            return None
-        count, offset = decoded
-        if count == -1:
-            return offset
-        for _index in range(count):
-            offset = skip_poly_line_wall(offset)
-            if offset is None:
-                return None
-        return offset
-
-    rows: list[dict] = []
-    for _index in range(group_count):
-        record_offset = cursor
-        cursor = object_header(cursor, 8)
-        if cursor is None:
-            return []
-        cursor = skip_three_dim_range(cursor)
-        if cursor is None:
-            return []
-        check_decoded = parse_airwall_check(cursor)
-        if check_decoded is None:
-            return []
-        check_data, cursor = check_decoded
-        default_decoded = _read_leveldata_bool(data, cursor)
-        if default_decoded is None:
-            return []
-        default_on, cursor = default_decoded
-        group_decoded = _read_leveldata_u64(data, cursor)
-        if group_decoded is None:
-            return []
-        group_id, cursor = group_decoded
-        cursor = skip_poly_line_wall_list(cursor)
-        if cursor is None:
-            return []
-        radio_decoded = _read_leveldata_memorypack_string(data, cursor)
-        if radio_decoded is None:
-            return []
-        pushback_radio_id, cursor = radio_decoded
-        script_decoded = _read_leveldata_u64(data, cursor)
-        if script_decoded is None:
-            return []
-        script_id, cursor = script_decoded
-        slot_decoded = _read_leveldata_u32(data, cursor)
-        if slot_decoded is None:
-            return []
-        slot_id, cursor = slot_decoded
-        rows.append({
-            "recordOffset": record_offset,
-            "recordEndOffset": cursor,
-            "serializedMemberCount": 8,
-            "defaultOn": default_on,
-            "groupId": str(group_id),
-            "scriptId": str(script_id),
-            "slotId": slot_id,
-            "checkData": check_data,
-            "pushBackRadioId": pushback_radio_id,
-        })
-    return rows
-
-
 def build_leveldata_airwall_mission_radio_contexts(
     available_story_keys: set[str],
     mission_runtime_ids: set[str],
@@ -6288,7 +5908,7 @@ def build_leveldata_airwall_mission_radio_contexts(
             data = read_bytes_cached(path)
         except OSError:
             continue
-        for group in parse_leveldata_airwall_groups(data):
+        for group in parse_airwall_groups(data):
             radio_id = str(group.get("pushBackRadioId") or "")
             check_data = group.get("checkData") or {}
             mission_data = check_data.get("missionData") or {}
@@ -6361,67 +5981,6 @@ def build_leveldata_airwall_mission_radio_contexts(
     return rows
 
 
-def parse_level_function_area_radio_trigger_zone_entry(
-    data: bytes,
-    offset: int,
-) -> dict | None:
-    """Parse one exact LevelFunctionArea RadioTriggerZoneData union row.
-
-    The installed-build MemoryPack union table maps
-    ``FunctionAreaSpecificData`` tag 9 to ``RadioTriggerZoneData``. Its wrapper
-    serializes seven alphabetically ordered members: three mission ids,
-    ``prtsId``, ``radioId``, ``triggerId``, and ``useRadioTriggerOnce``.
-    Current authored rows are the sole item in ``specificDatas``; requiring the
-    immediately preceding list count to equal one proves the collection frame
-    and rejects identical tag/member pairs from unrelated unions.
-    """
-    if (
-        offset < 4
-        or data[offset : offset + 2] != b"\x09\x07"
-        or int.from_bytes(data[offset - 4 : offset], "little", signed=True) != 1
-    ):
-        return None
-    cursor = offset + 2
-    values: list[str] = []
-    for _ in range(5):
-        decoded = _read_leveldata_memorypack_string(data, cursor)
-        if decoded is None:
-            return None
-        value, cursor = decoded
-        values.append(value)
-    trigger_decoded = _read_leveldata_u64(data, cursor)
-    if trigger_decoded is None:
-        return None
-    trigger_id, cursor = trigger_decoded
-    if trigger_id <= 0 or cursor >= len(data) or data[cursor] not in (0, 1):
-        return None
-    use_once = bool(data[cursor])
-    cursor += 1
-    (
-        hide_after_mission_id,
-        hide_before_mission_id,
-        hide_complete_mission_id,
-        prts_id,
-        radio_id,
-    ) = values
-    if not radio_id.startswith("radio_"):
-        return None
-    return {
-        "recordOffset": offset,
-        "recordEndOffset": cursor,
-        "unionTag": 9,
-        "serializedMemberCount": 7,
-        "specificDataListCount": 1,
-        "hideAfterMissionId": hide_after_mission_id,
-        "hideBeforeMissionId": hide_before_mission_id,
-        "hideCompleteMissionId": hide_complete_mission_id,
-        "prtsId": prts_id,
-        "radioId": radio_id,
-        "triggerId": str(trigger_id),
-        "useRadioTriggerOnce": use_once,
-    }
-
-
 def build_level_function_area_radio_trigger_story_contexts(
     available_story_keys: set[str],
     mission_runtime_ids: set[str],
@@ -6451,7 +6010,7 @@ def build_level_function_area_radio_trigger_story_contexts(
             if offset < 0:
                 break
             start = offset + 1
-            row = parse_level_function_area_radio_trigger_zone_entry(data, offset)
+            row = parse_function_area_radio_trigger(data, offset)
             if row is None or row["radioId"] not in available_story_keys:
                 continue
             mission_fields = [
@@ -6935,7 +6494,7 @@ def build_entity_tracking_world_interactive_dialog_contexts(
                 continue
             if not data or data[0] != 0x2B:
                 continue
-            for frame in _level_interactive_data_list_frames(data):
+            for frame in interactive_layout.level_interactive_data_list_frames(data):
                 for record in frame.get("records") or []:
                     context = parse_level_interactive_world_dialog_context(
                         data,
@@ -7836,302 +7395,6 @@ def build_levelscript_interactive_narrative_story_contexts(
     ]
 
 
-def _level_interactive_data_list_frames(
-    data: bytes,
-    *,
-    final_record_end_offset: int | None = None,
-) -> list[dict]:
-    """Locate fully counted LevelInteractiveData lists in one LevelData blob."""
-    candidates: list[tuple[int, str]] = []
-    for offset, value in enumerate(data):
-        if value != 25 or offset + 29 > len(data):
-            continue
-        decoded = _read_leveldata_memorypack_string(
-            data,
-            offset + 1 + (3 * 8),
-            max_length=256,
-        )
-        if decoded is not None and decoded[0].startswith("int_"):
-            candidates.append((offset, decoded[0]))
-    frames: list[dict] = []
-    for index, (offset, _entity_id) in enumerate(candidates):
-        if offset < 4:
-            continue
-        count = int.from_bytes(data[offset - 4 : offset], "little", signed=True)
-        if count <= 0 or count > 50_000 or index + count > len(candidates):
-            continue
-        record_starts = candidates[index : index + count]
-        # A next typed record is required as an exact end boundary. The final
-        # list item remains intentionally unparsed rather than borrowing the
-        # unknown following LevelData member as a boundary.
-        bounded_records = [
-            {
-                "recordIndex": record_index,
-                "recordOffset": record_starts[record_index][0],
-                "recordEndOffset": record_starts[record_index + 1][0],
-                "entityDetailId": record_starts[record_index][1],
-                "recordBoundarySource": "next_record",
-            }
-            for record_index in range(max(0, count - 1))
-        ]
-        if (
-            isinstance(final_record_end_offset, int)
-            and record_starts[-1][0] < final_record_end_offset <= len(data)
-        ):
-            bounded_records.append({
-                "recordIndex": count - 1,
-                "recordOffset": record_starts[-1][0],
-                "recordEndOffset": final_record_end_offset,
-                "entityDetailId": record_starts[-1][1],
-                "recordBoundarySource": "leveldata_member21_start",
-            })
-        frames.append({
-            "listCountOffset": offset - 4,
-            "listCount": count,
-            "finalRecordOffset": record_starts[-1][0],
-            "records": bounded_records,
-        })
-    return frames
-
-
-def parse_leveldata_interactive_narrative_records(
-    data: bytes,
-    *,
-    final_record_end_offset: int | None = None,
-) -> list[dict]:
-    """Recover fully bounded narrative interactives in LevelData.
-
-    Non-final records use the next typed list item. A caller may supply the
-    exact start of top-level member 21 to bound the final record, but only after
-    independently validating either the adjacent nonempty member-22 dictionary
-    or the complete empty-script members 21-43 suffix.
-    """
-    if not data or data[0] != 43:
-        return []
-    rows: list[dict] = []
-    seen_offsets: set[int] = set()
-    for frame in _level_interactive_data_list_frames(
-        data,
-        final_record_end_offset=final_record_end_offset,
-    ):
-        for boundary in frame.get("records") or []:
-            offset = boundary.get("recordOffset")
-            end_offset = boundary.get("recordEndOffset")
-            if (
-                not isinstance(offset, int)
-                or not isinstance(end_offset, int)
-                or offset in seen_offsets
-            ):
-                continue
-            parsed = _parse_levelscript_interactive_narrative_record(
-                data,
-                offset,
-                end_offset,
-                allow_progress_lock=True,
-            )
-            if (
-                parsed is None
-                or parsed.get("recordEndOffset") != end_offset
-            ):
-                continue
-            seen_offsets.add(offset)
-            rows.append({
-                **parsed,
-                "recordIndex": boundary.get("recordIndex"),
-                "interactiveListCount": frame.get("listCount"),
-                "interactiveListCountOffset":
-                    frame.get("listCountOffset"),
-                "recordBoundarySource":
-                    boundary.get("recordBoundarySource"),
-            })
-    return rows
-
-
-def parse_leveldata_interactive_horn_dialog_records(
-    data: bytes,
-    *,
-    final_record_end_offset: int | None = None,
-) -> list[dict]:
-    """Recover fully bounded ``int_horn.properties.dialog_id`` consumers."""
-    if not data or data[0] != 43:
-        return []
-    rows: list[dict] = []
-    seen_offsets: set[int] = set()
-    for frame in _level_interactive_data_list_frames(
-        data,
-        final_record_end_offset=final_record_end_offset,
-    ):
-        for boundary in frame.get("records") or []:
-            offset = boundary.get("recordOffset")
-            end_offset = boundary.get("recordEndOffset")
-            if (
-                not isinstance(offset, int)
-                or not isinstance(end_offset, int)
-                or offset in seen_offsets
-            ):
-                continue
-            parsed = _parse_leveldata_horn_dialog_record(
-                data,
-                offset,
-                end_offset,
-            )
-            if parsed is None:
-                continue
-            seen_offsets.add(offset)
-            rows.append({
-                **parsed,
-                "recordIndex": boundary.get("recordIndex"),
-                "interactiveListCount": frame.get("listCount"),
-                "interactiveListCountOffset": frame.get("listCountOffset"),
-                "recordBoundarySource":
-                    boundary.get("recordBoundarySource"),
-            })
-    return rows
-
-
-def _leveldata_interactive_final_record_boundary(
-    data: bytes,
-    candidate_script_ids: set[int],
-    *,
-    expected_level_id: str = "",
-) -> dict | None:
-    """Validate the member-20/21/22 boundary used by a final interactive.
-
-    Current ``LevelData/43`` member 20 is the interactive list and member 21 is
-    the fixed-width ``levelIdNum`` integer. A nonempty member-22 BriefData
-    dictionary or the complete empty-script members 21-43 suffix supplies an
-    exact boundary without borrowing an unrelated byte pattern.
-    """
-    brief_rows = (
-        parse_leveldata_levelscript_brief_dictionary(
-            data,
-            candidate_script_ids,
-        )
-        if candidate_script_ids
-        else {}
-    )
-    count_offsets = {
-        int(row["dictionaryCountOffset"])
-        for row in brief_rows.values()
-        if isinstance(row.get("dictionaryCountOffset"), int)
-    }
-    if len(count_offsets) == 1:
-        dictionary_count_offset = next(iter(count_offsets))
-        member21_offset = dictionary_count_offset - 4
-        level_id_num_decoded = _read_leveldata_i32(data, member21_offset)
-        if (
-            member21_offset > 0
-            and level_id_num_decoded is not None
-            and level_id_num_decoded[1] == dictionary_count_offset
-            and level_id_num_decoded[0] >= 0
-        ):
-            return {
-                "recordEndOffset": member21_offset,
-                "levelDataMember21Offset": member21_offset,
-                "levelIdNum": level_id_num_decoded[0],
-                "levelScriptBriefDictionaryCountOffset":
-                    dictionary_count_offset,
-                "levelScriptBriefDictionaryCount": len(brief_rows),
-                "levelDataFinalBoundaryValidation":
-                    "nonempty_levelscript_brief_dictionary",
-            }
-
-    # Environment-only LevelData can serialize no LevelScriptBriefData rows.
-    # In the current 43-member schema, the complete member-21..43 suffix is
-    # independently recognizable: levelIdNum; fourteen empty collections;
-    # LevelSafeZoneData/1 with its zero value; exact sceneId; two empty
-    # collections; null LevelSpecificData; and three empty collections at EOF.
-    candidates: list[dict] = []
-    for frame in _level_interactive_data_list_frames(data):
-        record_offset = frame.get("finalRecordOffset")
-        if not isinstance(record_offset, int):
-            continue
-        parsed = _parse_levelscript_interactive_narrative_record(
-            data,
-            record_offset,
-            len(data),
-            allow_progress_lock=True,
-        )
-        if parsed is None:
-            parsed = _parse_leveldata_horn_dialog_record(
-                data,
-                record_offset,
-                len(data),
-                require_end_limit=False,
-            )
-        if parsed is None:
-            continue
-        member21_offset = int(parsed["recordEndOffset"])
-        cursor = member21_offset
-        level_id_num_decoded = _read_leveldata_i32(data, cursor)
-        if level_id_num_decoded is None or level_id_num_decoded[0] < 0:
-            continue
-        level_id_num, cursor = level_id_num_decoded
-        collection_offsets: list[int] = []
-        valid = True
-        for _ in range(14):
-            decoded = _read_leveldata_count(data, cursor, max_count=0)
-            if decoded is None or decoded[0] != 0:
-                valid = False
-                break
-            collection_offsets.append(cursor)
-            _, cursor = decoded
-        if not valid or data[cursor : cursor + 5] != b"\x01\x00\x00\x00\x00":
-            continue
-        safe_zone_offset = cursor
-        cursor += 5
-        scene_decoded = _read_leveldata_memorypack_string(
-            data,
-            cursor,
-            max_length=256,
-        )
-        if scene_decoded is None:
-            continue
-        scene_id, cursor = scene_decoded
-        if expected_level_id and scene_id != expected_level_id:
-            continue
-        for _ in range(2):
-            decoded = _read_leveldata_count(data, cursor, max_count=0)
-            if decoded is None or decoded[0] != 0:
-                valid = False
-                break
-            collection_offsets.append(cursor)
-            _, cursor = decoded
-        if not valid or cursor >= len(data) or data[cursor] != 0xFF:
-            continue
-        specific_data_offset = cursor
-        cursor += 1
-        for _ in range(3):
-            decoded = _read_leveldata_count(data, cursor, max_count=0)
-            if decoded is None or decoded[0] != 0:
-                valid = False
-                break
-            collection_offsets.append(cursor)
-            _, cursor = decoded
-        if not valid or cursor != len(data):
-            continue
-        candidates.append({
-            "recordEndOffset": member21_offset,
-            "levelDataMember21Offset": member21_offset,
-            "levelIdNum": level_id_num,
-            "levelScriptBriefDictionaryCountOffset":
-                collection_offsets[0],
-            "levelScriptBriefDictionaryCount": 0,
-            "levelScriptDataPathDictionaryCountOffset":
-                collection_offsets[1],
-            "levelScriptDataPathDictionaryCount": 0,
-            "levelDataSafeZoneOffset": safe_zone_offset,
-            "levelDataSceneId": scene_id,
-            "levelDataSpecificDataOffset": specific_data_offset,
-            "levelDataEmptySuffixEndOffset": cursor,
-            "levelDataFinalBoundaryValidation":
-                "complete_empty_script_suffix_to_eof",
-        })
-    unique = {
-        int(row["recordEndOffset"]): row
-        for row in candidates
-    }
-    return next(iter(unique.values())) if len(unique) == 1 else None
 
 
 def _validated_leveldata_horn_template(
@@ -8271,10 +7534,22 @@ def build_leveldata_interactive_narrative_story_contexts(
                 )
             ):
                 continue
-            final_boundary = _leveldata_interactive_final_record_boundary(
-                data,
-                candidate_script_ids_by_level.get(path.parent.name, set()),
-                expected_level_id=path.parent.name,
+            final_boundary = (
+                interactive_layout.leveldata_interactive_final_record_boundary(
+                    data,
+                    candidate_script_ids_by_level.get(
+                        path.parent.name,
+                        set(),
+                    ),
+                    expected_level_id=path.parent.name,
+                    brief_dictionary_parser=(
+                        parse_leveldata_levelscript_brief_dictionary
+                    ),
+                    narrative_record_parser=(
+                        _parse_levelscript_interactive_narrative_record
+                    ),
+                    horn_record_parser=_parse_leveldata_horn_dialog_record,
+                )
             )
             final_record_end_offset = (
                 final_boundary.get("recordEndOffset")
@@ -8283,18 +7558,26 @@ def build_leveldata_interactive_narrative_story_contexts(
             )
             parsed_records = [
                 ("narrative_component", record)
-                for record in parse_leveldata_interactive_narrative_records(
-                    data,
-                    final_record_end_offset=final_record_end_offset,
+                for record in (
+                    interactive_layout.parse_leveldata_interactive_narrative_records(
+                        data,
+                        final_record_end_offset=final_record_end_offset,
+                        record_parser=(
+                            _parse_levelscript_interactive_narrative_record
+                        ),
+                    )
                 )
             ]
             if horn_template_evidence is not None:
                 parsed_records.extend(
                     ("horn_dialog_property", record)
                     for record
-                    in parse_leveldata_interactive_horn_dialog_records(
-                        data,
-                        final_record_end_offset=final_record_end_offset,
+                    in (
+                        interactive_layout.parse_leveldata_interactive_horn_dialog_records(
+                            data,
+                            final_record_end_offset=final_record_end_offset,
+                            record_parser=_parse_leveldata_horn_dialog_record,
+                        )
                     )
                 )
             for consumer_kind, record in parsed_records:
@@ -8805,7 +8088,9 @@ def build_quest_progress_locked_interactive_story_contexts(
                     continue
                 if not data or data[0] != 0x2B:
                     continue
-                for frame in _level_interactive_data_list_frames(data):
+                for frame in (
+                    interactive_layout.level_interactive_data_list_frames(data)
+                ):
                     for record in frame.get("records") or []:
                         parsed = parse_level_interactive_quest_progress_lock(
                             data,
@@ -9046,7 +8331,7 @@ def build_level_interactive_narrative_mission_story_contexts(
             continue
         if not data or data[0] != 0x2B:
             continue
-        for frame in _level_interactive_data_list_frames(data):
+        for frame in interactive_layout.level_interactive_data_list_frames(data):
             for record in frame["records"]:
                 context = parse_level_interactive_narrative_mission_context(
                     data,
@@ -12159,253 +11444,6 @@ def _build_levelscript_dialog_exit_scene_pairs(
     return out
 
 
-def _levelscript_record_for_offset(records: list[dict], offset: int, data_len: int) -> dict | None:
-    for index, record in enumerate(records):
-        start = int(record.get("start") or 0)
-        next_start = int(records[index + 1].get("start") or data_len) if index + 1 < len(records) else data_len
-        if start <= offset < next_start:
-            return record
-    return None
-
-
-def _compact_levelscript_uid_occurrence(
-    *,
-    level_id: str,
-    file_info: dict,
-    uid: str,
-    uid_offset: int,
-    record: dict | None,
-) -> dict:
-    row = {
-        "levelId": level_id,
-        "file": file_info.get("file") or "",
-        "sourceScript": file_info.get("fileStem") or "",
-        "uid": uid,
-        "uidOffset": uid_offset,
-    }
-    if record:
-        row.update({
-            "recordUid": record.get("uid") or "",
-            "recordStart": int(record.get("start") or 0),
-            "recordPayloadStart": int(record.get("payloadStart", record.get("start", 0)) or 0),
-            "recordClass": classify_levelscript_record(record),
-            "recordCode": f"0x{int(record.get('code') or 0):04x}",
-            "recordKind": f"0x{int(record.get('kind') or 0):02x}",
-            "localId": record.get("localId"),
-            "nextId": record.get("nextId"),
-            "recordStrings": [
-                hit.get("text")
-                for hit in (record.get("strings") or [])[:8]
-                if hit.get("text")
-            ],
-            "recordPlainStrings": [
-                hit.get("text")
-                for hit in (record.get("plainStrings") or [])[:8]
-                if hit.get("text")
-            ],
-        })
-    return row
-
-
-def _dedupe_uid_record_occurrences(rows: list[dict]) -> list[dict]:
-    grouped: dict[tuple, dict] = {}
-    order: list[tuple] = []
-    for row in rows:
-        key = (
-            row.get("levelId") or "",
-            row.get("file") or "",
-            row.get("recordStart", row.get("uidOffset")),
-            row.get("recordUid") or "",
-        )
-        if key not in grouped:
-            item = dict(row)
-            item["uidOffsets"] = [row.get("uidOffset")]
-            grouped[key] = item
-            order.append(key)
-            continue
-        offsets = grouped[key].setdefault("uidOffsets", [])
-        if row.get("uidOffset") not in offsets:
-            offsets.append(row.get("uidOffset"))
-    out = [grouped[key] for key in order]
-    for row in out:
-        row["uidOffsets"] = [
-            offset
-            for offset in sorted(row.get("uidOffsets") or [])
-            if offset is not None
-        ][:8]
-        row.pop("uidOffset", None)
-    return out
-
-
-def _build_levelscript_uid_occurrence_index(level_ids: list[str]) -> dict[str, list[dict]]:
-    cache_key = tuple(dict.fromkeys(str(level_id or "") for level_id in level_ids if level_id))
-    if cache_key in _LEVELSCRIPT_UID_OCCURRENCE_CACHE:
-        return _LEVELSCRIPT_UID_OCCURRENCE_CACHE[cache_key]
-
-    uid_index: dict[str, list[dict]] = defaultdict(list)
-    for level_id in cache_key:
-        info = _load_levelscript_binding_data(level_id)
-        for file_info in info.get("files") or []:
-            rel_file = str(file_info.get("file") or "")
-            if not rel_file:
-                continue
-            try:
-                data = read_bytes_cached(ROOT / rel_file)
-            except OSError:
-                continue
-            records = list(file_info.get("records") or [])
-            for match in HEX_UID_RE.finditer(data):
-                uid = match.group().decode("ascii")
-                offset = match.start()
-                record = _levelscript_record_for_offset(records, offset, len(data))
-                uid_index[uid].append(
-                    _compact_levelscript_uid_occurrence(
-                        level_id=level_id,
-                        file_info=file_info,
-                        uid=uid,
-                        uid_offset=offset,
-                        record=record,
-                    )
-                )
-
-    compact_index = {
-        uid: _dedupe_uid_record_occurrences(rows)
-        for uid, rows in uid_index.items()
-    }
-    _LEVELSCRIPT_UID_OCCURRENCE_CACHE[cache_key] = compact_index
-    return compact_index
-
-
-def _leveltimeline_pair_relation(source: dict, target: dict) -> str:
-    if (
-        source.get("levelId") == target.get("levelId")
-        and source.get("file") == target.get("file")
-    ):
-        if (
-            source.get("recordStart") is not None
-            and source.get("recordStart") == target.get("recordStart")
-        ):
-            return "same-record"
-        return "same-script"
-    return "cross-script"
-
-
-def _compact_leveltimeline_pair(source: dict, target: dict) -> dict:
-    relation = _leveltimeline_pair_relation(source, target)
-    return {
-        "relation": relation,
-        "levelId": source.get("levelId") if source.get("levelId") == target.get("levelId") else "",
-        "sourceScript": source.get("sourceScript") or "",
-        "targetScript": target.get("sourceScript") or "",
-        "sourceRecordStart": source.get("recordStart"),
-        "targetRecordStart": target.get("recordStart"),
-        "sourceRecordClass": source.get("recordClass") or "",
-        "targetRecordClass": target.get("recordClass") or "",
-        "sourceStrings": list(source.get("recordStrings") or [])[:6],
-        "targetStrings": list(target.get("recordStrings") or [])[:6],
-        "sourcePlainStrings": list(source.get("recordPlainStrings") or [])[:6],
-        "targetPlainStrings": list(target.get("recordPlainStrings") or [])[:6],
-    }
-
-
-def collect_leveltimeline_markers(
-    level_ids: list[str],
-    *,
-    leveldata_files: set[str] | None = None,
-) -> list[dict]:
-    """Resolve LevelData ``lt:p`` / ``lt:mp`` markers to LevelScript UID records.
-
-    LevelData may contain several named-entry tables in one file; the Story UI
-    only needs the best table for search binding, but ordering recovery needs
-    every marker-bearing table in authored byte order.
-    """
-    cache_key = (
-        tuple(dict.fromkeys(str(level_id or "") for level_id in level_ids if level_id)),
-        tuple(sorted(str(path).replace("\\", "/") for path in (leveldata_files or set()))),
-    )
-    if cache_key in _LEVELTIMELINE_MARKER_CACHE:
-        return _LEVELTIMELINE_MARKER_CACHE[cache_key]
-
-    level_key = cache_key[0]
-    allowed_files = set(cache_key[1])
-    uid_index = _build_levelscript_uid_occurrence_index(list(level_key))
-    markers: list[dict] = []
-
-    for level_id in level_key:
-        leveldata_dir = LEVELDATA_DIR / level_id
-        if not leveldata_dir.is_dir():
-            continue
-        for path in sorted(leveldata_dir.glob("*.json")):
-            rel_path = repo_rel(path)
-            if allowed_files and rel_path not in allowed_files:
-                continue
-            for table_index, table in enumerate(_load_leveldata_named_tables(path)):
-                for entry_index, entry in enumerate(table):
-                    text = str(entry.get("text") or "")
-                    match = LT_BINDING_RE.match(text)
-                    if not match:
-                        continue
-
-                    source_uid = match.group("uid1")
-                    target_uid = match.group("uid2")
-                    source_occurrences = uid_index.get(source_uid, [])
-                    target_occurrences = uid_index.get(target_uid, [])
-                    pairs = [
-                        _compact_leveltimeline_pair(source, target)
-                        for source in source_occurrences
-                        for target in target_occurrences
-                    ]
-                    relation_rank = {"same-record": 0, "same-script": 1, "cross-script": 2}
-                    pairs.sort(key=lambda pair: (
-                        relation_rank.get(str(pair.get("relation") or ""), 9),
-                        str(pair.get("sourceScript") or ""),
-                        int(pair.get("sourceRecordStart") or 0),
-                        str(pair.get("targetScript") or ""),
-                        int(pair.get("targetRecordStart") or 0),
-                    ))
-                    if any(pair.get("relation") == "same-record" for pair in pairs):
-                        status = "same-record"
-                    elif any(pair.get("relation") == "same-script" for pair in pairs):
-                        status = "same-script"
-                    elif pairs:
-                        status = "cross-script"
-                    elif source_occurrences or target_occurrences:
-                        status = "partial"
-                    else:
-                        status = "unresolved"
-
-                    marker = {
-                        "levelId": level_id,
-                        "file": rel_path,
-                        "marker": text,
-                        "kind": match.group("kind"),
-                        "sourceUid": source_uid,
-                        "targetUid": target_uid,
-                        "markerKey": entry.get("key"),
-                        "tableIndex": table_index,
-                        "entryIndex": entry_index,
-                        "tableOffset": entry.get("tableOffset"),
-                        "entryOffset": entry.get("entryOffset"),
-                        "textOffset": entry.get("textOffset"),
-                        "status": status,
-                        "sourceOccurrences": source_occurrences[:8],
-                        "targetOccurrences": target_occurrences[:8],
-                        "resolvedPairs": pairs[:8],
-                    }
-                    markers.append(marker)
-
-    markers.sort(key=lambda row: (
-        str(row.get("levelId") or ""),
-        str(row.get("file") or ""),
-        int(row.get("tableOffset") or 0),
-        int(row.get("entryIndex") or 0),
-        int(row.get("markerKey") or 0),
-        str(row.get("marker") or ""),
-    ))
-    _LEVELTIMELINE_MARKER_CACHE[cache_key] = markers
-    return markers
-
-
 def _build_levelscript_file_order_scene_sequences(
     level_id: str,
     dialog_key_resolver,
@@ -12725,6 +11763,26 @@ def _scene_binding_search_text(binding_entry: dict) -> str:
     return " ".join(part for part in parts if part)
 
 
+def _resolve_entry_scene_ref(
+    raw_ref: str,
+    *,
+    entries_by_key: dict[str, dict],
+) -> str:
+    candidates = _unique_preserve([
+        str(raw_ref or "").strip(),
+        *_scene_ref_alias_candidates(raw_ref),
+    ])
+    for candidate in candidates:
+        if not candidate:
+            continue
+        if candidate in entries_by_key:
+            return candidate
+        canonical_cutscene = _canonical_cutscene_key(candidate) or ""
+        if canonical_cutscene in entries_by_key:
+            return canonical_cutscene
+    return ""
+
+
 def infer_mission_dialog_order(
     mission_id: str,
     mission_entries: list[dict],
@@ -12782,20 +11840,10 @@ def infer_mission_dialog_order(
             seen.add(dialog_id)
             ordered_keys.append(dialog_id)
 
-    def resolve_entry_scene_ref(raw_ref: str) -> str:
-        candidates = _unique_preserve([
-            str(raw_ref or "").strip(),
-            *_scene_ref_alias_candidates(raw_ref),
-        ])
-        for candidate in candidates:
-            if not candidate:
-                continue
-            if candidate in entries_by_key:
-                return candidate
-            canonical_cutscene = _canonical_cutscene_key(candidate) or ""
-            if canonical_cutscene in entries_by_key:
-                return canonical_cutscene
-        return ""
+    resolve_entry_scene_ref = partial(
+        _resolve_entry_scene_ref,
+        entries_by_key=entries_by_key,
+    )
 
     def quest_area_scene_refs(quest: dict) -> list[str]:
         refs: list[str] = []
@@ -12995,20 +12043,10 @@ def build_mission_scene_file_order(
 
     quest_by_id = {quest["id"]: quest for quest in quests}
 
-    def resolve_entry_scene_ref(raw_ref: str) -> str:
-        candidates = _unique_preserve([
-            str(raw_ref or "").strip(),
-            *_scene_ref_alias_candidates(raw_ref),
-        ])
-        for candidate in candidates:
-            if not candidate:
-                continue
-            if candidate in entries_by_key:
-                return candidate
-            canonical_cutscene = _canonical_cutscene_key(candidate) or ""
-            if canonical_cutscene in entries_by_key:
-                return canonical_cutscene
-        return ""
+    resolve_entry_scene_ref = partial(
+        _resolve_entry_scene_ref,
+        entries_by_key=entries_by_key,
+    )
 
     def quest_area_scene_refs(quest: dict) -> list[str]:
         refs: list[str] = []

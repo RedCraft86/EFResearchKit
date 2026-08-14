@@ -84,6 +84,16 @@ direct `+0xab8` or low-level `0x27ef` call. Thus high-level records do reach
 the generic immediate-compute sink, but remain a separate stream from the
 native `0x27ef` record, and neither path identifies the factory channel-2 /
 kernel-7 upload producer.
+An expanded UnityPlayer direct-call census covers the two high-level writers:
+`0x1804cb1a0` (opcode `0x0d`) has 58 direct callsites in 20 PData bodies and
+`0x1804c73e0` (opcode `0x11`) has 42 callsites in 18 bodies, 27 unique bodies
+in the union. The bounded caller set has no direct call to the factory
+`0x8c`/`0x100` staging functions, the custom-resource resolver
+`0x1804255f0`, or the immediate dispatch helpers; the only known
+factory-adjacent bodies are the already-separated generic GPUDriven V1/V2
+binders (`0x1810eece0`, `0x1810fb5a0`). This closes the direct native writer
+surface as a factory producer while leaving virtual/table-dispatched callers
+and the channel-2 resource upload edge fail-closed.
 The native command-stream pair is now bounded for one dispatch opcode: writer
 `0x18092bed0..0x18092c123` stores opcode `0x27ef`, a resource/handle qword, and
 three 32-bit dispatch values (`0x18092bf54`, `0x18092bfb6`, `0x18092c00a`,
@@ -94,6 +104,16 @@ fallback at `0x18092c10e`. This closes the generic native command-record
 boundary, but the record is not tied to factory channel-2/resource `+0xd0` or
 `UploadPerDrawParams` kernel 7, so the character upload edge remains
 fail-closed.
+The current protected `Gameplay.Beyond` IFix payload is now structurally
+bounded beyond its 32 target signatures: its 330-entry external-method table
+contains only factory LOD/quality references (`SetFactoryLodTier` and
+`FacQuality.Apply`) plus unrelated dynamic-scene buffer helpers, with no
+`ComputeShader`, `ComputeBuffer`, `CommandBuffer`, `GPUDriven`, per-draw,
+`UploadPerDrawParams`, or dispatch API. The `0x7301`
+`RemoteFactoryGameWorldController.FrameUpdateEntitiesJobForward` target is
+also absent from this on-disk table. This strengthens the static negative but
+does not expose runtime wrapper-array slots or another loaded patch payload;
+the IFix route and factory-record-to-`_UploadBuffer` edge stay fail-closed.
 
 ## Evidence boundary
 

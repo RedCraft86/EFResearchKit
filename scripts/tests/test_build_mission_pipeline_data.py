@@ -12,12 +12,89 @@ from unittest.mock import patch
 
 from scripts import build_mission_pipeline_data as pipeline
 from scripts.mission_pipeline import (
+    dialog_tree_projection,
+    lua_story_projection,
+    mission_context_projection,
+    mission_payload_projection,
+    offline_shell_projection,
+    offline_recovery_projection,
+    post_playback_enrichment,
+    post_playback_projection,
+    quest_fork_arm_projection,
+    quest_payload_projection,
     quest_scope_projection,
     runtime_trace_projection,
+    source_order_publication,
+    source_order_shells,
     story_order_projection,
+    story_trigger_route_projection,
 )
 from scripts.story_builder import dynamic_scene, level_bindings, mission_flow, source_links
-from scripts.story_builder.native_contracts import callserver_callback
+from scripts.story_builder.native_contracts import callserver_callback, ifix_patch
+
+
+def _objective_row(*args, **kwargs):
+    return quest_payload_projection.objective_row(
+        *args,
+        **kwargs,
+        authority_classifier=pipeline.classify_authority,
+        condition_objects_projector=pipeline.condition_objects,
+        condition_tree_projector=pipeline.condition_tree,
+        get_const_projector=pipeline.get_const,
+        level_script_source_projector=pipeline.level_script_source_evidence,
+        level_script_dependency_projector=pipeline.level_script_task_dependencies,
+        json_loader=pipeline.read_json,
+        submit_item_table=pipeline.DEFAULT_SUBMIT_ITEM_TABLE,
+        tracking_info_projector=pipeline.tracking_info_row,
+        type_name_projector=pipeline.type_name,
+    )
+
+
+def _action_rows(value):
+    return quest_payload_projection.action_rows(
+        value,
+        compact_scalar_projector=pipeline.compact_scalar,
+        quest_action_triggers=pipeline.QUEST_ACTION_TRIGGERS,
+        type_name_projector=pipeline.type_name,
+    )
+
+
+def _build_mission(*args, **kwargs):
+    return mission_payload_projection.build_mission(
+        *args,
+        **kwargs,
+        schema_version=pipeline.SCHEMA_VERSION,
+        repo_root=pipeline.ROOT,
+        case_studies=pipeline.CASE_STUDIES,
+        action_projector=_action_rows,
+        objective_projector=_objective_row,
+        task_dependency_validator=(
+            pipeline.validate_level_script_task_dependency
+        ),
+        condition_projector=pipeline.condition_tree,
+        authority_classifier=pipeline.classify_authority,
+        quest_fork_builder=pipeline.build_quest_fork_semantics,
+        mission_property_projector=pipeline.mission_property_rows,
+    )
+
+
+def _build_post_playback_variable_bridge_audit(native_index):
+    return post_playback_projection.build_post_playback_variable_bridge_audit(
+        native_index,
+        setter_actions=pipeline.POST_PLAYBACK_VARIABLE_SETTER_ACTIONS,
+        listener_fields=pipeline.POST_PLAYBACK_VARIABLE_LISTENER_FIELDS,
+        post_playback_control_projector=(
+            pipeline.exact_native_receiver_post_playback_control
+        ),
+    )
+
+
+def _build_story_trigger_route(*args, **kwargs):
+    return story_trigger_route_projection.build_story_trigger_route(
+        *args,
+        **kwargs,
+        runtime_selector=pipeline.exact_native_runtime_selector,
+    )
 
 
 class NativeEvidenceSkipWiringTests(unittest.TestCase):
@@ -474,6 +551,19 @@ def condition(kind, **values):
 
 
 class MissionPipelineBuilderTests(unittest.TestCase):
+    @staticmethod
+    def reviewed_runtime_contract() -> dict:
+        with patch.object(
+            ifix_patch,
+            "check_installed_native_inputs",
+            return_value=SimpleNamespace(status="validated", detail="fixture"),
+        ):
+            audit = ifix_patch.load_ifix_patch_contract()
+        return pipeline.project_ifix_runtime_contract(
+            pipeline.RUNTIME_CONTRACT,
+            audit,
+        )
+
     def test_quest_fork_state_application_annotation_is_corpus_wide(self):
         payload = {
             "questTopology": {
@@ -616,7 +706,11 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             "boundary": "fixture boundary",
         }
 
-        counts = pipeline.annotate_quest_action_dispatch(payload, contract)
+        self.assertFalse(hasattr(pipeline, "annotate_quest_action_dispatch"))
+        counts = quest_payload_projection.annotate_quest_action_dispatch(
+            payload,
+            contract,
+        )
 
         actions = payload["nodes"][0]["clientActions"]
         self.assertEqual(
@@ -837,11 +931,16 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "validationFailures": [],
                 "usesOcrOrManualOrder": False,
             }
-            with patch.object(pipeline, "ROOT", root), patch.object(
-                pipeline, "ACTIONBASE_FORMATTER_NAME_AUDIT", audit_contract
-            ):
-                result = pipeline.publish_quest_fork_arm_evidence(
-                    index, output_root, root / "webui" / "data" / "lang", "CN"
+            self.assertFalse(
+                hasattr(pipeline, "publish_quest_fork_arm_evidence")
+            )
+            with patch.object(quest_fork_arm_projection, "ROOT", root):
+                result = quest_fork_arm_projection.publish_quest_fork_arm_evidence(
+                    index,
+                    output_root,
+                    root / "webui" / "data" / "lang",
+                    "CN",
+                    actionbase_formatter_name_audit=audit_contract,
                 )
 
             published = json.loads((mission_root / "m1.json").read_text(encoding="utf-8"))
@@ -918,18 +1017,17 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "sourceFile": action_audit.relative_to(root).as_posix(),
                 "sourceSha256": hashlib.sha256(action_audit.read_bytes()).hexdigest().upper(),
             }
-            with patch.object(pipeline, "ROOT", root), patch.object(
-                pipeline, "ACTIONBASE_FORMATTER_NAME_AUDIT", audit_contract
-            ):
+            with patch.object(quest_fork_arm_projection, "ROOT", root):
                 with self.assertRaisesRegex(
                     RuntimeError,
                     r"validator=quest_fork_arm_evidence gate=corridorQuestsInOriginalQuestDic .*actual=\['m1_q#3'\]",
                 ):
-                    pipeline.publish_quest_fork_arm_evidence(
+                    quest_fork_arm_projection.publish_quest_fork_arm_evidence(
                         {"missions": [{"id": "m1", "file": "missions/m1.json"}]},
                         output_root,
                         root / "webui" / "data" / "lang",
                         "CN",
+                        actionbase_formatter_name_audit=audit_contract,
                     )
             failed_index = json.loads(
                 (output_root / "index.json").read_text(encoding="utf-8")
@@ -965,15 +1063,17 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "sourceFile": action_audit.relative_to(root).as_posix(),
                 "sourceSha256": hashlib.sha256(action_audit.read_bytes()).hexdigest().upper(),
             }
-            with patch.object(pipeline, "ROOT", root), patch.object(
-                pipeline, "ACTIONBASE_FORMATTER_NAME_AUDIT", audit_contract
-            ):
+            with patch.object(quest_fork_arm_projection, "ROOT", root):
                 with self.assertRaisesRegex(
                     RuntimeError,
                     r"validator=quest_fork_arm_evidence gate=missionSidecar mission=m1",
                 ):
-                    pipeline.publish_quest_fork_arm_evidence(
-                        index, output_root, root / "webui" / "data" / "lang", "CN"
+                    quest_fork_arm_projection.publish_quest_fork_arm_evidence(
+                        index,
+                        output_root,
+                        root / "webui" / "data" / "lang",
+                        "CN",
+                        actionbase_formatter_name_audit=audit_contract,
                     )
 
     def test_state_update_contract_revalidates_original_binary_sources(self):
@@ -1666,7 +1766,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         )
 
     def test_trigger_route_preserves_exact_connected_context_evidence(self):
-        route = pipeline.build_story_trigger_route(
+        route = _build_story_trigger_route(
             {
                 "key": "radio_arbitrary_2",
                 "relation": "levelscript_quest_state_gate",
@@ -2251,9 +2351,13 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 },
             }
 
-            result = pipeline.publish_offline_story_recovery(
+            self.assertFalse(hasattr(pipeline, "publish_offline_story_recovery"))
+            result = offline_recovery_projection.publish_offline_story_recovery(
                 manifest,
                 queue_path,
+                source_story_gap_queue_schema=(
+                    pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA
+                ),
             )
 
         self.assertEqual(result["status"], "active")
@@ -2450,9 +2554,12 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            result = pipeline.publish_offline_story_recovery(
+            result = offline_recovery_projection.publish_offline_story_recovery(
                 {},
                 queue_path,
+                source_story_gap_queue_schema=(
+                    pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA
+                ),
             )
 
         self.assertEqual(result["questAttachmentDiagnosticStatus"], "active")
@@ -2487,9 +2594,12 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 }
             }
 
-            result = pipeline.publish_offline_story_recovery(
+            result = offline_recovery_projection.publish_offline_story_recovery(
                 manifest,
                 queue_path,
+                source_story_gap_queue_schema=(
+                    pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA
+                ),
             )
 
         self.assertEqual(result["status"], "rejected_stale_or_incompatible")
@@ -2539,9 +2649,12 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 }
             }
 
-            result = pipeline.publish_offline_story_recovery(
+            result = offline_recovery_projection.publish_offline_story_recovery(
                 manifest,
                 queue_path,
+                source_story_gap_queue_schema=(
+                    pipeline.SOURCE_STORY_GAP_QUEUE_SCHEMA
+                ),
             )
 
         provenance = manifest["opaque_notice"]["contentProvenance"]
@@ -2592,11 +2705,15 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                     },
                 },
             }
-            published = pipeline.publish_offline_recovery_mission_shells(
+            self.assertFalse(
+                hasattr(pipeline, "publish_offline_recovery_mission_shells")
+            )
+            published = offline_shell_projection.publish_offline_recovery_mission_shells(
                 index,
                 root,
                 offline,
                 queue_path,
+                schema_version=pipeline.SCHEMA_VERSION,
             )
             shell = json.loads(
                 (root / "missions/gm_fixture.json").read_text(encoding="utf-8")
@@ -2637,12 +2754,13 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "summary": {"sceneCount": 2, "nativeControlBranchCount": 1},
                 "branches": {"nativeControlBranches": [{"id": "branch-1"}]},
             }
-            publication = pipeline.attach_source_story_partial_order(
+            publication = source_order_publication.attach_source_story_partial_order(
                 index,
                 root,
                 {"missions": [order_row]},
                 create_variant_aggregate_shells=True,
                 require_complete_branch_publication=True,
+                schema_version=pipeline.SCHEMA_VERSION,
             )
             shell = json.loads(
                 (mission_root / "gm_fixture.json").read_text(encoding="utf-8")
@@ -2692,13 +2810,14 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                     }],
                 }],
             }
-            pipeline.attach_source_story_partial_order(
+            source_order_publication.attach_source_story_partial_order(
                 index,
                 root,
                 {"missions": [order_row]},
                 create_variant_aggregate_shells=False,
                 require_complete_branch_publication=False,
                 source_gap_queue=gap_queue,
+                schema_version=pipeline.SCHEMA_VERSION,
             )
             payload = json.loads(
                 (mission_root / "mission_a.json").read_text(encoding="utf-8")
@@ -2785,7 +2904,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "sha256": "c" * 64,
                 "playbackStoryKeys": ["story_elsewhere"],
             }
-            publication = pipeline.attach_source_story_partial_order(
+            publication = source_order_publication.attach_source_story_partial_order(
                 index,
                 root,
                 {"missions": [order_row], "nativeSerializedBranchInventory": {
@@ -2793,6 +2912,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 }},
                 create_variant_aggregate_shells=False,
                 require_complete_branch_publication=False,
+                schema_version=pipeline.SCHEMA_VERSION,
             )
             payload = json.loads(
                 (mission_root / "mission_a.json").read_text(encoding="utf-8")
@@ -2869,26 +2989,28 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "branches": {},
             }
             cross_reference = (
-                pipeline.build_source_story_order_cross_reference_report(
+                source_order_publication.build_source_story_order_cross_reference_report(
                     {"missions": [order_row]},
                     {"missions": {"mission_a": {"order": ["story_a", "story_b"]}}},
                     {"missions": {"mission_a": {"order": ["story_b", "story_a"]}}},
                 )
             )
-            pipeline.attach_source_story_partial_order(
+            source_order_publication.attach_source_story_partial_order(
                 index,
                 root,
                 {"missions": [order_row]},
                 create_variant_aggregate_shells=False,
                 require_complete_branch_publication=False,
                 order_cross_reference=cross_reference,
+                schema_version=pipeline.SCHEMA_VERSION,
             )
-            pipeline.attach_source_story_partial_order(
+            source_order_publication.attach_source_story_partial_order(
                 index,
                 root,
                 {"missions": [order_row]},
                 create_variant_aggregate_shells=False,
                 require_complete_branch_publication=False,
+                schema_version=pipeline.SCHEMA_VERSION,
             )
             payload = json.loads(
                 (mission_root / "mission_a.json").read_text(encoding="utf-8")
@@ -2966,12 +3088,13 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 },
             }
             index = {"counts": {"missions": 0}, "missions": []}
-            publication = pipeline.attach_source_story_partial_order(
+            publication = source_order_publication.attach_source_story_partial_order(
                 index,
                 mission_output,
                 {"missions": [order_row]},
                 create_variant_aggregate_shells=True,
                 require_complete_branch_publication=True,
+                schema_version=pipeline.SCHEMA_VERSION,
             )
             shell = json.loads(
                 (mission_output / "missions" / "source_only.json").read_text(
@@ -3072,12 +3195,13 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                     "sourceSha256": {str(validation_source): validation_sha},
                 }],
             }
-            publication = pipeline.attach_source_story_partial_order(
+            publication = source_order_publication.attach_source_story_partial_order(
                 index,
                 root,
                 {"missions": [order_row]},
                 create_variant_aggregate_shells=False,
                 require_complete_branch_publication=True,
+                schema_version=pipeline.SCHEMA_VERSION,
             )
             payload = json.loads(
                 (mission_root / "existing.json").read_text(encoding="utf-8")
@@ -3139,12 +3263,13 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                     }],
                 },
             }
-            publication = pipeline.attach_source_story_partial_order(
+            publication = source_order_publication.attach_source_story_partial_order(
                 index,
                 root,
                 {"missions": [order_row]},
                 create_variant_aggregate_shells=True,
                 require_complete_branch_publication=True,
+                schema_version=pipeline.SCHEMA_VERSION,
             )
             payload = json.loads(
                 (root / "missions" / "branch_only.json").read_text(
@@ -3177,10 +3302,10 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             r"validator=story_branch_original_files gate=sourceFile "
             r"mission=missing_branch_source expected=file actual=missing",
         ):
-            pipeline._story_branch_related_original_files(order_row)
+            source_order_shells._story_branch_related_original_files(order_row)
 
     def test_story_branch_related_files_skip_non_materialized_installed_vfs_label(self):
-        related = pipeline._story_branch_related_original_files({
+        related = source_order_shells._story_branch_related_original_files({
             "mission": "installed_vfs_provenance",
             "branches": {
                 "dialogTreeIfNodes": [{
@@ -3211,7 +3336,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 r"validator=story_branch_original_files gate=sourceHash "
                 r"mission=mismatched_branch_source",
             ):
-                pipeline._story_branch_related_original_files(order_row)
+                source_order_shells._story_branch_related_original_files(order_row)
 
     def test_story_branch_related_files_keep_normalized_related_original_rows(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -3232,7 +3357,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 },
             }
 
-            related = pipeline._story_branch_related_original_files(order_row)
+            related = source_order_shells._story_branch_related_original_files(order_row)
 
         self.assertEqual(
             related,
@@ -3248,7 +3373,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary) / "dlg_branch.json"
             source.write_bytes(b"singular-source")
-            related = pipeline._story_branch_related_original_files({
+            related = source_order_shells._story_branch_related_original_files({
                 "mission": "singular_branch_source",
                 "branches": {
                     "dialogLineOptions": [{
@@ -3280,7 +3405,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 r"validator=story_branch_original_files gate=sourceHash "
                 r"mission=singular_branch_hash",
             ):
-                pipeline._story_branch_related_original_files({
+                source_order_shells._story_branch_related_original_files({
                     "mission": "singular_branch_hash",
                     "branches": {
                         "dialogLineOptions": [{
@@ -3322,12 +3447,13 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "summary": {"sceneCount": 3, "nativeControlBranchCount": 2},
                 "branches": {"nativeControlBranches": [{"id": "b1"}, {"id": "b2"}]},
             }
-            publication = pipeline.attach_source_story_partial_order(
+            publication = source_order_publication.attach_source_story_partial_order(
                 index,
                 root,
                 {"missions": [order_row]},
                 create_variant_aggregate_shells=True,
                 require_complete_branch_publication=True,
+                schema_version=pipeline.SCHEMA_VERSION,
             )
             shell = json.loads(
                 (mission_root / "aggregate.json").read_text(encoding="utf-8")
@@ -3356,12 +3482,13 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 RuntimeError,
                 r"validator=source_story_order_publication .*gate=allRecoveredNativeBranchesPublished .*mission=missing .*expected=1 actual=0 .*source=story/missing.json",
             ):
-                pipeline.attach_source_story_partial_order(
+                source_order_publication.attach_source_story_partial_order(
                     index,
                     root,
                     report,
                     create_variant_aggregate_shells=True,
                     require_complete_branch_publication=True,
+                    schema_version=pipeline.SCHEMA_VERSION,
                 )
 
     def test_dynamic_scene_context_comes_from_the_owner(self):
@@ -3392,6 +3519,8 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertIsNone(published)
 
     def test_trigger_route_reads_exact_levelscript_occurrence_paths(self):
+        self.assertFalse(hasattr(pipeline, "build_story_trigger_route"))
+        self.assertFalse(hasattr(pipeline, "story_trigger_route_sort_key"))
         row = {
             "key": "radio_testm1_1",
             "relation": "levelscript_mission_context",
@@ -3416,7 +3545,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             }],
         }
 
-        route = pipeline.build_story_trigger_route(row, mission_id="testm1")
+        route = _build_story_trigger_route(row, mission_id="testm1")
 
         self.assertEqual(route["eventNames"], ["LevelEvent_OnBattleSignal"])
         self.assertEqual(route["actionNames"], ["PlayRadioAction"])
@@ -3437,7 +3566,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             "rootPaths": ["TimelineRoot.json"],
         }
 
-        route = pipeline.build_story_trigger_route(
+        route = _build_story_trigger_route(
             row,
             mission_id="testm1",
             owner_status="unresolved",
@@ -3455,8 +3584,8 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         )
         direct = {"causality": "playback", "questId": "testm1_q#1"}
         self.assertLess(
-            pipeline.story_trigger_route_sort_key(direct),
-            pipeline.story_trigger_route_sort_key(route),
+            story_trigger_route_projection.story_trigger_route_sort_key(direct),
+            story_trigger_route_projection.story_trigger_route_sort_key(route),
         )
 
     def test_trigger_route_reads_world_entity_listener_evidence(self):
@@ -3486,7 +3615,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             }],
         }
 
-        route = pipeline.build_story_trigger_route(row, mission_id="testm1")
+        route = _build_story_trigger_route(row, mission_id="testm1")
 
         self.assertEqual(
             route["eventNames"],
@@ -3553,7 +3682,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             }],
         }
 
-        route = pipeline.build_story_trigger_route(
+        route = _build_story_trigger_route(
             row,
             mission_id="testm1",
         )
@@ -3598,7 +3727,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             "entityTemplateIds": ["int_narrative_mission"],
         }
 
-        route = pipeline.build_story_trigger_route(row, mission_id="testm1")
+        route = _build_story_trigger_route(row, mission_id="testm1")
 
         self.assertEqual(
             [step["kind"] for step in route["steps"]],
@@ -3658,7 +3787,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             }],
         }
 
-        route = pipeline.build_story_trigger_route(row, mission_id="testm1")
+        route = _build_story_trigger_route(row, mission_id="testm1")
 
         self.assertEqual(
             [step["kind"] for step in route["steps"]],
@@ -3718,7 +3847,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             "upstreamServerStateSources": ["SC_NPC_ACTIVE_CHANGE_NTF"],
         }
 
-        route = pipeline.build_story_trigger_route(row, mission_id="testm1")
+        route = _build_story_trigger_route(row, mission_id="testm1")
 
         self.assertEqual(route["causality"], "dependency")
         self.assertEqual(route["npcProxyId"], "proxy_a")
@@ -3999,7 +4128,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             "entityTemplateIds": ["int_horn"],
         }
 
-        route = pipeline.build_story_trigger_route(
+        route = _build_story_trigger_route(
             row,
             mission_id="testm1",
             quest_id="testm1_q#3",
@@ -4092,20 +4221,23 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             }
             report_root = root / "reports"
             with patch.object(
-                pipeline,
+                source_order_publication,
                 "build_source_story_partial_order_report",
                 return_value=report,
             ) as build_order_report, patch.object(
-                pipeline,
+                source_order_publication,
                 "render_source_story_partial_order_markdown",
                 return_value="# fixture\n",
             ):
-                result = pipeline.publish_source_story_partial_order(
+                result = source_order_publication.publish_source_story_partial_order(
                     index,
                     output_root,
                     story_root,
                     "CN",
                     report_root,
+                    schema_version=pipeline.SCHEMA_VERSION,
+                    story_order_override_path=pipeline.DEFAULT_STORY_ORDER_OVERRIDE,
+                    story_order_ocr_path=pipeline.DEFAULT_STORY_ORDER_OCR,
                 )
 
             self.assertIs(result, report)
@@ -4183,7 +4315,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 }],
             }
             with patch.object(
-                pipeline,
+                source_order_publication,
                 "build_source_story_partial_order_report",
                 return_value=report,
             ):
@@ -4191,8 +4323,11 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                     RuntimeError,
                     "gate=allStoryOrderForksHaveSemantics.*testm1_q#missing",
                 ):
-                    pipeline.publish_source_story_partial_order(
-                        index, output_root, story_root, "CN", root / "reports"
+                    source_order_publication.publish_source_story_partial_order(
+                        index, output_root, story_root, "CN", root / "reports",
+                        schema_version=pipeline.SCHEMA_VERSION,
+                        story_order_override_path=pipeline.DEFAULT_STORY_ORDER_OVERRIDE,
+                        story_order_ocr_path=pipeline.DEFAULT_STORY_ORDER_OCR,
                     )
 
     def test_publish_quest_objective_story_scope_is_exact_non_owning_context(self):
@@ -4600,13 +4735,17 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 }],
             }],
         }]
-        result = pipeline.attach_post_playback_callserver_contracts(
+        self.assertFalse(
+            hasattr(pipeline, "attach_post_playback_callserver_contracts")
+        )
+        result = post_playback_enrichment.attach_post_playback_callserver_contracts(
             nodes,
             {"rows": [{
                 "sourceFile": "LevelScriptData/map_fixture/42.json",
                 "callServerLocalId": 7,
                 "serializedContract": contract,
             }]},
+            contract_projector=pipeline.compact_callserver_serialized_contract,
         )
 
         self.assertEqual("validated", result["status"])
@@ -4626,9 +4765,10 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 "serverHandoffs": [{"localId": 7}],
             }],
         }]
-        result = pipeline.attach_post_playback_callserver_contracts(
+        result = post_playback_enrichment.attach_post_playback_callserver_contracts(
             nodes,
             {"rows": []},
+            contract_projector=pipeline.compact_callserver_serialized_contract,
         )
 
         self.assertEqual("validation_failed", result["status"])
@@ -4752,7 +4892,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 }],
             }],
         }]
-        audit = pipeline.build_post_playback_action_name_audit(
+        audit = post_playback_enrichment.build_post_playback_action_name_audit(
             nodes,
             formatter_names={0x0010: "GenericAction"},
             formatter_audit={
@@ -4807,7 +4947,11 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            index = pipeline.build_level_sequence_textasset_index(root)
+            index = post_playback_enrichment.build_level_sequence_textasset_index(
+                root,
+                compact_projector=pipeline.compact_dict,
+                repo_path_projector=pipeline.repo_path,
+            )
 
         self.assertEqual("degraded_fail_closed", index["status"])
         self.assertEqual(
@@ -4858,7 +5002,10 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             },
         }
 
-        audit = pipeline.attach_exact_level_sequence_assets(nodes, index)
+        audit = post_playback_enrichment.attach_exact_level_sequence_assets(
+            nodes,
+            index,
+        )
 
         actions = nodes[0]["postPlaybackControls"][0]["actions"]
         self.assertEqual(
@@ -4919,7 +5066,10 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             }],
         }
 
-        audit = pipeline.build_post_playback_variable_bridge_audit(native_index)
+        self.assertFalse(
+            hasattr(pipeline, "build_post_playback_variable_bridge_audit")
+        )
+        audit = _build_post_playback_variable_bridge_audit(native_index)
 
         self.assertEqual(
             "context_only_execute_notification_family_unproven",
@@ -4937,7 +5087,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertFalse(audit["usesOcrOrManualOrder"])
 
     def test_post_playback_variable_bridge_closes_zero_overlap(self):
-        audit = pipeline.build_post_playback_variable_bridge_audit({})
+        audit = _build_post_playback_variable_bridge_audit({})
 
         self.assertEqual("closed_no_exact_same_script_key_match", audit["status"])
         self.assertEqual(0, audit["summary"]["exactSetterListenerMatches"])
@@ -5109,7 +5259,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         })
 
     def test_objective_retains_tracking_filter_without_creating_condition_edge(self):
-        row = pipeline.objective_row({
+        row = _objective_row({
             "description": {"key": "objective_tracking"},
             "condition": condition("GameConditionServerPlaceHolder"),
             "trackingInfoList": [{
@@ -5157,7 +5307,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             _taskId={"constValue": "task_fixture"},
         )
         task_condition["uniqueId"] = "condition_fixture"
-        row = pipeline.objective_row({
+        row = _objective_row({
             "description": {"key": "objective_fixture"},
             "condition": task_condition,
         }, 1, include_level_script_source_evidence=False)
@@ -5259,7 +5409,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 }],
             },
         }]
-        payload, _ = pipeline.build_mission(
+        payload, _ = _build_mission(
             fixture,
             pipeline.ROOT / "fixture" / "testm1.json",
         )
@@ -5341,7 +5491,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         }
 
     def test_build_mission_preserves_finish_zero_and_condition_dependencies(self):
-        payload, summary = pipeline.build_mission(self.fixture(), pipeline.ROOT / "fixture" / "testm1.json")
+        payload, summary = _build_mission(self.fixture(), pipeline.ROOT / "fixture" / "testm1.json")
         nodes = {row["id"]: row for row in payload["nodes"]}
         finish = nodes["testm1_q#2"]["objectives"][0]["dialogFinishes"][0]
         self.assertEqual(finish, {"dialogId": "dlg_test", "finishId": 0})
@@ -5384,8 +5534,8 @@ class MissionPipelineBuilderTests(unittest.TestCase):
                 level_script_condition,
             ],
         )
-        previous_cache = pipeline._SUBMIT_ITEM_ROWS_CACHE
-        pipeline._SUBMIT_ITEM_ROWS_CACHE = {
+        previous_cache = quest_payload_projection._SUBMIT_ITEM_ROWS_CACHE
+        quest_payload_projection._SUBMIT_ITEM_ROWS_CACHE = {
             "submit_fixture": {
                 "submitId": "submit_fixture",
                 "paramData": [{
@@ -5398,13 +5548,13 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             },
         }
         try:
-            row = pipeline.objective_row(
+            row = _objective_row(
                 {"description": {"key": "fixture"}, "condition": combined},
                 1,
                 include_level_script_source_evidence=False,
             )
         finally:
-            pipeline._SUBMIT_ITEM_ROWS_CACHE = previous_cache
+            quest_payload_projection._SUBMIT_ITEM_ROWS_CACHE = previous_cache
 
         self.assertEqual(row["condition"]["children"][0]["facts"]["submissionId"], "submit_fixture")
         self.assertEqual(row["submissionChecks"], [{
@@ -5770,7 +5920,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
             placeholders.append({"description": {"key": f"gate_{index + 1}"}, "condition": row})
         fixture["questDic"]["testm1_q#1"]["objectiveList"] = placeholders
 
-        payload, summary = pipeline.build_mission(
+        payload, summary = _build_mission(
             fixture,
             pipeline.ROOT / "fixture" / "testm1.json",
         )
@@ -5789,7 +5939,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         )
 
     def test_server_placeholder_contract_excludes_client_progress_callback(self):
-        contract = pipeline.RUNTIME_CONTRACT["serverPlaceholder"]
+        contract = self.reviewed_runtime_contract()["serverPlaceholder"]
         self.assertEqual(contract["conditionTypeFallback"], 2147483647)
         self.assertEqual(contract["clientOnlyConditionType"], 9999)
         self.assertEqual(contract["identityFields"], ["questId", "conditionId"])
@@ -5967,7 +6117,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertIn("round-trip/correlation context", native["finding"])
 
     def test_recursive_protobuf_census_closes_role_scene_snapshots(self):
-        audit = pipeline.RUNTIME_CONTRACT["protobufIdentityCarrierAudit"]
+        audit = self.reviewed_runtime_contract()["protobufIdentityCarrierAudit"]
         self.assertEqual(audit["coverage"]["protoTypeDefinitions"], 3743)
         self.assertEqual(audit["coverage"]["registryMessageTypes"], 983)
         self.assertEqual(audit["coverage"]["fieldBearingRegistryMessageTypes"], 936)
@@ -6010,7 +6160,7 @@ class MissionPipelineBuilderTests(unittest.TestCase):
         self.assertIn("zero mission/quest + LevelScript/Story", native["finding"])
 
     def test_airwall_contract_is_state_gated_context_not_transition_owner(self):
-        audit = pipeline.RUNTIME_CONTRACT["airWallMissionRadioContext"]
+        audit = self.reviewed_runtime_contract()["airWallMissionRadioContext"]
         self.assertEqual(audit["memoryPackSchema"]["levelDataMemberCount"], 43)
         self.assertEqual(audit["memoryPackSchema"]["airWallsMemberIndex"], 0)
         self.assertEqual(
@@ -6928,7 +7078,15 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.evidence = pipeline.load_lua_story_playback_evidence()
+        if hasattr(pipeline, "load_lua_story_playback_evidence"):
+            raise AssertionError("Lua playback loader must live in its owner")
+        cls.evidence = lua_story_projection.load_lua_story_playback_evidence(
+            pipeline.DEFAULT_LUA_CONSUMER_REFERENCE_INDEX,
+            lua_consumer_reference_schema=(
+                pipeline.LUA_CONSUMER_REFERENCE_SCHEMA
+            ),
+            native_game_action_type="Beyond.Gameplay.Actions.GameAction",
+        )
 
     def test_every_admitted_call_site_has_full_provenance(self) -> None:
         for row in self.evidence["acceptedExactPlaybackCalls"]:
@@ -7008,8 +7166,12 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
                 }]},
             }), encoding="utf-8")
 
-            evidence = pipeline.load_lua_story_playback_evidence(
+            evidence = lua_story_projection.load_lua_story_playback_evidence(
                 audit_path,
+                lua_consumer_reference_schema=(
+                    pipeline.LUA_CONSUMER_REFERENCE_SCHEMA
+                ),
+                native_game_action_type="Beyond.Gameplay.Actions.GameAction",
             )
 
         self.assertEqual(
@@ -7061,8 +7223,12 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
                 }]},
             }), encoding="utf-8")
 
-            evidence = pipeline.load_lua_story_playback_evidence(
+            evidence = lua_story_projection.load_lua_story_playback_evidence(
                 audit_path,
+                lua_consumer_reference_schema=(
+                    pipeline.LUA_CONSUMER_REFERENCE_SCHEMA
+                ),
+                native_game_action_type="Beyond.Gameplay.Actions.GameAction",
             )
 
         row = evidence["acceptedExactPlaybackCalls"][0]
@@ -7092,7 +7258,15 @@ class LuaStoryPlaybackCallSiteTests(unittest.TestCase):
                 RuntimeError,
                 r"validator.*gate=row_provenance.*sourceSha256:sha256",
             ):
-                pipeline.load_lua_story_playback_evidence(audit_path)
+                lua_story_projection.load_lua_story_playback_evidence(
+                    audit_path,
+                    lua_consumer_reference_schema=(
+                        pipeline.LUA_CONSUMER_REFERENCE_SCHEMA
+                    ),
+                    native_game_action_type=(
+                        "Beyond.Gameplay.Actions.GameAction"
+                    ),
+                )
 
     def test_rejected_candidate_is_published_without_a_trigger_route(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -7521,7 +7695,7 @@ class MissionGraphPayloadTests(unittest.TestCase):
         base = MissionPipelineBuilderTests()
         mission = base.fixture()
         entry = {"upstream": {"requiresCompleted": ["beta"]}, "downstream": {}}
-        payload, _ = pipeline.build_mission(
+        payload, _ = _build_mission(
             mission,
             Path("testm1.json"),
             None,
@@ -7534,7 +7708,7 @@ class MissionGraphPayloadTests(unittest.TestCase):
 
     def test_payload_defaults_are_empty_not_missing(self):
         base = MissionPipelineBuilderTests()
-        payload, _ = pipeline.build_mission(base.fixture(), Path("testm1.json"))
+        payload, _ = _build_mission(base.fixture(), Path("testm1.json"))
         self.assertEqual(payload["missionGraph"], {"upstream": {}, "downstream": {}})
         self.assertEqual(payload["envTalkContext"], [])
 
@@ -7598,6 +7772,9 @@ class MissionDialogTreeDefinitionPublisherTests(unittest.TestCase):
         return index, output_root, story_root
 
     def test_publishes_hash_verified_definition_on_exact_quest_observer(self):
+        self.assertFalse(
+            hasattr(pipeline, "publish_quest_dialog_tree_definitions")
+        )
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / "assets" / "dlg_testm1_1.json"
@@ -7606,8 +7783,8 @@ class MissionDialogTreeDefinitionPublisherTests(unittest.TestCase):
             digest = hashlib.sha256(source.read_bytes()).hexdigest().upper()
             index, output_root, story_root = self.fixture(root, digest)
 
-            with patch.object(pipeline, "ROOT", root):
-                result = pipeline.publish_quest_dialog_tree_definitions(
+            with patch.object(dialog_tree_projection, "ROOT", root):
+                result = dialog_tree_projection.publish_quest_dialog_tree_definitions(
                     index,
                     output_root,
                     story_root,
@@ -7654,8 +7831,8 @@ class MissionDialogTreeDefinitionPublisherTests(unittest.TestCase):
             }
             mission_path.write_text(json.dumps(mission), encoding="utf-8")
 
-            with patch.object(pipeline, "ROOT", root):
-                pipeline.publish_quest_dialog_tree_definitions(
+            with patch.object(dialog_tree_projection, "ROOT", root):
+                dialog_tree_projection.publish_quest_dialog_tree_definitions(
                     index, output_root, story_root, "CN"
                 )
 
@@ -7685,12 +7862,12 @@ class MissionDialogTreeDefinitionPublisherTests(unittest.TestCase):
             mission["nodes"][0]["objectives"] = []
             mission_path.write_text(json.dumps(mission), encoding="utf-8")
 
-            with patch.object(pipeline, "ROOT", root):
+            with patch.object(dialog_tree_projection, "ROOT", root):
                 with self.assertRaisesRegex(
                     ValueError,
                     r"mission=testm1.*expected=\['dlg_testm1_1'\].*actual=\[\]",
                 ):
-                    pipeline.publish_quest_dialog_tree_definitions(
+                    dialog_tree_projection.publish_quest_dialog_tree_definitions(
                         index, output_root, story_root, "CN"
                     )
 
@@ -7704,12 +7881,12 @@ class MissionDialogTreeDefinitionPublisherTests(unittest.TestCase):
             actual = hashlib.sha256(source.read_bytes()).hexdigest().upper()
             index, output_root, story_root = self.fixture(root, expected)
 
-            with patch.object(pipeline, "ROOT", root):
+            with patch.object(dialog_tree_projection, "ROOT", root):
                 with self.assertRaisesRegex(
                     ValueError,
                     f"expected={expected} actual={actual}",
                 ):
-                    pipeline.publish_quest_dialog_tree_definitions(
+                    dialog_tree_projection.publish_quest_dialog_tree_definitions(
                         index,
                         output_root,
                         story_root,
