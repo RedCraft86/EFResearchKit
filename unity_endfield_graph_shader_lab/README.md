@@ -3935,6 +3935,314 @@ explicit root-motion application, and secondary hair/cloth/tail dynamics still
 need dedicated runtime systems. All three piaodai materials serialize
 `_IsSceneEffect=0`, so the selected source program bypasses `_VFXParams1`.
 
+Li Zhiyan's retail video oracle is imported separately from draw ownership:
+
+```bat
+python tools\build_lizhiyan_retail_draw_observation_contract.py
+python tools\build_lizhiyan_retail_visual_oracle.py
+python tools\build_lizhiyan_overview_timing_alignment.py
+python tools\build_lizhiyan_overview_start01_contract.py
+```
+
+The current fixture pins `videos/2026-08-15_10-32-32.mkv` by byte count and
+SHA-256, validates its 3840x2160 H.264/BT.709 stream and integer 1/1000 PTS
+time base, and keeps `visibleAdmission=false`. Optional positive and negative
+trace inputs are offline imports only; producing them requires separate
+explicit authorization. Admission requires the complete HGMesh handle,
+64-byte survivor record, stable resource generation, `0x2748`, descriptor
+state, `0x2731`, descriptor bind, draw, submit, and exact retail pixel chain,
+plus a same-build Li-absent or Wulfa control. Generic API-2 events, pointer
+equality, timestamps, or teal pixels alone never admit the effect.
+
+The visual-oracle builder separately decodes exact PTS
+`38000/40000/42000/43000/44000/46000`, scales each frame deterministically to
+960x540 RGB24, and pins frame hashes plus fixed actor/teal ROI measurements.
+It records the broad teal peak at PTS 40000 and the below-one-percent settled
+baseline at PTS 46000. This is only a camera/timing/compositing regression
+target: it stays `diagnostic_only`, keeps `visibleAdmission=false`, and cannot
+unlock the seven fail-closed particle renderers.
+
+The timing-alignment builder joins those frames to source controller data
+without upgrading the visual candidate into an original event claim. The
+10.7-second start clip enters at normalized `0.0058366423` (clip-local
+`0.062452073 s`), exits at `10.68547903 s`, and uses a `0.014519697 s`
+transition. The clip has no AnimationEvents. Current lab compatibility policy
+publishes the request in the same restart call and would create/destroy the
+finger effect at clip-local `0.895782073/3.229112073 s`; the original retail
+request producer and epoch remain unknown. Exact frames bound the transition:
+the prior actor is last stable at PTS 37667 and starts fading at 37683; blank
+frames span PTS 37700..37950, and Li is first recognizable at PTS 37967. The
+first teal edge is tentative at PTS 38167 and the first unambiguous teal slab is
+PTS 38183. Treating 37967 as a candidate restart aligns PTS 40000 with the compatibility
+finger window, but PTS 42000 still contains measured teal after that root would
+have been destroyed at candidate PTS 41134. The one recovered finger effect
+therefore cannot explain the full retail teal chronology; eleven other
+serialized Li entrance requests remain unbound.
+
+The first of those requests is now structurally separated from particle
+effects. `P_fxui_lizhiyan_overview_start_01` is a root-mounted, non-looping
+2.2-second static-mesh animation: five hierarchy nodes, four
+MeshFilter/MeshRenderer pairs, no ParticleSystems, one shared mesh
+`S_fx_lzy_tiaodaifenwei_01`, and materials
+`M_fxui__lizhiyan_overview_09/_10/_11` at queue 3704. Its EffectSetting,
+transforms, renderer state, converted OBJ, and three serialized VFXBaseV2
+material payloads are pinned in `lizhiyan_overview_start_01_effect.json`.
+Start AnimationClip `A_fxui__lizhiyan_overview_start_01` (PathID
+`7360398354216100382`, 30 Hz, 6.366667 seconds, no AnimationEvents) and all
+eight referenced Texture2D identities plus converted PNGs are also closed.
+All 53 material float curves are now resolved. Unity's own
+`Animator.StringToHash` maps four paths to the start_01 renderers and six to
+the sibling start_02/start_03 mesh-effect roots, proving the three effects
+share this clip. AnimeStudio's CRC28-plus-channel encoding resolves the seven
+attributes to `_MainTex_ST.x/y/z/w`, `_TintColorAlpha`,
+`_DissolveScheduleOffset`, and `_DisturbUIntensity1`. The builder publishes a
+name-complete `.anim`, and Unity `AnimationUtility` imports exactly 53
+MeshRenderer curves with all ten paths and seven properties intact.
+Native mesh/texture payload parity, selected shader variants, and an admitted static-mesh importer/binding remain open,
+so no prefab is materialized and visible admission stays false. Do not route
+this effect through the particle marker or invent ParticleSystems.
+
+The runtime now distinguishes `Particle` and `StaticMesh` bindings without
+changing the serialized default for existing particle effects. The new
+`EndfieldRecoveredStaticMeshEffectSource` carries the exact start_01 root,
+EffectSetting, Animator, animation-helper, clip, mesh-filter, renderer, mesh,
+and material identities. Its admission gate additionally requires the source
+aggregate, an empty blocker list, zero ParticleSystems, applied native
+mesh/texture/renderer payloads, and admitted exact shader variants. The current
+contract deliberately fails at `sourcePayloadApplied=false` and
+`visibleAdmission=false`; no start_01 prefab or controller binding is created.
+
+The pinned IL2CPP build now closes the managed consumer chain:
+`AnimatorBehaviourPlayEffect.OnStateEnter` publishes the authored request,
+`AnimatorBehaviourPlayEffectHelper.Add` creates/starts the effect instance,
+`EffectSetting` initializes and plays `EffectLodCfg`, and `EffectAnimation`
+builds a PlayableGraph with AnimationPlayableOutput and
+AnimationClipPlayable. For start_01 the serialized LOD rows prove a root
+Animator plus four MeshRenderers and null particle pointers. This rules out an
+invented AnimatorController and makes an EffectAnimation-compatible playable
+driver the intended lab implementation. The renderer pointer has not yet been
+joined to a specific renderer-list/API-2 record or final draw.
+
+The exact graph contract is narrower than stock Unity's common mixer path.
+Retail `_CreatePlayableGraph` selects `GameTime`, scale one, and a three-input
+`UnityEngine.Animations.AdvancedAnimationMixerPlayable` whose slots are
+start/loop/end; these Li effects populate only start. That custom retail
+AnimationModule type is absent from both the installed stock Unity 2021 editor
+and this lab's Unity 2022 editor. The validator therefore rejects standard
+`AnimationMixerPlayable`, Timeline mixers, clip stretching, and manual
+evaluation as unproven substitutes. The generated
+`lizhiyan_effect_animation_playable_topology.json` contract remains
+`visibleAdmission=false` and no graph driver starts until the advanced-mixer
+semantics, time-control callsites, static renderer payload, and final draw
+ownership are closed.
+
+The fixed-build ABI now distinguishes the advanced type from stock more
+concretely: stock mixer creation takes `normalizeWeights` and exposes an
+implicit Playable conversion; the advanced type exposes neither. Its injected
+creation path is UnityPlayer internal-call entry 501 at `0x180158B30`: graph
+validation allocates/attaches native node type `0x178` and materializes a
+pointer/version handle. Stock creates node type `0x170` with a different
+initializer. Input count is applied afterward through `SetInputCount`, so
+Advanced and stock use the same count/weight virtual functions. Each 16-byte
+slot is cleared on growth or reactivation, producing a null playable and zero
+weight with no automatic normalization; negative counts diagnose. Advanced
+then differs by its root vtable and the `0x0101` word at node `+0x170`.
+Advanced-only slots 3/4/13/18/19 read or mutate `+0x170/+0x171` and gate
+animation-runtime behavior, while stock uses no-ops or different methods.
+Consequently a stock mixer with explicit weights is only a labeled visual
+approximation even for the start-only Li graph, not a retail-equivalent
+backend. Null transitions and extreme allocation failure remain open.
+The initial state is `1/1`: slot 3 performs a first-valid-evaluation handshake
+through `0x180A5A680`, clears `+0x171`, then uses computed evaluation time with
+`0x180A634D0` on later passes. Slot 4 sets `+0x170` before stock time/speed
+propagation; slot 13 handles state-reset commands; slots 18/19 suppress generic
+runtime callbacks only when both bytes are zero. Native scheduler ownership
+and those two runtime callback semantics are not yet closed, so a
+`ScriptPlayable<PlayableBehaviour>` cannot currently be labeled exact.
+The callback bodies are no longer opaque: `0x180A5A680` resets the packed
+context state at `+0x9E8..+0xA0C`; `0x180A634D0` selects a 28-byte stage record
+and calls `0x180AC4A90`, a four-mode custom timeline state machine that advances
+time, changes stages, writes time back at boundaries, and updates node/state
+flags. The exact mode names and unique scheduler dispatch remain open. This
+cannot be expressed as retail ABI through public Playable APIs; an exact path
+requires a native custom node/shim, while a full managed rewrite must remain
+labeled behavioral simulation.
+For Li specifically, the evidence now separates the main graph from that
+optional native consumer. Advanced creation, the three slots, and start-only
+one-hot control are proven applicable. No serialized producer for the native
+context active gate/stage table was found in the start_01/_02/_03 roots, so
+custom-stage activation remains `not_proven_fail_closed`. Their 2.2/5/7-second
+lifetimes are destruction boundaries, not proof of mixer stages or retiming.
+The lab must not inject the custom timeline; any stock-mixer driver is an
+explicit external-behavior simulation, not a retail-ABI backend, and cannot
+raise `visibleAdmission`.
+`EndfieldLiZhiyanBehavioralAnimationSimulation` implements that isolated
+preview path. It uses a stock GameTime three-input graph, connects only slot
+zero, applies `[1,0,0]`, plays/resets the shared clip at speed one, and destroys
+the graph at the configured EffectSetting lifetime. The component permanently
+reports non-equivalence and no visible admission. Its optional renderer probe
+records only source PathID, hierarchy, Unity instance ID, and frame for a
+future compatible capture; those values are not treated as native/HGTree
+identity.
+The separate start_01 diagnostic prefab importer now hash-checks and imports
+the exact shared OBJ, matching Animator FBX, eight converted textures, and
+resolved animation clip. It reconstructs the four serialized nodes and their
+Renderer/Filter/Material PathIDs, then applies supported material properties
+to the Li-specific `LiZhiyanStart01Diagnostic` approximation. M09/M10 route
+Mask/Blend/Dissolve through Sample0/1/2; M11 routes
+Disturb/Mask/Blend/Dissolve through Sample0/1/2/3. The current build applies
+213 properties and reports 684 unsupported entries. Only 21/53 shared-clip
+curves bind to this start_01 hierarchy; the rest address start_02/start_03, so
+the marker and validator keep animation binding partial. This prefab is never
+registered as a normal actor effect and keeps source/native payload, exact
+shader, and visible admission false.
+
+`tools/build_lizhiyan_visual_capture_spec.py` pins the deterministic comparison
+clock and 24 retail PTS anchors. Candidate PTS 37967 maps to local zero;
+start_01/_02/_03 end at 40167/42967/44967, and the shared clip ends nearest
+44334. These are diagnostic alignment coordinates, not proof of the original
+request timestamp or draw ownership.
+`EndfieldLiZhiyanVisualCaptureHarness` samples those anchors on a deterministic
+camera using a real graphics backend. Do not pass `-nographics`: the harness
+rejects Unity's Null device because it writes blank PNGs without rasterizing.
+On D3D12, start_01 is visibly cyan at PTS 37967--38183 with about 4.06% frame
+coverage, is fully dissolved by PTS 39934, and remains blank after its lifetime.
+The expanded 24-frame set adds sibling curve boundaries at PTS
+39367/41434/43200/43600/43867; start_01 alone yields four hashes and five
+visible active frames. The capture preserves source queue 3704 and
+only disables soft blend on transient materials because no retail scene depth
+exists. It is diagnostic-only, does not compare retail pixels, and does not
+raise visible admission.
+Retail queue 3704 belongs to the source-closed 3660--3740
+`AfterPostprocessTransparent` phase. In the exact SceneMV route that range is
+owned by the after-post callback, not main transparent. This isolated shader
+does not request the exact MRT route; preserving 3704 here therefore proves a
+diagnostic draw only, not native after-DOF ECS-list or HGMesh-record ownership.
+The downstream 64-byte record is classified more precisely as well.
+`0x181059410` treats dword `+0x20` as an internal ID-table key/selector and
+resolves an 0x80-byte resource row (base or `+0x78`); it is unrelated to
+ordinary Renderer `+0x268` or HGMeshRenderer `+0x50`. `0x1810469A0` itself
+only packs 0x90-stride CPU publication arrays, but six finalizer trampolines
+pass them through `0x180FEAEA0` to `0x1810484E0`. That callback repeats the
+resource lookup, records `0x2748/0x274A`, invokes the API-2 resource builders,
+and reaches `0x180619CF0`. Its `descriptor+0x450` branch selects among three
+helpers; only `0x180623EF0` reaches the same-recorder `+0x2A0`/opcode-`0x2730`
+writer, and Li's selected branch is not statically known. The generic `0x2731`
+producer uses a separate runtime-callback bracket, while the parser carries no
+mandatory-next flag or generation between the independent `0x2730/0x2731`
+cases. Admission still requires the Li branch value, a later `0x2731` in the
+same after-DOF interval, and concrete attribution of the resulting `+0x2B50`
+Vulkan callback/draw node to this HGMesh draw-list.
+The selector object itself is now source-bounded. Finalizer argument M0 owns a
+hash table at `M0+0x28`; a 0x60-stride entry's `+0x28` descriptor D is copied
+to publication `+0x10`. The callback preserves D while using `D+0x450` for
+mode and `D+0x60` for the opcode-`0x2748` resource. D is distinct from the
+original 64-byte record's packed resolver ID at publication `+0x84`. Mode 0 is the only
+descriptor-state/conditional-`0x2730` path, mode 2 selects cache/fallback and
+clears the output, and other modes also fail/clear. A matching 0x4E0 descriptor
+constructor has two mode-0 callers, but neither it nor the other inspected
+builders populates M0's entry. That runtime/indirect owner-table population is
+the remaining alias boundary, so the Li branch remains deliberately unselected.
+The same contract pins `SetManual(bool)`, `ManualEvaluate(float)`,
+`SyncProgress(float)`, time-scale/start-duration/start-
+scale setters, Stop, OnDisable, and OnRelease. Their decoded fallback bodies
+prove graph evaluation, progress-to-time delegation, forced root-speed
+refresh, stop, valid-graph destruction, and the corresponding
+`EffectInstance` forwarding routes. Each method also has an IFix dispatch
+gate, but the currently installed 86,926-byte Persistent patch is parsed to a
+unique 32-record target table and contains no `EffectAnimation`,
+`EffectInstance`, or `EffectLodCfg` target. The fallback bodies are therefore
+effective for this hash-pinned local snapshot; later downloads and live table
+mutation remain outside the offline contract. No Li-specific caller
+currently opts these three roots into manual evaluation, progress sync, or
+duration retiming; speed-one GameTime playback remains the only admitted
+timing statement.
+
+The ordinary Renderer identity boundary is narrower as well. The native
+`+0x268` value is consumed as a component key by the persistent per-draw
+resource resolver: `SetCustomPerDrawData_Injected` stores five Vector4 lanes at
+renderer `+0x140..+0x180`, resolves through `0x1804255F0`, and mirrors them to
+resource `+0xB0..+0xF0`. This is a positive ordinary-renderer resource route,
+not an HGTree join. The bounded resolver and lifecycle census finds no equality
+with HGTree's context-owned renderer array and no descriptor/upload consumer,
+so Li PathID-to-survivor ownership remains fail-closed.
+
+The graph's visible state control is exact as well. `_AddClip` connects each
+non-null clip output zero to mixer input `animationState-1`; null loop/end clips
+return before creation or connection. `_PlayAnimation` writes all three input
+weights one-hot, plays the selected valid clip, pauses every other valid clip,
+and resets each valid clip to time zero. Thus Li's start-only route connects
+only slot zero, writes `[1,0,0]`, then performs `Play` and `SetTime(0)` on the
+start playable. It does not cross-fade or synthesize loop/end playables.
+
+The two sibling roots are now source-closed as the remaining halves of that
+shared clip. `start_02` is a 5-second, three-renderer effect using one Plane009
+mesh and materials 12/13/14; `start_03` is a 7-second, three-renderer effect
+using `S_fx_shoutiaodai_01` plus `S_fx_tuoweidisan_01` and materials 15/16/17.
+Both have root Animators, null controller/avatar, null particle LOD pointers,
+and the same start AnimationClip. Together they add six static renderers, reuse
+the same eight texture identities, and remain visibly fail-closed.
+Their isolated diagnostic prefab importers and validators are now executable.
+start_02 maps M12/M13 to mode 9 and M14 to mode 11 while labeling Plane009 as
+provisional converted geometry. start_03 maps M15/M16/M17 to mode 9 and uses
+the two PathID-matched converted OBJs as exact converted-source geometry, while
+keeping native Mesh parity false. Each sibling import applies 213 serialized
+properties and reports 684 unsupported entries. Both reuse the shared clip and
+keep native payload, exact shader, animation payload, normal actor binding, and
+visible admission false.
+`EndfieldLiZhiyanCombinedVisualCaptureHarness` instantiates all three generated
+prefabs and samples the 24-anchor shared clock with independent 2.2/5/7-second
+lifetimes. On D3D12 it yields 14 unique composite hashes: start_02 first becomes
+visible at the PTS 41434 alpha boundary, and start_03 forms the broad late
+ribbon near PTS 43000 before decaying through 44000. The clip is visually empty
+at 44334 while start_03 is still alive, and the all-inactive 46000 frame is
+blank. Its validator requires visible evidence from every root plus blank
+inactive frames. The deterministic shared camera is not the retail actor/camera
+composition, so the manifest keeps `comparesRetailPixels=false` and cannot
+raise native or visible admission.
+
+`EndfieldLiZhiyanActorComposedVisualCaptureHarness.BuildAndCapture` adds a
+separate actor-composed diagnostic without changing that effects-only baseline.
+Under a real D3D12 batch session it writes actor-only, effects-only, composite,
+and per-root images to
+`scratch/character_recovery/lizhiyan_actor_composed_capture/`; run its
+`ValidateCommandLine` entry point afterward. The harness samples the recovered
+Li overview-start actor clip and all three effects on one explicit clock, uses
+the source overview position/LookAt/FOV/clip planes, and records the authored
+camera quaternion separately from its inferred hierarchy LookRotation.
+Four-corner background consensus remains stable when the animated coat crosses
+a frame corner. Predicate-only retail ROI comparison shows the current
+`broadTeal` peak at PTS 40000 is 3.499% composite versus 21.699% retail, while
+PTS 43000 is 7.618% versus 9.972%; effects are blank at PTS 46000 while the
+actor remains visible. These are diagnostic composition metrics, not retail
+pixels, renderer-list ownership, or native shader parity.
+
+The exact managed LOD renderer bindings are now part of the playable-topology
+contract: start_01 has four non-null MeshRenderer PathIDs and start_02/start_03
+have three each. `EffectLodCfg.Play/Stop` owns their enabled lifecycle. This
+does not yet identify a native HGTree survivor: the missing edge is a concrete
+managed Renderer pointer/instance id to the native entity/renderer index and
+one accepted 64-byte renderer record. ECS component slot 67 is independently
+classified LOD/culling state and is not substituted for that identity edge.
+Ordinary `Renderer.get_entityID` is now pinned to internal-call entry 1278 and
+returns backing native Renderer `+0x268`; `HGMeshRenderer.GetEntity` instead
+returns its ECS qword at native `+0x50`. The serialized Li references are
+ordinary MeshRenderers, and these two fields are not treated as equivalent.
+The managed `Renderer.get_entityID` wrapper has zero direct callers in the
+current GameAssembly `.text`; similarly numbered HGTree vtable `+0x268` calls
+operate on HGTree contexts rather than Renderer objects. This rules out the
+obvious static identity bridge without claiming the runtime-indirect route is
+absent.
+
+The candidate retail epoch now produces exact material-key checkpoints rather
+than a broad visual guess: start_01 child `(7)` begins changing at PTS 38167,
+matching the first tentative teal edge; the other start_01 slabs begin at
+38234/38267; start_02 begins at 40834/40867, adjacent to the observed 40900
+pillar phase; and `start_03/S_fx_tuoweidisan_01` begins at 42467. These are
+candidate time alignments, not proof that a particular screen-space bar belongs
+to one renderer. The 2.2/5/7-second EffectSetting lifetimes deliberately expose
+different portions of the same 6.366667-second clip at speed one.
+
 One original dialog facial asset is now executable as a bounded source fixture:
 Zhuang Fangyi's 2.15-second
 `dlgtl_e10m2_5_sub_1_npc_chr_0030_zhuangfy_2`. It evaluates 12 original named

@@ -25,13 +25,14 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 WEBUI_DATA_ROOT = ROOT / "webui" / "data"
 
-STAGES = ("base", "projectiles", "asset-refs", "combat")
+STAGES = ("base", "projectiles", "asset-refs", "combat", "audit")
 
 STAGE_HELP = {
     "base": "Gameplay base index (data/lang/<LANG>/gameplay/index.json).",
     "projectiles": "Exact projectile behavior and event hashes (data/gameplay/projectiles.json).",
     "asset-refs": "Compact Gameplay-to-Assets sidecar; needs a current Assets index.",
     "combat": "Debug-only combat relationships; needs a current source graph.",
+    "audit": "Gameplay recovery coverage/schema audit reports (read-only).",
 }
 
 
@@ -95,7 +96,31 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="CN",
         help="Default language for the localized stages (default: CN).",
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--runtime-tag-capture",
+        type=Path,
+        help=(
+            "Hash-gated GameplayTag runtime JSONL to merge during the base stage."
+        ),
+    )
+    parser.add_argument(
+        "--audit-scope",
+        choices=("active", "full"),
+        default="active",
+        help="Audit scope for the audit stage (default: active; full scans exported BuffData).",
+    )
+    parser.add_argument(
+        "--export-root",
+        type=Path,
+        help="Export root for --audit-scope full.",
+    )
+    args = parser.parse_args(argv)
+    selected_stages = set(args.stage or STAGES)
+    if args.export_root is not None and args.audit_scope != "full":
+        parser.error("--export-root requires --audit-scope full")
+    if (args.audit_scope != "active" or args.export_root is not None) and "audit" not in selected_stages:
+        parser.error("--audit-scope/--export-root require the audit stage to be selected")
+    return args
 
 
 def run_stage(stage: str, args: argparse.Namespace) -> int:
@@ -114,6 +139,11 @@ def run_stage(stage: str, args: argparse.Namespace) -> int:
                     *languages,
                     "--default-language",
                     args.default_language,
+                    *(
+                        ["--runtime-tag-capture", str(args.runtime_tag_capture)]
+                        if args.runtime_tag_capture
+                        else []
+                    ),
                 ]
             )
             or 0
@@ -134,6 +164,34 @@ def run_stage(stage: str, args: argparse.Namespace) -> int:
             from gameplay_builder import combat_relationships
 
         return int(combat_relationships.main([]) or 0)
+    if stage == "audit":
+        if __package__:
+            from .gameplay_builder import recovery_audit
+        else:
+            from gameplay_builder import recovery_audit
+
+        audit_scope = getattr(args, "audit_scope", "active")
+        if audit_scope == "full":
+            audit_args = ["--full-corpus"]
+            export_root = getattr(args, "export_root", None)
+            if export_root:
+                audit_args.extend(("--export-root", str(export_root)))
+            return int(recovery_audit.main(audit_args) or 0)
+        for language in languages:
+            input_path = (
+                WEBUI_DATA_ROOT / "lang" / str(language).upper() / "gameplay" / "index.json"
+            )
+            if not input_path.is_file():
+                print(
+                    f"{language}: Gameplay recovery audit input missing: {input_path}",
+                    file=sys.stderr,
+                )
+                return 1
+            audit_args = ["--input", str(input_path)]
+            result = int(recovery_audit.main(audit_args) or 0)
+            if result:
+                return result
+        return 0
     raise ValueError(f"unknown gameplay stage: {stage}")
 
 
