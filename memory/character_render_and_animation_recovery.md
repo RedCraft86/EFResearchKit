@@ -163,19 +163,315 @@ remains unresolved and fail-closed.
 
 The latest exact-slot census closes a potential false positive around
 indirect draw: global `+0xDA8` sites are `0x180932245`, `0x1804D2A31`,
-`0x1804D492C`, and low-level `0x1813B057F`. The latter is the `0x2734`
-dispatch case (`0x1813BB574`), whereas HGTree's writer emits `0x273B`
+`0x1804D492C`, and low-level `0x1813B057F`. The `0x1813B057F` call is in a
+neighboring low-level case; the `0x2734` dispatch target
+(`0x1813BB574 -> 0x1813AFFF7`) reaches front `+0xDA0` at `0x1813B03DA`,
+while HGTree's writer emits `0x273B`
 (`0x1809324E0 -> 0x1813B1110 -> 0x181060D70`). The generic front-end
 writers for `0x2734`/`0x2743` are `0x180931980`/`0x1809318F0`, and the
-`+0xDA8` helper's recording twin writes `0x27B9`; none has a static HGTree
-edge. The high-level jump table maps opcode `0x55` only to `0x1804CE4BD`,
-not the owners of the other `+0xDA8` sites. Therefore indirect-draw, flush
-ordering, and queue ownership for HGTree remain unresolved and fail-closed.
+`+0xDA8` helper's recording twin writes `0x27B9`; no direct static HGTree
+callsite reaches the `+0xDA8` sites. The high-level jump table maps opcode
+`0x55` only to `0x1804CE4BD`, not the owners of the other `+0xDA8` sites.
+Therefore indirect-draw, flush ordering, and queue ownership for HGTree
+remain unresolved and fail-closed.
 
 Generated mesh identity is source-scoped. Chen and Chenpast remain separate
 model families with distinct containers, Animator identities, VFS sources, and
 generated mesh GUID sets. Shared facial or animation bases do not merge their
 mesh ownership.
+
+Material identity is likewise PathID-scoped. Playable Chen has two exported
+materials named `M_actor_chen_body_01`; renderer PathID must win over a
+name-only lookup. The exact body material and hashed Texture2D fallback remove
+the unrelated body texture that previously appeared across Chen's legs.
+The canonical selectable viewer keeps only the active actor resident, centers
+each newly selected root on the shared CharInfo stage, and chains a state
+transition into its destination loop rather than leaving the transition pose
+active.
+
+The 4K/60 retail reference capture at
+`videos/2026-08-15_10-32-32.mkv` bounds the shared Character Info selection
+sequence across roughly 31 entries as previous-presentation clearing, actor
+entrance, character-owned action/VFX, effect decay, and settled idle. The
+recording is Character Info/Overview rather than the blue GachaRoom presentation.
+Zhuang Fangyi's representative interval is `01:43.0-01:50.0`: horizontal
+glitch/dissolve, white ribbon sweep and turn, green cube/orb plus orbiting trails,
+then retained cube with frontal idle. Other entries range from strong teal or
+purple-red weapon trails to body-only entrances and prop-dominant actions, so a
+single global VFX substitute is contradicted by the capture. The resident
+viewer now restarts each selected actor's exact generated Overview
+`start -> transition -> loop` chain, including its recovered entry offset and
+private item/deco bindings, instead of selecting an already-advanced resident
+animation. Re-selecting the same active row does not restart it. This closes
+the body/widget selection lifecycle only. A strict
+`IEndfieldOverviewEffectSpawner` now exists for explicitly bound generated
+particle prefabs, but the Dapan/Zhuang Fangyi request lists remain unbound
+because their proven owners are not Character Info. The shared Character Info
+effect uses its separate scene-owned path below. The physical `ExternalCamera`,
+secondary-motion, and final rendered-frame ordering remain fail-closed.
+
+The pinned native/Lua owner chain now closes the shared Character Info entry
+route more tightly: `CharInfoSwitchChar.Execute` emits the GUIDE event,
+`PhaseCharInfo.OnSelectCharChange` removes prior phase items and cancels
+pending loads, the async replacement is created, and
+`_SwitchCharacterControllerState(FromIndex, ToIndex, EnableSwitch)` drives the
+body plus private-deco Animators before `ForceUpdateAnimator`. `_PlayModelEffect`
+then reparents the scene-owned `charEffect` beneath
+`singleEffects/effect<height>`, resets its local transform, activates it, and
+calls `Play()`. This is a parameter-driven Animator route, not the Gacha
+PlayableDirector route; the misspelled `FromOveview` state remains an
+identity-bearing source fact. The viewer now also restores recovered Overview
+parameters and finishes spawned entrance effects whenever an old resident actor
+is disabled, matching the native remove/clear ownership boundary.
+
+The exact serialized shared effect in
+`assets/beyond/dynamicassets/gameplay/prefabs/charinfo/charinfochar.prefab`
+(`CAB-45edfbd38d2a68534810c905ce39aff4`) is a two-node hierarchy. Root
+`CharEffect` GameObject PathID `803616490075416323` has a disabled renderer;
+its sole child `trail` GameObject PathID `3013782730707986179` owns the enabled
+ParticleSystem/renderer PathIDs `8113670769548486403` and
+`5757248678484338435`. The renderer uses `M_UI_charChoose_12` PathID
+`4388811075012960551`, shader `HGRP/Effect/VFXRefract`, queue 3000, and exact
+texture `T_fx_mask_01_M` PathID `-7046954404783675798`. This closes ownership
+and resource identity. The selected `HG_ENABLE_MV + _USE_RBOFFSET` fragment
+(DXBC hash `f905de094d0261d5`) is now implemented in the existing Distortion MRT
+shader as two SceneColor samples followed by the exact serialized channel-mask,
+max, and `_RBIntensity` combine. The generated prefab replays both complete
+ParticleSystem/renderer payloads; the root stays renderer-disabled with its
+null material PPtr, while only `trail` binds the exact queue-3000 material and
+texture. The shared Viewer reuses one scene-owned effect after the Overview
+Animator restart, under the serialized `SingleEffects` transform
+`position=(-0.3,0,0.05)`, `scale=(0.5,1,0.5)`. All four height buckets are
+local identity, so the lab preserves their proven spatial result without
+inventing a missing table height classification. Contract rebuild, Unity
+import, serialized-payload verification, resource admission, runtime play, and
+teardown all pass. Parsed shader `m_State` closes the formerly ambiguous
+fixed-function ownership: Target0/Target1 color blend, ZTest, ZWrite, and Cull
+are material-property-bound, while the alpha blend lanes remain fixed. The
+converted ShaderLab's `Zero/Off` text is only a lossy default and must not
+replace `_SrcBlend=5/_DstBlend=10`, `_MVSrcColorBlend=3/_MVDstColorBlend=6`,
+`_ZTest=4`, `_ZWrite=0`, and `_CullMode=2`. `_VFXParams0` is source-closed to
+player-center XYZ plus `fmod(Time.time,1024)` in W. A D3D12 pixel capture of
+the final PSO, survivor list, physical aliases, and live descriptors remains
+open, so this is executable source-closed structure, not yet pixel-parity
+proof. The shared trail alone does not explain the character-specific layers;
+their separate controller owner follows below.
+
+An isolated Unity Direct3D12 replay now proves the generated shared trail is
+actually draw-admitted: at `0.125 s` it has 3,572 survivors and changes both
+the exact `B10G11R11_UFloatPack32` SceneColor and
+`A2B10G10R10_UNormPack32` SceneMV attachments. The diagnostic records the
+material state, descriptors, survivor rows, and GPU-readback hashes and labels
+itself `unity_command_buffer_replay_not_retail_capture`. This closes Unity MRT
+execution, not the retail camera's survivor list, RenderStateBlock override,
+physical aliases, live globals, or presentation pixels.
+
+A fresh isolated AnimeStudio broad load restored 1,269 StreamingAssets
+AnimatorController JSON files without changing the production wrapper scope.
+The audit again closes all 31 playable main Overview controllers, with four
+fixed-duration and 27 normalized-duration handoffs plus 636 controller-proven
+body/private-deco state compositions. The earlier audio-only event census was
+not the actor-effect owner: controller `m_StateMachineBehaviours` resolve to
+`Gameplay.Beyond.AnimatorBehaviourPlayEffect`, whose `_effects[]` directly
+store `effectName + mountPoint`; 31 controllers contain 165 decoded records.
+Its exact Enter/Exit helper owns creation, removal, and immediate teardown.
+Zhuang Fangyi therefore has four source-owned Overview effects: `piaodai`,
+`_01`, `baofa`, and `finger_lightning`, the last mounted uniquely at
+`Bip001_R_Finger2Nub`. The lab now binds `piaodai` to its existing recovered
+animated prop and serializes the three exact particle-prefab bindings with
+their EffectSetting timing: `_01=0/8 s`, `baofa=6.1/3 s`, and
+`finger_lightning=4.4333334/2 s`. `_01` and `finger_lightning` pass the
+source-closed renderer gate; `baofa` remains deliberately non-executable
+because its `all/daoguang_light (1)` renderer, material
+`M_fx_ui_zhuangfy_lightning_901` PathID `6070151493152993176`, still lacks a
+retail-equivalent `HGRP/Effect/VFXBaseV2` execution proof. Existing D3D12
+same-input probes use a transient compatibility shader, force both admission
+globals, and test nonzero coverage rather than retail pixel equality. The lab
+now validates the exact sole fail-closed renderer/material/shader tuple so it
+cannot silently drift or become admitted. This remains independent of the Gacha
+Timeline owner even though the underlying effect assets are shared.
+
+Across all 31 controllers, the 165 behaviour records contain 369 entries and
+304 unique effect names. The MonoBehaviour object index repeats 223 unique
+names/288 entries in controller scalar rows, which is not independent prefab
+availability evidence; only exact AssetMap container/object rows can close
+that boundary. Unity currently materializes only the three
+standalone Zhuang Fangyi particle prefabs plus embedded `piaodai`. Of 228
+non-root mounts, 217 resolve uniquely, 11 are ambiguous, and none are missing.
+Last Rite's head effect now has an independently proven standalone AssetMap
+prefab; Camille remains a controller-workload candidate rather than a proven
+prefab batch. Li Zhiyan (`38-47 s`) and Wulfa (`48-55 s`) have the
+strongest next retail-video acceptance joins, while Dapan (`283-296 s`) is the
+low-VFX prop-animation regression target.
+
+The video identity join now closes 27 of 28 stable visible slots against exact
+localized names plus token-specific manifest/prefab evidence. In particular,
+the previously unresolved Luoxi/Rossi slot is `chr_0028_wulfa`; only the video
+label `伊玛` has no matching current CharacterTable/catalog actor and remains
+unresolved. Endminm's missing facial Avatar was recovered as
+`data_facemorph_avatar_endminm`, allowing its prefab to rebuild with 11 skinned
+meshes, 410 transforms, and 24 clips. The full native verifier now passes all
+31 actor prefabs, 4 fixed and 27 normalized handoffs, and 636 widget states.
+
+A frame-indexed audit places the first clear Zhuang Fangyi presentation at
+about video `102.8 s`; the preceding `102.5-102.7 s` corruption is a streaming/UI
+transition and not VFX timing. Relative to that clear start, the white ribbon/
+shard silhouette is strongest around `0.3-2.3 s` and rapidly leaves the main
+outline by `2.3-2.8 s`; green hand/body-local energy persists around `0.3-3.1 s`,
+with a later local flare around `5.2-5.9 s` decaying by roughly `6.0-6.7 s`.
+The recording shows no defensible global exposure step. A full-video identity
+index closes 27 of 28 stable slots, but no color, shape, or timing overlap is
+promoted to an effect owner without the corresponding controller/prefab chain.
+These intervals are retail visual acceptance bounds, not proof of particle
+seed or exact presentation-frame lifetime.
+
+The four Zhuang Fangyi request names still do not license wholesale reuse of
+the GachaRoom Timeline: their Overview ownership comes specifically from the
+controller behaviour records. `trail01` and `jianqiang` remain Gacha-only
+because they are absent from that list. The Overview spawner now carries exact
+source domain, binding, delay/duration, unique mount resolution, and teardown;
+`piaodai` uses the already recovered animated actor prop rather than being
+misrepresented as a particle prefab.
+
+The Zhuang Fangyi gacha helper's multi-Director start protocol is now bounded
+more tightly from plaintext Lua, serialized Director/Timeline rows, and the
+pinned GameAssembly wrappers. Source order is `Actor`, `Audio`, `Effect`,
+`Light`, `Others`. `SampleToBeginning` performs `Stop -> time=0 -> Evaluate`
+for each role in that order. Delayed `PlayFromStart` first calls
+`RebuildGraph` for every collected Director, then walks the same order again
+for `time=0 -> Evaluate -> Play`. The zero-delay `TailTick` after each phase is
+now closed from plaintext Lua: it ignores its delta argument, reads only the
+Actor Director time, toggles the loop-track state at the authored loop start,
+and fires one optional time callback exactly once. It has no camera, follower,
+VFX, Timeline, or render-refresh work. The lab executes that state machine and
+the two-pass protocol for the exact recovered
+Actor and Effect PlayableAssets. The complete object index closes both Light
+and Others as structural empty TimelineAssets: each has only its exact name and
+editor preview setting, with no tracks, clips, or bindings. The lab therefore
+admits source-identified empty Light/Others helpers without inventing payloads.
+Audio is now recovered as the fifth helper Director. Its source Timeline PathID
+is `6159943924586262679`: exact 2D seek-enabled events are
+`Au_Gcaha_zhuangfy_overview` at `[0,5]` and
+`Au_UI_Gacha_Chrshow_Light6` at `[7.75,10.1166666667]`; the serialized `Gcaha`
+typo is identity-bearing. Neither clip stops its event at clip end. Exact Wwise
+joins resolve them to media IDs `256896424` and `787269389` and verified decoded
+FLACs of 9.688 s and 5.287292 s, so playback overlaps from 7.75 to 9.688 s under
+zero-latency posting. The recovered Audio Playable remains silent during
+`SampleToBeginning` through an explicit arm gate, then arms only after the
+delayed `RebuildGraph -> time=0 -> Evaluate` pass and before `Play`; public Unity
+evaluation state alone does not distinguish the source helper's silent zero
+sample. Runtime Wwise onset/callback latency remains uncaptured, but Timeline
+identity, timing, flags, event hashes, media, and local playback are source-closed.
+Current-gated native bodies refine the lifetime: `OnBehaviourPlay` and
+`PrepareFrame` only update required actions; `_DoPlayEvent` hashes the key and
+reaches `AudioAdapter._PostEvent`, `_TrySeek` requires an existing playing ID,
+and `OnGraphStop` calls `_TryStop` before an optional exit event. Thus a clip end
+with `_stopEventAtClipEnd=false` does not stop playback, while stopping or
+destroying the Audio graph does. The lab mirrors both edges and no longer lets
+the second media continue beyond the Audio Timeline graph lifetime by default.
+The individual native
+`Stop`/`set_time`/`Evaluate`/`RebuildGraph`/`Play` wrappers contain no hidden
+cross-Director or render-submit edge. Same-frame versus next-rendered-frame
+visibility therefore remains a runtime-capture question. The disabled
+`ExternalCamera` stays an animated Cinemachine data source; it is not promoted
+to the physical viewer Camera, and its exposure/history is not reset by the
+Director coordinator.
+
+The empty Light Timeline is also a negative ownership result: gacha lighting
+does not come from Timeline light curves. Installed Lua independently loads
+`AdditionalLights/light_<charId>.prefab`, activates only `light_overview`,
+initializes its follower components, loads `CameraTracks/track_<charId>.prefab`,
+and applies only `VolumeModifiers/volume_overview` to the room override Volume.
+The lab keeps one camera-local operator-light/HGRP publisher and does not create
+a second Unity-Light population. For Zhuang Fangyi the known authored culling
+input remains six `light_overview` rows plus eleven admitted rarity-6 room rows;
+target-frame carry-in, full `LightCullResult`, and final publication remain
+capture-only.
+
+The light/Volume activation epoch is now source-bounded and executable in the
+Zhuang Fangyi capture path. Lua instantiates the character prefab, constructs
+the helper, then creates `AdditionalLights/light_<charId>` and activates only
+`light_overview`; `InitLightFollower` runs once before the first
+`SampleToBeginning`. It next creates `CameraTracks/track_<charId>`, activates
+only `VolumeModifiers/volume_overview`, applies its modifier to the room Volume,
+sets the gacha layer, and only then samples the Directors. Native evidence
+separates initialization from motion: `InitCharLightFollower` stores the target
+and enables its custom tick, while continuous fixed-offset/parent following
+runs in `LateTick` after animation/Timeline sampling. Pinned native evidence
+plus the recovered HGRP source closes `UseDataOnVolume` as a call-time snapshot:
+it resolves the destination Volume's instantiated profile, obtains its
+`HGCharacterVolume`, and copies value plus `overrideState` for exactly 30
+`CharLightVolumeData` lighting parameters. It stores no destination reference
+and has no Update/Tick path;
+the modifier's half-second tween duration is separate state, not proof of a live
+binding. Current generated capture data preserves both serialized modifier
+parameters and the post-call destination snapshot. The authored gacha stack has
+two global, enabled, weight-one layers: `GachaRoom_Volume` at priority 30000 and
+`charOverrideVolume` at priority 30001. The room profile actively overrides 14
+of the 30 character-light fields; notably it sets `charIgnoreSceneEnv=true`,
+where the older Character Info profile differs. `UseDataOnVolume` copies all 30
+actor value/state pairs into the instantiated priority-30001 profile, but the
+Volume manager contributes only fields whose resulting `overrideState` is true.
+An inactive actor field is therefore a no-op at priority 30001 and falls through
+to the priority-30000 room value when active there, then to a lower world/phase
+Volume or the constructor default. The generator records both source layers,
+models the exact assignment, composes only active overrides, and rejects missing
+or extra modifier fields. The lab keeps the 30 raw value/state pairs as evidence
+and resolves the two known authored layers once at gacha `Begin`, before
+`SampleToBeginning`; it preserves lower-stack inputs for fields inactive in both
+layers, and delayed play or per-frame publishing does not replay the modifier.
+The lower environment registry is now bounded for both presentation scenes.
+GachaRoom registers one enabled global `HGEnvironmentVolume` at priority 600,
+manual factor 1, zero distance/fade, selecting the fully serialized
+`Env_gachaRoom_01` phase (PathID `6627355437943792087`); a priority-200 migrated
+row has a null phase and is not an additional environment. Character Info uses
+the same priority-600 registration shape but selects the distinct `CharInfo_Env`
+phase (PathID `1201129019072041203`). Current-gated native flow is
+`Register/_Register -> CompareTo` and
+`PipelineUpdate -> _InterpolateVolumesImpl -> HGEnvironmentPhase.Lerp/CopyFrom`,
+with camera-local interpolated phase, volume list/factors, and trigger position.
+The exact same-priority tie break, active-list mutation order, override trigger,
+and streamed phase replacement timing remain open; do not substitute one scene's
+phase for the other.
+
+The generated Gacha runtime now carries this selection in
+`EndfieldRecoveredEnvironmentPhaseSnapshot`. It records the priority-600 holder,
+phase identity/hash, direct-light, indirect-factor, and exposure fields without
+publishing the entire phase as shader globals. This preserves two important
+fail-closed differences: Gacha `directIntensityDividePi=0` cannot reuse
+Character Info's `2.7475471`, and Gacha indirect factors `(1,1)` cannot silently
+replace Character Info's `(.28772247,.28772247)`. Sky/SH, fog, volumetrics, CSM,
+and punctual-shadow publication still require individual consumer evidence.
+The capture camera now owns an explicit phase reference and a hash-gated
+consumer. It applies the selected color mode, color/temperature, and the existing
+pitch/yaw-to-direction transform to the scene main light while leaving Unity
+light intensity neutral; it also disables the recovered source-main descriptor
+for Gacha's zero divide-pi value instead of retaining the Character Info
+descriptor. Native `UseDirLightDataFromEnvDirectly` is only a light-source
+selection gate and does not justify EV-to-lux conversion or broad shader-global
+publication. A standalone D3D12 capture after this correction passes all 13
+canonical frames: every frame is non-black, all hashes are distinct across 13
+samples, the source camera remains disabled, all 752 runtime scope objects retain
+Gacha layer 30, and four fail-closed material identities remain unchanged. The
+result is visibly recognizable and includes the early ribbon/cube composition,
+but the lab's blue isolated backdrop and current camera/pose composition still
+differ materially from the retail Character Info recording; this is evidence of
+working transport, not parity.
+
+On character switch, Lua detaches UI, clears timers, removes the TailTick owner,
+nils the helper, destroys the old character root, and creates the replacement on
+a later timer/coroutine. There is no same rendered frame containing both actor
+roots. The shared priority-30001 profile can retain the old snapshot until the
+new character calls `UseDataOnVolume`, but that is retained data rather than a
+second Volume stack. A same-update old `LateTick` immediately before destruction
+remains a narrow scheduling boundary; it cannot produce a rendered dual actor.
+The lab capture now starts with its
+single operator-light publisher and character Volume gated closed, opens them
+immediately before `SampleToBeginning`, and closes the runtime-owned publication
+idempotently on failure, disable, destroy, or explicit end. Closing restores the
+Volume component's pre-bind enabled state, publishes zero operator-light count/
+cluster/binning state, and does not touch exposure history or create a second
+Unity Light population.
 
 The native `HGRenderPath` slot roles are now corrected from the installed
 UnityPlayer registration: wrapper `+0x8` is the BeforeCulling setup
@@ -209,10 +505,11 @@ interpreter: the recovered internal-call table maps
 GameAssembly census found 47 direct compute-buffer binding calls from eight
 named bodies and 35 texture-binding calls; they are built-in passes or
 CommandBuffer overload wrappers, with no factory/per-draw/character hits.
-The consumer is now bounded: the class-local UnityPlayer registration for
-`UnityEngine.Graphics::ExecuteCommandBuffer` resolves to `0x1800b6f40`, which
-reaches `0x18052d730` -> `0x1804cdf70` -> the high-level opcode interpreter
-`0x1804ce0a0`. Opcode `0x11` (`0x1804cf455`) resolves its
+The consumer is now bounded by the complete UnityPlayer internal-call table.
+`ScriptableRenderContext.ExecuteCommandBuffer_Internal_Injected` is table
+index `3645` -> `0x1800b6f40`, which reaches `0x18052d730` -> `0x1804cdf70`
+-> the high-level opcode interpreter `0x1804ce0a0`. Opcode `0x11`
+(`0x1804cf455`) resolves its
 resource handle and calls `0x1805e7a10`, which reaches graphics-context slot
 `+0xab8` at `0x1805e7a8b`; its indirect-dispatch branch calls
 `0x1805e7bc0` -> slot `+0xab0`. Opcode `0x0d` (`0x1804cf350`) resolves the
@@ -220,7 +517,27 @@ same record kind and calls `0x1805f84a0` for resource-state binding, with no
 direct `+0xab8` or low-level `0x27ef` call. Thus high-level records do reach
 the generic immediate-compute sink, but remain a separate stream from the
 native `0x27ef` record, and neither path identifies the factory channel-2 /
-kernel-7 upload producer.
+kernel-7 upload producer. The same table maps `Graphics::ExecuteCommandBuffer`
+at index `924` to `0x18005c0d0`; its inspected body resolves resource/object
+handles but has no direct interpreter edge. `Submit_Internal_Injected` is index
+`3636` -> `0x1800b4a40` -> `0x1805385a0` -> `0x18052e0b0`; the submit body
+iterates command records and contains a direct `0x1804cdf70` call for one
+record kind, making it a separate flush/submit candidate rather than proof of
+the API-2 draw owner. The async/no-copy entries resolve to distinct helpers
+(`0x18052d8f0`, `0x18052db50`, and `0x18052da20`) and must not be collapsed
+into the old state-only attribution.
+The Submit record loop is now decoded: `0x18052e0b0` reads a 16-byte record
+array at `context+0x10030`, dispatches its type through the table at
+`0x18052f25c`, and maps type `2` to `0x18052e869` and type `3` to
+`0x18052e8f7`. Both cases load the deferred command-buffer pointer from
+`context+0x10128[index]` and call `0x1804cdf70` (type 3 supplies the buffer's
+`+0x170` mode field). The helpers `0x18052d730`/`0x18052db50` enqueue type 2,
+while `0x18052d8f0`/`0x18052da20` enqueue type 3. Thus `Submit` is a concrete
+deferred consumer of the same high-level command buffer that table-A
+`0x180064580 -> 0x1804c7930` writes; opcode `0x55` can reach the known HGTree
+callback there, and opcode `0x6A` can reach generic API-2 `+0xF10`. This still
+does not statically connect HGTree's callback-produced records to `+0xDE8`,
+`+0xF10`, or the final queue owner.
 An expanded UnityPlayer direct-call census covers the two high-level writers:
 `0x1804cb1a0` (opcode `0x0d`) has 58 direct callsites in 20 PData bodies and
 `0x1804c73e0` (opcode `0x11`) has 42 callsites in 18 bodies, 27 unique bodies
@@ -533,6 +850,21 @@ terrain/foliage target-1 enumeration, physical skin-buffer reuse, and a
 source-compatible lab MRT remain open. See
 `reports/assets/character_recovery/gacha_scene_mv_motion_contract.md`.
 
+The Gacha `baofa` Glow902 transparent writer is now executable through its own
+source-closed queue-3005 SceneMV lane. The exact recovered owner is
+`P_fxui_zhuangfy_ui_overview_start_01_baofa/all/glow (2)`, active under the
+Gacha `baofa` Control window (`5.483333..9.4`); despite the prefab name, current
+evidence does not make it an Overview owner. Its original
+`HGRP/Effect/VFXBaseV2` material is premultiplied transparent (`One`,
+`OneMinusSrcAlpha`), front-culled, depth-read-only, and writes SceneColor plus
+SceneMV. Native order is main queue 3000, exact queue 3005, Distortion, then
+post processing, so the lab keeps queue 3005 out of both the ordinary
+transparent lane and after-post lane. A 13-frame D3D12 capture executed all
+four requesting frames with no missed request; the manifest SHA-256 is
+`8e71eb8119d960aad59a5d8a36039ab523d75dd45e4188c26fb2280dc5d20d9e`.
+See `reports/assets/character_recovery/glow902_native_scene_mv_queue_20260815.md`
+and `scratch/character_recovery/glow902_queue3005_capture/`.
+
 The ordinary DefaultDeferred resolver boundary is now source-pinned. The
 selected route is a five-MRT producer (`SceneColor`, `SceneMV`, `GBufferA/B/C`)
 followed by a separate one-RT SceneColor resolver with read-only depth and
@@ -756,16 +1088,25 @@ only stable interpretation and priorities.
    `+0xDA0` (`0x18083E720`). This closes the recorded front-end -> backend
    receiver edge. It includes the registry paths
    `0x180822180`/`0x1808224F0`, and the shared builder `0x18083E720`; these
-   remain pre-device layers. The adjacent setup path
-   `0x180843BF0 -> 0x18083F680` reaches `0x18083F71B`, where
+   remain pre-device layers. The opcode-`0x55` nested
+   `+0xDB0 -> 0x2735 -> API-2 +0xDB0` branch is now
+   bounded through `+0x2B60` and callback `0x180820660 -> 0x18082E3E0`,
+   including Vulkan dynamic-state/descriptor commands. The remaining
+   high-value question is which later flush invokes that list and whether a
+   draw/queue consumer follows; do not treat the state callback as final draw
+   ownership. The adjacent setup path `0x180843BF0 -> 0x18083F680` reaches
+   `0x18083F71B`, where
    `[[[rdi+0x78]+0x208]]` supplies a heap/runtime vtable and `+0x48` is
    invoked. Four static `+E90` callers feed this resource initializer, while
    no static `+DC0` caller was found. The receiver is therefore currently a
    runtime resource-subobject interface, not proven device submission. An
    adjacent resource helper `0x18061FB60` dispatches the same slot shape and
    consumes its return as a NUL-terminated metadata/name string; F8F0 does not
-   consume F680's returned value as a handle. Treat this as a resource
-   metadata/name boundary until the concrete nested type is recovered.
+   consume F680's returned value as a handle. F8F0 has only three direct
+   callers (`0x18083F680`, `0x180840E00`, and `0x180846635`), all in the
+   generic API-2 resource cluster, with no HGTree callback caller. Treat this
+   as a resource metadata/name boundary until the concrete nested type is
+   recovered.
    The later F8F0 record loops call through shared cell `0x1821D3898`; its
    Vulkan resolver branches pass the string `vkUpdateDescriptorSetWithTemplate`,
    so this is now a concrete descriptor-state update boundary. The API-2
@@ -791,12 +1132,18 @@ only stable interpretation and priorities.
     writes high-level opcode `0x55`; the interpreter case `0x1804CE4BD` calls
     `0x18106AAE0`, then context `+0xEA0` records low-level `0x273B`.
     The parallel table-B body `0x1801719B0` remains only the managed-root/hash
-    validator and alternate duplicate; the global internal-call table also
-   resolves `ScriptableRenderContext.ExecuteCommandBuffer_Internal_Injected`
-   to `0x1801587D0` (with async/no-copy siblings at `0x180158980`,
-   `0x180158B30`, and `0x180158B80`); the normal wrapper only validates and
-   updates native context state, while no-copy enters indirect helpers
-    `0x180B3E5C0`/`0x180A95EB0`. The remaining HGTree sink is now after the
+    validator and alternate duplicate. The complete UnityPlayer table instead
+    maps `ScriptableRenderContext.ExecuteCommandBuffer_Internal_Injected`
+    (index `3645`) to `0x1800B6F40`, whose positive
+    `0x18052D730 -> 0x1804CDF70 -> 0x1804CE0A0` chain is the high-level
+    playback route. `Graphics::ExecuteCommandBuffer` is index `924` ->
+    `0x18005C0D0`; the inspected body is a separate resource/object path.
+    `Submit_Internal_Injected` is index `3636` -> `0x1800B4A40` ->
+    `0x1805385A0` -> `0x18052E0B0`. Its type-2/type-3 records reload the
+    deferred command-buffer pointers from `context+0x10128` and call the same
+    high-level interpreter, making it a concrete deferred consumer rather than
+    an unrelated state wrapper. It still has no static HGTree/API-2 final-draw
+    ownership proof. The remaining HGTree sink is now after the
     positive `0x55 -> 0x273B -> 0x1813B1110` direct-callback route: the
     callback `0x18107AB10` is invoked by the parsed low-level `0x273B` case
     and remains a resource/list lifetime callback that does not dispatch
@@ -810,7 +1157,17 @@ only stable interpretation and priorities.
     buffer/state commands when the backend flushes the lists. Static
     HGTree-specific flush/order and dynamic command-buffer/render-graph
     ownership of the final draw and runtime-indirect resource-node consumer
-    still need to be joined to the final draw. Ordinary
+    still need to be joined to the final draw. The main-table attribution is
+    now corrected: `ScriptableRenderContext.ExecuteCommandBuffer_Internal_Injected`
+    (index `3645`, `0x1800B6F40`) is the proven high-level interpreter entry
+    (`0x18052D730 -> 0x1804CDF70 -> 0x1804CE0A0`). `Graphics::ExecuteCommandBuffer`
+    (index `924`, `0x18005C0D0`) is a separate resource/object body. The
+    `Submit_Internal_Injected` path (`0x1800B4A40 -> 0x1805385A0 ->
+    0x18052E0B0`) is a concrete deferred consumer: its type-2/type-3 records
+    reload command-buffer pointers and call the same interpreter. It still
+    does not prove HGTree API-2 draw ownership. The final
+    render-graph/command-buffer owner remains
+    runtime-indirect and fail-closed. Ordinary
    `CommandBuffer::Internal_DrawRendererList_Injected` is a separate route:
    UnityPlayer `0x1801713D0` resolves through `0x180A60190`'s indirect
    renderer/resource-state helper, while the HGTree body `0x1801719B0` never
@@ -823,9 +1180,11 @@ only stable interpretation and priorities.
     dispatch. This negative result applies only to table B; the unresolved edge
     now remains after the positive table-A command route, in dynamic
     CommandBuffer/render-graph playback or the runtime-indirect resource
-    consumer. The adjacent ScriptableRenderContext no-copy helpers
-   are now bounded as state construction (`0x180B3E5C0`/`0x180A95EB0`) rather
-   than playback, and the API-2 `0x80`-byte resource pool
+    consumer. The main-table no-copy entries are `0x1800B7440` ->
+   `0x18052DB50` and `0x1800B7AD0` -> `0x18052DA20`; the former has the same
+   ready-branch `0x1804CDF70` interpreter call, while the latter queues a
+   distinct record helper. They are not the previously cited `0x180158...`
+   state wrappers. The API-2 `0x80`-byte resource pool
    (`0x180559B30 -> 0x1805598C0 -> 0x1805586C0`) is directly a
    refcount/bitmap lifetime collector. On the specific `AB10 -> 0x180555D30`
    ingress, its callback fields are the bounded cleanup/setter tuple
@@ -889,7 +1248,8 @@ only stable interpretation and priorities.
    confirms that `0x181060EA0/0x181060EB0` only rearrange arguments into
    `0x18107AE60/0x18107B3A0`; the handlers consume a result object whose
    `[result]` is the item array and `[result+8]` is the count, then dispatch
-   only `+0xDA0/+0x380`. A full exact `call [register+0x10]` census in the
+   only `+0xDA0/+0x380` on their resource-callback tails. A full exact
+   `call [register+0x10]` census in the
    API-2/resource ranges finds only ordinary vtable release/destructor calls
    plus the known `0x18106AAE0` cleanup family; none consumes builder
    `outResult+0x10`. The pool's `0x1805594BD` callback is a caller-supplied
@@ -951,9 +1311,275 @@ only stable interpretation and priorities.
    the direct static callback-producer set. The renderer-list record identity
    is now proven by the arg5 → task `+0x68` mapping; final indirect-draw,
    flush ordering, and queue ownership remain unresolved and fail-closed.
+   The three renderer-list creation cores are also bounded on their
+   resource-ready branches: `0x18107EE40`, `0x18107FD22`, and `0x181080190`
+   call `context+0xEA0` with `0x181060D90/0x181060D20/0x181060D00`, then
+   `context+0x850`; the unavailable-resource branches call shared builder
+   `0x181080730`. Front `+0x850` (`0x180934850`) only records `0x2798` and
+   advances a command counter. A direct resolver-cell scan over
+   `0x181060000-0x181081000` finds no Vulkan draw call; named indirect draws
+   remain in the neighboring API-2 `+0xDA8` thunk
+   (`0x180820940 -> 0x18082E820`). This strengthens the negative boundary:
+   HGTree creation/callback code still has no static final draw, flush, or
+   queue-submit edge, so that join remains fail-closed.
+   The deferred Submit audit now closes the command-buffer consumer boundary:
+   record types `2`/`3` in `0x18052E0B0` reload the pointers queued by
+   `0x18052D730`/`0x18052D8F0`/`0x18052DB50`/`0x18052DA20` and execute them
+   through `0x1804CDF70`. This confirms that the HGTree writer's `0x55` record
+   can be consumed through Submit as well as the direct Execute/NoCopy path,
+   but does not turn the generic `0x6A -> +0xF10` flush or neighboring `+0xDE8`
+   master-list path into an HGTree-specific draw/queue proof. A vtable
+   cross-check separates the generic `0x2730`/`0x2731` writers from that
+   backend: `0x181DCB600 + 0x0/+0x148` contains
+   `0x18093AE10`/`0x18092E350`, while the API-2 backend table
+   `0x181DBC098 + 0xDE8` is `0x18083F1E0`; the writers immediately dispatch
+   into the backend slots but are not the backend draw/submit implementations.
+
+   The managed render-pipeline boundary is now positively joined. The mapped
+   `HGRenderPipeline.Render(ScriptableRenderContext, List<Camera>)` body spans
+   GameAssembly `0x183455030-0x18345A6E4`; it directly calls
+   `ExecuteCommandBuffer` at `0x183457129` and `0x18345997B`, calls
+   `ExecuteCommandBufferNoCopy` at `0x183459502`, `0x1834595D4`, and
+   `0x183459614`, and calls `Submit` at `0x183459D69`. The six concrete pass
+   lambdas that call `HGRendererListUtils.DrawTreeECSRendererList` preserve
+   their render-graph context in `rsi`, `rbx`, `rdi`, or `r13` and pass that
+   same context as `rcx` to `0x189C0A130`, while passing their renderer-list id
+   in `edx`; the helper reads `context.fields.cmd` before forwarding to
+   `HGTreeRender.DrawECSRendererList`. Therefore the table-A HGTree
+   `0x55 -> 0x273B` records are recorded through the same managed
+   pass-command-buffer framework that the main Render method executes and
+   ultimately submits. This joins HGTree playback to the render-pipeline
+   Execute/NoCopy/Submit boundary, but does not identify the HGTree-specific
+   API-2 `+0xDA8` indirect-draw branch, `+0xDE8` flush order, or Vulkan queue
+   owner; those remain fail-closed.
+   The RenderGraph command-buffer identity is now bounded below the pass
+   callbacks. `HGRenderGraph.ExecuteRenderGraph` (`0x189B2BA30`) calls
+   `ExecuteCompiledPass` (`0x189B2B62C`), which passes
+   `r8 = [this + 0x60]` to `PreRenderPassExecute` (`0x189B2E740`) and
+   `PostRenderPassExecute` (`0x189B2E4B4`), then invokes the compiled pass
+   through `HGRenderGraphPass.Execute` (`0x189B37D20`). The
+   `HGRenderGraphContext` layout is source-backed as `renderContext` then
+   `cmd`; native Pre loads `cmd = [rgContext + 0x18]`, passes
+   `&[rgContext + 0x10]`, and calls `ExecuteCommandBufferNoCopy` at
+   `0x189B2E8D4`. The six identified pass lambdas receive this same context
+   shape before calling `HGRendererListUtils.DrawTreeECSRendererList`, which
+   reads the same `context.fields.cmd`. Therefore HGTree `0x55 -> 0x273B`
+   records are placed in the command buffer RenderGraph prepares and executes
+   around the pass, and pipeline-level `Submit` remains its deferred consumer.
+   This closes command-buffer identity, but not HGTree-specific `+0xDA8`
+   selection, `+0xDE8` ordering, or queue ownership.
+   The generic pass/delegate edge is now concrete: builder
+   `SetRenderFunc<PassData>` (`0x1876BCA9C -> 0x1876BC9C4`) calls pass
+   `SetupSubpass`/`SetupRenderFunc` (`0x1884756FC`/`0x1884755E0`), whose
+   helper `0x188475590` stores the delegate, camera, and 16-byte payload in
+   descriptor slots `+0x20/+0x40/+0x60/+0x80`. Generic
+   `HGRenderGraphPass<PassData>.ExecuteInternal` (`0x188474A4C`) calls
+   `ExecuteSubpassRenderFunc` (`0x188474E38`); it iterates `m_subpasses`
+   (`this+0xB0`), invokes `HGRenderGraph.InvokeOwnerCallback` (`0x189B2DA6C`),
+   obtains `HGRenderGraphContext` via `get_HGContext` (`0x189B3011C`), and
+   invokes each stored delegate with pass `data` (`this+0xD0`) and that
+   context. This closes the dynamic delegate edge into the six identified
+   HGTree pass lambdas, but the generic pass body still has no static
+   `+DA8/+DE8/+F10`, Vulkan draw, or queue-submit edge; final HGTree draw and
+   queue ownership remain fail-closed.
+   A full tail audit confirms both resource callbacks share that TLS front
+   context: `0x18107AE60` calls `+0xDA0/+0x380` at `0x18107B2F0/0x18107B31B`,
+   while `0x18107B3A0` makes the matching calls at `0x18107B960/0x18107B98E`.
+   Front vtable `0x181DCB360` records these as `0x2734/0x27B6` (or dispatches
+   immediately through `context+0x2708`); their consumers are backend
+   `+0xDA0/+0x358`, not the neighboring `+0xDA8/+0xDE8` draw/flush family.
+   This strengthens the fail-closed HGTree-specific draw/queue boundary.
+   A direct `+0xF10` caller census further separates ownership: the only
+   nearby `0x181080C30` caller is a generic per-draw/VAT/visibility batcher,
+   while the other callers are DispatchCompute, mesh-buffer, or generic
+   Vulkan-resource paths. None consumes an HGTree callback or renderer-list
+   record. The HGTree callback front vtable `0x181DCB360+0xDE8` resolves to
+   no-op `0x180076890` (the backend table's `+0xDE8` is
+   `0x18083F1E0`), so generic `0x6A/0x27D5` flushing is not promoted to
+   HGTree-specific ordering or draw ownership.
+   One nested path is now positively bounded: opcode-`0x55` handler branches
+   `0x18106A963` and `0x18106AB33` call front `+0xDB0` before their later
+   `+0xEA0` callback record. Front `+0xDB0` (`0x180930C00`) records low-level
+   `0x2735` (or immediate-dispatches its backend slot), and case
+   `0x1813B05B6` calls the receiver `+0xDB0`. API-2 `+0xDB0`
+   (`0x18083AA90`) stages `+0x2B68/+0x2B70` and appends a `+0x2B60` record
+   whose callback is `0x180820660 -> 0x18082E3E0`; its resolved cells include
+   `vkCmdSetDepthBias`, `vkCmdSetStencilReference`, `vkCmdBindPipeline`, and
+   `vkCmdBindDescriptorSets`. The adjacent helper `0x18082E760` uses
+   `vkCmdCopyImage`, but no pointer write in this trace attributes that helper
+   to the exact HGTree record. This is a positive HGTree-to-Vulkan
+   state/resource edge,
+   and the existing master-list executor can consume the same list after a
+   later flush, but neither `+0xDB0` nor `0x2735` contains `+0xDE8`, `+0xF10`,
+   `vkCmdDraw*`, or `vkQueueSubmit`; final draw/queue ownership therefore
+   remains fail-closed.
+   The list protocol is more specific than a generic “later flush”:
+   `0x180841C40` packages both working heads (`+0x2B58` and `+0x2B60`) into
+   master-list callbacks `0x180820210`/`0x1808200C0` only when `dl=1`, while
+   `dl=0` clears those working heads. API-2 `+0xF10` appends its own pending
+   record and calls `+0xC40` with `dl=1` (package only); `+0xDE8` calls
+   `+0xC40` with `dl=0` and then invokes `0x180843D60`, which walks the master
+   list and calls `0x1808200C0`. Thus the HGTree `+0xDB0` record needs a
+   separate packaging call before the execution call; neither step is emitted
+   by the inspected HGTree handlers or callbacks.
+   A fresh owner census found exactly four direct `0x6A` writer call sites
+   (`0x181118AD0`, `0x18111A7D7`, `0x1811BE9BA`, `0x1811C7FFD`) in native
+   owners `0x181117560`, `0x1811195E0`, `0x1811BDC37`, and `0x1811C772D`.
+   None directly references the HGTree creation/callback family, front/API-2
+   `+0xDB0/+0xEA0`, `+0xC40`, `+0xDE8`, `+0xF10`, or the master-list executor.
+   The low `0x27D5` path is only the interpreter dispatch at
+   `0x1813B156A -> +0xF10`; no static writer edge joins it to those owners or
+   to HGTree. Keep generic packaging and HGTree callback execution as separate
+   until a runtime trace proves the missing ordering bridge.
+   The managed `ScriptableRenderContext` Submit/Execute target audit now
+   separates the deferred command consumer from API-2 HGTree flush state.
+   GameAssembly maps `Submit`/`Submit_Internal`/`Submit_Internal_Injected` to
+   `0x183DBB470/0x183DBB4E0/0x183DBB540` and
+   `ExecuteCommandBuffer`/`NoCopy` to `0x183339850/0x1834534C0` (with the
+   injected NoCopy body at `0x1834535C0`); these wrappers lazy-resolve distinct
+   UnityPlayer targets. The resolved Submit chain is
+   `0x1800B4A40 -> 0x1805385A0 -> 0x18052E0B0`, whose command-consumer fields
+   are `+0x10030/+0x10040/+0x10128/+0x10168/+0x10178`, not API-2's
+   `+0x2B60/+0x2B68/+0x2B70/+0x2E48`. No tracked native function crossed both
+   field families in the bounded census, so HGTree command-buffer playback is
+   joined to Submit/Execute but the `+0xDE8` ordering and queue owner remain
+   fail-closed. Runtime attach was denied by `WriteProcessMemory` in this pass;
+   this conclusion is static. See
+   `reports/assets/character_recovery/hgtree_renderer_list_command_submission_boundary.md`
+   item 68.
 2. Validate representative paths against accepted retail captures.
 3. Extend texture/mip and material-variant recovery only where visible.
 4. Generalize animation from another exact Avatar/clip oracle.
-5. Add controller, grounding, facial, FX, and secondary systems behind
+5. Recover the Character Info selection clear/hide interval and the
+   `SampleToBeginning -> RebuildGraph -> Evaluate -> Play` ordering across the
+   actor, `Audio`, `Light`, `Others`, and physical `ExternalCamera` Directors;
+   Actor/Audio/Effect plus exact empty Light/Others ordering is executable; next
+   connect the remaining individually proven phase fields beyond the now-live
+   direct-light/color/descriptor subset, close the narrow same-update old-root
+   `LateTick`, Audio `ProcessFrame` flag/onset, and streamed-phase boundaries.
+   Queue-3005 `baofa` Glow902 is now executable only under its exact Gacha
+   owner. The shared CharInfo `CharEffect/trail` is now generated and replayed
+   with its selected `_USE_RBOFFSET` Distortion MRT branch and property-bound
+   render state; next capture its D3D12 pixels and close final PSO overrides,
+   survivor ordering, physical aliases, and live descriptors. Generalize the
+   now-closed `AnimatorBehaviourPlayEffect._effects[]` owner path from Zhuang
+   Fangyi to the remaining controller records. Last Rite's independently
+   AssetMap-proven head effect is now executable: its 8-node hierarchy, five
+   particle pairs, head mesh, exact 3.5/13.5 timing, eight ordered controller
+   requests, and unique `Bip001_HeadNub` binding pass Unity validation. Its six
+   VFXBaseV2 materials remain ColorMask-0 fail-closed, and the other seven
+   Last Rite requests remain explicitly unbound. Their complete serialized
+   Material payloads and 12/12 AssetMap-resolved converted texture PNGs are now
+   pinned in contract schema v2; both compiled keyword pairs are also known.
+   The remaining material gate is retail PSO/descriptor/native mip and
+   ForwardOnly MRT/scene-depth scheduling, not missing converted texture
+   pixels. Continue with that binary draw boundary and Li Zhiyan/Wulfa for retail
+   visual acceptance, preserving each exact prefab, mount, delay, duration,
+   and teardown contract; recover full hierarchy/PPtr mounts before Pograni's
+   eight ambiguous entries; and
+   keep Gacha-only and other queue-3005 materials fail-closed;
+   use the measured early-ribbon, sustained green-local, and late-flare windows
+   as visual acceptance bounds without promoting them to ownership evidence.
+   use the now-complete 31-prefab Viewer catalog for the next shared-Viewer
+   visual capture; generated Gacha-runtime validation remains independently
+   green. RenderDoc 1.45 provides a real retail D3D12 attach/inject path, but
+   no retail `.rdc` exists yet; Unity auto-capture and the Frida renderer-list
+   trace are not substitutes. Stop if normal attachment is rejected and keep
+   the PathID-to-draw correlation boundary explicit.
+   Last Rite's retail slot is `269.25-283.25 s`, but it is a weak per-effect
+   oracle: no head/hand/thigh/ear particle pass is independently visible over
+   the animation, costume/weapon geometry, cyan hair, and transition haze.
+   Li Zhiyan's independently AssetMap-proven finger effect is now the second
+   non-Zhuangfy executable Overview prefab: 8 hierarchy nodes, 7 particle
+   pairs, 6 VFXBaseV2 materials, 8 resolved texture identities, exact
+   `0.83333/2.33333 s` timing, and unique `Bip001_R_Finger2Nub` binding pass
+   Unity validation. A focused installed-VFS export now also closes all eight
+   original BC7 payloads: every single-image 2D mip chain has zero stripped
+   mips, exporter-validated byte layout, payload hash, dimensions, color-space,
+   and serialized filter/aniso/bias/wrap settings pinned in contract schema v2.
+   The installed Persistent-VFS override of `HGRP/Effect/VFXBaseV2` is now the
+   selected shader source rather than its same-PathID StreamingAssets base
+   copy. Its 1,360 compiled D3D11 keyword signatures are uniquely stage-paired;
+   the six materials map exactly to three non-instanced VS/PS pairs (base,
+   `_USE_SOFTBLEND`, and `_SAMPLE_TEX0+_USE_SOFTBLEND`) plus their three
+   SRP-instanced pairs. Exact bytes, FXC assembly, metadata, Ruri register
+   signatures, dual MRT outputs, Persistent source/chunk hashes, and the native-static queue
+   `3660..3740` after-DOF attachment contract are pinned and validated in the
+   Unity lab. The pixel ABI is now exact: common `b0[28]/b1[105]/b2[5]`,
+   variant `b3[21/22/28]`, and one/two/three exact `tN/sN` sample pairs.
+   This closes static resource semantics but not the live descriptor identity.
+   The lab's after-DOF attachments match the source schedule. Exact `.pdata`
+   bodies now pin the current-build renderer-list preparer, pass constructor,
+   and callback, including the callback's fullscreen -> ordinary list -> ECS
+   list chain. The downstream transparent descriptor is also closed before
+   runtime culling: sorting `87`, named WorldUI removal, absent state block,
+   null override material, and false motion-vector exclusion. Its normal
+   per-object flags are now exact `15 | 32 = 47`; Unity publishes the same
+   request. HGCamera defaults are ratio `0.005`, distance `30`, and a lazy mask
+   over 17 named layers. The selected Viewer camera has `0xffffffff` Unity
+   culling and no serialized HG override, but external mutation and the actual
+   lazy mask remain runtime facts. Unity now uses
+   the matching optimized transparent sorting and named-layer policy. HG
+   screen-culling instance values and final survivors remain open. The
+   deferred ECS producer is closed to
+   `HGRenderPathDeferred.OnPreRendering`: it creates a per-camera-frame UInt32
+   list with `TransparentAfterPP` mask/value `0x4400/0x4000`, stores it at
+   `this+0x1388`, and writes `0xffffffff` when its feature/camera gate fails.
+   The current Forward render path creates only ordinary transparent/opaque/
+   pre-Z ECS lists and leaves this constructor-initialized sentinel unchanged.
+   The static screen-culling writer boundary is narrower: `HGCamera..ctor` is
+   the only mapped HG runtime writer of ratio `+0x9d8` (`0.005`) and distance
+   `+0x9dc` (`30.0`), while mask `+0xa20` is rewritten by ECS/lightweight-camera
+   culling paths and propagated through custom request/PassInput data. The
+   exact UnityPlayer `HGMeshRender::CreateRendererList` registration resolves
+   to adapter `0x1801f1e40`, request packer `0x18104e7a0`, and registration core
+   `0x18104e300`. The core appends a 16-byte manager slot and returns its old
+   count as the zero-based UInt32 handle; it does not iterate entities, write
+   survivors, sort, dispatch multi-draw, or draw. Those operations remain
+   downstream. The correct HGMesh consumer is CommandBuffer opcode `0x4e` ->
+   singleton `+0xb0` -> `0x181005c10`, which resolves the same 16-byte slot and
+   installs resource callback `0x180feade0 -> 0x181047160`; it still contains no
+   survivor loop, sort, indirect draw, or queue submit. HGTree opcode `0x55`,
+   singleton `+0xc0`, 24-byte slots, and `0x18106aae0` are a distinct family.
+   Registration locally grows the HGMesh vector, increments its count, zeroes
+   a new slot, and allocates/stores a 0x30-byte state; opcode `0x4e` reads it
+   without mutating count or storage. No decrement, reset, clear loop, free, or
+   reuse appears in the pinned registration/interpreter/consumer spans.
+   Context replacement/teardown remains the only open lifecycle boundary, so
+   do not invent per-frame handle reuse.
+   Runtime values and final survivor/order/lifetime capture remain required;
+   do not synthesize a `Renderer[]` bridge from the integer ECS handle.
+   Downstream HGMesh workers now prove a real ordering/publication stage:
+   accepted 64-byte records are sorted in place by `0x181043bd0` using
+   comparator `0x180fe0740`, an unsigned lexicographic comparison over the
+   first 16 record bytes. Publication skips `record+0x20 == 0xffffffff`,
+   resolves IDs via `0x181059410`, and appends resource pointers through
+   `0x18105e350`. Append helper `0x18105e400` copies the full record unchanged.
+   The four key dwords are source-closed to packed renderer-state bits,
+   selectors, source `+0x08/+0x0c/+0x22`, context byte state, a conditional
+   `0x01000000` marker, and `((~asuint(float)) >> 17) & 0x3fff`. All workers
+   share exact source/context exclusion and inclusion masks, `0x60000`,
+   `0x7f00`, and `0xc0` flag gates, a view-mask hit, and bit-45 rejection;
+   four variants also require signed `source+0x2c > 0` on the bit-15 path.
+   Semantic field names remain unresolved, as do indirect draw and backend
+   submission; do not relabel this opaque key order as transparent-depth,
+   material, or batch order yet.
+   All six selected materials have `_IsSceneEffect=0` and
+   `_EnableTransparentMV=0`, so `_VFXParams1` and transform history are safely
+   bypassed rather than guessed. Exact inverse-VP soft depth, live
+   root-signature/PSO, and renderer-list survivor identity remain missing.
+   `HG_ENABLE_MV` remains an
+   implicit compiled keyword, not a serialized material keyword.
+   All 12 controller requests are preserved; the other 11
+   remain explicitly unbound. Its `38-47 s` retail slot, especially the
+   hand-adjacent teal layer near 40 seconds, is the current strongest visual
+   acceptance window, but native bytes do not identify a draw. Visible
+   admission no longer lacks specialization identity or static scheduling;
+   it still requires the retail live descriptor table/root signature, PSO
+   overrides, renderer-list survivors/order, physical MRT/depth handles, and
+   final compositing contract.
+   Wulfa `bishou_wind3` is next after that boundary because its visible
+   purple/red wind trail mixes VFXRefract and VFXBaseV2 families.
+6. Add controller, grounding, facial, FX, and secondary systems behind
    source-validated fail-closed gates.
-6. Upgrade representative non-playable families before broad parity claims.
+7. Upgrade representative non-playable families before broad parity claims.

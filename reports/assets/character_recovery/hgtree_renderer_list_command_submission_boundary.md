@@ -45,11 +45,25 @@ dispatches API-2 `+0xF10` (`0x18083F140`); low-level opcode `0x27D5` maps to
 `0x1813B156A`, which dispatches the same slot. `+0xF10` closes pending
 resource/state batches and enters `0x180841C40`; API-2 `+0xDE8`
 (`0x18083F1E0`) also flushes and executes the master list through
-`0x180843D60`. These are concrete command-stream flush/execute sinks, but the
-inspected HGTree handlers still emit only `+0xDA0`/`+0x380`: no static HGTree
-edge emits `0x6A`, `0x27D5`, `+0xF10`, `+0xDA8`, or `+0xDE8`. Therefore the
-flush family is proven for the generic backend, while HGTree-specific ordering
-and final draw/queue ownership remain fail-closed.
+`0x180843D60`. These are concrete command-stream flush/execute sinks. The
+resource-callback tails still emit only `+0xDA0`/`+0x380`, but the opcode-`0x55`
+HGTree handler has a nested `+0xDB0` prelude that records low-level opcode
+`0x2735`; no static HGTree edge emits `0x6A`, `0x27D5`, `+0xF10`, `+0xDA8`,
+or `+0xDE8`. Therefore the flush family is proven for the generic backend,
+while HGTree-specific ordering and final draw/queue ownership remain
+fail-closed.
+
+The complete UnityPlayer internal-call table fixes the command-buffer class
+attribution used by this boundary. `ScriptableRenderContext.ExecuteCommandBuffer_Internal_Injected`
+is index `3645` -> `0x1800B6F40 -> 0x18052D730 -> 0x1804CDF70 ->
+0x1804CE0A0`, which is the positive high-level playback route. In contrast,
+`Graphics::ExecuteCommandBuffer` is index `924` -> `0x18005C0D0`; its inspected
+body is a separate resource/object path with no direct interpreter edge.
+`Submit_Internal_Injected` is index `3636` -> `0x1800B4A40 -> 0x1805385A0 ->
+0x18052E0B0`. Its type-2/type-3 deferred records reload command-buffer
+pointers from `context+0x10128` and call the same interpreter, so Submit is a
+concrete deferred consumer of the HGTree high-level buffer. It still does not
+identify the HGTree API-2 draw owner.
 
 ## Source pins
 
@@ -424,6 +438,19 @@ and final draw/queue ownership remain fail-closed.
     opaque object: it is the selected API-2 backend shared by immediate and
     recorded paths.
 
+    A vtable cross-check keeps the writer and backend identities separate.
+    The data table at `0x181DCB600` contains `0x18093AE10` at slot `+0x0`
+    and `0x18092E350` at slot `+0x148`; those are the two front/command-writer
+    methods that produce `0x2730`/`0x2731` and use the shared object fields
+    (`+0x2711`, `+0x2720`, `+0x2708`). The constructor at `0x1809258C0`
+    installs a different front-context table (`0x181DCB360`), whose `+0x148`
+    entry is `0x180728720`, while the API-2 backend table
+    `0x181DBC098 + 0xDE8` resolves to `0x18083F1E0`. Therefore
+    `0x18092E350`/`0x18093AE10` are command writers that immediately dispatch
+    into the backend's `+0xDE8`/`+0xE90`; they are not the backend draw/submit
+    implementations themselves. This removes a class/vtable conflation but
+    does not create an HGTree-specific writer edge.
+
     The recorded HGTree wrapper opcodes now have concrete interpreter
     consumers. The `0x27B6` case begins at `0x1813B92D0` and calls the
     receiver's `+0x358` slot at `0x1813B92F8` (`0x1808351F0`). The `0x2734`
@@ -440,14 +467,20 @@ and final draw/queue ownership remain fail-closed.
     `HGRendererListUtils.DrawTreeECSRendererList`, but the old attribution of
     the name to `0x1801719B0` was incomplete: active table A's `0x180064580` preserves
     the id and writes opcode `0x55`, while table B's `0x1801719B0` is only the
-    managed-root/hash validator. Do not report B as the active sink without a
-    while table B is only the alternate validation implementation.
-23. Ordinary `ScriptableRenderContext::ExecuteCommandBuffer` and
-    `Graphics::ExecuteCommandBuffer` remain real high-level playback routes:
-    `0x1800B6F40 -> 0x18052D730 -> 0x1804CDF70 -> 0x1804CE0A0`. The newly
-    recovered table-A tree writer now joins that interpreter at high-level
-    opcode `0x55`; this is stronger than the previous fail-closed statement
-    that no command writer existed after the managed call.
+    managed-root/hash validator. Do not report B as the active sink; table B
+    is only the alternate validation implementation.
+23. The complete UnityPlayer internal-call table corrects the class attribution
+    at the playback boundary. `ScriptableRenderContext.ExecuteCommandBuffer_Internal_Injected`
+    is index `3645` -> `0x1800B6F40 -> 0x18052D730 -> 0x1804CDF70 ->
+    0x1804CE0A0`; the table-A tree writer joins this interpreter at opcode
+    `0x55`. `UnityEngine.Graphics::ExecuteCommandBuffer` is index `924` ->
+    `0x18005C0D0`; the inspected body resolves resource/object handles and has
+    no direct interpreter edge. `Submit_Internal_Injected` is index `3636` ->
+    `0x1800B4A40 -> 0x1805385A0 -> 0x18052E0B0`; its type-2/type-3 records
+    reload deferred command-buffer pointers and call the same interpreter.
+    The async/no-copy entries use distinct helpers, so Submit is a concrete
+    deferred consumer but still does not prove the HGTree API-2 draw or queue
+    owner.
 24. The ordinary `Internal_DrawRendererList_Injected` route is still distinct:
     table-A index 3463 resolves to `0x180062960`, while table-B's parallel
     implementation is `0x1801713D0`. Its resource-state helper must not be
@@ -470,28 +503,20 @@ and final draw/queue ownership remain fail-closed.
     descriptor/draw/queue-submit. Keep the final renderer-list draw and queue
     ownership fail-closed.
 
-27. The two apparent runtime consumers adjacent to this boundary are now
-    bounded as state/lifetime machinery rather than a proven renderer-list
-    submitter. `ScriptableRenderContext`'s no-copy wrappers at
-    `0x180158B30`/`0x180158B80` enter `0x180B3E5C0` and `0x180A95EB0`.
-    `B3E5C0` validates the native context, allocates/initializes a small
-    context-state object, and returns a 16-byte state record; `A95EB0`
-    allocates a `0x3c`-byte object, runs its virtual initialization methods,
-    and forwards the resulting object through `0x180763670`. Neither body
-    contains an opcode write, graphics-context vtable dispatch, Vulkan call,
-    or API-2 `+0xDE8` call. They therefore do not close the missing playback
-    edge.
-
-    The API-2 resource pool has the same negative shape. `0x180559B30` walks
-    bitmap-selected `0x80`-byte nodes and decrements their refcounts;
-    zero-ref nodes enter `0x1805598C0`, which invokes node callbacks stored at
-    `+0x30`/`+0x40`, clears record fields, and returns through
+27. The main-table no-copy entries are `0x1800B7440` -> `0x18052DB50` and
+    `0x1800B7AD0` -> `0x18052DA20`; the former's ready branch directly calls
+    `0x1804CDF70`, while the latter queues a distinct record helper. These are
+    command-buffer variants, not the previously cited `0x180158...` state
+    wrappers. They still contain no static HGTree API-2 `+0xDE8` draw/submit
+    ownership proof. The API-2 resource pool has the same negative shape.
+    `0x180559B30` walks bitmap-selected `0x80`-byte nodes and decrements their
+    refcounts; zero-ref nodes enter `0x1805598C0`, which invokes node callbacks
+    stored at `+0x30`/`+0x40`, clears record fields, and returns through
     `0x1805586C0`. `0x1805586C0` is an owner/resource lifetime collector
     (atomic counts, bitmap cleanup, and `0x18055AD70` release), not a direct
     graphics or command-stream sink. An indirect callback could still hide a
     runtime consumer, so this is a bounded fail-closed result rather than a
-    claim that the pool is unrelated; however, no direct device, opcode, or
-    API-2 submission edge is present in the inspected pool bodies.
+    claim that the pool is unrelated.
 
 28. The resource-callback branch is now closed through the shared API-2 record
     builder, but still not through the final draw sink. Both native HGTree
@@ -964,21 +989,267 @@ and final draw/queue ownership remain fail-closed.
     (sibling high-level resource/format handlers), and `0x1813B057F` (the
     low-level command interpreter). The low-level dispatch table at
     `0x1813BB574` indexes by `opcode - 0x2711`: `0x2734` targets
-    `0x1813AFFF7`, whose body reaches `+0xDA8` at `0x1813B057F`; the next
-    `0x2735` case starts at `0x1813B05B6`. This is not the HGTree case:
+    `0x1813AFFF7`, whose body reaches front `+0xDA0` at `0x1813B03DA`; the
+    adjacent case's `+0xDA8` call is at `0x1813B057F`, and the next `0x2735`
+    case starts at `0x1813B05B6`. That `0x2735` case is the newly traced
+    HGTree nested `+0xDB0` prelude, not an indirect-draw case:
     HGTree's `+0xEA0` writer `0x1809324E0` emits `0x273B` at
     `0x18093255B`, and `0x273B` still resolves to `0x1813B1110` and the
     direct callback `0x181060D70 -> 0x18107AB10`. The separate generic
     front-end writer `0x180931980` emits `0x2734` and falls back to
     `+0xDA0`, while `0x1809318F0` emits `0x2743`/falls back to `+0xF18`;
-    neither has a static HGTree caller. Finally, the high-level command
+    neither has a direct HGTree static callsite (the resource callbacks reach
+    the former indirectly through their vtable). Finally, the high-level command
     jump table at `0x1804D19C8` maps opcode `0x55` only to `0x1804CE4BD`;
     neither `0x1804D27AB` nor `0x1804D4705` (the owners of the two generic
     `+0xDA8` sites) is a high-level opcode target. Thus the global `+0xDA8`
-    implementation and its `0x2734` producer are real indirect-draw/state
-    candidates, but no installed-image edge joins them to HGTree `0x55` or
-    its `0x273B` callback. The final HGTree record-to-draw/flush/queue join
+    implementation is a real indirect-draw/state candidate, while `0x2734` is
+    the distinct `+0xDA0` resource/state path; no installed-image edge joins
+    the `+0xDA8` case to HGTree `0x55` or its `0x273B` callback. The final
+    HGTree record-to-draw/flush/queue join
     remains unresolved and fail-closed.
+
+56. The resource-ready branches of all three renderer-list creation cores are
+    now bounded and do not hide a draw call. `0x18107EE40` reaches
+    `context+0xEA0` with callback `0x181060D90` at `0x18107F13F`, then calls
+    `context+0x850` at `0x18107F150`; `0x18107FD22` does the same with
+    callback `0x181060D20` at `0x181080032/0x181080043`; and
+    `0x181080190` uses callback `0x181060D00` at
+    `0x1810805EE/0x1810805FF`. When the readiness predicate
+    `0x181057780` is false, each core instead calls the shared builder
+    `0x181080730` and copies its result pair. The `+0x850` front-vtable
+    implementation `0x180934850` only records low opcode `0x2798`, updates
+    the command counter, and calls `0x1806888E0`; it has no `+0xDA8`,
+    `+0xDE8`, `+0xF10`, or Vulkan draw edge. A direct-cell scan over the full
+    HGTree/creation range `0x181060000-0x181081000` finds no calls to the
+    resolver cells for `vkCmdDraw`, `vkCmdDrawIndexed`,
+    `vkCmdDrawIndirect`, or `vkCmdDrawIndexedIndirect`. The named indirect
+    draw calls remain confined to the neighboring API-2 `+0xDA8` thunk
+    (`0x180820940 -> 0x18082E820`, calls at `0x18082E91B/0x18082E933`), so
+    the renderer-record-to-draw/flush/queue edge remains unresolved and
+    fail-closed for HGTree.
+
+57. The main internal-call table audit removes the attribution ambiguity at
+    the remaining playback boundary. `ScriptableRenderContext.ExecuteCommandBuffer_Internal_Injected`
+    is index `3645` -> `0x1800B6F40 -> 0x18052D730 -> 0x1804CDF70 ->
+    0x1804CE0A0`, and the table-A tree writer joins it at opcode `0x55`.
+    `Graphics::ExecuteCommandBuffer` is index `924` -> `0x18005C0D0`, a
+    separate resource/object body without a direct interpreter edge.
+    `Submit_Internal_Injected` is index `3636` -> `0x1800B4A40 -> 0x1805385A0
+    -> 0x18052E0B0`; its type-2/type-3 records reload deferred command-buffer
+    pointers from `context+0x10128` and call the same interpreter, making it a
+    concrete deferred consumer rather than an unrelated state wrapper. The
+    no-copy entries likewise use distinct helpers (`0x18052DB50` and
+    `0x18052DA20`), so the final renderer-list draw/flush/queue owner remains
+    runtime-indirect and fail-closed.
+
+58. The deferred Submit loop is now decoded rather than treated as an opaque
+    flush candidate. `0x18052E0B0` reads 16-byte records at `context+0x10030`,
+    dispatches their type through `0x18052F25C`, and maps type `2` to
+    `0x18052E869` and type `3` to `0x18052E8F7`. Both branches load
+    `context+0x10128[index]` and call `0x1804CDF70`; type 3 additionally passes
+    the buffer `+0x170` mode. The producers `0x18052D730`/`0x18052DB50` write
+    type 2, while `0x18052D8F0`/`0x18052DA20` write type 3. Therefore the
+    table-A HGTree writer (`0x180064580 -> 0x1804C7930`, opcode `0x55`) can be
+    consumed through Submit as well as direct Execute/NoCopy. The shared
+    interpreter also makes generic opcode `0x6A -> +0xF10` reachable, but no
+    static edge from the HGTree callback-produced records to `+0xDE8`,
+    `+0xF10`, or the final queue owner is established.
+
+59. The tempting API-2 resource bridge is now closed at the next static
+    boundary. The `+0xE90` implementation `0x180843BF0` calls `+0xDC0`
+    (`0x18083F680`), which invokes the nested runtime vtable `+0x48` at
+    `0x18083F71B` and passes its return as the third stack argument to
+    `0x18083F8F0`. The complete F8F0 body reads its first stack argument but
+    never reads that third argument; it instead allocates/looks up resource
+    records through `0x180879010`/`0x180839B00` and updates the shared
+    descriptor cell `0x1821D3898` (the Vulkan resolver path is
+    `vkUpdateDescriptorSetWithTemplate`). Direct-call census finds exactly
+    three F8F0 callers (`0x18083F680`, `0x180840E00`, and `0x180846635`),
+    all in the generic API-2 resource cluster, and no HGTree `0x18106*` or
+    `0x18107*` caller. Together with the sibling `0x18061FB60` helper that
+    consumes the same `+0x48` shape as a NUL-terminated metadata/name string,
+    this is evidence for a resource metadata/descriptor-preparation boundary,
+    not a final draw, flush, or queue-submit bridge. The HGTree-specific
+    record-to-draw/flush/queue join therefore remains unresolved and
+    fail-closed.
+
+60. The managed render-pipeline boundary is now positively joined. The mapped
+    `HGRenderPipeline.Render(ScriptableRenderContext, List<Camera>)` body spans
+    GameAssembly `0x183455030-0x18345A6E4`; it directly calls
+    `ExecuteCommandBuffer` at `0x183457129` and `0x18345997B`, calls
+    `ExecuteCommandBufferNoCopy` at `0x183459502`, `0x1834595D4`, and
+    `0x183459614`, and calls `Submit` at `0x183459D69`. The six concrete pass
+    lambdas that call `HGRendererListUtils.DrawTreeECSRendererList` preserve
+    their render-graph context in `rsi`, `rbx`, `rdi`, or `r13` and pass that
+    same context as `rcx` to GameAssembly `0x189C0A130`, while passing their
+    renderer-list id in `edx`; the helper then reads `context.fields.cmd`
+    before forwarding to `HGTreeRender.DrawECSRendererList`. Thus HGTree's
+    table-A `0x55 -> 0x273B` records are recorded through the same managed
+    pass-command-buffer framework that the main Render method executes and
+    ultimately submits. This joins HGTree playback to the render-pipeline
+    Execute/NoCopy/Submit boundary, but it does not identify the HGTree-specific
+    API-2 `+0xDA8` indirect-draw branch, `+0xDE8` flush order, or Vulkan queue
+    owner; those remain fail-closed.
+
+61. The RenderGraph command-buffer identity is now bounded below the pass
+    callbacks. `HGRenderGraph.ExecuteRenderGraph` (`0x189B2BA30`) calls
+    `ExecuteCompiledPass` (`0x189B2B62C`), which passes
+    `r8 = [this + 0x60]` to both `PreRenderPassExecute`
+    (`0x189B2E740`) and `PostRenderPassExecute` (`0x189B2E4B4`), then invokes
+    the compiled pass through `HGRenderGraphPass.Execute` (`0x189B37D20`).
+    The `HGRenderGraphContext` layout is source-backed as
+    `renderContext` then `cmd`; the native Pre callback loads
+    `cmd = [rgContext + 0x18]`, passes `&[rgContext + 0x10]` as the render
+    context, and calls `ExecuteCommandBufferNoCopy` at `0x189B2E8D4`.
+    The six previously identified pass lambdas receive this same context
+    shape before calling `HGRendererListUtils.DrawTreeECSRendererList`, which
+    reads the same `context.fields.cmd`. Therefore the HGTree `0x55 -> 0x273B`
+    records are placed in the command buffer that RenderGraph prepares and
+    executes around the pass, and the pipeline-level `Submit` remains its
+    deferred consumer. This closes the command-buffer identity boundary, but
+    still does not prove HGTree-specific `+0xDA8` selection, `+0xDE8` ordering,
+    or queue ownership.
+
+62. The generic pass/delegate boundary is now recovered from the shipped
+    generic instantiation rather than inferred only from the decompiled source.
+    `HGRenderGraphBuilder.SetRenderFunc<PassData>` at `0x1876BCA9C` forwards
+    to its overload at `0x1876BC9C4`, which directly calls pass
+    `SetupSubpass` (`0x1884756FC`) and `SetupRenderFunc` (`0x1884755E0`).
+    `SetupRenderFunc` selects one of the four `SubpassDesc` slots at
+    `SubpassDesc+0x20/+0x40/+0x60/+0x80`; its helper `0x188475590` stores the
+    `RenderFunc` delegate, camera, and 16-byte custom payload into that
+    descriptor. The generic `HGRenderGraphPass<PassData>.ExecuteInternal`
+    body at `0x188474A4C` then calls `ExecuteSubpassRenderFunc`
+    (`0x188474E38`). That body iterates `m_subpasses` (`this+0xB0`), calls
+    `HGRenderGraph.InvokeOwnerCallback` (`0x189B2DA6C`) for each populated
+    descriptor, obtains the graph context through `get_HGContext`
+    (`0x189B3011C`), and invokes the stored delegate indirectly through its
+    method pointer with the pass `data` (`this+0xD0`) and that
+    `HGRenderGraphContext`. This is the concrete dynamic edge that reaches
+    the six pass lambdas already pinned to
+    `HGRendererListUtils.DrawTreeECSRendererList`; it explains why no direct
+    HGTree-to-`+DA8/+DE8` call appears in the pass body. The generic pass body
+    itself contains no `+DA8`, `+DE8`, `+F10`, Vulkan draw, or queue-submit
+    edge, so final HGTree draw/queue ownership remains fail-closed.
+
+63. A complete sibling-tail audit removes the remaining ambiguity about the
+    resource-callback receiver. Main handler `0x18107AE60` obtains the TLS
+    front context in `r14` through `0x180725DC0` and ends each populated item
+    at `0x18107B2F0` (`[r14->vtable+0xDA0]`) or `0x18107B31B`
+    (`[r14->vtable+0x380]`). Sibling handler `0x18107B3A0` obtains the same
+    context in `rsi` and has matching terminal calls at `0x18107B960` and
+    `0x18107B98E`. The constructor-pinned front vtable `0x181DCB360`
+    resolves these slots to `0x180931980` and `0x18092C320`; recording mode
+    emits `0x2734` and `0x27B6`, while immediate mode dispatches through
+    `context+0x2708` to the selected backend. The recorded consumers remain
+    separate: `0x2734 -> 0x1813AFFF7 -> backend +0xDA0` (`0x18083E720`)
+    and `0x27B6 -> 0x1813B92D0 -> backend +0x358` (`0x1808351F0`). Neither
+    sibling branch adds a static `+0xDA8`, `+0xDE8`, `+0xF10`, Vulkan draw,
+    or queue-submit edge. This confirms callback parity and tightens the
+    fail-closed boundary without promoting the adjacent indirect-draw family
+    to an HGTree owner.
+
+64. A direct-caller census separates the generic flush producers from the
+    HGTree callback family. The seven direct callers of API-2 `+0xF10`
+    (`0x18083F140`) are four `HGUtils` dispatch/compute paths in
+    `0x180FE1B60`/`0x180FE21FB`/`0x180FE26A0`/`0x180FE2B6C`, the UnityPlayer
+    per-draw/VAT/visibility batcher `0x181080C30`, the mesh-buffer path
+    `0x1810BD290`, and the Vulkan-resource path `0x18112FD00`. The
+    `0x181080C30` body is visibly
+    generic (`currPerDrawOffset`, VAT, visibility, and render-flag assertions)
+    and calls `+0xF10` only after building a batch; it does not consume an
+    HGTree callback or renderer-list record. The mesh-buffer and resource
+    siblings likewise expose vertex/normal/tangent/weight or `VK_SUCCESS` /
+    `GetResource` assertions rather than HGTree state. In the HGTree-specific
+    callback/create handlers (`0x181060D00`/`D20`/`D70`/`EA0`/`EB0`,
+    `0x18107AE60`, `0x18107B3A0`, and creation cores through `0x181080730`),
+    no static call reaches `+0xF10`, `+0xDE8`, or the master-list executor.
+    The backend vtable maps `0x181DBC098+0xDE8` to `0x18083F1E0`, but the
+    front vtable used by those HGTree callbacks maps
+    `0x181DCB360+0xDE8` to the no-op `0x180076890`. Thus the generic
+    `0x6A`/`0x27D5` flush family remains a real backend sink, while no static
+    edge assigns its ordering or execution to HGTree records.
+
+65. The opcode-`0x55` HGTree handler has a nested resource/state prelude that
+    was missing from the earlier `DA0/380` shorthand. Both success branches at
+    `0x18106A963` and `0x18106AB33` call the TLS front vtable `+0xDB0` before
+    allocating the later `+0xEA0` callback record. Front `+0xDB0`
+    (`0x180930C00`) records literal low-level opcode `0x2735` at
+    `0x180930C67` (or immediately dispatches the backend slot); low-level case
+    `0x1813B05B6` calls the receiver's `+0xDB0` and exits the interpreter.
+    API-2 `+0xDB0` (`0x18083AA90`) consumes the context's `+0x2B60` records,
+    stages `+0x2B68/+0x2B70`, and at `0x18083C1E8-0x18083C274` appends a
+    record whose callback is `0x180820660 -> 0x18082E3E0`. That callback
+    resolves to `vkCmdSetDepthBias`, `vkCmdSetStencilReference`,
+    `vkCmdBindPipeline`, and `vkCmdBindDescriptorSets`. The adjacent helper
+    `0x18082E760` issues `vkCmdCopyImage`, but no pointer write in this trace
+    attributes that helper to the exact HGTree record. The existing
+    `0x180841C40` master-list wrapper and `0x1808200C0` record walker use this
+    same `+0x2B60` list once a later flush invokes them. This is a positive
+    HGTree-to-Vulkan resource/state edge, but not a final draw/queue proof:
+    the `+0xDB0` body and `0x2735` handler contain no `+0xDE8`, `+0xF10`,
+    `vkCmdDraw*`, or `vkQueueSubmit`, so flush order and final ownership stay
+    fail-closed.
+
+66. The pending-list protocol is now exact rather than just “a later flush.”
+    `0x180841C40` reads both working heads `context+0x2B58` and
+    `context+0x2B60`, appends master-list nodes with callbacks
+    `0x180820210` and `0x1808200C0`, and only when `dl=1` allocates replacement
+    working heads through `0x18088C6D0/0x18088CE50`; `dl=0` clears the two
+    working-head pointers instead. API-2 `+0xF10` (`0x18083F140`) adds its
+    own final `+0x2B60` record, clears `+0x2B68/+0x2B70`, and calls `+0xC40`
+    with `dl=1`, so it packages pending records but does not invoke their
+    callbacks. API-2 `+0xDE8` (`0x18083F1E0`) calls `+0xC40` with `dl=0` and
+    then invokes `0x180843D60` with `dl=1`; that executor walks the master
+    list and reaches `0x1808200C0`, which invokes the stored `+0x2B60`
+    callbacks. Therefore the HGTree `+0xDB0` record is executable only if a
+    separate packaging call occurs before the `+0xDE8` execution call. No
+    static HGTree handler/callback emits that packaging or execution pair.
+
+67. A fresh owner census closes the remaining `0x6A`/`0x27D5` packaging
+    ambiguity without assigning it to HGTree. The only four direct calls to
+    the high-level `0x6A` writer `0x1804CA0B0` are inside native owners
+    `0x181117560-0x181118B2B`, `0x1811195E0-0x18111A7F9`,
+    `0x1811BDC37-0x1811C0112`, and `0x1811C772D-0x1811C9257`; their exact
+    call sites are `0x181118AD0`, `0x18111A7D7`, `0x1811BE9BA`, and
+    `0x1811C7FFD`. Disassembly of all four owners finds no direct call/jump to
+    the HGTree creation/callback family (`0x181060D00/D20/D70/D90/EA0/EB0`,
+    `0x18107AE60`, `0x18107B3A0`), front `+0xDB0/+0xEA0`, API-2 `+0xDB0`,
+    `+0xC40`, `+0xDE8`, `+0xF10`, or the master-list executor. The low
+    `0x27D5` case is a command-interpreter dispatch at `0x1813B156A` that
+    selects backend `+0xF10`; it has no static writer edge back to those four
+    owners or to HGTree. This makes the negative boundary stronger: generic
+    `0x6A`/`0x27D5` packaging is present, but its producer ownership and
+    execution ordering remain independent of the HGTree callback records.
+
+68. The managed `ScriptableRenderContext` consumer is now separated from the
+    API-2 HGTree flush by its exact native targets. The mapped GameAssembly
+    wrappers are `Submit` method 408015 -> `0x183DBB470`,
+    `Submit_Internal` 407993 -> `0x183DBB4E0`, and
+    `Submit_Internal_Injected` 408038 -> `0x183DBB540`; the corresponding
+    command-buffer entries are `ExecuteCommandBuffer` 408020 ->
+    `0x183339850`, `ExecuteCommandBufferNoCopy` 408022 -> `0x1834534C0`,
+    and `ExecuteCommandBufferNoCopy_Internal_Injected` 408045 ->
+    `0x1834535C0`. These GameAssembly bodies contain no direct call to the
+    API-2 `+0xDE8` target and resolve their UnityPlayer destinations through
+    separate lazy function-pointer globals. The resolved Submit path is
+    `0x1800B4A40 -> 0x1805385A0 -> 0x18052E0B0`: the first thunk loads the
+    native context handle, the second jumps into the submit consumer, and
+    `0x18052E0B0` iterates command entries through object fields
+    `+0x10030/+0x10040/+0x10128/+0x10168/+0x10178`, with record handling through
+    `0x18053D640`, `0x18052DD10`, and `0x1804CDF70`. It does not access the
+    API-2 pending-list fields `+0x2B60/+0x2B68/+0x2B70/+0x2E48` or call
+    `0x18083F1E0` (`+0xDE8`). A bounded field census found 66 candidate native
+    functions containing at least two tracked fields, but no function that
+    contains both the `+0x10030` submit-consumer family and the `+0x2B60`
+    API-2 pending-list family; direct `.text` xref scanning likewise finds
+    only `0x1800B4A43 -> 0x1805385A0 -> 0x18052E0B0` for that submit chain.
+    This is positive evidence that Submit/Execute consume a separate command
+    context and do not themselves prove the missing HGTree `+0xDE8` ordering
+    or Vulkan queue submission. Runtime attach was unavailable in this pass
+    (`WriteProcessMemory` access denied), so this boundary remains static
+    and fail-closed.
 
 The component-67 evidence remains separate: its 24-byte records feed native
 LOD/culling list construction, but no direct static xref from the accessor to
@@ -1043,6 +1314,10 @@ python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_ra
 python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x18082E660 0x18082E750
 python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x180820940 0x180820960
 python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x18082E820 0x18082E8A0
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x180930C00 0x180930D10
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x1813B05B6 0x1813B0765
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x18083AA90 0x18083C280
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x180820660 0x18082E810
 python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x18061FB60 0x18061FD80
 python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x180624000 0x1806242B0
 python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x180861C20 0x180861C34
@@ -1085,7 +1360,38 @@ python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_ra
 python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x1813B05B6 0x1813B0765
 python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x1804D27AB 0x1804D2AC1
 python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x1804D4705 0x1804D4990
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x18107EE40 0x18107F1A0
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x18107FD22 0x181080190
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x181080190 0x181080730
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x180934850 0x180934910
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x180820940 0x18082E950
 python tools\\endfield-il2cpp\\catalog_option_flow_metadata.py --type-regex "^UnityEngine\\.Rendering\\.CommandBuffer$" --member-regex "^AddDrawECS.*" --body-target-regex "^AddDrawECS.*" --body-target-type-regex "^UnityEngine\\.Rendering\\.CommandBuffer$" --all-images --include-all-members --body-context 1 --out scratch\\reverse_engineering\\hgtree_component67_producers\\commandbuffer_hgdraw_targets.json --markdown scratch\\reverse_engineering\\hgtree_component67_producers\\commandbuffer_hgdraw_targets.md
 python tools\\endfield-il2cpp\\map_body_targets_to_gameassembly.py --metadata "D:\\Program Files\\Endfield Game\\Endfield_Data\\il2cpp_data\\Metadata\\global-metadata.dat" --gameassembly "D:\\Program Files\\Endfield Game\\GameAssembly.dll" --catalog scratch\\reverse_engineering\\hgtree_component67_producers\\commandbuffer_hgdraw_targets.json --out scratch\\reverse_engineering\\hgtree_component67_producers\\commandbuffer_hgdraw_native_map.json --markdown scratch\\reverse_engineering\\hgtree_component67_producers\\commandbuffer_hgdraw_native_map.md
 python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_gameassembly_range.py 0x18B3E3F44 0x18B3E4028
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x1800B4A40 0x1800B4A48
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x1800B6F40 0x1800B6FC2
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x18005C0D0 0x18005C168
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x18052D730 0x18052D7B2
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x18052E0B0 0x1805385A0
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x18052D818 0x18052DE10
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_unity_range.py 0x18052E7D0 0x18052E957
+python tools\\endfield-il2cpp\\catalog_option_flow_metadata.py --type-regex "^HG\\.Rendering\\.Runtime\\.HGRenderPipeline$" --member-regex "^Render$" --body-target-regex "^Render$" --body-target-type-regex "^HG\\.Rendering\\.Runtime\\.HGRenderPipeline$" --all-images --include-all-members --body-context 2 --out scratch\\reverse_engineering\\hgtree_component67_producers\\hg_render_pipeline_render_metadata.json --markdown scratch\\reverse_engineering\\hgtree_component67_producers\\hg_render_pipeline_render_metadata.md
+python tools\\endfield-il2cpp\\map_body_targets_to_gameassembly.py --metadata "D:\\Program Files\\Endfield Game\\Endfield_Data\\il2cpp_data\\Metadata\\global-metadata.dat" --gameassembly "D:\\Program Files\\Endfield Game\\GameAssembly.dll" --catalog scratch\\reverse_engineering\\hgtree_component67_producers\\hg_render_pipeline_render_metadata.json --out scratch\\reverse_engineering\\hgtree_component67_producers\\hg_render_pipeline_render_native_map.json --markdown scratch\\reverse_engineering\\hgtree_component67_producers\\hg_render_pipeline_render_native_map.md
+python scratch\\reverse_engineering\\hgtree_component67_producers\\find_gameassembly_direct_calls.py 0x183339850 0x1834534C0 0x183DBB470 0x189C0A130
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_gameassembly_range.py 0x1834570D0 0x183457170
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_gameassembly_range.py 0x183459580 0x183459650
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_gameassembly_range.py 0x183459930 0x1834599B0
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_gameassembly_range.py 0x183459D20 0x183459DB0
+python tools\\endfield-il2cpp\\catalog_option_flow_metadata.py --type-regex "^HG\\.Rendering\\.RenderGraphModule\\.HGRenderGraph$" --member-regex "^(ExecuteCompiledPass|PreRenderPassExecute|PostRenderPassExecute|ExecuteRenderGraph)$" --body-target-regex "^(ExecuteCompiledPass|PreRenderPassExecute|PostRenderPassExecute|ExecuteRenderGraph)$" --body-target-type-regex "^HG\\.Rendering\\.RenderGraphModule\\.HGRenderGraph$" --all-images --include-all-members --body-context 2 --out scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraph_execute_metadata.json --markdown scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraph_execute_metadata.md
+python tools\\endfield-il2cpp\\map_body_targets_to_gameassembly.py --metadata "D:\\Program Files\\Endfield Game\\Endfield_Data\\il2cpp_data\\Metadata\\global-metadata.dat" --gameassembly "D:\\Program Files\\Endfield Game\\GameAssembly.dll" --catalog scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraph_execute_metadata.json --out scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraph_execute_native_map.json --markdown scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraph_execute_native_map.md
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_gameassembly_range.py 0x189B2B62C 0x189B2B760
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_gameassembly_range.py 0x189B2E740 0x189B2EA6C
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_gameassembly_range.py 0x189B2E4B4 0x189B2E6C0
+python scratch\\reverse_engineering\\hgtree_component67_producers\\find_gameassembly_direct_calls.py 0x1834534C0 0x189B37D20 0x189B2E740 0x189B2E4B4
+python tools\\endfield-il2cpp\\catalog_option_flow_metadata.py --type-regex "^HG\\.Rendering\\.RenderGraphModule\\.HGRenderGraphPass.*$" --member-regex "^(ExecuteInternal|ExecuteSubpassRenderFunc|BeginRenderPass|EndRenderPass|BeginSubpass|EndSubpass|SetupRenderFunc|SetupPreRenderPassFunc|SetupPostRenderPassFunc|Initialize|CreateRenderPass|HasRenderFunc)$" --body-target-regex "^(ExecuteInternal|ExecuteSubpassRenderFunc|BeginRenderPass|EndRenderPass|BeginSubpass|EndSubpass|SetupRenderFunc|SetupPreRenderPassFunc|SetupPostRenderPassFunc|Initialize|CreateRenderPass|HasRenderFunc)$" --body-target-type-regex "^HG\\.Rendering\\.RenderGraphModule\\.HGRenderGraphPass.*$" --all-images --include-all-members --body-context 2 --out scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraphpass_exec_metadata.json --markdown scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraphpass_exec_metadata.md
+python tools\\endfield-il2cpp\\map_body_targets_to_gameassembly.py --metadata "D:\\Program Files\\Endfield Game\\Endfield_Data\\il2cpp_data\\Metadata\\global-metadata.dat" --gameassembly "D:\\Program Files\\Endfield Game\\GameAssembly.dll" --catalog scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraphpass_exec_metadata.json --include-generic-instantiations --out scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraphpass_exec_native_map.json --markdown scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraphpass_exec_native_map.md
+python tools\\endfield-il2cpp\\catalog_option_flow_metadata.py --type-regex "^HG\\.Rendering\\.RenderGraphModule\\.HGRenderGraphBuilder$" --member-regex "^(SetRenderFunc|SetPreRenderPassFunc|SetPostRenderPassFunc|SetupRenderFunc|SetupSubpass)$" --body-target-regex "^(SetRenderFunc|SetPreRenderPassFunc|SetPostRenderPassFunc|SetupRenderFunc|SetupSubpass)$" --body-target-type-regex "^HG\\.Rendering\\.RenderGraphModule\\.HGRenderGraphBuilder$" --all-images --include-all-members --body-context 2 --out scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraphbuilder_renderfunc_metadata.json --markdown scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraphbuilder_renderfunc_metadata.md
+python tools\\endfield-il2cpp\\map_body_targets_to_gameassembly.py --metadata "D:\\Program Files\\Endfield Game\\Endfield_Data\\il2cpp_data\\Metadata\\global-metadata.dat" --gameassembly "D:\\Program Files\\Endfield Game\\GameAssembly.dll" --catalog scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraphbuilder_renderfunc_metadata.json --include-generic-instantiations --out scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraphbuilder_renderfunc_native_map.json --markdown scratch\\reverse_engineering\\hgtree_component67_producers\\hgrendergraphbuilder_renderfunc_native_map.md
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_gameassembly_range.py 0x188474A4C 0x188475350
+python scratch\\reverse_engineering\\hgtree_component67_producers\\dump_gameassembly_range.py 0x188475590 0x1884756F9
 ```

@@ -1,0 +1,786 @@
+{
+  "schema": "endfield.lizhiyan-after-dof-native-abi.v1",
+  "status": "current_build_native_schedule_and_static_shader_abi_closed_live_draw_pending",
+  "sources": {
+    "gameAssembly": {
+      "path": "D:\\Program Files\\Endfield Game\\GameAssembly.dll",
+      "sha256": "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE"
+    },
+    "metadata": {
+      "path": "D:\\Program Files\\Endfield Game\\Endfield_Data\\il2cpp_data\\Metadata\\global-metadata.dat",
+      "sha256": "90C58E26E87C7227A85DDA3FEDF6CE5ED0B06DC1F76E0ABBE75AB20750ADF97E"
+    },
+    "unityPlayer": {
+      "path": "D:\\Program Files\\Endfield Game\\UnityPlayer.dll",
+      "sha256": "B47728BA10F09C46E8A107B4C7055E48CFE402D3D8C88A4529074981F9672AA2"
+    },
+    "shaderContract": {
+      "path": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Generated/OriginalData/ShaderEvidence/LiZhiyanOverviewFinger/lizhiyan_overview_vfxbasev2_variants.json",
+      "sha256": "1191F96B45FD11C47D31C71681B25E77B3DF2CBD2179F21B4D2854D3AD90796B"
+    },
+    "viewerScene": {
+      "path": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Generated/Characters/Scenes/CharacterRecoveryViewer.unity",
+      "sha256": "BC9F4FBF023F76FFD06AB2AE6283A03127027A83049DB580C9678B2A7B633761"
+    }
+  },
+  "codeRegistrationVA": "0x18b9217d0",
+  "methods": [
+    {
+      "methodIndex": 286728,
+      "type": "HG.Rendering.Runtime.HGCamera",
+      "name": ".ctor",
+      "token": "0x06000e84",
+      "va": "0x1837dd570",
+      "functionEnd": "0x1837ddd44",
+      "functionBytes": 2004,
+      "functionSha256": "00ACC65F4685738CB190BF536900D5AE7B421F4A2CAEDC25C3D2D0B7E2EB3162"
+    },
+    {
+      "methodIndex": 286732,
+      "type": "HG.Rendering.Runtime.HGCamera",
+      "name": "DoECSCullingCPP",
+      "token": "0x06000e88",
+      "va": "0x1834502d0",
+      "functionEnd": "0x1834503ce",
+      "functionBytes": 254,
+      "functionSha256": "56CC43CF0F18122D3DE44731D2680F6951F48104A5A2986B9F35161CC883EC7F"
+    },
+    {
+      "methodIndex": 286733,
+      "type": "HG.Rendering.Runtime.HGCamera",
+      "name": "DoECSCulling",
+      "token": "0x06000e89",
+      "va": "0x189b721cc",
+      "functionEnd": "0x189b72a1d",
+      "functionBytes": 2129,
+      "functionSha256": "ECD06129C7B75CF85A127A5D5E543C956CC9FA4B23C1846A893CAE9464A3AD3E"
+    },
+    {
+      "methodIndex": 286724,
+      "type": "HG.Rendering.Runtime.HGCamera",
+      "name": "get_screenCullingLayerMask",
+      "token": "0x06000e80",
+      "va": "0x183e68cb0",
+      "functionEnd": "0x183e68cd4",
+      "functionBytes": 36,
+      "functionSha256": "0D5928FA5F343C7F072A857C5B0FE6CA8943506877C71FA9A6257EF5F2983B7E"
+    },
+    {
+      "methodIndex": 286739,
+      "type": "HG.Rendering.Runtime.HGCamera",
+      "name": "Update",
+      "token": "0x06000e8f",
+      "va": "0x183100120",
+      "functionEnd": "0x183100171",
+      "functionBytes": 81,
+      "functionSha256": "B5A2AB43A40014751793CA227CD2F535AEF7470A1F3E71A93B24297ED9C40FCC"
+    },
+    {
+      "methodIndex": 286740,
+      "type": "HG.Rendering.Runtime.HGCamera",
+      "name": "BeginRender",
+      "token": "0x06000e90",
+      "va": "0x189b720e0",
+      "functionEnd": "0x189b72162",
+      "functionBytes": 130,
+      "functionSha256": "525783A3D1731620269FBA6F156031EFDE5068FFA4ACC3FAFD1B4EFD0EA0948F"
+    },
+    {
+      "methodIndex": 286741,
+      "type": "HG.Rendering.Runtime.HGCamera",
+      "name": "UpdateAllViewConstants",
+      "token": "0x06000e91",
+      "va": "0x189b74308",
+      "functionEnd": "0x189b74387",
+      "functionBytes": 127,
+      "functionSha256": "88DFB9FB0D8B0B867A507E41AB2123C6E2830262290A1AB10616FD3A55DA2421"
+    },
+    {
+      "methodIndex": 284150,
+      "type": "HG.Rendering.Runtime.HGRenderPipeline",
+      "name": "GetPerObjectMotionVectorConfig",
+      "token": "0x06000472",
+      "va": "0x189bc753c",
+      "functionEnd": "0x189bc759b",
+      "functionBytes": 95,
+      "functionSha256": "DA8AB25AC903EEAE24FED48535F016BEA19C3BE7A21A7628C67BED63C7C83922"
+    },
+    {
+      "methodIndex": 284093,
+      "type": "HG.Rendering.Runtime.HGRenderPipeline",
+      "name": ".ctor",
+      "token": "0x06000439",
+      "va": "0x183947230",
+      "functionEnd": "0x1839488e2",
+      "functionBytes": 5810,
+      "functionSha256": "B0D85048FC518253694C8BD1FC9B9F40C7F14DAA87B95EB180419233B28DD59D"
+    },
+    {
+      "methodIndex": 284103,
+      "type": "HG.Rendering.Runtime.HGRenderPipeline",
+      "name": "ConfigureKeywords",
+      "token": "0x06000443",
+      "va": "0x189bc6a38",
+      "functionEnd": "0x189bc6b7e",
+      "functionBytes": 326,
+      "functionSha256": "BD2E3852A86737D9F2732283AF677FA2A0F4209DD3FFB3F9476C957C67125A10"
+    },
+    {
+      "methodIndex": 284106,
+      "type": "HG.Rendering.Runtime.HGRenderPipeline",
+      "name": "Render",
+      "token": "0x06000446",
+      "va": "0x183455030",
+      "functionEnd": "0x18345a6e4",
+      "functionBytes": 22196,
+      "functionSha256": "08CA0296209FB21E02AFC9E2F5B02B06F0CA86A699A26BCD9951099D93F6926A"
+    },
+    {
+      "methodIndex": 284111,
+      "type": "HG.Rendering.Runtime.HGRenderPipeline",
+      "name": "ExecuteRenderRequestCPP",
+      "token": "0x0600044b",
+      "va": "0x183106970",
+      "functionEnd": "0x183113581",
+      "functionBytes": 52241,
+      "functionSha256": "6EFA8CEFFB982A2B6E4944B79DDDEBD5853166DC3B7CD0A10E8188048E27A6E0"
+    },
+    {
+      "methodIndex": 286702,
+      "type": "HG.Rendering.Runtime.HGCamera",
+      "name": "get_enableMV",
+      "token": "0x06000e6a",
+      "va": "0x189b74654",
+      "functionEnd": "0x189b7469f",
+      "functionBytes": 75,
+      "functionSha256": "8C1488DC4A09BEB9F142B4EA2DD5CB7B98770D5DE48DA545E94655EE3538B329"
+    },
+    {
+      "methodIndex": 287999,
+      "type": "HG.Rendering.Runtime.HGRenderPathDeferred",
+      "name": "OnPreRendering",
+      "token": "0x0600137b",
+      "va": "0x189bf6cbc",
+      "functionEnd": "0x189bf7a9d",
+      "functionBytes": 3553,
+      "functionSha256": "E1E497BAD2F5AA44B25F7E6D0F7ECA208CD81F4C49AE8D64070A4FB1D0E6187A"
+    },
+    {
+      "methodIndex": 478062,
+      "type": "UnityEngine.HyperGryph.HGMeshRender",
+      "name": "CreateRendererList",
+      "token": "0x0600010a",
+      "va": "0x18b3fa0a4",
+      "functionEnd": "0x18b3fa10f",
+      "functionBytes": 107,
+      "functionSha256": "8C8113556AB580A5337118F93A8B5E7A38BD79A8F656128FE768CF22B727261F"
+    },
+    {
+      "methodIndex": 288027,
+      "type": "HG.Rendering.Runtime.HGRenderPathScene",
+      "name": ".ctor",
+      "token": "0x06001397",
+      "va": "0x182ed94e0",
+      "functionEnd": "0x182ed991d",
+      "functionBytes": 1085,
+      "functionSha256": "C0D8BACD8084FAA9D608A95C2F56076A9FBC3FB57AB450AA8A2F403614C11E98"
+    },
+    {
+      "methodIndex": 288006,
+      "type": "HG.Rendering.Runtime.HGRenderPathForward",
+      "name": "OnPreRendering",
+      "token": "0x06001382",
+      "va": "0x189bf7bdc",
+      "functionEnd": "0x189bf7f2b",
+      "functionBytes": 847,
+      "functionSha256": "499191DAF06A7B6985A8684B1435D6CC8DA7ECEA1A3C0623CFBAF8EC671ABCD5"
+    },
+    {
+      "methodIndex": 287274,
+      "type": "HG.Rendering.Runtime.ForwardPassUtils",
+      "name": "PrepareAfterDOFTranparentRendererList",
+      "token": "0x060010a6",
+      "va": "0x189bab274",
+      "functionEnd": "0x189bab4e2",
+      "functionBytes": 622,
+      "functionSha256": "319799A95260B1717084D16AA8C2E0CCAD668CEDF3E52E9465B99A31EC44A5E0"
+    },
+    {
+      "methodIndex": 287316,
+      "type": "HG.Rendering.Runtime.TransparentAfterDOFPassConstructor",
+      "name": "ConstructPass",
+      "token": "0x060010d0",
+      "va": "0x189bb2e40",
+      "functionEnd": "0x189bb346a",
+      "functionBytes": 1578,
+      "functionSha256": "D54DCF38AC17E6062573C476BF988FF8CBEE70E89F2B02FB341E5588DA3612CC"
+    },
+    {
+      "methodIndex": 288038,
+      "type": "HG.Rendering.Runtime.HGRenderPathScene",
+      "name": "RenderPostProcessPhase1",
+      "token": "0x060013a2",
+      "va": "0x189bffeb0",
+      "functionEnd": "0x189c009ef",
+      "functionBytes": 2879,
+      "functionSha256": "4695B2B6C39CB3522C067976FCC2F2677BC94692382C5611EF9E2EA743F145C5"
+    },
+    {
+      "methodIndex": 287324,
+      "type": "HG.Rendering.Runtime.TransparentAfterDOFPassConstructor+<>c",
+      "name": "<.cctor>b__10_0",
+      "token": "0x060010d8",
+      "va": "0x189bb5264",
+      "functionEnd": "0x189bb558a",
+      "functionBytes": 806,
+      "functionSha256": "D49C4DE691A7B65184532D8C9E46E1209F35AF2A76C0E23FA82B8E35593011CC"
+    },
+    {
+      "methodIndex": 288225,
+      "type": "HG.Rendering.Runtime.HGRendererListUtils",
+      "name": "RenderForwardRendererList",
+      "token": "0x0600145d",
+      "va": "0x189c0a6ec",
+      "functionEnd": "0x189c0a7cc",
+      "functionBytes": 224,
+      "functionSha256": "76DC5D1B4730F4A5BB937F3776A776DE2A8E960B4BB4A47B983BA5F264555879"
+    },
+    {
+      "methodIndex": 288226,
+      "type": "HG.Rendering.Runtime.HGRendererListUtils",
+      "name": "RenderForwardECSRendererList",
+      "token": "0x0600145e",
+      "va": "0x189c0a628",
+      "functionEnd": "0x189c0a6ea",
+      "functionBytes": 194,
+      "functionSha256": "BBA699B59C1081CDF6870E95B3B17469DD0D8791234E166D1D403D85786E6F42"
+    },
+    {
+      "methodIndex": 288241,
+      "type": "HG.Rendering.Runtime.HGRendererListUtils",
+      "name": "CreateTransparentRendererListDesc",
+      "token": "0x0600146d",
+      "va": "0x189c08904",
+      "functionEnd": "0x189c08bc8",
+      "functionBytes": 708,
+      "functionSha256": "08E90A05982967C1F0AA45950FDF24F069FA6B639238EE3F6429FEF2DE697163"
+    }
+  ],
+  "unityPlayerNativeMethods": [
+    {
+      "label": "HGMeshRender.CreateRendererList icall adapter",
+      "va": "0x1801f1e40",
+      "functionEnd": "0x1801f1f0e",
+      "functionBytes": 206,
+      "functionSha256": "EB9B02F891CD670E726D8EF73C52D62D40FDC6756BE41BCE76ED8EA901AC153C"
+    },
+    {
+      "label": "HGMeshRender renderer-list request packer",
+      "va": "0x18104e7a0",
+      "functionEnd": "0x18104e856",
+      "functionBytes": 182,
+      "functionSha256": "8125E686DC149173B7CB2A9FF3D0BA40E41162E72E1D9BC4353BD211ECAF1C7E"
+    },
+    {
+      "label": "HGMeshRender renderer-list registration core",
+      "va": "0x18104e300",
+      "functionEnd": "0x18104e7a0",
+      "functionBytes": 1184,
+      "functionSha256": "9FC913F47D5E88710E13D9C555F2C81F7DAAEBA22C6AEB22F2FAA969170ACC80"
+    },
+    {
+      "label": "HGMeshRender renderer-list resource record builder",
+      "va": "0x18104e920",
+      "functionEnd": "0x18104ec17",
+      "functionBytes": 759,
+      "functionSha256": "02F2E295CF8BB8247824AA7A3EE6B4E0BAD7D58C1C06D59ECD155CAB6E3C81BD"
+    },
+    {
+      "label": "CommandBuffer AddDrawECSMeshRendererList icall",
+      "va": "0x180063180",
+      "functionEnd": "0x180063209",
+      "functionBytes": 137,
+      "functionSha256": "2C36DF6649DEF8EB9748739C336F0F33371C81A0892BDCD3100D12BC69E0443F"
+    },
+    {
+      "label": "AddDrawECSMeshRendererList opcode writer",
+      "va": "0x1804c77b0",
+      "functionEnd": "0x1804c7850",
+      "functionBytes": 160,
+      "functionSha256": "F7D90308048F1EA0A2410C600FB241039B44F14ED278966060F64DBDCE34F8BF"
+    },
+    {
+      "label": "HGMesh renderer-list command consumer",
+      "va": "0x181005c10",
+      "functionEnd": "0x181005e53",
+      "functionBytes": 579,
+      "functionSha256": "3448107F9F252D1388D908D576542FF6B66E7C0D2B3450CDB9915BC58E2D65C2"
+    },
+    {
+      "label": "HGMesh renderer-list resource callback thunk",
+      "va": "0x180feade0",
+      "functionEnd": "0x180feade5",
+      "functionBytes": 5,
+      "functionSha256": "263BDC075313E7654E4E3AECE30F98F04B90E34A187ADFC10BE71BF3D7E7472F"
+    },
+    {
+      "label": "HGMesh renderer-list resource callback",
+      "va": "0x181047160",
+      "functionEnd": "0x181047280",
+      "functionBytes": 288,
+      "functionSha256": "51FF1225A752F4309247DAFA545ABB237FEF2E9A38BFD1579BDCE6F0A07ADAE6"
+    },
+    {
+      "label": "HGMesh 64-byte record sorter",
+      "va": "0x181043bd0",
+      "functionEnd": "0x181043d36",
+      "functionBytes": 358,
+      "functionSha256": "5C5EF082DD8E341F18C421C196B90ECF4E17BD8604E43627130DF869E6E8C5B2"
+    },
+    {
+      "label": "HGMesh 16-byte sort-key comparator",
+      "va": "0x180fe0740",
+      "functionEnd": "0x180fe0766",
+      "functionBytes": 38,
+      "functionSha256": "40944DA8A54834536C143E79E9E555C77220D4DE40F7F206D54B43DD33164D3A"
+    },
+    {
+      "label": "HGMesh sorted-record publication entry",
+      "va": "0x18103f160",
+      "functionEnd": "0x18103f1b2",
+      "functionBytes": 82,
+      "functionSha256": "82E3367CC8AF44B0D48F4F653A77AFC699086A6EB4853238CB852F11EFE2055A"
+    },
+    {
+      "label": "HGMesh sorted-record ID resolver",
+      "va": "0x181059410",
+      "functionEnd": "0x181059483",
+      "functionBytes": 115,
+      "functionSha256": "B243001126EEF35B00EA79DF5705EC21C74F9C462C6903BD62CCA7AA7735E303"
+    },
+    {
+      "label": "HGMesh sorted-record pointer append",
+      "va": "0x18105e350",
+      "functionEnd": "0x18105e36b",
+      "functionBytes": 27,
+      "functionSha256": "A53FE724C2528138F922D4923A10DB06489DF710A8B8AC0D891EE28A41A3EBA4"
+    },
+    {
+      "label": "HGMesh 64-byte survivor-record append",
+      "va": "0x18105e400",
+      "functionEnd": "0x18105e4cc",
+      "functionBytes": 204,
+      "functionSha256": "62712E9CCFEF1F7614BCCD33785031DEFC6DB9AF132E78885DD5727CB515555F"
+    }
+  ],
+  "decisiveCalls": [
+    {
+      "label": "PrepareAfterDOF -> CreateTransparentRendererListDesc",
+      "callsite": "0x189bab3c2",
+      "target": "0x189c08904"
+    },
+    {
+      "label": "ConstructPass -> PrepareAfterDOFTranparentRendererList",
+      "callsite": "0x189bb3299",
+      "target": "0x189bab274"
+    },
+    {
+      "label": "ConstructPass -> CreateRendererList",
+      "callsite": "0x189bb332b",
+      "target": "0x189b2ab5c"
+    },
+    {
+      "label": "ConstructPass -> UseRendererList",
+      "callsite": "0x189bb334b",
+      "target": "0x189b36820"
+    },
+    {
+      "label": "callback -> RenderForwardRendererList",
+      "callsite": "0x189bb54f1",
+      "target": "0x189c0a6ec"
+    },
+    {
+      "label": "callback -> RenderForwardECSRendererList",
+      "callsite": "0x189bb5541",
+      "target": "0x189c0a628"
+    },
+    {
+      "label": "callback -> DrawFullScreen",
+      "callsite": "0x189bb5401",
+      "target": "0x18b2de0cc"
+    },
+    {
+      "label": "CreateTransparentRendererListDesc -> Camera.get_cullingMask",
+      "callsite": "0x189c08967",
+      "target": "0x1832512c0"
+    },
+    {
+      "label": "CreateTransparentRendererListDesc -> RemoveWorldUILayer",
+      "callsite": "0x189c0897e",
+      "target": "0x189b736b0"
+    },
+    {
+      "label": "CreateTransparentRendererListDesc -> RendererListDesc.ctor",
+      "callsite": "0x189c089a4",
+      "target": "0x18b3f4a7c"
+    },
+    {
+      "label": "Phase1 -> HGCamera.get_screenCullingLayerMask",
+      "callsite": "0x189c0057c",
+      "target": "0x183e68cb0"
+    },
+    {
+      "label": "Phase1 -> TransparentAfterDOF.ConstructPass",
+      "callsite": "0x189c00740",
+      "target": "0x189bb2e40"
+    },
+    {
+      "label": "Deferred.OnPreRendering -> RemoveWorldUILayer(-1)",
+      "callsite": "0x189bf7684",
+      "target": "0x189b73644"
+    },
+    {
+      "label": "Deferred.OnPreRendering -> get_enableTransparentAfterDOF",
+      "callsite": "0x189bf7823",
+      "target": "0x189b7470c"
+    },
+    {
+      "label": "Deferred.OnPreRendering -> CreateRendererList(TransparentAfterPP)",
+      "callsite": "0x189bf789f",
+      "target": "0x18b3fa0a4"
+    }
+  ],
+  "rendererList": {
+    "queue": {
+      "first": 3660,
+      "default": 3700,
+      "last": 3740
+    },
+    "sortingCriteria": 87,
+    "sortingSemantic": "CommonTransparent | OptimizeStateChanges | RendererPriority",
+    "shaderTagsWithoutOutline": [
+      "TransparentBackface",
+      "ForwardOnly",
+      "Forward",
+      "ForwardCharacterOnly",
+      "SRPDefaultUnlit",
+      "Distortion"
+    ],
+    "layerMask": "RemoveWorldUILayer(camera.cullingMask)",
+    "stateBlock": {
+      "hasValue": false,
+      "source": "zero-initialized nullable"
+    },
+    "overrideMaterial": null,
+    "excludeObjectMotionVectors": false,
+    "perObjectData": {
+      "bakedLightingConfig": 15,
+      "motionVectorConfigForNonNullHGCamera": 32,
+      "combined": 47,
+      "expression": "m_CurrentRendererConfigurationBakedLighting | GetPerObjectMotionVectorConfig(hgCamera)",
+      "normalBranchEvidence": "pipeline ctor and ConfigureKeywords write 15; get_enableMV returns true; motion helper returns 32",
+      "ifixBoundary": "patch ids 568, 462, and 463 can replace the normal branches"
+    },
+    "screenCulling": {
+      "constructorDefaults": {
+        "ratio": 0.005,
+        "distance": 30.0
+      },
+      "hgCameraOffsets": {
+        "ratio": "0x9d8",
+        "distance": "0x9dc",
+        "layerMask": "0xa20"
+      },
+      "layerNames": [
+        "Default",
+        "TransparentFX",
+        "Ignore Raycast",
+        "Water",
+        "UI",
+        "Walkable",
+        "Climbable",
+        "Trigger",
+        "UIPP",
+        "UIModel",
+        "Building",
+        "UIInteract",
+        "WorldUI",
+        "Projectile",
+        "AbilityEntity",
+        "Terrain",
+        "IK"
+      ],
+      "layerMaskConstruction": "lazy LayerMask.GetMask of the 17 names",
+      "ratioDistanceWriters": "HGCamera..ctor only among mapped HG.RenderPipelines.Runtime methods",
+      "layerMaskWriters": [
+        "HGCamera..ctor initializes 0xffffffff",
+        "HGCamera.DoECSCullingCPP copies lightweight-camera results +0x168/+0x16c",
+        "HGCamera.DoECSCulling rewrites current/lightweight camera masks",
+        "HGRenderPipeline.Render propagates lightweight-camera results"
+      ],
+      "requestPropagation": "ExecuteRenderRequestCPP copies ratio/distance to request +0x68/+0x6c, then reads the layer-mask getter",
+      "descriptorBoundary": "values travel through custom request/PassInput data; ordinary Unity RendererListDesc has no equivalent fields",
+      "runtimeInstanceValues": "pending selected-camera observation; layer mask is runtime-mutated and cannot be assumed to remain 0xffffffff",
+      "unityEquivalent": "standard DrawRenderers exposes no HG screen-culling fields"
+    },
+    "passInputOffsets": {
+      "characterOutlineEnabled": "0x00",
+      "forwardTransparentAfterDOFECSList": "0x04",
+      "screenCullingLayerMask": "0x08",
+      "screenCullingRatio": "0x0c",
+      "screenCullingRatioDistance": "0x10",
+      "bakedLightConfig": "0x14",
+      "shadowResult": "0x18",
+      "cullingResults": "0x58",
+      "sceneColor": "0x68",
+      "sceneDepth": "0x78",
+      "sceneMV": "0x88",
+      "hgrp": "0x98",
+      "bytes": 160
+    },
+    "ecsRendererListProducer": {
+      "owner": "HGRenderPathDeferred.OnPreRendering",
+      "field": "m_forwardTransparentAfterDOFECSList",
+      "fieldOffset": "0x1388",
+      "handleType": "System.UInt32",
+      "constructorSentinelWriteVA": "0x182ed9507",
+      "validGate": "HGGraphicsFeatureManager.forwardTransparent.enabled && hgCamera.enableTransparentAfterDOF",
+      "invalidSentinel": 4294967295,
+      "createCallVA": "0x189bf789f",
+      "createTargetVA": "0x18b3fa0a4",
+      "viewHandle": "hgCamera.cullingViewHandle",
+      "renderFlagsMask": "0x4400 (TransparentAfterPP | ShadowOnly)",
+      "renderFlagsValue": "0x4000 (TransparentAfterPP)",
+      "lightModeMask": "0x20e0 | (characterOutlineState << 9)",
+      "globalKeywords": 0,
+      "multiDraw": true,
+      "transparentSorting": true,
+      "cullingLayerMask": "HGCamera.RemoveWorldUILayer(0xffffffff)",
+      "noAlphaTest": false,
+      "excludeGPUDriven": false,
+      "lifecycle": "recreated or reset to 0xffffffff by deferred OnPreRendering each camera frame",
+      "phase1ReadVA": "0x189c00568",
+      "forwardPath": "HGRenderPathForward.OnPreRendering creates ordinary transparent/opaque/pre-Z lists but never writes 0x1388 or creates a 0x4400/0x4000 AfterPP list",
+      "nativeAdapter": {
+        "icallSignature": "UnityEngine.HyperGryph.HGMeshRender::CreateRendererList(System.UInt32,System.UInt32,System.UInt32,System.UInt32,System.UInt16,System.IntPtr,System.Boolean,System.Boolean,System.UInt32,System.Boolean,System.UInt32*,System.Boolean)",
+        "registrationIndex": 395,
+        "unityPlayerVA": "0x1801f1e40",
+        "functionEnd": "0x1801f1f0e",
+        "functionBytes": 206,
+        "functionSha256": "EB9B02F891CD670E726D8EF73C52D62D40FDC6756BE41BCE76ED8EA901AC153C",
+        "requestPackerVA": "0x18104e7a0",
+        "registrationCoreVA": "0x18104e300",
+        "resourceRecordBuilderVA": "0x18104e920",
+        "behavior": "canonicalizes arguments, packs a 0x68-byte request, and registers a list handle; contains no entity iteration, survivor writes, sort loop, multi-draw dispatch, or final draw",
+        "handleTable": {
+          "vectorBaseOffset": "0x08",
+          "countOffset": "0x18",
+          "encodedCapacityOffset": "0x20",
+          "slotStride": 16,
+          "returnedHandle": "zero-based append index (old count)",
+          "slotIdOffset": "0x00",
+          "slotStatePointerOffset": "0x08",
+          "stateBytes": 48,
+          "stateCallbackVA": "0x1810398f0",
+          "registrationLifecycle": "reads the old count as the handle, grows through 0x1802ed7d0 -> 0x180662870 when required, increments count, zeroes the new slot, allocates a 0x30-byte state through 0x1802fd650, and stores it at slot +0x08",
+          "consumerMutation": "opcode 0x4e consumer 0x181005c10 reads slot +0x08 but does not modify the manager vector or count",
+          "resetAudit": "no count decrement, in-place reset, slot-clear loop, free, or reuse owner occurs in the pinned registration/interpreter/consumer spans; external context replacement or teardown remains possible"
+        },
+        "invalidRequestGate": "request[0] == 0xffffffff returns 0xffffffff without appending",
+        "maskCombination": "view record +0x40/+0x48 OR request +0x50/+0x58",
+        "nextConsumerBoundary": "HGMesh opcode 0x4e reaches 0x181005c10; survivor/order/final draw remain downstream of its resource callback",
+        "commandConsumer": {
+          "family": "HGMeshRender (distinct from HGTree opcode 0x55)",
+          "commandBufferIcallVA": "0x180063180",
+          "opcodeWriterVA": "0x1804c77b0",
+          "opcode": "0x4e",
+          "interpreterCaseVA": "0x1804ce43a",
+          "managerSingletonOffset": "0xb0",
+          "consumerVA": "0x181005c10",
+          "slotStride": 16,
+          "slotStatePointerOffset": "0x08",
+          "callbackThunkVA": "0x180feade0",
+          "callbackVA": "0x181047160",
+          "behavior": "validates the 0xffffffff sentinel, resolves the same 16-byte HGMesh slot, constructs command/resource state, and installs a resource-lifetime callback; no entity iteration, survivor write, sort loop, indirect draw, or queue submission is present",
+          "excludedParallelFamily": "HGTree uses CommandBuffer opcode 0x55, singleton +0xc0, 24-byte slots, and consumer 0x18106aae0"
+        },
+        "survivorSortPublication": {
+          "workerSelection": "resource builder 0x18104e920 chooses one of 14 post-filter record workers from live request/view/resource flags",
+          "recordStride": 64,
+          "sortVA": "0x181043bd0",
+          "sortHelpers": [
+            "0x181042950",
+            "0x181042fc0"
+          ],
+          "comparatorVA": "0x180fe0740",
+          "comparatorKeyBytes": 16,
+          "comparator": "unsigned-byte lexicographic order over record bytes 0x00..0x0f",
+          "recordAppendVA": "0x18105e400",
+          "keyConstruction": [
+            "dword 0 packs a masked 20-bit source, another source shifted by 20, and a byte flag",
+            "dword 1 combines source +0x08, a byte selector, and a 16-bit source value",
+            "dword 2 combines source +0x0c, selector bits, and a conditional 0x01000000 marker",
+            "dword 3 combines context byte state, source +0x22 u16, and ((~asuint(float)) >> 17) & 0x3fff"
+          ],
+          "semanticKey": "opaque packed renderer-state key; byte/bit construction is proven but field names remain unresolved",
+          "commonAcceptanceGates": [
+            "(source[0x10:0x20] & context[0x40:0x50]) == 0",
+            "(source+0x10 qword & context+0x50 qword) != 0",
+            "source+0x10 has at least one 0x60000 bit",
+            "source+0x10 has at least one 0x7f00 bit",
+            "(source+0x10 & 0xc0) == 0xc0",
+            "context+0x34 & viewMask[index] != 0",
+            "source bit 45 is clear"
+          ],
+          "variantGate": "four resource-state worker variants additionally require signed dword source+0x2c > 0 in the source+0x18 bit-15 path",
+          "workerSelectionFields": "request +0x28 multiDraw, +0x29 transparentSorting, +0x30 noAlphaTest plus live resource presence; excludeGPUDriven is request +0x40 and is not independently reread as a worker-local Boolean",
+          "invalidRecordGate": "publication skips record +0x20 == 0xffffffff",
+          "idResolverVA": "0x181059410",
+          "pointerAppendVA": "0x18105e350",
+          "provenPipeline": "post-filter 64-byte records -> in-place key sort -> invalid-record skip -> ID/resource resolve -> pointer-vector publication",
+          "notYetProven": [
+            "semantic names of packed key fields",
+            "indirect draw",
+            "graphics backend submission",
+            "manager frame reset/reuse owner"
+          ]
+        }
+      }
+    },
+    "liveInputsPending": [
+      "cullingResults",
+      "camera",
+      "screenCullingRatio",
+      "screenCullingRatioDistance",
+      "screenCullingLayerMask",
+      "outlineEnabled",
+      "screen-culling instance values",
+      "survivorsAndSortOrder"
+    ]
+  },
+  "attachments": {
+    "color0": "new sceneColor clone, store",
+    "color1": "incoming sceneMV when valid, load/store",
+    "depth": "incoming sceneDepth, read"
+  },
+  "callbackExecution": [
+    "profiling",
+    "sceneColor/global texture setup",
+    "fullscreen draw",
+    "forward renderer list",
+    "forward ECS renderer list"
+  ],
+  "rendererConsumers": {
+    "opaqueArgument": false,
+    "frameSettingsGate": "TransparentObjects",
+    "classic": "CoreUtils.DrawRendererList(renderContext, cmd, rendererList)",
+    "ecs": "HGMeshRender.DrawECSRendererList(cmd, rendererListHandle)",
+    "consumerResortingOrOverride": "none; descriptor/list construction owns filtering and order",
+    "survivorIdentity": "runtime renderer-list and ECS handles pending"
+  },
+  "shaderAbi": {
+    "selectedMaterialGates": {
+      "values": {
+        "_RenderTransparentAfterDOF": 1.0,
+        "_EnableTransparentMV": 0.0,
+        "_IsSceneEffect": 0.0,
+        "_IgnorePostExposure": 1.0,
+        "_Responsive": 1.0,
+        "_InParticle": 1.0
+      },
+      "vfxParams1Required": false,
+      "transformHistoryRequired": false,
+      "reason": "all six selected materials use _IsSceneEffect=0 and _EnableTransparentMV=0"
+    },
+    "variantCount": 3,
+    "constantBuffers": {
+      "b0": "_TransformVariables_structural_match",
+      "b1": "ShaderVariablesGlobal_structural_match",
+      "b2": "unresolved_auxiliary_particle_or_per_draw",
+      "b3": "UnityPerMaterial_exact_partial_c0_to_c5_later_lanes_unresolved"
+    },
+    "variantResources": [
+      {
+        "materialKeywords": [],
+        "texturesAndSamplers": [
+          {
+            "textureRegister": 0,
+            "samplerRegister": 0,
+            "texture": "_MainTex",
+            "compiledSamplerSymbol": "LinearClamp"
+          }
+        ]
+      },
+      {
+        "materialKeywords": [
+          "_SAMPLE_TEX0",
+          "_USE_SOFTBLEND"
+        ],
+        "texturesAndSamplers": [
+          {
+            "textureRegister": 0,
+            "samplerRegister": 0,
+            "texture": "_CameraDepthTexture",
+            "compiledSamplerSymbol": "LinearClamp"
+          },
+          {
+            "textureRegister": 1,
+            "samplerRegister": 1,
+            "texture": "_MainTex",
+            "compiledSamplerSymbol": "LinearRepeat"
+          },
+          {
+            "textureRegister": 2,
+            "samplerRegister": 2,
+            "texture": "_SampleTex0",
+            "compiledSamplerSymbol": "LinearMirror"
+          }
+        ]
+      },
+      {
+        "materialKeywords": [
+          "_USE_SOFTBLEND"
+        ],
+        "texturesAndSamplers": [
+          {
+            "textureRegister": 0,
+            "samplerRegister": 0,
+            "texture": "_CameraDepthTexture",
+            "compiledSamplerSymbol": "LinearClamp"
+          },
+          {
+            "textureRegister": 1,
+            "samplerRegister": 1,
+            "texture": "_MainTex",
+            "compiledSamplerSymbol": "LinearRepeat"
+          }
+        ]
+      }
+    ]
+  },
+  "nativeBoundary": {
+    "callbackConstantBufferPublication": "not_present",
+    "callbackGlobalVectorAndTexturePublication": "present",
+    "serializedBindingsAreD3D12RootParameters": false,
+    "pending": [
+      "live descriptor-table handles",
+      "root-parameter mapping",
+      "PSO overrides",
+      "physical MRT/depth descriptors",
+      "feature-switch values",
+      "renderer-list survivors/order",
+      "final compositing"
+    ]
+  },
+  "unityDecision": {
+    "visibleAdmission": false,
+    "vfxParams1PublicationRequiredForSelectedMaterials": false,
+    "transformHistoryRequiredForSelectedMaterials": false,
+    "reason": "all selected materials serialize _IsSceneEffect=0 and _EnableTransparentMV=0",
+    "selectedViewerCamera": {
+      "fileID": 1562276706,
+      "unityCullingMask": 4294967295,
+      "serializedHGScreenCullingOverrides": false
+    }
+  }
+}
