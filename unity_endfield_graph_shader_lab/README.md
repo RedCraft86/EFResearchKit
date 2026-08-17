@@ -4113,6 +4113,114 @@ visible active frames. The capture preserves source queue 3704 and
 only disables soft blend on transient materials because no retail scene depth
 exists. It is diagnostic-only, does not compare retail pixels, and does not
 raise visible admission.
+The actor-composed harness manifest v2 also records a renderer fingerprint
+witness at every anchor after sampling and composite visibility, immediately
+before `Camera.Render()`. Static effects join recovered renderer/mesh/material
+PathIDs to capture-session Unity instance IDs; peak particles additionally
+separate source ParticleSystemRenderer/System IDs from the baked proxy
+Renderer/Mesh IDs; actor rows use canonical hierarchy and runtime IDs without
+inventing missing source PathIDs. Shader, render queue, geometry census,
+active/enabled state, and a transform-state hash are recorded and validated.
+The validator requires source/object/material identity to remain stable across
+the run while allowing dynamic particle geometry and transform state to vary.
+It reads `sharedMaterials` only. A separate non-mutating skinned-palette digest
+hashes `renderer.worldToLocal * bone.localToWorld * bindpose`; validation
+requires the bone/bindpose census to match and at least one actor renderer to
+change pose across the anchor set. This is still a local pre-render submission
+and pose witness, not retail HGMesh identity or proof that Unity issued a
+particular native draw.
+This local witness also sharpens, but does not close, the retail routing prior.
+The recovered Li roots use ordinary MeshRenderer and ParticleSystemRenderer
+components, enable ordinary particle GPU instancing, disable HG GPU
+instancing, and contain no serialized HGMeshRenderer/HGMeshRendererData.
+The retail AfterDOF callback calls classic `RenderForwardRendererList` at
+`0x189BB54F1` and the separate ECS list at `0x189BB5541`; its classic
+3660--3740 descriptor admits Li's queue 3704. Classic renderer-list submission
+is therefore the source-backed likely route. HGMesh remains possible only via
+an unobserved runtime conversion/registration step, so neither branch is yet a
+positive Li draw attribution and `visibleAdmission` remains false.
+The stock native route is now pinned beyond that managed call.
+`CreateRendererList_Internal_Injected` at `0x1800BA8E0` calls
+`0x18052CF70` and returns a 16-byte payload containing render-context pointer,
+list/index, and generation/status. No Renderer instance ID or HGMesh handle is
+copied into it. `Internal_DrawRendererList_Injected` at `0x180062960` calls
+`0x1804C9230`, which records opcode `0x4D` plus this payload; command-buffer
+execution reaches the ready interpreter. Its signed-RVA dispatch table at
+`0x1804D19C8` maps opcode `0x4D` to the in-interpreter branch
+`0x1804CE406` (the adjacent `0x4E` and `0x55` entries land at
+`0x1804CE43A` and `0x1804CE4BD`). The previously attributed
+`0x18099F857..0x1809A00DB` span is an unrelated geometry helper and is not a
+RendererList command handler. The `0x4D` branch reads the aligned 16-byte
+payload, validates its context and index in `0x18052E050`, resolves
+`context+0x10148[index]`, releases that backend row through `0x18053D640`, and
+writes state 2 to the 0x1a0-byte entry's `+0x194`. Payload `+0x0C` is not read
+on this path, so generation validation must not be claimed. This is a list-row
+retirement path, not the missing draw expansion, and it provides no static
+Li-specific Vulkan draw or queue-submit edge. The result closes stock list
+construction, materialization, command transport, and retirement semantics,
+not final draw attribution.
+The pinned player's final recorded-command backend is now positively bounded
+as Vulkan. Interpreter `0x1808E4583..0x1808E57CE` validates opcodes 0--39;
+cases 29/30 call `vkCmdDrawIndexed`/`vkCmdDraw`, cases 31/32 call their indexed
+and non-indexed indirect variants, and cases 33/34 call direct/indirect
+dispatch. Loader `0x180747BAD..0x180747CC1` resolves and stores those function
+pointers, and each draw case forwards the decoded aligned payload with the
+resolved Vulkan command buffer. The generated native ABI contract hash is
+`B1CAC300CDC606AA89C36F31CB1C9D659CF15D160482042563B3E3481B213D20`.
+This closes general recorded-command-to-Vulkan execution only: no static edge
+yet assigns a Li RendererList, ordinary Renderer, or ParticleSystemRenderer to
+one of cases 29--32, its PSO/descriptors, or a final visible pixel.
+The adjacent generic queue boundary is explicit: `0x1808DE370..0x1808DE500`
+packages stream-backed opcode-5 records and `0x1808DE500..0x1808DE76D`
+executes them into that interpreter, but their fields expose no static
+Renderer/VFX identity. The classic 0x50-byte-record provider is concretely the
+front context built at `0x1809258C0`; its `+0x210` callback receives no record
+pointer or index and only records state opcode `0x2727` or updates an API-2
+state bit. That provider branch is closed negatively rather than retained as
+a candidate draw bridge.
+The pre-retirement lifecycle is now pinned separately. Registered icalls
+3659--3661 map the three `PrepareRendererListsAsync*` APIs to
+`0x1800BAC40`, `0x1800BAF10`, and `0x1800BB080`; their native paths enter
+`0x180535630`, `0x180535790`, and `0x180535870`. The direct preparation paths
+materialize each 0x1a0-byte source row through logical function
+`0x18053FC90..0x18054027D`, store its 0x248-byte backend object in
+`context+0x10148[index]`, and change source-row state `+0x194` from 0 to 1.
+The materialized object contains the copied source row at `+0x60`, backend
+manager at `+0x200`, registration/resource state at `+0x210`, and auxiliary
+resources at `+0x220/+0x228`. `0x18053F690` performs collection/filter
+association rather than draw execution. The strongest bounded downstream
+consumer, `0x180540280`, uses those fields plus `+0x50`. The full logical
+`0x180540510..0x18054160A` routine filters source-row flags, IDs, and ranges,
+then emits a compact 0x50-byte CPU record stream. Its indirect call at
+`0x18054126F` through `vtable+0x48` is the first unresolved backend boundary,
+not a proven graphics-API call. `0x1805438E0` prepares a separate temporary
+record whose `0x18054396F..0x180543BD1` continuation partitions and copies
+0x50-byte ranges. Generic `0x180555180` produces a 0x18-byte index table stored
+at backend object `+0x208`, with count at `+0x210`; indirect consumer
+`0x180542E10` uses those indices to enter resource/parameter builder
+`0x1805419D0`. Callback-row builder `0x180541680` allocates 0x190-byte rows,
+initializes `+0x10/+0x18` to zero, and registers callback `0x180542E10` through
+an external manager's vtable `+0xC28`. The manager populates row `+0x10`; the
+callback forwards it as Windows x64 argument six, and exact return-address and
+prologue accounting maps the builder's terminal `vtable+0x210` receiver back
+to that same dynamic resource/parameter-provider. Front-context vtable
+`0x181DCB360` resolves `+0xC28` to `0x18092EC20`; it allocates a 0x20-byte
+callback/resource node, calls nested interface `+0xC18`, and writes the result
+to row `+0x10` at `0x18092ED78`, while row `+0x18` remains zero on this path.
+Allocator `0x180936560` returns a pooled/new 0x2A00 front context. Its
+`+0x210` target `0x180937B70` records opcode `0x2727` or reaches API-2 backend
+`0x1808539D0`, which only updates state bit `0x40` at
+`[backend+0x2E48]+0xBC`. The recorded route continues through front `+0xEB0`,
+opcode `0x273D`, a state copy, and dynamic context `+0x70` vtable `+0x5D0`.
+The broad API-2 vtable candidate `0x181DBC098` resolves `+0x5D0` to
+`0x180833940`, which constructs/processes diagnostic `0xD0B`, cleans up with
+`0x20D`, and returns false. Front-context `+0x5D0` instead records opcode
+`0x2769` or forwards to backend `+0x650`; the type-4 candidate forwards through
+`+0x5C0` into state allocation/update and backend `+0x5C8`. All bounded
+candidates remain state/error transport with no graphics draw or submit. The
+next native boundary is therefore the separate classic RendererList draw
+expansion or a runtime-observed concrete receiver, not another assumption that
+this state route is the draw.
 Retail queue 3704 belongs to the source-closed 3660--3740
 `AfterPostprocessTransparent` phase. In the exact SceneMV route that range is
 owned by the after-post callback, not main transparent. This isolated shader
@@ -4128,21 +4236,93 @@ resource lookup, records `0x2748/0x274A`, invokes the API-2 resource builders,
 and reaches `0x180619CF0`. Its `descriptor+0x450` branch selects among three
 helpers; only `0x180623EF0` reaches the same-recorder `+0x2A0`/opcode-`0x2730`
 writer, and Li's selected branch is not statically known. The generic `0x2731`
-producer uses a separate runtime-callback bracket, while the parser carries no
+producer uses a separate runtime-callback bracket owned by frame/status
+function `0x18059F2F0`; status 0/1 reaches it at `0x18059F395`, and
+`0x18059EDD0` is an alternate status-zero entry. Its callback slot is
+runtime-populated with no static writer, while the parser carries no
 mandatory-next flag or generation between the independent `0x2730/0x2731`
 cases. Admission still requires the Li branch value, a later `0x2731` in the
 same after-DOF interval, and concrete attribution of the resulting `+0x2B50`
 Vulkan callback/draw node to this HGMesh draw-list.
+Recorder setup `0x1809258C0` initializes their shared `+0x2710/+0x2711`
+admission state and `+0x2720` stream, but has no frame counter, generation, or
+per-frame reset; end slot `+0x880` only flushes and clears `+0x2711`. The
+shared recorder and append order are therefore proven, while same-frame and
+same-AfterDOF attribution remain deliberately fail-closed.
 The selector object itself is now source-bounded. Finalizer argument M0 owns a
 hash table at `M0+0x28`; a 0x60-stride entry's `+0x28` descriptor D is copied
 to publication `+0x10`. The callback preserves D while using `D+0x450` for
 mode and `D+0x60` for the opcode-`0x2748` resource. D is distinct from the
 original 64-byte record's packed resolver ID at publication `+0x84`. Mode 0 is the only
 descriptor-state/conditional-`0x2730` path, mode 2 selects cache/fallback and
-clears the output, and other modes also fail/clear. A matching 0x4E0 descriptor
-constructor has two mode-0 callers, but neither it nor the other inspected
-builders populates M0's entry. That runtime/indirect owner-table population is
-the remaining alias boundary, so the Li branch remains deliberately unselected.
+clears the output, and other modes also fail/clear. The exact 0x580-byte state
+constructor `0x1806198F0` writes caller mode to `+0x450` at `0x180619952`;
+`0x1805CAF78` supplies mode 2 and `0x1805CB225` supplies mode 0. It matches the
+field consumed by `0x180619CF0`, but no static alias selects which instance is
+Li's M0 profile D. A matching 0x4E0 constructor has two mode-0 callers, but neither it nor the other inspected
+builders populates M0's entry. The complete chained-`.pdata` worker
+`0x180FF8020..0x180FF8702` instead inherits M0/M1 from its argument
+`+0x00/+0x08` and passes them unchanged to finalization. Its
+`0x180FF82B5 -> 0x1810442F0` helper owns a temporary 0x30-byte
+group-to-int32-index-vector map over 0x240-byte source records; it is not M0
+and does not write M0 `entry+0x28`. `0x18104EF90` now closes the next owner:
+it allocates and initializes the 0xF0-byte job descriptor, copies caller
+`rdx/r8/r9` into `+0x00/+0x08/+0x70`, selects graphics context `+0x10`, loads
+the sole confirmed `0x180FF8020` callback reference, and registers it through
+`0x180555D30 -> 0x1805573D0 -> 0x180559520`. The primary path supplies source
+`+0x00/+0x08/+0x10`; internal-call index 399,
+`HGMeshRender.CreateRendererListFromEntities_Injected`, reaches the same owner
+through `0x18104EC20`. This path transports already-populated M0/M1 tables and
+does not construct their entries.
+The tables are no longer anonymous. Slot-0x14 root `+0x90` is the
+`HGShadingStateSystem` built by `0x1810AFC80`; `0x1810AEEA0` initializes its
+`+0x28` table and the finalizer proves 0x60-byte entries. Root `+0xA0` is the
+`HGGeometrySystem` built by `0x181091DC0`; `0x1810914A0` initializes its
+0x38-byte table. Root construction injects these exact objects into HGMesh
+manager `+0x50/+0x58`, closing their transport through the job and finalizer.
+M0 entry population is now source-closed. `0x1810B9990` performs
+material-handle lookup/insertion, clears a new 0x60-byte entry, and calls
+`0x18109C9D0` at `0x1810B9C5C`. That function repeats the M0 hash lookup and
+writes its native shading-state resource to `entry+0x28` at
+`0x18109CA2F`; the two direct insertion callers are `0x1811E1A24` and
+`0x18131B76B`. Both resolve a wrapper initialized by `0x1805FF5E0` with
+vtable `0x181D87EF0` and embedded type text `PPtr<HGSubsurfaceProfile>`.
+Insertion calls `0x180600820`, which returns the nested descriptor held at
+wrapper `+0x140`; that descriptor, not the wrapper itself, becomes M0 entry
+`+0x28`. Neither path is an ordinary Unity Material registration or Li-specific
+reference. `GetOrCreatePerMaterialCBHandle` is a downstream consumer.
+Managed metadata separately names the broader `GetMaterialHandle(int)` and
+`GetMaterial(uint)->UnityEngine.Material` API; the primary profile owner also
+resolves a Unity object reference before insertion. Those facts establish the
+public handle bridge, not a Li-specific Material/profile identity.
+M1 population is now source-closed too. Mesh-owner bridge `0x1813727B0`
+reads owner `+0x08`, resolves root `+0xA0`, and tail-jumps at `0x18137284A`
+to insertion function `0x1810941F0`. New handles call `0x18108B1C0` at
+`0x18109441E`; that core writes the resolved geometry resource to entry
+`+0x18`, source mesh `+0x40` to entry `+0x20`, and builds the `+0x28/+0x30`
+geometry caches. `0x18108B560` replaces the same state while preserving
+generation; `0x18108B8F0` releases/clears it and increments generation. The
+remaining boundary is a Li-specific M0 subsurface-profile handle/resource and
+M1 mesh-handle join. Until then the Li `D+0x450` mode and
+branch stay deliberately unselected.
+The static Li graph rules out an ID shortcut: 75 SkinnedMeshRenderers and 18
+active LOD0 renderers retain exact Mesh/Material PathIDs, but no serialized
+HGMeshRenderer/HGMeshRendererData. Retail Material/Mesh instance IDs and
+M0/M1 slot-generation handles are assigned by the live player registry and
+cannot be derived from PathID, fileID, lab GUID, or asset name. Positive proof
+therefore requires a same-build instanceID/object-fingerprint -> M0/M1 handle
+-> accepted record -> draw observation.
+The instance-ID bridge is now pinned exactly. UnityPlayer adapter
+`0x1801EE250..0x1801EE2CE` implements
+`HGShadingStateSystem.GetMaterialHandle`, while
+`0x1801EE550..0x1801EE5CE` implements
+`HGGeometrySystem.GetGeometryHandle`; each searches a 12-byte key/value map
+and returns the full packed M0/M1 handle. `GetMesh` adapter `0x1801EE5D0`
+performs the reverse M1 lookup using the low 24-bit slot. In the concrete
+`HGMeshRendererData` route, initializer `0x181088D80` maps native materials,
+meshes, and shadow-proxy meshes from `+0x58/+0x78/+0x98` and writes runtime
+record `+0x04/+0x08/+0x0C`. These are exact capture hooks, not an offline
+substitute for Li's live runtime IDs.
 The same contract pins `SetManual(bool)`, `ManualEvaluate(float)`,
 `SyncProgress(float)`, time-scale/start-duration/start-
 scale setters, Stop, OnDisable, and OnRelease. Their decoded fallback bodies
@@ -4210,12 +4390,296 @@ and per-root images to
 Li overview-start actor clip and all three effects on one explicit clock, uses
 the source overview position/LookAt/FOV/clip planes, and records the authored
 camera quaternion separately from its inferred hierarchy LookRotation.
+Each real `Camera.Render()` carries a harness-owned, strictly monotonic
+`captureInvocationSerial`: 24 anchors times four aggregate lanes plus three
+root-only lanes produce 168 unique invocations. This avoids misusing
+`Time.frameCount` when several explicit renders occur in one Editor frame. The
+serial is a Unity diagnostic capture identity only, not a native frame,
+command-buffer generation, or retail RendererList identity.
+With `-endfield-recovered-renderer-id-sidecar`, the actor-composed harness also
+records a separate RGBA32F renderer-ID pass using the same after-post cull,
+depth, queue 3660--3740, layer mask, and transparent sort. SampleStack admission
+keeps Zhuang Fangyi's three exact piaodai materials at queue 3700, but separately
+recognizes only source-named Li diagnostic/actor-composed instances and preserves
+their source queues; material 18 therefore remains queue 3702. The first D3D12
+run had 21 positive serial joins in composite/effects/peak lanes. Root-only
+lanes had no sidecar because their `LiZhiyanStart01Diagnostic` materials do not
+claim retail MRT admission, while sibling SampleStack materials incidentally
+opened the AfterPost route in aggregate lanes. Explicit positive capture serials
+now admit only source-named actor-composed diagnostic instances as a
+renderer-ID-only route request. This does not change queues or lifetimes, is
+inactive in the normal viewer, and does not promote retail MRT admission. The
+refreshed 168-call capture has 99 positive sidecars: 23/24 composite, 23/24
+effects-only, 7/24 peak-only, plus every active root-only frame (start_01 8/8,
+start_02 15/15, start_03 23/23). The remaining 69 calls explicitly report no
+exact selected MRT material. Root-only override coverage is time-invariant at
+432,119/289,686/227,641 pixels respectively, so the sidecar proves static
+geometry ownership only. A direct Unity probe showed that `SampleAnimation`
+writes the classID-23 `material.*` values into each renderer's
+`MaterialPropertyBlock`, not into `sharedMaterials` or `renderer.material`.
+The actor-composed capture now reads the exact editor curves by hierarchy path
+and mirrors all 21/15/17 resolved start_01/_02/_03 bindings into both the cloned
+diagnostic material and its preserved MPB, without using AnimationMode or
+changing generated prefabs/normal-viewer behavior. Validators require complete
+active binding census, fail-closed inactive samples, selected dynamic-anchor
+state changes, and more than one root-only PNG hash. The refreshed capture has
+4/3/9 distinct active PNG hashes for start_01/_02/_03, while sidecar geometry
+remains intentionally invariant. Numeric red-channel IDs are local to one capture invocation;
+the ordinal hierarchy path plus material slot/name is the cross-frame identity.
+The stable later contributors are queue-3704 `tiaodaifenwei_01 (7)`,
+`fenweiqiliu_02 (3)`, and `shoutiaodai_01 (1)`; composite and effects-only are
+byte-identical at those four PTS values.
+The attachment uses the actual 960x540 after-post depth extent instead of the
+Editor/HiDPI-sensitive camera pixel size, which previously allocated a
+1920x1080 raw target for this 960x540 capture. Every positive frame stores
+per-renderer pixel counts and inclusive internal plus capture-scaled bounding boxes; their
+totals and identity mappings are validated against the RGBA32F payload.
+Because the override shader does not reproduce
+source alpha clip, cull, or discard, this is diagnostic renderer
+admission/depth/sort evidence only and keeps `visibleAdmission=false`.
 Four-corner background consensus remains stable when the animated coat crosses
-a frame corner. Predicate-only retail ROI comparison shows the current
-`broadTeal` peak at PTS 40000 is 3.499% composite versus 21.699% retail, while
-PTS 43000 is 7.618% versus 9.972%; effects are blank at PTS 46000 while the
+a frame corner. Predicate-only retail ROI comparison showed the static-only
+`broadTeal` peak at PTS 40000 was 3.499% composite versus 21.699% retail, while
+PTS 43000 is now 7.104% versus 9.972% after source material-curve sampling;
+effects are blank at PTS 46000 while the
 actor remains visible. These are diagnostic composition metrics, not retail
 pixels, renderer-list ownership, or native shader parity.
+
+The next peak-effect layer is now source-contracted rather than inventory-only.
+`tools/build_lizhiyan_peak_particle_effect_contract.py` consumes the exact
+filtered AnimeStudio outputs for `start_04`, `start_04_1`, and `start_04_2`
+and publishes 17 hierarchy nodes, 14 particle/renderer pairs, eight materials,
+13 unique texture dependencies, and three PathID-distinct meshes to
+`Generated/OriginalData/Effects/lizhiyan_overview_peak_particle_effects.json`.
+The contract preserves converted-resource hashes and renderer ownership while
+keeping retail `EffectSetting`, selected VFXBaseV2 DXBC/descriptors, native
+after-DOF draw identity, and visible admission explicitly unproven.
+`EndfieldLiZhiyanOverviewPeakParticleEffectImporter` now materializes the three
+source-identity prefabs, their 14 particle/render pairs, eight fail-closed
+source materials plus diagnostic SampleStack variants, three meshes, and 13
+textures. Because filtered GameObject JSON omits `m_IsActive`, manual capture
+defaults those nodes active and records that retail activation remains
+unproven. The actor-composed D3D12 harness manually samples each particle
+system and uses Unity `BakeMesh` billboard proxies for the known command-line
+paused-buffer submission boundary. The original schema-v3 run incorrectly
+sampled the peak roots on the actor-local clock and reported 26 particles at
+PTS 40000. Schema v4 applies the recovered effect delay and records 129 live
+particles plus 8,212 baked COLOR0 values at effect-local 0.199667 seconds;
+PTS 37967/39367 are correctly empty, PTS 40834 retains 104 particles at
+1.033667 seconds, and PTS 41434 is past the recovered duration and empty.
+Separate manifest validation passes, while every native/retail admission flag
+remains false.
+
+The exact M23 DXBC path now also has an opt-in Windows/D3D11 Unity bridge and
+standalone diagnostic. `run_original_m23_dxbc_exact_diagnostic.bat` rebuilds
+the native fixture/plugin, verifies required exports and the copied DLL hash,
+builds a D3D11-only player, and checks D3D12 non-activation. The reserved
+keyword, explicit batch token, one-claim-per-stage arm cycle, and render-thread
+cleanup event keep the normal viewer inert. The live player now passes with two
+compiler callbacks, exactly one successful 0138/0139 replacement, one isolated
+native draw, exact-shader identity, complete VS `CB/SRV=0x1f/0x1` and PS
+`CB/SRV/sampler=0x1f/0x1f/0x1f` binding masks, finite readback, and completed
+render-thread cleanup. D3D12 reports zero activation. The current exact-pair
+fixture intentionally preserves its sentinel output, so this proves Unity
+execution and binding compatibility, not visual fidelity. The next step is to
+feed recovered peak-particle vertices, exact textures, high-neutral constants,
+reciprocal exposure, and corrected COLOR0 timing into a visual output mode.
+
+Pass `--visual-grid` to exercise the next bounded color-path gate. It runs the
+five hash-pinned M23 textures with the high-neutral domain, reciprocal exposure
+one, and white COLOR0 through exact 0139, then copies all 1024 RGBA floats to
+managed code and writes a clamped 16x16 PNG preview. The current grid has 256
+finite pixels, 175 RGB-and-alpha nonzero pixels, config mask `0x7f`, and float
+SHA-256
+`d0a9a84f48ba7bd750244b122234ad73589c005e1dbce2edbe1c8105cfc069fb`.
+It is deliberately labeled `synthetic_grid=true`,
+`actor_particle_input=false`, and `visual_fidelity_claim=false`: this proves
+the Unity-to-native exact texture/color transport but does not consume the
+actor harness's baked particle mesh.
+
+The next visual gate uses the four M23 renderers under
+`P_fxui_lizhiyan_overview_start_04_2`, their custom streams
+`[0,1,3,4,5,34]`, and the corrected effect-local simulation. Acceptance must
+not optimize only PTS 40000: current raised-hand coverage is 4.863% versus
+retail 28.526% there, but at Unity anchor 40834 it is already 69.580% versus
+retail 26.074% at nearest source PTS 40833. Fill the early gap while bringing
+the late overshoot within roughly five percentage points and keeping the
+near-settled PTS 46000 baseline stable.
+The peak diagnostic now preserves M19's authored soft-blend/Fresnel keyword
+state and the SampleStack vertex path consumes the recovered particle streams:
+UV2 from `TEXCOORD0.zw`, Custom1XYZW from `TEXCOORD1`, and
+`speed.zw * Custom1.X` in particle mode while leaving static start_01 UVs
+unchanged. D3D12 capture and validation pass, but PTS-40000 peak-only
+`broadTeal` moves only from about 9,983 to 9,991 pixels and `raisedHand`
+remains zero. M19 is not among the visible sidecar materials at that anchor,
+so its still-missing Fresnel branch is not the current raised-hand priority.
+This closes a real vertex-stream fidelity gap without claiming visual parity.
+The PTS-40000 visible-material census narrows the peak geometry further. M01
+is a one-pixel billboard, M22/M39 are smaller mesh contributors, while M23
+(PathID `-430604955415889784`) owns four Custom1 mesh renderers spanning about
+218,299 renderer-ID pixels and `x=0..959,y=58..410`, directly crossing the
+raised-hand ROI. Its exact payload enables `_SAMPLE_TEX0..3` plus
+`_USE_FRESNEL` with bias -0.23, flip 1, power 1, and opacity influence 1.
+SampleStack now executes the recovered biased N-dot-V, power, flip, color
+interpolation, and opacity multiplier using particle world position/normal.
+Validation passes, but composite raised-hand changes only 1,937 -> 1,949
+pixels and peak-only raised-hand remains zero. M23 geometry is present; its
+remaining high-value boundary is exact color/alpha sample-stack equivalence,
+not another mesh or the Fresnel branch alone.
+The exact M23 ForwardOnly fragment is now pinned as
+`0139_endfield_dxbc_1.dxbc` (8,100 bytes, SHA-256
+`0FF508AA08112122C14A3ECE17D12F15778EAF39AD0C639C946512DC996B6F83`,
+program hash `9c652c08ade940c2`). It directly proves SampleTex0..3 at `t1..t4`,
+with `t3` used by the blend route and `t4.x` by dissolve. A trial that inferred
+a different non-polar routing collapsed peak-only output to one pixel and was
+reverted. Do not alter this path again until TEXCOORD1/2 lanes and cbuffer
+weights have exact exported-property joins.
+The peak-effect builder now publishes this as `m23ShaderAbi` and fails closed
+on the material and both DXBC hashes, pass/keyword identity, proven TEXCOORD
+packing, and named low UnityPerMaterial slots. Higher cbuffer groups remain
+explicitly unresolved until another layout source supplies their names.
+Direct DXBC container validation also pins ISGN/OSGN/SHEX and the absence of
+RDEF. SHEX uses 44 b4 float4 registers through cb4[43], but matching DXBC and
+Vulkan reflection is partial at 432 bytes; cb4[10..43] names must come from a
+separate layout source rather than this binary.
+A targeted AnimeStudio `Shader:Both` JSON probe recovers all 296 serialized
+properties, but its UnityPerMaterial table is the same 432-byte partial view.
+Three guarded property-order packing models fail the known low offsets and
+the 704-byte SHEX size, so property declaration order must not be used to name
+cb4[10..43]. The probe hash and negative gates are part of `m23ShaderAbi`.
+`tools/original_m23_dxbc_exact/` now provides the next isolated recovery
+stage: a D3D11/WARP creation fixture for exact blobs 0138/0139. It validates
+the full 136-byte input layout, separate stage-specific b0..b4 allocations,
+five PS SRVs/samplers, the VS `_VertexSkinMatrices` structured t0, and
+controlled raster/blend/depth state. It getter-verifies every stage/resource/
+IA/state/RT binding, issues `Draw(3,0)`, and maps a finite 1x1 float readback.
+The zeroed unresolved constants leave the sentinel unchanged; material
+constants, visible pixels, Unity integration, and visual fidelity remain the
+next explicit gates.
+The companion `diagnostic_vs_exact_ps` mode uses a source/compiled-hash-pinned
+fullscreen VS with the exact 0139 input signature. Under the same zero PS
+constants it changes the sentinel to finite `[0,0,0,0]`, proving that exact
+0139 executes and writes rather than discarding. The exact-pair unchanged
+pixel is therefore upstream VS/raster coverage; this diagnostic substitution
+does not claim vertex or visual fidelity.
+`diagnostic_vs_exact_ps_named_low` additionally uploads only the exact
+source-backed cb4[0..9] named components after checking the material and
+generated peak-contract files against their pinned hashes. With all unnamed
+components and cb4[10..43] still zero, its WARP readback remains
+`[0,0,0,0]`, identical to the zero-constant diagnostic. The low named prefix
+alone is not a visibility fix; the next recovery boundary is a causal map of
+the unresolved high slots followed by the exact texture inputs.
+The exact-PS oracle now covers all 57 high-slot components actually read by
+0139 across registers 11, 12, 17, 18, 23, 24, 28, 29, 33-40, 42, and 43. It
+tests single, combined, numerical-domain-neutral, and bounded override inputs,
+opens the separate PS b2[4].x dither gate, and staging-verifies the synthetic
+t0 resource. Every combination and an all-ones varying diagnostic still
+writes `[0,0,0,0]`; these are negative register-level results, not recovered
+property values. A tentative final-output operand patch was rejected because
+the modified DXBC no longer disassembled, so the next step is supported shader
+tracing/token decoding or exact texture/global-buffer substitution.
+Exact texture substitution is now executable. The fixture hash-checks and
+WIC-decodes the five M23 t0..t4 PNGs, preserves their dimensions, and samples
+them across a hash-pinned 16x16 UV diagnostic grid as RGBA8 UNORM without an
+sRGB transform. Named-low values produce no nonzero pixels; the high-neutral
+diagnostic produces 175/256 alpha pixels with maximum `[0,0,0,1]`. Exact 0139
+therefore has a working real-texture alpha path. Its RGB chain is still zero,
+and the diagnostic UV/high constants must not be presented as recovered
+vertex, material, or visual fidelity.
+RGB activation is now isolated as well. Shader metadata identifies PS
+`cb1[27].y` as `ShaderVariablesGlobal._ExposureWithMiscParams.y` at byte offset
+436; its recovered native producer is reciprocal camera exposure. The exact
+tail selects it because the proven material has cb4[3].x=1; leaving global cb1
+zero therefore erased color. Exact 0138 also selects TEXCOORD5 between input
+COLOR0 and an attenuated COLOR0. Diagnostic white vertex color plus the
+neutral/default reciprocal-exposure value 1
+produces 175/256 RGB-and-alpha pixels and maximum HDR RGBA
+`[0.660757,2.68497,2.79676,1]`. This proves the exact 0139 real-texture color
+path, but selected-frame vertex color, attenuation, exposure history, and the
+diagnostic high-slot values remain open before Unity visual comparison is
+meaningful.
+All four exact-material particle renderers enable custom vertex streams
+`[0,1,3,4,5,34]`, including Color, and their serialized start/color-over-
+lifetime RGB is white. The white RGB input is thus source-backed; its target-
+frame alpha and the exact per-draw attenuation remain runtime-dependent.
+Cross-variant Unity/native evidence identifies that attenuation as the
+complement of packed RGBA8 particle-instance color, so exact 0138 evaluates
+`COLOR0*(1-cb3[13])`. White serialized RGB fixes xyz to zero; age-dependent
+alpha remains dynamic. Actor-composed manifest schema v4 now honors each peak
+root's recovered 1.833333-second effect delay and 1.233333-second duration,
+simulates on its effect-local clock, and records per-renderer baked COLOR0
+alpha min/max/mean. The refreshed D3D12 capture and stricter validator pass;
+the older v3 capture must not be used as corrected-clock evidence.
+
+The actor-composed harness now also instantiates the exact recovered
+`P_fxui_lizhiyan_overview_trails_Bip001_R_Finger2Nub` prefab beneath the
+unique actor `Bip001_R_Finger2Nub` mount. It preserves the source
+`0.83333 s` delay and `2.33333 s` duration, resolves all eight texture PathIDs
+through the contract's converted-PNG joins, applies the serialized material
+payloads only to transient diagnostic VFXBaseV2 materials, and bakes all seven
+billboard renderers without changing the fail-closed generated assets or
+normal viewer. The schema-v3 capture and validator pass. At PTS 40000 the
+finger layer raises composite `raisedHand` coverage from 0.603% to 5.529% and
+adds 5.120% in the effects-only lane, but retail is 28.526%. A direct
+camera-space probe places the exact mount near PNG `(455.7,189.0)` and the
+baked finger bounds around `x=385..528,y=95..283`, horizontally left of the
+retail raised-hand ROI `x=537..737,y=162..337`. A later isolated-color check
+corrected the renderer-ID interpretation: start_01 ID 4 is
+`S_fx_lzy_tiaodaifenwei_01 (7)`, but its sampled `_TintColorAlpha` is zero and
+all three start-root-only PTS-40000 images are blank in this ROI. Its broad
+renderer-ID footprint is diagnostic ownership without visible color, not
+visual attribution. The exact finger effect is therefore the only currently
+rendered raised-hand contributor and an
+executed source layer, but it is not yet evidence that this prefab owns the
+large retail raised-hand feature. The skinning census rejects a name-based
+remap: visible skin renderers use the main `Root/Bip001/...` armature, the nub
+is the expected terminal unweighted child after weighted hand/finger bones,
+and same-named hands under `RecoveredProps` belong to accessory geometry.
+Applying the authored camera rotation as an actor rotation moves the mount
+farther away. Preserve the exact mount/timing. Four finger materials author
+`_USE_SOFTBLEND`. The tracked SampleStack diagnostic now implements the exact
+Li-variant path using linear-clamped `_CameraDepthTexture`, linearized scene and
+particle depths, `_SoftBias`, and `_SoftDistance`, behind
+`_EndfieldRecoveredVFXSoftDepthReady`. Finger transient materials preserve
+their authored keyword/property state. The HGCompat path now publishes
+readiness only after its real primary depth attachment has been written by the
+opaque owner pass and bound under the retail `_CameraDepthTexture` name (and
+the lab `_SceneDepth` alias); ordinary, failed, and cleanup
+routes publish zero. At PTS 40000 this changes composite `raisedHand` by only
+two pixels and `broadTeal` by 90 pixels, while effects-only is unchanged
+because it contains no actor depth. Soft depth is therefore executing but does
+not explain the large retail gap. Native evidence independently pins
+`TransparentAfterDOFPassConstructor.ConstructPass` input `+0x78` as the
+read-only incoming scene-depth attachment through `SetDepthAttachment` at
+`0x189B365EC`. `PrepareTransparentPassData` `0x189BAC2F8` preserves that
+same handle as `sceneDepthToSample`, and `RenderForwardTransparent`
+`0x189BACFCC` binds it through `SetGlobalTexture` as
+`HGShaderIDs._CameraDepthTexture`. This closes the attachment-to-SRV-name
+alias, but a particular VFX draw's physical Vulkan image-view/descriptor
+remains unobserved,
+so retail/native visible admission stays false. Another source-owned layer is
+the next visual priority.
+
+The remaining Li entrance requests are now separated by execution family.
+`start_05/06/07/09/10` are absent from the actor-composed harness; `start_09`
+is not a particle prefab but a source-pinned
+`Beyond.Rendering.EntityVFXDissolveAsset` (PathID
+`6630846240525961646`) triggered for 10 seconds by EffectSetting PathID
+`4869158341031029158`. It references exact texture `T_fx_Totem_zr001_M`, uses
+renderer mask 10240, local +X cutoff, dissolve 1-to-0, edge 0.07, and a cutoff
+step to 1.05 at normalized time 0.67302644. Its serialized particle, Animator,
+and Renderer PPtrs are empty because runtime Entity-VFX registry selection
+owns the geometry/material targets. Retail Li is already fully visible before
+the large PTS-40000 teal slabs grow, so start_09 is a reveal-completeness task,
+not positive ownership of the raised-hand peak. Recover the mask-to-registry
+binding before executing it; do not apply the dissolve to all actor renderers.
+The selected-build consumer is now hash-pinned through
+`EntityVFXDissolveController` sampling and
+`EntityRenderHelperMaterialController._GetRenderersOfRendererMask`, then
+through nested `MeshMaterialController` replacement-material creation and its
+float/vector/texture writers. This is a replacement Unity Material route, not
+a proven MaterialPropertyBlock route. The registry row for mask 10240 remains
+the sole Li-specific ownership gap.
 
 The exact managed LOD renderer bindings are now part of the playable-topology
 contract: start_01 has four non-null MeshRenderer PathIDs and start_02/start_03

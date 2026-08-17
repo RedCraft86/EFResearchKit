@@ -7,11 +7,11 @@ media, localized references, mission grouping, and an evidence-typed partial
 order. It is useful for research but does not claim a complete canonical
 playthrough.
 
-The current CN corpus contains 5,563 unique Story files. Maintained reports
-show 4,236 accepted pipeline connections and 1,327 unlinked files; 156 of the
-unlinked files already have exact native playback but still lack a mission or
-quest activation bridge. Counts change with rebuilds, so reports are the source
-of truth.
+The current CN corpus contains 5,660 unique Story files. Maintained reports
+show 4,304 connected and 1,356 unlinked files. The latest Mission Pipeline
+coverage report has 152 unlinked files with exact native playback but no
+mission or quest activation bridge. Counts change with rebuilds, so reports are
+the source of truth.
 
 ## Evidence model
 
@@ -79,6 +79,17 @@ leave only the report/CLI surface in recovery.
 
 - Serialized action maps, UIDs, action lists, callbacks, and target carriers are
   accepted only through versioned parsers and bounded validation.
+- CallServer callback recovery preserves exact typed reverse paths from a
+  preceding Story action and exact forward paths from the callback header. A
+  strong cross-Story edge requires one complete linear source path, one target,
+  and no branch, loop, merge, truncation, or graph-shape mismatch. The current
+  corpus has one accepted preceding path but no two-ended Story callback
+  closure, so this evidence currently adds no order edge.
+- Active LevelScript evidence uses one logical-path overlay: StreamingAssets is
+  the fallback and Persistent replaces the complete file. Same-hash shadow
+  evidence may normalize to the active path; changed shadow evidence must be
+  decoded again from the active bytes or is rejected. Every order-bearing
+  LevelScript edge passes this source/hash gate before publication.
 - Native facts are locked to exact `GameAssembly.dll` and metadata hashes.
   Missing or mismatched inputs skip that evidence instead of reusing stale
   addresses.
@@ -87,6 +98,21 @@ leave only the report/CLI surface in recovery.
   activation or Wwise playback.
 - Weak LevelScript placement is diagnostic and cannot enter accepted chronology
   unless a typed route closes the gap.
+- Every one of the 152 exact-native-playback ownership gaps now has an
+  active-overlay, source-hash-gated trigger classification. The current corpus
+  resolves 66 to one exact authored local trigger volume, 2 to multiple exact
+  authored volumes, and 84 to exact non-spatial local event carriers, with no
+  unresolved spatial selector. This identifies the per-file local trigger
+  carrier only; it does not prove mission ownership, event firing, branch
+  choice, activation, or Story order.
+- Current offline client-static ownership recovery is exhausted at the known
+  native receiver frontier: reverse PPtr, GameObject/carrier, LevelData,
+  SubGame, MissionRuntime operand, IFix, and recursive protobuf scans produce no
+  exact mission/quest owner for the 152 exact-playback gaps. The current patch
+  replaces no receiver-ownership or task-completion target, and no protobuf
+  type co-carries mission/quest identity with LevelScript or Story identity.
+  Reducing this gap now requires server-side policy, payload-aware runtime
+  evidence, or a future client/patch with a new typed carrier.
 
 ### Ordering
 
@@ -144,8 +170,11 @@ per-run proof belong in reports rather than this file.
 
 ## Highest-value remaining gaps
 
-- Connect exact native playback to mission/quest activation without proximity
-  inference.
+- Revisit exact native playback ownership only when server-side policy,
+  payload-aware runtime evidence, or a new typed client carrier becomes
+  available; current client-static joins have zero promotable candidates.
+- Close the remaining CallServer callbacks across typed event/task successors;
+  do not relax the current unique linear-path gate.
 - Recover more typed server-placeholder producers and bounded successor logic.
 - Expand exact LevelScript/Timeline action schemas and callback ownership.
 - Improve cutscene root activation, subtitle, and audio-lane evidence.

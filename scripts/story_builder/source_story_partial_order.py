@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import copy
 import hashlib
 import json
 import re
@@ -55,8 +56,11 @@ from .level_bindings import (
     LEVELSCRIPT_NATIVE_ACTION_NAMES,
     LEVELSCRIPT_NATIVE_CONTROL_RUNTIME_MAPPINGS,
     LEVELSCRIPT_NATIVE_EXACT_CONTROL_PATH_STATUSES,
-    build_levelscript_action_story_occurrences,
+    build_active_levelscript_action_story_occurrences,
+    build_active_levelscript_overlay_index,
     decode_levelscript_native_action_topology,
+    resolve_active_levelscript_source,
+    resolve_active_levelscript_evidence,
 )
 from .anime_assets import (
     recover_dialog_tree_narrative_mask_actions,
@@ -76,7 +80,7 @@ from .dialog_tree_control_flow import (
 )
 
 
-SCHEMA = "sourceStoryPartialOrder.v45"
+SCHEMA = "sourceStoryPartialOrder.v46"
 BRANCH_SEQUENCE_RUNTIME = LEVELSCRIPT_NATIVE_CONTROL_RUNTIME_MAPPINGS[
     (0x002D, 0x09)
 ]
@@ -174,6 +178,7 @@ PROVEN_ORDER_EDGE_KINDS = (
     "levelscriptNativeControlPath",
     "levelscriptNativeOrderedSequence",
     "levelscriptQuestStateActionPath",
+    "levelscriptCallServerCallback",
     "questSucceedLifecycle",
     "spawnerWaveGroupPartKilled",
     "spawnerWavePartKilled",
@@ -223,6 +228,9 @@ EDGE_EVIDENCE_FIELDS = (
     "childArmLineIds",
     "nativeConsumers",
     "gameAssemblySha256",
+    "callbackHeaderUid",
+    "callServerUid",
+    "precedingStory",
 )
 
 
@@ -3687,6 +3695,7 @@ def _connection_native_occurrences(row: dict[str, Any]) -> list[dict[str, Any]]:
             "levelId": gate_path.get("levelId"),
             "scriptId": gate_path.get("scriptId"),
             "sourceFile": gate_path.get("sourceFile"),
+            "sourceSha256": gate_path.get("sourceSha256") or row.get("sourceSha256") or {},
             "nativeEventOwners": [control_path],
         })
     if not occurrences and isinstance(row.get("nativeEventOwners"), list):
@@ -3695,9 +3704,143 @@ def _connection_native_occurrences(row: dict[str, Any]) -> list[dict[str, Any]]:
             "scriptId": next(iter(row.get("scriptIds") or []), ""),
             "sourceFile": next(iter(row.get("sourceFiles") or []), ""),
             "sourceFiles": row.get("sourceFiles") or [],
+            "sourceSha256": row.get("sourceSha256") or {},
             "nativeEventOwners": row.get("nativeEventOwners") or [],
         })
     return occurrences
+
+
+def _active_levelscript_source_files(
+    source_files: Iterable[str],
+    active_overlay_index: dict[str, Any] | None,
+    evidence_hashes: dict[str, str] | None = None,
+    rejection_diagnostics: list[dict[str, Any]] | None = None,
+) -> tuple[str, ...]:
+    """Keep only active LevelScript paths when an overlay is supplied."""
+    values: set[str] = set()
+    for source_file in source_files:
+        value = safe_key(source_file).replace("\\", "/")
+        if not value:
+            continue
+        if active_overlay_index is None or "LevelScriptData/" not in value:
+            values.add(value)
+            continue
+        evidence_hash = _source_evidence_hash(value, evidence_hashes)
+        row, diagnostic = resolve_active_levelscript_evidence(
+            value,
+            active_overlay_index,
+            evidence_hash,
+        )
+        if row and safe_key(row.get("sourceFile")):
+            values.add(safe_key(row["sourceFile"]))
+        elif rejection_diagnostics is not None:
+            signature = (value, safe_key((diagnostic or {}).get("gate")))
+            if not any(
+                (safe_key(item.get("sourceFile")), safe_key(item.get("diagnostic", {}).get("gate")))
+                == signature
+                for item in rejection_diagnostics
+            ):
+                rejection_diagnostics.append({
+                    "validator": "levelScriptActiveOverlay",
+                    "gate": "nativeEventEvidence",
+                    "edgeKind": "levelscriptNativeControlPath",
+                    "edgeTier": "strong",
+                    "sourceFile": value,
+                    "diagnostic": diagnostic or {},
+                })
+    return tuple(sorted(values, key=natural_key))
+
+
+def _source_evidence_hash(source_file: str, hashes: object) -> str:
+    if isinstance(hashes, str):
+        return hashes
+    if not isinstance(hashes, dict):
+        return ""
+    value = source_file.replace("\\", "/")
+    direct = safe_key(hashes.get(value))
+    if direct:
+        return direct
+    marker = "LevelScriptData/"
+    marker_index = value.find(marker)
+    if marker_index >= 0:
+        return safe_key(hashes.get(value[marker_index + len(marker):]))
+    return ""
+
+
+def _active_levelscript_edge(
+    edge: dict[str, Any],
+    active_overlay_index: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Validate/normalize LevelScript evidence on one order-bearing edge."""
+    if active_overlay_index is None:
+        return edge, None
+    normalized = copy.deepcopy(edge)
+    shadowed: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def resolve(value: str, hashes: object) -> str:
+        value = safe_key(value).replace("\\", "/")
+        if "LevelScriptData/" not in value:
+            return value
+        row, diagnostic = resolve_active_levelscript_evidence(
+            value,
+            active_overlay_index,
+            _source_evidence_hash(value, hashes),
+        )
+        if diagnostic or not row:
+            key = (value, safe_key((diagnostic or {}).get("gate")))
+            if key not in seen:
+                seen.add(key)
+                failures.append({
+                    "sourceFile": value,
+                    "diagnostic": diagnostic or {},
+                })
+            return value
+        if row.get("normalizationStatus") in {
+            "same_hash_shadow",
+            "active_hash_revalidated",
+        }:
+            shadowed.append({
+                "sourceFile": value,
+                "chosenSourceFile": safe_key(row.get("sourceFile")),
+                "sourceSha256": safe_key(row.get("sha256")),
+                "status": row.get("normalizationStatus"),
+            })
+        return safe_key(row.get("sourceFile"))
+
+    failures: list[dict[str, Any]] = []
+
+    def walk(value: object, inherited_hashes: object = None) -> None:
+        if isinstance(value, dict):
+            hashes = value.get("sourceSha256") or inherited_hashes
+            if isinstance(value.get("sourceFile"), str):
+                value["sourceFile"] = resolve(value["sourceFile"], hashes)
+            if isinstance(value.get("sourceFiles"), list):
+                value["sourceFiles"] = [
+                    resolve(item, hashes) if isinstance(item, str) else item
+                    for item in value["sourceFiles"]
+                ]
+            for key, child in value.items():
+                if key in {"sourceFile", "sourceFiles", "sourceSha256"}:
+                    continue
+                walk(child, hashes)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child, inherited_hashes)
+
+    walk(normalized)
+    if failures:
+        return None, {
+            "validator": "levelScriptActiveOverlayPublication",
+            "gate": "activeLevelScriptEvidence",
+            "edgeKind": safe_key(edge.get("kind")),
+            "edgeTier": safe_key(edge.get("tier")),
+            "expected": "active source or same-hash shadow evidence",
+            "actual": failures[:8],
+        }
+    if shadowed:
+        normalized["activeOverlayShadowed"] = shadowed
+    return normalized, None
 
 
 def _native_event_story_paths(
@@ -3705,6 +3848,8 @@ def _native_event_story_paths(
     candidate_keys: set[str] | None,
     *,
     include_mission_state_dependencies: bool = False,
+    active_overlay_index: dict[str, Any] | None = None,
+    active_overlay_diagnostics: list[dict[str, Any]] | None = None,
 ) -> dict[
     tuple[str, str, int, str],
     set[tuple[str, tuple[tuple[Any, ...], ...], tuple[str, ...], str, str]],
@@ -3724,13 +3869,20 @@ def _native_event_story_paths(
             level_id = safe_key(occurrence.get("levelId"))
             script_id = safe_key(occurrence.get("scriptId"))
             source_file = safe_key(occurrence.get("sourceFile"))
-            source_files = tuple(sorted({
+            occurrence_hashes = occurrence.get("sourceSha256")
+            source_files = _active_levelscript_source_files({
                 source_file,
                 *[
                     safe_key(value)
                     for value in occurrence.get("sourceFiles") or []
                 ],
-            } - {""}, key=natural_key))
+            } - {""},
+            active_overlay_index,
+            occurrence_hashes,
+            active_overlay_diagnostics,
+        )
+            if active_overlay_index is not None and not source_files:
+                continue
             for owner in occurrence.get("nativeEventOwners") or []:
                 if (
                     not isinstance(owner, dict)
@@ -3983,6 +4135,7 @@ def _native_story_transition_steps(
 def _expand_native_control_path_candidates(
     flow: dict[str, Any],
     candidate_kinds: dict[str, str],
+    active_overlay_index: dict[str, Any] | None = None,
 ) -> tuple[dict[str, str], set[str]]:
     """Admit only exact native-path neighbors of index-backed mission scenes.
 
@@ -3999,7 +4152,11 @@ def _expand_native_control_path_candidates(
     if not anchor_keys:
         return expanded, admitted
 
-    for rows in _native_event_story_paths(flow, None).values():
+    for rows in _native_event_story_paths(
+        flow,
+        None,
+        active_overlay_index=active_overlay_index,
+    ).values():
         rows = list(rows)
         for anchor_key, anchor_path, _source_files, _event_detail, _downstream in rows:
             if anchor_key not in anchor_keys:
@@ -4024,9 +4181,16 @@ def _native_control_path_story_edges(
     flow: dict[str, Any],
     candidate_keys: set[str],
     extra_thread_scheduler_contract: dict[str, Any] | None = None,
+    active_overlay_index: dict[str, Any] | None = None,
+    active_overlay_diagnostics: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Recover strict Story order when one native control path prefixes another."""
-    event_paths = _native_event_story_paths(flow, candidate_keys)
+    event_paths = _native_event_story_paths(
+        flow,
+        candidate_keys,
+        active_overlay_index=active_overlay_index,
+        active_overlay_diagnostics=active_overlay_diagnostics,
+    )
 
     evidence_by_pair: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for signature, rows in event_paths.items():
@@ -5211,6 +5375,7 @@ def _native_related_action_topologies(
     *,
     mission: str = "",
     original_binary_contract: dict[str, Any] | None = None,
+    active_overlay_index: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Attach compact graphs only for exact Story-bearing native paths.
 
@@ -5221,7 +5386,11 @@ def _native_related_action_topologies(
     related: dict[str, dict[str, set[Any]]] = defaultdict(
         lambda: {"storyKeys": set(), "events": set(), "routes": set()}
     )
-    for signature, routes in _native_event_story_paths(flow, candidate_keys).items():
+    for signature, routes in _native_event_story_paths(
+        flow,
+        candidate_keys,
+        active_overlay_index=active_overlay_index,
+    ).items():
         for story_key, path, source_files, _detail, _downstream in routes:
             for source_file in source_files:
                 if "LevelScriptData" not in source_file:
@@ -5394,9 +5563,306 @@ def _native_related_action_topologies(
     return rows
 
 
+def _callserver_callback_story_edges(
+    candidate_keys: set[str],
+    callback_audit: dict[str, Any] | None,
+    active_overlay_index: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Join exact same-LevelScript Story ancestors to callback Story targets.
+
+    The callback audit is a complete-corpus native contract, but it does not
+    itself establish mission ownership.  This join therefore requires both
+    Story keys to already be candidates of the current mission.  It also
+    requires the audit and both typed path projections to validate; missing or
+    truncated paths remain diagnostics and never become edges.
+    """
+    if not isinstance(callback_audit, dict):
+        return [], []
+    if callback_audit.get("status") != "validated_complete_corpus":
+        return [], [{
+            "validator": "levelscriptCallServerCallback",
+            "gate": "completeCallbackAudit",
+            "expected": "validated_complete_corpus",
+            "actual": callback_audit.get("status"),
+        }]
+    if callback_audit.get("validationFailures"):
+        return [], [{
+            "validator": "levelscriptCallServerCallback",
+            "gate": "callbackAuditValidationFailuresEmpty",
+            "expected": [],
+            "actual": (callback_audit.get("validationFailures") or [])[:4],
+        }]
+    edges: dict[tuple[str, str, str, int, str], dict[str, Any]] = {}
+    warnings: list[dict[str, Any]] = []
+    for row in callback_audit.get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        source_file = safe_key(row.get("sourceFile"))
+        if active_overlay_index is not None:
+            active_row, active_diagnostic = resolve_active_levelscript_evidence(
+                source_file,
+                active_overlay_index,
+                _source_evidence_hash(source_file, row.get("sourceSha256")),
+            )
+            if active_diagnostic or not active_row:
+                relevant = any(
+                    isinstance(callback, dict)
+                    and (
+                        set(
+                            safe_key(value)
+                            for value in (callback.get("controlGraph") or {}).get(
+                                "storyKeys"
+                            ) or []
+                        )
+                        | set(
+                            safe_key(value)
+                            for value in (callback.get("precedingStory") or {}).get(
+                                "storyKeys"
+                            ) or []
+                        )
+                    ) & candidate_keys
+                    for callback in row.get("callbackOutputs") or []
+                )
+                if relevant:
+                    warnings.append({
+                        "validator": "levelscriptCallServerCallback",
+                        "gate": "activeSourceSelection",
+                        "sourceFile": source_file,
+                        "expected": "active overlay source file",
+                        "actual": active_diagnostic or {
+                            "chosenSourceFile": safe_key(active_row.get("sourceFile"))
+                            if active_row else "",
+                        },
+                    })
+                continue
+            # A same-hash shadow is valid evidence, but all downstream joins
+            # must use the chosen active source identity.  Rejecting merely
+            # because the audit retained the shadow path would lose a valid
+            # callback edge; accepting it without normalization would let
+            # stale path labels leak into publication.
+            source_file = safe_key(active_row.get("sourceFile")) or source_file
+        level_id = safe_key(row.get("levelId"))
+        script_id = safe_key(row.get("scriptId"))
+        for callback in row.get("callbackOutputs") or []:
+            if not isinstance(callback, dict):
+                continue
+            if callback.get("status") != "exact_callback_header_control_path":
+                continue
+            graph = callback.get("controlGraph") or {}
+            preceding = callback.get("precedingStory") or {}
+            required_graph_fields = {
+                "storyKeys",
+                "actions",
+                "edges",
+                "branchPointCount",
+                "cycleCount",
+                "truncated",
+            }
+            missing_graph_fields = sorted(
+                required_graph_fields - set(graph)
+            )
+            raw_targets = sorted({
+                safe_key(value) for value in graph.get("storyKeys") or []
+            }, key=natural_key)
+            raw_sources = sorted({
+                safe_key(value) for value in preceding.get("storyKeys") or []
+            }, key=natural_key)
+            if (
+                missing_graph_fields
+                or not isinstance(graph.get("branchPointCount"), int)
+                or not isinstance(graph.get("cycleCount"), int)
+                or not isinstance(graph.get("truncated"), bool)
+                or (
+                    isinstance(graph.get("actions"), list)
+                    and sorted({
+                        safe_key(value)
+                        for action in graph.get("actions")
+                        if isinstance(action, dict)
+                        for value in action.get("storyKeys") or []
+                    }, key=natural_key)
+                    != raw_targets
+                )
+            ):
+                if set(raw_targets) & candidate_keys or set(raw_sources) & candidate_keys:
+                    warnings.append({
+                        "validator": "levelscriptCallServerCallback",
+                        "gate": "completeCallbackGraphShape",
+                        "sourceFile": source_file,
+                        "callServerLocalId": row.get("callServerLocalId"),
+                        "callbackHeaderUid": callback.get("headerUid"),
+                        "expected": {
+                            "requiredFields": sorted(required_graph_fields),
+                            "actionStoryKeysMatchGraphStoryKeys": True,
+                        },
+                        "actual": {
+                            "missingFields": missing_graph_fields,
+                            "branchPointCount": graph.get("branchPointCount"),
+                            "cycleCount": graph.get("cycleCount"),
+                            "truncated": graph.get("truncated"),
+                            "graphStoryKeys": raw_targets[:16],
+                            "actionStoryKeys": sorted({
+                                safe_key(value)
+                                for action in graph.get("actions") or []
+                                if isinstance(action, dict)
+                                for value in action.get("storyKeys") or []
+                            }, key=natural_key)[:16],
+                        },
+                    })
+                continue
+            preceding_path_story_keys = sorted({
+                safe_key(path.get("storyKey"))
+                for path in preceding.get("paths") or []
+                if isinstance(path, dict)
+            }, key=natural_key)
+            if preceding_path_story_keys != raw_sources:
+                if set(raw_targets) & candidate_keys or set(raw_sources) & candidate_keys:
+                    warnings.append({
+                        "validator": "levelscriptCallServerCallback",
+                        "gate": "precedingStoryKeysMatchPaths",
+                        "sourceFile": source_file,
+                        "callServerLocalId": row.get("callServerLocalId"),
+                        "callbackHeaderUid": callback.get("headerUid"),
+                        "expected": {"pathStoryKeys": raw_sources},
+                        "actual": {"pathStoryKeys": preceding_path_story_keys},
+                    })
+                continue
+            if (
+                graph.get("truncated")
+                or preceding.get("truncated")
+                or preceding.get("status") != "exact_preceding_story_path"
+            ):
+                if (
+                    set(raw_targets) & candidate_keys
+                    or set(raw_sources) & candidate_keys
+                ):
+                    warnings.append({
+                        "validator": "levelscriptCallServerCallback",
+                        "gate": "completeLinearCallbackPaths",
+                        "sourceFile": source_file,
+                        "callServerLocalId": row.get("callServerLocalId"),
+                        "callbackHeaderUid": callback.get("headerUid"),
+                        "expected": {
+                            "callbackTruncated": False,
+                            "precedingTruncated": False,
+                            "precedingStatus": "exact_preceding_story_path",
+                        },
+                        "actual": {
+                            "callbackTruncated": bool(graph.get("truncated")),
+                            "precedingTruncated": bool(preceding.get("truncated")),
+                            "precedingStatus": preceding.get("status"),
+                        },
+                    })
+                continue
+            source_candidates = [
+                value for value in raw_sources if value in candidate_keys
+            ]
+            target_candidates = [
+                value for value in raw_targets if value in candidate_keys
+            ]
+            if not source_candidates or not target_candidates:
+                continue
+            diagnostic_base = {
+                "validator": "levelscriptCallServerCallback",
+                "sourceFile": source_file,
+                "callServerLocalId": row.get("callServerLocalId"),
+                "callbackHeaderUid": callback.get("headerUid"),
+            }
+            if len(raw_sources) != 1 or len(raw_targets) != 1:
+                warnings.append({
+                    **diagnostic_base,
+                    "gate": "uniqueStoryEndpoints",
+                    "expected": {"sourceCount": 1, "targetCount": 1},
+                    "actual": {
+                        "sourceCount": len(raw_sources),
+                        "targetCount": len(raw_targets),
+                        "sourceKeys": raw_sources[:16],
+                        "targetKeys": raw_targets[:16],
+                    },
+                })
+                continue
+            if (
+                graph.get("branchPointCount", 0)
+                or graph.get("cycleCount", 0)
+                or len(preceding.get("paths") or []) != 1
+                or (preceding.get("paths") or [{}])[0].get("status")
+                != "exact_linear_preceding_story_path"
+            ):
+                warnings.append({
+                    **diagnostic_base,
+                    "gate": "linearCallbackControlPaths",
+                    "expected": {
+                        "branchPointCount": 0,
+                        "cycleCount": 0,
+                        "precedingPathCount": 1,
+                    },
+                    "actual": {
+                        "branchPointCount": graph.get("branchPointCount", 0),
+                        "cycleCount": graph.get("cycleCount", 0),
+                        "precedingPathCount": len(preceding.get("paths") or []),
+                        "precedingStatus": preceding.get("status"),
+                    },
+                })
+                continue
+            source_key = raw_sources[0]
+            target_key = raw_targets[0]
+            if source_key == target_key:
+                continue
+            if source_key not in candidate_keys or target_key not in candidate_keys:
+                continue
+            signature = (
+                source_key,
+                target_key,
+                source_file,
+                int(row.get("callServerLocalId") or 0),
+                safe_key(callback.get("headerUid")),
+            )
+            edges[signature] = {
+                "from": source_key,
+                "to": target_key,
+                "kind": "levelscriptCallServerCallback",
+                "tier": "strong",
+                "source": (
+                    "exact typed Story action ancestor -> CallServer "
+                    "-> exact custom-event callback header -> typed Story "
+                    "continuation"
+                ),
+                "sourceFiles": [source_file] if source_file else [],
+                "levelIds": [level_id] if level_id else [],
+                "scriptIds": [script_id] if script_id else [],
+                "callServerLocalId": row.get("callServerLocalId"),
+                "callServerUid": row.get("callServerUid"),
+                "callbackHeaderUid": callback.get("headerUid"),
+                "callbackHeaderLocalId": callback.get("headerLocalId"),
+                "precedingStory": {
+                    "status": preceding.get("status"),
+                    "storyKey": source_key,
+                    "paths": [preceding["paths"][0]],
+                },
+                "callbackStoryKeys": [target_key],
+                "evidenceBoundary": (
+                    "Both Story endpoints are exact actionList playback records "
+                    "in the same serialized LevelScript. This edge proves local "
+                    "linear control-path chronology only; it does not assign a "
+                    "mission outside the candidate set or prove that a server "
+                    "callback occurred in a particular session."
+                ),
+            }
+    return sorted(
+        edges.values(),
+        key=lambda edge: (
+            natural_key(edge["from"]),
+            natural_key(edge["to"]),
+            natural_key(edge.get("sourceFiles", [""])[0]),
+            int(edge.get("callServerLocalId") or 0),
+            safe_key(edge.get("callbackHeaderUid")),
+        ),
+    ), warnings
+
+
 def _native_ordered_branch_sequences(
     flow: dict[str, Any],
     candidate_keys: set[str],
+    active_overlay_index: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Recover Branch._idList order from the installed Branch.Execute loop.
 
@@ -5416,7 +5882,11 @@ def _native_ordered_branch_sequences(
     evidence_by_pair: dict[tuple[str, str], list[dict[str, Any]]] = (
         defaultdict(list)
     )
-    for signature, routes in _native_event_story_paths(flow, candidate_keys).items():
+    for signature, routes in _native_event_story_paths(
+        flow,
+        candidate_keys,
+        active_overlay_index=active_overlay_index,
+    ).items():
         groups: dict[tuple[tuple[int, ...], int], dict[int, set[route_type]]] = (
             defaultdict(lambda: defaultdict(set))
         )
@@ -6077,6 +6547,7 @@ def _full_native_branch_arm_context(
     mission: str,
     branches: list[dict[str, Any]],
     original_binary_contract: dict[str, Any] | None,
+    active_overlay_index: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Validate and attach the complete serialized shape of Story branches.
 
@@ -6090,17 +6561,62 @@ def _full_native_branch_arm_context(
     for source_branch in branches:
         branch = dict(source_branch)
         level_sources = []
+        seen_active_sources: set[str] = set()
+        active_source_diagnostics: list[dict[str, Any]] = []
+        branch_hashes = branch.get("sourceSha256") or {}
         for source_file in branch.get("sourceFiles") or []:
             if "LevelScriptData" not in source_file:
                 continue
-            source_path = Path(source_file)
+            resolved_source_file = source_file
+            if active_overlay_index is not None:
+                active_row, active_diagnostic = resolve_active_levelscript_evidence(
+                    source_file,
+                    active_overlay_index,
+                    _source_evidence_hash(source_file, branch_hashes),
+                )
+                if active_diagnostic or not active_row:
+                    active_source_diagnostics.append(active_diagnostic or {
+                        "validator": "levelScriptActiveOverlay",
+                        "gate": "activeSourceExists",
+                        "sourceFile": source_file,
+                    })
+                    continue
+                resolved_source_file = safe_key(active_row.get("sourceFile"))
+            source_path = Path(resolved_source_file)
             if not source_path.is_absolute():
                 source_path = ROOT / source_path
+            resolved_source_file = source_path.relative_to(ROOT).as_posix() if source_path.is_relative_to(ROOT) else source_path.as_posix()
+            if resolved_source_file in seen_active_sources:
+                continue
+            seen_active_sources.add(resolved_source_file)
             if source_path.is_file():
-                level_sources.append((source_file, source_path))
+                level_sources.append((resolved_source_file, source_path))
+            elif active_overlay_index is not None:
+                active_source_diagnostics.append({
+                    "validator": "levelScriptActiveOverlay",
+                    "gate": "activeSourceFileExists",
+                    "sourceFile": resolved_source_file,
+                    "expected": "file",
+                    "actual": "missing",
+                })
         # Synthetic/unit fixtures and old degraded inputs retain the existing
-        # Story-only view.  Present original files are always validated.
+        # Story-only view. Present original files are always validated. An
+        # active overlay turns a missing/conflicting LevelScript source into a
+        # visible fail-closed branch diagnostic instead of silently falling
+        # back to stale generated paths.
         if not level_sources:
+            if active_source_diagnostics:
+                diagnostic = {
+                    "validator": "nativeBranchActiveOverlay",
+                    "gate": "activeSourceResolution",
+                    "mission": mission,
+                    "branchLocalId": branch.get("branchLocalId"),
+                    "expected": "one active LevelScript source",
+                    "actual": active_source_diagnostics[:8],
+                }
+                branch["fullArmCoverageStatus"] = "unavailable_fail_closed"
+                branch["fullArmValidatorDiagnostic"] = diagnostic
+                diagnostics.append(diagnostic)
             annotated.append(branch)
             continue
 
@@ -6152,6 +6668,7 @@ def _full_native_branch_arm_context(
                 "actual": {
                     "matchingActionCount": len(matches),
                     "sourceFailures": source_failures[:8],
+                    "activeSourceDiagnostics": active_source_diagnostics[:8],
                 },
                 "sourcePaths": [row[0] for row in level_sources],
                 "sourceSha256": {
@@ -6371,6 +6888,7 @@ def _native_control_branches_and_merges(
     candidate_keys: set[str] | None,
     *,
     include_mission_state_dependencies: bool = False,
+    active_overlay_index: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Expose exact serialized native branch arms and observed convergence."""
     branches: list[dict[str, Any]] = []
@@ -6379,6 +6897,7 @@ def _native_control_branches_and_merges(
         flow,
         None,
         include_mission_state_dependencies=include_mission_state_dependencies,
+        active_overlay_index=active_overlay_index,
     ).items():
         groups: dict[
             tuple[tuple[int, ...], str],
@@ -6588,6 +7107,7 @@ def _native_mission_state_story_branches(
     flow: dict[str, Any],
     candidate_keys: set[str],
     original_binary_contract: dict[str, Any] | None,
+    active_overlay_index: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Project complete exact mission-state alternatives without ordering them.
 
@@ -6601,6 +7121,7 @@ def _native_mission_state_story_branches(
         flow,
         None,
         include_mission_state_dependencies=True,
+        active_overlay_index=active_overlay_index,
     )
     projected: list[dict[str, Any]] = []
     for branch in all_branches:
@@ -6745,72 +7266,96 @@ def _native_serialized_branch_inventory(
     *,
     original_binary_contract: dict[str, Any] | None = None,
     playback_occurrences_by_root: dict[Path, dict[str, list[dict]]] | None = None,
+    active_overlay_index: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Audit every serialized Branch in both original LevelScript roots.
+    """Audit serialized Branches from the active LevelScript overlay.
 
-    StreamingAssets and Persistent are treated as source copies, not separate
-    gameplay instances. Branch groups are deduplicated by original file hash
-    and local action id, while every source path remains attached for audit.
-    Playback is joined only from the exact action-class decoder; arbitrary text
-    identifiers never participate.
+    StreamingAssets is the fallback and Persistent replaces a complete logical
+    file. Shadowed copies remain attached to the overlay index for audit, but
+    are never decoded or unioned into active playback. Playback is joined only
+    from the exact action-class decoder; arbitrary text identifiers never
+    participate.
     """
     failures: list[dict[str, Any]] = []
     file_rows: list[dict[str, Any]] = []
     hash_to_paths: dict[str, set[str]] = defaultdict(set)
     path_to_hash: dict[str, str] = {}
     topology_by_hash: dict[str, tuple[dict, dict | None]] = {}
-    for root in NATIVE_LEVELSCRIPT_ROOTS:
-        root_rel = root.relative_to(ROOT).as_posix()
-        if not root.is_dir():
+    if active_overlay_index is None:
+        active_overlay_index = build_active_levelscript_overlay_index(
+            NATIVE_LEVELSCRIPT_ROOTS,
+        )
+    if active_overlay_index.get("status") == "unavailable_fail_closed":
+        failures.extend(active_overlay_index.get("validationFailures") or [])
+    for logical_path, overlay_row in sorted(
+        (active_overlay_index.get("files") or {}).items(),
+        key=lambda item: natural_key(item[0]),
+    ):
+        if not isinstance(overlay_row, dict):
+            continue
+        source_file = safe_key(overlay_row.get("sourceFile"))
+        source_path = Path(source_file)
+        if not source_path.is_absolute():
+            source_path = ROOT / source_path
+        try:
+            blob = source_path.read_bytes()
+        except OSError as error:
             failures.append({
                 "validator": "nativeSerializedBranchInventory",
-                "gate": "sourceRootExists",
-                "sourceRoot": root_rel,
-                "expected": "directory",
-                "actual": "missing",
+                "gate": "activeSourceFileReadable",
+                "logicalPath": logical_path,
+                "sourceFile": source_file,
+                "expected": "readable",
+                "actual": type(error).__name__,
             })
             continue
-        for path in sorted(
-            root.rglob("*.json"),
-            key=lambda item: natural_key(item.relative_to(root).as_posix()),
-        ):
-            try:
-                blob = path.read_bytes()
-            except OSError as error:
-                failures.append({
-                    "validator": "nativeSerializedBranchInventory",
-                    "gate": "sourceFileReadable",
-                    "sourceFile": path.relative_to(ROOT).as_posix(),
-                    "expected": "readable",
-                    "actual": type(error).__name__,
-                })
-                continue
-            source_file = path.relative_to(ROOT).as_posix()
-            digest = hashlib.sha256(blob).hexdigest()
-            resolved_key = path.resolve().as_posix().lower()
-            path_to_hash[resolved_key] = digest
-            hash_to_paths[digest].add(source_file)
-            relative_parts = path.relative_to(root).parts
-            file_rows.append({
-                "path": path,
+        digest = hashlib.sha256(blob).hexdigest()
+        expected_digest = safe_key(overlay_row.get("sha256"))
+        if digest != expected_digest:
+            failures.append({
+                "validator": "nativeSerializedBranchInventory",
+                "gate": "activeSourceHash",
+                "logicalPath": logical_path,
                 "sourceFile": source_file,
-                "sha256": digest,
-                "levelId": relative_parts[0] if len(relative_parts) > 1 else "",
-                "scriptId": path.stem,
+                "expected": expected_digest,
+                "actual": digest,
             })
-            if digest not in topology_by_hash:
-                topology_by_hash[digest] = (
-                    decode_levelscript_native_action_topology(blob)
+            continue
+        resolved_key = source_path.resolve().as_posix().lower()
+        path_to_hash[resolved_key] = digest
+        hash_to_paths[digest].add(source_file)
+        for shadow in overlay_row.get("shadowed") or []:
+            if isinstance(shadow, dict) and safe_key(shadow.get("sourceFile")):
+                hash_to_paths[safe_key(shadow.get("sha256"))].add(
+                    safe_key(shadow.get("sourceFile"))
                 )
+        relative_parts = Path(logical_path).parts
+        file_rows.append({
+            "path": source_path,
+            "sourceFile": source_file,
+            "sha256": digest,
+            "logicalPath": logical_path,
+            "sourceRoot": safe_key(overlay_row.get("sourceRoot")),
+            "shadowed": list(overlay_row.get("shadowed") or []),
+            "levelId": relative_parts[0] if len(relative_parts) > 1 else "",
+            "scriptId": source_path.stem,
+        })
+        if digest not in topology_by_hash:
+            topology_by_hash[digest] = (
+                decode_levelscript_native_action_topology(blob)
+            )
 
     playback_by_hash_local: dict[tuple[str, int], set[str]] = defaultdict(set)
     control_predicate_variants: dict[tuple[str, int], set[str]] = defaultdict(set)
     playback_join_misses = 0
-    occurrence_roots = dict(playback_occurrences_by_root or {})
-    for root in NATIVE_LEVELSCRIPT_ROOTS:
-        if root not in occurrence_roots:
-            occurrence_roots[root] = build_levelscript_action_story_occurrences(root)
-        for story_key, occurrences in occurrence_roots[root].items():
+    if playback_occurrences_by_root:
+        occurrence_maps = list(playback_occurrences_by_root.values())
+    else:
+        occurrence_maps = [
+            build_active_levelscript_action_story_occurrences(active_overlay_index)
+        ]
+    for occurrence_map in occurrence_maps:
+        for story_key, occurrences in occurrence_map.items():
             for occurrence in occurrences or []:
                 if (
                     not isinstance(occurrence, dict)
@@ -6821,6 +7366,18 @@ def _native_serialized_branch_inventory(
                 source_file = safe_key(occurrence.get("sourceFile"))
                 if not source_file:
                     continue
+                if active_overlay_index is not None:
+                    active_row, active_diagnostic = resolve_active_levelscript_evidence(
+                        source_file,
+                        active_overlay_index,
+                        _source_evidence_hash(
+                            source_file,
+                            occurrence.get("sourceSha256"),
+                        ),
+                    )
+                    if active_diagnostic or not active_row:
+                        continue
+                    source_file = safe_key(active_row.get("sourceFile"))
                 source_path = Path(source_file)
                 if not source_path.is_absolute():
                     source_path = ROOT / source_path
@@ -7213,6 +7770,13 @@ def _native_serialized_branch_inventory(
             root.relative_to(ROOT).as_posix()
             for root in NATIVE_LEVELSCRIPT_ROOTS
         ],
+        "activeOverlay": {
+            "status": active_overlay_index.get("status"),
+            "fileCount": active_overlay_index.get("fileCount", 0),
+            "validationFailures": list(
+                active_overlay_index.get("validationFailures") or []
+            )[:32],
+        },
         "summary": summary,
         "rows": rows,
         "validationFailures": failures[:32],
@@ -7300,6 +7864,8 @@ def build_mission_partial_order(
     reading_popup_sha256: str = "",
     quest_succeed_lifecycle_contract: dict[str, Any] | None = None,
     extra_thread_scheduler_contract: dict[str, Any] | None = None,
+    callserver_callback_audit: dict[str, Any] | None = None,
+    active_overlay_index: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build one source-only mission partial order from generated source evidence."""
     mission_payload = mission_payload if isinstance(mission_payload, dict) else {}
@@ -7312,7 +7878,11 @@ def build_mission_partial_order(
     )
     if exact_native_control_path_context_keys is None:
         candidate_kinds, native_context_scene_keys = (
-            _expand_native_control_path_candidates(flow, candidate_kinds)
+            _expand_native_control_path_candidates(
+                flow,
+                candidate_kinds,
+                active_overlay_index,
+            )
         )
     else:
         candidate_kinds = dict(candidate_kinds)
@@ -7331,6 +7901,7 @@ def build_mission_partial_order(
     }
 
     direct_edges: list[dict[str, Any]] = []
+    active_overlay_path_diagnostics: list[dict[str, Any]] = []
     unresolved_nodes: dict[str, set[str]] = defaultdict(set)
     definition_only_nodes: dict[str, dict[str, set[str]]] = defaultdict(
         lambda: {
@@ -7396,9 +7967,15 @@ def build_mission_partial_order(
         flow,
         candidate_keys,
         extra_thread_scheduler_contract,
+        active_overlay_index,
+        active_overlay_path_diagnostics,
     ))
     native_ordered_sequence_edges, native_ordered_sequences = (
-        _native_ordered_branch_sequences(flow, candidate_keys)
+        _native_ordered_branch_sequences(
+            flow,
+            candidate_keys,
+            active_overlay_index,
+        )
     )
     direct_edges.extend(native_ordered_sequence_edges)
     direct_edges.extend(_quest_state_action_path_story_edges(flow, candidate_keys))
@@ -7439,6 +8016,14 @@ def build_mission_partial_order(
         dialog_tree_static_port_control_warnings,
     ) = _dialog_tree_local_static_port_controls(dialog_payloads)
     direct_edges.extend(dialog_tree_conditional_edges)
+    callserver_callback_edges, callserver_callback_warnings = (
+        _callserver_callback_story_edges(
+            candidate_keys,
+            callserver_callback_audit,
+            active_overlay_index,
+        )
+    )
+    direct_edges.extend(callserver_callback_edges)
     mission_source = safe_key(
         (((timeline.get("metadata") or {}).get("source") or {}).get("file"))
     )
@@ -7475,6 +8060,36 @@ def build_mission_partial_order(
         admitted_lifecycle_edges.append(edge)
         existing_strong_pairs.add((edge["from"], edge["to"]))
     direct_edges.extend(admitted_lifecycle_edges)
+    active_overlay_edge_diagnostics: list[dict[str, Any]] = list(
+        active_overlay_path_diagnostics
+    )
+    active_overlay_rejected_edge_kinds: Counter[str] = Counter()
+    active_overlay_rejected_strong_edge_kinds: Counter[str] = Counter()
+    for diagnostic in active_overlay_path_diagnostics:
+        kind = safe_key(diagnostic.get("edgeKind")) or "<unknown>"
+        active_overlay_rejected_edge_kinds[kind] += 1
+        if safe_key(diagnostic.get("edgeTier")) == "strong":
+            active_overlay_rejected_strong_edge_kinds[kind] += 1
+    if active_overlay_index is not None:
+        active_edges: list[dict[str, Any]] = []
+        for edge in direct_edges:
+            normalized_edge, diagnostic = _active_levelscript_edge(
+                edge,
+                active_overlay_index,
+            )
+            if diagnostic:
+                active_overlay_edge_diagnostics.append(diagnostic)
+                active_overlay_rejected_edge_kinds[
+                    safe_key(edge.get("kind")) or "<unknown>"
+                ] += 1
+                if safe_key(edge.get("tier")) == "strong":
+                    active_overlay_rejected_strong_edge_kinds[
+                        safe_key(edge.get("kind")) or "<unknown>"
+                    ] += 1
+                continue
+            if normalized_edge is not None:
+                active_edges.append(normalized_edge)
+        direct_edges = active_edges
     narrative_containments, narrative_containment_warnings = (
         _dialog_tree_narrative_containments(
             mission,
@@ -7635,7 +8250,9 @@ def build_mission_partial_order(
     quest_branches, quest_merges = _quest_branches_and_merges(timeline)
     typed_story_selector_groups = _typed_story_selector_groups(flow, candidate_keys)
     native_control_branches, native_control_merges = _native_control_branches_and_merges(
-        flow, candidate_keys
+        flow,
+        candidate_keys,
+        active_overlay_index=active_overlay_index,
     )
     (
         native_control_branches,
@@ -7644,6 +8261,7 @@ def build_mission_partial_order(
         mission,
         native_control_branches,
         extra_thread_scheduler_contract,
+        active_overlay_index,
     )
     native_control_branches = _attach_cross_boundary_native_branch_context(
         mission,
@@ -7655,12 +8273,14 @@ def build_mission_partial_order(
         flow,
         candidate_keys,
         extra_thread_scheduler_contract,
+        active_overlay_index,
     )
     native_related_action_topologies = _native_related_action_topologies(
         flow,
         candidate_keys,
         mission=mission,
         original_binary_contract=extra_thread_scheduler_contract,
+        active_overlay_index=active_overlay_index,
     )
     native_named_predicates = sum(
         1
@@ -7896,6 +8516,18 @@ def build_mission_partial_order(
             "nativeControlPathTransitionEdgeCount": len(
                 native_transition_edges
             ),
+            "activeOverlayRejectedEdgeCount": len(
+                active_overlay_edge_diagnostics
+            ),
+            "activeOverlayRejectedEdgeKinds": dict(
+                sorted(active_overlay_rejected_edge_kinds.items())
+            ),
+            "activeOverlayRejectedStrongEdgeCount": sum(
+                active_overlay_rejected_strong_edge_kinds.values()
+            ),
+            "activeOverlayRejectedStrongEdgeKinds": dict(
+                sorted(active_overlay_rejected_strong_edge_kinds.items())
+            ),
             "nativeControlPathBranchingTransitionEdgeCount": sum(
                 bool(edge.get("branchingTransition"))
                 for edge in native_transition_edges
@@ -7928,6 +8560,9 @@ def build_mission_partial_order(
                 for edge in admitted_lifecycle_edges
                 for quest_id in edge.get("questIds") or []
             }),
+            "callserverCallbackStoryEdgeCount": len(
+                callserver_callback_edges
+            ),
             "questStartActionDefinitionCount": len(lifecycle_definition_rows),
             "questStartActionDefinitionStoryCount": len({
                 row["storyKey"] for row in lifecycle_definition_rows
@@ -8125,8 +8760,10 @@ def build_mission_partial_order(
             *dialog_tree_static_port_control_warnings,
             *narrative_containment_warnings,
             *open_ui_containment_warnings,
+            *callserver_callback_warnings,
             *lifecycle_warnings,
             *native_branch_arm_coverage_diagnostics,
+            *active_overlay_edge_diagnostics,
         ],
     }
 
@@ -8195,6 +8832,7 @@ def build_report(
     story_data_root: Path | None = None,
     quest_succeed_lifecycle_contract: dict[str, Any] | None = None,
     extra_thread_scheduler_contract: dict[str, Any] | None = None,
+    callserver_callback_audit: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     lang_root = (story_data_root or (ROOT / "webui" / "data" / "lang")) / language
     index_path = lang_root / "index.json"
@@ -8219,7 +8857,12 @@ def build_report(
     if selected_missions:
         missions = [mission for mission in missions if mission in selected_missions]
 
-    story_occurrences = build_levelscript_action_story_occurrences()
+    active_overlay_index = build_active_levelscript_overlay_index(
+        NATIVE_LEVELSCRIPT_ROOTS,
+    )
+    story_occurrences = build_active_levelscript_action_story_occurrences(
+        active_overlay_index,
+    )
     playback_source_files_by_key: dict[str, set[str]] = defaultdict(set)
     for story_key, occurrences in story_occurrences.items():
         for occurrence in occurrences:
@@ -8249,6 +8892,8 @@ def build_report(
     rows: list[dict[str, Any]] = []
     totals: Counter[str] = Counter()
     edge_kind_totals: Counter[str] = Counter()
+    active_overlay_rejected_edge_kinds_totals: Counter[str] = Counter()
+    active_overlay_rejected_strong_edge_kinds_totals: Counter[str] = Counter()
     native_transition_kind_totals: Counter[str] = Counter()
     for mission in missions:
         candidate_kinds = build_scene_order_candidate_kinds(index_entries, mission, None)
@@ -8268,6 +8913,7 @@ def build_report(
             _expand_native_control_path_candidates(
                 mission_flow,
                 candidate_kinds,
+                active_overlay_index,
             )
         )
         candidate_kinds, exact_levelscript_playback_context_keys = (
@@ -8328,6 +8974,8 @@ def build_report(
             reading_popup_sha256,
             quest_succeed_lifecycle_contract,
             extra_thread_scheduler_contract,
+            callserver_callback_audit,
+            active_overlay_index,
         )
         row["missionData"] = (
             mission_path.relative_to(ROOT).as_posix() if mission_path.is_file() else ""
@@ -8414,6 +9062,15 @@ def build_report(
         totals["nativeControlPathTransitionEdges"] += summary[
             "nativeControlPathTransitionEdgeCount"
         ]
+        totals["activeOverlayRejectedEdges"] += summary[
+            "activeOverlayRejectedEdgeCount"
+        ]
+        active_overlay_rejected_edge_kinds_totals.update(
+            summary.get("activeOverlayRejectedEdgeKinds") or {}
+        )
+        active_overlay_rejected_strong_edge_kinds_totals.update(
+            summary.get("activeOverlayRejectedStrongEdgeKinds") or {}
+        )
         totals["nativeControlPathBranchingTransitionEdges"] += summary[
             "nativeControlPathBranchingTransitionEdgeCount"
         ]
@@ -8540,6 +9197,9 @@ def build_report(
             "dialogTreeStaticPortValidationFailureCount"
         ]
         totals["missingMissionBundles"] += int("missingMissionBundle" in row["warnings"])
+        totals["callserverCallbackStoryEdges"] += summary[
+            "callserverCallbackStoryEdgeCount"
+        ]
         totals["missionsWithStrongEdges"] += int(summary["strongEdgeCount"] > 0)
         totals["missionsWithCycles"] += int(summary["cycleCount"] > 0)
         edge_kind_totals.update(summary["edgeKinds"])
@@ -8554,6 +9214,15 @@ def build_report(
         round(totals["comparableScenePairs"] / total_pairs, 6) if total_pairs else 0.0
     )
     summary_payload["edgeKinds"] = dict(sorted(edge_kind_totals.items()))
+    summary_payload["activeOverlayRejectedEdgeKinds"] = dict(
+        sorted(active_overlay_rejected_edge_kinds_totals.items())
+    )
+    summary_payload["activeOverlayRejectedStrongEdgeCount"] = sum(
+        active_overlay_rejected_strong_edge_kinds_totals.values()
+    )
+    summary_payload["activeOverlayRejectedStrongEdgeKinds"] = dict(
+        sorted(active_overlay_rejected_strong_edge_kinds_totals.items())
+    )
     summary_payload["nativeControlPathTransitionKinds"] = dict(
         sorted(native_transition_kind_totals.items())
     )
@@ -8580,12 +9249,22 @@ def build_report(
         if branch.get("kind") == "splitFanout"
     )
     summary_payload["dialogLineOptionProvenance"] = dict(sorted(dialog_provenance_totals.items()))
+    summary_payload["activeLevelScriptOverlayStatus"] = safe_key(
+        active_overlay_index.get("status")
+    )
+    summary_payload["activeLevelScriptOverlayFileCount"] = int(
+        active_overlay_index.get("fileCount") or 0
+    )
+    summary_payload["activeLevelScriptOverlayFailureCount"] = len(
+        active_overlay_index.get("validationFailures") or []
+    )
     native_serialized_branch_inventory = (
         _native_serialized_branch_inventory(
             original_binary_contract=extra_thread_scheduler_contract,
             playback_occurrences_by_root={
                 NATIVE_LEVELSCRIPT_ROOTS[0]: story_occurrences,
             },
+            active_overlay_index=active_overlay_index,
         )
         if not selected_missions
         else _native_serialized_branch_inventory_not_requested()
@@ -8660,6 +9339,7 @@ def build_report(
             "conversationDir": conversation_dir.relative_to(ROOT).as_posix() if conversation_dir.is_relative_to(ROOT) else conversation_dir.as_posix(),
         },
         "evidencePolicy": EVIDENCE_POLICY,
+        "activeLevelScriptOverlay": active_overlay_index,
         "parallelFanoutAuthority": {
             key: value
             for key, value in {
@@ -8707,10 +9387,15 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- direct evidence edges: `{summary.get('directEdges', 0)}` "
         f"(`{summary.get('strongEdges', 0)}` strong, `{summary.get('supportedEdges', 0)}` supported, "
         f"`{summary.get('weakEdges', 0)}` weak)",
+        f"- active LevelScript overlay: `{summary.get('activeLevelScriptOverlayStatus', 'unknown')}` "
+        f"/ `{summary.get('activeLevelScriptOverlayFileCount', 0)}` files / "
+        f"`{summary.get('activeLevelScriptOverlayFailureCount', 0)}` diagnostics",
         f"- binary-proven quest-success lifecycle: "
         f"`{summary.get('questSucceedLifecycleEdges', 0)}` exact Story edges across "
         f"`{summary.get('questSucceedLifecycleQuests', 0)}` quests in "
         f"`{summary.get('questSucceedLifecycleMissions', 0)}` missions",
+        f"- exact CallServer callback bridges: `{summary.get('callserverCallbackStoryEdges', 0)}` Story-to-Story edges "
+        "from a same-LevelScript typed predecessor and callback continuation",
         f"- reduced component edges: `{summary.get('reducedComponentEdges', 0)}`",
         f"- cyclic components: `{summary.get('cycles', 0)}` across "
         f"`{summary.get('missionsWithCycles', 0)}` missions",
