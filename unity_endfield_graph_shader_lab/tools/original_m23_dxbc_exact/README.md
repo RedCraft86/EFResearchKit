@@ -111,6 +111,61 @@ bits plus four readback floats. Event ID 3 disarms and releases retained
 compiler shader COM references on the render thread. Callers should call
 `SetArmed(0)`, issue event 3, and only then unload or rearm.
 
+Event IDs 4 and 5 are observation-only callbacks placed immediately before
+and after the managed diagnostic `DrawMesh`. They inspect the current D3D11
+bindings and attempt to copy VS `b3` through an unbound staging buffer only
+when its resource is exactly the recovered 224-byte `cb3[14]`. Missing,
+mismatched, or unreadable resources publish no bytes. On Unity 2022.3.62f3 the
+callbacks execute, but both boundaries expose no VS `b3`: the draw's internal
+bindings are not observable from adjacent plugin events. This maintained
+negative result does not weaken the independent exact-shader execution gate.
+Capturing a real particle draw therefore requires a draw/API hook or external
+graphics capture rather than another adjacent plugin event.
+
+Do not replace the immediate context object's COM vptr to obtain that draw
+boundary. A bounded isolated-player experiment shadowed the complete 115-slot
+table, intercepted only Draw variants, and filtered by the exact retained
+VS/PS objects. Unity crashed inside `Graphics.ExecuteCommandBuffer` before a
+report on two storage-lifetime variants. The experiment was removed and the
+published plugin rebuilt from the safe observer source.
+
+## Supported DXCap evidence path
+
+Windows Graphics Diagnostics provides a supported D3D11 capture boundary for
+the isolated player. For this short player the useful frame is frame 0; later
+frames may contain only the shutdown shell. Capture and export the API event
+stream with:
+
+```bat
+cd unity_endfield_graph_shader_lab\tools\original_m23_dxbc_exact
+C:\Windows\System32\DXCap.exe -file <capture.vsglog> -frame 0+1 -terminateonsave -c <player.exe> <player arguments>
+C:\Windows\System32\DXCap.exe -p <capture.vsglog> -toXML <capture.xml>
+python dxcap_xml_evidence.py <capture.xml> -o <capture.evidence.json>
+python test_dxcap_xml_evidence.py
+```
+
+`dxcap_xml_evidence.py` accepts both the rootless XML emitted by the installed
+Windows SDK and bounded rooted fixtures. It incrementally tracks D3D11 shader,
+IA, constant-buffer, resource, sampler, topology, viewport, and target state.
+The exact diagnostic candidate requires the known VS/PS bytecode lengths and
+the 136-byte IA stride. It never promotes object handles or bytecode lengths
+to byte hashes.
+
+The parser recognizes both unique M23 length pairs: blob1277/non-instanced is
+VS 10,720 plus PS 8,100 bytes, while blob1956/`SRP_INSTANCING_ON` is VS 11,016
+plus PS 8,188 bytes. It tracks the created handles to the draw, still requires
+stride 136, and rejects mixed pairs. This classifies a compiled variant
+candidate, not actor identity or vertex/constant-buffer contents.
+
+The current isolated capture locates one exact candidate at moment 9748:
+`Draw(3,0)`, VS handle 8343, PS handle 8344, IA stride 136, and five VS
+constant-buffer handles 8347 through 8351. The XML does not inline vertex- or
+constant-buffer contents, so this closes safe draw identification only. It
+does not recover the 136-byte source row, the 224-byte VS `cb3[14]`, or retail
+particle visibility. Keep `.vsglog`, replay XML, and generated evidence JSON
+under `scratch/reverse_engineering/`; they are disposable capture artifacts,
+not tracked source contracts.
+
 Event 2 intentionally owns and clears Unity's immediate-context state for the
 duration of the isolated diagnostic pass; it is not safe to interleave with a
 normal viewer frame. The managed diagnostic gate invokes it only in the

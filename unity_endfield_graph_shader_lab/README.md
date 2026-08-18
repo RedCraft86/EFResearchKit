@@ -4505,6 +4505,13 @@ retail 28.526% there, but at Unity anchor 40834 it is already 69.580% versus
 retail 26.074% at nearest source PTS 40833. Fill the early gap while bringing
 the late overshoot within roughly five percentage points and keeping the
 near-settled PTS 46000 baseline stable.
+Use integer 1/1000 PTS over the bounded 37667-46000 entry interval, not
+`frameIndex / 60`. Evaluate the fixed `broadTeal`, `raisedHand`, and
+`lowerLeftRibbon` ROIs with
+`g >= 80 && b >= 80 && g-r >= 20 && b-r >= 10`, recording mask coverage,
+bounds, centroid, Dice/IoU, mean RGB, G-R, and B-R against retail. A
+same-camera effect-off clean plate is required so background teal cannot pass
+the VFX gate; PTS 46000 must remain below one-percent raised-hand coverage.
 The peak diagnostic now preserves M19's authored soft-blend/Fresnel keyword
 state and the SampleStack vertex path consumes the recovered particle streams:
 UV2 from `TEXCOORD0.zw`, Custom1XYZW from `TEXCOORD1`, and
@@ -4610,6 +4617,238 @@ root's recovered 1.833333-second effect delay and 1.233333-second duration,
 simulates on its effect-local clock, and records per-renderer baked COLOR0
 alpha min/max/mean. The refreshed D3D12 capture and stricter validator pass;
 the older v3 capture must not be used as corrected-clock evidence.
+
+The first exact actor-input experiment failed closed and its BakeMesh-direct
+managed implementation was removed. For the four M23 renderers, deterministic
+BakeMesh expansion and the per-particle mesh-index vertex census are proven,
+but UV0/UV1 match no public Custom1 XYZ components (component masks `0` and
+`8`), and BakeMesh contains no blend inputs. The full 0138 input ABI remains
+the 136-byte POSITION/NORMAL/TANGENT/COLOR/TEXCOORD0/TEXCOORD1/TEXCOORD4/
+BLENDWEIGHTS/BLENDINDICES layout at offsets
+`0/12/24/40/56/72/88/104/120`; TEXCOORD4 is not proven to own Custom1.
+Already-transformed BakeMesh positions must not be submitted as source
+POSITION and transformed again. The active recovery queue is to expand each
+particle's selected source mesh in public particle order, validate particle
+TRS against its BakeMesh segment, carry public Custom1/currentColor without
+guessing their remaining runtime binding, and recover Draw cb3 before issuing
+a visual comparison draw.
+
+Native render events 4/5 now provide observation-only D3D11 snapshots around
+that future DrawMesh: shader identity, CB/SRV/sampler masks, IA vertex slots,
+strides/offsets, index format, topology, viewport, and target. They neither
+run the synthetic fixture nor call `ClearState`; that is an observer guarantee,
+not a claim that Unity preserves all state. The plugin build validates every
+observer export and the WARP and managed source-contract suites pass. Real-draw
+evidence remains pending a semantically valid source-row/Draw-cb3 bridge.
+
+Run the first source-row boundary oracle with
+`EndfieldGraphShaderLabEditor.EndfieldLiZhiyanM23SourceMeshOracle.RunAndWriteEvidence`.
+For the next bridge step, run
+`EndfieldGraphShaderLabEditor.EndfieldLiZhiyanM23ManagedParticlePacketCensus.RunAndWriteEvidence`.
+It writes a managed public-input sidecar under
+`scratch/character_recovery/lizhiyan_m23_packet_census/pts_40000.json`, including
+all live particle fields, Custom1, source mesh channels/indices, and candidate
+per-vertex transforms. The sidecar is deliberately non-admitting: it records
+the recovered 136-byte field plan but sets exact packed-row parity and candidate
+packet admission false until Unity's internal renderer expansion and draw-time
+cb3 are captured.
+The census is validated by an actual Unity 2022.3.62f3 batch run. Its report
+must remain `status=incomplete`, with `packetStrideBytes=136`, four public live
+rows across the two active `xuanzhuan03*` renderers, and all of
+`exactPackedRowParity`, `candidatePacketAdmission`, `drawTimeCb3Available`,
+and `visualAdmission` false. A successful process exit does not turn this
+diagnostic input inventory into a production draw contract.
+The pinned native `DrawMeshParticles<4>` body proves the separate packed-color
+producer: it reads an indexed RGBA8 row, divides by 255, and writes
+`cb3[13] = 1 - packedRGBA`. BakeMesh hashes close `COLOR0` alpha as 51/70 for
+the two live rows while public `GetCurrentColor()` reports 51/71, so the public
+color is census evidence only and must not be copied into an exact packet.
+Likewise TEXCOORD4 remains the alternate-position input selected by runtime
+`cb3[10].x`, not a proven unconditional Custom1 alias.
+Run `python tools/validate_m23_packet_contract.py` to join the managed census,
+source/BakeMesh oracle, and exact-DXBC fixture. The validator recomputes the
+constant white-RGB alpha candidates behind the oracle hashes, checks all four
+particle/source identities and exact fixture bindings, and fails if any
+packed-row, draw-time-cb3, or visual admission flag becomes true without new
+evidence.
+The installed stock UnityPlayer path is not the stride-136 producer:
+`PrepareForRenderThreaded` builds `0x108`-byte CPU records at renderer
+`+0x1A0` with their count at `+0x160`, and the selected mode-4 draw chain has
+no D3D11 buffer creation or 136-byte IA binding. The real foreground M23
+source draw is stride 60; observed stock alternatives are 36 and auxiliary
+24/48/88-byte streams. Keep the producer queue on the fork/HG render or mesh
+conversion path. The synthetic exact fixture remains the only captured
+stride-136 draw and cannot establish source provenance.
+Run `python tools/audit_m23_source_vertex_layout.py` for the independent asset
+boundary. It pins all three recovered M23 OBJ counts/tags and the four
+ParticleSystemRenderer identities, mesh bindings, and authored stream tuples.
+Those OBJs contain only position/normal/UV geometry, while streams
+`[0,1,3,4,5,34]` total exactly 60 bytes. The exact 0138 float4/tangent/blend
+layout totals 136 bytes, so neither the source OBJ nor the authored stock
+particle stream can be cited as its producer.
+`python tools/audit_m23_vfxbasev2_variants.py` audits the complete exported
+D3D11 variant set without relying on decompiler text. It finds 1,358 pairs in
+14 input-signature families and zero pairs compatible with the authored
+six-stream/60-byte semantic set; every family requires blend lanes. The two
+exact-keyword candidates are non-instanced blob1277 (0138/0139) and the
+`SRP_INSTANCING_ON` blob1956 alternative (4212/4213). Serialized material
+keywords prove blob1277 only if that runtime keyword is absent. Until an
+actual M23 draw captures shader identity/length or PSO state, treat 0138/0139
+as the serialized non-instanced candidate, not a retail draw-proven binding.
+The two exact pairs are also instruction-diff closed. The SRP form adds
+`SV_InstanceID`/no-interpolation `TEXCOORD9` and indexes 16-float4 per-instance
+records; it introduces no additional material branch or resource family.
+`tools/original_m23_dxbc_exact/dxcap_xml_evidence.py` now classifies either
+unique byte-length pair at a stride-136 draw and rejects mixed VS/PS pairs.
+This makes a new real-source DXCap capture the shortest supported route to
+close selection; it does not recover vertex-buffer or cb3 contents.
+Run `capture_m23_source_dxcap.bat` for the maintained foreground source
+baseline. It builds no proxy and performs no BakeMesh; the current 4.25-second
+contract requires the runtime identity/window gates plus exactly one
+`DrawIndexed(3456)` with stride 60 and the local SampleStack 3,036/3,956-byte
+shader pair. It also requires that no 136-byte exact candidate is present.
+This is intentionally a negative retail-shader boundary: the source player
+substitutes `Endfield/Recovered/VFXBaseV2SampleStack`, so a pass must not be
+cited as blob1277/blob1956 selection evidence. Use `-PreflightOnly` to verify
+the player, DXCap, parser, and validator without opening a capture window.
+The current GameAssembly HGMesh layer is also a negative boundary:
+`HGMeshRendererData` callers manage ECS mesh/material handles, bounds, dither,
+and renderer lists, while `HGParticleMeshInstanceRenderer` exposes no managed
+field, method, parameter, or caller in current metadata. Continue at its
+UnityPlayer/HG-native implementation or a supported real-draw resource
+capture; do not infer the packer from EffectManager or HG material wrappers.
+Run `python tools/audit_m23_hg_native_boundary.py` to validate the pinned
+UnityPlayer-native boundary. It verifies the stripped
+`HGParticleMeshInstanceRenderer` registration row plus the
+`HGMeshRendererData` initializer/helper bodies. The registration exposes no
+constructor/vtable/method pointer, and the initializer emits only 24-byte
+material/main-mesh/shadow-mesh handle records; both stride-136 and draw-time
+cb3 producer admission remain false.
+`validate_m23_external_correlation.py` joins already-exported DXCap evidence
+to a manifest from `capture_original_client_external_telemetry.ps1`. A pass
+means only one pinned client process and a shader-length/stride candidate in
+the same capture boundary. Actor/HG identity, exact shader bytes, vertex-buffer
+bytes, cb3 bytes, and visual admission remain unavailable. The validator
+rejects attach/debug/injection/patch/process-memory/module inspection and any
+manifest outside the `external_telemetry_only` policy.
+At PTS 40000 it proves two live particles each for `xuanzhuan03` (388 source
+vertices, 776 baked) and `xuanzhuan03_02` (768 source vertices, 1,536 baked),
+while both `xuanzhuan04*` renderers are present but empty. Source normals and
+Unity-computed Mikk tangents are complete; source COLOR is absent and remains
+an explicit ABI gap rather than being filled. The JSON under
+`scratch/character_recovery/lizhiyan_m23_source_mesh_oracle/` records particle,
+Custom1, source-channel, and BakeMesh segment hashes and remains diagnostic,
+not generated admission data.
+
+0138 instruction tracing now fixes current Draw affine coefficients cb3[0..3],
+a second affine position path cb3[6..9], its current/alternate selectors
+cb3[10].xy, and particle-color complement cb3[13]. Offline DXBC does not prove
+that the second path is the previous frame; keep its producer unnamed until a
+runtime capture closes it. Its skin predicate is carried by cb3[4].w;
+cb4[3].z only
+selects raw versus attenuated COLOR. The M23 source graph strongly selects the
+non-skin route, but native draw-time cb3 bytes are still required before that
+inference becomes a captured runtime fact.
+
+The source oracle now also validates every live source vertex against BakeMesh.
+Unity 2022.3 `Particle.rotation` is already degrees; the closed transform is
+`system.localToWorld * TRS(position, AngleAxis(rotation, axisOfRotation),
+GetCurrentSize3D)`, with inverse-transpose normal handling. At PTS 40000 all
+2,312 live vertices pass the `1e-5` gates: maximum position error `8.70e-7`
+and normalized-normal error `6.88e-7`. This requires exact-time, non-fixed-step
+simulation. Fixed-step public particle size is not the renderer-interpolated
+size and leaves a reproducible `0.03924` position error; do not hide that state
+boundary with a looser tolerance. Three independent exact-time captures now
+use camera A, a displaced/rotated camera B, and camera A repeat. They restore
+the serialized random seed, prove particle and Custom1 hashes are unchanged by
+BakeMesh, and compare every baked channel, UV0-UV7, bounds, and the
+submesh-delimited index stream. All four authored Mesh + Local + unsorted +
+zero velocity/camera-velocity renderers pass reset/repeat and camera-invariance
+gates. Every live particle's source indices also equal the baked indices after
+the particle vertex-base remap, with zero sequence mismatches. The next oracle
+boundary is the real draw-time cb3 capture and complete 136-byte source-row ABI
+bridge; do not reopen camera or index ordering without contradictory evidence.
+
+Native observer events 4/5 now also attempt a fail-closed copy of the exact
+224-byte VS `cb3[14]` through an unbound staging buffer. In the isolated D3D11
+player both callbacks execute once around `CommandBuffer.DrawMesh`, but neither
+boundary exposes a VS b3 resource. The exact shader execution gate remains
+independently passing and no constant bytes are published. Adjacent plugin
+events therefore cannot close draw-time constants; the next route must hook
+the actual D3D11 Draw/constant-buffer binding path or use an external API
+capture keyed to the exact shader/material identity.
+
+Windows Graphics Diagnostics is now a proven supported capture path for the
+isolated D3D11 player. Capturing frame 0 and replaying it through
+`DXCap.exe -toXML` yields 18,269 API calls and two draws. The maintained
+streaming parser uniquely identifies moment 9748 as the exact diagnostic
+candidate: `Draw(3,0)`, VS handle 8343, PS handle 8344, one 136-byte IA
+stream, and five VS constant-buffer handles. It rejects the earlier Unity
+shell draw with incompatible 40/64/32-byte streams. This closes safe draw
+identification without a context hook. The XML does not inline vertex- or
+constant-buffer bytes, so the complete source-row ABI and the 224-byte VS
+`cb3[14]` remain open. The next target is the real M23 particle draw and a
+supported resource-byte inspection or upstream renderer-packing join.
+
+The standalone Li M23 source-renderer capture probe now isolates
+`start_04_2/xuanzhuan03` in a normal D3D11 player and explicitly forbids
+BakeMesh and MeshRenderer proxies. Hidden-window runs are not valid admission
+evidence because Unity does not execute normal camera rendering there. Use the
+opt-in foreground-window flag and the matching runtime JSON. With that protocol the serialized camera
+sentinel, ordinary Billboard control, exact-source-mesh control, and a manual
+particle on the exact source component all submit normally.
+
+`source-republish-identical` remains a useful strict-equality control, but it
+is not required for submission. The source rows have only about 1.86 and 1.29
+seconds of remaining lifetime after the target sample. A no-read, no-pause,
+no-republish time sweep captures both original rows as `DrawIndexed(3456)` from
+3.0 through 4.25 seconds after launch, one row as `DrawIndexed(1728)` at
+4.4–5.0 seconds, and no row from 5.25 seconds. `Pause(false)` preserves both
+rows for a later 7-second capture; bounded GetParticles and Custom1 reads do
+not. Thus the earlier zero draw was particle expiration during capture, not a
+missing internal renderer state.
+
+At 3.5 seconds the unmodified six-stream source renderer and recovered M23
+SampleStack material produce `DrawIndexed(3456)` with stride 60 and the
+3,036-byte VS / 3,956-byte PS pair. This is the first directly captured real
+source-component M23 draw without BakeMesh, a MeshRenderer proxy, changed
+particle values, or a compatibility material.
+
+The same source-identity player now has an opt-in exact shader-object
+substitution experiment. Run `capture_m23_source_dxcap.bat
+-ExactSubstitution`; the probe clones only the source material, arms the
+compiler extension, and enables the reserved diagnostic keyword. It preserves
+the original `xuanzhuan03` ParticleSystemRenderer, mesh, particles, and
+`[0,1,3,4,5,34]` streams. The joined runtime/plugin/DXCap validator requires
+two successful compiler callbacks, one 0138 VS replacement, one 0139 PS
+replacement, and exactly one target `DrawIndexed(3456)`. The maintained
+capture binds the 10,720/8,100-byte exact pair while IA slot 0 remains stride
+60. This proves that the exact shader objects are admitted on the real source
+draw; it does not claim retail shader selection, a 136-byte source row, or
+recovered blend values. The remaining renderer-packing queue is therefore the
+fork/HG 60-to-136-byte producer plus draw-time `cb3`, not an input-layout
+failure in stock Unity's automatic ParticleSystemRenderer draw.
+
+The installed UnityPlayer maps
+`ParticleSystemRenderer::PrepareForRenderThreaded` to
+`0xBA28F0..0xBA2C20`; its selected caller tests an unnamed record count at
+`rcx+0x160` immediately after the call and exits before mode-4 dispatch when
+the count is non-positive. Keep this classified as a record-building boundary,
+not camera culling; the count naturally reaches zero after source-particle
+expiry. The next target is the fork's exact renderer packing: explain how the
+proven live 60-byte rows become the retail 136-byte IA layout, recover the
+blend lanes, then close the remaining draw-time `cb3` values. Do not extend source
+lifetime or force Pause in production merely to accommodate capture latency.
+
+An isolated immediate-context shadow-vtable attempt is deliberately removed.
+It copied all 115 `ID3D11DeviceContext` slots, hooked only Draw variants,
+filtered by the retained exact VS/PS pointers, and restored the object vptr,
+but the player crashed inside `Graphics.ExecuteCommandBuffer` before it could
+publish a report with either transient or process-lifetime table storage. The
+native/WARP fixture remained green, so this is a Unity/driver integration
+rejection rather than shader failure. Do not patch the context object's vptr
+again; use a supported graphics capture/API layer or upstream renderer-packing
+evidence.
 
 The actor-composed harness now also instantiates the exact recovered
 `P_fxui_lizhiyan_overview_trails_Bip001_R_Finger2Nub` prefab beneath the
@@ -4740,6 +4979,101 @@ prefabs with:
 This does not yet generalize all dialog assets or implement lip-sync, speye/eye
 look-at inputs, broader emotions, face material curves, or cross-track event
 chronology.
+
+## Measured Visual Delta
+
+The lab renders the runtime reference at the supplied capture resolution, so a
+recovered frame and the original capture are directly comparable inside the
+UI-free character band:
+
+```bat
+.\render_visual_delta_frames.bat --baseline --character wulfa
+.\render_visual_delta_frames.bat --composed --character wulfa
+python tools\compare_recovered_vs_original.py --character wulfa --label composed ^
+  --baseline scratch\character_recovery\visual_delta\wulfa_baseline.json
+```
+
+`config/visual_comparison_rois.json` pins the reference hashes and the UI-free
+region boxes. Per-pixel CIEDE2000 is measured after removing the residual
+reference-to-recovered camera transform, and that transform is reported rather
+than absorbed. The alignment-robust luminance/contrast/chroma distributions
+carry the shading conclusions. A smaller delta is a priority signal, never
+evidence that a recovered value is the original value.
+
+The residual camera transform is real, not a fitting artifact: the Euclidean
+fit lowers Wulfa face dE from 7.325 to 5.812 and skirt dE from 10.938 to 6.779,
+and the affine fit independently agrees on the rotation (-0.7696 degrees).
+Wulfa settles at -0.8236 degrees with band translation (-7.73, +13.15) px and
+Zhuangfy at +0.2597 degrees with (-5.80, -17.27) px. This is consistent with the
+already recorded unknown capture-time `UIGyroscopeEffect` cursor state and must
+not be tuned away.
+
+Recovered-feature selectors are tri-state. Unset leaves the serialized scene
+value in charge, truthy forces on, falsey forces off. Before that change a
+scene saved by an earlier diagnostic kept its feature enabled and the
+maintained default frame could not be rendered at all: with the selector unset
+the CharInfo ready-subset diagnostic activated from its serialized value and
+the backdrop strip ran +0.221 linear luminance over the original, against
++0.073 when forced off.
+
+Composing the validated default-off chain on Wulfa moves the overall band mean
+from 13.4919 to 12.8723. Per region: `dark_hardware` -3.772, `ear_fur` -3.235,
+`red_cape_strip` -1.732, `face_skin` -1.250, `hair_side` -0.156 improved, while
+`background_wall` +1.114, `pale_skirt_cloth` +1.048, and `red_hood` +0.629
+regressed. Every region also brightened by +0.041 to +0.138 linear luminance,
+and the regressions track that brightening rather than a material change.
+
+Zhuangfy reproduces the pattern on an independent actor: 12.4549 to 12.2797,
+with `face_skin` -1.725, `hair_dark` -1.053, `antler_hardware` -0.976,
+`pale_armor` -0.658, `dark_hardware` -0.573, and `ground_contact` -0.019
+improved against `background_wall` +1.649 and `olive_skirt_cloth` +0.569. Six of
+eight regions improve, the backdrop regresses, and the whole frame brightens.
+Both actors agree: the recovered chain helps character surfaces and hurts
+everything it does not own.
+
+Two boundaries follow directly and are load-bearing for promotion decisions.
+
+The deferred chain cannot explain any of that movement. Every selected pass-0
+transport records `pass0_consumer_enabled=false` and
+`published_by_default=false`, and the DefaultDeferred GBuffer sidecar is
+explicitly non-presented. `deferred.transform_variables`, `deferred.light_data`,
+`deferred.shadow_data`, `shader.variables_global`, and `deferred.gbuffer_frame`
+are GPU-closed transports that publish nothing into the beauty frame, so no
+image measurement can promote them and none of them is production-eligible.
+
+The recovered character response cannot be promoted without the CharInfo
+physical presentation scene. `EndfieldRecoveredCharInfoSky.PrepareForRender`
+keys on the source-energy-core keyword: when it is set the camera switches to
+`CameraClearFlags.Skybox` with the exact recovered `T_hdri_006` sky material and
+the neutral compatibility backdrop renderer is deliberately disabled. The bright
+grey background in the original capture is not that sky, it is source scene
+geometry, and the lab only holds that geometry as the partial ready subset with
+`SphereOutside` and `ShadowPlane` explicitly excluded and
+`exactSourceAssetsReady=false`.
+
+Any profile that enables the recovered character response without the
+ready-subset presentation therefore renders a near-black background. Measured on
+Wulfa with the five character-response selectors alone and no light scheduling,
+`background_wall` moves from 8.024 to 56.534 at -0.427 linear luminance and the
+alignment correlation collapses to 0.130. The composed profile only looks
+complete because the ready subset supplies wall, floor, and far grid. Completing
+the CharInfo physical presentation scene is therefore the blocking item for a
+promotable default frame, ahead of further character-response work.
+
+Underneath that backdrop failure the character surfaces do improve on their own.
+With the same five selectors and no ready subset: `dark_hardware` -5.076,
+`face_skin` -2.109, `red_cape_strip` -1.068, `hair_side` -1.032. Those are the
+promotable candidates once a backdrop exists to promote them into.
+
+Read region numbers with their background content in mind. `ear_fur` and
+`background_wall` both contain sky pixels, so their values move with the
+backdrop rather than with any material: `ear_fur` reports +23.133 in that same
+run purely because the sky between the ears went black.
+
+Metric agreement is not visual agreement. The composed `ear_fur` region improves
+by 3.235 because it corrects the ear-membrane tone over a large area, while the
+fur tufts inside it gain hard black strand outlines that the original capture
+does not have. Read the diff image, not only the table.
 
 ## Layout
 

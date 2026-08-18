@@ -15,7 +15,7 @@ is not the retail renderer.
 | Complete HGRP/CharInfo frame | partial |
 | Playable UI clips | complete for the selected `all-ui` scope |
 | Runtime animation behavior | partial |
-| Retail visual parity | not reached |
+| Retail visual parity | not reached; Wulfa band mean CIEDE2000 13.49 default, 12.87 composed |
 
 The canonical identities are 31 playables, one NPC character, one cutscene
 clone, 94 enemies, and 29 ability/prop actors. Six modular ambient-NPC
@@ -1026,6 +1026,31 @@ The missing work is the coupled retail frame contract:
 Current images are recognizable but flatter than retail, especially around
 faces, pale cloth/armor, hair, dark hardware, and contact shadows.
 
+That gap is now measured rather than described. `render_visual_delta_frames.bat`
+plus `tools/compare_recovered_vs_original.py` compare a recovered frame to the
+original capture inside the UI-free band, and the reports live under
+`scratch/character_recovery/visual_delta/`. Two conclusions are durable.
+
+The recovered character response is coupled to the CharInfo physical
+presentation scene and cannot be promoted without it. The source-energy-core
+keyword switches the camera to the exact recovered `T_hdri_006` sky and
+deliberately disables the neutral compatibility backdrop. The bright background
+in the original capture is source scene geometry, not that sky, and the lab
+holds it only as the partial ready subset with `SphereOutside` and `ShadowPlane`
+excluded. Any profile that enables the recovered response without that subset
+renders a near-black background. Completing the physical presentation scene is
+the blocking item for a promotable default frame, ahead of further
+character-response equations.
+
+The character surfaces themselves do improve underneath that failure, so they
+are the promotable candidates once a backdrop exists to hold them.
+
+The recovered deferred data cannot move the image. The selected pass-0
+transports and the DefaultDeferred GBuffer sidecar are GPU-closed but record
+`pass0_consumer_enabled=false` and `published_by_default=false`, and the sidecar
+is explicitly non-presented. They are correctness results, not fidelity results,
+and no image measurement can promote them.
+
 ## Main animation gap
 
 Remaining runtime systems include:
@@ -1076,6 +1101,16 @@ Changing inventories and exhaustive renderer/shader proof live under
 only stable interpretation and priorities.
 
 ## Highest-value next work
+
+0. Complete the CharInfo physical presentation scene. The measured frames prove
+   the recovered character response cannot be enabled without it: the
+   source-energy-core keyword disables the compatibility backdrop in favour of
+   the exact recovered sky, and the source wall/floor geometry that the original
+   capture actually shows exists only as the partial ready subset. This now
+   outranks further per-material character work, because without it there is no
+   coherent default frame to promote anything into and every character gain
+   stays gated behind a labeled non-original subset. The open items are
+   `SphereOutside`, `ShadowPlane`, and `exactSourceAssetsReady`.
 
 1. Follow the API-2 resource/descriptor records after the HGTree front-end
    wrappers to their runtime object/queue consumer. The callback route now
@@ -2373,6 +2408,259 @@ only stable interpretation and priorities.
    particle draw. The next implementation step is a capture-session DrawMesh
    path for the four exact-M23 renderers using their baked 136-byte streams and
    corrected effect-local COLOR0 alpha.
+   That proposed BakeMesh-direct path has now been rejected by an executed
+   fail-closed Unity probe rather than promoted. At PTS 40000 the four exact
+   renderers retain the authored stream tuple `[0,1,3,4,5,34]`, deterministic
+   BakeMesh vertex/index expansion, and an exact per-particle mesh-index vertex
+   census, but BakeMesh exposes only UV0/UV1: neither channel reproduces public
+   Custom1 XYZ (`UV0` component mask `0`, `UV1` mask `8`, only W). The 0138
+   disassembly independently rejects the attempted mapping: its full ISGN is
+   POSITION/NORMAL/TANGENT/COLOR/TEXCOORD0/TEXCOORD1/TEXCOORD4/
+   BLENDWEIGHTS/BLENDINDICES at byte offsets
+   `0/12/24/40/56/72/88/104/120`; TEXCOORD4 is an auxiliary motion/previous-
+   position lane, not proven Custom1. Source POSITION is transformed by Draw
+   cb3 and must not be replaced by already-transformed BakeMesh world positions.
+   BakeMesh also has no BlendWeight/BlendIndices. Therefore it is
+   admissible only as deterministic expansion/order and transformed-geometry
+   evidence. The next bridge must expand source-mesh POSITION/COLOR/UV/normal
+   rows per public particle meshIndex, carry public Custom1/currentColor while
+   leaving its runtime semantic slot fail-closed, and recover the per-particle
+   Draw cb3 transform/color contract; missing
+   lanes must fail closed rather than receive defaults.
+   Native render events 4/5 now provide a non-destructive D3D11 state observer
+   around a future real Unity DrawMesh. It snapshots exact shader identity,
+   CB/SRV/sampler masks, IA vertex slots/strides/offsets, index format,
+   topology, viewport, and target without executing the synthetic fixture or
+   calling `ClearState`. Its explicit observer guarantee must not be read as a
+   claim that Unity itself preserves every binding. The plugin build, complete
+   observer export census, WARP suite, and managed source-contract test pass;
+   real-draw evidence remains pending until the source-row/cb3 bridge can issue
+   a semantically valid draw.
+   The standalone `EndfieldLiZhiyanM23SourceMeshOracle` now executes this first
+   bridge boundary at retail PTS 40000 (effect-local `0.19966698 s`) without
+   touching the visual harness. It reruns the maintained generated-prefab
+   validator, gates the four exact renderer/component/mesh/material identities,
+   captures public Particle/Custom1 state, and proves per-particle BakeMesh
+   segment ranges. `xuanzhuan03` has 2 particles over the 388-vertex mesh
+   (776 baked vertices/3,456 indices); `xuanzhuan03_02` has 2 over the
+   768-vertex mesh (1,536/3,456); both `xuanzhuan04*` renderers have zero live
+   particles at this frame. The source meshes have imported normals and stable
+   Unity Mikk tangents but no COLOR channel. No default COLOR, blend, or other
+   missing ABI row is synthesized. Live segments reproduce the earlier
+   Custom1 masks UV0=`0`, UV1=`8` independently.
+   Exact 0138 also closes the relevant Draw cb3 arithmetic: cb3[0..2].xyz are
+   three current affine coefficient vectors and cb3[3].xyz is translation.
+   cb3[6..8] plus cb3[9] form a second affine position path and cb3[10].xy
+   select current/alternate clip-position inputs. Offline DXBC does not prove
+   that the second path is the previous frame, so retain the mathematical
+   identity until runtime capture closes its producer. cb3[13] is
+   `1-particleCurrentColor`. The actual skin
+   predicate is encoded in cb3[4].w; high-confidence source evidence says these
+   ordinary mesh particles take the non-skin path, but draw-time bytes remain
+   unobserved. Contrary to the earlier tentative interpretation, cb4[3].z is a
+   raw-versus-attenuated COLOR selector, not a position/skin gate.
+   The source oracle now closes the full live source-vertex-to-BakeMesh TRS at
+   PTS 40000. Unity 2022.3 exposes scalar `Particle.rotation` in degrees (the
+   initial radians assumption made every vertex fail); the exact candidate is
+   `system.localToWorld * TRS(particle.position, AngleAxis(rotationDegrees,
+   axisOfRotation), GetCurrentSize3D)`. Normals use that matrix's inverse
+   transpose. With non-fixed-step simulation at the exact effect-local time,
+   all 2,312 live vertices pass `1e-5`: maximum position error
+   `8.70e-7`, maximum normalized-normal error `6.88e-7`, and zero failures.
+   A fixed-step run is deliberately rejected: its public Particle size and the
+   renderer's interpolated size differ, leaving about `0.03924` maximum
+   position and `0.01950` normal error even though a fitted affine transform is
+   internally exact to `3.6e-8`. This identifies renderer interpolation—not
+   particle order, mesh identity, or arbitrary tolerance—as the discrepancy.
+   Exact row/cb3 construction must therefore use one explicit exact-time
+   simulation boundary or separately recover the fixed-step render interpolation;
+   it must not mix public fixed-step state with interpolated BakeMesh geometry.
+   The same oracle now independently resets each capture to the serialized
+   random seed and exact non-fixed time for camera A, a displaced/rotated
+   camera B, and camera A repeat. It hashes particle and Custom1 state before
+   and after every BakeMesh call, and hashes every baked channel, UV0-UV7,
+   bounds, and submesh-delimited index stream. All four renderer identities
+   pass reset determinism, BakeMesh non-mutation, A-repeat equality, and A/B
+   camera invariance under the exact authored Mesh + Local + unsorted + zero
+   velocity/camera-velocity gates. Every live particle also reproduces its
+   source submesh index sequence exactly after the particle vertex-base remap;
+   all four live rows have zero mismatches. This closes the public source-mesh
+   expansion boundary. The next gate is captured draw-time cb3 plus a complete
+   source-row ABI bridge, not another BakeMesh interpretation.
+   Native observer events 4/5 now attempt that cb3 copy only for an exact
+   224-byte VS b3, using an unbound staging buffer. In the isolated D3D11
+   player both adjacent events execute once but observe no VS b3 before or
+   after `CommandBuffer.DrawMesh`; Unity's internal draw bindings are not
+   visible at adjacent plugin-event boundaries. Exact shader execution remains
+   independently green and the observer publishes no bytes. The next capture
+   must intercept the actual D3D11 Draw/constant-buffer binding path or use an
+   external API capture keyed to exact shader and material identity.
+   The supported external path is now proven with the installed Windows
+   Graphics Diagnostics `DXCap.exe`. Frame 0 of the isolated player produces a
+   replayable `.vsglog`; `DXCap -toXML` exports 18,269 API calls and two draws.
+   The maintained streaming parser rejects the Unity shell draw and uniquely
+   identifies moment 9748 as the exact diagnostic candidate: `Draw(3,0)`, VS
+   handle 8343, PS handle 8344, one 136-byte IA stream, and five VS constant
+   buffers. This replaces the unsafe context hook for draw identification.
+   DXCap XML contains handles and shader bytecode lengths but not resource
+   bytes, so it does not yet close the 136-byte vertex row or 224-byte `cb3`.
+   The next capture boundary is an actual M23 `ParticleSystemRenderer` draw,
+   followed by supported resource inspection or upstream packing evidence.
+   A standalone D3D11 source-renderer probe now isolates
+   `start_04_2/xuanzhuan03` without BakeMesh or a MeshRenderer proxy. The old
+   hidden-window captures were invalid for renderer admission: Unity skipped
+   normal camera rendering while the player window was hidden. Restore/show
+   the window and gate every capture with its matching runtime JSON. Under that protocol the
+   serialized camera sentinel, ordinary Billboard control, and exact-source
+   Mesh control all submit. The exact source mesh produces 1,728 indices for
+   one control particle, so HGCompat, Mesh particle mode, and the mesh asset
+   are not the missing boundary.
+   The exact source ParticleSystem/renderer/mesh also submits after one manual
+   particle is installed. The apparent need for `SetParticles` republishing was
+   a second capture-timing artifact, not an internal-state defect. Original
+   particles have only about 1.86 and 1.29 seconds of remaining lifetime after
+   the target simulation sample. A no-read/no-pause/no-republish time sweep
+   records both original particles as `DrawIndexed(3456)` from 3.0 through
+   4.25 seconds after process launch, one as `DrawIndexed(1728)` at 4.4 through
+   5.0 seconds, and none from 5.25 seconds. `Pause(false)` merely preserved the
+   short-lived rows until the old 7-second capture. `GetParticles` and
+   `GetCustomParticleData` alone do not preserve them. The original six-stream
+   source renderer with its recovered M23 SampleStack material is independently
+   captured at 3.5 seconds as `DrawIndexed(3456)`, stride 60, with the
+   3,036/3,956-byte recovered VS/PS pair. This closes ordinary Unity source
+   submission without any proxy or particle mutation.
+   The selected installed UnityPlayer independently transfers
+   `ParticleSystemRenderer::PrepareForRenderThreaded` to
+   `0xBA28F0..0xBA2C20`. Its caller at `0x1457615` immediately tests the
+   still-unnamed record count at `rcx+0x160`; a non-positive value exits before
+   mode-4 dispatch through `0x1425650` and the selected
+   `DrawMeshParticles<4>` route. This is a record-building boundary, not a
+   camera-culling classification: the count naturally falls to zero when the
+   rows expire. The remaining renderer-packing target is the fork's exact M23
+   path: join these proven live source rows to the already recovered 136-byte
+   IA layout and 10,720/8,100-byte exact DXBC pair, then recover the open
+   draw-time `cb3` semantics. Do not add a lifetime workaround, forced Pause,
+   or BakeMesh proxy to production recovery.
+   A managed PTS-40000 packet census now makes that join reproducible without
+   pretending Unity's private expansion is known. It records all four live
+   public particle rows, Custom1, renderer streams/configuration/material
+   identity, complete source-mesh channels and indices, and per-source-vertex
+   candidate position/normal/tangent transforms. Unity 2022.3.62f3 executes
+   the census successfully. Its 136-byte field plan is provenance-tagged and deliberately leaves
+   `exactPackedRowParity`, `candidatePacketAdmission`, draw-time `cb3`, and
+   visual admission false. COLOR0, its separate packed-RGBA producer,
+   TEXCOORD routing/selectors, and the template portion of `cb3` remain the
+   exact-render bridge queue; the sidecar is an input census, not a recovered
+   vertex buffer.
+   The pinned `DrawMeshParticles<4>` body now closes the color producer more
+   narrowly: it reads one indexed RGBA8 row, divides each channel by 255, and
+   writes `cb3[13] = 1 - packedRGBA` at record offset `+0xD0`. Independent
+   BakeMesh hashes identify renderer `COLOR0` as repeated alpha 51/70 for the
+   two live rows, whereas public `GetCurrentColor()` returns 51/71. Therefore
+   public color cannot be copied into the exact packet. TEXCOORD4 remains an
+   alternate-position input controlled by runtime `cb3[10].x`, not an
+   unconditional alias for Custom1.
+   The stock UnityPlayer path is now excluded as the 136-byte IA producer.
+   `PrepareForRenderThreaded` builds CPU records beginning at renderer
+   `+0x1A0` with `0x108` stride and the count at `+0x160`; the selected
+   mode-4/`DrawMeshParticles<4>` chain contains no D3D11 buffer creation or
+   136-byte IA binding. Its real foreground source draw uses stride 60, while
+   other stock captures use 36 and ordinary auxiliary 24/48/88-byte streams.
+   The only observed stride-136 draw remains the synthetic exact-DXBC fixture.
+   Therefore the remaining producer search belongs to the fork/HG render or
+   mesh-conversion path, not stock ParticleSystemRenderer expansion.
+   A source-layout audit independently excludes the asset/import side. The
+   three recovered M23 OBJs contain only `v/vt/vn/f/g`; their 388, 768, and
+   268 vertex counts and face topology are pinned. All four exact-material
+   renderer rows author streams `[0,1,3,4,5,34]`, whose Position/Normal/
+   Color32/UV/UV2/Custom1 width is exactly 60 bytes. The 136-byte 0138 ABI
+   additionally requires tangent, float4 color/UV lanes, and blend lanes, so
+   it cannot be a serialized OBJ or direct authored-stream layout.
+   A complete D3D11 `VFXBaseV2` census now corrects the runtime-selection
+   boundary. Sidecars 0138/0139 are blob1277, the unique non-instanced pair
+   matching M23's serialized valid keywords plus `HG_ENABLE_MV`; blob1956
+   (4212/4213) is the otherwise matching `SRP_INSTANCING_ON` alternative. The
+   export does not capture the retail fork/HG instancing decision, so neither
+   pair is a proven M23 draw binding. None of 1,358 D3D11 pairs across 14
+   input-signature families accepts the authored six-stream/60-byte semantic
+   set: every family also requires blend lanes. Runtime mesh/particle
+   conversion therefore remains mandatory whichever pair is selected; the
+   smaller selection gap is an actual-draw shader identity/length or PSO
+   capture.
+   The two binaries are now instruction-diff closed. The SRP pair adds
+   `SV_InstanceID`, carries it as no-interpolation `TEXCOORD9`, changes fixed
+   particle b3 accesses into instance-relative 16-float4 records, and expands
+   VS b3 and PS b2 arrays to 4,096 float4 entries; the remaining resources and
+   material control flow are unchanged. Their byte-length pairs are unique in
+   the 1,358-pair census. The maintained DXCap XML parser now recognizes both
+   10,720/8,100 and 11,016/8,188, tracks their handles to a draw, requires
+   stride 136, and rejects mixed pairs. This can close variant choice in a
+   future real M23 capture without injection, but cannot establish actor
+   identity or publish VB/cb bytes by itself.
+   The foreground source baseline is now reproducible through
+   `capture_m23_source_dxcap.bat`. A validated 4.25-second run joins the runtime
+   identity/window/no-proxy gates to one `DrawIndexed(3456)` using stride 60
+   and the 3,036/3,956-byte local SampleStack pair. The validator explicitly
+   requires zero exact 136-byte candidates. This closes an important negative
+   boundary: the lab source player preserves the real ParticleSystemRenderer,
+   mesh and authored streams but deliberately substitutes the diagnostic
+   material, so it cannot prove retail blob1277/blob1956 selection.
+   The corresponding positive shader-admission experiment is now closed. An
+   opt-in local keyword keeps the same `xuanzhuan03` renderer, source mesh,
+   particles, and authored `[0,1,3,4,5,34]` streams, while the D3D11 compiler
+   extension substitutes exact 0138/0139 shader objects into that material.
+   Both replacements return success, and the 4.25-second capture contains the
+   real `DrawIndexed(3456)` bound to the 10,720/8,100-byte pair while IA slot 0
+   remains stride 60. This proves exact-shader admission on the stock source
+   draw and disproves an input-layout rejection at this boundary. It does not
+   prove retail variant selection or recover the retail 136-byte producer:
+   blend-lane values, draw-time `cb3`, and the fork/HG packing path remain the
+   highest-value gap. The joined validator records those limits explicitly.
+   GameAssembly's HGMesh audit also excludes its managed layer: current
+   `HGMeshRendererData` callers only manage ECS mesh/material handles, bounds,
+   dither, and renderer lists. `HGParticleMeshInstanceRenderer` has no managed
+   fields, methods, parameters, or callers in current metadata. The positive
+   queue is now its UnityPlayer/HG-native implementation or a supported
+   real-draw resource capture; EffectManager/HGMaterialController wrappers are
+   no longer useful packer candidates.
+   The UnityPlayer-native registration boundary is now executable and
+   hash-pinned. `HGParticleMeshInstanceRenderer` has one generic type-table
+   row and no recoverable constructor, destructor, vtable, or method pointer;
+   the name has no direct executable xref. The separately pinned
+   `HGMeshRendererData` initializer and five helpers only resolve material,
+   main-mesh, and shadow-mesh handles into 24-byte CPU records. They never
+   allocate/upload vertex data or bind a constant buffer. Keep both
+   `hgParticlePackerResolved` and `drawTimeCb3ProducerResolved` false.
+   Safe external telemetry is now joined to DXCap through a separate
+   fail-closed contract. It can correlate one pinned client process with a
+   length/stride candidate draw, but cannot identify the actor/HG object,
+   hash shader bytes, or read VB/cb3 contents. Any attach, debugger,
+   injection, patch, process-memory/module inspection, input/network capture,
+   or non-external telemetry boundary rejects the join.
+   `tools/validate_m23_packet_contract.py` now joins the managed census,
+   source/BakeMesh oracle, and exact-DXBC fixture with deterministic
+   diagnostics. Its current 225 checks close the four public rows and recover
+   packed alpha 51/70 by recomputing the oracle hashes, while requiring every
+   packed-row, draw-time-cb3, and visual admission flag to remain false.
+   `tools/audit_m23_source_vertex_layout.py` maintains the separate 60-versus-
+   136 asset/stream exclusion gate and fails deterministically on missing OBJ,
+   renderer identity, stream tuple, mesh binding, or HG-instancing drift.
+   `tools/audit_m23_hg_native_boundary.py` pins the native registration and
+   handle-initializer bodies. `tools/validate_m23_external_correlation.py`
+   records the maximum claim available from supported external telemetry plus
+   DXCap XML; neither tool upgrades source, packet, cb3, actor, or visual
+   admission.
+   A narrower immediate-context object-vtable experiment is also rejected. It
+   shadowed the complete 115-slot `ID3D11DeviceContext` table only inside the
+   isolated player, filtered Draw variants by the retained exact VS/PS
+   pointers, and restored the original object vptr after the command. The
+   player crashed inside `Graphics.ExecuteCommandBuffer` before producing a
+   report both with a transient and a process-lifetime shadow table, while the
+   unchanged native/WARP suite passed. Unity/driver code therefore cannot be
+   assumed to tolerate object-vptr replacement. The experiment was removed
+   and the safe observer DLL rebuilt to its pinned hash. Do not retry COM
+   vtable shadowing; use a supported external capture/API layer or recover the
+   upstream renderer packing path instead.
    Video acceptance must distinguish Unity anchors from nearest retail PTS:
    39934 maps to retail 39933 and 40834 to 40833, while 40000/40867 are exact.
    At PTS 40000 the current composite raised-hand coverage is 4.863% versus
@@ -2380,6 +2668,14 @@ only stable interpretation and priorities.
    40833. Therefore success is not simply more particles: fill the 40000 gap,
    reduce the late overshoot to about +/-5 percentage points, and preserve the
    near-settled 46000 frame.
+   Use integer 1/1000 PTS over the bounded 37667-46000 entry interval, not
+   `frameIndex / 60`. At each anchor compare the fixed broad-teal,
+   raised-hand, and lower-left-ribbon ROIs with
+   `g>=80 && b>=80 && g-r>=20 && b-r>=10`, recording coverage, bbox,
+   centroid, Dice/IoU, mean RGB, G-R, and B-R. Keep a same-camera effect-off
+   clean plate so background teal cannot satisfy the VFX gate. PTS 46000 must
+   remain below one-percent raised-hand coverage while the PTS-40833/40834
+   error converges to about +/-5 percentage points.
    The exact independently AssetMap-proven finger prefab is now executable in
    the same actor-composed diagnostic. It is mounted beneath the unique
    `Bip001_R_Finger2Nub`, keeps its source 0.83333-second delay and
