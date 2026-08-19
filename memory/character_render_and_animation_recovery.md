@@ -1038,18 +1038,56 @@ deliberately disables the neutral compatibility backdrop. The bright background
 in the original capture is source scene geometry, not that sky, and the lab
 holds it only as the partial ready subset with `SphereOutside` and `ShadowPlane`
 excluded. Any profile that enables the recovered response without that subset
-renders a near-black background. Completing the physical presentation scene is
+renders a near-black background: with only the source-energy-core selector set,
+the Wulfa backdrop strip falls from sRGB (188, 188, 186) to (14, 11, 11) while
+the character stays correctly lit. Completing the physical presentation scene is
 the blocking item for a promotable default frame, ahead of further
 character-response equations.
 
 The character surfaces themselves do improve underneath that failure, so they
 are the promotable candidates once a backdrop exists to hold them.
 
-The recovered deferred data cannot move the image. The selected pass-0
-transports and the DefaultDeferred GBuffer sidecar are GPU-closed but record
-`pass0_consumer_enabled=false` and `published_by_default=false`, and the sidecar
-is explicitly non-presented. They are correctness results, not fidelity results,
-and no image measurement can promote them.
+The recovered deferred data cannot move today's image, but it is not a detour.
+The selected pass-0 transports and the DefaultDeferred GBuffer sidecar are
+GPU-closed while recording `pass0_consumer_enabled=false` and
+`published_by_default=false`, so no image measurement can promote them. That
+sidecar is however the same-camera SphereOutside sidecar, and SphereOutside is
+the source wall geometry whose absence blacks the background. The deferred pass
+and the missing backdrop are one problem: closing pass 0 is the route to the
+backdrop.
+
+## CharInfo per-character presentation
+
+The Character Info overview is authored per character, not shared. `PhaseCharInfo`
+instantiates `charDisplayData.charInfoCameraGroup` and `charInfoLightGroup`, and
+both now have contracts built from the source prefabs:
+
+- `charinfo_overview_camera_contract.json` — 30 characters. Each
+  `track_chr_<template>.prefab` is a Cinemachine rig with a vcam, look-at and
+  post volume per tab; the overview state is `vcam_overview` + `lookat_overview`.
+  The builder self-checks against Wulfa's independently recovered look-at and
+  vcam rotation and fails closed if either drifts.
+- `charinfo_light_group_contract.json` — 31 groups, 1,583 lights, 41 to 67 per
+  character, roles `RimLight_*`, `SpecLight_*`, `FogLight_*`, `FloorLight`,
+  `Point Light_overview`.
+
+This retires image-fitted framing: the lab's two fitted cameras are reproducible
+from source, and the rest of the roster can be framed the same way.
+
+Two consequences for measurement. A per-character shading delta is only valid
+once that character's own light group is applied, because the lab's default rig
+is not a substitute. And framing alone does not make two captures agree: the
+per-frame cursor and `UIGyroscopeEffect` offset stays unrecoverable, so
+comparison still needs alignment on top of correct framing.
+
+Do not enumerate either set from `CharacterDisplayConfig`. Its
+`CharacterDisplayData` entries are SerializeReference and recorded unparsed; 15
+of 33 yield no string hints, and counting camera groups there gives 11 against
+the asset map's 30. Use the asset map.
+
+Which lights apply to a given tab is not recovered. Every Light component
+serialises `m_Enabled = 1`, so the selection happens elsewhere, and the
+`_overview` naming on 202 of the 1,583 is the only in-prefab hint.
 
 ## Main animation gap
 
@@ -1111,6 +1149,56 @@ only stable interpretation and priorities.
    coherent default frame to promote anything into and every character gain
    stays gated behind a labeled non-original subset. The open items are
    `SphereOutside`, `ShadowPlane`, and `exactSourceAssetsReady`.
+
+   SphereOutside is already asset-complete; what blocks it is the CharInfo-frame
+   resolver gates, IFix-patched render parameters, render-graph/subpass state,
+   and frame-produced lighting resources. `required_next_capture` in
+   `deferred_lighting_recovery.json` specifies the one action that closes all of
+   them: a supported GPU capture of a settled original-client CharInfo frame
+   with SphereOutside visible, on an offline session. Static work does not
+   substitute for it. ShadowPlane additionally needs the shipped capsule-AO
+   producer and the exact character stencil writer.
+
+   Both of those ShadowPlane items are now narrower than the manifest stated.
+   The pinned ShadowReceiver fragment has no separate analytic capsule producer:
+   it consumes the VisibilitySH screen buffer and an SH-exponentiation LUT and
+   lerps toward `_CapsuleAoColor`, and the lab already implements that producer.
+   No constant remains open. `cb4` is `_VisibilitySHConstData`, and the two
+   vectors the fragment reads are the same two the VisibilitySH constants
+   contract already records as the selected resolver reads. What remains is
+   done. The capsule term is implemented and measurably improves both actors:
+   against the composed profile the overall band mean falls 12.2797 -> 11.4748
+   on Zhuangfy and 12.8723 -> 12.2405 on Wulfa, seven of eight regions improving
+   in each. It is gated on producer readiness and fails closed to the neutral
+   zero-occlusion endpoint. The recovered occlusion is broader and softer than
+   the original's more directional shadow, which is an open difference, and it
+   still falls on the ready-subset floor rather than the real presentation
+   scene. Two explanations for that softness are ruled out: the capsule set is
+   source-exact against retail's serialised
+   `HGCapsuleShadowHelper.m_capsuleShadowContainers` (Wulfa to 5e-15, Zhuangfy
+   to ~1e-7 bar one variant-selection difference), and the decode is confirmed
+   independently by `HGRP/VisibilitySH`'s own resolve pass, which performs the
+   identical exponentiation with the same threshold, quantisation, `.xy` LUT
+   read and full-precision constants. The only unconsumed retail field is
+   `isFoot`, set on the two foot capsules. The disambiguation is closed: the receiver's LUT is
+   `_ABLutTex` = `visibility_ab_lut`, path id 2892350180982884757, a 256x1
+   RGBA32 table the lab had never imported, distinct from the producer's
+   `_LogSHLutTex`. Its zero B/A channels independently confirm the xy read.
+   Extract it offline with a targeted AnimeStudio `--filter_data` run on the
+   Persistent chk that holds `HGRenderPipelineRuntimeResources`; the same run
+   reproduces the already-pinned SH LUT byte-for-byte, which validates the
+   method. The stencil writer is the already-pinned bit-32
+   character PreG writer contract, whose remainder is the same capture-blocked
+   canonical physical-camera stencil integration.
+
+   That capture has no tooling here and sits outside the current access policy:
+   the existing lab capture paths target the lab's own player, and
+   original-client access is pinned at `external_telemetry_only`, which by its
+   own `knownLimits` exposes no draw events, descriptors, constants, or render
+   targets, and whose `prohibitedActions` cover injector attachment and global
+   API layer registration. This line is therefore blocked on an owner decision
+   about capture method rather than on analysis. Do not widen that boundary
+   without one.
 
 1. Follow the API-2 resource/descriptor records after the HGTree front-end
    wrappers to their runtime object/queue consumer. The callback route now

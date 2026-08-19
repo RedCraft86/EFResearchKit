@@ -5041,6 +5041,19 @@ explicitly non-presented. `deferred.transform_variables`, `deferred.light_data`,
 are GPU-closed transports that publish nothing into the beauty frame, so no
 image measurement can promote them and none of them is production-eligible.
 
+That is a statement about today's frame, not about their value. The deferred
+chain and the missing backdrop are the same problem: the sidecar is the
+same-camera **SphereOutside** sidecar, and SphereOutside is exactly the source
+wall geometry whose absence blacks the background. `source_manifest.json`
+records SphereOutside as asset-complete down to its Sphere mesh and
+`T_default_mro_MRO` payload, with the HGRP/Lit HGBuffer stages, deferred
+resolver shader family, HighEnd GBuffer formats, and native draw entry points
+recovered. What is missing is the exact CharInfo-frame resolver gates, the
+IFix-patched render parameters, the render-graph/subpass state, and the
+frame-produced lighting resources. A forward/PBR substitute would change
+behaviour, so the whole physical presentation selector stays fail-closed.
+Closing pass 0 is therefore the route to the backdrop, not a detour from it.
+
 The recovered character response cannot be promoted without the CharInfo
 physical presentation scene. `EndfieldRecoveredCharInfoSky.PrepareForRender`
 keys on the source-energy-core keyword: when it is set the camera switches to
@@ -5052,13 +5065,187 @@ geometry, and the lab only holds that geometry as the partial ready subset with
 `exactSourceAssetsReady=false`.
 
 Any profile that enables the recovered character response without the
-ready-subset presentation therefore renders a near-black background. Measured on
-Wulfa with the five character-response selectors alone and no light scheduling,
-`background_wall` moves from 8.024 to 56.534 at -0.427 linear luminance and the
-alignment correlation collapses to 0.130. The composed profile only looks
-complete because the ready subset supplies wall, floor, and far grid. Completing
-the CharInfo physical presentation scene is therefore the blocking item for a
-promotable default frame, ahead of further character-response work.
+ready-subset presentation therefore renders a near-black background. The clean
+single-variable run sets only `ENDFIELD_RECOVERED_SOURCE_ENERGY_CORE=1` with
+every other selector forced off: the Wulfa backdrop strip falls from sRGB
+(188.4, 187.6, 186.1) to (14.3, 10.6, 11.0) and the whole frame from
+(176.0, 173.8, 172.1) to (30.0, 25.7, 26.3), while the character stays correctly
+lit. ECC alignment does not converge at all against the original, and the
+harness fails closed rather than reporting region deltas for frames that no
+longer differ by a camera transform.
+
+The composed profile only looks complete because the ready subset supplies wall,
+floor, and far grid. Completing the CharInfo physical presentation scene is
+therefore the blocking item for a promotable default frame, ahead of further
+character-response work.
+
+`deferred_lighting_recovery.json#required_next_capture` already names the single
+step that would close it: one settled original-client CharInfo frame with
+SphereOutside visible, captured with supported GPU tooling on an offline
+session. That one capture is specified to yield the DeferredLighting draw-event
+order, every attachment format and load/store and stencil state, the raw
+constant-buffer bytes at the HGBuffer and deferred-resolve draws, the resolved
+render-parameter booleans and IFix patch-table state, and the GBuffer/depth/
+scene-colour/shadow-mask/AO/SSR/reflection/fog/wetness resource exports. Nothing
+smaller unblocks the backdrop, and no amount of further static work substitutes
+for it. ShadowPlane needs its own additions on top: the shipped capsule-AO
+producer and the exact character stencil writer.
+
+No tooling for that capture exists in this repo, and it is outside the current
+access policy. `run_charinfo_d3d12_capture_diagnostic.bat` and
+`capture_m23_source_dxcap.ps1` both capture the lab's own player, not the retail
+client. Original-client access is pinned at
+`config/original_client_shader_recovery_capture.json` with
+`boundary=external_telemetry_only`, whose own `knownLimits` state that it
+"does not expose draw events, shader bytecode, descriptors, constants, textures,
+render targets", and whose `prohibitedActions` include debugger/injector
+attachment and "global Vulkan layer registration or API forcing" — the usual
+attach mechanism for a frame capture tool. The same config notes that
+AntiCheatExpert may hide the live executable path, and the existing OverlayShadow
+gap is already recorded as needing "a vendor-sanctioned or stock-profiler-
+compatible capture".
+
+So this line of work is blocked on an owner decision about capture method, not
+on further analysis. Do not widen the boundary or add an attach path without
+that decision.
+
+### ShadowPlane capsule AO
+
+The manifest previously listed a missing "shipped capsule-AO producer".
+Disassembling the pinned `HGRP/CharacterNPR_ShadowReceiver` fragment shows there
+is no such separate producer. The receiver samples the VisibilitySH screen
+buffer at `SV_Position.xy * cb0[82].zw`, decodes it through the log-SH LUT in
+`t4` with `cb4[2]` = `_GStarParams`, evaluates SH bands 0 and 1 with
+`0.282095` and `-0.325735`, and lerps the shaded result toward `cb5[3]` =
+`_CapsuleAoColor` by the resulting occlusion. That producer already exists in
+the lab as `EndfieldRecoveredVisibilitySHProducer`, publishing
+`_EndfieldRecoveredVisibilitySH`, `_LogSHLutTex`, and a readiness flag, and it
+already applies the identical `lut * _GStarParams.xy + _GStarParams.zw` form.
+
+Every magic number in that path is now derived rather than observed, which
+identifies the algorithm outright as spherical-harmonic exponentiation of a
+log-space visibility SH. `0.282095` is `Y00 = 1/(2*sqrt(pi))`, `3.544908` is its
+inverse `2*sqrt(pi)`, `-0.325735` is the band-1 irradiance convolution weight
+`-(2/3)*sqrt(3/(4*pi))`, and `0.406977` is `Y00 * log2(e)` — so the base-2 DXBC
+`exp` makes `exp2(sh.x * 0.406977)` exactly `exp(Y00 * sh.x)`. The buffer holds
+accumulated log occlusion and the receiver evaluates `exp(SH)` as
+`(exp(SH / 2^n))^(2^n)`, which is why it halves until the magnitude falls under
+the threshold, applies the LUT once, then repeats the SH self-product exactly
+`n` times.
+
+The last unknown is now closed too. `cb4` is `_VisibilitySHConstData`, the
+eight-vector buffer the lab already recovers from native evidence, and the two
+vectors this fragment reads are exactly the two
+`EndfieldRecoveredVisibilitySHConstantsContract` independently records as the
+selected resolver reads. `cb4[2]` is `(1.0, 0.31519, 1.0, 1.0)` and
+`cb4[3].xy` is `(0.21420201659202576, 0.0)`.
+
+Two earlier claims here were wrong and are corrected. `cb4[2]` is not
+`_GStarParams`: that is vector 1 of the same buffer,
+`(17.4207, 9.55479, -17.4207, -9.55479)`, and the name is a lab invention with
+zero hits in the installed `global-metadata.dat`. The `1/4.6 = 0.2173913`
+consistency bound for `cb4[3].x` was also close but wrong by about 1.5 percent —
+which is exactly why it was recorded as a bound rather than substituted as a
+value.
+
+The retail VisibilitySH shader-ID block is `_VisibilitySHConstData`,
+`_VisibilityCapsuleData`, `_LogSHLutTex`, `_ABLutTex`, `_VisibilitySHRT`,
+`_VisibilitySHDebugRT` — two LUTs, not one.
+`HGRenderPipelineRuntimeResources` names both:
+`textures.VisibilitySHLut` is path id `8323377478838034894`, the LUT the lab
+already had, and `textures.VisibilityABLut` is path id `2892350180982884757`,
+which the lab had never imported.
+
+The receiver's `t4` is `_ABLutTex` = `visibility_ab_lut`: 256x1 RGBA32 linear,
+1024 bytes, sha256
+`ca1a648d1a19434b41a9dbbe9f6ad0191c4c4e7f088341761725895748f33ed0`. Its B and A
+channels are zero across all 256 texels while R and G carry the rising
+coefficient curve, which independently confirms the `xy` read implied by the
+`t4.zxyw` swizzle. Binding the lab producer's `_LogSHLutTex` to `t4` would have
+sampled the wrong table — that LUT is a different one whose `R==B` and `G==A`.
+
+Recover it with a targeted extraction, which needs no game session:
+
+```bat
+tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe ^
+  "%ENDFIELD_GAME_ROOT%\Persistent\VFS\0CE8FA57\36243F039A1BFD05676B5D323B50D4AA.chk" ^
+  <out> --game ArknightsEndfield --types Texture2D --export_type Convert ^
+  --texture2d_native_payload
+```
+
+That same run also produces `visibility_sh_lut` byte-identical to the LUT the
+lab had already pinned, which validates the extraction path independently of the
+new asset.
+
+No constant, LUT identity, or channel read remains open on this path, and the
+term is now implemented. The receiver evaluates the recovered SH exponentiation
+and the producer publishes the `_ABLutTex` payload, the screen scale, and
+`VisibilitySHConstData` vectors 2 and 3 as the LUT coefficient and encode
+parameters. It is gated on the producer's readiness flag and fails closed to the
+neutral zero-occlusion endpoint when the constants cannot be built, so an
+unpublished frame is unchanged.
+
+This is the first change in this line of work that moves the image, and both
+actors agree. Against the composed profile the overall band mean falls from
+12.2797 to 11.4748 on Zhuangfy and from 12.8723 to 12.2405 on Wulfa, seven of
+eight regions improving in each case:
+
+| region | Zhuangfy | region | Wulfa |
+| --- | --- | --- | --- |
+| olive_skirt_cloth | -2.325 | red_hood | -2.237 |
+| ground_contact | -1.165 | face_skin | -1.289 |
+| dark_hardware | -0.865 | hair_side | -1.105 |
+| hair_dark | -0.803 | red_cape_strip | -0.954 |
+| face_skin | -0.441 | pale_skirt_cloth | -0.578 |
+| background_wall | -0.383 | background_wall | -0.046 |
+| pale_armor | -0.121 | ear_fur | -0.008 |
+| antler_hardware | +0.020 | dark_hardware | +0.304 |
+
+Those are the best results recorded for both: Zhuangfy 12.4549 default, 12.2797
+composed, 11.4748 with the capsule term; Wulfa 13.4919, 12.8723, 12.2405.
+
+Visual inspection confirms a real occlusion under the hand where the original
+capture has its shadow, not a global darkening. The recovered term is broader
+and softer than the original's more defined, directional shadow. That remains an
+open difference and must not be tuned away.
+
+The term still renders onto the ready-subset floor, a labeled non-original
+surface. The shadow is source-backed; the ground it falls on is not yet.
+
+Two follow-up checks close off the obvious explanations for that softness. The
+capsule set is source-exact: retail serialises ten capsules per actor as
+`HGCapsuleShadowHelper.m_capsuleShadowContainers`, and Wulfa matches the lab on
+every height, radius, intensity, offset and rotation to a worst delta of 5e-15,
+Zhuangfy to about 1e-7 apart from one upper-arm capsule at 0.162 degrees where
+retail carries twenty variants of the same signature. The helper binds fourteen
+skeleton joints including `Wrist_R/L` and `ToesEnd_R/L`, but those are capsule
+endpoints rather than extra capsules, so ten is the correct count. The only
+retail field the lab does not consume is `isFoot`, set on exactly the two foot
+capsules.
+
+The decode is also independently confirmed. `HGRP/VisibilitySH` contains its own
+resolve pass performing the identical SH exponentiation against a four-vector
+`cb0` using indices 2 and 3: same 4.5999999 threshold, same `x*255+0.5` then
+`*0.00390625` quantisation, same `.xy` LUT read, and the full-precision
+constants 3.54490781, 0.40697673 and 0.282094777. Two unrelated programs
+agreeing on all of it makes the recovered equation and the channel read
+independent of any single disassembly.
+
+Rebuild and verify the contract from the pinned bytecode with:
+
+```bat
+python tools\build_shadow_receiver_capsule_ao_contract.py
+python tools\build_shadow_receiver_capsule_ao_contract.py --check
+```
+
+It re-disassembles the hash-pinned DXBC and asserts all 16 instruction
+landmarks the conclusion rests on, so a shader revision cannot silently
+invalidate it.
+
+Do not edit `render_visual_delta_frames.bat` while a run is in flight. cmd.exe
+reads a batch file incrementally, so an edit mid-run makes it resume at a stale
+offset; one such run reported a normal backdrop for a profile that black-screens
+it, and the two contradictory results cost a full re-measurement to resolve.
 
 Underneath that backdrop failure the character surfaces do improve on their own.
 With the same five selectors and no ready subset: `dark_hardware` -5.076,
@@ -5074,6 +5261,112 @@ Metric agreement is not visual agreement. The composed `ear_fur` region improves
 by 3.235 because it corrects the ear-membrane tone over a large area, while the
 fur tufts inside it gain hard black strand outlines that the original capture
 does not have. Read the diff image, not only the table.
+
+## Gameplay Video Reference Set
+
+`tools/build_gameplay_video_reference_set.py` turns the recorded roster
+walkthrough into settled per-character reference frames. It re-verifies the
+video against the pin the Li Zhiyan oracle already uses, segments on the left
+stat panel, and identifies each segment by OCR of the name plate joined to
+`CharacterTable` through the CN I18n table. 29 of the 32 roster actors resolve;
+only `laevat` has no segment, and segment 0 is the roster grid rather than a
+detail view.
+
+Segment on the panel, not the frame. Idle animation holds the median whole-frame
+difference near 11/255 for the whole recording, so transitions do not stand out.
+Decode sequentially too: seeking per sample makes OpenCV decode from the nearest
+keyframe each time, which took over forty minutes against sixty-eight seconds
+for the same result.
+
+These frames are not yet drop-in comparable with lab renders. The recording
+carries its own camera state: against the hand-supplied `front_full.png`
+capture, the video's Wulfa frame sits about 198 px and 4.8 degrees away with an
+ECC correlation of 0.367, and a lab render aligns to the capture at 0.822 but to
+the video at 0.352. Feature-based initialisation does not rescue it either,
+because the two images differ in content as well as geometry: ORB keeps only 9
+of 800 matches as inliers, latching onto the UI overlay and the different
+backdrop.
+
+So the blocking item for roster-wide comparison is camera, not shading, and the
+camera data is now located.
+
+`PhaseCharInfo._RefreshCharModelAddon` reads `charDisplayData.charInfoCameraGroup`
+and `charInfoLightGroup` from `Beyond.Gameplay.CharacterDisplayConfig`. Those
+resolve to per-character prefabs under
+`assets/beyond/dynamicassets/gameplay/prefabs/charinfo/`, and the asset map shows
+**30 camera tracks and 31 light groups**, essentially the whole roster rather
+than a handful of exceptions.
+
+Do not read the camera set out of `CharacterDisplayConfig` itself. Its
+`CharacterDisplayData` entries deserialise as SerializeReference and AnimeStudio
+records them unparsed, so only best-effort string hints are available: 15 of the
+33 entries yield no hints at all and the rest yield between 10 and 16. Counting
+camera groups there suggests only 11 characters have one, which the asset map
+contradicts. Use the asset map.
+
+Each `track_chr_<template>.prefab` is a Cinemachine rig with a virtual camera,
+look-at target and post volume per UI tab, plus the dolly paths between tabs.
+The overview state is `vcam_overview`, `lookat_overview` and `volume_overview`.
+For Wulfa those read:
+
+```text
+lookat_overview  localPosition (0.022, 1.19, 0)
+vcam_overview    localPosition (0, 0.998, 3.46)
+vcam_overview    localRotation (-0.00036646938, 0.9991945, 0.009385596, 0.03901448)
+```
+
+The look-at position and vcam rotation match the lab's already-recovered
+`look_at_local_position` and `overview_vcam_local_rotation_xyzw` exactly, which
+confirms this is their source. The vcam local position is new; the lab did not
+have it.
+
+So the overview camera is authored per character and recoverable offline for the
+whole roster, and the lab's two fitted cameras can be replaced with source data.
+What remains unrecoverable is the per-frame cursor and `UIGyroscopeEffect`
+offset, which is why this recording and the earlier stills disagree even for the
+same character.
+
+Each camera track is paired with a light group, so those must be recovered
+together before a character's shading is comparable.
+
+## Play Mode Presentation
+
+The pipeline composes into an offscreen colour target and presents with
+`CommandBuffer.Blit` to `BuiltinRenderTextureType.CameraTarget`. That inverts Y
+when the destination is the screen on UV-starts-at-top devices but not when it
+is a RenderTexture, so the capture path, which always assigns
+`camera.targetTexture`, was upright while Play mode was upside down. There was
+no flip handling anywhere in the pipeline.
+
+Presentation is now flipped only when the destination is the backbuffer:
+
+```csharp
+camera.targetTexture == null && SystemInfo.graphicsUVStartsAtTop
+```
+
+The two plain presents go through `PresentToCameraTarget`, which uses the
+scale/offset blit. The third present runs `ExposureTonemap` pass 0, whose
+`vert_img` entry ignores `_MainTex_ST`, so that pass takes a
+`_EndfieldPresentFlipY` uniform and flips at the top of `Frag`; all five UV
+reads there (source, bloom, vignette, vignette distance, and the final dither)
+use the flipped coordinate so the presented image stays internally consistent.
+
+That uniform is a global set through the command buffer rather than a material
+property. Pass 0 records three blits per frame, two to render textures and one
+to the backbuffer, and this file already carries the lesson that mutating one
+Material twice before `ExecuteCommandBuffer` leaves every deferred blit
+observing the final value.
+
+The guard cannot affect the capture path, which never has a null
+`targetTexture`. That is verified rather than argued: re-rendering Zhuangfy
+after the change reproduces the previous PNG byte-for-byte, sha256
+`e008536b76c46a20abc9795d664d8e969d236c3ddf73c3d279db129a6506c6ea`.
+
+Orientation is all this fixes. Play mode remains an unvalidated output path:
+the pipeline still reports that with a null `camera.targetTexture` the
+"screen backbuffer format/write state is not proven", and no measurement in this
+lab has been taken through it. Treat Play mode as a viewing convenience until
+that path gets its own validation.
 
 ## Layout
 
