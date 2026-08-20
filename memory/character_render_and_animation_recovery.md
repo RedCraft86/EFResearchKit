@@ -1089,6 +1089,145 @@ Which lights apply to a given tab is not recovered. Every Light component
 serialises `m_Enabled = 1`, so the selection happens elsewhere, and the
 `_overview` naming on 202 of the 1,583 is the only in-prefab hint.
 
+The priority CharInfo actors Endminf, Pelica, and Chen now have the same
+targeted postmodel secondary-dynamics evidence as the earlier audit set. The
+generated `secondary_dynamics_owner_recovery.json` contract records their
+exact `BeyondBoneCloth` owners, root-bone paths, collider components, serialized
+constraint hashes, and Overview `MagicaClothWeight`. Endminf sequence captures
+provide a useful fail-closed visual gate: its body and sleeves align at the
+start pose, then the authored body bones move while coat/ribbon bones remain at
+their animation pose because the lab has no Magica solver. This is not a clip,
+camera, LOD, or renderer-isolation defect and must not be hidden by disabling
+the affected meshes. Exact simulation remains unavailable because the project
+does not contain the retail BeyondDynamicBone/Burst solver, PlayerLoop
+scheduling, or numeric frame fixtures; a substitute spring chain is not
+original-game recovery.
+
+The pinned gameplay recording and recovered Overview controllers now have a
+fail-closed composite phase contract. Chen's measured model swap is `199.3000
+s` and its controller-derived loop boundary is `204.5500 s`; Pelica's are
+`209.3333 s` and `215.74747 s`. These loop instants combine the video model
+swap with recovered entry, exit, and transition timing; they are not
+video-only measurements. The recording's `endmin` / `chr_9000_endmin` row does not prove
+the exact `chr_0003_endminf` identity, so Endminf remains inadmissible rather
+than inheriting the older alias. The central character band is only an audit
+ROI: it clips limbs, hair, cloth, or weapons and cannot serve as a complete
+character matte. Clip delivery remains gated on a verified per-frame alpha
+mask with no foreground-UI intersection.
+
+Secondary-motion lifecycle recovery has begun without adding a visual spring
+approximation. The pinned native `MagicaManager.SetCustomGameLoop` body proves
+seven ordered `PlayerLoopUtils.AddPlayerLoop` calls, all category anchors, six
+system anchors, and every `last`/`before` flag. The first EarlyUpdate system
+anchor still comes through an initialized TypeInfo static field; its
+`ScriptRunDelayedTasks` candidate is not promoted until that field maps to the
+literal independently. A Unity non-solver probe resolves all four Endminf
+cloth owners, 18 roots, and 10 collider references into 28 unique transforms,
+then verifies read -> callback -> identity-writeback plus disabled and
+zero-weight gates. It never registers the recovered PlayerLoop or sets
+`secondary_dynamics_verified`. Constraint/Burst numerics, exact callback
+ownership, the remaining static-field join, and IFix-patched execution remain
+separate gates before any solver can be called retail-equivalent.
+
+The priority actors now also have a fail-closed static solver-input contract.
+It joins the original serialized cloth, selection/prebuild, constraint,
+root-bone, and collider payloads for Endminf (4 cloth/10 colliders), Pelica
+(7/16), and Chen (6/6), covering 385 authored selection points. The builder
+rechecks hierarchy PPtrs, raw/serialized hashes, target-filter object sets,
+script identities, and the pinned PlayerLoop evidence before publication. It
+is deliberately an input contract only: Burst scheduling, constraint numerics,
+and transform writeback remain unimplemented and `retail_equivalent=false`.
+
+The pinned native callback/writeback boundary is now closed separately from
+the solver. `MagicaManager+<>c.<SetCustomGameLoop>b__40_1` is the second
+recovered PlayerLoop insertion (`FixedUpdate/ScriptRunBehaviourFixedUpdate`)
+and calls `ClothManager.ClothUpdate`; the latter's exact named call sites prove
+transform and animator-buffer reads, simulation dispatch, job completion, and
+transform/animator-buffer writeback ordering. The contract uses the shared
+installed-native gate and exact GameAssembly/metadata hashes. Its long native
+body still contains undecoded fragments, and Burst constraint numerics, job
+payload layout, Unity execution, and visual verification remain unresolved;
+therefore `secondary_dynamics_verified`, `solver_implemented`, and
+`retail_equivalent` all remain false.
+
+The Unity lifecycle probe now reserves `callback_invoked` and
+`writeback_invoked` for a future real runtime hook. Its current local audit is
+reported only as `audit_callback_marker` plus `identity_writeback`; a
+movement-enabled run explicitly skips identity writeback and fails. This
+prevents topology/order testing from masquerading as native execution. The
+next native payload edge reaches `StartSimulationStepJob.SetIndexCount` and
+now closes four outer job value layouts from the installed IL2CPP
+`fieldOffsets`/`typeDefinitionsSizes` tables plus their exact native setter
+stores. The Collider start job's 17 fields occupy the recovered native range
+through `_indexCount`; the other collider/simulation start/end jobs have the
+same independent size/last-field closure. Relevant managed `Execute` bodies
+and the BurstDirectCall fallback/wrapper are also hash-pinned. Closed-generic
+native accessors now recover the NativeArray buffer/length/allocator offsets
+and NativeReference data/allocator offsets. Across these four concrete jobs,
+59 NativeArray slots and four NativeReference slots independently span 16
+bytes; their single generic element types and native element sizes are also
+resolved, and the two scalar-to-array alignment gaps are explicit. This does
+not close the open generic sizes: they remain bounded only from below (16 and
+12 bytes respectively), while the wrapper-to-hashed-export mapping inside
+`lib_burst_generated.dll` is unresolved. The complete execution payload,
+numeric solver, and public-Unity execution therefore remain inadmissible.
+
+The next static layer now closes all 150 direct fields across the six large
+job element types used by the priority solver path: TeamData, CenterData,
+ClothParameters, Collider WorkData, TeamWindData, and WindData. Nested value
+types remain boundaries except for the helper-accessed direct layouts now
+closed for SpringConstraintParams, WindParams, TeamWindInfo, double3,
+quaternion, and float3; generic interiors remain unresolved. The indexed
+managed fallback Execute bodies independently confirm selected raw-buffer job
+offsets, element strides, and field displacements, while fixed-build Spring,
+Wind, and WindForceBlend contracts now decode their branch conditions,
+constants, memory access direction, canonical job-array ownership, element
+displacements, call setup, and bounded result writes. Dispatch and UnsafeDo
+rows that only forward into Burst remain classified as wrappers. A read-only
+payload decoder also validates the current selection data and maps all 334
+prebuild Transform PPtrs (333 unique hierarchy rows plus one explicit null),
+while preserving arrays without a proven stride as raw semantic gaps. None of
+these contracts recover the Burst kernel, instantiate a solver, prove retail
+execution, or modify a Transform.
+
+The installed client does contain its original `lib_burst_generated.dll`, but
+that is not a drop-in public-Unity plugin: its hashed exports are resolved
+through the retail Burst runtime and depend on the original IL2CPP/Jobs state.
+A second maintained read-only trace now targets that exact resolver boundary:
+it identifies the already-loaded or newly loaded Burst module, records only
+matching `GetProcAddress` calls with verified-GameAssembly caller frames, and
+fails closed on ambiguous modules or incomplete terminal state. This is the
+shortest route to the missing wrapper-to-hashed-export join, but only its
+static/check-only contract has run; no retail resolver trace has been recorded.
+The separate character-dynamics telemetry probe applies the shared pinned-native
+gate, then attaches bounded read-only
+Frida callbacks at the retail cloth/update/transform boundaries and writes the
+full verified file handshake into JSONL. The callbacks instrument function
+entry but do not call game functions or write game state. Until a real trace
+links the opaque pointers to an exact actor and transform path, the target is
+only a user capture label, actor identity remains unproven, and a writeback
+hook event proves only that the call occurred. No retail capture has yet been
+recorded.
+
+A 2 fps actor-only Overview probe successfully emitted complete
+start -> transition -> loop sequences for all three priority actors with no
+foreground UI, but visual inspection confirms the frozen-secondary-bone gap:
+Endminf and Chen show detached cloth/hair/ornament geometry, and Pelica remains
+incomplete. A proposed Pelica deco-widget join was rejected after its enabled
+capture was byte-identical in all 21 frames to the disabled control. The two
+source clips only toggle `Mesh_all`; they contain no mount/transform track, and
+the recovered prop remains actor-local with no proven visible contribution.
+Recover the original prefab/socket attachment and add prop-only A/B pixel or
+draw evidence before admitting that widget into Overview capture.
+
+The actor-only sidecar validator can additionally decode every referenced
+Unity PNG with `--verify-frames`. It checks CRC/filter decoding, dimensions,
+actual alpha extrema and transparent/nontransparent counts, bounded direct
+child paths, missing/duplicate files, and stale `frame_*.png` files. The 53
+current Endminf/Pelica/Chen frames pass this byte-level audit. This proves the
+PNG bytes match their capture sidecars; it does not promote alpha readback to
+an independently verified character matte.
+
 ## Main animation gap
 
 Remaining runtime systems include:
