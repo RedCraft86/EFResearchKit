@@ -8,6 +8,37 @@ from scripts import build_map_recovery_data as builder
 
 
 class BuildMapRecoveryDataTests(unittest.TestCase):
+    def test_streaming_instance_markers_preserve_matrix_and_mesh_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_root = root / "streaming"
+            source_root.mkdir()
+            (source_root / "indie_dg004.json").write_text(json.dumps({
+                "schemaVersion": 1,
+                "levelId": "indie_dg004",
+                "entityBases": [{
+                    "entityBase": "P_build_indie_floor+1_001_01",
+                    "mesh": {"name": "S_build_indie_floor+1_001_01_lod0", "pathId": 9},
+                }],
+                "instances": [{
+                    "entityId": 7,
+                    "name": "P_build_indie_floor+1_001_01#0_7",
+                    "entityBase": "P_build_indie_floor+1_001_01",
+                    "position": {"x": 1, "y": 2, "z": 3},
+                    "matrixColumnMajor": list(range(16)),
+                    "sourceFile": "InitChunkData_0_0_0_0.bytes",
+                }],
+            }), encoding="utf-8")
+            with mock.patch.object(builder, "ROOT", root), mock.patch.object(
+                builder, "STREAMING_INSTANCE_ROOT", source_root
+            ):
+                rows = builder._streaming_instance_markers("indie_dg004")
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["subKind"], "streaming_building")
+        self.assertEqual(rows[0]["streamingInstance"]["matrixColumnMajor"], list(range(16)))
+        self.assertEqual(rows[0]["streamingInstance"]["mesh"]["pathId"], 9)
+
     def test_e0m0_publishes_exact_reading_trigger_and_quest_coordinates(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -32,6 +63,7 @@ class BuildMapRecoveryDataTests(unittest.TestCase):
             self.assertEqual(reading["eventName"], "readepitaph")
             self.assertEqual(reading["position"], {"x": 1, "y": 2, "z": 3})
             self.assertEqual(payload["questPoints"][0]["questId"], "e0m0_q#10")
+            self.assertEqual(payload["defaultMission"], "e0m0")
             self.assertEqual(payload["renderBackground"]["status"], "asset_transform_recovery_required")
 
     def test_render_background_exposes_exact_level_obj_assets_without_placing_them(self):
@@ -701,7 +733,7 @@ class MapNamingAndMinimapTests(unittest.TestCase):
                 result = builder._map_layer_metadata("test_lv_static", [{"x": 1, "y": 2, "z": 3}])
         self.assertEqual(result["worldBounds"], {"minX": -64.0, "maxX": 192.0, "minZ": -128.0, "maxZ": 256.0})
         self.assertTrue(result["needInverseXZ"])
-        self.assertEqual(result["orientation"], "rotate180")
+        self.assertEqual(result["orientation"], "world_xz_quarter_turn_clockwise")
         self.assertEqual(result["coordinateSystem"], "UILevelMapLoadConfig world X/Z; image top is +Z")
         self.assertEqual(result["staticElements"], [{
             "id": "test_lv_static_se_1",
@@ -804,17 +836,15 @@ class MapNamingAndMinimapTests(unittest.TestCase):
         self.assertEqual(bytes(rgba[-1][:4]), bytes((30, 0, 0, 255)))
         self.assertEqual(bytes(rgba[-1][-4:]), bytes((40, 0, 0, 255)))
 
-    def test_minimap_background_rotates_art_when_the_config_inverts_xz(self):
+    def test_minimap_background_preserves_art_when_world_pins_invert_xz(self):
         green = (0, 255, 0, 255)
         blue = (0, 0, 255, 255)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_dir = root / "export_full/structured/StreamingAssets/Data/Json/UILevelMapLoadConfig"
             config_dir.mkdir(parents=True)
-            # The same two cells as the top-Z-up test, but this level's basic
-            # block marks the art as authored inverted, so the game (and the
-            # composite) must rotate the finished picture 180 degrees: the
-            # lower cell's art ends up on top, mirrored in both axes.
+            # needInverseXZ changes the world-pin projection, not the exported
+            # image. The in-game Dijiang reference keeps this chunk ordering.
             (config_dir / "test_lv004.json").write_text(json.dumps({
                 "basic": {"needInverseXZ": True},
                 "mediumChunks": {
@@ -836,13 +866,14 @@ class MapNamingAndMinimapTests(unittest.TestCase):
                 info = builder._minimap_background("test_lv004")
             self.assertEqual(info["status"], "in_game_minimap")
             self.assertTrue(info["inverted"])
-            # The world rectangle is unchanged; only the picture rotates.
+            # The world rectangle and exported picture orientation are unchanged.
             self.assertEqual(info["worldBounds"], {"minX": 0.0, "maxX": 128.0, "minZ": 0.0, "maxZ": 256.0})
             _w, _h, rgba = builder._png_decode(root / "webui/data/map_recovery/render/test_lv004_minimap.png")
-            self.assertEqual(bytes(rgba[0][:4]), bytes(green))
-            self.assertEqual(bytes(rgba[7][:4]), bytes(blue))
+            self.assertEqual(bytes(rgba[0][:4]), bytes(blue))
+            self.assertEqual(bytes(rgba[7][:4]), bytes(green))
             sidecar = json.loads((root / "webui/data/map_recovery/render/test_lv004_minimap.sources.json").read_text(encoding="utf-8"))
             self.assertTrue(sidecar["inverted"])
+            self.assertEqual(sidecar["imageOrientation"], "exported")
 
     def test_minimap_background_publishes_transparent_configured_tier_art_separately(self):
         base = (40, 40, 40, 255)

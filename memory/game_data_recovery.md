@@ -209,6 +209,17 @@ audibility. Managed literals and lookup keys remain identity-only until exact
 data flow reaches a typed playback API. Conditional and selector-based native
 paths preserve their branch condition, method, callsite, target binding, and
 binary fingerprints.
+`AudioCueTable` `behaviourExpr` and `conditionExpr` trees are serialized,
+validated, bounded AST evidence rather than an evaluator. The current metadata
+`EAudioExprType` maps `0=EMPTY`, `1=BINARY_EXPRESSION`,
+`2=FUNCTION_CALL`, `3=IDENTIFIER`, `4=UNARY_EXPRESSION`, `5=BOOL_LITERAL`,
+`6=INT_LITERAL`, `7=FLOAT_LITERAL`, and `8=STRING_LITERAL`; observed AudioCue
+operator names are `NOT_OPERATOR`, `PostEventIf`, `SetBoolVar`, `GetBoolVar`,
+and `CleanBoolVar`. Handler evaluation and its indirect dispatch/callback boundary
+remain separate `AudioCueSystem` evidence: a behavior `exprType=3` string leaf
+proves an authored Event request, but serialized expressions do not prove
+handler selection, condition truth, variable mutation, cue invocation, Event
+execution, or audibility.
 When a hash-only Event has a complete final-media leaf set identical to authored
 Events whose broad category agrees, the projection recovers that category for
 85 rows (56 SFX, 21 UI, 6 voice, 2 control). This is library-output evidence
@@ -240,6 +251,26 @@ one external source, and routes EndOfEvent through the user callback before
 removing the playing mapping and releasing the temporary audio object. This is
 still static argument/cleanup evidence; it does not prove a live request or
 the selected external file.
+The durable static closure now spans the VoicePlayer external key and
+descriptor through native manager retention, provider preparation, file/read
+transport, and decoder/PCM conversion. It remains a possible transport chain,
+not a per-request runtime identity. The importer fails closed: without one
+complete hash-verified capture session it publishes no `nativePairing`, even
+when isolated keys, paths, pointers, handles, or decoder records overlap.
+ModelView normal audio is separately authored when a non-custom normal behavior
+(`behaviorTag=0x0001`) has a nonzero `normalAudioId`; its controller,
+model/layer/state chain, and `behaviorTime` are retained. The fingerprint-locked
+`AudioBehavior.Execute` -> `AudioManager.PostEvent` route is static evidence
+only; state entry, execution, selected branch, and audibility remain unobserved.
+Positioned ModelView audio (`behaviorTag=0x0002`) has three stable authored
+branches. A direct-position Event with nonzero `normalAudioId` reaches the
+fingerprint-locked managed `AudioAdapter._PostEvent` route, stores its managed
+internal playing id in `m_audioHandle`, and has statically verified
+`LoadBank`/`PrepareEvent` boundaries. Custom and entity forms remain
+control-only; `_SwitchState` has no recovered playback sink, and neither form
+promotes an Event, media leaf, or owner. Runtime-dynamic completion, final
+`AkSoundEngine.PostEvent`/native playing-id handoff, Wwise selection,
+execution, and audibility remain unresolved.
 The current `VoiceContext` layout also closes the request-input side: `+0x18`
 is the audio-object id, `+0x20` the Wwise Event, and the inline
 `RuntimeVoiceData` block at `+0x48` supplies the localized `data` key at
@@ -262,6 +293,30 @@ that same value directly to `AkExternalSourceInfo.set_szFile` before native
 descriptor copying. The selected runtime template,
 actual file open/read, and live external-source callback/audibility remain
 separate evidence gaps.
+LevelScript audio actions remain keyed by validated union tags/member shapes and
+retain durable authored fields: `PlayAudiAtPosition.key`, `PlayAudio.key`,
+`PlayAudioAndWait.eventName`, `PlayAudioOnTarget.audioKey`,
+`PlayStandaloneMusic.startEvent`/`stopEvent`,
+`PostAudioStatusEvent.statusEnterEvent`/`statusExitEvent`,
+`PostMusicEvent.musicEvent`/`musicEventOnRelease`, and
+`PostAudioCue`/`PostAudioCueOnRelease.name`. Lifecycle fields are
+`PlayAudio.audioPlayingId`, `PlayVoice`/`PlayVoiceNarrative.voiceHandle`,
+`BlockAutoMusicChange.blockHandle`, and
+`PostAudioCue`/`PostAudioCueOnRelease.cueHandlerId`, consumed by
+`StopAudio.audioId`, `StopVoice.voiceHandle`, and
+`BlockAutoMusicChangeCancel.blockHandle`. A lifecycle producer requires an
+explicit serialized output path (`ParamSource=0`), while a consumer requires
+an explicit dynamic path; a join additionally requires the exact same
+LevelScript, source root, source path, lifecycle kind, and output path with one
+active final serialized slot. `ParamSource=100` is a runtime lookup and does
+not create a static handle; property and unknown sources remain unresolved.
+Producer-only rows remain producer-only, so this closes authored handle
+topology rather than live handle values, state, or execution.
+The native action topology is local static control flow: event roots are
+independently invoked listeners and are not sorted into chronology. Physical
+list order and listener priority are not Story or runtime execution order; only
+an explicit serialized edge within one LevelScript supplies a static next
+relation, and the serialized action ordinal identifies its authored slot.
 The serialized Wwise side now supplies an exact cookie join for this route:
 the current CN v150 HIRC corpus has 1,712 `Wwise External Source`
 (`pluginId=0x00080001`) source records, all with `sourceId=0x24db9834`, and
@@ -489,7 +544,9 @@ actions exactly (0 failed control tails): 3,455 SetState, 304 SetSwitch, 158 Set
 1,627 Stop/Pause/Resume, 122 Seek, 1,020 value/filter actions, 32 FX-slot
 actions, and the remaining Trigger/ResetPlaylist controls. Rows preserve the
 serialized Event→Action object paths/type labels, FNV IDs, float ranges, fade curves, active-action bit vectors,
-exception buses, and FX slot numbers. This is authored dispatch evidence only;
+exception buses, and FX slot numbers. Fade curves, flags, and action bit
+vectors are authored inputs, not execution or current-state observations. This
+is authored dispatch evidence only;
 The semantic join now maps 1,601 Action group references and 1,042 value
 references in the current CN projection. It covers the three native-backed
 selector roles (voice identity, surface material, and local/remote routing),
@@ -501,6 +558,14 @@ branches. The bank does not provide the live State/RTPC value, selected
 selector branch, effective inheritance, DSP execution, or audibility. The
 parser fails closed with a bounded offset/reason if an operation tail is not
 fully consumed.
+The Wwise v150 Type-6 tail is an authored package/association branch, not the
+current runtime value: a serialized default is not evidence of the active
+selector or selected child. Catalog labels marked inferred remain possible and
+non-exact. Only a complete validated v150 shape with an exact same-bank
+child-to-Sound/media join is accepted; malformed structures and cross-bank
+matches are rejected or remain unresolved. RTPC/State curves are authored
+controls, not branch predicates, so selected branch and audibility stay
+runtime-unobserved.
 An additional same-event join finds 12 Set/ResetGameParameter rows whose exact
 `idExt` equals an `InitialRTPC.rtpcId` (2 unique IDs); this proves an authored
 curve-target relationship only. The GameParameter name, live value, and final
@@ -510,6 +575,17 @@ literals, covering 14 serialized curve occurrences across six Event
 occurrences. Their catalog rows retain authored Event/context ownership,
 controlled properties, response-point counts, and interpolation labels; they
 are not live RTPC traces or audible-result proof.
+The schema-117 semantic `controlCatalog.staticRtpcAlignment` is the stricter
+six-name canonical `AU_RTPC_*` contract. It statically aligns those names and
+numeric HIRC IDs with serialized InitialRTPC curve/property evidence and
+same-event Set/ResetGameParameter controls; the complete mapping remains in
+`scripts/audio_semantics/rtpc_contract.py` and generated reports. The rows are
+`authoredStatic` evidence only. Publication requires the explicitly selected
+`global-metadata.dat` + `GameAssembly.dll` hash gate, and fails closed on a
+missing/mismatched selected or source hash, malformed/incomplete rows, or stale
+serialized evidence. Runtime parameter values, setter execution, target
+objects, selected branches, DSP state, and audibility remain runtime-only.
+The page projection is refreshed only by a formal semantic rebuild.
 
 Native Audio evidence is evaluated against the explicitly selected client:
 `global-metadata.dat` and its sibling `GameAssembly.dll` must both match the
@@ -1180,6 +1256,11 @@ Do not copy volatile inventories into this file.
 
 ## Remaining gaps
 
+- Audio recovery queue: runtime-dynamic completion and final
+  `AkSoundEngine.PostEvent`/native playing-id/Wwise selection; authorized runtime
+  source-state -> provider/file/decoder/PCM correlation for one VoicePlayer
+  request; and ownership/use evidence for `unknownUse` media, which remains
+  identity-only.
 - Server-side mission/property producers and activation policy.
 - Active IFix/server combat overrides, live targets, evaluator chronology, and
   blackboard values.

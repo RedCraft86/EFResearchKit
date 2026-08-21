@@ -440,18 +440,61 @@ literals (14 curve occurrences across six Event occurrences). The catalog keeps
 the exact authored Event/context, controlled AkProp targets, response-point
 count, and interpolation mix; it does not claim a live RTPC update or audible
 result.
+The schema-117 semantic payload additionally publishes
+`controlCatalog.staticRtpcAlignment`. Its six-name canonical `AU_RTPC_*`
+contract (mapping owned by `audio_semantics/rtpc_contract.py`) aligns exact
+numeric HIRC IDs with serialized InitialRTPC curve/property evidence and
+same-event Set/ResetGameParameter controls. `rtpc_alignment.py` publishes this
+as `authoredStatic` evidence only. The explicit selected
+`global-metadata.dat` + `GameAssembly.dll` hash gate is required; a missing or
+mismatched selected/source hash, malformed or incomplete contract, or stale
+serialized evidence fails closed and withholds static names/rows. Runtime
+parameter values, setter execution, target objects, selected branches, DSP,
+and audibility remain runtime-only. Existing page data changes only after a
+formal semantic rebuild (normally `export.bat`, or the targeted
+`python scripts\build_audio_semantics.py --language CN` run).
 These are authored trigger parameters, not evaluated runtime state, effective
 inheritance, selected branch, DSP execution, or audibility. Any unsupported or
 truncated tail is published as `failedClosed` with an offset and reason.
 
+`build_audio_semantics.py` publishes the authored v150 Type-6 selector subset
+only on lazy Event-detail records as `selectorBranches` with
+`selectorBranchSchemaVersion=1`; compact Event summaries omit this payload.
+Package child IDs join decoded media only through exact same-bank
+`soundObjectIds` evidence. Malformed or cross-bank structures stay unresolved
+and fail closed, while runtime selector choice and audibility remain unresolved.
+
+The same semantic build publishes LevelScript audio lifecycle evidence with the
+serialized action ordinal and validated static topology. Producer/consumer
+links are admitted only for an exact same-LevelScript source-root and source-
+path identity, with one active final serialized slot and one unique output
+path. `story_builder.level_bindings` resolves `ParamSource=200` dynamic string
+properties only through the strict `LevelScriptBriefData` property formatter;
+`ParamSource=100` and unknown/runtime sources remain runtime-unresolved and
+cannot become handles. Full lifecycle identities and raw paths are lazy
+Event-detail data under `levelScriptAudioLifecycle` schema version 1; compact
+rows retain only bounded summaries. This is authored serialized topology, not
+runtime handle state, action execution, branch selection, or audibility.
+
 `build_audio_semantics.py` is the thin orchestration/publishing surface for
 the Audio evidence page. Maintained domain code lives under
 `audio_semantics/`: `native_evidence.py` owns the installed-build gate,
+`external_source.py` owns static External Source voice-route/path joins, and
+`model_view_projection.py` owns authored ModelView normal/positioned branch
+projection;
 `identifiers.py` owns Wwise hashes and managed string identities,
 `managed_literals.py`, `responsive_voice.py`, and `voice_requests.py`
 own their respective consumer evidence, `interactive_components.py` and
 `authored_components.py` own serialized component recovery,
-`table_contexts.py` owns authored table/config scanning, and
+`table_contexts.py` owns authored table/config scanning and the validated,
+bounded AudioCue expression AST. It retains source coordinates, raw scalar
+forms, and bounded diagnostics without evaluating serialized expressions.
+`audio_cue_native.py` owns the explicit selected `global-metadata.dat` /
+`GameAssembly.dll` hash gate for current AudioCue enum names. Full ASTs are
+lazy Event-detail data under `audioCueExpressionSchemaVersion=1`; compact rows
+publish counts and summaries only. When the selected native inputs are
+missing or mismatched, expression and operator numbers remain opaque rather
+than receiving guessed names. `table_contexts.py` and
 `event_projection.py` / `event_summary.py` own WebUI row projection.
 `build_audio.py` imports shared primitives from those owners instead of
 treating the semantics entry point as a utility module.

@@ -148,10 +148,43 @@ and conditional native consumers retain their method, callsite, target, and
 branch evidence. Selector and dictionary paths stay distinct from direct
 literal playback.
 
+Ordinary Audio details show authored AudioCue behavior Event requests and
+string-literal/variable-name controls as typed evidence. The complete numeric
+AST, raw scalar fields, source paths, and validation diagnostics are lazy
+detail data shown only in the debug surface; compact rows retain summary/count
+fields. Selected condition truth, handler/indirect dispatch, cue execution,
+Wwise branch selection, and audibility remain runtime-blocked and are not
+presented as observed facts.
+
+Normal Audio records also include a collapsed LevelScript audio lifecycle
+section for authored producer/consumer links, serialized action ordinals, and
+validated static topology. Raw serialized output paths, record offsets, and
+local IDs stay debug-only. Runtime handle values/state, action execution,
+branch selection, and audibility remain blocked, so the section is not a live
+playback trace.
+
 Missing or mismatched installed native inputs never erase authored Audio rows.
 They suppress only build-locked callsites/mappings and expose a bounded
 unavailable diagnostic, so the page cannot silently present stale native
 addresses as current evidence.
+
+ModelView normal Event contexts show the authored controller/model/layer/state
+chain and `behaviorTime` with explicit labels: `Authored`, `static route`,
+`runtime unobserved`, and `branch unresolved`. The static route is shown only
+for the fingerprint-locked `AudioBehavior.Execute` -> `AudioManager.PostEvent`
+contract; execution, branch choice, and audibility are not inferred. The
+runtime overview publishes no `nativePairing` unless a complete
+hash-verified closed capture session exists; partial key/path/handle/decoder
+overlaps remain unobserved.
+
+Positioned ModelView audio shows three authored branches. Only a direct-position
+Event with nonzero `normalAudioId` exposes Event/media candidates. Its managed
+Adapter route, managed internal playing id, and `LoadBank`/`PrepareEvent`
+boundaries are static evidence; runtime-dynamic completion, final
+`AkSoundEngine.PostEvent`/native playing-id handoff, Wwise selection,
+execution, and audibility remain unresolved. Custom and entity forms are
+control-only; `_SwitchState` has no recovered playback sink, and neither form
+promotes an Event, media leaf, or owner.
 
 Responsive voice contexts also expose exact matching `AIBark` request rows and
 the fingerprint-locked native dispatch chain. The UI must keep the live
@@ -383,6 +416,11 @@ selector roles plus the ten current-metadata music State groups; the same
 15-row catalog labels typed type-6 package branches (including XInput/ScePad
 and music enum members) when an exact value is available. Unmatched IDs remain
 visibly numeric.
+Ordinary Audio Event details show authored Type-6 candidates in a collapsed
+`Possible State/Switch branches` section. Raw object/group/value IDs and
+ownership/parser evidence stay debug-only; inferred catalog labels remain
+possible rather than exact. The selected runtime branch and audibility are
+runtime-blocked and are not presented as observed facts.
 The current CN projection also marks 12 same-event Set/ResetGameParameter →
 InitialRTPC exact-ID joins (2 unique IDs) as authored curve targets. It does
 not invent a parameter name or claim a live value/effective DSP response.

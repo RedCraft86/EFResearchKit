@@ -1115,6 +1115,34 @@ ROI: it clips limbs, hair, cloth, or weapons and cannot serve as a complete
 character matte. Clip delivery remains gated on a verified per-frame alpha
 mask with no foreground-UI intersection.
 
+Endminf's Overview effects are no longer represented only by the external
+`sk_fx_endminf_01_ui.fbx` animation hint. The playable-character catalog now
+retains explicit `A_fx_endminf_ui_*` clips and only the `P_fxui_*` root
+Animator candidates found in each clip's exact original effect-prefab
+container. This is a source-inventory edge, not a playback or renderability
+claim: the current export still lacks the prefab GameObject/Transform,
+renderer, material/texture closure, mount, and runtime scheduling evidence.
+Recover those dependencies with a targeted AnimeStudio extraction before
+admitting any Endminf effect to the viewer. Pelica's private deco controller
+does source-prove its Overview widget state and clip ownership, but the
+published manifest predates the current controller join; regenerate it only
+with that pending controller change intentionally included. Chen's hidden
+weapon props still have no source-proven Overview visibility or mount binding.
+
+The targeted Endminf effect extractor now expands those catalog roots to the
+complete exact same-container AssetMap row set, writes an AnimeStudio object
+index, and rejects incomplete summaries or root/clip identity drift. The
+validated extraction closes the three prefab hierarchies and their decoded
+ParticleSystem/ParticleSystemRenderer payloads with zero index errors. It does
+not yet close rendering: most particle material slots, every particle mesh,
+all effect scripts, child Animator controllers, and even the local material's
+shader/texture dependencies remain external PPtrs. The root Animators are
+controller-null; three clips have direct root ownership, while the fourth has
+no proven owner. Resolve those external CAB-filename/PathID targets globally
+and recover controller scheduling before building Unity effect prefabs. The
+current extracted hierarchy is evidence-ready but deliberately not admitted
+as visible or playable.
+
 Secondary-motion lifecycle recovery has begun without adding a visual spring
 approximation. The pinned native `MagicaManager.SetCustomGameLoop` body proves
 seven ordered `PlayerLoopUtils.AddPlayerLoop` calls, all category anchors, six
@@ -1189,6 +1217,51 @@ prebuild Transform PPtrs (333 unique hierarchy rows plus one explicit null),
 while preserving arrays without a proven stride as raw semantic gaps. None of
 these contracts recover the Burst kernel, instantiate a solver, prove retail
 execution, or modify a Transform.
+
+The managed EndSimulationStepJob indexed fallback is now closed separately for
+its fixed-build integration chain: method identity and next-pointer span, 28
+branch edges, the TeamData spring test, Project/ProjectOnPlane/AutoToFloat3
+helper calls, and the collision, velocity, friction, old-position, and result
+array accesses are decoded and cross-checked against the canonical job layout.
+The transform bridge now independently rebuilds its method identities and call
+edges from the current metadata and GameAssembly for TransformAccessArray
+lifecycle calls plus ReadTransform, ReadAnimatorBufferData, RestoreTransform,
+and WriteTransform jobs. This proves the position/rotation getter and setter
+call surface only: array ownership, schedule execution, result-array pointer
+provenance, Burst numerics, and visual equivalence remain open. The nearest
+numeric blocker is still mapping the three BurstDirectCall range wrappers to
+the installed `lib_burst_generated.dll` hashed exports; the prepared resolver
+telemetry requires a running pinned retail client.
+
+That mapping boundary is now narrowed on both sides. The three DirectCall
+entries and their static constructors are hash-pinned through
+GetFunctionPointer/Discard, BurstCompiler, and BurstCompilerService, including
+their RIP globals and indirect pointer calls. A complete instruction-decoded
+census of the pinned Burst DLL's 628 hashed exports leaves one ABI-compatible
+simulation candidate (`c7e2be088565d3ff7a6e7ba86d23fd51`), three collider-start
+candidates, and two collider-end candidates. These remain candidate sets, not
+published wrapper-to-export identities: no hash bytes in GameAssembly join the
+two sides. The read-only resolver probe now attributes requests by validated
+GameAssembly caller windows and checks the full hashed export map, module
+bases, pointer arithmetic, capture phases, and clean completion for both
+already-loaded and post-attach resolver loads. Its disk hashes and runtime
+path/size/base observations do not prove an in-memory module hash. A real
+retail capture is still required before any candidate can be promoted.
+
+Deeper thunk/core analysis narrows the semantic side further without changing
+that identity boundary. The simulation candidate is a 25-container ABI
+marshaler whose only indirect target is a zero-fill `.data` function-pointer
+slot, so its numeric CFG is unavailable on disk. Both collider-end candidates
+are branchless six-parameter forwarding thunks with distinct zero-fill slots;
+they preserve the same four incoming registers and expose no payload
+dereference or writeback, so static evidence cannot choose between them. For
+collider start, tracing both CPU variants to their cores leaves one unique
+semantic candidate, `8b3d2761aaaac71a35d4a2557d570456`: it alone preserves the
+canonical 17-parameter order and matches the flag byte guard, team-id stride
+2, TeamData stride 464, and index/length access. The other two candidates are
+excluded by parameter reorder and incompatible byte/word accesses. Even this
+unique semantic match is not a wrapper-to-hash identity; the runtime resolver
+request remains the required join.
 
 The installed client does contain its original `lib_burst_generated.dll`, but
 that is not a drop-in public-Unity plugin: its hashed exports are resolved
