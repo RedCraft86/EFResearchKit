@@ -39,11 +39,13 @@ if __package__ == "scripts":
         identifiers,
         interactive_components,
         managed_literals,
+        media_ownership,
         model_view_projection,
         native_evidence,
         purpose,
         responsive_voice,
         rtpc_alignment,
+        scene_backgrounds,
         table_contexts,
         voice_requests,
     )
@@ -58,11 +60,13 @@ elif not __package__:
         identifiers,
         interactive_components,
         managed_literals,
+        media_ownership,
         model_view_projection,
         native_evidence,
         purpose,
         responsive_voice,
         rtpc_alignment,
+        scene_backgrounds,
         table_contexts,
         voice_requests,
     )
@@ -103,8 +107,8 @@ PROJECTILE_SOUND_PHASES = {
 # authoritative value; these names are presentation labels, not a claim that
 # selection behavior was evaluated offline.
 SELECTION_HIRC_TYPES = frozenset({5, 6, 12, 13})
-AUDIO_SEMANTIC_SCHEMA_VERSION = 117
-TRIGGER_CONTEXT_SCHEMA_VERSION = 38
+AUDIO_SEMANTIC_SCHEMA_VERSION = 131
+TRIGGER_CONTEXT_SCHEMA_VERSION = 39
 
 MONO_BEHAVIOUR_AUDIO_EVENT_FIELD_NAMES = frozenset({
     "_spawnAudioEvent", "_finishAudioEvent", "_onHitAudioEvent",
@@ -120,7 +124,7 @@ MONO_BEHAVIOUR_AUDIO_EVENT_PREFILTERS = tuple(sorted(
     {f"{name}._id" for name in MONO_BEHAVIOUR_AUDIO_EVENT_FIELD_NAMES}
     | {"soundBase.soundSpawn", "soundBase.soundFinish", "PlayLineSound"}
 ))
-MONO_BEHAVIOUR_AUDIO_CONTEXT_CACHE_SCHEMA_VERSION = 2
+MONO_BEHAVIOUR_AUDIO_CONTEXT_CACHE_SCHEMA_VERSION = 3
 RUNTIME_MODEL_CACHE_SCHEMA_VERSION = 109
 METADATA_EVENT_SYMBOL_SCHEMA_VERSION = 1
 METADATA_EVENT_SYMBOL_RE = re.compile(r"^AU_[A-Z0-9_]+$")
@@ -7225,7 +7229,10 @@ def collect_mono_behaviour_audio_id_contexts(
     accepted_occurrences = 0
     raw_candidate_files = 0
     raw_fallback_occurrences = 0
+    raw_field_counts: Counter[str] = Counter()
     role_counts: Counter[str] = Counter()
+    layout_counts: Counter[str] = Counter()
+    event_role_counts: dict[str, Counter[str]] = defaultdict(Counter)
     occurrence_keys: set[tuple[str, str, int, str, int]] = set()
     raw_object_candidates: set[tuple[str, str, int]] = set()
     for source_root in ("StreamingAssets", "Persistent"):
@@ -7280,7 +7287,7 @@ def collect_mono_behaviour_audio_id_contexts(
                     continue
                 occurrence_keys.add(occurrence_key)
                 accepted_occurrences += 1
-                role_counts[authored_role] += 1
+                raw_field_counts[authored_role] += 1
                 context: dict[str, Any] = {
                     "kind": "monoBehaviourAudioIdField",
                     "semanticRole": "authoredSerializedComponentAudioEvent",
@@ -7338,6 +7345,16 @@ def collect_mono_behaviour_audio_id_contexts(
                     context["serializedPlaybackControls"] = {
                         key: value for key, value in controls.items() if value not in (None, "")
                     }
+                context.update(managed_literals.project_mono_behaviour_audio_field(
+                    scalar_path,
+                    field_name=authored_role,
+                    component_layout=context.get("managedReferenceLayout"),
+                    component_type=script.get("fullName") or row.get("name"),
+                ))
+                context["authoredFieldNameRaw"] = authored_role
+                role_counts[str(context.get("authoredFieldRole") or managed_literals.MONO_BEHAVIOUR_AUDIO_GENERIC_ROLE)] += 1
+                layout_counts[str(context.get("componentLayout") or "unknown")] += 1
+                event_role_counts[f"0x{event_hash:08x}"][str(context.get("authoredFieldRole") or managed_literals.MONO_BEHAVIOUR_AUDIO_GENERIC_ROLE)] += 1
                 _append_context(
                     contexts,
                     seen,
@@ -7360,7 +7377,7 @@ def collect_mono_behaviour_audio_id_contexts(
                     continue
                 occurrence_keys.add(occurrence_key)
                 accepted_occurrences += 1
-                role_counts[authored_role] += 1
+                raw_field_counts[authored_role] += 1
                 context = {
                     "kind": "monoBehaviourAudioIdField",
                     "semanticRole": "authoredSerializedComponentAudioEvent",
@@ -7399,6 +7416,16 @@ def collect_mono_behaviour_audio_id_contexts(
                     ],
                     **managed_details,
                 }
+                context.update(managed_literals.project_mono_behaviour_audio_field(
+                    scalar_path,
+                    field_name=authored_role,
+                    component_layout=managed_details.get("managedReferenceLayout"),
+                    component_type=script.get("fullName") or row.get("name"),
+                ))
+                context["authoredFieldNameRaw"] = authored_role
+                role_counts[str(context.get("authoredFieldRole") or managed_literals.MONO_BEHAVIOUR_AUDIO_GENERIC_ROLE)] += 1
+                layout_counts[str(context.get("componentLayout") or "unknown")] += 1
+                event_role_counts[f"0x{event_hash:08x}"][str(context.get("authoredFieldRole") or managed_literals.MONO_BEHAVIOUR_AUDIO_GENERIC_ROLE)] += 1
                 _append_context(
                     contexts,
                     seen,
@@ -7450,7 +7477,7 @@ def collect_mono_behaviour_audio_id_contexts(
             occurrence_keys.add(occurrence_key)
             accepted_occurrences += 1
             raw_fallback_occurrences += 1
-            role_counts[authored_role] += 1
+            raw_field_counts[authored_role] += 1
             context = {
                 "kind": "monoBehaviourAudioIdField",
                 "semanticRole": "authoredSerializedComponentAudioEvent",
@@ -7482,6 +7509,15 @@ def collect_mono_behaviour_audio_id_contexts(
                     "componentStateOrCallbackExecutionNotObserved",
                 ],
             }
+            context.update(managed_literals.project_mono_behaviour_audio_field(
+                scalar_path,
+                field_name=authored_role,
+                component_type=metadata.get("scriptFullName") or metadata.get("name"),
+            ))
+            context["authoredFieldNameRaw"] = authored_role
+            role_counts[str(context.get("authoredFieldRole") or managed_literals.MONO_BEHAVIOUR_AUDIO_GENERIC_ROLE)] += 1
+            layout_counts[str(context.get("componentLayout") or "unknown")] += 1
+            event_role_counts[f"0x{event_hash:08x}"][str(context.get("authoredFieldRole") or managed_literals.MONO_BEHAVIOUR_AUDIO_GENERIC_ROLE)] += 1
             _append_context(
                 contexts,
                 seen,
@@ -7509,6 +7545,12 @@ def collect_mono_behaviour_audio_id_contexts(
             "rawJsonFallbackOccurrences": raw_fallback_occurrences,
             "distinctEventHashes": len(contexts),
             "fieldRoleCounts": dict(sorted(role_counts.items())),
+            "rawFieldNameCounts": dict(sorted(raw_field_counts.items())),
+            "componentLayoutCounts": dict(sorted(layout_counts.items())),
+            "eventFieldRoleCounts": {
+                event_hex: dict(sorted(counts.items()))
+                for event_hex, counts in sorted(event_role_counts.items())
+            },
             "runtimeExecutionObserved": 0,
             "cacheStatus": "refreshed",
             "evidenceBoundary": boundary,
@@ -8827,11 +8869,13 @@ def _build_remote_common_trigger_contexts(
     export_root: Path,
     event_rows: Iterable[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Expose exact RemoteCommonTable auto-play Event requests.
+    """Expose exact RemoteCommonTable Event requests.
 
     ``audioId`` is the SFX/Wwise Event used by the automatic remote-communication
-    surface.  ``voiceId`` is a separate dialogue voice identity and is retained
-    as such; it is never merged into the Event/media candidate.
+    surface.  Lifecycle ``startAudioEvent``/``endAudioEvent`` fields are
+    published separately from auto-play rows. ``voiceId`` is a separate
+    dialogue voice identity and is retained as such; it is never merged into
+    the Event/media candidate.
     """
 
     event_by_id = {
@@ -8960,6 +9004,120 @@ def _build_remote_common_trigger_contexts(
                         str(line.get("voiceId") or ""),
                     ],
                 })
+    for event_id, lifecycle_rows in table_contexts.collect_remote_common_event_contexts(
+        export_root
+    ).items():
+        for raw_context in lifecycle_rows:
+            if (
+                not isinstance(raw_context, dict)
+                or raw_context.get("kind") != "remoteCommonLifecycleAudio"
+            ):
+                continue
+            remote_id = str(raw_context.get("remoteCommonId") or "").strip()
+            lifecycle_phase = str(raw_context.get("lifecyclePhase") or "").strip().lower()
+            field = str(raw_context.get("field") or "").strip()
+            event_name = str(raw_context.get("authoredEventId") or event_id).strip()
+            if not remote_id or lifecycle_phase not in {"start", "end"} or not event_name:
+                continue
+            identity = (
+                remote_id.casefold(), lifecycle_phase, event_name.casefold()
+            )
+            if identity in seen:
+                continue
+            seen.add(identity)
+            event = event_by_id.get(event_name.casefold(), {})
+            media_refs = [
+                _trigger_media_ref(media, fallback_id=event_name)
+                for media in event.get("media") or []
+                if isinstance(media, dict)
+            ]
+            media_refs = [media for media in media_refs if media]
+            found_in_wwise = event.get("foundInWwise") is True
+            if media_refs and any(media.get("src") for media in media_refs):
+                media_status = "directWwiseMediaCandidate"
+                media_evidence = "exactWwiseEventDirectSound"
+            elif found_in_wwise:
+                media_status = "wwiseEventHasNoDecodedMedia"
+                media_evidence = "wwiseEventHasNoDecodedMediaLeaf"
+            else:
+                media_status = "audioEventUnresolved"
+                media_evidence = "audioEventMissingFromCurrentWwiseIndex"
+            event_hash = event.get("hash")
+            if isinstance(event_hash, int):
+                event_hash &= 0xFFFFFFFF
+            event_meaning = {
+                key: event.get(key)
+                for key in (
+                    "category", "foundInWwise", "possibleMediaCount", "playRootCount",
+                    "runtimeSelection", "mediaRelationTypes", "traversalStatus",
+                )
+                if event.get(key) not in (None, "", [])
+            }
+            if event_hash is not None:
+                event_meaning["eventHash"] = event_hash
+            trigger_role = str(
+                raw_context.get("triggerRole")
+                or f"RemoteCommonTable{lifecycle_phase.title()}AudioEvent"
+            )
+            binding_status = str(
+                raw_context.get("triggerBindingStatus")
+                or f"exactRemoteCommon{lifecycle_phase.title()}AudioEvent"
+            )
+            runtime_status = str(
+                raw_context.get("runtimeActivationStatus")
+                or "remoteCommonLifecycleExecutionNotObserved"
+            )
+            source_ref = str(raw_context.get("source") or raw_context.get("sourcePath") or "")
+            contexts.append({
+                "triggerId": ":".join((
+                    "remoteCommonLifecycleAudio", remote_id, lifecycle_phase, event_name,
+                )),
+                "semanticKind": "remoteCommonLifecycleAudio",
+                "triggerRole": trigger_role,
+                "situation": {
+                    "remoteCommonId": remote_id,
+                    "lifecyclePhase": lifecycle_phase,
+                    "field": field,
+                    "autoPlay": raw_context.get("autoPlay") is True,
+                    "eventId": event_name,
+                    "eventHash": event_hash,
+                },
+                "meaning": {
+                    "id": event_name,
+                    "audio": event_name,
+                    "eventId": event_name,
+                    **event_meaning,
+                },
+                "action": {
+                    "action": "RemoteCommonLifecycleAudio",
+                    "triggerRole": trigger_role,
+                    "sourcePath": source_ref,
+                    "runtimeActivationStatus": runtime_status,
+                },
+                "owner": {
+                    "remoteCommonId": remote_id,
+                    "lifecyclePhase": lifecycle_phase,
+                    "field": field,
+                },
+                "selection": {
+                    "autoPlay": raw_context.get("autoPlay") is True,
+                    "audioSelectionStatus": binding_status,
+                    "mediaSelectionStatus": media_status,
+                    "runtimeSelectionStatus": "remoteCommonLifecycleSelectionUnobserved",
+                },
+                "mediaRefs": media_refs,
+                "evidence": {
+                    "definition": "exactRemoteCommonTableLifecycleAudioField",
+                    "owner": "exactRemoteCommonLifecycleField",
+                    "media": media_evidence,
+                    "runtimeExecution": runtime_status,
+                },
+                "runtimeActivationStatus": runtime_status,
+                "sourceRefs": [
+                    value for value in (source_ref, remote_id, field, event_name)
+                    if value
+                ],
+            })
     return contexts
 
 
@@ -10244,8 +10402,17 @@ def _build_mono_behaviour_audio_id_trigger_contexts(
                     "eventId": event_id,
                     "eventHash": event.get("hash"),
                     "componentName": context.get("componentName"),
+                    "componentType": context.get("componentType") or context.get("scriptFullName"),
+                    "componentLayout": context.get("componentLayout"),
+                    "authoredFieldRole": context.get("authoredFieldRole"),
+                    "authoredFieldNameRaw": context.get("authoredFieldNameRaw"),
                     "gameObjectName": context.get("gameObjectName"),
                     "serializedFieldPath": field_path,
+                    "serializedFieldPathRaw": context.get("serializedFieldPathRaw") or field_path,
+                    "serializedFieldPathStatus": context.get("serializedFieldPathStatus"),
+                    "hierarchyPath": context.get("hierarchyPath") or [],
+                    "worldPosition": context.get("worldPosition"),
+                    "worldPositionStatus": context.get("worldPositionStatus"),
                 },
                 "meaning": {
                     "eventId": event_id,
@@ -10262,6 +10429,8 @@ def _build_mono_behaviour_audio_id_trigger_contexts(
                     for key in (
                         "sourceRoot", "serializedFile", "sourceAssetFile", "sourceOffset",
                         "pathId", "componentName", "scriptPathId", "scriptFullName",
+                        "componentType", "componentLayout", "authoredFieldNameRaw",
+                        "serializedFieldPathRaw", "serializedFieldPathStatus", "serializedFieldName",
                         "gameObjectName", "worldPositionStatus", "managedReferenceClass",
                         "managedReferenceNamespace", "managedReferenceAssembly",
                         "managedReferenceLayout", "managedReferencePayloadLength",
@@ -10613,13 +10782,25 @@ def build_trigger_context_catalog(
         if not isinstance(event, dict):
             continue
         mono_event_rows.append({**event, "contexts": list(rows or [])})
+    remote_common_contexts = (
+        _build_remote_common_trigger_contexts(export_root, event_rows)
+        if export_root is not None
+        else []
+    )
     grouped = {
         "radio": _build_radio_trigger_contexts(media_rows, line_meanings),
         "envTalk": _build_envtalk_trigger_contexts(webui_root, language, media_rows),
         "remoteCommonAudio": (
-            _build_remote_common_trigger_contexts(export_root, event_rows)
-            if export_root is not None
-            else []
+            [
+                row for row in remote_common_contexts
+                if row.get("semanticKind") == "remoteCommonAudio"
+            ]
+        ),
+        "remoteCommonLifecycleAudio": (
+            [
+                row for row in remote_common_contexts
+                if row.get("semanticKind") == "remoteCommonLifecycleAudio"
+            ]
         ),
         "dialogTimeline": _build_dialog_timeline_trigger_contexts(
             webui_root,
@@ -10683,6 +10864,22 @@ def build_trigger_context_catalog(
             ),
             "voiceIdKeptSeparate": True,
         },
+        "remoteCommonLifecycleAudio": {
+            "source": (
+                "RemoteCommonTable.startAudioEvent/endAudioEvent with fail-closed "
+                "Persistent-over-Streaming row overlay"
+            ),
+            "storedTriggerContextRows": len(grouped["remoteCommonLifecycleAudio"]),
+            "rowsWithPlayableMedia": sum(
+                any(
+                    isinstance(media_ref, dict) and media_ref.get("src")
+                    for media_ref in row.get("mediaRefs") or []
+                )
+                for row in grouped["remoteCommonLifecycleAudio"]
+                if isinstance(row, dict)
+            ),
+            "runtimeExecutionObserved": 0,
+        },
         "luaPostEvent": {
             "source": "decrypted VFS Lua AudioAdapter/AudioManager.PostEvent string literals",
             "storedTriggerContextRows": len(grouped["luaPostEvent"]),
@@ -10715,6 +10912,22 @@ def build_trigger_context_catalog(
         "monoBehaviourAudioId": {
             "source": "AnimeStudio MonoBehaviour object-index exact AudioId scalar paths",
             "storedTriggerContextRows": len(grouped["monoBehaviourAudioId"]),
+            "authoredFieldRoleCounts": dict(sorted(Counter(
+                str(row.get("triggerRole") or managed_literals.MONO_BEHAVIOUR_AUDIO_GENERIC_ROLE)
+                for row in grouped["monoBehaviourAudioId"]
+                if isinstance(row, dict)
+            ).items())),
+            "componentLayoutCounts": dict(sorted(Counter(
+                str((row.get("situation") or {}).get("componentLayout") or "unknown")
+                for row in grouped["monoBehaviourAudioId"]
+                if isinstance(row, dict)
+            ).items())),
+            "rowsWithExactPlacement": sum(
+                bool((row.get("situation") or {}).get("worldPosition"))
+                and (row.get("situation") or {}).get("worldPositionStatus") == "exact_transform_hierarchy"
+                for row in grouped["monoBehaviourAudioId"]
+                if isinstance(row, dict)
+            ),
             "runtimeExecutionObserved": 0,
         },
         "audioGlobalConfig": {
@@ -10914,7 +11127,7 @@ def build_trigger_context_catalog(
             "media references. Definition, media availability, and runtime execution "
             "are independent evidence states. The shard never claims that a LevelScript, "
             "NpcProxy, dialog lifecycle state transition, Timeline Director, Wwise branch, "
-            "RemoteCommon auto-play row, or selected line/slot actually ran. "
+            "RemoteCommon auto-play or lifecycle row, or selected line/slot actually ran. "
             "AudioDialogCustomEventTable lifecycle rows identify a static request/scheduling "
             "hook; RemoteCommon voiceId remains separate from its audioId; neither proves "
             "PostEvent or an audible media leaf. ModelView normal Event rows keep the "
@@ -12433,24 +12646,6 @@ def annotate_media_trigger_contexts(
     }
 
 
-_MONO_BEHAVIOUR_SFX_FIELD_ROLES = frozenset({
-    "soundSpawn",
-    "_spawnAudioEvent",
-    "_onHitAudioEvent",
-    "startHitEvent",
-    "normalAudiId",
-    "soundFinish",
-    "_onEnableLoopAudioEvent",
-    "soundEvent",
-    "_onRotationGroundOneShotAudioEvent",
-    "_finishAudioEvent",
-    "_onStartMoveAudioEvent",
-    "notAimableSoundEvent",
-    "aimableSoundEvent",
-    "capacityCountLowEvent",
-})
-
-
 def annotate_media_trigger_semantic_categories(
     media_rows: Iterable[dict[str, Any]],
     trigger_context_catalog: dict[str, Any] | None,
@@ -12482,9 +12677,25 @@ def annotate_media_trigger_semantic_categories(
             category = ""
         semantic_kind = str(context.get("semanticKind") or "")
         trigger_role = str(context.get("triggerRole") or "")
+        situation = context.get("situation")
+        situation = situation if isinstance(situation, dict) else {}
         mono_sfx_role = (
             semantic_kind == "monoBehaviourAudioIdField"
-            and trigger_role in _MONO_BEHAVIOUR_SFX_FIELD_ROLES
+            and managed_literals.is_mono_behaviour_audio_sfx_role(
+                trigger_role,
+                raw_field=(
+                    context.get("authoredFieldNameRaw")
+                    or situation.get("authoredFieldNameRaw")
+                ),
+                serialized_field_path=(
+                    context.get("serializedFieldPath")
+                    or situation.get("serializedFieldPath")
+                ),
+                serialized_field_path_status=(
+                    context.get("serializedFieldPathStatus")
+                    or situation.get("serializedFieldPathStatus")
+                ),
+            )
         )
         for media_ref in context.get("mediaRefs") or ():
             if not isinstance(media_ref, dict):
@@ -12816,6 +13027,28 @@ def build_audio_semantic_data(
         for row in audio_index.get("wwiseEventInventory") or []
         if isinstance(row, dict) and isinstance(row.get("eventHash"), int)
     }
+    try:
+        scene_background_semantics = scene_backgrounds.collect_scene_background_semantics(
+            export_root,
+            audio_index,
+        )
+    except scene_backgrounds.SceneBackgroundError as exc:
+        scene_background_semantics = {
+            "schemaVersion": scene_backgrounds.SCHEMA_VERSION,
+            "status": "unavailable",
+            "error": str(exc),
+            "sources": [],
+            "counts": {},
+            "scenes": [],
+            "unresolvedSceneDefinitions": [],
+            "audioMaps": [],
+            "sceneEmitters": [],
+            "eventContexts": {},
+            "evidenceBoundary": (
+                "Scene background semantics were withheld because the published "
+                f"AnimeStudio object-index gate failed: {exc}"
+            ),
+        }
     external_source_event_identity_audit = external_source.collect_event_identity_audit(
         audio_index,
         language=language,
@@ -12913,6 +13146,7 @@ def build_audio_semantic_data(
         char_interact_semantics.get("eventContexts") or {},
         physics_audio_semantics.get("eventContexts") or {},
         model_view_semantics.get("eventContexts") or {},
+        scene_background_semantics.get("eventContexts") or {},
         mono_behaviour_audio_id_semantics.get("eventContexts") or {},
         levelscript_semantics.get("eventContexts") or {},
         table_contexts.collect_table_contexts(
@@ -13050,6 +13284,20 @@ def build_audio_semantic_data(
         rtpc_names_by_hex=rtpc_names_by_hex,
         metadata_event_symbols=metadata_event_symbol_catalog.get("entries") or [],
     )
+    # Scene-global attribution is a compact projection of the already merged
+    # scene catalog and Event contexts.  The domain helper owns the exact
+    # producer/scene gates; this entrypoint only wires collected data through.
+    for event in events:
+        event.update(scene_backgrounds.project_scene_global_compact_attribution(
+            event.get("contexts") or [],
+            scene_background_semantics,
+            contexts_truncated=event.get("contextsTruncated") is not False,
+        ))
+        event.update(scene_backgrounds.project_scene_emitter_compact_attribution(
+            event.get("contexts") or [],
+            scene_background_semantics,
+            scene_background_semantics.get("streamingInstanceCatalog"),
+        ))
     # Full AudioCue ASTs are detail-only.  Event list rows remain compact;
     # ``event_summary`` intentionally does not project this payload.
     for event in events:
@@ -13058,6 +13306,23 @@ def build_audio_semantic_data(
         )
         if cue_detail:
             event["audioCueExpressionDetail"] = cue_detail
+    character_audio_catalog = (
+        media_ownership.collect_character_audio_identity_catalog(export_root)
+    )
+    animation_action_ownership = (
+        media_ownership.annotate_event_animation_action_identity(events)
+    )
+    animation_callback_ownership = (
+        media_ownership.annotate_event_animation_callback_links(
+            events, export_root=export_root
+        )
+    )
+    character_audio_ownership = (
+        media_ownership.annotate_event_character_audio_identity(
+            events,
+            character_audio_catalog,
+        )
+    )
     action_control_evidence_by_event = {
         str(event.get("id") or ""): list(event.get("evidence") or [])
         for event in events
@@ -13247,6 +13512,11 @@ def build_audio_semantic_data(
         media,
         events,
     )
+    media_coarse_ownership = media_ownership.annotate_media_coarse_ownership(
+        media,
+        scene_background_semantics,
+        event_rows=events,
+    )
     ai_bark_catalog = responsive_voice.build_ai_bark_catalog(
         export_root,
         audio_index,
@@ -13413,6 +13683,55 @@ def build_audio_semantic_data(
     })
     trigger_context_name = "trigger_contexts.json"
     json_dump(out_root / trigger_context_name, trigger_context_catalog)
+    scene_background_name = "scene_backgrounds.json"
+    json_dump(out_root / scene_background_name, {
+        key: value
+        for key, value in scene_background_semantics.items()
+        if key != "eventContexts"
+    })
+    scene_global_exact_events = [
+        event for event in events
+        if event.get("sceneGlobalContextStatus") == "exact"
+    ]
+    scene_global_unavailable_events = [
+        event for event in events
+        if event.get("sceneGlobalContextStatus") == "unavailable"
+    ]
+    scene_global_exact_context_count = sum(
+        sum(
+            context.get("kind") == "sceneGlobalAudioEvent"
+            for context in event.get("contexts") or ()
+            if isinstance(context, dict)
+        )
+        for event in scene_global_exact_events
+    )
+    scene_global_exact_scene_ids = {
+        str(scene_id)
+        for event in scene_global_exact_events
+        for scene_id in event.get("sceneGlobalSceneIds") or ()
+        if str(scene_id)
+    }
+    scene_emitter_exact_events = [
+        event for event in events
+        if event.get("sceneEmitterAttributionStatus") == "exactSceneAttribution"
+    ]
+    scene_emitter_prefab_local_events = [
+        event for event in events
+        if event.get("sceneEmitterAttributionStatus") == "prefabLocalSceneUnresolved"
+    ]
+    scene_emitter_unavailable_events = [
+        event for event in events
+        if event.get("sceneEmitterAttributionStatus") in {
+            "sceneEmitterAttributionUnavailable",
+            "sceneEmitterAttributionConflict",
+        }
+    ]
+    scene_emitter_exact_scene_ids = {
+        str(scene_id)
+        for event in scene_emitter_exact_events
+        for scene_id in event.get("sceneEmitterSceneIds") or ()
+        if str(scene_id)
+    }
 
     # The raw audio index can be reused from an older build and may contain
     # native/static GameParameter names that were produced without this
@@ -13463,7 +13782,11 @@ def build_audio_semantic_data(
             "counts": audio_index.get("counts") or {},
         },
         "metadataEventSymbolAliases": metadata_event_symbol_catalog,
-        "shards": {"events": events_name, "media": media_name},
+        "shards": {
+            "events": events_name,
+            "media": media_name,
+            "sceneBackgrounds": scene_background_name,
+        },
         "triggerContexts": {
             "shard": trigger_context_name,
             "schemaVersion": trigger_context_catalog.get("schemaVersion"),
@@ -13477,7 +13800,40 @@ def build_audio_semantic_data(
             **media_trigger_context_counts,
             **media_trigger_semantic_category_counts,
             **media_post_process_counts,
+            **{
+                key: value
+                for key, value in media_coarse_ownership.items()
+                if key not in {"schemaVersion", "evidenceBoundary"}
+            },
+            **{
+                key: value
+                for key, value in animation_action_ownership.items()
+                if key not in {"schemaVersion", "evidenceBoundary"}
+            },
             "eventRecords": len(events),
+            "sceneBackgroundExactNamedScenes": int(
+                (scene_background_semantics.get("counts") or {}).get(
+                    "exactNamedScenes", 0
+                )
+            ),
+            "sceneBackgroundGlobalEventOccurrences": int(
+                (scene_background_semantics.get("counts") or {}).get(
+                    "sceneGlobalEventOccurrences", 0
+                )
+            ),
+            "sceneBackgroundEmitterEventRequests": int(
+                (scene_background_semantics.get("counts") or {}).get(
+                    "sceneEmitterEventRequests", 0
+                )
+            ),
+            "sceneGlobalCompactExactEvents": len(scene_global_exact_events),
+            "sceneGlobalCompactExactContexts": scene_global_exact_context_count,
+            "sceneGlobalCompactExactScenes": len(scene_global_exact_scene_ids),
+            "sceneGlobalCompactUnavailableEvents": len(scene_global_unavailable_events),
+            "sceneEmitterCompactExactEvents": len(scene_emitter_exact_events),
+            "sceneEmitterCompactExactScenes": len(scene_emitter_exact_scene_ids),
+            "sceneEmitterCompactPrefabLocalEvents": len(scene_emitter_prefab_local_events),
+            "sceneEmitterCompactUnavailableEvents": len(scene_emitter_unavailable_events),
             "namedEvents": len(named_event_ids),
             "eventsFoundInWwise": linked_events,
             "wwiseEventObjectHashes": sum(
@@ -13525,6 +13881,18 @@ def build_audio_semantic_data(
             ),
             "skillIdDictionaryWwiseEventAliases": len(
                 audio_index.get("skillIdDictionaryWwiseEventAliases") or []
+            ),
+            "grammarRecoveredWwiseEventNames": len(
+                audio_index.get("grammarRecoveredWwiseEventNames") or []
+            ),
+            "grammarRecoveredWwiseEventNameIsolatedPreimages": len(
+                (audio_index.get("grammarEventNameRecovery") or {}).get("isolatedEntries") or []
+            ),
+            "grammarRecoveredWwiseEventNameExpectedCoincidences": float(
+                (audio_index.get("grammarEventNameRecovery") or {}).get(
+                    "expectedCoincidentalPreimages"
+                )
+                or 0.0
             ),
             "snsVoiceMessageEvents": context_kind_event_counts.get("snsVoiceMessageEvent", 0),
             "voiceNarratingChannelEvents": context_kind_event_counts.get("voiceNarratingChannelEvent", 0),
@@ -13967,6 +14335,18 @@ def build_audio_semantic_data(
                 "definitions": physics_audio_semantics.get("definitions") or [],
             },
             "modelViewStateAudio": model_view_semantics.get("stats") or {},
+            "sceneBackgroundAudio": {
+                "status": scene_background_semantics.get("status"),
+                "shard": scene_background_name,
+                **(scene_background_semantics.get("counts") or {}),
+                "evidenceBoundary": (
+                    scene_background_semantics.get("evidenceBoundary") or ""
+                ),
+            },
+            "mediaCoarseOwnership": media_coarse_ownership,
+            "characterAudioNameIdentity": character_audio_ownership,
+            "animationCallbackLink": animation_callback_ownership,
+            "animationActionNameMatch": animation_action_ownership,
             "monoBehaviourAudioId": mono_behaviour_audio_id_semantics.get("stats") or {},
             "levelScriptAudio": levelscript_semantics.get("stats") or {},
             "levelSequenceAudio": {
@@ -14154,6 +14534,21 @@ def build_audio_semantic_data(
             "charInteractAudio": (char_interact_semantics.get("stats") or {}).get("evidenceBoundary") or "",
             "physicsAudio": physics_audio_semantics.get("evidenceBoundary") or "",
             "modelViewStateAudio": model_view_semantics.get("evidenceBoundary") or "",
+            "sceneBackgroundAudio": (
+                scene_background_semantics.get("evidenceBoundary") or ""
+            ),
+            "mediaCoarseOwnership": media_coarse_ownership.get(
+                "evidenceBoundary", ""
+            ),
+            "characterAudioNameIdentity": character_audio_ownership.get(
+                "evidenceBoundary", ""
+            ),
+            "animationCallbackLink": animation_callback_ownership.get(
+                "evidenceBoundary", ""
+            ),
+            "animationActionNameMatch": animation_action_ownership.get(
+                "evidenceBoundary", ""
+            ),
             "monoBehaviourAudioId": mono_behaviour_audio_id_semantics.get("evidenceBoundary") or "",
             "levelScriptAudio": levelscript_semantics.get("evidenceBoundary") or "",
             "levelSequenceAudio": (

@@ -164,6 +164,20 @@
       eventContextSituations: "Event context situations",
       storyLineBindings: "Exact story-line bindings",
       purposeStatus: "Purpose status",
+      coarseOwnership: "Coarse ownership",
+      coarseOwnershipRoles: "Ownership roles",
+      coarseOwnershipScenes: "Owned scenes",
+      coarseOwnershipEvidence: "Ownership evidence",
+      characterAudioOwners: "Character audio owners",
+      characterAudioEvents: "Character audio Events",
+      animationCallbackOwners: "Animation callback owners",
+      animationCallbackClips: "Animation callback clips",
+      animationCallbackNpcOwners: "NPC callback owners",
+      animationCallbackNpcTemplates: "NPC owner templates",
+      animationCallbackNpcTokens: "NPC actor tokens",
+      animationCallbackNpcOccurrenceOwners: "NPC callback occurrence owners",
+      animationCallbackNpcOccurrenceTemplates: "NPC occurrence templates",
+      animationCallbackNpcOccurrenceTokens: "NPC occurrence actor tokens",
       libraryBankEvent: "Authored Event in the same bank",
       locationDirectDialogMedia: "Direct dialog media",
       locationAuthoredEventContext: "Recovered authored Event context",
@@ -212,12 +226,27 @@
       audioTriggerContextCatalog: "Authored trigger-context coverage",
       enemyTriggerVoiceActionCatalog: "Enemy trigger-voice action mapping",
       contextAnimation: "Animation",
+      contextSceneAudio: "Scene audio",
+      contextSceneGlobalExact: "Exact authored scene-global context",
+      contextSceneGlobalUnavailable: "Scene-global attribution unavailable",
       contextSharedPlayableAnimation: "Shared playable-character animation",
       contextFootstepSystem: "Footstep / material system",
       customFootstepParameters: "OnCustomFootStep parameters",
       customFootstepRuntime: "Footstep runtime boundary",
       customFootstepNativeAnchors: "Current-build native anchors",
       contextOwnerUnresolvedAnimation: "Animation owner unresolved",
+      contextNpcAnimation: "NPC animation",
+      contextAnimationCallbackNpcOwner: "Animation callback NPC owner",
+      sceneGlobalSceneIds: "Authored scene IDs",
+      sceneGlobalSemanticRoles: "Scene-global semantic roles",
+      sceneGlobalContextStatus: "Scene-global context status",
+      sceneEmitterSceneIds: "Exact emitter scene IDs",
+      sceneEmitterSceneContainmentStatuses: "Emitter scene-containment statuses",
+      sceneEmitterStreamingPrefabIdentityStatuses: "Emitter prefab-identity statuses",
+      sceneEmitterAttributionStatus: "Emitter attribution status",
+      contextSceneEmitterPrefabLocal: "Prefab-local emitter; scene unresolved",
+      contextSceneEmitterUnavailable: "Scene-emitter attribution unavailable",
+      contextSceneEmitterExact: "Exact scene-emitter attribution",
       contextScripted: "LevelScript",
       contextLevelScriptTrigger: "Scripted audio trigger",
       contextRadioTrigger: "Exact LevelScript radio trigger",
@@ -434,6 +463,20 @@
       triggerSelection: "\u89e6\u53d1选\u62e9证据\u8fb9\u754c",
       storyLineBindings: "\u7cbe\u786e\u5267\u60c5\u53f0\u8bcd\u7ed1\u5b9a",
       purposeStatus: "\u7528\u9014\u72b6\u6001",
+      coarseOwnership: "\u7c97\u7c92\u5ea6\u5f52\u5c5e",
+      coarseOwnershipRoles: "\u5f52\u5c5e\u89d2\u8272",
+      coarseOwnershipScenes: "\u6240\u5c5e\u573a\u666f",
+      coarseOwnershipEvidence: "\u5f52\u5c5e\u8bc1\u636e",
+      characterAudioOwners: "\u89d2\u8272\u97f3\u9891\u5f52\u5c5e",
+      characterAudioEvents: "\u89d2\u8272\u97f3\u9891 Event",
+      animationCallbackOwners: "\u52a8\u753b\u56de\u8c03\u5f52\u5c5e",
+      animationCallbackClips: "\u52a8\u753b\u56de\u8c03 Clip",
+      animationCallbackNpcOwners: "NPC \u56de\u8c03\u5f52\u5c5e",
+      animationCallbackNpcTemplates: "NPC \u6a21\u677f",
+      animationCallbackNpcTokens: "NPC \u89d2\u8272 token",
+      animationCallbackNpcOccurrenceOwners: "NPC \u56de\u8c03 occurrence \u5f52\u5c5e",
+      animationCallbackNpcOccurrenceTemplates: "NPC occurrence \u6a21\u677f",
+      animationCallbackNpcOccurrenceTokens: "NPC occurrence \u89d2\u8272 token",
       libraryBankEvent: "\u540c\u4e00 bank \u5185\u7684\u521b\u4f5c Event",
       locationDirectDialogMedia: "\u76f4\u63a5\u5bf9\u8bdd\u5a92\u4f53",
       locationAuthoredEventContext: "\u5df2\u6062\u590d\u521b\u4f5c Event \u4e0a\u4e0b\u6587",
@@ -481,13 +524,28 @@
       levelSequenceGapContexts: "\u5f52属缺口",
       levelSequenceRuntimeBoundary: "Timeline \u8fd0行时证据边界",
       audioTriggerContextCatalog: "音频触发情境覆盖",
-      contextAnimation: "\u52a8\u753b",
+     contextAnimation: "\u52a8\u753b",
+     contextSceneAudio: "\u573a\u666f\u97f3\u9891",
+      contextSceneGlobalExact: "\u7cbe\u786e\u521b\u5efa\u7684\u573a\u666f\u5168\u5c40\u4e0a\u4e0b\u6587",
+      contextSceneGlobalUnavailable: "\u573a\u666f\u5168\u5c40\u5f52\u5c5e\u4e0d\u53ef\u7528",
       contextSharedPlayableAnimation: "\u53ef\u73a9\u89d2\u8272\u5171\u7528\u52a8\u753b",
       contextFootstepSystem: "\u811a\u6b65 / \u6750\u8d28\u7cfb\u7edf",
       customFootstepParameters: "OnCustomFootStep \u53c2\u6570",
       customFootstepRuntime: "\u811a\u6b65\u8fd0\u884c\u65f6\u8bc1\u636e\u8fb9\u754c",
       customFootstepNativeAnchors: "\u5f53\u524d\u7248\u672c\u539f\u751f\u951a\u70b9",
       contextOwnerUnresolvedAnimation: "\u52a8\u753b\u5f52\u5c5e\u672a\u89e3\u6790",
+     contextNpcAnimation: "NPC \u52a8\u753b",
+     contextAnimationCallbackNpcOwner: "\u52a8\u753b\u56de\u8c03 NPC \u5f52\u5c5e",
+      sceneGlobalSceneIds: "\u521b\u5efa\u7684\u573a\u666f ID",
+      sceneGlobalSemanticRoles: "\u573a\u666f\u5168\u5c40\u8bed\u4e49\u89d2\u8272",
+      sceneGlobalContextStatus: "\u573a\u666f\u5168\u5c40\u4e0a\u4e0b\u6587\u72b6\u6001",
+      sceneEmitterSceneIds: "\u7cbe\u786e\u53d1\u5c04\u5668\u573a\u666f ID",
+      sceneEmitterSceneContainmentStatuses: "\u53d1\u5c04\u5668\u573a\u666f\u5305\u542b\u72b6\u6001",
+      sceneEmitterStreamingPrefabIdentityStatuses: "\u53d1\u5c04\u5668 Prefab \u8eab\u4efd\u72b6\u6001",
+      sceneEmitterAttributionStatus: "\u53d1\u5c04\u5668\u5f52\u5c5e\u72b6\u6001",
+      contextSceneEmitterPrefabLocal: "Prefab \u672c\u5730\u53d1\u5c04\u5668\uff1b\u573a\u666f\u672a\u89e3\u6790",
+      contextSceneEmitterUnavailable: "\u573a\u666f\u53d1\u5c04\u5668\u5f52\u5c5e\u4e0d\u53ef\u7528",
+      contextSceneEmitterExact: "\u7cbe\u786e\u573a\u666f\u53d1\u5c04\u5668\u5f52\u5c5e",
       contextScripted: "LevelScript \u811a\u672c",
       contextLevelScriptTrigger: "\u811a\u672c\u97f3\u9891\u89e6\u53d1",
       contextRadioTrigger: "\u7cbe\u786e LevelScript \u65e0\u7ebf\u7535\u89e6\u53d1",
@@ -796,9 +854,17 @@
     cutscene: "contextCutscene",
     timeline: "contextTimeline",
     animation: "contextAnimation",
+    sceneAudio: "contextSceneAudio",
+    sceneGlobalExact: "contextSceneGlobalExact",
+    sceneGlobalUnavailable: "contextSceneGlobalUnavailable",
+    sceneEmitterPrefabLocal: "contextSceneEmitterPrefabLocal",
+    sceneEmitterUnavailable: "contextSceneEmitterUnavailable",
+    sceneEmitterExact: "contextSceneEmitterExact",
     sharedPlayableAnimation: "contextSharedPlayableAnimation",
     footstepSystem: "contextFootstepSystem",
     ownerUnresolvedAnimation: "contextOwnerUnresolvedAnimation",
+    npcAnimation: "contextNpcAnimation",
+    animationCallbackNpcOwner: "contextAnimationCallbackNpcOwner",
     scripted: "contextScripted",
     levelScriptTrigger: "contextLevelScriptTrigger",
     radioTrigger: "contextRadioTrigger",
@@ -904,10 +970,11 @@
 
   function contextGroup(kind) {
     if (["characterSkill", "enemySkill", "buffPlaySoundAction", "projectileSoundField", "abilityVoiceTriggerAction"].includes(kind)) return "gameplay";
+    if (["sceneGlobalAudioEvent", "sceneEmitterAudioEvent"].includes(kind)) return "sceneAudio";
     if (kind === "cutsceneTimeline") return "cutscene";
     if (kind === "levelSequenceAudio") return "timeline";
     if (kind === "timelineAudioCueBehaviorEvent") return "timeline";
-    if (["characterAnimation", "enemyAnimation", "animationCallbackOwnerUnresolved"].includes(kind)) return "animation";
+    if (["characterAnimation", "enemyAnimation", "animationCallbackOwnerUnresolved", "npcAnimation", "animationCallbackNpcOwner"].includes(kind)) return "animation";
     if (["levelScriptAudioAction", "levelScriptAudioCueBehaviorEvent", "levelScriptRadioTrigger"].includes(kind)) return "scripted";
     if (["table", "tableEventHash", "dialogLifecycle", "interactiveAudioTrigger", "interactiveComponentTrigger", "interactiveComponentPropertyAudio", "interactivePropertyMapAudio", "interactiveTemplateConfigAudio", "interactiveTemplateActionAudio", "interactiveEmbeddedActionAudio", "binaryManagedLiteralCallsite", "nativeCustomStateCallsite", "physicsAudioComponentEvent", "modelViewStateAudioEvent", "modelViewStatePositionAudioEvent", "monoBehaviourAudioIdField", "audioGlobalConfigEvent", "audioGlobalConfigEventHash", "audioCueBehaviorEvent", "audioGlobalMusicCueBehaviorEvent", "spawnerPreWarnAudio", "patrolSubActionPlayAudio", "charInteractAudioEvent", "audioDialogVoiceDefinition", "responsiveDialogVoice", "voiceToneVariant", "voiceDefaultWwiseEvent", "voiceNarratingChannelEvent", "voiceRadioChannelEvent", "audioDialogOverrideWwiseEvent", "responsiveVoiceEventTemplate", "voiceTableWwiseEvent", "uiAnimationOpenEvent", "activityPushPopupBgmEvent", "activityCenterBgmEvent", "uiVideoAudioEvent", "domainRegionSwitchEvent", "domainUpgradeAnimationEvent", "typedUiTableWwiseEvent", "snsVoiceMessageEvent"].includes(kind)) return "authoredConfig";
     if (kind === "binaryManagedLiteral") return "managedRuntime";
@@ -915,8 +982,36 @@
     return "";
   }
 
+  function hasExactNpcAnimationOwner(record) {
+    const ownershipStatus = normalize(record?.animationCallbackOwnershipStatus);
+    const ownerIds = new Set(asArray(record?.animationCallbackNpcOwnerIds).map(normalize).filter(Boolean));
+    if (ownerIds.size !== 1) return false;
+    const resolutionStatuses = asArray(record?.animationCallbackResolutionStatuses).map(normalize).filter(Boolean);
+    if (resolutionStatuses.length) return resolutionStatuses.every((status) => status.startsWith("exactNpc"));
+    return ["exactNpcTableToken", "exactNpcInfoAndTemplateGroup", "exactNpcOwnerAgreement"].includes(ownershipStatus);
+  }
+
   function recordContextTags(record, kind) {
+    const exactNpcAnimationOwner = hasExactNpcAnimationOwner(record);
     const tags = new Set(asArray(record?.contextGroups).filter(Boolean));
+    if (record?.sceneGlobalContextStatus === "exact"
+      && asArray(record?.sceneGlobalSceneIds).length
+      && asArray(record?.sceneGlobalSemanticRoles).length) {
+      tags.add("sceneGlobalExact");
+    }
+    if (record?.sceneEmitterAttributionStatus === "prefabLocalSceneUnresolved") {
+      tags.add("sceneEmitterPrefabLocal");
+    } else if (record?.sceneEmitterAttributionStatus === "exactSceneAttribution"
+      && asArray(record?.sceneEmitterSceneIds).length) {
+      tags.add("sceneEmitterExact");
+    } else if (record?.sceneEmitterAttributionStatus
+      && record.sceneEmitterAttributionStatus !== "exactSceneAttribution") {
+      tags.add("sceneEmitterUnavailable");
+    }
+    if (exactNpcAnimationOwner) {
+      tags.add("npcAnimation");
+      tags.add("animationCallbackNpcOwner");
+    }
     if (record?.eventIdentityStatus === "wwiseObjectWithoutRecoveredTriggerName") tags.add("wwiseObjectOnly");
     const addContextKindTags = (contextKind) => {
       if (contextKind === "projectileSoundField") tags.add("projectileTrigger");
@@ -937,7 +1032,17 @@
       if (["voiceDefaultWwiseEvent", "voiceNarratingChannelEvent", "voiceRadioChannelEvent", "audioDialogOverrideWwiseEvent", "responsiveVoiceEventTemplate", "voiceTableWwiseEvent"].includes(contextKind)) tags.add("voiceEventRoute");
       if (["uiAnimationOpenEvent", "activityPushPopupBgmEvent", "activityCenterBgmEvent", "uiVideoAudioEvent", "domainRegionSwitchEvent", "domainUpgradeAnimationEvent", "typedUiTableWwiseEvent"].includes(contextKind)) tags.add("typedUiEvent");
       if (contextKind === "snsVoiceMessageEvent") tags.add("snsVoice");
-      if (contextKind === "animationCallbackOwnerUnresolved") tags.add("ownerUnresolvedAnimation");
+      if (contextKind === "animationCallbackOwnerUnresolved") {
+        if (exactNpcAnimationOwner) {
+          tags.add("npcAnimation");
+          tags.add("animationCallbackNpcOwner");
+        } else {
+          tags.add("ownerUnresolvedAnimation");
+        }
+      }
+      if (contextKind === "npcAnimation") tags.add("npcAnimation");
+      if (contextKind === "animationCallbackNpcOwner") tags.add("animationCallbackNpcOwner");
+      if (["sceneGlobalAudioEvent", "sceneEmitterAudioEvent"].includes(contextKind)) tags.add("sceneAudio");
       if (["levelScriptAudioAction", "levelScriptAudioCueBehaviorEvent", "levelScriptRadioTrigger"].includes(contextKind)) tags.add("levelScriptTrigger");
       if (contextKind === "levelScriptRadioTrigger") tags.add("radioTrigger");
       if (contextKind === "luaPostEvent") tags.add("luaRuntime");
@@ -976,8 +1081,9 @@
     if (kind === "media") {
       if (record?.audioDialogKey || record?.audioDialogPath) tags.add("dialogMedia");
       const inheritedMediaTags = new Set([
-        "gameplay", "cutscene", "timeline", "animation", "scripted", "authoredConfig", "managedRuntime", "luaRuntime", "wwiseObjectOnly",
-        "sharedPlayableAnimation", "footstepSystem", "ownerUnresolvedAnimation", "levelScriptTrigger", "radioTrigger", "projectileTrigger", "spawnerPreWarnTrigger", "npcPatrolTrigger", "characterInteraction", "physicsEnvironment", "modelViewState", "componentAudioId", "interactiveTrigger", "globalLifecycle", "audioCueTrigger", "snsVoice",
+        "gameplay", "cutscene", "timeline", "animation", "sceneAudio", "scripted", "authoredConfig", "managedRuntime", "luaRuntime", "wwiseObjectOnly",
+        "sharedPlayableAnimation", "footstepSystem", "ownerUnresolvedAnimation", "npcAnimation", "animationCallbackNpcOwner", "levelScriptTrigger", "radioTrigger", "projectileTrigger", "spawnerPreWarnTrigger", "npcPatrolTrigger", "characterInteraction", "physicsEnvironment", "modelViewState", "componentAudioId", "interactiveTrigger", "globalLifecycle", "audioCueTrigger", "snsVoice",
+        "sceneEmitterPrefabLocal", "sceneEmitterUnavailable",
       ]);
       for (const eventId of asArray(record?.eventIds)) {
         for (const tag of state.eventTaxonomyById.get(normalizeLower(eventId)) || []) {
@@ -1042,6 +1148,17 @@
     }
     const contexts = asArray(taxonomy.contextTags);
     if (contexts.length) parts.push(contexts.map(taxonomyLabel).join(" + "));
+    if (kind === "events" && record.sceneGlobalContextStatus === "exact") {
+      const sceneIds = asArray(record.sceneGlobalSceneIds).filter(Boolean);
+      const roles = asArray(record.sceneGlobalSemanticRoles).filter(Boolean);
+      if (sceneIds.length) parts.push(`${t("sceneGlobalSceneIds")}: ${sceneIds.join(" / ")}`);
+      if (roles.length) parts.push(`${t("sceneGlobalSemanticRoles")}: ${roles.join(" / ")}`);
+    }
+    if (kind === "events" && record.sceneEmitterAttributionStatus) {
+      parts.push(`${t("sceneEmitterAttributionStatus")}: ${humanize(record.sceneEmitterAttributionStatus)}`);
+      const sceneIds = asArray(record.sceneEmitterSceneIds).filter(Boolean);
+      if (sceneIds.length) parts.push(`${t("sceneEmitterSceneIds")}: ${sceneIds.join(" / ")}`);
+    }
     const relations = asArray(taxonomy.relationTags);
     if (relations.length) parts.push(relations.slice(0, 2).map(taxonomyLabel).join(" + "));
     const purposeTag = purposeRecoveryTag(record);
@@ -1076,6 +1193,46 @@
       recordTitle(record, kind), recordId(record, kind), recordCategory(record), recordScope(record), recordSource(record),
       record?.name, record?.title,
       ...asArray(record?.relatedEventCategories).flatMap((value) => [value, categoryLabel(value)]),
+      ...asArray(record?.coarseOwnershipDomains), ...asArray(record?.coarseOwnershipRoles),
+      ...asArray(record?.coarseOwnershipSceneIds), ...asArray(record?.coarseOwnershipEvidence),
+      ...asArray(record?.sceneGlobalSceneIds), ...asArray(record?.sceneGlobalSemanticRoles),
+      record?.sceneGlobalContextStatus,
+      ...asArray(record?.sceneEmitterSceneIds),
+      ...asArray(record?.sceneEmitterSceneContainmentStatuses),
+      ...asArray(record?.sceneEmitterStreamingPrefabIdentityStatuses),
+      record?.sceneEmitterAttributionStatus,
+      ...asArray(record?.animationActionEventIds), ...asArray(record?.animationActionMatchingClips),
+      ...asArray(record?.animationActionOwnerIds), record?.animationActionNameMatchStatus,
+      record?.animationActionNameMatchEvidence,
+      ...asArray(record?.characterAudioEventIds), ...asArray(record?.characterAudioOwnerIds),
+      ...asArray(record?.characterAudioOwnerTokens), record?.characterAudioIdentityStatus,
+      ...asArray(record?.characterAudioIdentityStatuses), record?.characterAudioNameMatchEvidence,
+      ...asArray(record?.characterAudioContextOwnerIds), record?.characterAudioContextRelationshipStatus,
+      ...asArray(record?.characterAudioContextRelationshipStatuses), record?.characterAudioOwnershipStatus,
+      record?.characterAudioOwnershipEvidence,
+      ...asArray(record?.animationCallbackEventIds), ...asArray(record?.animationCallbackClips),
+      ...asArray(record?.animationCallbackOwnerIds), ...asArray(record?.animationCallbackFunctions),
+      ...asArray(record?.animationCallbackOwnerKinds),
+      ...asArray(record?.animationCallbackNpcOwnerIds),
+      ...asArray(record?.animationCallbackNpcOwnerTemplates),
+      ...asArray(record?.animationCallbackNpcActorTokens),
+      ...asArray(record?.animationCallbackNpcOccurrenceOwnerIds),
+      ...asArray(record?.animationCallbackNpcOccurrenceOwnerTemplates),
+      ...asArray(record?.animationCallbackNpcOccurrenceActorTokens),
+      ...asArray(record?.animationCallbackReachabilityStatuses),
+      ...asArray(record?.animationCallbackAnimatorControllerNames), record?.animationCallbackLinkStatus,
+      record?.animationCallbackOwnershipStatus, record?.animationCallbackTokenResolutionStatus,
+      ...asArray(record?.animationCallbackTokenResolutionStatuses),
+      ...asArray(record?.animationCallbackResolutionStatuses),
+      ...asArray(record?.animationCallbackResolvedEntityIds),
+      ...asArray(record?.animationCallbackCandidateEntityIds),
+      record?.animationCallbackLinkEvidence,
+      record?.sceneContainmentStatus, record?.sourceAssetPath, record?.containerType,
+      record?.containmentType, ...asArray(record?.sceneContainmentStatuses),
+      record?.streamingPrefabInstanceStatus, record?.streamingPrefabInstanceLevelId,
+      ...asArray(record?.streamingPrefabInstanceDiagnostics).flatMap((diagnostic) => diagnostic && typeof diagnostic === "object"
+        ? [diagnostic.status, diagnostic.reason, ...asArray(diagnostic.candidates).flatMap((candidate) => candidate && typeof candidate === "object" ? Object.values(candidate) : [])]
+        : []),
       record?.hash, record?.eventHash, ...numericHashes.map((value) => `0x${(Number(value) >>> 0).toString(16).padStart(8, "0")}`),
       record?.mediaId, record?.bankId, record?.bank, record?.rel, record?.path, record?.src,
       ...asArray(record?.eventIds), ...asArray(record?.mediaIds), ...asArray(record?.actionIds), ...asArray(record?.visitedObjectIds),
@@ -1085,7 +1242,11 @@
       ...asArray(taxonomy.contextTags).flatMap((value) => [value, taxonomyLabel(value)]),
       ...asArray(taxonomy.relationTags).flatMap((value) => [value, taxonomyLabel(value)]),
       ...asArray(record?.contexts).flatMap((context) => context && typeof context === "object" ? [
-        context.kind, context.ownerId, context.groupId, context.storyKey, context.table, context.path,
+        context.kind === "animationCallbackOwnerUnresolved" && hasExactNpcAnimationOwner(record)
+          ? "npcAnimation" : context.kind,
+        context.kind === "animationCallbackOwnerUnresolved" && hasExactNpcAnimationOwner(record)
+          ? "animationCallbackNpcOwner" : "",
+        context.ownerId, context.groupId, context.storyKey, context.table, context.path,
         context.consumerType, context.consumerMethod, context.playbackCall, context.triggerRole,
         context.customStateName, context.switchMethod, context.switchMethodVa, context.callsiteVa,
         context.staticArgumentVa, context.metadataUsageWord, context.metadataStringLiteralIndex,
@@ -1103,7 +1264,9 @@
         context.triggerCustomState, context.ownerKind, context.stateDirection, context.audioStateMask, context.description,
         context.enemyTriggerVoiceActionStatus,
         ...Object.values(context.enemyTriggerVoiceAction || {}),
-        context.authoredFieldRole, context.serializedFieldPath, context.componentName,
+        context.authoredFieldRole, context.authoredFieldNameRaw, context.serializedFieldPath,
+        context.serializedFieldPathRaw, context.serializedFieldPathStatus,
+        context.serializedFieldName, context.componentLayout, context.componentType, context.componentName,
         context.authoredEventName, context.authoredEventNameEvidence,
         context.gameObjectName, ...asArray(context.hierarchyPath), context.serializedFile,
         context.objectIndexSource, context.rawJsonSource, context.sourceAssetFile,
@@ -1128,6 +1291,17 @@
         ...asArray(context.interactiveConsumerIds), context.templateAssociationStatus,
         ...asArray(context.interactiveTableSourcePaths), context.interactiveTableSha256,
         context.action, context.levelScriptId, context.sourcePath, context.sourceSha256,
+        context.sceneId, context.sourceName, context.sceneContainmentStatus,
+        context.sourceAssetPath, context.containerType, context.containmentType,
+        context.streamingPrefabInstanceStatus, context.streamingPrefabInstanceLevelId,
+        ...asArray(context.streamingPrefabInstanceEvidence).flatMap((entry) => entry && typeof entry === "object" ? Object.values(entry) : []),
+        ...asArray(context.streamingPrefabInstanceDiagnostics).flatMap((diagnostic) => diagnostic && typeof diagnostic === "object"
+          ? [diagnostic.status, diagnostic.reason, ...asArray(diagnostic.candidates).flatMap((candidate) => candidate && typeof candidate === "object" ? Object.values(candidate) : [])]
+          : []),
+        ...Object.values(context.sceneContainmentEvidence || {}),
+        ...asArray(context.sceneContainmentDiagnostics).flatMap((diagnostic) => diagnostic && typeof diagnostic === "object"
+          ? [diagnostic.status, diagnostic.reason, ...asArray(diagnostic.candidates).flatMap((candidate) => candidate && typeof candidate === "object" ? Object.values(candidate) : [])]
+          : []),
         context.recordUid, context.recordLocalId, context.actionMapRole, context.eventName,
         context.triggerRole, context.sourceField,
         context.clipReachability, context.triggerBindingStatus, ...asArray(context.skillIds), ...asArray(context.actionKinds),
@@ -2930,12 +3104,19 @@
     }
     if (kind === "monoBehaviourAudioIdField") {
       if (context?.authoredFieldRole) parts.push(`AudioId role ${humanize(context.authoredFieldRole)}`);
+      if (context?.componentLayout) parts.push(`layout ${context.componentLayout}`);
+      if (context?.componentType) parts.push(`type ${context.componentType}`);
+      if (context?.authoredFieldNameRaw) parts.push(`serialized field ${context.authoredFieldNameRaw}`);
       if (context?.serializedFieldPath) parts.push(context.serializedFieldPath);
+      if (context?.serializedFieldPathStatus && context.serializedFieldPathStatus !== "exact") {
+        parts.push(humanize(context.serializedFieldPathStatus));
+      }
       if (context?.componentName) parts.push(`component ${context.componentName}`);
       if (context?.gameObjectName) parts.push(`GameObject ${context.gameObjectName}`);
       const hierarchy = asArray(context?.hierarchyPath).filter(Boolean);
       if (hierarchy.length) parts.push(`hierarchy ${hierarchy.join(" / ")}`);
-      if (context?.worldPosition && typeof context.worldPosition === "object") {
+      if (context?.worldPosition && context?.worldPositionStatus === "exact_transform_hierarchy"
+        && typeof context.worldPosition === "object") {
         const { x, y, z } = context.worldPosition;
         parts.push(`world position ${x ?? "?"}, ${y ?? "?"}, ${z ?? "?"} / ${humanize(context.worldPositionStatus || "status unknown")}`);
       }
@@ -2952,6 +3133,50 @@
       if (context?.objectIndexSource) parts.push(context.objectIndexSource);
       if (context?.rawJsonSource) parts.push(context.rawJsonSource);
       parts.push("component/state execution unobserved");
+    }
+    if (kind === "sceneEmitterAudioEvent") {
+      const containmentEvidence = context?.sceneContainmentEvidence && typeof context.sceneContainmentEvidence === "object"
+        ? context.sceneContainmentEvidence
+        : {};
+      const candidates = asArray(context?.sceneContainmentDiagnostics).flatMap((diagnostic) => (
+        diagnostic && typeof diagnostic === "object" ? asArray(diagnostic.candidates) : []
+      )).filter((candidate) => candidate && typeof candidate === "object");
+      const sourceAssetPath = context?.sourceAssetPath || containmentEvidence.sourceAssetPath || candidates.find((candidate) => candidate.sourceAssetPath)?.sourceAssetPath;
+      const containerType = context?.containmentType || context?.containerType || containmentEvidence.containmentType || candidates.find((candidate) => candidate.containmentType)?.containmentType;
+      parts.push(`containment ${humanize(context?.sceneContainmentStatus || "unresolved")}`);
+      if (sourceAssetPath) parts.push(`container ${sourceAssetPath}`);
+      if (containerType) parts.push(`container type ${humanize(containerType)}`);
+      parts.push(`streaming prefab instance ${humanize(context?.streamingPrefabInstanceStatus || "unresolved")}`);
+      if (context?.streamingPrefabInstanceLevelId) parts.push(`streaming level ${context.streamingPrefabInstanceLevelId}`);
+      const streamingDiagnostics = asArray(context?.streamingPrefabInstanceDiagnostics).flatMap((diagnostic) => (
+        diagnostic && typeof diagnostic === "object" ? [diagnostic.reason || diagnostic.status].filter(Boolean) : []
+      ));
+      if (streamingDiagnostics.length) parts.push(`streaming diagnostics ${streamingDiagnostics.slice(0, 4).join(" / ")}`);
+      if (context?.sceneContainmentStatus === "prefabLocalNotSceneContained"
+        && context?.streamingPrefabInstanceStatus === "unavailablePrefabIdentity") {
+        parts.push("prefab-local emitter; scene unresolved; prefab identity unavailable");
+      } else if (context?.sceneContainmentStatus !== "exactSceneAssetLevelContainment"
+        && context?.streamingPrefabInstanceStatus !== "exactPrefabInstanceToLevel") {
+        parts.push("scene unresolved; prefab identity unavailable");
+      } else {
+        parts.push("exact scene attribution; runtime scene activation unobserved");
+      }
+      parts.push("authored prefab component / runtime scene instantiation unobserved");
+    }
+    if (kind === "sceneGlobalAudioEvent") {
+      if (context?.sceneId) parts.push(`scene ${context.sceneId}`);
+      if (context?.source) parts.push(`source ${context.source}`);
+      if (context?.eventHash !== undefined) parts.push(`event hash ${context.eventHash}`);
+      if (context?.confidence) parts.push(`confidence ${context.confidence}`);
+      if (context?.evidence) parts.push(`evidence ${context.evidence}`);
+      const owner = context?.owner && typeof context.owner === "object" ? context.owner : {};
+      if (owner.table) parts.push(`owner table ${owner.table} / ${owner.levelId || ""}`.trim());
+      else if (owner.serializedFile || owner.pathId !== undefined) {
+        parts.push(`owner ${owner.serializedFile || "?"} / PathID ${owner.pathId ?? "?"}`);
+      }
+      const runtimeStatuses = asArray(context?.triggerRuntimeActivationStatuses).filter(Boolean);
+      if (runtimeStatuses.length) parts.push(`runtime ${runtimeStatuses.join(" / ")}`);
+      parts.push("authored scene-global definition; activation/playback unobserved");
     }
     if (["audioDialogVoiceDefinition", "responsiveDialogVoice", "voiceToneVariant"].includes(kind)) {
       if (context?.audioDialogPath) parts.push(`AudioDialog ${context.audioDialogPath}`);
@@ -4578,13 +4803,9 @@
   function recordPanel(record) {
     const panel = document.createElement("section");
     panel.className = "audio-panel";
-    const heading = document.createElement("h2");
-    heading.textContent = t("details");
-    panel.appendChild(heading);
     const raw = record.raw;
     const players = playableRecords(raw, record.kind);
     const playerSection = document.createElement("section");
-    playerSection.style.marginTop = "14px";
     const playerHeading = document.createElement("h3");
     playerHeading.textContent = t("playableMedia");
     playerSection.appendChild(playerHeading);
@@ -4601,6 +4822,9 @@
       playerSection.appendChild(note);
     }
     panel.appendChild(playerSection);
+    const heading = document.createElement("h2");
+    heading.textContent = t("details");
+    panel.appendChild(heading);
     panel.appendChild(manualNoteSection(record));
     const facts = record.kind === "events"
       ? [
@@ -4616,6 +4840,13 @@
           ["Event identity", humanize(raw.eventIdentityStatus || "")],
           ["Event name evidence", humanize(raw.eventNameEvidence || "")],
           ["Event name source", humanize(raw.eventNameSourceKind || "")],
+          ["Event name corroboration", humanize(raw.eventNameCorroboration || "")],
+          [
+            "Event name sibling counts",
+            raw.eventNameCorroboration
+              ? `head ${raw.eventNameHeadSiblingCount ?? 0} / tail ${raw.eventNameTailSiblingCount ?? 0}`
+              : "",
+          ],
           ["IL2CPP metadata field", raw.eventNameMetadataField],
           ["IL2CPP declaring type", raw.eventNameMetadataDeclaringType],
           ["IL2CPP field token", raw.eventNameMetadataFieldToken],
@@ -4639,8 +4870,54 @@
           ["Wwise", raw.foundInWwise], [t("typedTraversal"), raw.traversalStatus], [t("playRoots"), raw.playRootCount],
           [t("possibleMedia"), raw.possibleMediaCount ?? raw.candidateCount], [t("uniqueContent"), raw.uniqueDecodedContentCount],
           [t("equivalentContent"), raw.contentEquivalentLeafCount], ["Runtime selection", raw.runtimeSelection], ["Contexts", raw.contextCount],
+          [t("sceneGlobalContextStatus"), raw.sceneGlobalContextStatus],
+          [t("sceneGlobalSceneIds"), asArray(raw.sceneGlobalSceneIds).join(" / ")],
+          [t("sceneGlobalSemanticRoles"), asArray(raw.sceneGlobalSemanticRoles).join(" / ")],
+          ["Scene-global diagnostics", asArray(raw.sceneGlobalContextDiagnostics)
+            .map((diagnostic) => diagnostic && typeof diagnostic === "object"
+              ? (diagnostic.reason || diagnostic.status || "diagnostic")
+              : diagnostic)
+            .filter(Boolean).join(" / ")],
+          [t("sceneEmitterAttributionStatus"), humanize(raw.sceneEmitterAttributionStatus || "")],
+          [t("sceneEmitterSceneIds"), asArray(raw.sceneEmitterSceneIds).join(" / ")],
+          [t("sceneEmitterSceneContainmentStatuses"), asArray(raw.sceneEmitterSceneContainmentStatuses).join(" / ")],
+          [t("sceneEmitterStreamingPrefabIdentityStatuses"), asArray(raw.sceneEmitterStreamingPrefabIdentityStatuses).join(" / ")],
+          ["Scene-emitter diagnostics", asArray(raw.sceneEmitterAttributionDiagnostics)
+            .map((diagnostic) => diagnostic && typeof diagnostic === "object"
+              ? (diagnostic.reason || diagnostic.status || "diagnostic")
+              : diagnostic)
+            .filter(Boolean).join(" / ")],
           ["Playable animation owners", raw.playableCharacterAnimationOwnerCount], ["Animation scope", raw.animationContextScope],
           ["Animation callbacks", asArray(raw.animationFunctions).join(" / ")],
+          ["Animation action name match", humanize(raw.animationActionNameMatchStatus || "")],
+          ["Matching action clips", asArray(raw.animationActionMatchingClips).join(" / ")],
+          ["Animation action owners", asArray(raw.animationActionOwnerIds).join(" / ")],
+          ["Animation action evidence", humanize(raw.animationActionNameMatchEvidence || "")],
+          [t("characterAudioOwners"), asArray(raw.characterAudioOwnerIds).join(" / ")],
+          ["Character audio identity", humanize(raw.characterAudioIdentityStatus || "")],
+          ["Character audio context relation", humanize(raw.characterAudioContextRelationshipStatus || "")],
+          ["Character audio evidence", humanize(raw.characterAudioNameMatchEvidence || "")],
+          ["Animation callback link", humanize(raw.animationCallbackLinkStatus || "")],
+          [t("animationCallbackClips"), asArray(raw.animationCallbackClips).join(" / ")],
+          [t("animationCallbackOwners"), asArray(raw.animationCallbackOwnerIds).join(" / ")],
+          ["Animation callback owner kinds", asArray(raw.animationCallbackOwnerKinds).join(" / ")],
+          [t("animationCallbackNpcOwners"), asArray(raw.animationCallbackNpcOwnerIds).join(" / ")],
+          [t("animationCallbackNpcTemplates"), asArray(raw.animationCallbackNpcOwnerTemplates).join(" / ")],
+          [t("animationCallbackNpcTokens"), asArray(raw.animationCallbackNpcActorTokens).join(" / ")],
+          [t("animationCallbackNpcOccurrenceOwners"), asArray(raw.animationCallbackNpcOccurrenceOwnerIds).join(" / ")],
+          [t("animationCallbackNpcOccurrenceTemplates"), asArray(raw.animationCallbackNpcOccurrenceOwnerTemplates).join(" / ")],
+          [t("animationCallbackNpcOccurrenceTokens"), asArray(raw.animationCallbackNpcOccurrenceActorTokens).join(" / ")],
+          ["Animation callback functions", asArray(raw.animationCallbackFunctions).join(" / ")],
+          ["Animation reachability", asArray(raw.animationCallbackReachabilityStatuses).map(humanize).join(" / ")],
+          ["Animator Controllers", asArray(raw.animationCallbackAnimatorControllerNames).join(" / ")],
+          ["Animation callback ownership", humanize(raw.animationCallbackOwnershipStatus || "")],
+          ["Animation callback token resolution", raw.animationCallbackTokenResolutionStatus
+            ? humanize(raw.animationCallbackTokenResolutionStatus)
+            : asArray(raw.animationCallbackTokenResolutionStatuses).map(humanize).join(" / ")],
+          ["Animation callback resolution statuses", asArray(raw.animationCallbackResolutionStatuses).map(humanize).join(" / ")],
+          ["Animation callback resolved entities", asArray(raw.animationCallbackResolvedEntityIds).join(" / ")],
+          ["Animation callback candidate entities", asArray(raw.animationCallbackCandidateEntityIds).join(" / ")],
+          ["Animation callback evidence", humanize(raw.animationCallbackLinkEvidence || "")],
         ]
       : [
           [t("recordType"), t(record.objectType)], [t("id"), raw.mediaId ?? raw.id], [t("mediaPurpose"), categoryLabel(record.category)],
@@ -4661,6 +4938,40 @@
           [t("playbackLocation"), playbackLocationLabel(raw.playbackLocationStatus)],
           [t("storyLineBindings"), raw.storyLineBindingCount],
           [t("purposeStatus"), humanize(raw.purposeKnowledgeStatus || "")],
+          [t("coarseOwnership"), asArray(raw.coarseOwnershipDomains).map(humanize).join(" / ")],
+          [t("coarseOwnershipRoles"), asArray(raw.coarseOwnershipRoles).map(humanize).join(" / ")],
+          [t("coarseOwnershipScenes"), asArray(raw.coarseOwnershipSceneIds).join(" / ")],
+          [t("coarseOwnershipEvidence"), asArray(raw.coarseOwnershipEvidence).map(humanize).join(" / ")],
+          ["Animation action Events", asArray(raw.animationActionEventIds).join(" / ")],
+          ["Matching action clips", asArray(raw.animationActionMatchingClips).join(" / ")],
+          ["Animation action owners", asArray(raw.animationActionOwnerIds).join(" / ")],
+          ["Animation action evidence", humanize(raw.animationActionNameMatchEvidence || "")],
+          [t("characterAudioOwners"), asArray(raw.characterAudioOwnerIds).join(" / ")],
+          [t("characterAudioEvents"), asArray(raw.characterAudioEventIds).join(" / ")],
+          ["Character audio identity", asArray(raw.characterAudioIdentityStatuses).map(humanize).join(" / ")],
+          ["Character audio ownership", humanize(raw.characterAudioOwnershipStatus || "")],
+          ["Character audio evidence", humanize(raw.characterAudioOwnershipEvidence || "")],
+          ["Animation callback Events", asArray(raw.animationCallbackEventIds).join(" / ")],
+          [t("animationCallbackClips"), asArray(raw.animationCallbackClips).join(" / ")],
+          [t("animationCallbackOwners"), asArray(raw.animationCallbackOwnerIds).join(" / ")],
+          ["Animation callback owner kinds", asArray(raw.animationCallbackOwnerKinds).join(" / ")],
+          [t("animationCallbackNpcOwners"), asArray(raw.animationCallbackNpcOwnerIds).join(" / ")],
+          [t("animationCallbackNpcTemplates"), asArray(raw.animationCallbackNpcOwnerTemplates).join(" / ")],
+          [t("animationCallbackNpcTokens"), asArray(raw.animationCallbackNpcActorTokens).join(" / ")],
+          [t("animationCallbackNpcOccurrenceOwners"), asArray(raw.animationCallbackNpcOccurrenceOwnerIds).join(" / ")],
+          [t("animationCallbackNpcOccurrenceTemplates"), asArray(raw.animationCallbackNpcOccurrenceOwnerTemplates).join(" / ")],
+          [t("animationCallbackNpcOccurrenceTokens"), asArray(raw.animationCallbackNpcOccurrenceActorTokens).join(" / ")],
+          ["Animation callback functions", asArray(raw.animationCallbackFunctions).join(" / ")],
+          ["Animation reachability", asArray(raw.animationCallbackReachabilityStatuses).map(humanize).join(" / ")],
+          ["Animator Controllers", asArray(raw.animationCallbackAnimatorControllerNames).join(" / ")],
+          ["Animation callback ownership", humanize(raw.animationCallbackOwnershipStatus || "")],
+          ["Animation callback token resolution", raw.animationCallbackTokenResolutionStatus
+            ? humanize(raw.animationCallbackTokenResolutionStatus)
+            : asArray(raw.animationCallbackTokenResolutionStatuses).map(humanize).join(" / ")],
+          ["Animation callback resolution statuses", asArray(raw.animationCallbackResolutionStatuses).map(humanize).join(" / ")],
+          ["Animation callback resolved entities", asArray(raw.animationCallbackResolvedEntityIds).join(" / ")],
+          ["Animation callback candidate entities", asArray(raw.animationCallbackCandidateEntityIds).join(" / ")],
+          ["Animation callback evidence", humanize(raw.animationCallbackLinkEvidence || "")],
           [t("radioTriggerContextCoverage"), raw.radioTriggerContextCount !== undefined
             ? `${formatNumber(raw.radioTriggerContextStoredCount || 0)} stored / ${formatNumber(raw.radioTriggerContextCount || 0)} total${raw.radioTriggerContextsTruncated ? " / truncated" : ""}`
             : ""],
@@ -4746,6 +5057,27 @@
     }
     if (record.kind === "media" && asArray(raw.eventContextOwnerValues).length) {
       panel.appendChild(chipSection(t("eventContextOwners"), asArray(raw.eventContextOwnerValues)));
+    }
+    if (asArray(raw.characterAudioOwnerIds).length) {
+      panel.appendChild(chipSection(t("characterAudioOwners"), asArray(raw.characterAudioOwnerIds)));
+    }
+    if (record.kind === "media" && asArray(raw.characterAudioEventIds).length) {
+      panel.appendChild(chipSection(t("characterAudioEvents"), asArray(raw.characterAudioEventIds)));
+    }
+    if (asArray(raw.animationCallbackOwnerIds).length) {
+      panel.appendChild(chipSection(t("animationCallbackOwners"), asArray(raw.animationCallbackOwnerIds)));
+    }
+    if (asArray(raw.animationCallbackNpcOwnerIds).length) {
+      panel.appendChild(chipSection(t("animationCallbackNpcOwners"), asArray(raw.animationCallbackNpcOwnerIds)));
+    }
+    if (asArray(raw.animationCallbackNpcOwnerTemplates).length) {
+      panel.appendChild(chipSection(t("animationCallbackNpcTemplates"), asArray(raw.animationCallbackNpcOwnerTemplates)));
+    }
+    if (asArray(raw.animationCallbackNpcActorTokens).length) {
+      panel.appendChild(chipSection(t("animationCallbackNpcTokens"), asArray(raw.animationCallbackNpcActorTokens)));
+    }
+    if (asArray(raw.animationCallbackClips).length) {
+      panel.appendChild(chipSection(t("animationCallbackClips"), asArray(raw.animationCallbackClips)));
     }
     if (record.kind === "media" && asArray(raw.eventContextSituationValues).length) {
       panel.appendChild(chipSection(t("eventContextSituations"), asArray(raw.eventContextSituationValues)));

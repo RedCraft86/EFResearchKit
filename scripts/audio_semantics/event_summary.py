@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any
 
 def semantic_context_group(kind: Any) -> str:
@@ -16,7 +17,7 @@ def semantic_context_group(kind: Any) -> str:
         return "cutscene"
     if value in {
         "characterAnimation", "enemyAnimation", "animationCallbackOwnerUnresolved",
-        "animationVoiceTrigger",
+        "npcAnimation", "animationCallbackNpcOwner", "animationVoiceTrigger",
     }:
         return "animation"
     if value in {"levelSequenceAudio", "timelineAudioCueBehaviorEvent"}:
@@ -52,8 +53,36 @@ def semantic_context_group(kind: Any) -> str:
     return ""
 
 
+def _has_exact_npc_animation_owner(row: dict[str, Any]) -> bool:
+    owner_ids = {str(value).strip() for value in row.get("animationCallbackNpcOwnerIds") or () if str(value).strip()}
+    if len(owner_ids) != 1:
+        return False
+    resolution_statuses = [
+        str(value).strip()
+        for value in row.get("animationCallbackResolutionStatuses") or ()
+        if str(value).strip()
+    ]
+    if resolution_statuses:
+        return all(value.startswith("exactNpc") for value in resolution_statuses)
+    return str(row.get("animationCallbackOwnershipStatus") or "").strip() in {
+        "exactNpcTableToken",
+        "exactNpcInfoAndTemplateGroup",
+        "exactNpcOwnerAgreement",
+    }
+
+
 def event_summary_row(row: dict[str, Any], detail_shard: str) -> dict[str, Any]:
     contexts = row.get("contexts") or []
+    exact_npc_animation_owner = _has_exact_npc_animation_owner(row)
+    raw_context_kinds = {
+        str(context.get("kind") or "")
+        for context in contexts
+        if isinstance(context, dict) and context.get("kind")
+    }
+    display_context_kinds = set(raw_context_kinds)
+    if exact_npc_animation_owner:
+        display_context_kinds.discard("animationCallbackOwnerUnresolved")
+        display_context_kinds.update({"npcAnimation", "animationCallbackNpcOwner"})
     timeline_contexts = [
         context for context in contexts
         if isinstance(context, dict) and context.get("kind") == "levelSequenceAudio"
@@ -83,6 +112,18 @@ def event_summary_row(row: dict[str, Any], detail_shard: str) -> dict[str, Any]:
         int(context.get("levelScriptActionCount") or 0)
         for context in timeline_contexts
     )
+    mono_behaviour_contexts = [
+        context for context in contexts
+        if isinstance(context, dict) and context.get("kind") == "monoBehaviourAudioIdField"
+    ]
+    mono_field_role_counts = Counter(
+        str(context.get("authoredFieldRole") or "componentSerializedAudioField")
+        for context in mono_behaviour_contexts
+    )
+    mono_component_layout_counts = Counter(
+        str(context.get("componentLayout") or "unknown")
+        for context in mono_behaviour_contexts
+    )
     context_search: set[str] = set()
     for context in contexts:
         if not isinstance(context, dict):
@@ -97,6 +138,9 @@ def event_summary_row(row: dict[str, Any], detail_shard: str) -> dict[str, Any]:
             "projectileId", "projectileKey", "soundField", "triggerPhase",
             "runtimeActivationStatus", "sourceRoot", "sourcePathId", "sourceJsonPath",
             "signedValue", "eventHex", "sourceFile", "sourceVfsPath", "semanticPath",
+            "authoredFieldRole", "authoredFieldNameRaw", "serializedFieldPath",
+            "serializedFieldPathRaw", "serializedFieldPathStatus", "serializedFieldName",
+            "componentLayout", "componentType", "componentName",
             "sizzleSoundTriggerDistance", "ringProjectileSoundSmoothFactor",
             "cueName", "cueSignedId", "cueId", "cueHex", "cueHashEvidence",
             "definitionStatus", "handlerScope", "levelId",
@@ -193,6 +237,29 @@ def event_summary_row(row: dict[str, Any], detail_shard: str) -> dict[str, Any]:
             for value in field.values():
                 if isinstance(value, (str, int, float, bool)) and value not in ("", None):
                     context_search.add(str(value))
+    if exact_npc_animation_owner:
+        context_search.discard("animationCallbackOwnerUnresolved")
+        context_search.update({"npcAnimation", "animationCallbackNpcOwner"})
+    context_search.update(
+        str(value)
+        for key in ("sceneGlobalSceneIds", "sceneGlobalSemanticRoles")
+        for value in row.get(key) or ()
+        if value not in (None, "")
+    )
+    if row.get("sceneGlobalContextStatus"):
+        context_search.add(str(row["sceneGlobalContextStatus"]))
+    context_search.update(
+        str(value)
+        for key in (
+            "sceneEmitterSceneContainmentStatuses",
+            "sceneEmitterStreamingPrefabIdentityStatuses",
+            "sceneEmitterSceneIds",
+        )
+        for value in row.get(key) or ()
+        if value not in (None, "")
+    )
+    if row.get("sceneEmitterAttributionStatus"):
+        context_search.add(str(row["sceneEmitterAttributionStatus"]))
     media = row.get("media") or []
     scopes = sorted({str(value.get("audioScope") or value.get("storageRoot") or "") for value in media if value.get("audioScope") or value.get("storageRoot")})
     banks = sorted({str(value.get("bankPackage") or "") for evidence in media for value in evidence.get("wwiseMediaEvidence") or [] if value.get("bankPackage")})
@@ -219,6 +286,7 @@ def event_summary_row(row: dict[str, Any], detail_shard: str) -> dict[str, Any]:
         "id", "name", "hash", "category", "categoryEvidence", "categoryNameEvidence", "foundInWwise",
         "audioLibraryResolutionStatus", "eventIdentityStatus", "eventNameEvidence",
         "eventNameSourceKind", "identityOnlyPlaybackPlacementStatus",
+        "eventNameCorroboration", "eventNameHeadSiblingCount", "eventNameTailSiblingCount",
         "eventNameMetadataField", "eventNameMetadataDeclaringType",
         "eventNameMetadataFieldToken",
         "identityNumericSkillIds", "identityTableSources", "identitySkillDataSources", "playbackRole",
@@ -240,21 +308,43 @@ def event_summary_row(row: dict[str, Any], detail_shard: str) -> dict[str, Any]:
         "audioLibrarySharedMediaIds", "audioLibrarySharedMediaPackages",
         "audioLibraryMediaPurposeHintStatus",
         "contextStoredCount", "contextsTruncated",
+        "sceneGlobalSceneIds", "sceneGlobalSemanticRoles", "sceneGlobalContextStatus",
+        "sceneEmitterSceneIds", "sceneEmitterSceneContainmentStatuses",
+        "sceneEmitterStreamingPrefabIdentityStatuses", "sceneEmitterAttributionStatus",
         "playableCharacterAnimationOwnerCount", "enemyAnimationOwnerCount",
         "animationContextScope", "animationFunctions", "customFootstepOccurrenceCount",
+        "animationActionNameMatchStatus", "animationActionMatchingClips",
+        "animationActionOwnerIds", "animationActionFunctions",
+        "animationActionOwnershipDomains", "animationActionNameMatchEvidence",
+        "characterAudioIdentityStatus", "characterAudioOwnerIds",
+        "characterAudioOwnerTokens", "characterAudioNameMatchEvidence",
+        "characterAudioContextOwnerIds", "characterAudioContextRelationshipStatus",
+        "animationCallbackLinkStatus", "animationCallbackClips",
+        "animationCallbackOwnerIds", "animationCallbackFunctions",
+        "animationCallbackOwnerKinds", "animationCallbackNpcOwnerIds",
+        "animationCallbackNpcOwnerTemplates", "animationCallbackNpcActorTokens",
+        "animationCallbackNpcOccurrenceOwnerIds",
+        "animationCallbackNpcOccurrenceOwnerTemplates",
+        "animationCallbackNpcOccurrenceActorTokens",
+        "animationCallbackContextKinds", "animationCallbackActionKinds",
+        "animationCallbackReachabilityStatuses",
+        "animationCallbackAnimatorControllerNames",
+        "animationCallbackOwnershipStatus", "animationCallbackTokenResolutionStatus",
+        "animationCallbackResolutionStatuses", "animationCallbackResolvedEntityIds",
+        "animationCallbackCandidateEntityIds",
+        "animationCallbackOccurrenceCount", "animationCallbackLinkEvidence",
+        "animationCallbackLinkTruncated",
         "customFootstepParameterVariants",
         "timelineContextCount", "timelineAssetCount", "playableDirectorCount",
         "levelScriptPlayLevelSequenceActionCount", "timelineExactContextCount",
         "timelineInferredContextCount", "timelineOwnershipGapCount",
+        "monoBehaviourAudioIdFieldCount", "monoBehaviourAudioIdFieldRoleCounts",
+        "monoBehaviourAudioIdFieldComponentLayoutCounts",
     )
     summary = {key: row[key] for key in keys if row.get(key) not in (None, "", [])}
     summary.update({
-        "contextGroups": sorted({semantic_context_group(context.get("kind")) for context in contexts if isinstance(context, dict)} - {""}),
-        "contextKinds": sorted({
-            str(context.get("kind") or "")
-            for context in contexts
-            if isinstance(context, dict) and context.get("kind")
-        }),
+        "contextGroups": sorted({semantic_context_group(kind) for kind in display_context_kinds} - {""}),
+        "contextKinds": sorted(display_context_kinds),
         "triggerBindingStatuses": sorted({
             str(context.get("triggerBindingStatus") or "")
             for context in contexts
@@ -275,6 +365,12 @@ def event_summary_row(row: dict[str, Any], detail_shard: str) -> dict[str, Any]:
             "timelineExactContextCount": exact_timeline_count,
             "timelineInferredContextCount": inferred_timeline_count,
             "timelineOwnershipGapCount": timeline_gap_count,
+        })
+    if mono_behaviour_contexts:
+        summary.update({
+            "monoBehaviourAudioIdFieldCount": len(mono_behaviour_contexts),
+            "monoBehaviourAudioIdFieldRoleCounts": dict(sorted(mono_field_role_counts.items())),
+            "monoBehaviourAudioIdFieldComponentLayoutCounts": dict(sorted(mono_component_layout_counts.items())),
         })
     if source_kinds:
         summary["sourceKinds"] = sorted(source_kinds)

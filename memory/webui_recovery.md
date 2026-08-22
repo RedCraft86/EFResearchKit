@@ -132,10 +132,10 @@ data.
 
 The Audio detail pane supports searchable per-record manual notes persisted in
 `webui/overrides/audio_notes.json`; the list shows each note's first line beside
-the filename. Its playable-media section is placed immediately below the
-Details heading, before manual notes and evidence facts, so the player is
-available near the start of the detail pane. These annotations are user
-research state and do not upgrade or modify generated evidence.
+the filename. Its playable-media section is the first section of a selected
+record panel, before the Details heading, manual notes, and evidence facts, so
+the player is available at the start of the detail pane. These annotations are
+user research state and do not upgrade or modify generated evidence.
 
 Audio separates Event/media identity, Wwise graph relation, authored consumer,
 and observed runtime execution. A stronger layer never appears unless its typed
@@ -149,12 +149,37 @@ branch evidence. Selector and dictionary paths stay distinct from direct
 literal playback.
 
 Ordinary Audio details show authored AudioCue behavior Event requests and
-string-literal/variable-name controls as typed evidence. The complete numeric
-AST, raw scalar fields, source paths, and validation diagnostics are lazy
-detail data shown only in the debug surface; compact rows retain summary/count
-fields. Selected condition truth, handler/indirect dispatch, cue execution,
-Wwise branch selection, and audibility remain runtime-blocked and are not
-presented as observed facts.
+string-literal/variable-name controls as typed evidence. Scene-emitter detail
+data keeps prefab source and source-status separate from scene ownership. Event
+and Media search/detail evidence now visibly shows `sceneContainmentStatus`,
+the exact prefab `sourceAssetPath`, and its container type, while explicitly
+labeling runtime scene instantiation as unobserved. A source prefab row must
+not be presented as a recovered level instance. The complete validated AudioCue
+tree, raw scalar fields, source coordinates, node classes, native-name gate
+status, and bounded diagnostics are
+lazy detail data shown only in the debug surface; compact rows retain bounded
+summary fields. Non-empty behavior `exprType=3` leaves show authored Event
+requests, non-empty `exprType=8` leaves show `runtimeCueVariable`, and
+`childrenLimit` prevents descendant projection. Exact native enum/operator
+names appear only under the validated selected-input gate; missing or
+mismatched inputs leave them absent. Selected condition truth,
+handler/indirect dispatch, runtime variable values, cue execution, Wwise branch
+selection, and audibility remain runtime-blocked and are not presented as
+observed facts.
+
+Scene-emitter cards and details now show compact containment/prefab-identity
+status sets. The current offline result is visibly a prefab-local static
+emitter with scene unresolved and prefab identity unavailable, never an exact
+scene tag. The recovery queue remains blocked on a future exact
+SceneAsset/Level containment or prefab Source+PathID-to-level relation; names,
+candidate paths, positions, and sidecar level IDs remain non-evidence.
+
+Scene-global Event summaries and cards expose all exact authored scene IDs and
+original semantic-role names only when every direct context passes the merged
+scene-catalog gate. Search and context filters use that same exact status;
+malformed, partial, non-direct, truncated, and out-of-catalog contexts remain
+unavailable diagnostics and do not imply runtime activation, branch choice,
+playback, or audibility.
 
 Normal Audio records also include a collapsed LevelScript audio lifecycle
 section for authored producer/consumer links, serialized action ordinals, and
@@ -162,6 +187,34 @@ validated static topology. Raw serialized output paths, record offsets, and
 local IDs stay debug-only. Runtime handle values/state, action execution,
 branch selection, and audibility remain blocked, so the section is not a live
 playback trace.
+RemoteCommon `startAudioEvent`/`endAudioEvent` fields are displayed as
+separate authored lifecycle contexts after the exact Persistent-over-Streaming
+row overlay. The current CN page data has four such rows, all found in Wwise
+music Events and none with a playable media leaf; runtime execution remains
+unobserved.
+
+Serialized `monoBehaviourAudioIdField` context chips expose the narrow authored
+field role, `componentLayout`, component type, and raw serialized path. Search
+also covers the raw field/path evidence and generic serialized-field rows
+(including an audio-key hint);
+details show GameObject, hierarchy, and world position only when the existing
+placement fields are exact. These labels describe authored serialized fields,
+not callback execution or Event posting, and generated coverage counts remain
+in Audio data rather than this memory topic.
+
+Streaming-instance sidecars retain exact entity/name/transform and bounded raw
+ECS evidence, but the currently validated InitChunkData columns expose no known
+prefab Source+PathID/hash field in the observed schema. The Audio page accepts
+a level-instance relation only from an explicit numeric identity, optionally
+resolved to one unique full AssetMap container path or explicit component
+identity; names, basenames, positions, Meshes, and similarity remain
+non-evidence. A separately proven StreamingChunkData record-to-entity relation
+is still a recovery gap. If explicit component identity and exact prefab-path
+identity routes disagree, the visible join remains unavailable with
+`conflictingPrefabInstanceIdentityJoins`. Current CN data therefore exposes
+zero exact scene-emitter Events and 43 prefab-local Events; the next recovery
+step is exact prefab identity from exporter/sidecar output, not filename/path
+inference.
 
 Missing or mismatched installed native inputs never erase authored Audio rows.
 They suppress only build-locked callsites/mappings and expose a bounded
@@ -171,20 +224,23 @@ addresses as current evidence.
 ModelView normal Event contexts show the authored controller/model/layer/state
 chain and `behaviorTime` with explicit labels: `Authored`, `static route`,
 `runtime unobserved`, and `branch unresolved`. The static route is shown only
-for the fingerprint-locked `AudioBehavior.Execute` -> `AudioManager.PostEvent`
+for the fingerprint-locked `AudioBehavior.Execute` → `AudioManager.PostEvent`
 contract; execution, branch choice, and audibility are not inferred. The
 runtime overview publishes no `nativePairing` unless a complete
 hash-verified closed capture session exists; partial key/path/handle/decoder
 overlaps remain unobserved.
 
-Positioned ModelView audio shows three authored branches. Only a direct-position
-Event with nonzero `normalAudioId` exposes Event/media candidates. Its managed
-Adapter route, managed internal playing id, and `LoadBank`/`PrepareEvent`
-boundaries are static evidence; runtime-dynamic completion, final
+Positioned ModelView audio is shown with three authored branches. A direct
+position Event with a nonzero `normalAudioId` exposes independently audited
+`PlaySoundAtPosition` endpoints and an `m_audioHandle` store; these are separate
+static facts, not a recovered chain. Custom and entity forms are control-only;
+`_SwitchState` has no recovered playback sink, and neither form promotes an
+Event, media leaf, or owner. The managed `PostAndForget` →
+`AudioAdapter._PostEvent` route is statically verified through the managed
+internal playing id, Adapter guards, and the `LoadBank`/`PrepareEvent`
+boundary. The runtime completion delegate, final
 `AkSoundEngine.PostEvent`/native playing-id handoff, Wwise selection,
-execution, and audibility remain unresolved. Custom and entity forms are
-control-only; `_SwitchState` has no recovered playback sink, and neither form
-promotes an Event, media leaf, or owner.
+execution, and audibility remain unresolved.
 
 Responsive voice contexts also expose exact matching `AIBark` request rows and
 the fingerprint-locked native dispatch chain. The UI must keep the live
@@ -299,12 +355,46 @@ and audible output remain unobserved. The same fingerprint-locked catalog
 places the pause/resume control Events `au_gameplay_pause_spidle` and
 `au_gameplay_resume_spidle` at exact `SnapshotSystem` `PostEvent` callsites;
 action-entity ownership and runtime execution remain unobserved.
-The only current CN media row with `purposeKnowledgeStatus=unknownUse` is
-`au_voice_c35m3_3_001` (`v1d4/Narrating/HS_Part04/c35m3/...wem`). The source
-graph confirms only its decoded-file and recovered external-identity edges;
-there is no AudioDialog, Story-line, or trigger-context edge. The `c35m3`
-chapter-like path is identity/evidence context, not a recovered playback
-trigger, so the row remains an explicit highest-priority recovery gap.
+The former last CN `purposeKnowledgeStatus=unknownUse` row,
+`au_voice_c35m3_3_001` (`v1d4/Narrating/HS_Part04/c35m3/...wem`), now has the
+exact coarse ownership `missionNarrationVoice` and status
+`coarseOwnershipKnown`. There is still no AudioDialog, Story-line, or
+trigger-context edge, so `playbackLocationStatus` remains unknown. Audio media rows
+separately expose searchable coarse ownership for exact scene, animation,
+component, interaction, UI, voice, and mission-narration evidence. This avoids
+treating an unknown SFX/music category as wholly unknown use while preserving
+the runtime selection and audibility boundary.
+The Audio page also exposes exact same-name AnimationClip action matches. The
+current closed set contains five callback-backed Event identities and eight
+possible media leaves; details retain the clip, actor, and evidence fields.
+These rows are action SFX, but Animator execution, Wwise branch selection, and
+audibility remain unobserved.
+Audio Event and media details now also expose CharacterTable-backed ownership
+for authored `chr_*`/`au_chr_*` namespaces. Search covers the character id and
+token, and shared Wwise media lists every named character owner. A unique
+numeric-prefix recovery is labeled separately from a full-key match; generic
+templates and action/playback claims remain unresolved without their own
+evidence.
+The same visible ownership now covers uniquely owned Event-leading character
+tokens such as `lastrite_*`, `lizhiyan_*`, and `pograni_*`. Supported
+AnimationClip audio callbacks are projected independently of same-name action
+matching, so normal Event/media details retain their exact clips, callback
+owner/function, reachability, and AnimatorController names without claiming
+runtime execution or forcing an unknown category to SFX.
+Audio detail keeps each callback Clip's resolved entity IDs separate from its
+candidate entity IDs. Exact Character/Enemy/EnemyTemplate overlay matches are
+resolved; unique-token or multi-match identities remain candidate/ambiguous,
+and callbacks shared by multiple authored owners retain a shared label.
+Missing or malformed overlay data and unsupported Clip tokens stay unresolved
+and fail closed. The visible callback relation is authored static evidence;
+Animator execution, callback timing, Wwise branch/media selection, playback,
+and audibility remain runtime-unobserved.
+When the two NPC tables provide one exact agreeing row, the Audio page also
+shows `ownerKind=npc`, NPC id, template, and actor token for the callback Clip
+only when the same token has one exact `AudioDialogChannel` key. Duplicate or
+generic tokens, missing channel identity, overlay conflicts, malformed rows,
+and template mismatches stay unresolved. Mixed Events keep the NPC identity on the
+occurrence/Clip evidence instead of promoting the whole Event to one owner.
 Event rows
 now distinguish serialized User-Defined Aux
 slots from Game-Defined send enablement: the current unique-node corpus has
@@ -435,8 +525,9 @@ purpose investigation for that media. Playback groups with at most 20
 candidates remain expanded and materialized; only groups above that threshold
 start collapsed. The runtime overview and responsive context rows expose the
 exact five-entry `EnemyTriggerVoiceAction` mapping without upgrading it to a
-live branch observation. In a selected Audio record, playable media is shown
-immediately under the detail heading, ahead of the longer facts/evidence list.
+live branch observation. In a selected Audio record, the playable-media
+section is rendered before the Details heading and the longer facts/evidence
+list.
 
 ## Story and Mission Pipeline boundary
 
@@ -450,6 +541,76 @@ gaps. Native registration, source order, code address, proximity, OCR, and
 manual order never become mission chronology by themselves. Weak placement is
 visually separate and cannot override exact placement.
 
+## Map
+
+Map is a normal page after Story. It uses one generated contract for all levels:
+registry, quest, mission, minimap, HLOD, and streaming-instance evidence remain
+typed instead of being flattened into a generic location claim.
+
+Current state:
+
+- Level ownership comes from `LevelBasicInfoTable.idNum` and registry ids;
+  shared scene ownership comes only from the current compact LevelConfig path.
+- Map01, Map02, and config-proven blackbox scenes stitch by published
+  `regionKey`. Non-seamless dungeon and danger maps remain independent even
+  when they reuse source art.
+- The browser derives the active world rectangle from loaded backgrounds and
+  projects backgrounds, markers, labels, routes, floors, and model layers with
+  the same X/Z transform.
+- Minimap, grayscale elevation, material/surface, water, and point layers stay
+  independent. Point layers own an exact 16-bit world-Y mask and the frontend
+  filters only their alpha.
+- Current streaming sidecars are schema 2. Entity bases expose one `meshes`
+  array; exact instances feed static render layers rather than duplicate UI
+  nodes.
+- Authored floor images are selected by spatial hover/click, not a global
+  slider. Mission routes use authored quest order; co-occurrence relation webs
+  stay absent.
+- The resizable left rail is a three-column map/task/object-filter tree; its
+  task column owns the map status formerly shown in a top panel. The plain
+  third column combines object and render-layer filters without a disclosure
+  header, nested layer container, separate bottom dock, or inner column
+  scrollbars. The resizable right
+  inspector retains complete node fields and raw JSON/file access. Unnamed single-mission maps inherit that mission's
+  localized code/name. e0m0 explicitly links from `indie_dg002` to its
+  `indie_dg004` ending scene; trigger-volume slots without a recovered world
+  transform remain visible unresolved evidence.
+- Static projections may omit explicitly named roof/ceiling instances for a
+  documented cutaway. Material color is used only with an exact, unique
+  mesh/material/base-texture/UV closure; those recovered texture samples keep
+  their source RGB in surface and point output instead of receiving synthetic
+  height darkening.
+- Water coverage requires authored minimap pixels plus exact WaterData scene
+  evidence. Flowmaps remain corroboration only.
+- e0m0's generated HLOD naming contract now supplies a material closure: every
+  published cluster must uniquely match a generated material by exact
+  level/LOD/signed suffix, and the material must own one `_BaseColorMap`
+  PathID. The resulting surface and point layers are textured base-color
+  diagnostics; game lighting, fog, exposure, tone mapping, and grading remain
+  unrecovered and must not be approximated with a global color correction.
+- HLOD point output preserves every deduplicated projected vertex in a sparse,
+  deterministic height sidecar. Partial height filters select the highest
+  in-range sample per pixel, while the existing top-point PNG remains the
+  full-range fast path; upper-layer removal therefore exposes lower geometry.
+
+Evidence boundary:
+
+- Coordinates and matrices prove placement, not runtime activation,
+  interactivity, visibility, prefab identity, or renderer ownership.
+- HLOD grid placement remains inferred and fail-closed below its published fit
+  threshold.
+- Story producer/slot, NPC proxy, and authored map-pin joins remain distinct
+  from script-condition, proximity, mission-area, and quest context.
+- Generated counts and per-build inventories belong in
+  `reports/assets/map_recovery/`, not this file.
+
+Highest-value gaps:
+
+- Recover exact scene hierarchy and renderer ownership where HLOD or
+  InitChunkData currently proves only geometry/placement.
+- Recover water-surface geometry for scenes without sufficient authored map art.
+- Add behavior-level frontend coverage if a maintained browser test harness is
+  introduced; do not restore source-string snapshot tests.
 ## Updates and packaging
 
 ```bat
@@ -466,6 +627,8 @@ assets. Local WebUI, report, memory, and scratch changes are excluded.
 - Keep optional semantic sidecars visibly degraded rather than silently stale.
 - Improve exact Gameplay-to-asset and sound ownership without weakening labels.
 - Preserve clear evidence boundaries as Mission Pipeline gains runtime joins.
+- Recover exact `indie_dg002` scene Transforms and use them to validate or
+  replace the current inferred HLOD grid preview.
 - Keep Characters false-positive exclusions and live overrides clean.
 - Maintain accessible behavior across large Story, Gameplay, Audio, and Assets
   datasets.

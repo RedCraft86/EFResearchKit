@@ -34,45 +34,117 @@ AUDIO_HASH_FIELD_RE = re.compile(
     re.IGNORECASE,
 )
 
-def _build_remote_common_event_contexts(
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject duplicate keys instead of silently accepting the last value."""
+
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+def collect_remote_common_event_contexts(
     export_root: Path,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Expose exact RemoteCommon auto-play Event requests in event rows.
+    """Expose exact RemoteCommon Event requests in event rows.
 
-    ``audioId`` is the authored SFX/Wwise Event request. ``voiceId`` is a
-    separate dialogue identity and remains separate from the Event/media
-    route. These low-level contexts prevent an authored RemoteCommon Event
-    from being synthesized as a Timeline ownership gap.
+    ``audioId`` is the authored SFX/Wwise Event request. ``startAudioEvent``
+    and ``endAudioEvent`` are authored lifecycle requests on the same row.
+    ``voiceId`` is a separate dialogue identity and remains separate from the
+    Event/media route. These low-level contexts prevent authored RemoteCommon
+    Events from being synthesized as a Timeline ownership gap.
     """
 
     contexts: dict[str, list[dict[str, Any]]] = defaultdict(list)
     seen: dict[str, set[str]] = defaultdict(set)
-    table_paths = [
-        export_root / "structured" / source_root / "Table" / "RemoteCommonTable.json"
-        for source_root in ("Persistent", "StreamingAssets")
-    ]
-    for table_path in table_paths:
-        payload = load_json(table_path, {})
-        if not isinstance(payload, dict):
+    table_sources: list[tuple[str, dict[str, Any], str]] = []
+    for source_root in ("StreamingAssets", "Persistent"):
+        table_path = (
+            export_root / "structured" / source_root / "Table"
+            / "RemoteCommonTable.json"
+        )
+        if not table_path.is_file():
             continue
+        try:
+            table_data = table_path.read_bytes()
+            payload = json.loads(
+                table_data,
+                object_pairs_hook=_reject_duplicate_json_keys,
+            )
+        except (OSError, UnicodeError, ValueError):
+            return {}
+        if not isinstance(payload, dict):
+            return {}
         try:
             source_ref = normalize_posix(table_path.relative_to(export_root))
         except ValueError:
             source_ref = normalize_posix(table_path)
-        for remote_id, row in sorted(payload.items(), key=lambda item: str(item[0])):
-            if not isinstance(row, dict) or row.get("autoPlay") is not True:
+        table_sources.append((source_root, payload, source_ref))
+    # Persistent is the active overlay.  Keep Streaming-only rows, while a
+    # Persistent row replaces the same normalized RemoteCommon ID.  This is
+    # intentionally row-level: the two physical tables are legitimate build
+    # layers and need not have identical content.
+    merged_rows: dict[str, tuple[str, Any, str]] = {}
+    for _source_root, payload, source_ref in table_sources:
+        for raw_remote_id, row in payload.items():
+            remote_id = str(raw_remote_id or "").strip()
+            if remote_id:
+                merged_rows[remote_id.casefold()] = (remote_id, row, source_ref)
+
+    for _key, (remote_id, row, source_ref) in sorted(merged_rows.items()):
+        if not isinstance(row, dict):
+            continue
+        for field, lifecycle_phase in (
+            ("startAudioEvent", "start"),
+            ("endAudioEvent", "end"),
+        ):
+            event_name = str(row.get(field) or "").strip()
+            if event_name:
+                _append_context(contexts, seen, event_name, {
+                    "kind": "remoteCommonLifecycleAudio",
+                    "semanticRole": "remoteCommonLifecycleAudioEvent",
+                    "confidence": "exact",
+                    "ownershipEvidenceLevel": "exactRemoteCommonLifecycleField",
+                    "triggerEvidenceLevel": "exact",
+                    "triggerBindingStatus": f"exactRemoteCommon{lifecycle_phase.title()}AudioEvent",
+                    "triggerRole": f"RemoteCommonTable{lifecycle_phase.title()}AudioEvent",
+                    "remoteCommonId": remote_id,
+                    "lifecyclePhase": lifecycle_phase,
+                    "field": field,
+                    "autoPlay": row.get("autoPlay") is True,
+                    "authoredEventId": event_name,
+                    "source": source_ref,
+                    "sourcePath": source_ref,
+                    "evidence": "exactRemoteCommonTableLifecycleAudioField",
+                    "triggerRequestEvidence": [
+                        "exactRemoteCommonTableLifecycleAudioField",
+                    ],
+                    "triggerRuntimeActivationStatuses": [
+                        "remoteCommonLifecycleExecutionNotObserved",
+                    ],
+                    "triggerOwnershipMethods": [
+                        f"RemoteCommonTable.{field}",
+                    ],
+                    "runtimeActivationStatus": "remoteCommonLifecycleExecutionNotObserved",
+                    "evidenceBoundary": (
+                        "RemoteCommonTable lifecycle audio fields and their exact row key "
+                        "prove an authored Event request and lifecycle role. The row does "
+                        "not prove RemoteCommon selection, execution, PostEvent, or an "
+                        "audible Wwise media leaf."
+                    ),
+                })
+        if row.get("autoPlay") is not True:
+            continue
+        for line_index, line in enumerate(row.get("remoteCommSingleDataList") or []):
+            if not isinstance(line, dict):
                 continue
-            remote_id = str(remote_id or "").strip()
-            if not remote_id:
+            audio_id = str(line.get("audioId") or "").strip()
+            if not audio_id:
                 continue
-            for line_index, line in enumerate(row.get("remoteCommSingleDataList") or []):
-                if not isinstance(line, dict):
-                    continue
-                audio_id = str(line.get("audioId") or "").strip()
-                if not audio_id:
-                    continue
-                single_id = str(line.get("singleId") or f"{remote_id}:{line_index + 1}").strip()
-                _append_context(contexts, seen, audio_id, {
+            single_id = str(line.get("singleId") or f"{remote_id}:{line_index + 1}").strip()
+            _append_context(contexts, seen, audio_id, {
                     "kind": "remoteCommonAudio",
                     "semanticRole": "remoteCommonAutoPlayAudioEvent",
                     "confidence": "exact",
@@ -112,7 +184,7 @@ def _build_remote_common_event_contexts(
                         "RemoteCommon selection, execution, PostEvent, or an audible "
                         "Wwise media leaf; voiceId remains a separate dialogue identity."
                     ),
-                })
+            })
     return dict(contexts)
 
 
@@ -506,7 +578,7 @@ def _audio_cue_scalar_valid(field: str, value: Any) -> bool:
             and _AUDIO_CUE_SIGNED32_MIN <= value <= _AUDIO_CUE_SIGNED32_MAX
         )
     if field == "floatValue":
-        if not isinstance(value, (int, float)) or isinstance(value, bool):
+        if not isinstance(value, float):
             return False
         # ``float(10**10000)`` raises OverflowError.  Validation must never
         # turn hostile serialized input into a parser exception.
@@ -643,8 +715,16 @@ def walk_audio_cue_expression(
         return [], diagnostics
 
     native_validated = (native_contract or {}).get("status") == "validated"
-    expression_names = (native_contract or {}).get("expressionTypes") or {}
-    operator_names = (native_contract or {}).get("operatorTypes") or {}
+    # Names are build-specific native evidence.  Keep them fail-closed unless
+    # the caller supplied the exact validated contract from audio_cue_native.
+    expression_names = (
+        (native_contract or {}).get("expressionTypes") or {}
+        if native_validated else {}
+    )
+    operator_names = (
+        (native_contract or {}).get("operatorTypes") or {}
+        if native_validated else {}
+    )
     bounded_root_path = _audio_cue_bounded_path(root_path)
     if bounded_root_path is None:
         _audio_cue_diagnostic(diagnostics, code="pathLimit", path="expressionRoot", detail="expression path exceeds bounded length")
@@ -694,7 +774,25 @@ def walk_audio_cue_expression(
             string_value = string_value[:_AUDIO_CUE_MAX_STRING]
         children = current.get("children")
         child_paths: list[str] = []
-        if not isinstance(children, list) or any(not isinstance(child, dict) for child in children):
+        if not isinstance(children, list):
+            if status == "validated":
+                status = "invalidShape"
+            issues.append("children")
+            _audio_cue_diagnostic(diagnostics, code="childrenNotListOfDict", path=f"{path}.children", detail="children must be a list of objects")
+        elif len(children) > _AUDIO_CUE_MAX_CHILDREN:
+            # Admit no child entries before the bounded length decision.  In
+            # particular, do not scan or project a hostile oversized list.
+            status = "childrenLimit"
+            issues.append("childrenLength")
+            _audio_cue_diagnostic(
+                diagnostics, code="childrenLimit", path=f"{path}.children",
+                detail="child list exceeds bounded length",
+            )
+            # Do not construct or traverse any child projection after the
+            # bounded admission gate.  This prevents a malformed oversized
+            # parent from manufacturing Event/variable descendants.
+            children = []
+        elif any(not isinstance(child, dict) for child in children):
             if status == "validated":
                 status = "invalidShape"
             issues.append("children")
@@ -705,36 +803,53 @@ def walk_audio_cue_expression(
             issues.append("depth")
             _audio_cue_diagnostic(diagnostics, code="depthLimit", path=path, detail="expression depth limit reached")
             children = []
-        child_operator = (
-            current.get("intValue")
-            if native_validated and expr_type == 1 and isinstance(current.get("intValue"), int)
-            and not isinstance(current.get("intValue"), bool)
-            and current.get("intValue") in operator_names
-            else None
-        )
         current_valid = ancestor_valid and status == "validated"
-        if native_validated and isinstance(expr_type, int) and expr_type in expression_names:
+        # Function-call operators govern their argument subtrees.  Preserve
+        # the nearest exact operator through transparent binary/unary
+        # composites, but clear it for an unknown nested function call rather
+        # than attributing a child to an unrelated ancestor.
+        child_operator = parent_operator
+        if current_valid and native_validated and expr_type == 2:
+            child_operator = (
+                current.get("intValue")
+                if isinstance(current.get("intValue"), int)
+                and not isinstance(current.get("intValue"), bool)
+                and current.get("intValue") in operator_names
+                else None
+            )
+        if current_valid and native_validated and isinstance(expr_type, int) and expr_type in expression_names:
             expr_type_name = expression_names[expr_type]
         else:
             expr_type_name = None
-        if native_validated and parent_operator in operator_names:
+        if current_valid and native_validated and parent_operator in operator_names:
             operator_name = operator_names[parent_operator]
         else:
             operator_name = None
-        variable_candidate = (
-            current_valid and expr_type == 8 and isinstance(string_value, str) and string_value.strip()
-            and operator_name in {"SetBoolVar", "GetBoolVar", "CleanBoolVar"}
-        )
+        canonical_node_class = "opaque"
         if current_valid and expression_side == "behavior" and expr_type == 3 and isinstance(string_value, str) and string_value.strip() and not children:
-            node_class = "authoredEventRequest"
-        elif variable_candidate:
-            node_class = "authoredVariableNameCandidate"
+            canonical_node_class = "authoredEventRequest"
         elif current_valid and expr_type == 8 and isinstance(string_value, str) and string_value.strip() and not children:
-            node_class = "stringLiteral"
+            canonical_node_class = "runtimeCueVariable"
         elif current_valid and isinstance(children, list) and children:
-            node_class = "compositeOpaque"
-        else:
-            node_class = "opaque"
+            canonical_node_class = "compositeOpaque"
+
+        # Keep the historical nodeClass spelling for existing build/UI
+        # consumers while exposing the strict canonical role separately.  A
+        # runtime variable is an authored-variable *candidate* only when the
+        # exact native parent function operator proves that context.
+        node_class = (
+            "authoredVariableNameCandidate"
+            if canonical_node_class == "runtimeCueVariable"
+            and operator_name in {"SetBoolVar", "GetBoolVar", "CleanBoolVar"}
+            else "stringLiteral"
+            if canonical_node_class == "runtimeCueVariable"
+            else canonical_node_class
+        )
+        semantic_role = (
+            "runtimeCueVariable"
+            if canonical_node_class == "runtimeCueVariable"
+            else None
+        )
 
         raw_scalars = _audio_cue_raw_scalars(current)
         safe_expr_type = _audio_cue_safe_scalar("exprType", expr_type)
@@ -761,6 +876,8 @@ def walk_audio_cue_expression(
             "exprTypeName": expr_type_name,
             "exprOperatorType": operator_name,
             "nativeEnumStatus": "validated" if native_validated else str((native_contract or {}).get("status") or "missing"),
+            "semanticRole": semantic_role,
+            "canonicalNodeClass": canonical_node_class,
             "boolValue": safe_bool_value,
             "intValue": safe_int_value,
             "floatValue": safe_float_value,
@@ -795,11 +912,6 @@ def walk_audio_cue_expression(
             child_paths.insert(0, child_path)
             if isinstance(child, dict):
                 stack.append((child, child_path, path, depth + 1, current_valid, child_operator, child_indices))
-        if isinstance(children, list) and len(children) > _AUDIO_CUE_MAX_CHILDREN:
-            _audio_cue_diagnostic(
-                diagnostics, code="childrenLimit", path=f"{path}.children",
-                detail="child list exceeds bounded length",
-            )
     return nodes, diagnostics
 
 
@@ -992,7 +1104,8 @@ def collect_audio_cue_semantics(
                             "levelId", "handlerIndex", "expressionSide", "rootField", "expressionRootField",
                             "expressionPath", "path", "parentPath", "depth", "exprType", "boolValue",
                             "intValue", "floatValue", "stringValue", "childPaths", "nodeClass",
-                            "validationStatus", "exprTypeName", "exprOperatorType", "nativeEnumStatus", "source",
+                            "validationStatus", "exprTypeName", "exprOperatorType", "nativeEnumStatus",
+                            "semanticRole", "canonicalNodeClass", "source",
                         )
                     }
                     if node.get("nodeClass") == "authoredEventRequest":
@@ -1010,9 +1123,9 @@ def collect_audio_cue_semantics(
                         }
                         _append_context(contexts, seen, event_id, context)
                         definition["behaviorEvents"].append({"eventId": event_id, **context})
-                    elif node.get("nodeClass") == "authoredVariableNameCandidate":
+                    elif node.get("semanticRole") == "runtimeCueVariable":
                         operand = {
-                            "kind": "audioCueExpressionOperand", "semanticRole": "authoredVariableNameCandidate",
+                            "kind": "audioCueExpressionOperand", "semanticRole": "runtimeCueVariable",
                             "wwiseEventStatus": "notApplicable", "runtimeObservationStatus": "unobserved",
                             "evidence": "exactAudioCueExpressionOperand", **common,
                         }
@@ -1021,8 +1134,12 @@ def collect_audio_cue_semantics(
 
         definition["expressionNodeCount"] = len(definition["expressionAst"])
         definition["expressionDiagnosticCount"] = len(definition["expressionDiagnostics"])
+        # Count the published legacy classes exactly once.  The canonical
+        # role is available on each node, but must not create a second or
+        # fabricated class-count alias for build/UI consumers.
         class_counts: Counter[str] = Counter(
-            str(node.get("nodeClass") or "opaque") for node in definition["expressionAst"]
+            str(node.get("nodeClass") or "opaque")
+            for node in definition["expressionAst"]
         )
         definition["expressionNodeClassCounts"] = dict(sorted(class_counts.items()))
         all_diagnostics.extend(definition["expressionDiagnostics"])
@@ -1194,6 +1311,10 @@ def collect_table_contexts(
         if isinstance(value, str) and prefix_re.match(value.strip()):
             field_path = re.sub(r"\[\d+\]$", "", path)
             field_name = field_path.rsplit(".", 1)[-1]
+            if table == "RemoteCommonTable" and field_name in {
+                "startAudioEvent", "endAudioEvent",
+            }:
+                return
             semantic_role = ""
             if named_event_field_re.search(field_name):
                 semantic_role = "authoredEventName"
@@ -1262,7 +1383,7 @@ def collect_table_contexts(
     # adjacent voiceId/audioOverride identities that the generic table walker
     # intentionally leaves out. Keep this route explicit so Event summaries
     # do not manufacture a Timeline-carrier gap for it.
-    for event_id, rows in _build_remote_common_event_contexts(export_root).items():
+    for event_id, rows in collect_remote_common_event_contexts(export_root).items():
         for row in rows:
             _append_context(contexts, seen, event_id, row)
     return dict(contexts)
