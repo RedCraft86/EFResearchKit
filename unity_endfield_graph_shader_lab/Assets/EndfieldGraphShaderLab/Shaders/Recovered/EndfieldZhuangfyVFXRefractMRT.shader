@@ -17,11 +17,23 @@ Shader "Hidden/Endfield/Recovered/Zhuangfy/VFXRefractMRT"
         _Intensity ("Refract Intensity", Float) = 1
         _Bi_Refract ("Bidirectional Refract", Float) = 0
         _RefractUseRBOffset ("Refract Uses RB Offset Scale", Float) = 0
+        _UseBlend ("Use Blend", Float) = 0
+        _BlendTex ("Blend Tex", 2D) = "white" {}
+        _UseBlendTexAsAlpha ("Use Blend Tex As Alpha", Float) = 1
+        _BlendTexUseRefract ("Blend Tex Uses Refract", Float) = 0
+        _BlendSwitchUV ("Blend UV Switch", Float) = 0
+        _BlendTexUVSpeed ("Blend UV Speed", Vector) = (0,0,0,0)
+        _BlendTexUVRotate ("Blend UV Rotate", Float) = 0
+        [HDR] [Gamma] _BlendColor ("Blend Color", Color) = (1,1,1,1)
         _UseRBOffset ("Use RB Offset", Float) = 0
         _RBIntensity ("RB Offset Intensity", Float) = 1
         _RBOffset ("RB Offset", Vector) = (0,0,0,0)
+        _UseRGBOffset ("Use RGB Offset", Float) = 0
+        _GOffset ("G Offset", Float) = -1
         _RBMainColorMask ("RB Main Color Mask", Color) = (1,0,0,1)
         _RBOffsetColorMask ("RB Offset Color Mask", Color) = (0,1,1,1)
+        _RBOffset1ColorMask ("RB Offset 1 Color Mask", Color) = (0,1,0,1)
+        _RBOffset2ColorMask ("RB Offset 2 Color Mask", Color) = (0,0,1,1)
         _UseMainTexAsMask ("Use Main Tex As Mask", Float) = 0
         _RenderTransparentAfterDOF ("Render Transparent After DOF", Float) = 0
         _UseDissolve ("Use Dissolve", Float) = 0
@@ -75,21 +87,32 @@ Shader "Hidden/Endfield/Recovered/Zhuangfy/VFXRefractMRT"
             #pragma target 5.0
             #pragma vertex Vert
             #pragma fragment Frag
+            #pragma multi_compile_instancing
+            #pragma instancing_options procedural:vertInstancingSetup
+            #pragma shader_feature_local_fragment _USE_BLEND
             #pragma shader_feature_local_fragment _USE_DISSOLVE
             #pragma shader_feature_local_fragment _USE_RBOFFSET
+            #pragma shader_feature_local_fragment _USE_RGBOFFSET
             #include "UnityCG.cginc"
+            #include "UnityStandardParticleInstancing.cginc"
 
             sampler2D _RefractTex;
+            sampler2D _BlendTex;
             sampler2D _DissolveTex;
             sampler2D _SceneColorTexture;
             float4 _RefractTex_ST;
+            float4 _BlendTex_ST;
             float4 _DissolveTex_ST;
             float4 _RefractUVSpeed;
+            float4 _BlendTexUVSpeed;
             float4 _DissolveUVSpeed;
             float4 _RefractDir;
             float4 _RBOffset;
             float4 _RBMainColorMask;
             float4 _RBOffsetColorMask;
+            float4 _RBOffset1ColorMask;
+            float4 _RBOffset2ColorMask;
+            float4 _BlendColor;
             float4 _VFXParams0;
             float4 _RecoveredLODFade;
             float _GlobalMipBias;
@@ -104,7 +127,11 @@ Shader "Hidden/Endfield/Recovered/Zhuangfy/VFXRefractMRT"
             float _Intensity;
             float _Bi_Refract;
             float _RefractUseRBOffset;
+            float _UseBlendTexAsAlpha;
+            float _BlendTexUseRefract;
+            float _BlendTexUVRotate;
             float _RBIntensity;
+            float _GOffset;
             float _UseMainTexAsMask;
             float _DissolveUVRotate;
             float _DissolveScheduleOffset;
@@ -122,6 +149,7 @@ Shader "Hidden/Endfield/Recovered/Zhuangfy/VFXRefractMRT"
                 float4 color : COLOR;
                 float4 uv0 : TEXCOORD0;
                 float4 custom : TEXCOORD1;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct Varyings
@@ -158,10 +186,30 @@ Shader "Hidden/Endfield/Recovered/Zhuangfy/VFXRefractMRT"
 
             Varyings Vert(Attributes input)
             {
+                UNITY_SETUP_INSTANCE_ID(input);
                 Varyings output;
                 output.positionCS = UnityObjectToClipPos(input.vertex);
                 output.uv = input.uv0.xy;
-                output.color = input.color;
+                #if defined(UNITY_PARTICLE_INSTANCING_ENABLED)
+                    // The original selected VS reads the per-particle
+                    // transform through _VertexSkinMatrices and multiplies
+                    // the packed particle color into mesh COLOR. Public
+                    // Unity exposes the equivalent procedural particle
+                    // transform through vertInstancingSetup and its packed
+                    // RGBA8 carrier here.
+                    UNITY_PARTICLE_INSTANCE_DATA particleInstance =
+                        unity_ParticleInstanceData[unity_InstanceID];
+                    uint packedParticleColor = particleInstance.color;
+                    float4 particleInstanceColor = float4(
+                        packedParticleColor & 255u,
+                        (packedParticleColor >> 8u) & 255u,
+                        (packedParticleColor >> 16u) & 255u,
+                        (packedParticleColor >> 24u) & 255u) *
+                        (1.0 / 255.0);
+                    output.color = input.color * particleInstanceColor;
+                #else
+                    output.color = input.color;
+                #endif
                 output.custom = input.custom;
                 output.screenPos = ComputeScreenPos(output.positionCS);
                 output.positionWS = mul(unity_ObjectToWorld, input.vertex).xyz;
@@ -221,12 +269,6 @@ Shader "Hidden/Endfield/Recovered/Zhuangfy/VFXRefractMRT"
                 float4 scene = tex2Dbias(_SceneColorTexture,
                     float4(saturate(distortedUV), 0.0, _GlobalMipBias));
                 #if defined(_USE_RBOFFSET)
-                    // Exact selected HG_ENABLE_MV + _USE_RBOFFSET DXBC
-                    // shape (fragment hash f905de094d0261d5): retain the
-                    // ordinary scene sample, take a second sample at the
-                    // serialized percent-space RB offset, apply the two
-                    // compiled RGB masks with max, then interpolate by the
-                    // serialized RB intensity.
                     float refractMagnitude = lerp(
                         refractX,
                         length(decodedNormal),
@@ -237,18 +279,73 @@ Shader "Hidden/Endfield/Recovered/Zhuangfy/VFXRefractMRT"
                         saturate(_RefractUseRBOffset));
                     float2 rbUV = distortedUV + _RBOffset.xy * 0.01 *
                         (_TintColorAlpha * input.color.a) * rbDirectionScale;
-                    float4 rbScene = tex2Dbias(_SceneColorTexture,
-                        float4(saturate(rbUV), 0.0, _GlobalMipBias));
-                    float3 rbCombined = max(
-                        scene.rgb * _RBMainColorMask.rgb,
-                        rbScene.rgb * _RBOffsetColorMask.rgb);
+                    float3 rbCombined;
+                    float rbBlend;
+                    #if defined(_USE_RGBOFFSET)
+                        // Exact HG_ENABLE_MV + _USE_BLEND + _USE_RBOFFSET +
+                        // _USE_RGBOFFSET DXBC, fragment hash
+                        // 2ed24a13e2b41d91. Its three scene samples use the
+                        // base UV, the serialized RB offset, and that same
+                        // offset scaled by _GOffset.
+                        float2 rbStep = _RBOffset.xy * 0.01 *
+                            (_TintColorAlpha * input.color.a) *
+                            rbDirectionScale;
+                        float4 rbOffset1Scene = tex2Dbias(_SceneColorTexture,
+                            float4(saturate(distortedUV + rbStep), 0.0,
+                                _GlobalMipBias));
+                        float4 rbOffset2Scene = tex2Dbias(_SceneColorTexture,
+                            float4(saturate(distortedUV + rbStep * _GOffset),
+                                0.0, _GlobalMipBias));
+                        rbCombined = max(
+                            scene.rgb * _RBMainColorMask.rgb,
+                            max(rbOffset1Scene.rgb * _RBOffset1ColorMask.rgb,
+                                rbOffset2Scene.rgb *
+                                    _RBOffset2ColorMask.rgb));
+                        rbBlend = _RBIntensity;
+                    #else
+                        // Exact HG_ENABLE_MV + _USE_RBOFFSET DXBC,
+                        // fragment hash f905de094d0261d5.
+                        float4 rbScene = tex2Dbias(_SceneColorTexture,
+                            float4(saturate(rbUV), 0.0, _GlobalMipBias));
+                        rbCombined = max(
+                            scene.rgb * _RBMainColorMask.rgb,
+                            rbScene.rgb * _RBOffsetColorMask.rgb);
+                        rbBlend = saturate(_RBIntensity);
+                    #endif
                     scene.rgb = lerp(
                         scene.rgb,
                         rbCombined,
-                        saturate(_RBIntensity));
+                        rbBlend);
+                #endif
+
+                float blendAlpha = 1.0;
+                #if defined(_USE_BLEND)
+                    float2 blendUV = input.uv +
+                        _BlendTexUVSpeed.xy * _VFXParams0.w +
+                        _BlendTexUVSpeed.zw * input.custom.y;
+                    blendUV = RotateCentered(blendUV, _BlendTexUVRotate);
+                    blendUV = blendUV * _BlendTex_ST.xy + _BlendTex_ST.zw;
+                    blendUV += refractDirection * strength *
+                        saturate(_BlendTexUseRefract);
+                    float4 blendSample = tex2Dbias(_BlendTex,
+                        float4(MirrorUV(blendUV), 0.0, _GlobalMipBias));
+                    float useBlendAsAlpha = saturate(_UseBlendTexAsAlpha);
+                    float3 blendCarrier = lerp(
+                        blendSample.rgb,
+                        1.0 - blendSample.rgb,
+                        useBlendAsAlpha);
+                    scene.rgb *= lerp(
+                        1.0,
+                        blendCarrier * _BlendColor.rgb,
+                        _BlendColor.a);
+                    blendAlpha = lerp(
+                        blendSample.a,
+                        blendSample.r,
+                        useBlendAsAlpha);
                 #endif
                 float alpha = DistanceFade(distance(_WorldSpaceCameraPos, input.positionWS));
                 alpha *= lerp(1.0, dissolve, saturate(_DissolveAffectBlend));
+                alpha *= blendAlpha;
 
                 FragmentOutput output;
                 output.color = float4(clamp(scene.rgb, 0.0, 1000.0), saturate(alpha));

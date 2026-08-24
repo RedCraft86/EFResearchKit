@@ -52,7 +52,10 @@ class LitEffectResourceMappingTests(unittest.TestCase):
 
     def test_representative_contract_is_reflected_without_rdef(self) -> None:
         report = MODULE.build_report()
-        self.assertEqual(report["status"], "verified_with_gaps")
+        self.assertEqual(
+            report["status"],
+            "verified_with_selected_variant_material_offsets_and_consumer_gaps",
+        )
         self.assertFalse(report["reflection"]["vertex"]["hasRdef"])
         self.assertFalse(report["reflection"]["fragment"]["hasRdef"])
         self.assertEqual(len(report["vertexInputs"]), 9)
@@ -76,10 +79,57 @@ class LitEffectResourceMappingTests(unittest.TestCase):
         fragment = {row["register"]: row for row in report["constantBuffers"]["fragment"]}
         self.assertEqual({register: row["sizeBytes"] for register, row in vertex.items()}, {0: 1312, 1: 320, 2: 176})
         self.assertEqual({register: row["sizeBytes"] for register, row in fragment.items()}, {0: 720, 1: 1696, 2: 80, 3: 496, 4: 16})
+        self.assertEqual(vertex[2]["logicalName"], "UnityPerDraw")
+        self.assertEqual(fragment[3]["logicalName"], "UnityPerMaterial")
+        self.assertEqual(fragment[4]["logicalName"], "_TerrainSubsurfaceConstants")
         fields = {row["name"]: row for row in report["constantBuffers"]["serializedFields"]}
         self.assertEqual((fields["_NonJitteredViewNoTransProjMatrix"]["register"], fields["_NonJitteredViewNoTransProjMatrix"]["offsetBytes"], fields["_NonJitteredViewNoTransProjMatrix"]["sizeBytes"]), (0, 512, 64))
-        self.assertEqual((fields["_GlobalMipBias"]["register"], fields["_GlobalMipBias"]["registerOffsetBytes"]), (2, 96))
+        self.assertEqual((fields["_GlobalMipBias"]["register"], fields["_GlobalMipBias"]["registerOffsetBytes"]), (None, None))
         self.assertIsNone(fields["_TerrainSubsurfaceProfileInt"]["register"])
+
+    def test_selected_variant_material_offsets_are_exact_and_bounded(self) -> None:
+        report = MODULE.build_report()
+        rows = {
+            row["property"]: row
+            for row in report["constantBuffers"]["materialConstantBufferFields"]
+        }
+        for name, (offset, size) in MODULE.EXPECTED_SELECTED_PARALLAX_FIELDS.items():
+            self.assertEqual(rows[name]["register"], 3)
+            self.assertEqual(rows[name]["offsetBytes"], offset)
+            self.assertEqual(rows[name]["sizeBytes"], size)
+            self.assertEqual(rows[name]["status"], "resolved_selected_variant_offset")
+            self.assertLessEqual(offset + size, 496)
+        self.assertEqual(
+            rows["_EnableParallaxMap"]["status"],
+            "selected_variant_offset_absent",
+        )
+        self.assertIsNone(rows["_EnableParallaxMap"]["offsetBytes"])
+
+    def test_selected_variant_material_offset_attack_fails_closed(self) -> None:
+        original = MODULE._compact_metadata
+
+        def altered(path: Path):
+            value = original(path)
+            if path.name.startswith("0115_"):
+                table = next(
+                    row for row in value["constantBuffers"]
+                    if row["Name"] == "UnityPerMaterial"
+                )
+                field = next(
+                    row for row in table["VectorParameters"]
+                    if row["Name"] == "_ParallaxColor"
+                )
+                field["Index"] = 448
+            return value
+
+        MODULE._compact_metadata = altered
+        try:
+            with self.assertRaisesRegex(
+                MODULE.VerificationError, "parallax field map drifted"
+            ):
+                MODULE.build_report()
+        finally:
+            MODULE._compact_metadata = original
 
     def test_malformed_dxbc_chunk_fails_closed(self) -> None:
         with self.assertRaisesRegex(MODULE.VerificationError, "DXBC chunk table"):

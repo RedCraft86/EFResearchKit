@@ -50,10 +50,13 @@ runtime component, or shader instead of editing generated files by hand.
 ## Active target
 
 The source reference is `../videos/2026-08-15_10-32-32.mkv`; the focused
-Endminf comparison capture is `../videos/2026-08-21_20-15-17.mkv`. Keep image
-comparison, timing, camera, lighting, materials, effects, and post-processing
-anchored to those recordings. Do not reintroduce actor-specific approximation
-branches without source evidence.
+Endminf comparison capture is `../videos/2026-08-21_20-15-17.mkv`, with
+`../videos/2026-08-24_06-37-22.mkv` as its 4K frame-generation-off companion.
+Keep image comparison, timing, camera, lighting, materials, effects, and
+post-processing anchored to those recordings. Treat the amber crystal/stone
+entrance effect separately from general body comparisons as defined by the
+maintained sequence annotation. Do not reintroduce actor-specific
+approximation branches without source evidence.
 
 Endminf is the only fidelity target during this phase. Shared import, material,
 animation, camera, and render-pipeline code must remain character-neutral so
@@ -67,6 +70,23 @@ the completed result can later rebuild all characters.
   portraits, and the selected Overview animation sources are recovered.
 - The selected playable UI animation scope is complete; runtime transition,
   blending, IK, secondary motion, and effect lifecycle behavior remain partial.
+- Endminf's selected `ui_overview_start -> ui_overview_loop` handoff now runs
+  through a generated source-backed Animator controller, and its four resolved
+  overview rocks/crystals follow the exact 1.5-second active-state gate. The
+  runtime consumes rotation-only root motion like the pinned native callback.
+  Its burst stripes bind the exact source-alpha texture rather than the former
+  missing-texture white quad. The focused comparison anchors its first Unity
+  image to retail frame 1110 instead of the former three-frame-late pairing.
+  The broader all-character runtime remains partial.
+- Effect-02's curve state, radial power, native parameter packing, signed and
+  clamped viewport-center transform, and source-before-bloom order are
+  recovered. Its complete combined Uber bloom/pre-exposure implementation
+  remains an explicit compatibility gap.
+- The rock-family `HGRP/LitEffect` physical constant buffers, named base
+  `UnityPerMaterial` prefix, and five-MRT deferred consumer are identified.
+  The `_PARALLAX_MAP` layout extension and complete live frame-resource
+  publication remain unresolved; the ten affected renderers therefore stay
+  blocked by default.
 - Selected CharacterNPR, eye, hair, shadow, GBuffer, lighting, particle, and
   post-process contracts are source-backed and fail closed where inputs are
   unknown.

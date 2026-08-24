@@ -19,6 +19,8 @@ exit /b 2
 
 :open_endminf
   set "ENDFIELD_ENDMINF_VISUAL_COMPATIBILITY=1"
+  rem The recording's Endminf _02 post owner starts nine 60-Hz frames before its first visible body frame.
+  set "ENDFIELD_ENDMINF_VISUAL_COMPATIBILITY_PREROLL_SECONDS=0.15"
   set "ENDFIELD_ENDMINF_LITEFFECT_VISUAL_COMPAT=1"
   set "ENDFIELD_ENDMINF_BACKDROP_VISUAL_COMPATIBILITY=1"
   set "ENDFIELD_RECOVERED_CHARINFO_READY_SUBSET_DIAGNOSTIC=1"
@@ -26,6 +28,10 @@ exit /b 2
   set "ENDFIELD_RECOVERED_VISIBILITY_SH=1"
   set "ENDFIELD_RECOVERED_LINEAR_UNORM_FINAL_TARGET=1"
   set "ENDFIELD_RECOVERED_CHARINFO_BACKGROUND_PORTRAIT=1"
+  rem Recording-specific live cursor state for videos/2026-08-21_20-15-17.mkv.
+  set "ENDFIELD_RECOVERED_CHARINFO_GYROSCOPE_MODE=recorded-input"
+  set "ENDFIELD_RECOVERED_CHARINFO_GYROSCOPE_INPUT_X=0.989"
+  set "ENDFIELD_RECOVERED_CHARINFO_GYROSCOPE_INPUT_Y=-0.874"
   set "ENDFIELD_CHARACTER_RECOVERY_INITIAL_MODEL=Endminf"
   echo Opening Endminf visual reproduction with explicitly approximate compatibility layers.
   "%UNITY_EXE%" -projectPath "%PROJECT_PATH%" -force-d3d12 -executeMethod EndfieldGraphShaderLabEditor.EndfieldEndminfOverviewEffectBindingBuilder.OpenVisualReproductionInPlayMode

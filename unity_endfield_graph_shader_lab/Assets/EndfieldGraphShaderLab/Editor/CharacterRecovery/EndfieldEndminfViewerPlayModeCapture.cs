@@ -26,6 +26,19 @@ namespace EndfieldGraphShaderLabEditor
         private const float SimulationFps = 60f;
         private const float Fps = 4f;
         private const int VideoFrameCount = 600;
+        // The supplied retail recording keeps the pointer at the lower-right
+        // during Endminf's entrance. These normalized coordinates are measured
+        // from that 1920x1080 capture and select the already recovered live
+        // cursor-input path; they are not static game-data defaults.
+        private const string RecordingGyroscopeInputX = "0.989";
+        private const string RecordingGyroscopeInputY = "-0.874";
+        // Wolfgd remains visible through source frame 1099, while Endminf's
+        // first compared body frame is 1110. The recovered _02 post owner is
+        // created on the intervening selection edge, nine simulation ticks
+        // before the first local render sample. This explicit recording-only
+        // pre-roll prevents both short source pulses from being shifted onto
+        // comparison frames 0 and 18.
+        private const string RecordingVisualPostPreRollSeconds = "0.15";
         // RestartOverviewFromSelection is invoked on an editor update edge;
         // the body Animation has advanced by two 60-Hz simulation ticks before
         // the first renderable sample. Offset later requested timestamps so
@@ -35,6 +48,17 @@ namespace EndfieldGraphShaderLabEditor
         // enough past its handoff to prove that the actual viewer reaches and
         // sustains overview_loop instead of stopping on the entrance pose.
         private const int FrameCount = 41;
+        private const string LitEffectCompatibilityShader =
+            "Hidden/Endfield/Compatibility/Endminf/LitEffectM01M38";
+        private const string Suikuai1DiagnosticEnvironment =
+            "ENDFIELD_ENDMINF_CAPTURE_ADMIT_SUIKUAI1";
+        private const string Suikuai1Material =
+            "Assets/EndfieldGraphShaderLab/Generated/Characters/Playable/Endminf/Effects/Overview/Materials/M_fx_common_teleport_03_p19E6A2A7AE736DA5.mat";
+        private static readonly string[] ExpectedRemainingBlockedEffects = {
+            "/all/Particle System (9) | ",
+            "/all/suikuai (2) | ",
+            "/all/glow/Particle System (10) | ",
+        };
         private static float started;
         private static bool selected;
         private static int selectionSettleFrames;
@@ -43,12 +67,19 @@ namespace EndfieldGraphShaderLabEditor
         private static string output;
         private static float[] requestedTimes;
         private static float captureFps = Fps;
+        private static string captureFailure;
+        private static bool capturePrePostHdr;
+        private static bool capturePostStages;
+        private static string prePostHdrCohort;
+        private static string prePostHdrOutput;
+        private static string postStagesCohort;
+        private static string postStagesOutput;
         private static readonly List<FrameRow> Frames = new List<FrameRow>();
 
         [Serializable]
         private sealed class Report
         {
-            public string schema = "endfield.endminf-viewer-playmode-sequence.v2";
+            public string schema = "endfield.endminf-viewer-playmode-sequence.v4";
             public string status = "ok";
             public int width = Width;
             public int height = Height;
@@ -57,6 +88,10 @@ namespace EndfieldGraphShaderLabEditor
             public string selectionPath = "CharacterRecoveryViewerUI.SelectModel(Endminf)";
             public bool actorOnlyCapture = false;
             public bool postProcessingExplicitlyDisabled = false;
+            public bool prePostHdrDiagnostic;
+            public bool postStageDiagnostic;
+            public string excludedMaterial;
+            public string diagnosticAdmittedRenderer;
             public bool recoveredLinearUnormFinalTargetRequested;
             public string renderPipeline;
             public string cameraClearFlags;
@@ -65,8 +100,19 @@ namespace EndfieldGraphShaderLabEditor
             public string expectedSequence = "overview_start -> overview_loop";
             public bool observedTransition;
             public bool observedSettledLoop;
+            public bool observedAnimatorContract;
             public bool observedEntranceVfx;
             public bool observedEntranceVfxCleanup;
+            public bool observedRotationOnlyRootMotion;
+            public bool observedPrimaryRockCompatibilityBinding;
+            public bool observedDeferredLightDataReady;
+            public bool observedDeferredShadowDataReady;
+            public bool observedDeferredPass0InputSubsetReady;
+            public bool observedLightCookieDataReady;
+            public string gyroscopeMode;
+            public string gyroscopeInputX;
+            public string gyroscopeInputY;
+            public float visualPostPreRollSeconds;
             public FrameRow[] frames;
         }
 
@@ -86,11 +132,22 @@ namespace EndfieldGraphShaderLabEditor
             public float activeBodyClipTime;
             public bool overviewTransitioning;
             public bool overviewLooping;
+            public bool animatorContractActive;
+            public int currentAnimatorStateHash;
+            public int nextAnimatorStateHash;
+            public float animatorTransitionNormalizedTime;
+            public int rootMotionCallbackCount;
+            public float appliedRootDeltaRotationDegrees;
+            public Vector3 rootMotionPositionDelta;
             public bool shadowPlaneEnabled;
             public bool shadowPlaneActive;
             public bool shadowPlaneInCameraFrustum;
             public Vector3 shadowPlaneBoundsCenter;
             public Vector3 shadowPlaneBoundsExtents;
+            public bool deferredLightDataReady;
+            public bool deferredShadowDataReady;
+            public bool deferredPass0InputSubsetReady;
+            public bool lightCookieDataReady;
             public string[] effectRoots;
             public ParticleRow[] liveRenderers;
             public ParticleRow[] handFamily;
@@ -126,6 +183,90 @@ namespace EndfieldGraphShaderLabEditor
             public int alive;
         }
 
+        [Serializable]
+        private sealed class ReferenceSequenceSidecar
+        {
+            public string schema;
+            public string recordingId;
+            public ReferenceSegment segment;
+            public ReferenceSource source;
+            public ReferenceOutput output;
+        }
+
+        [Serializable]
+        private sealed class ReferenceSegment
+        {
+            public string id;
+            public int startFrame;
+            public ReferenceComparison comparison;
+        }
+
+        [Serializable]
+        private sealed class ReferenceComparison
+        {
+            public int bodyClipStartSourceFrame;
+            public float bodyClipPhaseSeconds;
+            public int firstVisibleSourceFrame;
+            public int anchorUncertaintyFrames;
+            public int unmaskedBodyStartSourceFrame;
+            public int comparisonWidth;
+            public int comparisonHeight;
+            public string resamplingFilter;
+            public int sampleCount;
+            public int tileColumns;
+        }
+
+        [Serializable]
+        private sealed class ReferenceSource
+        {
+            public float fps;
+            public string sha256;
+        }
+
+        [Serializable]
+        private sealed class ReferenceOutput
+        {
+            public float fps;
+            public int frameCount;
+            public int firstSourceFrame;
+        }
+
+        [Serializable]
+        private sealed class ReferenceComparisonReport
+        {
+            public string schema = "endfield.endminf-reference-comparison.v1";
+            public string recordingId;
+            public string segmentId;
+            public string sourceSha256;
+            public int extractedStartSourceFrame;
+            public int bodyClipStartSourceFrame;
+            public float sourceFps;
+            public float unityAnchorBodyClipPhaseSeconds;
+            public string comparisonBoundary;
+            public int firstVisibleSourceFrame;
+            public int anchorUncertaintyFrames;
+            public int unmaskedBodyStartSourceFrame;
+            public int comparisonWidth;
+            public int comparisonHeight;
+            public string resamplingFilter;
+            public float phaseErrorSpreadFrames;
+            public ReferenceComparisonRow[] rows;
+        }
+
+        [Serializable]
+        private sealed class ReferenceComparisonRow
+        {
+            public int unityFrameIndex;
+            public float unitySequenceSeconds;
+            public float activeBodyClipSeconds;
+            public int sourceFrame;
+            public int minimumSourceFrame;
+            public int maximumSourceFrame;
+            public int extractedFrame;
+            public float phaseErrorFrames;
+            public bool crystalContaminated;
+        }
+
         public static void Run()
         {
             if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.Direct3D12)
@@ -149,8 +290,43 @@ namespace EndfieldGraphShaderLabEditor
             };
             foreach (string flag in reproductionFlags)
                 Environment.SetEnvironmentVariable(flag, "1");
+            // The exact source stage is disposable and may be absent between
+            // recovery batches. Rebind the ten retained primary rock rows from
+            // their pinned PathIDs and direct tracked assets before the scene
+            // instantiates its actor prefab. This remains opt-in and does not
+            // broaden the four separately blocked non-primary effect rows.
+            EndfieldEndminfLitEffectCompatibilityBindingBuilder.BuildAndValidate();
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
+                    EndfieldEndminfVisualCompatibilityClock.PreRollSecondsEnvironmentVariable)))
+            {
+                Environment.SetEnvironmentVariable(
+                    EndfieldEndminfVisualCompatibilityClock.PreRollSecondsEnvironmentVariable,
+                    RecordingVisualPostPreRollSeconds);
+            }
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoGyroscopeCameraState.ModeEnvironmentVariable)))
+            {
+                Environment.SetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoGyroscopeCameraState.ModeEnvironmentVariable,
+                    "recorded-input");
+            }
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoGyroscopeCameraState.InputXEnvironmentVariable)))
+            {
+                Environment.SetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoGyroscopeCameraState.InputXEnvironmentVariable,
+                    RecordingGyroscopeInputX);
+            }
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoGyroscopeCameraState.InputYEnvironmentVariable)))
+            {
+                Environment.SetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoGyroscopeCameraState.InputYEnvironmentVariable,
+                    RecordingGyroscopeInputY);
+            }
             EditorSceneManager.OpenScene(Scene, OpenSceneMode.Single);
             Frames.Clear();
+            captureFailure = null;
             next = 0;
             selected = false;
             selectionSettleFrames = 0;
@@ -158,14 +334,50 @@ namespace EndfieldGraphShaderLabEditor
                 "ENDFIELD_ENDMINF_CAPTURE_FINE_WINDOW") == "1";
             bool videoExport = Environment.GetEnvironmentVariable(
                 "ENDFIELD_ENDMINF_CAPTURE_VIDEO_EXPORT") == "1";
+            capturePrePostHdr = Environment.GetEnvironmentVariable(
+                "ENDFIELD_ENDMINF_CAPTURE_PREPOST_HDR") == "1";
+            capturePostStages = Environment.GetEnvironmentVariable(
+                "ENDFIELD_ENDMINF_CAPTURE_POST_STAGES") == "1";
+            if (capturePrePostHdr && capturePostStages)
+                throw new InvalidOperationException(
+                    "Pre-post HDR and five-stage post diagnostics are mutually exclusive.");
+            string excludedMaterial = Environment.GetEnvironmentVariable(
+                "ENDFIELD_ENDMINF_CAPTURE_EXCLUDE_MATERIAL");
+            prePostHdrCohort = string.IsNullOrWhiteSpace(excludedMaterial)
+                ? "full"
+                : "exclude_material=" + excludedMaterial;
+            postStagesCohort = prePostHdrCohort;
+            string prePostHdrRun = Environment.GetEnvironmentVariable(
+                "ENDFIELD_ENDMINF_CAPTURE_PREPOST_HDR_RUN");
+            if (string.IsNullOrWhiteSpace(prePostHdrRun))
+                prePostHdrRun = string.IsNullOrWhiteSpace(excludedMaterial)
+                    ? "full"
+                    : "excluded_" + excludedMaterial;
+            string postStagesRun = Environment.GetEnvironmentVariable(
+                "ENDFIELD_ENDMINF_CAPTURE_POST_STAGES_RUN");
+            if (string.IsNullOrWhiteSpace(postStagesRun))
+                postStagesRun = string.IsNullOrWhiteSpace(excludedMaterial)
+                    ? "full"
+                    : "excluded_" + excludedMaterial;
             captureFps = videoExport ? SimulationFps : Fps;
             output = Path.GetFullPath(Path.Combine(Application.dataPath,
-                videoExport
+                capturePrePostHdr
+                    ? "../scratch/character_recovery/endminf_viewer_prepost_hdr/" +
+                        SafePathComponent(prePostHdrRun)
+                    : capturePostStages
+                    ? "../scratch/character_recovery/endminf_viewer_post_stages/" +
+                        SafePathComponent(postStagesRun)
+                    : videoExport
                     ? "../exports/endminf_overview/frames"
                     : fineWindow
                         ? "../scratch/character_recovery/endminf_viewer_playmode_fine_window"
                         : "../scratch/character_recovery/endminf_viewer_playmode_sequence"));
-            requestedTimes = videoExport
+            requestedTimes = capturePostStages
+                ? new[] { 4.40f, 4.4333334f, 4.4666667f, 4.50f, 4.55f }
+                : capturePrePostHdr
+                ? Enumerable.Range(0, 19).Select(value =>
+                    Mathf.Max(0f, value / Fps - PlayModeClipLeadSeconds)).ToArray()
+                : videoExport
                 ? Enumerable.Range(0, VideoFrameCount).Select(value =>
                     Mathf.Max(0f, value / SimulationFps - PlayModeClipLeadSeconds)).ToArray()
                 : fineWindow
@@ -175,6 +387,28 @@ namespace EndfieldGraphShaderLabEditor
             Directory.CreateDirectory(output);
             EditorApplication.playModeStateChanged += State;
             EditorApplication.EnterPlaymode();
+        }
+
+        public static void RunDeferredB31Probe()
+        {
+            string[] enabled = {
+                "ENDFIELD_ENDMINF_DEFERRED_B31_PROBE",
+                "ENDFIELD_RECOVERED_DEFERRED_TRANSFORM_VARIABLES",
+                "ENDFIELD_RECOVERED_DEFERRED_LIGHT_DATA",
+                "ENDFIELD_RECOVERED_LIGHT_COOKIE_DATA",
+                "ENDFIELD_RECOVERED_CANONICAL_BINNING_BUFFER"
+            };
+            foreach (string flag in enabled)
+                Environment.SetEnvironmentVariable(flag, "1");
+            string[] excluded = {
+                "ENDFIELD_RECOVERED_DEFERRED_RESOLVER_INPUT_PROBE",
+                "ENDFIELD_RECOVERED_DEFERRED_RESOLVER_RESOURCE_PROBE",
+                "ENDFIELD_RECOVERED_DEFERRED_EXACT_CONSUMER",
+                "ENDFIELD_RECOVERED_DEFERRED_SHADOW_DATA"
+            };
+            foreach (string flag in excluded)
+                Environment.SetEnvironmentVariable(flag, null);
+            Run();
         }
 
         private static void State(PlayModeStateChange state)
@@ -188,7 +422,7 @@ namespace EndfieldGraphShaderLabEditor
             else if (state == PlayModeStateChange.EnteredEditMode)
             {
                 Time.captureDeltaTime = 0f;
-                EditorApplication.Exit(0);
+                EditorApplication.Exit(string.IsNullOrEmpty(captureFailure) ? 0 : 1);
             }
         }
 
@@ -215,9 +449,15 @@ namespace EndfieldGraphShaderLabEditor
                 // Force the same real selection edge even when editor state happened
                 // to start with Endminf selected; the runtime VFX contract is owned by
                 // RestartOverviewFromSelection, not by merely finding an active actor.
-                select.Invoke(viewer, new object[] { -1 });
-                select.Invoke(viewer, new object[] { index });
                 camera = Camera.main ?? UnityEngine.Object.FindObjectOfType<Camera>();
+                select.Invoke(viewer, new object[] { -1 });
+                // Source frame 1109 is the blank model-swap frame immediately
+                // before Endminf first appears at 1110. Render that boundary
+                // through the real pipeline so camera temporal history does
+                // not self-seed from the first visible Endminf frame.
+                if (camera != null)
+                    Render(camera);
+                select.Invoke(viewer, new object[] { index });
                 selected = true;
                 // Enabling the actor schedules its one-frame delayed Overview
                 // restart. Do not establish capture time zero until that edge
@@ -242,6 +482,8 @@ namespace EndfieldGraphShaderLabEditor
                 return;
             }
 
+            if (requestedTimes == null || next >= requestedTimes.Length)
+                return;
             float requested = requestedTimes[next];
             float elapsed = Time.time - started;
             if (elapsed + 0.0001f < requested) return;
@@ -257,6 +499,32 @@ namespace EndfieldGraphShaderLabEditor
                     .Where(value => value.enabled && value.weight > 0.0001f)
                     .OrderByDescending(value => value.weight)
                     .FirstOrDefault();
+            string activeBodyClip = activeBodyState == null ? "" : activeBodyState.name;
+            float activeBodyClipTime = activeBodyState == null ? 0f : activeBodyState.time;
+            if (overview != null && overview.AnimatorContractActive &&
+                overview.animatorSource != null)
+            {
+                Animator animator = overview.animatorSource;
+                bool animatorTransition = animator.IsInTransition(0);
+                AnimatorClipInfo[] currentClips = animator.GetCurrentAnimatorClipInfo(0);
+                AnimatorClipInfo[] nextClips = animatorTransition
+                    ? animator.GetNextAnimatorClipInfo(0)
+                    : Array.Empty<AnimatorClipInfo>();
+                AnimatorClipInfo selectedClip = currentClips
+                    .Concat(nextClips)
+                    .OrderByDescending(value => value.weight)
+                    .FirstOrDefault();
+                if (selectedClip.clip != null)
+                {
+                    activeBodyClip = selectedClip.clip.name;
+                    AnimatorStateInfo selectedState = nextClips.Contains(selectedClip)
+                        ? animator.GetNextAnimatorStateInfo(0)
+                        : animator.GetCurrentAnimatorStateInfo(0);
+                    activeBodyClipTime = Mathf.Repeat(
+                        selectedState.normalizedTime,
+                        1f) * selectedClip.clip.length;
+                }
+            }
             // Endminf's four source bindings are stationary-position effects.
             // The runtime spawner therefore instantiates them without a parent,
             // at the actor mount's world TRS.  An actor-local census silently
@@ -292,7 +560,55 @@ namespace EndfieldGraphShaderLabEditor
                     renderer.enabled = false;
                 }
             }
+            bool admitSuikuai1 = string.Equals(
+                Environment.GetEnvironmentVariable(Suikuai1DiagnosticEnvironment),
+                "1",
+                StringComparison.Ordinal);
+            if (admitSuikuai1)
+            {
+                ParticleSystemRenderer[] candidates = renderers.Where(value =>
+                    value.transform.parent != null &&
+                    value.transform.parent.name == "all" &&
+                    value.name == "suikuai (1)").ToArray();
+                Material material = AssetDatabase.LoadAssetAtPath<Material>(
+                    Suikuai1Material);
+                if (candidates.Length != 1 || material == null ||
+                    material.shader == null ||
+                    material.shader.name !=
+                        "Hidden/Endfield/Recovered/Zhuangfy/VFXRefractMRT" ||
+                    candidates[0].meshCount != 4)
+                {
+                    throw new InvalidOperationException(
+                        "Focused suikuai (1) diagnostic source binding drifted.");
+                }
+                candidates[0].sharedMaterial = material;
+                candidates[0].enabled = true;
+            }
+            if (capturePrePostHdr && next == 18)
+            {
+                prePostHdrOutput = Path.Combine(output, "prepost_hdr");
+                Directory.CreateDirectory(prePostHdrOutput);
+                EndfieldRecoveredPrePostHdrDiagnostic.Arm(
+                    prePostHdrOutput,
+                    "frame_000018",
+                    prePostHdrCohort,
+                    requested);
+            }
+            if (capturePostStages)
+            {
+                postStagesOutput = Path.Combine(output, "post_stages");
+                Directory.CreateDirectory(postStagesOutput);
+                EndfieldRecoveredPostStageDiagnostic.Arm(
+                    postStagesOutput,
+                    "frame_" + next.ToString("D6"),
+                    postStagesCohort,
+                    requested);
+            }
             Color32[] pixels = Render(camera);
+            if (capturePrePostHdr && next == 18)
+                EndfieldRecoveredPrePostHdrDiagnostic.WaitForPending();
+            if (capturePostStages)
+                EndfieldRecoveredPostStageDiagnostic.WaitForPending();
             int changed = 0;
             long difference = 0;
             if (next > 0)
@@ -326,15 +642,38 @@ namespace EndfieldGraphShaderLabEditor
                 activeAdmittedRenderers = renderers.Count(value => value.enabled && value.gameObject.activeInHierarchy),
                 admittedAliveParticles = renderers.Where(value => value.enabled && value.gameObject.activeInHierarchy)
                     .Sum(value => value.GetComponent<ParticleSystem>().particleCount),
-                activeBodyClip = activeBodyState == null ? "" : activeBodyState.name,
-                activeBodyClipTime = activeBodyState == null ? 0f : activeBodyState.time,
+                activeBodyClip = activeBodyClip,
+                activeBodyClipTime = activeBodyClipTime,
                 overviewTransitioning = overview != null && overview.IsTransitioning,
                 overviewLooping = overview != null && overview.IsLooping,
+                animatorContractActive = overview != null && overview.AnimatorContractActive,
+                currentAnimatorStateHash = overview != null ? overview.CurrentAnimatorStateHash : 0,
+                nextAnimatorStateHash = overview != null ? overview.NextAnimatorStateHash : 0,
+                animatorTransitionNormalizedTime = overview != null
+                    ? overview.AnimatorTransitionNormalizedTime
+                    : 0f,
+                rootMotionCallbackCount = overview != null
+                    ? overview.RootMotionCallbackCount
+                    : 0,
+                appliedRootDeltaRotationDegrees = overview != null
+                    ? overview.AppliedRootDeltaRotationDegrees
+                    : 0f,
+                rootMotionPositionDelta = overview != null
+                    ? overview.RootMotionPositionDelta
+                    : Vector3.zero,
                 shadowPlaneEnabled = shadowPlane != null && shadowPlane.enabled,
                 shadowPlaneActive = shadowPlane != null && shadowPlane.gameObject.activeInHierarchy,
                 shadowPlaneInCameraFrustum = shadowPlaneInFrustum,
                 shadowPlaneBoundsCenter = shadowPlane == null ? Vector3.zero : shadowPlane.bounds.center,
                 shadowPlaneBoundsExtents = shadowPlane == null ? Vector3.zero : shadowPlane.bounds.extents,
+                deferredLightDataReady = Shader.GetGlobalFloat(
+                    "_EndfieldRecoveredDeferredLightDataReady") > 0.5f,
+                deferredShadowDataReady = Shader.GetGlobalFloat(
+                    "_EndfieldRecoveredDeferredShadowDataReady") > 0.5f,
+                deferredPass0InputSubsetReady = Shader.GetGlobalFloat(
+                    "_EndfieldRecoveredDeferredPass0InputSubsetReady") > 0.5f,
+                lightCookieDataReady = Shader.GetGlobalFloat(
+                    "_EndfieldRecoveredLightCookieDataReady") > 0.5f,
                 effectRoots = roots.Select(value => value.name + " @ " + Hierarchy(value.transform)).ToArray(),
                 liveRenderers = renderers.Where(value => value.enabled &&
                         value.gameObject.activeInHierarchy &&
@@ -361,13 +700,80 @@ namespace EndfieldGraphShaderLabEditor
             bool observedSettledLoop = Frames.Any(value => value.overviewLooping &&
                 value.activeBodyClip.IndexOf("overview_loop", StringComparison.OrdinalIgnoreCase) >= 0 &&
                 !value.overviewTransitioning);
+            bool observedAnimatorContract = Frames.Any(value => value.animatorContractActive);
             bool observedEntranceVfx = Frames.Any(value =>
                 value.activeBodyClip.IndexOf("overview_start", StringComparison.OrdinalIgnoreCase) >= 0 &&
                 value.effectRootCount == 4 && value.admittedRenderers > 0 &&
                 value.activeAdmittedRenderers > 0 && value.admittedAliveParticles > 0);
             bool observedEntranceVfxCleanup = Frames.Any(value =>
                 value.overviewLooping && !value.overviewTransitioning && value.effectRootCount == 0);
+            bool observedRotationOnlyRootMotion =
+                Frames.Any(value => value.rootMotionCallbackCount > 0) &&
+                Frames.All(value => value.rootMotionPositionDelta.sqrMagnitude <= 1.0e-10f);
+            FrameRow firstEntranceFrame = Frames.FirstOrDefault(value =>
+                value.effectRootCount == 4);
+            bool observedPrimaryRockCompatibilityBinding =
+                firstEntranceFrame != null &&
+                firstEntranceFrame.admittedRenderers == 67 &&
+                firstEntranceFrame.blockedRendererIdentities != null &&
+                firstEntranceFrame.blockedRendererIdentities.Length ==
+                    ExpectedRemainingBlockedEffects.Length &&
+                ExpectedRemainingBlockedEffects.All(expected =>
+                    firstEntranceFrame.blockedRendererIdentities.Count(value =>
+                        value.Contains(expected)) == 1) &&
+                Frames.Any(frame => frame.liveRenderers != null &&
+                    frame.liveRenderers.Any(renderer =>
+                        renderer.shaders != null &&
+                        renderer.shaders.Contains(LitEffectCompatibilityShader)));
+            bool observedDeferredLightDataReady = Frames.All(value =>
+                value.deferredLightDataReady);
+            bool observedDeferredShadowDataReady = Frames.All(value =>
+                value.deferredShadowDataReady);
+            bool observedDeferredPass0InputSubsetReady = Frames.All(value =>
+                value.deferredPass0InputSubsetReady);
+            bool observedLightCookieDataReady = Frames.All(value =>
+                value.lightCookieDataReady);
+            var missingObservations = new List<string>();
+            if (!observedAnimatorContract) missingObservations.Add("Animator contract");
+            if (!observedTransition) missingObservations.Add("start-to-loop transition");
+            if (!observedSettledLoop) missingObservations.Add("settled loop");
+            if (!observedEntranceVfx) missingObservations.Add("entrance VFX");
+            if (!observedEntranceVfxCleanup) missingObservations.Add("entrance VFX cleanup");
+            if (!observedRotationOnlyRootMotion)
+                missingObservations.Add("rotation-only root motion with invariant position");
+            if (!observedPrimaryRockCompatibilityBinding)
+                missingObservations.Add(
+                    "ten-row primary rock compatibility plus exact suikuai (1) " +
+                    "binding with three separate blocked effects");
+            if (string.Equals(
+                    Environment.GetEnvironmentVariable(
+                        "ENDFIELD_ENDMINF_DEFERRED_B31_PROBE"),
+                    "1",
+                    StringComparison.Ordinal))
+            {
+                if (!observedDeferredLightDataReady)
+                    missingObservations.Add("Endminf deferred b31 LightData readiness");
+                if (!observedLightCookieDataReady)
+                    missingObservations.Add("Endminf zero-cookie LightCookieData readiness");
+                if (Frames.Any(value => value.deferredShadowDataReady ||
+                        value.deferredPass0InputSubsetReady))
+                    missingObservations.Add(
+                        "Endminf b31-only probe unexpectedly admitted unresolved b34/pass-0 readiness");
+            }
             Report report = new Report {
+                status = capturePrePostHdr || capturePostStages
+                    ? "diagnostic_ok"
+                    : missingObservations.Count == 0
+                    ? "ok"
+                    : "failed: missing " + string.Join(", ", missingObservations.ToArray()),
+                prePostHdrDiagnostic = capturePrePostHdr,
+                postStageDiagnostic = capturePostStages,
+                excludedMaterial = Environment.GetEnvironmentVariable(
+                    "ENDFIELD_ENDMINF_CAPTURE_EXCLUDE_MATERIAL") ?? string.Empty,
+                diagnosticAdmittedRenderer = Environment.GetEnvironmentVariable(
+                    Suikuai1DiagnosticEnvironment) == "1"
+                    ? "overview_02/all/suikuai (1)"
+                    : string.Empty,
                 fps = captureFps,
                 recoveredLinearUnormFinalTargetRequested =
                     HDRenderPipeline.IsRecoveredLinearUnormFinalTargetRequested(),
@@ -378,8 +784,31 @@ namespace EndfieldGraphShaderLabEditor
                     value.GetType().Name.IndexOf("Volume", StringComparison.OrdinalIgnoreCase) >= 0),
                 observedTransition = observedTransition,
                 observedSettledLoop = observedSettledLoop,
+                observedAnimatorContract = observedAnimatorContract,
                 observedEntranceVfx = observedEntranceVfx,
                 observedEntranceVfxCleanup = observedEntranceVfxCleanup,
+                observedRotationOnlyRootMotion = observedRotationOnlyRootMotion,
+                observedPrimaryRockCompatibilityBinding =
+                    observedPrimaryRockCompatibilityBinding,
+                observedDeferredLightDataReady = observedDeferredLightDataReady,
+                observedDeferredShadowDataReady = observedDeferredShadowDataReady,
+                observedDeferredPass0InputSubsetReady =
+                    observedDeferredPass0InputSubsetReady,
+                observedLightCookieDataReady = observedLightCookieDataReady,
+                gyroscopeMode = Environment.GetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoGyroscopeCameraState.ModeEnvironmentVariable),
+                gyroscopeInputX = Environment.GetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoGyroscopeCameraState.InputXEnvironmentVariable),
+                gyroscopeInputY = Environment.GetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoGyroscopeCameraState.InputYEnvironmentVariable),
+                // The _02 owner is destroyed before the full sequence report
+                // is published, which deliberately clears the live clock.
+                // Preserve the observed first-frame phase difference instead.
+                visualPostPreRollSeconds = Frames.Count > 0
+                    ? Mathf.Max(
+                        0.0f,
+                        Frames[0].endminfPostSeconds - Frames[0].actualSeconds)
+                    : 0.0f,
                 frames = Frames.ToArray()
             };
             File.WriteAllText(Path.Combine(output, "report.json"), JsonUtility.ToJson(report, true));
@@ -387,48 +816,271 @@ namespace EndfieldGraphShaderLabEditor
                 "ENDFIELD_ENDMINF_CAPTURE_FINE_WINDOW") == "1";
             bool videoExport = Environment.GetEnvironmentVariable(
                 "ENDFIELD_ENDMINF_CAPTURE_VIDEO_EXPORT") == "1";
-            if (!fineWindow && (!observedTransition || !observedSettledLoop ||
-                !observedEntranceVfx || !observedEntranceVfxCleanup))
-                throw new InvalidOperationException(
-                    "Endminf Viewer capture did not observe the complete " +
-                    "overview_start + entrance VFX -> overview_loop + VFX cleanup sequence");
-            if (!fineWindow && !videoExport)
-                BuildSideBySideComparison();
-            Debug.Log("PASS Endminf actual Viewer Play-mode sequence: roots=" + Frames.Last().effectRootCount +
-                " admitted=" + Frames.Last().admittedRenderers + " output=" + output);
             EditorApplication.update -= Tick;
+            if (!capturePrePostHdr && !capturePostStages && !fineWindow &&
+                missingObservations.Count > 0)
+            {
+                captureFailure =
+                    "Endminf Viewer capture did not observe: " +
+                    string.Join(", ", missingObservations.ToArray());
+                Debug.LogError(captureFailure);
+                EditorApplication.ExitPlaymode();
+                return;
+            }
+            if (!capturePrePostHdr && !capturePostStages && !fineWindow && !videoExport)
+            {
+                try
+                {
+                    BuildSideBySideComparison(
+                        "endminf_overview_2026-08-21",
+                        "endminf_overview_start_and_loop",
+                        "reference_vs_unity_4fps.png",
+                        "reference_comparison.json");
+                    BuildSideBySideComparison(
+                        "endminf_overview_no_framegen_2026-08-24",
+                        "endminf_overview_start_and_loop_no_framegen",
+                        "reference_no_framegen_vs_unity_4fps.png",
+                        "reference_no_framegen_comparison.json");
+                }
+                catch (Exception error)
+                {
+                    captureFailure =
+                        "Endminf reference comparison failed closed: " + error.Message;
+                    Debug.LogException(error);
+                    EditorApplication.ExitPlaymode();
+                    return;
+                }
+            }
+            Debug.Log((capturePostStages
+                    ? "PASS Endminf Viewer five-stage post diagnostic"
+                    : capturePrePostHdr
+                    ? "PASS Endminf Viewer pre-post HDR diagnostic"
+                    : "PASS Endminf actual Viewer Play-mode sequence") +
+                ": roots=" + Frames.Last().effectRootCount +
+                " admitted=" + Frames.Last().admittedRenderers + " output=" + output);
             EditorApplication.ExitPlaymode();
         }
 
 
-        private static void BuildSideBySideComparison()
+        private static void BuildSideBySideComparison(
+            string recordingId,
+            string segmentId,
+            string sheetName,
+            string reportName)
         {
-            string repo = Directory.GetParent(
-                Directory.GetParent(Application.dataPath).FullName).FullName;
-            string reference = Path.Combine(
-                repo, "videos", "2026-08-21_20-15-17.mkv");
-            if (!File.Exists(reference))
+            string lab = Directory.GetParent(Application.dataPath).FullName;
+            ValidateReferenceSequence(lab, recordingId, segmentId);
+            string sequence = Path.Combine(lab, "scratch", "character_recovery",
+                "reference_sequences", recordingId, "endminf", segmentId);
+            string sidecarPath = Path.Combine(sequence, "sequence.json");
+            if (!File.Exists(sidecarPath))
                 throw new FileNotFoundException(
-                    "Endminf reference video is missing", reference);
+                    "Validated Endminf reference sidecar is missing", sidecarPath);
+            ReferenceSequenceSidecar sidecar = JsonUtility.FromJson<ReferenceSequenceSidecar>(
+                File.ReadAllText(sidecarPath));
+            if (sidecar == null ||
+                sidecar.schema != "endfield.character-reference-sequence.v1" ||
+                sidecar.recordingId != recordingId || sidecar.segment == null ||
+                sidecar.segment.id != segmentId || sidecar.segment.comparison == null ||
+                sidecar.source == null || sidecar.output == null)
+                throw new InvalidDataException(
+                    "Endminf reference sidecar lost its maintained comparison contract");
+            ReferenceComparison comparison = sidecar.segment.comparison;
+            if (sidecar.segment.startFrame != sidecar.output.firstSourceFrame ||
+                Mathf.Abs(sidecar.source.fps - SimulationFps) > 0.0001f ||
+                Mathf.Abs(sidecar.output.fps - SimulationFps) > 0.0001f ||
+                comparison.bodyClipStartSourceFrame < sidecar.segment.startFrame ||
+                comparison.bodyClipPhaseSeconds <= 0.0f ||
+                comparison.anchorUncertaintyFrames < 0 ||
+                comparison.sampleCount <= 0 || comparison.sampleCount > Frames.Count ||
+                comparison.tileColumns <= 0)
+                throw new InvalidDataException(
+                    "Endminf reference comparison timing contract drifted");
 
-            string sideBySide = Path.Combine(output, "reference_vs_unity_4fps.png");
-            // The supplied recording shows Endminf from approximately 3.5 to
-            // 10.5 seconds. Keep the visual sheet on that bounded interval;
-            // the JSON capture still continues through ten Viewer seconds to
-            // validate the settled loop independently.
-            // Pair matching timestamps first, then tile those pairs. This
-            // keeps every retail frame immediately beside its Unity frame
-            // instead of presenting two independently tiled sequences.
-            // A bounded 60-Hz sweep now pairs retail sample N with Unity sample
-            // N+1: retail frame 17 at 7.89 s matches Unity frame 18 at body clip
-            // 4.5009 s. Start Unity at file 1 so each tile is a matched pair,
-            // rather than two independently indexed sequences.
-            RunFfmpeg("-y -v error -ss 3.64 -t 7 -i " + Quote(reference) +
-                " -framerate 4 -start_number 1 -t 7 -i " +
+            var rows = new List<ReferenceComparisonRow>();
+            int previousSourceFrame = -1;
+            float firstSequenceElapsed = Frames[0].actualSeconds;
+            float firstStartClipPhase = Frames[0].activeBodyClipTime;
+            float firstReferenceEffectSeconds =
+                (comparison.bodyClipStartSourceFrame - sidecar.segment.startFrame) /
+                sidecar.source.fps;
+            bool diagnosticAnchor = comparison.anchorUncertaintyFrames > 0;
+            if (Mathf.Abs(
+                    firstStartClipPhase - comparison.bodyClipPhaseSeconds) > 0.00001f ||
+                (!diagnosticAnchor &&
+                 Mathf.Abs(firstSequenceElapsed - firstReferenceEffectSeconds) > 0.00001f))
+                throw new InvalidDataException(
+                    "Endminf reference absolute body/effect phase anchor drifted");
+            if (diagnosticAnchor &&
+                (comparison.firstVisibleSourceFrame < sidecar.segment.startFrame ||
+                 comparison.bodyClipStartSourceFrame < comparison.firstVisibleSourceFrame ||
+                 comparison.unmaskedBodyStartSourceFrame <=
+                    comparison.bodyClipStartSourceFrame ||
+                 comparison.comparisonWidth != 1920 ||
+                 comparison.comparisonHeight != 1080 ||
+                 comparison.resamplingFilter != "lanczos"))
+                throw new InvalidDataException(
+                    "Endminf diagnostic comparison boundary drifted");
+            for (int index = 0; index < comparison.sampleCount; index++)
+            {
+                FrameRow unity = Frames[index];
+                // bodyClipStartSourceFrame is the first visible decoded body
+                // frame, not source clip time zero. Frames[0] is the first
+                // saved Unity image and is therefore anchored directly to
+                // that decoded frame. Adding its already-advanced Animator
+                // phase here used to shift every pair three source frames
+                // late while preserving a deceptively perfect phase residue.
+                float sequenceSeconds = unity.actualSeconds - firstSequenceElapsed;
+                float exactOffsetFrames = sequenceSeconds * sidecar.source.fps;
+                int roundedOffsetFrames = Mathf.FloorToInt(exactOffsetFrames + 0.5f);
+                int sourceFrame = comparison.bodyClipStartSourceFrame + roundedOffsetFrames;
+                int extractedFrame = sourceFrame - sidecar.output.firstSourceFrame + 1;
+                float referenceEffectSeconds = firstReferenceEffectSeconds +
+                    exactOffsetFrames / sidecar.source.fps;
+                bool startClipCrossCheck = unity.overviewTransitioning ||
+                    unity.overviewLooping ||
+                    Mathf.Abs(
+                        unity.activeBodyClipTime - firstStartClipPhase -
+                        sequenceSeconds) <= 0.002f;
+                if (sourceFrame <= previousSourceFrame || extractedFrame < 1 ||
+                    extractedFrame > sidecar.output.frameCount ||
+                    Mathf.Abs(exactOffsetFrames - roundedOffsetFrames) > 0.075f ||
+                    (!diagnosticAnchor &&
+                     Mathf.Abs(referenceEffectSeconds - unity.actualSeconds) > 0.00001f) ||
+                    !startClipCrossCheck)
+                    throw new InvalidDataException(
+                        "Endminf reference phase match is not a unique 60-Hz source sample: " +
+                        "unityFrame=" + index + " sequence=" + sequenceSeconds +
+                        " clip=" + unity.activeBodyClipTime +
+                        " sourceFrame=" + sourceFrame);
+                previousSourceFrame = sourceFrame;
+                rows.Add(new ReferenceComparisonRow {
+                    unityFrameIndex = unity.index,
+                    unitySequenceSeconds = sequenceSeconds,
+                    activeBodyClipSeconds = unity.activeBodyClipTime,
+                    sourceFrame = sourceFrame,
+                    minimumSourceFrame = sourceFrame - comparison.anchorUncertaintyFrames,
+                    maximumSourceFrame = sourceFrame + comparison.anchorUncertaintyFrames,
+                    extractedFrame = extractedFrame,
+                    phaseErrorFrames = exactOffsetFrames - roundedOffsetFrames,
+                    crystalContaminated = diagnosticAnchor &&
+                        sourceFrame - comparison.anchorUncertaintyFrames <
+                            comparison.unmaskedBodyStartSourceFrame
+                });
+            }
+            float phaseErrorSpreadFrames = rows.Max(row => row.phaseErrorFrames) -
+                rows.Min(row => row.phaseErrorFrames);
+            if (phaseErrorSpreadFrames > 0.001f)
+                throw new InvalidDataException(
+                    "Endminf reference phase residue drifted across the comparison window: " +
+                    phaseErrorSpreadFrames + " source frames");
+
+            string sideBySide = Path.Combine(output, sheetName);
+            string selectedFrames = string.Join("+", rows.Select(row =>
+                "eq(n\\," + (row.extractedFrame - 1) + ")").ToArray());
+            int tileRows = Mathf.CeilToInt(
+                comparison.sampleCount / (float)comparison.tileColumns);
+            RunFfmpeg("-y -v error -framerate 60 -start_number 1 -i " +
+                Quote(Path.Combine(sequence, "frame_%06d.png")) +
+                " -framerate 4 -start_number 0 -i " +
                 Quote(Path.Combine(output, "frame_%06d.png")) +
-                " -filter_complex \"[0:v]fps=4,scale=384:-1[reference];" +
-                "[1:v]scale=384:-1[unity];[reference][unity]hstack=inputs=2," +
-                "tile=4x7\" -frames:v 1 " + Quote(sideBySide));
+                " -filter_complex \"[0:v]select='" + selectedFrames +
+                "',setpts=N/(4*TB),scale=1920:1080:flags=lanczos," +
+                "scale=384:-1:flags=lanczos[reference];" +
+                "[1:v]trim=end_frame=" + comparison.sampleCount +
+                ",setpts=N/(4*TB),scale=384:-1:flags=lanczos[unity];" +
+                "[reference][unity]hstack=inputs=2,tile=" +
+                comparison.tileColumns + "x" + tileRows +
+                "\" -frames:v 1 " + Quote(sideBySide));
+
+            if (diagnosticAnchor)
+            {
+                ReferenceComparisonRow[] cleanRows = rows
+                    .Where(row => !row.crystalContaminated)
+                    .ToArray();
+                if (cleanRows.Length == 0)
+                    throw new InvalidDataException(
+                        "Endminf diagnostic comparison has no crystal-clean rows");
+                string cleanReferenceFrames = string.Join("+", cleanRows.Select(row =>
+                    "eq(n\\," + (row.extractedFrame - 1) + ")").ToArray());
+                string cleanUnityFrames = string.Join("+", cleanRows.Select(row =>
+                    "eq(n\\," + row.unityFrameIndex + ")").ToArray());
+                int cleanColumns = Mathf.Min(2, cleanRows.Length);
+                int cleanTileRows = Mathf.CeilToInt(
+                    cleanRows.Length / (float)cleanColumns);
+                string cleanSheet = Path.Combine(output,
+                    Path.GetFileNameWithoutExtension(sheetName) +
+                    "_clean_body.png");
+                RunFfmpeg("-y -v error -framerate 60 -start_number 1 -i " +
+                    Quote(Path.Combine(sequence, "frame_%06d.png")) +
+                    " -framerate 4 -start_number 0 -i " +
+                    Quote(Path.Combine(output, "frame_%06d.png")) +
+                    " -filter_complex \"[0:v]select='" + cleanReferenceFrames +
+                    "',setpts=N/(4*TB),scale=1920:1080:flags=lanczos," +
+                    "scale=384:-1:flags=lanczos[reference];" +
+                    "[1:v]select='" + cleanUnityFrames +
+                    "',setpts=N/(4*TB),scale=384:-1:flags=lanczos[unity];" +
+                    "[reference][unity]hstack=inputs=2,tile=" +
+                    cleanColumns + "x" + cleanTileRows +
+                    "\" -frames:v 1 " + Quote(cleanSheet));
+            }
+
+            var report = new ReferenceComparisonReport {
+                recordingId = recordingId,
+                segmentId = segmentId,
+                sourceSha256 = sidecar.source.sha256,
+                extractedStartSourceFrame = sidecar.output.firstSourceFrame,
+                bodyClipStartSourceFrame = comparison.bodyClipStartSourceFrame,
+                sourceFps = sidecar.source.fps,
+                unityAnchorBodyClipPhaseSeconds = firstStartClipPhase,
+                comparisonBoundary = diagnosticAnchor
+                    ? "diagnostic_cross_capture_bounded_phase_crystal_excluded"
+                    : "exact_60hz_source_sample",
+                firstVisibleSourceFrame = comparison.firstVisibleSourceFrame,
+                anchorUncertaintyFrames = comparison.anchorUncertaintyFrames,
+                unmaskedBodyStartSourceFrame = comparison.unmaskedBodyStartSourceFrame,
+                comparisonWidth = diagnosticAnchor ? comparison.comparisonWidth : 1920,
+                comparisonHeight = diagnosticAnchor ? comparison.comparisonHeight : 1080,
+                resamplingFilter = diagnosticAnchor
+                    ? comparison.resamplingFilter
+                    : "lanczos",
+                phaseErrorSpreadFrames = phaseErrorSpreadFrames,
+                rows = rows.ToArray()
+            };
+            File.WriteAllText(Path.Combine(output, reportName),
+                JsonUtility.ToJson(report, true));
+        }
+
+        private static void ValidateReferenceSequence(
+            string lab, string recordingId, string segmentId)
+        {
+            string script = Path.Combine(lab, "tools", "reference_video_sequences.py");
+            if (!File.Exists(script))
+                throw new FileNotFoundException(
+                    "Maintained reference-sequence validator is missing", script);
+            string arguments = Quote(script) + " --check --recording " + recordingId +
+                " --segment " + segmentId;
+            var start = new System.Diagnostics.ProcessStartInfo("python", arguments)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = lab,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using (System.Diagnostics.Process process =
+                   System.Diagnostics.Process.Start(start))
+            {
+                string stdout = process.StandardOutput.ReadToEnd();
+                string stderr = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+                if (process.ExitCode != 0)
+                    throw new InvalidDataException(
+                        "Endminf reference sequence is stale; regenerate it with " +
+                        "scripts\\reference_video\\extract_reference_sequences.bat " +
+                        "--recording " + recordingId + " --force.\n" +
+                        stdout + stderr);
+            }
         }
 
         private static void RunFfmpeg(string arguments)
@@ -525,6 +1177,13 @@ namespace EndfieldGraphShaderLabEditor
             var pixels = new Color32[raw.Length];
             for (int y = 0; y < Height; y++) Array.Copy(raw, y * Width, pixels, (Height - 1 - y) * Width, Width);
             return pixels;
+        }
+
+        private static string SafePathComponent(string value)
+        {
+            char[] invalid = Path.GetInvalidFileNameChars();
+            return new string(value.Select(character =>
+                Array.IndexOf(invalid, character) >= 0 ? '_' : character).ToArray());
         }
 
         private static void Write(string path, Color32[] pixels)
