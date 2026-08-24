@@ -28,6 +28,7 @@ from .codecs.levelscript.params import (
     decode_param_tail as _decode_param_tail,
 )
 from .codecs.levelscript import play3d_radio as levelscript_play3d_radio
+from .codecs.levelscript import proxy_patrol_checkpoint as levelscript_proxy_patrol
 from .codecs.levelscript import raise_custom_script_event as levelscript_custom_event
 from .codecs.levelscript import scalar_value_getters as levelscript_scalar_getters
 from .codecs.levelscript import script_event_scope as levelscript_script_event_scope
@@ -36,6 +37,7 @@ from .codecs.levelscript import spawner_events as levelscript_spawner_events
 from .codecs.levelscript import switch_actions as levelscript_switch_actions
 from .codecs.levelscript import top_level_tail as levelscript_top_level_tail
 from .codecs.levelscript import trigger_volumes as levelscript_trigger_volumes
+from .native_contracts.spawnerptr_getter import decode_spawnerptr_getter_member
 
 if __package__ == "story_builder":
     from common import (
@@ -2736,23 +2738,62 @@ def _decode_leader_trigger_volume_fields(payload: bytes) -> dict[str, Any]:
     }
 
 
-def _decode_encounter_battle_part_begin_fields(payload: bytes) -> dict[str, Any]:
-    """Decode the exact LevelScript-variable pointer filter and null output."""
+def _decode_leader_trigger_volume_list_fields(payload: bytes) -> dict[str, Any]:
+    """Decode the complete constant ``_triggerSlotIds`` Param<List<int>>.
+
+    Only the exact constant tag, bounded list, and complete ordinary Param
+    tail are accepted. Bytes after that tail belong to the surrounding
+    LevelScriptData container and are deliberately not scanned.
+    """
+    scope = levelscript_script_event_scope.decode_script_event_header_scope(payload)
+    cursor = scope.pop("_subtypeOffset", None)
+    if not scope or not isinstance(cursor, int) or cursor + 17 > len(payload):
+        return {}
+    subtype_offset = cursor
+    if payload[cursor] != 0x04:
+        return {}
+    cursor += 1
+    count = struct.unpack_from("<i", payload, cursor)[0]
+    cursor += 4
+    if count <= 0 or count > 1024 or cursor + count * 4 + 12 > len(payload):
+        return {}
+    slot_ids = list(struct.unpack_from(f"<{count}i", payload, cursor))
+    cursor += count * 4
     if (
-        len(payload) != 53
+        any(slot_id <= 0 for slot_id in slot_ids)
+        or len(set(slot_ids)) != len(slot_ids)
+        or payload[cursor:cursor + 12] != _DEFAULT_PARAM_TAIL
+    ):
+        return {}
+    cursor += 12
+    return {
+        **scope,
+        "triggerSlotIdFilters": slot_ids,
+        "triggerSlotIdFilterCount": count,
+        "subtypeConsumedBytes": cursor - subtype_offset,
+        "payloadShape": "constant-trigger-slot-list-selector-prefix",
+    }
+
+
+def _decode_encounter_lsm_fields(payload: bytes) -> dict[str, Any]:
+    """Decode the exact constant ``LsmPtr`` filter and null output prefix."""
+    if (
+        len(payload) < 53
         or payload[17:31] != b"\x04\x01" + _DEFAULT_PARAM_TAIL
         or payload[31] != 0x04
         or payload[40:52] != _DEFAULT_PARAM_TAIL
         or payload[52] != 0xFF
     ):
         return {}
-    # Param<LevelScriptVariablePtr> is tag 0x04, a uint64 script pointer,
-    # the ordinary Param tail, then a null output.  The pointer's low byte can
-    # itself be 0x03; it is data, not a nested union tag.
+    # Param<LsmPtr> is tag 0x04, a uint64 module pointer, the ordinary Param
+    # tail, then a null ParamOutput<LsmPtr>. The wider record window can also
+    # contain LevelScriptData members, so only the exact subtype prefix is
+    # consumed and no later integer is scanned.
     return {
-        "levelScriptVariableFilter": struct.unpack_from("<Q", payload, 32)[0],
-        "levelScriptVariableOutputPresent": False,
-        "payloadShape": "constant-level-script-variable-pointer-null-output-exact-eof",
+        "lsmPtrFilter": struct.unpack_from("<Q", payload, 32)[0],
+        "lsmPtrOutputPresent": False,
+        "subtypeConsumedBytes": 22,
+        "payloadShape": "constant-lsm-pointer-null-output-exact-prefix",
     }
 
 
@@ -2811,19 +2852,48 @@ def _decode_npc_patrol_checkpoint_fields(payload: bytes) -> dict[str, Any]:
         return {}
     cursor += path_size
 
-    def read_i32_param() -> int | None:
+    def read_i32_param() -> dict[str, Any] | None:
         nonlocal cursor
-        if cursor + 17 > len(payload) or payload[cursor] != 0x04:
+        decoded = levelscript_params.decode_i32_param(payload, cursor)
+        if decoded is None:
             return None
-        value = struct.unpack_from("<i", payload, cursor + 1)[0]
-        if payload[cursor + 5 : cursor + 17] != param_tail:
-            return None
-        cursor += 17
-        return value
+        detail, cursor = decoded
+        return detail
 
     patrol_id = read_i32_param()
     checkpoint_index = read_i32_param()
     if patrol_id is None or checkpoint_index is None:
+        return {}
+    if (
+        patrol_id.get("idRef") == -1
+        and patrol_id.get("paramSource") == 0
+        and patrol_id.get("path") is None
+        and checkpoint_index.get("idRef") == -1
+        and checkpoint_index.get("paramSource") == 0
+        and checkpoint_index.get("path") is None
+    ):
+        return {
+            "npcEntityFilter": {
+                "logicId": logic_id,
+                "slotId": slot_id,
+                "useSlotId": bool(use_slot_id),
+                "idRef": target_id_ref,
+                "paramSource": target_source,
+                "path": target_path,
+            },
+            "patrolIdFilter": patrol_id["value"],
+            "checkpointIndexFilter": checkpoint_index["value"],
+            "payloadShape": "dynamic-npc-patrol-checkpoint-fields",
+        }
+
+    outputs: list[dict[str, Any]] = []
+    for field_name in ("npcEntity", "npcPosition", "patrolId", "pointIndex"):
+        decoded = levelscript_params.decode_param_output(payload, cursor)
+        if decoded is None:
+            return {}
+        output, cursor = decoded
+        outputs.append({"field": field_name, **output})
+    if cursor != len(payload):
         return {}
     return {
         "npcEntityFilter": {
@@ -2834,9 +2904,10 @@ def _decode_npc_patrol_checkpoint_fields(payload: bytes) -> dict[str, Any]:
             "paramSource": target_source,
             "path": target_path,
         },
-        "patrolIdFilter": patrol_id,
-        "checkpointIndexFilter": checkpoint_index,
-        "payloadShape": "dynamic-npc-patrol-checkpoint-fields",
+        "patrolIdFilterParam": patrol_id,
+        "checkpointIndexFilterParam": checkpoint_index,
+        "eventOutputs": outputs,
+        "payloadShape": "dynamic-blackboard-npc-patrol-checkpoint-and-outputs-exact-eof",
     }
 
 
@@ -3009,35 +3080,55 @@ def _decode_named_native_event_detail(
             payload,
             native_header_name,
         )
-        detail = {
-            "type": native_header_name,
-            **spawner_fields,
-            "groupKeyFilter": (
-                spawner_fields.get("groupKeyFilter")
-                or (literal_texts[0] if literal_texts else "")
-            ),
-            "groupKeyOutputRefs": refs("groupKeyOutput"),
-            "spawnerOutputRefs": refs("spawnerOutput"),
-            "summary": (
-                "spawner group begin "
-                f"{spawner_fields.get('groupKeyFilter') or (literal_texts[0] if literal_texts else '')}"
-            ),
-        }
+        if spawner_fields:
+            detail = {
+                "type": native_header_name,
+                **spawner_fields,
+                "groupKeyOutputRefs": refs("groupKeyOutput"),
+                "spawnerOutputRefs": refs("spawnerOutput"),
+                "transport": "local-spawner-runtime-event",
+                "serverExchange": False,
+                "serializedMissionOrQuestId": False,
+                "payloadDecodeStatus": "exact_complete_subtype",
+                "summary": f"spawner group begin {spawner_fields.get('groupKeyFilter') or ''}",
+            }
+        elif refs("groupKeyOutput") or refs("spawnerOutput") or literal_texts:
+            detail = {
+                "type": native_header_name,
+                "observedLiteralTexts": literal_texts,
+                "groupKeyOutputRefs": refs("groupKeyOutput"),
+                "spawnerOutputRefs": refs("spawnerOutput"),
+                "payloadDecodeStatus": "partial_known_fields",
+                "_payloadSchemaStatus": "partial_known_fields",
+                "summary": "spawner group begin with unresolved filter fields",
+            }
     elif native_header_name == "LevelEvent_OnSpawnerWaveBegin":
         spawner_fields = levelscript_spawner_events.decode_spawner_event_fields(
             payload,
             native_header_name,
         )
-        detail = {
-            "type": native_header_name,
-            **spawner_fields,
-            "spawnerOutputRefs": refs("spawnerOutput"),
-            "waveKeyOutputRefs": refs("waveKeyOutput"),
-            "summary": (
-                "spawner wave begin "
-                f"{spawner_fields.get('waveKeyFilter') or (literal_texts[0] if literal_texts else '')}"
-            ),
-        }
+        if spawner_fields:
+            detail = {
+                "type": native_header_name,
+                **spawner_fields,
+                "spawnerOutputRefs": refs("spawnerOutput"),
+                "waveKeyOutputRefs": refs("waveKeyOutput"),
+                "transport": "local-spawner-runtime-event",
+                "serverExchange": False,
+                "serializedMissionOrQuestId": False,
+                "payloadDecodeStatus": "exact_complete_subtype",
+                "summary": f"spawner wave begin {spawner_fields.get('waveKeyFilter') or ''}",
+            }
+        elif refs("spawnerOutput") or refs("waveKeyOutput") or literal_texts:
+            detail = {
+                "type": native_header_name,
+                "observedLiteralTexts": literal_texts,
+                "spawnerOutputRefs": refs("spawnerOutput"),
+                "waveKeyOutputRefs": refs("waveKeyOutput"),
+                "payloadDecodeStatus": "partial_known_fields",
+                "_payloadSchemaStatus": "partial_known_fields",
+                "summary": "spawner wave begin with unresolved filter fields",
+            }
     elif native_header_name == "LevelEvent_OnSpawnerComplete":
         spawner_fields = levelscript_spawner_events.decode_spawner_event_fields(
             payload,
@@ -3102,6 +3193,28 @@ def _decode_named_native_event_detail(
                 "serializedMissionOrQuestId": False,
                 "summary": f"an entity from spawner {spawner_fields['spawnerFilterId']} {phase}",
             }
+    elif native_header_name in {
+        "LevelEvent_OnSpawnerStart",
+        "LevelEvent_OnSpawnerPause",
+        "LevelEvent_OnSpawnerGroupComplete",
+        "LevelEvent_OnSpawnerWaveComplete",
+    }:
+        spawner_fields = levelscript_spawner_events.decode_spawner_event_fields(
+            payload,
+            native_header_name,
+        )
+        if spawner_fields:
+            detail = {
+                "type": native_header_name,
+                **spawner_fields,
+                "transport": "local-spawner-runtime-event",
+                "serverExchange": False,
+                "serializedMissionOrQuestId": False,
+                "summary": (
+                    f"{native_header_name.removeprefix('LevelEvent_On')} "
+                    f"for spawner {spawner_fields['spawnerFilterId']}"
+                ),
+            }
     elif native_header_name == "LevelEvent_OnNpcPatrolCheckpointReach":
         patrol_fields = _decode_npc_patrol_checkpoint_fields(payload)
         if patrol_fields:
@@ -3114,8 +3227,8 @@ def _decode_named_native_event_detail(
                 "serializedMissionOrQuestId": False,
                 "summary": (
                     f"NPC {patrol_fields['npcEntityFilter']['path']} reaches "
-                    f"patrol {patrol_fields['patrolIdFilter']} checkpoint "
-                    f"{patrol_fields['checkpointIndexFilter']}"
+                    f"patrol {patrol_fields.get('patrolIdFilter', 'runtime')} "
+                    f"checkpoint {patrol_fields.get('checkpointIndexFilter', 'runtime')}"
                 ),
             }
     elif native_header_name == "LevelEvent_OnTeleportFinish" and literal_texts:
@@ -3208,19 +3321,22 @@ def _decode_named_native_event_detail(
                 "serializedMissionOrQuestId": False,
                 "summary": f"{receiver} dies",
             }
-    elif native_header_name == "LevelEvent_OnEncounterBattlePartBegin":
-        encounter_fields = _decode_encounter_battle_part_begin_fields(payload)
+    elif native_header_name in {
+        "LevelEvent_OnEncounterActivated",
+        "LevelEvent_OnEncounterBattlePartBegin",
+    }:
+        encounter_fields = _decode_encounter_lsm_fields(payload)
         if encounter_fields:
             detail = {
                 "type": native_header_name,
                 **encounter_fields,
-                "levelScriptVariableOutputRefs": refs("lsvPtrOutput"),
+                "lsmPtrOutputRefs": refs("lsmPtrOutput"),
                 "transport": "local-encounter-runtime-event",
                 "serverExchange": False,
                 "serializedMissionOrQuestId": False,
                 "summary": (
-                    "encounter battle part begins for LevelScript variable "
-                    f"{encounter_fields['levelScriptVariableFilter']}"
+                    f"{native_header_name.removeprefix('LevelEvent_On')} for "
+                    f"Encounter module {encounter_fields['lsmPtrFilter']}"
                 ),
             }
     elif native_header_name == "LevelEvent_OnScriptedCharPatrolEvent":
@@ -3265,6 +3381,96 @@ def _decode_named_native_event_detail(
                 "summary": (
                     f"{receiver} saved property {literal_texts[0]} changes"
                 ),
+            }
+    elif native_header_name == levelscript_proxy_patrol.EVENT_NAME:
+        patrol_fields = levelscript_proxy_patrol.decode_proxy_patrol_checkpoint_event(
+            payload,
+            levelscript_proxy_patrol.EVENT_SEMANTIC_KEY,
+            header_role=True,
+        )
+        if patrol_fields:
+            detail = {
+                "type": native_header_name,
+                **patrol_fields,
+                "transport": "local-proxy-patrol-runtime-event",
+                "serverExchange": False,
+                "serializedMissionOrQuestId": False,
+                "summary": (
+                    f"NPC proxy {patrol_fields['proxyIdFilter']} reaches patrol "
+                    f"{patrol_fields['patrolIdFilter']} point "
+                    f"{patrol_fields['pointIndexFilter']}"
+                ),
+            }
+    elif native_header_name == levelscript_entity_events.SPECIFIC_ENTITY_LIST_DIE:
+        list_die_fields = levelscript_entity_events.decode_entity_event_fields(
+            payload,
+            native_header_name,
+        )
+        if list_die_fields:
+            detail = {
+                "type": native_header_name,
+                **list_die_fields,
+                "entityOutputRefs": refs("entity"),
+                "transport": "local-entity-lifecycle-runtime-event",
+                "serverExchange": False,
+                "serializedMissionOrQuestId": False,
+                "summary": (
+                    "matching entity in a "
+                    f"{len(list_die_fields['entityListFilter'])}-member specific list dies"
+                ),
+            }
+    elif native_header_name == levelscript_entity_events.ENEMY_IN_FIGHT:
+        fight_fields = levelscript_entity_events.decode_entity_event_fields(
+            payload,
+            native_header_name,
+        )
+        if fight_fields:
+            detail = {
+                "type": native_header_name,
+                **fight_fields,
+                "entityOutputRefs": refs("entity"),
+                "transport": "local-entity-combat-runtime-event",
+                "serverExchange": False,
+                "serializedMissionOrQuestId": False,
+                "summary": (
+                    f"matching entity in a {len(fight_fields['entityListFilter'])}-member "
+                    "constant list enters combat"
+                ),
+            }
+    elif native_header_name in {
+        "EntityEvent_OnBeingScanned",
+        "EntityEvent_OnEntityDestroy",
+        "EntityEvent_OnEntityStart",
+        "EntityEvent_OnHpChanged",
+        "EntityEvent_OnIntUnlocked",
+        "EntityEvent_OnIntUnlockFailed",
+    }:
+        # The inherited EntityEventHeader selector is independently exact even
+        # when this subtype's trailing members are not yet named.  Preserve a
+        # narrower schema status so consumers may use only the specified
+        # constant EntityPtr and cannot mistake the subtype for fully decoded.
+        entity_scope = levelscript_entity_event_scope.decode_entity_event_header_scope(payload)
+        entity_scope.pop("_subtypeOffset", None)
+        if entity_scope:
+            target = entity_scope["targetEntity"]
+            target_param = entity_scope["targetEntityParam"]
+            receiver = (
+                f"entity slot {target.get('slotId')}"
+                if target.get("useSlotId")
+                else f"entity {target.get('logicId')}"
+                if target.get("logicId")
+                else f"entity pointer {target_param.get('path')}"
+                if target_param.get("path")
+                else "selected entity"
+            )
+            detail = {
+                "type": native_header_name,
+                **entity_scope,
+                "transport": "local-entity-runtime-event",
+                "serverExchange": False,
+                "serializedMissionOrQuestId": False,
+                "summary": f"{receiver} receives {native_header_name}",
+                "_payloadSchemaStatus": "exact_current_build_entity_event_scope_fields",
             }
     elif native_header_name == "EntityEvent_OnInteractiveStateChanged":
         entity_scope = levelscript_entity_event_scope.decode_entity_event_header_scope(payload)
@@ -3368,9 +3574,30 @@ def _decode_named_native_event_detail(
                     f"{event_phrase} {trigger_fields['triggerSlotIdFilter']}"
                 ),
             }
+    elif native_header_name == "ScriptEvent_OnLeaderEnterTriggerVolumeList":
+        trigger_fields = _decode_leader_trigger_volume_list_fields(payload)
+        if trigger_fields:
+            detail = {
+                "type": native_header_name,
+                **trigger_fields,
+                "transport": "local-authored-trigger-volume-event",
+                "serverExchange": False,
+                "serializedMissionOrQuestId": False,
+                "summary": (
+                    "leader enters one of trigger slots "
+                    + ", ".join(
+                        str(slot_id)
+                        for slot_id in trigger_fields["triggerSlotIdFilters"]
+                    )
+                ),
+            }
     if not detail:
         return {}
-    detail["payloadSchemaStatus"] = "exact_current_build_memorypack_fields"
+    detail.setdefault("payloadDecodeStatus", "exact_complete_subtype")
+    detail["payloadSchemaStatus"] = detail.pop(
+        "_payloadSchemaStatus",
+        "exact_current_build_memorypack_fields",
+    )
     detail["payloadSchemaMappingId"] = LEVELSCRIPT_NATIVE_EVENT_PAYLOAD_MAPPING_ID
     return _drop_empty(detail)
 
@@ -4046,7 +4273,7 @@ def _decode_announce_audio_target_param(
 ) -> tuple[dict[str, Any], int] | None:
     """Decode the installed ``AnnounceAudioOnTarget._target`` null shape.
 
-    ``AnnounceAudioOnTarget`` uses the same managed ``Param<ScriptEntityPtr>``
+    ``AnnounceAudioOnTarget`` uses the same managed ``Param<EntityPtr>``
     generic as the other target actions, but the current formatter writes its
     unset target as a compact ten-byte reference prefix rather than the
     27-byte ``0x04 0x03`` constant pointer used by ``PlayAudioOnTarget``.
@@ -4667,6 +4894,19 @@ def decode_levelscript_record_payload(
             "exact current-build ActionHeader formatter mapping; regenerate for other game builds",
         )
         hint.setdefault("nativeHeaderMappingId", LEVELSCRIPT_NATIVE_HEADER_MAPPING_ID)
+    if (
+        getter_role
+        and record.get("unionTag") == 420
+        and record.get("serializedMemberCount") == 8
+    ):
+        spawner_getter = decode_spawnerptr_getter_member(
+            data,
+            payload_start=record_payload_start,
+            record_end=payload_start + len(payload),
+        )
+        if spawner_getter:
+            hint["pureGetter"] = "SpawnerPtrGetter"
+            hint["spawnerPtrGetter"] = spawner_getter
     fields = _decode_tagged_payload_fields(payload)
     texts = _record_text_values(record, fields)
     property_outputs = _extract_property_output_refs(texts)
@@ -4682,6 +4922,7 @@ def decode_levelscript_record_payload(
         or native_header_name in {
             "ScriptEvent_OnLeaderEnterTriggerVolume",
             "ScriptEvent_OnLeaderLeaveTriggerVolume",
+            "ScriptEvent_OnLeaderEnterTriggerVolumeList",
         }
         else []
     )

@@ -611,7 +611,24 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
             16,
             common + b"\x04" + (34_700_000_003).to_bytes(8, "little") + param_tail + b"\xff",
         )
-        self.assertEqual(34_700_000_003, encounter["levelScriptVariableFilter"])
+        self.assertEqual(34_700_000_003, encounter["lsmPtrFilter"])
+        self.assertFalse(encounter["lsmPtrOutputPresent"])
+
+        activated = decode(
+            0x58,
+            16,
+            common
+            + b"\x04"
+            + (10_200_060_006).to_bytes(8, "little")
+            + param_tail
+            + b"\xff"
+            + b"container",
+        )
+        self.assertEqual(10_200_060_006, activated["lsmPtrFilter"])
+        self.assertEqual(
+            "constant-lsm-pointer-null-output-exact-prefix",
+            activated["payloadShape"],
+        )
 
         patrol = decode(
             0x88,
@@ -2336,6 +2353,15 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
                 header_role=True,
             ),
         )
+        getter_validated = bytearray(payload)
+        getter_validated[19:23] = (46).to_bytes(4, "little", signed=True)
+        getter_validated[23:27] = (-1).to_bytes(4, "little", signed=True)
+        conditional_event = decode_entity_hp_changed_event(
+            bytes(getter_validated),
+            (0x006A, 0x12),
+            header_role=True,
+        )
+        self.assertEqual(40021, conditional_event["entityFilter"][0]["slotId"])
 
     def test_dynamic_hp_list_and_exact_spawner_writer_fields_decode(self):
         tail = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
@@ -2561,6 +2587,72 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
         self.assertEqual("npcPosition", detail["npcPositionOutputRefs"][0]["field"])
         self.assertFalse(detail["serverExchange"])
 
+    def test_npc_patrol_checkpoint_preserves_runtime_blackboard_filters(self):
+        tail = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
+        payload = bytearray(17)
+        payload[5:9] = (3).to_bytes(4, "little", signed=True)
+        payload.extend(b"\x04\x01" + tail)
+        alias = b"rabbitNPC"
+        payload.extend(
+            b"\x04\x03" + b"\x00" * 13
+            + (-1).to_bytes(4, "little", signed=True)
+            + (200).to_bytes(4, "little", signed=True)
+            + len(alias).to_bytes(4, "little", signed=True) + alias
+        )
+        for path in (b"patrolId", b"radioIndex"):
+            payload.extend(
+                b"\x04" + (0).to_bytes(4, "little", signed=True)
+                + (-1).to_bytes(4, "little", signed=True)
+                + (200).to_bytes(4, "little", signed=True)
+                + len(path).to_bytes(4, "little", signed=True) + path
+            )
+        for path in (
+            b"$0@_npcEntity", b"$0@_npcPosition", b"$0@_patrolId", b"$0@_pointIndex",
+        ):
+            payload.extend(
+                b"\x02" + (0).to_bytes(4, "little")
+                + len(path).to_bytes(4, "little", signed=True) + path
+            )
+        detail = decode_levelscript_record_payload(
+            bytes(payload),
+            {
+                "payloadStart": 0,
+                "code": 0x157C,
+                "kind": 0,
+                "unionTag": 0x7C,
+                "serializedMemberCount": 21,
+                "localId": 0,
+                "nextId": 1,
+            },
+            next_start=len(payload),
+            action_map_role="headerList#1",
+        )["nativeEventDetail"]
+        self.assertEqual(
+            "dynamic-blackboard-npc-patrol-checkpoint-and-outputs-exact-eof",
+            detail["payloadShape"],
+        )
+        self.assertEqual("patrolId", detail["patrolIdFilterParam"]["path"])
+        self.assertEqual("radioIndex", detail["checkpointIndexFilterParam"]["path"])
+        self.assertEqual(4, len(detail["eventOutputs"]))
+        self.assertNotIn("patrolIdFilter", detail)
+
+        payload.append(0)
+        rejected = decode_levelscript_record_payload(
+            bytes(payload),
+            {
+                "payloadStart": 0,
+                "code": 0x157C,
+                "kind": 0,
+                "unionTag": 0x7C,
+                "serializedMemberCount": 21,
+                "localId": 0,
+                "nextId": 1,
+            },
+            next_start=len(payload),
+            action_map_role="headerList#1",
+        )
+        self.assertNotIn("nativeEventDetail", rejected)
+
     def test_native_event_fields_label_battle_custom_guide_and_trigger_payloads(self):
         battle_payload = bytes.fromhex(
             "00 00 00 00 00 66 00 00 00 00 00 00 00 00 00 00 00 "
@@ -2718,6 +2810,63 @@ class MissionFlowLevelScriptEventTests(unittest.TestCase):
             {"paramSource": 100, "path": None},
             dynamic_output["triggerSlotIdOutputParam"],
         )
+
+    def test_leader_trigger_volume_list_decodes_complete_constant_selector(self):
+        param_tail = (
+            b"\xff\xff\xff\xff"
+            + (0).to_bytes(4, "little", signed=True)
+            + b"\xff\xff\xff\xff"
+        )
+        payload = (
+            bytes(17)
+            + b"\x04\x01"
+            + param_tail
+            + b"\xff"
+            + (0).to_bytes(4, "little", signed=True)
+            + b"\x04"
+            + (2).to_bytes(4, "little", signed=True)
+            + (80001).to_bytes(4, "little", signed=True)
+            + (80002).to_bytes(4, "little", signed=True)
+            + param_tail
+        )
+        detail = decode_levelscript_record_payload(
+            payload,
+            {
+                "code": 0x11BF,
+                "kind": 0,
+                "unionTag": 0xBF,
+                "serializedMemberCount": 17,
+                "payloadStart": 0,
+                "nextId": 0,
+                "strings": [],
+            },
+            next_start=len(payload),
+            action_map_role="headerList#1",
+        )["nativeEventDetail"]
+        self.assertEqual([80001, 80002], detail["triggerSlotIdFilters"])
+        self.assertEqual(2, detail["triggerSlotIdFilterCount"])
+        self.assertEqual(
+            "constant-trigger-slot-list-selector-prefix",
+            detail["payloadShape"],
+        )
+
+        duplicate = bytearray(payload)
+        duplicate[-16:-12] = (80001).to_bytes(4, "little", signed=True)
+        rejected = decode_levelscript_record_payload(
+            bytes(duplicate),
+            {
+                "code": 0x11BF,
+                "kind": 0,
+                "unionTag": 0xBF,
+                "serializedMemberCount": 17,
+                "payloadStart": 0,
+                "nextId": 0,
+                "strings": [],
+            },
+            next_start=len(duplicate),
+            action_map_role="headerList#1",
+        )
+        self.assertNotIn("nativeEventDetail", rejected)
 
     def test_pos_tracking_matches_exact_event_selected_trigger_center(self):
         with tempfile.TemporaryDirectory() as temp_dir:

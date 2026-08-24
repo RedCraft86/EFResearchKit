@@ -8,8 +8,7 @@ entities, script entities and NPC proxies by a global id whose leading digits
 are the level's own `idNum` (`idNum = id // 10**8`), so a level's plottable
 entities can be selected without naming the level anywhere in code.
 
-Story files reach the map through five independent bindings, published with the
-strength of the link that produced them:
+Story files reach the map only through authored identity bindings:
 
   * `flow.missionStoryConnections` - producer script/slot, exact when the
     registry resolves the entity (see `_story_index`);
@@ -17,10 +16,11 @@ strength of the link that produced them:
     quests and NPC proxy the pin belongs to;
   * `timelineRecovery.npcProxyDialogAttachments` - a scene bound to a named NPC
     proxy, which the registry places exactly;
-  * `timelineRecovery.scriptConditionAttachments` - a scene bound to a level
-    script id in a named map;
-  * `timelineRecovery.levelscriptSpatialProximity` / `questSpatialTrack` -
-    mission-area trigger volumes and quest centroids.
+  * exact script/slot producers recovered from typed LevelScript actions.
+
+Mission-area pins, quest centroids, script conditions, and spatial proximity
+remain useful mission context, but they do not identify the point that plays a
+Story file and therefore never add Story files to a map marker.
 """
 
 from __future__ import annotations
@@ -34,26 +34,46 @@ import re
 import struct
 import sys
 import zlib
+from collections import Counter
 from collections.abc import Iterable
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.story_builder.level_bindings import build_levelscript_unhosted_reading_popup_receiver_index
+from scripts.story_builder.level_bindings import (
+    ACTION_ENTITY_FIELD_DIAGNOSTICS_KEY,
+    LevelDataNpcPatrolDecodeError,
+    build_leveldata_interactive_narrative_story_contexts,
+    build_levelscript_registered_action_target_index,
+    build_levelscript_unhosted_reading_popup_receiver_index,
+    decode_leveldata_npc_patrol_list,
+)
+from scripts.story_builder.levelscript_binary import decode_levelscript_binary_summary
+from scripts.story_builder.native_contracts.cutscene_case_resolution import (
+    load_cutscene_case_resolution_contract,
+)
 from scripts.map_recovery_sources import authored_streaming_scene, isolated_art_source
 
 
 GAMEPLAY_CONFIG = "export_full/structured/StreamingAssets/Data/Json/GameplayConfig"
 REGISTRY_REL = f"{GAMEPLAY_CONFIG}/WorldEntityRegistry.json"
 REGISTRY = ROOT / REGISTRY_REL
+NPC_PROXY_TABLE_REL = f"{GAMEPLAY_CONFIG}/NpcProxyTable.json"
+NPC_PROXY_EX_REL = f"{GAMEPLAY_CONFIG}/NpcProxyExDataTable.json"
+ATMOSPHERIC_NPC_CLUSTER_REL = f"{GAMEPLAY_CONFIG}/AtmosphericNpcClusterDataTable.json"
+PERSISTENT_GAMEPLAY_CONFIG = (
+    "export_full/structured/Persistent/Data/Json/GameplayConfig"
+)
 LEVEL_BASIC_INFO_REL = f"{GAMEPLAY_CONFIG}/LevelBasicInfoTable.json"
 MAP_ID_TABLE_REL = f"{GAMEPLAY_CONFIG}/MapIdTable.json"
 TELEPORT_TABLE_REL = f"{GAMEPLAY_CONFIG}/LevelScriptTeleportValidationDataTable.json"
 READING_POPUP_REL = "export_full/structured/StreamingAssets/Table/ReadingPopUpTable.json"
 LEVEL_SCRIPT_DATA = "export_full/structured/StreamingAssets/Data/Json/LevelScriptData"
 LEVEL_DATA = "export_full/structured/StreamingAssets/Data/Json/LevelData"
+PERSISTENT_LEVEL_DATA = "export_full/structured/Persistent/Data/Json/LevelData"
 MISSION_RUNTIME_DIR = "export_full/structured/Persistent/Data/Json/MissionRuntimeAsset"
 
 LEVEL_DESC_REL = "export_full/structured/StreamingAssets/Table/LevelDescTable.json"
@@ -63,8 +83,39 @@ TEXT_TABLE_REL = "export_full/structured/StreamingAssets/Table/TextTable.json"
 MAP_UI_CONFIG_DIR = "export_full/structured/StreamingAssets/Data/Json/UILevelMapLoadConfig"
 MAP_TILE_DIR = "export_full/recovered/AnimeStudio-cli/StreamingAssets/convert_by_type/Texture2D"
 MODEL_ROOT_REL = "export_full/recovered/AnimeStudio-cli/StreamingAssets/convert_by_type/Mesh"
+MAP_MARK_TEMP_REL = "export_full/structured/StreamingAssets/Table/MapMarkTempTable.json"
+MODEL_TABLE_REL = f"{GAMEPLAY_CONFIG}/ModelTable.json"
+SPACESHIP_CONST_REL = "export_full/structured/StreamingAssets/Table/SpaceshipConst.json"
+FACTORY_BUILDING_REL = "export_full/structured/StreamingAssets/Table/FactoryBuildingTable.json"
+FACTORY_BATTLE_REL = "export_full/structured/StreamingAssets/Table/FactoryBattleTable.json"
+ENEMY_TEMPLATE_REL = "export_full/structured/StreamingAssets/Table/EnemyTemplateTable.json"
+ENEMY_TEMPLATE_DISPLAY_REL = "export_full/structured/StreamingAssets/Table/EnemyTemplateDisplayInfoTable.json"
+MISSION_AREA_TABLE_REL = f"{GAMEPLAY_CONFIG}/MissionAreaTable.json"
+NATIVE_TRIGGER_FRONTIER_REL = "reports/story/recovery/native_receiver_activation_frontier.json"
+_NATIVE_TRIGGER_FRONTIER_CACHE: dict | None = None
+_NATIVE_TRIGGER_FRONTIER_CACHE_KEY: tuple[str, int, int] | None = None
+_NPC_PROXY_EX_STORY_INDEX_CACHE: dict[str, dict[str, list[dict]]] = {}
+_NPC_PROXY_ENV_TALK_STORY_INDEX_CACHE: dict[str, dict[str, list[dict]]] = {}
+_ATMOSPHERIC_ENV_TALK_MARKER_INDEX_CACHE: dict[str, dict[str, list[dict]]] = {}
+
+
+def _native_trigger_frontier() -> dict:
+    global _NATIVE_TRIGGER_FRONTIER_CACHE, _NATIVE_TRIGGER_FRONTIER_CACHE_KEY
+    path = ROOT / NATIVE_TRIGGER_FRONTIER_REL
+    try:
+        stat = path.stat()
+        cache_key = (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        cache_key = (str(path.resolve()), -1, -1)
+    if _NATIVE_TRIGGER_FRONTIER_CACHE is None or cache_key != _NATIVE_TRIGGER_FRONTIER_CACHE_KEY:
+        payload = _load_json(path, {}) or {}
+        _NATIVE_TRIGGER_FRONTIER_CACHE = payload if isinstance(payload, dict) else {}
+        _NATIVE_TRIGGER_FRONTIER_CACHE_KEY = cache_key
+    return _NATIVE_TRIGGER_FRONTIER_CACHE
+CAMPFIRE_TELEPORT_DETAIL_IDS = {"int_campfire_v2", "int_campfire_v2_smaller"}
 
 OUT = ROOT / "webui/data/map_recovery"
+ACTION_BINDING_REPORT = ROOT / "reports/assets/map_recovery/action_binding_index.json"
 MAP_LEVEL_ID = "indie_dg002"
 # Map recovery now advances in authored mainline order.  Keep the currently
 # recovered scene explicit rather than allowing the largest free-roam map to
@@ -72,6 +123,10 @@ MAP_LEVEL_ID = "indie_dg002"
 MAINLINE_MAP_SCENES = (
     {"missionId": "e0m0", "levelId": MAP_LEVEL_ID},
 )
+MAP_VARIANT_GROUPS = {
+    "base01_lv001": ("base01_lv001", "base01_lv003"),
+    "dung01_wrdg001": ("dung01_wrdg001", "dung01_wrdg001_guide"),
+}
 MISSION_RUNTIME_ASSET = f"{MISSION_RUNTIME_DIR}/e0m0.json"
 
 # An OBJ whose filename contains a level id is useful for inspection in the
@@ -81,6 +136,8 @@ MISSION_RUNTIME_ASSET = f"{MISSION_RUNTIME_DIR}/e0m0.json"
 MAX_UNPLACED_MODEL_ASSETS = 24
 _MODEL_ASSET_INDEX: dict[Path, list[Path]] = {}
 _MAP_TEXT_LOOKUPS: dict[tuple[str, str], dict[str, str]] = {}
+_MISSION_AREA_DEFINITIONS: dict[str, list[dict]] | None = None
+_WORLD_NARRATIVE_BINDINGS: dict[str, dict[str, list[dict]]] = {}
 
 # A level id is encoded into the leading digits of every registry id it owns.
 # `indie_dg002` has idNum 87, so its entities are 8_700_000_000 upward.
@@ -103,6 +160,8 @@ STRONG_RELATIONS = {
     "story_script_slot",
     "story_npc_proxy",
     "story_map_pin",
+    "story_world_narrative",
+    "script_action_target_source",
 }
 
 # Within one strength band the list is ordered by how specific the file is to
@@ -114,6 +173,8 @@ RELATION_ORDER = [
     "story_npc_proxy",
     "story_script_slot",
     "story_map_pin",
+    "story_world_narrative",
+    "script_action_target_source",
     "placement_source",
     "story_quest_anchor",
     "story_proximity",
@@ -162,6 +223,8 @@ DETAIL_ALIAS_MAP = {
 # recovered. None of these rules claim the entity is reachable in play; that
 # stays in `interactionStatus`.
 DETAIL_KIND_RULES: tuple[tuple[str, str, str, str, str], ...] = (
+    ("int_system_spaceship_visit_portal", "travel", "spaceship_visit_portal", "访问传送门", "authored_visit_portal"),
+    ("int_teleport", "travel", "teleport_point", "传送点", "interactive_type"),
     ("BTomb", "scenery", "tomb", "墓碑", "not_proven_interactive"),
     ("trigger_volume", "trigger", "trigger_volume", "触发区", "automatic_trigger"),
     ("int_trigger", "trigger", "trigger_volume", "触发区", "automatic_trigger"),
@@ -179,11 +242,9 @@ DETAIL_KIND_RULES: tuple[tuple[str, str, str, str, str], ...] = (
     ("int_accelerate", "travel", "speed_pad", "加速带", "interactive_type"),
     ("int_platform", "travel", "platform", "平台", "interactive_type"),
     ("int_move", "travel", "mover", "移动装置", "interactive_type"),
-    ("int_teleport", "spawn", "teleport_point", "传送点", "interactive_type"),
     ("int_doodad", "scenery", "doodad", "场景物件", "not_proven_interactive"),
     ("int_stain", "scenery", "stain", "痕迹", "not_proven_interactive"),
     ("int_footprint", "scenery", "footprint", "足迹", "not_proven_interactive"),
-    ("int_campfire", "device", "campfire", "营火", "interactive_type"),
     ("int_door", "device", "door", "门", "interactive_type"),
     ("int_switch", "device", "switch", "开关", "interactive_type"),
     ("int_laser", "device", "laser", "激光装置", "interactive_type"),
@@ -234,12 +295,1234 @@ def _canonical_detail(detail_id: str) -> dict[str, str] | None:
 def _classify_entity(detail_id: str, entity_type: object) -> tuple[str, str, str, str]:
     """Return `(kind, subKind, label, interactionStatus)` for a registry entity."""
     detail = str(detail_id or "")
+    if detail == "int_empty":
+        return "empty_slot", "unresolved_empty_slot", "未解析空槽", "empty_interactive_shell"
+    if detail.startswith("int_fac_battle_cannon"):
+        return "device", "grenade_tower", "榴弹塔", "authored_combat_device"
+    if detail in CAMPFIRE_TELEPORT_DETAIL_IDS:
+        return "travel", "campfire_teleport", "营火传送点", "teleport_related_map_mark"
     for needle, kind, sub_kind, label, interaction in DETAIL_KIND_RULES:
         if needle in detail:
             return kind, sub_kind, label, interaction
     if isinstance(entity_type, int) and entity_type in ENTITY_TYPE_RULES:
         return ENTITY_TYPE_RULES[entity_type]
     return "scenery", "unclassified", "未分类实体", "interaction_unresolved"
+
+
+_ENTITY_NAMES: dict[str, dict[str, str]] = {}
+_STORY_TITLES: dict[tuple[str, str], str] = {}
+
+
+def _entity_display_name(detail_id: object, language: str) -> str:
+    """Resolve exact localized enemy names; never manufacture one from an id."""
+    detail = str(detail_id or "")
+    if not detail.startswith("eny_"):
+        return ""
+    lang = language.upper()
+    if lang not in _ENTITY_NAMES:
+        table = _load_json(ROOT / ENEMY_TEMPLATE_DISPLAY_REL, {}) or {}
+        i18n = _load_json(ROOT / I18N_TEXT_REL.format(lang), {}) or {}
+        names: dict[str, str] = {}
+        for entity_id, row in table.items():
+            if not isinstance(row, dict):
+                continue
+            for field in ("name", "nickname"):
+                ref = row.get(field) or {}
+                text = i18n.get(str(ref.get("id"))) if isinstance(ref, dict) else None
+                if isinstance(text, str) and text.strip():
+                    names[str(entity_id)] = text.strip()
+                    break
+        _ENTITY_NAMES[lang] = names
+    return _ENTITY_NAMES[lang].get(detail, "")
+
+
+def _story_display_title(language: str, story_key: object) -> str:
+    """Use the generated Story title, which already owns localization rules."""
+    key = str(story_key or "")
+    cache_key = (language.upper(), key)
+    if cache_key in _STORY_TITLES:
+        return _STORY_TITLES[cache_key]
+    path = _conv_file_for_key(language, key)
+    payload = _load_json(ROOT / path, {}) if path else {}
+    title = str((payload or {}).get("title") or "").strip()
+    _STORY_TITLES[cache_key] = title
+    return title
+
+
+def _interactive_semantic_files(detail_id: object) -> list[dict]:
+    """Publish only exact table evidence supporting a specific interaction type."""
+    detail = str(detail_id or "")
+    if detail in CAMPFIRE_TELEPORT_DETAIL_IDS:
+        return [
+            _related(MAP_MARK_TEMP_REL, "interactive_type", "mark_sp_campfire is authored as teleport-related"),
+            _related(TEXT_TABLE_REL, "interactive_type", "CS_TELEPORT_TO_CAMPFIRE_TOAST names campfire teleport"),
+        ]
+    if detail == "int_system_spaceship_visit_portal":
+        return [
+            _related(MODEL_TABLE_REL, "interactive_type", "exact interactive model id and portal prefab"),
+            _related(SPACESHIP_CONST_REL, "interactive_type", "spaceship visit mode declaration"),
+        ]
+    if detail.startswith("int_fac_battle_cannon"):
+        return [
+            _related(FACTORY_BUILDING_REL, "interactive_type", "exact battle-cannon building declaration"),
+            _related(FACTORY_BATTLE_REL, "interactive_type", "exact combat skill and attack-range declaration"),
+            _related(MODEL_TABLE_REL, "interactive_model", "exact interactive post-model prefab"),
+        ]
+    if detail.startswith("eny_"):
+        return [
+            _related(ENEMY_TEMPLATE_REL, "entity_type", "exact enemy template declaration"),
+            _related(ENEMY_TEMPLATE_DISPLAY_REL, "entity_name", "exact localized enemy display-name reference"),
+            _related(MODEL_TABLE_REL, "entity_model", "enemy post-model identity when available"),
+        ]
+    if "BTomb" in detail:
+        return [_related(MODEL_TABLE_REL, "scenery_model", "exact narrative tomb post-model family")]
+    return []
+
+
+def _exact_story_trigger_markers(level_id: str, language: str) -> list[dict]:
+    """Project validated local Story trigger shapes without inventing ownership."""
+    report = _native_trigger_frontier()
+    markers: list[dict] = []
+    markers_by_shape: dict[tuple[str, str, str], dict] = {}
+    coverage_rows = (report.get("storyTriggerZoneCoverage") or {}).get("rows") or []
+    for receiver in coverage_rows or report.get("rows") or []:
+        if not isinstance(receiver, dict):
+            continue
+        receiver_level = str(receiver.get("levelId") or "")
+        if receiver_level and receiver_level != level_id:
+            continue
+        confirmations = (
+            [receiver]
+            if receiver.get("storyKey") and isinstance(receiver.get("observations"), list)
+            else receiver.get("storyTriggerZoneConfirmations") or []
+        )
+        for confirmation in confirmations:
+            if not isinstance(confirmation, dict) or confirmation.get("status") not in {
+                "exact_local_trigger_volume", "multiple_or_ambiguous_trigger_zones",
+            }:
+                continue
+            story_key = str(confirmation.get("storyKey") or "")
+            mission_match = re.search(r"(?:^|_)([a-z]+\d+m\d+(?:d\d+)?)(?:_|$)", story_key, re.IGNORECASE)
+            mission_contexts = [mission_match.group(1)] if mission_match else []
+            for observation in confirmation.get("observations") or []:
+                if not isinstance(observation, dict) or observation.get("status") != "exact_local_trigger_volume":
+                    continue
+                script_id = str(observation.get("scriptId") or "")
+                source_file = str(observation.get("sourceFile") or "")
+                slot_raw = observation.get("triggerSlotIdFilter")
+                context = observation.get("triggerVolumeContext") or {}
+                volume = observation.get("triggerVolume") or {}
+                playback = observation.get("playbackControlPathEvidence") or {}
+                selector_slots = observation.get("triggerSlotIdFilters")
+                explicit_slot_list = (
+                    observation.get("multiLocationSemantics")
+                    == "explicit_independent_trigger_slots"
+                    and isinstance(selector_slots, list)
+                    and selector_slots
+                    and all(
+                        isinstance(value, int)
+                        and not isinstance(value, bool)
+                        and value > 0
+                        for value in selector_slots
+                    )
+                    and len(set(selector_slots)) == len(selector_slots)
+                )
+                matched_slots_exact = (
+                    context.get("matchedSlotIds") == selector_slots
+                    and slot_raw in selector_slots
+                    if explicit_slot_list
+                    else context.get("matchedSlotIds") == [slot_raw]
+                )
+                if (
+                    str(observation.get("levelId") or "") != level_id
+                    or not script_id or Path(source_file).stem != script_id
+                    or not isinstance(slot_raw, int) or isinstance(slot_raw, bool) or slot_raw <= 0
+                    or context.get("status") != "exact_local_levelscript_trigger_volume_without_foreign_identity"
+                    or context.get("scriptIdVerified") is not True
+                    or not matched_slots_exact
+                    or context.get("missingSlotIds") not in (None, [])
+                    or context.get("ambiguousSlotIds") not in (None, [])
+                    or volume.get("slotId") != slot_raw
+                    or volume.get("triggerVolumeType") != "Leader"
+                    or (confirmation.get("status") == "multiple_or_ambiguous_trigger_zones"
+                        and playback.get("status") != "exact_trigger_rooted_playback")
+                ):
+                    continue
+                slot_id = str(slot_raw)
+                for shape_index, shape in enumerate(observation.get("decodedShape") or []):
+                    position = _finite_position((shape or {}).get("position"))
+                    shape_type = str((shape or {}).get("shapeType") or "")
+                    key = (script_id, slot_id, str((shape or {}).get("offset") or shape_index))
+                    if not position or shape_type not in {"Box", "Sphere", "PolyLine"}:
+                        continue
+                    existing = markers_by_shape.get(key)
+                    if existing is not None:
+                        if story_key and story_key not in existing["sceneKeys"]:
+                            existing["sceneKeys"].append(story_key)
+                        existing["missionContexts"] = sorted(set(
+                            existing["missionContexts"] + mission_contexts
+                        ))
+                        existing["relatedFiles"] = _sorted_related(_merge_related(
+                            existing["relatedFiles"],
+                            [
+                                _related(source_file, "level_script", "serialized trigger volume and local event receiver"),
+                                _related(_conv_file_for_key(language, story_key), "story_exact_trigger", "Story played by this exact local trigger receiver"),
+                                _related(NATIVE_TRIGGER_FRONTIER_REL, "native_validation", "current-build validated trigger selector and decoded shape"),
+                            ],
+                        ))
+                        if source_file:
+                            existing["sourceFiles"] = sorted(set(
+                                (existing.get("sourceFiles") or []) + [source_file]
+                            ))
+                        continue
+                    row = {
+                        "kind": "trigger", "subKind": "exact_story_trigger_volume",
+                        "label": "剧情触发区", "identity": f"story_trigger:{script_id}:{slot_id}:{shape_index}",
+                        "position": position, "detailId": f"{script_id}#{slot_id}",
+                        "interactionStatus": "automatic_trigger",
+                        "evidence": "exact current-build local LevelScript trigger volume",
+                        "scriptId": script_id, "triggerSlotId": slot_id,
+                        "triggerIdentityDomain": "LevelScriptData.triggerVolumes local slot",
+                        "registryIdentityStatus": "not_applicable",
+                        "triggerShape": {
+                            "type": shape_type.lower(), "position": position,
+                            "rotation": (shape or {}).get("rotation") or {},
+                            "size": (shape or {}).get("size") or {}, "radius": (shape or {}).get("radius"),
+                            "polyLinePoints": (
+                                ((shape or {}).get("polyLinePoints") or {}).get("points")
+                                or []
+                            ),
+                        },
+                        "sceneKeys": [story_key] if story_key else [],
+                        "missionContexts": mission_contexts,
+                        "missionContextStatus": "nominal Story id context; receiver mission ownership unresolved",
+                        "storyRelation": "exact_local_trigger_event; mission ownership unresolved",
+                        "storyTriggerMultiplicityStatus": confirmation.get("status"),
+                        "playbackControlPathEvidence": playback or None,
+                        "relatedFiles": _sorted_related(_merge_related([], [
+                            _related(source_file, "level_script", "serialized trigger volume and local event receiver"),
+                            _related(_conv_file_for_key(language, story_key), "story_exact_trigger", "Story played by this exact local trigger receiver"),
+                            _related(NATIVE_TRIGGER_FRONTIER_REL, "native_validation", "current-build validated trigger selector and decoded shape"),
+                        ])),
+                    }
+                    if source_file:
+                        row["sourceFiles"] = [source_file]
+                        row["source"] = source_file
+                    markers.append(row)
+                    markers_by_shape[key] = row
+    return markers
+
+
+def _gender_select_casefold_trigger_markers(level_id: str, language: str) -> list[dict]:
+    """Project only the reviewed, build-locked GenderSelect playback bridge."""
+    if level_id != "indie_dg002":
+        return []
+    audit = load_cutscene_case_resolution_contract()
+    if audit.get("status") != "validated":
+        return []
+    bridge = ((audit.get("nativeContract") or {}).get("genderSelectBridge") or {})
+    script = bridge.get("levelScript") or {}
+    if (
+        bridge.get("status") != "validated"
+        or bridge.get("storyKey") != "cutscene_e0m0_1"
+        or bridge.get("conditionalPlayback") is not True
+        or bridge.get("suppliesMissionOrQuestOwnership") is not False
+        or script.get("levelId") != level_id
+        or script.get("scriptId") != 8700020000
+        or script.get("headerLocalId") != 12
+        or script.get("triggerSlotId") != 80001
+        or script.get("switchLocalId") != 13
+        or script.get("switchCase") != 0
+        or script.get("actionLocalId") != 16
+        or script.get("actionName") != "StartGenderSelect"
+    ):
+        return []
+    source_file = str(script.get("sourceFile") or "")
+    try:
+        data = (ROOT / source_file).read_bytes()
+    except OSError:
+        return []
+    if hashlib.sha256(data).hexdigest().upper() != script.get("sourceSha256"):
+        return []
+    summary = decode_levelscript_binary_summary(data, int(script["scriptId"]))
+    details = summary.get("triggerVolumesDetails") or {}
+    volumes = [row for row in details.get("volumes") or [] if (
+        isinstance(row, dict)
+        and row.get("slotId") == script["triggerSlotId"]
+        and row.get("keySlotId") == script["triggerSlotId"]
+        and row.get("triggerVolumeType") == "Leader"
+    )]
+    if details.get("parseStatus") != "decoded" or len(volumes) != 1:
+        return []
+    shapes = ((volumes[0].get("shapeList") or {}).get("shapes") or [])
+    if len(shapes) != 1:
+        return []
+    shape = shapes[0]
+    position = _finite_position(shape.get("position"))
+    if not position or shape.get("shapeType") not in {"Box", "Sphere", "PolyLine"}:
+        return []
+    story_key = str(bridge["storyKey"])
+    return [{
+        "kind": "trigger", "subKind": "exact_story_trigger_volume",
+        "label": "剧情触发区",
+        "identity": "story_trigger:8700020000:80001:gender_select",
+        "position": position, "detailId": "8700020000#80001",
+        "interactionStatus": "automatic_trigger",
+        "evidence": "exact build-locked GenderSelect phase playback bridge",
+        "scriptId": "8700020000", "triggerSlotId": "80001",
+        "triggerIdentityDomain": "LevelScriptData.triggerVolumes local slot",
+        "registryIdentityStatus": "not_applicable",
+        "triggerShape": {
+            "type": str(shape.get("shapeType") or "").lower(),
+            "position": position, "rotation": shape.get("rotation") or {},
+            "size": shape.get("size") or {}, "radius": shape.get("radius"),
+            "polyLinePoints": ((shape.get("polyLinePoints") or {}).get("points") or []),
+        },
+        "sceneKeys": [story_key], "missionContexts": ["e0m0"],
+        "missionContextStatus": "nominal Story id context; receiver mission ownership unresolved",
+        "storyRelation": "exact_conditional_gender_select_phase_playback",
+        "storyTriggerMultiplicityStatus": "exact_local_trigger_volume",
+        "playbackControlPathEvidence": {
+            "status": "exact_build_locked_gender_select_phase_bridge",
+            "headerLocalId": 12, "switchLocalId": 13, "switchCase": 0,
+            "actionLocalId": 16, "nativeMappingId": bridge.get("nativeMappingId"),
+            "caseInsensitiveAssociation": "accepted_unique_ascii_case_insensitive",
+            "conditionalPlayback": True, "noSiblingInheritance": True,
+        },
+        "relatedFiles": _sorted_related(_merge_related([], [
+            _related(source_file, "level_script", "exact Leader trigger and StartGenderSelect control path"),
+            _related(_conv_file_for_key(language, story_key), "story_exact_trigger", "case-insensitive GenderSelect phase playback"),
+            _related(str(audit.get("sourceFile") or ""), "native_validation", "build-locked phase and cutscene lookup bridge"),
+        ])),
+        "sourceFiles": [source_file], "source": source_file,
+    }]
+
+
+_SPATIAL_SPAWNER_EVENT_TYPES = {
+    "LevelEvent_OnSpawnerComplete",
+    "LevelEvent_OnSpawnerEntityDie",
+    "LevelEvent_OnSpawnerEntityDieStart",
+    "LevelEvent_OnSpawnerEntityDieEnd",
+    "LevelEvent_OnSpawnerEntitySpawn",
+    "LevelEvent_OnSpawnerGroupBegin",
+    "LevelEvent_OnSpawnerGroupComplete",
+    "LevelEvent_OnSpawnerPause",
+    "LevelEvent_OnSpawnerStart",
+    "LevelEvent_OnSpawnerWaveBegin",
+    "LevelEvent_OnSpawnerWaveComplete",
+}
+
+
+def _exact_story_spawner_markers(level_id: str, language: str) -> list[dict]:
+    """Join exact SpawnerPtr event filters to typed LevelData host transforms."""
+    report = _native_trigger_frontier()
+    stories_by_id: dict[int, list[dict]] = {}
+    for row in (report.get("storyTriggerZoneCoverage") or {}).get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        story_key = str(row.get("storyKey") or "")
+        for observation in row.get("observations") or []:
+            detail = observation.get("eventDetail") or {}
+            event_name = str(observation.get("eventName") or detail.get("type") or "")
+            spawner_id = detail.get("spawnerFilterId")
+            if (
+                not story_key
+                or str(observation.get("levelId") or "") != level_id
+                or observation.get("status") != "exact_non_spatial_event_trigger"
+                or event_name not in _SPATIAL_SPAWNER_EVENT_TYPES
+                or detail.get("type") != event_name
+                or detail.get("payloadDecodeStatus") != "exact_complete_subtype"
+                or detail.get("payloadSchemaStatus") != "exact_current_build_memorypack_fields"
+                or detail.get("payloadSchemaMappingId")
+                != "gameassembly-2026-07-17-memorypack-native-event-fields"
+                or not isinstance(spawner_id, int)
+                or isinstance(spawner_id, bool)
+                or spawner_id <= 0
+            ):
+                continue
+            stories_by_id.setdefault(spawner_id, []).append({
+                "storyKey": story_key,
+                "eventName": event_name,
+                "sourceFile": observation.get("sourceFile"),
+                "sourceSha256": observation.get("sourceSha256"),
+                "headerLocalId": observation.get("listenerHeaderLocalId"),
+                "playbackControlPathEvidence": observation.get("playbackControlPathEvidence"),
+                "payloadShape": detail.get("payloadShape"),
+                "nativePayloadMappingId": detail.get("payloadSchemaMappingId"),
+                "spawnerFilterResolution": detail.get("spawnerFilterResolution"),
+            })
+    if not stories_by_id:
+        return []
+
+    leveldata_roots = [
+        ROOT / "export_full/structured/StreamingAssets/Data/Json/LevelData" / level_id,
+        ROOT / "export_full/structured/Persistent/Data/Json/LevelData" / level_id,
+    ]
+    markers: list[dict] = []
+    for spawner_id, bindings in sorted(stories_by_id.items()):
+        config_matches = list((ROOT / "export_full/structured/StreamingAssets/Data/Json/SpawnerConfig" / level_id).glob(
+            f"sc_{level_id}_{spawner_id}.json"
+        ))
+        if len(config_matches) != 1:
+            continue
+        name = f"sc_{level_id}_{spawner_id}".encode("ascii")
+        host_rows: list[dict] = []
+        for root in leveldata_roots:
+            if not root.is_dir():
+                continue
+            for path in root.glob("*.json"):
+                try:
+                    data = path.read_bytes()
+                except OSError:
+                    continue
+                cursor = 0
+                while True:
+                    offset = data.find(name, cursor)
+                    if offset < 0:
+                        break
+                    cursor = offset + 1
+                    end = offset + len(name)
+                    if (
+                        offset < 4
+                        or int.from_bytes(data[offset - 4:offset], "little") != len(name)
+                        or end + 25 > len(data)
+                        or data[end] != 0
+                    ):
+                        continue
+                    values = struct.unpack_from("<6f", data, end + 1)
+                    if not all(math.isfinite(value) for value in values):
+                        continue
+                    host_rows.append({
+                        "sourceFile": str(path.relative_to(ROOT)).replace("\\", "/"),
+                        "sourceSha256": hashlib.sha256(data).hexdigest(),
+                        "recordOffset": offset - 4,
+                        "position": {"x": values[0], "y": values[1], "z": values[2]},
+                        "rotation": {"x": values[3], "y": values[4], "z": values[5]},
+                    })
+        transforms = {
+            tuple(row["position"].values()) + tuple(row["rotation"].values())
+            for row in host_rows
+        }
+        logical_hosts = {Path(row["sourceFile"]).name for row in host_rows}
+        if len(transforms) != 1 or len(logical_hosts) != 1:
+            continue
+        host = host_rows[0]
+        story_keys = sorted({row["storyKey"] for row in bindings})
+        markers.append({
+            "kind": "trigger", "subKind": "exact_spawner_event_host",
+            "label": "剧情生成器",
+            "identity": f"spawner:{level_id}:{spawner_id}",
+            "position": host["position"], "rotation": host["rotation"],
+            "detailId": str(spawner_id), "sceneKeys": story_keys,
+            "interactionStatus": "runtime_spawner_event",
+            "evidence": "exact SpawnerPtr event filter and typed LevelData host transform",
+            "storyRelation": "exact_spawner_event_host; mission ownership unresolved",
+            "spawnerId": spawner_id, "spawnerEventStoryBindings": bindings,
+            "missionContexts": sorted({
+                match.group(1) for key in story_keys
+                if (match := re.search(r"(?:^|_)([a-z]+\d+m\d+(?:d\d+)?)(?:_|$)", key, re.I))
+            }),
+            "relatedFiles": _sorted_related(_merge_related([], [
+                _related(host["sourceFile"], "level_data", "typed spawner host transform"),
+                _related(str(config_matches[0].relative_to(ROOT)).replace("\\", "/"), "spawner_config", "exact SpawnerConfig identity"),
+                *[
+                    _related(_conv_file_for_key(language, key), "story_exact_spawner", "Story played by exact SpawnerPtr event")
+                    for key in story_keys
+                ],
+            ])),
+            "sourceFiles": sorted({host["sourceFile"], str(config_matches[0].relative_to(ROOT)).replace("\\", "/")}),
+            "source": host["sourceFile"],
+        })
+    return markers
+
+
+def _exact_story_encounter_markers(level_id: str, language: str) -> list[dict]:
+    """Project exact Encounter filters through their typed spawner property.
+
+    This is a non-owning authored-location relation. The event's constant
+    LsmPtr must select one native-validated Encounter property family, whose
+    type-50 ``spawner_id`` resolves to one config and one logical LevelData
+    transform. Runtime position, mission ownership, and activation are not
+    inferred.
+    """
+    report = _native_trigger_frontier()
+    contexts: dict[tuple[str, str, str], list[dict]] = {}
+    for receiver in report.get("rows") or []:
+        if not isinstance(receiver, dict):
+            continue
+        receiver_level = str(receiver.get("levelId") or "")
+        receiver_script = str(receiver.get("scriptId") or "")
+        for context in receiver.get("encounterControllerContexts") or []:
+            if not isinstance(context, dict):
+                continue
+            contexts.setdefault(
+                (receiver_level, receiver_script, str(context.get("moduleId") or "")),
+                [],
+            ).append(context)
+
+    bindings_by_spawner: dict[int, list[dict]] = {}
+    for row in (report.get("storyTriggerZoneCoverage") or {}).get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        story_key = str(row.get("storyKey") or "")
+        for observation in row.get("observations") or []:
+            if not isinstance(observation, dict):
+                continue
+            detail = observation.get("eventDetail") or {}
+            event_name = str(observation.get("eventName") or "")
+            lsm_ptr = detail.get("lsmPtrFilter")
+            script_id = str(observation.get("scriptId") or "")
+            if (
+                not story_key
+                or observation.get("levelId") != level_id
+                or observation.get("status") != "exact_non_spatial_event_trigger"
+                or event_name not in {
+                    "LevelEvent_OnEncounterActivated",
+                    "LevelEvent_OnEncounterBattlePartBegin",
+                }
+                or observation.get("headerUnionTag") not in {"0x0058", "0x0059"}
+                or observation.get("headerSerializedMemberCount") != 16
+                or detail.get("type") != event_name
+                or detail.get("payloadShape")
+                != "constant-lsm-pointer-null-output-exact-prefix"
+                or detail.get("lsmPtrOutputPresent") is not False
+                or detail.get("payloadSchemaStatus")
+                != "exact_current_build_memorypack_fields"
+                or detail.get("payloadSchemaMappingId")
+                != "gameassembly-2026-07-17-memorypack-native-event-fields"
+                or detail.get("serverExchange") is not False
+                or detail.get("serializedMissionOrQuestId") is not False
+                or not isinstance(lsm_ptr, int)
+                or isinstance(lsm_ptr, bool)
+                or lsm_ptr <= 0
+            ):
+                continue
+            matches = contexts.get((level_id, script_id, str(lsm_ptr))) or []
+            if len(matches) != 1:
+                continue
+            context = matches[0]
+            spawner_raw = context.get("spawnerId")
+            try:
+                spawner_id = int(spawner_raw)
+            except (TypeError, ValueError):
+                continue
+            if (
+                spawner_id <= 0
+                or context.get("classification")
+                != "encounter_controller_property_contract"
+                or context.get("mappingId")
+                != "gameassembly-2026-08-02-levelscriptmodule-save-prefix-encounter-contract"
+                or context.get("runtimeType") != "Beyond.Gameplay.Core.EncounterBase<T>"
+                or context.get("dataType") != "Beyond.Gameplay.EncounterData"
+                or f"@{lsm_ptr}_spawner_id"
+                not in (context.get("matchedPropertyNames") or [])
+            ):
+                continue
+            bindings_by_spawner.setdefault(spawner_id, []).append({
+                "storyKey": story_key,
+                "eventName": event_name,
+                "lsmPtr": lsm_ptr,
+                "scriptId": script_id,
+                "sourceFile": observation.get("sourceFile"),
+                "headerLocalId": observation.get("listenerHeaderLocalId"),
+                "encounterPropertyContext": context,
+                "playbackControlPathEvidence": observation.get(
+                    "playbackControlPathEvidence"
+                ),
+            })
+
+    markers: list[dict] = []
+    for spawner_id, bindings in sorted(bindings_by_spawner.items()):
+        config_matches = list((
+            ROOT / "export_full/structured/StreamingAssets/Data/Json/SpawnerConfig" / level_id
+        ).glob(f"sc_{level_id}_{spawner_id}.json"))
+        if len(config_matches) != 1:
+            continue
+        name = f"sc_{level_id}_{spawner_id}".encode("ascii")
+        host_rows: list[dict] = []
+        for root in (
+            ROOT / "export_full/structured/StreamingAssets/Data/Json/LevelData" / level_id,
+            ROOT / "export_full/structured/Persistent/Data/Json/LevelData" / level_id,
+        ):
+            if not root.is_dir():
+                continue
+            for path in root.glob("*.json"):
+                try:
+                    data = path.read_bytes()
+                except OSError:
+                    continue
+                cursor = 0
+                while True:
+                    offset = data.find(name, cursor)
+                    if offset < 0:
+                        break
+                    cursor = offset + 1
+                    end = offset + len(name)
+                    if (
+                        offset < 4
+                        or int.from_bytes(data[offset - 4:offset], "little") != len(name)
+                        or end + 25 > len(data)
+                        or data[end] != 0
+                    ):
+                        continue
+                    values = struct.unpack_from("<6f", data, end + 1)
+                    if all(math.isfinite(value) for value in values):
+                        host_rows.append({
+                            "sourceFile": str(path.relative_to(ROOT)).replace("\\", "/"),
+                            "position": {"x": values[0], "y": values[1], "z": values[2]},
+                            "rotation": {"x": values[3], "y": values[4], "z": values[5]},
+                        })
+        transforms = {
+            tuple(row["position"].values()) + tuple(row["rotation"].values())
+            for row in host_rows
+        }
+        logical_hosts = {Path(row["sourceFile"]).name for row in host_rows}
+        if len(transforms) != 1 or len(logical_hosts) != 1:
+            continue
+        host = host_rows[0]
+        story_keys = sorted({binding["storyKey"] for binding in bindings})
+        config_rel = str(config_matches[0].relative_to(ROOT)).replace("\\", "/")
+        markers.append({
+            "kind": "trigger",
+            "subKind": "exact_encounter_spawner_host",
+            "label": "鍓ф儏閬遇鐐?",
+            "identity": f"encounter_spawner:{level_id}:{spawner_id}",
+            "position": host["position"],
+            "rotation": host["rotation"],
+            "detailId": str(spawner_id),
+            "sceneKeys": story_keys,
+            "interactionStatus": "runtime_encounter_event",
+            "evidence": "exact LsmPtr event filter, typed Encounter spawner property, and unique LevelData transform",
+            "storyRelation": "exact_encounter_spawner_host; mission ownership unresolved",
+            "spawnerId": spawner_id,
+            "encounterStoryBindings": bindings,
+            "missionOwnershipStatus": "unresolved_non_owning",
+            "relatedFiles": _sorted_related(_merge_related([], [
+                _related(host["sourceFile"], "level_data", "unique typed spawner host transform"),
+                _related(config_rel, "spawner_config", "type-50 Encounter spawner property target"),
+                *[
+                    _related(_conv_file_for_key(language, key), "story_exact_encounter", "Story played by exact Encounter event filter")
+                    for key in story_keys
+                ],
+            ])),
+            "sourceFiles": sorted({host["sourceFile"], config_rel}),
+            "source": host["sourceFile"],
+        })
+    return markers
+
+
+_EXACT_ENTITY_EVENT_TYPES = {
+    "EntityEvent_OnInteractiveStateChanged",
+    "EntityEvent_OnSavePropertyChanged",
+    "EntityEvent_OnCustomEventNew",
+    "EntityEvent_OnBeingScanned",
+    "EntityEvent_OnEntityDestroy",
+    "EntityEvent_OnEntityStart",
+    "EntityEvent_OnHpChanged",
+    "EntityEvent_OnIntUnlocked",
+    "EntityEvent_OnIntUnlockFailed",
+    "EntityEvent_OnUIInteract",
+    "LevelEvent_OnAnyEntityDie",
+    "LevelEvent_OnEntityHpChanged",
+    "LevelEvent_OnEnemyInFight",
+    "LevelEvent_OnSpecificEntityDie",
+    "LevelEvent_OnSpecificEntityListDie",
+}
+
+
+def _exact_story_entity_event_index(level_id: str) -> dict[str, list[dict]]:
+    """Index exact specified-entity Story events by registry identity.
+
+    These events do not own trigger geometry, but their current-build payload
+    names one constant EntityPtr.  Publication remains attached to the exact
+    WorldEntityRegistry marker and does not imply mission ownership, event
+    firing, or Story order.
+    """
+    report = _native_trigger_frontier()
+    index: dict[str, list[dict]] = {}
+    for row in (report.get("storyTriggerZoneCoverage") or {}).get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        story_key = str(row.get("storyKey") or "")
+        if not story_key:
+            continue
+        for observation in row.get("observations") or []:
+            if (
+                not isinstance(observation, dict)
+                or observation.get("status") not in {
+                    "exact_non_spatial_event_trigger",
+                    "non_spatial_event_payload_unresolved",
+                }
+                or str(observation.get("levelId") or "") != level_id
+            ):
+                continue
+            detail = observation.get("eventDetail") or {}
+            event_name = str(observation.get("eventName") or detail.get("type") or "")
+            if (
+                event_name not in _EXACT_ENTITY_EVENT_TYPES
+                or detail.get("payloadSchemaStatus") not in {
+                    "exact_current_build_memorypack_fields",
+                    "exact_current_build_entity_event_scope_fields",
+                }
+                or detail.get("serverExchange") is not False
+                or detail.get("serializedMissionOrQuestId") is not False
+            ):
+                continue
+            if (
+                detail.get("payloadSchemaStatus")
+                == "exact_current_build_entity_event_scope_fields"
+                and not event_name.startswith("EntityEvent_")
+            ):
+                continue
+
+            pointers: list[dict] = []
+            if event_name.startswith("EntityEvent_"):
+                validate = detail.get("validateParam") or {}
+                validate_id_ref = validate.get("idRef")
+                validate_source = validate.get("paramSource")
+                validate_path = validate.get("path")
+                validate_param_exact = (
+                    type(validate.get("constValue")) is bool
+                    and type(validate_id_ref) is int
+                    and validate_id_ref >= -1
+                    and type(validate_source) is int
+                    and validate_source >= -1
+                    and (
+                        (
+                            validate_id_ref >= 0
+                            and validate_source == -1
+                            and validate_path is None
+                        )
+                        or (
+                            validate_id_ref == -1
+                            and validate_source >= 0
+                            and (
+                                validate_path is None
+                                or (
+                                    isinstance(validate_path, str)
+                                    and bool(validate_path)
+                                )
+                            )
+                        )
+                    )
+                )
+                if not (
+                    detail.get("entityEventScope") == "specified-entity"
+                    and detail.get("triggerTarget") == "SPECIFY_ENTITY"
+                    and detail.get("targetEntityListPresent") is False
+                    and detail.get("targetEntityListOutputPresent") is False
+                    and validate_param_exact
+                ):
+                    continue
+                pointer = detail.get("targetEntity") or {}
+                param = detail.get("targetEntityParam") or {}
+                if not (
+                    param.get("idRef") == -1
+                    and param.get("paramSource") == 0
+                    and param.get("path") is None
+                ):
+                    continue
+                pointers = [pointer]
+            elif event_name == "LevelEvent_OnEntityHpChanged":
+                pointers = list(detail.get("entityFilter") or [])
+            elif event_name == "LevelEvent_OnAnyEntityDie":
+                if not (
+                    detail.get("filterByList") is True
+                    and detail.get("isMonsterFilter") is True
+                    and detail.get("payloadShape")
+                    == "constant-entity-list-and-bool-filters-exact-eof"
+                ):
+                    continue
+                pointers = list(detail.get("entityListFilter") or [])
+            elif event_name == "LevelEvent_OnSpecificEntityDie":
+                pointer = detail.get("entityFilter") or {}
+                if not (
+                    pointer.get("idRef") == -1
+                    and pointer.get("paramSource") == 0
+                    and pointer.get("path") is None
+                ):
+                    continue
+                pointers = [pointer]
+            elif event_name == "LevelEvent_OnSpecificEntityListDie":
+                if detail.get("payloadShape") != "specific-constant-entity-list-exact-eof":
+                    continue
+                pointers = list(detail.get("entityListFilter") or [])
+            elif event_name == "LevelEvent_OnEnemyInFight":
+                if detail.get("payloadShape") not in {
+                    "enemy-in-fight-constant-entity-list-exact-eof",
+                    "enemy-in-fight-constant-entity-list-exact-prefix",
+                }:
+                    continue
+                pointers = list(detail.get("entityListFilter") or [])
+
+            for pointer in pointers:
+                if not isinstance(pointer, dict):
+                    continue
+                logic_id = pointer.get("logicId")
+                slot_id = pointer.get("slotId")
+                use_slot = pointer.get("useSlotId")
+                identity = ""
+                if (
+                    use_slot is True
+                    and logic_id == 0
+                    and isinstance(slot_id, int)
+                    and not isinstance(slot_id, bool)
+                    and slot_id > 0
+                ):
+                    script_id = str(observation.get("scriptId") or "")
+                    if script_id:
+                        identity = f"script:{script_id}:{slot_id}"
+                elif (
+                    use_slot is False
+                    and isinstance(logic_id, int)
+                    and not isinstance(logic_id, bool)
+                    and logic_id > 0
+                    and slot_id == 0
+                ):
+                    identity = f"world:{logic_id}"
+                if not identity:
+                    continue
+                binding = {
+                    "storyKey": story_key,
+                    "eventName": event_name,
+                    "sourceFile": observation.get("sourceFile"),
+                    "sourceSha256": observation.get("sourceSha256"),
+                    "scriptId": observation.get("scriptId"),
+                    "headerLocalId": observation.get(
+                        "listenerHeaderLocalId",
+                        observation.get("headerLocalId"),
+                    ),
+                    "playbackControlPathEvidence": observation.get(
+                        "playbackControlPathEvidence"
+                    ),
+                    "nativeMappingId": detail.get("payloadSchemaMappingId"),
+                    "identity": identity,
+                    "status": "exact_entity_event_target",
+                    "ownership": False,
+                    "activation": False,
+                    "orderEvidence": False,
+                }
+                if event_name.startswith("EntityEvent_"):
+                    binding.update({
+                        "validateParam": validate,
+                        "validateParamStatus": "exact_structure_only",
+                    })
+                index.setdefault(identity, []).append(binding)
+    return index
+
+
+def _active_leveldata_files(level_id: str) -> list[Path]:
+    """Return complete-file Streaming/Persistent LevelData overlays."""
+    selected: dict[str, Path] = {}
+    for root in (ROOT / LEVEL_DATA, ROOT / PERSISTENT_LEVEL_DATA):
+        level_dir = root / level_id
+        if not level_dir.is_dir():
+            continue
+        for path in sorted(level_dir.glob("*.json")):
+            selected[path.name] = path
+    return [selected[name] for name in sorted(selected)]
+
+
+def _leveldata_patrols_by_id(level_id: str) -> dict[int, list[dict]] | None:
+    """Decode every active LevelData patrol list or fail closed for the level."""
+    patrols_by_id: dict[int, list[dict]] = {}
+    for path in _active_leveldata_files(level_id):
+        try:
+            data = path.read_bytes()
+            decoded = decode_leveldata_npc_patrol_list(data)
+        except (OSError, LevelDataNpcPatrolDecodeError):
+            # An undecoded active file could hide a competing patrol id.
+            return None
+        try:
+            source_file = str(path.relative_to(ROOT)).replace("\\", "/")
+        except ValueError:
+            source_file = str(path).replace("\\", "/")
+        for patrol in decoded.get("patrols") or []:
+            patrol_id = patrol.get("patrolId")
+            if not isinstance(patrol_id, int) or isinstance(patrol_id, bool):
+                continue
+            patrols_by_id.setdefault(patrol_id, []).append({
+                **patrol,
+                "sourceFile": source_file,
+                "sourceSha256": hashlib.sha256(data).hexdigest().upper(),
+            })
+    return patrols_by_id
+
+
+def _exact_story_proxy_patrol_checkpoint_contexts(level_id: str) -> list[dict]:
+    """Resolve exact proxy-patrol listeners to authored patrol checkpoints."""
+    patrols_by_id = _leveldata_patrols_by_id(level_id)
+    if patrols_by_id is None:
+        return []
+
+    contexts: list[dict] = []
+    for row in (_native_trigger_frontier().get("storyTriggerZoneCoverage") or {}).get("rows") or []:
+        if not isinstance(row, dict) or not row.get("storyKey"):
+            continue
+        for observation in row.get("observations") or []:
+            detail = observation.get("eventDetail") if isinstance(observation, dict) else None
+            if not (
+                isinstance(detail, dict)
+                and observation.get("status") == "exact_non_spatial_event_trigger"
+                and observation.get("levelId") == level_id
+                and observation.get("eventName") == "LevelEvent_OnProxyPatrolCheckpointReach"
+                and detail.get("payloadSchemaStatus") == "exact_current_build_memorypack_fields"
+                and detail.get("payloadSchemaMappingId")
+                == "gameassembly-2026-07-17-memorypack-native-event-fields"
+                and detail.get("serverExchange") is False
+                and detail.get("serializedMissionOrQuestId") is False
+                and detail.get("payloadShape") in {
+                    "constant-proxy-patrol-checkpoint-and-outputs-exact-eof",
+                    "constant-proxy-patrol-checkpoint-and-outputs-exact-prefix",
+                }
+                and isinstance(detail.get("patrolIdFilter"), int)
+                and not isinstance(detail.get("patrolIdFilter"), bool)
+                and detail.get("patrolIdFilter") > 0
+                and isinstance(detail.get("pointIndexFilter"), int)
+                and not isinstance(detail.get("pointIndexFilter"), bool)
+                and detail.get("pointIndexFilter") >= 0
+                and str(detail.get("proxyIdFilter") or "")
+            ):
+                continue
+            patrol_id = int(detail["patrolIdFilter"])
+            point_index = int(detail["pointIndexFilter"])
+            patrol_matches = patrols_by_id.get(patrol_id) or []
+            if len(patrol_matches) != 1:
+                continue
+            patrol = patrol_matches[0]
+            points = patrol.get("points") or []
+            if not (
+                point_index < len(points)
+                and isinstance(points[point_index], dict)
+                and points[point_index].get("pointIndex") == point_index
+            ):
+                continue
+            position = _finite_position(points[point_index].get("position"))
+            if position is None:
+                continue
+            contexts.append({
+                "storyKey": row["storyKey"],
+                "levelId": level_id,
+                "scriptId": observation.get("scriptId"),
+                "sourceFile": observation.get("sourceFile"),
+                "sourceSha256": observation.get("sourceSha256"),
+                "headerLocalId": observation.get("listenerHeaderLocalId"),
+                "eventName": observation.get("eventName"),
+                "proxyId": detail["proxyIdFilter"],
+                "patrolId": patrol_id,
+                "pointIndex": point_index,
+                "position": position,
+                "levelDataSourceFile": patrol["sourceFile"],
+                "levelDataSourceSha256": patrol["sourceSha256"],
+                "nativeMappingId": detail.get("payloadSchemaMappingId"),
+                "playbackControlPathEvidence": observation.get(
+                    "playbackControlPathEvidence"
+                ),
+                "status": "exact_proxy_patrol_checkpoint",
+                "runtimeNpcPositionStatus": "unresolved",
+                "ownership": False,
+                "activation": False,
+                "orderEvidence": False,
+            })
+    return contexts
+
+
+def _exact_story_npc_patrol_checkpoint_contexts(level_id: str) -> list[dict]:
+    """Resolve dynamic-NPC patrol listeners to their exact checkpoint tuple.
+
+    The NPC alias remains runtime-bound. The constant patrol id and point
+    index still identify one authored checkpoint whenever the active level's
+    fully decoded patrol collection contains exactly one matching row.
+    """
+    patrols_by_id = _leveldata_patrols_by_id(level_id)
+    if patrols_by_id is None:
+        return []
+    contexts: list[dict] = []
+    for row in (_native_trigger_frontier().get("storyTriggerZoneCoverage") or {}).get("rows") or []:
+        if not isinstance(row, dict) or not row.get("storyKey"):
+            continue
+        for observation in row.get("observations") or []:
+            detail = observation.get("eventDetail") if isinstance(observation, dict) else None
+            entity_filter = detail.get("npcEntityFilter") if isinstance(detail, dict) else None
+            if not (
+                isinstance(entity_filter, dict)
+                and observation.get("status") == "exact_non_spatial_event_trigger"
+                and observation.get("levelId") == level_id
+                and observation.get("eventName") == "LevelEvent_OnNpcPatrolCheckpointReach"
+                and detail.get("payloadSchemaStatus") == "exact_current_build_memorypack_fields"
+                and detail.get("payloadSchemaMappingId")
+                == "gameassembly-2026-07-17-memorypack-native-event-fields"
+                and detail.get("payloadShape") == "dynamic-npc-patrol-checkpoint-fields"
+                and detail.get("serverExchange") is False
+                and detail.get("serializedMissionOrQuestId") is False
+                and entity_filter.get("logicId") == 0
+                and entity_filter.get("slotId") == 0
+                and entity_filter.get("useSlotId") is False
+                and entity_filter.get("idRef") == -1
+                and entity_filter.get("paramSource") == 200
+                and str(entity_filter.get("path") or "")
+                and isinstance(detail.get("patrolIdFilter"), int)
+                and not isinstance(detail.get("patrolIdFilter"), bool)
+                and detail.get("patrolIdFilter") > 0
+                and isinstance(detail.get("checkpointIndexFilter"), int)
+                and not isinstance(detail.get("checkpointIndexFilter"), bool)
+                and detail.get("checkpointIndexFilter") >= 0
+            ):
+                continue
+            patrol_id = int(detail["patrolIdFilter"])
+            point_index = int(detail["checkpointIndexFilter"])
+            patrol_matches = patrols_by_id.get(patrol_id) or []
+            if len(patrol_matches) != 1:
+                continue
+            patrol = patrol_matches[0]
+            points = patrol.get("points") or []
+            if not (
+                point_index < len(points)
+                and isinstance(points[point_index], dict)
+                and points[point_index].get("pointIndex") == point_index
+            ):
+                continue
+            position = _finite_position(points[point_index].get("position"))
+            if position is None:
+                continue
+            contexts.append({
+                "storyKey": row["storyKey"],
+                "levelId": level_id,
+                "scriptId": observation.get("scriptId"),
+                "sourceFile": observation.get("sourceFile"),
+                "sourceSha256": observation.get("sourceSha256"),
+                "headerLocalId": observation.get("listenerHeaderLocalId"),
+                "eventName": observation.get("eventName"),
+                "npcEntityPropertyPath": entity_filter["path"],
+                "patrolId": patrol_id,
+                "pointIndex": point_index,
+                "position": position,
+                "levelDataSourceFile": patrol["sourceFile"],
+                "levelDataSourceSha256": patrol["sourceSha256"],
+                "nativeMappingId": detail.get("payloadSchemaMappingId"),
+                "playbackControlPathEvidence": observation.get("playbackControlPathEvidence"),
+                "status": "exact_npc_patrol_checkpoint",
+                "runtimeNpcIdentityStatus": "dynamic_script_property",
+                "runtimeNpcPositionStatus": "unresolved",
+                "ownership": False,
+                "activation": False,
+                "orderEvidence": False,
+            })
+    return contexts
+
+
+def _proxy_patrol_context_signature(row: dict) -> tuple[str, object, str]:
+    return (
+        str(row.get("sourceFile") or ""),
+        row.get("headerLocalId"),
+        str(row.get("storyKey") or ""),
+    )
+
+
+def _exact_story_proxy_patrol_event_index(
+    level_id: str,
+    checkpoint_contexts: list[dict] | None = None,
+) -> dict[str, list[dict]]:
+    """Index proxy-patrol Story events by exact authored NPC proxy identity.
+
+    Patrol/checkpoint values describe runtime progress. The map point remains
+    the proxy's exact authored placement, never a claimed checkpoint position.
+    """
+    registry = _load_json(REGISTRY, {}) or {}
+    proxy_table = _load_json(ROOT / NPC_PROXY_TABLE_REL, {}) or {}
+    briefs = registry.get("npcProxyBriefInfos") if isinstance(registry, dict) else {}
+    table_rows = proxy_table.get("dataTable") if isinstance(proxy_table, dict) else {}
+    if not isinstance(briefs, dict) or not isinstance(table_rows, dict):
+        return {}
+
+    expected_level_num = _level_catalog().get(level_id)
+    index: dict[str, list[dict]] = {}
+    checkpoint_signatures = {
+        _proxy_patrol_context_signature(row)
+        for row in checkpoint_contexts or []
+    }
+    for row in (_native_trigger_frontier().get("storyTriggerZoneCoverage") or {}).get("rows") or []:
+        if not isinstance(row, dict) or not row.get("storyKey"):
+            continue
+        for observation in row.get("observations") or []:
+            if (
+                not isinstance(observation, dict)
+                or observation.get("status") != "exact_non_spatial_event_trigger"
+                or observation.get("levelId") != level_id
+                or observation.get("eventName") != "LevelEvent_OnProxyPatrolCheckpointReach"
+            ):
+                continue
+            detail = observation.get("eventDetail") or {}
+            if _proxy_patrol_context_signature({
+                "sourceFile": observation.get("sourceFile"),
+                "headerLocalId": observation.get("listenerHeaderLocalId"),
+                "storyKey": row.get("storyKey"),
+            }) in checkpoint_signatures:
+                continue
+            if (
+                detail.get("payloadSchemaStatus") != "exact_current_build_memorypack_fields"
+                or detail.get("serverExchange") is not False
+                or detail.get("serializedMissionOrQuestId") is not False
+                or detail.get("payloadShape") not in {
+                    "constant-proxy-patrol-checkpoint-and-outputs-exact-eof",
+                    "constant-proxy-patrol-checkpoint-and-outputs-exact-prefix",
+                }
+            ):
+                continue
+            proxy_id = str(detail.get("proxyIdFilter") or "")
+            if not proxy_id:
+                continue
+            matches: list[tuple[str, dict]] = []
+            for segment_id, brief in briefs.items():
+                if not isinstance(brief, dict) or brief.get("proxyId") != proxy_id:
+                    continue
+                try:
+                    numeric_segment_id = int(segment_id)
+                except (TypeError, ValueError):
+                    continue
+                if (
+                    expected_level_num is None
+                    or numeric_segment_id // REGISTRY_ID_SCALE != expected_level_num
+                    or brief.get("segmentIdGlobal") != numeric_segment_id
+                ):
+                    continue
+                matches.append((str(segment_id), brief))
+            if len(matches) != 1:
+                continue
+            segment_id, brief = matches[0]
+            table_match = table_rows.get(proxy_id)
+            brief_position = _finite_position(brief.get("position"))
+            table_position = _finite_position(
+                table_match.get("position") if isinstance(table_match, dict) else None
+            )
+            table_rotation = _finite_position(
+                table_match.get("rotation") if isinstance(table_match, dict) else None
+            )
+            if (
+                not isinstance(table_match, dict)
+                or brief_position is None
+                or table_position is None
+                or table_rotation is None
+                or brief_position != table_position
+            ):
+                continue
+            identity = f"npc:{segment_id}"
+            index.setdefault(identity, []).append({
+                "storyKey": row["storyKey"],
+                "eventName": observation["eventName"],
+                "sourceFile": observation.get("sourceFile"),
+                "sourceSha256": observation.get("sourceSha256"),
+                "scriptId": observation.get("scriptId"),
+                "headerLocalId": observation.get("listenerHeaderLocalId"),
+                "playbackControlPathEvidence": observation.get("playbackControlPathEvidence"),
+                "nativeMappingId": detail.get("payloadSchemaMappingId"),
+                "identity": identity,
+                "npcProxyId": proxy_id,
+                "patrolIdFilter": detail.get("patrolIdFilter"),
+                "pointIndexFilter": detail.get("pointIndexFilter"),
+                "status": "exact_proxy_patrol_event_target",
+                "spatialResolutionEvidence": "exact_npc_proxy_brief_and_table_join",
+                "runtimeCheckpointPositionStatus": "unresolved",
+                "ownership": False,
+                "activation": False,
+                "orderEvidence": False,
+            })
+    return index
+
+
+def _exact_story_patrol_checkpoint_markers(
+    contexts: list[dict],
+    language: str,
+) -> list[dict]:
+    """Publish exact authored patrol points without claiming runtime position."""
+    grouped: dict[tuple[int, int, tuple[float, float, float]], list[dict]] = {}
+    for context in contexts:
+        position = _finite_position(context.get("position"))
+        patrol_id = context.get("patrolId")
+        point_index = context.get("pointIndex")
+        if (
+            position is None
+            or not isinstance(patrol_id, int)
+            or not isinstance(point_index, int)
+        ):
+            continue
+        key = (
+            patrol_id,
+            point_index,
+            (position["x"], position["y"], position["z"]),
+        )
+        grouped.setdefault(key, []).append(context)
+
+    markers: list[dict] = []
+    for (patrol_id, point_index, position_values), rows in sorted(grouped.items()):
+        story_keys = sorted({str(row.get("storyKey") or "") for row in rows if row.get("storyKey")})
+        proxy_ids = sorted({str(row.get("proxyId") or "") for row in rows if row.get("proxyId")})
+        source_files = sorted({
+            str(row.get(field) or "")
+            for row in rows
+            for field in ("sourceFile", "levelDataSourceFile")
+            if row.get(field)
+        })
+        markers.append({
+            "kind": "story",
+            "subKind": "npc_patrol_checkpoint",
+            "label": _story_display_title(language, story_keys[0]) if len(story_keys) == 1 else " / ".join(story_keys),
+            "identity": f"npc-patrol-checkpoint:{patrol_id}:{point_index}",
+            "position": dict(zip(("x", "y", "z"), position_values)),
+            "interactionStatus": "exact_npc_patrol_checkpoint",
+            "evidence": (
+                "exact patrol/checkpoint event filters + unique fully "
+                "decoded LevelData NpcPatrolData point"
+            ),
+            "sceneKeys": story_keys,
+            "missions": sorted({
+                match.group(1)
+                for story_key in story_keys
+                if (match := re.search(
+                    r"(?:^|_)([a-z]+\d+m\d+(?:d\d+)?)(?:_|$)",
+                    story_key,
+                    re.IGNORECASE,
+                ))
+            }),
+            "proxyIds": proxy_ids,
+            "patrolId": patrol_id,
+            "pointIndex": point_index,
+            "authoredCheckpointPosition": True,
+            "runtimeNpcPositionStatus": "unresolved",
+            "ownership": False,
+            "activation": False,
+            "orderEvidence": False,
+            "patrolCheckpointBindings": rows,
+            "sourceFiles": source_files,
+            "source": source_files[0] if source_files else "",
+            "relatedFiles": _sorted_related(_merge_related([], [
+                *[
+                    _related(
+                        row.get("sourceFile"),
+                        "story_exact_npc_patrol_event",
+                        "exact NPC, patrol id and checkpoint listener before playback",
+                    )
+                    for row in rows
+                ],
+                *[
+                    _related(
+                        row.get("levelDataSourceFile"),
+                        "placement_source",
+                        "fully decoded authored NpcPatrolData checkpoint position",
+                    )
+                    for row in rows
+                ],
+                *[
+                    _related(
+                        _conv_file_for_key(language, story_key),
+                        "story_exact_npc_patrol_checkpoint",
+                        "Story reached from this exact patrol checkpoint event",
+                    )
+                    for story_key in story_keys
+                ],
+            ])),
+        })
+    return markers
 
 
 def _level_family(level_id: str) -> str:
@@ -333,6 +1616,487 @@ def _conv_file_for_key(language: str, story_key: str) -> str | None:
     return None
 
 
+def _active_gameplay_config_path(filename: str) -> Path:
+    """Select one complete-file Persistent/Streaming gameplay-config overlay."""
+    persistent = ROOT / PERSISTENT_GAMEPLAY_CONFIG / filename
+    if persistent.is_file():
+        return persistent
+    return ROOT / GAMEPLAY_CONFIG / filename
+
+
+def _exact_npc_proxy_ex_story_index(language: str) -> dict[str, list[dict]]:
+    """Index authored NPC-proxy dialog rows by exact registry identity.
+
+    ``NpcProxyExDataTable`` is the runtime dialog-selection table consumed by
+    ``NpcInteractComponent._TryGetNpcProxyInteractDialogId``.  Its row proves
+    that a dialog is authored for one named proxy, while server state chooses
+    the active row.  Spatial publication therefore requires an exact proxy-id
+    join through both WorldEntityRegistry and NpcProxyTable, but deliberately
+    does not claim current activation, quest ownership, or Story order.
+    """
+    cached = _NPC_PROXY_EX_STORY_INDEX_CACHE.get(language)
+    if cached is not None:
+        return cached
+
+    conv_root = ROOT / f"webui/data/lang/{language}/conv"
+    folded_story_keys: dict[str, list[str]] = {}
+    if conv_root.is_dir():
+        for path in sorted(conv_root.glob("*.json")):
+            folded_story_keys.setdefault(path.stem.casefold(), []).append(path.stem)
+
+    proxy_ex_path = _active_gameplay_config_path("NpcProxyExDataTable.json")
+    proxy_table_path = _active_gameplay_config_path("NpcProxyTable.json")
+    proxy_ex = _load_json(proxy_ex_path, {}) or {}
+    proxy_table = _load_json(proxy_table_path, {}) or {}
+    registry = _load_json(REGISTRY, {}) or {}
+    ex_rows = proxy_ex.get("data") if isinstance(proxy_ex, dict) else None
+    table_rows = (
+        proxy_table.get("dataTable") if isinstance(proxy_table, dict) else None
+    )
+    briefs = (
+        registry.get("npcProxyBriefInfos") if isinstance(registry, dict) else None
+    )
+    if not all(isinstance(value, dict) for value in (ex_rows, table_rows, briefs)):
+        _NPC_PROXY_EX_STORY_INDEX_CACHE[language] = {}
+        return {}
+
+    brief_rows_by_proxy: dict[str, list[tuple[int, dict]]] = {}
+    for raw_segment_id, brief in briefs.items():
+        if not isinstance(brief, dict) or not brief.get("proxyId"):
+            continue
+        try:
+            segment_id = int(raw_segment_id)
+        except (TypeError, ValueError):
+            continue
+        if brief.get("segmentIdGlobal") != segment_id:
+            continue
+        brief_rows_by_proxy.setdefault(str(brief["proxyId"]), []).append(
+            (segment_id, brief)
+        )
+
+    def relative(path: Path) -> str:
+        try:
+            return str(path.relative_to(ROOT)).replace("\\", "/")
+        except ValueError:
+            return str(path).replace("\\", "/")
+
+    index: dict[str, list[dict]] = {}
+    seen: set[tuple[str, str, str]] = set()
+    for proxy_id, configured_rows in ex_rows.items():
+        if not isinstance(configured_rows, list):
+            continue
+        table_row = table_rows.get(proxy_id)
+        brief_matches = brief_rows_by_proxy.get(str(proxy_id), [])
+        if not isinstance(table_row, dict) or len(brief_matches) != 1:
+            continue
+        segment_id, brief = brief_matches[0]
+        brief_position = _finite_position(brief.get("position"))
+        table_position = _finite_position(table_row.get("position"))
+        table_rotation = _finite_position(table_row.get("rotation"))
+        if (
+            brief_position is None
+            or table_position is None
+            or table_rotation is None
+            or brief_position != table_position
+            or not str(table_row.get("levelId") or "")
+        ):
+            continue
+        identity = f"npc:{segment_id}"
+        for row_index, configured in enumerate(configured_rows):
+            if not isinstance(configured, dict):
+                continue
+            raw_story_key = str(configured.get("dialogId") or "")
+            candidates = folded_story_keys.get(raw_story_key.casefold(), [])
+            if not raw_story_key or len(candidates) != 1:
+                continue
+            story_key = candidates[0]
+            signature = (identity, story_key, str(configured.get("missionId") or ""))
+            if signature in seen:
+                continue
+            seen.add(signature)
+            index.setdefault(identity, []).append({
+                "storyKey": story_key,
+                "authoredStoryKey": raw_story_key,
+                "npcProxyId": str(proxy_id),
+                "entityLogicId": segment_id,
+                "levelId": str(table_row["levelId"]),
+                "missionContext": str(configured.get("missionId") or ""),
+                "rowIndex": row_index,
+                "status": "exact_npc_proxy_ex_dialog_target",
+                "selectionStatus": "server_selected_active_condition_unproven",
+                "nativeMappingId": "npc-proxy-dialog-selection-native-v1",
+                "spatialResolutionEvidence": (
+                    "exact_npc_proxy_ex_proxy_id_and_registry_table_transform"
+                ),
+                "activation": False,
+                "ownership": False,
+                "orderEvidence": False,
+                "sourceFiles": [
+                    relative(proxy_ex_path),
+                    relative(proxy_table_path),
+                    REGISTRY_REL,
+                ],
+            })
+    for rows in index.values():
+        rows.sort(key=lambda row: (
+            row["storyKey"], row["missionContext"], row["rowIndex"]
+        ))
+    _NPC_PROXY_EX_STORY_INDEX_CACHE[language] = index
+    return index
+
+
+def _exact_npc_proxy_env_talk_story_index(language: str) -> dict[str, list[dict]]:
+    """Index ambient Story rows authored directly on placed NPC proxies.
+
+    ``NpcProxyTable.envTalkIds`` and the same field under
+    ``lazyDestroyEnvTalkData`` identify ambient lines configured for one exact
+    proxy. They do not prove current activation, mission ownership, or order.
+    """
+    cached = _NPC_PROXY_ENV_TALK_STORY_INDEX_CACHE.get(language)
+    if cached is not None:
+        return cached
+
+    conv_root = ROOT / f"webui/data/lang/{language}/conv"
+    folded_story_keys: dict[str, list[str]] = {}
+    if conv_root.is_dir():
+        for path in sorted(conv_root.glob("*.json")):
+            folded_story_keys.setdefault(path.stem.casefold(), []).append(path.stem)
+
+    proxy_table_path = _active_gameplay_config_path("NpcProxyTable.json")
+    proxy_ex_path = _active_gameplay_config_path("NpcProxyExDataTable.json")
+    proxy_table = _load_json(proxy_table_path, {}) or {}
+    proxy_ex = _load_json(proxy_ex_path, {}) or {}
+    registry = _load_json(REGISTRY, {}) or {}
+    table_rows = proxy_table.get("dataTable") if isinstance(proxy_table, dict) else None
+    briefs = registry.get("npcProxyBriefInfos") if isinstance(registry, dict) else None
+    if not isinstance(table_rows, dict) or not isinstance(briefs, dict):
+        _NPC_PROXY_ENV_TALK_STORY_INDEX_CACHE[language] = {}
+        return {}
+
+    brief_rows_by_proxy: dict[str, list[tuple[int, dict]]] = {}
+    for raw_segment_id, brief in briefs.items():
+        if not isinstance(brief, dict) or not brief.get("proxyId"):
+            continue
+        try:
+            segment_id = int(raw_segment_id)
+        except (TypeError, ValueError):
+            continue
+        if brief.get("segmentIdGlobal") != segment_id:
+            continue
+        brief_rows_by_proxy.setdefault(str(brief["proxyId"]), []).append(
+            (segment_id, brief)
+        )
+
+    def relative(path: Path) -> str:
+        try:
+            return str(path.relative_to(ROOT)).replace("\\", "/")
+        except ValueError:
+            return str(path).replace("\\", "/")
+
+    def finite_vector(value: object) -> dict[str, float] | None:
+        vector = _finite_position(value)
+        if vector is None or any(
+            component is not None and not math.isfinite(component)
+            for component in vector.values()
+        ):
+            return None
+        return vector
+
+    def env_talk_refs(node: object, path: str = "") -> list[tuple[str, str]]:
+        refs: list[tuple[str, str]] = []
+        if isinstance(node, dict):
+            for key, value in node.items():
+                child_path = f"{path}.{key}" if path else key
+                if key == "envTalkIds" and isinstance(value, list):
+                    refs.extend(
+                        (item, child_path)
+                        for item in value
+                        if isinstance(item, str) and item
+                    )
+                else:
+                    refs.extend(env_talk_refs(value, child_path))
+        elif isinstance(node, list):
+            for item_index, value in enumerate(node):
+                refs.extend(env_talk_refs(value, f"{path}[{item_index}]"))
+        return refs
+
+    index: dict[str, list[dict]] = {}
+    seen: set[tuple[str, str, str, str]] = set()
+
+    def add_binding(
+        *,
+        proxy_id: str,
+        segment_id: int,
+        level_id: str,
+        env_talk_id: str,
+        field_path: str,
+        lifecycle_status: str,
+        mission_context: str,
+        source_files: list[str],
+    ) -> None:
+        authored_story_key = f"env_{env_talk_id}"
+        candidates = folded_story_keys.get(authored_story_key.casefold(), [])
+        if len(candidates) != 1:
+            return
+        story_key = candidates[0]
+        identity = f"npc:{segment_id}"
+        signature = (identity, story_key, lifecycle_status, mission_context)
+        if signature in seen:
+            return
+        seen.add(signature)
+        index.setdefault(identity, []).append({
+            "storyKey": story_key,
+            "authoredStoryKey": authored_story_key,
+            "envTalkId": env_talk_id,
+            "npcProxyId": proxy_id,
+            "entityLogicId": segment_id,
+            "levelId": level_id,
+            "fieldPath": field_path,
+            "missionContext": mission_context,
+            "status": "exact_npc_proxy_env_talk_target",
+            "lifecycleStatus": lifecycle_status,
+            "activationStatus": "runtime_selection_unproven",
+            "spatialResolutionEvidence": (
+                "exact_npc_proxy_env_talk_and_registry_table_transform"
+            ),
+            "activation": False,
+            "ownership": False,
+            "orderEvidence": False,
+            "sourceFiles": source_files,
+        })
+
+    for proxy_id, table_row in table_rows.items():
+        if not isinstance(table_row, dict):
+            continue
+        refs = env_talk_refs(table_row)
+        brief_matches = brief_rows_by_proxy.get(str(proxy_id), [])
+        if not refs or len(brief_matches) != 1:
+            continue
+        segment_id, brief = brief_matches[0]
+        brief_position = finite_vector(brief.get("position"))
+        table_position = finite_vector(table_row.get("position"))
+        table_rotation = finite_vector(table_row.get("rotation"))
+        level_id = str(table_row.get("levelId") or "")
+        if (
+            brief_position is None
+            or table_position is None
+            or table_rotation is None
+            or brief_position != table_position
+            or not level_id
+        ):
+            continue
+        for env_talk_id, field_path in refs:
+            lifecycle_status = (
+                "lazy_destroy_variant_authored"
+                if "lazyDestroyEnvTalkData" in field_path
+                else "direct_proxy_ambient_configuration"
+            )
+            add_binding(
+                proxy_id=str(proxy_id),
+                segment_id=segment_id,
+                level_id=level_id,
+                env_talk_id=env_talk_id,
+                field_path=field_path,
+                lifecycle_status=lifecycle_status,
+                mission_context="",
+                source_files=[relative(proxy_table_path), REGISTRY_REL],
+            )
+
+    ex_rows = proxy_ex.get("data") if isinstance(proxy_ex, dict) else None
+    if isinstance(ex_rows, dict):
+        for proxy_id, variants in ex_rows.items():
+            table_row = table_rows.get(proxy_id)
+            brief_matches = brief_rows_by_proxy.get(str(proxy_id), [])
+            if (
+                not isinstance(variants, list)
+                or not isinstance(table_row, dict)
+                or len(brief_matches) != 1
+            ):
+                continue
+            segment_id, brief = brief_matches[0]
+            level_id = str(table_row.get("levelId") or "")
+            if (
+                finite_vector(brief.get("position")) is None
+                or finite_vector(brief.get("position"))
+                != finite_vector(table_row.get("position"))
+                or finite_vector(table_row.get("rotation")) is None
+                or not level_id
+            ):
+                continue
+            for row_index, variant in enumerate(variants):
+                if not isinstance(variant, dict):
+                    continue
+                env_data = variant.get("envTalkData")
+                env_talk_ids = (
+                    env_data.get("envTalkIds")
+                    if isinstance(env_data, dict)
+                    else None
+                )
+                if not isinstance(env_talk_ids, list):
+                    continue
+                mission_context = str(variant.get("missionId") or "")
+                for env_talk_id in env_talk_ids:
+                    if not isinstance(env_talk_id, str) or not env_talk_id:
+                        continue
+                    add_binding(
+                        proxy_id=str(proxy_id),
+                        segment_id=segment_id,
+                        level_id=level_id,
+                        env_talk_id=env_talk_id,
+                        field_path=f"data.{proxy_id}[{row_index}].envTalkData.envTalkIds",
+                        lifecycle_status="npc_proxy_ex_ambient_variant_authored",
+                        mission_context=mission_context,
+                        source_files=[
+                            relative(proxy_ex_path),
+                            relative(proxy_table_path),
+                            REGISTRY_REL,
+                        ],
+                    )
+    for bindings in index.values():
+        bindings.sort(key=lambda row: (
+            row["storyKey"], row["lifecycleStatus"], row["fieldPath"]
+        ))
+    _NPC_PROXY_ENV_TALK_STORY_INDEX_CACHE[language] = index
+    return index
+
+
+def _exact_atmospheric_env_talk_marker_index(language: str) -> dict[str, list[dict]]:
+    """Index authored atmospheric-cluster positions by exact envTalk Story.
+
+    The cluster table co-serializes its identity, level, envTalk id, members,
+    and world position. Each cluster remains an independent point; repeated
+    Story keys are explicit multi-location ambient content and are not merged.
+    """
+    cached = _ATMOSPHERIC_ENV_TALK_MARKER_INDEX_CACHE.get(language)
+    if cached is not None:
+        return cached
+
+    conv_root = ROOT / f"webui/data/lang/{language}/conv"
+    folded_story_keys: dict[str, list[str]] = {}
+    if conv_root.is_dir():
+        for path in sorted(conv_root.glob("*.json")):
+            folded_story_keys.setdefault(path.stem.casefold(), []).append(path.stem)
+
+    table_path = _active_gameplay_config_path("AtmosphericNpcClusterDataTable.json")
+    payload = _load_json(table_path, {}) or {}
+    rows = payload.get("dataTable") if isinstance(payload, dict) else None
+    if not isinstance(rows, dict):
+        _ATMOSPHERIC_ENV_TALK_MARKER_INDEX_CACHE[language] = {}
+        return {}
+
+    try:
+        source_file = str(table_path.relative_to(ROOT)).replace("\\", "/")
+    except ValueError:
+        source_file = str(table_path).replace("\\", "/")
+
+    index: dict[str, list[dict]] = {}
+    for row_key, row in rows.items():
+        if not isinstance(row, dict) or row.get("clusterId") != row_key:
+            continue
+        env_talk_id = str(row.get("envTalkId") or "")
+        level_id = str(row.get("levelId") or "")
+        candidates = folded_story_keys.get(f"env_{env_talk_id}".casefold(), [])
+        position = _finite_position(row.get("position"))
+        if (
+            not env_talk_id
+            or not level_id
+            or len(candidates) != 1
+            or position is None
+            or any(
+                component is None or not math.isfinite(component)
+                for component in position.values()
+            )
+        ):
+            continue
+        npc_ids = row.get("npcIds")
+        if not isinstance(npc_ids, list) or not all(
+            isinstance(npc_id, str) and npc_id for npc_id in npc_ids
+        ):
+            continue
+        story_key = candidates[0]
+        index.setdefault(level_id, []).append({
+            "kind": "story",
+            "subKind": "atmospheric_npc_cluster",
+            "label": story_key,
+            "identity": f"story-env-cluster:{row_key}",
+            "position": position,
+            "sceneKeys": [story_key],
+            "missions": [],
+            "interactionStatus": "exact_atmospheric_env_talk_configuration",
+            "evidence": (
+                "AtmosphericNpcClusterDataTable exact cluster/envTalk/level/position"
+            ),
+            "registryBacked": False,
+            "clusterId": str(row_key),
+            "envTalkId": env_talk_id,
+            "npcIds": list(npc_ids),
+            "multiLocationSemantics": "explicit_independent_authored_clusters",
+            "activationStatus": "runtime_ambient_selection_unproven",
+            "missionOwnershipStatus": "unresolved_non_owning",
+            "activation": False,
+            "ownership": False,
+            "orderEvidence": False,
+            "sourceFiles": [source_file],
+            "relatedFiles": _sorted_related(_merge_related([], [
+                _related(
+                    source_file,
+                    "story_atmospheric_cluster",
+                    "authored cluster identity, members, level, and position",
+                ),
+                _related(
+                    _conv_file_for_key(language, story_key),
+                    "story_atmospheric_cluster",
+                    "ambient Story configured on this exact cluster",
+                ),
+            ])),
+        })
+    for markers in index.values():
+        markers.sort(key=lambda row: (row["identity"], row["sceneKeys"][0]))
+    _ATMOSPHERIC_ENV_TALK_MARKER_INDEX_CACHE[language] = index
+    return index
+
+
+def _exact_atmospheric_env_talk_markers(level_id: str, language: str) -> list[dict]:
+    return list(_exact_atmospheric_env_talk_marker_index(language).get(level_id, []))
+
+
+def _world_narrative_bindings(language: str) -> dict[str, list[dict]]:
+    """Index exact LevelData world-entity-to-Story narrative records.
+
+    LevelData stores the world entity's ``embeddedLogicId`` and its
+    NarrativeComponent ``typeId`` in the same counted interactive record. The
+    Story builder exposes the original ``dlg_*`` id, while generated WebUI
+    conversations use ``misc_dlg_*`` for these otherwise unowned dialogs.
+    """
+    lang = language.upper()
+    cached = _WORLD_NARRATIVE_BINDINGS.get(lang)
+    if cached is not None:
+        return cached
+    conv_root = ROOT / f"webui/data/lang/{lang}/conv"
+    published = {path.stem for path in conv_root.glob("*.json")} if conv_root.is_dir() else set()
+    original_keys = {
+        key.removeprefix("misc_") if key.startswith("misc_dlg_") else key
+        for key in published
+    }
+    rows = build_leveldata_interactive_narrative_story_contexts(original_keys)
+    index: dict[str, list[dict]] = {}
+    for row in rows:
+        logic_id = str(row.get("embeddedLogicId") or "")
+        level_id = str(row.get("levelId") or "")
+        original_key = str(row.get("storyKey") or "")
+        webui_key = f"misc_{original_key}" if f"misc_{original_key}" in published else original_key
+        if not logic_id or not level_id or webui_key not in published:
+            continue
+        enriched = dict(row)
+        enriched["originalStoryKey"] = original_key
+        enriched["webuiStoryKey"] = webui_key
+        index.setdefault(f"{level_id}:{logic_id}", []).append(enriched)
+    for bindings in index.values():
+        bindings.sort(key=lambda row: str(row.get("webuiStoryKey") or ""))
+    _WORLD_NARRATIVE_BINDINGS[lang] = index
+    return index
+
+
 def _href(path: str) -> str:
     """Map a repo-relative path onto the URL the WebUI server publishes it at.
 
@@ -405,6 +2169,28 @@ def _story_missions(*story_groups: Iterable[dict]) -> list[str]:
         for group in story_groups for story in group
     }
     return sorted(mission for mission in missions if mission)
+
+
+def _npc_mission_phases(stories: Iterable[dict]) -> list[dict]:
+    """Explicit mission/quest bindings for one positioned NPC proxy.
+
+    Quest ids come only from `npcProxyDialogAttachments`. Their lexical order
+    is deterministic presentation, not a claim about runtime chronology.
+    """
+    phases: dict[tuple[str, str], set[str]] = {}
+    for story in stories:
+        mission_id = str(story.get("mission") or "")
+        quest_id = str(story.get("questId") or "")
+        scene_key = str(story.get("key") or "")
+        if not mission_id or not quest_id:
+            continue
+        phases.setdefault((mission_id, quest_id), set())
+        if scene_key:
+            phases[(mission_id, quest_id)].add(scene_key)
+    return [
+        {"missionId": mission_id, "questId": quest_id, "sceneKeys": sorted(scene_keys)}
+        for (mission_id, quest_id), scene_keys in sorted(phases.items())
+    ]
 
 
 def _story_index(mission: dict, language: str, mission_id: str = "") -> dict[str, list[dict]]:
@@ -582,6 +2368,33 @@ def _finite_position(position: object) -> dict[str, float] | None:
     }
 
 
+def _mission_area_definitions() -> dict[str, list[dict]]:
+    """Index authored MissionAreaTable rows without guessing across duplicates."""
+    global _MISSION_AREA_DEFINITIONS
+    if _MISSION_AREA_DEFINITIONS is not None:
+        return _MISSION_AREA_DEFINITIONS
+    payload = _load_json(ROOT / MISSION_AREA_TABLE_REL, {}) or {}
+    rows: dict[str, list[dict]] = {}
+    for level_num, areas in (payload.get("m_areas") or {}).items():
+        if not isinstance(areas, dict):
+            continue
+        for area_id, area in areas.items():
+            if isinstance(area, dict):
+                rows.setdefault(str(area_id), []).append({**area, "levelNum": str(level_num)})
+    _MISSION_AREA_DEFINITIONS = rows
+    return rows
+
+
+def _exact_mission_area_definition(area_id: object, position: dict[str, float]) -> dict | None:
+    """Resolve one MissionArea row by authored id and identical X/Z center."""
+    matches = []
+    for row in _mission_area_definitions().get(str(area_id), []):
+        center = _finite_position((row.get("shape") or {}).get("position"))
+        if center and abs(center["x"] - position["x"]) < 0.001 and abs(center["z"] - position["z"]) < 0.001:
+            matches.append(row)
+    return matches[0] if len(matches) == 1 else None
+
+
 def _iter_timeline_scene_entries(timeline_recovery: dict) -> list[dict]:
     entries: list[dict] = []
     for row in timeline_recovery.get("levelscriptSpatialProximity") or []:
@@ -604,110 +2417,79 @@ def _iter_timeline_scene_entries(timeline_recovery: dict) -> list[dict]:
 
 
 def _collect_trigger_markers(
-    timeline_recovery: dict,
-    script_file_map: dict[str, str],
-    language: str,
-    story_index: dict[str, list[dict]],
+    mission: dict,
     mission_id: str = "e0m0",
     level_id: str = MAP_LEVEL_ID,
 ) -> list[dict]:
     markers: list[dict] = []
-    seen: set[tuple[str, float, float, float]] = set()
-    by_key: dict[tuple[str, float, float, float], dict] = {}
+    area_occurrences: dict[str, int] = {}
     runtime_asset = _mission_runtime_asset(mission_id) or MISSION_RUNTIME_ASSET
-    for row in _iter_timeline_scene_entries(timeline_recovery):
-        pin = row.get("pin")
-        if not isinstance(pin, dict):
-            continue
-        if pin.get("sourceType") != "missionArea":
+    for index, pin in enumerate((mission.get("flow") or {}).get("mapPins") or []):
+        if not isinstance(pin, dict) or pin.get("sourceType") != "missionArea":
             continue
         mission_area_id = pin.get("missionAreaId")
         if not mission_area_id:
             continue
         # A proximity row may pin into a level other than the mission's own, so
         # the row is only plotted on the map whose coordinate space it names.
-        pin_map = str(pin.get("mapId") or "")
+        pin_map = str(pin.get("scene") or pin.get("mapId") or "")
         if pin_map and pin_map != level_id:
             continue
 
-        position = _finite_position(pin.get("position")) or _finite_position(row.get("position"))
+        position = _finite_position(pin.get("position"))
         if not position:
             continue
 
-        script_id = str(row.get("scriptId") or "")
-        file_path = row.get("file")
-        source_files = _coalesce_file_paths([
-            file_path if isinstance(file_path, str) else None,
-            script_file_map.get(script_id),
-            _script_file_for_id(script_id, level_id),
-        ])
-        scene_key = str(row.get("sceneKey") or "")
-        scene_pins = _sorted_related(_merge_related([], [
-            _related(_conv_file_for_key(language, scene_key), "story_proximity", f"scene placed near this trigger ({scene_key})"),
-            *[_related(path, "level_script", "level script behind the proximity row") for path in source_files],
-        ])) if scene_key or source_files else []
-
-        key = (str(mission_area_id), round(position["x"], 3), round(position["y"] or 0, 3), round(position["z"], 3))
-        if key in seen:
-            # Every proximity row for one mission area describes the same
-            # trigger volume with a different scene. Merging keeps all of those
-            # scenes reachable instead of publishing only the first one.
-            existing = by_key[key]
-            _merge_related(existing["relatedFiles"], scene_pins)
-            if scene_key and scene_key not in existing["sceneKeys"]:
-                existing["sceneKeys"].append(scene_key)
-            existing["sourceFiles"] = _coalesce_file_paths([*existing.get("sourceFiles", []), *source_files])
-            continue
-        seen.add(key)
+        occurrence = area_occurrences.get(str(mission_area_id), 0)
+        area_occurrences[str(mission_area_id)] = occurrence + 1
 
         marker_row = {
             "kind": "trigger",
             "subKind": "mission_area",
             "label": "触发区",
-            "identity": f"mission_area:{mission_id}:{mission_area_id}:{len(markers)}",
+            "identity": f"mission_area:{mission_id}:{mission_area_id}:{occurrence}",
             "position": position,
             "detailId": mission_area_id,
             "interactionStatus": "automatic_trigger",
-            "evidence": "timelineRecovery mission area marker",
+            "evidence": "MissionRuntime authored MissionAreaTrackingInfo position; Story trigger unresolved",
             "missionId": mission_id,
+            "questIds": [str(value) for value in pin.get("questIds") or [] if value],
+            "storyBindingStatus": "unresolved",
         }
-        if source_files:
-            marker_row["sourceFiles"] = source_files
-            marker_row["source"] = source_files[0]
-        if row.get("questId"):
-            marker_row["questId"] = row["questId"]
+        area_definition = _exact_mission_area_definition(mission_area_id, position)
+        if area_definition is not None:
+            shape = area_definition.get("shape") or {}
+            shape_type = {1: "box", 2: "sphere"}.get(shape.get("type"))
+            if shape_type:
+                marker_row["triggerShape"] = {
+                    "type": shape_type,
+                    "position": _finite_position(shape.get("position")) or position,
+                    "rotation": shape.get("eulerAngles") or {},
+                    "size": shape.get("size") or {},
+                    "radius": shape.get("radius"),
+                }
+                marker_row["missionAreaDefinitionStatus"] = "exact_id_and_center"
+            marker_row["subDataParentId"] = area_definition.get("subDataParentId")
         if pin.get("trackingType"):
             marker_row["trackingType"] = pin["trackingType"]
         if pin.get("label"):
             marker_row["pinLabel"] = pin["label"]
-        if row.get("strength"):
-            marker_row["strength"] = row["strength"]
-        if pin.get("mapId"):
-            marker_row["mapId"] = pin["mapId"]
+        marker_row["mapId"] = pin_map
         if pin.get("radius") is not None:
             marker_row["radius"] = pin["radius"]
-        if row.get("radius") is not None:
-            marker_row["radius"] = row["radius"]
-        if row.get("size"):
-            marker_row["size"] = row["size"]
-        if pin.get("position"):
-            marker_row["pinPosition"] = pin["position"]
-
-        marker_row["sceneKeys"] = [scene_key] if scene_key else []
+        marker_row["pinPosition"] = pin["position"]
+        marker_row["sceneKeys"] = []
         marker_row["missions"] = [mission_id] if mission_id else []
         marker_row["relatedFiles"] = _merge_related([], [
-            *scene_pins,
-            _related(runtime_asset, "mission_runtime", "mission that declares this area"),
-            *_story_pins(
-                story_index.get(f"area:{mission_area_id}", []),
-                "story_mission_area_candidate",
-                "story whose mission-area candidate set contains this area",
+            _related(runtime_asset, "mission_area_definition", "MissionRuntime row that authors this area pin"),
+            _related(
+                MISSION_AREA_TABLE_REL if area_definition is not None else None,
+                "mission_area_definition",
+                "exact mission-area id and center with authored shape",
             ),
         ])
         markers.append(marker_row)
-        by_key[key] = marker_row
     for row in markers:
-        row["sceneKeys"] = sorted(row["sceneKeys"])
         row["relatedFiles"] = _sorted_related(row["relatedFiles"])
     return markers
 
@@ -734,8 +2516,8 @@ def _map_pin_markers(
         if not isinstance(pin, dict) or str(pin.get("scene") or "") != level_id:
             continue
         source_type = str(pin.get("sourceType") or "")
-        # Mission-area pins are already plotted from the proximity rows, which
-        # additionally carry the level script behind the volume.
+        # Mission-area pins are published separately with an explicit
+        # unresolved Story-binding boundary.
         if source_type == "missionArea":
             continue
         position = _finite_position(pin.get("position"))
@@ -744,7 +2526,10 @@ def _map_pin_markers(
         proxy_id = str(pin.get("npcProxyId") or "")
         quest_ids = [str(quest) for quest in pin.get("questIds") or [] if quest]
         proxy_stories = attachment_index.get(f"proxy:{proxy_id}", []) if proxy_id else []
-        quest_stories = [story for quest in quest_ids for story in story_index.get(f"quest:{quest}", [])]
+        # Quest membership gives this pin mission context, not ownership of
+        # every Story file mentioning the same quest. Only the NPC proxy
+        # attachment below is an exact entity identity join.
+        quest_stories: list[dict] = []
 
         if proxy_id:
             kind, sub_kind, label, interaction = "npc", "npc_proxy", proxy_id.split("_", 1)[0], "npc_proxy"
@@ -901,12 +2686,146 @@ def _unplaced_report(rows: list[dict], boundary: str | None = None) -> dict:
     return {
         "count": len(rows),
         "reasonCounts": dict(sorted(counts.items())),
+        "carrierAbsenceCounts": dict(sorted(Counter(
+            str((row.get("storyCarrierAbsenceEvidence") or {}).get("status") or "")
+            for row in rows if row.get("storyCarrierAbsenceEvidence")
+        ).items())),
+        "definitionEvidenceCounts": dict(sorted(Counter(
+            str((row.get("storyDefinitionEvidence") or {}).get("status") or "")
+            for row in rows if row.get("storyDefinitionEvidence")
+        ).items())),
         "stories": sorted(rows, key=lambda row: row["key"]),
         "boundary": boundary or (
             "These mission scenes are published in the Story view but no plotted node can claim them, so "
             "they are absent from the map by evidence rather than by omission."
         ),
     }
+
+
+def _annotate_unplaced_story_trigger_evidence(rows: list[dict], level_id: str) -> None:
+    """Expose exact receiver evidence without turning non-spatial events into pins."""
+    report = _native_trigger_frontier()
+    by_story: dict[str, list[dict]] = {}
+    coverage_rows = (report.get("storyTriggerZoneCoverage") or {}).get("rows") or []
+    confirmations = coverage_rows or [
+        confirmation
+        for receiver in report.get("rows") or []
+        if isinstance(receiver, dict)
+        for confirmation in receiver.get("storyTriggerZoneConfirmations") or []
+        if isinstance(confirmation, dict)
+    ]
+    coverage_story_keys = {
+        str(confirmation.get("storyKey") or "")
+        for confirmation in confirmations
+        if isinstance(confirmation, dict) and confirmation.get("storyKey")
+    }
+    complete_coverage_validated = bool(
+        coverage_rows
+        and str((report.get("storyTriggerZoneCoverage") or {}).get("schema") or "")
+        == "nativeReceiverStoryTriggerZone.v1"
+        and str(((report.get("storyTriggerZoneCoverage") or {}).get("overlay") or {}).get("status") or "")
+        == "validated_active_overlay"
+        and not (((report.get("storyTriggerZoneCoverage") or {}).get("overlay") or {}).get("validationFailures") or [])
+    )
+    for confirmation in confirmations:
+        if not isinstance(confirmation, dict) or not confirmation.get("storyKey"):
+            continue
+        observations = [
+            observation
+            for observation in confirmation.get("observations") or []
+            if isinstance(observation, dict)
+            and str(observation.get("levelId") or "") == level_id
+        ]
+        if not observations:
+            continue
+        by_story.setdefault(str(confirmation["storyKey"]), []).append({
+            "status": str(confirmation.get("status") or ""),
+            "scriptIds": sorted({
+                str(observation.get("scriptId") or "")
+                for observation in observations
+                if observation.get("scriptId")
+            }),
+            "observationCount": len(observations),
+        })
+    for row in rows:
+        evidence = by_story.get(str(row.get("key") or "")) or []
+        if not evidence:
+            story_key = str(row.get("key") or "")
+            if complete_coverage_validated and story_key not in coverage_story_keys:
+                row["storyCarrierAbsenceEvidence"] = {
+                    "status": "not_observed_in_active_direct_playback_frontier",
+                    "failureGate": "story_key_absent_from_complete_active_playback_coverage",
+                    "coverageSchema": "nativeReceiverStoryTriggerZone.v1",
+                    "overlayStatus": "validated_active_overlay",
+                    "spatialPromotion": False,
+                    "boundary": (
+                        "No active direct-playback carrier for this Story key was observed in the complete "
+                        "current coverage. This does not prove that no runtime, server, or indirect carrier exists."
+                    ),
+                }
+            continue
+        statuses = {item["status"] for item in evidence}
+        if statuses == {"exact_non_spatial_event_trigger"}:
+            resolution_class = "exact_non_spatial_trigger_context_only"
+            failure_gate = "trigger_has_no_authored_spatial_shape"
+        elif "exact_local_trigger_volume" in statuses:
+            resolution_class = "exact_spatial_trigger_not_projected"
+            failure_gate = "exact_trigger_marker_missing_from_current_map_payload"
+        else:
+            resolution_class = "ambiguous_trigger_context_only"
+            failure_gate = "trigger_zone_not_unique"
+        row["storyTriggerEvidence"] = {
+            "resolutionClass": resolution_class,
+            "failureGate": failure_gate,
+            "confirmations": evidence,
+            "boundary": (
+                "Receiver evidence identifies the Story event in this level, but only a unique decoded "
+                "authored trigger shape can place it on the map."
+            ),
+        }
+
+
+def _annotate_unplaced_story_definition_evidence(rows: list[dict]) -> None:
+    """Publish exact authored cutscene assets without implying playback or place."""
+    for row in rows:
+        story_key = str(row.get("key") or "")
+        conv_path = str(row.get("path") or "")
+        if not story_key or not conv_path:
+            continue
+        payload = _load_json(ROOT / conv_path, {}) or {}
+        cutscene = payload.get("cutscene") or {}
+        variants = [
+            variant for variant in cutscene.get("variants") or []
+            if isinstance(variant, dict) and str(variant.get("file") or "")
+        ]
+        if str(payload.get("key") or "") != story_key or not variants:
+            continue
+        related = [
+            _related(
+                str(variant["file"]),
+                "story_definition_asset",
+                "exact published cutscene definition variant; playback and spatial activation unresolved",
+            )
+            for variant in variants
+        ]
+        row["relatedFiles"] = _sorted_related(_merge_related(
+            row.get("relatedFiles") or [], related,
+        ))
+        row["storyDefinitionEvidence"] = {
+            "status": "exact_published_cutscene_definition",
+            "semanticShape": str(cutscene.get("semanticShape") or ""),
+            "variantCount": len(variants),
+            "hasSubtitleTrack": bool(cutscene.get("hasSubtitleTrack")),
+            "audioEvents": sorted({
+                str(value) for value in cutscene.get("audioEvents") or [] if value
+            }),
+            "spatialPromotion": False,
+            "playbackStatus": "unresolved_without_strict_playback_carrier",
+            "boundary": (
+                "These files prove an authored cutscene definition and media composition only. "
+                "They do not prove playback, trigger activation, mission ownership, or map position."
+            ),
+        }
 
 
 def _placement_marked_scene_universe(mission: dict) -> dict[str, str]:
@@ -961,40 +2880,18 @@ def _quest_point(
     mission_id: str = "e0m0",
     level_id: str = MAP_LEVEL_ID,
 ) -> dict:
-    """One plotted quest centroid plus every file the quest is tied to."""
+    """One plotted quest centroid with definition evidence only.
+
+    Spatially nearby scenes and quest-wide Story membership are deliberately
+    excluded: neither identifies a playback point.
+    """
     quest_id = row["questId"]
     runtime_asset = _mission_runtime_asset(mission_id) or MISSION_RUNTIME_ASSET
-    scene_keys: list[str] = []
     pins: list[dict] = [
         row_pin
         for row_pin in [_related(runtime_asset, "mission_runtime", "mission that declares this quest")]
         if row_pin
     ]
-
-    matches = [match for match in row.get("inheritedSpatialSourceMatches") or [] if isinstance(match, dict)]
-    matches.extend(proximity_index.get(quest_id, []))
-    for match in matches:
-        # A match that names another level describes a different coordinate
-        # space and a different level script, so it is not this quest's evidence.
-        match_level = str(match.get("levelId") or match.get("mapId") or "")
-        if match_level and match_level != level_id:
-            continue
-        scene_key = str(match.get("sceneKey") or "")
-        if scene_key and scene_key not in scene_keys:
-            scene_keys.append(scene_key)
-        script_id = str(match.get("scriptId") or "")
-        _merge_related(pins, [
-            _related(
-                _conv_file_for_key(language, scene_key),
-                "story_proximity",
-                f"scene placed near this quest ({scene_key})",
-            ),
-            _related(
-                match.get("file") if isinstance(match.get("file"), str) else script_file_map.get(script_id) or _script_file_for_id(script_id, level_id),
-                "level_script",
-                "level script behind the placement match",
-            ),
-        ])
 
     # The mission-area pins name the level-script rows that define the quest's
     # tracked volumes, so those files belong to the quest even when no scene
@@ -1011,12 +2908,6 @@ def _quest_point(
                 ),
             ])
 
-    _merge_related(pins, _story_pins(
-        story_index.get(f"quest:{quest_id}", []),
-        "story_quest_anchor",
-        "story that declares this quest as an anchor",
-    ))
-
     return {
         "questId": quest_id,
         "questOrder": row.get("questOrder"),
@@ -1024,7 +2915,8 @@ def _quest_point(
         "missions": [mission_id] if mission_id else [],
         "position": row["centroid"],
         "objective": " / ".join(x.get("text", "") for x in row.get("objectiveInstructions", []) if x.get("text")),
-        "sceneKeys": scene_keys,
+        "sceneKeys": [],
+        "storyBindingStatus": "unresolved",
         "relatedFiles": _sorted_related(pins),
     }
 
@@ -1760,6 +3652,31 @@ def _level_catalog() -> dict[str, int]:
     return catalog
 
 
+def _exact_story_trigger_level_ids() -> set[str]:
+    """Return levels that own at least one exact decoded Story trigger shape.
+
+    Some authored dungeon sub-levels have LevelScriptData and exact world-space
+    trigger geometry but no LevelBasicInfoTable row. They still have a valid
+    trigger coordinate space; excluding them silently drops exact map evidence.
+    """
+    report = _native_trigger_frontier()
+    levels: set[str] = set()
+    for row in (report.get("storyTriggerZoneCoverage") or {}).get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        for observation in row.get("observations") or []:
+            if not isinstance(observation, dict) or observation.get("status") != "exact_local_trigger_volume":
+                continue
+            level_id = str(observation.get("levelId") or "")
+            if level_id and any(
+                _finite_position((shape or {}).get("position"))
+                and str((shape or {}).get("shapeType") or "") in {"Box", "Sphere", "PolyLine"}
+                for shape in observation.get("decodedShape") or []
+            ):
+                levels.add(level_id)
+    return levels
+
+
 def _registry_by_level(registry: dict, catalog: dict[str, int]) -> dict[str, dict[str, list]]:
     """Bucket every registry entity onto the level its global id encodes.
 
@@ -1867,7 +3784,7 @@ def _mission_digest(mission_id: str, mission: dict, language: str, level_id: str
     attachment_index = _attachment_story_index(mission, language, mission_id)
     timeline = mission.get("timelineRecovery") or {}
 
-    markers = _collect_trigger_markers(timeline, script_file_map, language, story_index, mission_id, level_id)
+    markers = _collect_trigger_markers(mission, mission_id, level_id)
     markers.extend(_map_pin_markers(mission, language, story_index, attachment_index, mission_id, level_id))
 
     proximity_index = _quest_proximity_index(timeline)
@@ -1915,26 +3832,266 @@ def _registry_markers(
     attachment_index: dict[str, list[dict]],
     reading_by_script: dict[str, list[dict]],
     script_file_map: dict[str, str],
+    action_target_index: dict[str, list[dict]] | None = None,
+    world_narrative_index: dict[str, list[dict]] | None = None,
+    entity_event_story_index: dict[str, list[dict]] | None = None,
 ) -> list[dict]:
     """Plot every registry entity this level owns, with its story pins."""
     markers: list[dict] = []
+    npc_proxy_ex_story_index = _exact_npc_proxy_ex_story_index(language)
+    npc_proxy_env_talk_story_index = _exact_npc_proxy_env_talk_story_index(language)
+
+    def action_story_missions(targets: Iterable[dict]) -> list[str]:
+        missions = set()
+        for target in targets:
+            if not target.get("storyPlaybackBinding"):
+                continue
+            match = re.search(
+                r"(?:^|_)([a-z]+\d+m\d+(?:d\d+)?)(?:_|$)",
+                str(target.get("storyKey") or ""),
+                re.IGNORECASE,
+            )
+            if match:
+                missions.add(match.group(1))
+        return sorted(missions)
+
+    def action_story_pins(targets: Iterable[dict]) -> list[dict | None]:
+        return [
+            _related(
+                _conv_file_for_key(language, str(target.get("storyKey") or "")),
+                "story_exact_action_target",
+                (
+                    "Story payload and exact EntityPtr serialized by the same "
+                    f"{target.get('actionName')} record"
+                ),
+            )
+            for target in targets
+            if target.get("storyPlaybackBinding") and target.get("storyKey")
+        ]
+
+    def attach_action_bindings(row: dict, targets: list[dict]) -> tuple[list[dict], list[dict]]:
+        """Attach an observational action state to one registry identity."""
+        exact = [
+            target for target in targets
+            if str(target.get("status") or "").startswith("exact_")
+        ]
+        unresolved = [target for target in targets if target not in exact]
+
+        def compact(target: dict) -> dict:
+            return {
+                "status": target.get("status"),
+                "name": target.get("actionName"),
+                "actionLocalId": target.get("actionLocalId"),
+                "actionRecordOffset": target.get("actionRecordOffset"),
+                "pointerOffset": target.get("pointerOffset"),
+                "pointerEndOffset": target.get("pointerEndOffset"),
+                "fieldName": target.get("fieldName"),
+                "fieldManagedType": target.get("fieldManagedType"),
+                "memberOrdinalZeroBased": target.get("memberOrdinalZeroBased"),
+                "nativeFieldMappingId": target.get("nativeFieldMappingId"),
+                "actionFieldContractKnown": target.get("actionFieldContractKnown"),
+                "runtimeLifecycleStatus": target.get("runtimeLifecycleStatus"),
+                "levelInteractiveAlignmentStatus": target.get("levelInteractiveAlignmentStatus"),
+                "nativeScriptSlotMappingId": target.get("nativeScriptSlotMappingId"),
+                "nativeScriptSlotContractStatus": target.get("nativeScriptSlotContractStatus"),
+                "entityPtrGetterResolution": target.get(
+                    "entityPtrGetterResolution"
+                ),
+                "entityPtrOutputAliasEvidence": target.get(
+                    "entityPtrOutputAliasEvidence"
+                ),
+                "nativeGetterContractStatus": target.get(
+                    "nativeGetterContractStatus"
+                ),
+                "targetDomain": target.get("targetDomain"),
+                "registryResolutionStatus": target.get("registryResolutionStatus"),
+                "registryMatchCount": target.get("registryMatchCount"),
+                "npcProxyId": target.get("npcProxyId"),
+                "spatialResolutionEvidence": target.get(
+                    "spatialResolutionEvidence"
+                ),
+                "spatialResolutionDiagnostics": target.get(
+                    "spatialResolutionDiagnostics"
+                ) or [],
+                "placementSourceFiles": target.get("placementSourceFiles") or [],
+                "controlTriggers": target.get("controlTriggers") or [],
+                "storyPlaybackBinding": target.get("storyPlaybackBinding"),
+                "sourceFile": target.get("sourceFile"),
+            }
+
+        row["actions"] = [compact(target) for target in exact]
+        row["unresolvedActionReferences"] = []
+        for target in unresolved:
+            field_exact = target.get("fieldNameStatus") == "exact_native_formatter_member"
+            row["unresolvedActionReferences"].append({
+                **compact(target),
+                "reasonCode": (
+                    "registered_slot_levelinteractive_alignment_missing"
+                    if field_exact
+                    and target.get("targetDomain") == "registered_script_slot_unresolved"
+                    else "serialized_member_layout_unresolved"
+                    if target.get("actionFieldContractKnown")
+                    else "unresolved_formatter_member"
+                ),
+                "fieldNameStatus": target.get("fieldNameStatus"),
+                "nativeFieldContractStatus": target.get("nativeFieldContractStatus"),
+            })
+        registry_bridge_only = bool(unresolved) and all(
+            reference.get("reasonCode")
+            == "registered_slot_levelinteractive_alignment_missing"
+            for reference in row["unresolvedActionReferences"]
+        )
+        serialized_layout_unresolved = any(
+            reference.get("reasonCode") == "serialized_member_layout_unresolved"
+            for reference in row["unresolvedActionReferences"]
+        )
+        row["actionBindingStatus"] = (
+            "exact_plus_unresolved" if exact and unresolved
+            else "exact_bound" if exact
+            else "unresolved_registry_bridge" if registry_bridge_only
+            else "unresolved_member_layout" if serialized_layout_unresolved
+            else "unresolved_decoder" if unresolved
+            else "no_reference_observed"
+        )
+        row["actionBindingBoundary"] = (
+            "No action reference was observed within decoded current-build "
+            "LevelScript evidence; this is not proof that the slot is unused."
+            if not targets else
+            "Only build-validated formatter fields and constant EntityPtr identities are exact bindings."
+        )
+        return exact, unresolved
+
+    def attach_entity_event_stories(row: dict, identity: str) -> list[dict]:
+        bindings = list((entity_event_story_index or {}).get(identity, []))
+        if not bindings:
+            return []
+        row["entityEventStoryBindings"] = bindings
+        row["sceneKeys"] = sorted(set(row.get("sceneKeys") or []) | {
+            str(binding.get("storyKey") or "")
+            for binding in bindings
+            if binding.get("storyKey")
+        })
+        row["relatedFiles"] = _sorted_related(_merge_related(
+            row.get("relatedFiles") or [],
+            [
+                _related(
+                    binding.get("sourceFile"),
+                    "story_exact_entity_event_target",
+                    (
+                        f"{binding.get('eventName')} names this exact "
+                        + (
+                            "NPC proxy before the Story playback path"
+                            if binding.get("status")
+                            == "exact_proxy_patrol_event_target"
+                            else "constant EntityPtr before the Story playback path"
+                        )
+                    ),
+                )
+                for binding in bindings
+            ] + [
+                _related(
+                    _conv_file_for_key(language, str(binding.get("storyKey") or "")),
+                    "story_exact_entity_event_target",
+                    "Story reached from the exact specified-entity event carrier",
+                )
+                for binding in bindings
+            ],
+        ))
+        return bindings
 
     for logic_id, info in entities.get("world") or []:
         position = _finite_position(info.get("position"))
         if not position:
             continue
         kind, sub_kind, label, interaction = _classify_entity(info.get("detailId", ""), info.get("entityType"))
+        label = _entity_display_name(info.get("detailId"), language) or label
         row = marker(kind, label, f"world:{logic_id}", info, "WorldEntityRegistry exact transform", interaction, sub_kind)
         row["position"] = position
-        # A world entity has no level-script file of its own; the registry row
-        # is the whole of its published placement evidence. `registryBacked`
-        # stands in for that pin instead of repeating one identical, level-wide
-        # 7 MB file path on every node - the map's own `relatedFiles` carries it.
-        row["sceneKeys"] = []
+        action_targets = (action_target_index or {}).get(f"world:{logic_id}", [])
+        exact_action_targets, unresolved_action_targets = attach_action_bindings(row, action_targets)
+        if exact_action_targets:
+            row["controlledByTriggers"] = []
+            for target in exact_action_targets:
+                for trigger in target.get("controlTriggers") or []:
+                    if trigger not in row["controlledByTriggers"]:
+                        row["controlledByTriggers"].append(trigger)
+            row["actionSourceFiles"] = _coalesce_file_paths(
+                [target.get("sourceFile") for target in exact_action_targets]
+            )
+            if row["kind"] == "empty_slot":
+                action_names = sorted({
+                    str(target.get("actionName") or "")
+                    for target in exact_action_targets
+                    if target.get("actionName")
+                })
+                row["kind"] = "script_target"
+                row["subKind"] = "world_action_target"
+                row["interactionStatus"] = "exact_world_entity_action_target"
+                row["label"] = " / ".join(action_names) or row["label"]
+                row["evidence"] = (
+                    "build-locked native formatter member + exact constant "
+                    "global EntityPtr + WorldEntityRegistry transform"
+                )
+        narrative_bindings = (world_narrative_index or {}).get(f"{level_id}:{logic_id}", [])
+        row["sceneKeys"] = sorted({
+            str(binding.get("webuiStoryKey") or "")
+            for binding in narrative_bindings
+            if binding.get("webuiStoryKey")
+        } | {
+            str(target.get("storyKey") or "")
+            for target in exact_action_targets
+            if target.get("storyPlaybackBinding") and target.get("storyKey")
+        })
+        row["missions"] = action_story_missions(exact_action_targets)
+        if narrative_bindings:
+            row["interactionStatus"] = "exact_narrative_component"
+            row["evidence"] = (
+                "WorldEntityRegistry exact transform + LevelData exact "
+                "embeddedLogicId/NarrativeComponent.typeId"
+            )
+            row["narrativeBindings"] = [{
+                "storyKey": binding.get("webuiStoryKey"),
+                "originalStoryKey": binding.get("originalStoryKey"),
+                "entityDetailId": binding.get("entityDetailId"),
+                "levelDataAsset": binding.get("levelDataAsset"),
+                "recordIndex": binding.get("recordIndex"),
+                "recordOffset": binding.get("recordOffset"),
+                "nativeConsumer": binding.get("nativeConsumer"),
+                "nativeMappingId": binding.get("nativeMappingId"),
+            } for binding in narrative_bindings]
+        # `registryBacked` stands in for the repeated level-wide registry file;
+        # exact narrative bindings retain their narrower LevelData source below.
         row["registryBacked"] = True
         row["relatedFiles"] = _sorted_related(_merge_related([], [
+            *[
+                _related(
+                    str(binding.get("sourceFile") or ""),
+                    "story_world_narrative",
+                    "same counted LevelInteractiveData record stores this embeddedLogicId and NarrativeComponent.typeId",
+                )
+                for binding in narrative_bindings
+            ],
+            *[
+                _related(
+                    _conv_file_for_key(language, str(binding.get("webuiStoryKey") or "")),
+                    "story_world_narrative",
+                    "published conversation bound by the exact LevelData narrative record",
+                )
+                for binding in narrative_bindings
+            ],
             _related(_script_file_for_id(str(logic_id), level_id), "level_script", "level script sharing this entity id"),
+            *[
+                _related(
+                    target.get("sourceFile"),
+                    "script_action_target_source",
+                    f"{target.get('actionName')} names this exact global EntityPtr",
+                )
+                for target in exact_action_targets
+            ],
+            *action_story_pins(exact_action_targets),
+            *_interactive_semantic_files(info.get("detailId")),
         ]))
+        attach_entity_event_stories(row, f"world:{logic_id}")
         markers.append(row)
 
     for ident, info in entities.get("script") or []:
@@ -1944,6 +4101,7 @@ def _registry_markers(
         script_id = str(ident.get("scriptIdGlobal"))
         slot_id = str(ident.get("slotId"))
         kind, sub_kind, label, interaction = _classify_entity(info.get("detailId", ""), info.get("entityType"))
+        label = _entity_display_name(info.get("detailId"), language) or label
         row = marker(
             kind,
             label,
@@ -1957,15 +4115,58 @@ def _registry_markers(
 
         exact_stories = story_index.get(f"slot:{script_id}:{slot_id}", [])
         slot_stories = story_index.get(f"scriptslot:{script_id}:{slot_id}", [])
-        # Only stories that resolved no slot at all may reach a whole script.
-        script_stories = story_index.get(f"script:{script_id}", [])
-        anchor_stories = story_index.get(f"anchor:{script_id}", [])
-        condition_stories = attachment_index.get(f"condition:{script_id}", [])
         readings = reading_by_script.get(script_id, [])
+        action_targets = (action_target_index or {}).get(f"{script_id}:{slot_id}", [])
 
-        script_file = script_file_map.get(script_id) or _script_file_for_id(script_id, level_id)
-        source_files = _coalesce_file_paths([script_file])
+        # The registry already proves this exact script/slot transform.  A
+        # LevelScript file owns every slot in its script, so attaching that
+        # container file (or script-wide Story context) to every sibling point
+        # creates a false many-point binding.  Only slot-specific consumers
+        # below may add files or Story rows to this marker.
+        source_files: list[str] = []
         reading_pins: list[dict | None] = []
+        exact_action_targets, unresolved_action_targets = attach_action_bindings(row, action_targets)
+        if action_targets:
+            all_action_targets_exact = len(exact_action_targets) == len(action_targets)
+            unresolved_registry_bridge = (
+                row.get("actionBindingStatus") == "unresolved_registry_bridge"
+            )
+            unresolved_member_layout = (
+                row.get("actionBindingStatus") == "unresolved_member_layout"
+            )
+            row["kind"] = "script_target" if exact_action_targets else "script_target_candidate"
+            row["subKind"] = (
+                "registered_action_target" if exact_action_targets
+                else "registered_action_target_candidate"
+            )
+            row["interactionStatus"] = (
+                "exact_script_action_target" if exact_action_targets
+                else (
+                    "unresolved_registered_slot_bridge" if unresolved_registry_bridge
+                    else "unresolved_serialized_member_layout" if unresolved_member_layout
+                    else "unresolved_action_formatter_member"
+                )
+            )
+            action_names = sorted({str(target.get("actionName") or "") for target in action_targets if target.get("actionName")})
+            row["label"] = " / ".join(action_names) or "脚本动作目标"
+            row["controlledByTriggers"] = []
+            for target in exact_action_targets:
+                for trigger in target.get("controlTriggers") or []:
+                    if trigger not in row["controlledByTriggers"]:
+                        row["controlledByTriggers"].append(trigger)
+            row["evidence"] = (
+                "build-locked native formatter member + exact constant EntityPtr + unique registered script slot"
+                if exact_action_targets else
+                (
+                    "build-locked native formatter member + exact current-script slot pointer; "
+                    "LevelInteractiveData registration alignment unresolved"
+                    if unresolved_registry_bridge else
+                    "native formatter field is known; this record's nullable/dynamic/member boundary remains unresolved"
+                    if unresolved_member_layout else
+                    "exact constant EntityPtr bytes inside a validated action record; formatter member unresolved"
+                )
+            )
+            row["actionSourceFiles"] = _coalesce_file_paths([target.get("sourceFile") for target in exact_action_targets])
         for reading in readings:
             producer = next(
                 (
@@ -1982,6 +4183,10 @@ def _registry_markers(
                 row["subKind"] = "reading_popup"
                 row["label"] = f"{story_key} 敏点" if story_key else row["label"]
                 row["interactionStatus"] = "exact_interaction"
+                document_title = _story_display_title(language, story_key)
+                row["label"] = document_title or story_key or row["label"]
+                if document_title:
+                    row["documentTitle"] = document_title
                 row["evidence"] = "exact script/slot + custom event + ShowUIReadingPopPanel"
                 row["storyKey"] = story_key
                 row["eventName"] = producer.get("eventName")
@@ -1992,47 +4197,45 @@ def _registry_markers(
                     "story_exact_producer",
                     f"text this entity shows ({story_key})",
                 ))
-            elif not readings[0].get("interactiveEventProducers"):
-                # No producer entity resolved anywhere in the script, so the
-                # text is pinned to the script rather than to one slot.
-                reading_pins.append(_related(
-                    _conv_file_for_key(language, story_key),
-                    "story_script_reference",
-                    f"reading popup shown by this script ({story_key})",
-                ))
-            if reading.get("sourceFile"):
+            if producer is not None and reading.get("sourceFile"):
                 reading_pins.append(_related(reading["sourceFile"], "level_script", "level script that shows the reading popup"))
 
         if source_files:
             row["sourceFiles"] = source_files
             row["source"] = source_files[0]
         row["sceneKeys"] = sorted({
-            story["key"] for story in [*exact_stories, *slot_stories, *condition_stories]
-        } | ({row["storyKey"]} if row.get("storyKey") else set()))
-        row["missions"] = _story_missions(exact_stories, slot_stories, condition_stories, script_stories, anchor_stories)
+            story["key"] for story in [*exact_stories, *slot_stories]
+        } | ({row["storyKey"]} if row.get("storyKey") else set()) | {
+            str(target.get("storyKey") or "")
+            for target in exact_action_targets
+            if target.get("storyPlaybackBinding") and target.get("storyKey")
+        })
+        row["missions"] = sorted({
+            *_story_missions(exact_stories, slot_stories),
+            *action_story_missions(exact_action_targets),
+        })
         row["registryBacked"] = True
         row["relatedFiles"] = _sorted_related(_merge_related([], [
             *[_related(path, "placement_source", "file that proves this placement") for path in source_files],
             *reading_pins,
             *_story_pins(exact_stories, "story_exact_producer", "story produced by this exact script/slot"),
             *_story_pins(slot_stories, "story_script_slot", "story whose producer names this script/slot"),
-            _related(script_file, "level_script", "level script that owns this entity"),
-            *_story_pins(
-                condition_stories,
-                "story_script_condition",
-                "scene whose play condition is attached to this script",
-            ),
-            *_story_pins(
-                script_stories,
-                "story_script_reference",
-                "story produced or heard by this script, with no slot named",
-            ),
-            *_story_pins(
-                anchor_stories,
-                "story_anchor_script",
-                "story that names this script as an ordering anchor, not as its player",
-            ),
+            *action_story_pins(exact_action_targets),
+            *[
+                _related(
+                    target.get("sourceFile"),
+                    (
+                        "script_action_target_source"
+                        if target.get("status") == "exact_registered_script_action_target"
+                        else "script_action_target_candidate_source"
+                    ),
+                    f"{target.get('actionName')} contains this exact registered script/slot pointer",
+                )
+                for target in action_targets
+            ],
+            *_interactive_semantic_files(info.get("detailId")),
         ]))
+        attach_entity_event_stories(row, f"script:{script_id}:{slot_id}")
         markers.append(row)
 
     for segment_id, info in entities.get("npc") or []:
@@ -2041,23 +4244,215 @@ def _registry_markers(
             continue
         proxy_id = str(info.get("proxyId") or "")
         stories = attachment_index.get(f"proxy:{proxy_id}", []) if proxy_id else []
+        proxy_dialog_bindings = [
+            binding
+            for binding in npc_proxy_ex_story_index.get(f"npc:{segment_id}", [])
+            if binding.get("levelId") == level_id
+            and binding.get("npcProxyId") == proxy_id
+        ]
+        proxy_env_talk_bindings = [
+            binding
+            for binding in npc_proxy_env_talk_story_index.get(f"npc:{segment_id}", [])
+            if binding.get("levelId") == level_id
+            and binding.get("npcProxyId") == proxy_id
+        ]
+        world_fallback_action_targets = [
+            target
+            for target in (action_target_index or {}).get(
+                f"world:{segment_id}", []
+            )
+            if target.get("spatialResolutionEvidence")
+            == "exact_npc_proxy_brief_and_table_join"
+        ]
+        npc_getter_action_targets = [
+            target
+            for target in (action_target_index or {}).get(
+                f"npc:{segment_id}", []
+            )
+            if target.get("targetDomain") == "npc_proxy_logic_id"
+            and target.get("npcProxyId") == proxy_id
+            and target.get("entityLogicId") == int(segment_id)
+        ]
+        action_targets = (
+            npc_getter_action_targets
+            if npc_getter_action_targets
+            else world_fallback_action_targets
+        )
         row = {
             "kind": "npc",
             "subKind": "npc_proxy",
             "label": proxy_id.split("_", 1)[0] if proxy_id else "NPC",
-            "identity": f"npc:{segment_id}",
+            "identity": (
+                f"npc:{segment_id}" if npc_getter_action_targets
+                else f"world:{segment_id}" if world_fallback_action_targets
+                else f"npc:{segment_id}"
+            ),
             "position": position,
             "detailId": proxy_id,
             "interactionStatus": "npc_proxy",
             "evidence": "WorldEntityRegistry exact npc proxy transform",
             "npcProxyId": proxy_id,
             "registryBacked": True,
-            "sceneKeys": sorted({story["key"] for story in stories}),
+            "sceneKeys": sorted(
+                {story["key"] for story in stories}
+                | {
+                    str(binding.get("storyKey") or "")
+                    for binding in proxy_dialog_bindings
+                    if binding.get("storyKey")
+                }
+                | {
+                    str(binding.get("storyKey") or "")
+                    for binding in proxy_env_talk_bindings
+                    if binding.get("storyKey")
+                }
+            ),
             "missions": _story_missions(stories),
+            "missionPhases": _npc_mission_phases(stories),
             "relatedFiles": _sorted_related(_merge_related([], [
                 *_story_pins(stories, "story_npc_proxy", "dialog attached to this NPC proxy"),
             ])),
         }
+        if proxy_dialog_bindings:
+            row["npcProxyExStoryBindings"] = proxy_dialog_bindings
+            row["npcProxyExMissionContexts"] = sorted({
+                str(binding.get("missionContext") or "")
+                for binding in proxy_dialog_bindings
+                if binding.get("missionContext")
+            })
+            row["interactionStatus"] = "exact_npc_proxy_dialog_configuration"
+            row["evidence"] = (
+                "NpcProxyEx exact proxy/dialog row + unique WorldEntityRegistry/"
+                "NpcProxyTable identity and transform"
+            )
+            row["relatedFiles"] = _sorted_related(_merge_related(
+                row["relatedFiles"],
+                [
+                    *[
+                        _related(
+                            source_file,
+                            "story_npc_proxy",
+                            "authored NPC proxy dialog-selection configuration",
+                        )
+                        for source_file in sorted({
+                            source_file
+                            for binding in proxy_dialog_bindings
+                            for source_file in binding.get("sourceFiles") or []
+                        })
+                    ],
+                    *[
+                        _related(
+                            _conv_file_for_key(language, binding["storyKey"]),
+                            "story_npc_proxy",
+                            "dialog selected from this exact NPC proxy configuration",
+                        )
+                        for binding in proxy_dialog_bindings
+                    ],
+                ],
+            ))
+        if proxy_env_talk_bindings:
+            row["npcProxyEnvTalkStoryBindings"] = proxy_env_talk_bindings
+            row["interactionStatus"] = (
+                "exact_npc_proxy_dialog_and_env_talk_configuration"
+                if proxy_dialog_bindings
+                else "exact_npc_proxy_env_talk_configuration"
+            )
+            row["evidence"] = (
+                "NpcProxyTable exact envTalk configuration + unique "
+                "WorldEntityRegistry/NpcProxyTable identity and transform"
+            )
+            row["relatedFiles"] = _sorted_related(_merge_related(
+                row["relatedFiles"],
+                [
+                    *[
+                        _related(
+                            source_file,
+                            "story_npc_proxy_env_talk",
+                            "authored ambient Story configuration on this NPC proxy",
+                        )
+                        for source_file in sorted({
+                            source_file
+                            for binding in proxy_env_talk_bindings
+                            for source_file in binding.get("sourceFiles") or []
+                        })
+                    ],
+                    *[
+                        _related(
+                            _conv_file_for_key(language, binding["storyKey"]),
+                            "story_npc_proxy_env_talk",
+                            "ambient Story configured on this exact NPC proxy",
+                        )
+                        for binding in proxy_env_talk_bindings
+                    ],
+                ],
+            ))
+        exact_action_targets, _unresolved_action_targets = attach_action_bindings(
+            row,
+            action_targets,
+        )
+        row["sceneKeys"] = sorted(set(row.get("sceneKeys") or []) | {
+            str(target.get("storyKey") or "")
+            for target in exact_action_targets
+            if target.get("storyPlaybackBinding") and target.get("storyKey")
+        })
+        row["missions"] = sorted({
+            *row.get("missions", []),
+            *action_story_missions(exact_action_targets),
+        })
+        row["relatedFiles"] = _sorted_related(_merge_related(
+            row.get("relatedFiles") or [],
+            action_story_pins(exact_action_targets),
+        ))
+        if exact_action_targets:
+            row["interactionStatus"] = (
+                "exact_npc_proxy_action_target"
+                if npc_getter_action_targets
+                else "exact_world_entity_action_target"
+            )
+            row["evidence"] = (
+                "build-locked EntityPtr getter + exact constant proxy id + "
+                "exact npcProxyBriefInfos/NpcProxyTable identity and transform"
+                if npc_getter_action_targets
+                else "build-locked native formatter member + exact constant global "
+                     "EntityPtr + exact npcProxyBriefInfos/NpcProxyTable transform"
+            )
+            row["placementEvidenceStatus"] = (
+                "exact_npc_proxy_brief_and_table_join"
+            )
+            row["sourceFiles"] = [REGISTRY_REL, NPC_PROXY_TABLE_REL]
+            row["source"] = REGISTRY_REL
+            row["actionSourceFiles"] = _coalesce_file_paths(
+                [target.get("sourceFile") for target in exact_action_targets]
+            )
+            if npc_getter_action_targets and world_fallback_action_targets:
+                row["worldFallbackActionTargets"] = world_fallback_action_targets
+            row["relatedFiles"] = _sorted_related(_merge_related(
+                row["relatedFiles"],
+                [
+                    _related(
+                        REGISTRY_REL,
+                        "placement_source",
+                        "exact npc proxy segment identity and authored position",
+                    ),
+                    _related(
+                        NPC_PROXY_TABLE_REL,
+                        "placement_source",
+                        "exact proxy id row corroborates position and supplies rotation",
+                    ),
+                    *[
+                        _related(
+                            target.get("sourceFile"),
+                            "script_action_target_source",
+                            (
+                                f"{target.get('actionName')} resolves through this exact NPC proxy getter"
+                                if npc_getter_action_targets
+                                else f"{target.get('actionName')} names this exact global EntityPtr"
+                            ),
+                        )
+                        for target in exact_action_targets
+                    ],
+                ],
+            ))
+        attach_entity_event_stories(row, f"npc:{segment_id}")
         markers.append(row)
     return markers
 
@@ -2190,6 +4585,47 @@ def _render_background(level_id: str) -> dict:
     preview_path = render_root / f"{level_id}_hlod_grid_inferred.json"
     preview = _load_json(preview_path) if preview_path.exists() else None
     if preview:
+        # Legacy image-registration experiments are not part of the game's map
+        # coordinate contract. Ignore stale generated manifests until their
+        # expensive HLOD rasters are next rebuilt.
+        preview.pop("renderAlignment", None)
+        if str(preview.get("status") or "").startswith("inferred_hlod_"):
+            exact_fallback = preview.get("exactPointFallback")
+            if (
+                isinstance(exact_fallback, dict)
+                and exact_fallback.get("status") == "exact_registry_transform_point_cloud"
+                and exact_fallback.get("src")
+                and exact_fallback.get("worldBounds")
+            ):
+                return {
+                    **exact_fallback,
+                    "diagnosticManifest": preview_path.relative_to(
+                        ROOT / "webui/data/map_recovery"
+                    ).as_posix(),
+                    "suppressedInferredSurface": True,
+                    "boundary": (
+                        "This level has no in-game minimap. Its inferred HLOD surface remains suppressed, "
+                        "while the recovered layer is restored from exact published registry and quest "
+                        "X/Y/Z transforms only. Points are not connected into invented terrain."
+                    ),
+                }
+            model_scene = _unplaced_model_scene(level_id)
+            return {
+                "status": "inferred_hlod_alignment_suppressed",
+                "src": None,
+                "worldBounds": None,
+                "diagnosticManifest": preview_path.relative_to(ROOT / "webui/data/map_recovery").as_posix(),
+                "modelScene": model_scene,
+                "boundary": (
+                    "The exported HLOD mesh has no recovered authored GameObject/Transform. Its grid-name "
+                    "placement and region origin are inferred, so it is deliberately not drawn on the map. "
+                    "Only authored minimap rectangles, exact marker transforms, or scene geometry with an "
+                    "exact recovered transform may participate in spatial alignment."
+                ),
+            }
+        evidence = _danger_surface_evidence(level_id, preview)
+        if evidence:
+            preview["surfaceEvidence"] = evidence
         return preview
     authored = authored_streaming_scene(level_id)
     if authored and authored.get("sceneId") in AUTHORED_REGION_BACKGROUND_SCENES and not isolated_art_source(level_id):
@@ -2219,6 +4655,50 @@ def _render_background(level_id: str) -> dict:
             "remain available below as unplaced Assets viewer links."
         ),
     }
+
+
+# Current danger-reappearance presentation set: three map01 contracts and
+# three map02 contracts. Keep the labels tied to the evidence actually
+# published by the preview, rather than treating every ``bdg`` prefix alike.
+_DANGER_INFERRED_HLOD_CROPS = frozenset({
+    "dung01_bdg001",
+    "dung01_bdg002",
+    "dung01_bdg003",
+    "dung02_bdg001",
+})
+
+
+def _danger_surface_evidence(level_id: str, preview: dict) -> dict | None:
+    """Concise, fail-closed surface accuracy label for the active danger maps."""
+    status = str((preview or {}).get("status") or "")
+    if level_id in _DANGER_INFERRED_HLOD_CROPS and status.startswith("inferred_hlod_"):
+        return {
+            "accuracy": "inferred_hlod_crop",
+            "label": "Inferred HLOD crop",
+            "evidence": (
+                "Crop bounds come from exact danger-map markers; geometry placement reuses an inferred "
+                "source-art HLOD grid."
+            ),
+        }
+    if level_id == "dung02_bdg002" and status == "recovered_streaming_mesh_topdown":
+        return {
+            "accuracy": "exact_mesh_color_unverified",
+            "label": "Exact mesh placement - color unverified",
+            "evidence": (
+                "Streaming matrices and matched mesh geometry are exact; no reliable texture color is "
+                "visible in the recovered surface."
+            ),
+        }
+    if level_id == "dung02_bdg005" and status == "recovered_streaming_textured_topdown":
+        return {
+            "accuracy": "exact_mesh_partial_base_color",
+            "label": "Exact mesh placement - partial base color",
+            "evidence": (
+                "Streaming matrices and matched mesh geometry are exact; recovered base color is visible "
+                "only on surfaces with a supported material binding."
+            ),
+        }
+    return None
 
 
 def _facets(markers: list[dict], quest_points: list[dict], missions: list[str]) -> dict:
@@ -2258,7 +4738,7 @@ def _facets(markers: list[dict], quest_points: list[dict], missions: list[str]) 
 
 def build_level(
     level_id: str,
-    id_num: int,
+    id_num: int | None,
     language: str,
     registry: dict,
     entities: dict[str, list],
@@ -2302,6 +4782,25 @@ def build_level(
         for script_id, rows in scope.items():
             readings.setdefault(script_id, []).extend(rows)
 
+    action_target_index = build_levelscript_registered_action_target_index(level_id)
+    action_entity_field_diagnostics = action_target_index.pop(
+        ACTION_ENTITY_FIELD_DIAGNOSTICS_KEY,
+        [],
+    )
+    unplaced_action_targets = [
+        target
+        for key, targets in action_target_index.items()
+        if key.startswith("unplaced-")
+        for target in targets
+    ]
+    proxy_patrol_contexts = _exact_story_proxy_patrol_checkpoint_contexts(level_id)
+    npc_patrol_contexts = _exact_story_npc_patrol_checkpoint_contexts(level_id)
+    entity_event_story_index = _exact_story_entity_event_index(level_id)
+    for identity, bindings in _exact_story_proxy_patrol_event_index(
+        level_id,
+        proxy_patrol_contexts,
+    ).items():
+        entity_event_story_index.setdefault(identity, []).extend(bindings)
     markers = _registry_markers(
         entities,
         level_id,
@@ -2310,7 +4809,19 @@ def build_level(
         attachment_index,
         readings,
         script_file_map,
+        action_target_index,
+        _world_narrative_bindings(language),
+        entity_event_story_index,
     ) + markers
+    markers.extend(_exact_story_trigger_markers(level_id, language))
+    markers.extend(_gender_select_casefold_trigger_markers(level_id, language))
+    markers.extend(_exact_story_spawner_markers(level_id, language))
+    markers.extend(_exact_story_encounter_markers(level_id, language))
+    markers.extend(_exact_atmospheric_env_talk_markers(level_id, language))
+    markers.extend(_exact_story_patrol_checkpoint_markers(
+        [*proxy_patrol_contexts, *npc_patrol_contexts],
+        language,
+    ))
     markers.extend(_teleport_markers(level_id, teleports, attachment_index, language))
 
     # The map UI config is also the authority for map floors/overlays.  Join
@@ -2334,7 +4845,8 @@ def build_level(
 
     map_related_files = _sorted_related(_merge_related([], [
         _related(REGISTRY_REL, "entity_registry", "exact world/script entity transforms for this level"),
-        _related(LEVEL_BASIC_INFO_REL, "level_definition", f"declares {level_id} (idNum {id_num})"),
+        _related(LEVEL_BASIC_INFO_REL, "level_definition", f"declares {level_id} (idNum {id_num})")
+        if id_num is not None else None,
         _related(MAP_ID_TABLE_REL, "level_definition", f"registers the map id for {level_id}"),
         _related(map_config.get("source"), "level_definition", "raw UILevelMapLoadConfig map rectangles and tier names"),
         *[
@@ -2368,6 +4880,8 @@ def build_level(
             continue
         seen_keys.add(row["key"])
         deduped.append(row)
+    _annotate_unplaced_story_trigger_evidence(deduped, level_id)
+    _annotate_unplaced_story_definition_evidence(deduped)
 
     story_keys = {key for node in [*markers, *quest_points] for key in node.get("sceneKeys") or []}
     for row in markers:
@@ -2379,6 +4893,14 @@ def build_level(
         # repeated 3,000 times. Readers already treat a missing list as empty.
         if not row.get("relatedFiles"):
             row.pop("relatedFiles", None)
+
+    action_binding_counts = Counter(
+        str(row.get("actionBindingStatus") or "")
+        for row in markers
+        if row.get("registryBacked")
+        and str(row.get("identity") or "").startswith(("world:", "script:", "npc:"))
+    )
+    action_binding_slot_count = sum(action_binding_counts.values())
 
     minimap = _minimap_background(level_id)
     rendered_tiers = {str(row.get("id")): row for row in minimap.get("layers") or []}
@@ -2442,6 +4964,19 @@ def build_level(
                 "proxy rows is not proven to be visually empty of NPCs."
             ),
         },
+        "actionBindingCoverage": {
+            "slotCount": action_binding_slot_count,
+            "statusCounts": {
+                key: action_binding_counts[key]
+                for key in sorted(action_binding_counts)
+                if key
+            },
+            "boundary": (
+                "Every authored spatial WorldEntityRegistry world/script slot has an observational status. "
+                "no_reference_observed means only that the current decoded LevelScript evidence contains "
+                "no matching constant EntityPtr; it does not prove that the slot has no action."
+            ),
+        },
         "renderBackground": _render_background(level_id),
         # The in-game map screen is the preferred background; `src` stays
         # null when the level's chunk grid or art is incomplete, and the
@@ -2460,6 +4995,31 @@ def build_level(
             ),
         },
         "unplacedStories": _unplaced_report(deduped),
+        "unplacedActionTargets": {
+            "count": len(unplaced_action_targets),
+            "targets": sorted(
+                unplaced_action_targets,
+                key=lambda row: (
+                    int(row.get("entityLogicId") or 0),
+                    str(row.get("scriptId") or ""),
+                    int(row.get("actionLocalId") or 0),
+                ),
+            ),
+            "boundary": (
+                "These actions contain a constant EntityPtr identity that does not resolve "
+                "to one spatial WorldEntityRegistry world/script slot in this build. Exact "
+                "formatter fields remain exact references; unresolved fields remain decoder diagnostics."
+            ),
+        },
+        "actionEntityFieldDiagnostics": {
+            "count": len(action_entity_field_diagnostics),
+            "fields": action_entity_field_diagnostics,
+            "boundary": (
+                "These are serialized states for native-contracted EntityPtr fields. "
+                "Only existing exact constant references participate in registry binding; "
+                "dynamic, null, and opaque states are diagnostics and create no map placement."
+            ),
+        },
         "storyKeyCount": len(story_keys),
         "pinnedFileCount": len(pinned_files | map_paths),
         "missionFileReferences": sorted(file_refs),
@@ -2542,9 +5102,440 @@ def _reading_receivers_by_level(index: dict[str, list[dict]]) -> dict[str, dict[
 MISSION_ID_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 
+def _action_binding_report(payloads: Iterable[dict], language: str) -> dict:
+    """Build the exhaustive, fail-closed action status for published slots.
+
+    This deliberately derives from the same payloads written to the WebUI. It
+    therefore inventories published registry-backed map slots and published
+    unplaced action references without claiming that an absent constant
+    pointer proves the runtime never targets the entity dynamically.
+    """
+    maps: list[dict] = []
+    registry_status_counts: Counter[str] = Counter()
+    all_status_counts: Counter[str] = Counter()
+    missing_refs: list[dict] = []
+    field_state_diagnostics: list[dict] = []
+    field_state_counts: Counter[str] = Counter()
+    dynamic_kind_counts: Counter[str] = Counter()
+    dynamic_action_counts: Counter[str] = Counter()
+    dynamic_field_counts: Counter[str] = Counter()
+    dynamic_level_counts: Counter[str] = Counter()
+    dynamic_source_counts: Counter[str] = Counter()
+    spatially_resolved_dynamic_keys: set[tuple[str, int, int]] = set()
+
+    def dynamic_reference_key(row: dict) -> tuple[str, int, int]:
+        return (
+            str(row.get("sourceFile") or ""),
+            int(row.get("actionRecordOffset") or -1),
+            int(row.get("pointerOffset") or -1),
+        )
+
+    def compact_action(action: dict) -> dict:
+        return {
+            key: value
+            for key, value in {
+                "status": action.get("status"),
+                "name": action.get("name") or action.get("actionName"),
+                "fieldName": action.get("fieldName"),
+                "fieldNameStatus": action.get("fieldNameStatus"),
+                "memberOrdinalZeroBased": action.get("memberOrdinalZeroBased"),
+                "actionLocalId": action.get("actionLocalId"),
+                "actionRecordOffset": action.get("actionRecordOffset"),
+                "pointerOffset": action.get("pointerOffset"),
+                "pointerEndOffset": action.get("pointerEndOffset"),
+                "reasonCode": action.get("reasonCode"),
+                "nativeFieldContractStatus": action.get("nativeFieldContractStatus"),
+                "runtimeLifecycleStatus": action.get("runtimeLifecycleStatus"),
+                "levelInteractiveAlignmentStatus": action.get("levelInteractiveAlignmentStatus"),
+                "nativeScriptSlotMappingId": action.get("nativeScriptSlotMappingId"),
+                "entityPtrGetterResolution": action.get(
+                    "entityPtrGetterResolution"
+                ),
+                "entityPtrOutputAliasEvidence": action.get(
+                    "entityPtrOutputAliasEvidence"
+                ),
+                "nativeGetterContractStatus": action.get(
+                    "nativeGetterContractStatus"
+                ),
+                "npcProxyId": action.get("npcProxyId"),
+                "targetDomain": action.get("targetDomain"),
+                "entityLogicId": action.get("entityLogicId"),
+                "entityPtrGetterResolution": action.get("entityPtrGetterResolution"),
+                "nativeGetterContractStatus": action.get("nativeGetterContractStatus"),
+                "spatialResolutionEvidence": action.get(
+                    "spatialResolutionEvidence"
+                ),
+                "spatialResolutionDiagnostics": action.get(
+                    "spatialResolutionDiagnostics"
+                ),
+                "placementSourceFiles": action.get("placementSourceFiles"),
+                "storyKey": action.get("storyKey"),
+                "storyPlaybackBinding": action.get("storyPlaybackBinding"),
+                "sourceFile": action.get("sourceFile"),
+            }.items()
+            if value not in (None, "")
+        }
+
+    for payload in sorted(payloads, key=lambda row: str(row.get("id") or "")):
+        slot_rows: list[dict] = []
+        map_counts: Counter[str] = Counter()
+        for field in (payload.get("actionEntityFieldDiagnostics") or {}).get("fields") or []:
+            if not isinstance(field, dict):
+                continue
+            row = {"mapId": payload.get("id"), **field}
+            field_state_diagnostics.append(row)
+            state = str(field.get("state") or "opaque")
+            field_state_counts[state] += 1
+            if state == "dynamic":
+                dynamic_kind_counts[str(field.get("dynamicKind") or "opaque_dynamic")] += 1
+                dynamic_action_counts[str(field.get("actionName") or "unknown")] += 1
+                dynamic_field_counts[
+                    f"{field.get('actionName') or 'unknown'}.{field.get('fieldName') or 'unknown'}"
+                ] += 1
+                dynamic_level_counts[str(field.get("levelId") or payload.get("levelId") or "unknown")] += 1
+                dynamic_source_counts[str(field.get("sourceFile") or "unknown")] += 1
+        for marker_row in payload.get("markers") or []:
+            identity = str(marker_row.get("identity") or "")
+            if identity.startswith("world:"):
+                domain = "world_logic_id"
+            elif identity.startswith("script:"):
+                domain = "registered_script_slot"
+            elif identity.startswith("npc:"):
+                domain = "npc_proxy_logic_id"
+            else:
+                continue
+            for action in marker_row.get("actions") or []:
+                if not isinstance(action, dict):
+                    continue
+                if (
+                    action.get("entityPtrGetterResolution")
+                    or action.get("entityPtrOutputAliasEvidence")
+                ):
+                    spatially_resolved_dynamic_keys.add(
+                        dynamic_reference_key(action)
+                    )
+            exact_actions = [
+                compact_action(action)
+                for action in marker_row.get("actions") or []
+                if isinstance(action, dict)
+            ]
+            unresolved_actions = [
+                compact_action(action)
+                for action in marker_row.get("unresolvedActionReferences") or []
+                if isinstance(action, dict)
+            ]
+            actions = [*exact_actions, *unresolved_actions]
+            unresolved_count = len(unresolved_actions)
+            exact_count = len(exact_actions)
+            if unresolved_count:
+                status = (
+                    "unresolved_registry_bridge"
+                    if all(
+                        action.get("reasonCode")
+                        == "registered_slot_levelinteractive_alignment_missing"
+                        for action in unresolved_actions
+                    )
+                    else "unresolved_serialized_member_layout"
+                    if any(
+                        action.get("reasonCode") == "serialized_member_layout_unresolved"
+                        for action in unresolved_actions
+                    )
+                    else "unresolved_action_format"
+                )
+            elif exact_count:
+                status = "exact_action_bound"
+            else:
+                status = "no_observed_action_reference"
+            row = {
+                "identity": identity,
+                "domain": domain,
+                "status": status,
+                "registryResolutionStatus": "exact_unique_spatial",
+                "exactActionCount": exact_count,
+                "unresolvedActionCount": unresolved_count,
+                "actions": actions,
+            }
+            slot_rows.append(row)
+            registry_status_counts[status] += 1
+            all_status_counts[status] += 1
+            map_counts[status] += 1
+
+            world_fallback_actions = [
+                compact_action(action)
+                for action in marker_row.get("worldFallbackActionTargets") or []
+                if isinstance(action, dict)
+            ]
+            if world_fallback_actions:
+                world_identity = f"world:{identity.split(':', 1)[1]}"
+                fallback_row = {
+                    "identity": world_identity,
+                    "domain": "world_logic_id",
+                    "status": "exact_action_bound",
+                    "registryResolutionStatus": "exact_unique_spatial",
+                    "exactActionCount": len(world_fallback_actions),
+                    "unresolvedActionCount": 0,
+                    "actions": world_fallback_actions,
+                    "spatialAliasIdentity": identity,
+                }
+                slot_rows.append(fallback_row)
+                registry_status_counts["exact_action_bound"] += 1
+                all_status_counts["exact_action_bound"] += 1
+                map_counts["exact_action_bound"] += 1
+
+        unplaced_by_identity: dict[str, list[dict]] = {}
+        for target in (payload.get("unplacedActionTargets") or {}).get("targets") or []:
+            if not isinstance(target, dict):
+                continue
+            target_domain = str(target.get("targetDomain") or "")
+            if target_domain.startswith("world_logic_id"):
+                identity = f"world:{target.get('entityLogicId')}"
+                domain = "world_logic_id"
+            elif target_domain.startswith("registered_script_slot"):
+                identity = f"script:{target.get('scriptId')}:{target.get('entitySlotId')}"
+                domain = "registered_script_slot"
+            elif target_domain == "npc_proxy_logic_id":
+                identity = f"npc:{target.get('entityLogicId')}"
+                domain = "npc_proxy_logic_id"
+            else:
+                identity = (
+                    f"unresolved:{target.get('scriptId')}:{target.get('entitySlotId')}:"
+                    f"{target.get('actionRecordOffset')}:{target.get('pointerOffset')}"
+                )
+                domain = target_domain or "unresolved"
+            unplaced_by_identity.setdefault(identity, []).append({
+                **compact_action(target),
+                "targetDomain": target_domain or None,
+                "entityLogicId": target.get("entityLogicId"),
+                "entitySlotId": target.get("entitySlotId"),
+                "scriptId": target.get("scriptId"),
+            })
+        for identity, actions in sorted(unplaced_by_identity.items()):
+            domain = (
+                "world_logic_id" if identity.startswith("world:") else
+                "registered_script_slot" if identity.startswith("script:") else
+                "npc_proxy_logic_id" if identity.startswith("npc:") else
+                str(actions[0].get("targetDomain") or "unresolved")
+            )
+            unresolved_count = sum(
+                not str(action.get("status") or "").startswith("exact_")
+                for action in actions
+            )
+            row = {
+                "identity": identity,
+                "domain": domain,
+                "status": "non_spatial",
+                "registryResolutionStatus": "missing_or_unplaced",
+                "exactActionCount": len(actions) - unresolved_count,
+                "unresolvedActionCount": unresolved_count,
+                "actions": actions,
+            }
+            slot_rows.append(row)
+            missing_refs.append({"mapId": payload.get("id"), **row})
+            all_status_counts["non_spatial"] += 1
+            map_counts["non_spatial"] += 1
+
+        maps.append({
+            "mapId": payload.get("id"),
+            "levelId": payload.get("levelId"),
+            "registryBackedSlotCount": sum(
+                row.get("registryResolutionStatus") == "exact_unique_spatial"
+                for row in slot_rows
+            ),
+            "rowCount": len(slot_rows),
+            "statusCounts": dict(sorted(map_counts.items())),
+            "slots": sorted(slot_rows, key=lambda row: (row["domain"], row["identity"])),
+        })
+
+    dynamic_diagnostics = [
+        row for row in field_state_diagnostics if row.get("state") == "dynamic"
+    ]
+    def dynamic_resolution_class(row: dict) -> str:
+        if dynamic_reference_key(row) in spatially_resolved_dynamic_keys:
+            return "exact_spatially_resolved"
+        output_alias = row.get("localOutputAliasResolution") or {}
+        named_entity = row.get("namedEntityPtrResolution") or {}
+        getter = row.get("getterResolution") or {}
+        getter_value = getter.get("resolvedValue") or {}
+        if (
+            (
+                output_alias.get("status") in {
+                    "validated_non_alias",
+                    "runtime_list_element_non_spatial",
+                    "validated_dynamic_filter_alias",
+                }
+                and output_alias.get("nativeMappingId")
+                and row.get("nativeOutputAliasContractStatus") == "validated"
+            )
+            or (
+                named_entity.get("status")
+                == "validated_initial_entityptr_value_nonfinal"
+                and named_entity.get("nativeMappingId")
+                and row.get("nativePropertyInitializationContractStatus")
+                == "validated"
+                and named_entity.get("allowTargetPromotion") is False
+            )
+            or (
+                getter.get("status") == "exact_constant_param_alias"
+                and getter_value.get("logicId") == 0
+                and getter_value.get("slotId") == 0
+                and getter_value.get("useSlotId") is False
+                and row.get("nativeGetterContractStatus") == "validated"
+            )
+        ):
+            return "validated_runtime_non_spatial"
+        return "unresolved"
+
+    def dynamic_resolution_failure_gate(row: dict, resolution_class: str) -> str | None:
+        if resolution_class == "exact_spatially_resolved":
+            return None
+        output_alias = row.get("localOutputAliasResolution") or {}
+        named_entity = row.get("namedEntityPtrResolution") or {}
+        getter = row.get("getterResolution") or {}
+        if resolution_class == "validated_runtime_non_spatial":
+            if (
+                getter.get("status") == "exact_constant_param_alias"
+                and (getter.get("resolvedValue") or {}).get("logicId") == 0
+                and (getter.get("resolvedValue") or {}).get("slotId") == 0
+                and (getter.get("resolvedValue") or {}).get("useSlotId") is False
+            ):
+                return "validated_null_entityptr_value"
+            return str(
+                output_alias.get("failureGate")
+                or named_entity.get("failureGate")
+                or "native_validated_runtime_non_spatial"
+            )
+        dynamic_kind = str(row.get("dynamicKind") or "opaque_dynamic")
+        if dynamic_kind == "getter_id_ref":
+            getter_status = str(getter.get("status") or "")
+            return (
+                "exact_getter_value_not_spatially_placed"
+                if getter_status.startswith("exact_")
+                else getter_status or "getter_resolution_unavailable"
+            )
+        if dynamic_kind == "local_output_ref":
+            return str(
+                output_alias.get("failureGate")
+                or (
+                    "exact_output_alias_not_spatially_placed"
+                    if output_alias.get("status") == "exact_constant_filter_alias"
+                    else "local_output_resolution_unavailable"
+                )
+            )
+        if dynamic_kind == "named_script_variable":
+            return str(
+                named_entity.get("failureGate")
+                or "named_script_property_initial_value_unavailable"
+            )
+        if dynamic_kind == "named_action_argument":
+            return "runtime_named_action_argument"
+        if dynamic_kind == "unnamed_script_variable":
+            return "unnamed_script_property"
+        return "opaque_dynamic_form"
+
+    classified_dynamic_diagnostics = [
+        {
+            **row,
+            "dynamicResolutionClass": resolution_class,
+            "dynamicResolutionFailureGate": dynamic_resolution_failure_gate(
+                row, resolution_class
+            ),
+        }
+        for row in dynamic_diagnostics
+        for resolution_class in (dynamic_resolution_class(row),)
+    ]
+    exact_spatial_dynamic_count = sum(
+        row["dynamicResolutionClass"] == "exact_spatially_resolved"
+        for row in classified_dynamic_diagnostics
+    )
+    validated_non_spatial_count = sum(
+        row["dynamicResolutionClass"] == "validated_runtime_non_spatial"
+        for row in classified_dynamic_diagnostics
+    )
+    unresolved_dynamic_count = (
+        len(classified_dynamic_diagnostics)
+        - exact_spatial_dynamic_count
+        - validated_non_spatial_count
+    )
+    dynamic_resolution_failure_counts = Counter(
+        str(row.get("dynamicResolutionFailureGate"))
+        for row in classified_dynamic_diagnostics
+        if row.get("dynamicResolutionFailureGate")
+    )
+    unplaced_dynamic_diagnostics = [
+        row for row in classified_dynamic_diagnostics
+        if row["dynamicResolutionClass"] != "exact_spatially_resolved"
+    ]
+
+    return {
+        "schema": "mapActionBindingIndex.v1",
+        "language": language,
+        "summary": {
+            "mapCount": len(maps),
+            "registryBackedSlotCount": sum(registry_status_counts.values()),
+            "missingOrUnplacedIdentityCount": len(missing_refs),
+            "missingOrUnplacedReferenceCount": sum(
+                len(row.get("actions") or []) for row in missing_refs
+            ),
+            "registrySlotStatusCounts": dict(sorted(registry_status_counts.items())),
+            "allRowStatusCounts": dict(sorted(all_status_counts.items())),
+            "domainCounts": dict(sorted(Counter(
+                row["domain"] for map_row in maps for row in map_row["slots"]
+            ).items())),
+            "entityPtrFieldStateCounts": dict(sorted(field_state_counts.items())),
+        },
+        "dynamicReferenceSummary": {
+            "count": field_state_counts.get("dynamic", 0),
+            "resolvedDynamicReferenceCount": exact_spatial_dynamic_count,
+            "exactSpatiallyResolvedDynamicReferenceCount": exact_spatial_dynamic_count,
+            "validatedRuntimeNonSpatialReferenceCount": validated_non_spatial_count,
+            "unresolvedDynamicReferenceCount": unresolved_dynamic_count,
+            "resolutionFailureGateCounts": dict(
+                sorted(dynamic_resolution_failure_counts.items())
+            ),
+            "kindCounts": dict(sorted(dynamic_kind_counts.items())),
+            "actionCounts": dict(sorted(dynamic_action_counts.items())),
+            "actionFieldCounts": dict(sorted(dynamic_field_counts.items())),
+            "levelCounts": dict(sorted(dynamic_level_counts.items())),
+            "sourceCounts": dict(sorted(dynamic_source_counts.items())),
+            "boundary": (
+                "Dynamic EntityPtr values retain their exact serialized idRef, paramSource, path, "
+                "source/action/field identity, and offsets when decoded. The count inventories serialized "
+                "dynamic forms; build-validated getter or producer-output contracts may resolve a subset "
+                "to exact placed identities. Native contracts may separately prove runtime-only, "
+                "non-spatial outputs. unplacedDynamicReferences retains both those explicitly labeled "
+                "runtime values and the unresolved remainder."
+            ),
+        },
+        "evidenceBoundary": (
+            "Statuses describe constant EntityPtr evidence published by the current map builder. "
+            "All 78 observed EntityPtr action shapes have build-locked field contracts; two "
+            "additional byte-collision shapes are explicitly negative. no_observed_action_reference "
+            "still does not prove that no dynamic or opaque runtime value can target the slot; "
+            "non_spatial records are references, not "
+            "fabricated map placements."
+        ),
+        "maps": maps,
+        "missingOrUnplacedReferences": missing_refs,
+        "unplacedDynamicReferences": unplaced_dynamic_diagnostics,
+        "entityPtrFieldDiagnostics": field_state_diagnostics,
+    }
+
+
+def _write_action_binding_report(payloads: Iterable[dict], language: str) -> None:
+    report = _action_binding_report(payloads, language)
+    ACTION_BINDING_REPORT.parent.mkdir(parents=True, exist_ok=True)
+    ACTION_BINDING_REPORT.write_text(
+        json.dumps(report, ensure_ascii=False, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+
 def build_all(language: str, only: set[str] | None = None) -> list[dict]:
     registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
-    catalog = _level_catalog()
+    catalog: dict[str, int | None] = _level_catalog()
+    exact_story_trigger_levels = _exact_story_trigger_level_ids()
+    for trigger_level_id in exact_story_trigger_levels:
+        catalog.setdefault(trigger_level_id, None)
     names = _level_names(language)
     entities_by_level = _registry_by_level(registry, catalog)
     teleports = _teleports_by_level()
@@ -2586,7 +5577,10 @@ def build_all(language: str, only: set[str] | None = None) -> list[dict]:
         entities = entities_by_level.get(level_id, {"world": [], "script": [], "npc": []})
         digests = digests_by_level.get(level_id, [])
         level_teleports = teleports.get(level_id, [])
-        if not any((entities["world"], entities["script"], entities["npc"], digests, level_teleports)):
+        if not any((
+            entities["world"], entities["script"], entities["npc"], digests,
+            level_teleports, level_id in exact_story_trigger_levels,
+        )):
             continue
         # Chains that run inside a level are the only story evidence some
         # sub-levels have, and they come from the mission that teleports in.
@@ -2617,14 +5611,167 @@ def build_all(language: str, only: set[str] | None = None) -> list[dict]:
     return payloads
 
 
+def _build_all_shard(payload: tuple[str, tuple[str, ...]]) -> list[dict]:
+    """Build one interleaved slice of the level catalog in a worker process."""
+    language, levels = payload
+    return build_all(language, set(levels))
+
+
+def _buildable_level_ids() -> list[str]:
+    """The level ids ``build_all`` would consider, without building any of them.
+
+    This mirrors the union ``build_all`` forms from the level catalog and the
+    exact-trigger frontier. Levels that own no evidence are still listed here;
+    ``build_all`` drops them cheaply inside the shard.
+    """
+    catalog = set(_level_catalog())
+    catalog |= set(_exact_story_trigger_level_ids())
+    return sorted(catalog)
+
+
+def build_all_parallel(language: str, jobs: int) -> list[dict]:
+    """Build every level across ``jobs`` processes.
+
+    Each level's payload is derived only from read-only generated inputs, so
+    the per-level loop is embarrassingly parallel. Shards re-derive the shared
+    setup (registry, reading receivers) once per worker rather than shipping it
+    through a pickle, which is both simpler and cheaper than passing the built
+    indexes. Levels are dealt round-robin because per-level cost varies by more
+    than an order of magnitude and contiguous blocks would leave one worker
+    holding every expensive LevelScript.
+    """
+    levels = _buildable_level_ids()
+    jobs = max(1, min(jobs, len(levels)))
+    if jobs == 1:
+        return build_all(language, None)
+    shards = [tuple(levels[index::jobs]) for index in range(jobs)]
+    payloads: list[dict] = []
+    with ProcessPoolExecutor(max_workers=jobs) as pool:
+        for shard_payloads in pool.map(
+            _build_all_shard,
+            [(language, shard) for shard in shards],
+        ):
+            payloads.extend(shard_payloads)
+    # Serial `build_all` emits levels in catalog order; restore it so the
+    # generated action-binding report and index stay independent of sharding.
+    payloads.sort(key=lambda row: str(row.get("levelId") or ""))
+    return payloads
+
+
+def _expand_index_variants(entries: Iterable[dict]) -> list[dict]:
+    """Return physical level rows from either the old or grouped index shape."""
+    expanded = []
+    for row in entries:
+        variants = row.get("variants") or []
+        if variants:
+            expanded.extend(dict(variant) for variant in variants)
+        else:
+            expanded.append(dict(row))
+    return expanded
+
+
+def _collapse_index_variants(entries: Iterable[dict]) -> list[dict]:
+    """Group alternate payloads under one map without discarding task data."""
+    remaining = {str(row["id"]): dict(row) for row in entries}
+    collapsed = []
+    for canonical_id, variant_ids in MAP_VARIANT_GROUPS.items():
+        variants = [remaining.pop(level_id) for level_id in variant_ids if level_id in remaining]
+        if not variants:
+            continue
+        canonical = next((row for row in variants if row["id"] == canonical_id), variants[0])
+        mission_names = {}
+        for variant in variants:
+            mission_names.update(variant.get("missionNames") or {})
+        missions = sorted({mission for variant in variants for mission in variant.get("missions") or []})
+        grouped = dict(canonical)
+        grouped.update({
+            "missions": missions,
+            "missionNames": {mission: mission_names.get(mission, "") for mission in missions},
+            "markerCount": sum(int(row.get("markerCount") or 0) for row in variants),
+            "questPointCount": sum(int(row.get("questPointCount") or 0) for row in variants),
+            "storyKeyCount": sum(int(row.get("storyKeyCount") or 0) for row in variants),
+            "missionCount": len(missions),
+            "variants": variants,
+        })
+        collapsed.append(grouped)
+    collapsed.extend(remaining.values())
+    return collapsed
+
+
+def refresh_render_backgrounds(levels: set[str] | None = None) -> int:
+    """Attach current preview manifests without rebuilding map evidence.
+
+    Preview generation consumes marker coordinates from the published map
+    payloads, so it necessarily follows the main data build.  Only the
+    ``renderBackground`` field consumes the resulting preview manifests;
+    refreshing that field directly avoids repeating the expensive evidence
+    scans and per-level reconstruction.
+    """
+    maps = OUT / "maps"
+    refreshed = 0
+    for path in sorted(maps.glob("*.json")):
+        payload = _load_json(path, {})
+        if not isinstance(payload, dict):
+            continue
+        level_id = str(payload.get("levelId") or payload.get("id") or path.stem)
+        if levels and level_id not in levels and path.stem not in levels:
+            continue
+        background = _render_background(level_id)
+        if payload.get("renderBackground") == background:
+            continue
+        payload["renderBackground"] = background
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        refreshed += 1
+    print(f"map recovery: refreshed {refreshed} preview-backed map payloads")
+    return refreshed
+
+
+def build_previews_and_refresh(levels: list[str]) -> int:
+    """Generate previews from current maps, then publish their manifests."""
+    from scripts import build_map_recovery_preview
+
+    preview_args = [argument for level in levels for argument in ("--level", level)]
+    returncode = int(build_map_recovery_preview.main(preview_args) or 0)
+    if returncode:
+        return returncode
+    refresh_render_backgrounds(set(levels) if levels else None)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--language", default="CN")
     parser.add_argument("--level", action="append", default=[], help="build only these level ids (repeatable)")
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help="processes for the per-level build (default 1). Ignored with --level.",
+    )
+    preview_mode = parser.add_mutually_exclusive_group()
+    preview_mode.add_argument(
+        "--with-preview",
+        action="store_true",
+        help="build map data, generate previews, then attach them without rebuilding data",
+    )
+    preview_mode.add_argument(
+        "--preview-only",
+        action="store_true",
+        help="generate previews from existing map data and refresh only renderBackground",
+    )
     args = parser.parse_args()
     language = args.language.upper()
 
-    payloads = build_all(language, set(args.level) if args.level else None)
+    if args.preview_only:
+        return build_previews_and_refresh(args.level)
+
+    if args.level:
+        payloads = build_all(language, set(args.level))
+    else:
+        payloads = build_all_parallel(language, args.jobs)
     maps = OUT / "maps"
     maps.mkdir(parents=True, exist_ok=True)
     existing_index = _load_json(OUT / "index.json", {}) if args.level else {}
@@ -2655,6 +5802,9 @@ def main() -> int:
             "missionCount": len(payload["missions"]),
         })
 
+    if not args.level:
+        _write_action_binding_report(payloads, language)
+
     # Open on the first recovered mainline scene.  Before mainline scene
     # recovery began this used the richest level, but changing generated counts
     # could then move the entry point away from the authored progression.
@@ -2672,18 +5822,23 @@ def main() -> int:
     if args.level:
         replaced = {row["id"] for row in entries}
         entries = [
-            row for row in existing_index.get("maps") or []
+            row for row in _expand_index_variants(existing_index.get("maps") or [])
             if row.get("id") not in replaced
         ] + entries
+    entries = _collapse_index_variants(entries)
     entry_ids = {row["id"] for row in entries}
     default_map = str(existing_index.get("defaultMap") or "") if args.level else ""
+    default_map = next((
+        canonical_id for canonical_id, variant_ids in MAP_VARIANT_GROUPS.items()
+        if default_map in variant_ids
+    ), default_map)
     if default_map not in entry_ids:
         default_map = next((
             row["levelId"] for row in MAINLINE_MAP_SCENES
             if row["levelId"] in entry_ids
         ), max(entries, key=lambda row: (row["storyKeyCount"], row["markerCount"]))["id"] if entries else "")
     index = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "defaultMap": default_map,
         "language": language,
         "maps": sorted(entries, key=lambda row: (
@@ -2700,6 +5855,8 @@ def main() -> int:
         f"{sum(row['questPointCount'] for row in entries)} quest points, "
         f"{sum(row['storyKeyCount'] for row in entries)} pinned story keys"
     )
+    if args.with_preview:
+        return build_previews_and_refresh(args.level)
     return 0
 
 

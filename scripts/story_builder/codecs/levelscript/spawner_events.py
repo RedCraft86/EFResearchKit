@@ -10,12 +10,29 @@ _PARAM_TAIL = b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"
 _GROUP_BEGIN = "LevelEvent_OnSpawnerGroupBegin"
 _WAVE_BEGIN = "LevelEvent_OnSpawnerWaveBegin"
 _COMPLETE = "LevelEvent_OnSpawnerComplete"
+_START = "LevelEvent_OnSpawnerStart"
+_PAUSE = "LevelEvent_OnSpawnerPause"
+_GROUP_COMPLETE = "LevelEvent_OnSpawnerGroupComplete"
+_WAVE_COMPLETE = "LevelEvent_OnSpawnerWaveComplete"
 _ENTITY_SPAWN = "LevelEvent_OnSpawnerEntitySpawn"
 _ENTITY_LIFECYCLE_EVENTS = {
     "LevelEvent_OnSpawnerEntityDie",
     "LevelEvent_OnSpawnerEntityDieStart",
     "LevelEvent_OnSpawnerEntityDieEnd",
 }
+
+
+def _has_bounded_header_validate_param(payload: bytes) -> bool:
+    """Validate the fixed-width inherited ``Param<bool>`` structurally.
+
+    A getter-backed validation predicate still leaves the derived spawner
+    filter exact; it affects event execution, not the serialized identity.
+    This helper deliberately accepts only the observed null-path 14-byte form.
+    """
+    if len(payload) < 31 or payload[17] != 0x04 or payload[18] not in (0, 1):
+        return False
+    id_ref, source, path_size = struct.unpack_from("<iii", payload, 19)
+    return id_ref >= -1 and source >= -1 and path_size == -1
 
 
 def _read_string_param(
@@ -39,6 +56,17 @@ def _read_string_param(
     return value, cursor + 12
 
 
+def _read_nullable_string_param(
+    payload: bytes,
+    cursor: int,
+) -> tuple[str | None, int] | None:
+    if cursor >= len(payload):
+        return None
+    if payload[cursor] == 0xFF:
+        return None, cursor + 1
+    return _read_string_param(payload, cursor)
+
+
 def _read_u64_param(
     payload: bytes,
     cursor: int,
@@ -49,6 +77,30 @@ def _read_u64_param(
     if payload[cursor + 9 : cursor + 21] != _PARAM_TAIL:
         return None
     return value, cursor + 21
+
+
+def _read_u64_param_detail(
+    payload: bytes,
+    cursor: int,
+) -> tuple[dict[str, Any], int] | None:
+    if cursor + 21 > len(payload) or payload[cursor] != 0x04:
+        return None
+    value = struct.unpack_from("<Q", payload, cursor + 1)[0]
+    id_ref, source, path_size = struct.unpack_from("<iii", payload, cursor + 9)
+    cursor += 21
+    if id_ref < -1 or source < -1:
+        return None
+    if path_size == -1:
+        path = None
+    elif 0 < path_size <= 256 and cursor + path_size <= len(payload):
+        try:
+            path = payload[cursor:cursor + path_size].decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+        cursor += path_size
+    else:
+        return None
+    return {"value": value, "idRef": id_ref, "paramSource": source, "path": path}, cursor
 
 
 def _read_i32_param(
@@ -100,6 +152,17 @@ def _read_output_param(
     return {"paramSource": source, "path": value}, cursor + size
 
 
+def _read_nullable_output_param(
+    payload: bytes,
+    cursor: int,
+) -> tuple[dict[str, Any] | None, int] | None:
+    if cursor >= len(payload):
+        return None
+    if payload[cursor] == 0xFF:
+        return None, cursor + 1
+    return _read_output_param(payload, cursor)
+
+
 def _read_i32_param_detail(
     payload: bytes,
     cursor: int,
@@ -125,56 +188,79 @@ def _read_i32_param_detail(
 
 
 def _decode_begin(payload: bytes, *, wave: bool) -> dict[str, Any]:
-    """Decode exact constant spawner group/wave filters and null outputs."""
-    if len(payload) < 31 or payload[17:31] != b"\x04\x01" + _PARAM_TAIL:
+    """Decode exact spawner group/wave filters and nullable outputs."""
+    if not _has_bounded_header_validate_param(payload):
         return {}
     cursor = 31
 
     if wave:
-        spawner_result = _read_u64_param(payload, cursor)
+        spawner_result = _read_u64_param_detail(payload, cursor)
         if spawner_result is None:
             return {}
-        spawner_id, cursor = spawner_result
-        if cursor >= len(payload) or payload[cursor] != 0xFF:
+        spawner_param, cursor = spawner_result
+        spawner_output = _read_nullable_output_param(payload, cursor)
+        if spawner_output is None:
             return {}
-        key_result = _read_string_param(payload, cursor + 1)
+        spawner_output_detail, cursor = spawner_output
+        key_result = _read_nullable_string_param(payload, cursor)
         if key_result is None:
             return {}
         key, cursor = key_result
-        if cursor >= len(payload) or payload[cursor] != 0xFF:
+        key_output = _read_nullable_output_param(payload, cursor)
+        if key_output is None:
             return {}
-        cursor += 1
-        if cursor != len(payload):
-            return {}
+        key_output_detail, cursor = key_output
         return {
-            "spawnerFilterId": spawner_id,
-            "spawnerOutputPresent": False,
+            "spawnerFilterId": (
+                spawner_param["value"]
+                if spawner_param.get("idRef") == -1
+                and spawner_param.get("paramSource") == 0
+                and spawner_param.get("path") is None
+                else None
+            ),
+            "spawnerFilterParam": spawner_param,
+            "spawnerOutputParam": spawner_output_detail,
+            "spawnerOutputPresent": spawner_output_detail is not None,
             "waveKeyFilter": key,
-            "waveKeyOutputPresent": False,
-            "payloadShape": "constant-spawner-and-wave-key-null-outputs-exact-eof",
+            "waveKeyOutputParam": key_output_detail,
+            "waveKeyOutputPresent": key_output_detail is not None,
+            "subtypeConsumedBytes": cursor,
+            "payloadShape": (
+                "nullable-wave-key-and-spawner-exact-eof"
+                if cursor == len(payload)
+                else "nullable-wave-key-and-spawner-exact-prefix"
+            ),
         }
 
-    key_result = _read_string_param(payload, cursor)
+    key_result = _read_nullable_string_param(payload, cursor)
     if key_result is None:
         return {}
     key, cursor = key_result
-    if cursor >= len(payload) or payload[cursor] != 0xFF:
+    key_output = _read_nullable_output_param(payload, cursor)
+    if key_output is None:
         return {}
-    spawner_result = _read_u64_param(payload, cursor + 1)
+    key_output_detail, cursor = key_output
+    spawner_result = _read_u64_param(payload, cursor)
     if spawner_result is None:
         return {}
     spawner_id, cursor = spawner_result
-    if cursor >= len(payload) or payload[cursor] != 0xFF:
+    spawner_output = _read_nullable_output_param(payload, cursor)
+    if spawner_output is None:
         return {}
-    cursor += 1
-    if cursor != len(payload):
-        return {}
+    spawner_output_detail, cursor = spawner_output
     return {
         "groupKeyFilter": key,
-        "groupKeyOutputPresent": False,
+        "groupKeyOutputParam": key_output_detail,
+        "groupKeyOutputPresent": key_output_detail is not None,
         "spawnerFilterId": spawner_id,
-        "spawnerOutputPresent": False,
-        "payloadShape": "constant-group-key-and-spawner-null-outputs-exact-eof",
+        "spawnerOutputParam": spawner_output_detail,
+        "spawnerOutputPresent": spawner_output_detail is not None,
+        "subtypeConsumedBytes": cursor,
+        "payloadShape": (
+            "nullable-group-key-and-constant-spawner-exact-eof"
+            if cursor == len(payload)
+            else "nullable-group-key-and-constant-spawner-exact-prefix"
+        ),
     }
 
 
@@ -194,6 +280,131 @@ def _decode_complete(payload: bytes) -> dict[str, Any]:
     }
 
 
+def _finish_prefix(detail: dict[str, Any], cursor: int, payload: bytes, shape: str) -> dict[str, Any]:
+    detail["subtypeConsumedBytes"] = cursor
+    detail["payloadShape"] = f"{shape}-exact-{'eof' if cursor == len(payload) else 'prefix'}"
+    return detail
+
+
+def _decode_start(payload: bytes) -> dict[str, Any]:
+    if not _has_bounded_header_validate_param(payload):
+        return {}
+    decoded = _read_u64_param(payload, 31)
+    if decoded is None:
+        return {}
+    spawner_id, cursor = decoded
+    output = _read_nullable_output_param(payload, cursor)
+    if output is None:
+        return {}
+    spawner_output, cursor = output
+    return _finish_prefix(
+        {"spawnerFilterId": spawner_id, "spawnerOutputParam": spawner_output},
+        cursor,
+        payload,
+        "constant-spawner-start",
+    )
+
+
+def _decode_pause(payload: bytes) -> dict[str, Any]:
+    if not _has_bounded_header_validate_param(payload):
+        return {}
+    key_result = _read_string_param(payload, 31)
+    if key_result is None:
+        return {}
+    pause_key, cursor = key_result
+    key_output = _read_nullable_output_param(payload, cursor)
+    if key_output is None:
+        return {}
+    pause_key_output, cursor = key_output
+    spawner_result = _read_u64_param(payload, cursor)
+    if spawner_result is None:
+        return {}
+    spawner_id, cursor = spawner_result
+    spawner_output = _read_nullable_output_param(payload, cursor)
+    if spawner_output is None:
+        return {}
+    spawner_output_detail, cursor = spawner_output
+    return _finish_prefix(
+        {
+            "pauseKeyFilter": pause_key,
+            "pauseKeyOutputParam": pause_key_output,
+            "spawnerFilterId": spawner_id,
+            "spawnerOutputParam": spawner_output_detail,
+        },
+        cursor,
+        payload,
+        "constant-pause-key-and-spawner",
+    )
+
+
+def _decode_group_complete(payload: bytes) -> dict[str, Any]:
+    if not _has_bounded_header_validate_param(payload) or len(payload) <= 31:
+        return {}
+    cursor = 31
+    detail: dict[str, Any] = {}
+    if payload[cursor] == 0xFF:
+        detail["groupKeyFilter"] = None
+        cursor += 1
+    elif payload[cursor] == 0x04:
+        group_result = _read_string_param(payload, cursor)
+        if group_result is None:
+            return {}
+        detail["groupKeyFilter"], cursor = group_result
+    else:
+        return {}
+    group_output = _read_nullable_output_param(payload, cursor)
+    if group_output is None:
+        return {}
+    detail["groupKeyOutputParam"], cursor = group_output
+    spawner_result = _read_u64_param(payload, cursor)
+    if spawner_result is None:
+        return {}
+    detail["spawnerFilterId"], cursor = spawner_result
+    spawner_output = _read_nullable_output_param(payload, cursor)
+    if spawner_output is None:
+        return {}
+    detail["spawnerOutputParam"], cursor = spawner_output
+    return _finish_prefix(detail, cursor, payload, "group-complete-and-constant-spawner")
+
+
+def _decode_wave_complete(payload: bytes) -> dict[str, Any]:
+    if not _has_bounded_header_validate_param(payload):
+        return {}
+    spawner_result = _read_u64_param_detail(payload, 31)
+    if spawner_result is None:
+        return {}
+    spawner_param, cursor = spawner_result
+    detail: dict[str, Any] = {
+        "spawnerFilterId": (
+            spawner_param["value"]
+            if spawner_param.get("idRef") == -1
+            and spawner_param.get("paramSource") == 0
+            and spawner_param.get("path") is None
+            else None
+        ),
+        "spawnerFilterParam": spawner_param,
+    }
+    spawner_output = _read_nullable_output_param(payload, cursor)
+    if spawner_output is None:
+        return {}
+    detail["spawnerOutputParam"], cursor = spawner_output
+    if cursor < len(payload) and payload[cursor] == 0xFF:
+        detail["waveKeyFilter"] = None
+        cursor += 1
+    elif cursor < len(payload) and payload[cursor] == 0x04:
+        wave_result = _read_string_param(payload, cursor)
+        if wave_result is None:
+            return {}
+        detail["waveKeyFilter"], cursor = wave_result
+    else:
+        return {}
+    wave_output = _read_nullable_output_param(payload, cursor)
+    if wave_output is None:
+        return {}
+    detail["waveKeyOutputParam"], cursor = wave_output
+    return _finish_prefix(detail, cursor, payload, "wave-complete-and-constant-spawner")
+
+
 def _decode_entity_spawn(payload: bytes) -> dict[str, Any]:
     if len(payload) < 90 or payload[17:31] != b"\x04\x01" + _PARAM_TAIL:
         return {}
@@ -205,11 +416,17 @@ def _decode_entity_spawn(payload: bytes) -> dict[str, Any]:
     template_result = _read_i32_param(payload, cursor)
     if template_result is None:
         return {}
-    entity_template_filter, cursor = template_result
-    group_result = _read_string_param(payload, cursor)
-    if group_result is None:
+    filter_type, cursor = template_result
+    if cursor >= len(payload):
         return {}
-    group_key, cursor = group_result
+    if payload[cursor] == 0xFF:
+        group_key = None
+        cursor += 1
+    else:
+        group_result = _read_string_param(payload, cursor)
+        if group_result is None:
+            return {}
+        group_key, cursor = group_result
     group_output_result = _read_output(payload, cursor)
     if group_output_result is None:
         return {}
@@ -218,25 +435,35 @@ def _decode_entity_spawn(payload: bytes) -> dict[str, Any]:
     if spawner_result is None:
         return {}
     spawner_id, cursor = spawner_result
-    if cursor >= len(payload) or payload[cursor] != 0xFF:
+    if cursor >= len(payload):
         return {}
-    wave_output_result = _read_output(payload, cursor + 1)
+    if payload[cursor] == 0xFF:
+        wave_key = None
+        cursor += 1
+    else:
+        wave_result = _read_string_param(payload, cursor)
+        if wave_result is None:
+            return {}
+        wave_key, cursor = wave_result
+    wave_output_result = _read_output(payload, cursor)
     if wave_output_result is None:
         return {}
     wave_output, cursor = wave_output_result
-    if not entity_output or not group_key or not group_output or not wave_output:
+    if not entity_output or not group_output or not wave_output:
         return {}
     if cursor != len(payload):
         return {}
     return {
         "entityOutputRef": entity_output,
-        "entityTemplateIdFilter": entity_template_filter,
+        "filterType": filter_type,
         "groupKeyFilter": group_key,
         "groupKeyOutputRef": group_output,
         "spawnerFilterId": spawner_id,
         "spawnerOutputPresent": False,
+        "waveKeyFilter": wave_key,
         "waveKeyOutputRef": wave_output,
-        "payloadShape": "constant-spawner-group-and-template-exact-eof",
+        "subtypeConsumedBytes": cursor,
+        "payloadShape": "constant-spawner-optional-group-wave-and-filter-type-exact-eof",
     }
 
 
@@ -293,9 +520,6 @@ def _decode_entity_lifecycle(payload: bytes) -> dict[str, Any]:
     if wave_output is None:
         return {}
     wave_output_detail, cursor = wave_output
-    if cursor != len(payload):
-        return {}
-
     return {
         "entityOutputParam": entity_output_detail,
         "filterType": filter_type_detail,
@@ -304,7 +528,12 @@ def _decode_entity_lifecycle(payload: bytes) -> dict[str, Any]:
         "spawnerFilterId": spawner_id,
         "waveKeyFilter": wave_key,
         "waveKeyOutputParam": wave_output_detail,
-        "payloadShape": "spawner-entity-lifecycle-filters-and-outputs-exact-eof",
+        "subtypeConsumedBytes": cursor,
+        "payloadShape": (
+            "spawner-entity-lifecycle-filters-and-outputs-exact-eof"
+            if cursor == len(payload)
+            else "spawner-entity-lifecycle-filters-and-outputs-exact-prefix"
+        ),
     }
 def decode_spawner_event_fields(
     payload: bytes,
@@ -317,6 +546,14 @@ def decode_spawner_event_fields(
         return _decode_begin(payload, wave=True)
     if native_header_name == _COMPLETE:
         return _decode_complete(payload)
+    if native_header_name == _START:
+        return _decode_start(payload)
+    if native_header_name == _PAUSE:
+        return _decode_pause(payload)
+    if native_header_name == _GROUP_COMPLETE:
+        return _decode_group_complete(payload)
+    if native_header_name == _WAVE_COMPLETE:
+        return _decode_wave_complete(payload)
     if native_header_name == _ENTITY_SPAWN:
         return _decode_entity_spawn(payload)
     if native_header_name in _ENTITY_LIFECYCLE_EVENTS:

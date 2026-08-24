@@ -10,6 +10,7 @@ comparisons into one searchable interface.
   <img src="res/story_screenshot2.png" alt="Gameplay browser showing 诀 with character skills, progression, projectiles, and audio" height="150">
   <img src="res/story_screenshot3.png" alt="Asset browser previewing the Endministrator female cloth OBJ model" height="150">
   <img src="res/story_screenshot4.png" alt="Updates browser showing the modified m_cs_video_dlg_sm2l6m1_9.mp4 entry" height="150">
+  <img src="res/map_screenshot.png" alt="Map browser showing the full Wuling region with recovered elevation, color surface, and water layers" height="150">
 </p>
 
 > Research only. Use a legally obtained client, do not redistribute proprietary
@@ -39,12 +40,17 @@ starting the server.
 
 - **Story** reconstructs dialog, radio, SNS, cutscenes, options, media, and
   evidence-typed ordering.
+- **Map** stitches authored regional screens with recovered grayscale elevation,
+  colored surfaces, water, point clouds, missions, and exact world coordinates.
 - **Characters** groups identity evidence and supports live merge/name
   overrides.
 - **Gameplay** covers characters, equipment, enemies, progression, skills,
   projectiles, related assets, and recovered sound effects.
-- **Audio**, **Assets**, and **Text** expose decoded media, exported resources,
-  and localized tables.
+- **Audio** exposes decoded voices, music, sound effects, event relationships,
+  and playback evidence.
+- **Assets** browses exported images, videos, materials, models, and their
+  recovered references.
+- **Text** provides searchable localized tables and source records.
 - **Updates** compares exported game data across two saved versions.
 - **Mission Pipeline** is an experimental debug-only quest/Story evidence view.
 
@@ -62,11 +68,12 @@ First-time setup generates Story and Text. Run `export.bat --from-game --with-as
 :: Rebuild Story and Mission Pipeline with reusable inputs
 .\export.bat --mission-pipeline-only --reuse-timeline-orders --reuse-reference
 
-:: Rebuild only Mission Pipeline JSON when Story inputs are current
+:: Rebuild only Mission Pipeline/map JSON when Story inputs are current
 .\export.bat --mission-pipeline-data-only
 
-:: Reindex existing assets/audio, or refresh them from the game
+:: Rebuild post-Story views plus existing assets/audio
 .\export_assets.bat
+:: Refresh assets only when Story/Table exports already match this game build
 .\export_assets.bat --from-game
 
 :: Serve or package the static WebUI
