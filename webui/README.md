@@ -276,6 +276,13 @@ Audio keeps four layers separate:
 3. authored consumer/trigger context;
 4. observed runtime execution or selected branch.
 
+When a verified offline audio capture bundle is supplied to the semantic
+publisher, Event details show the observed managed request boundary and media
+details show the exact related Event/session. Missing, mismatched, or
+unverified bundles remain degraded diagnostics and add no runtime bindings.
+Observed request evidence still does not claim Wwise branch selection,
+decoded-media selection, or audibility.
+
 Only the available layer is claimed. Exact HIRC traversal can prove possible
 media but not switch/random selection or audibility. String literals and
 same-name assets remain identity evidence until a typed consumer reaches a
@@ -415,6 +422,14 @@ leaf as scene environment, scene object, animation, gameplay component,
 interaction, UI, voice system, or mission narration. Outdoor room tone and
 authored ambient-emitter roles may recover `ambience`; generic scene emitters
 retain scene ownership without being forced into an audio category.
+The Audio overview loads `data/lang/<LANG>/audio/scene_backgrounds.json` as a
+compact scene catalog. It reports validated and missing object-index sources,
+keeps partial coverage visible, and lets users filter scenes by scene id,
+mission id, or Event. Event chips navigate to the existing Audio Event detail;
+the catalog does not duplicate Wwise branches or media. AudioLevel rows and
+mission-to-scene references are authored static evidence. Prefab-local
+emitters stay visibly unresolved to a level, and the page does not claim
+runtime scene activation, Event posting, branch selection, or audibility.
 Exact same-name AnimationClip callback evidence can similarly recover an
 action SFX category. Event and media details show the matching clip, actor,
 callback-derived ownership, and evidence status; partial/similar names and
@@ -427,6 +442,35 @@ such as `lastrite_*`, `lizhiyan_*`, and `pograni_*` are accepted only when the
 token has one exact CharacterTable owner. Shared media shows all named
 character owners, while generic character templates and concrete playback
 locations remain unresolved.
+The same exact-token rule covers leading `au_actor_<token>_*` Events, which
+are surfaced on the matching character item as authored namespace audio.
+Gameplay character items also expose these exact namespace-owned Events and
+their playable candidates in a separate collapsed group. They are not merged
+with skill or animation-triggered SFX: the group is identity-only and does not
+claim an action, skill, Event post, selected Wwise branch, or playback.
+Enemy items expose a parallel collapsed group for recovered `au_` Event names
+whose complete prefix exactly matches one current EnemyTable id. These rows
+remain separate from enemy skill and animation audio because the names come
+from bounded grammar/hash recovery rather than a recovered consumer.
+Leading `au_monster_<token>_*` names are shown only when the token has one exact
+current EnemyTable owner; this remains identity-only, not runtime or playback
+evidence.
+Enemy cards also expose a separate native-response group when a fingerprint-
+locked current-build voice callsite requests an exact AudioDialog Event whose
+longest delimited prefix identifies that enemy. The group preserves response
+role and playable candidates, but not live speaker choice, Wwise selection, or
+audibility.
+Character cards expose the corresponding exact native-response group for
+unique CharacterTable prefixes, including the existing Endministrator
+gender-variant routing through its synthetic item.
+Enemy cards also expose authored response candidates when a serialized
+ResponsiveDialog, skill, or animation context carries an explicit owner equal
+to the current EnemyTable id. These candidates are separate from native
+response callsites and retain their unresolved live-selection boundary.
+Story conversation cards also show exact playable AudioDialog lifecycle hooks
+when their `dialogId` exists in the current conversation bundle. Preload and
+post-enter phases remain authored scheduling evidence, not runtime dispatch or
+playback proof.
 All supported AnimationClip audio callbacks are shown separately from the
 same-name action classification. Event/media details expose the exact clips,
 callback functions, owners, reachability, and recovered AnimatorController
@@ -588,6 +632,10 @@ semantic rebuild.
 When native inputs are missing or mismatched, authored Audio rows remain
 visible; only build-locked callsites, mappings, and addresses disappear, with
 the unavailable state shown explicitly.
+When the selected build gate validates, the same surface publishes the
+fingerprint-locked anchor-wave hit routes and 3D-radio narrative selector
+routes as authored contexts. These rows identify a static managed/native
+callsite only; execution, selected Wwise media, and audibility remain separate.
 
 Shared SFX/music and language voice stay in separate storage roots. Repeated
 media IDs preserve every physical occurrence and package provenance. Direct

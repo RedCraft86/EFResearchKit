@@ -221,7 +221,10 @@ AnimeStudio AssetMap object root in one bounded streaming pass and uses exact
 AssetMap `Source` + `PathID` identities when joining authored objects. Prefab-
 local containment and scene-asset candidates are retained as separate evidence;
 only unique containment with an authoritative scene ID is promoted to scene
-ownership. Missing, malformed, or unreadable AssetMap input fails closed.
+ownership. Missing, malformed, or unreadable AssetMap input fails closed per
+VFS source. An independently validated source may publish a partial catalog
+with an explicit diagnostic; no identity, containment, or ownership edge is
+joined across an unavailable source.
 `AudioMapData._sceneNames`, `AudioLevel` rows, scene-emitter component fields,
 and `MissionRuntimeAsset.acceptMode.levelId` still describe authored source
 data. The current scene-emitter evidence is therefore a source prefab
@@ -272,22 +275,51 @@ narrow authored role: sound spawn/finish, hit/start/rotation/enable callbacks,
 animation-state audio config, particle and water fields, or the generic
 serialized-field boundary (with an audio-key hint). `componentLayout`, component
 type, and exact existing GameObject placement are separate evidence fields.
+The same collector accepts AudioMapData trigger-enter/exit, level lifecycle,
+and outdoor-room-tone Event hashes only when the complete serialized
+AudioMapData schema is present; incomplete lookalike schemas remain excluded.
 These projections do not imply component execution, Event posting, selected
 Wwise media, or audibility; generated stats carry role/layout/Event coverage.
 Character audio naming is a second exact ownership boundary. A delimited
 current `CharacterTable` key inside a Wwise Event id assigns that authored
 namespace to the character; a shortened `chr_NNNN_*` form is accepted only
 when the numeric id is unique in the same table. An Event-leading internal
-token such as `lastrite_*`, `lizhiyan_*`, or `pograni_*` is accepted only when
-it has one exact table owner. Possible media inherit the complete named-
+token such as `lastrite_*`, `lizhiyan_*`, or `pograni_*`, and a leading
+`au_actor_<token>_*` form, are accepted only when it has one exact table owner.
+Possible media inherit the complete named-
 character set, so cross-character Wwise leaf reuse stays explicit. This does
 not identify an action, runtime caller, selected leaf, playback position, or
 audibility, and generic `chr_*` templates remain unowned.
+The same exact namespace relation can safely project Event/media candidates to
+an existing character item for discovery, but it remains an identity edge. It
+does not lower strict unknown-use status or become a gameplay consumer edge
+without independent trigger or runtime evidence.
+Verified offline capture bundles are a separate evidence source: a captured
+managed request can bind an Event and its exact possible-media relations for
+that build/session, but the result remains an observed request boundary. It
+does not convert static possibilities into a selected Wwise leaf or audible
+playback claim.
+Recovered grammar/hash names can also be attached to an enemy item when their
+complete `au_` prefix matches exactly one current EnemyTable id. This is a
+separate recovered-namespace identity edge; it improves discovery but does not
+reduce strict unknown-use status or establish an enemy consumer.
+Leading `au_monster_<token>_*` names follow the same boundary only when the
+token maps to one exact current `EnemyTable` id; the token relation is kept
+separate from full `au_eny_<id>_*` matches and remains identity-only.
+The selected native build gate now validates the fingerprint-locked managed
+literal contracts for anchor-wave hit states and 3D-radio narrative selector
+values. Those rows can leave `unknownUse` as authored callsite context, but
+they still do not prove execution, selected Wwise media, or audibility.
 Serialized AnimationClip audio callbacks are independently sufficient to link
 an Event to the exact clips and character/enemy owner recorded by the callback
 context. The Event and clip names need not match. AnimatorController membership
 is retained when recovered, but execution, callback timing, Wwise selection,
 audibility, and SFX category remain separate evidence.
+AnimatorOverrideController substitutions become exact when the AssetMap
+uniquely identifies the override Source+PathID and both controller and
+effective-clip PPtrs are local (`m_FileID=0`) to that serialized file. Other
+PathID-only joins remain separately corpus-unique or unresolved; no mapping
+claims live override activation.
 The callback identity surface is built from a fail-closed CharacterTable,
 EnemyTable, and EnemyTemplateTable overlay. Persistent rows are authoritative;
 a malformed Persistent layer does not fall back to the StreamingAssets identity
@@ -1784,6 +1816,21 @@ separates true interceptor nesting from same-session adjacency, but remains
 runtime call-structure evidence rather than an asynchronous ownership, file,
 decoder, or PCM join.
 
+`tools/EndfieldCapture` is the native prelaunch host for this audio contract
+and the graphics provider. Exact executable/native-input gates, the audited
+three-hook audio adapter, bounded relationship windows, shared writing, and
+fail-closed collection are implemented and synthetically tested; no retail
+session is yet certified. Raw graphics/audio sessions use one provenance root at
+`scratch/reverse_engineering/endfield_capture/<session-id>/`. Audio runtime
+capture records bounded keys, paths, pointers, call/result relationships, and
+provider completeness under the shared event stream plus `audio/` sidecars; it
+does not dump PCM or copy opened game files. Its `Numpad 2` control
+marks a bounded relationship-evidence window with two seconds of lookback and
+five seconds after the request; the key does not imply PCM recording or a
+successful provider observation. Compact validated audio summaries
+may be generated under `reports/story/recovery/audio/`, while durable
+interpretation remains here.
+
 The same manifest now includes an optional current-build managed hook at
 `GameAssembly.dll+0x3abef40`, where `VoicePlayer._PlayVoice` enters the
 external-source preparation helper. Its ABI is statically recovered as
@@ -1870,7 +1917,9 @@ Do not copy volatile inventories into this file.
   `AkSoundEngine.PostEvent` and native playing-id/Wwise selection; authorized
   runtime source-state → provider/file/decoder/PCM correlation for one
   VoicePlayer request; and ownership/use evidence for `unknownUse` media, which
-  remains identity-only.
+  remains identity-only. The next gate is one authorized collected retail
+  session with an identified audio action, zero provider loss/unresolved pairs,
+  and exact current-build fingerprints.
 - Server-side mission/property producers and activation policy.
 - Active IFix/server combat overrides, live targets, evaluator chronology, and
   blackboard values.

@@ -22,11 +22,32 @@ The canonical identities comprise 31 playables, one NPC character, one
 cutscene clone, 94 enemies, and 29 ability/prop actors. Six modular ambient-NPC
 archetypes remain labeled source kits rather than finished characters.
 
+`tools/EndfieldCapture` is the native prelaunch observer for graphics and
+audio. Exact target/runtime gates, one-attempt injection, forced-D3D11 hooks,
+bounded frame/resource readback, session writing, and collection are
+implemented and synthetically tested; it has not yet produced certified retail
+evidence. Native sessions belong under
+`scratch/reverse_engineering/endfield_capture/<session-id>/`, with forced-D3D11
+graphics resources under the session's `graphics/` folder. The guided wrapper
+defaults to both providers; its external overlay reserves `Numpad 1` for one
+next-frame request and `Numpad 0` for panel visibility, but neither is evidence
+until the host records a consumed provider request. Staged capture-only
+3DMigoto remains the retail-tested fallback until EndfieldCapture produces its
+first complete collected original-client session.
+
 ## Stable conclusions
 
 - Playable post-models, LOD0 mesh bindings, materials, textures, cameras,
   profiles, lights, portraits, and selected Overview animation sources are
   recovered.
+- The Unity lab's authoritative Windows backend is Direct3D11, matching the
+  recovered retail shader binaries. Project settings disable automatic API
+  selection and normal Editor, batch, import, sweep, capture, and standalone
+  workflows explicitly request D3D11. Historical D3D12 probes remain labeled
+  evidence snapshots rather than active defaults. A full 41-frame D3D11
+  Endminf capture passes the transition, settled-loop, entrance cleanup,
+  rotation-only root-motion, 67-renderer admission, and exact three-row
+  fail-closed gates, and regenerates both maintained reference comparisons.
 - Every canonical non-playable post-model identity has a dependency-safe
   static prefab baseline. These prove identity and admitted dependencies, not
   full runtime assembly or behavior.
@@ -74,8 +95,8 @@ archetypes remain labeled source kits rather than finished characters.
   recovers the selected HGBuffer fragment's 576-byte `UnityPerMaterial` table
   and exact offsets for all 17 parallax fields used through the 496-byte b3
   prefix (including `_ParallaxColor` at byte 464 and its dark color at 480).
-  This closes the selected physical b3 slice, not visual admission. Live b1
-  VFX globals, b2 per-draw history/LOD state, the selected b4 value,
+  This closes the selected physical b3 slice, not visual admission. Selected-
+  frame b1 VFX globals, b2 per-draw history/LOD state, the selected b4 value,
   `ParserBindChannels`, complete HGBuffer frame publication, and the visibly
   over-bright raised-hand glow remain fail-closed; do not tune the non-exact
   compatibility shader against the video.
@@ -125,7 +146,7 @@ archetypes remain labeled source kits rather than finished characters.
 - The focused Endminf comparison now anchors its first saved Unity frame
   directly to retail frame 1110, the first visible body frame. The former map
   added the already-advanced 0.0509083-second body phase a second time and put
-  every retail sample three frames late. The latest D3D12 capture maps frames
+  every retail sample three frames late. The canonical D3D11 capture maps frames
   1110 through 1512 with less than 0.000046 source-frame residue; the corrected
   central comparison improves 24 of 28 pairs over the old three-frame-late map.
 - The reference recording enters Endminf through a same-page Wolfgd character
@@ -233,13 +254,33 @@ archetypes remain labeled source kits rather than finished characters.
   source subprogram 19 with `HG_ENABLE_MV,_PARALLAX_MAP`; its retained particle
   streams already match Position/Normal/Color/UV/UV2/Custom1XYZW. The first
   valid pipeline change is an M27-PathID-only five-MRT owner before deferred
-  resolve, never global `GBuffer` admission. It remains fail-closed because live
-  AnchorWaveBright, per-draw/instance history, terrain profile, and a presented
-  content-valid deferred consumer are not yet closed. The current-build terrain
+  resolve, never global `GBuffer` admission. It remains fail-closed because the
+  selected-frame AnchorWaveBright value, per-draw/instance history, terrain
+  profile value, and a presented content-valid deferred consumer are not yet
+  closed. Current-build native evidence now proves that AnchorWaveBright c105
+  is `(position.x, position.y, radius, intensity * enabledFlag)` and is published
+  verbatim to the global constant buffer; its zero construction default is not
+  a selected-frame fact. The current-build terrain
   profile producer is now bounded further: a reserved zero-key dictionary maps
   to float(index + 1), with zero meaning no registered terrain profile. Its
   CharInfo selected-frame value remains unobserved, so canonical M27 still must
   not assume zero.
+- The two remaining M28 `VFXRefract` rows stay fail-closed, but the four new
+  neutral forced-D3D11 frame analyses reopen their recovery path. All four
+  record the exact SRP-instanced 0624/0625 program pair; the newest capture's
+  event 127 is a one-instance, 1,764-index draw with the source two-MRT
+  topology: 4K `R11G11B10_FLOAT` SceneColor,
+  `R10G10B10A2_UNORM` SceneMV, and D32S8 depth. It also records the input
+  layout, vertex/instance buffers, constant-buffer bindings, two material
+  textures, pre-distortion SceneColor, and state-object handles. This closes
+  the former shader-pair-selection and attachment-format gaps for that draw.
+  Admission still requires an exact join from event 127 to one of the two M28
+  hierarchy rows, decoding the selected constant-buffer ranges and instance
+  record, recovering the blend/depth/raster descriptors behind the captured
+  handles, identifying or capturing the other authored live window, and
+  focused 60 Hz exact-versus-disabled validation for both rows. The capture is
+  forced-D3D11 renderer-path evidence and does not by itself authorize enabling
+  either renderer. M21, exact `suikuai (1)`, and M27 remain unchanged.
 - The `M_fx_endminm_gfx_09` burst stripes now bind the exact exported RGBA
   `T_fx_star_07_D` payload. The previous missing `_MainTex` silently sampled
   white and produced a large opaque rectangle; the repaired source-alpha
@@ -278,12 +319,29 @@ archetypes remain labeled source kits rather than finished characters.
   admitted renderers. `suikuai (2)` remains separately fail-closed: its
   LitEffect material disables ForwardOnly and selects the five-MRT deferred
   HGBuffer program, while the compatibility shader is a one-target ForwardOnly
-  stand-in. Recover that deferred consumer for the remaining physical fragments;
-  do not compensate by resizing, brightening, retiming, or disabling M21.
+  stand-in. None of the four new frame analyses contains the selected M27
+  HGBuffer pair, so its live constants, particle-instance ABI, five attachments,
+  and presented deferred consumer remain open. Capture that row in its authored
+  approximately 4.49-second burst window before restarting live admission; do
+  not compensate by resizing, brightening, retiming, or disabling M21.
 - Blink, facial, physical-transform, CharacterNPR, eye, hair, shadow, GBuffer,
   light, cookie, irradiance, particle, gacha, and post-processing behavior is
   recovered only where its input contract is verified. Unknown inputs remain
   explicit gaps.
+- Four neutral D3D11 `ui_overview_start`/loop frame analyses pin the actual
+  five-output CharacterNPR Hair PreGBuffer pair as `7b3a141f99cd9b39` /
+  `00cf31fc5c40c10d`. Its 27,615 indices, stencil ref 36, and three exact
+  BC7 inputs join to Endminf hair LOD0 and its D/HN/sw_M textures; in the
+  newest capture event 47 changes every dump-visible attachment snapshot.
+  The later `f3b955247775c7bf` / `31e969822a004ce4` draw is Hair
+  `DepthOnlyOutline`: five RTVs remain bound, but its fragment writes only a
+  zero Target0 after alpha test, and event 49 to 50 changes none of the four
+  available attachment JPGs. Those JPGs remain cumulative snapshots and do
+  not assign the complete actor silhouette to one draw. Across the four
+  captures the eight CharacterNPR PreG draw sizes match eyebrow, iris,
+  cloth-04, face, body, cloth-03, cloth-01, and hair exactly. Do not use this
+  evidence to admit the separate generic HGRP/Lit resolver. The full matrix is in
+  `reports/assets/character_recovery/endminf_ui_overview_frame_analysis_20260824.md`.
 - The selected deferred resolver DXBC has a compile-valid Unity HLSL port. It
   matches the neutral fixture exactly and the recovered Wulfa fixture within
   one float ULP. The non-presented Endminf D3D11 fixture now also binds all 26
@@ -313,6 +371,32 @@ archetypes remain labeled source kits rather than finished characters.
   GPU word-readback is still open because the historical verifier's pinned
   decompiled shader inputs were retired from scratch; do not extend its older
   eight-row proof by implication.
+- The interactive D3D11 Endminf B31 probe now reproduces that selected
+  12-light/zero-cookie transport over the actual `ui_overview_start` to loop
+  41-frame sequence. It still reports no presented deferred pass-0/shadow
+  consumer, so the probe is transport evidence only; it must not be promoted
+  into the beauty path or used to admit the separate HGRP/Lit resolver.
+- The maintained 41-frame D3D11 Endminf reproduction now executes a canonical
+  CharacterPrePass owner before Forward. Endminf's eight opaque
+  DepthCharacterOnly-compatible draws write the captured Target0 zero,
+  Target1 packed motion, Target2 selector, Target3 normal/family, and Target4
+  material payload into the exact five formats over the shared D32S8 target.
+  SceneMV is neutral-cleared once before PreG, then loaded by Forward only from
+  a same-camera, same-size, same-frame publication; source `Equal` activates
+  only after owner submission. A 41-frame D3D11 capture observes that owner in
+  every frame and improves 28-pair no-framegen reference PSNR from 13.3608 to
+  13.3886 dB; the three crystal-clean settled samples are effectively neutral.
+  The editor harness also refreshes its
+  cached standalone selectors after installing the bounded Endminf profile, so
+  an earlier process-wide cache no longer deactivates the selected source
+  hierarchy.
+- A strengthened interactive exact-consumer probe now requires an actual DXBC
+  submission instead of passing on b31/b34/GBuffer readiness alone. It remains
+  fail-closed: on `MainCamera`, physical camera depth and the Endminf punctual
+  atlas become ready in different observed phases, so t1 and t6 never coexist
+  with the otherwise physical t0/t5/t7/t11 set. This is a bounded transport
+  scheduling gap in the non-presented SphereOutside diagnostic, not evidence
+  for routing CharacterNPR hair through that resolver.
 - Endminf's two punctual-shadow rows now populate the lab-owned diagnostic
   atlas and selected b34 transport as two validated spot entries in contiguous
   dynamic slots 40-41. Publication still requires exact source rows 11 and 3
@@ -487,6 +571,23 @@ resamples 3840x2160 to 1920x1080 with Lanczos and no crop before sheet
 downscaling; do not use cross-resolution whole-frame metrics outside that
 explicit contract.
 
+The four August 24 observer captures also close Endminf's post-Forward
+CharacterOutline owner. Retail draws exactly six LOD0 submeshes (face, body,
+cloth-01, cloth-04, cloth-03, and hair), omitting eyebrow and iris. Exact
+exported shader joins recover `Cull Front`, `ZTest Less`, `ZWrite Off`, black
+target-0 blend, packed SceneMV target 1, Skin/generic stencil ref 36, and Hair's
+stencil-16 exclusion. The Unity owner now uses the recovered clip-space
+depth/FOV/aspect width law and publishes SceneMV in the same frame. The source
+mesh importer now preserves the four-component `m_UV2`/`TEXCOORD2` stream, so
+the selected material's packed average-normal reconstruction is active. The
+outline-mask green channel and `_OutlineOffsetZ` also reproject the exact
+camera-space depth bias instead of applying the former generic clip nudge. Its
+41-frame D3D11 gate passes. Two phase-identical post-rebuild captures still
+match zero of 41 frame hashes and have 31.4456 dB mutual PSNR; their three
+crystal-clean retail comparisons span 14.0684-14.0744 dB, containing the prior
+14.0693 dB result. Do not attribute that cross-run metric movement to the
+outline until the broader temporal/physical nondeterminism is closed.
+
 Do not fork the renderer per actor. Endminf-specific code may own source asset
 selection and timing, while the importer, material mapping, animation,
 presentation scene, and render pipeline must remain reusable for the eventual
@@ -498,12 +599,13 @@ The blocking gap is the complete CharInfo physical presentation frame, not
 another per-material shader approximation. The missing boundary includes:
 
 - the real `SphereOutside` and `ShadowPlane` scene participation;
-- the exact character stencil writer and receiver integration;
+- the downstream character stencil receiver integration beyond the now-closed
+  PreG/Forward/CharacterOutline writer states;
 - render-graph/subpass state and frame-produced lighting resources;
 - confirmation of the final source camera and presentation bindings.
 - ten still-blocked rock-family renderer identities awaiting the bounded live
   global/per-draw/subsurface values and the complete deferred frame resources;
-- exact retail D3D12 presentation binding after the now-closed Effect-02
+- exact retail D3D11 presentation binding after the now-closed Effect-02
   combined Uber source, bloom, LUT, and output-tail contract;
 - the full TAA producer/consumer chain beyond the now-complete actor SceneMV
   MRT coverage, recorded blank-frame history boundary, and recovered Dilation
@@ -512,7 +614,7 @@ another per-material shader approximation. The missing boundary includes:
   Streamline DLAA velocity-combine dispatch. The pinned retail helper has no
   credible stock Unity/PDB equivalent, and its later `0x2d` virtual-call
   argument has no statically recoverable enum domain. Keep the native proxy
-  disabled until a D3D12/PIX/RenderDoc resource descriptor proves the format.
+  disabled until a D3D11/RenderDoc resource descriptor proves the format.
 
 `SphereOutside` is asset-complete. Its remaining gates are runtime frame state
 and resources. The exact deferred program is no longer a blocker.
@@ -553,13 +655,16 @@ or shaders rather than hand-editing generated prefabs.
 
 ## Recovery queue
 
-1. Reproduce the complete Endminf Character Info frame against the reference
+1. Run and certify EndfieldCapture's first retail forced-D3D11 session,
+   requiring exact gates, `graphicsAttached=true`, provider completeness, and
+   one collected bounded frame package before using it as render evidence.
+2. Reproduce the complete Endminf Character Info frame against the reference
    video, closing the presentation scene before further isolated shader work.
-2. Generalize Endminf's proven Animator path from source contracts, close the
+3. Generalize Endminf's proven Animator path from source contracts, close the
    root-motion compatibility boundary, then prioritize IK, facial systems, and
    secondary motion.
-3. Generalize the finished Endminf path and rebuild every playable character
+4. Generalize the finished Endminf path and rebuild every playable character
    without actor-specific renderer forks.
-4. Keep changing inventories and exhaustive validation output under
+5. Keep changing inventories and exhaustive validation output under
    `reports/assets/character_recovery/`; update this file only when the durable
    conclusion or evidence boundary changes.

@@ -13,6 +13,18 @@ from scripts.story_recovery import runtime_trace_mission_import as mission_impor
 
 
 class RuntimeTraceCoreTests(unittest.TestCase):
+    def test_windows_access_denied_attach_is_not_misreported_as_hook_failure(self):
+        message = core.describe_attach_refusal(
+            "Endfield.exe",
+            1234,
+            RuntimeError("VirtualAllocEx returned 0x00000005"),
+        )
+        self.assertIn("Windows denied", message)
+        self.assertIn("No hooks were installed", message)
+        self.assertIn("not a manifest, module-hash, or hook-RVA failure", message)
+        self.assertIn("externally recorded event-v1 JSONL", message)
+        self.assertIn("do not treat this denial as runtime evidence", message)
+
     def test_file_hash_verification_is_profile_independent(self):
         for profile in ("mission", "audio"):
             with self.subTest(profile=profile), tempfile.TemporaryDirectory() as temporary:
@@ -61,6 +73,17 @@ class RuntimeTraceCliTests(unittest.TestCase):
     def test_profile_is_required(self):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             runtime_trace.parse_args(["capture"])
+
+    def test_audio_capture_pid_is_an_explicit_attach_to_existing_process_path(self):
+        parser = runtime_trace.command_parser("capture", "audio")
+        help_text = parser.format_help()
+        self.assertIn("already-running PID", help_text)
+        self.assertIn("without attaching", help_text)
+        args = runtime_trace.parse_args(
+            ["capture", "--profile", "audio", "--pid", "1234", "--duration", "30"]
+        )
+        self.assertEqual(args.pid, 1234)
+        self.assertEqual(args.duration, 30.0)
 
     def test_import_failure_is_reported_by_single_cli(self):
         with tempfile.TemporaryDirectory() as temporary:

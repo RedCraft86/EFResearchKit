@@ -69,6 +69,7 @@ Shader "Endfield/Recovered/CharacterHair"
         _EnableOutline ("Enable Outline", Float) = 1
         _OutlineWidth ("Outline Width", Float) = 0.6
         _OutlineOffsetZ ("Outline Z Offset", Float) = 0
+        _OutlineAverageNormal ("Use Packed Average Outline Normal", Float) = 1
         _OutlineColorBrightness ("Outline Brightness", Float) = 0.28
         _OutlineColorSaturation ("Outline Saturation", Float) = 1.15
         _OutlineColor ("Outline Tint", Color) = (1,1,1,1)
@@ -125,6 +126,7 @@ Shader "Endfield/Recovered/CharacterHair"
         sampler2D _HairBrowMask;
         sampler2D _EmissionMap;
         sampler2D _OutlineMask;
+        float4 _OutlineMask_ST;
 
         half4 _BaseColor;
         half4 _HairBaseTintColor;
@@ -168,6 +170,7 @@ Shader "Endfield/Recovered/CharacterHair"
         half _EnableOutline;
         half _OutlineWidth;
         half _OutlineOffsetZ;
+        half _OutlineAverageNormal;
         half _OutlineColorBrightness;
         half _OutlineColorSaturation;
         half4 _OutlineColor;
@@ -190,6 +193,7 @@ Shader "Endfield/Recovered/CharacterHair"
             float3 normal : NORMAL;
             float4 tangent : TANGENT;
             float2 uv : TEXCOORD0;
+            float4 outlineNormal : TEXCOORD2;
             float3 positionOld : TEXCOORD4;
         };
 
@@ -904,37 +908,116 @@ Shader "Endfield/Recovered/CharacterHair"
             return half4(max(color, 0.0h), baseSample.a);
         }
 
+        inline float2 EndfieldHGRPCharacterOutlineClipOffset(
+            float3 normalWS, float clipW, float authoredWidth)
+        {
+            float3 normalVS = mul((float3x3)UNITY_MATRIX_V, normalize(normalWS));
+            float2 projectedNormal = float2(
+                dot(UNITY_MATRIX_P[0].xyz, normalVS),
+                dot(UNITY_MATRIX_P[1].xyz, normalVS));
+            projectedNormal *= rsqrt(max(dot(projectedNormal, projectedNormal), 1.17549435e-38));
+            float halfFov = max(abs(atan(1.0 / UNITY_MATRIX_P._m11)), 1e-5);
+            float widthScale = (0.39269908169872414 / halfFov) * authoredWidth;
+            float depthFade = saturate(clipW * halfFov * 4.583662509918213);
+            float2 offset = depthFade * widthScale * projectedNormal *
+                float2(_ScreenParams.y / _ScreenParams.x, 1.0) * 0.005;
+            float minimumScale = min(1.5707963267948966 / halfFov, max(clipW, 0.0));
+            float2 minimumOffset = minimumScale * 2.0 / _ScreenParams.xy;
+            return sign(offset) * max(abs(offset), minimumOffset);
+        }
+
+        inline float3 EndfieldHGRPCharacterOutlineNormal(
+            float3 normalOS, float4 tangentOS, float2 packedNormal)
+        {
+            float3 normal = normalize(normalOS);
+            float3 tangent = normalize(tangentOS.xyz);
+            float packedZ = sqrt(1.0 - min(dot(packedNormal, packedNormal), 1.0));
+            float3 averageNormal = packedZ * normal + packedNormal.x * tangent +
+                tangentOS.w * cross(normal, tangent) * packedNormal.y;
+            return _OutlineAverageNormal > 0.5 ? averageNormal : normal;
+        }
+
+        inline float EndfieldHGRPCharacterOutlineClipZ(
+            float4 baseClipPos, float3 viewPosition, float depthOffset)
+        {
+            float4 shiftedClip = mul(
+                UNITY_MATRIX_P,
+                float4(viewPosition.xy, viewPosition.z - depthOffset, 1.0));
+            return baseClipPos.w * shiftedClip.z / max(abs(shiftedClip.w), 1e-8);
+        }
+
         struct HairOutlineVaryings
         {
             float4 pos : SV_POSITION;
             float2 uv : TEXCOORD0;
+            float3 currentClipXYW : TEXCOORD1;
+            float3 previousClipXYW : TEXCOORD2;
         };
 
         HairOutlineVaryings HairOutlineVert(HairAppData v)
         {
             HairOutlineVaryings o;
             float2 uv = TRANSFORM_TEX(v.uv, _BaseMap);
-            float mask = lerp(1.0, tex2Dlod(_OutlineMask, float4(uv, 0, 0)).r,
+            float2 outlineUv = TRANSFORM_TEX(v.uv, _OutlineMask);
+            float2 outlineMask = tex2Dlod(
+                _OutlineMask,
+                float4(outlineUv, 0, 0)).rg;
+            float mask = lerp(1.0, outlineMask.r,
                               saturate(_EnableOutlineMask));
             float width = EndfieldHGRPCharacterOutlineWidth(
-                _OutlineWidth * _RecoveredOutlineScale * mask * saturate(_EnableOutline));
-            float4 clipPos = UnityObjectToClipPos(v.vertex + float4(v.normal * width, 0));
-            clipPos.z += _OutlineOffsetZ * _RecoveredOutlineZScale * clipPos.w;
+                _OutlineWidth * mask * saturate(_EnableOutline));
+            float4 baseClipPos = UnityObjectToClipPos(v.vertex);
+            float4 clipPos = baseClipPos;
+            float3 outlineNormalOS = EndfieldHGRPCharacterOutlineNormal(
+                v.normal,
+                v.tangent,
+                v.outlineNormal.xy);
+            float3 normalWS = UnityObjectToWorldNormal(outlineNormalOS);
+            clipPos.xy += EndfieldHGRPCharacterOutlineClipOffset(
+                normalWS,
+                clipPos.w,
+                width);
+            float depthOffset = 0.1 * _OutlineOffsetZ * lerp(
+                1.0,
+                outlineMask.g,
+                saturate(_EnableOutlineMask));
+            clipPos.z = EndfieldHGRPCharacterOutlineClipZ(
+                baseClipPos,
+                UnityObjectToViewPos(v.vertex),
+                depthOffset);
+            float4 previousLocalPosition = lerp(
+                v.vertex,
+                float4(v.positionOld, 1.0),
+                step(0.5, unity_MotionVectorsParams.x));
+            float4 previousClip = mul(
+                UNITY_MATRIX_VP,
+                mul(unity_MatrixPreviousM, previousLocalPosition));
+            previousClip.xy += clipPos.xy - baseClipPos.xy;
             o.pos = clipPos;
             o.uv = uv;
+            o.currentClipXYW = clipPos.xyw;
+            o.previousClipXYW = previousClip.xyw;
             return o;
         }
 
-        half4 HairOutlineFrag(HairOutlineVaryings i) : SV_Target
+        struct HairOutlineOutput
+        {
+            half4 color : SV_Target0;
+            float4 sceneMV : SV_Target1;
+        };
+
+        HairOutlineOutput HairOutlineFrag(HairOutlineVaryings i)
         {
             clip(min(_EnableOutline, EndfieldHGRPCharacterOutlineEnable()) - 0.5h);
             half4 baseSample = tex2D(_BaseMap, i.uv) * _BaseColor;
             clip(EndfieldCutout(max(_EnableAlphaTest, _AlphaClip), baseSample.a, _AlphaClipThreshold));
-            half3 outline = EndfieldSaturation(baseSample.rgb, _OutlineColorSaturation) *
-                            _OutlineColorBrightness * _OutlineColor.rgb;
-            outline = EndfieldHGRPCharacterOutlineColor(outline);
-            outline = EndfieldHGRPPreExposeCharacterColor(outline);
-            return half4(outline, baseSample.a);
+            HairOutlineOutput output;
+            output.color = 0.0h;
+            output.sceneMV = EndfieldRecoveredCharacterMotionMrt(
+                i.currentClipXYW,
+                i.previousClipXYW,
+                0.0);
+            return output;
         }
 
         struct HairCameraDepthVaryings
@@ -1044,7 +1127,9 @@ Shader "Endfield/Recovered/CharacterHair"
                 normalWS,
                 1.0,
                 tex2D(_BaseMap, i.uv) * _BaseColor,
-                endfieldSameOwnerNormalTS);
+                endfieldSameOwnerNormalTS,
+                i.currentClipXYW,
+                i.previousClipXYW);
         }
         ENDCG
 
@@ -1069,7 +1154,7 @@ Shader "Endfield/Recovered/CharacterHair"
             #pragma target 5.0
             #pragma vertex HairVert
             #pragma fragment HairRecoveredPreGBufferDiagnosticFrag
-            #pragma multi_compile __ ENDFIELD_RECOVERED_SAME_OWNER_AUDIT
+            #pragma multi_compile __ ENDFIELD_RECOVERED_SAME_OWNER_AUDIT ENDFIELD_RECOVERED_CANONICAL_FIVE_MRT
             ENDCG
         }
 
@@ -1120,9 +1205,17 @@ Shader "Endfield/Recovered/CharacterHair"
             Name "CHARACTER_OUTLINE"
             Tags { "LightMode"="Always" }
             Cull Front
-            ZWrite [_ZWrite]
-            ZTest [_ZTest]
-            Blend [_SrcBlend] [_DstBlend]
+            ZWrite Off
+            ZTest Less
+            Blend 0 Zero Zero, Zero Zero
+            Blend 1 One Zero
+            Stencil
+            {
+                Ref 16
+                ReadMask 16
+                Comp NotEqual
+                Pass Keep
+            }
 
             CGPROGRAM
             #pragma target 5.0

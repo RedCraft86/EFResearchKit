@@ -90,6 +90,38 @@ assert.equal(merged[0].possibleMediaCount, 2);
 """
         )
 
+    def test_current_sound_effects_schema_is_accepted_by_gameplay_loader(self) -> None:
+        source = GAMEPLAY.read_text(encoding="utf-8")
+        body = source.split("  function validSoundEffectsPayload", 1)[1].split(
+            "\n  function loadGameplayIntegration", 1
+        )[0]
+        function_source = "function validSoundEffectsPayload" + body
+        self.run_node(
+            f"""
+const assert = require("node:assert/strict");
+{function_source}
+const current = {{schemaVersion: 10, characters: {{}}, enemies: {{}}}};
+assert.equal(validSoundEffectsPayload(current), true);
+assert.equal(validSoundEffectsPayload({{schemaVersion: 11, characters: {{}}, enemies: {{}}}}), false);
+assert.equal(validSoundEffectsPayload({{schemaVersion: 5, characters: {{}}}}), false);
+"""
+        )
+        self.assertIn(
+            '["soundEffects", integrationPath("soundEffects", nextLanguage), validSoundEffectsPayload]',
+            source,
+        )
+
+    def test_sound_effect_sidecar_failure_is_visible_on_owned_items(self) -> None:
+        source = GAMEPLAY.read_text(encoding="utf-8")
+        labels = (ROOT / "webui" / "src" / "features" / "gameplay" / "labels.js").read_text(encoding="utf-8")
+        self.assertIn('result.error && !["assets", "projectileAudio"].includes(result.kind)', source)
+        self.assertIn('gameplayIntegrationError("soundEffects")', source)
+        self.assertGreaterEqual(
+            source.count('if (!STATE.integration.soundEffects) return renderSoundEffectsUnavailable();'),
+            2,
+        )
+        self.assertIn("soundEffectsUnavailable", labels)
+
     def test_projectile_audio_sidecar_joins_by_id_field_and_unsigned_hash(self) -> None:
         source = GAMEPLAY.read_text(encoding="utf-8")
         projectile_helpers = source.split("  function projectileEventHash", 1)[1].split(
@@ -207,6 +239,77 @@ assert.deepEqual(rows[0].audio, []);
         labels = (ROOT / "webui" / "src" / "features" / "gameplay" / "labels.js").read_text(encoding="utf-8")
         self.assertIn("possible media associations", labels)
         self.assertIn("unique decoded files", labels)
+
+
+    def test_character_namespace_audio_is_a_distinct_non_skill_surface(self) -> None:
+        source = GAMEPLAY.read_text(encoding="utf-8")
+        renderer = source.split("  function renderCharacterSoundEffects", 1)[1].split(
+            "\n  function renderCharacterProjectileCompact", 1
+        )[0]
+        evidence = source.split("  function renderGameplaySoundEvidence", 1)[1].split(
+            "\n  function renderGameplaySoundCandidateList", 1
+        )[0]
+        labels = (ROOT / "webui" / "src" / "features" / "gameplay" / "labels.js").read_text(encoding="utf-8")
+        self.assertIn("authoredNamespaceEvents", renderer)
+        self.assertIn('label: text("authoredNamespaceAudio")', renderer)
+        self.assertIn("ENDADMINISTRATOR_VARIANTS.find", renderer)
+        self.assertIn("currentCharacterGender()", renderer)
+        self.assertIn("characters?.[namespaceOwnerId]", renderer)
+        self.assertNotIn("gameplaySoundHasExactSkillTrigger", renderer)
+        self.assertIn("exactCharacterTableNamespaceIdentity", evidence)
+        self.assertIn("soundAuthoredNamespaceEvidence", evidence)
+        self.assertIn("It does not prove an action, skill, Event post", labels)
+        function_source = "function renderCharacterSoundEffects" + renderer
+        self.run_node(
+            f"""
+const assert = require("node:assert/strict");
+const ENDADMINISTRATOR_VARIANTS = [
+  {{gender: "f", characterId: "chr_0003_endminf"}},
+  {{gender: "m", characterId: "chr_0002_endminm"}},
+];
+const STATE = {{integration: {{soundEffects: {{characters: {{
+  chr_0003_endminf: {{
+    authoredNamespaceEvents: [{{id: "au_actor_endminf_ui"}}],
+    nativeVoiceResponseEvents: [{{
+      id: "chr_0003_endminf_combat_dead_sv",
+      mediaRefs: [{{mediaId: 8, src: "/8.flac"}}],
+    }}],
+  }},
+}}}}}}}};
+function isEndministrator(entry) {{ return entry?.id === "chr_9000_endmin"; }}
+function currentCharacterGender() {{ return "f"; }}
+function filterEndministratorVariant(rows) {{ return rows || []; }}
+function renderGameplaySoundGroup(rows) {{ return (rows || []).map((row) => row.id).join(","); }}
+function renderSoundEffectsUnavailable() {{ return "unavailable"; }}
+function renderCharacterSkillSounds() {{ return ""; }}
+function renderCharacterAnimationSounds() {{ return ""; }}
+function text(value) {{ return value; }}
+{function_source}
+assert.equal(
+  renderCharacterSoundEffects({{id: "chr_9000_endmin", kind: "character"}}),
+  "chr_0003_endminf_combat_dead_svau_actor_endminf_ui",
+);
+"""
+        )
+        self.assertIn("nativeVoiceResponseEvents", renderer)
+        self.assertIn('text("characterNativeVoiceResponses")', renderer)
+        self.assertIn("characterNativeVoiceResponsesNote", labels)
+
+    def test_enemy_namespace_audio_is_a_distinct_surface(self) -> None:
+        source = GAMEPLAY.read_text(encoding="utf-8")
+        labels = (ROOT / "webui" / "src" / "features" / "gameplay" / "labels.js").read_text(encoding="utf-8")
+        renderer = source.split("  function renderEnemySoundEffects", 1)[1].split(
+            "\n  function renderCharacterAnimationSounds", 1
+        )[0]
+        self.assertIn("authoredNamespaceEvents", renderer)
+        self.assertIn('text("authoredEnemyNamespaceAudio")', renderer)
+        self.assertIn("authoredEnemyNamespaceAudioNote", labels)
+        self.assertIn("nativeVoiceResponseEvents", renderer)
+        self.assertIn('text("enemyNativeVoiceResponses")', renderer)
+        self.assertIn("enemyNativeVoiceResponsesNote", labels)
+        self.assertIn("enemyResponseCandidateEvents", renderer)
+        self.assertIn('text("enemyResponseCandidates")', renderer)
+        self.assertIn("enemyResponseCandidatesNote", labels)
 
 
 if __name__ == "__main__":

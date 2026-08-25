@@ -1616,7 +1616,10 @@
         if (explicitParts.length) dispatchLabels.push(`${actionName}: ${explicitParts.join(" / ")}`);
       }
     }
-    return `<div class="gameplay-sfx-evidence">${triggerLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}${playSoundLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}${dispatchLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}<span>${escapeHtml(branch)}</span>${animationCallbacks ? `<span>${escapeHtml(`${animationCallbacks} ${text("soundAuthoredCallbacks")} / ${animationClips} ${text("soundAnimationClips")}`)}</span>` : ""}${definitions ? `<span>${escapeHtml(`${definitions} ${text("soundBankDefinitions")}`)}</span>` : ""}${stopActions ? `<span>${escapeHtml(`${stopActions} ${text("soundStopActions")}`)}</span>` : ""}${relationLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}<span class="${isPartial ? "is-partial" : ""}">${escapeHtml(status)}</span></div>`;
+    const namespaceIdentity = event?.authoredNamespaceOwnershipStatus === "exactCharacterTableNamespaceIdentity"
+      ? `<span>${escapeHtml(text("soundAuthoredNamespaceEvidence"))}</span>`
+      : "";
+    return `<div class="gameplay-sfx-evidence">${namespaceIdentity}${triggerLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}${playSoundLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}${dispatchLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}<span>${escapeHtml(branch)}</span>${animationCallbacks ? `<span>${escapeHtml(`${animationCallbacks} ${text("soundAuthoredCallbacks")} / ${animationClips} ${text("soundAnimationClips")}`)}</span>` : ""}${definitions ? `<span>${escapeHtml(`${definitions} ${text("soundBankDefinitions")}`)}</span>` : ""}${stopActions ? `<span>${escapeHtml(`${stopActions} ${text("soundStopActions")}`)}</span>` : ""}${relationLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}<span class="${isPartial ? "is-partial" : ""}">${escapeHtml(status)}</span></div>`;
   }
 
   function renderGameplaySoundCandidateList(event, audio) {
@@ -1742,6 +1745,15 @@
     return `<${wrapper} class="gameplay-related-sfx${options.inline ? " gameplay-sfx-inline" : ""}"><header class="gameplay-related-sfx-summary"><strong>${escapeHtml(options.label || text("relatedSoundEffects"))}</strong><span>${escapeHtml(gameplaySoundCountText(playableEvents, options))}</span>${confidence}</header><p>${escapeHtml(options.note || text("soundRuntimeNote"))}</p>${renderGameplaySoundEventList(playableEvents, playableAudio, options)}</${wrapper}>`;
   }
 
+  function gameplayIntegrationError(kind) {
+    return STATE.integration.errors.find((error) => error?.kind === kind) || null;
+  }
+
+  function renderSoundEffectsUnavailable() {
+    if (STATE.integration.status !== "ready" || !gameplayIntegrationError("soundEffects")) return "";
+    return `<div class="gameplay-integration-note is-warning" role="status">${escapeHtml(text("soundEffectsUnavailable"))}</div>`;
+  }
+
   function renderCharacterSkillSounds(entry) {
     const groups = STATE.integration.soundEffects?.characters?.[entry?.id]?.groups || {};
     const events = (entry?.skillGroups || []).flatMap((group) => {
@@ -1770,17 +1782,45 @@
   }
 
   function renderEnemySoundEffects(entry) {
+    if (!STATE.integration.soundEffects) return renderSoundEffectsUnavailable();
     const sounds = STATE.integration.soundEffects?.enemies?.[entry?.id] || {};
     const playableEvents = gameplayResolvedSoundEvents(mergeGameplaySoundEvents([...(sounds.events || []), ...(sounds.animationEvents || [])]))
       .filter((event) => (event.audio || []).some((candidate) => candidate?.src) || Number(event.possibleMediaCount || event.playableCandidates || 0) > 0);
-    if (!playableEvents.length) return "";
+    const namespaceEvents = filterEndministratorVariant(
+      sounds.authoredNamespaceEvents,
+      entry,
+      (event) => event?.id,
+    );
+    const namespaceGroup = renderGameplaySoundGroup(namespaceEvents, {
+      label: text("authoredEnemyNamespaceAudio"),
+      note: text("authoredEnemyNamespaceAudioNote"),
+    });
+    const nativeVoiceResponses = (sounds.nativeVoiceResponseEvents || []).map((event) => ({
+      ...event,
+      audio: event?.mediaRefs || [],
+    }));
+    const nativeVoiceGroup = renderGameplaySoundGroup(nativeVoiceResponses, {
+      label: text("enemyNativeVoiceResponses"),
+      confidence: "direct",
+      note: text("enemyNativeVoiceResponsesNote"),
+    });
+    const responseCandidates = (sounds.enemyResponseCandidateEvents || []).map((event) => ({
+      ...event,
+      audio: event?.mediaRefs || [],
+    }));
+    const responseCandidateGroup = renderGameplaySoundGroup(responseCandidates, {
+      label: text("enemyResponseCandidates"),
+      confidence: "direct",
+      note: text("enemyResponseCandidatesNote"),
+    });
+    if (!playableEvents.length) return `${nativeVoiceGroup}${responseCandidateGroup}${namespaceGroup}`;
     const confidence = integrationConfidence(
       sounds.ownershipConfidence === "inferred" || sounds.animationOwnershipConfidence === "inferred" ? "inferred" : "direct",
     );
     const notes = [text("soundRuntimeNote")];
     if ((sounds.animationEvents || []).length) notes.push(text("animationSoundNote"));
     const playableAudio = playableEvents.reduce((total, event) => total + (event.audio || []).filter((candidate) => candidate?.src).length, 0);
-    return `<div class="gameplay-enemy-sfx-meta"><strong>${escapeHtml(gameplaySoundCountText(playableEvents))}</strong>${confidence}</div><p class="gameplay-enemy-sfx-note">${escapeHtml(notes.join(" "))}</p>${renderGameplaySoundEventList(playableEvents, playableAudio, { flattenGroups: true })}`;
+    return `${nativeVoiceGroup}${responseCandidateGroup}${namespaceGroup}<div class="gameplay-enemy-sfx-meta"><strong>${escapeHtml(gameplaySoundCountText(playableEvents))}</strong>${confidence}</div><p class="gameplay-enemy-sfx-note">${escapeHtml(notes.join(" "))}</p>${renderGameplaySoundEventList(playableEvents, playableAudio, { flattenGroups: true })}`;
   }
 
   function renderCharacterAnimationSounds(entry) {
@@ -1810,7 +1850,31 @@
   }
 
   function renderCharacterSoundEffects(entry) {
-    return `${renderCharacterSkillSounds(entry)}${renderCharacterAnimationSounds(entry)}`;
+    if (!STATE.integration.soundEffects) return renderSoundEffectsUnavailable();
+    const namespaceOwnerId = isEndministrator(entry)
+      ? ENDADMINISTRATOR_VARIANTS.find((variant) => variant.gender === currentCharacterGender())?.characterId
+      : entry?.id;
+    const namespaceEvents = filterEndministratorVariant(
+      STATE.integration.soundEffects?.characters?.[namespaceOwnerId]?.authoredNamespaceEvents,
+      entry,
+      (event) => event?.id,
+    );
+    const authoredNamespaces = renderGameplaySoundGroup(namespaceEvents, {
+      label: text("authoredNamespaceAudio"),
+      note: text("authoredNamespaceAudioNote"),
+    });
+    const nativeVoiceResponses = (
+      STATE.integration.soundEffects?.characters?.[namespaceOwnerId]?.nativeVoiceResponseEvents || []
+    ).map((event) => ({
+      ...event,
+      audio: event?.mediaRefs || [],
+    }));
+    const nativeVoiceGroup = renderGameplaySoundGroup(nativeVoiceResponses, {
+      label: text("characterNativeVoiceResponses"),
+      confidence: "direct",
+      note: text("characterNativeVoiceResponsesNote"),
+    });
+    return `${renderCharacterSkillSounds(entry)}${renderCharacterAnimationSounds(entry)}${nativeVoiceGroup}${authoredNamespaces}`;
   }
 
   function renderCharacterProjectileCompact(match) {
@@ -4161,6 +4225,15 @@
     if (STATE.entries.length) renderList();
   }
 
+  function validSoundEffectsPayload(payload) {
+    return Boolean(
+      payload
+      && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(payload.schemaVersion)
+      && payload.characters
+      && payload.enemies
+    );
+  }
+
   function loadGameplayIntegration(language = currentLanguage(), force = false) {
     const nextLanguage = String(language || "CN").toUpperCase();
     const integration = STATE.integration;
@@ -4182,7 +4255,7 @@
       ["combat", integrationPath("combat", nextLanguage), (payload) => payload && Array.isArray(payload.nodes) && Array.isArray(payload.edges)],
       ["projectiles", integrationPath("projectiles", nextLanguage), (payload) => payload && Array.isArray(payload.entries)],
       ["projectileAudio", integrationPath("projectileAudio", nextLanguage), (payload) => payload?.schemaVersion === 1 && Array.isArray(payload.links)],
-      ["soundEffects", integrationPath("soundEffects", nextLanguage), (payload) => payload && [1, 2, 3, 4].includes(payload.schemaVersion) && payload.characters && payload.enemies],
+      ["soundEffects", integrationPath("soundEffects", nextLanguage), validSoundEffectsPayload],
       ["assets", integrationPath("assets", nextLanguage), (payload) => payload && payload.entries && typeof payload.entries === "object"],
     ];
     const promise = Promise.all(requests.map(async ([kind, path, validator]) => {
@@ -4197,7 +4270,10 @@
         integration[result.kind] = result.payload;
         // Asset refs are an optional visual enhancement. Missing visual refs
         // must not turn a valid Gameplay/Combat/Projectile build into an error.
-        if (result.error && !["assets", "soundEffects", "projectileAudio"].includes(result.kind)) integration.errors.push({ kind: result.kind, message: result.error });
+        // Asset refs are purely visual. Audio sidecars are optional for the
+        // authored Gameplay page, but their failure must stay visible: an
+        // empty sound section otherwise looks like a valid zero-owner result.
+        if (result.error && !["assets", "projectileAudio"].includes(result.kind)) integration.errors.push({ kind: result.kind, message: result.error });
       }
       integration.indexes = buildIntegrationIndexes();
       integration.status = "ready";

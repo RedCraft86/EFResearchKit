@@ -51,6 +51,11 @@ class MediaOwnershipTests(unittest.TestCase):
                 "contexts": [{"kind": "characterSkill", "ownerId": "chr_0031_mifu"}],
             },
             {
+                "id": "au_actor_wulfa_ui_overview_start",
+                "category": "ui",
+                "contexts": [],
+            },
+            {
                 "id": "lizhiyan_relax_sp_01",
                 "category": "unknown",
                 "contexts": [{
@@ -81,13 +86,291 @@ class MediaOwnershipTests(unittest.TestCase):
             events[2]["characterAudioIdentityStatus"],
             "uniqueCharacterTableNumericIdPrefix",
         )
-        self.assertEqual(events[3]["characterAudioOwnerIds"], ["chr_0032_lizhiyan"])
+        self.assertEqual(events[3]["characterAudioOwnerIds"], ["chr_0028_wulfa"])
+        self.assertEqual(events[3]["characterAudioIdentityStatus"], "uniqueCharacterTableActorToken")
+        self.assertEqual(events[4]["characterAudioOwnerIds"], ["chr_0032_lizhiyan"])
+        self.assertEqual(events[4]["characterAudioIdentityStatus"], "uniqueCharacterTableTokenPrefix")
+        self.assertNotIn("characterAudioOwnerIds", events[5])
+        self.assertEqual(counts["eventsWithCharacterAudioIdentity"], 5)
+
+    def test_character_namespace_gameplay_projection_keeps_identity_separate(self):
+        projected = media_ownership.project_character_namespace_gameplay_audio([
+            {
+                "id": "au_actor_wulfa_ui_open",
+                "category": "ui",
+                "foundInWwise": True,
+                "possibleMediaCount": 1,
+                "playRootCount": 1,
+                "characterAudioIdentityStatus": "uniqueCharacterTableTokenPrefix",
+                "characterAudioOwnerIds": ["chr_0028_wulfa"],
+                "characterAudioNameMatchEvidence": (
+                    "uniqueCharacterTableTokenAtWwiseEventPrefix"
+                ),
+                "media": [{
+                    "mediaId": 7,
+                    "src": "/export/audio/7.flac",
+                    "duration": 1.25,
+                    "contentSha256": "abc",
+                }],
+            },
+            {
+                "id": "au_unowned",
+                "possibleMediaCount": 1,
+                "media": [{"mediaId": 8, "src": "/export/audio/8.flac"}],
+            },
+        ])
+
+        rows = projected["characters"]["chr_0028_wulfa"]
+        self.assertEqual([row["id"] for row in rows], ["au_actor_wulfa_ui_open"])
+        self.assertEqual(rows[0]["audio"][0]["mediaId"], 7)
         self.assertEqual(
-            events[3]["characterAudioIdentityStatus"],
-            "uniqueCharacterTableTokenPrefix",
+            rows[0]["authoredNamespaceOwnershipStatus"],
+            "exactCharacterTableNamespaceIdentity",
         )
-        self.assertNotIn("characterAudioOwnerIds", events[4])
-        self.assertEqual(counts["eventsWithCharacterAudioIdentity"], 4)
+        self.assertEqual(rows[0]["runtimeActivationStatus"], "unobserved")
+        self.assertNotIn("triggerBindingStatus", rows[0])
+        self.assertNotIn("sourceSkillIds", rows[0])
+        self.assertEqual(projected["counts"]["uniqueEvents"], 1)
+        self.assertEqual(projected["counts"]["mediaOwnerAssociations"], 1)
+
+    def test_actor_namespace_fails_closed_on_duplicate_tokens_and_bad_delimiters(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            table = root / "structured/StreamingAssets/Table/CharacterTable.json"
+            table.parent.mkdir(parents=True)
+            table.write_text(json.dumps({
+                "chr_0001_wulfa": {},
+                "chr_0002_wulfa": {},
+            }), encoding="utf-8")
+            catalog = media_ownership.collect_character_audio_identity_catalog(root)
+        events = [
+            {"id": "au_actor_wulfa_ui_open", "contexts": []},
+            {"id": "au_actor_wulfa2_ui_open", "contexts": []},
+            {"id": "prefix_au_actor_wulfa_ui_open", "contexts": []},
+        ]
+        result = media_ownership.annotate_event_character_audio_identity(events, catalog)
+        self.assertEqual(result["eventsWithCharacterAudioIdentity"], 0)
+        self.assertTrue(all("characterAudioOwnerIds" not in event for event in events))
+
+    def test_enemy_namespace_projection_requires_exact_catalog_prefix(self):
+        projected = media_ownership.project_enemy_namespace_gameplay_audio(
+            [
+                {
+                    "id": "au_eny_0007_mimicw_die",
+                    "name": "au_eny_0007_mimicw_die",
+                    "eventIdentityStatus": "recoveredAuthoredName",
+                    "purposeKnowledgeStatus": "unknownUse",
+                    "playbackLocationStatus": "unknown",
+                    "possibleMediaCount": 1,
+                    "media": [{"mediaId": 7, "src": "/export/audio/7.flac"}],
+                },
+                {
+                    "id": "au_eny_0007_mimicw2_skill01",
+                    "eventIdentityStatus": "recoveredAuthoredName",
+                    "purposeKnowledgeStatus": "unknownUse",
+                    "playbackLocationStatus": "unknown",
+                    "possibleMediaCount": 1,
+                    "media": [{"mediaId": 8, "src": "/export/audio/8.flac"}],
+                },
+                {
+                    "id": "au_monster_aghornb_hit_fullbody_big_stagger",
+                    "eventIdentityStatus": "recoveredAuthoredName",
+                    "purposeKnowledgeStatus": "unknownUse",
+                    "playbackLocationStatus": "unknown",
+                    "possibleMediaCount": 1,
+                    "media": [{"mediaId": 9, "src": "/export/audio/9.flac"}],
+                },
+            ],
+            ["eny_0007_mimicw", "eny_0023_aghornb"],
+        )
+        rows = projected["enemies"]["eny_0007_mimicw"]
+        self.assertEqual([row["id"] for row in rows], ["au_eny_0007_mimicw_die"])
+        self.assertEqual(rows[0]["authoredNamespaceOwnershipStatus"], "recoveredEnemyNamespaceIdentity")
+        self.assertEqual(projected["counts"]["uniqueEvents"], 2)
+        monster_rows = projected["enemies"]["eny_0023_aghornb"]
+        self.assertEqual([row["id"] for row in monster_rows], ["au_monster_aghornb_hit_fullbody_big_stagger"])
+        self.assertEqual(
+            monster_rows[0]["namespaceEvidence"],
+            "uniqueRecoveredMonsterTokenAgainstCurrentEnemyTable",
+        )
+
+    def test_monster_namespace_fails_closed_on_duplicate_token(self):
+        projected = media_ownership.project_enemy_namespace_gameplay_audio(
+            [{
+                "id": "au_monster_aghornb_hit",
+                "eventIdentityStatus": "recoveredAuthoredName",
+                "purposeKnowledgeStatus": "unknownUse",
+                "playbackLocationStatus": "unknown",
+                "possibleMediaCount": 1,
+                "media": [{"mediaId": 9, "src": "/export/audio/9.flac"}],
+            }],
+            ["eny_0023_aghornb", "eny_0042_aghornb"],
+        )
+        self.assertEqual(projected["counts"]["uniqueEvents"], 0)
+        self.assertEqual(projected["counts"]["enemies"], 0)
+
+    def test_native_voice_response_projection_requires_unique_longest_enemy_prefix(self):
+        context = {
+            "kind": "nativeVoiceTriggerCallsite",
+            "triggerKey": "combat_dead",
+            "triggerRole": "temporarySpeakerDeathResponse",
+            "consumerType": "Beyond.Gameplay.Audio.VoiceTempSpeakerProcessor",
+            "consumerMethod": "ResponseDeath",
+            "targetBinding": "temporarySpeakerEntityAndSpeakerType",
+            "triggerBindingStatus": (
+                "exactCurrentBuildLiteralArgumentAndAudioDialogEventSuffix"
+            ),
+            "runtimeActivationStatus": (
+                "nativeBranchAndLiveResponseSelectionUnobserved"
+            ),
+            "runtimeSelectionStatus": (
+                "speakerCooldownProbabilityToneAndLiveChoiceUnobserved"
+            ),
+            "triggerRequestEvidence": [
+                "exactNativeLiteralLoadIntoTriggerArgument",
+                "exactAudioDialogPathHashEqualsVoiceIdAndWwiseEventId",
+            ],
+            "nativeMappingId": "current-build-test",
+            "methodVa": "0x1000",
+            "literalLoadVa": "0x1010",
+            "playbackInvocationVa": "0x1020",
+        }
+        projected = media_ownership.project_enemy_native_voice_response_audio(
+            [
+                {
+                    "id": "eny_0053_hsmob_tx01_combat_dead_sv",
+                    "category": "voice",
+                    "foundInWwise": True,
+                    "possibleMediaCount": 1,
+                    "contexts": [context],
+                    "media": [{
+                        "mediaId": 7,
+                        "src": "/export/audio/7.flac",
+                        "duration": 1.5,
+                    }],
+                },
+                {
+                    "id": "eny_0053_hsmob2_combat_dead_sv",
+                    "contexts": [context],
+                    "media": [],
+                },
+                {
+                    "id": "eny_generic_combat_dead_sv",
+                    "contexts": [context],
+                    "media": [],
+                },
+            ],
+            ["eny_0053_hsmob", "eny_0053_hsmob_tx01"],
+        )
+
+        rows = projected["enemies"]["eny_0053_hsmob_tx01"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], "eny_0053_hsmob_tx01_combat_dead_sv")
+        self.assertEqual(rows[0]["triggerKey"], "combat_dead")
+        self.assertEqual(rows[0]["mediaRefs"][0]["mediaId"], 7)
+        self.assertEqual(
+            rows[0]["ownerBindingStatus"],
+            "exactCurrentEnemyTableIdPrefixInNativeVoiceEvent",
+        )
+        self.assertEqual(
+            rows[0]["runtimeActivationStatus"],
+            "nativeBranchAndLiveResponseSelectionUnobserved",
+        )
+        self.assertEqual(projected["counts"]["triggerContexts"], 1)
+        self.assertEqual(projected["counts"]["unmatchedContexts"], 2)
+        self.assertNotIn("eny_0053_hsmob", projected["enemies"])
+
+    def test_enemy_response_candidates_require_explicit_owner_and_skip_native(self):
+        projected = media_ownership.project_enemy_response_candidate_audio(
+            [
+                {
+                    "id": "enemy_voice_exact",
+                    "category": "voice",
+                    "foundInWwise": True,
+                    "possibleMediaCount": 1,
+                    "contexts": [
+                        {"kind": "responsiveDialogVoice", "speakerId": "eny_0007_mimicw", "triggerKey": "combat_hurt", "evidence": "responsive"},
+                        {"kind": "abilityVoiceTriggerAction", "ownerId": "eny_0007_mimicw", "triggerKey": "combat_hurt", "evidence": "ability"},
+                    ],
+                    "media": [{"mediaId": 7, "src": "/audio/7.flac"}],
+                },
+                {
+                    "id": "eny_0007_mimicw_name_only",
+                    "contexts": [],
+                    "media": [{"mediaId": 8, "src": "/audio/8.flac"}],
+                },
+                {
+                    "id": "enemy_voice_native",
+                    "contexts": [
+                        {"kind": "responsiveDialogVoice", "speakerId": "eny_0007_mimicw"},
+                        {"kind": "nativeVoiceTriggerCallsite", "triggerKey": "combat_dead"},
+                    ],
+                    "media": [{"mediaId": 9, "src": "/audio/9.flac"}],
+                },
+            ],
+            ["eny_0007_mimicw"],
+        )
+        rows = projected["enemies"]["eny_0007_mimicw"]
+        self.assertEqual([row["id"] for row in rows], ["enemy_voice_exact"])
+        self.assertEqual(rows[0]["evidenceKinds"], [
+            "abilityVoiceTriggerAction", "responsiveDialogVoice",
+        ])
+        self.assertEqual(rows[0]["mediaRefs"][0]["mediaId"], 7)
+        self.assertEqual(rows[0]["ownerBindingStatus"], "exactResponseContextEnemyId")
+        self.assertEqual(projected["counts"]["uniqueEvents"], 1)
+
+    def test_native_voice_response_projection_requires_longest_character_prefix(self):
+        context = {
+            "kind": "nativeVoiceTriggerCallsite",
+            "triggerKey": "combat_heavy_hurt",
+            "triggerRole": "temporarySpeakerHeavyHurtResponse",
+            "consumerType": "Beyond.Gameplay.Audio.VoiceTempSpeakerProcessor",
+            "consumerMethod": "ResponseHeavyHurt",
+            "triggerBindingStatus": (
+                "exactCurrentBuildLiteralArgumentAndAudioDialogEventSuffix"
+            ),
+            "runtimeActivationStatus": (
+                "nativeBranchAndLiveResponseSelectionUnobserved"
+            ),
+            "nativeMappingId": "current-build-character-test",
+        }
+        projected = media_ownership.project_character_native_voice_response_audio(
+            [
+                {
+                    "id": "chr_0003_endminf_combat_heavy_hurt_sv",
+                    "category": "voice",
+                    "foundInWwise": True,
+                    "possibleMediaCount": 1,
+                    "contexts": [context],
+                    "media": [{"mediaId": 8, "src": "/export/audio/8.flac"}],
+                },
+                {
+                    "id": "chr_0003_endminf2_combat_heavy_hurt_sv",
+                    "contexts": [context],
+                    "media": [],
+                },
+                {
+                    "id": "chr_generic_combat_heavy_hurt_sv",
+                    "contexts": [context],
+                    "media": [],
+                },
+            ],
+            ["chr_0003_endmin", "chr_0003_endminf"],
+        )
+
+        rows = projected["characters"]["chr_0003_endminf"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["mediaRefs"][0]["mediaId"], 8)
+        self.assertEqual(
+            rows[0]["ownerBindingStatus"],
+            "exactCurrentCharacterTableIdPrefixInNativeVoiceEvent",
+        )
+        self.assertEqual(
+            rows[0]["runtimeActivationStatus"],
+            "nativeBranchAndLiveResponseSelectionUnobserved",
+        )
+        self.assertEqual(projected["counts"]["unmatchedContexts"], 2)
+        self.assertNotIn("chr_0003_endmin", projected["characters"])
 
     def test_animation_callback_link_preserves_non_matching_clip_and_owner(self):
         events = [

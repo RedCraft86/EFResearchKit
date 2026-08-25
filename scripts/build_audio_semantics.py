@@ -35,6 +35,7 @@ if __package__ == "scripts":
     from scripts.audio_semantics import (
         authored_components,
         context_utils,
+        dialog_lifecycle,
         event_projection,
         event_summary,
         external_source,
@@ -47,6 +48,7 @@ if __package__ == "scripts":
         purpose,
         responsive_voice,
         rtpc_alignment,
+        runtime_observations,
         scene_backgrounds,
         table_contexts,
         voice_requests,
@@ -56,6 +58,7 @@ elif not __package__:
     from audio_semantics import (
         authored_components,
         context_utils,
+        dialog_lifecycle,
         event_projection,
         event_summary,
         external_source,
@@ -68,6 +71,7 @@ elif not __package__:
         purpose,
         responsive_voice,
         rtpc_alignment,
+        runtime_observations,
         scene_backgrounds,
         table_contexts,
         voice_requests,
@@ -109,7 +113,7 @@ PROJECTILE_SOUND_PHASES = {
 # authoritative value; these names are presentation labels, not a claim that
 # selection behavior was evaluated offline.
 SELECTION_HIRC_TYPES = frozenset({5, 6, 12, 13})
-AUDIO_SEMANTIC_SCHEMA_VERSION = 131
+AUDIO_SEMANTIC_SCHEMA_VERSION = 132
 TRIGGER_CONTEXT_SCHEMA_VERSION = 39
 
 MONO_BEHAVIOUR_AUDIO_EVENT_FIELD_NAMES = frozenset({
@@ -124,9 +128,12 @@ MONO_BEHAVIOUR_AUDIO_EVENT_FIELD_NAMES = frozenset({
 })
 MONO_BEHAVIOUR_AUDIO_EVENT_PREFILTERS = tuple(sorted(
     {f"{name}._id" for name in MONO_BEHAVIOUR_AUDIO_EVENT_FIELD_NAMES}
-    | {"soundBase.soundSpawn", "soundBase.soundFinish", "PlayLineSound"}
+    | {
+        "soundBase.soundSpawn", "soundBase.soundFinish", "PlayLineSound",
+        "triggerFunctions", "levelGlobalEvents",
+    }
 ))
-MONO_BEHAVIOUR_AUDIO_CONTEXT_CACHE_SCHEMA_VERSION = 3
+MONO_BEHAVIOUR_AUDIO_CONTEXT_CACHE_SCHEMA_VERSION = 4
 RUNTIME_MODEL_CACHE_SCHEMA_VERSION = 109
 METADATA_EVENT_SYMBOL_SCHEMA_VERSION = 1
 METADATA_EVENT_SYMBOL_RE = re.compile(r"^AU_[A-Z0-9_]+$")
@@ -7064,10 +7071,15 @@ def _iter_mono_audio_object_index_rows(path: Path) -> Iterable[dict[str, Any]]:
                     yield row
 
     schema_ids: set[str] = set()
+    schema_fields: dict[str, frozenset[str]] = {}
     seen_objects: set[tuple[str, int]] = set()
     for row in matching_rows(MONO_BEHAVIOUR_AUDIO_EVENT_PREFILTERS):
         if row.get("recordType") == "schema" and row.get("schemaId"):
-            schema_ids.add(str(row["schemaId"]))
+            schema_id = str(row["schemaId"])
+            schema_ids.add(schema_id)
+            schema_fields[schema_id] = frozenset(
+                str(value) for value in row.get("fields") or []
+            )
             continue
         if row.get("recordType") != "object":
             continue
@@ -7075,7 +7087,11 @@ def _iter_mono_audio_object_index_rows(path: Path) -> Iterable[dict[str, Any]]:
         identity = (str(object_row.get("serializedFile") or ""), int(object_row.get("pathId") or 0))
         if identity not in seen_objects:
             seen_objects.add(identity)
-            yield row
+            enriched = dict(row)
+            enriched["_audioSchemaFields"] = schema_fields.get(
+                str(row.get("schemaId") or ""), frozenset()
+            )
+            yield enriched
     if not schema_ids:
         return
     schema_patterns = [f'\"schemaId\":\"{schema_id}\"' for schema_id in sorted(schema_ids)]
@@ -7087,7 +7103,11 @@ def _iter_mono_audio_object_index_rows(path: Path) -> Iterable[dict[str, Any]]:
         if identity in seen_objects:
             continue
         seen_objects.add(identity)
-        yield row
+        enriched = dict(row)
+        enriched["_audioSchemaFields"] = schema_fields.get(
+            str(row.get("schemaId") or ""), frozenset()
+        )
+        yield enriched
 
 
 def _mono_audio_event_scalar(path: Any, value: Any) -> tuple[int, str] | None:
@@ -7330,8 +7350,16 @@ def collect_mono_behaviour_audio_id_contexts(
                 for scalar in scalars
                 if isinstance(scalar[0], str)
             }
+            audio_map_schema_fields = row.get("_audioSchemaFields")
+            if not isinstance(audio_map_schema_fields, frozenset):
+                audio_map_schema_fields = frozenset()
             for scalar_path, _scalar_type, scalar_value in scalars:
-                parsed = _mono_audio_event_scalar(scalar_path, scalar_value)
+                parsed = (
+                    _mono_audio_event_scalar(scalar_path, scalar_value)
+                    or scene_backgrounds.audio_map_event_scalar(
+                        scalar_path, scalar_value, audio_map_schema_fields,
+                    )
+                )
                 if parsed is None:
                     continue
                 event_hash, authored_role = parsed
@@ -7415,6 +7443,20 @@ def collect_mono_behaviour_audio_id_contexts(
                     component_layout=context.get("managedReferenceLayout"),
                     component_type=script.get("fullName") or row.get("name"),
                 ))
+                if authored_role.startswith("audioMap"):
+                    context.update({
+                        "authoredFieldRole": authored_role,
+                        "authoredFieldRoleEvidence": "exactSerializedAudioMapDataSchemaField",
+                        "componentLayout": "Beyond.Gameplay.Audio.AudioMapData",
+                        "componentLayoutStatus": "exactSerializedSchema",
+                        "serializedFieldPathStatus": "exact",
+                        "evidence": "exactSerializedAudioMapDataEventFieldAndCurrentWwiseEvent",
+                        "triggerRequestEvidence": [
+                            "exactCompleteSerializedAudioMapDataSchema",
+                            "exactTypedAudioMapDataEventField",
+                            "exactCurrentWwiseEventHash",
+                        ],
+                    })
                 context["authoredFieldNameRaw"] = authored_role
                 role_counts[str(context.get("authoredFieldRole") or managed_literals.MONO_BEHAVIOUR_AUDIO_GENERIC_ROLE)] += 1
                 layout_counts[str(context.get("componentLayout") or "unknown")] += 1
@@ -7595,7 +7637,9 @@ def collect_mono_behaviour_audio_id_contexts(
         "state/callback execution, Event posting, Wwise acceptance, selected media, and audibility "
         "were not observed. The one raw-word exception is an exact typed PlayLineSound "
         "managed-reference payload whose six-field/24-byte layout is fixed by current IL2CPP "
-        "metadata and complete payload consumption. RTPC fields, generic integers, PathIDs, "
+        "metadata and complete payload consumption. AudioMapData trigger, level lifecycle, and "
+        "outdoor room-tone values are accepted only with the complete exact serialized schema. "
+        "RTPC fields, generic integers, PathIDs, "
         "untyped raw words, AudioVoTone selection rows, and ResponsiveDialog membership are excluded."
     )
     result = {
@@ -13051,6 +13095,7 @@ def build_audio_semantic_data(
     metadata_path: Path | None = None,
     gameassembly_path: Path | None = None,
     cutscene_events: dict[str, list[str]] | None = None,
+    runtime_trace_bundle: Path | None = None,
 ) -> dict[str, Any]:
     language = language.upper()
     native_context = native_evidence.validate_native_audio_evidence(
@@ -13419,6 +13464,17 @@ def build_audio_semantic_data(
             if event.get("id")
         },
         event_rows=events,
+    )
+    runtime_observation_projection = (
+        runtime_observations.apply_verified_runtime_observations(
+            events,
+            media,
+            runtime_trace_bundle,
+            expected_language=language,
+        )
+    )
+    character_namespace_gameplay = (
+        media_ownership.project_character_namespace_gameplay_audio(events)
     )
     static_rtpc_alignment = rtpc_alignment.build_static_rtpc_alignment(
         alignment_audio_index,
@@ -13901,6 +13957,12 @@ def build_audio_semantic_data(
                 if key not in {"schemaVersion", "evidenceBoundary"}
             },
             "eventRecords": len(events),
+            "runtimeObservedEventRecords": int(
+                runtime_observation_projection.get("eventCount") or 0
+            ),
+            "runtimeObservedMediaRecords": int(
+                runtime_observation_projection.get("mediaCount") or 0
+            ),
             "sceneBackgroundExactNamedScenes": int(
                 (scene_background_semantics.get("counts") or {}).get(
                     "exactNamedScenes", 0
@@ -14608,6 +14670,7 @@ def build_audio_semantic_data(
             "evidenceBoundary": "Cue behavior exprType=3 values, constant LevelScript Event parameters, LevelScript cue names joined by the native AudioHashGenerator to exact cue behavior expressions, non-empty PhysicsAudio Event properties, and normal ModelView Event plus positioned direct-position hashes are authored requests. Positioned custom/entity state rows are typed controls only and never Event ownership. Metadata-named InitialRTPC rows are exact ID/hash joins that preserve authored curve targets and controlled properties; they do not observe live RTPC updates or audibility. PhysicsAudio/ModelView RTPC names, ModelView spatial/custom-audio rows, cue/action execution, handler conditions, exprType=8 strings, dynamic Params, state/variable writes, playback handles, placeholder-music ids, unresolved cue hashes, and musicCue* values remain typed controls or unresolved runtime state. LevelEvent OnAudioStateChanged and OnMusicBeatEvent are current-build trigger-input definitions, not playback requests; exhaustive active-overlay scanning found zero authored occurrences. Two non-music Wwise selector groups have exact native setter callsites; three more have high-confidence semantic correlation only, and ten music State groups have exact current-metadata/native-setter joins. None reveal a live value, selected branch, or authored group name.",
         },
         "runtimeModel": runtime_model,
+        "runtimeObservations": runtime_observation_projection,
         "externalSourceEventIdentityAudit": external_source_event_identity_audit,
         "evidenceBoundary": {
             "decodedMedia": "A decoded FLAC/WAV/WEM is a source media object, not proof that it played.",
@@ -14658,11 +14721,170 @@ def build_audio_semantic_data(
                 "prove static request routing, asynchronous Event preparation, Wwise posting, and playing-id "
                 "lifetime handling; they are not a live execution trace, active state, or selected media leaf."
             ),
+            "runtimeObservations": runtime_observation_projection.get(
+                "evidenceBoundary", ""
+            ),
             "externalSourceEventIdentity": external_source_event_identity_audit.get(
                 "evidenceBoundary", ""
             ),
         },
     }
+    gameplay_sound_effects_path = (
+        webui_root / f"data/lang/{language}/gameplay/sound_effects.json"
+    )
+    conversation_dir = webui_root / f"data/lang/{language}/conv"
+    conversation_ids = {
+        path.stem for path in conversation_dir.glob("*.json") if path.is_file()
+    }
+    dialog_lifecycle_story = dialog_lifecycle.project_story_lifecycle_audio(
+        trigger_context_catalog.get("contexts") or (),
+        conversation_ids,
+    )
+    previous_audio_index = load_json(out_root / "index.json", {})
+    previous_lifecycle_ids = set(
+        ((previous_audio_index.get("storyDialogLifecycleAudio") or {}).get(
+            "conversationIds"
+        ) or ())
+        if isinstance(previous_audio_index, dict)
+        else ()
+    )
+    lifecycle_by_conversation = dialog_lifecycle_story.get("conversations") or {}
+    for conversation_id in sorted(previous_lifecycle_ids | set(lifecycle_by_conversation)):
+        conversation_path = conversation_dir / f"{conversation_id}.json"
+        conversation = load_json(conversation_path, {})
+        if not isinstance(conversation, dict) or not conversation:
+            continue
+        rows = lifecycle_by_conversation.get(conversation_id) or []
+        if rows:
+            conversation["dialogLifecycleAudio"] = rows
+        else:
+            conversation.pop("dialogLifecycleAudio", None)
+        json_dump(conversation_path, conversation)
+    payload["storyDialogLifecycleAudio"] = {
+        "schemaVersion": dialog_lifecycle_story.get("schemaVersion"),
+        "counts": dialog_lifecycle_story.get("counts") or {},
+        "conversationIds": sorted(lifecycle_by_conversation),
+        "evidenceBoundary": dialog_lifecycle_story.get("evidenceBoundary") or "",
+    }
+    gameplay_sound_effects = load_json(gameplay_sound_effects_path, {})
+    if isinstance(gameplay_sound_effects, dict) and gameplay_sound_effects:
+        gameplay_characters = gameplay_sound_effects.setdefault("characters", {})
+        gameplay_enemies = gameplay_sound_effects.setdefault("enemies", {})
+        for gameplay_character in gameplay_characters.values():
+            if isinstance(gameplay_character, dict):
+                gameplay_character.pop("authoredNamespaceEvents", None)
+        for character_id, namespace_events in (
+            character_namespace_gameplay.get("characters") or {}
+        ).items():
+            gameplay_characters.setdefault(character_id, {})[
+                "authoredNamespaceEvents"
+            ] = namespace_events
+        enemy_namespace_gameplay = (
+            media_ownership.project_enemy_namespace_gameplay_audio(
+                events,
+                gameplay_enemies.keys(),
+            )
+        )
+        enemy_native_voice_responses = (
+            media_ownership.project_enemy_native_voice_response_audio(
+                events,
+                gameplay_enemies.keys(),
+            )
+        )
+        enemy_response_candidates = (
+            media_ownership.project_enemy_response_candidate_audio(
+                events,
+                gameplay_enemies.keys(),
+            )
+        )
+        character_native_voice_responses = (
+            media_ownership.project_character_native_voice_response_audio(
+                events,
+                (
+                    row.get("characterId")
+                    for row in character_audio_catalog.get("characters") or ()
+                    if isinstance(row, dict)
+                ),
+            )
+        )
+        for gameplay_character in gameplay_characters.values():
+            if isinstance(gameplay_character, dict):
+                gameplay_character.pop("nativeVoiceResponseEvents", None)
+        for character_id, response_events in (
+            character_native_voice_responses.get("characters") or {}
+        ).items():
+            gameplay_characters.setdefault(character_id, {})[
+                "nativeVoiceResponseEvents"
+            ] = response_events
+        for gameplay_enemy in gameplay_enemies.values():
+            if isinstance(gameplay_enemy, dict):
+                gameplay_enemy.pop("authoredNamespaceEvents", None)
+                gameplay_enemy.pop("nativeVoiceResponseEvents", None)
+                gameplay_enemy.pop("enemyResponseCandidateEvents", None)
+        for enemy_id, namespace_events in (
+            enemy_namespace_gameplay.get("enemies") or {}
+        ).items():
+            gameplay_enemies.setdefault(enemy_id, {})[
+                "authoredNamespaceEvents"
+            ] = namespace_events
+        for enemy_id, response_events in (
+            enemy_native_voice_responses.get("enemies") or {}
+        ).items():
+            gameplay_enemies.setdefault(enemy_id, {})[
+                "nativeVoiceResponseEvents"
+            ] = response_events
+        for enemy_id, response_events in (
+            enemy_response_candidates.get("enemies") or {}
+        ).items():
+            gameplay_enemies.setdefault(enemy_id, {})[
+                "enemyResponseCandidateEvents"
+            ] = response_events
+        gameplay_sound_effects["schemaVersion"] = 10
+        gameplay_sound_effects["characterNamespaceAudio"] = {
+            "schemaVersion": character_namespace_gameplay.get("schemaVersion"),
+            "counts": character_namespace_gameplay.get("counts") or {},
+            "evidenceBoundary": (
+                character_namespace_gameplay.get("evidenceBoundary") or ""
+            ),
+        }
+        gameplay_sound_effects["enemyNamespaceAudio"] = {
+            "schemaVersion": enemy_namespace_gameplay.get("schemaVersion"),
+            "counts": enemy_namespace_gameplay.get("counts") or {},
+            "evidenceBoundary": enemy_namespace_gameplay.get("evidenceBoundary") or "",
+        }
+        gameplay_sound_effects["enemyNativeVoiceResponses"] = {
+            "schemaVersion": enemy_native_voice_responses.get("schemaVersion"),
+            "counts": enemy_native_voice_responses.get("counts") or {},
+            "evidenceBoundary": (
+                enemy_native_voice_responses.get("evidenceBoundary") or ""
+            ),
+        }
+        gameplay_sound_effects["characterNativeVoiceResponses"] = {
+            "schemaVersion": character_native_voice_responses.get("schemaVersion"),
+            "counts": character_native_voice_responses.get("counts") or {},
+            "evidenceBoundary": (
+                character_native_voice_responses.get("evidenceBoundary") or ""
+            ),
+        }
+        gameplay_sound_effects["enemyResponseCandidates"] = {
+            "schemaVersion": enemy_response_candidates.get("schemaVersion"),
+            "counts": enemy_response_candidates.get("counts") or {},
+            "evidenceBoundary": enemy_response_candidates.get("evidenceBoundary") or "",
+        }
+        gameplay_counts = gameplay_sound_effects.setdefault("counts", {})
+        for key, value in (character_namespace_gameplay.get("counts") or {}).items():
+            gameplay_counts[f"characterNamespace{key[0].upper()}{key[1:]}"] = value
+        for key, value in (enemy_namespace_gameplay.get("counts") or {}).items():
+            gameplay_counts[f"enemyNamespace{key[0].upper()}{key[1:]}"] = value
+        for key, value in (enemy_native_voice_responses.get("counts") or {}).items():
+            gameplay_counts[f"enemyNativeVoice{key[0].upper()}{key[1:]}"] = value
+        for key, value in (
+            character_native_voice_responses.get("counts") or {}
+        ).items():
+            gameplay_counts[f"characterNativeVoice{key[0].upper()}{key[1:]}"] = value
+        for key, value in (enemy_response_candidates.get("counts") or {}).items():
+            gameplay_counts[f"enemyResponseCandidate{key[0].upper()}{key[1:]}"] = value
+        json_dump(gameplay_sound_effects_path, gameplay_sound_effects)
     json_dump(out_root / "index.json", payload)
     return payload
 
@@ -14682,6 +14904,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--metadata", type=Path, default=None)
+    parser.add_argument(
+        "--runtime-trace-bundle",
+        type=Path,
+        default=None,
+        help="Optional verified audio runtime-trace JSON bundle to project onto Event/media rows.",
+    )
     args = parser.parse_args(argv)
     if args.metadata is None and args.game_root is not None:
         installed = args.game_root / DEFAULT_METADATA_REL
@@ -14705,6 +14933,11 @@ def main(argv: list[str] | None = None) -> int:
         gameassembly_path=(
             (args.game_root.parent / "GameAssembly.dll").resolve()
             if args.game_root is not None
+            else None
+        ),
+        runtime_trace_bundle=(
+            args.runtime_trace_bundle.resolve()
+            if args.runtime_trace_bundle is not None
             else None
         ),
     )

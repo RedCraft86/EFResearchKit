@@ -64,6 +64,13 @@ INDEXED_EVENT_RE = re.compile(r"^(levelInitEvents|levelExitEvents)\[(\d+)\]$")
 EVENT_HASH_FIELD_RE = re.compile(
     r"(?:audio|sound|event).*?(?:\._id|event)$", re.IGNORECASE
 )
+AUDIO_MAP_SCHEMA_FIELDS = frozenset({
+    "triggerFunctions.Array.data.eventIn.Array.data:unsigned int",
+    "triggerFunctions.Array.data.eventOut.Array.data:unsigned int",
+    "levelGlobalEvents._events.Array.data.levelInitEvents.Array.data:unsigned int",
+    "levelGlobalEvents._events.Array.data.levelExitEvents.Array.data:unsigned int",
+    "levelGlobalEvents._events.Array.data.outdoorRoomToneEvent:unsigned int",
+})
 AMBIENCE_NAME_MARKERS = (
     "au_amb_", "ambient", "ambience", "roomtone", "room_tone",
 )
@@ -79,6 +86,46 @@ SceneIdentityKey = tuple[Any, ...]
 
 class SceneBackgroundError(RuntimeError):
     """Raised when the published object-index evidence cannot be trusted."""
+
+
+def audio_map_event_scalar(
+    path: Any,
+    value: Any,
+    schema_fields: frozenset[str],
+) -> tuple[int, str] | None:
+    """Classify an Event only under the complete serialized AudioMapData schema."""
+
+    if not AUDIO_MAP_SCHEMA_FIELDS.issubset(schema_fields):
+        return None
+    scalar_path = str(path or "")
+    role = ""
+    if re.fullmatch(r"\$\.triggerFunctions\[\d+\]\.eventIn\[\d+\]", scalar_path):
+        role = "audioMapTriggerEnter"
+    elif re.fullmatch(r"\$\.triggerFunctions\[\d+\]\.eventOut\[\d+\]", scalar_path):
+        role = "audioMapTriggerExit"
+    elif re.fullmatch(
+        r"\$\.levelGlobalEvents\._events\[\d+\]\.levelInitEvents\[\d+\]",
+        scalar_path,
+    ):
+        role = "audioMapLevelInit"
+    elif re.fullmatch(
+        r"\$\.levelGlobalEvents\._events\[\d+\]\.levelExitEvents\[\d+\]",
+        scalar_path,
+    ):
+        role = "audioMapLevelExit"
+    elif re.fullmatch(
+        r"\$\.levelGlobalEvents\._events\[\d+\]\.outdoorRoomToneEvent",
+        scalar_path,
+    ):
+        role = "audioMapOutdoorRoomTone"
+    if not role:
+        return None
+    try:
+        numeric = int(value, 0) if isinstance(value, str) else int(value)
+    except (TypeError, ValueError):
+        return None
+    event_hash = numeric & 0xFFFFFFFF
+    return (event_hash, role) if event_hash else None
 
 
 def _streaming_instance_paths(export_root: Path) -> list[Path]:
@@ -2667,26 +2714,48 @@ def collect_scene_background_semantics(
     sources: tuple[str, ...] = ("StreamingAssets", "Persistent"),
     scene_containment_index: Any = None,
 ) -> dict[str, Any]:
-    """Load validated merged indexes, scan each once, and build the catalog."""
+    """Load each validated merged index once and build a source-scoped catalog.
+
+    A missing or invalid index excludes only that VFS source.  Exact rows from
+    another independently validated source remain usable; no object identity
+    or containment edge is joined across the missing-source boundary.
+    """
     rows_by_source: dict[str, Iterable[dict[str, Any]]] = {}
     evidence: list[dict[str, Any]] = []
+    source_diagnostics: list[dict[str, Any]] = []
     expected_counts: dict[str, int] = {}
     for source in sources:
         summary = load_animestudio_object_index_summary(export_root, source)
         if summary is None:
-            raise SceneBackgroundError(
-                f"{source}: no published object index; run an installed-game Story/all "
-                "export with --animestudio-object-index"
-            )
+            source_diagnostics.append({
+                "source": source,
+                "status": "missingPublishedObjectIndex",
+                "diagnostic": (
+                    f"{source}: no published object index; run an installed-game "
+                    "Story/all export with --animestudio-object-index"
+                ),
+            })
+            continue
         if summary.get("complete") is not True:
             errors = "; ".join(str(value) for value in summary.get("errors") or ())
-            raise SceneBackgroundError(
-                f"{source}: published object index is invalid: {errors or 'unknown error'}"
-            )
+            source_diagnostics.append({
+                "source": source,
+                "status": "invalidPublishedObjectIndex",
+                "diagnostic": (
+                    f"{source}: published object index is invalid: "
+                    f"{errors or 'unknown error'}"
+                ),
+            })
+            continue
         output = (summary.get("outputs") or {}).get("objects") or {}
         relative_name = str(output.get("path") or "")
         if not relative_name or Path(relative_name).name != relative_name:
-            raise SceneBackgroundError(f"{source}: merged objects output path is invalid")
+            source_diagnostics.append({
+                "source": source,
+                "status": "invalidPublishedObjectIndex",
+                "diagnostic": f"{source}: merged objects output path is invalid",
+            })
+            continue
         index_dir = animestudio_object_index_dir(export_root, source)
         rows_by_source[source] = _iter_gzip_rows(index_dir / relative_name)
         expected_counts[source] = int((summary.get("counts") or {}).get("objects") or 0)
@@ -2698,6 +2767,14 @@ def collect_scene_background_semantics(
             "expectedObjectRows": expected_counts[source],
             "stageSignatureSha256": (summary.get("stageSignature") or {}).get("sha256"),
         })
+
+    if not rows_by_source:
+        diagnostics = "; ".join(
+            str(row.get("diagnostic") or "") for row in source_diagnostics
+        )
+        raise SceneBackgroundError(
+            diagnostics or "no validated published object index is available"
+        )
 
     streaming_instance_catalog = _load_streaming_instance_identity_catalog(export_root)
     result = build_scene_background_catalog(
@@ -2719,6 +2796,13 @@ def collect_scene_background_semantics(
             raise SceneBackgroundError(
                 f"{source}: merged object count mismatch: {actual} parsed, {expected} published"
             )
+
+    result["sourceDiagnostics"] = source_diagnostics
+    result["counts"]["requestedObjectIndexSources"] = len(sources)
+    result["counts"]["validatedObjectIndexSources"] = len(rows_by_source)
+    result["counts"]["unavailableObjectIndexSources"] = len(source_diagnostics)
+    if source_diagnostics:
+        result["status"] = "validatedPartialPublishedObjectIndex"
 
     wwise_by_hash = _wwise_lookup(audio_index)
     media_by_id = _media_lookup(audio_index)
@@ -2842,4 +2926,9 @@ def collect_scene_background_semantics(
         "scene activation, live State/RTPC values, listener position, branch selection, "
         "playback, and audibility remain unobserved."
     )
+    if source_diagnostics:
+        result["evidenceBoundary"] += (
+            " Missing or invalid VFS object-index sources are excluded source-locally; "
+            "no cross-source identity, containment, or ownership join is inferred."
+        )
     return result

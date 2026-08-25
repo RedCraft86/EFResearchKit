@@ -34,6 +34,11 @@ Useful shared flags:
 - `--with-assets` adds asset indexes and CN audio relinking.
 - `--focused-assets`, `--default-assets`, and `--debug-assets` select asset
   scope from narrowest to broadest.
+- The default asset scope includes AnimationClip conversion plus
+  AnimatorController and AnimatorOverrideController JSON. Audio uses these as
+  authored callback, controller-reachability, and clip-substitution evidence;
+  controller JSON stays on the broad dependency-loading path so cross-bundle
+  PPtr targets are not silently withheld.
 - `--asset-jobs N` caps AnimeStudio workers; `--webui-jobs N` caps independent
   post-Story builders.
 - `--game-root PATH` overrides the configured client for one run.
@@ -81,7 +86,9 @@ Packaging emits three matching archives: the main Story archive owns Story,
 Text, Updates, Mission Pipeline, shared WebUI code, and compact Audio semantics;
 the assets archive owns Map, Characters, Gameplay, and exported image/video
 payloads; the audio archive owns FLAC media and raw audio indexes. The retired
-Asset Browser and 3D model payloads are intentionally excluded.
+Asset Browser and 3D model payloads are intentionally excluded. Archives are
+built and atomically published one at a time in Story, assets, then audio order,
+so each completed archive is available while the next archive is still building.
 
 `build_gameplay.py` owns every Gameplay dataset. Behavior-focused stages live
 in `gameplay_builder/`; its `asset-refs` stage calls the public
@@ -243,6 +250,18 @@ tools\frida-runtime\venv\Scripts\python.exe -m scripts.story_recovery.runtime_tr
 python -m scripts.story_recovery.runtime_trace import --profile mission CAPTURE.jsonl
 python -m scripts.story_recovery.runtime_trace import --profile audio CAPTURE.jsonl
 ```
+
+To publish a verified imported capture onto the Audio Event/media detail rows,
+rerun the semantic publisher with its JSON bundle:
+
+```bat
+python scripts\build_audio_semantics.py --language CN --runtime-trace-bundle reports\story\recovery\audio_runtime_trace.json
+```
+
+The projection requires the bundle's current schema, matching language, and
+verified GameAssembly path/size/SHA-256 facts. It records observed managed
+request boundaries and exact Event-to-media relations, but never promotes a
+capture to selected Wwise branch, decoded leaf, or audibility evidence.
 
 The reviewed LevelScript task paths are builder-owned in
 `story_builder/native_contracts/mission_task_paths.json`. The protocol registry
@@ -547,6 +566,9 @@ rejects the parent before child projection. `audio_cue_native.py` owns the
 selected `global-metadata.dat` / `GameAssembly.dll` gate: enum/operator names
 are published only for a validated exact contract, while missing or mismatched
 native inputs keep those names absent.
+The validated native-literal catalog also covers exact anchor-wave hit-state
+routes and 3D-radio narrative selector values; these are authored callsite
+contexts, not runtime execution or audible-playback evidence.
 
 MonoBehaviour `monoBehaviourAudioIdField` contexts are projected by
 `audio_semantics.managed_literals.project_mono_behaviour_audio_field`. The
@@ -556,13 +578,18 @@ and exact GameObject placement stay separately searchable. Component or
 callback execution, Event posting, Wwise selection, and audibility remain
 unobserved. Role/layout coverage is emitted in generated Audio stats and Event
 summaries rather than fixed in this document.
+Complete serialized AudioMapData schemas also admit their exact trigger
+enter/exit, level lifecycle, and outdoor-room-tone uint32 Event fields. The
+schema gate rejects incomplete lookalikes before a numeric Wwise match becomes
+a context.
 
-`scene_backgrounds.py` owns the scene-background catalog. It consumes the real
-AnimeStudio AssetMap object root in one bounded streaming pass, using exact
-AssetMap `Source` + `PathID` identities. Prefab-local and scene-asset
+`scene_backgrounds.py` owns the scene-background catalog. It consumes each
+validated AnimeStudio AssetMap object root in one bounded streaming pass,
+using exact AssetMap `Source` + `PathID` identities. Prefab-local and scene-asset
 containment candidates remain separate; only an authoritative scene ID with
 unique scene containment promotes scene ownership. Missing, malformed, or
-unreadable maps fail closed rather than falling back to names or paths. It
+unreadable sources are excluded with explicit diagnostics while independently
+validated sources remain publishable; no cross-source edge is inferred. It
 resolves `AudioMapData` and scene emitters by script type, and joins exact
 `AudioLevel` rows plus `MissionRuntimeAsset.acceptMode.levelId`. The semantic
 publisher writes `webui/data/lang/<LANG>/audio/scene_backgrounds.json` with
@@ -620,13 +647,39 @@ Mixed Events retain that identity only on their callback occurrence/Clip rows,
 not as a single Event owner. This does not prove CharacterTable identity,
 Animator execution, playback, or audibility.
 The same domain loads current `CharacterTable` keys and assigns authored
-`chr_*`/`au_chr_*` Event namespaces, plus Event-leading internal character
-tokens such as `lastrite_*`, to a character only through a delimited full key,
-a unique four-digit character-id prefix, or a uniquely owned exact token. It
+`chr_*`/`au_chr_*` Event namespaces, leading `au_actor_<token>_*` Events, plus
+Event-leading internal character tokens such as `lastrite_*`, to a character
+only through a delimited full key, a unique four-digit character-id prefix, or
+a uniquely owned exact token. It
 propagates that owner set to possible media, retaining every owner when a Wwise
 leaf is shared.
 Generic character templates, display-name similarity, actions, runtime
 requests, selected leaves, and playback positions are not inferred.
+`audio_semantics/media_ownership.py` also owns the compact Gameplay projection
+of these exact namespace Events and playable candidates. The semantics entry
+point only publishes that projection into the language-specific
+`gameplay/sound_effects.json` sidecar; it remains separate from trigger-backed
+skill and animation audio.
+The same projection accepts a leading `au_monster_<token>_*` Event only when
+that token maps to one exact current `EnemyTable` id; it remains separate from
+full `au_eny_<id>_*` matches and is identity-only.
+Native voice-response callsites are published separately when their exact
+AudioDialog Event has one longest delimited current EnemyTable prefix. They
+retain response role and media candidates without claiming live selection or
+playback.
+The same bounded projection is published for unique CharacterTable prefixes;
+Endministrator gender variants continue to use the existing synthetic-item
+alias rather than inventing a new WebUI owner.
+Explicit enemy response candidates from ResponsiveDialog, skill, and animation
+contexts are published separately when their owner field exactly equals a
+current EnemyTable id; native-covered Events stay in the stronger native group.
+The semantic builder also projects playable `AudioDialogCustomEventTable`
+preload/post-enter rows onto matching `conv/<dialogId>.json` records. Missing
+conversation IDs remain Audio-only and lifecycle dispatch is not inferred.
+The same publisher projects recovered grammar-derived `au_` names to an enemy
+only when the full current EnemyTable id prefix plus delimiter matches exactly.
+That `enemyNamespaceAudio` projection is identity-only and is not a trigger or
+runtime-consumer claim.
 Every supported serialized AnimationClip `PostAudioEvent` context is also
 projected as an explicit Event/media callback link with its clip, owner,
 function, reachability, and AnimatorController names when available. This
@@ -714,6 +767,34 @@ re-exports, or broad `ImportError` import fallbacks.
 For the remaining live source-state/sourceInfo-to-open-handle, optional
 decoder-callback, and unobserved-codec-descriptor joins,
 the read-only runtime probe is prepared with the repo-local Frida environment:
+
+The maintained guided native observer is `tools\EndfieldCapture`. Close the
+game and run `tools\EndfieldCapture\StartCapture.bat`; it validates the pinned
+build, arms graphics and audio by default, launches
+`Endfield.exe -force-d3d11`, and displays the capture keys. Use the printed
+`collect` command after `stop`. Raw sessions belong under
+`scratch/reverse_engineering/endfield_capture/`; see the tool README for the
+provider and completeness contracts. The older audio-only launchers below
+remain focused diagnostics, not the normal combined workflow.
+
+The experimental native fallback under `tools/audio-runtime-capture/` verifies
+the selected process, `GameAssembly.dll`, and `AkSoundEngine.dll`, then can
+install the manifest-derived `audio_chain_v1` read-only profile. That profile
+records the managed external-source request, Wwise source-media lookup, and
+default I/O open; the descriptor-post boundary stays disabled until its ABI is
+recovered. Validate the single manifest and payload contract before any
+authorized staging:
+
+```bat
+python -m scripts.story_recovery.runtime_trace_audio_native_capture --check-only --native-library PATH\AudioCapture.dll
+```
+
+The launcher copies the verified x64 DLL into a private package directory,
+writes its adjacent `audio_capture.session.json`, makes at most one ordinary
+LoadLibrary injection attempt when explicitly requested, and requires an
+importer-compatible, fully hash-matched `session_start` handshake before it
+reports the hash-matched session armed. A denial, incomplete module gate, hook
+attachment failure, or unsupported profile stops without retry or fallback.
 
 ```bat
 tools\frida-runtime\venv\Scripts\python.exe -m scripts.story_recovery.runtime_trace capture --profile audio --check-only

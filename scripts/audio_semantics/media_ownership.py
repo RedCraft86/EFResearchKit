@@ -250,11 +250,17 @@ def annotate_event_character_audio_identity(
             event.get("id") or event.get("eventId") or event.get("name") or ""
         ).strip()
         folded_event_id = event_id.casefold()
+        actor_token_match = re.match(
+            r"^au_actor_([a-z0-9]+)(?:_|$)", folded_event_id, re.IGNORECASE
+        )
+        actor_token = actor_token_match.group(1) if actor_token_match else ""
         token_prefix_matches = sorted(
             token
             for token in token_ids
             if folded_event_id == token or folded_event_id.startswith(f"{token}_")
         )
+        if actor_token and actor_token in token_ids:
+            token_prefix_matches = sorted(set(token_prefix_matches) | {actor_token})
         is_chr_namespace = "chr_" in folded_event_id
         if not is_chr_namespace and not token_prefix_matches:
             continue
@@ -304,8 +310,12 @@ def annotate_event_character_audio_identity(
                 token_candidates = sorted(token_ids[token_prefix_matches[0]])
                 if len(token_candidates) == 1:
                     owner_ids = token_candidates
-                    match_status = "uniqueCharacterTableTokenPrefix"
-                    evidence = "uniqueCharacterTableTokenAtWwiseEventPrefix"
+                    if actor_token and token_prefix_matches[0] == actor_token:
+                        match_status = "uniqueCharacterTableActorToken"
+                        evidence = "uniqueCharacterTableTokenAtActorEventPrefix"
+                    else:
+                        match_status = "uniqueCharacterTableTokenPrefix"
+                        evidence = "uniqueCharacterTableTokenAtWwiseEventPrefix"
                 else:
                     event["characterAudioIdentityStatus"] = (
                         "ambiguousCharacterTableTokenPrefix"
@@ -382,11 +392,531 @@ def annotate_event_character_audio_identity(
             "A delimited full CharacterTable key in an Event id is exact authored "
             "namespace ownership. When the authored token is shortened or omitted, "
             "a leading chr_NNNN segment is accepted only when that four-digit id is "
-            "unique in the current CharacterTable. An Event-leading internal character "
-            "token is accepted only with an exact delimiter and one catalog owner. "
+            "unique in the current CharacterTable. A delimited actor_<token> Event "
+            "prefix is accepted only when its token has one catalog owner. An "
+            "Event-leading internal character token is accepted only with an exact "
+            "delimiter and one catalog owner. "
             "This recovers the named character "
             "domain, not an action, skill, runtime request, selected Wwise leaf, "
             "playback location, or audibility."
+        ),
+    }
+
+
+CHARACTER_NAMESPACE_GAMEPLAY_EVENT_FIELDS = (
+    "id",
+    "category",
+    "foundInWwise",
+    "possibleMediaCount",
+    "playableCandidates",
+    "playRootCount",
+    "playRootActionIds",
+    "mediaRelationTypes",
+    "selectionContainerTypes",
+    "traversalStatus",
+    "unresolvedNodeCount",
+    "runtimeSelection",
+    "characterAudioIdentityStatus",
+    "characterAudioNameMatchEvidence",
+    "characterAudioContextOwnerIds",
+    "characterAudioContextRelationshipStatus",
+)
+
+
+def project_character_namespace_gameplay_audio(
+    event_rows: Iterable[dict[str, Any]],
+) -> dict[str, Any]:
+    """Project exact authored character namespaces onto Gameplay owners.
+
+    This is deliberately distinct from Gameplay trigger ownership.  An exact
+    CharacterTable token in a Wwise Event name identifies the authored
+    character namespace, but does not prove an action, skill, callback, Event
+    posting, selected leaf, or playback.
+    """
+
+    characters: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    media_associations = 0
+    playable_event_associations = 0
+    unique_event_ids: set[str] = set()
+    unique_media: set[tuple[str, str]] = set()
+    for event in event_rows:
+        if not isinstance(event, dict):
+            continue
+        event_id = str(event.get("id") or "").strip()
+        owner_ids = sorted({
+            str(owner_id).strip()
+            for owner_id in event.get("characterAudioOwnerIds") or ()
+            if str(owner_id).strip()
+        })
+        if not event_id or not owner_ids:
+            continue
+        audio: list[dict[str, Any]] = []
+        for media in event.get("media") or ():
+            if not isinstance(media, dict) or not media.get("src"):
+                continue
+            compact_media = {
+                key: media[key]
+                for key in (
+                    "mediaId", "src", "duration", "format", "contentSha256",
+                )
+                if media.get(key) not in (None, "", [])
+            }
+            compact_evidence = [
+                {
+                    key: evidence[key]
+                    for key in (
+                        "rootActionIds", "soundObjectCount", "relationTypes",
+                    )
+                    if evidence.get(key) not in (None, "", [])
+                }
+                for evidence in media.get("wwiseMediaEvidence") or ()
+                if isinstance(evidence, dict)
+            ]
+            if compact_evidence:
+                compact_media["wwiseMediaEvidence"] = compact_evidence
+            audio.append(compact_media)
+        compact = {
+            key: event[key]
+            for key in CHARACTER_NAMESPACE_GAMEPLAY_EVENT_FIELDS
+            if event.get(key) not in (None, "", [])
+        }
+        compact["audio"] = audio
+        compact["authoredNamespaceOwnershipStatus"] = (
+            "exactCharacterTableNamespaceIdentity"
+        )
+        compact["runtimeActivationStatus"] = "unobserved"
+        unique_event_ids.add(event_id.casefold())
+        for media in audio:
+            unique_media.add((
+                str(media.get("src") or ""),
+                str(media.get("mediaId") or ""),
+            ))
+        for owner_id in owner_ids:
+            characters[owner_id].append(dict(compact))
+            media_associations += len(audio)
+            if audio or int(event.get("possibleMediaCount") or 0):
+                playable_event_associations += 1
+
+    for rows in characters.values():
+        rows.sort(key=lambda row: str(row.get("id") or "").casefold())
+    return {
+        "schemaVersion": 1,
+        "characters": dict(sorted(characters.items())),
+        "counts": {
+            "characters": len(characters),
+            "uniqueEvents": len(unique_event_ids),
+            "eventOwnerAssociations": sum(len(rows) for rows in characters.values()),
+            "playableEventOwnerAssociations": playable_event_associations,
+            "mediaOwnerAssociations": media_associations,
+            "uniquePlayableMedia": len(unique_media),
+        },
+        "evidenceBoundary": (
+            "Each row has one exact CharacterTable owner recovered from a delimited "
+            "full key, a current-table-unique four-digit chr namespace, a unique "
+            "actor_<token> prefix, or a unique Event-leading internal character token. "
+            "This is authored namespace "
+            "identity only: no action execution, skill ownership, callback, Event "
+            "posting, Wwise branch selection, playback, or audibility is claimed."
+        ),
+    }
+
+
+def project_enemy_namespace_gameplay_audio(
+    event_rows: Iterable[dict[str, Any]],
+    enemy_ids: Iterable[str],
+) -> dict[str, Any]:
+    """Project recovered full enemy namespaces onto existing enemy owners.
+
+    Grammar-derived Event names are kept separate from trigger-backed enemy
+    audio.  A full ``au_`` + current EnemyTable id + delimiter is an authored
+    namespace identity, not proof of a skill, animation, callback, or playback
+    consumer.
+    """
+
+    known_enemy_ids = sorted({
+        str(value).strip().casefold()
+        for value in enemy_ids
+        if str(value).strip()
+    })
+    enemy_token_ids: dict[str, list[str]] = defaultdict(list)
+    for enemy_id in known_enemy_ids:
+        parts = enemy_id.split("_", 2)
+        if len(parts) == 3 and parts[2]:
+            enemy_token_ids[parts[2]].append(enemy_id)
+    enemies: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    unique_event_ids: set[str] = set()
+    unique_media: set[tuple[str, str]] = set()
+    media_associations = 0
+    playable_event_associations = 0
+    for event in event_rows:
+        if not isinstance(event, dict):
+            continue
+        if event.get("purposeKnowledgeStatus") != "unknownUse":
+            continue
+        if event.get("contextCount") or event.get("playbackLocationStatus") != "unknown":
+            continue
+        if event.get("eventIdentityStatus") != "recoveredAuthoredName":
+            continue
+        event_id = str(event.get("id") or event.get("name") or "").strip()
+        event_key = event_id.casefold()
+        if not event_key.startswith("au_"):
+            continue
+        owners = [
+            enemy_id for enemy_id in known_enemy_ids
+            if event_key.startswith(f"au_{enemy_id}_")
+        ]
+        namespace_evidence = "exactRecoveredNamePrefixAgainstCurrentEnemyTableId"
+        monster_match = re.match(
+            r"^au_monster_([a-z0-9]+)(?:_|$)", event_key, re.IGNORECASE
+        )
+        if not owners and monster_match:
+            monster_owners = enemy_token_ids.get(monster_match.group(1), [])
+            if len(monster_owners) == 1:
+                owners = list(monster_owners)
+                namespace_evidence = "uniqueRecoveredMonsterTokenAgainstCurrentEnemyTable"
+        if len(owners) != 1:
+            continue
+        audio: list[dict[str, Any]] = []
+        for media in event.get("media") or ():
+            if not isinstance(media, dict) or not media.get("src"):
+                continue
+            compact = {
+                key: media[key]
+                for key in ("mediaId", "src", "duration", "format", "contentSha256")
+                if media.get(key) not in (None, "", [])
+            }
+            evidence = [
+                {
+                    key: item[key]
+                    for key in ("rootActionIds", "soundObjectCount", "relationTypes")
+                    if item.get(key) not in (None, "", [])
+                }
+                for item in media.get("wwiseMediaEvidence") or ()
+                if isinstance(item, dict)
+            ]
+            if evidence:
+                compact["wwiseMediaEvidence"] = evidence
+            audio.append(compact)
+        compact_event = {
+            key: event[key]
+            for key in CHARACTER_NAMESPACE_GAMEPLAY_EVENT_FIELDS
+            if event.get(key) not in (None, "", [])
+        }
+        compact_event.update({
+            "audio": audio,
+            "authoredNamespaceOwnershipStatus": "recoveredEnemyNamespaceIdentity",
+            "namespaceEvidence": namespace_evidence,
+            "runtimeActivationStatus": "unobserved",
+        })
+        owner_id = owners[0]
+        enemies[owner_id].append(compact_event)
+        unique_event_ids.add(event_key)
+        media_associations += len(audio)
+        if audio or int(event.get("possibleMediaCount") or 0):
+            playable_event_associations += 1
+        for media in audio:
+            unique_media.add((str(media.get("src") or ""), str(media.get("mediaId") or "")))
+
+    for rows in enemies.values():
+        rows.sort(key=lambda row: str(row.get("id") or "").casefold())
+    return {
+        "schemaVersion": 1,
+        "enemies": dict(sorted(enemies.items())),
+        "counts": {
+            "enemies": len(enemies),
+            "uniqueEvents": len(unique_event_ids),
+            "eventOwnerAssociations": sum(len(rows) for rows in enemies.values()),
+            "playableEventOwnerAssociations": playable_event_associations,
+            "mediaOwnerAssociations": media_associations,
+            "uniquePlayableMedia": len(unique_media),
+        },
+        "evidenceBoundary": (
+            "Each row uses a recovered grammar-derived Event name whose complete au_"
+            " + current EnemyTable id + delimiter, or unique au_monster_ token, "
+            "matches the current EnemyTable. This is recovered "
+            "enemy namespace identity only: no skill, action, animation callback, "
+            "Event posting, Wwise branch selection, playback, or audibility is claimed."
+        ),
+    }
+
+
+def _project_native_voice_response_audio(
+    event_rows: Iterable[dict[str, Any]],
+    owner_ids: Iterable[str],
+    *,
+    owner_bucket: str,
+    owner_binding_status: str,
+    evidence_boundary: str,
+) -> dict[str, Any]:
+    """Project exact native response routes through one bounded owner prefix."""
+
+    owner_id_by_key: dict[str, str] = {}
+    duplicate_keys: set[str] = set()
+    for value in owner_ids:
+        owner_id = str(value or "").strip()
+        if not owner_id:
+            continue
+        key = owner_id.casefold()
+        if key in owner_id_by_key and owner_id_by_key[key] != owner_id:
+            duplicate_keys.add(key)
+        else:
+            owner_id_by_key[key] = owner_id
+    for key in duplicate_keys:
+        owner_id_by_key.pop(key, None)
+
+    owners_by_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    seen_trigger_ids: set[str] = set()
+    unique_events: set[str] = set()
+    unique_media: set[tuple[str, str]] = set()
+    unmatched_contexts = 0
+    ambiguous_contexts = 0
+    for event in event_rows:
+        if not isinstance(event, dict):
+            continue
+        event_id = str(event.get("id") or "").strip()
+        event_key = event_id.casefold()
+        native_contexts = [
+            context for context in event.get("contexts") or ()
+            if isinstance(context, dict)
+            and context.get("kind") == "nativeVoiceTriggerCallsite"
+        ]
+        if not event_id or not native_contexts:
+            continue
+        matches = [
+            key for key in owner_id_by_key
+            if event_key.startswith(f"{key}_")
+        ]
+        if not matches:
+            unmatched_contexts += 1
+            continue
+        longest = max(map(len, matches))
+        owners = sorted(key for key in matches if len(key) == longest)
+        if len(owners) != 1:
+            ambiguous_contexts += 1
+            continue
+        owner_id = owner_id_by_key[owners[0]]
+        media_refs = [
+            {
+                key: media[key]
+                for key in (
+                    "mediaId", "src", "rel", "format", "duration",
+                    "contentSha256", "audioCategory", "audioScope",
+                    "sourceLanguage",
+                )
+                if media.get(key) not in (None, "", [])
+            }
+            for media in event.get("media") or ()
+            if isinstance(media, dict) and media.get("src")
+        ]
+        for context in native_contexts:
+            trigger_key = str(context.get("triggerKey") or "").strip()
+            trigger_role = str(context.get("triggerRole") or "").strip()
+            trigger_id = f"nativeVoiceTrigger:{trigger_key}:{event_id}"
+            if trigger_id in seen_trigger_ids:
+                continue
+            row = {
+                "id": event_id,
+                "category": str(event.get("category") or "voice"),
+                "foundInWwise": bool(event.get("foundInWwise")),
+                "possibleMediaCount": int(event.get("possibleMediaCount") or 0),
+                "mediaRefs": media_refs,
+                "triggerId": trigger_id,
+                "triggerRole": trigger_role,
+                "triggerKey": trigger_key,
+                "consumerType": str(context.get("consumerType") or ""),
+                "consumerMethod": str(context.get("consumerMethod") or ""),
+                "targetBinding": str(context.get("targetBinding") or ""),
+                "runtimeRoute": str(context.get("runtimeRoute") or ""),
+                "triggerBindingStatus": str(
+                    context.get("triggerBindingStatus") or ""
+                ),
+                "runtimeSelectionStatus": str(
+                    context.get("runtimeSelectionStatus") or ""
+                ),
+                "triggerRequestEvidence": list(
+                    context.get("triggerRequestEvidence") or ()
+                ),
+                "nativeMappingId": str(context.get("nativeMappingId") or ""),
+                "methodVa": str(context.get("methodVa") or ""),
+                "literalLoadVa": str(context.get("literalLoadVa") or ""),
+                "playbackInvocationVa": str(
+                    context.get("playbackInvocationVa") or ""
+                ),
+                "ownerId": owner_id,
+                "ownerBindingStatus": owner_binding_status,
+                "runtimeActivationStatus": (
+                    context.get("runtimeActivationStatus")
+                    or "nativeBranchAndLiveResponseSelectionUnobserved"
+                ),
+            }
+            owners_by_id[owner_id].append(row)
+            seen_trigger_ids.add(trigger_id)
+            unique_events.add(event_key)
+            for media in media_refs:
+                unique_media.add((
+                    str(media.get("src") or ""),
+                    str(media.get("mediaId") or ""),
+                ))
+
+    for rows in owners_by_id.values():
+        rows.sort(key=lambda row: (
+            str(row.get("triggerRole") or "").casefold(),
+            str(row.get("id") or "").casefold(),
+        ))
+    return {
+        "schemaVersion": 1,
+        owner_bucket: dict(sorted(owners_by_id.items())),
+        "counts": {
+            owner_bucket: len(owners_by_id),
+            "uniqueEvents": len(unique_events),
+            "triggerContexts": sum(len(rows) for rows in owners_by_id.values()),
+            "playableMediaRefs": sum(
+                len(row.get("mediaRefs") or ())
+                for rows in owners_by_id.values()
+                for row in rows
+            ),
+            "uniquePlayableMedia": len(unique_media),
+            "unmatchedContexts": unmatched_contexts,
+            "ambiguousContexts": ambiguous_contexts,
+        },
+        "evidenceBoundary": evidence_boundary,
+    }
+
+
+def project_enemy_native_voice_response_audio(
+    event_rows: Iterable[dict[str, Any]],
+    enemy_ids: Iterable[str],
+) -> dict[str, Any]:
+    """Project exact native voice-response routes onto current enemy items."""
+
+    return _project_native_voice_response_audio(
+        event_rows,
+        enemy_ids,
+        owner_bucket="enemies",
+        owner_binding_status="exactCurrentEnemyTableIdPrefixInNativeVoiceEvent",
+        evidence_boundary=(
+            "Each row preserves a fingerprint-gated current-build native voice "
+            "response callsite and exact AudioDialog Event identity, then maps it "
+            "to one current EnemyTable item only when that complete enemy id is the "
+            "unique longest delimited Event prefix. The static response route is "
+            "exact; branch execution, speaker/cooldown/probability choice, selected "
+            "Wwise media, playback, and audibility remain unobserved."
+        ),
+    )
+
+
+def project_character_native_voice_response_audio(
+    event_rows: Iterable[dict[str, Any]],
+    character_ids: Iterable[str],
+) -> dict[str, Any]:
+    """Project exact native voice-response routes onto current characters."""
+
+    return _project_native_voice_response_audio(
+        event_rows,
+        character_ids,
+        owner_bucket="characters",
+        owner_binding_status=(
+            "exactCurrentCharacterTableIdPrefixInNativeVoiceEvent"
+        ),
+        evidence_boundary=(
+            "Each row preserves a fingerprint-gated current-build native voice "
+            "response callsite and exact AudioDialog Event identity, then maps it "
+            "to one current CharacterTable item only when that complete character "
+            "id is the unique longest delimited Event prefix. The static response "
+            "route is exact; branch execution, speaker/cooldown/probability choice, "
+            "selected Wwise media, playback, and audibility remain unobserved."
+        ),
+    )
+
+
+ENEMY_RESPONSE_CANDIDATE_CONTEXT_KINDS = frozenset({
+    "responsiveDialogVoice", "abilityVoiceTriggerAction",
+    "responsiveDialogToneVariant", "animationVoiceTrigger",
+})
+
+
+def project_enemy_response_candidate_audio(
+    event_rows: Iterable[dict[str, Any]], enemy_ids: Iterable[str],
+) -> dict[str, Any]:
+    """Project explicit authored response owners, excluding native-covered rows."""
+
+    known = {str(value).strip() for value in enemy_ids if str(value).strip()}
+    enemies: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    unique_media: set[tuple[str, str]] = set()
+    evidence_counts: Counter[str] = Counter()
+    for event in event_rows:
+        if not isinstance(event, dict):
+            continue
+        event_id = str(event.get("id") or "").strip()
+        contexts = [row for row in event.get("contexts") or () if isinstance(row, dict)]
+        if not event_id or any(row.get("kind") == "nativeVoiceTriggerCallsite" for row in contexts):
+            continue
+        by_owner: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for context in contexts:
+            kind = str(context.get("kind") or "")
+            if kind not in ENEMY_RESPONSE_CANDIDATE_CONTEXT_KINDS:
+                continue
+            owner_field = "speakerId" if kind in {
+                "responsiveDialogVoice", "responsiveDialogToneVariant",
+            } else "ownerId"
+            owner_id = str(context.get(owner_field) or "").strip()
+            if owner_id in known:
+                by_owner[owner_id].append(context)
+        if not by_owner:
+            continue
+        media_refs = [{
+            key: media[key]
+            for key in (
+                "mediaId", "src", "rel", "format", "duration", "contentSha256",
+                "audioCategory", "audioScope", "sourceLanguage",
+            ) if media.get(key) not in (None, "", [])
+        } for media in event.get("media") or () if isinstance(media, dict) and media.get("src")]
+        for owner_id, owner_contexts in by_owner.items():
+            compact_by_identity: dict[str, dict[str, Any]] = {}
+            for context in owner_contexts:
+                compact = {key: context[key] for key in (
+                    "kind", "speakerId", "ownerId", "ownerKind", "triggerKey",
+                    "triggerTypeId", "sentenceType", "responseIndex", "configId",
+                    "source", "sourcePath", "clip", "time", "function", "evidence",
+                    "playbackPlacementStatus", "runtimeRoute", "runtimeSelectionStatus",
+                    "runtimeActivationStatus", "triggerBindingStatus", "nativeMappingId",
+                ) if context.get(key) not in (None, "", [])}
+                compact_by_identity[json.dumps(compact, sort_keys=True, ensure_ascii=False)] = compact
+            kinds = sorted({str(row.get("kind")) for row in owner_contexts})
+            evidence_counts.update(kinds)
+            enemies[owner_id].append({
+                "id": event_id,
+                "category": str(event.get("category") or "voice"),
+                "foundInWwise": bool(event.get("foundInWwise")),
+                "possibleMediaCount": int(event.get("possibleMediaCount") or 0),
+                "mediaRefs": media_refs,
+                "ownerId": owner_id,
+                "ownerBindingStatus": "exactResponseContextEnemyId",
+                "evidenceKinds": kinds,
+                "triggerKeys": sorted({str(row.get("triggerKey")) for row in owner_contexts if row.get("triggerKey")}),
+                "evidenceRows": [compact_by_identity[key] for key in sorted(compact_by_identity)],
+                "runtimeActivationStatus": "authoredResponseSelectionUnobserved",
+            })
+            unique_media.update((str(row.get("src") or ""), str(row.get("mediaId") or "")) for row in media_refs)
+    for rows in enemies.values():
+        rows.sort(key=lambda row: str(row.get("id") or "").casefold())
+    return {
+        "schemaVersion": 1,
+        "enemies": dict(sorted(enemies.items())),
+        "counts": {
+            "enemies": len(enemies),
+            "uniqueEvents": len({row["id"].casefold() for rows in enemies.values() for row in rows}),
+            "eventOwnerAssociations": sum(map(len, enemies.values())),
+            "playableMediaRefs": sum(len(row["mediaRefs"]) for rows in enemies.values() for row in rows),
+            "uniquePlayableMedia": len(unique_media),
+            "evidenceKindAssociations": dict(sorted(evidence_counts.items())),
+        },
+        "evidenceBoundary": (
+            "Each row uses an explicit ResponsiveDialog speakerId or serialized "
+            "ability/animation ownerId equal to one current EnemyTable id. Evidence "
+            "is merged per enemy and Event. This proves authored response eligibility, "
+            "not live selection, selected Wwise media, playback, or audibility. "
+            "Native-covered Events remain only in the stronger native response group."
         ),
     }
 

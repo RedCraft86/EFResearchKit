@@ -157,6 +157,11 @@ user research state and do not upgrade or modify generated evidence.
 Audio separates Event/media identity, Wwise graph relation, authored consumer,
 and observed runtime execution. A stronger layer never appears unless its typed
 evidence exists.
+The semantic publisher can consume a verified offline audio-trace bundle. It
+then marks the exact captured managed request on Event details and propagates
+only the matching Event relation to media details. Unverified, mismatched, or
+language-incompatible bundles remain degraded and do not create bindings;
+observed requests still do not prove branch selection or audibility.
 
 The current pipeline can join raw HIRC Events, decoded media, AudioDialog and
 responsive-voice tables, Timeline audio, Lua consumers, selected serialized
@@ -218,6 +223,9 @@ details show GameObject, hierarchy, and world position only when the existing
 placement fields are exact. These labels describe authored serialized fields,
 not callback execution or Event posting, and generated coverage counts remain
 in Audio data rather than this memory topic.
+Exact AudioMapData trigger/lifecycle/room-tone fields use the same visible
+context surface only after their complete serialized schema validates; numeric
+matches from incomplete lookalike components remain absent.
 
 Streaming-instance sidecars retain exact entity/name/transform and bounded raw
 ECS evidence, but the currently validated InitChunkData columns expose no known
@@ -392,12 +400,38 @@ token, and shared Wwise media lists every named character owner. A unique
 numeric-prefix recovery is labeled separately from a full-key match; generic
 templates and action/playback claims remain unresolved without their own
 evidence.
-The same visible ownership now covers uniquely owned Event-leading character
-tokens such as `lastrite_*`, `lizhiyan_*`, and `pograni_*`. Supported
+The same visible ownership now covers uniquely owned `au_actor_<token>_*`
+Events and Event-leading character tokens such as `lastrite_*`, `lizhiyan_*`,
+and `pograni_*`. Supported
 AnimationClip audio callbacks are projected independently of same-name action
 matching, so normal Event/media details retain their exact clips, callback
 owner/function, reachability, and AnimatorController names without claiming
 runtime execution or forcing an unknown category to SFX.
+Gameplay character cards reuse the exact CharacterTable namespace evidence as
+a separate collapsed authored-namespace audio group with playable media. Those
+rows are not mixed into skill or animation-triggered SFX and visibly retain the
+unresolved action, Event-post, Wwise-selection, and playback boundary.
+Enemy cards now have the same separate surface for recovered `au_` names with
+an exact full EnemyTable-id prefix. Because these names are grammar/hash
+recovery rather than consumer evidence, the UI retains the identity-only label
+and does not promote them to enemy skill or animation playback.
+Uniquely owned leading `au_monster_<token>_*` names are included under the same
+collapsed group, with the token relation labeled separately from a full enemy
+id prefix and retaining the identity-only boundary.
+Enemy cards also show a separate native-response group for exact fingerprint-
+locked voice callsites whose Event prefix identifies one current enemy. This
+is a static response-route relation; speaker choice, Wwise selection, and
+audibility remain unresolved.
+Character cards expose the matching native-response group for exact
+CharacterTable prefixes, with Endministrator variant rows routed through the
+existing synthetic character item.
+Enemy cards additionally expose explicit authored response candidates from
+serialized/ResponsiveDialog contexts when their owner equals a current enemy;
+these remain separate from native callsites and do not claim live selection or
+playback.
+Conversation cards now expose exact playable lifecycle hooks for existing
+`AudioDialogCustomEventTable` dialog IDs, with phase labels and the same
+runtime-dispatch/playback boundary.
 Audio detail keeps each callback Clip's resolved entity IDs separate from its
 candidate entity IDs. Exact Character/Enemy/EnemyTemplate overlay matches are
 resolved; unique-token or multi-match identities remain candidate/ambiguous,
