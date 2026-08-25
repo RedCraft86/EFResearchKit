@@ -21,7 +21,7 @@ import build_secondary_dynamics_burst_export_contract as builder
 class SecondaryDynamicsBurstExportTests(unittest.TestCase):
     def test_published_report_is_pinned_and_fail_closed(self) -> None:
         payload = json.loads(builder.DEFAULT_OUTPUT.read_text(encoding="utf-8"))
-        self.assertEqual(payload["status"], "secondary_dynamics_static_candidate_classification_unresolved_export_identity")
+        self.assertEqual(payload["status"], "secondary_dynamics_static_export_core_identities_partial_managed_routes_unresolved")
         self.assertEqual(payload["native_gate"]["gameAssembly"]["sha256"], builder.EXPECTED_GAME_ASSEMBLY_SHA256)
         self.assertEqual(payload["native_gate"]["globalMetadata"]["sha256"], builder.EXPECTED_METADATA_SHA256)
         self.assertEqual(payload["native_gate"]["libBurstGenerated"]["sha256"], builder.EXPECTED_LIB_BURST_SHA256)
@@ -43,6 +43,10 @@ class SecondaryDynamicsBurstExportTests(unittest.TestCase):
         )
         self.assertEqual(
             [row["hash"] for row in payload["targets"]["colliderEndRange"]["candidates"]],
+            ["b44b8d6a5416f62541c69d9812961578"],
+        )
+        self.assertEqual(
+            [row["hash"] for row in payload["targets"]["colliderEndRange"]["abiShapeFalseCandidates"]],
             [
                 "5d15fdfe5676d33316f2415a1f41d523",
                 "e6aec003f0525fe127cd9c0ccb59b1e2",
@@ -73,7 +77,7 @@ class SecondaryDynamicsBurstExportTests(unittest.TestCase):
     def test_simulation_semantic_fingerprint_is_closed_at_runtime_boundary(self) -> None:
         payload = json.loads(builder.DEFAULT_OUTPUT.read_text(encoding="utf-8"))
         fingerprint = payload["targets"]["simulationStartRange"]["semanticFingerprint"]
-        self.assertEqual(fingerprint["status"], "export_thunk_fingerprint_closed_internal_target_unobserved")
+        self.assertEqual(fingerprint["status"], "export_thunk_and_dual_cpu_solver_core_closed_managed_route_unobserved")
         self.assertEqual(fingerprint["candidateHash"], "c7e2be088565d3ff7a6e7ba86d23fd51")
         self.assertEqual(fingerprint["export"]["rva"], "0x3616e0")
         self.assertEqual(fingerprint["export"]["bodySha256"], "38e122699775a7bc42cb1277028ece1430c467c9112510aa29948ee8d3f2e45d")
@@ -87,17 +91,73 @@ class SecondaryDynamicsBurstExportTests(unittest.TestCase):
         target = fingerprint["indirectTarget"]
         self.assertEqual((target["targetRva"], target["section"], target["fileBacked"]), ("0x3c6390", ".data", False))
         self.assertEqual(target["diskState"], "zero_fill_bss_no_on_disk_pointer")
-        self.assertEqual(fingerprint["internalCfg"]["status"], "unavailable_target_pointer_unobserved")
+        self.assertEqual(target["runtimeValue"], "statically_assigned_by_burst.initialize_per_cpu_variant")
+        self.assertEqual(fingerprint["internalCfg"]["status"], "slot_entry_range_and_solver_core_graph_closed")
         self.assertEqual(fingerprint["internalCfg"]["recursionBound"], {"maxDepth": 4, "maxNodes": 128, "maxEdges": 256})
         self.assertEqual(fingerprint["internalCfg"]["seedTargetRva"], "0x3c6390")
-        self.assertEqual(fingerprint["jobPayload"]["status"], "unavailable_target_pointer_unobserved")
+        self.assertEqual(fingerprint["jobPayload"]["status"], "solver_core_identity_closed_complete_numeric_decode_pending")
         self.assertEqual(fingerprint["jobPayload"]["nativeArrayFieldAccesses"], [])
-        self.assertEqual(fingerprint["jobPayload"]["strideBytes"], [])
+        self.assertEqual(fingerprint["jobPayload"]["strideBytes"], [4, 464, 808])
         self.assertEqual(fingerprint["jobPayload"]["constants"], [])
         self.assertEqual(fingerprint["jobPayload"]["writebacks"], [])
-        self.assertEqual(fingerprint["identityBoundary"], "unique_abi_candidate_identity_unresolved")
+        exact = fingerprint["exactCoreIdentity"]
+        self.assertEqual(exact["status"], "static_slot_entry_range_and_dual_cpu_solver_core_closed")
+        variants = {row["cpuVariant"]: row for row in exact["variants"]}
+        self.assertEqual(variants["x64_sse2"]["entry"]["rva"], "0xd3c20")
+        self.assertEqual(variants["x64_sse2"]["rangeLoop"]["rva"], "0xd3db0")
+        self.assertEqual(variants["x64_sse2"]["solverCore"]["rva"], "0xc6f10")
+        self.assertEqual(variants["avx2"]["entry"]["rva"], "0x26a370")
+        self.assertEqual(variants["avx2"]["rangeLoop"]["rva"], "0x26a440")
+        self.assertEqual(variants["avx2"]["solverCore"]["rva"], "0x25e830")
+        self.assertEqual(fingerprint["identityBoundary"], "export_and_core_identity_closed_managed_route_unresolved")
         self.assertEqual(fingerprint["sourcePins"]["libBurstGeneratedSha256"], builder.EXPECTED_LIB_BURST_SHA256)
         self.assertEqual(payload["contractComparison"]["burstWrapperProvenance"]["fileSha256"], builder._sha256(builder.REPO_ROOT / payload["contractComparison"]["burstWrapperProvenance"]["path"]))
+
+    def test_simulation_update_and_end_exact_dual_cpu_core_graphs_are_closed(self) -> None:
+        payload = json.loads(builder.DEFAULT_OUTPUT.read_text(encoding="utf-8"))
+        update = payload["targets"]["simulationUpdateBasicPostureRange"]
+        self.assertEqual(
+            update["status"],
+            "static_semantic_export_identity_and_dual_cpu_cores_closed_managed_wrapper_route_unobserved",
+        )
+        self.assertEqual(update["candidates"][0]["hash"], "a8df0cddc9889e0c46f8bec650d8b959")
+        self.assertEqual(
+            [row["hash"] for row in update["abiShapeFalseCandidates"]],
+            ["56d6e448a273fb14345051fc02058afe", "6a5470d135bde394bed7e7182cdf7c65"],
+        )
+        self.assertEqual(
+            update["parameterContract"]["managedFallbackElementStridesBytes"],
+            [4, 464, 1, 4, 12, 16, 2, 2, 2, 24, 16, 24, 16, 4],
+        )
+        self.assertEqual(
+            update["parameterContract"]["burstCoreObservedElementStridesBytes"],
+            [4, 464, 1, 4, 12, 16, 2, 2, 2, 12, 16, 12, 16, 4],
+        )
+        self.assertIn(
+            "packed 12-byte float3",
+            update["parameterContract"]["representationBoundary"],
+        )
+        update_exact = update["exactCoreIdentity"]
+        self.assertEqual(update_exact["functionPointerSlotRva"], "0x3c5ed0")
+        update_variants = {row["cpuVariant"]: row for row in update_exact["variants"]}
+        self.assertEqual(update_variants["x64_sse2"]["solverCore"]["rva"], "0xa5670")
+        self.assertEqual(update_variants["avx2"]["solverCore"]["rva"], "0x241aa0")
+
+        end = payload["targets"]["simulationEndRange"]
+        self.assertEqual(end["candidates"][0]["hash"], "41ab6c9cba7b13c1177cc44fe548d030")
+        self.assertEqual(
+            [row["hash"] for row in end["abiShapeFalseCandidates"]],
+            ["226261a75cb450326f01659bdc8cb2d5", "62061c35abfe0d5ed4fb4b9019361071"],
+        )
+        self.assertEqual(
+            end["parameterContract"]["canonicalStructureStridesBytes"],
+            {"TeamData": 464, "ClothParameters": 808, "CenterData": 696},
+        )
+        end_exact = end["exactCoreIdentity"]
+        self.assertEqual(end_exact["functionPointerSlotRva"], "0x3c4fb0")
+        end_variants = {row["cpuVariant"]: row for row in end_exact["variants"]}
+        self.assertEqual(end_variants["x64_sse2"]["solverCore"]["rva"], "0xb5450")
+        self.assertEqual(end_variants["avx2"]["solverCore"]["rva"], "0x24fa60")
 
     def test_managed_cross_check_preserves_native_reference_boundary(self) -> None:
         payload = json.loads(builder.DEFAULT_OUTPUT.read_text(encoding="utf-8"))
@@ -119,17 +179,17 @@ class SecondaryDynamicsBurstExportTests(unittest.TestCase):
         self.assertEqual((end["fieldCount"], end["nativeArrayCount"], end["nativeReferenceCount"]), (17, 15, 1))
         self.assertEqual(end["nativeReferenceFields"][0]["name"], "_indexCount")
 
-    def test_collider_end_static_audit_rejects_both_abi_shape_candidates(self) -> None:
+    def test_collider_end_static_audit_closes_exact_export_and_rejects_false_candidates(self) -> None:
         payload = json.loads(builder.DEFAULT_OUTPUT.read_text(encoding="utf-8"))
         audit = payload["targets"]["colliderEndRange"]["candidateAudit"]
-        self.assertEqual(payload["targets"]["colliderEndRange"]["status"], "abi_shape_filter_incomplete_no_semantic_survivor")
-        self.assertEqual(audit["status"], "abi_shape_filter_incomplete_no_semantic_survivor")
+        self.assertEqual(payload["targets"]["colliderEndRange"]["status"], "static_semantic_export_identity_closed_managed_wrapper_route_unobserved")
+        self.assertEqual(audit["status"], "static_semantic_export_identity_closed_managed_wrapper_route_unobserved")
         self.assertEqual(audit["comparison"]["candidateCount"], 2)
-        self.assertEqual(audit["comparison"]["semanticCompatibleCandidateCount"], 0)
+        self.assertEqual(audit["comparison"]["semanticCompatibleCandidateCount"], 1)
         self.assertTrue(audit["comparison"]["sameWrapperCfg"])
         self.assertTrue(audit["comparison"]["sameParameterForwarding"])
         self.assertFalse(audit["comparison"]["fieldOffsetsPresentInCandidateThunk"])
-        self.assertFalse(audit["comparison"]["staticInitializerSlotIdentityDiscriminates"])
+        self.assertTrue(audit["comparison"]["staticInitializerSlotIdentityDiscriminates"])
         self.assertTrue(audit["comparison"]["wrapperSlotsDistinct"])
         self.assertFalse(audit["comparison"]["runtimeSelectedPointerObserved"])
         self.assertEqual(
@@ -146,6 +206,36 @@ class SecondaryDynamicsBurstExportTests(unittest.TestCase):
                 ("oldRotations", "0x40", 16),
             ],
         )
+        self.assertEqual(
+            audit["managedFallbackComparison"]["stateCarryForward"],
+            [
+                {
+                    "sourceField": "nowPositions",
+                    "destinationField": "oldPositions",
+                    "elementType": "Unity.Mathematics.double3",
+                    "widthBytes": 24,
+                },
+                {
+                    "sourceField": "nowRotations",
+                    "destinationField": "oldRotations",
+                    "elementType": "Unity.Mathematics.quaternion",
+                    "widthBytes": 16,
+                },
+            ],
+        )
+        exact = audit["exactSemanticExport"]
+        self.assertEqual(exact["status"], "static_export_slot_and_dual_cpu_core_identity_closed")
+        self.assertEqual(exact["hash"], "b44b8d6a5416f62541c69d9812961578")
+        self.assertEqual(exact["ordinal"], 421)
+        self.assertEqual(exact["export"]["rva"], "0x358a20")
+        self.assertEqual(exact["export"]["functionPointerSlotRva"], "0x3c6060")
+        variants = {row["cpuVariant"]: row for row in exact["variants"]}
+        self.assertEqual(variants["x64_sse2"]["entry"]["rva"], "0xae190")
+        self.assertEqual(variants["x64_sse2"]["core"]["rva"], "0xae300")
+        self.assertEqual(variants["avx2"]["entry"]["rva"], "0x24a030")
+        self.assertEqual(variants["avx2"]["core"]["rva"], "0x24a1a0")
+        self.assertEqual(exact["payload"]["positionStrideBytes"], 24)
+        self.assertEqual(exact["payload"]["rotationStrideBytes"], 16)
         for candidate in audit["candidates"]:
             self.assertEqual(candidate["wrapper"]["branchCount"], 0)
             self.assertEqual(candidate["wrapper"]["incomingGprPreserved"], ["rcx", "rdx", "r8", "r9"])

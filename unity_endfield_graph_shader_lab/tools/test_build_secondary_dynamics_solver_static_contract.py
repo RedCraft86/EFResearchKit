@@ -29,7 +29,7 @@ class SecondaryDynamicsSolverStaticContractTests(unittest.TestCase):
         self.assertEqual(builder.build_contract(), self.payload)
 
     def test_execute_wrappers_are_not_solver(self) -> None:
-        for method_index, callee in ((385696, 385697), (385450, 385451), (385454, 385455)):
+        for method_index, callee in ((385696, 385697), (385703, 385704), (385450, 385451), (385454, 385455)):
             row = self.by_index[method_index]
             self.assertEqual(row["role"], "managed_dispatch_wrapper")
             self.assertEqual(row["solverStatus"], "wrapper_only")
@@ -40,7 +40,8 @@ class SecondaryDynamicsSolverStaticContractTests(unittest.TestCase):
         self.assertEqual(self.by_index[385701]["nextCalls"][1]["methodIndex"], 385570)
         self.assertEqual(self.by_index[385452]["nextCalls"][0]["methodIndex"], 385394)
         self.assertEqual(self.by_index[385456]["nextCalls"][0]["methodIndex"], 385295)
-        for method_index in (385701, 385452, 385456):
+        self.assertEqual(self.by_index[385705]["nextCalls"][0]["methodIndex"], 385602)
+        for method_index in (385701, 385705, 385452, 385456):
             self.assertEqual(self.by_index[method_index]["solverStatus"], "wrapper_only_burst_solver_unresolved")
 
     def test_wind_helper_closes_wind_force_blend(self) -> None:
@@ -57,10 +58,39 @@ class SecondaryDynamicsSolverStaticContractTests(unittest.TestCase):
         self.assertEqual(sim["rotations"]["strideBytes"], 16)
         self.assertEqual(sim["positions"]["elementFieldDisplacements"], [0, 16])
 
+        update = {row["jobField"]: row for row in self.by_index[385704]["bufferAccesses"]}
+        self.assertEqual(update["stepBaseLineIndexArray"]["strideBytes"], 4)
+        self.assertEqual(update["teamDataArray"]["strideBytes"], 464)
+        self.assertEqual(update["vertexLocalPositions"]["strideBytes"], 12)
+        self.assertEqual(update["vertexLocalRotations"]["strideBytes"], 16)
+        self.assertEqual(update["basePosArray"]["strideBytes"], 24)
+        self.assertEqual(update["stepBasicPositionArray"]["elementFieldDisplacements"], [0, 16])
+
         collider = {row["jobField"]: row for row in self.by_index[385455]["bufferAccesses"]}
         self.assertEqual(collider["jobColliderIndexList"]["strideBytes"], 4)
         self.assertEqual(collider["nowPositions"]["strideBytes"], 24)
         self.assertEqual(collider["oldRotations"]["strideBytes"], 16)
+
+    def test_collider_end_state_carry_forward_is_closed(self) -> None:
+        row = self.by_index[385455]
+        self.assertEqual(
+            row["solverStatus"],
+            "managed_fallback_state_carry_forward_closed",
+        )
+        transitions = {
+            (entry["sourceField"], entry["destinationField"]): entry
+            for entry in row["stateTransitions"]
+        }
+        position = transitions[("nowPositions", "oldPositions")]
+        self.assertEqual(position["elementType"], "Unity.Mathematics.double3")
+        self.assertEqual(position["widthBytes"], 24)
+        self.assertEqual(position["sourceInstructionOffsets"], ["0x2f", "0x35"])
+        self.assertEqual(position["destinationInstructionOffsets"], ["0x41", "0x45"])
+        rotation = transitions[("nowRotations", "oldRotations")]
+        self.assertEqual(rotation["elementType"], "Unity.Mathematics.quaternion")
+        self.assertEqual(rotation["widthBytes"], 16)
+        self.assertEqual(rotation["sourceInstructionOffsets"], ["0x55"])
+        self.assertEqual(rotation["destinationInstructionOffsets"], ["0x64"])
 
     def test_native_gate_fails_closed_for_missing_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -95,6 +125,25 @@ class SecondaryDynamicsSolverStaticContractTests(unittest.TestCase):
                 builder.build_contract()
         finally:
             access["strideBytes"] = original_stride
+
+    def test_collider_end_transition_attacks_fail_closed(self) -> None:
+        target = next(row for row in builder.TARGETS if row["methodIndex"] == 385455)
+        transition = target["stateTransitions"][0]
+        original_width = transition["widthBytes"]
+        transition["widthBytes"] = 16
+        try:
+            with self.assertRaises(builder.ContractError):
+                builder.build_contract()
+        finally:
+            transition["widthBytes"] = original_width
+
+        original_bytes = transition["instructionBytes"]["0x2f"]
+        transition["instructionBytes"]["0x2f"] = "00" * 6
+        try:
+            with self.assertRaises(builder.ContractError):
+                builder.build_contract()
+        finally:
+            transition["instructionBytes"]["0x2f"] = original_bytes
 
 
 if __name__ == "__main__":

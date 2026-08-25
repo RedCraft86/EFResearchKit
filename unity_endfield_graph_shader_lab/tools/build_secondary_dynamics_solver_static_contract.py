@@ -70,6 +70,7 @@ def _target(
     next_calls: list[dict[str, Any]],
     *,
     accesses: list[dict[str, Any]] | None = None,
+    state_transitions: list[dict[str, Any]] | None = None,
     solver_status: str,
 ) -> dict[str, Any]:
     row: dict[str, Any] = {
@@ -86,6 +87,8 @@ def _target(
     }
     if accesses is not None:
         row["bufferAccesses"] = accesses
+    if state_transitions is not None:
+        row["stateTransitions"] = state_transitions
     return row
 
 
@@ -105,6 +108,7 @@ def _managed_call(
 SIM = "BeyondDynamicBone.SimulationManager"
 COL = "BeyondDynamicBone.ColliderManager"
 SIM_START = f"{SIM}+StartSimulationStepJob"
+SIM_UPDATE = f"{SIM}+UpdateStepBasicPotureJob"
 SIM_END = f"{SIM}+EndSimulationStepJob"
 COL_START = f"{COL}+StartSimulationStepJob"
 COL_END = f"{COL}+EndSimulationStepJob"
@@ -248,6 +252,7 @@ def _memory_instruction(data: bytes, offset: int) -> dict[str, Any] | None:
             0x11: 4 if 0xF3 in prefixes else 8 if 0xF2 in prefixes else 16,
             0x6F: 16,
             0x7F: 16,
+            0xB7: 2,
             0xBF: 2,
         }.get(opcode2)
     if width is None or pos >= len(data):
@@ -349,6 +354,31 @@ TARGETS = [
             [_managed_call(385542, 0x1867744B0, "StartSimulationStepRangeKernel", "burst_wrapper", [0x2A2]),
              _managed_call(385570, 0x1867775FC, "StartSimulationStepRangeKernel_00000408$BurstDirectCall.Invoke", "burst_invoke")],
             solver_status="wrapper_only_burst_solver_unresolved"),
+    _target(385703, SIM_UPDATE, "Execute", "managed_dispatch_wrapper", 0x186779004, 0x18677909C,
+            "962967f93de694d9bb1a62cb813650296e6f014f06a601320fd2180e152d52fa",
+            [_managed_call(385704, 0x18677909C, "Execute(int)", "managed_fallback", [0x56])],
+            solver_status="wrapper_only"),
+    _target(385704, SIM_UPDATE, "Execute(int)", "managed_fallback", 0x18677909C, 0x1867799D0,
+            "69c31d679e618b25355e66df3427328b4429cdef0f6a8d2882d61aae60d5f1f4", [],
+            accesses=[
+                {"jobField": "stepBaseLineIndexArray", "jobOffset": "0x0", "index": "Execute(index)", "strideBytes": 4, "elementFieldDisplacements": [0], "instructionOffsets": ["0x9a"]},
+                {"jobField": "teamDataArray", "jobOffset": "0x10", "index": "step baseline record", "strideBytes": 464, "elementFieldDisplacements": [0, 16, 32, 48, 64, 80, 96, 112], "instructionOffsets": ["0xaa", "0xb8", "0xbb", "0xc2", "0xca", "0xd2", "0xda", "0xe2", "0xea"]},
+                {"jobField": "attributes", "jobOffset": "0x20", "index": "baseline data entry", "strideBytes": 1, "elementFieldDisplacements": [0], "instructionOffsets": ["0x4f9"]},
+                {"jobField": "vertexParentIndices", "jobOffset": "0x30", "index": "baseline data entry", "strideBytes": 4, "elementFieldDisplacements": [0], "instructionOffsets": ["0x4e6"]},
+                {"jobField": "vertexLocalPositions", "jobOffset": "0x40", "index": "derived parent vertex index", "strideBytes": 12, "elementFieldDisplacements": [0, 8], "instructionOffsets": ["0x569", "0x56e"]},
+                {"jobField": "vertexLocalRotations", "jobOffset": "0x50", "index": "derived vertex index", "strideBytes": 16, "elementFieldDisplacements": [0], "instructionOffsets": ["0x59d"]},
+                {"jobField": "baseLineStartDataIndices", "jobOffset": "0x60", "index": "step baseline record", "strideBytes": 2, "elementFieldDisplacements": [0], "instructionOffsets": ["0x473"]},
+                {"jobField": "baseLineDataCounts", "jobOffset": "0x70", "index": "step baseline record", "strideBytes": 2, "elementFieldDisplacements": [0], "instructionOffsets": ["0x480"]},
+                {"jobField": "baseLineData", "jobOffset": "0x80", "index": "baseline range entry", "strideBytes": 2, "elementFieldDisplacements": [0], "instructionOffsets": ["0x4cc"]},
+                {"jobField": "basePosArray", "jobOffset": "0x90", "index": "derived particle index", "strideBytes": 24, "elementFieldDisplacements": [0, 16], "instructionOffsets": ["0x815", "0x819"]},
+                {"jobField": "baseRotArray", "jobOffset": "0xa0", "index": "derived particle index", "strideBytes": 16, "elementFieldDisplacements": [0], "instructionOffsets": ["0x802"]},
+                {"jobField": "stepBasicPositionArray", "jobOffset": "0xb0", "index": "derived particle index", "strideBytes": 24, "elementFieldDisplacements": [0, 16], "instructionOffsets": ["0x649", "0x64f"]},
+                {"jobField": "stepBasicRotationArray", "jobOffset": "0xc0", "index": "derived particle index", "strideBytes": 16, "elementFieldDisplacements": [0], "instructionOffsets": ["0x563"]},
+            ], solver_status="managed_fallback_observed"),
+    _target(385705, SIM_UPDATE, "UnsafeDo", "burst_range_dispatch_wrapper", 0x1867799D0, 0x186779B84,
+            "f75889388bc3e0b2c53e73cae95c087fb738d974e3b04c333c120b78f3388416",
+            [_managed_call(385602, 0x186778F04, "UpdateStepBasicPotureRangeKernel", "burst_wrapper", [0x152])],
+            solver_status="wrapper_only_burst_solver_unresolved"),
     _target(385450, COL_START, "Execute", "managed_dispatch_wrapper", 0x186761580, 0x186761618,
             "11f3c6969dddd71698113711000f247f6adb4ade024af45c4f8d5adec260503d",
             [_managed_call(385451, 0x186761618, "Execute(int)", "managed_fallback", [0x56])], solver_status="wrapper_only"),
@@ -381,7 +411,38 @@ TARGETS = [
                 {"jobField": "oldPositions", "jobOffset": "0x30", "index": "colliderIndex", "strideBytes": 24, "elementFieldDisplacements": [0, 16], "instructionOffsets": ["0x41", "0x45"]},
                 {"jobField": "nowRotations", "jobOffset": "0x20", "index": "colliderIndex", "strideBytes": 16, "elementFieldDisplacements": [0], "instructionOffsets": ["0x55"]},
                 {"jobField": "oldRotations", "jobOffset": "0x40", "index": "colliderIndex", "strideBytes": 16, "elementFieldDisplacements": [0], "instructionOffsets": ["0x64"]},
-            ], solver_status="managed_fallback_observed"),
+            ], state_transitions=[
+                {
+                    "operation": "copy",
+                    "index": "jobColliderIndexList[Execute(index)]",
+                    "sourceField": "nowPositions",
+                    "destinationField": "oldPositions",
+                    "elementType": "Unity.Mathematics.double3",
+                    "widthBytes": 24,
+                    "sourceInstructionOffsets": ["0x2f", "0x35"],
+                    "destinationInstructionOffsets": ["0x41", "0x45"],
+                    "instructionBytes": {
+                        "0x2f": "f20f1044c810",
+                        "0x35": "0f100cc8",
+                        "0x41": "0f110cc8",
+                        "0x45": "f20f1144c810",
+                    },
+                },
+                {
+                    "operation": "copy",
+                    "index": "jobColliderIndexList[Execute(index)]",
+                    "sourceField": "nowRotations",
+                    "destinationField": "oldRotations",
+                    "elementType": "Unity.Mathematics.quaternion",
+                    "widthBytes": 16,
+                    "sourceInstructionOffsets": ["0x55"],
+                    "destinationInstructionOffsets": ["0x64"],
+                    "instructionBytes": {
+                        "0x55": "f30f6f04c8",
+                        "0x64": "f30f7f04c8",
+                    },
+                },
+            ], solver_status="managed_fallback_state_carry_forward_closed"),
     _target(385456, COL_END, "UnsafeDo", "burst_range_dispatch_wrapper", 0x18675AB00, 0x18675ABBC,
             "b8700fd30831d687414b987c03978d19b382aa2723816bc63e4fa2ce1e00c9b1",
             [_managed_call(385295, 0x18675A944, "EndSimulationStepRangeKernel", "burst_wrapper", [0x84])], solver_status="wrapper_only_burst_solver_unresolved"),
@@ -438,7 +499,7 @@ def _verify_buffer_access(pe: Any, row: dict[str, Any], access: dict[str, Any]) 
         )
 
     # The job-field pointer is read from the outer job payload.  Prove that
-    # the recorded offset occurs in an actual rdi/r15/rbx-based instruction;
+    # the recorded offset occurs in an actual payload-register instruction;
     # this prevents a copied C# field offset from silently becoming the only
     # evidence for a buffer row.
     job_offset = int(str(access["jobOffset"]), 16)
@@ -447,7 +508,7 @@ def _verify_buffer_access(pe: Any, row: dict[str, Any], access: dict[str, Any]) 
         entry = _memory_instruction(body, offset)
         if not entry or entry.get("kind") != "memory":
             continue
-        if entry.get("base") in {"rdi", "r15", "rbx"} and int(entry["displacement"]) == job_offset:
+        if entry.get("base") in {"rdi", "r14", "r15", "rbx"} and int(entry["displacement"]) == job_offset:
             found_job_field = True
             break
     if not found_job_field:
@@ -455,6 +516,51 @@ def _verify_buffer_access(pe: Any, row: dict[str, Any], access: dict[str, Any]) 
             f"method {row['methodIndex']} {access['jobField']} job offset 0x{job_offset:x} "
             "was not observed in the pinned body"
         )
+
+
+def _verify_state_transition(pe: Any, row: dict[str, Any], transition: dict[str, Any]) -> None:
+    """Prove a bounded managed copy from exact instructions and field rows."""
+    if transition.get("operation") != "copy":
+        raise ContractError(
+            f"method {row['methodIndex']} has unsupported state transition operation"
+        )
+    accesses = {entry["jobField"]: entry for entry in row.get("bufferAccesses", [])}
+    source = accesses.get(transition.get("sourceField"))
+    destination = accesses.get(transition.get("destinationField"))
+    if source is None or destination is None:
+        raise ContractError(
+            f"method {row['methodIndex']} state transition lacks source/destination access rows"
+        )
+    if source.get("index") != destination.get("index") or source.get("index") != "colliderIndex":
+        raise ContractError(
+            f"method {row['methodIndex']} state transition index identity drifted"
+        )
+    width = int(transition["widthBytes"])
+    if int(source["strideBytes"]) != width or int(destination["strideBytes"]) != width:
+        raise ContractError(
+            f"method {row['methodIndex']} state transition width/stride drifted"
+        )
+    expected_source_offsets = set(transition.get("sourceInstructionOffsets", []))
+    expected_destination_offsets = set(transition.get("destinationInstructionOffsets", []))
+    if expected_source_offsets != set(source.get("instructionOffsets", [])) or expected_destination_offsets != set(destination.get("instructionOffsets", [])):
+        raise ContractError(
+            f"method {row['methodIndex']} state transition instruction ownership drifted"
+        )
+
+    start = int(row["va"], 16)
+    body = pe.bytes_at_va(start, int(row["spanBytes"]))
+    signatures = transition.get("instructionBytes", {})
+    if set(signatures) != expected_source_offsets | expected_destination_offsets:
+        raise ContractError(
+            f"method {row['methodIndex']} state transition byte-signature census drifted"
+        )
+    for encoded_offset, encoded_bytes in signatures.items():
+        offset = int(encoded_offset, 16)
+        expected = bytes.fromhex(encoded_bytes)
+        if body[offset:offset + len(expected)] != expected:
+            raise ContractError(
+                f"method {row['methodIndex']} state transition bytes drifted at {encoded_offset}"
+            )
 
 
 def _verify_targets(gameassembly: Path, metadata: Path) -> None:
@@ -528,6 +634,8 @@ def _verify_targets(gameassembly: Path, metadata: Path) -> None:
                 )
         for access in row.get("bufferAccesses", []):
             _verify_buffer_access(pe, row, access)
+        for transition in row.get("stateTransitions", []):
+            _verify_state_transition(pe, row, transition)
 
 
 def build_contract(
