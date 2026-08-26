@@ -27,15 +27,42 @@ namespace EndfieldGraphShaderLabEditor
         private const long RefractShaderPathId = 7766268189260370413L;
         private const long BaseV2ShaderPathId = -1430105248647086886L;
         private const long LitEffectShaderPathId = 6428594484694422749L;
+        private const long EndminfM14Material =
+            unchecked((long)0xF6DCA5E6B2122169UL);
+        // Exact PS4915 b3/c4 witnesses from graphics-only session
+        // 20260826T000901Z, frame 13175. Every non-white witness is the
+        // linear-space upload of its authored _TintColor Color property.
+        // M31 is drawn twice; M14 and M26 are distinguished by their
+        // 1,710-index and 120-index particle draws respectively.
+        private static readonly Dictionary<long, Vector4>
+            CapturedBaseV2LinearTints = new Dictionary<long, Vector4> {
+                { unchecked((long)0xEC97B180E0A82AB7UL),
+                    new Vector4(1f, 0.4251311f, 0.0975873f, 1f) }, // M22
+                { 0x73D80B62F5BA886FL,
+                    new Vector4(1f, 1f, 1f, 1f) }, // M43
+                { 0x602883BD6BB1831BL,
+                    new Vector4(1f, 0.5607878f, 0.0976956f, 1f) }, // M31
+                { 0x26EC2259AEC716E7L,
+                    new Vector4(0.7615293f, 0.3865187f, 0.2021150f, 1f) }, // M40
+                { unchecked((long)0xBF692EC36800069DUL),
+                    new Vector4(0.7605246f, 0.5119022f, 0.2015562f, 1f) }, // M39
+                { EndminfM14Material,
+                    new Vector4(0.29275623f, 0.17861338f, 0.04641925f, 1f) },
+                { 0x364397B467C89F2EL,
+                    new Vector4(0.29275623f, 0.17861338f, 0.04641925f, 1f) }, // M26
+            };
         public const string LitEffectCompatibilityEnvironment = "ENDFIELD_ENDMINF_LITEFFECT_VISUAL_COMPAT";
+        private const long EndminfLitEffectM27Material =
+            unchecked((long)0xA531A88850690EB8UL);
         private static readonly long[] LitEffectCompatibilityMaterials = {
             0x5A6341E8A834E421L,
+            EndminfLitEffectM27Material,
             unchecked((long)0xAFCE491DD7BC5724UL),
         };
-        // Do not add overview_02/all/suikuai (2), material
-        // pA531A88850690EB8, to the forward compatibility list. Its source
-        // material disables ForwardOnly and selects the five-MRT HGBuffer
-        // _PARALLAX_MAP program; the compatibility shader cannot publish its
+        // M27 overview_02/all/suikuai (2) is admitted only by the explicit
+        // visual-compatibility switch. Its source material disables
+        // ForwardOnly and selects the five-MRT HGBuffer _PARALLAX_MAP program;
+        // the compatibility shader does not claim to publish that exact
         // GBuffer/SceneMV/depth contract.
         // M28 uses the selected VFXRefract MRT ABI. Native
         // DistortionPassConstructor evidence confirms retail clones/copies
@@ -71,13 +98,16 @@ namespace EndfieldGraphShaderLabEditor
             "_USE_BLEND", "_USE_RBOFFSET", "_USE_RGBOFFSET" };
         private const string VisualCompatibilityEnvironment =
             "ENDFIELD_ENDMINF_VISUAL_COMPATIBILITY";
+        private const string M28VisualCompatibilityEnvironment =
+            "ENDFIELD_ENDMINF_M28_VISUAL_COMPAT";
         private static readonly long[] AdmittedRefractMaterials =
-            IsVisualCompatibilityRequested()
-                ? new[] {
-                    EndminfRefract28Material,
-                    EndminfRefractSuikuai1Material,
-                }
-                : Array.Empty<long>();
+            (IsVisualCompatibilityRequested()
+                ? new[] { EndminfRefractSuikuai1Material }
+                : Array.Empty<long>())
+            .Concat(IsM28VisualCompatibilityRequested()
+                ? new[] { EndminfRefract28Material }
+                : Array.Empty<long>())
+            .ToArray();
         // overview_02/all/suikuai (1), material p19E6A2A7AE736DA5,
         // requires both the original GPU-instanced particle vertex ABI and
         // the distinct _USE_BLEND + _USE_RBOFFSET + _USE_RGBOFFSET fragment.
@@ -98,7 +128,7 @@ namespace EndfieldGraphShaderLabEditor
                 { 0x602883BD6BB1831BL, new[] { "_USE_SOFTBLEND" } },
                 { unchecked((long)0xBF692EC36800069DUL), new[] { "_USE_SOFTBLEND" } },
                 { 0x26EC2259AEC716E7L, new[] { "_USE_SOFTBLEND" } },
-                { unchecked((long)0xF6DCA5E6B2122169UL), new[] { "_USE_SOFTBLEND" } },
+                { EndminfM14Material, new[] { "_USE_SOFTBLEND" } },
                 { unchecked((long)0xF1C3F38D51FA67EFUL), new[] { "_SAMPLE_TEX0" } },
                 { 0x7010821E75C0A247L, new[] { "_SAMPLE_TEX0", "_SAMPLE_TEX1", "_SAMPLE_TEX2", "_SAMPLE_TEX3" } },
                 { unchecked((long)0xEE9E2589EB9513AEUL), new[] { "_SAMPLE_TEX0", "_SAMPLE_TEX1", "_USE_SOFTBLEND" } },
@@ -320,6 +350,128 @@ namespace EndfieldGraphShaderLabEditor
             ValidateGenerated();
         }
 
+        [MenuItem("Endfield/Character Recovery Lab/Rebuild Endminf M14 Material")]
+        public static void RebuildAndValidateM14Material()
+        {
+            string repo = Directory.GetParent(Application.dataPath).Parent.FullName;
+            string materialSourceRoot = Path.Combine(repo,
+                "export_full/recovered/AnimeStudio-cli/StreamingAssets/json_by_type/Material");
+            string textureSourceRoot = Path.Combine(repo,
+                "export_full/recovered/AnimeStudio-cli/StreamingAssets/convert_by_type/Texture2D");
+            string suffix = "_p" + unchecked((ulong)EndminfM14Material)
+                .ToString("X16", CultureInfo.InvariantCulture) + ".json";
+            string source = Directory.GetFiles(materialSourceRoot, "*" + suffix).Single();
+            Dictionary<string, object> row = L.Dict(
+                ManifestMiniJson.Deserialize(File.ReadAllText(source, Encoding.UTF8)));
+            L.Require(L.PPtrId(row["m_Shader"]) == BaseV2ShaderPathId &&
+                L.List(row["m_ValidKeywords"]).Cast<object>()
+                    .Select(value => Convert.ToString(value, CultureInfo.InvariantCulture))
+                    .SequenceEqual(AdmittedBaseV2Materials[EndminfM14Material]),
+                "M14 source shader or keyword identity drifted");
+
+            L.EnsureFolder(GeneratedRoot);
+            L.EnsureFolder(MaterialRoot);
+            L.EnsureFolder(TextureRoot);
+            var context = new EndfieldZhuangfyParticleEffectImporter.Context();
+            foreach (object item in L.Dict(
+                L.Dict(row["m_SavedProperties"])["m_TexEnvs"]).Values)
+            {
+                long textureId = L.PPtrId(L.Dict(item)["m_Texture"]);
+                if (textureId == 0 || context.textures.ContainsKey(textureId))
+                    continue;
+                string hex = unchecked((ulong)textureId).ToString(
+                    "X16", CultureInfo.InvariantCulture);
+                string asset = AssetDatabase.FindAssets("t:Texture2D", new[] {
+                        "Assets/EndfieldGraphShaderLab/Generated" })
+                    .Select(AssetDatabase.GUIDToAssetPath)
+                    .FirstOrDefault(path => Path.GetFileNameWithoutExtension(path)
+                        .EndsWith("_p" + hex, StringComparison.Ordinal));
+                if (asset == null)
+                    asset = BuildExactEndminfNativeTexture(textureId);
+                if (asset == null)
+                    asset = BuildExactEndminfDecodedTexture(
+                        textureId, textureSourceRoot);
+                L.Require(asset != null,
+                    "M14 texture payload is missing: p" + hex);
+                context.textures[textureId] =
+                    AssetDatabase.LoadAssetAtPath<Texture2D>(asset);
+            }
+
+            Shader shader = Shader.Find(
+                "Hidden/Endfield/Recovered/Zhuangfy/VFXBaseV2MRT");
+            L.Require(shader != null, "Exact recovered VFXBaseV2 shader is missing");
+            string assetPath = MaterialRoot +
+                "/M_fx_endminm_gfx_14_pF6DCA5E6B2122169.mat";
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(assetPath);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, assetPath);
+            }
+            material.shader = shader;
+            material.name = L.Str(row, "m_Name");
+            EndfieldZhuangfyParticleEffectImporter.ApplyRecoveredMaterialPayload(
+                material, row, context);
+            ApplyCapturedBaseV2TintTransport(
+                material, EndminfM14Material, row);
+            material.renderQueue = L.Int(row, "m_CustomRenderQueue");
+            EditorUtility.SetDirty(material);
+            L.Require(Mathf.Abs(material.GetFloat(
+                    "_UseRecoveredRawTintColor")) <= 1.0e-6f,
+                "M14 still bypasses the captured linear Color upload");
+            AssetDatabase.SaveAssets();
+            Debug.Log("Rebuilt Endminf M14 with captured linear tint: " +
+                CapturedBaseV2LinearTints[EndminfM14Material]);
+        }
+
+        [MenuItem("Endfield/Character Recovery Lab/Repair Endminf BaseV2 Linear Tint Transport")]
+        public static void RepairAndValidateBaseV2LinearTintTransport()
+        {
+            int repaired = 0;
+            int capturedWitnesses = 0;
+            foreach (long materialPathId in AdmittedBaseV2Materials.Keys)
+            {
+                string suffix = "_p" + unchecked((ulong)materialPathId)
+                    .ToString("X16", CultureInfo.InvariantCulture) + ".mat";
+                string assetPath = AssetDatabase.FindAssets("t:Material", new[] {
+                        MaterialRoot })
+                    .Select(AssetDatabase.GUIDToAssetPath)
+                    .Single(path => path.EndsWith(suffix, StringComparison.Ordinal));
+                Material material = AssetDatabase.LoadAssetAtPath<Material>(assetPath);
+                L.Require(material != null && material.shader != null &&
+                    material.shader.name ==
+                        "Hidden/Endfield/Recovered/Zhuangfy/VFXBaseV2MRT",
+                    "Generated Endminf BaseV2 material is unavailable: " +
+                    suffix);
+                Color rawTint = material.GetColor("_TintColor");
+                Vector4 linearTint = new Vector4(
+                    rawTint.linear.r,
+                    rawTint.linear.g,
+                    rawTint.linear.b,
+                    rawTint.a);
+                if (CapturedBaseV2LinearTints.TryGetValue(
+                        materialPathId, out Vector4 expectedLinearTint))
+                {
+                    L.Require(Vector4.Distance(linearTint, expectedLinearTint) <=
+                        1.0e-6f,
+                        "Generated BaseV2 Color no longer produces captured " +
+                        "PS b3/c4: " + material.name);
+                    capturedWitnesses++;
+                }
+                material.SetFloat("_UseRecoveredRawTintColor", 0f);
+                material.SetVector("_RecoveredRawTintColor",
+                    new Vector4(rawTint.r, rawTint.g, rawTint.b, rawTint.a));
+                EditorUtility.SetDirty(material);
+                repaired++;
+            }
+            L.Require(capturedWitnesses == CapturedBaseV2LinearTints.Count,
+                "Not every captured BaseV2 tint witness was repaired");
+            AssetDatabase.SaveAssets();
+            Debug.Log("Repaired normal linear Color transport on " + repaired +
+                " Endminf BaseV2 materials; capturedWitnesses=" +
+                capturedWitnesses + ".");
+        }
+
         [MenuItem("Endfield/Character Recovery Lab/Repair Endminf Overview Stripe Texture")]
         public static void RepairOverviewStripeTexture()
         {
@@ -517,80 +669,114 @@ namespace EndfieldGraphShaderLabEditor
                 "Integrated Endminf suikuai (1) prefab binding did not persist");
         }
 
-        [MenuItem("Endfield/Character Recovery Lab/Repair Endminf Overview M13 Textures")]
+        [MenuItem("Endfield/Character Recovery Lab/Repair Endminf Overview Flow Textures")]
         public static void RepairOverviewM13Textures()
         {
+            const long m29MainPathId = unchecked((long)0xE9BD526F8E515836UL);
             const long sample1PathId = unchecked((long)0xE924975F4B2F54A4UL);
             const long sample3PathId = unchecked((long)0xD7AB7F885B7BC330UL);
-            const string sample1Sha256 =
-                "fd335206b2de7d4578b941ceb2bcec79e56541017f07b3eb9f6655ad76450939";
-            const string sample3Sha256 =
-                "737f73ecb27a3484199f58b2a4eb9e54b8760bf48f7ef43d252539f86edec402";
+            const long flow104PathId = 0x12184F574C05B26CL;
+            const long flow119PathId = unchecked((long)0xA8553DE7AAFDF5D7UL);
+            const long flow121PathId = 0x60BC4C6374C4832AL;
+            const long flow902PathId = unchecked((long)0x8CA0E6F6DA6348A5UL);
+
+            var sourceHashes = new Dictionary<long, string> {
+                { m29MainPathId, "28406becfc0f0eaf58cd234a3e590fbc2823975d307bfe990d19fa2af28ed8fb" },
+                { sample1PathId, "fd335206b2de7d4578b941ceb2bcec79e56541017f07b3eb9f6655ad76450939" },
+                { sample3PathId, "737f73ecb27a3484199f58b2a4eb9e54b8760bf48f7ef43d252539f86edec402" },
+                { flow104PathId, "c27bd552137387cabc56d3c84c53840af1561a0fce7dc61431fa921bd59055c6" },
+                { flow119PathId, "9883b65537e965f99c9cf1a11b247ba709a47451e9442a9718ed8ee1452472d6" },
+                { flow121PathId, "8eeab0f7fad4e618db4d033180c5bee70aee6f9229a19566cd6bbba513b3d1eb" },
+                { flow902PathId, "73f6f366f546cf360225a4bc85254ddd03b77c6b1e478e8c5d44144db9952813" },
+            };
 
             string repo = Directory.GetParent(Application.dataPath).Parent.FullName;
             string textureSourceRoot = Path.Combine(repo,
                 "export_full/recovered/AnimeStudio-cli/StreamingAssets/convert_by_type/Texture2D");
-            string sample1Source = RequireDecodedTextureSource(
-                textureSourceRoot, sample1PathId, sample1Sha256);
-            string sample3Source = RequireDecodedTextureSource(
-                textureSourceRoot, sample3PathId, sample3Sha256);
-
             L.EnsureFolder(GeneratedRoot);
             L.EnsureFolder(TextureRoot);
-            string sample1Asset = BuildExactEndminfDecodedTexture(
-                sample1PathId, textureSourceRoot);
-            string sample3Asset = BuildExactEndminfDecodedTexture(
-                sample3PathId, textureSourceRoot);
-            Texture2D sample1 = AssetDatabase.LoadAssetAtPath<Texture2D>(
-                sample1Asset);
-            Texture2D sample3 = AssetDatabase.LoadAssetAtPath<Texture2D>(
-                sample3Asset);
-            string materialAsset = MaterialRoot +
-                "/M_fx_endminm_gfx_13_p57A25F1386F7012F.mat";
-            Material material = AssetDatabase.LoadAssetAtPath<Material>(
-                materialAsset);
-            L.Require(material != null && sample1 != null && sample3 != null,
-                "Generated Endminf M13 material or decoded textures are missing");
+            var textures = new Dictionary<long, Texture2D>();
+            foreach (KeyValuePair<long, string> source in sourceHashes)
+            {
+                RequireDecodedTextureSource(
+                    textureSourceRoot, source.Key, source.Value);
+                string asset = BuildExactEndminfDecodedTexture(
+                    source.Key, textureSourceRoot);
+                Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(asset);
+                L.Require(texture != null,
+                    "Generated Endminf decoded texture is missing: p" +
+                    unchecked((ulong)source.Key).ToString("X16", CultureInfo.InvariantCulture));
+                textures[source.Key] = texture;
+            }
 
-            string[] sample1Properties = { "_DisturbTex2", "_SampleTex1" };
-            string[] sample3Properties = { "_DissolveTex", "_SampleTex3" };
-            foreach (string property in sample1Properties)
-            {
-                L.Require(material.HasProperty(property),
-                    "Generated Endminf M13 material lost " + property);
-                material.SetTexture(property, sample1);
-            }
-            foreach (string property in sample3Properties)
-            {
-                L.Require(material.HasProperty(property),
-                    "Generated Endminf M13 material lost " + property);
-                material.SetTexture(property, sample3);
-            }
-            EditorUtility.SetDirty(material);
+            Material m13 = RequireOverviewMaterial("M_fx_endminm_gfx_13_p57A25F1386F7012F.mat");
+            Material m18 = RequireOverviewMaterial("M_fx_endminm_gfx_18_p7010821E75C0A247.mat");
+            Material m20 = RequireOverviewMaterial("M_fx_endminm_gfx_20_pEE9E2589EB9513AE.mat");
+            Material m28 = RequireOverviewMaterial("M_fx_endminm_gfx_28_pBF7FEE87831B48FB.mat");
+            Material m29 = RequireOverviewMaterial("M_fx_endminm_gfx_29_p7BCC4552203800A8.mat");
+            Material m32 = RequireOverviewMaterial("M_fx_endminm_gfx_32_p75A3068776F01BCF.mat");
+            Material m35 = RequireOverviewMaterial("M_fx_endminm_gfx_35_p75854801AE9519E8.mat");
+            Material m42 = RequireOverviewMaterial("M_fx_endminm_gfx_42_p49DDD5599C166F6B.mat");
+            Material m46 = RequireOverviewMaterial("M_fx_endminm_gfx_46_p5D8517046749BD84.mat");
+            Material wind901 = RequireOverviewMaterial("M_ui_wind_901_pA55BF26D14F133FE.mat");
+
+            BindExactTexture(m13, textures[sample1PathId], "_DisturbTex2", "_SampleTex1");
+            BindExactTexture(m13, textures[sample3PathId], "_DissolveTex", "_SampleTex3");
+            BindExactTexture(m18, textures[sample1PathId], "_DisturbTex1", "_SampleTex0");
+            BindExactTexture(m18, textures[sample3PathId], "_DissolveTex", "_SampleTex3");
+            BindExactTexture(m20, textures[sample1PathId], "_DisturbTex1", "_SampleTex0");
+            BindExactTexture(m20, textures[flow121PathId], "_DissolveTex", "_SampleTex1");
+            BindExactTexture(m28, textures[flow121PathId], "_RefractTex");
+            // The source M29 row uses T_fx_flow_17_M for Main and reuses
+            // T_fx_flow_01_M for all four secondary carriers. Stale generated
+            // GUIDs made every route sample Unity's white fallback, producing
+            // an opaque palm disc absent from phase-paired retail frame 367.
+            BindExactTexture(m29, textures[m29MainPathId], "_MainTex");
+            BindExactTexture(m29, textures[sample1PathId],
+                "_DisturbTex1", "_MaskTex", "_SampleTex0", "_SampleTex1");
+            BindExactTexture(m32, textures[flow119PathId], "_MaskTex", "_SampleTex0");
+            BindExactTexture(m35, textures[sample1PathId], "_DisturbTex1", "_SampleTex0");
+            // Two source-local assets share the display name T_fx_flow_902_M.
+            // M35's signed PathID selects the cloudy p8CA0 texture, never the
+            // unrelated triangular pC983 payload.
+            BindExactTexture(m35, textures[flow902PathId], "_OffsetTex");
+            BindExactTexture(m42, textures[flow104PathId], "_MaskTex", "_SampleTex0");
+            BindExactTexture(m46, textures[sample1PathId], "_DisturbTex1", "_SampleTex0");
+            BindExactTexture(wind901, textures[sample3PathId], "_DissolveTex", "_SampleTex1");
             AssetDatabase.SaveAssets();
+            Debug.Log(
+                "Repaired 29 exact decoded Endminf overview texture bindings " +
+                "across M13/M18/M20/M28/M29/M32/M35/M42/M46/wind901.");
+        }
 
-            foreach (string property in sample1Properties.Concat(sample3Properties))
+        private static Material RequireOverviewMaterial(string fileName)
+        {
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(
+                MaterialRoot + "/" + fileName);
+            L.Require(material != null,
+                "Generated Endminf overview material is missing: " + fileName);
+            return material;
+        }
+
+        private static void BindExactTexture(
+            Material material, Texture2D texture, params string[] properties)
+        {
+            L.Require(material != null && texture != null,
+                "Cannot bind a missing Endminf overview material or texture");
+            foreach (string property in properties)
             {
+                L.Require(material.HasProperty(property),
+                    material.name + " lost source texture property " + property);
+                material.SetTexture(property, texture);
                 Texture bound = material.GetTexture(property);
                 string boundPath = bound == null
                     ? null
                     : AssetDatabase.GetAssetPath(bound);
-                L.Require(bound != null && !string.IsNullOrEmpty(boundPath) &&
+                L.Require(bound == texture && !string.IsNullOrEmpty(boundPath) &&
                     File.Exists(L.ProjectAbsolute(boundPath)),
-                    "Generated Endminf M13 retained a missing texture binding: " +
-                    property);
+                    material.name + " retained a missing texture binding: " + property);
             }
-            L.Require(
-                File.Exists(sample1Source) && File.Exists(sample3Source) &&
-                material.GetTexture("_DisturbTex2") == sample1 &&
-                material.GetTexture("_SampleTex1") == sample1 &&
-                material.GetTexture("_DissolveTex") == sample3 &&
-                material.GetTexture("_SampleTex3") == sample3,
-                "Generated Endminf M13 texture identity validation failed");
-            Debug.Log(
-                "Repaired exact decoded Endminf M13 texture bindings: " +
-                "Sample1/Disturb2=pE924975F4B2F54A4, " +
-                "Sample3/Dissolve=pD7AB7F885B7BC330.");
+            EditorUtility.SetDirty(material);
         }
 
         private static string RequireDecodedTextureSource(
@@ -712,15 +898,17 @@ namespace EndfieldGraphShaderLabEditor
         {
             var context = new EndfieldZhuangfyParticleEffectImporter.Context();
             bool visualCompatibility = IsVisualCompatibilityRequested();
+            bool m28VisualCompatibility =
+                IsM28VisualCompatibilityRequested();
             Shader shader = Shader.Find(
                 "Hidden/Endfield/Recovered/Zhuangfy/VFXRefractMRT");
             L.Require(shader != null, "Exact recovered VFXRefract shader is missing");
-            if (visualCompatibility)
+            if (visualCompatibility || m28VisualCompatibility)
             {
                 ValidateSuikuai1ShaderContract(shader);
-                Debug.Log("Endminf M_fx_endminm_gfx_28 and exact suikuai (1) " +
-                    "VFXRefract branches admitted through the recovered " +
-                    "Distortion MRT scene-color clone path for direct-frame validation.");
+                Debug.Log("Endminf exact suikuai (1) VFXRefract branch admitted=" +
+                    visualCompatibility + "; experimental M28 direct-frame branch=" +
+                    m28VisualCompatibility + ".");
             }
             Shader baseV2Shader = Shader.Find("Hidden/Endfield/Recovered/Zhuangfy/VFXBaseV2MRT");
             L.Require(baseV2Shader != null, "Exact recovered VFXBaseV2 shader is missing");
@@ -728,7 +916,7 @@ namespace EndfieldGraphShaderLabEditor
                 Environment.GetEnvironmentVariable(LitEffectCompatibilityEnvironment), "1",
                 StringComparison.Ordinal);
             Shader litEffectCompatibilityShader = Shader.Find(
-                "Hidden/Endfield/Compatibility/Endminf/LitEffectM01M38");
+                "Hidden/Endfield/Compatibility/Endminf/LitEffectParallax");
             if (litEffectCompatibility)
                 L.Require(litEffectCompatibilityShader != null,
                     "Endminf LitEffect visual-compatibility shader is missing");
@@ -894,28 +1082,8 @@ namespace EndfieldGraphShaderLabEditor
                         unchecked((ulong)textureId).ToString("X16", CultureInfo.InvariantCulture));
                 }
                 if (AdmittedBaseV2Materials.ContainsKey(id))
-                {
-                    Dictionary<string, object> saved = L.Dict(row["m_SavedProperties"]);
-                    Dictionary<string, object> colors = L.Dict(saved["m_Colors"]);
-                    L.Require(colors.TryGetValue("_TintColor", out object rawTintValue),
-                        "Selected Endminf BaseV2 material lost raw _TintColor " + name);
-                    Dictionary<string, object> rawTintRow = L.Dict(rawTintValue);
-                    Color rawTint = new Color(
-                        L.Float(rawTintRow, "r"),
-                        L.Float(rawTintRow, "g"),
-                        L.Float(rawTintRow, "b"),
-                        L.Float(rawTintRow, "a"));
-                    material.SetFloat("_UseRecoveredRawTintColor", 1f);
-                    material.SetVector("_RecoveredRawTintColor",
-                        new Vector4(rawTint.r, rawTint.g, rawTint.b, rawTint.a));
-                    Vector4 recoveredRawTint = material.GetVector("_RecoveredRawTintColor");
-                    L.Require(
-                        Mathf.Abs(material.GetFloat("_UseRecoveredRawTintColor") - 1f) <= 1.0e-6f &&
-                        Vector4.Distance(recoveredRawTint,
-                            new Vector4(rawTint.r, rawTint.g, rawTint.b, rawTint.a)) <= 1.0e-6f,
-                        "Selected Endminf BaseV2 raw tint transport drifted " + name);
-                }
-                if (visualCompatibility && id == EndminfRefract28Material)
+                    ApplyCapturedBaseV2TintTransport(material, id, row);
+                if (m28VisualCompatibility && id == EndminfRefract28Material)
                 {
                     Texture dissolveTexture = material.GetTexture("_DissolveTex");
                     Vector4 dissolveSpeed = material.GetVector("_DissolveUVSpeed");
@@ -938,6 +1106,49 @@ namespace EndfieldGraphShaderLabEditor
                         ? LitEffectShaderPathId : RefractShaderPathId;
             }
             return context;
+        }
+
+        private static void ApplyCapturedBaseV2TintTransport(
+            Material material,
+            long materialPathId,
+            Dictionary<string, object> row)
+        {
+            Dictionary<string, object> saved = L.Dict(row["m_SavedProperties"]);
+            Dictionary<string, object> colors = L.Dict(saved["m_Colors"]);
+            L.Require(colors.TryGetValue("_TintColor", out object rawTintValue),
+                "Selected Endminf BaseV2 material lost raw _TintColor " +
+                material.name);
+            Dictionary<string, object> rawTintRow = L.Dict(rawTintValue);
+            Color rawTint = new Color(
+                L.Float(rawTintRow, "r"),
+                L.Float(rawTintRow, "g"),
+                L.Float(rawTintRow, "b"),
+                L.Float(rawTintRow, "a"));
+            Color linearTint = rawTint.linear;
+            Vector4 actualLinearTint = new Vector4(
+                linearTint.r, linearTint.g, linearTint.b, linearTint.a);
+            if (CapturedBaseV2LinearTints.TryGetValue(
+                    materialPathId, out Vector4 expectedLinearTint))
+            {
+                L.Require(Vector4.Distance(
+                        actualLinearTint,
+                        expectedLinearTint) <= 1.0e-6f,
+                    "Authored BaseV2 Color no longer produces captured PS " +
+                    "b3/c4: " + material.name);
+            }
+            material.SetFloat("_UseRecoveredRawTintColor", 0f);
+            material.SetVector("_RecoveredRawTintColor",
+                new Vector4(rawTint.r, rawTint.g, rawTint.b, rawTint.a));
+            Vector4 recoveredRawTint = material.GetVector(
+                "_RecoveredRawTintColor");
+            L.Require(
+                Mathf.Abs(material.GetFloat("_UseRecoveredRawTintColor") -
+                    0f) <= 1.0e-6f &&
+                Vector4.Distance(recoveredRawTint,
+                    new Vector4(rawTint.r, rawTint.g, rawTint.b, rawTint.a)) <=
+                    1.0e-6f,
+                "Selected Endminf BaseV2 raw tint transport drifted " +
+                material.name);
         }
 
         private static void ValidateSuikuai1ShaderContract(Shader shader)
@@ -1105,6 +1316,15 @@ namespace EndfieldGraphShaderLabEditor
         {
             string value = Environment.GetEnvironmentVariable(
                 VisualCompatibilityEnvironment);
+            return string.Equals(value, "1", StringComparison.Ordinal) ||
+                   string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(value, "on", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsM28VisualCompatibilityRequested()
+        {
+            string value = Environment.GetEnvironmentVariable(
+                M28VisualCompatibilityEnvironment);
             return string.Equals(value, "1", StringComparison.Ordinal) ||
                    string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(value, "on", StringComparison.OrdinalIgnoreCase);

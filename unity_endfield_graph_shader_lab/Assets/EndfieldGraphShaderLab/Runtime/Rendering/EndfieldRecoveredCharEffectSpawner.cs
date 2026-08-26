@@ -219,8 +219,7 @@ namespace EndfieldGraphShaderLab
 
             activeEffects[request.prefabName] = instance;
             instance.SetActive(true);
-            foreach (ParticleSystem system in systems)
-                system.Play(true);
+            PlayRecoveredParticleSystems(instance, systems);
 
             if (binding.expectedDuration > 0f)
             {
@@ -230,6 +229,21 @@ namespace EndfieldGraphShaderLab
                         instance,
                         binding.expectedDuration));
             }
+        }
+
+        private static void PlayRecoveredParticleSystems(
+            GameObject instance,
+            ParticleSystem[] systems)
+        {
+            // The overview_02 post owner predates the first visible body by
+            // nine retail ticks, but the phase-paired no-frame-generation
+            // sequence does not put that age on its ParticleSystems. Applying
+            // the post offset here makes M13 visible at source frame 367,
+            // where retail has no ring, and removes its peak from frame 382.
+            // Keep particle delays on the selection/body timeline; only the
+            // separately recovered compatibility post clock carries pre-roll.
+            foreach (ParticleSystem system in systems)
+                system.Play(true);
         }
 
         private static void ApplyEndminfBillboardClampCompatibility(GameObject instance)

@@ -61,6 +61,17 @@ namespace EndfieldGraphShaderLabEditor
                 "failed frame does not commit proxy state");
             Expect<NotSupportedException>(() =>
                 solver.AdvanceFrame(FrameClock(), pose, Steps(1), new Solver.PreparedCapsuleFrame()));
+
+            // Ribbon/Coat source baselines omit their immediate movable anchor from
+            // baseLineData. The managed slice must still expose that global parent to
+            // the angle kernel and commit any parent correction back to owner state.
+            EndfieldGraphShaderLab.EndfieldSecondaryDynamicsData.Owner anchored = HairOwner();
+            anchored.baseLineDataCounts = new ushort[] { 2 };
+            anchored.baseLineData = new ushort[] { 1, 2 };
+            var anchoredSolver = new Solver(anchored, Pose(),
+                new T.TeamState { TimeScale = 1f, FrameInterpolation = 1f });
+            Require(anchoredSolver.AdvanceFrame(FrameClock(), Pose(), Steps(1)) == 1,
+                "external baseline anchor closure");
         }
 
         private static void RequireTrace(List<string> rows, int firstSubstep, int count)
@@ -152,6 +163,7 @@ namespace EndfieldGraphShaderLabEditor
                 vertexParentIndices = new[] { -1, 0, 1 },
                 vertexLocalPositions = new[] { Vector3.zero, Vector3.up, Vector3.up },
                 vertexLocalRotations = new[] { Quaternion.identity, Quaternion.identity, Quaternion.identity },
+                vertexBindPoseRotations = new[] { Quaternion.identity, Quaternion.identity, Quaternion.identity },
                 vertexToTransformRotations = new[] { Quaternion.identity, Quaternion.identity, Quaternion.identity },
                 baseLineFlags = new byte[] { 1 },
                 baseLineStartDataIndices = new ushort[] { 0 },

@@ -27,6 +27,24 @@ namespace EndfieldGraphShaderLabEditor
         private const string CurveSamplesPath =
             "Assets/EndfieldGraphShaderLab/Generated/OriginalData/CharInfoPresentation/" +
             "secondary_dynamics_curve_samples_contract.json";
+        private const string SolverScalarPackingPath =
+            "Assets/EndfieldGraphShaderLab/Generated/OriginalData/CharInfoPresentation/" +
+            "secondary_dynamics_solver_scalar_packing_contract.json";
+        private const string CenterUpdatePath =
+            "Assets/EndfieldGraphShaderLab/Generated/OriginalData/CharInfoPresentation/" +
+            "secondary_dynamics_center_update_contract.json";
+        private const string DuplicateWritePath =
+            "Assets/EndfieldGraphShaderLab/Generated/OriginalData/CharInfoPresentation/" +
+            "secondary_dynamics_duplicate_write_contract.json";
+        private const string TransformReadPath =
+            "Assets/EndfieldGraphShaderLab/Generated/OriginalData/CharInfoPresentation/" +
+            "secondary_dynamics_transform_read_contract.json";
+        private const string SimulationStepTeamUpdatePath =
+            "Assets/EndfieldGraphShaderLab/Generated/OriginalData/CharInfoPresentation/" +
+            "secondary_dynamics_simulation_step_team_update_contract.json";
+        private const string SessionCertificationPath =
+            "Assets/EndfieldGraphShaderLab/Generated/OriginalData/CharInfoPresentation/" +
+            "secondary_dynamics_session_certification_contract.json";
 
         internal static void Configure(
             GameObject actor,
@@ -42,10 +60,42 @@ namespace EndfieldGraphShaderLabEditor
             TextAsset payloadDecode = AssetDatabase.LoadAssetAtPath<TextAsset>(PayloadDecodePath);
             TextAsset ownerRecovery = AssetDatabase.LoadAssetAtPath<TextAsset>(OwnerRecoveryPath);
             TextAsset curveSamples = AssetDatabase.LoadAssetAtPath<TextAsset>(CurveSamplesPath);
+            TextAsset solverScalarPacking =
+                AssetDatabase.LoadAssetAtPath<TextAsset>(SolverScalarPackingPath);
+            TextAsset centerUpdate = AssetDatabase.LoadAssetAtPath<TextAsset>(CenterUpdatePath);
+            TextAsset duplicateWrite = AssetDatabase.LoadAssetAtPath<TextAsset>(DuplicateWritePath);
+            TextAsset transformRead = AssetDatabase.LoadAssetAtPath<TextAsset>(TransformReadPath);
+            TextAsset simulationStepTeamUpdate =
+                AssetDatabase.LoadAssetAtPath<TextAsset>(SimulationStepTeamUpdatePath);
+            TextAsset sessionCertification =
+                AssetDatabase.LoadAssetAtPath<TextAsset>(SessionCertificationPath);
             if (solverInputs == null || payloadDecode == null || ownerRecovery == null ||
-                curveSamples == null)
+                curveSamples == null || solverScalarPacking == null || centerUpdate == null ||
+                duplicateWrite == null || transformRead == null ||
+                simulationStepTeamUpdate == null || sessionCertification == null)
                 throw new FileNotFoundException(
                     "Endminf secondary-dynamics source contracts are missing.");
+
+            Dictionary<string, object> sessionRoot = Object(
+                ManifestMiniJson.Deserialize(sessionCertification.text),
+                "session certification root");
+            Dictionary<string, object> sessionValues = Object(
+                Required(sessionRoot, "certification"), "session certification values");
+            bool sessionCertified =
+                Bool(sessionRoot, "targetReady", "session certification root") &&
+                Bool(sessionValues, "certified", "session certification values");
+            bool useRelativeTransform = Bool(
+                sessionValues, "useRelativeTransform", "session certification values");
+            bool useCrossFrameJob = Bool(
+                sessionValues, "useCrossFrameJob", "session certification values");
+            bool useAnimatorTransform = Bool(
+                sessionValues, "useAnimatorTransform", "session certification values");
+            string writebackRoute = Text(sessionValues, "writebackRoute");
+            if (sessionCertified && (useRelativeTransform || !useCrossFrameJob || useAnimatorTransform ||
+                !string.Equals(writebackRoute, "TransformAccess", StringComparison.Ordinal))
+               )
+                throw new InvalidDataException(
+                    "Endminf target session differs from the supported transform route.");
 
             Dictionary<string, object> solverActor = ActorRow(solverInputs.text, "endminf");
             Dictionary<string, object> payloadActor = ActorRow(payloadDecode.text, "endminf");
@@ -103,6 +153,8 @@ namespace EndfieldGraphShaderLabEditor
                 Vector3[] localPositions = Vector3Array(arrays, "vertexLocalPositions", ownerPath);
                 Quaternion[] localRotations = QuaternionArray(
                     arrays, "vertexLocalRotations", ownerPath);
+                Quaternion[] vertexBindPoseRotations = QuaternionArray(
+                    arrays, "vertexBindPoseRotations", ownerPath);
                 Quaternion[] vertexToTransformRotations = QuaternionArray(
                     arrays, "vertexToTransformRotations", ownerPath);
                 byte[] baseLineFlags = ByteArray(arrays, "baseLineFlags", ownerPath);
@@ -123,6 +175,7 @@ namespace EndfieldGraphShaderLabEditor
                     parentIndices,
                     localPositions,
                     localRotations,
+                    vertexBindPoseRotations,
                     vertexToTransformRotations);
                 ValidateBaselines(
                     ownerPath,
@@ -188,6 +241,7 @@ namespace EndfieldGraphShaderLabEditor
                     vertexParentIndices = parentIndices,
                     vertexLocalPositions = localPositions,
                     vertexLocalRotations = localRotations,
+                    vertexBindPoseRotations = vertexBindPoseRotations,
                     vertexToTransformRotations = vertexToTransformRotations,
                     baseLineFlags = baseLineFlags,
                     baseLineStartDataIndices = baseLineStarts,
@@ -233,6 +287,23 @@ namespace EndfieldGraphShaderLabEditor
             data.ownerRecoverySha256 = Sha256(OwnerRecoveryPath);
             data.curveSamples = curveSamples;
             data.curveSamplesSha256 = Sha256(CurveSamplesPath);
+            data.solverScalarPacking = solverScalarPacking;
+            data.solverScalarPackingSha256 = Sha256(SolverScalarPackingPath);
+            data.centerUpdate = centerUpdate;
+            data.centerUpdateSha256 = Sha256(CenterUpdatePath);
+            data.duplicateWrite = duplicateWrite;
+            data.duplicateWriteSha256 = Sha256(DuplicateWritePath);
+            data.transformRead = transformRead;
+            data.transformReadSha256 = Sha256(TransformReadPath);
+            data.simulationStepTeamUpdate = simulationStepTeamUpdate;
+            data.simulationStepTeamUpdateSha256 = Sha256(SimulationStepTeamUpdatePath);
+            data.sessionCertification = sessionCertification;
+            data.sessionCertificationSha256 = Sha256(SessionCertificationPath);
+            data.sessionCertified = sessionCertified;
+            data.sessionUseRelativeTransform = useRelativeTransform;
+            data.sessionUseCrossFrameJob = useCrossFrameJob;
+            data.sessionUseAnimatorTransform = useAnimatorTransform;
+            data.sessionWritebackRoute = writebackRoute;
             data.owners = owners.ToArray();
             data.colliders = colliders;
             data.expectedBindingCount = bindingCount;
@@ -267,6 +338,28 @@ namespace EndfieldGraphShaderLabEditor
             }
         }
 
+        [MenuItem("Endfield/Character Recovery Lab/Refresh Endminf Secondary Dynamics Binding")]
+        public static void RefreshGeneratedEndminfBinding()
+        {
+            GameObject root = PrefabUtility.LoadPrefabContents(EndminfPrefabPath);
+            try
+            {
+                const string generatedRoot =
+                    "Assets/EndfieldGraphShaderLab/Generated/Characters/Playable/Endminf";
+                Configure(root, "Endminf", generatedRoot);
+                PrefabUtility.SaveAsPrefabAsset(root, EndminfPrefabPath);
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(root);
+            }
+
+            VerifyGeneratedEndminfBinding();
+            Debug.Log("Refreshed the certified, default-off Endminf secondary-dynamics binding.");
+        }
+
         [MenuItem("Endfield/Character Recovery Lab/Verify Endminf Secondary Dynamics Binding")]
         public static void VerifyGeneratedEndminfBinding()
         {
@@ -275,9 +368,13 @@ namespace EndfieldGraphShaderLabEditor
                 throw new FileNotFoundException("Generated Endminf prefab is missing.", EndminfPrefabPath);
             EndfieldSecondaryDynamicsRuntime runtime =
                 prefab.GetComponent<EndfieldSecondaryDynamicsRuntime>();
-            if (runtime == null || runtime.data == null || runtime.SolverWritebackEnabled)
+            if (runtime == null || runtime.data == null || runtime.SolverWritebackEnabled ||
+                !runtime.data.sessionCertified || runtime.data.sessionUseRelativeTransform ||
+                !runtime.data.sessionUseCrossFrameJob || runtime.data.sessionUseAnimatorTransform ||
+                !string.Equals(runtime.data.sessionWritebackRoute, "TransformAccess",
+                    StringComparison.Ordinal))
                 throw new InvalidDataException(
-                    "Generated Endminf secondary-dynamics coordinator is missing or not fail-closed.");
+                    "Generated Endminf secondary-dynamics coordinator is missing, uncertified, or not default-off.");
             EndfieldSecondaryDynamicsOwnerContract.BindingAudit audit =
                 EndfieldSecondaryDynamicsOwnerContract.Verify(prefab, "Endminf", SolverInputsPath);
             if (!audit.owner_binding_verified ||
@@ -290,9 +387,11 @@ namespace EndfieldGraphShaderLabEditor
                 throw new InvalidDataException(
                     "Generated Endminf secondary-dynamics binding audit differs.");
             }
+
             Debug.Log(
                 "Verified Endminf secondary dynamics: 4 owners, 126 bindings, " +
-                "100 unique transforms, 26 overlaps, solver writeback fail-closed.");
+                "100 unique transforms, 26 overlaps, a certified retail settings route, " +
+                "and default-off solver writeback.");
         }
 
         private static Dictionary<string, object> ActorRow(string json, string actorKey)
@@ -382,6 +481,10 @@ namespace EndfieldGraphShaderLabEditor
                 constraints, "inertiaConstraint", ownerPath);
             Dictionary<string, object> particleSpeed = Child(
                 inertia, "particleSpeedLimit", ownerPath + ".inertiaConstraint");
+            Dictionary<string, object> localMovementSpeed = Child(
+                inertia, "localMovementSpeedLimit", ownerPath + ".inertiaConstraint");
+            Dictionary<string, object> localRotationSpeed = Child(
+                inertia, "localRotationSpeedLimit", ownerPath + ".inertiaConstraint");
             Dictionary<string, object> tether = Child(
                 constraints, "tetherConstraint", ownerPath);
             Dictionary<string, object> distance = Child(
@@ -427,6 +530,14 @@ namespace EndfieldGraphShaderLabEditor
                 dampingUsesCurve = Toggle(damping, "useCurve", ownerPath),
                 radiusValue = Float(radius, "value", ownerPath),
                 radiusUsesCurve = Toggle(radius, "useCurve", ownerPath),
+                worldInertia = Float(inertia, "worldInertia", ownerPath),
+                movementInertiaSmoothing = Float(
+                    inertia, "movementInertiaSmoothing", ownerPath),
+                localInertia = Float(inertia, "localInertia", ownerPath),
+                localMovementSpeedLimit = Toggle(localMovementSpeed, "use", ownerPath)
+                    ? Float(localMovementSpeed, "value", ownerPath) : -1f,
+                localRotationSpeedLimit = Toggle(localRotationSpeed, "use", ownerPath)
+                    ? Float(localRotationSpeed, "value", ownerPath) : -1f,
                 inertiaDepth = Float(inertia, "depthInertia", ownerPath),
                 particleSpeedLimitEnabled = Toggle(particleSpeed, "use", ownerPath),
                 particleSpeedLimit = Float(particleSpeed, "value", ownerPath),
@@ -489,6 +600,7 @@ namespace EndfieldGraphShaderLabEditor
             int[] parentIndices,
             Vector3[] localPositions,
             Quaternion[] localRotations,
+            Quaternion[] vertexBindPoseRotations,
             Quaternion[] vertexToTransformRotations)
         {
             var cardinalities = new Dictionary<string, int>
@@ -500,6 +612,7 @@ namespace EndfieldGraphShaderLabEditor
                 { "vertexParentIndices", parentIndices.Length },
                 { "vertexLocalPositions", localPositions.Length },
                 { "vertexLocalRotations", localRotations.Length },
+                { "vertexBindPoseRotations", vertexBindPoseRotations.Length },
                 { "vertexToTransformRotations", vertexToTransformRotations.Length },
             };
             foreach (KeyValuePair<string, int> pair in cardinalities)
@@ -759,6 +872,14 @@ namespace EndfieldGraphShaderLabEditor
             if (value != 0 && value != 1)
                 throw new InvalidDataException(context + "." + key + " is not a toggle.");
             return value != 0;
+        }
+
+        private static bool Bool(Dictionary<string, object> row, string key, string context)
+        {
+            object value = Required(row, key);
+            if (value is bool boolean)
+                return boolean;
+            throw new InvalidDataException(context + "." + key + " is not a boolean.");
         }
 
         private static int Integer(Dictionary<string, object> row, string key, string context) =>

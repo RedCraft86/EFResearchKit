@@ -30,6 +30,7 @@ namespace EndfieldGraphShaderLab
             public int[] vertexParentIndices;
             public Vector3[] vertexLocalPositions;
             public Quaternion[] vertexLocalRotations;
+            public Quaternion[] vertexBindPoseRotations;
             public Quaternion[] vertexToTransformRotations;
             public byte[] baseLineFlags;
             public ushort[] baseLineStartDataIndices;
@@ -79,6 +80,11 @@ namespace EndfieldGraphShaderLab
             public float radiusValue;
             public bool radiusUsesCurve;
 
+            public float worldInertia;
+            public float movementInertiaSmoothing;
+            public float localInertia;
+            public float localMovementSpeedLimit;
+            public float localRotationSpeedLimit;
             public float inertiaDepth;
             public bool particleSpeedLimitEnabled;
             public float particleSpeedLimit;
@@ -119,6 +125,23 @@ namespace EndfieldGraphShaderLab
         public string ownerRecoverySha256;
         public TextAsset curveSamples;
         public string curveSamplesSha256;
+        public TextAsset solverScalarPacking;
+        public string solverScalarPackingSha256;
+        public TextAsset centerUpdate;
+        public string centerUpdateSha256;
+        public TextAsset duplicateWrite;
+        public string duplicateWriteSha256;
+        public TextAsset transformRead;
+        public string transformReadSha256;
+        public TextAsset simulationStepTeamUpdate;
+        public string simulationStepTeamUpdateSha256;
+        public TextAsset sessionCertification;
+        public string sessionCertificationSha256;
+        public bool sessionCertified;
+        public bool sessionUseRelativeTransform;
+        public bool sessionUseCrossFrameJob;
+        public bool sessionUseAnimatorTransform;
+        public string sessionWritebackRoute;
         public Owner[] owners = Array.Empty<Owner>();
         public CapsuleCollider[] colliders = Array.Empty<CapsuleCollider>();
         public int expectedBindingCount;

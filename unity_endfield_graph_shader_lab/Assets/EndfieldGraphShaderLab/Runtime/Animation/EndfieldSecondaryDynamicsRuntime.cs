@@ -31,16 +31,37 @@ namespace EndfieldGraphShaderLab
 
         public EndfieldSecondaryDynamicsData data;
 
+        [Tooltip("Diagnostic only. The recovered scheduling/writeback route is " +
+                 "certified, but visible hair/cape shape equivalence is not. " +
+                 "Keep disabled in reproduction output until a retail-shape gate passes.")]
+        public bool enableUnverifiedSolverWriteback;
+
         public bool BindingValid { get; private set; }
         public string BindingFailure { get; private set; } = "not validated";
         public float TargetWeight { get; private set; }
         public float CurrentWeight { get; private set; }
-        public bool SolverWritebackEnabled => false;
+        public bool SolverWritebackEnabled => BindingValid &&
+            transformPublicationAdapter != null && frameCoordinator != null;
+        public bool SolverCoordinatorEnabled => frameCoordinator != null;
+        public int[] LastSimulationSubsteps { get; private set; } = Array.Empty<int>();
+        public EndfieldSecondaryDynamicsKernels.Double3[][] PublicationPositions =>
+            frameCoordinator == null ? null : frameCoordinator.PublicationPositions;
+        public EndfieldSecondaryDynamicsKernels.Float4[][] PublicationRotations =>
+            frameCoordinator == null ? null : frameCoordinator.PublicationRotations;
+        public EndfieldSecondaryDynamicsTransformPublication.FinalValue[]
+            LatestTransformPublication { get; private set; } =
+                Array.Empty<EndfieldSecondaryDynamicsTransformPublication.FinalValue>();
+        public bool TransformSnapshotReadEnabled => transformSnapshotAdapter != null;
+        public EndfieldSecondaryDynamicsTransformSnapshotAdapter.SnapshotFrame
+            LatestTransformSnapshot { get; private set; }
         public int UpdateLocation => updateLocation;
 
         [SerializeField, Range(0, 1)]
         private int updateLocation;
         private int fixedUpdateCount;
+        private EndfieldSecondaryDynamicsTransformSnapshotAdapter transformSnapshotAdapter;
+        private EndfieldSecondaryDynamicsFrameCoordinator frameCoordinator;
+        private EndfieldSecondaryDynamicsTransformPublicationAdapter transformPublicationAdapter;
 
         private const float EnableRate = 8.0f;
         private const float DisableRate = 6.0f;
@@ -48,6 +69,15 @@ namespace EndfieldGraphShaderLab
 
         private void OnEnable()
         {
+            if (!enableUnverifiedSolverWriteback)
+            {
+                BindingValid = false;
+                BindingFailure =
+                    "solver writeback remains diagnostic-only: retail hair/cape " +
+                    "shape equivalence has not passed";
+                return;
+            }
+
             BindingValid = ValidateBindings(out string failure);
             BindingFailure = failure;
             if (!BindingValid)
@@ -55,6 +85,30 @@ namespace EndfieldGraphShaderLab
                 Debug.LogError(
                     "Recovered secondary dynamics failed closed on " + name + ": " + failure,
                     this);
+                return;
+            }
+
+            try
+            {
+                transformSnapshotAdapter =
+                    new EndfieldSecondaryDynamicsTransformSnapshotAdapter(transform, data);
+                LatestTransformSnapshot = transformSnapshotAdapter.Capture();
+                frameCoordinator = new EndfieldSecondaryDynamicsFrameCoordinator(
+                    data, LatestTransformSnapshot.Owners);
+                transformPublicationAdapter =
+                    new EndfieldSecondaryDynamicsTransformPublicationAdapter(transform, data);
+            }
+            catch (Exception exception)
+            {
+                BindingValid = false;
+                BindingFailure = "transform snapshot adapter failed: " + exception.Message;
+                transformSnapshotAdapter = null;
+                frameCoordinator = null;
+                transformPublicationAdapter = null;
+                LatestTransformSnapshot = null;
+                Debug.LogError(
+                    "Recovered secondary dynamics failed closed on " + name + ": " +
+                    BindingFailure, this);
                 return;
             }
 
@@ -68,6 +122,13 @@ namespace EndfieldGraphShaderLab
             Active.Remove(this);
             TargetWeight = 0.0f;
             CurrentWeight = 0.0f;
+            transformSnapshotAdapter = null;
+            frameCoordinator = null;
+            transformPublicationAdapter = null;
+            LatestTransformSnapshot = null;
+            LastSimulationSubsteps = Array.Empty<int>();
+            LatestTransformPublication =
+                Array.Empty<EndfieldSecondaryDynamicsTransformPublication.FinalValue>();
         }
 
         public void ApplyOverviewParameters(
@@ -93,6 +154,54 @@ namespace EndfieldGraphShaderLab
                 Mathf.Approximately(next, TargetWeight))
                 CurrentWeight = next;
 
+            try
+            {
+                LatestTransformSnapshot = transformSnapshotAdapter.Capture();
+                LastSimulationSubsteps = frameCoordinator.AdvanceFrame(
+                    new EndfieldSecondaryDynamicsFrameCoordinator.FrameInput
+                    {
+                        Owners = LatestTransformSnapshot.Owners,
+                        Timing = new EndfieldSecondaryDynamicsFrameCoordinator.FrameTiming(
+                            true,
+                            false,
+                            false,
+                            false,
+                            Time.deltaTime,
+                            Time.fixedDeltaTime,
+                            Time.unscaledDeltaTime),
+                        ActorRootStationary = LatestTransformSnapshot.ActorRootStationary,
+                        ActorScale = LatestTransformSnapshot.ActorScale,
+                        NegativeScale = LatestTransformSnapshot.NegativeScale,
+                        WindZoneCount = 0,
+                        Session = new EndfieldSecondaryDynamicsFrameCoordinator.SessionCertification(
+                            data.sessionCertified,
+                            data.sessionUseRelativeTransform,
+                            data.sessionUseCrossFrameJob,
+                            data.sessionUseAnimatorTransform,
+                            EndfieldSecondaryDynamicsFrameCoordinator.WritebackRoute.TransformAccess),
+                        PreviousColliderSamples =
+                            LatestTransformSnapshot.PreviousColliderSamples,
+                        CurrentColliderSamples =
+                            LatestTransformSnapshot.CurrentColliderSamples,
+                    });
+                LatestTransformPublication = transformPublicationAdapter.Publish(
+                    frameCoordinator.PublicationPositions,
+                    frameCoordinator.PublicationRotations,
+                    CurrentWeight,
+                    true);
+            }
+            catch (Exception exception)
+            {
+                BindingValid = false;
+                BindingFailure = "secondary-dynamics frame failed: " + exception.Message;
+                Active.Remove(this);
+                frameCoordinator = null;
+                transformPublicationAdapter = null;
+                Debug.LogError(
+                    "Recovered secondary dynamics failed closed on " + name + ": " +
+                    BindingFailure, this);
+            }
+
             // Intentionally no transform writes here. The original executes
             // the complete read/simulate/write ClothUpdate pipeline on exactly
             // one selected side of ScriptRunBehaviourLateUpdate. It does not
@@ -101,7 +210,10 @@ namespace EndfieldGraphShaderLab
 
         private void OnAfterEarlyUpdate()
         {
-            // Reserved for prior cross-frame completion and transform restore.
+            // RestoreTransformJob consumes the immutable AddTransform-time
+            // local buffers for every source entry carrying flag 0x08.
+            if (BindingValid && transformPublicationAdapter != null)
+                transformPublicationAdapter.RestoreInitialLocals();
         }
 
         private void OnAfterFixedUpdate()
@@ -152,10 +264,19 @@ namespace EndfieldGraphShaderLab
             }
             if (data.solverInputs == null || data.payloadDecode == null ||
                 data.ownerRecovery == null || data.curveSamples == null ||
+                data.solverScalarPacking == null || data.centerUpdate == null ||
+                data.duplicateWrite == null || data.transformRead == null ||
+                data.simulationStepTeamUpdate == null || data.sessionCertification == null ||
                 string.IsNullOrEmpty(data.solverInputsSha256) ||
                 string.IsNullOrEmpty(data.payloadDecodeSha256) ||
                 string.IsNullOrEmpty(data.ownerRecoverySha256) ||
-                string.IsNullOrEmpty(data.curveSamplesSha256))
+                string.IsNullOrEmpty(data.curveSamplesSha256) ||
+                string.IsNullOrEmpty(data.solverScalarPackingSha256) ||
+                string.IsNullOrEmpty(data.centerUpdateSha256) ||
+                string.IsNullOrEmpty(data.duplicateWriteSha256) ||
+                string.IsNullOrEmpty(data.transformReadSha256) ||
+                string.IsNullOrEmpty(data.simulationStepTeamUpdateSha256) ||
+                string.IsNullOrEmpty(data.sessionCertificationSha256))
             {
                 failure = "source contract references or hashes are missing";
                 return false;
@@ -163,9 +284,25 @@ namespace EndfieldGraphShaderLab
             if (!HashMatches(data.solverInputs, data.solverInputsSha256) ||
                 !HashMatches(data.payloadDecode, data.payloadDecodeSha256) ||
                 !HashMatches(data.ownerRecovery, data.ownerRecoverySha256) ||
-                !HashMatches(data.curveSamples, data.curveSamplesSha256))
+                !HashMatches(data.curveSamples, data.curveSamplesSha256) ||
+                !HashMatches(data.solverScalarPacking, data.solverScalarPackingSha256) ||
+                !HashMatches(data.centerUpdate, data.centerUpdateSha256) ||
+                !HashMatches(data.duplicateWrite, data.duplicateWriteSha256) ||
+                !HashMatches(data.transformRead, data.transformReadSha256) ||
+                !HashMatches(data.simulationStepTeamUpdate,
+                    data.simulationStepTeamUpdateSha256) ||
+                !HashMatches(data.sessionCertification,
+                    data.sessionCertificationSha256))
             {
                 failure = "source contract hash differs from generated binding data";
+                return false;
+            }
+            if (!data.sessionCertified || data.sessionUseRelativeTransform ||
+                !data.sessionUseCrossFrameJob || data.sessionUseAnimatorTransform ||
+                !string.Equals(data.sessionWritebackRoute, "TransformAccess",
+                    StringComparison.Ordinal))
+            {
+                failure = "live target session does not certify the supported transform route";
                 return false;
             }
             if (data.owners == null || data.owners.Length != 4)
@@ -196,7 +333,8 @@ namespace EndfieldGraphShaderLab
             foreach (EndfieldSecondaryDynamicsData.Owner owner in data.owners)
             {
                 EndfieldSecondaryDynamicsData.SolverInputs inputs = owner.solverInputs;
-                if (!inputs.compiledCurveSamplesRecovered ||
+                if (!inputs.authoredScalarsRecovered ||
+                    !inputs.compiledCurveSamplesRecovered ||
                     !HasCurve(inputs.dampingCurveData) ||
                     !HasCurve(inputs.radiusCurveData) ||
                     !HasCurve(inputs.distanceRestorationStiffness) ||
@@ -204,6 +342,22 @@ namespace EndfieldGraphShaderLab
                     !HasCurve(inputs.angleLimit))
                 {
                     failure = "compiled curve samples differ for " + owner.ownerPath;
+                    return false;
+                }
+                if (FloatBits(inputs.tetherStretchLimit) != 0x3cf5c28fU ||
+                    FloatBits(inputs.distanceVelocityAttenuation) != 0x3e99999aU ||
+                    !Finite(inputs.worldInertia) ||
+                    !Finite(inputs.movementInertiaSmoothing) ||
+                    !Finite(inputs.localInertia) ||
+                    !Finite(inputs.localMovementSpeedLimit) ||
+                    !Finite(inputs.localRotationSpeedLimit) ||
+                    inputs.localInertia < 0f || inputs.localInertia > 1f ||
+                    !Finite(inputs.colliderDynamicFriction) ||
+                    FloatBits(inputs.colliderStaticFriction) !=
+                    FloatBits(inputs.colliderDynamicFriction))
+                {
+                    failure = "retail GetClothParameters scalar packing differs for " +
+                        owner.ownerPath;
                     return false;
                 }
                 if (transform.Find(owner.ownerPath) == null ||
@@ -251,6 +405,12 @@ namespace EndfieldGraphShaderLab
         private static bool HasCurve(float[] values) =>
             values != null && values.Length == 16 &&
             values.All(value => !float.IsNaN(value) && !float.IsInfinity(value));
+
+        private static bool Finite(float value) =>
+            !float.IsNaN(value) && !float.IsInfinity(value);
+
+        private static uint FloatBits(float value) =>
+            BitConverter.ToUInt32(BitConverter.GetBytes(value), 0);
 
         private static void InstallPlayerLoop()
         {

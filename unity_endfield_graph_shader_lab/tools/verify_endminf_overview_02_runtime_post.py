@@ -96,6 +96,19 @@ def verify() -> dict[str, object]:
     if "EvaluateEndminfVisualCompatibility(" in pipeline:
         raise RuntimeError("retired empirical Effect-02 evaluator is still present")
 
+    spawner = (
+        LAB
+        / "Assets/EndfieldGraphShaderLab/Runtime/Rendering"
+        / "EndfieldRecoveredCharEffectSpawner.cs"
+    ).read_text(encoding="utf-8")
+    require_tokens(spawner, (
+        "PlayRecoveredParticleSystems(instance, systems)",
+        "Keep particle delays on the selection/body timeline",
+        "system.Play(true)",
+    ), "overview-02 split post/particle clocks")
+    if "system.Simulate(" in spawner:
+        raise RuntimeError("overview-02 particle systems regained a post-clock pre-roll")
+
     shader = SHADER.read_text(encoding="utf-8")
     require_tokens(shader, (
         "float4 SampleEndminfSceneLod0(float2 uv)",
@@ -125,6 +138,7 @@ def verify() -> dict[str, object]:
             "combinedMode": 6,
             "singleMode": 3,
             "averageSteps": [0, 0],
+            "particleClock": "selection/body timeline; no post-owner age offset",
         },
         "boundary": (
             "The animated values, native center/mode/power packing, source-only "

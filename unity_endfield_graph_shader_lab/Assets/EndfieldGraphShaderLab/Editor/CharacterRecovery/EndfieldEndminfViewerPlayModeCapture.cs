@@ -19,6 +19,10 @@ namespace EndfieldGraphShaderLabEditor
         private const string Scene = "Assets/EndfieldGraphShaderLab/Generated/Characters/Scenes/CharacterRecoveryViewer.unity";
         private const int Width = 1920;
         private const int Height = 1080;
+        // This deliverable isolates the selected actor and her spawned visual
+        // effects. CharInfo's portrait, compatibility backdrop, physical-room
+        // subset, and screen UI are reference-only evidence, not output.
+        private const bool ActorOnlyCapture = true;
         // The pinned retail recording is 1920x1080 at exactly 60 fps. Keep the
         // Play-mode simulation on that clock and only thin the written PNGs
         // to 4 fps. Driving Time.captureDeltaTime at 4 fps changed particle
@@ -26,7 +30,9 @@ namespace EndfieldGraphShaderLabEditor
         // so the old side-by-side frames were not equivalent observations.
         private const float SimulationFps = 60f;
         private const float Fps = 4f;
-        private const int VideoFrameCount = 600;
+        // Match the complete no-frame-generation retail segment through the
+        // sustained loop tail, rather than stopping at the former 10 s export.
+        private const int VideoFrameCount = 770;
         // The supplied retail recording keeps the pointer at the lower-right
         // during Endminf's entrance. These normalized coordinates are measured
         // from that 1920x1080 capture and select the already recovered live
@@ -50,7 +56,7 @@ namespace EndfieldGraphShaderLabEditor
         // sustains overview_loop instead of stopping on the entrance pose.
         private const int FrameCount = 41;
         private const string LitEffectCompatibilityShader =
-            "Hidden/Endfield/Compatibility/Endminf/LitEffectM01M38";
+            "Hidden/Endfield/Compatibility/Endminf/LitEffectParallax";
         private const string Suikuai1DiagnosticEnvironment =
             "ENDFIELD_ENDMINF_CAPTURE_ADMIT_SUIKUAI1";
         private const string OutputEnvironment =
@@ -60,11 +66,14 @@ namespace EndfieldGraphShaderLabEditor
         // without writing the 600-frame video-export sequence.
         private const string RequestedTimesEnvironment =
             "ENDFIELD_ENDMINF_CAPTURE_REQUESTED_TIMES";
+        private const string SecondaryDynamicsEnvironment =
+            "ENDFIELD_ENDMINF_CAPTURE_SECONDARY_DYNAMICS";
+        private const string SecondaryDynamicsSolverEnvironment =
+            "ENDFIELD_ENDMINF_CAPTURE_ENABLE_SECONDARY_DYNAMICS_SOLVER";
         private const string Suikuai1Material =
             "Assets/EndfieldGraphShaderLab/Generated/Characters/Playable/Endminf/Effects/Overview/Materials/M_fx_common_teleport_03_p19E6A2A7AE736DA5.mat";
         private static readonly string[] ExpectedRemainingBlockedEffects = {
             "/all/Particle System (9) | ",
-            "/all/suikuai (2) | ",
             "/all/glow/Particle System (10) | ",
         };
         private static float started;
@@ -78,6 +87,8 @@ namespace EndfieldGraphShaderLabEditor
         private static string captureFailure;
         private static bool capturePrePostHdr;
         private static bool capturePostStages;
+        private static bool captureSecondaryDynamics;
+        private static bool enableSecondaryDynamicsSolver;
         private static string prePostHdrCohort;
         private static string prePostHdrOutput;
         private static string postStagesCohort;
@@ -95,7 +106,7 @@ namespace EndfieldGraphShaderLabEditor
             public string graphicsDeviceType;
             public string scene = Scene;
             public string selectionPath = "CharacterRecoveryViewerUI.SelectModel(Endminf)";
-            public bool actorOnlyCapture = false;
+            public bool actorOnlyCapture = ActorOnlyCapture;
             public bool postProcessingExplicitlyDisabled = false;
             public bool prePostHdrDiagnostic;
             public bool postStageDiagnostic;
@@ -168,6 +179,9 @@ namespace EndfieldGraphShaderLabEditor
             public string[] effectRoots;
             public ParticleRow[] liveRenderers;
             public ParticleRow[] handFamily;
+            public SecondaryDynamicsBoneRow[] secondaryDynamicsBones;
+            public bool secondaryDynamicsSolverWriteback;
+            public string secondaryDynamicsBindingFailure;
             public string[] blockedRendererIdentities;
             public int changedPixelsFromPrevious;
             public long absoluteRgbDifferenceFromPrevious;
@@ -198,6 +212,15 @@ namespace EndfieldGraphShaderLabEditor
             public bool isPlaying;
             public bool isEmitting;
             public int alive;
+        }
+
+        [Serializable]
+        private sealed class SecondaryDynamicsBoneRow
+        {
+            public string path;
+            public Vector4 rootSpaceRow0;
+            public Vector4 rootSpaceRow1;
+            public Vector4 rootSpaceRow2;
         }
 
         [Serializable]
@@ -298,23 +321,33 @@ namespace EndfieldGraphShaderLabEditor
             string[] reproductionFlags = {
                 "ENDFIELD_ENDMINF_VISUAL_COMPATIBILITY",
                 "ENDFIELD_ENDMINF_LITEFFECT_VISUAL_COMPAT",
-                "ENDFIELD_ENDMINF_BACKDROP_VISUAL_COMPATIBILITY",
-                "ENDFIELD_RECOVERED_CHARINFO_READY_SUBSET_DIAGNOSTIC",
                 "ENDFIELD_RECOVERED_SOURCE_ENERGY_CORE",
                 "ENDFIELD_RECOVERED_VISIBILITY_SH",
                 "ENDFIELD_RECOVERED_PREGBUFFER_DEPTH_OWNER",
-                "ENDFIELD_RECOVERED_LINEAR_UNORM_FINAL_TARGET",
-                "ENDFIELD_RECOVERED_CHARINFO_BACKGROUND_PORTRAIT"
+                "ENDFIELD_RECOVERED_LINEAR_UNORM_FINAL_TARGET"
             };
             foreach (string flag in reproductionFlags)
                 Environment.SetEnvironmentVariable(flag, "1");
+            if (ActorOnlyCapture)
+            {
+                Environment.SetEnvironmentVariable(
+                    "ENDFIELD_ENDMINF_BACKDROP_VISUAL_COMPATIBILITY", "0");
+                Environment.SetEnvironmentVariable(
+                    "ENDFIELD_RECOVERED_CHARINFO_READY_SUBSET_DIAGNOSTIC", "0");
+                Environment.SetEnvironmentVariable(
+                    "ENDFIELD_RECOVERED_CHARINFO_BACKGROUND_PORTRAIT", "0");
+            }
             EndfieldRecoveredCharInfoPresentation.RefreshStandaloneSelection();
-            // The exact source stage is disposable and may be absent between
-            // recovery batches. Rebind the ten retained primary rock rows from
-            // their pinned PathIDs and direct tracked assets before the scene
-            // instantiates its actor prefab. This remains opt-in and does not
-            // broaden the four separately blocked non-primary effect rows.
-            EndfieldEndminfLitEffectCompatibilityBindingBuilder.BuildAndValidate();
+            // Character refreshes rebuild the source actor prefab and can
+            // remove its generated overview-effect requests/spawner. Restore
+            // the complete source-retained entrance-effect contract before the
+            // scene instantiates the actor. The exact source stage is
+            // disposable and may be absent between recovery batches, so the
+            // binding builder preserves the existing effect prefabs and then
+            // repairs the ten certified primary-rock material rows from their
+            // pinned PathIDs and direct tracked assets. This remains opt-in and
+            // does not broaden the four separately blocked non-primary rows.
+            EndfieldEndminfOverviewEffectBindingBuilder.BuildAndValidate();
             if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
                     EndfieldEndminfVisualCompatibilityClock.PreRollSecondsEnvironmentVariable)))
             {
@@ -360,15 +393,18 @@ namespace EndfieldGraphShaderLabEditor
                 "ENDFIELD_ENDMINF_CAPTURE_PREPOST_HDR") == "1";
             capturePostStages = Environment.GetEnvironmentVariable(
                 "ENDFIELD_ENDMINF_CAPTURE_POST_STAGES") == "1";
+            captureSecondaryDynamics = Environment.GetEnvironmentVariable(
+                SecondaryDynamicsEnvironment) == "1";
+            enableSecondaryDynamicsSolver = Environment.GetEnvironmentVariable(
+                SecondaryDynamicsSolverEnvironment) == "1";
             if (capturePrePostHdr && capturePostStages)
                 throw new InvalidOperationException(
                     "Pre-post HDR and five-stage post diagnostics are mutually exclusive.");
-            if (targetedTimes && (fineWindow || videoExport || capturePrePostHdr ||
-                capturePostStages))
+            if (targetedTimes && (fineWindow || videoExport || capturePrePostHdr))
             {
                 throw new InvalidOperationException(
                     RequestedTimesEnvironment +
-                    " is mutually exclusive with fixed-window, video, and post diagnostics.");
+                    " is mutually exclusive with fixed-window, video, and pre-post HDR diagnostics.");
             }
             string excludedMaterial = Environment.GetEnvironmentVariable(
                 "ENDFIELD_ENDMINF_CAPTURE_EXCLUDE_MATERIAL");
@@ -515,6 +551,30 @@ namespace EndfieldGraphShaderLabEditor
                 if (camera != null)
                     Render(camera);
                 select.Invoke(viewer, new object[] { index });
+                if (enableSecondaryDynamicsSolver &&
+                    CharacterRecoveryViewerUI.TryGetSelectedActorRoot(
+                        out Transform dynamicsActor))
+                {
+                    EndfieldSecondaryDynamicsRuntime dynamics = dynamicsActor
+                        .GetComponent<EndfieldSecondaryDynamicsRuntime>();
+                    if (dynamics == null)
+                        throw new InvalidOperationException(
+                            "Endminf secondary-dynamics runtime is missing.");
+                    dynamics.enabled = false;
+                    dynamics.enableUnverifiedSolverWriteback = true;
+                    dynamics.enabled = true;
+                    if (!dynamics.SolverWritebackEnabled)
+                    {
+                        captureFailure =
+                            "Endminf secondary-dynamics solver failed to initialize: " +
+                            dynamics.BindingFailure;
+                        selected = true;
+                        Debug.LogError(captureFailure);
+                        EditorApplication.update -= Tick;
+                        EditorApplication.ExitPlaymode();
+                        return;
+                    }
+                }
                 selected = true;
                 // Enabling the actor schedules its one-frame delayed Overview
                 // restart. Do not establish capture time zero until that edge
@@ -692,6 +752,8 @@ namespace EndfieldGraphShaderLabEditor
                 GeometryUtility.TestPlanesAABB(
                     GeometryUtility.CalculateFrustumPlanes(camera),
                     shadowPlane.bounds);
+            EndfieldSecondaryDynamicsRuntime secondaryDynamics = actor
+                .GetComponent<EndfieldSecondaryDynamicsRuntime>();
             Frames.Add(new FrameRow {
                 index = next, requestedSeconds = requested, actualSeconds = elapsed, file = file,
                 endminfPostSeconds = endminfPostSeconds,
@@ -750,6 +812,14 @@ namespace EndfieldGraphShaderLabEditor
                     value.GetComponentInParent<EndfieldRecoveredParticleEffectSource>(true) is EndfieldRecoveredParticleEffectSource owner &&
                     (owner.name.IndexOf("_03", StringComparison.Ordinal) >= 0 || owner.name.IndexOf("_04", StringComparison.Ordinal) >= 0))
                     .Select(value => Particle(value)).ToArray(),
+                secondaryDynamicsBones = captureSecondaryDynamics
+                    ? CaptureSecondaryDynamicsBones(actor)
+                    : Array.Empty<SecondaryDynamicsBoneRow>(),
+                secondaryDynamicsSolverWriteback = secondaryDynamics != null &&
+                    secondaryDynamics.SolverWritebackEnabled,
+                secondaryDynamicsBindingFailure = secondaryDynamics == null
+                    ? "runtime missing"
+                    : secondaryDynamics.BindingFailure,
                 blockedRendererIdentities = renderers.Where(value => !value.enabled)
                     .Select(value => Hierarchy(value.transform) + " | " +
                         string.Join(", ", value.sharedMaterials.Select(material =>
@@ -779,7 +849,7 @@ namespace EndfieldGraphShaderLabEditor
                 value.effectRootCount == 4);
             bool observedPrimaryRockCompatibilityBinding =
                 firstEntranceFrame != null &&
-                firstEntranceFrame.admittedRenderers == 67 &&
+                firstEntranceFrame.admittedRenderers == 68 &&
                 firstEntranceFrame.blockedRendererIdentities != null &&
                 firstEntranceFrame.blockedRendererIdentities.Length ==
                     ExpectedRemainingBlockedEffects.Length &&
@@ -816,8 +886,8 @@ namespace EndfieldGraphShaderLabEditor
                 missingObservations.Add("rotation-only root motion with invariant position");
             if (!observedPrimaryRockCompatibilityBinding)
                 missingObservations.Add(
-                    "ten-row primary rock compatibility plus exact suikuai (1) " +
-                    "binding with three separate blocked effects");
+                    "eleven-row LitEffect crystal compatibility plus exact suikuai (1) " +
+                    "binding with two separate blocked effects");
             if (!observedPreGBufferDepthOwnerReady)
                 missingObservations.Add(
                     "canonical CharacterPrePass depth/stencil ownership");
@@ -861,7 +931,9 @@ namespace EndfieldGraphShaderLabEditor
             bool targetedTimes = !string.IsNullOrWhiteSpace(
                 Environment.GetEnvironmentVariable(RequestedTimesEnvironment));
             Report report = new Report {
-                status = targetedTimes
+                status = targetedTimes && capturePostStages
+                    ? "targeted_diagnostic_ok"
+                    : targetedTimes
                     ? "targeted_ok"
                     : capturePrePostHdr || capturePostStages
                     ? "diagnostic_ok"
@@ -1216,6 +1288,39 @@ namespace EndfieldGraphShaderLabEditor
         private static string Quote(string value)
         {
             return "\"" + value.Replace("\"", "\\\"") + "\"";
+        }
+
+        private static SecondaryDynamicsBoneRow[] CaptureSecondaryDynamicsBones(
+            Transform actor)
+        {
+            EndfieldSecondaryDynamicsRuntime runtime = actor == null
+                ? null
+                : actor.GetComponent<EndfieldSecondaryDynamicsRuntime>();
+            EndfieldSecondaryDynamicsData data = runtime == null ? null : runtime.data;
+            if (data == null || data.owners == null || data.owners.Length != 4)
+                throw new InvalidOperationException(
+                    "Endminf secondary-dynamics capture requires four source owners.");
+
+            Matrix4x4 worldToRoot = actor.worldToLocalMatrix;
+            return data.owners
+                .SelectMany(value => value.proxyTransformPaths ?? Array.Empty<string>())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .Select(path =>
+                {
+                    Transform target = actor.Find(path);
+                    if (target == null)
+                        throw new InvalidOperationException(
+                            "Endminf secondary-dynamics transform is missing: " + path);
+                    Matrix4x4 matrix = worldToRoot * target.localToWorldMatrix;
+                    return new SecondaryDynamicsBoneRow {
+                        path = path,
+                        rootSpaceRow0 = matrix.GetRow(0),
+                        rootSpaceRow1 = matrix.GetRow(1),
+                        rootSpaceRow2 = matrix.GetRow(2),
+                    };
+                }).ToArray();
         }
 
         private static ParticleRow Particle(ParticleSystemRenderer renderer)
