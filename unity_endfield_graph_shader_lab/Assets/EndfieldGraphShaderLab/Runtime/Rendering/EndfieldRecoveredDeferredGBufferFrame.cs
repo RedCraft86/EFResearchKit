@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography;
 using Unity.Collections;
@@ -10,11 +11,11 @@ using UnityEngine.Rendering;
 namespace EndfieldGraphShaderLab
 {
     /// <summary>
-    /// Default-off, non-presented same-camera replay of the source-closed
-    /// SphereOutside HGBuffer producer. This owns the exact five logical color
-    /// attachments and D32S8 depth/stencil sidecar. The selected deferred
-    /// consumer is source-closed elsewhere; this default-off producer does not
-    /// run it because the complete live frame-resource set is not yet admitted.
+    /// Default-off, non-presented same-camera replay of source-closed HGBuffer
+    /// producers. SphereOutside and Endminf M27 share the exact five logical
+    /// color attachments and D32S8 depth/stencil sidecar while retaining
+    /// separate identity gates. The selected deferred consumer is source-
+    /// closed elsewhere and is not presented by this producer.
     /// </summary>
     internal sealed class EndfieldRecoveredDeferredGBufferFrame : IDisposable
     {
@@ -22,14 +23,36 @@ namespace EndfieldGraphShaderLab
             "ENDFIELD_RECOVERED_DEFERRED_GBUFFER_FRAME";
         internal const string CommandLineArgument =
             "-endfield-recovered-deferred-gbuffer-frame";
+        internal const string EndminfM27EnvironmentVariable =
+            "ENDFIELD_RECOVERED_ENDMINF_M27_HGBUFFER";
+        internal const string EndminfM27ExactDxbcEnvironmentVariable =
+            "ENDFIELD_RECOVERED_ENDMINF_M27_EXACT_DXBC";
+        internal const string EndminfM27CommandLineArgument =
+            "-endfield-recovered-endminf-m27-hgbuffer";
 
         internal const string ShaderName =
             "Hidden/Endfield/Recovered/CharInfo/HGRPLitUnavailable";
         internal const string PassName =
             "RecoveredSphereOutsideHGBufferFrame";
+        internal const string EndminfM27ShaderName =
+            "Hidden/Endfield/Recovered/Endminf/M27LitEffectHGBuffer";
+        internal const string EndminfM27PassName =
+            "RecoveredEndminfM27HGBuffer";
+        internal const string EndminfM27ExactShaderName =
+            "Hidden/Endfield/Diagnostics/EndminfM27ExactAbiShell";
+        internal const string EndminfM27ExactPassName = "M27ExactAbiShell";
+        private const string EndminfM27ExactKeyword =
+            "ENDFIELD_ORIGINAL_DXBC_M27_EXACT";
+        private const long EndminfM27RendererPathId = 59284134265994738L;
+        private const long EndminfM27MaterialPathId =
+            unchecked((long)0xA531A88850690EB8UL);
+        private const long EndminfM27MeshPathId =
+            unchecked((long)0x8EC9950E5461C8D9UL);
 
         internal static readonly int ReadyId =
             Shader.PropertyToID("_EndfieldRecoveredDeferredGBufferFrameReady");
+        internal static readonly int EndminfM27ReadyId =
+            Shader.PropertyToID("_EndfieldRecoveredEndminfM27HGBufferReady");
         internal static readonly int SceneColorId =
             Shader.PropertyToID("_EndfieldRecoveredDeferredSceneColor");
         internal static readonly int SceneMVId =
@@ -82,6 +105,11 @@ namespace EndfieldGraphShaderLab
             new Color(0.5f, 0.5f, 0.0f, 0.0f);
 
         private readonly bool requested;
+        private readonly bool sphereOutsideRequested;
+        private readonly bool endminfM27Requested;
+        private readonly bool endminfM27ExactDxbcRequested;
+        private Material endminfM27Material;
+        private int endminfM27SourceMaterialId;
         private RenderTexture sceneColor;
         private RenderTexture sceneMV;
         private RenderTexture gBufferA;
@@ -93,6 +121,8 @@ namespace EndfieldGraphShaderLab
         private bool activationLogged;
         private bool failureLogged;
         private bool readbackRequested;
+        private bool endminfM27ReadbackRequested;
+        private bool endminfM27ActivationLogged;
         // Resolver inputs are a same-camera-frame publication.  Keeping the
         // stamp beside the textures prevents a later camera (or a reused
         // RenderTexture allocation) from being mistaken for the current
@@ -103,6 +133,10 @@ namespace EndfieldGraphShaderLab
         private int publishedWidth;
         private int publishedHeight;
         private uint publicationSerial;
+        private int endminfM27PublishedFrame = -1;
+        private int endminfM27PublishedCameraInstanceId;
+        private int endminfM27PublishedWidth;
+        private int endminfM27PublishedHeight;
         // HGRP/Lit's source vertex supplies previous clip x/y/w lanes to the
         // fragment motion encoder. Keep the immediately preceding camera and
         // object transforms; a camera, renderer, or extent discontinuity
@@ -120,11 +154,26 @@ namespace EndfieldGraphShaderLab
 
         internal EndfieldRecoveredDeferredGBufferFrame()
         {
-            requested =
+            endminfM27Requested =
+                ReadBooleanEnvironment(EndminfM27EnvironmentVariable) ||
+                HasCommandLineArgument(EndminfM27CommandLineArgument);
+            endminfM27ExactDxbcRequested =
+                endminfM27Requested &&
+                ReadBooleanEnvironment(EndminfM27ExactDxbcEnvironmentVariable);
+            // A generic deferred-resolver probe historically implied the
+            // SphereOutside producer. M27 is now a complete identity-gated
+            // five-target producer in its own right; requiring the inactive
+            // CharInfo room hierarchy first prevents its draw from ever
+            // publishing. Keep the legacy implication only when M27 is not
+            // the requested producer.
+            sphereOutsideRequested =
                 ReadBooleanEnvironment(EnvironmentVariable) ||
                 HasCommandLineArgument(CommandLineArgument) ||
-                EndfieldRecoveredDeferredResolverBindingPolicy.IsRequested;
+                EndfieldRecoveredDeferredResolverBindingPolicy.IsRequested &&
+                !endminfM27Requested;
+            requested = sphereOutsideRequested || endminfM27Requested;
             Shader.SetGlobalFloat(ReadyId, 0.0f);
+            Shader.SetGlobalFloat(EndminfM27ReadyId, 0.0f);
             InvalidatePublication();
             InvalidateMotionHistory();
             PublishBlackFallbacks();
@@ -135,7 +184,11 @@ namespace EndfieldGraphShaderLab
             InvalidatePublication();
             InvalidateMotionHistory();
             ReleaseResources();
+            ReleaseObject(endminfM27Material);
+            endminfM27Material = null;
+            endminfM27SourceMaterialId = 0;
             Shader.SetGlobalFloat(ReadyId, 0.0f);
+            Shader.SetGlobalFloat(EndminfM27ReadyId, 0.0f);
             PublishBlackFallbacks();
         }
 
@@ -151,6 +204,11 @@ namespace EndfieldGraphShaderLab
             if (!requested)
                 return false;
 
+            // This signal proves that the M27 draw itself was published in
+            // the current camera frame. The generic frame-ready signal also
+            // covers SphereOutside and therefore cannot establish M27 alone.
+            Shader.SetGlobalFloat(EndminfM27ReadyId, 0.0f);
+
             string failure;
             Renderer renderer;
             Material material;
@@ -161,7 +219,16 @@ namespace EndfieldGraphShaderLab
                 FailClosed(context, failure);
                 return false;
             }
-            if (!TryResolveSource(camera, out renderer, out material, out passIndex, out failure))
+            renderer = null;
+            material = null;
+            passIndex = -1;
+            if (sphereOutsideRequested &&
+                !TryResolveSource(
+                    camera,
+                    out renderer,
+                    out material,
+                    out passIndex,
+                    out failure))
             {
                 FailClosed(context, failure);
                 return false;
@@ -171,10 +238,72 @@ namespace EndfieldGraphShaderLab
                 FailClosed(context, failure);
                 return false;
             }
-
+            ParticleSystemRenderer endminfM27Renderer = null;
+            Material endminfM27SourceMaterial = null;
+            Mesh endminfM27Mesh = null;
+            int endminfM27PassIndex = -1;
+            if (endminfM27Requested &&
+                (!TryResolveEndminfM27Source(
+                    camera,
+                    out endminfM27Renderer,
+                    out endminfM27SourceMaterial,
+                    out endminfM27Mesh,
+                    out failure) ||
+                 endminfM27Renderer != null &&
+                 !endminfM27ExactDxbcRequested &&
+                 !TryEnsureEndminfM27Material(
+                    endminfM27SourceMaterial,
+                    out endminfM27PassIndex,
+                    out failure)))
+            {
+                FailClosed(context, failure);
+                return false;
+            }
+            if (endminfM27ExactDxbcRequested &&
+                endminfM27SourceMaterial == null &&
+                !EndfieldRecoveredEndminfM27ExactRuntime.Initialized &&
+                !TryResolveRetainedEndminfM27Material(
+                    camera,
+                    out endminfM27SourceMaterial,
+                    out failure))
+            {
+                FailClosed(context, failure);
+                return false;
+            }
+            bool exactM27Active = false;
+            if (endminfM27ExactDxbcRequested &&
+                (endminfM27SourceMaterial != null ||
+                 EndfieldRecoveredEndminfM27ExactRuntime.Initialized))
+            {
+                if (!EndfieldRecoveredEndminfM27ExactRuntime.Prepare(
+                        endminfM27SourceMaterial,
+                        camera))
+                {
+                    FailClosed(
+                        context,
+                        EndfieldRecoveredEndminfM27ExactRuntime.Failure);
+                    return false;
+                }
+                exactM27Active =
+                    EndfieldRecoveredEndminfM27ExactRuntime.HasActivePacket;
+            }
+            Renderer motionOwner = renderer != null
+                ? renderer
+                : endminfM27Renderer;
+            if (motionOwner == null && exactM27Active)
+                motionOwner = ResolveSelectedActorMotionOwner(camera);
+            if (motionOwner == null)
+            {
+                FailClosed(
+                    context,
+                    string.IsNullOrEmpty(failure)
+                        ? "no requested HGBuffer producer is active"
+                        : failure);
+                return false;
+            }
             var command = new CommandBuffer
             {
-                name = "Recovered same-frame SphereOutside HGBuffer sidecar"
+                name = "Recovered same-frame HGBuffer sidecar"
             };
             try
             {
@@ -183,11 +312,11 @@ namespace EndfieldGraphShaderLab
                         camera.nonJitteredProjectionMatrix,
                         true) *
                     camera.worldToCameraMatrix;
-                Matrix4x4 objectToWorld = renderer.localToWorldMatrix;
+                Matrix4x4 objectToWorld = motionOwner.localToWorldMatrix;
                 bool motionHistoryValid =
                     hasPreviousGpuViewProjection &&
                     previousCameraInstanceId == camera.GetInstanceID() &&
-                    previousRendererInstanceId == renderer.GetInstanceID() &&
+                    previousRendererInstanceId == motionOwner.GetInstanceID() &&
                     previousFrame == Time.frameCount - 1 &&
                     previousWidth == width &&
                     previousHeight == height;
@@ -198,7 +327,7 @@ namespace EndfieldGraphShaderLab
                     ? previousObjectToWorld
                     : objectToWorld;
                 Vector4 motionVectorsParams =
-                    GetMotionVectorsParams(renderer);
+                    GetMotionVectorsParams(motionOwner);
                 command.SetRenderTarget(sceneColor);
                 command.ClearRenderTarget(false, true, SceneColorClear);
                 command.SetRenderTarget(sceneMV);
@@ -247,7 +376,39 @@ namespace EndfieldGraphShaderLab
                 command.SetGlobalVector(
                     MotionVectorsParamsId,
                     motionVectorsParams);
-                command.DrawRenderer(renderer, material, 0, passIndex);
+                if (renderer != null)
+                    command.DrawRenderer(renderer, material, 0, passIndex);
+                if (endminfM27Renderer != null || exactM27Active)
+                {
+                    if (endminfM27ExactDxbcRequested)
+                    {
+                        if (!EndfieldRecoveredEndminfM27ExactRuntime.Issue(command))
+                        {
+                            FailClosed(
+                                context,
+                                EndfieldRecoveredEndminfM27ExactRuntime.Failure);
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        if (endminfM27Renderer.mesh != endminfM27Mesh)
+                        {
+                            endminfM27Renderer.renderMode =
+                                ParticleSystemRenderMode.Mesh;
+                            endminfM27Renderer.SetMeshes(
+                                new[] { endminfM27Mesh },
+                                1);
+                        }
+                        command.DrawRenderer(
+                            endminfM27Renderer,
+                            endminfM27Material,
+                            0,
+                            endminfM27PassIndex);
+                    }
+                    command.SetGlobalFloat(EndminfM27ReadyId, 1.0f);
+                    RequestEndminfM27Readbacks(command, camera.name);
+                }
 
                 command.SetGlobalTexture(SceneColorId, sceneColor);
                 command.SetGlobalTexture(SceneMVId, sceneMV);
@@ -274,11 +435,18 @@ namespace EndfieldGraphShaderLab
                 command.SetViewport(new Rect(0.0f, 0.0f, width, height));
                 context.ExecuteCommandBuffer(command);
                 PublishFrame(camera, width, height);
+                if (endminfM27Renderer != null || exactM27Active)
+                {
+                    endminfM27PublishedFrame = Time.frameCount;
+                    endminfM27PublishedCameraInstanceId = camera.GetInstanceID();
+                    endminfM27PublishedWidth = width;
+                    endminfM27PublishedHeight = height;
+                }
                 previousGpuViewProjection = gpuViewProjection;
                 previousObjectToWorld = objectToWorld;
                 hasPreviousGpuViewProjection = true;
                 previousCameraInstanceId = camera.GetInstanceID();
-                previousRendererInstanceId = renderer.GetInstanceID();
+                previousRendererInstanceId = motionOwner.GetInstanceID();
                 previousFrame = Time.frameCount;
                 previousWidth = width;
                 previousHeight = height;
@@ -288,7 +456,7 @@ namespace EndfieldGraphShaderLab
                 command.Release();
             }
 
-            if (!activationLogged)
+            if (renderer != null && !activationLogged)
             {
                 Debug.Log(
                     "Recovered SphereOutside same-frame HGBuffer sidecar active: " +
@@ -302,6 +470,37 @@ namespace EndfieldGraphShaderLab
                 activationLogged = true;
             }
             failureLogged = false;
+            if ((endminfM27Renderer != null || exactM27Active) &&
+                !endminfM27ActivationLogged)
+            {
+                Material telemetryMaterial = endminfM27ExactDxbcRequested
+                    ? endminfM27SourceMaterial
+                    : endminfM27Material;
+                Texture m27BaseMap = telemetryMaterial != null
+                    ? telemetryMaterial.GetTexture("_BaseColorMap")
+                    : null;
+                Debug.Log(
+                    "Recovered Endminf M27 five-MRT HGBuffer sidecar active: " +
+                    $"camera={camera.name}, rendererPathId={EndminfM27RendererPathId}, " +
+                    $"particles={(endminfM27Renderer == null ? 0 : endminfM27Renderer.GetComponent<ParticleSystem>().particleCount)}, " +
+                    $"baseMap={(m27BaseMap == null ? "<null>" : m27BaseMap.name)}, " +
+                    $"baseMapSize={(m27BaseMap == null ? "0x0" : m27BaseMap.width + "x" + m27BaseMap.height)}, " +
+                    $"exactDxbc={endminfM27ExactDxbcRequested}, " +
+                    (endminfM27ExactDxbcRequested
+                        ? "captureSession=" +
+                            EndfieldRecoveredM27TemporalCaptureData.SourceSession +
+                            ", temporalPackets=" +
+                            EndfieldRecoveredM27TemporalCaptureData.PacketCount +
+                            ", capturedDraws=" +
+                            EndfieldRecoveredM27TemporalCaptureData.TotalDrawCount +
+                            ", "
+                        : $"baseColor={endminfM27Material.GetColor("_BaseColor")}, " +
+                          $"baseTintCover={endminfM27Material.GetFloat("_BaseColorTintCover").ToString("R", CultureInfo.InvariantCulture)}, " +
+                          $"baseBrighterScale={endminfM27Material.GetFloat("_BaseColorBrighterScale").ToString("R", CultureInfo.InvariantCulture)}, ") +
+                    "geometryRendererEnabled=true, ordinaryCameraExcluded=true, " +
+                    "presented=false.");
+                endminfM27ActivationLogged = true;
+            }
             return true;
         }
 
@@ -364,6 +563,119 @@ namespace EndfieldGraphShaderLab
             return true;
         }
 
+        internal bool TryGetEndminfM27PresentationInputs(
+            Camera camera,
+            int width,
+            int height,
+            out RenderTexture sourceSceneColor,
+            out RenderTexture mask,
+            out RenderTexture depth,
+            out string failure)
+        {
+            sourceSceneColor = sceneColor;
+            mask = gBufferC;
+            depth = depthStencil;
+            failure = string.Empty;
+            if (!endminfM27Requested)
+            {
+                failure = "Endminf M27 producer is not requested";
+                return false;
+            }
+            if (!TryGetResolverInputs(
+                    camera,
+                    width,
+                    height,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    out failure))
+                return false;
+            if (endminfM27PublishedFrame != Time.frameCount ||
+                endminfM27PublishedCameraInstanceId != camera.GetInstanceID() ||
+                endminfM27PublishedWidth != width ||
+                endminfM27PublishedHeight != height)
+            {
+                failure =
+                    "Endminf M27 has no identity-specific same-frame publication";
+                return false;
+            }
+            if (sourceSceneColor == null || !sourceSceneColor.IsCreated() ||
+                mask == null || !mask.IsCreated() ||
+                depth == null || !depth.IsCreated())
+            {
+                failure = "Endminf M27 presentation mask/depth is unavailable";
+                return false;
+            }
+            return true;
+        }
+
+        internal bool TryGetSphereOutsidePresentationInputs(
+            Camera camera,
+            int width,
+            int height,
+            out RenderTexture sourceSceneColor,
+            out RenderTexture mask,
+            out RenderTexture depth,
+            out string failure)
+        {
+            sourceSceneColor = sceneColor;
+            mask = gBufferC;
+            depth = depthStencil;
+            failure = string.Empty;
+            if (!sphereOutsideRequested)
+            {
+                failure = "SphereOutside producer is not requested";
+                return false;
+            }
+            if (!TryGetResolverInputs(
+                    camera,
+                    width,
+                    height,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    out failure))
+                return false;
+            if (sourceSceneColor == null || !sourceSceneColor.IsCreated() ||
+                mask == null || !mask.IsCreated() ||
+                depth == null || !depth.IsCreated())
+            {
+                failure = "SphereOutside presentation attachments are unavailable";
+                return false;
+            }
+            return true;
+        }
+
+        internal bool TryGetResolverDepth(
+            Camera camera,
+            int width,
+            int height,
+            out RenderTexture resolverDepth,
+            out string failure)
+        {
+            resolverDepth = depthStencil;
+            if (!TryGetResolverInputs(
+                    camera,
+                    width,
+                    height,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    out failure))
+                return false;
+            if (resolverDepth == null || !resolverDepth.IsCreated())
+            {
+                failure =
+                    "same-frame deferred resolver depth texture is unavailable " +
+                    $"for publication serial {publicationSerial}";
+                return false;
+            }
+            return true;
+        }
+
         private void FailClosed(
             ScriptableRenderContext context,
             string failure)
@@ -375,6 +687,7 @@ namespace EndfieldGraphShaderLab
                 name = "Fail-closed recovered deferred HGBuffer sidecar"
             };
             command.SetGlobalFloat(ReadyId, 0.0f);
+            command.SetGlobalFloat(EndminfM27ReadyId, 0.0f);
             command.SetGlobalTexture(SceneColorId, Texture2D.blackTexture);
             command.SetGlobalTexture(SceneMVId, Texture2D.blackTexture);
             command.SetGlobalTexture(GBufferAId, Texture2D.blackTexture);
@@ -391,7 +704,7 @@ namespace EndfieldGraphShaderLab
             if (!failureLogged)
             {
                 Debug.LogWarning(
-                    "Recovered SphereOutside same-frame HGBuffer sidecar failed closed: " +
+                    "Recovered same-frame HGBuffer sidecar failed closed: " +
                     failure + ".");
                 failureLogged = true;
             }
@@ -479,6 +792,336 @@ namespace EndfieldGraphShaderLab
                 return false;
             }
             return true;
+        }
+
+        private static bool TryResolveEndminfM27Source(
+            Camera camera,
+            out ParticleSystemRenderer renderer,
+            out Material sourceMaterial,
+            out Mesh mesh,
+            out string failure)
+        {
+            renderer = null;
+            sourceMaterial = null;
+            mesh = null;
+            failure = string.Empty;
+            if (camera == null)
+            {
+                failure = "the Endminf M27 owner received no camera";
+                return false;
+            }
+
+            EndfieldEndminfLitEffectCompatibilityBinding[] bindings =
+                Resources.FindObjectsOfTypeAll<
+                    EndfieldEndminfLitEffectCompatibilityBinding>();
+            List<EndfieldEndminfLitEffectCompatibilityBinding.Row> rows =
+                bindings
+                    .Where(binding =>
+                        binding != null &&
+                        binding.gameObject.scene.IsValid() &&
+                        binding.gameObject.scene == camera.gameObject.scene &&
+                        binding.rows != null)
+                    .SelectMany(binding => binding.rows)
+                    .Where(row =>
+                        row != null &&
+                        row.particleRendererPathId == EndminfM27RendererPathId &&
+                        row.renderer != null &&
+                        row.renderer.gameObject.activeInHierarchy)
+                    .ToList();
+            // The overview_02 root is transient. No active row is the exact
+            // no-draw state before spawn and after source cleanup.
+            if (rows.Count == 0)
+            {
+                int sceneBindingCount = bindings.Count(binding =>
+                    binding != null &&
+                    binding.gameObject.scene.IsValid() &&
+                    binding.gameObject.scene == camera.gameObject.scene);
+                failure =
+                    "Endminf M27 has no active direct row (bindings=" +
+                    bindings.Length + ", sameScene=" + sceneBindingCount + ")";
+                return true;
+            }
+            if (rows.Count != 1)
+            {
+                failure =
+                    "expected at most one active scene-local Endminf M27 row; found " +
+                    rows.Count;
+                return false;
+            }
+
+            EndfieldEndminfLitEffectCompatibilityBinding.Row row = rows[0];
+            if (row.materialPathId != EndminfM27MaterialPathId ||
+                row.meshPathId != EndminfM27MeshPathId ||
+                row.material == null || row.mesh == null)
+            {
+                failure = "the Endminf M27 direct material/mesh identity drifted";
+                return false;
+            }
+            if (row.renderer.enabled)
+            {
+                if (row.renderer.gameObject.layer !=
+                        EndfieldEndminfLitEffectCompatibilityBinding.ExactM27Layer ||
+                    (camera.cullingMask & (1 <<
+                        EndfieldEndminfLitEffectCompatibilityBinding.ExactM27Layer)) != 0)
+                {
+                    failure =
+                        "the exact M27 particle geometry owner is not isolated " +
+                        "from the ordinary camera cull";
+                    return false;
+                }
+            }
+            else
+            {
+                failure =
+                    "the exact M27 particle geometry owner is disabled";
+                return false;
+            }
+            ParticleSystem particles = row.renderer.GetComponent<ParticleSystem>();
+            if (particles == null)
+            {
+                failure = "the Endminf M27 row has no ParticleSystem";
+                return false;
+            }
+            if (!particles.isPlaying || particles.particleCount == 0)
+            {
+                failure =
+                    "Endminf M27 direct row is active but has no live particles";
+                return true;
+            }
+            if (row.material.shader == null ||
+                row.material.shader.name !=
+                    "Hidden/Endfield/Compatibility/Endminf/LitEffectParallax")
+            {
+                failure = "the retained Endminf M27 source material shader drifted";
+                return false;
+            }
+
+            renderer = row.renderer;
+            sourceMaterial = row.material;
+            mesh = row.mesh;
+            return true;
+        }
+
+        private static Renderer ResolveSelectedActorMotionOwner(Camera camera)
+        {
+            EndfieldHGOperatorLightRig lightRig = camera != null
+                ? camera.GetComponent<EndfieldHGOperatorLightRig>()
+                : null;
+            if (lightRig == null || lightRig.actorRoot == null ||
+                !string.Equals(
+                    lightRig.actorRoot.name,
+                    "Endminf",
+                    StringComparison.OrdinalIgnoreCase))
+                return null;
+            return lightRig.actorRoot.GetComponentInChildren<
+                SkinnedMeshRenderer>(true);
+        }
+
+        private static bool TryResolveRetainedEndminfM27Material(
+            Camera camera,
+            out Material sourceMaterial,
+            out string failure)
+        {
+            sourceMaterial = null;
+            failure = string.Empty;
+            if (camera == null)
+                return true;
+            EndfieldEndminfLitEffectCompatibilityBinding[] bindings =
+                Resources.FindObjectsOfTypeAll<
+                    EndfieldEndminfLitEffectCompatibilityBinding>();
+            List<EndfieldEndminfLitEffectCompatibilityBinding.Row> rows =
+                bindings
+                    .Where(binding =>
+                        binding != null &&
+                        binding.gameObject.scene.IsValid() &&
+                        binding.gameObject.scene == camera.gameObject.scene &&
+                        binding.rows != null)
+                    .SelectMany(binding => binding.rows)
+                    .Where(row =>
+                        row != null &&
+                        row.particleRendererPathId == EndminfM27RendererPathId)
+                    .ToList();
+            if (rows.Count == 0)
+                return true;
+            if (rows.Any(row =>
+                    row.materialPathId != EndminfM27MaterialPathId ||
+                    row.meshPathId != EndminfM27MeshPathId ||
+                    row.material == null || row.mesh == null))
+            {
+                failure =
+                    "the retained inactive Endminf M27 identity drifted";
+                return false;
+            }
+            Material[] materials = rows
+                .Select(row => row.material)
+                .Distinct()
+                .ToArray();
+            if (materials.Length != 1)
+            {
+                failure =
+                    "the retained Endminf M27 material is not unique; found " +
+                    materials.Length;
+                return false;
+            }
+            sourceMaterial = materials[0];
+            return true;
+        }
+
+        private bool TryEnsureEndminfM27Material(
+            Material sourceMaterial,
+            out int passIndex,
+            out string failure)
+        {
+            passIndex = -1;
+            failure = string.Empty;
+            if (sourceMaterial == null)
+            {
+                failure = "the Endminf M27 source material is absent";
+                return false;
+            }
+            if (endminfM27ExactDxbcRequested &&
+                !EndfieldRecoveredM27ExactCaptureData.ExactVertexEnvelopeClosed)
+            {
+                failure =
+                    "the exact M27 vertex b0 envelope is incomplete: captured " +
+                    EndfieldRecoveredM27ExactCaptureData.CapturedB0Float4Count +
+                    " float4s, but retail projection reads through c81";
+                return false;
+            }
+            int sourceId = sourceMaterial.GetInstanceID();
+            if (endminfM27Material == null ||
+                endminfM27SourceMaterialId != sourceId)
+            {
+                ReleaseObject(endminfM27Material);
+                endminfM27Material = null;
+                string shaderName = endminfM27ExactDxbcRequested
+                    ? EndminfM27ExactShaderName
+                    : EndminfM27ShaderName;
+                Shader shader = Shader.Find(shaderName);
+                if (shader == null || !shader.isSupported)
+                {
+                    failure =
+                        "the recovered Endminf M27 five-MRT shader is unavailable: " +
+                        shaderName;
+                    return false;
+                }
+                endminfM27Material = new Material(shader)
+                {
+                    name = "Recovered exact-contract Endminf M27 HGBuffer",
+                    hideFlags = HideFlags.HideAndDontSave,
+                };
+                if (endminfM27ExactDxbcRequested)
+                    BindExactM27CaptureData(sourceMaterial, endminfM27Material);
+                else
+                    CopyExactM27SourceProperties(
+                        sourceMaterial,
+                        endminfM27Material);
+                endminfM27SourceMaterialId = sourceId;
+            }
+            passIndex = endminfM27Material.FindPass(
+                endminfM27ExactDxbcRequested
+                    ? EndminfM27ExactPassName
+                    : EndminfM27PassName);
+            if (passIndex < 0)
+            {
+                failure = "the recovered Endminf M27 HGBuffer pass is unavailable";
+                return false;
+            }
+            return true;
+        }
+
+        private static void BindExactM27CaptureData(
+            Material source,
+            Material destination)
+        {
+            Vector4[][] constantBuffers =
+                EndfieldRecoveredM27ExactCaptureData
+                    .CreateConstantBufferValues();
+            for (int slot = 0; slot < constantBuffers.Length; ++slot)
+            {
+                destination.SetVectorArray(
+                    "_M27CB" + slot,
+                    constantBuffers[slot]);
+            }
+
+            destination.SetTexture("_M27T0", Texture2D.blackTexture);
+            destination.SetTexture("_M27T1", Texture2D.blackTexture);
+            string[] sourceTextures =
+            {
+                "_ParallaxMap",
+                "_NormalMap",
+                "_MROMap",
+                "_BaseColorMap",
+            };
+            for (int index = 0; index < sourceTextures.Length; ++index)
+            {
+                Texture texture = source.HasProperty(sourceTextures[index])
+                    ? source.GetTexture(sourceTextures[index])
+                    : null;
+                destination.SetTexture(
+                    "_M27T" + (index + 2),
+                    texture != null ? texture : Texture2D.blackTexture);
+            }
+            destination.EnableKeyword(EndminfM27ExactKeyword);
+        }
+
+        private static void CopyExactM27SourceProperties(
+            Material source,
+            Material destination)
+        {
+            // CopyPropertiesFromMaterial also copies zero-valued defaults for
+            // fields absent from the narrow compatibility shader. That erased
+            // captured retail b3 values such as c4.z
+            // (_BaseColorBrighterScale=1) and made GBufferC entirely black.
+            // Transfer only properties serialized by the retained M27 asset;
+            // every other destination default is hash-pinned capture data.
+            string[] textureProperties =
+            {
+                "_BaseColorMap",
+                "_MROMap",
+                "_NormalMap",
+                "_ParallaxMap",
+            };
+            foreach (string property in textureProperties)
+            {
+                if (!source.HasProperty(property) ||
+                    !destination.HasProperty(property))
+                    continue;
+                destination.SetTexture(property, source.GetTexture(property));
+                destination.SetTextureScale(
+                    property,
+                    source.GetTextureScale(property));
+                destination.SetTextureOffset(
+                    property,
+                    source.GetTextureOffset(property));
+            }
+
+            string[] colorProperties =
+            {
+                "_BaseColor",
+                "_ParallaxColor",
+            };
+            foreach (string property in colorProperties)
+            {
+                if (source.HasProperty(property) &&
+                    destination.HasProperty(property))
+                    destination.SetColor(property, source.GetColor(property));
+            }
+
+            string[] floatProperties =
+            {
+                "_ParallaxIntensity",
+                "_ParallaxStrength",
+                "_ParallaxTilling",
+                "_ParallaxMarchNum",
+                "_ParallaxMinBrightness",
+            };
+            foreach (string property in floatProperties)
+            {
+                if (source.HasProperty(property) &&
+                    destination.HasProperty(property))
+                    destination.SetFloat(property, source.GetFloat(property));
+            }
         }
 
         private bool TryEnsureResources(
@@ -653,6 +1296,22 @@ namespace EndfieldGraphShaderLab
             RequestReadback(command, "GBufferC", gBufferC, cameraName);
         }
 
+        private void RequestEndminfM27Readbacks(
+            CommandBuffer command,
+            string cameraName)
+        {
+            if (endminfM27ReadbackRequested ||
+                command == null ||
+                !SystemInfo.supportsAsyncGPUReadback)
+                return;
+            endminfM27ReadbackRequested = true;
+            RequestReadback(command, "M27SceneColor", sceneColor, cameraName);
+            RequestReadback(command, "M27SceneMV", sceneMV, cameraName);
+            RequestReadback(command, "M27GBufferA", gBufferA, cameraName);
+            RequestReadback(command, "M27GBufferB", gBufferB, cameraName);
+            RequestReadback(command, "M27GBufferC", gBufferC, cameraName);
+        }
+
         private static void RequestReadback(
             CommandBuffer command,
             string role,
@@ -734,6 +1393,10 @@ namespace EndfieldGraphShaderLab
             publishedCameraInstanceId = 0;
             publishedWidth = 0;
             publishedHeight = 0;
+            endminfM27PublishedFrame = -1;
+            endminfM27PublishedCameraInstanceId = 0;
+            endminfM27PublishedWidth = 0;
+            endminfM27PublishedHeight = 0;
         }
 
         private void InvalidateMotionHistory()
@@ -782,6 +1445,16 @@ namespace EndfieldGraphShaderLab
                 UnityEngine.Object.Destroy(texture);
             else
                 UnityEngine.Object.DestroyImmediate(texture);
+        }
+
+        private static void ReleaseObject(UnityEngine.Object value)
+        {
+            if (value == null)
+                return;
+            if (Application.isPlaying)
+                UnityEngine.Object.Destroy(value);
+            else
+                UnityEngine.Object.DestroyImmediate(value);
         }
 
         private static void PublishBlackFallbacks()

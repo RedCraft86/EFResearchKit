@@ -131,8 +131,29 @@ namespace EndfieldGraphShaderLab
         public float AnimatorTransitionNormalizedTime { get; private set; }
         public int RootMotionCallbackCount { get; private set; }
         public float AppliedRootDeltaRotationDegrees { get; private set; }
+        public int PlaybackGeneration => playbackGeneration;
+        public bool AutomaticOverviewPlaybackActive =>
+            AnimatorContractActive || waitingForExit || IsLooping;
         public Vector3 RootMotionPositionDelta =>
             transform.position - rootMotionAnchorPosition;
+
+        public bool TryGetAutomaticOverviewStartSeconds(out float seconds)
+        {
+            seconds = 0f;
+            Animator animator = animatorSource;
+            if (!AnimatorContractActive || animator == null ||
+                !animator.enabled || animator.runtimeAnimatorController == null ||
+                animator.IsInTransition(0))
+                return false;
+
+            AnimatorStateInfo current = animator.GetCurrentAnimatorStateInfo(0);
+            if (current.fullPathHash != Animator.StringToHash(animatorStartStatePath) ||
+                current.length <= 0f || float.IsNaN(current.normalizedTime) ||
+                float.IsInfinity(current.normalizedTime))
+                return false;
+            seconds = Mathf.Clamp01(current.normalizedTime) * current.length;
+            return true;
+        }
 
         private bool waitingForExit;
         private bool hasStarted;

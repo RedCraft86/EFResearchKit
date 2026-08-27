@@ -9,6 +9,7 @@ using EndfieldGraphShaderLab;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 
 namespace EndfieldGraphShaderLabEditor
@@ -17,15 +18,23 @@ namespace EndfieldGraphShaderLabEditor
     public static class EndfieldEndminfViewerPlayModeCapture
     {
         private const string Scene = "Assets/EndfieldGraphShaderLab/Generated/Characters/Scenes/CharacterRecoveryViewer.unity";
-        private const int Width = 1920;
-        private const int Height = 1080;
-        // This deliverable isolates the selected actor and her spawned visual
-        // effects. CharInfo's portrait, compatibility backdrop, physical-room
-        // subset, and screen UI are reference-only evidence, not output.
-        private const bool ActorOnlyCapture = true;
-        // The pinned retail recording is 1920x1080 at exactly 60 fps. Keep the
-        // Play-mode simulation on that clock and only thin the written PNGs
-        // to 4 fps. Driving Time.captureDeltaTime at 4 fps changed particle
+        private const int DefaultWidth = 1920;
+        private const int DefaultHeight = 1080;
+        private const string CaptureWidthEnvironment =
+            "ENDFIELD_ENDMINF_CAPTURE_WIDTH";
+        private const string CaptureHeightEnvironment =
+            "ENDFIELD_ENDMINF_CAPTURE_HEIGHT";
+        // The requested deliverable retains the CharInfo grey background and
+        // actor-specific background portrait, but never the foreground UI
+        // controls, labels, icons, or cursor overlay. Exact-consumer captures
+        // additionally require the physical SphereOutside presentation.
+        private const bool IncludeCharInfoBackground = true;
+        private const bool IncludeBackgroundPortrait = true;
+        // Keep the default verifier output at 1920x1080 and the Play-mode
+        // simulation on the retail 60 Hz clock. A paired width/height override
+        // is reserved for focused native-resolution presentation probes; it
+        // does not alter the canonical comparison dimensions or timing. Only
+        // thin written PNGs to 4 fps. Driving Time.captureDeltaTime at 4 fps changed particle
         // integration, AnimationEvent stepping, and every temporal producer,
         // so the old side-by-side frames were not equivalent observations.
         private const float SimulationFps = 60f;
@@ -39,13 +48,11 @@ namespace EndfieldGraphShaderLabEditor
         // cursor-input path; they are not static game-data defaults.
         private const string RecordingGyroscopeInputX = "0.989";
         private const string RecordingGyroscopeInputY = "-0.874";
-        // Wolfgd remains visible through source frame 1099, while Endminf's
-        // first compared body frame is 1110. The recovered _02 post owner is
-        // created on the intervening selection edge, nine simulation ticks
-        // before the first local render sample. This explicit recording-only
-        // pre-roll prevents both short source pulses from being shifted onto
-        // comparison frames 0 and 18.
-        private const string RecordingVisualPostPreRollSeconds = "0.15";
+        // Direct UI-free registration of the retained retail Uber output places
+        // the August 24 no-frame-generation pulse on the authored body clock.
+        // The older August 21 route's 0.15-second offset remains available as
+        // an explicit environment override, but is not this capture's default.
+        private const string RecordingVisualPostPreRollSeconds = "0";
         // RestartOverviewFromSelection is invoked on an editor update edge;
         // the body Animation has advanced by two 60-Hz simulation ticks before
         // the first renderable sample. Offset later requested timestamps so
@@ -70,6 +77,8 @@ namespace EndfieldGraphShaderLabEditor
             "ENDFIELD_ENDMINF_CAPTURE_SECONDARY_DYNAMICS";
         private const string SecondaryDynamicsSolverEnvironment =
             "ENDFIELD_ENDMINF_CAPTURE_ENABLE_SECONDARY_DYNAMICS_SOLVER";
+        private const string SphereOutsidePresentationEnvironment =
+            "ENDFIELD_RECOVERED_SPHERE_OUTSIDE_PRESENTATION";
         private const string Suikuai1Material =
             "Assets/EndfieldGraphShaderLab/Generated/Characters/Playable/Endminf/Effects/Overview/Materials/M_fx_common_teleport_03_p19E6A2A7AE736DA5.mat";
         private static readonly string[] ExpectedRemainingBlockedEffects = {
@@ -84,6 +93,8 @@ namespace EndfieldGraphShaderLabEditor
         private static string output;
         private static float[] requestedTimes;
         private static float captureFps = Fps;
+        private static int captureWidth = DefaultWidth;
+        private static int captureHeight = DefaultHeight;
         private static string captureFailure;
         private static bool capturePrePostHdr;
         private static bool capturePostStages;
@@ -98,15 +109,21 @@ namespace EndfieldGraphShaderLabEditor
         [Serializable]
         private sealed class Report
         {
-            public string schema = "endfield.endminf-viewer-playmode-sequence.v4";
+            public string schema = "endfield.endminf-viewer-playmode-sequence.v5";
             public string status = "ok";
-            public int width = Width;
-            public int height = Height;
+            public int width = captureWidth;
+            public int height = captureHeight;
             public float fps;
             public string graphicsDeviceType;
             public string scene = Scene;
             public string selectionPath = "CharacterRecoveryViewerUI.SelectModel(Endminf)";
-            public bool actorOnlyCapture = ActorOnlyCapture;
+            public bool actorOnlyCapture =
+                !IncludeCharInfoBackground && !IncludeBackgroundPortrait;
+            public bool charInfoBackgroundRequested = IncludeCharInfoBackground;
+            public bool backgroundPortraitRequested = IncludeBackgroundPortrait;
+            public bool charInfoBackgroundIncluded;
+            public bool backgroundPortraitIncluded;
+            public bool foregroundUiOverlayIncluded = false;
             public bool postProcessingExplicitlyDisabled = false;
             public bool prePostHdrDiagnostic;
             public bool postStageDiagnostic;
@@ -129,6 +146,11 @@ namespace EndfieldGraphShaderLabEditor
             public bool observedDeferredShadowDataReady;
             public bool observedDeferredPass0InputSubsetReady;
             public bool observedDeferredGBufferFrameReady;
+            public bool observedEndminfM27HGBufferReady;
+            public bool observedEndminfM27PresentationReady;
+            public bool observedSphereOutsidePresentationReady;
+            public bool observedEndminfPostSourceRgba16;
+            public bool observedEndminfBloomR11;
             public bool observedPreGBufferDepthOwnerReady;
             public bool observedCanonicalCharacterPreGBufferReady;
             public bool observedDeferredExactConsumerReady;
@@ -147,6 +169,13 @@ namespace EndfieldGraphShaderLabEditor
             public float requestedSeconds;
             public float actualSeconds;
             public float endminfPostSeconds;
+            public float endminfPostChromaticIntensity;
+            public float endminfPostRadialIntensity;
+            public float endminfPostEffectivePower;
+            public int endminfPostMode;
+            public Vector2 endminfPostCenterViewport;
+            public string endminfPostSourceGraphicsFormat;
+            public string endminfBloomGraphicsFormat;
             public string file;
             public int effectRootCount;
             public int admittedRenderers;
@@ -172,16 +201,29 @@ namespace EndfieldGraphShaderLabEditor
             public bool deferredShadowDataReady;
             public bool deferredPass0InputSubsetReady;
             public bool deferredGBufferFrameReady;
+            public bool endminfM27HGBufferReady;
+            public bool endminfM27PresentationReady;
+            public bool sphereOutsidePresentationReady;
             public bool preGBufferDepthOwnerReady;
             public bool canonicalCharacterPreGBufferReady;
             public bool deferredExactConsumerReady;
             public bool lightCookieDataReady;
+            public Vector4 exposureWithMiscParams;
             public string[] effectRoots;
             public ParticleRow[] liveRenderers;
             public ParticleRow[] handFamily;
+            public ParticleRow[] primaryRockFamily;
             public SecondaryDynamicsBoneRow[] secondaryDynamicsBones;
             public bool secondaryDynamicsSolverWriteback;
             public string secondaryDynamicsBindingFailure;
+            public bool capturedSecondaryReplayEnabled;
+            public bool capturedSecondaryReplayBindingValid;
+            public string capturedSecondaryReplayBindingFailure;
+            public float capturedSecondaryReplaySeconds;
+            public int capturedSecondaryReplayLowerSample;
+            public int capturedSecondaryReplayUpperSample;
+            public float capturedSecondaryReplayBlend;
+            public bool capturedSecondaryReplayPoseAppliedThisFrame;
             public string[] blockedRendererIdentities;
             public int changedPixelsFromPrevious;
             public long absoluteRgbDifferenceFromPrevious;
@@ -314,10 +356,29 @@ namespace EndfieldGraphShaderLabEditor
                     "Endminf Viewer capture requires the project's authoritative " +
                     "Direct3D11 backend; actual=" +
                     SystemInfo.graphicsDeviceType + ".");
+            captureWidth = ParseCaptureDimension(
+                CaptureWidthEnvironment,
+                DefaultWidth);
+            captureHeight = ParseCaptureDimension(
+                CaptureHeightEnvironment,
+                DefaultHeight);
+            bool widthOverridden = !string.IsNullOrWhiteSpace(
+                Environment.GetEnvironmentVariable(CaptureWidthEnvironment));
+            bool heightOverridden = !string.IsNullOrWhiteSpace(
+                Environment.GetEnvironmentVariable(CaptureHeightEnvironment));
+            if (widthOverridden != heightOverridden)
+            {
+                throw new InvalidOperationException(
+                    CaptureWidthEnvironment + " and " +
+                    CaptureHeightEnvironment +
+                    " must be supplied together.");
+            }
             // Exercise the same explicit reproduction profile as
             // open_character_recovery_lab.bat. Batch validation must not
             // silently fall back to the preserved gacha-room presentation
             // merely because its parent shell lacks these process variables.
+            bool exactEndminfM27 = Environment.GetEnvironmentVariable(
+                "ENDFIELD_RECOVERED_ENDMINF_M27_HGBUFFER") == "1";
             string[] reproductionFlags = {
                 "ENDFIELD_ENDMINF_VISUAL_COMPATIBILITY",
                 "ENDFIELD_ENDMINF_LITEFFECT_VISUAL_COMPAT",
@@ -327,16 +388,22 @@ namespace EndfieldGraphShaderLabEditor
                 "ENDFIELD_RECOVERED_LINEAR_UNORM_FINAL_TARGET"
             };
             foreach (string flag in reproductionFlags)
-                Environment.SetEnvironmentVariable(flag, "1");
-            if (ActorOnlyCapture)
-            {
                 Environment.SetEnvironmentVariable(
-                    "ENDFIELD_ENDMINF_BACKDROP_VISUAL_COMPATIBILITY", "0");
-                Environment.SetEnvironmentVariable(
-                    "ENDFIELD_RECOVERED_CHARINFO_READY_SUBSET_DIAGNOSTIC", "0");
-                Environment.SetEnvironmentVariable(
-                    "ENDFIELD_RECOVERED_CHARINFO_BACKGROUND_PORTRAIT", "0");
-            }
+                    flag,
+                    "1");
+            // Exact HGBuffer publication replaces only the identity-gated M27
+            // hand-crystal row. The ten source-identified M01/M38 primary-rock
+            // renderers remain separate ForwardOnly owners; disabling the
+            // whole compatibility binding removed those stones from the shot.
+            Environment.SetEnvironmentVariable(
+                "ENDFIELD_ENDMINF_BACKDROP_VISUAL_COMPATIBILITY",
+                IncludeCharInfoBackground ? "1" : "0");
+            Environment.SetEnvironmentVariable(
+                "ENDFIELD_RECOVERED_CHARINFO_READY_SUBSET_DIAGNOSTIC",
+                IncludeCharInfoBackground ? "1" : "0");
+            Environment.SetEnvironmentVariable(
+                "ENDFIELD_RECOVERED_CHARINFO_BACKGROUND_PORTRAIT",
+                IncludeBackgroundPortrait ? "1" : "0");
             EndfieldRecoveredCharInfoPresentation.RefreshStandaloneSelection();
             // Character refreshes rebuild the source actor prefab and can
             // remove its generated overview-effect requests/spawner. Restore
@@ -348,6 +415,11 @@ namespace EndfieldGraphShaderLabEditor
             // pinned PathIDs and direct tracked assets. This remains opt-in and
             // does not broaden the four separately blocked non-primary rows.
             EndfieldEndminfOverviewEffectBindingBuilder.BuildAndValidate();
+            // The overview rebuild refreshes transient source prefabs. Restore
+            // the direct LitEffect rows afterward so both compatibility and
+            // exact M27 owners receive the same hash-validated references.
+            EndfieldEndminfLitEffectCompatibilityBindingBuilder
+                .BuildAndValidate();
             if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
                     EndfieldEndminfVisualCompatibilityClock.PreRollSecondsEnvironmentVariable)))
             {
@@ -377,6 +449,13 @@ namespace EndfieldGraphShaderLabEditor
                     RecordingGyroscopeInputY);
             }
             EditorSceneManager.OpenScene(Scene, OpenSceneMode.Single);
+            if (exactEndminfM27)
+            {
+                int exactM27LayerMask = 1 << 31;
+                foreach (Camera sceneCamera in
+                    UnityEngine.Object.FindObjectsOfType<Camera>(true))
+                    sceneCamera.cullingMask &= ~exactM27LayerMask;
+            }
             Frames.Clear();
             captureFailure = null;
             next = 0;
@@ -486,8 +565,22 @@ namespace EndfieldGraphShaderLabEditor
 
         public static void RunDeferredExactConsumerProbe()
         {
+            if (Environment.GetEnvironmentVariable(
+                    "ENDFIELD_RECOVERED_ENDMINF_M27_EXACT_DXBC") == "1")
+            {
+                if (Environment.GetEnvironmentVariable(
+                        "ENDFIELD_M27_FORCE_RAW_SHELL") == "1")
+                    EndfieldM27ShellHashCapture.PrepareRawRuntimeVariant();
+                else
+                    EndfieldM27ShellHashCapture.PreparePinnedRuntimeVariant();
+            }
             string[] enabled = {
                 "ENDFIELD_RECOVERED_DEFERRED_EXACT_CONSUMER",
+                "ENDFIELD_RECOVERED_ENDMINF_M13_EXACT",
+                "ENDFIELD_RECOVERED_ENDMINF_M14_EXACT",
+                "ENDFIELD_RECOVERED_ENDMINF_M27_PRESENTATION",
+                "ENDFIELD_RECOVERED_DEFERRED_GBUFFER_FRAME",
+                SphereOutsidePresentationEnvironment,
                 "ENDFIELD_RECOVERED_CANONICAL_BINNING_BUFFER",
                 "ENDFIELD_RECOVERED_SEPARATE_CHARACTER_SHADOW",
                 "ENDFIELD_RECOVERED_LOW_RES_DIRECTIONAL_SHADOW",
@@ -669,10 +762,18 @@ namespace EndfieldGraphShaderLabEditor
                 "ENDFIELD_ENDMINF_CAPTURE_EXCLUDE_MATERIAL");
             if (!string.IsNullOrWhiteSpace(excludedMaterial))
             {
+                HashSet<string> excludedMaterials = new HashSet<string>(
+                    excludedMaterial.Split(new[] { ';' },
+                        StringSplitOptions.RemoveEmptyEntries)
+                        .Select(value => value.Trim())
+                        .Where(value => value.Length > 0),
+                    StringComparer.Ordinal);
+                if (excludedMaterials.Count == 0)
+                    throw new InvalidOperationException(
+                        "The Endminf excluded-material set is empty.");
                 foreach (ParticleSystemRenderer renderer in renderers.Where(value =>
                     value.enabled && value.sharedMaterials.Any(material => material != null &&
-                        string.Equals(material.name, excludedMaterial,
-                            StringComparison.Ordinal))))
+                        excludedMaterials.Contains(material.name))))
                 {
                     renderer.enabled = false;
                 }
@@ -722,6 +823,40 @@ namespace EndfieldGraphShaderLabEditor
                     requested);
             }
             Color32[] pixels = Render(camera);
+            // ReadPixels in Render synchronizes this focused D3D11 capture, so
+            // the render-thread plugin callback must be observable here. Do
+            // not accept a submitted event as proof that the exact M13 packet
+            // actually drew.
+            if (EndfieldRecoveredEndminfM13ExactRuntime.Requested &&
+                EndfieldRecoveredEndminfM13ExactRuntime.HasPendingValidation &&
+                !EndfieldRecoveredEndminfM13ExactRuntime
+                    .ValidatePendingAfterSynchronizedRender(
+                        out string m13ValidationFailure))
+            {
+                throw new InvalidOperationException(
+                    "Exact Endminf M13 callback validation failed: " +
+                    m13ValidationFailure);
+            }
+            if (EndfieldRecoveredEndminfM14ExactRuntime.Requested &&
+                EndfieldRecoveredEndminfM14ExactRuntime.HasPendingValidation &&
+                !EndfieldRecoveredEndminfM14ExactRuntime
+                    .ValidatePendingAfterSynchronizedRender(
+                        out string m14ValidationFailure))
+            {
+                throw new InvalidOperationException(
+                    "Exact Endminf M14 callback validation failed: " +
+                    m14ValidationFailure);
+            }
+            if (EndfieldRecoveredEndminfM27ExactRuntime.Requested &&
+                EndfieldRecoveredEndminfM27ExactRuntime.HasPendingValidation &&
+                !EndfieldRecoveredEndminfM27ExactRuntime
+                    .ValidatePendingAfterSynchronizedRender(
+                        out string m27ValidationFailure))
+            {
+                throw new InvalidOperationException(
+                    "Exact Endminf M27 callback validation failed: " +
+                    m27ValidationFailure);
+            }
             if (capturePrePostHdr && next == 18)
                 EndfieldRecoveredPrePostHdrDiagnostic.WaitForPending();
             if (capturePostStages)
@@ -743,6 +878,10 @@ namespace EndfieldGraphShaderLabEditor
             Write(Path.Combine(output, file), pixels);
             EndfieldEndminfVisualCompatibilityClock.TryGetElapsed(
                 out float endminfPostSeconds);
+            EndfieldEndminfVisualCompatibilityClock.TryEvaluateRecoveredPost(
+                camera,
+                out EndfieldEndminfVisualCompatibilityClock.RecoveredPostState
+                    endminfPostState);
             EndfieldRecoveredCharInfoPresentation charInfoPresentation =
                 UnityEngine.Object.FindObjectOfType<EndfieldRecoveredCharInfoPresentation>(true);
             Renderer shadowPlane = charInfoPresentation == null
@@ -754,9 +893,23 @@ namespace EndfieldGraphShaderLabEditor
                     shadowPlane.bounds);
             EndfieldSecondaryDynamicsRuntime secondaryDynamics = actor
                 .GetComponent<EndfieldSecondaryDynamicsRuntime>();
+            EndfieldCapturedSecondaryDynamicsReplay capturedReplay = actor
+                .GetComponent<EndfieldCapturedSecondaryDynamicsReplay>();
             Frames.Add(new FrameRow {
                 index = next, requestedSeconds = requested, actualSeconds = elapsed, file = file,
                 endminfPostSeconds = endminfPostSeconds,
+                endminfPostChromaticIntensity =
+                    endminfPostState.chromaticIntensity,
+                endminfPostRadialIntensity = endminfPostState.radialIntensity,
+                endminfPostEffectivePower = endminfPostState.effectivePower,
+                endminfPostMode = endminfPostState.mode,
+                endminfPostCenterViewport = endminfPostState.centerViewport,
+                endminfPostSourceGraphicsFormat =
+                    HGCompatRenderPipeline
+                        .LastRecoveredEndminfPostSourceGraphicsFormat.ToString(),
+                endminfBloomGraphicsFormat =
+                    HGCompatRenderPipeline
+                        .LastRecoveredEndminfBloomGraphicsFormat.ToString(),
                 effectRootCount = roots.Length, admittedRenderers = renderers.Count(value => value.enabled),
                 activeAdmittedRenderers = renderers.Count(value => value.enabled && value.gameObject.activeInHierarchy),
                 admittedAliveParticles = renderers.Where(value => value.enabled && value.gameObject.activeInHierarchy)
@@ -793,6 +946,12 @@ namespace EndfieldGraphShaderLabEditor
                     "_EndfieldRecoveredDeferredPass0InputSubsetReady") > 0.5f,
                 deferredGBufferFrameReady = Shader.GetGlobalFloat(
                     "_EndfieldRecoveredDeferredGBufferFrameReady") > 0.5f,
+                endminfM27HGBufferReady = Shader.GetGlobalFloat(
+                    "_EndfieldRecoveredEndminfM27HGBufferReady") > 0.5f,
+                endminfM27PresentationReady = Shader.GetGlobalFloat(
+                    "_EndfieldRecoveredEndminfM27PresentationReady") > 0.5f,
+                sphereOutsidePresentationReady = Shader.GetGlobalFloat(
+                    "_EndfieldRecoveredSphereOutsidePresentationReady") > 0.5f,
                 preGBufferDepthOwnerReady = Shader.GetGlobalFloat(
                     "_EndfieldRecoveredPreGBufferDepthOwnerReady") > 0.5f,
                 canonicalCharacterPreGBufferReady = Shader.GetGlobalFloat(
@@ -801,6 +960,8 @@ namespace EndfieldGraphShaderLabEditor
                     "_EndfieldRecoveredDeferredExactConsumerReady") > 0.5f,
                 lightCookieDataReady = Shader.GetGlobalFloat(
                     "_EndfieldRecoveredLightCookieDataReady") > 0.5f,
+                exposureWithMiscParams = Shader.GetGlobalVector(
+                    "_ExposureWithMiscParams"),
                 effectRoots = roots.Select(value => value.name + " @ " + Hierarchy(value.transform)).ToArray(),
                 liveRenderers = renderers.Where(value => value.enabled &&
                         value.gameObject.activeInHierarchy &&
@@ -812,6 +973,15 @@ namespace EndfieldGraphShaderLabEditor
                     value.GetComponentInParent<EndfieldRecoveredParticleEffectSource>(true) is EndfieldRecoveredParticleEffectSource owner &&
                     (owner.name.IndexOf("_03", StringComparison.Ordinal) >= 0 || owner.name.IndexOf("_04", StringComparison.Ordinal) >= 0))
                     .Select(value => Particle(value)).ToArray(),
+                primaryRockFamily = roots
+                    .SelectMany(value => value.GetComponentsInChildren<
+                        EndfieldEndminfLitEffectCompatibilityBinding>(true))
+                    .SelectMany(value => value.rows ?? Array.Empty<
+                        EndfieldEndminfLitEffectCompatibilityBinding.Row>())
+                    .Where(value => value != null && value.renderer != null)
+                    .Select(value => Particle(value.renderer))
+                    .OrderBy(value => value.path, StringComparer.Ordinal)
+                    .ToArray(),
                 secondaryDynamicsBones = captureSecondaryDynamics
                     ? CaptureSecondaryDynamicsBones(actor)
                     : Array.Empty<SecondaryDynamicsBoneRow>(),
@@ -820,6 +990,27 @@ namespace EndfieldGraphShaderLabEditor
                 secondaryDynamicsBindingFailure = secondaryDynamics == null
                     ? "runtime missing"
                     : secondaryDynamics.BindingFailure,
+                capturedSecondaryReplayEnabled = capturedReplay != null &&
+                    capturedReplay.useCapturedReplay,
+                capturedSecondaryReplayBindingValid = capturedReplay != null &&
+                    capturedReplay.BindingValid,
+                capturedSecondaryReplayBindingFailure = capturedReplay == null
+                    ? "runtime missing"
+                    : capturedReplay.BindingFailure,
+                capturedSecondaryReplaySeconds = capturedReplay != null
+                    ? capturedReplay.PlaybackSeconds
+                    : 0f,
+                capturedSecondaryReplayLowerSample = capturedReplay != null
+                    ? capturedReplay.LowerSampleIndex
+                    : -1,
+                capturedSecondaryReplayUpperSample = capturedReplay != null
+                    ? capturedReplay.UpperSampleIndex
+                    : -1,
+                capturedSecondaryReplayBlend = capturedReplay != null
+                    ? capturedReplay.SampleBlend
+                    : 0f,
+                capturedSecondaryReplayPoseAppliedThisFrame =
+                    capturedReplay != null && capturedReplay.PoseAppliedThisFrame,
                 blockedRendererIdentities = renderers.Where(value => !value.enabled)
                     .Select(value => Hierarchy(value.transform) + " | " +
                         string.Join(", ", value.sharedMaterials.Select(material =>
@@ -860,14 +1051,42 @@ namespace EndfieldGraphShaderLabEditor
                     frame.liveRenderers.Any(renderer =>
                         renderer.shaders != null &&
                         renderer.shaders.Contains(LitEffectCompatibilityShader)));
+            bool exactEndminfM27Requested = string.Equals(
+                Environment.GetEnvironmentVariable(
+                    "ENDFIELD_RECOVERED_ENDMINF_M27_HGBUFFER"),
+                "1",
+                StringComparison.Ordinal);
             bool observedDeferredLightDataReady = Frames.All(value =>
                 value.deferredLightDataReady);
             bool observedDeferredShadowDataReady = Frames.All(value =>
                 value.deferredShadowDataReady);
             bool observedDeferredPass0InputSubsetReady = Frames.All(value =>
                 value.deferredPass0InputSubsetReady);
-            bool observedDeferredGBufferFrameReady = Frames.All(value =>
-                value.deferredGBufferFrameReady);
+            // M27 owns this exact sidecar only inside its retained temporal
+            // packet envelope. No sidecar publication before or after that
+            // envelope is the correct no-M27 state, not a readiness failure.
+            float firstActorClock = Frames.Count > 0
+                ? Frames[0].activeBodyClipTime
+                : 0.0f;
+            float firstSequenceClock = Frames.Count > 0
+                ? Frames[0].actualSeconds
+                : 0.0f;
+            FrameRow[] requiredDeferredGBufferFrames = exactEndminfM27Requested
+                ? Frames.Where(value =>
+                    EndfieldRecoveredEndminfM27ExactRuntime.IsCapturedPhase(
+                        firstActorClock + value.actualSeconds -
+                        firstSequenceClock)).ToArray()
+                : Frames.ToArray();
+            bool observedDeferredGBufferFrameReady =
+                requiredDeferredGBufferFrames.Length > 0 &&
+                requiredDeferredGBufferFrames.All(value =>
+                    value.deferredGBufferFrameReady);
+            bool observedEndminfM27HGBufferReady = Frames.Any(value =>
+                value.endminfM27HGBufferReady);
+            bool observedEndminfM27PresentationReady = Frames.Any(value =>
+                value.endminfM27PresentationReady);
+            bool observedSphereOutsidePresentationReady = Frames.Any(value =>
+                value.sphereOutsidePresentationReady);
             bool observedPreGBufferDepthOwnerReady = Frames.All(value =>
                 value.preGBufferDepthOwnerReady);
             bool observedCanonicalCharacterPreGBufferReady = Frames.All(value =>
@@ -888,6 +1107,9 @@ namespace EndfieldGraphShaderLabEditor
                 missingObservations.Add(
                     "eleven-row LitEffect crystal compatibility plus exact suikuai (1) " +
                     "binding with two separate blocked effects");
+            if (exactEndminfM27Requested && !observedEndminfM27HGBufferReady)
+                missingObservations.Add(
+                    "exact Endminf M27 five-MRT HGBuffer publication");
             if (!observedPreGBufferDepthOwnerReady)
                 missingObservations.Add(
                     "canonical CharacterPrePass depth/stencil ownership");
@@ -925,13 +1147,71 @@ namespace EndfieldGraphShaderLabEditor
                     missingObservations.Add("exact-consumer five-MRT GBuffer readiness");
                 if (!observedDeferredExactConsumerReady)
                     missingObservations.Add("exact-consumer submitted output");
+                if (string.Equals(
+                        Environment.GetEnvironmentVariable(
+                            "ENDFIELD_RECOVERED_ENDMINF_M27_PRESENTATION"),
+                        "1",
+                        StringComparison.Ordinal) &&
+                    !observedEndminfM27PresentationReady)
+                {
+                    missingObservations.Add(
+                        "exact M27 deferred presentation readiness");
+                }
+                if (IncludeCharInfoBackground &&
+                    string.Equals(
+                        Environment.GetEnvironmentVariable(
+                            SphereOutsidePresentationEnvironment),
+                        "1",
+                        StringComparison.Ordinal) &&
+                    !observedSphereOutsidePresentationReady)
+                {
+                    missingObservations.Add(
+                        "physical SphereOutside deferred presentation readiness");
+                }
                 if (!observedLightCookieDataReady)
                     missingObservations.Add("exact-consumer LightCookieData readiness");
             }
+            bool charInfoBackgroundIncluded =
+                !IncludeCharInfoBackground || IsCharInfoBackgroundActive();
+            bool backgroundPortraitIncluded =
+                !IncludeBackgroundPortrait || IsBackgroundPortraitActive();
+            if (!charInfoBackgroundIncluded)
+                missingObservations.Add("active recovered CharInfo grey background");
+            if (!backgroundPortraitIncluded)
+                missingObservations.Add("active Endminf background portrait");
+            bool observedEndminfPostSourceRgba16 =
+                Frames.Count > 0 && Frames.All(value => string.Equals(
+                    value.endminfPostSourceGraphicsFormat,
+                    GraphicsFormat.R16G16B16A16_SFloat.ToString(),
+                    StringComparison.Ordinal));
+            if (EndfieldEndminfVisualCompatibilityClock.Requested &&
+                !observedEndminfPostSourceRgba16)
+            {
+                missingObservations.Add(
+                    "retail R16G16B16A16_FLOAT Uber source handoff");
+            }
+            bool observedEndminfBloomR11 =
+                Frames.Count > 0 && Frames.All(value => string.Equals(
+                    value.endminfBloomGraphicsFormat,
+                    GraphicsFormat.B10G11R11_UFloatPack32.ToString(),
+                    StringComparison.Ordinal));
+            if (EndfieldEndminfVisualCompatibilityClock.Requested &&
+                !observedEndminfBloomR11)
+            {
+                missingObservations.Add(
+                    "retail R11G11B10_FLOAT Uber bloom handoff");
+            }
+            bool requiredCaptureContractReady =
+                charInfoBackgroundIncluded &&
+                backgroundPortraitIncluded &&
+                observedEndminfPostSourceRgba16 &&
+                observedEndminfBloomR11;
             bool targetedTimes = !string.IsNullOrWhiteSpace(
                 Environment.GetEnvironmentVariable(RequestedTimesEnvironment));
             Report report = new Report {
-                status = targetedTimes && capturePostStages
+                status = !requiredCaptureContractReady
+                    ? "failed: missing " + string.Join(", ", missingObservations.ToArray())
+                    : targetedTimes && capturePostStages
                     ? "targeted_diagnostic_ok"
                     : targetedTimes
                     ? "targeted_ok"
@@ -950,6 +1230,8 @@ namespace EndfieldGraphShaderLabEditor
                     : string.Empty,
                 fps = captureFps,
                 graphicsDeviceType = SystemInfo.graphicsDeviceType.ToString(),
+                charInfoBackgroundIncluded = charInfoBackgroundIncluded,
+                backgroundPortraitIncluded = backgroundPortraitIncluded,
                 recoveredLinearUnormFinalTargetRequested =
                     HDRenderPipeline.IsRecoveredLinearUnormFinalTargetRequested(),
                 renderPipeline = GraphicsSettings.currentRenderPipeline == null ? "BuiltIn" : GraphicsSettings.currentRenderPipeline.GetType().FullName,
@@ -971,6 +1253,15 @@ namespace EndfieldGraphShaderLabEditor
                     observedDeferredPass0InputSubsetReady,
                 observedDeferredGBufferFrameReady =
                     observedDeferredGBufferFrameReady,
+                observedEndminfM27HGBufferReady =
+                    observedEndminfM27HGBufferReady,
+                observedEndminfM27PresentationReady =
+                    observedEndminfM27PresentationReady,
+                observedSphereOutsidePresentationReady =
+                    observedSphereOutsidePresentationReady,
+                observedEndminfPostSourceRgba16 =
+                    observedEndminfPostSourceRgba16,
+                observedEndminfBloomR11 = observedEndminfBloomR11,
                 observedPreGBufferDepthOwnerReady =
                     observedPreGBufferDepthOwnerReady,
                 observedCanonicalCharacterPreGBufferReady =
@@ -1000,6 +1291,16 @@ namespace EndfieldGraphShaderLabEditor
             bool videoExport = Environment.GetEnvironmentVariable(
                 "ENDFIELD_ENDMINF_CAPTURE_VIDEO_EXPORT") == "1";
             EditorApplication.update -= Tick;
+            if (!requiredCaptureContractReady)
+            {
+                captureFailure =
+                    "Endminf Viewer capture is missing its required UI-free " +
+                    "composition or retail post-source handoff: " +
+                    string.Join(", ", missingObservations.ToArray());
+                Debug.LogError(captureFailure);
+                EditorApplication.ExitPlaymode();
+                return;
+            }
             if (!capturePrePostHdr && !capturePostStages && !fineWindow &&
                 !targetedTimes &&
                 missingObservations.Count > 0)
@@ -1044,6 +1345,56 @@ namespace EndfieldGraphShaderLabEditor
                 ": roots=" + Frames.Last().effectRootCount +
                 " admitted=" + Frames.Last().admittedRenderers + " output=" + output);
             EditorApplication.ExitPlaymode();
+        }
+
+        private static bool IsCharInfoBackgroundActive()
+        {
+            return UnityEngine.Object
+                .FindObjectsOfType<EndfieldRecoveredCharInfoPresentation>(true)
+                .Any(value =>
+                    value != null &&
+                    value.enabled &&
+                    value.gameObject.activeInHierarchy &&
+                    value.compatibilityBackdropRenderer != null &&
+                    value.compatibilityBackdropRenderer.enabled &&
+                    value.compatibilityBackdropRenderer.gameObject.activeInHierarchy);
+        }
+
+        private static bool IsBackgroundPortraitActive()
+        {
+            return UnityEngine.Object
+                .FindObjectsOfType<EndfieldRecoveredCharInfoBackgroundPortrait>(true)
+                .Any(value =>
+                {
+                    if (value == null ||
+                        !value.enabled ||
+                        !value.gameObject.activeInHierarchy ||
+                        !value.RecoveredPortraitRequested)
+                    {
+                        return false;
+                    }
+
+                    Renderer renderer = value.portraitRenderer != null
+                        ? value.portraitRenderer
+                        : value.GetComponent<Renderer>();
+                    MeshFilter filter = value.portraitMeshFilter != null
+                        ? value.portraitMeshFilter
+                        : value.GetComponent<MeshFilter>();
+                    Material material = renderer != null
+                        ? renderer.sharedMaterial
+                        : null;
+                    return renderer != null &&
+                           renderer.enabled &&
+                           renderer.gameObject.activeInHierarchy &&
+                           filter != null &&
+                           filter.sharedMesh != null &&
+                           material != null &&
+                           material.shader != null &&
+                           string.Equals(
+                               material.shader.name,
+                               EndfieldRecoveredCharInfoBackgroundPortrait.ShaderName,
+                               StringComparison.Ordinal);
+                });
         }
 
 
@@ -1376,14 +1727,25 @@ namespace EndfieldGraphShaderLabEditor
         {
             bool exactFinalTarget = HDRenderPipeline.IsRecoveredLinearUnormFinalTargetRequested();
             var rt = new RenderTexture(
-                Width,
-                Height,
+                captureWidth,
+                captureHeight,
                 24,
                 exactFinalTarget ? RenderTextureFormat.ARGB32 : RenderTextureFormat.ARGBHalf,
                 RenderTextureReadWrite.Linear);
             rt.Create(); RenderTexture old = RenderTexture.active; value.targetTexture = rt; value.Render();
-            RenderTexture.active = rt; var texture = new Texture2D(Width, Height, TextureFormat.RGBA32, false, false);
-            texture.ReadPixels(new Rect(0, 0, Width, Height), 0, 0); texture.Apply(); Color32[] pixels = texture.GetPixels32();
+            RenderTexture.active = rt;
+            var texture = new Texture2D(
+                captureWidth,
+                captureHeight,
+                TextureFormat.RGBA32,
+                false,
+                false);
+            texture.ReadPixels(
+                new Rect(0, 0, captureWidth, captureHeight),
+                0,
+                0);
+            texture.Apply();
+            Color32[] pixels = texture.GetPixels32();
             value.targetTexture = null; RenderTexture.active = old; UnityEngine.Object.Destroy(texture); rt.Release(); UnityEngine.Object.Destroy(rt);
             return pixels;
         }
@@ -1393,8 +1755,34 @@ namespace EndfieldGraphShaderLabEditor
             var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false, false);
             texture.LoadImage(File.ReadAllBytes(path)); Color32[] raw = texture.GetPixels32(); UnityEngine.Object.Destroy(texture);
             var pixels = new Color32[raw.Length];
-            for (int y = 0; y < Height; y++) Array.Copy(raw, y * Width, pixels, (Height - 1 - y) * Width, Width);
+            for (int y = 0; y < captureHeight; y++)
+            {
+                Array.Copy(
+                    raw,
+                    y * captureWidth,
+                    pixels,
+                    (captureHeight - 1 - y) * captureWidth,
+                    captureWidth);
+            }
             return pixels;
+        }
+
+        private static int ParseCaptureDimension(string environment, int fallback)
+        {
+            string value = Environment.GetEnvironmentVariable(environment);
+            if (string.IsNullOrWhiteSpace(value))
+                return fallback;
+            if (!int.TryParse(
+                    value.Trim(),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out int dimension) ||
+                dimension < 64 || dimension > 8192)
+            {
+                throw new InvalidOperationException(
+                    environment + " must be an integer from 64 through 8192.");
+            }
+            return dimension;
         }
 
         private static float[] ParseRequestedTimes(string value)
@@ -1440,8 +1828,21 @@ namespace EndfieldGraphShaderLabEditor
         private static void Write(string path, Color32[] pixels)
         {
             var flipped = new Color32[pixels.Length];
-            for (int y = 0; y < Height; y++) Array.Copy(pixels, y * Width, flipped, (Height - 1 - y) * Width, Width);
-            var texture = new Texture2D(Width, Height, TextureFormat.RGBA32, false, false);
+            for (int y = 0; y < captureHeight; y++)
+            {
+                Array.Copy(
+                    pixels,
+                    y * captureWidth,
+                    flipped,
+                    (captureHeight - 1 - y) * captureWidth,
+                    captureWidth);
+            }
+            var texture = new Texture2D(
+                captureWidth,
+                captureHeight,
+                TextureFormat.RGBA32,
+                false,
+                false);
             texture.SetPixels32(flipped); texture.Apply(); File.WriteAllBytes(path, texture.EncodeToPNG()); UnityEngine.Object.Destroy(texture);
         }
     }

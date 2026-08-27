@@ -19,21 +19,35 @@ exit /b 2
 
 :open_endminf
   set "ENDFIELD_ENDMINF_VISUAL_COMPATIBILITY=1"
-  rem The recording's Endminf _02 post owner starts nine 60-Hz frames before its first visible body frame.
-  set "ENDFIELD_ENDMINF_VISUAL_COMPATIBILITY_PREROLL_SECONDS=0.15"
-  set "ENDFIELD_ENDMINF_LITEFFECT_VISUAL_COMPAT=1"
+  rem Direct UI-free registration places the maintained Aug-24 no-frame-generation post pulse on the authored body clock.
+  set "ENDFIELD_ENDMINF_VISUAL_COMPATIBILITY_PREROLL_SECONDS=0"
+  set "ENDFIELD_ENDMINF_LITEFFECT_VISUAL_COMPAT=0"
   set "ENDFIELD_ENDMINF_BACKDROP_VISUAL_COMPATIBILITY=1"
   set "ENDFIELD_RECOVERED_CHARINFO_READY_SUBSET_DIAGNOSTIC=1"
   set "ENDFIELD_RECOVERED_SOURCE_ENERGY_CORE=1"
   set "ENDFIELD_RECOVERED_VISIBILITY_SH=1"
   set "ENDFIELD_RECOVERED_LINEAR_UNORM_FINAL_TARGET=1"
   set "ENDFIELD_RECOVERED_CHARINFO_BACKGROUND_PORTRAIT=1"
+  rem Source-closed SphereOutside + exact Default Lit resolve, presented before ForwardOpaque.
+  set "ENDFIELD_RECOVERED_DEFERRED_GBUFFER_FRAME=1"
+  set "ENDFIELD_RECOVERED_SPHERE_OUTSIDE_PRESENTATION=1"
+  set "ENDFIELD_RECOVERED_DEFERRED_EXACT_CONSUMER=1"
+  rem Exact temporal VFX owners improve the no-frame-generation UI-free sequence.
+  set "ENDFIELD_RECOVERED_ENDMINF_M13_EXACT=1"
+  set "ENDFIELD_RECOVERED_ENDMINF_M14_EXACT=1"
+  set "ENDFIELD_RECOVERED_ENDMINF_M27_HGBUFFER=1"
+  set "ENDFIELD_RECOVERED_ENDMINF_M27_EXACT_DXBC=1"
+  set "ENDFIELD_RECOVERED_ENDMINF_M27_PRESENTATION=1"
+  set "ENDFIELD_RECOVERED_CANONICAL_BINNING_BUFFER=1"
+  set "ENDFIELD_RECOVERED_SEPARATE_CHARACTER_SHADOW=1"
+  set "ENDFIELD_RECOVERED_LOW_RES_DIRECTIONAL_SHADOW=1"
+  set "ENDFIELD_RECOVERED_SCREEN_SHADOW_R_ATTACHMENT_DIAGNOSTIC=1"
   rem Recording-specific live cursor state for videos/2026-08-21_20-15-17.mkv.
   set "ENDFIELD_RECOVERED_CHARINFO_GYROSCOPE_MODE=recorded-input"
   set "ENDFIELD_RECOVERED_CHARINFO_GYROSCOPE_INPUT_X=0.989"
   set "ENDFIELD_RECOVERED_CHARINFO_GYROSCOPE_INPUT_Y=-0.874"
   set "ENDFIELD_CHARACTER_RECOVERY_INITIAL_MODEL=Endminf"
-  echo Opening Endminf visual reproduction with explicitly approximate compatibility layers.
+  echo Opening Endminf reproduction with physical SphereOutside and exact M13/M14/M27 presentation.
   "%UNITY_EXE%" -projectPath "%PROJECT_PATH%" -force-d3d11 -executeMethod EndfieldGraphShaderLabEditor.EndfieldEndminfOverviewEffectBindingBuilder.OpenVisualReproductionInPlayMode
   exit /b %ERRORLEVEL%
 

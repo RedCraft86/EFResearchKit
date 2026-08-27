@@ -32,7 +32,7 @@ def passing_report() -> dict[str, object]:
         "last_hresult": "0x00000000",
         "render_event_count": 2,
         "post_draw_exact_shader_objects_bound": True,
-        "shader_resource_mask": "0xffffffe",
+        "shader_resource_mask": "0x3fffffe",
         "resource_binding_compatible": True,
         "readback_changed_from_sentinel": True,
         "callback_count": 0,
@@ -53,6 +53,16 @@ class LiveReportTests(unittest.TestCase):
             "EndfieldOriginalDxbcGetShaderResourceFailureResult",
             MODULE.EXPECTED_PLUGIN_EXPORTS,
         )
+
+    def test_plugin_contract_includes_fail_closed_m27_exports(self) -> None:
+        for name in (
+            "EndfieldOriginalDxbcGetM27MatchCount",
+            "EndfieldOriginalDxbcGetM27MismatchCount",
+            "EndfieldOriginalDxbcGetM27ObservedShellSha256",
+            "EndfieldOriginalDxbcGetM27RegistryReady",
+            "EndfieldOriginalDxbcSetM27SubstitutionArmed",
+        ):
+            self.assertIn(name, MODULE.EXPECTED_PLUGIN_EXPORTS)
 
     def test_direct_runtime_activation_report_passes_without_compiler_callback(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -10,6 +10,7 @@ from pathlib import Path
 LAB = Path(__file__).resolve().parents[1]
 REPO = LAB.parent
 AUDIT = REPO / "reports/assets/endminf_overview_02_post_curve_native_audit.json"
+UBER_AUDIT = REPO / "reports/assets/endminf_overview_02_uber_post_native_audit.json"
 CLOCK = (
     LAB
     / "Assets/EndfieldGraphShaderLab/Runtime/Rendering"
@@ -24,9 +25,18 @@ SHADER = (
     / "Assets/EndfieldGraphShaderLab/Shaders/HGRPCompat"
     / "EndfieldHGRPExposureTonemap.shader"
 )
+CAPTURE = (
+    LAB
+    / "Assets/EndfieldGraphShaderLab/Editor/CharacterRecovery"
+    / "EndfieldEndminfViewerPlayModeCapture.cs"
+)
+OPEN_WRAPPER = LAB / "open_character_recovery_lab.bat"
 
 EXPECTED_CLIP_SHA256 = (
     "9814b9de92d5af7902b1967c295f98d29327824bdd7b478984527c5ccccd076c"
+)
+EXPECTED_COMBINED_FRAGMENT_DXBC_SHA256 = (
+    "3f490e1504c435541769ee03e881583df554e652df155e5b942a3a410d8e086b"
 )
 EXPECTED_KEYS = (
     ((0.0, 0.12700000405311584), (0.1666666716337204, 0.0),
@@ -47,6 +57,7 @@ def require_tokens(text: str, tokens: tuple[str, ...], label: str) -> None:
 
 def verify() -> dict[str, object]:
     audit = json.loads(AUDIT.read_text(encoding="utf-8"))
+    uber_audit = json.loads(UBER_AUDIT.read_text(encoding="utf-8"))
     if audit["inputs"]["clipSha256"] != EXPECTED_CLIP_SHA256:
         raise RuntimeError("overview-02 clip hash mismatch")
     if audit["targetPath"] != {"name": "post (1)", "crc32": 669740077}:
@@ -58,6 +69,17 @@ def verify() -> dict[str, object]:
         actual = tuple((row["time"], row["value"]) for row in binding["keys"])
         if actual != expected:
             raise RuntimeError(f"overview-02 curve {index} key mismatch: {actual!r}")
+    combined_variant = uber_audit["recovered_shader"]["endminf_combined_variant"]
+    if combined_variant["keywords"] != [
+        "BLOOM",
+        "RADIAL_BLUR_CHROMATIC_ABERRATION",
+    ]:
+        raise RuntimeError("Endminf combined Uber keyword pair mismatch")
+    if (
+        combined_variant["fragment_dxbc_sha256"]
+        != EXPECTED_COMBINED_FRAGMENT_DXBC_SHA256
+    ):
+        raise RuntimeError("Endminf combined Uber fragment hash mismatch")
 
     clock = CLOCK.read_text(encoding="utf-8")
     require_tokens(clock, (
@@ -72,12 +94,13 @@ def verify() -> dict[str, object]:
         "(chromaticActive && radial > 0.01f ? 6 : 3)",
         "camera.WorldToViewportPoint(",
         "overview02Root.TransformPoint(RecoveredPostCenterLocal)",
+        "Vector2 center = new Vector2(viewport.x, viewport.y)",
         "viewport.x * 2.0f - 1.0f",
         "viewport.y * 2.0f - 1.0f",
-        "packed.magnitude > 1.414f",
-        "(packed.normalized + Vector2.one) * 0.5f",
-        "Mathf.Clamp01(packed.x)",
-        "Mathf.Clamp01(packed.y)",
+        "signedCenter.magnitude > 1.414f",
+        "(signedCenter.normalized + Vector2.one) * 0.5f",
+        "Mathf.Clamp01(center.x)",
+        "Mathf.Clamp01(center.y)",
         "time <= 0.16666667f",
         "time < 4.4f",
         "time <= 4.4333334f",
@@ -92,9 +115,36 @@ def verify() -> dict[str, object]:
         "endminfPost.mode",
         "endminfPost.effectivePower",
         "endminfPost.centerViewport",
+        "GraphicsFormat.R16G16B16A16_SFloat",
+        "LastRecoveredEndminfPostSourceGraphicsFormat",
+        "LastRecoveredEndminfBloomGraphicsFormat",
+        "RecoveredEndminfPostSourceId",
     ), "render-pipeline packing")
     if "EvaluateEndminfVisualCompatibility(" in pipeline:
         raise RuntimeError("retired empirical Effect-02 evaluator is still present")
+
+    require_tokens(CAPTURE.read_text(encoding="utf-8"), (
+        'private const string RecordingVisualPostPreRollSeconds = "0";',
+        "IncludeCharInfoBackground = true",
+        "IncludeBackgroundPortrait = true",
+        "charInfoBackgroundRequested = IncludeCharInfoBackground",
+        "backgroundPortraitRequested = IncludeBackgroundPortrait",
+        "public Vector2 endminfPostCenterViewport",
+        "endminfPostCenterViewport = endminfPostState.centerViewport",
+        "public string endminfPostSourceGraphicsFormat",
+        "observedEndminfPostSourceRgba16",
+        "observedEndminfBloomR11",
+        "retail R16G16B16A16_FLOAT Uber source handoff",
+        "retail R11G11B10_FLOAT Uber bloom handoff",
+        "IsCharInfoBackgroundActive()",
+        "IsBackgroundPortraitActive()",
+        "if (!requiredCaptureContractReady)",
+        "foregroundUiOverlayIncluded = false",
+    ), "August 24 capture scope and phase")
+    require_tokens(OPEN_WRAPPER.read_text(encoding="utf-8"), (
+        'set "ENDFIELD_ENDMINF_VISUAL_COMPATIBILITY_PREROLL_SECONDS=0"',
+        'set "ENDFIELD_RECOVERED_CHARINFO_BACKGROUND_PORTRAIT=1"',
+    ), "August 24 interactive reproduction profile")
 
     spawner = (
         LAB
@@ -111,6 +161,7 @@ def verify() -> dict[str, object]:
 
     shader = SHADER.read_text(encoding="utf-8")
     require_tokens(shader, (
+        EXPECTED_COMBINED_FRAGMENT_DXBC_SHA256,
         "float4 SampleEndminfSceneLod0(float2 uv)",
         "float effectivePower)",
         "if (_EndminfVisualCompatibilityParams.z > 3.0)",
@@ -129,22 +180,27 @@ def verify() -> dict[str, object]:
         raise RuntimeError("Effect-02 warped taps incorrectly resample bloom")
 
     return {
-        "status": "verified_source_state_and_combination_order_full_uber_unresolved",
+        "status": "verified_source_state_center_and_combined_uber_kernel",
         "clipSha256": EXPECTED_CLIP_SHA256,
+        "combinedFragmentDxbcSha256": EXPECTED_COMBINED_FRAGMENT_DXBC_SHA256,
         "curveCount": len(bindings),
         "runtime": {
             "radialPower": 1.0,
             "combinedPowerBase": 1.0,
             "combinedMode": 6,
             "singleMode": 3,
+            "ordinaryCenterSpace": "viewport_0_to_1",
+            "farOffscreenCenterTestSpace": "signed_viewport",
+            "postSourceGraphicsFormat": "R16G16B16A16_SFloat",
+            "bloomGraphicsFormat": "B10G11R11_UFloatPack32",
             "averageSteps": [0, 0],
             "particleClock": "selection/body timeline; no post-owner age offset",
         },
         "boundary": (
-            "The animated values, native center/mode/power packing, source-only "
-            "warp, and separate bloom sampling order are verified. The combined "
-            "shipped Uber bloom merge and exact D3D12 presentation bindings remain "
-            "unresolved."
+            "The animated values, ordinary/far-offscreen native center packing, "
+            "native mode/power packing, exact combined shipped Uber kernel, "
+            "source-only warp, and separate bloom sampling order are verified. "
+            "The public-Unity presentation/binding ABI remains unresolved."
         ),
     }
 

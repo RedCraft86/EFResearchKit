@@ -178,6 +178,8 @@ namespace EndfieldGraphShaderLab
         private static readonly int RecoveredCameraDepthReadyId =
             Shader.PropertyToID("_EndfieldRecoveredCameraDepthReady");
         private static readonly int CharacterBloomSourceId = Shader.PropertyToID("_EndfieldCharacterBloomSource");
+        private static readonly int RecoveredEndminfPostSourceId =
+            Shader.PropertyToID("_EndfieldRecoveredEndminfPostSource");
         private static readonly int CharacterBloomAId = Shader.PropertyToID("_EndfieldCharacterBloomA");
         private static readonly int CharacterBloomBId = Shader.PropertyToID("_EndfieldCharacterBloomB");
         private static readonly int BloomTextureId = Shader.PropertyToID("_BloomTex");
@@ -279,6 +281,8 @@ namespace EndfieldGraphShaderLab
             Shader.PropertyToID("_RecoveredTemporalResponsiveTransparency");
         private static readonly int RecoveredTemporalResolveId =
             Shader.PropertyToID("_EndfieldRecoveredTemporalResolve");
+        private static readonly int RecoveredCombinedVelocityId =
+            Shader.PropertyToID("_CombinedVelocity");
         private static readonly int RecoveredPostSemanticsId = Shader.PropertyToID("_EndfieldRecoveredPostSemantics");
         private static readonly int RecoveredColorGradingLutId = Shader.PropertyToID("_RecoveredColorGradingLut");
         private static readonly int RecoveredColorGradingLutReadyId = Shader.PropertyToID("_RecoveredColorGradingLutReady");
@@ -344,6 +348,10 @@ namespace EndfieldGraphShaderLab
         // sceneColor descriptor the diagnostic owns.
         public const GraphicsFormat RecoveredSceneColorFormat =
             GraphicsFormat.B10G11R11_UFloatPack32;
+        public static GraphicsFormat LastRecoveredEndminfPostSourceGraphicsFormat
+            { get; private set; } = GraphicsFormat.None;
+        public static GraphicsFormat LastRecoveredEndminfBloomGraphicsFormat
+            { get; private set; } = GraphicsFormat.None;
         public static EndfieldRecoveredSceneMVDiagnosticState
             LastRecoveredSceneMVDiagnostic { get; } =
                 new EndfieldRecoveredSceneMVDiagnosticState();
@@ -550,6 +558,10 @@ namespace EndfieldGraphShaderLab
             recoveredDeferredResolverInputProbe;
         private readonly EndfieldRecoveredDeferredExactConsumer
             recoveredDeferredExactConsumer;
+        private readonly EndfieldRecoveredEndminfM27DeferredPresentation
+            recoveredEndminfM27DeferredPresentation;
+        private readonly EndfieldRecoveredSphereOutsideDeferredPresentation
+            recoveredSphereOutsideDeferredPresentation;
         private readonly EndfieldRecoveredDirectionalCSMProducer
             recoveredDirectionalCSMProducer;
         private readonly EndfieldRecoveredContactShadowProducer
@@ -564,6 +576,8 @@ namespace EndfieldGraphShaderLab
             recoveredScreenDirectAudit;
         private readonly EndfieldRecoveredSceneMVCompositor
             recoveredSceneMVCompositor;
+        private readonly EndfieldRecoveredCombinedVelocityProducer
+            recoveredCombinedVelocityProducer;
         private RenderTexture recoveredExactCameraDepth;
         private sealed class RecoveredTemporalCameraState
         {
@@ -615,6 +629,7 @@ namespace EndfieldGraphShaderLab
         private bool loggedRecoveredPreGBufferDepthOwnerFailure;
         private bool loggedRecoveredSceneMV;
         private bool loggedRecoveredSceneMVFailure;
+        private bool loggedRecoveredCombinedVelocityFailure;
         private bool loggedRecoveredVFXGlobalsFailure;
         private bool loggedRecoveredSceneColorFormatFailure;
         private bool loggedRecoveredPreTransparentSceneColorFormatFailure;
@@ -686,6 +701,10 @@ namespace EndfieldGraphShaderLab
                 new EndfieldRecoveredDeferredResolverInputProbe();
             recoveredDeferredExactConsumer =
                 new EndfieldRecoveredDeferredExactConsumer();
+            recoveredEndminfM27DeferredPresentation =
+                new EndfieldRecoveredEndminfM27DeferredPresentation();
+            recoveredSphereOutsideDeferredPresentation =
+                new EndfieldRecoveredSphereOutsideDeferredPresentation();
             recoveredContactShadowProducer =
                 new EndfieldRecoveredContactShadowProducer();
             recoveredLowResDirectionalShadowProducer =
@@ -706,6 +725,8 @@ namespace EndfieldGraphShaderLab
                 new EndfieldRecoveredPreGBufferDepthOwner();
             recoveredSceneMVCompositor =
                 new EndfieldRecoveredSceneMVCompositor();
+            recoveredCombinedVelocityProducer =
+                new EndfieldRecoveredCombinedVelocityProducer();
             GraphicsSettings.useScriptableRenderPipelineBatching = true;
 
             if (recoveredLiveCharInfoAutoExposureRequested)
@@ -796,6 +817,8 @@ namespace EndfieldGraphShaderLab
             recoveredDeferredGBufferFrame?.Dispose();
             recoveredDeferredResolverInputProbe?.Dispose();
             recoveredDeferredExactConsumer?.Dispose();
+            recoveredEndminfM27DeferredPresentation?.Dispose();
+            recoveredSphereOutsideDeferredPresentation?.Dispose();
             recoveredVisibilitySHProducer?.Dispose();
             recoveredPunctualShadowProducer?.Dispose();
             recoveredDeferredShadowData?.Dispose();
@@ -925,6 +948,12 @@ namespace EndfieldGraphShaderLab
             ScriptableCullingParameters cullingParameters;
             if (!camera.TryGetCullingParameters(out cullingParameters))
                 return;
+            bool exactEndminfM13Prepared =
+                EndfieldRecoveredEndminfM13ExactRuntime
+                    .PrepareBeforeCulling(camera);
+            bool exactEndminfM14Prepared =
+                EndfieldRecoveredEndminfM14ExactRuntime
+                    .PrepareBeforeCulling(camera);
 
             float requestedShadowDistance =
                 recoveredDirectionalCSMProducer.Requested
@@ -1021,6 +1050,14 @@ namespace EndfieldGraphShaderLab
                 out recoveredPostUberWorldUiFailure);
             EndfieldRecoveredSceneMVRequest recoveredSceneMVRequest =
                 recoveredSceneMVCompositor.CollectRequest(camera);
+            if (exactEndminfM14Prepared && !recoveredSceneMVRequest.requested)
+            {
+                recoveredSceneMVRequest = new EndfieldRecoveredSceneMVRequest(
+                    true,
+                    true,
+                    false,
+                    string.Empty);
+            }
             ResetRecoveredSceneMVDiagnostic(recoveredSceneMVRequest.requested);
             LastRecoveredSceneMVDiagnostic.requestFailure =
                 recoveredSceneMVRequest.failure ?? string.Empty;
@@ -1689,6 +1726,24 @@ namespace EndfieldGraphShaderLab
                     recoveredCanonicalFrameResourcesReady,
                     canonicalColorTarget,
                     canonicalDepthTarget);
+            recoveredEndminfM27DeferredPresentation.PublishDepth(
+                context,
+                camera,
+                renderWidth,
+                renderHeight,
+                recoveredDeferredGBufferFrameReady,
+                recoveredDeferredGBufferFrame,
+                canonicalColorTarget,
+                canonicalDepthTarget);
+            recoveredSphereOutsideDeferredPresentation.PublishDepth(
+                context,
+                camera,
+                renderWidth,
+                renderHeight,
+                recoveredDeferredGBufferFrameReady,
+                recoveredDeferredGBufferFrame,
+                canonicalColorTarget,
+                canonicalDepthTarget);
             EndfieldRecoveredContactShadowProducer.Frame
                 recoveredContactShadowFrame =
                     recoveredContactShadowProducer.Render(
@@ -1706,6 +1761,9 @@ namespace EndfieldGraphShaderLab
                 camera,
                 preGBufferFrame,
                 recoveredDirectionalCSMReady,
+                useSeparatePrimaryDepth
+                    ? recoveredPrimarySceneDepth
+                    : null,
                 recoveredContactShadowFrame,
                 canonicalColorTarget);
             recoveredVisibilitySHProducer.Render(
@@ -1796,7 +1854,8 @@ namespace EndfieldGraphShaderLab
                 recoveredDeferredResolverResources,
                 canonicalColorTarget,
                 canonicalDepthTarget);
-            recoveredDeferredExactConsumer.Render(
+            bool recoveredDeferredExactConsumerReady =
+                recoveredDeferredExactConsumer.Render(
                 context,
                 camera,
                 renderWidth,
@@ -1814,6 +1873,27 @@ namespace EndfieldGraphShaderLab
                 recoveredShaderVariablesGlobalReady,
                 recoveredDeferredLightDataReady,
                 recoveredDeferredShadowDataReady,
+                canonicalColorTarget,
+                canonicalDepthTarget);
+            recoveredSphereOutsideDeferredPresentation.Render(
+                context,
+                camera,
+                renderWidth,
+                renderHeight,
+                recoveredDeferredExactConsumerReady,
+                recoveredDeferredGBufferFrame,
+                recoveredDeferredExactConsumer.RecoveredHlslOutput,
+                canonicalColorTarget,
+                canonicalDepthTarget);
+            recoveredEndminfM27DeferredPresentation.Render(
+                context,
+                camera,
+                renderWidth,
+                renderHeight,
+                recoveredDeferredExactConsumerReady,
+                recoveredDeferredGBufferFrame,
+                recoveredDeferredExactConsumer.RecoveredHlslOutput,
+                cameraColorDescriptor,
                 canonicalColorTarget,
                 canonicalDepthTarget);
 
@@ -1926,6 +2006,35 @@ namespace EndfieldGraphShaderLab
                 recoveredSceneColorPingAllocated = true;
                 if (mainReady)
                     recoveredCurrentSceneColor = composedSceneColor;
+                if (mainReady && exactEndminfM14Prepared)
+                {
+                    mainReady = EndfieldRecoveredEndminfM14ExactRuntime.Render(
+                        context,
+                        camera,
+                        recoveredCurrentSceneColor,
+                        recoveredSceneMV,
+                        recoveredPrimarySceneDepth);
+                    if (!mainReady)
+                    {
+                        compositorFailure =
+                            "exact Endminf M14 transport failed closed: " +
+                            EndfieldRecoveredEndminfM14ExactRuntime.Failure;
+                    }
+                }
+                if (mainReady && exactEndminfM13Prepared)
+                {
+                    mainReady = EndfieldRecoveredEndminfM13ExactRuntime.Render(
+                        context,
+                        camera,
+                        recoveredCurrentSceneColor,
+                        recoveredSceneMV);
+                    if (!mainReady)
+                    {
+                        compositorFailure =
+                            "exact Endminf M13 transport failed closed: " +
+                            EndfieldRecoveredEndminfM13ExactRuntime.Failure;
+                    }
+                }
                 if (mainReady && recoveredSceneMVRequest.hasGlow902Queue3005)
                 {
                     DrawRenderers(
@@ -2839,11 +2948,55 @@ namespace EndfieldGraphShaderLab
                     recoveredPrimarySceneDepth,
                     recoveredSceneMV,
                     recoveredSceneColorDescriptor);
+            }
+            // The retained retail Uber draw binds full-resolution
+            // R16G16B16A16_FLOAT t0 after the packed B10G11R11 sceneColor
+            // owner. Preserve that post-handoff promotion for Endminf before
+            // bloom and Uber sample the source.
+            bool useRecoveredEndminfRgba16PostSource =
+                useRecoveredPostSemantics &&
+                EndfieldEndminfVisualCompatibilityClock.Requested &&
+                SystemInfo.IsFormatSupported(
+                    GraphicsFormat.R16G16B16A16_SFloat,
+                    FormatUsage.Render);
+            RenderTargetIdentifier recoveredPostSource =
+                new RenderTargetIdentifier(CameraColorId);
+            RenderTextureDescriptor recoveredPostSourceDescriptor =
+                recoveredSceneColorDescriptor;
+            LastRecoveredEndminfPostSourceGraphicsFormat =
+                recoveredPostSourceDescriptor.graphicsFormat;
+            if (useRecoveredEndminfRgba16PostSource)
+            {
+                recoveredPostSourceDescriptor = new RenderTextureDescriptor(
+                    width,
+                    height)
+                {
+                    graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat,
+                    depthStencilFormat = GraphicsFormat.None,
+                    msaaSamples = 1,
+                    useMipMap = false,
+                    autoGenerateMips = false,
+                    sRGB = false
+                };
+                commandBuffer.GetTemporaryRT(
+                    RecoveredEndminfPostSourceId,
+                    recoveredPostSourceDescriptor,
+                    FilterMode.Bilinear);
+                commandBuffer.Blit(
+                    CameraColorId,
+                    RecoveredEndminfPostSourceId);
+                recoveredPostSource = new RenderTargetIdentifier(
+                    RecoveredEndminfPostSourceId);
+                LastRecoveredEndminfPostSourceGraphicsFormat =
+                    recoveredPostSourceDescriptor.graphicsFormat;
+            }
+            if (useRecoveredPostSemantics)
+            {
                 EndfieldRecoveredPostStageDiagnostic.EnqueueStageIfActive(
                     commandBuffer,
                     EndfieldRecoveredPostStageDiagnostic.AfterTemporal,
-                    new RenderTargetIdentifier(CameraColorId),
-                    recoveredSceneColorDescriptor);
+                    recoveredPostSource,
+                    recoveredPostSourceDescriptor);
             }
             if (!useRecoveredPostSemantics)
             {
@@ -2937,6 +3090,7 @@ namespace EndfieldGraphShaderLab
                 // already-rendered HDR camera color rather than a character redraw.
                 recoveredBloomMipCount = BuildRecoveredSceneBloomPyramid(
                     commandBuffer,
+                    recoveredPostSource,
                     width,
                     height,
                     bloomThreshold,
@@ -3074,7 +3228,7 @@ namespace EndfieldGraphShaderLab
                         : FilterMode.Bilinear);
                 commandBuffer.SetGlobalFloat(PresentFlipYId, 0.0f);
                 commandBuffer.Blit(
-                    CameraColorId,
+                    recoveredPostSource,
                     EndfieldRecoveredSceneMVCompositor.PostColorId,
                     postProcessMaterial,
                     0);
@@ -3111,7 +3265,7 @@ namespace EndfieldGraphShaderLab
                     FilterMode.Point);
                 commandBuffer.SetGlobalFloat(PresentFlipYId, 0.0f);
                 commandBuffer.Blit(
-                    CameraColorId,
+                    recoveredPostSource,
                     RecoveredFinalDisplayId,
                     postProcessMaterial,
                     0);
@@ -3137,7 +3291,7 @@ namespace EndfieldGraphShaderLab
                     PresentFlipYId,
                     ShouldFlipPresentation(camera) ? 1.0f : 0.0f);
                 commandBuffer.Blit(
-                    CameraColorId,
+                    recoveredPostSource,
                     BuiltinRenderTextureType.CameraTarget,
                     postProcessMaterial,
                     0);
@@ -3179,6 +3333,8 @@ namespace EndfieldGraphShaderLab
             }
             if (!deferPresentationForSceneMV)
                 commandBuffer.ReleaseTemporaryRT(CameraColorId);
+            if (useRecoveredEndminfRgba16PostSource)
+                commandBuffer.ReleaseTemporaryRT(RecoveredEndminfPostSourceId);
             context.ExecuteCommandBuffer(commandBuffer);
             commandBuffer.Release();
 
@@ -3299,6 +3455,23 @@ namespace EndfieldGraphShaderLab
                 recoveredTemporalDilationMaterial != null &&
                 recoveredPrimarySceneDepth != null &&
                 recoveredSceneMV != null;
+            bool combinedVelocityProduced =
+                recoveredCombinedVelocityProducer.TryEnqueue(
+                    commandBuffer,
+                    recoveredSceneMV,
+                    width,
+                    height,
+                    RecoveredCombinedVelocityId,
+                    out string combinedVelocityFailure);
+            if (!combinedVelocityProduced &&
+                !string.IsNullOrEmpty(combinedVelocityFailure) &&
+                !loggedRecoveredCombinedVelocityFailure)
+            {
+                Debug.LogWarning(
+                    "Recovered DLSS velocity combine failed closed: " +
+                    combinedVelocityFailure + ".");
+                loggedRecoveredCombinedVelocityFailure = true;
+            }
             bool invalidHistory = state.history == null ||
                 state.history.width != width ||
                 state.history.height != height ||
@@ -3623,6 +3796,8 @@ namespace EndfieldGraphShaderLab
             state.hasPreviousNonJitteredViewProjection = true;
             state.lastElapsed = temporalResolveActive ? elapsed : float.NaN;
             state.lastFrame = Time.frameCount;
+            if (combinedVelocityProduced)
+                commandBuffer.ReleaseTemporaryRT(RecoveredCombinedVelocityId);
         }
 
         private static void ReleaseRecoveredTemporalHistory(
@@ -3682,6 +3857,7 @@ namespace EndfieldGraphShaderLab
 
         private int BuildRecoveredSceneBloomPyramid(
             CommandBuffer commandBuffer,
+            RenderTargetIdentifier sourceColor,
             int sourceWidth,
             int sourceHeight,
             float serializedThreshold,
@@ -3715,7 +3891,7 @@ namespace EndfieldGraphShaderLab
                 var descriptor = new RenderTextureDescriptor(
                     recoveredBloomMipWidths[i],
                     recoveredBloomMipHeights[i],
-                    RenderTextureFormat.DefaultHDR,
+                    RecoveredSceneColorFormat,
                     0)
                 {
                     msaaSamples = 1,
@@ -3732,6 +3908,8 @@ namespace EndfieldGraphShaderLab
                         descriptor,
                         FilterMode.Bilinear);
                 }
+                LastRecoveredEndminfBloomGraphicsFormat =
+                    descriptor.graphicsFormat;
             }
 
             // The recovered rotated-grid prefilter uses the first bloom mip's
@@ -3744,14 +3922,14 @@ namespace EndfieldGraphShaderLab
                     1.0f / recoveredBloomMipWidths[0],
                     1.0f / recoveredBloomMipHeights[0]));
             commandBuffer.Blit(
-                CameraColorId,
+                sourceColor,
                 RecoveredBloomMipDownIds[0],
                 postProcessMaterial,
                 1);
             var diagnosticMip0Descriptor = new RenderTextureDescriptor(
                 recoveredBloomMipWidths[0],
                 recoveredBloomMipHeights[0],
-                RenderTextureFormat.DefaultHDR,
+                RecoveredSceneColorFormat,
                 0)
             {
                 msaaSamples = 1,

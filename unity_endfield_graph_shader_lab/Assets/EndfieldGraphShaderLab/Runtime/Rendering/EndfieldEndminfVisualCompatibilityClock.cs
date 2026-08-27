@@ -109,6 +109,8 @@ namespace EndfieldGraphShaderLab
             float radial = EvaluateSourceCurve(elapsed, 0.152f, 0.109f);
             bool chromaticActive = chromatic > 0.0f;
             bool radialActive = radial > 0.0f;
+            // The pinned native producer selects the nine-tap combined mode
+            // when both effects are active and radial intensity exceeds 0.01.
             int mode = chromaticActive || radialActive
                 ? (chromaticActive && radial > 0.01f ? 6 : 3)
                 : 0;
@@ -169,18 +171,21 @@ namespace EndfieldGraphShaderLab
             if (viewport.z <= 0.0f)
                 return new Vector2(0.5f, 0.5f);
 
-            // PrepareRadialBlurAndChromaticAberrationParameters does not
-            // forward viewport XY. It first moves the point into signed
-            // viewport space, applies its far-offscreen normalization branch,
-            // and only then clamps each component for the Uber constant.
-            Vector2 packed = new Vector2(
+            // The native producer uses signed viewport space only to test and
+            // normalize a far-offscreen center. An ordinary on-screen center
+            // keeps the original 0..1 viewport coordinates. The previous
+            // translation returned the signed test vector itself, moving the
+            // captured (0.50998, 0.53291) hand center to the lower-left and
+            // magnifying the whole-frame radial/chromatic pull.
+            Vector2 center = new Vector2(viewport.x, viewport.y);
+            Vector2 signedCenter = new Vector2(
                 viewport.x * 2.0f - 1.0f,
                 viewport.y * 2.0f - 1.0f);
-            if (packed.magnitude > 1.414f)
-                packed = (packed.normalized + Vector2.one) * 0.5f;
+            if (signedCenter.magnitude > 1.414f)
+                center = (signedCenter.normalized + Vector2.one) * 0.5f;
             return new Vector2(
-                Mathf.Clamp01(packed.x),
-                Mathf.Clamp01(packed.y));
+                Mathf.Clamp01(center.x),
+                Mathf.Clamp01(center.y));
         }
     }
 }

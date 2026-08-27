@@ -1,26 +1,45 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#include <bcrypt.h>
 #include <d3d11.h>
+#include <d3dcompiler.h>
 
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
+#include <mutex>
+#include <new>
 
 #include "IUnityInterface.h"
 #include "IUnityGraphicsD3D11.h"
 #include "IUnityShaderCompilerAccess.h"
 #include "EmbeddedDxbc.generated.h"
+#include "M13CapturePayload.generated.h"
+#include "M14CapturePayload.generated.h"
+#include "M27CapturePayload.generated.h"
+#include "M27TemporalCapturePayload.generated.h"
+#include "M27SubstitutionRegistry.h"
 
 namespace
 {
 constexpr const char* kReservedKeyword = "ENDFIELD_ORIGINAL_DXBC_EXACT";
+constexpr const char* kM27ReservedKeyword = "ENDFIELD_ORIGINAL_DXBC_M27_EXACT";
 constexpr std::uint32_t kContractVersion = 2;
-constexpr std::uint32_t kTextureSlotCount = 28;
-constexpr std::uint32_t kConstantBufferSlotCount = 10;
+constexpr std::uint32_t kTextureSlotCount = 26;
+constexpr std::uint32_t kConstantBufferSlotCount = 9;
+
+enum class SubstitutionRoute : std::uint32_t
+{
+    None = 0,
+    DeferredDiagnostic = 1,
+    M27HashPinned = 2,
+};
 
 IUnityInterfaces* g_unityInterfaces = nullptr;
 std::atomic<bool> g_armed{false};
+std::atomic<SubstitutionRoute> g_substitutionRoute{SubstitutionRoute::None};
 std::atomic<std::uint32_t> g_pluginLoadCount{0};
 std::atomic<std::uint32_t> g_configureCount{0};
 std::atomic<bool> g_vertexClaimed{false};
@@ -46,6 +65,221 @@ std::atomic<std::uint32_t> g_postDrawShaderResourceMask{0};
 std::atomic<std::uint32_t> g_samplerMask{0};
 std::uintptr_t g_texturePointers[kTextureSlotCount] = {};
 std::atomic<std::uint32_t> g_texturePointerCount{0};
+std::atomic<std::uint32_t> g_m27MatchCount{0};
+std::atomic<std::uint32_t> g_m27MismatchCount{0};
+std::atomic<std::uint32_t> g_m27VariantHashConflictCount{0};
+std::atomic<std::uint32_t> g_m27MaxVertexInputCount{0};
+std::atomic<std::uint32_t> g_m27MaxVertexOutputCount{0};
+std::atomic<std::uint32_t> g_m27MaxPixelInputCount{0};
+std::atomic<std::uint32_t> g_m27MaxPixelOutputCount{0};
+std::atomic<std::uint8_t> g_m27ObservedVertexSha256[32] = {};
+std::atomic<std::uint8_t> g_m27ObservedPixelSha256[32] = {};
+
+ID3D11VertexShader* g_m14RuntimeVertexShader = nullptr;
+ID3D11PixelShader* g_m14RuntimePixelShader = nullptr;
+ID3D11InputLayout* g_m14InputLayout = nullptr;
+ID3D11Buffer* g_m14VertexBuffers[g_EndfieldM14PacketCount] = {};
+ID3D11Buffer* g_m14DefaultVertexBuffer = nullptr;
+ID3D11Buffer* g_m14IndexBuffers[g_EndfieldM14PacketCount] = {};
+ID3D11Buffer* g_m14VertexConstantBuffers[g_EndfieldM14PacketCount][5] = {};
+ID3D11Buffer* g_m14PixelConstantBuffers[g_EndfieldM14PacketCount][4] = {};
+ID3D11Buffer* g_m14SkinBuffer = nullptr;
+ID3D11ShaderResourceView* g_m14SkinView = nullptr;
+ID3D11SamplerState* g_m14Samplers[2] = {};
+ID3D11BlendState* g_m14BlendState = nullptr;
+ID3D11DepthStencilState* g_m14DepthState = nullptr;
+ID3D11RasterizerState* g_m14RasterizerState = nullptr;
+std::atomic<std::uintptr_t> g_m14DepthTexture{0};
+std::atomic<std::uintptr_t> g_m14MainTexture{0};
+std::atomic<std::uint32_t> g_m14PacketIndex{0};
+std::atomic<std::uint32_t> g_m14DrawCount{0};
+std::atomic<std::uint32_t> g_m14FailureCount{0};
+std::atomic<HRESULT> g_m14LastResult{S_OK};
+
+ID3D11VertexShader* g_m13RuntimeVertexShader = nullptr;
+ID3D11PixelShader* g_m13RuntimePixelShader = nullptr;
+ID3D11InputLayout* g_m13InputLayout = nullptr;
+ID3D11Buffer* g_m13VertexBuffer = nullptr;
+ID3D11Buffer* g_m13DefaultVertexBuffer = nullptr;
+ID3D11Buffer* g_m13IndexBuffer = nullptr;
+ID3D11Buffer* g_m13VertexConstantBuffers[5] = {};
+ID3D11Buffer* g_m13PixelConstantBuffers[4] = {};
+ID3D11Buffer* g_m13SkinBuffer = nullptr;
+ID3D11ShaderResourceView* g_m13SkinView = nullptr;
+ID3D11Texture2D* g_m13Textures[5] = {};
+ID3D11ShaderResourceView* g_m13TextureViews[5] = {};
+ID3D11SamplerState* g_m13Samplers[5] = {};
+ID3D11BlendState* g_m13BlendState = nullptr;
+ID3D11DepthStencilState* g_m13DepthState = nullptr;
+ID3D11RasterizerState* g_m13RasterizerState = nullptr;
+std::atomic<std::uint32_t> g_m13DrawCount{0};
+std::atomic<std::uint32_t> g_m13FailureCount{0};
+std::atomic<HRESULT> g_m13LastResult{S_OK};
+
+ID3D11VertexShader* g_m27DrawVertexShader = nullptr;
+ID3D11PixelShader* g_m27DrawPixelShader = nullptr;
+constexpr std::uint32_t kM27MaximumDrawsPerFrame =
+    g_EndfieldM27TemporalMaximumDrawsPerFrame;
+ID3D11InputLayout* g_m27DrawInputLayouts[2] = {};
+ID3D11Buffer* g_m27DrawVertexBuffers
+    [g_EndfieldM27TemporalFrameCount][kM27MaximumDrawsPerFrame] = {};
+ID3D11Buffer* g_m27DrawDefaultVertexBuffer = nullptr;
+ID3D11Buffer* g_m27DrawIndexBuffers
+    [g_EndfieldM27TemporalFrameCount][kM27MaximumDrawsPerFrame] = {};
+ID3D11Buffer* g_m27DrawVertexConstantBuffers
+    [g_EndfieldM27TemporalFrameCount][kM27MaximumDrawsPerFrame][3] = {};
+ID3D11Buffer* g_m27DrawPixelConstantBuffers
+    [g_EndfieldM27TemporalFrameCount][kM27MaximumDrawsPerFrame][5] = {};
+ID3D11Buffer* g_m27DrawSkinBuffer = nullptr;
+ID3D11ShaderResourceView* g_m27DrawSkinView = nullptr;
+ID3D11Texture2D* g_m27DrawTextures[6] = {};
+ID3D11ShaderResourceView* g_m27DrawTextureViews[6] = {};
+ID3D11SamplerState* g_m27DrawSampler = nullptr;
+ID3D11BlendState* g_m27DrawBlendState = nullptr;
+ID3D11DepthStencilState* g_m27DrawDepthState = nullptr;
+ID3D11RasterizerState* g_m27DrawRasterizerState = nullptr;
+std::atomic<std::uint32_t> g_m27DrawPacketIndex{0};
+std::atomic<std::uint32_t> g_m27DrawCount{0};
+std::atomic<std::uint32_t> g_m27DrawFailureCount{0};
+std::atomic<HRESULT> g_m27DrawLastResult{S_OK};
+std::atomic<std::uint32_t> g_m27DrawFailureStage{0};
+
+constexpr std::size_t kM27CallbackObservationCapacity = 512;
+constexpr std::size_t kM27CallbackMetadataCount = 12;
+struct M27CallbackObservation
+{
+    std::uint32_t metadata[kM27CallbackMetadataCount];
+    unsigned char sha256[32];
+};
+M27CallbackObservation g_m27CallbackObservations[kM27CallbackObservationCapacity] = {};
+std::size_t g_m27CallbackObservationCount = 0;
+std::mutex g_m27CallbackObservationMutex;
+
+bool Sha256(
+    const unsigned char* data,
+    std::size_t size,
+    unsigned char digest[32])
+{
+    if (data == nullptr || size == 0 ||
+        size > (std::numeric_limits<ULONG>::max)())
+        return false;
+    return BCRYPT_SUCCESS(BCryptHash(
+        BCRYPT_SHA256_ALG_HANDLE,
+        nullptr,
+        0,
+        const_cast<PUCHAR>(data),
+        static_cast<ULONG>(size),
+        digest,
+        32));
+}
+
+void ObserveM27Callback(
+    const unsigned char* byteCode,
+    std::size_t byteCodeSize,
+    bool isVertex)
+{
+    unsigned char digest[32] = {};
+    if (!Sha256(byteCode, byteCodeSize, digest))
+        return;
+
+    M27CallbackObservation observation = {};
+    observation.metadata[0] = isVertex ? 1u : 2u;
+    observation.metadata[1] = static_cast<std::uint32_t>(byteCodeSize);
+    std::memcpy(observation.sha256, digest, sizeof(digest));
+
+    ID3D11ShaderReflection* reflection = nullptr;
+    if (SUCCEEDED(D3DReflect(
+            byteCode,
+            byteCodeSize,
+            IID_ID3D11ShaderReflection,
+            reinterpret_cast<void**>(&reflection))) && reflection != nullptr)
+    {
+        D3D11_SHADER_DESC shader = {};
+        if (SUCCEEDED(reflection->GetDesc(&shader)))
+        {
+            observation.metadata[2] = shader.InputParameters;
+            observation.metadata[3] = shader.OutputParameters;
+            observation.metadata[4] = shader.BoundResources;
+            for (UINT index = 0; index < shader.BoundResources; ++index)
+            {
+                D3D11_SHADER_INPUT_BIND_DESC binding = {};
+                if (FAILED(reflection->GetResourceBindingDesc(index, &binding)))
+                    continue;
+                if (binding.Type == D3D_SIT_CBUFFER &&
+                    binding.BindPoint < 5u && binding.Name != nullptr)
+                {
+                    ID3D11ShaderReflectionConstantBuffer* buffer =
+                        reflection->GetConstantBufferByName(binding.Name);
+                    D3D11_SHADER_BUFFER_DESC description = {};
+                    if (buffer != nullptr &&
+                        SUCCEEDED(buffer->GetDesc(&description)))
+                    {
+                        observation.metadata[5u + binding.BindPoint] =
+                            description.Size;
+                    }
+                }
+                else if (binding.Type == D3D_SIT_TEXTURE &&
+                    binding.BindPoint < 32u)
+                {
+                    observation.metadata[10] |= 1u << binding.BindPoint;
+                }
+                else if (binding.Type == D3D_SIT_SAMPLER &&
+                    binding.BindPoint < 32u)
+                {
+                    observation.metadata[11] |= 1u << binding.BindPoint;
+                }
+            }
+        }
+        reflection->Release();
+    }
+
+    std::lock_guard<std::mutex> lock(g_m27CallbackObservationMutex);
+    for (std::size_t index = 0; index < g_m27CallbackObservationCount; ++index)
+    {
+        if (std::memcmp(
+                g_m27CallbackObservations[index].sha256,
+                digest,
+                sizeof(digest)) == 0)
+        {
+            return;
+        }
+    }
+    if (g_m27CallbackObservationCount < kM27CallbackObservationCapacity)
+        g_m27CallbackObservations[g_m27CallbackObservationCount++] = observation;
+}
+
+void RecordM27SignatureCounts(
+    const unsigned char* byteCode,
+    std::size_t byteCodeSize,
+    bool isVertex)
+{
+    if (byteCode == nullptr || byteCodeSize == 0)
+        return;
+
+    ID3D11ShaderReflection* reflection = nullptr;
+    const HRESULT reflected = D3DReflect(
+        byteCode,
+        byteCodeSize,
+        IID_ID3D11ShaderReflection,
+        reinterpret_cast<void**>(&reflection));
+    if (FAILED(reflected) || reflection == nullptr)
+        return;
+
+    D3D11_SHADER_DESC description = {};
+    if (SUCCEEDED(reflection->GetDesc(&description)))
+    {
+        std::atomic<std::uint32_t>& maxInputs = isVertex
+            ? g_m27MaxVertexInputCount
+            : g_m27MaxPixelInputCount;
+        std::atomic<std::uint32_t>& maxOutputs = isVertex
+            ? g_m27MaxVertexOutputCount
+            : g_m27MaxPixelOutputCount;
+        maxInputs.store(description.InputParameters, std::memory_order_relaxed);
+        maxOutputs.store(description.OutputParameters, std::memory_order_relaxed);
+    }
+
+    reflection->Release();
+}
 
 IUnityGraphicsD3D11* GetD3D11()
 {
@@ -77,6 +311,23 @@ void ResetDiagnosticState()
     g_samplerMask.store(0, std::memory_order_relaxed);
     std::memset(g_texturePointers, 0, sizeof(g_texturePointers));
     g_texturePointerCount.store(0, std::memory_order_relaxed);
+    g_m27MatchCount.store(0, std::memory_order_relaxed);
+    g_m27MismatchCount.store(0, std::memory_order_relaxed);
+    g_m27VariantHashConflictCount.store(0, std::memory_order_relaxed);
+    g_m27MaxVertexInputCount.store(0, std::memory_order_relaxed);
+    g_m27MaxVertexOutputCount.store(0, std::memory_order_relaxed);
+    g_m27MaxPixelInputCount.store(0, std::memory_order_relaxed);
+    g_m27MaxPixelOutputCount.store(0, std::memory_order_relaxed);
+    for (std::size_t index = 0; index < 32; ++index)
+    {
+        g_m27ObservedVertexSha256[index].store(0, std::memory_order_relaxed);
+        g_m27ObservedPixelSha256[index].store(0, std::memory_order_relaxed);
+    }
+    {
+        std::lock_guard<std::mutex> lock(g_m27CallbackObservationMutex);
+        std::memset(g_m27CallbackObservations, 0, sizeof(g_m27CallbackObservations));
+        g_m27CallbackObservationCount = 0;
+    }
 }
 
 void ReplaceD3D11Shader(UnityShaderCompilerExtCustomBinaryVariantParams& params)
@@ -101,11 +352,66 @@ void ReplaceD3D11Shader(UnityShaderCompilerExtCustomBinaryVariantParams& params)
         return;
     }
 
-    // Every callback for the reserved diagnostic keyword belongs to the
-    // isolated shell's D3D11 variant set. Replace all of them: Unity may pick
-    // a later local-keyword variant at player load rather than the first one
-    // observed during the editor build. The stage-claim flags remain exposed
-    // as historical counters, but no variant is blocked in this mode.
+    const SubstitutionRoute route =
+        g_substitutionRoute.load(std::memory_order_acquire);
+    const unsigned char* replacementDxbc = nullptr;
+    std::size_t replacementDxbcSize = 0;
+    if (route == SubstitutionRoute::M27HashPinned)
+    {
+        ObserveM27Callback(
+            params.inputByteCode,
+            params.inputByteCodeSize,
+            isVertex);
+        unsigned char digest[32] = {};
+        if (!Sha256(params.inputByteCode, params.inputByteCodeSize, digest))
+        {
+            g_lastResult.store(E_INVALIDARG, std::memory_order_relaxed);
+            g_failureCount.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+        const auto stage = isVertex
+            ? EndfieldM27Substitution::Stage::Vertex
+            : EndfieldM27Substitution::Stage::Pixel;
+        const EndfieldM27Substitution::Entry* entry =
+            EndfieldM27Substitution::Resolve(stage, digest);
+        if (entry == nullptr)
+        {
+            // A callback keyword is not shader identity. Unknown bytecode must
+            // retain Unity's shader object unchanged; only a stage+SHA registry
+            // hit may substitute the retail M27 stage.
+            g_blockedCount.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+        std::atomic<std::uint8_t>* observed =
+            isVertex ? g_m27ObservedVertexSha256 : g_m27ObservedPixelSha256;
+        for (std::size_t index = 0; index < sizeof(digest); ++index)
+            observed[index].store(digest[index], std::memory_order_release);
+        RecordM27SignatureCounts(
+            params.inputByteCode,
+            params.inputByteCodeSize,
+            isVertex);
+        replacementDxbc = entry->replacementDxbc;
+        replacementDxbcSize = entry->replacementDxbcSize;
+        g_m27MatchCount.fetch_add(1, std::memory_order_relaxed);
+    }
+    else if (route == SubstitutionRoute::DeferredDiagnostic)
+    {
+        // Preserve the existing isolated deferred diagnostic callback. Its
+        // production proof uses the native fullscreen event and does not share
+        // the M27 shell route.
+        replacementDxbc = isVertex
+            ? g_EndfieldSelectedVertexDxbc
+            : g_EndfieldSelectedPixelDxbc;
+        replacementDxbcSize = isVertex
+            ? g_EndfieldSelectedVertexDxbcSize
+            : g_EndfieldSelectedPixelDxbcSize;
+    }
+    else
+    {
+        g_blockedCount.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+
     std::atomic<bool>& stageClaim = isVertex ? g_vertexClaimed : g_pixelClaimed;
     stageClaim.store(true, std::memory_order_relaxed);
 
@@ -124,8 +430,8 @@ void ReplaceD3D11Shader(UnityShaderCompilerExtCustomBinaryVariantParams& params)
     {
         ID3D11VertexShader* shader = nullptr;
         result = device->CreateVertexShader(
-            g_EndfieldSelectedVertexDxbc,
-            g_EndfieldSelectedVertexDxbcSize,
+            replacementDxbc,
+            replacementDxbcSize,
             nullptr,
             &shader);
         replacement = shader;
@@ -134,8 +440,8 @@ void ReplaceD3D11Shader(UnityShaderCompilerExtCustomBinaryVariantParams& params)
     {
         ID3D11PixelShader* shader = nullptr;
         result = device->CreatePixelShader(
-            g_EndfieldSelectedPixelDxbc,
-            g_EndfieldSelectedPixelDxbcSize,
+            replacementDxbc,
+            replacementDxbcSize,
             nullptr,
             &shader);
         replacement = shader;
@@ -181,6 +487,759 @@ void ReleaseRuntimeShaders()
         g_runtimeVertexShader->Release();
         g_runtimeVertexShader = nullptr;
     }
+}
+
+template <typename T>
+void ReleaseM14Object(T*& value)
+{
+    if (value != nullptr)
+    {
+        value->Release();
+        value = nullptr;
+    }
+}
+
+void ReleaseM14RuntimeResources()
+{
+    ReleaseM14Object(g_m14RasterizerState);
+    ReleaseM14Object(g_m14DepthState);
+    ReleaseM14Object(g_m14BlendState);
+    for (ID3D11SamplerState*& sampler : g_m14Samplers)
+        ReleaseM14Object(sampler);
+    ReleaseM14Object(g_m14SkinView);
+    ReleaseM14Object(g_m14SkinBuffer);
+    for (std::uint32_t packet = 0; packet < g_EndfieldM14PacketCount; ++packet)
+    {
+        for (ID3D11Buffer*& buffer : g_m14PixelConstantBuffers[packet])
+            ReleaseM14Object(buffer);
+        for (ID3D11Buffer*& buffer : g_m14VertexConstantBuffers[packet])
+            ReleaseM14Object(buffer);
+        ReleaseM14Object(g_m14IndexBuffers[packet]);
+        ReleaseM14Object(g_m14VertexBuffers[packet]);
+    }
+    ReleaseM14Object(g_m14DefaultVertexBuffer);
+    ReleaseM14Object(g_m14InputLayout);
+    ReleaseM14Object(g_m14RuntimePixelShader);
+    ReleaseM14Object(g_m14RuntimeVertexShader);
+}
+
+HRESULT CreateM14ImmutableBuffer(
+    ID3D11Device* device,
+    UINT bindFlags,
+    const void* data,
+    UINT byteWidth,
+    ID3D11Buffer** output,
+    UINT miscFlags = 0,
+    UINT structureStride = 0)
+{
+    if (device == nullptr || data == nullptr || output == nullptr || byteWidth == 0)
+        return E_INVALIDARG;
+    D3D11_BUFFER_DESC description = {};
+    description.ByteWidth = byteWidth;
+    description.Usage = D3D11_USAGE_IMMUTABLE;
+    description.BindFlags = bindFlags;
+    description.MiscFlags = miscFlags;
+    description.StructureByteStride = structureStride;
+    D3D11_SUBRESOURCE_DATA initial = {};
+    initial.pSysMem = data;
+    return device->CreateBuffer(&description, &initial, output);
+}
+
+HRESULT CreateM14ConstantBuffer(
+    ID3D11Device* device,
+    std::uint32_t declaredFloat4Count,
+    const std::uint8_t* captured,
+    std::size_t capturedBytes,
+    ID3D11Buffer** output)
+{
+    if (declaredFloat4Count == 0 || declaredFloat4Count > 4096 ||
+        captured == nullptr || capturedBytes > declaredFloat4Count * 16u)
+        return E_INVALIDARG;
+    const UINT byteWidth = declaredFloat4Count * 16u;
+    unsigned char* payload = new (std::nothrow) unsigned char[byteWidth]();
+    if (payload == nullptr)
+        return E_OUTOFMEMORY;
+    std::memcpy(payload, captured, capturedBytes);
+    const HRESULT result = CreateM14ImmutableBuffer(
+        device,
+        D3D11_BIND_CONSTANT_BUFFER,
+        payload,
+        byteWidth,
+        output);
+    delete[] payload;
+    return result;
+}
+
+HRESULT CreateM14RuntimeResources(ID3D11Device* device)
+{
+    if (device == nullptr)
+        return E_POINTER;
+    if (g_m14RuntimeVertexShader != nullptr &&
+        g_m14RuntimePixelShader != nullptr)
+        return S_OK;
+
+    ReleaseM14RuntimeResources();
+    HRESULT result = device->CreateVertexShader(
+        g_EndfieldM14VertexDxbc,
+        g_EndfieldM14VertexDxbcSize,
+        nullptr,
+        &g_m14RuntimeVertexShader);
+    if (FAILED(result))
+        return result;
+    result = device->CreatePixelShader(
+        g_EndfieldM14PixelDxbc,
+        g_EndfieldM14PixelDxbcSize,
+        nullptr,
+        &g_m14RuntimePixelShader);
+    if (FAILED(result))
+        return result;
+
+    const D3D11_INPUT_ELEMENT_DESC elements[] = {
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 24,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 28,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT, 0, 28,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 4, DXGI_FORMAT_R32G32_FLOAT, 0, 28,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"BLENDWEIGHTS", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 1, 16,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"BLENDINDICES", 0, DXGI_FORMAT_R8G8B8A8_UINT, 1, 0,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
+    result = device->CreateInputLayout(
+        elements,
+        static_cast<UINT>(sizeof(elements) / sizeof(elements[0])),
+        g_EndfieldM14VertexDxbc,
+        g_EndfieldM14VertexDxbcSize,
+        &g_m14InputLayout);
+    if (FAILED(result))
+        return result;
+    // Retail's shared default-channel buffer is 20 bytes and is submitted
+    // with stride zero. The exact 48fadbbd layout reads only the zero bone
+    // indices at +0 and zero normalized weights at +16 from this row.
+    const unsigned char defaultVertex[20] = {};
+    result = CreateM14ImmutableBuffer(
+        device,
+        D3D11_BIND_VERTEX_BUFFER,
+        defaultVertex,
+        sizeof(defaultVertex),
+        &g_m14DefaultVertexBuffer);
+    if (FAILED(result))
+        return result;
+    for (std::uint32_t packetIndex = 0;
+         packetIndex < g_EndfieldM14PacketCount;
+         ++packetIndex)
+    {
+        const EndfieldM14PacketPayload& packet =
+            g_EndfieldM14Packets[packetIndex];
+        result = CreateM14ImmutableBuffer(
+            device,
+            D3D11_BIND_VERTEX_BUFFER,
+            packet.vertices,
+            static_cast<UINT>(packet.vertexBytes),
+            &g_m14VertexBuffers[packetIndex]);
+        if (FAILED(result))
+            return result;
+        result = CreateM14ImmutableBuffer(
+            device,
+            D3D11_BIND_INDEX_BUFFER,
+            packet.indices,
+            static_cast<UINT>(packet.indexBytes),
+            &g_m14IndexBuffers[packetIndex]);
+        if (FAILED(result))
+            return result;
+        for (std::size_t slot = 0; slot < 5; ++slot)
+        {
+            result = CreateM14ConstantBuffer(
+                device,
+                g_EndfieldM14VSDeclaredFloat4Counts[slot],
+                packet.vs[slot],
+                packet.vsBytes[slot],
+                &g_m14VertexConstantBuffers[packetIndex][slot]);
+            if (FAILED(result))
+                return result;
+        }
+        for (std::size_t slot = 0; slot < 4; ++slot)
+        {
+            result = CreateM14ConstantBuffer(
+                device,
+                g_EndfieldM14PSDeclaredFloat4Counts[slot],
+                packet.ps[slot],
+                packet.psBytes[slot],
+                &g_m14PixelConstantBuffers[packetIndex][slot]);
+            if (FAILED(result))
+                return result;
+        }
+    }
+
+    const float zeroSkin[4] = {};
+    result = CreateM14ImmutableBuffer(
+        device,
+        D3D11_BIND_SHADER_RESOURCE,
+        zeroSkin,
+        sizeof(zeroSkin),
+        &g_m14SkinBuffer,
+        D3D11_RESOURCE_MISC_BUFFER_STRUCTURED,
+        sizeof(zeroSkin));
+    if (FAILED(result))
+        return result;
+    result = device->CreateShaderResourceView(
+        g_m14SkinBuffer, nullptr, &g_m14SkinView);
+    if (FAILED(result))
+        return result;
+
+    D3D11_SAMPLER_DESC sampler = {};
+    sampler.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sampler.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler.MaxLOD = D3D11_FLOAT32_MAX;
+    result = device->CreateSamplerState(&sampler, &g_m14Samplers[0]);
+    if (FAILED(result))
+        return result;
+    sampler.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    result = device->CreateSamplerState(&sampler, &g_m14Samplers[1]);
+    if (FAILED(result))
+        return result;
+
+    D3D11_BLEND_DESC blend = {};
+    blend.IndependentBlendEnable = TRUE;
+    for (std::size_t target = 0; target < 2; ++target)
+    {
+        blend.RenderTarget[target].BlendEnable = TRUE;
+        blend.RenderTarget[target].SrcBlend = D3D11_BLEND_ONE;
+        blend.RenderTarget[target].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+        blend.RenderTarget[target].BlendOp = D3D11_BLEND_OP_ADD;
+        blend.RenderTarget[target].SrcBlendAlpha = D3D11_BLEND_ONE;
+        blend.RenderTarget[target].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+        blend.RenderTarget[target].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+        blend.RenderTarget[target].RenderTargetWriteMask =
+            D3D11_COLOR_WRITE_ENABLE_ALL;
+    }
+    result = device->CreateBlendState(&blend, &g_m14BlendState);
+    if (FAILED(result))
+        return result;
+
+    D3D11_DEPTH_STENCIL_DESC depth = {};
+    depth.DepthEnable = FALSE;
+    depth.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    depth.DepthFunc = D3D11_COMPARISON_ALWAYS;
+    result = device->CreateDepthStencilState(&depth, &g_m14DepthState);
+    if (FAILED(result))
+        return result;
+    D3D11_RASTERIZER_DESC rasterizer = {};
+    rasterizer.FillMode = D3D11_FILL_SOLID;
+    rasterizer.CullMode = D3D11_CULL_NONE;
+    rasterizer.DepthClipEnable = TRUE;
+    result = device->CreateRasterizerState(&rasterizer, &g_m14RasterizerState);
+    return result;
+}
+
+void ReleaseM13RuntimeResources()
+{
+    ReleaseM14Object(g_m13RasterizerState);
+    ReleaseM14Object(g_m13DepthState);
+    ReleaseM14Object(g_m13BlendState);
+    for (ID3D11SamplerState*& sampler : g_m13Samplers)
+        ReleaseM14Object(sampler);
+    for (ID3D11ShaderResourceView*& view : g_m13TextureViews)
+        ReleaseM14Object(view);
+    for (ID3D11Texture2D*& texture : g_m13Textures)
+        ReleaseM14Object(texture);
+    ReleaseM14Object(g_m13SkinView);
+    ReleaseM14Object(g_m13SkinBuffer);
+    for (ID3D11Buffer*& buffer : g_m13PixelConstantBuffers)
+        ReleaseM14Object(buffer);
+    for (ID3D11Buffer*& buffer : g_m13VertexConstantBuffers)
+        ReleaseM14Object(buffer);
+    ReleaseM14Object(g_m13IndexBuffer);
+    ReleaseM14Object(g_m13DefaultVertexBuffer);
+    ReleaseM14Object(g_m13VertexBuffer);
+    ReleaseM14Object(g_m13InputLayout);
+    ReleaseM14Object(g_m13RuntimePixelShader);
+    ReleaseM14Object(g_m13RuntimeVertexShader);
+}
+
+HRESULT CreateM13Texture(
+    ID3D11Device* device,
+    const EndfieldM13TexturePayload& payload,
+    ID3D11Texture2D** texture,
+    ID3D11ShaderResourceView** view)
+{
+    if (device == nullptr || payload.bytes == nullptr || payload.width == 0 ||
+        payload.height == 0 || texture == nullptr || view == nullptr ||
+        payload.width % 4u != 0 || payload.height % 4u != 0 ||
+        payload.size != static_cast<std::size_t>(payload.width) * payload.height)
+        return E_INVALIDARG;
+    D3D11_TEXTURE2D_DESC description = {};
+    description.Width = payload.width;
+    description.Height = payload.height;
+    description.MipLevels = 1;
+    description.ArraySize = 1;
+    description.Format = DXGI_FORMAT_BC7_UNORM_SRGB;
+    description.SampleDesc.Count = 1;
+    description.Usage = D3D11_USAGE_IMMUTABLE;
+    description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA initial = {};
+    initial.pSysMem = payload.bytes;
+    initial.SysMemPitch = payload.width * 4u;
+    initial.SysMemSlicePitch = static_cast<UINT>(payload.size);
+    HRESULT result = device->CreateTexture2D(&description, &initial, texture);
+    if (FAILED(result))
+        return result;
+    result = device->CreateShaderResourceView(*texture, nullptr, view);
+    if (FAILED(result))
+        ReleaseM14Object(*texture);
+    return result;
+}
+
+HRESULT CreateM13RuntimeResources(ID3D11Device* device)
+{
+    if (device == nullptr)
+        return E_POINTER;
+    if (g_m13RuntimeVertexShader != nullptr &&
+        g_m13RuntimePixelShader != nullptr)
+        return S_OK;
+
+    ReleaseM13RuntimeResources();
+    HRESULT result = device->CreateVertexShader(
+        g_EndfieldM13VertexDxbc,
+        g_EndfieldM13VertexDxbcSize,
+        nullptr,
+        &g_m13RuntimeVertexShader);
+    if (FAILED(result))
+        return result;
+    result = device->CreatePixelShader(
+        g_EndfieldM13PixelDxbc,
+        g_EndfieldM13PixelDxbcSize,
+        nullptr,
+        &g_m13RuntimePixelShader);
+    if (FAILED(result))
+        return result;
+
+    const D3D11_INPUT_ELEMENT_DESC elements[] = {
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 24,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 28,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 44,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 44,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"BLENDWEIGHTS", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 1, 16,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"BLENDINDICES", 0, DXGI_FORMAT_R8G8B8A8_UINT, 1, 0,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
+    result = device->CreateInputLayout(
+        elements,
+        static_cast<UINT>(sizeof(elements) / sizeof(elements[0])),
+        g_EndfieldM13VertexDxbc,
+        g_EndfieldM13VertexDxbcSize,
+        &g_m13InputLayout);
+    if (FAILED(result))
+        return result;
+
+    result = CreateM14ImmutableBuffer(
+        device, D3D11_BIND_VERTEX_BUFFER, g_EndfieldM13Vertices,
+        static_cast<UINT>(g_EndfieldM13VerticesSize), &g_m13VertexBuffer);
+    if (FAILED(result))
+        return result;
+    const unsigned char defaultVertex[20] = {};
+    result = CreateM14ImmutableBuffer(
+        device, D3D11_BIND_VERTEX_BUFFER, defaultVertex,
+        sizeof(defaultVertex), &g_m13DefaultVertexBuffer);
+    if (FAILED(result))
+        return result;
+    result = CreateM14ImmutableBuffer(
+        device, D3D11_BIND_INDEX_BUFFER, g_EndfieldM13Indices,
+        static_cast<UINT>(g_EndfieldM13IndicesSize), &g_m13IndexBuffer);
+    if (FAILED(result))
+        return result;
+    for (std::size_t slot = 0; slot < 5; ++slot)
+    {
+        result = CreateM14ConstantBuffer(
+            device,
+            g_EndfieldM13VSDeclaredFloat4Counts[slot],
+            g_EndfieldM13VSConstantPayloads[slot],
+            g_EndfieldM13VSConstantPayloadSizes[slot],
+            &g_m13VertexConstantBuffers[slot]);
+        if (FAILED(result))
+            return result;
+    }
+    for (std::size_t slot = 0; slot < 4; ++slot)
+    {
+        result = CreateM14ConstantBuffer(
+            device,
+            g_EndfieldM13PSDeclaredFloat4Counts[slot],
+            g_EndfieldM13PSConstantPayloads[slot],
+            g_EndfieldM13PSConstantPayloadSizes[slot],
+            &g_m13PixelConstantBuffers[slot]);
+        if (FAILED(result))
+            return result;
+    }
+
+    const float zeroSkin[4] = {};
+    result = CreateM14ImmutableBuffer(
+        device, D3D11_BIND_SHADER_RESOURCE, zeroSkin, sizeof(zeroSkin),
+        &g_m13SkinBuffer, D3D11_RESOURCE_MISC_BUFFER_STRUCTURED,
+        sizeof(zeroSkin));
+    if (FAILED(result))
+        return result;
+    result = device->CreateShaderResourceView(
+        g_m13SkinBuffer, nullptr, &g_m13SkinView);
+    if (FAILED(result))
+        return result;
+    for (std::size_t slot = 0; slot < 5; ++slot)
+    {
+        result = CreateM13Texture(
+            device, g_EndfieldM13Textures[slot],
+            &g_m13Textures[slot], &g_m13TextureViews[slot]);
+        if (FAILED(result))
+            return result;
+    }
+
+    D3D11_SAMPLER_DESC sampler = {};
+    sampler.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sampler.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler.MaxLOD = D3D11_FLOAT32_MAX;
+    result = device->CreateSamplerState(&sampler, &g_m13Samplers[0]);
+    if (FAILED(result))
+        return result;
+    sampler.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    for (std::size_t slot = 1; slot < 5; ++slot)
+    {
+        result = device->CreateSamplerState(&sampler, &g_m13Samplers[slot]);
+        if (FAILED(result))
+            return result;
+    }
+
+    D3D11_BLEND_DESC blend = {};
+    blend.IndependentBlendEnable = TRUE;
+    for (std::size_t target = 0; target < 2; ++target)
+    {
+        blend.RenderTarget[target].BlendEnable = TRUE;
+        blend.RenderTarget[target].SrcBlend = D3D11_BLEND_ONE;
+        blend.RenderTarget[target].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+        blend.RenderTarget[target].BlendOp = D3D11_BLEND_OP_ADD;
+        blend.RenderTarget[target].SrcBlendAlpha = D3D11_BLEND_ONE;
+        blend.RenderTarget[target].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+        blend.RenderTarget[target].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+        blend.RenderTarget[target].RenderTargetWriteMask =
+            D3D11_COLOR_WRITE_ENABLE_ALL;
+    }
+    result = device->CreateBlendState(&blend, &g_m13BlendState);
+    if (FAILED(result))
+        return result;
+    D3D11_DEPTH_STENCIL_DESC depth = {};
+    depth.DepthEnable = FALSE;
+    depth.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    depth.DepthFunc = D3D11_COMPARISON_ALWAYS;
+    result = device->CreateDepthStencilState(&depth, &g_m13DepthState);
+    if (FAILED(result))
+        return result;
+    D3D11_RASTERIZER_DESC rasterizer = {};
+    rasterizer.FillMode = D3D11_FILL_SOLID;
+    rasterizer.CullMode = D3D11_CULL_NONE;
+    rasterizer.DepthClipEnable = TRUE;
+    return device->CreateRasterizerState(&rasterizer, &g_m13RasterizerState);
+}
+
+void ReleaseM27DrawResources()
+{
+    ReleaseM14Object(g_m27DrawRasterizerState);
+    ReleaseM14Object(g_m27DrawDepthState);
+    ReleaseM14Object(g_m27DrawBlendState);
+    ReleaseM14Object(g_m27DrawSampler);
+    for (ID3D11ShaderResourceView*& view : g_m27DrawTextureViews)
+        ReleaseM14Object(view);
+    for (ID3D11Texture2D*& texture : g_m27DrawTextures)
+        ReleaseM14Object(texture);
+    ReleaseM14Object(g_m27DrawSkinView);
+    ReleaseM14Object(g_m27DrawSkinBuffer);
+    for (std::uint32_t frame = 0; frame < g_EndfieldM27TemporalFrameCount; ++frame)
+    {
+        for (std::uint32_t draw = 0; draw < kM27MaximumDrawsPerFrame; ++draw)
+        {
+            for (ID3D11Buffer*& buffer : g_m27DrawPixelConstantBuffers[frame][draw])
+                ReleaseM14Object(buffer);
+            for (ID3D11Buffer*& buffer : g_m27DrawVertexConstantBuffers[frame][draw])
+                ReleaseM14Object(buffer);
+            ReleaseM14Object(g_m27DrawIndexBuffers[frame][draw]);
+            ReleaseM14Object(g_m27DrawVertexBuffers[frame][draw]);
+        }
+    }
+    ReleaseM14Object(g_m27DrawDefaultVertexBuffer);
+    for (ID3D11InputLayout*& layout : g_m27DrawInputLayouts)
+        ReleaseM14Object(layout);
+    ReleaseM14Object(g_m27DrawPixelShader);
+    ReleaseM14Object(g_m27DrawVertexShader);
+}
+
+HRESULT CreateM27Texture(
+    ID3D11Device* device,
+    const EndfieldM27TemporalTexturePayload& payload,
+    ID3D11Texture2D** texture,
+    ID3D11ShaderResourceView** view)
+{
+    if (device == nullptr || payload.data == nullptr || payload.bytes == 0 ||
+        payload.width == 0 || payload.height == 0 || texture == nullptr ||
+        view == nullptr)
+        return E_INVALIDARG;
+    const DXGI_FORMAT format = static_cast<DXGI_FORMAT>(payload.format);
+    UINT rowPitch = 0;
+    if (format == DXGI_FORMAT_BC5_UNORM ||
+        format == DXGI_FORMAT_BC7_UNORM ||
+        format == DXGI_FORMAT_BC7_UNORM_SRGB)
+        rowPitch = ((payload.width + 3u) / 4u) * 16u;
+    else if (format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
+        rowPitch = payload.width * 4u;
+    else
+        return E_INVALIDARG;
+    D3D11_TEXTURE2D_DESC description = {};
+    description.Width = payload.width;
+    description.Height = payload.height;
+    description.MipLevels = 1;
+    description.ArraySize = 1;
+    description.Format = format;
+    description.SampleDesc.Count = 1;
+    description.Usage = D3D11_USAGE_IMMUTABLE;
+    description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA initial = {};
+    initial.pSysMem = payload.data;
+    initial.SysMemPitch = rowPitch;
+    initial.SysMemSlicePitch = static_cast<UINT>(payload.bytes);
+    HRESULT result = device->CreateTexture2D(&description, &initial, texture);
+    if (FAILED(result))
+        return result;
+    result = device->CreateShaderResourceView(*texture, nullptr, view);
+    if (FAILED(result))
+        ReleaseM14Object(*texture);
+    return result;
+}
+
+HRESULT CreateM27DrawResources(ID3D11Device* device)
+{
+    if (device == nullptr)
+        return E_POINTER;
+    if (g_m27DrawVertexShader != nullptr && g_m27DrawPixelShader != nullptr)
+        return S_OK;
+    ReleaseM27DrawResources();
+
+    g_m27DrawFailureStage.store(101u, std::memory_order_relaxed);
+    HRESULT result = device->CreateVertexShader(
+        g_EndfieldM27VertexDxbc,
+        g_EndfieldM27VertexDxbcSize,
+        nullptr,
+        &g_m27DrawVertexShader);
+    if (FAILED(result))
+        return result;
+    g_m27DrawFailureStage.store(102u, std::memory_order_relaxed);
+    result = device->CreatePixelShader(
+        g_EndfieldM27PixelDxbc,
+        g_EndfieldM27PixelDxbcSize,
+        nullptr,
+        &g_m27DrawPixelShader);
+    if (FAILED(result))
+        return result;
+
+    const D3D11_INPUT_ELEMENT_DESC elements60[] = {
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TANGENT", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 1, 12,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 24,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 28,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 44,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 44,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"BLENDWEIGHTS", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 1, 16,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"BLENDINDICES", 0, DXGI_FORMAT_R8G8B8A8_UINT, 1, 0,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
+    g_m27DrawFailureStage.store(103u, std::memory_order_relaxed);
+    result = device->CreateInputLayout(
+        elements60,
+        static_cast<UINT>(sizeof(elements60) / sizeof(elements60[0])),
+        g_EndfieldM27VertexDxbc,
+        g_EndfieldM27VertexDxbcSize,
+        &g_m27DrawInputLayouts[0]);
+    if (FAILED(result))
+        return result;
+    const D3D11_INPUT_ELEMENT_DESC elements68[] = {
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TANGENT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 40,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 44,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 52,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 52,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"BLENDWEIGHTS", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 1, 16,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"BLENDINDICES", 0, DXGI_FORMAT_R8G8B8A8_UINT, 1, 0,
+            D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
+    g_m27DrawFailureStage.store(104u, std::memory_order_relaxed);
+    result = device->CreateInputLayout(
+        elements68,
+        static_cast<UINT>(sizeof(elements68) / sizeof(elements68[0])),
+        g_EndfieldM27VertexDxbc,
+        g_EndfieldM27VertexDxbcSize,
+        &g_m27DrawInputLayouts[1]);
+    if (FAILED(result))
+        return result;
+
+    g_m27DrawFailureStage.store(105u, std::memory_order_relaxed);
+    result = CreateM14ImmutableBuffer(
+        device, D3D11_BIND_VERTEX_BUFFER, g_EndfieldM27TemporalDefaultVertex,
+        static_cast<UINT>(g_EndfieldM27TemporalDefaultVertexSize),
+        &g_m27DrawDefaultVertexBuffer);
+    if (FAILED(result))
+        return result;
+    for (std::uint32_t frame = 0; frame < g_EndfieldM27TemporalFrameCount; ++frame)
+    {
+        const EndfieldM27TemporalFramePayload& packet =
+            g_EndfieldM27TemporalFrames[frame];
+        if (packet.drawCount > kM27MaximumDrawsPerFrame)
+            return E_INVALIDARG;
+        for (std::uint32_t draw = 0; draw < packet.drawCount; ++draw)
+        {
+            const EndfieldM27TemporalDrawPayload& payload = packet.draws[draw];
+            const std::uint32_t drawStage = 1000u + frame * 100u + draw * 10u;
+            g_m27DrawFailureStage.store(drawStage + 1u, std::memory_order_relaxed);
+            result = CreateM14ImmutableBuffer(
+                device, D3D11_BIND_VERTEX_BUFFER, payload.vertices,
+                static_cast<UINT>(payload.vertexBytes),
+                &g_m27DrawVertexBuffers[frame][draw]);
+            if (FAILED(result)) return result;
+            g_m27DrawFailureStage.store(drawStage + 2u, std::memory_order_relaxed);
+            result = CreateM14ImmutableBuffer(
+                device, D3D11_BIND_INDEX_BUFFER, payload.indices,
+                static_cast<UINT>(payload.indexBytes),
+                &g_m27DrawIndexBuffers[frame][draw]);
+            if (FAILED(result)) return result;
+            for (std::size_t slot = 0; slot < 3; ++slot)
+            {
+                g_m27DrawFailureStage.store(
+                    drawStage + 3u + static_cast<std::uint32_t>(slot),
+                    std::memory_order_relaxed);
+                result = CreateM14ConstantBuffer(
+                    device, g_EndfieldM27TemporalVSDeclaredFloat4Counts[slot],
+                    payload.vs[slot], payload.vsBytes[slot],
+                    &g_m27DrawVertexConstantBuffers[frame][draw][slot]);
+                if (FAILED(result)) return result;
+            }
+            for (std::size_t slot = 0; slot < 5; ++slot)
+            {
+                g_m27DrawFailureStage.store(
+                    drawStage + 6u + static_cast<std::uint32_t>(slot),
+                    std::memory_order_relaxed);
+                result = CreateM14ConstantBuffer(
+                    device, g_EndfieldM27TemporalPSDeclaredFloat4Counts[slot],
+                    payload.ps[slot], payload.psBytes[slot],
+                    &g_m27DrawPixelConstantBuffers[frame][draw][slot]);
+                if (FAILED(result)) return result;
+            }
+        }
+    }
+    const float zeroSkin[4] = {};
+    g_m27DrawFailureStage.store(2001u, std::memory_order_relaxed);
+    result = CreateM14ImmutableBuffer(
+        device, D3D11_BIND_SHADER_RESOURCE, zeroSkin, sizeof(zeroSkin),
+        &g_m27DrawSkinBuffer, D3D11_RESOURCE_MISC_BUFFER_STRUCTURED,
+        sizeof(zeroSkin));
+    if (FAILED(result))
+        return result;
+
+    for (std::size_t slot = 0; slot < 6; ++slot)
+    {
+        g_m27DrawFailureStage.store(
+            2010u + static_cast<std::uint32_t>(slot),
+            std::memory_order_relaxed);
+        result = CreateM27Texture(
+            device, g_EndfieldM27TemporalTextures[slot],
+            &g_m27DrawTextures[slot], &g_m27DrawTextureViews[slot]);
+        if (FAILED(result))
+            return result;
+    }
+    g_m27DrawFailureStage.store(2020u, std::memory_order_relaxed);
+    result = device->CreateShaderResourceView(
+        g_m27DrawSkinBuffer, nullptr, &g_m27DrawSkinView);
+    if (FAILED(result))
+        return result;
+
+    D3D11_SAMPLER_DESC sampler = {};
+    sampler.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sampler.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler.MaxLOD = D3D11_FLOAT32_MAX;
+    g_m27DrawFailureStage.store(2021u, std::memory_order_relaxed);
+    result = device->CreateSamplerState(&sampler, &g_m27DrawSampler);
+    if (FAILED(result))
+        return result;
+
+    D3D11_BLEND_DESC blend = {};
+    blend.IndependentBlendEnable = TRUE;
+    for (std::size_t target = 0; target < 5; ++target)
+        blend.RenderTarget[target].RenderTargetWriteMask =
+            D3D11_COLOR_WRITE_ENABLE_ALL;
+    g_m27DrawFailureStage.store(2022u, std::memory_order_relaxed);
+    result = device->CreateBlendState(&blend, &g_m27DrawBlendState);
+    if (FAILED(result))
+        return result;
+
+    D3D11_DEPTH_STENCIL_DESC depth = {};
+    depth.DepthEnable = TRUE;
+    depth.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+    depth.DepthFunc = D3D11_COMPARISON_ALWAYS;
+    depth.StencilEnable = TRUE;
+    depth.StencilReadMask = D3D11_DEFAULT_STENCIL_READ_MASK;
+    depth.StencilWriteMask = D3D11_DEFAULT_STENCIL_WRITE_MASK;
+    depth.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+    depth.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+    depth.FrontFace.StencilPassOp = D3D11_STENCIL_OP_REPLACE;
+    depth.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+    depth.BackFace = depth.FrontFace;
+    g_m27DrawFailureStage.store(2023u, std::memory_order_relaxed);
+    result = device->CreateDepthStencilState(&depth, &g_m27DrawDepthState);
+    if (FAILED(result))
+        return result;
+
+    D3D11_RASTERIZER_DESC rasterizer = {};
+    rasterizer.FillMode = D3D11_FILL_SOLID;
+    rasterizer.CullMode = D3D11_CULL_NONE;
+    rasterizer.DepthClipEnable = TRUE;
+    g_m27DrawFailureStage.store(2024u, std::memory_order_relaxed);
+    result = device->CreateRasterizerState(
+        &rasterizer, &g_m27DrawRasterizerState);
+    if (SUCCEEDED(result))
+        g_m27DrawFailureStage.store(0u, std::memory_order_relaxed);
+    return result;
 }
 
 DXGI_FORMAT ShaderResourceFormat(DXGI_FORMAT format)
@@ -335,7 +1394,9 @@ HRESULT CreateDiagnosticShaderResourceView(
 
 void DrawExactRuntimeShader()
 {
-    if (!g_armed.load(std::memory_order_acquire))
+    if (!g_armed.load(std::memory_order_acquire) ||
+        g_substitutionRoute.load(std::memory_order_acquire) !=
+            SubstitutionRoute::DeferredDiagnostic)
         return;
 
     IUnityGraphicsD3D11* unityD3D11 = GetD3D11();
@@ -591,22 +1652,565 @@ void UNITY_INTERFACE_API InspectPostDrawBindings(int eventId)
     g_samplerMask.store(samplerMask, std::memory_order_relaxed);
     g_renderEventCount.fetch_add(1, std::memory_order_relaxed);
 }
+
+void UNITY_INTERFACE_API DrawM14ExactRuntime(int eventId)
+{
+    if (eventId != 0)
+        return;
+    IUnityGraphicsD3D11* unityD3D11 = GetD3D11();
+    ID3D11Device* device = unityD3D11 == nullptr ? nullptr : unityD3D11->GetDevice();
+    if (device == nullptr)
+    {
+        g_m14FailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m14LastResult.store(E_POINTER, std::memory_order_relaxed);
+        return;
+    }
+    HRESULT result = CreateM14RuntimeResources(device);
+    if (FAILED(result))
+    {
+        ReleaseM14RuntimeResources();
+        g_m14FailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m14LastResult.store(result, std::memory_order_relaxed);
+        return;
+    }
+
+    ID3D11Resource* depthResource = reinterpret_cast<ID3D11Resource*>(
+        g_m14DepthTexture.load(std::memory_order_acquire));
+    ID3D11Resource* mainResource = reinterpret_cast<ID3D11Resource*>(
+        g_m14MainTexture.load(std::memory_order_acquire));
+    ID3D11ShaderResourceView* m14PixelViews[2] = {};
+    result = CreateDiagnosticShaderResourceView(
+        device, depthResource, &m14PixelViews[0]);
+    if (SUCCEEDED(result))
+        result = CreateDiagnosticShaderResourceView(
+            device, mainResource, &m14PixelViews[1]);
+    if (FAILED(result) || m14PixelViews[0] == nullptr ||
+        m14PixelViews[1] == nullptr)
+    {
+        ReleaseM14Object(m14PixelViews[1]);
+        ReleaseM14Object(m14PixelViews[0]);
+        g_m14FailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m14LastResult.store(FAILED(result) ? result : E_POINTER,
+                              std::memory_order_relaxed);
+        return;
+    }
+
+    ID3D11DeviceContext* context = nullptr;
+    device->GetImmediateContext(&context);
+    if (context == nullptr)
+    {
+        ReleaseM14Object(m14PixelViews[1]);
+        ReleaseM14Object(m14PixelViews[0]);
+        g_m14FailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m14LastResult.store(E_POINTER, std::memory_order_relaxed);
+        return;
+    }
+
+    ID3D11RenderTargetView* renderTargets[2] = {};
+    ID3D11DepthStencilView* renderDepth = nullptr;
+    context->OMGetRenderTargets(2, renderTargets, &renderDepth);
+    if (renderTargets[0] == nullptr || renderTargets[1] == nullptr)
+    {
+        ReleaseM14Object(renderDepth);
+        ReleaseM14Object(renderTargets[1]);
+        ReleaseM14Object(renderTargets[0]);
+        ReleaseM14Object(m14PixelViews[1]);
+        ReleaseM14Object(m14PixelViews[0]);
+        context->Release();
+        g_m14FailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m14LastResult.store(E_INVALIDARG, std::memory_order_relaxed);
+        return;
+    }
+
+    ID3D11VertexShader* oldVertexShader = nullptr;
+    ID3D11PixelShader* oldPixelShader = nullptr;
+    ID3D11InputLayout* oldInputLayout = nullptr;
+    ID3D11Buffer* oldVertexBuffers[2] = {};
+    ID3D11Buffer* oldIndexBuffer = nullptr;
+    ID3D11Buffer* oldVertexCBs[5] = {};
+    ID3D11Buffer* oldPixelCBs[4] = {};
+    ID3D11ShaderResourceView* oldVertexView = nullptr;
+    ID3D11ShaderResourceView* oldPixelViews[2] = {};
+    ID3D11SamplerState* oldSamplers[2] = {};
+    ID3D11BlendState* oldBlendState = nullptr;
+    ID3D11DepthStencilState* oldDepthState = nullptr;
+    ID3D11RasterizerState* oldRasterizerState = nullptr;
+    D3D11_PRIMITIVE_TOPOLOGY oldTopology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+    DXGI_FORMAT oldIndexFormat = DXGI_FORMAT_UNKNOWN;
+    UINT oldVertexStrides[2] = {};
+    UINT oldVertexOffsets[2] = {};
+    UINT oldIndexOffset = 0;
+    FLOAT oldBlendFactor[4] = {};
+    UINT oldSampleMask = 0;
+    UINT oldStencilReference = 0;
+
+    context->VSGetShader(&oldVertexShader, nullptr, nullptr);
+    context->PSGetShader(&oldPixelShader, nullptr, nullptr);
+    context->IAGetInputLayout(&oldInputLayout);
+    context->IAGetVertexBuffers(
+        0, 2, oldVertexBuffers, oldVertexStrides, oldVertexOffsets);
+    context->IAGetIndexBuffer(&oldIndexBuffer, &oldIndexFormat, &oldIndexOffset);
+    context->IAGetPrimitiveTopology(&oldTopology);
+    context->VSGetConstantBuffers(0, 5, oldVertexCBs);
+    context->PSGetConstantBuffers(0, 4, oldPixelCBs);
+    context->VSGetShaderResources(0, 1, &oldVertexView);
+    context->PSGetShaderResources(0, 2, oldPixelViews);
+    context->PSGetSamplers(0, 2, oldSamplers);
+    context->OMGetBlendState(&oldBlendState, oldBlendFactor, &oldSampleMask);
+    context->OMGetDepthStencilState(&oldDepthState, &oldStencilReference);
+    context->RSGetState(&oldRasterizerState);
+
+    const std::uint32_t packetIndex =
+        g_m14PacketIndex.load(std::memory_order_acquire);
+    if (packetIndex >= g_EndfieldM14PacketCount)
+    {
+        ReleaseM14Object(renderDepth);
+        ReleaseM14Object(renderTargets[1]);
+        ReleaseM14Object(renderTargets[0]);
+        ReleaseM14Object(m14PixelViews[1]);
+        ReleaseM14Object(m14PixelViews[0]);
+        context->Release();
+        g_m14FailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m14LastResult.store(E_INVALIDARG, std::memory_order_relaxed);
+        return;
+    }
+    const EndfieldM14PacketPayload& packet = g_EndfieldM14Packets[packetIndex];
+    ID3D11Buffer* vertexBuffers[2] = {
+        g_m14VertexBuffers[packetIndex],
+        g_m14DefaultVertexBuffer,
+    };
+    const UINT strides[2] = {g_EndfieldM14VertexStride, 0};
+    const UINT offsets[2] = {};
+    const FLOAT blendFactor[4] = {};
+    context->IASetInputLayout(g_m14InputLayout);
+    context->IASetVertexBuffers(0, 2, vertexBuffers, strides, offsets);
+    context->IASetIndexBuffer(
+        g_m14IndexBuffers[packetIndex], DXGI_FORMAT_R16_UINT, 0);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(g_m14RuntimeVertexShader, nullptr, 0);
+    context->PSSetShader(g_m14RuntimePixelShader, nullptr, 0);
+    context->VSSetConstantBuffers(
+        0, 5, g_m14VertexConstantBuffers[packetIndex]);
+    context->PSSetConstantBuffers(
+        0, 4, g_m14PixelConstantBuffers[packetIndex]);
+    context->VSSetShaderResources(0, 1, &g_m14SkinView);
+    context->PSSetShaderResources(0, 2, m14PixelViews);
+    context->PSSetSamplers(0, 2, g_m14Samplers);
+    context->OMSetBlendState(g_m14BlendState, blendFactor, 0xffffffffu);
+    context->OMSetDepthStencilState(g_m14DepthState, 0);
+    context->RSSetState(g_m14RasterizerState);
+    context->DrawIndexed(packet.indexCount, 0, 0);
+
+    ID3D11ShaderResourceView* nullVertexView = nullptr;
+    ID3D11ShaderResourceView* nullPixelViews[2] = {};
+    context->VSSetShaderResources(0, 1, &nullVertexView);
+    context->PSSetShaderResources(0, 2, nullPixelViews);
+    context->IASetInputLayout(oldInputLayout);
+    context->IASetVertexBuffers(
+        0, 2, oldVertexBuffers, oldVertexStrides, oldVertexOffsets);
+    context->IASetIndexBuffer(oldIndexBuffer, oldIndexFormat, oldIndexOffset);
+    context->IASetPrimitiveTopology(oldTopology);
+    context->VSSetShader(oldVertexShader, nullptr, 0);
+    context->PSSetShader(oldPixelShader, nullptr, 0);
+    context->VSSetConstantBuffers(0, 5, oldVertexCBs);
+    context->PSSetConstantBuffers(0, 4, oldPixelCBs);
+    context->VSSetShaderResources(0, 1, &oldVertexView);
+    context->PSSetShaderResources(0, 2, oldPixelViews);
+    context->PSSetSamplers(0, 2, oldSamplers);
+    context->OMSetBlendState(oldBlendState, oldBlendFactor, oldSampleMask);
+    context->OMSetDepthStencilState(oldDepthState, oldStencilReference);
+    context->RSSetState(oldRasterizerState);
+
+    for (ID3D11SamplerState*& value : oldSamplers)
+        ReleaseM14Object(value);
+    for (ID3D11ShaderResourceView*& value : oldPixelViews)
+        ReleaseM14Object(value);
+    ReleaseM14Object(oldVertexView);
+    for (ID3D11Buffer*& value : oldPixelCBs)
+        ReleaseM14Object(value);
+    for (ID3D11Buffer*& value : oldVertexCBs)
+        ReleaseM14Object(value);
+    ReleaseM14Object(oldRasterizerState);
+    ReleaseM14Object(oldDepthState);
+    ReleaseM14Object(oldBlendState);
+    ReleaseM14Object(oldIndexBuffer);
+    for (ID3D11Buffer*& value : oldVertexBuffers)
+        ReleaseM14Object(value);
+    ReleaseM14Object(oldInputLayout);
+    ReleaseM14Object(oldPixelShader);
+    ReleaseM14Object(oldVertexShader);
+    ReleaseM14Object(renderDepth);
+    ReleaseM14Object(renderTargets[1]);
+    ReleaseM14Object(renderTargets[0]);
+    ReleaseM14Object(m14PixelViews[1]);
+    ReleaseM14Object(m14PixelViews[0]);
+    context->Release();
+
+    g_m14DrawCount.fetch_add(1, std::memory_order_relaxed);
+    g_m14LastResult.store(S_OK, std::memory_order_relaxed);
+}
+
+void UNITY_INTERFACE_API DrawM13ExactRuntime(int eventId)
+{
+    if (eventId != 0)
+        return;
+    IUnityGraphicsD3D11* unityD3D11 = GetD3D11();
+    ID3D11Device* device = unityD3D11 == nullptr ? nullptr : unityD3D11->GetDevice();
+    if (device == nullptr)
+    {
+        g_m13FailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m13LastResult.store(E_POINTER, std::memory_order_relaxed);
+        return;
+    }
+    HRESULT result = CreateM13RuntimeResources(device);
+    if (FAILED(result))
+    {
+        ReleaseM13RuntimeResources();
+        g_m13FailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m13LastResult.store(result, std::memory_order_relaxed);
+        return;
+    }
+    ID3D11DeviceContext* context = nullptr;
+    device->GetImmediateContext(&context);
+    if (context == nullptr)
+    {
+        g_m13FailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m13LastResult.store(E_POINTER, std::memory_order_relaxed);
+        return;
+    }
+    ID3D11RenderTargetView* renderTargets[2] = {};
+    ID3D11DepthStencilView* renderDepth = nullptr;
+    context->OMGetRenderTargets(2, renderTargets, &renderDepth);
+    if (renderTargets[0] == nullptr || renderTargets[1] == nullptr)
+    {
+        ReleaseM14Object(renderDepth);
+        ReleaseM14Object(renderTargets[1]);
+        ReleaseM14Object(renderTargets[0]);
+        context->Release();
+        g_m13FailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m13LastResult.store(E_INVALIDARG, std::memory_order_relaxed);
+        return;
+    }
+
+    ID3D11VertexShader* oldVertexShader = nullptr;
+    ID3D11PixelShader* oldPixelShader = nullptr;
+    ID3D11InputLayout* oldInputLayout = nullptr;
+    ID3D11Buffer* oldVertexBuffers[2] = {};
+    ID3D11Buffer* oldIndexBuffer = nullptr;
+    ID3D11Buffer* oldVertexCBs[5] = {};
+    ID3D11Buffer* oldPixelCBs[4] = {};
+    ID3D11ShaderResourceView* oldVertexView = nullptr;
+    ID3D11ShaderResourceView* oldPixelViews[5] = {};
+    ID3D11SamplerState* oldSamplers[5] = {};
+    ID3D11BlendState* oldBlendState = nullptr;
+    ID3D11DepthStencilState* oldDepthState = nullptr;
+    ID3D11RasterizerState* oldRasterizerState = nullptr;
+    D3D11_PRIMITIVE_TOPOLOGY oldTopology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+    DXGI_FORMAT oldIndexFormat = DXGI_FORMAT_UNKNOWN;
+    UINT oldVertexStrides[2] = {};
+    UINT oldVertexOffsets[2] = {};
+    UINT oldIndexOffset = 0;
+    FLOAT oldBlendFactor[4] = {};
+    UINT oldSampleMask = 0;
+    UINT oldStencilReference = 0;
+    context->VSGetShader(&oldVertexShader, nullptr, nullptr);
+    context->PSGetShader(&oldPixelShader, nullptr, nullptr);
+    context->IAGetInputLayout(&oldInputLayout);
+    context->IAGetVertexBuffers(
+        0, 2, oldVertexBuffers, oldVertexStrides, oldVertexOffsets);
+    context->IAGetIndexBuffer(&oldIndexBuffer, &oldIndexFormat, &oldIndexOffset);
+    context->IAGetPrimitiveTopology(&oldTopology);
+    context->VSGetConstantBuffers(0, 5, oldVertexCBs);
+    context->PSGetConstantBuffers(0, 4, oldPixelCBs);
+    context->VSGetShaderResources(0, 1, &oldVertexView);
+    context->PSGetShaderResources(0, 5, oldPixelViews);
+    context->PSGetSamplers(0, 5, oldSamplers);
+    context->OMGetBlendState(&oldBlendState, oldBlendFactor, &oldSampleMask);
+    context->OMGetDepthStencilState(&oldDepthState, &oldStencilReference);
+    context->RSGetState(&oldRasterizerState);
+
+    ID3D11Buffer* vertexBuffers[2] = {
+        g_m13VertexBuffer,
+        g_m13DefaultVertexBuffer,
+    };
+    const UINT strides[2] = {g_EndfieldM13VertexStride, 0};
+    const UINT offsets[2] = {};
+    const FLOAT blendFactor[4] = {};
+    context->IASetInputLayout(g_m13InputLayout);
+    context->IASetVertexBuffers(0, 2, vertexBuffers, strides, offsets);
+    context->IASetIndexBuffer(g_m13IndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(g_m13RuntimeVertexShader, nullptr, 0);
+    context->PSSetShader(g_m13RuntimePixelShader, nullptr, 0);
+    context->VSSetConstantBuffers(0, 5, g_m13VertexConstantBuffers);
+    context->PSSetConstantBuffers(0, 4, g_m13PixelConstantBuffers);
+    context->VSSetShaderResources(0, 1, &g_m13SkinView);
+    context->PSSetShaderResources(0, 5, g_m13TextureViews);
+    context->PSSetSamplers(0, 5, g_m13Samplers);
+    context->OMSetBlendState(g_m13BlendState, blendFactor, 0xffffffffu);
+    context->OMSetDepthStencilState(g_m13DepthState, 0);
+    context->RSSetState(g_m13RasterizerState);
+    context->DrawIndexed(6, 0, 0);
+
+    ID3D11ShaderResourceView* nullVertexView = nullptr;
+    ID3D11ShaderResourceView* nullPixelViews[5] = {};
+    context->VSSetShaderResources(0, 1, &nullVertexView);
+    context->PSSetShaderResources(0, 5, nullPixelViews);
+    context->IASetInputLayout(oldInputLayout);
+    context->IASetVertexBuffers(
+        0, 2, oldVertexBuffers, oldVertexStrides, oldVertexOffsets);
+    context->IASetIndexBuffer(oldIndexBuffer, oldIndexFormat, oldIndexOffset);
+    context->IASetPrimitiveTopology(oldTopology);
+    context->VSSetShader(oldVertexShader, nullptr, 0);
+    context->PSSetShader(oldPixelShader, nullptr, 0);
+    context->VSSetConstantBuffers(0, 5, oldVertexCBs);
+    context->PSSetConstantBuffers(0, 4, oldPixelCBs);
+    context->VSSetShaderResources(0, 1, &oldVertexView);
+    context->PSSetShaderResources(0, 5, oldPixelViews);
+    context->PSSetSamplers(0, 5, oldSamplers);
+    context->OMSetBlendState(oldBlendState, oldBlendFactor, oldSampleMask);
+    context->OMSetDepthStencilState(oldDepthState, oldStencilReference);
+    context->RSSetState(oldRasterizerState);
+
+    for (ID3D11SamplerState*& value : oldSamplers)
+        ReleaseM14Object(value);
+    for (ID3D11ShaderResourceView*& value : oldPixelViews)
+        ReleaseM14Object(value);
+    ReleaseM14Object(oldVertexView);
+    for (ID3D11Buffer*& value : oldPixelCBs)
+        ReleaseM14Object(value);
+    for (ID3D11Buffer*& value : oldVertexCBs)
+        ReleaseM14Object(value);
+    ReleaseM14Object(oldRasterizerState);
+    ReleaseM14Object(oldDepthState);
+    ReleaseM14Object(oldBlendState);
+    ReleaseM14Object(oldIndexBuffer);
+    for (ID3D11Buffer*& value : oldVertexBuffers)
+        ReleaseM14Object(value);
+    ReleaseM14Object(oldInputLayout);
+    ReleaseM14Object(oldPixelShader);
+    ReleaseM14Object(oldVertexShader);
+    ReleaseM14Object(renderDepth);
+    ReleaseM14Object(renderTargets[1]);
+    ReleaseM14Object(renderTargets[0]);
+    context->Release();
+    g_m13DrawCount.fetch_add(1, std::memory_order_relaxed);
+    g_m13LastResult.store(S_OK, std::memory_order_relaxed);
+}
+
+void UNITY_INTERFACE_API DrawM27ExactRuntime(int eventId)
+{
+    if (eventId != 0)
+        return;
+    IUnityGraphicsD3D11* unityD3D11 = GetD3D11();
+    ID3D11Device* device = unityD3D11 == nullptr ? nullptr : unityD3D11->GetDevice();
+    if (device == nullptr)
+    {
+        g_m27DrawFailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m27DrawLastResult.store(E_POINTER, std::memory_order_relaxed);
+        return;
+    }
+    HRESULT result = CreateM27DrawResources(device);
+    if (FAILED(result))
+    {
+        ReleaseM27DrawResources();
+        g_m27DrawFailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m27DrawLastResult.store(result, std::memory_order_relaxed);
+        return;
+    }
+    const std::uint32_t packetIndex =
+        g_m27DrawPacketIndex.load(std::memory_order_acquire);
+    if (packetIndex >= g_EndfieldM27TemporalFrameCount)
+    {
+        g_m27DrawFailureStage.store(3001u, std::memory_order_relaxed);
+        g_m27DrawFailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m27DrawLastResult.store(E_INVALIDARG, std::memory_order_relaxed);
+        return;
+    }
+    const EndfieldM27TemporalFramePayload& packet =
+        g_EndfieldM27TemporalFrames[packetIndex];
+    ID3D11DeviceContext* context = nullptr;
+    device->GetImmediateContext(&context);
+    if (context == nullptr)
+    {
+        g_m27DrawFailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m27DrawLastResult.store(E_POINTER, std::memory_order_relaxed);
+        return;
+    }
+    ID3D11RenderTargetView* renderTargets[5] = {};
+    ID3D11DepthStencilView* renderDepth = nullptr;
+    context->OMGetRenderTargets(5, renderTargets, &renderDepth);
+    bool targetsReady = renderDepth != nullptr;
+    for (ID3D11RenderTargetView* target : renderTargets)
+        targetsReady = targetsReady && target != nullptr;
+    if (!targetsReady)
+    {
+        g_m27DrawFailureStage.store(3002u, std::memory_order_relaxed);
+        ReleaseM14Object(renderDepth);
+        for (ID3D11RenderTargetView*& target : renderTargets)
+            ReleaseM14Object(target);
+        context->Release();
+        g_m27DrawFailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m27DrawLastResult.store(E_INVALIDARG, std::memory_order_relaxed);
+        return;
+    }
+
+    ID3D11VertexShader* oldVertexShader = nullptr;
+    ID3D11PixelShader* oldPixelShader = nullptr;
+    ID3D11InputLayout* oldInputLayout = nullptr;
+    ID3D11Buffer* oldVertexBuffers[2] = {};
+    ID3D11Buffer* oldIndexBuffer = nullptr;
+    ID3D11Buffer* oldVertexCBs[3] = {};
+    ID3D11Buffer* oldPixelCBs[5] = {};
+    ID3D11ShaderResourceView* oldVertexView = nullptr;
+    ID3D11ShaderResourceView* oldPixelViews[6] = {};
+    ID3D11SamplerState* oldSamplers[6] = {};
+    ID3D11BlendState* oldBlendState = nullptr;
+    ID3D11DepthStencilState* oldDepthState = nullptr;
+    ID3D11RasterizerState* oldRasterizerState = nullptr;
+    D3D11_PRIMITIVE_TOPOLOGY oldTopology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+    DXGI_FORMAT oldIndexFormat = DXGI_FORMAT_UNKNOWN;
+    UINT oldVertexStrides[2] = {};
+    UINT oldVertexOffsets[2] = {};
+    UINT oldIndexOffset = 0;
+    FLOAT oldBlendFactor[4] = {};
+    UINT oldSampleMask = 0;
+    UINT oldStencilReference = 0;
+    context->VSGetShader(&oldVertexShader, nullptr, nullptr);
+    context->PSGetShader(&oldPixelShader, nullptr, nullptr);
+    context->IAGetInputLayout(&oldInputLayout);
+    context->IAGetVertexBuffers(
+        0, 2, oldVertexBuffers, oldVertexStrides, oldVertexOffsets);
+    context->IAGetIndexBuffer(&oldIndexBuffer, &oldIndexFormat, &oldIndexOffset);
+    context->IAGetPrimitiveTopology(&oldTopology);
+    context->VSGetConstantBuffers(0, 3, oldVertexCBs);
+    context->PSGetConstantBuffers(0, 5, oldPixelCBs);
+    context->VSGetShaderResources(0, 1, &oldVertexView);
+    context->PSGetShaderResources(0, 6, oldPixelViews);
+    context->PSGetSamplers(0, 6, oldSamplers);
+    context->OMGetBlendState(&oldBlendState, oldBlendFactor, &oldSampleMask);
+    context->OMGetDepthStencilState(&oldDepthState, &oldStencilReference);
+    context->RSGetState(&oldRasterizerState);
+
+    const FLOAT blendFactor[4] = {};
+    ID3D11SamplerState* samplers[6] = {
+        g_m27DrawSampler, g_m27DrawSampler, g_m27DrawSampler,
+        g_m27DrawSampler, g_m27DrawSampler, g_m27DrawSampler,
+    };
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(g_m27DrawVertexShader, nullptr, 0);
+    context->PSSetShader(g_m27DrawPixelShader, nullptr, 0);
+    context->VSSetShaderResources(0, 1, &g_m27DrawSkinView);
+    context->PSSetShaderResources(0, 6, g_m27DrawTextureViews);
+    context->PSSetSamplers(0, 6, samplers);
+    context->OMSetBlendState(g_m27DrawBlendState, blendFactor, 0xffffffffu);
+    context->OMSetDepthStencilState(g_m27DrawDepthState, 0);
+    context->RSSetState(g_m27DrawRasterizerState);
+    for (std::uint32_t drawIndex = 0; drawIndex < packet.drawCount; ++drawIndex)
+    {
+        const EndfieldM27TemporalDrawPayload& draw = packet.draws[drawIndex];
+        const std::size_t layoutIndex = draw.vertexStride == 60u ? 0u : 1u;
+        if ((draw.vertexStride != 60u && draw.vertexStride != 68u) ||
+            g_m27DrawInputLayouts[layoutIndex] == nullptr)
+        {
+            g_m27DrawFailureStage.store(
+                3100u + drawIndex, std::memory_order_relaxed);
+            result = E_INVALIDARG;
+            break;
+        }
+        ID3D11Buffer* vertexBuffers[2] = {
+            g_m27DrawVertexBuffers[packetIndex][drawIndex],
+            g_m27DrawDefaultVertexBuffer,
+        };
+        const UINT strides[2] = {draw.vertexStride, 0u};
+        const UINT offsets[2] = {};
+        context->IASetInputLayout(g_m27DrawInputLayouts[layoutIndex]);
+        context->IASetVertexBuffers(0, 2, vertexBuffers, strides, offsets);
+        context->IASetIndexBuffer(
+            g_m27DrawIndexBuffers[packetIndex][drawIndex],
+            DXGI_FORMAT_R16_UINT, 0);
+        context->VSSetConstantBuffers(
+            0, 3, g_m27DrawVertexConstantBuffers[packetIndex][drawIndex]);
+        context->PSSetConstantBuffers(
+            0, 5, g_m27DrawPixelConstantBuffers[packetIndex][drawIndex]);
+        context->DrawIndexed(draw.indexCount, 0, 0);
+    }
+
+    ID3D11ShaderResourceView* nullVertexView = nullptr;
+    ID3D11ShaderResourceView* nullPixelViews[6] = {};
+    context->VSSetShaderResources(0, 1, &nullVertexView);
+    context->PSSetShaderResources(0, 6, nullPixelViews);
+    context->IASetInputLayout(oldInputLayout);
+    context->IASetVertexBuffers(
+        0, 2, oldVertexBuffers, oldVertexStrides, oldVertexOffsets);
+    context->IASetIndexBuffer(oldIndexBuffer, oldIndexFormat, oldIndexOffset);
+    context->IASetPrimitiveTopology(oldTopology);
+    context->VSSetShader(oldVertexShader, nullptr, 0);
+    context->PSSetShader(oldPixelShader, nullptr, 0);
+    context->VSSetConstantBuffers(0, 3, oldVertexCBs);
+    context->PSSetConstantBuffers(0, 5, oldPixelCBs);
+    context->VSSetShaderResources(0, 1, &oldVertexView);
+    context->PSSetShaderResources(0, 6, oldPixelViews);
+    context->PSSetSamplers(0, 6, oldSamplers);
+    context->OMSetBlendState(oldBlendState, oldBlendFactor, oldSampleMask);
+    context->OMSetDepthStencilState(oldDepthState, oldStencilReference);
+    context->RSSetState(oldRasterizerState);
+
+    for (ID3D11SamplerState*& value : oldSamplers)
+        ReleaseM14Object(value);
+    for (ID3D11ShaderResourceView*& value : oldPixelViews)
+        ReleaseM14Object(value);
+    ReleaseM14Object(oldVertexView);
+    for (ID3D11Buffer*& value : oldPixelCBs)
+        ReleaseM14Object(value);
+    for (ID3D11Buffer*& value : oldVertexCBs)
+        ReleaseM14Object(value);
+    ReleaseM14Object(oldRasterizerState);
+    ReleaseM14Object(oldDepthState);
+    ReleaseM14Object(oldBlendState);
+    ReleaseM14Object(oldIndexBuffer);
+    for (ID3D11Buffer*& value : oldVertexBuffers)
+        ReleaseM14Object(value);
+    ReleaseM14Object(oldInputLayout);
+    ReleaseM14Object(oldPixelShader);
+    ReleaseM14Object(oldVertexShader);
+    ReleaseM14Object(renderDepth);
+    for (ID3D11RenderTargetView*& target : renderTargets)
+        ReleaseM14Object(target);
+    context->Release();
+    if (FAILED(result))
+    {
+        g_m27DrawFailureCount.fetch_add(1, std::memory_order_relaxed);
+        g_m27DrawLastResult.store(result, std::memory_order_relaxed);
+        return;
+    }
+    g_m27DrawCount.fetch_add(packet.drawCount, std::memory_order_relaxed);
+    g_m27DrawLastResult.store(S_OK, std::memory_order_relaxed);
+}
 } // namespace
 
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
 UnityPluginLoad(IUnityInterfaces* unityInterfaces)
 {
     ReleaseRuntimeShaders();
+    ReleaseM27DrawResources();
+    ReleaseM13RuntimeResources();
+    ReleaseM14RuntimeResources();
     g_unityInterfaces = unityInterfaces;
     g_pluginLoadCount.fetch_add(1, std::memory_order_relaxed);
     g_armed.store(false, std::memory_order_release);
+    g_substitutionRoute.store(SubstitutionRoute::None, std::memory_order_release);
     ResetDiagnosticState();
 }
 
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload()
 {
     g_armed.store(false, std::memory_order_release);
+    g_substitutionRoute.store(SubstitutionRoute::None, std::memory_order_release);
     ReleaseRuntimeShaders();
+    ReleaseM27DrawResources();
+    ReleaseM13RuntimeResources();
+    ReleaseM14RuntimeResources();
     g_unityInterfaces = nullptr;
 }
 
@@ -621,6 +2225,7 @@ UnityShaderCompilerExtEvent(UnityShaderCompilerExtEventType eventType, void* dat
             return;
 
         configure->ReserveKeyword(kReservedKeyword);
+        configure->ReserveKeyword(kM27ReservedKeyword);
         configure->SetGPUProgramCompilerMask(
             (1u << kUnityShaderCompilerExtGPUProgramTargetDX11VertexSM50) |
             (1u << kUnityShaderCompilerExtGPUProgramTargetDX11PixelSM50));
@@ -662,6 +2267,9 @@ EndfieldOriginalDxbcSetDiagnosticArmed(std::uint32_t armed)
     if (armed != 0)
     {
         g_armed.store(false, std::memory_order_release);
+        g_substitutionRoute.store(
+            SubstitutionRoute::DeferredDiagnostic,
+            std::memory_order_release);
         ReleaseRuntimeShaders();
         ResetDiagnosticState();
         g_armed.store(true, std::memory_order_release);
@@ -669,9 +2277,286 @@ EndfieldOriginalDxbcSetDiagnosticArmed(std::uint32_t armed)
     else
     {
         g_armed.store(false, std::memory_order_release);
+        g_substitutionRoute.store(SubstitutionRoute::None, std::memory_order_release);
         ReleaseRuntimeShaders();
     }
     return g_armed.load(std::memory_order_acquire) ? 1u : 0u;
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcSetM27SubstitutionArmed(std::uint32_t armed)
+{
+    g_armed.store(false, std::memory_order_release);
+    g_substitutionRoute.store(
+        armed != 0
+            ? SubstitutionRoute::M27HashPinned
+            : SubstitutionRoute::None,
+        std::memory_order_release);
+    ReleaseRuntimeShaders();
+    ResetDiagnosticState();
+    if (armed != 0)
+        g_armed.store(true, std::memory_order_release);
+    return g_armed.load(std::memory_order_acquire) ? 1u : 0u;
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM27RegistryReady()
+{
+    return EndfieldM27Substitution::Ready() ? 1u : 0u;
+}
+
+extern "C" UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM14RenderEventFunc()
+{
+    return DrawM14ExactRuntime;
+}
+
+extern "C" UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM13RenderEventFunc()
+{
+    return DrawM13ExactRuntime;
+}
+
+extern "C" UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM27RenderEventFunc()
+{
+    return DrawM27ExactRuntime;
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcSetM27TextureResources(
+    void* texture0,
+    void* texture1,
+    void* texture2,
+    void* texture3,
+    void* texture4,
+    void* texture5)
+{
+    // Retained for ABI compatibility with older managed players. Temporal M27
+    // now owns hash-pinned captured textures inside the native payload.
+    (void)texture0; (void)texture1; (void)texture2;
+    (void)texture3; (void)texture4; (void)texture5;
+    return 1u;
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcSetM27PacketIndex(std::uint32_t packetIndex)
+{
+    if (packetIndex >= g_EndfieldM27TemporalFrameCount)
+        return 0u;
+    g_m27DrawPacketIndex.store(packetIndex, std::memory_order_release);
+    return 1u;
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM27PacketCount()
+{
+    return g_EndfieldM27TemporalFrameCount;
+}
+
+extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcResetM27RuntimeState()
+{
+    g_m27DrawPacketIndex.store(0, std::memory_order_release);
+    g_m27DrawCount.store(0, std::memory_order_relaxed);
+    g_m27DrawFailureCount.store(0, std::memory_order_relaxed);
+    g_m27DrawLastResult.store(S_OK, std::memory_order_relaxed);
+    g_m27DrawFailureStage.store(0u, std::memory_order_relaxed);
+    ReleaseM27DrawResources();
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM27DrawCount()
+{
+    return g_m27DrawCount.load(std::memory_order_relaxed);
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM27DrawFailureCount()
+{
+    return g_m27DrawFailureCount.load(std::memory_order_relaxed);
+}
+
+extern "C" std::int32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM27DrawLastResult()
+{
+    return static_cast<std::int32_t>(
+        g_m27DrawLastResult.load(std::memory_order_relaxed));
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM27DrawFailureStage()
+{
+    return g_m27DrawFailureStage.load(std::memory_order_relaxed);
+}
+
+extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcResetM13RuntimeState()
+{
+    g_m13DrawCount.store(0, std::memory_order_relaxed);
+    g_m13FailureCount.store(0, std::memory_order_relaxed);
+    g_m13LastResult.store(S_OK, std::memory_order_relaxed);
+    ReleaseM13RuntimeResources();
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM13DrawCount()
+{
+    return g_m13DrawCount.load(std::memory_order_relaxed);
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM13FailureCount()
+{
+    return g_m13FailureCount.load(std::memory_order_relaxed);
+}
+
+extern "C" std::int32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM13LastResult()
+{
+    return static_cast<std::int32_t>(
+        g_m13LastResult.load(std::memory_order_relaxed));
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcSetM14TextureResources(void* sceneDepth, void* mainTexture)
+{
+    g_m14DepthTexture.store(
+        reinterpret_cast<std::uintptr_t>(sceneDepth),
+        std::memory_order_release);
+    g_m14MainTexture.store(
+        reinterpret_cast<std::uintptr_t>(mainTexture),
+        std::memory_order_release);
+    return sceneDepth != nullptr && mainTexture != nullptr ? 1u : 0u;
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcSetM14PacketIndex(std::uint32_t packetIndex)
+{
+    if (packetIndex >= g_EndfieldM14PacketCount)
+        return 0u;
+    g_m14PacketIndex.store(packetIndex, std::memory_order_release);
+    return 1u;
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM14PacketCount()
+{
+    return g_EndfieldM14PacketCount;
+}
+
+extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcResetM14RuntimeState()
+{
+    g_m14DepthTexture.store(0, std::memory_order_release);
+    g_m14MainTexture.store(0, std::memory_order_release);
+    g_m14PacketIndex.store(0, std::memory_order_release);
+    g_m14DrawCount.store(0, std::memory_order_relaxed);
+    g_m14FailureCount.store(0, std::memory_order_relaxed);
+    g_m14LastResult.store(S_OK, std::memory_order_relaxed);
+    ReleaseM14RuntimeResources();
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM14DrawCount()
+{
+    return g_m14DrawCount.load(std::memory_order_relaxed);
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM14FailureCount()
+{
+    return g_m14FailureCount.load(std::memory_order_relaxed);
+}
+
+extern "C" std::int32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM14LastResult()
+{
+    return static_cast<std::int32_t>(
+        g_m14LastResult.load(std::memory_order_relaxed));
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM27MatchCount()
+{
+    return g_m27MatchCount.load(std::memory_order_relaxed);
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM27MismatchCount()
+{
+    return g_m27MismatchCount.load(std::memory_order_relaxed);
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM27VariantHashConflictCount()
+{
+    return g_m27VariantHashConflictCount.load(std::memory_order_relaxed);
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM27MaximumSignatureCounts(std::uint32_t stage)
+{
+    if (stage == 1u)
+        return (g_m27MaxVertexInputCount.load(std::memory_order_relaxed) << 16) |
+            g_m27MaxVertexOutputCount.load(std::memory_order_relaxed);
+    if (stage == 2u)
+        return (g_m27MaxPixelInputCount.load(std::memory_order_relaxed) << 16) |
+            g_m27MaxPixelOutputCount.load(std::memory_order_relaxed);
+    return 0;
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM27ObservedShellSha256(
+    std::uint32_t stage,
+    unsigned char* output,
+    std::uint32_t outputSize)
+{
+    if (output == nullptr || outputSize < 32)
+        return 0;
+    const std::atomic<std::uint8_t>* observed = nullptr;
+    if (stage == static_cast<std::uint32_t>(EndfieldM27Substitution::Stage::Vertex))
+        observed = g_m27ObservedVertexSha256;
+    else if (stage == static_cast<std::uint32_t>(EndfieldM27Substitution::Stage::Pixel))
+        observed = g_m27ObservedPixelSha256;
+    else
+        return 0;
+    for (std::size_t index = 0; index < 32; ++index)
+        output[index] = observed[index].load(std::memory_order_acquire);
+    return 32;
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM27CallbackObservationCount()
+{
+    std::lock_guard<std::mutex> lock(g_m27CallbackObservationMutex);
+    return static_cast<std::uint32_t>(g_m27CallbackObservationCount);
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetM27CallbackObservation(
+    std::uint32_t index,
+    std::uint32_t* metadata,
+    std::uint32_t metadataCount,
+    unsigned char* sha256,
+    std::uint32_t sha256Size)
+{
+    if (metadata == nullptr || metadataCount < kM27CallbackMetadataCount ||
+        sha256 == nullptr || sha256Size < 32u)
+    {
+        return 0;
+    }
+    std::lock_guard<std::mutex> lock(g_m27CallbackObservationMutex);
+    if (index >= g_m27CallbackObservationCount)
+        return 0;
+    const M27CallbackObservation& observation =
+        g_m27CallbackObservations[index];
+    std::memcpy(
+        metadata,
+        observation.metadata,
+        sizeof(observation.metadata));
+    std::memcpy(sha256, observation.sha256, sizeof(observation.sha256));
+    return static_cast<std::uint32_t>(kM27CallbackMetadataCount);
 }
 
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API

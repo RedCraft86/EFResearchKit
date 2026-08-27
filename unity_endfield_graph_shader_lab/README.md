@@ -84,9 +84,11 @@ the completed result can later rebuild all characters.
   image to retail frame 1110 instead of the former three-frame-late pairing.
   The broader all-character runtime remains partial.
 - Effect-02's curve state, radial power, native parameter packing, signed and
-  clamped viewport-center transform, and source-before-bloom order are
-  recovered. Its complete combined Uber bloom/pre-exposure implementation
-  remains an explicit compatibility gap.
+  clamped viewport-center transform, source-before-bloom order, and combined
+  Uber bloom/pre-exposure merge are recovered. The retail temporal/upscaler
+  state and its late-pulse phase relationship remain explicit compatibility
+  gaps; focused verifier captures may override resolution with paired
+  `ENDFIELD_ENDMINF_CAPTURE_WIDTH`/`ENDFIELD_ENDMINF_CAPTURE_HEIGHT` values.
 - The rock-family `HGRP/LitEffect` physical constant buffers, named base
   `UnityPerMaterial` prefix, and five-MRT deferred consumer are identified.
   The `_PARALLAX_MAP` layout extension and complete live frame-resource
@@ -115,10 +117,11 @@ capture into a maintained dependency.
 
 ## Useful conclusion from the retired explorations
 
-Retail visual parity is not reached. More isolated shader approximation will
-not close the main difference: the missing piece is the complete CharInfo
-presentation frame, especially `SphereOutside`, `ShadowPlane`, the exact
-character stencil path, and frame-produced lighting resources.
+Retail visual parity is not reached. The isolated `SphereOutside` background
+now has a frame-proven physical deferred presentation, and the actor-specific
+portrait is included without foreground UI. The remaining complete-frame gaps
+are `ShadowPlane`, the exact character stencil path, unrecovered frame-produced
+lighting resources, bloom/compositing, and secondary motion.
 
 The reference video remains the visual authority. Native or GPU evidence can
 strengthen individual bindings later, but the active work is to reconstruct

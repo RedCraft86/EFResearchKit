@@ -37,10 +37,11 @@ Activation requires all of the following:
 The diagnostic binds the frame-proven Endminf retail D3D11 objects in native render event 0
 and issues the three-vertex draw after Unity has populated the synthetic b/t/s
 fixture; event 1 records the binding state. Before the draw, the native event
-recreates all 27 source SRVs from Unity's D3D11 texture resources; the
-standalone report pins `shader_resource_mask=0xffffffe`. The retail pixel
-variant is 3DMigoto hash `37eacbc3c84bb392` and includes the simple-subsurface
-keyword, ten constant-buffer slots, and resources `t0..t27`. Unity clears those
+recreates all 25 source SRVs from Unity's D3D11 texture resources. The retail
+pixel variant is the live `Default Lit - Full Lighting` program observed in all
+49 retained frames of capture `20260826T091023Z` (SHA-256 prefix
+`b21a1e35eda1c5bc`). It uses nine constant-buffer slots and resources
+`t0..t25`, without the simple-subsurface keyword. Unity clears those
 SRV slots by event 1, so the report records that post-draw cleanup separately.
 The neutral fixture is still not a render-fidelity fixture. The compiler
 callback remains an optional build-time variant probe, while the runtime proof
@@ -48,3 +49,58 @@ does not depend on a player-side compiler callback or a shell material
 overwriting the exact stages.
 
 Do not enable the keyword or arm the plugin outside this disposable diagnostic.
+
+## M27 Unity-owned draw substitution
+
+The same plugin now contains a separate, default-off M27 compiler-callback
+route for a Unity-owned particle draw. It embeds the exact retail HGBuffer
+subprogram-113 pair and checks them at build time:
+
+- VS `0678_endfield_dxbc_0.dxbc`: 8,148 bytes,
+  SHA-256 `c0266e7fac0046c18ef9ce4ca229873284198d3b2202af0e2db86d073dd57c3c`;
+- PS `0679_endfield_dxbc_1.dxbc`: 8,200 bytes,
+  SHA-256 `92d80a93add9c714daeb265a66d3fe6e841c32825728d6af4268cede13c0c44e`.
+
+`M27SubstitutionRegistry.h` dispatches by both compiler stage and the SHA-256
+of Unity's input shell bytecode. The callback never uses a keyword, callback
+order, byte count, or first-seen variant as shader identity. A reserved-variant
+inventory delta isolated one VS 10/9 shell and one PS 10/5 shell:
+
+- VS `b6ffa6a650c43fa86cfed1a146ecdfb046d6c92c7e866ff6f51ac79a6c7d4833`;
+- PS `9a6803527679aa4d4822ca38a4257c2dafcbce2748a67c7e3387f63e3ee54707`.
+
+Both entries are pinned. Unknown callback hashes leave Unity's shader object
+unchanged. The editor validator clears Unity's cached GPU data for only the
+dedicated shell, activates its reserved material variant, and requires exactly
+the two pinned substitutions with zero mismatch or conflict counters.
+
+Build and validate without replacing the Unity project plugin asset:
+
+```powershell
+.\build_plugin.ps1 -ToolOnly
+```
+
+The build runs `VerifyM27SubstitutionRegistry.exe`, which verifies both retail
+blob hashes, asks WARP D3D11 to create both shader objects, proves exact
+stage+SHA dispatch, rejects unknown and cross-stage hashes, and requires the
+registry to be ready.
+
+## M14 VFXBaseV2 draw substitution
+
+The registry also retains the exact M14 segmented-trail pair captured at game
+frame 13175 in session `20260826T000901Z`:
+
+- VS4914: 6,148 bytes, SHA-256
+  `62a5ce6c09171de949ade143b0520cef5b6f899137c1d0190d4014b053eee698`;
+- PS4915: 5,072 bytes, SHA-256
+  `5558deddb1ee6188dfb530e5be89d86d67352362384fababc585e778b78b99e7`.
+
+Its dedicated Unity shell preserves the retail 8/7 vertex and 7/2 pixel
+signatures, two SceneColor/SceneMV targets, premultiplied-alpha blend state,
+and the captured constant/resource slot envelope. Reserved-variant inventory
+is pinned to VS
+`0dc6bf259f8510c1e280160543cab0b591485a34bf226c048bf3f245fdad6714`
+and PS
+`465a86bc25083537c7cfa6d8f481253d907a29e4097fc5ce378d080083e25b57`.
+Unknown hashes remain fail-closed. `RunM14Observation` validates live Unity
+substitution and writes its callback inventory under project-local scratch.
