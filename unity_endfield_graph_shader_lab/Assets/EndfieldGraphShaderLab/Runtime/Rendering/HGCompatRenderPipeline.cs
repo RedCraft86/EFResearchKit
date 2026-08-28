@@ -171,6 +171,14 @@ namespace EndfieldGraphShaderLab
             Shader.PropertyToID("_EndfieldRecoveredVFXSoftDepthReady");
         private static readonly int RecoveredPostUberWorldUiReadyId =
             Shader.PropertyToID("_EndfieldRecoveredPostUberWorldUiReady");
+        private static readonly int NonJitteredViewNoTransProjMatrixId =
+            Shader.PropertyToID("_NonJitteredViewNoTransProjMatrix");
+        private static readonly int WorldSpaceCameraPosInternalId =
+            Shader.PropertyToID("_WorldSpaceCameraPos_Internal");
+        private static readonly int RenderPathInjectedId =
+            Shader.PropertyToID("_RenderPathInjected");
+        private static readonly int HGFlipXId = Shader.PropertyToID("_HGFlipX");
+        private static readonly int HGFlipYId = Shader.PropertyToID("_HGFlipY");
         private static readonly int RecoveredCameraDepthTextureId =
             Shader.PropertyToID("_EndfieldRecoveredCameraDepthTexture");
         private static readonly int RecoveredCameraDepthTextureTexelSizeId =
@@ -180,6 +188,8 @@ namespace EndfieldGraphShaderLab
         private static readonly int CharacterBloomSourceId = Shader.PropertyToID("_EndfieldCharacterBloomSource");
         private static readonly int RecoveredEndminfPostSourceId =
             Shader.PropertyToID("_EndfieldRecoveredEndminfPostSource");
+        private static readonly int RecoveredEndminfOpeningStripSourceId =
+            Shader.PropertyToID("_EndfieldRecoveredEndminfOpeningStripSource");
         private static readonly int CharacterBloomAId = Shader.PropertyToID("_EndfieldCharacterBloomA");
         private static readonly int CharacterBloomBId = Shader.PropertyToID("_EndfieldCharacterBloomB");
         private static readonly int BloomTextureId = Shader.PropertyToID("_BloomTex");
@@ -318,6 +328,12 @@ namespace EndfieldGraphShaderLab
             Shader.PropertyToID("_EndminfVisualCompatibilityParams");
         private static readonly int EndminfVisualCompatibilityCenterId =
             Shader.PropertyToID("_EndminfVisualCompatibilityCenter");
+        private static readonly int EndminfOpeningStripParamsId =
+            Shader.PropertyToID("_EndminfOpeningStripParams");
+        private static readonly int EndminfOpeningStripSourceSizeId =
+            Shader.PropertyToID("_EndminfOpeningStripSourceSize");
+        private static readonly int EndminfOpeningStripSelectorId =
+            Shader.PropertyToID("_EndminfOpeningStripSelector");
         private static readonly int TonemapModeId = Shader.PropertyToID("_TonemapMode");
         private static readonly int ToneCurveParams0Id = Shader.PropertyToID("_ToneCurveParams0");
         private static readonly int ToneCurveParams1Id = Shader.PropertyToID("_ToneCurveParams1");
@@ -328,6 +344,11 @@ namespace EndfieldGraphShaderLab
         private const float RecoveredBloomSerializedThreshold = 0.75f;
         private const float RecoveredBloomSerializedIntensity = 0.45f;
         private const float RecoveredBloomSerializedScatter = 0.8f;
+        // Public-Unity HLSL receives a different pre-Uber temporal source than
+        // retail's Streamline output. A matched peak sweep against clean frame
+        // 269 selects one quarter of the source intensity for this fallback;
+        // the native exact path below still receives the unscaled retail state.
+        private const float EndminfCompatibilityUberIntensityScale = 0.25f;
         private const float RecoveredGachaBloomSerializedThreshold = 0.95f;
         private const float RecoveredGachaBloomSerializedIntensity = 0.5f;
         private const float RecoveredGachaBloomSerializedScatter = 0.4f;
@@ -352,6 +373,12 @@ namespace EndfieldGraphShaderLab
             { get; private set; } = GraphicsFormat.None;
         public static GraphicsFormat LastRecoveredEndminfBloomGraphicsFormat
             { get; private set; } = GraphicsFormat.None;
+        public static bool LastRecoveredEndminfExactUberRequested
+            { get; private set; }
+        public static bool LastRecoveredEndminfExactUberSubmitted
+            { get; private set; }
+        public static string LastRecoveredEndminfExactUberFailure
+            { get; private set; } = string.Empty;
         public static EndfieldRecoveredSceneMVDiagnosticState
             LastRecoveredSceneMVDiagnostic { get; } =
                 new EndfieldRecoveredSceneMVDiagnosticState();
@@ -523,6 +550,10 @@ namespace EndfieldGraphShaderLab
         private readonly HGCompatRenderPipelineAsset asset;
         private readonly Material postProcessMaterial;
         private readonly EndfieldRecoveredCharInfoLut recoveredColorGradingLut;
+        private readonly EndfieldRecoveredEndminfUberExactRuntime
+            recoveredEndminfUberExactRuntime;
+        private readonly EndfieldRecoveredEndminfM28PeakExactRuntime
+            recoveredEndminfM28PeakExactRuntime;
         private readonly bool separateCharacterShadowDiagnosticEnabled;
         private readonly bool recoveredMultiCharacterShadowAtlasRequested;
         private readonly bool
@@ -647,6 +678,8 @@ namespace EndfieldGraphShaderLab
         private Material recoveredTemporalMaterial;
         private Material recoveredTemporalDilationMaterial;
         private Material recoveredTemporalMaskDilationMaterial;
+        private Material recoveredEndminfOpeningStripMaterial;
+        private bool loggedRecoveredEndminfOpeningStrip;
         private bool loggedRecoveredTemporalResolve;
 
         private static int[] CreateBloomMipIds(string prefix)
@@ -727,6 +760,10 @@ namespace EndfieldGraphShaderLab
                 new EndfieldRecoveredSceneMVCompositor();
             recoveredCombinedVelocityProducer =
                 new EndfieldRecoveredCombinedVelocityProducer();
+            recoveredEndminfUberExactRuntime =
+                new EndfieldRecoveredEndminfUberExactRuntime();
+            recoveredEndminfM28PeakExactRuntime =
+                new EndfieldRecoveredEndminfM28PeakExactRuntime();
             GraphicsSettings.useScriptableRenderPipelineBatching = true;
 
             if (recoveredLiveCharInfoAutoExposureRequested)
@@ -792,6 +829,17 @@ namespace EndfieldGraphShaderLab
                     name = "Endfield HGRP TAAU Mask Dilation (Pipeline)"
                 };
             }
+            Shader openingStripShader = Shader.Find(
+                "Hidden/Endfield/HGRPCompat/EndminfOpeningStrip");
+            if (openingStripShader != null && openingStripShader.isSupported)
+            {
+                recoveredEndminfOpeningStripMaterial = new Material(
+                    openingStripShader)
+                {
+                    hideFlags = HideFlags.HideAndDontSave,
+                    name = "Recovered Endminf Opening Strip (Pipeline)"
+                };
+            }
         }
 
         protected override void Dispose(bool disposing)
@@ -829,6 +877,8 @@ namespace EndfieldGraphShaderLab
             recoveredReflectionProbeFallback?.Dispose();
             recoveredLightBinning?.Dispose();
             recoveredColorGradingLut?.Dispose();
+            recoveredEndminfUberExactRuntime?.Dispose();
+            recoveredEndminfM28PeakExactRuntime?.Dispose();
             recoveredSceneMVCompositor?.Dispose();
             ReleaseRecoveredPrimarySceneDepth(recoveredExactCameraDepth);
             recoveredExactCameraDepth = null;
@@ -858,6 +908,14 @@ namespace EndfieldGraphShaderLab
                 else
                     Object.DestroyImmediate(recoveredTemporalMaskDilationMaterial);
                 recoveredTemporalMaskDilationMaterial = null;
+            }
+            if (recoveredEndminfOpeningStripMaterial != null)
+            {
+                if (Application.isPlaying)
+                    Object.Destroy(recoveredEndminfOpeningStripMaterial);
+                else
+                    Object.DestroyImmediate(recoveredEndminfOpeningStripMaterial);
+                recoveredEndminfOpeningStripMaterial = null;
             }
             if (postProcessMaterial == null)
                 return;
@@ -948,11 +1006,35 @@ namespace EndfieldGraphShaderLab
             ScriptableCullingParameters cullingParameters;
             if (!camera.TryGetCullingParameters(out cullingParameters))
                 return;
+            bool exactEndminfM21PeakPrepared =
+                EndfieldRecoveredEndminfM21PeakExactRuntime
+                    .PrepareBeforeCulling(camera);
+            bool exactEndminfM18PeakPrepared =
+                EndfieldRecoveredEndminfM18PeakExactRuntime
+                    .PrepareBeforeCulling(camera);
+            bool exactEndminfM28PeakPrepared =
+                recoveredEndminfM28PeakExactRuntime
+                    .PrepareBeforeCulling(camera);
             bool exactEndminfM13Prepared =
                 EndfieldRecoveredEndminfM13ExactRuntime
                     .PrepareBeforeCulling(camera);
+            bool exactEndminfVFXBaseV2PeakPrepared =
+                EndfieldRecoveredEndminfVFXBaseV2PeakCohortRuntime
+                    .PrepareBeforeCulling(camera);
             bool exactEndminfM14Prepared =
+                !exactEndminfVFXBaseV2PeakPrepared &&
                 EndfieldRecoveredEndminfM14ExactRuntime
+                    .PrepareBeforeCulling(camera);
+            bool exactEndminfM29Prepared =
+                EndfieldRecoveredEndminfM29ExactRuntime
+                    .PrepareBeforeCulling(camera);
+            bool exactEndminfM30Prepared =
+                !exactEndminfVFXBaseV2PeakPrepared &&
+                EndfieldRecoveredEndminfM30ExactRuntime
+                    .PrepareBeforeCulling(camera);
+            bool exactEndminfM31PeakPrepared =
+                !exactEndminfVFXBaseV2PeakPrepared &&
+                EndfieldRecoveredEndminfM31PeakExactRuntime
                     .PrepareBeforeCulling(camera);
 
             float requestedShadowDistance =
@@ -1050,7 +1132,10 @@ namespace EndfieldGraphShaderLab
                 out recoveredPostUberWorldUiFailure);
             EndfieldRecoveredSceneMVRequest recoveredSceneMVRequest =
                 recoveredSceneMVCompositor.CollectRequest(camera);
-            if (exactEndminfM14Prepared && !recoveredSceneMVRequest.requested)
+            if ((exactEndminfM14Prepared || exactEndminfM29Prepared ||
+                    exactEndminfM28PeakPrepared ||
+                    exactEndminfVFXBaseV2PeakPrepared) &&
+                !recoveredSceneMVRequest.requested)
             {
                 recoveredSceneMVRequest = new EndfieldRecoveredSceneMVRequest(
                     true,
@@ -1250,6 +1335,9 @@ namespace EndfieldGraphShaderLab
             // for ordinary cameras and every failed/degraded route.
             commandBuffer.SetGlobalFloat(RecoveredVFXSoftDepthReadyId, 0.0f);
             commandBuffer.SetGlobalFloat(RecoveredPostUberWorldUiReadyId, 0.0f);
+            commandBuffer.SetGlobalFloat(RenderPathInjectedId, 0.0f);
+            commandBuffer.SetGlobalFloat(HGFlipXId, 0.0f);
+            commandBuffer.SetGlobalFloat(HGFlipYId, 0.0f);
             commandBuffer.SetGlobalFloat(
                 EndfieldRecoveredSceneMVCompositor.SceneMVMRTReadyId,
                 0.0f);
@@ -1986,7 +2074,8 @@ namespace EndfieldGraphShaderLab
 
                 string compositorFailure;
                 EndfieldRecoveredSceneColorHandle composedSceneColor;
-                bool mainReady = recoveredSceneMVCompositor.CompositeMainTransparent(
+                bool mainReady =
+                    recoveredSceneMVCompositor.CompositeMainTransparentQueue2999(
                     context,
                     camera,
                     cullingResults,
@@ -2006,6 +2095,122 @@ namespace EndfieldGraphShaderLab
                 recoveredSceneColorPingAllocated = true;
                 if (mainReady)
                     recoveredCurrentSceneColor = composedSceneColor;
+                if (mainReady && exactEndminfVFXBaseV2PeakPrepared)
+                {
+                    mainReady = EndfieldRecoveredEndminfVFXBaseV2PeakCohortRuntime
+                        .RenderPreM29(
+                            context,
+                            camera,
+                            recoveredCurrentSceneColor,
+                            recoveredSceneMV,
+                            recoveredPrimarySceneDepth);
+                    if (!mainReady)
+                    {
+                        compositorFailure =
+                            "exact Endminf VFXBaseV2 peak pre-M29 cohort failed " +
+                            "closed: " +
+                            EndfieldRecoveredEndminfVFXBaseV2PeakCohortRuntime
+                                .Failure;
+                    }
+                }
+                if (mainReady && exactEndminfM30Prepared)
+                {
+                    mainReady = EndfieldRecoveredEndminfM30ExactRuntime.Render(
+                        context,
+                        camera,
+                        recoveredCurrentSceneColor,
+                        recoveredSceneMV,
+                        recoveredPrimarySceneDepth);
+                    if (!mainReady)
+                    {
+                        compositorFailure =
+                            "exact Endminf M30 transport failed closed: " +
+                            EndfieldRecoveredEndminfM30ExactRuntime.Failure;
+                    }
+                }
+                if (mainReady && exactEndminfM31PeakPrepared)
+                {
+                    mainReady =
+                        EndfieldRecoveredEndminfM31PeakExactRuntime.Render(
+                            context,
+                            camera,
+                            recoveredCurrentSceneColor,
+                            recoveredSceneMV,
+                            recoveredPrimarySceneDepth);
+                    if (!mainReady)
+                    {
+                        compositorFailure =
+                            "exact Endminf M31 peak transport failed closed: " +
+                            EndfieldRecoveredEndminfM31PeakExactRuntime.Failure;
+                    }
+                }
+                if (mainReady)
+                {
+                    EndfieldRecoveredSceneColorHandle queue3000Color;
+                    int queue3000OutputIdentifier =
+                        recoveredCurrentSceneColor.identifier ==
+                            EndfieldRecoveredSceneMVCompositor.PingColorId
+                            ? CameraColorId
+                            : EndfieldRecoveredSceneMVCompositor.PingColorId;
+                    mainReady = recoveredSceneMVCompositor
+                        .CompositeMainTransparentQueue3000(
+                            context,
+                            camera,
+                            cullingResults,
+                            recoveredCurrentSceneColor,
+                            queue3000OutputIdentifier,
+                            recoveredSceneMV,
+                            recoveredPrimarySceneDepth,
+                            recoveredPrimarySceneDepthFormat,
+                            ordinaryTransparentLayerMask,
+                            asset.dynamicBatching,
+                            asset.gpuInstancing,
+                            recoveredPreTransparentSceneColorReady,
+                            new RenderTargetIdentifier(
+                                RecoveredRefractionSceneColorId),
+                            out queue3000Color,
+                            out compositorFailure);
+                    if (mainReady)
+                        recoveredCurrentSceneColor = queue3000Color;
+                }
+                // M29 shares queue 3000 with the live transparent cohort. The
+                // old capture does not preserve equal-queue chronology, so
+                // replay it after the surviving live cohort and before the
+                // existing exact M14 replacement until drawOrdinal evidence
+                // closes their retail order.
+                if (mainReady && exactEndminfM29Prepared)
+                {
+                    mainReady = EndfieldRecoveredEndminfM29ExactRuntime.Render(
+                        context,
+                        camera,
+                        recoveredCurrentSceneColor,
+                        recoveredSceneMV,
+                        recoveredPrimarySceneDepth);
+                    if (!mainReady)
+                    {
+                        compositorFailure =
+                            "exact Endminf M29 transport failed closed: " +
+                            EndfieldRecoveredEndminfM29ExactRuntime.Failure;
+                    }
+                }
+                if (mainReady && exactEndminfVFXBaseV2PeakPrepared)
+                {
+                    mainReady = EndfieldRecoveredEndminfVFXBaseV2PeakCohortRuntime
+                        .RenderPostM29(
+                            context,
+                            camera,
+                            recoveredCurrentSceneColor,
+                            recoveredSceneMV,
+                            recoveredPrimarySceneDepth);
+                    if (!mainReady)
+                    {
+                        compositorFailure =
+                            "exact Endminf VFXBaseV2 peak post-M29 cohort failed " +
+                            "closed: " +
+                            EndfieldRecoveredEndminfVFXBaseV2PeakCohortRuntime
+                                .Failure;
+                    }
+                }
                 if (mainReady && exactEndminfM14Prepared)
                 {
                     mainReady = EndfieldRecoveredEndminfM14ExactRuntime.Render(
@@ -2021,6 +2226,22 @@ namespace EndfieldGraphShaderLab
                             EndfieldRecoveredEndminfM14ExactRuntime.Failure;
                     }
                 }
+                // Full frame 2775 records the M21 stone shell at ordinal 74,
+                // immediately before the exact M13 ring at ordinal 75.
+                if (mainReady && exactEndminfM21PeakPrepared)
+                {
+                    mainReady = EndfieldRecoveredEndminfM21PeakExactRuntime.Render(
+                        context,
+                        camera,
+                        recoveredCurrentSceneColor,
+                        recoveredPrimarySceneDepth);
+                    if (!mainReady)
+                    {
+                        compositorFailure =
+                            "exact Endminf M21 peak transport failed closed: " +
+                            EndfieldRecoveredEndminfM21PeakExactRuntime.Failure;
+                    }
+                }
                 if (mainReady && exactEndminfM13Prepared)
                 {
                     mainReady = EndfieldRecoveredEndminfM13ExactRuntime.Render(
@@ -2033,6 +2254,23 @@ namespace EndfieldGraphShaderLab
                         compositorFailure =
                             "exact Endminf M13 transport failed closed: " +
                             EndfieldRecoveredEndminfM13ExactRuntime.Failure;
+                    }
+                }
+                // Full frame 2775 records the broad M18 diffusion shell at
+                // ordinal 82, after the M21/M13 peak owners and intervening
+                // live queue-3000 draws.
+                if (mainReady && exactEndminfM18PeakPrepared)
+                {
+                    mainReady = EndfieldRecoveredEndminfM18PeakExactRuntime.Render(
+                        context,
+                        camera,
+                        recoveredCurrentSceneColor,
+                        recoveredPrimarySceneDepth);
+                    if (!mainReady)
+                    {
+                        compositorFailure =
+                            "exact Endminf M18 peak transport failed closed: " +
+                            EndfieldRecoveredEndminfM18PeakExactRuntime.Failure;
                     }
                 }
                 if (mainReady && recoveredSceneMVRequest.hasGlow902Queue3005)
@@ -2104,6 +2342,25 @@ namespace EndfieldGraphShaderLab
                         recoveredCurrentSceneColor = distortionColor;
                     else
                         mainReady = false;
+                }
+                // Full frame 2775 records M28 at ordinal 87, after the broad
+                // M18 shell and the surviving queue-3005/distortion cohort.
+                // Its t2 SceneColor SRV is a persistent snapshot, so the exact
+                // draw can write the current SceneColor/SceneMV MRTs in place.
+                if (mainReady && exactEndminfM28PeakPrepared)
+                {
+                    mainReady = recoveredEndminfM28PeakExactRuntime.Render(
+                        context,
+                        camera,
+                        recoveredCurrentSceneColor,
+                        recoveredSceneMV,
+                        recoveredPrimarySceneDepth);
+                    if (!mainReady)
+                    {
+                        compositorFailure =
+                            "exact Endminf M28 peak transport failed closed: " +
+                            recoveredEndminfM28PeakExactRuntime.Failure;
+                    }
                 }
                 if (!mainReady)
                 {
@@ -2887,6 +3144,10 @@ namespace EndfieldGraphShaderLab
         {
             deferredPostColor = default;
             deferredLinearUnorm = false;
+            LastRecoveredEndminfExactUberRequested =
+                recoveredEndminfUberExactRuntime.Requested;
+            LastRecoveredEndminfExactUberSubmitted = false;
+            LastRecoveredEndminfExactUberFailure = string.Empty;
             EndfieldHGOperatorPresentation operatorPresentation =
                 camera.GetComponent<EndfieldHGOperatorPresentation>();
             int width = Mathf.Max(camera.pixelWidth, 1);
@@ -2989,6 +3250,64 @@ namespace EndfieldGraphShaderLab
                     RecoveredEndminfPostSourceId);
                 LastRecoveredEndminfPostSourceGraphicsFormat =
                     recoveredPostSourceDescriptor.graphicsFormat;
+            }
+            EndfieldEndminfVisualCompatibilityClock.RecoveredOpeningStripState
+                openingStripState = default;
+            RenderTexture openingStripSelector = null;
+            RenderTexture unusedOpeningStripGBufferB;
+            RenderTexture unusedOpeningStripGBufferC;
+            string openingStripSelectorFailure;
+            bool hasOpeningStripSelector =
+                recoveredPreGBufferDepthOwner != null &&
+                recoveredPreGBufferDepthOwner.TryGetCurrentPublication(
+                    camera,
+                    width,
+                    height,
+                    out openingStripSelector,
+                    out unusedOpeningStripGBufferB,
+                    out unusedOpeningStripGBufferC,
+                    out openingStripSelectorFailure);
+            bool useRecoveredEndminfOpeningStrip =
+                useRecoveredPostSemantics &&
+                recoveredEndminfOpeningStripMaterial != null &&
+                hasOpeningStripSelector &&
+                EndfieldEndminfVisualCompatibilityClock.TryEvaluateOpeningStrip(
+                    out openingStripState);
+            if (useRecoveredEndminfOpeningStrip)
+            {
+                commandBuffer.GetTemporaryRT(
+                    RecoveredEndminfOpeningStripSourceId,
+                    recoveredPostSourceDescriptor,
+                    FilterMode.Bilinear);
+                commandBuffer.SetGlobalVector(
+                    EndminfOpeningStripParamsId,
+                    new Vector4(
+                        openingStripState.intensity,
+                        openingStripState.displacementPixels,
+                        openingStripState.chromaticEdgePixels,
+                        openingStripState.elapsed));
+                commandBuffer.SetGlobalVector(
+                    EndminfOpeningStripSourceSizeId,
+                    new Vector4(width, height, 1.0f / width, 1.0f / height));
+                commandBuffer.SetGlobalTexture(
+                    EndminfOpeningStripSelectorId,
+                    openingStripSelector);
+                commandBuffer.Blit(
+                    recoveredPostSource,
+                    RecoveredEndminfOpeningStripSourceId,
+                    recoveredEndminfOpeningStripMaterial,
+                    0);
+                recoveredPostSource = new RenderTargetIdentifier(
+                    RecoveredEndminfOpeningStripSourceId);
+
+                if (!loggedRecoveredEndminfOpeningStrip)
+                {
+                    Debug.Log(
+                        "Recovered Endminf opening horizontal-strip pass active " +
+                        "before bloom/Uber; the existing reduced radial/chromatic " +
+                        "compatibility response remains downstream.");
+                    loggedRecoveredEndminfOpeningStrip = true;
+                }
             }
             if (useRecoveredPostSemantics)
             {
@@ -3162,8 +3481,10 @@ namespace EndfieldGraphShaderLab
                 EndminfVisualCompatibilityParamsId,
                 hasEndminfPost
                     ? new Vector4(
-                        endminfPost.radialIntensity,
-                        endminfPost.chromaticIntensity,
+                        endminfPost.radialIntensity *
+                            EndminfCompatibilityUberIntensityScale,
+                        endminfPost.chromaticIntensity *
+                            EndminfCompatibilityUberIntensityScale,
                         endminfPost.mode,
                         endminfPost.effectivePower)
                     : Vector4.zero);
@@ -3227,11 +3548,37 @@ namespace EndfieldGraphShaderLab
                         ? FilterMode.Point
                         : FilterMode.Bilinear);
                 commandBuffer.SetGlobalFloat(PresentFlipYId, 0.0f);
-                commandBuffer.Blit(
-                    recoveredPostSource,
-                    EndfieldRecoveredSceneMVCompositor.PostColorId,
-                    postProcessMaterial,
-                    0);
+                var deferredPostTarget = new RenderTargetIdentifier(
+                    EndfieldRecoveredSceneMVCompositor.PostColorId);
+                bool exactDeferredUber =
+                    useRecoveredLinearUnormFinalTarget &&
+                    useRecoveredPostSemantics &&
+                    recoveredLutReady &&
+                    recoveredEndminfUberExactRuntime.Enqueue(
+                        commandBuffer,
+                        recoveredPostSource,
+                        new RenderTargetIdentifier(bloomOutputId),
+                        recoveredColorGradingLut.Texture,
+                        deferredPostTarget,
+                        width,
+                        height,
+                        recoveredBloomMipWidths[0],
+                        recoveredBloomMipHeights[0],
+                        exposure,
+                        hasEndminfPost,
+                        endminfPost);
+                if (!exactDeferredUber)
+                {
+                    commandBuffer.Blit(
+                        recoveredPostSource,
+                        EndfieldRecoveredSceneMVCompositor.PostColorId,
+                        postProcessMaterial,
+                        0);
+                }
+                LastRecoveredEndminfExactUberSubmitted = exactDeferredUber;
+                if (LastRecoveredEndminfExactUberRequested && !exactDeferredUber)
+                    LastRecoveredEndminfExactUberFailure =
+                        recoveredEndminfUberExactRuntime.Failure;
                 EndfieldRecoveredPostStageDiagnostic.EnqueueStageIfActive(
                     commandBuffer,
                     EndfieldRecoveredPostStageDiagnostic.FinalUber,
@@ -3264,11 +3611,36 @@ namespace EndfieldGraphShaderLab
                     finalDisplayDescriptor,
                     FilterMode.Point);
                 commandBuffer.SetGlobalFloat(PresentFlipYId, 0.0f);
-                commandBuffer.Blit(
-                    recoveredPostSource,
-                    RecoveredFinalDisplayId,
-                    postProcessMaterial,
-                    0);
+                var finalDisplayTarget = new RenderTargetIdentifier(
+                    RecoveredFinalDisplayId);
+                bool exactDisplayUber =
+                    useRecoveredPostSemantics &&
+                    recoveredLutReady &&
+                    recoveredEndminfUberExactRuntime.Enqueue(
+                        commandBuffer,
+                        recoveredPostSource,
+                        new RenderTargetIdentifier(bloomOutputId),
+                        recoveredColorGradingLut.Texture,
+                        finalDisplayTarget,
+                        width,
+                        height,
+                        recoveredBloomMipWidths[0],
+                        recoveredBloomMipHeights[0],
+                        exposure,
+                        hasEndminfPost,
+                        endminfPost);
+                if (!exactDisplayUber)
+                {
+                    commandBuffer.Blit(
+                        recoveredPostSource,
+                        RecoveredFinalDisplayId,
+                        postProcessMaterial,
+                        0);
+                }
+                LastRecoveredEndminfExactUberSubmitted = exactDisplayUber;
+                if (LastRecoveredEndminfExactUberRequested && !exactDisplayUber)
+                    LastRecoveredEndminfExactUberFailure =
+                        recoveredEndminfUberExactRuntime.Failure;
                 EndfieldRecoveredPostStageDiagnostic.EnqueueStageIfActive(
                     commandBuffer,
                     EndfieldRecoveredPostStageDiagnostic.FinalUber,
@@ -3335,6 +3707,9 @@ namespace EndfieldGraphShaderLab
                 commandBuffer.ReleaseTemporaryRT(CameraColorId);
             if (useRecoveredEndminfRgba16PostSource)
                 commandBuffer.ReleaseTemporaryRT(RecoveredEndminfPostSourceId);
+            if (useRecoveredEndminfOpeningStrip)
+                commandBuffer.ReleaseTemporaryRT(
+                    RecoveredEndminfOpeningStripSourceId);
             context.ExecuteCommandBuffer(commandBuffer);
             commandBuffer.Release();
 
@@ -3397,6 +3772,30 @@ namespace EndfieldGraphShaderLab
                 SceneDepthTexelSizeId,
                 new Vector4(1.0f / width, 1.0f / height, width, height));
             commandBuffer.SetGlobalFloat(RecoveredPostUberWorldUiReadyId, 1.0f);
+            Matrix4x4 viewNoTranslation = camera.worldToCameraMatrix;
+            viewNoTranslation.m03 = 0.0f;
+            viewNoTranslation.m13 = 0.0f;
+            viewNoTranslation.m23 = 0.0f;
+            viewNoTranslation.m33 = 1.0f;
+            Matrix4x4 projection = GL.GetGPUProjectionMatrix(
+                camera.nonJitteredProjectionMatrix,
+                true);
+            commandBuffer.SetGlobalMatrix(
+                NonJitteredViewNoTransProjMatrixId,
+                projection * viewNoTranslation);
+            Vector3 cameraPosition = camera.transform.position;
+            commandBuffer.SetGlobalVector(
+                WorldSpaceCameraPosInternalId,
+                new Vector4(
+                    cameraPosition.x,
+                    cameraPosition.y,
+                    cameraPosition.z,
+                    1.0f));
+            commandBuffer.SetGlobalFloat(RenderPathInjectedId, 1.0f);
+            commandBuffer.SetGlobalFloat(HGFlipXId, 0.0f);
+            commandBuffer.SetGlobalFloat(
+                HGFlipYId,
+                camera.targetTexture == null ? 1.0f : 0.0f);
             context.ExecuteCommandBuffer(commandBuffer);
             commandBuffer.Release();
 
@@ -3407,6 +3806,16 @@ namespace EndfieldGraphShaderLab
                 RenderQueueRange.transparent,
                 SortingCriteria.CommonTransparent,
                 1 << EndfieldRecoveredCharInfoBackgroundPortrait.SourceUiLayer);
+
+            commandBuffer = new CommandBuffer
+            {
+                name = "Reset recovered post-Uber CharInfo world UI globals"
+            };
+            commandBuffer.SetGlobalFloat(RenderPathInjectedId, 0.0f);
+            commandBuffer.SetGlobalFloat(HGFlipXId, 0.0f);
+            commandBuffer.SetGlobalFloat(HGFlipYId, 0.0f);
+            context.ExecuteCommandBuffer(commandBuffer);
+            commandBuffer.Release();
 
             if (!loggedRecoveredPostUberWorldUi)
             {

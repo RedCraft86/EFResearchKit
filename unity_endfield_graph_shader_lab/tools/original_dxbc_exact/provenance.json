@@ -4,6 +4,33 @@
   "unity_version": "2022.3.62f3",
   "graphics_api": "Direct3D11",
   "native_contract_version": 2,
+  "endminf_uber_post": {
+    "activation_policy": "default-off-fail-closed-until-exact-live-constant-payload-is-validated",
+    "source_shader": "HGRP/PostProcessing/UberPost",
+    "compiled_keywords": [
+      "BLOOM",
+      "RADIAL_BLUR",
+      "VIGNETTE"
+    ],
+    "vertex": {
+      "file": "bytecode/endminf_uber_post_vs.dxbc",
+      "retail_source_file": "2016_endfield_dxbc_0.dxbc",
+      "size": 608,
+      "sha256": "a8c084c37eba0ecc78f26d984a2b8c658f8d743002048c84431807d9dee0ce4e",
+      "profile": "vs_5_0"
+    },
+    "pixel": {
+      "file": "bytecode/endminf_uber_post_ps.dxbc",
+      "retail_source_file": "1249_endfield_dxbc_1.dxbc",
+      "size": 4216,
+      "sha256": "86a732cef7eedb150cbcafb35a994c1e3f7b1ef837dc618131a95e9dfe030c97",
+      "profile": "ps_5_0"
+    },
+    "abi": "VS b0[1]; PS b0[28], b1[26], t0-t2, s0; Draw(3,0)",
+    "constant_evidence": "reports/assets/character_recovery/endminf_uber_capture_latest.json",
+    "source_evidence": "scratch/reverse_engineering/endfield_capture/20260827T183054Z/graphics/frames/1818",
+    "pipeline_evidence_boundary": "active draw constants and shader identities are live; fixed pipeline state is inherited from the same UberPost pass because this capture predates active-variant priority tagging"
+  },
   "reserved_local_keyword": "ENDFIELD_ORIGINAL_DXBC_EXACT",
   "m27_substitution": {
     "activation_policy": "default-off-fail-closed-until-shell-hashes-pinned",

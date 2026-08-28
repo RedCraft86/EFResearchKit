@@ -21,6 +21,8 @@ $validatorObject = Join-Path $buildRoot "ValidateEmbeddedDxbc.obj"
 $validatorExe = Join-Path $buildRoot "ValidateEmbeddedDxbc.exe"
 $registryValidatorObject = Join-Path $buildRoot "VerifyM27SubstitutionRegistry.obj"
 $registryValidatorExe = Join-Path $buildRoot "VerifyM27SubstitutionRegistry.exe"
+$uberValidatorObject = Join-Path $buildRoot "VerifyEndminfUberTransport.obj"
+$uberValidatorExe = Join-Path $buildRoot "VerifyEndminfUberTransport.exe"
 $generatedHeader = Join-Path $buildRoot "EmbeddedDxbc.generated.h"
 $vertex = Join-Path $toolRoot "bytecode\selected_deferred_resolver_vs.dxbc"
 $pixel = Join-Path $toolRoot "bytecode\selected_deferred_resolver_ps.dxbc"
@@ -30,6 +32,8 @@ $m14Vertex = Join-Path $toolRoot "bytecode\endminf_m14_vfxbasev2_vs.dxbc"
 $m14Pixel = Join-Path $toolRoot "bytecode\endminf_m14_vfxbasev2_ps.dxbc"
 $m13Vertex = Join-Path $toolRoot "bytecode\endminf_m13_vfxbasev2_vs.dxbc"
 $m13Pixel = Join-Path $toolRoot "bytecode\endminf_m13_vfxbasev2_ps.dxbc"
+$uberVertex = Join-Path $toolRoot "bytecode\endminf_uber_post_vs.dxbc"
+$uberPixel = Join-Path $toolRoot "bytecode\endminf_uber_post_ps.dxbc"
 $pluginApi = "D:\Program Files\2022.3.62f3\Editor\Data\PluginAPI"
 $vswhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
 
@@ -54,6 +58,8 @@ python (Join-Path $toolRoot "generate_embedded_header.py") `
     --m14-pixel $m14Pixel `
     --m13-vertex $m13Vertex `
     --m13-pixel $m13Pixel `
+    --uber-vertex $uberVertex `
+    --uber-pixel $uberPixel `
     --output $generatedHeader
 if ($LASTEXITCODE -ne 0) {
     throw "Exact DXBC header generation failed with exit code $LASTEXITCODE."
@@ -118,12 +124,33 @@ if ($LASTEXITCODE -ne 0) {
     throw "M27 substitution registry validation failed with exit $LASTEXITCODE."
 }
 
+$uberValidatorSource = Join-Path $toolRoot "VerifyEndminfUberTransport.cpp"
+$uberValidatorCompileCommand = @(
+    "cl.exe /nologo /std:c++17 /O2 /EHsc /Brepro",
+    "/Fo`"$uberValidatorObject`" `"$uberValidatorSource`"",
+    "/link /NOLOGO /Brepro /OUT:`"$uberValidatorExe`" d3d11.lib"
+) -join " "
+$uberValidatorCompile =
+    "call `"$vsDevCmd`" -arch=x64 -host_arch=x64 && $uberValidatorCompileCommand"
+cmd.exe /d /c $uberValidatorCompile
+if ($LASTEXITCODE -ne 0) {
+    throw "Endminf Uber transport validator compilation failed with exit code $LASTEXITCODE."
+}
+
+$uberPayloadHeader = Join-Path $toolRoot "EndminfUberCapturePayload.generated.h"
+$expectedUberPayloadReady = if (Test-Path -LiteralPath $uberPayloadHeader) { "1" } else { "0" }
+& $uberValidatorExe $outputDll $expectedUberPayloadReady
+if ($LASTEXITCODE -ne 0) {
+    throw "Endminf Uber transport validation failed with exit $LASTEXITCODE."
+}
+
 foreach ($intermediate in @(
     $outputImportLibrary,
     $outputExports,
     $pluginObject,
     $validatorObject,
-    $registryValidatorObject
+    $registryValidatorObject,
+    $uberValidatorObject
 )) {
     [System.IO.File]::Delete($intermediate)
 }
@@ -133,9 +160,13 @@ $validatorHash =
     (Get-FileHash -LiteralPath $validatorExe -Algorithm SHA256).Hash.ToLowerInvariant()
 $registryValidatorHash =
     (Get-FileHash -LiteralPath $registryValidatorExe -Algorithm SHA256).Hash.ToLowerInvariant()
+$uberValidatorHash =
+    (Get-FileHash -LiteralPath $uberValidatorExe -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Output "plugin=$outputDll"
 Write-Output "plugin_sha256=$dllHash"
 Write-Output "validator=$validatorExe"
 Write-Output "validator_sha256=$validatorHash"
 Write-Output "m27_registry_validator=$registryValidatorExe"
 Write-Output "m27_registry_validator_sha256=$registryValidatorHash"
+Write-Output "endminf_uber_validator=$uberValidatorExe"
+Write-Output "endminf_uber_validator_sha256=$uberValidatorHash"

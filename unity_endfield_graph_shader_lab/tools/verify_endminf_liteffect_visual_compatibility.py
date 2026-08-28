@@ -11,6 +11,8 @@ RUNTIME = ROOT / "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/
 BUILDER = ROOT / "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Editor/CharacterRecovery/EndfieldEndminfLitEffectCompatibilityBindingBuilder.cs"
 CAPTURE_SOURCE = ROOT / "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Editor/CharacterRecovery/EndfieldEndminfViewerPlayModeCapture.cs"
 SETUP_SOURCE = ROOT / "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Editor/CharacterRecovery/EndfieldManifestCharacterSetup.cs"
+OPEN_WRAPPER = ROOT / "unity_endfield_graph_shader_lab/open_character_recovery_lab.bat"
+SPAWNER = ROOT / "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldRecoveredCharEffectSpawner.cs"
 CAPTURE_REPORT = ROOT / "unity_endfield_graph_shader_lab/scratch/character_recovery/endminf_actor_only_m27_crystal_41/report.json"
 OUT = ROOT / "reports/assets/character_recovery/endminf_liteffect_visual_compatibility.json"
 ASSETS = {
@@ -42,6 +44,8 @@ def main() -> int:
     builder = BUILDER.read_text(encoding="utf-8")
     capture_source = CAPTURE_SOURCE.read_text(encoding="utf-8")
     setup_source = SETUP_SOURCE.read_text(encoding="utf-8")
+    open_wrapper = OPEN_WRAPPER.read_text(encoding="utf-8")
+    spawner = SPAWNER.read_text(encoding="utf-8")
     required_importer = [
         'ENDFIELD_ENDMINF_LITEFFECT_VISUAL_COMPAT',
         '0x5A6341E8A834E421L', '0xA531A88850690EB8UL',
@@ -62,7 +66,7 @@ def main() -> int:
         "ParticleSystemRenderMode.Mesh",
         "row.renderer.SetMeshes",
         "row.renderer.sharedMaterials",
-        "if (!Requested)",
+        "if (!compatibility && !exactM27)",
     ]
     required_builder = [
         "Material01PathId = 0x5A6341E8A834E421L",
@@ -77,6 +81,19 @@ def main() -> int:
     failures += ["binding builder missing " + value for value in required_builder if value not in builder]
     failures += ["focused rebuild missing binding builder invocation"
                  for _ in [0] if "EndfieldEndminfLitEffectCompatibilityBindingBuilder.BuildAndValidate()" not in setup_source]
+    failures += ["canonical Endminf launcher does not enable the retained LitEffect owners"
+                 for _ in [0] if 'set "ENDFIELD_ENDMINF_LITEFFECT_VISUAL_COMPAT=1"' not in open_wrapper]
+    required_lifecycle = [
+        "StartRecoveredLegacyAnimations(instance)",
+        "animation.playAutomatically",
+        'EndminfCompositeRockClipName =',
+        '"A_fx_endminf_ui_overview_03_04"',
+        "EndminfCompositeRockClipDelaySeconds = 2.7666667f",
+        "animation.Rewind(animation.clip.name)",
+        "animation.Play(animation.clip.name)",
+    ]
+    failures += ["effect lifecycle missing " + value
+                 for value in required_lifecycle if value not in spawner]
     asset_evidence = {}
     for name, (path, expected) in ASSETS.items():
         actual = sha256(path)

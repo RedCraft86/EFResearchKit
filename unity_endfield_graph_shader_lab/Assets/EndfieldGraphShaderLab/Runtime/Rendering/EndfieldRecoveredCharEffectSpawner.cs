@@ -22,6 +22,11 @@ namespace EndfieldGraphShaderLab
             "endfield.charinfo-char-effect-particle.v1";
         public const string EndminfOverviewContractSchema =
             "endfield.endminf-overview-particle-stage.v1";
+        private const string EndminfCompositeRockClipName =
+            "A_fx_endminf_ui_overview_03_04";
+        private const float EndminfCompositeRockClipDelaySeconds = 2.7666667f;
+        private const float EndminfSmoke20PresentationAdvanceSeconds = 2f / 60f;
+        private const string EndminfSmoke20MaterialName = "M_fx_endminm_gfx_20";
 
         public enum BindingKind
         {
@@ -219,6 +224,7 @@ namespace EndfieldGraphShaderLab
 
             activeEffects[request.prefabName] = instance;
             instance.SetActive(true);
+            StartRecoveredLegacyAnimations(instance);
             PlayRecoveredParticleSystems(instance, systems);
 
             if (binding.expectedDuration > 0f)
@@ -229,6 +235,61 @@ namespace EndfieldGraphShaderLab
                         instance,
                         binding.expectedDuration));
             }
+        }
+
+        private void StartRecoveredLegacyAnimations(GameObject instance)
+        {
+            // Instantiate activates an enabled prefab before this spawner can
+            // clear and stage its ParticleSystems. Deactivating that instance
+            // again stops playAutomatically legacy Animation components, and
+            // the following activation does not reliably restart them. Replay
+            // only clips explicitly marked automatic in the recovered prefab.
+            foreach (Animation animation in
+                instance.GetComponentsInChildren<Animation>(true))
+            {
+                if (!animation.playAutomatically || animation.clip == null)
+                    continue;
+                animation.Stop();
+                animation.Rewind(animation.clip.name);
+                if (string.Equals(
+                        animation.clip.name,
+                        EndminfCompositeRockClipName,
+                        StringComparison.Ordinal))
+                {
+                    // Retail's last nonzero/first-zero sampled packets are at
+                    // 4.1667/4.30 s. The exact 1.50 s source active curve and
+                    // its 30-fps ticks fix the trigger at tick 83 (2.7667 s).
+                    StartCoroutine(PlayRecoveredLegacyAnimationAfterDelay(
+                        instance,
+                        animation,
+                        EndminfCompositeRockClipDelaySeconds));
+                    continue;
+                }
+                PlayRecoveredLegacyAnimation(animation);
+            }
+        }
+
+        private static void PlayRecoveredLegacyAnimation(Animation animation)
+        {
+            if (!animation.Play(animation.clip.name))
+            {
+                Debug.LogError(
+                    "Recovered CharEffect legacy animation failed closed: " +
+                    animation.clip.name,
+                    animation);
+            }
+        }
+
+        private static IEnumerator PlayRecoveredLegacyAnimationAfterDelay(
+            GameObject instance,
+            Animation animation,
+            float delaySeconds)
+        {
+            yield return new WaitForSeconds(delaySeconds);
+            if (instance == null || animation == null ||
+                !instance.activeInHierarchy)
+                yield break;
+            PlayRecoveredLegacyAnimation(animation);
         }
 
         private static void PlayRecoveredParticleSystems(
@@ -243,7 +304,55 @@ namespace EndfieldGraphShaderLab
             // Keep particle delays on the selection/body timeline; only the
             // separately recovered compatibility post clock carries pre-roll.
             foreach (ParticleSystem system in systems)
+            {
                 system.Play(true);
+                if (IsEndminfSmoke20(instance, system))
+                {
+                    // The retained 4.46 s source delay is correct, but Unity's
+                    // public ParticleSystem publishes this six-particle plume
+                    // two render ticks after the matched retail frame. Advance
+                    // only the source-identified smoke owner; global particle
+                    // pre-roll shifts crystals, stones, rays and their seeds.
+                    system.Simulate(
+                        EndminfSmoke20PresentationAdvanceSeconds,
+                        false,
+                        false,
+                        true);
+                    // Simulate leaves a public-Unity ParticleSystem paused;
+                    // resume this owner without recursively restarting peers.
+                    system.Play(false);
+                }
+            }
+        }
+
+        private static bool IsEndminfSmoke20(
+            GameObject instance,
+            ParticleSystem system)
+        {
+            if (!EndfieldEndminfVisualCompatibilityClock.Requested ||
+                instance == null || system == null ||
+                instance.name.IndexOf(
+                    "P_fxui_endminm003_overview_02",
+                    StringComparison.Ordinal) < 0 ||
+                !string.Equals(system.name, "smoke (2)", StringComparison.Ordinal) ||
+                system.transform.parent == null ||
+                !string.Equals(system.transform.parent.name, "all", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            ParticleSystemRenderer renderer = system.GetComponent<ParticleSystemRenderer>();
+            if (renderer == null)
+                return false;
+            foreach (Material material in renderer.sharedMaterials)
+            {
+                if (material != null && string.Equals(
+                        material.name,
+                        EndminfSmoke20MaterialName,
+                        StringComparison.Ordinal))
+                    return true;
+            }
+            return false;
         }
 
         private static void ApplyEndminfBillboardClampCompatibility(GameObject instance)

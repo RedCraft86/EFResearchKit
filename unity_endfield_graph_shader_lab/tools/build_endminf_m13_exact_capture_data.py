@@ -14,15 +14,37 @@ from typing import Any
 
 REPO = Path(__file__).resolve().parents[2]
 SESSION = REPO / "scratch/reverse_engineering/endfield_capture/20260826T144934Z"
-FRAME_ID = 5404
-FRAME = SESSION / "graphics/frames" / str(FRAME_ID)
+FULL_SESSION = REPO / "scratch/reverse_engineering/endfield_capture/20260828T004942Z"
+FRAME = SESSION / "graphics/frames/5404"
 OUTPUT = (REPO / "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab"
           / "Runtime/Rendering/EndfieldRecoveredM13ExactCaptureData.generated.cs")
 CPP_OUTPUT = (REPO / "unity_endfield_graph_shader_lab/tools/original_dxbc_exact"
               / "M13CapturePayload.generated.h")
 
-EXPECTED_METADATA_SHA256 = "1a67e671ad25f61fc9e9ee069515406fa61bb7a77478efa39fe85e43a34804b2"
-EXPECTED_RESOURCES_SHA256 = "8f80561c565eb007f3eafa1d0002717ae8633c5d0b01f35f62da0aa3e177ce5a"
+PACKET_CONTRACTS = (
+    {
+        "session": "20260826T144934Z",
+        "frame": 5395,
+        "reference_frame": 266,
+        "metadata_sha256": "03886baf52e226a48ef9694ca98382eccc745f29479e9b0507f1ef969cc749e5",
+        "resources_sha256": "ba5575eaa39efd4407aa71157b79050549a729fc14585d4d95c87ff1a541611e",
+    },
+    {
+        "session": "20260826T144934Z",
+        "frame": 5404,
+        "reference_frame": 275,
+        "metadata_sha256": "1a67e671ad25f61fc9e9ee069515406fa61bb7a77478efa39fe85e43a34804b2",
+        "resources_sha256": "8f80561c565eb007f3eafa1d0002717ae8633c5d0b01f35f62da0aa3e177ce5a",
+    },
+    {
+        "session": "20260828T004942Z",
+        "frame": 2775,
+        "reference_frame": 273,
+        "draw_ordinal": 75,
+        "metadata_sha256": "6038aec199ba5493cbadbed94594fad39c943e9215bc653b756facf0d2f3982e",
+        "resources_sha256": "0d6127cd7a89935d352000326b6253445bd9fcee504462ec2679e859e26413e9",
+    },
+)
 EXPECTED_VS = 0x96A93DCB3965CBED
 EXPECTED_PS = 0x0265C7A6806A095F
 EXPECTED_DRAW = (6, 1, 0)
@@ -32,6 +54,11 @@ INDEX_PAYLOAD = struct.pack("<6H", 0, 1, 2, 0, 2, 3)
 DECLARED_COUNTS = {0: (2, 82, 20, 4094, 4), 4: (28, 105, 4085, 50)}
 TEXTURE_SHAPES = ((256, 256), (512, 512), (512, 512), (256, 256), (256, 256))
 BC7_SRGB = 99
+CAPTURE_FPS = 60.0
+# Both frames use the same shared-ring IA binding. EndfieldCapture predates
+# draw-local IA descriptors here, so the exact draw baseVertex resolves the
+# owned quad within the selected ring allocation.
+RING_VERTEX_BINDING_OFFSET = 930320
 
 
 def require(condition: bool, message: str) -> None:
@@ -65,10 +92,12 @@ def select_draw(metadata: dict[str, Any]) -> dict[str, Any]:
 
 
 def selected_record(metadata: dict[str, Any], kind: int, stage: int,
-                    slot: int) -> dict[str, Any]:
+                    slot: int, object_id: int | None = None) -> dict[str, Any]:
     rows = [row for row in metadata.get("selectedResourceRecords", [])
             if row.get("captureKind") == kind and row.get("stage") == stage and
             row.get("slot") == slot]
+    if object_id is not None:
+        rows = [row for row in rows if int(row.get("objectId", 0)) == object_id]
     require(len(rows) == 1,
             f"capture must contain one selected kind {kind} stage {stage} slot {slot}")
     row = rows[0]
@@ -133,8 +162,6 @@ def is_geometry_candidate(ring: bytes, offset: int) -> bool:
         if not all(math.isfinite(value) and -1000.0 < value < 1000.0 for value in position):
             return False
         current_color = ring[start + 24:start + 28]
-        if current_color[:3] != bytes((255, 73, 6)):
-            return False
         if color is None:
             color = current_color
         elif current_color != color:
@@ -153,22 +180,77 @@ def is_geometry_candidate(ring: bytes, offset: int) -> bool:
     return True
 
 
-def collect_geometry(metadata: dict[str, Any], resources: bytes) -> dict[str, Any]:
+def collect_geometry(draw: dict[str, Any], metadata: dict[str, Any],
+                     resources: bytes) -> dict[str, Any]:
+    assembler = draw.get("inputAssembler")
+    if isinstance(assembler, dict):
+        vertex_rows = [row for row in assembler.get("vertexBuffers", [])
+                       if isinstance(row, dict) and row.get("slot") == 0]
+        index_row = assembler.get("indexBuffer")
+        require(len(vertex_rows) == 1 and isinstance(index_row, dict),
+                "M13 draw-local IA descriptor is incomplete")
+        vertex_row = vertex_rows[0]
+        primary_id = int(vertex_row.get("objectId", 0))
+        require(primary_id != 0 and
+                int(index_row.get("objectId", 0)) == primary_id and
+                int(vertex_row.get("stride", 0)) == VERTEX_STRIDE and
+                int(index_row.get("format", -1)) == 57,
+                "M13 draw-local IA contract drifted")
+        vertex_selected = [row for row in metadata.get("selectedResourceRecords", [])
+                           if row.get("captureKind") == 0 and
+                           int(row.get("objectId", 0)) == primary_id and
+                           row.get("stage") == 0 and row.get("slot") == 0]
+        index_selected = [row for row in metadata.get("selectedResourceRecords", [])
+                          if row.get("captureKind") == 1 and
+                          int(row.get("objectId", 0)) == primary_id and
+                          row.get("stage") == 0 and row.get("slot") == 0]
+        require(len(vertex_selected) == len(index_selected) == 1,
+                "M13 draw-local IA backing allocation is not unique")
+        vertex_backing = slice_record(resources, vertex_selected[0])
+        index_backing = slice_record(resources, index_selected[0])
+        require(vertex_selected[0].get("blobOffset") ==
+                index_selected[0].get("blobOffset") and
+                vertex_selected[0].get("blobBytes") ==
+                index_selected[0].get("blobBytes"),
+                "M13 draw-local vertex/index aliases drifted")
+        vertex_offset = (int(vertex_row["offset"]) +
+                         int(draw["baseVertex"]) * VERTEX_STRIDE)
+        index_offset = int(index_row["offset"]) + int(draw["start"]) * 2
+        payload = vertex_backing[
+            vertex_offset:vertex_offset + VERTEX_STRIDE * VERTEX_COUNT]
+        indices = index_backing[index_offset:index_offset + 12]
+        require(len(payload) == VERTEX_STRIDE * VERTEX_COUNT and
+                len(indices) == 12 and
+                struct.unpack("<6H", indices) == (0, 1, 2, 0, 2, 3) and
+                is_geometry_candidate(payload, 0),
+                "M13 draw-local geometry is invalid")
+        return {"vertices": payload, "indices": indices,
+                "ring_offset": vertex_offset,
+                "vertex_sha256": sha256(payload),
+                "index_sha256": sha256(indices)}
+
     ring = slice_record(resources, selected_record(metadata, 4, 5, 0))
     size = VERTEX_STRIDE * VERTEX_COUNT
-    offsets = [offset for offset in range(0, len(ring) - size + 1, 4)
-               if is_geometry_candidate(ring, offset)]
-    require(len(offsets) == 1,
-            f"M13 particle-ring signature must be unique, found {len(offsets)} candidates")
-    payload = ring[offsets[0]:offsets[0] + size]
-    return {"vertices": payload, "indices": INDEX_PAYLOAD, "ring_offset": offsets[0],
+    offset = RING_VERTEX_BINDING_OFFSET + int(draw["baseVertex"]) * VERTEX_STRIDE
+    require(offset >= 0 and offset + size <= len(ring) and
+            is_geometry_candidate(ring, offset),
+            "M13 draw-local baseVertex does not resolve a valid shared-ring quad")
+    payload = ring[offset:offset + size]
+    return {"vertices": payload, "indices": INDEX_PAYLOAD, "ring_offset": offset,
             "vertex_sha256": sha256(payload), "index_sha256": sha256(INDEX_PAYLOAD)}
 
 
-def collect_textures(metadata: dict[str, Any], resources: bytes) -> list[dict[str, Any]]:
+def collect_textures(draw: dict[str, Any], metadata: dict[str, Any],
+                     resources: bytes) -> list[dict[str, Any]]:
     result = []
     for slot, (width, height) in enumerate(TEXTURE_SHAPES):
-        row = selected_record(metadata, 3, 4, slot)
+        owned = [row for row in draw.get("resources", [])
+                 if row.get("kind") == 3 and row.get("stage") == 4 and
+                 row.get("slot") == slot]
+        row = (selected_record(
+            metadata, 3, 4, slot, int(owned[0]["objectId"]))
+            if len(owned) == 1 else
+            selected_record(metadata, 3, 4, slot))
         expected_bytes = width * height
         require(row.get("width") == width and row.get("height") == height and
                 row.get("format") == BC7_SRGB and row.get("viewFormat") == BC7_SRGB and
@@ -187,17 +269,29 @@ def render_cpp_array(name: str, payload: bytes) -> str:
             f"\n}};\ninline constexpr std::size_t {name}Size = sizeof({name});\n")
 
 
-def render_cpp(packet: dict[str, Any]) -> str:
-    arrays = [render_cpp_array("g_EndfieldM13Vertices", packet["geometry"]["vertices"]),
-              render_cpp_array("g_EndfieldM13Indices", packet["geometry"]["indices"])]
-    for stage, label in ((0, "VS"), (4, "PS")):
-        arrays.extend(render_cpp_array(f"g_EndfieldM13{label}CB{row['slot']}", row["payload"])
-                      for row in packet["constants"][stage])
+def render_cpp(packets: list[dict[str, Any]]) -> str:
+    arrays = [render_cpp_array("g_EndfieldM13Indices", INDEX_PAYLOAD)]
+    descriptors = []
+    for index, packet in enumerate(packets):
+        prefix = f"g_EndfieldM13P{index}"
+        arrays.append(render_cpp_array(prefix + "Vertices",
+                                       packet["geometry"]["vertices"]))
+        for stage, label in ((0, "VS"), (4, "PS")):
+            arrays.extend(render_cpp_array(
+                f"{prefix}{label}CB{row['slot']}", row["payload"])
+                for row in packet["constants"][stage])
+        descriptors.append(
+            f"    {{{packet['frame']}u, {packet['phase']:.6f}f, "
+            f"{prefix}Vertices, {prefix}VerticesSize, "
+            f"{{{', '.join(prefix + 'VSCB' + str(i) for i in range(5))}}}, "
+            f"{{{', '.join(prefix + 'VSCB' + str(i) + 'Size' for i in range(5))}}}, "
+            f"{{{', '.join(prefix + 'PSCB' + str(i) for i in range(4))}}}, "
+            f"{{{', '.join(prefix + 'PSCB' + str(i) + 'Size' for i in range(4))}}}}},")
     arrays.extend(render_cpp_array(f"g_EndfieldM13Texture{row['slot']}", row["payload"])
-                  for row in packet["textures"])
+                  for row in packets[0]["textures"])
     texture_desc = ",\n".join(
         f"    {{g_EndfieldM13Texture{row['slot']}, g_EndfieldM13Texture{row['slot']}Size, "
-        f"{row['width']}u, {row['height']}u}}" for row in packet["textures"])
+        f"{row['width']}u, {row['height']}u}}" for row in packets[0]["textures"])
     return (
         "// Generated by tools/build_endminf_m13_exact_capture_data.py. Do not edit.\n"
         "#pragma once\n#include <cstddef>\n#include <cstdint>\n\n"
@@ -206,72 +300,98 @@ def render_cpp(packet: dict[str, Any]) -> str:
         "{2, 82, 20, 4094, 4};\n"
         "inline constexpr std::uint32_t g_EndfieldM13PSDeclaredFloat4Counts[] = "
         "{28, 105, 4085, 50};\n\n" + "\n".join(arrays) + "\n"
-        "inline constexpr const std::uint8_t* g_EndfieldM13VSConstantPayloads[] = "
-        "{g_EndfieldM13VSCB0, g_EndfieldM13VSCB1, g_EndfieldM13VSCB2, "
-        "g_EndfieldM13VSCB3, g_EndfieldM13VSCB4};\n"
-        "inline constexpr std::size_t g_EndfieldM13VSConstantPayloadSizes[] = "
-        "{g_EndfieldM13VSCB0Size, g_EndfieldM13VSCB1Size, "
-        "g_EndfieldM13VSCB2Size, g_EndfieldM13VSCB3Size, "
-        "g_EndfieldM13VSCB4Size};\n"
-        "inline constexpr const std::uint8_t* g_EndfieldM13PSConstantPayloads[] = "
-        "{g_EndfieldM13PSCB0, g_EndfieldM13PSCB1, g_EndfieldM13PSCB2, "
-        "g_EndfieldM13PSCB3};\n"
-        "inline constexpr std::size_t g_EndfieldM13PSConstantPayloadSizes[] = "
-        "{g_EndfieldM13PSCB0Size, g_EndfieldM13PSCB1Size, "
-        "g_EndfieldM13PSCB2Size, g_EndfieldM13PSCB3Size};\n"
+        "struct EndfieldM13PacketPayload { std::uint32_t frame; float phaseSeconds; "
+        "const std::uint8_t* vertices; std::size_t vertexBytes; "
+        "const std::uint8_t* vs[5]; std::size_t vsBytes[5]; "
+        "const std::uint8_t* ps[4]; std::size_t psBytes[4]; };\n"
+        "inline constexpr EndfieldM13PacketPayload g_EndfieldM13Packets[] = {\n" +
+        "\n".join(descriptors) + "\n};\n"
+        "inline constexpr std::uint32_t g_EndfieldM13PacketCount = "
+        "static_cast<std::uint32_t>(sizeof(g_EndfieldM13Packets) / "
+        "sizeof(g_EndfieldM13Packets[0]));\n"
         "struct EndfieldM13TexturePayload { const std::uint8_t* bytes; std::size_t size; "
         "std::uint32_t width; std::uint32_t height; };\n"
         "inline constexpr EndfieldM13TexturePayload g_EndfieldM13Textures[] = {\n" +
         texture_desc + "\n};\n")
 
 
-def render_cs(packet: dict[str, Any]) -> str:
-    texture_hashes = ", ".join(f'"{row["sha256"]}"' for row in packet["textures"])
+def render_cs(packets: list[dict[str, Any]]) -> str:
+    texture_hashes = ", ".join(
+        f'"{row["sha256"]}"' for row in packets[0]["textures"])
+    frames = ", ".join(str(packet["frame"]) for packet in packets)
+    phases = ", ".join(f'{packet["phase"]:.6f}f' for packet in packets)
+    offsets = ", ".join(
+        str(packet["geometry"]["ring_offset"]) for packet in packets)
+    vertex_hashes = ", ".join(
+        f'"{packet["geometry"]["vertex_sha256"]}"' for packet in packets)
     return f'''// Generated by tools/build_endminf_m13_exact_capture_data.py. Do not edit.
 namespace EndfieldGraphShaderLab
 {{
     internal static class EndfieldRecoveredM13ExactCaptureData
     {{
-        internal const string SourceSession = "20260826T144934Z";
-        internal const int SourceFrame = {FRAME_ID};
-        internal const float PhaseSeconds = 4.50f;
-        internal const float ActiveHalfWidthSeconds = 0.125f;
-        internal const int RingByteOffset = {packet["geometry"]["ring_offset"]};
-        internal const string VertexSha256 = "{packet["geometry"]["vertex_sha256"]}";
+        internal const string SourceSession = "20260826T144934Z + 20260828T004942Z";
+        internal const int PacketCount = {len(packets)};
+        internal static readonly int[] SourceFrames = {{ {frames} }};
+        internal static readonly float[] PhaseSeconds = {{ {phases} }};
+        internal static readonly int[] RingByteOffsets = {{ {offsets} }};
+        internal static readonly string[] VertexSha256 = {{ {vertex_hashes} }};
         internal static readonly string[] TextureSha256 = {{ {texture_hashes} }};
     }}
 }}
 '''
 
 
-def build(frame: Path = FRAME, output: Path = OUTPUT,
-          cpp_output: Path = CPP_OUTPUT) -> str:
-    metadata_bytes = (frame / "metadata.json").read_bytes()
-    resources = (frame / "resources.bin").read_bytes()
-    require(sha256(metadata_bytes) == EXPECTED_METADATA_SHA256, "M13 metadata hash drifted")
-    require(sha256(resources) == EXPECTED_RESOURCES_SHA256, "M13 resources hash drifted")
-    metadata = json.loads(metadata_bytes)
-    require(metadata.get("captureIncomplete") is not True and
-            metadata.get("captureFailed") is not True, "M13 frame is incomplete")
-    draw = select_draw(metadata)
-    packet = {"constants": collect_constants(draw, metadata, resources),
-              "geometry": collect_geometry(metadata, resources),
-              "textures": collect_textures(metadata, resources)}
-    text = render_cs(packet)
+def build(output: Path = OUTPUT, cpp_output: Path = CPP_OUTPUT) -> str:
+    packets = []
+    texture_hashes: list[str] | None = None
+    for contract in PACKET_CONTRACTS:
+        frame_id = int(contract["frame"])
+        session = REPO / "scratch/reverse_engineering/endfield_capture" / str(
+            contract["session"])
+        frame = session / "graphics/frames" / str(frame_id)
+        metadata_bytes = (frame / "metadata.json").read_bytes()
+        resources = (frame / "resources.bin").read_bytes()
+        require(sha256(metadata_bytes) == contract["metadata_sha256"],
+                f"M13 frame {frame_id} metadata hash drifted")
+        require(sha256(resources) == contract["resources_sha256"],
+                f"M13 frame {frame_id} resources hash drifted")
+        metadata = json.loads(metadata_bytes)
+        require(metadata.get("captureIncomplete") is not True and
+                metadata.get("captureFailed") is not True,
+                f"M13 frame {frame_id} is incomplete")
+        draw = select_draw(metadata)
+        if "draw_ordinal" in contract:
+            require(int(draw.get("drawOrdinal", -1)) == int(contract["draw_ordinal"]),
+                    f"M13 frame {frame_id} draw ordinal drifted")
+        textures = collect_textures(draw, metadata, resources)
+        current_hashes = [row["sha256"] for row in textures]
+        if texture_hashes is None:
+            texture_hashes = current_hashes
+        require(current_hashes == texture_hashes,
+                "M13 textures changed across temporal packets")
+        packets.append({
+            "frame": frame_id,
+            "session": contract["session"],
+            "phase": (int(contract["reference_frame"]) - 3) / CAPTURE_FPS,
+            "constants": collect_constants(draw, metadata, resources),
+            "geometry": collect_geometry(draw, metadata, resources),
+            "textures": textures,
+        })
+    packets.sort(key=lambda packet: packet["phase"])
+    text = render_cs(packets)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(text, encoding="utf-8", newline="\n")
     cpp_output.parent.mkdir(parents=True, exist_ok=True)
-    cpp_output.write_text(render_cpp(packet), encoding="utf-8", newline="\n")
+    cpp_output.write_text(render_cpp(packets), encoding="utf-8", newline="\n")
     return text
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--frame", type=Path, default=FRAME)
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--cpp-output", type=Path, default=CPP_OUTPUT)
     args = parser.parse_args()
-    build(args.frame, args.output, args.cpp_output)
+    build(args.output, args.cpp_output)
     print(args.output)
     print(args.cpp_output)
     return 0

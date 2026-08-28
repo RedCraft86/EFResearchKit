@@ -20,10 +20,23 @@ namespace EndfieldGraphShaderLab
             public Vector2 centerViewport;
         }
 
+        public struct RecoveredOpeningStripState
+        {
+            public float elapsed;
+            public float intensity;
+            public float displacementPixels;
+            public float chromaticEdgePixels;
+        }
+
         public const string EnvironmentVariable =
             "ENDFIELD_ENDMINF_VISUAL_COMPATIBILITY";
         public const string PreRollSecondsEnvironmentVariable =
             "ENDFIELD_ENDMINF_VISUAL_COMPATIBILITY_PREROLL_SECONDS";
+        public const string OpeningStripDiagnosticEnvironmentVariable =
+            "ENDFIELD_ENDMINF_OPENING_STRIP_DIAGNOSTIC";
+        public const float OpeningStripStartSeconds = 0.03333334f;
+        public const float OpeningStripPeakSeconds = 0.06666667f;
+        public const float OpeningStripEndSeconds = 0.35f;
         private static float startTime = float.NaN;
         private static float configuredPreRollSeconds;
         private static Transform overview02Root;
@@ -137,6 +150,64 @@ namespace EndfieldGraphShaderLab
                 centerViewport = GetRecoveredPostCenterViewport(camera)
             };
             return true;
+        }
+
+        public static bool TryEvaluateOpeningStrip(
+            out RecoveredOpeningStripState state)
+        {
+            state = default;
+            // The current shader proves placement/cadence only. Reference
+            // frames localize the fracture to the moving character boundary,
+            // whereas this diagnostic has no retail depth/velocity ownership
+            // mask and shifts the static grid. Keep it out of canonical output
+            // until that mask is recovered.
+            if (!string.Equals(
+                    Environment.GetEnvironmentVariable(
+                        OpeningStripDiagnosticEnvironmentVariable),
+                    "1",
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+            if (!TryGetElapsed(out float elapsed))
+                return false;
+
+            float intensity = EvaluateOpeningStripEnvelope(elapsed);
+            if (intensity <= 0.0f)
+                return false;
+
+            state = new RecoveredOpeningStripState {
+                elapsed = elapsed,
+                intensity = intensity,
+                displacementPixels = 34.0f * intensity,
+                chromaticEdgePixels = 1.35f * intensity
+            };
+            return true;
+        }
+
+        public static float EvaluateOpeningStripEnvelope(float elapsed)
+        {
+            if (float.IsNaN(elapsed) || float.IsInfinity(elapsed) ||
+                elapsed < OpeningStripStartSeconds ||
+                elapsed >= OpeningStripEndSeconds)
+            {
+                return 0.0f;
+            }
+
+            if (elapsed < OpeningStripPeakSeconds)
+            {
+                return Mathf.SmoothStep(
+                    0.0f,
+                    1.0f,
+                    (elapsed - OpeningStripStartSeconds) /
+                        (OpeningStripPeakSeconds - OpeningStripStartSeconds));
+            }
+
+            return Mathf.SmoothStep(
+                1.0f,
+                0.0f,
+                (elapsed - OpeningStripPeakSeconds) /
+                    (OpeningStripEndSeconds - OpeningStripPeakSeconds));
         }
 
         private static float EvaluateSourceCurve(

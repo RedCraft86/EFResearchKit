@@ -50,6 +50,23 @@ overwriting the exact stages.
 
 Do not enable the keyword or arm the plugin outside this disposable diagnostic.
 
+## Endminf combined Uber transport
+
+The build also hash-checks and embeds the exact active Endminf CharInfo
+`BLOOM + RADIAL_BLUR + VIGNETTE` fullscreen pair. WARP validation
+must create both shader objects successfully. The default-off native transport
+uses an immutable 64-packet render-thread ring, stage-local VS/PS constants,
+strict source/bloom/LUT/output descriptors, and complete touched-state restore.
+Set `ENDFIELD_RECOVERED_ENDMINF_UBER_EXACT=1` only after the generated live
+payload exists. Runtime submission otherwise fails closed before drawing.
+Capture `20260827T183054Z`, frame 1818, supplies the active shader identities
+and stage-qualified VS b0 plus PS b0/b1 payloads. Its generic-fullscreen record
+predates active-variant priority tagging, so this is live constant/resource
+evidence but does not claim draw-bound fixed pipeline state.
+`build_endminf_uber_capture_payload.py` converts only that validated report
+into immutable native constant bytes; the older unbound 3DMigoto arena is not
+accepted as runtime state.
+
 ## M27 Unity-owned draw substitution
 
 The same plugin now contains a separate, default-off M27 compiler-callback
